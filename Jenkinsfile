@@ -99,7 +99,7 @@ void build(tests = true){
     withEnv(jdkEnv) {
         def server = Artifactory.server('vitoartifactory')
         def rtMaven = Artifactory.newMavenBuild()
-        rtMaven.deployer server: server, releaseRepo: 'libs-release-local', snapshotRepo: 'libs-snapshot-local'
+        rtMaven.deployer server: server, releaseRepo: 'libs-release-local', snapshotRepo: 'libs-snapshot-public'
         rtMaven.tool = 'Maven 3.5.0'
         if (!tests) {
             rtMaven.opts += ' -DskipTests'

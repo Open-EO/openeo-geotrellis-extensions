@@ -93,18 +93,11 @@
               <snapshotRepository>
                   <id>snapshots</id>
                   <name>artifactory.vgt.vito.be-snapshots</name>
-                  <url>http://artifactory.vgt.vito.be/libs-snapshot-local</url>
+                  <url>http://artifactory.vgt.vito.be/libs-snapshot-public</url>
               </snapshotRepository>
       </distributionManagement>
 
     <repositories>
-        <repository>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-            <id>artifactory-pdf-snapshot</id>
-            <url>http://artifactory.vgt.vito.be/libs-pdf-snapshot</url>
-        </repository>
         <repository>
             <snapshots>
                 <enabled>false</enabled>
@@ -114,14 +107,7 @@
         </repository>
         <repository>
             <id>artifactory-snapshot</id>
-            <url>http://artifactory.vgt.vito.be/libs-snapshot-local</url>
-        </repository>
-        <repository>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-            <id>artifactory-pdf-release</id>
-            <url>http://artifactory.vgt.vito.be/libs-pdf-release</url>
+            <url>http://artifactory.vgt.vito.be/libs-snapshot-public</url>
         </repository>
     </repositories>
 </project>
