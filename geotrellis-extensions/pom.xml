@@ -30,21 +30,31 @@
             <groupId>org.openeo</groupId>
             <artifactId>geotrellis-accumulo-extensions</artifactId>
             <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.locationtech.geotrellis</groupId>
-            <artifactId>geotrellis-accumulo_${scala.binary.version}</artifactId>
-            <version>${geotrellis.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.github.pureconfig</groupId>
-            <artifactId>pureconfig-macros_${scala.binary.version}</artifactId>
-            <version>0.9.1</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.locationtech.geotrellis</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.scala-lang</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>be.vito.eodata.gwc-geotrellis</groupId>
             <artifactId>gwc-geotrellis-core</artifactId>
             <version>0.1.0-SNAPSHOT</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.locationtech.geotrellis</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.scala-lang</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
     </dependencies>
 

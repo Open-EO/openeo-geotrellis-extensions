@@ -108,7 +108,16 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <!--Relocations are copied from geopyspark build.sbt-->
                             <relocations>
+                                <relocation>
+                                    <pattern>com.typesafe.scalalogging</pattern>
+                                    <shadedPattern>org.locationtech.geopyspark.shaded.com.typesafe.scalalogging</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>shapeless</pattern>
+                                    <shadedPattern>org.locationtech.geopyspark.shaded.shapeless</shadedPattern>
+                                </relocation>
                                 <relocation>
                                     <pattern>org.apache.avro</pattern>
                                     <shadedPattern>org.locationtech.geopyspark.shaded.org.apache.avro</shadedPattern>
