@@ -1,9 +1,9 @@
 package org.openeo.geotrellisaccumulo
 
-import geotrellis.raster.MultibandTile
 import geotrellis.spark.io.accumulo.AccumuloKeyEncoder
-import geotrellis.spark.io.avro.AvroEncoder
+import geotrellis.spark.io.avro.codecs.Implicits._
 import geotrellis.spark.io.avro.codecs.KeyValueRecordCodec
+import geotrellis.spark.io.avro.{AvroEncoder, AvroRecordCodec}
 import geotrellis.spark.io.index.KeyIndex
 import geotrellis.spark.util.KryoWrapper
 import geotrellis.spark.{SpaceTimeKey, TileLayerMetadata}
@@ -15,10 +15,11 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{Partition, SparkContext, TaskContext}
 
 import scala.collection.JavaConverters._
+import scala.reflect.ClassTag
 
-class GeotrellisRasterRDD(keyIndex:KeyIndex[SpaceTimeKey],writerSchema:Schema,parent:GeotrellisAccumuloRDD,val metadata: TileLayerMetadata[SpaceTimeKey], sc : SparkContext) extends RDD[(SpaceTimeKey, geotrellis.raster.MultibandTile)](sc,Nil) with geotrellis.spark.Metadata[TileLayerMetadata[SpaceTimeKey]] {
+class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[SpaceTimeKey],writerSchema:Schema,parent:GeotrellisAccumuloRDD,val metadata: TileLayerMetadata[SpaceTimeKey], sc : SparkContext) extends RDD[(SpaceTimeKey, V)](sc,Nil) with geotrellis.spark.Metadata[TileLayerMetadata[SpaceTimeKey]] {
 
-  val codec = KryoWrapper(KeyValueRecordCodec[SpaceTimeKey, geotrellis.raster.MultibandTile])
+  val codec = KryoWrapper(KeyValueRecordCodec[SpaceTimeKey, V])
   val kwWriterSchema = KryoWrapper(Some(writerSchema))
 
   override val partitioner: Option[org.apache.spark.Partitioner] = Some(new org.apache.spark.Partitioner(){
@@ -35,12 +36,12 @@ class GeotrellisRasterRDD(keyIndex:KeyIndex[SpaceTimeKey],writerSchema:Schema,pa
     }
   })
 
-  override def compute(split: Partition, context: TaskContext): Iterator[(SpaceTimeKey, MultibandTile)] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[(SpaceTimeKey, V)] = {
     val parentIterator = parent.compute(split, context)
 
     return parentIterator.map{ case (_, value) =>
       AvroEncoder.fromBinary(kwWriterSchema.value.getOrElse(codec.value.schema), value.get)(codec.value)
-    }.flatMap { pairs: Vector[(SpaceTimeKey, MultibandTile)] =>
+    }.flatMap { pairs: Vector[(SpaceTimeKey, V)] =>
       pairs
     }
   }

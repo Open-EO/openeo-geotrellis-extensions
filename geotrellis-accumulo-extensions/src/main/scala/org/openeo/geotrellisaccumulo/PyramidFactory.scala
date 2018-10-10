@@ -3,11 +3,12 @@ package org.openeo.geotrellisaccumulo
 import java.time.ZonedDateTime
 
 import geotrellis.proj4.CRS
-import geotrellis.raster.MultibandTile
+import geotrellis.raster.{MultibandTile, Tile}
 import geotrellis.spark.io.accumulo.{AccumuloAttributeStore, AccumuloInstance, AccumuloKeyEncoder, AccumuloLayerHeader}
+import geotrellis.spark.io.avro.AvroRecordCodec
 import geotrellis.spark.io.json.Implicits.tileLayerMetadataFormat
 import geotrellis.spark.io.json.KeyFormats.SpaceTimeKeyFormat
-import geotrellis.spark.io.{AttributeNotFoundError, Between, Intersects, LayerAttributes, LayerNotFoundError, LayerQuery, LayerReadError, accumulo}
+import geotrellis.spark.io.{AttributeNotFoundError, Between, Intersects, LayerAttributes, LayerHeader, LayerNotFoundError, LayerQuery, LayerReadError, accumulo}
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.spark.{Bounds, EmptyBounds, KeyBounds, LayerId, SpaceTimeKey, TileLayerMetadata, _}
 import geotrellis.util._
@@ -26,6 +27,7 @@ import org.apache.spark.storage.StorageLevel
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable
+import scala.reflect.ClassTag
 
   class PyramidFactory(instanceName: String, zooKeeper: String) {
     private def maxZoom(layerName: String): Int = {
@@ -47,7 +49,7 @@ import scala.collection.immutable
       AccumuloInstance(instanceName, zooKeeper, token.getPrincipal, token)
     }
 
-    def rdd(layerName:String,zoom:Int=0,tileQuery: LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]] = new LayerQuery[SpaceTimeKey,TileLayerMetadata[SpaceTimeKey]]() ): RDD[(SpaceTimeKey, MultibandTile)] with geotrellis.spark.Metadata[TileLayerMetadata[SpaceTimeKey]] ={
+    def rdd[V : AvroRecordCodec: ClassTag](layerName:String,zoom:Int=0,tileQuery: LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]] = new LayerQuery[SpaceTimeKey,TileLayerMetadata[SpaceTimeKey]]() ): RDD[(SpaceTimeKey, V)] with geotrellis.spark.Metadata[TileLayerMetadata[SpaceTimeKey]] ={
       implicit val sc = SparkContext.getOrCreate()
       val id = LayerId(layerName, zoom)
 
@@ -91,12 +93,13 @@ import scala.collection.immutable
 
       val rdd = new GeotrellisAccumuloRDD(sc,job.getConfiguration())
 
-      return new GeotrellisRasterRDD(keyIndex,writerSchema,rdd,layerMetadata,sc)
+      return new GeotrellisRasterRDD[V](keyIndex,writerSchema,rdd,layerMetadata,sc)
     }
 
     def pyramid_seq(layerName:String,bbox: Extent, bbox_srs: String,startDate: String, endDate:String ): immutable.Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = {
       return pyramid_seq(layerName,bbox,bbox_srs,Some(ZonedDateTime.parse(startDate)),Some(ZonedDateTime.parse(endDate)))
     }
+
 
     def pyramid_seq(layerName:String,bbox: Extent, bbox_srs: String,startDate: Option[ZonedDateTime]=Option.empty, endDate:Option[ZonedDateTime]=Option.empty ): immutable.Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = {
 
@@ -106,6 +109,7 @@ import scala.collection.immutable
       if (!attributeStore.layerExists(id)) throw new LayerNotFoundError(id)
 
       val metadata = attributeStore.readMetadata[TileLayerMetadata[SpaceTimeKey]](id)
+      val header: LayerHeader = attributeStore.readHeader[LayerHeader](id)
       var query = new LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]]
       query = query.where(Intersects(ProjectedExtent(bbox,CRS.fromName(bbox_srs)).reproject(metadata.crs)))
       if(startDate.isDefined && endDate.isDefined) {
@@ -115,7 +119,13 @@ import scala.collection.immutable
       implicit val sc = SparkContext.getOrCreate()
 
       val seq = for (z <- maxLevel to 0 by -1) yield {
-        (z, rdd(layerName, z,query).persist(StorageLevel.MEMORY_AND_DISK_SER))
+        header.valueClass match {
+          case "geotrellis.raster.Tile" =>
+            (z, rdd[Tile](layerName, z,query).withContext(_.mapValues{MultibandTile(_)}).persist(StorageLevel.MEMORY_AND_DISK_SER))
+          case "geotrellis.raster.MultibandTile" =>
+            (z, rdd[MultibandTile](layerName, z,query).persist(StorageLevel.MEMORY_AND_DISK_SER))
+        }
+
       }
       return seq
 
