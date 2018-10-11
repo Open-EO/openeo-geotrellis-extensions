@@ -2,9 +2,10 @@ package org.openeo.geotrellisaccumulo
 
 import java.time.ZonedDateTime
 
+import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
 import geotrellis.proj4.CRS
 import geotrellis.raster.{MultibandTile, Tile}
-import geotrellis.spark.io.accumulo.{AccumuloAttributeStore, AccumuloInstance, AccumuloKeyEncoder, AccumuloLayerHeader}
+import geotrellis.spark.io.accumulo.{AccumuloAttributeStore, AccumuloKeyEncoder, AccumuloLayerHeader}
 import geotrellis.spark.io.avro.AvroRecordCodec
 import geotrellis.spark.io.json.Implicits.tileLayerMetadataFormat
 import geotrellis.spark.io.json.KeyFormats.SpaceTimeKeyFormat
@@ -14,13 +15,10 @@ import geotrellis.spark.{Bounds, EmptyBounds, KeyBounds, LayerId, SpaceTimeKey, 
 import geotrellis.util._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.accumulo.core.client.mapreduce.InputFormatBase
-import org.apache.accumulo.core.client.security.tokens.KerberosToken
 import org.apache.accumulo.core.data.{Range => AccumuloRange}
 import org.apache.accumulo.core.util.{Pair => AccumuloPair}
-import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.Text
 import org.apache.hadoop.mapreduce.Job
-import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
@@ -38,15 +36,7 @@ import scala.reflect.ClassTag
     }
 
     private def accumuloInstance = {
-      val conf = new Configuration
-      conf.set("hadoop.security.authentication", "kerberos")
-
-      UserGroupInformation.setConfiguration(conf)
-      UserGroupInformation.loginUserFromSubject(null)
-
-      val token = new KerberosToken
-
-      AccumuloInstance(instanceName, zooKeeper, token.getPrincipal, token)
+      KerberizedAccumuloInstance(zooKeeper,instanceName)
     }
 
     def rdd[V : AvroRecordCodec: ClassTag](layerName:String,zoom:Int=0,tileQuery: LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]] = new LayerQuery[SpaceTimeKey,TileLayerMetadata[SpaceTimeKey]]() ): RDD[(SpaceTimeKey, V)] with geotrellis.spark.Metadata[TileLayerMetadata[SpaceTimeKey]] ={

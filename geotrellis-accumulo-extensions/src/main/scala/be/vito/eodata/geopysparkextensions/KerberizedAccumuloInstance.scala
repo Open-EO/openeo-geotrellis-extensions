@@ -16,6 +16,10 @@ object KerberizedAccumuloInstance {
     val zookeeper = uri.getHost
     val instance = uri.getPath.drop(1)
     val (user, pass) = getUserInfo(uri)
+    apply(zookeeper,instance,user,pass)
+  }
+
+  def apply(zookeeper:String, instance:String,user:Option[String]=Option.empty,pass:Option[String]=Option.empty): AccumuloInstance = {
     val useKerberos = ClientConfiguration
       .loadDefault()
       .getBoolean(ClientConfiguration.ClientProperty.INSTANCE_RPC_SASL_ENABLED.getKey, false)
