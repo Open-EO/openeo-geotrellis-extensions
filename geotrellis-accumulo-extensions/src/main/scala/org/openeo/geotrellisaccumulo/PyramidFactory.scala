@@ -110,8 +110,14 @@ import scala.reflect.ClassTag
 
       val metadata = attributeStore.readMetadata[TileLayerMetadata[SpaceTimeKey]](id)
       val header: LayerHeader = attributeStore.readHeader[LayerHeader](id)
+
+      val extent = ProjectedExtent(bbox, CRS.fromName(bbox_srs)).reproject(metadata.crs)
+      if(!metadata.extent.intersects(extent)) {
+        throw new IllegalArgumentException("Requested bounding box does not intersect the layer. Layer: " + layerName + ".Bounding box: '" + extent + "' Layer bounding box: " + metadata.extent)
+      }
+
       var query = new LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]]
-      query = query.where(Intersects(ProjectedExtent(bbox,CRS.fromName(bbox_srs)).reproject(metadata.crs)))
+      query = query.where(Intersects(extent))
       if(startDate.isDefined && endDate.isDefined) {
         query = query.where(Between(startDate.get,endDate.get))
       }
