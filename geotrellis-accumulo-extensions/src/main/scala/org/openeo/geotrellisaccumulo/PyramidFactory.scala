@@ -35,6 +35,13 @@ import scala.reflect.ClassTag
         .zoom
     }
 
+    private def minZoom(layerName: String): Int = {
+      AccumuloAttributeStore(accumuloInstance).layerIds
+        .filter(_.name == layerName)
+        .minBy(_.zoom)
+        .zoom
+    }
+
     private def accumuloInstance = {
       KerberizedAccumuloInstance(zooKeeper,instanceName)
     }
@@ -87,13 +94,16 @@ import scala.reflect.ClassTag
     }
 
     def pyramid_seq(layerName:String,bbox: Extent, bbox_srs: String,startDate: String, endDate:String ): immutable.Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = {
-      return pyramid_seq(layerName,bbox,bbox_srs,Some(ZonedDateTime.parse(startDate)),Some(ZonedDateTime.parse(endDate)))
+      val start = if(startDate!=null ) Some(ZonedDateTime.parse(startDate)) else Option.empty
+      val end = if(endDate!=null) Some(ZonedDateTime.parse(endDate)) else Option.empty
+      return pyramid_seq(layerName,bbox,bbox_srs,start,end)
     }
 
 
     def pyramid_seq(layerName:String,bbox: Extent, bbox_srs: String,startDate: Option[ZonedDateTime]=Option.empty, endDate:Option[ZonedDateTime]=Option.empty ): immutable.Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = {
 
       val maxLevel:Int = maxZoom(layerName)
+      val minLevel:Int = minZoom(layerName)
       val attributeStore = AccumuloAttributeStore(accumuloInstance)
       val id = LayerId(layerName, maxLevel)
       if (!attributeStore.layerExists(id)) throw new LayerNotFoundError(id)
@@ -114,7 +124,7 @@ import scala.reflect.ClassTag
 
       implicit val sc = SparkContext.getOrCreate()
 
-      val seq = for (z <- maxLevel to 0 by -1) yield {
+      val seq = for (z <- maxLevel to minLevel by -1) yield {
         header.valueClass match {
           case "geotrellis.raster.Tile" =>
             (z, rdd[Tile](layerName, z,query).withContext(_.mapValues{MultibandTile(_)}).persist(StorageLevel.MEMORY_AND_DISK_SER))
