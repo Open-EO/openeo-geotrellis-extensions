@@ -118,7 +118,8 @@ import scala.reflect.ClassTag
 
       var query = new LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]]
       query = query.where(Intersects(extent))
-      if(startDate.isDefined && endDate.isDefined) {
+      //startDate can be null because py4j calls this method directly
+      if(startDate!=null && endDate != null && startDate.isDefined && endDate.isDefined) {
         query = query.where(Between(startDate.get,endDate.get))
       }
 
