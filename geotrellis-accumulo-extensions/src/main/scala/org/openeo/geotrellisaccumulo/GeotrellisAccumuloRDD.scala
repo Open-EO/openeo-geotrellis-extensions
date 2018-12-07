@@ -22,6 +22,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 import org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat
+import org.apache.accumulo.core.client.mapreduce.impl.BatchInputSplit
 import org.apache.accumulo.core.data.{Key, Value}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.Writable
@@ -70,7 +71,8 @@ private class SerializableConfiguration(@transient var value: Configuration) ext
 
 class GeotrellisAccumuloRDD(
     sc : SparkContext,
-    @transient private val _conf: Configuration)
+    @transient private val _conf: Configuration,
+    private val splitRanges: Boolean = false)
   extends RDD[(Key, Value)](sc, Nil)  {
 
   // A Hadoop Configuration can be about 10 KB, which is pretty big, so broadcast it
@@ -97,7 +99,41 @@ class GeotrellisAccumuloRDD(
     val inputFormat = new AccumuloInputFormat()
 
     val jobContext = new JobContextImpl(_conf, jobId)
-    val rawSplits = inputFormat.getSplits(jobContext).toArray
+    var rawSplits = inputFormat.getSplits(jobContext).toArray
+
+    if(splitRanges) {
+      rawSplits = rawSplits.flatMap(split=>{
+        val batchSplit = split.asInstanceOf[BatchInputSplit]
+        val maxRangesPerSplit = 6
+        if(batchSplit.getRanges.size()>maxRangesPerSplit){
+          val numberOfSubRanges = batchSplit.getRanges.size()/maxRangesPerSplit
+          val elementsPerRange = batchSplit.getRanges.size()/numberOfSubRanges
+          val ranges = new java.util.ArrayList(batchSplit.getRanges)
+
+          val subLists = (0 until numberOfSubRanges).map(rangeIndex => {
+            ranges.subList(elementsPerRange*rangeIndex,Math.min(ranges.size(),elementsPerRange*(rangeIndex+1)))
+          })
+
+          subLists.map(new BatchInputSplit(batchSplit.getTable,batchSplit.getTableId,_,batchSplit.getLocations))
+            .map(split=>{
+              split.setInstanceName(batchSplit.getInstanceName)
+              split.setZooKeepers(batchSplit.getZooKeepers)
+              split.setMockInstance(false)
+              split.setPrincipal(batchSplit.getPrincipal)
+              split.setToken(batchSplit.getToken)
+              split.setAuths(batchSplit.getAuths)
+              split.setFetchedColumns(batchSplit.getFetchedColumns)
+              split.setIterators(batchSplit.getIterators)
+              split.setLogLevel(batchSplit.getLogLevel)
+              split
+            })
+        }else{
+          Seq(batchSplit)
+        }
+
+      })
+
+    }
     val result = new Array[Partition](rawSplits.size)
     for (i <- 0 until rawSplits.size) {
       result(i) = new NewHadoopPartition(id, i, rawSplits(i).asInstanceOf[InputSplit with Writable])

@@ -28,6 +28,12 @@ import scala.collection.immutable
 import scala.reflect.ClassTag
 
   class PyramidFactory(instanceName: String, zooKeeper: String) {
+
+    var splitRanges: Boolean = false
+
+    def setSplitRanges(split: Boolean): Unit ={
+      splitRanges = split
+    }
     private def maxZoom(layerName: String): Int = {
       AccumuloAttributeStore(accumuloInstance).layerIds
         .filter(_.name == layerName)
@@ -88,7 +94,8 @@ import scala.reflect.ClassTag
       InputFormatBase.fetchColumns(job, List(new AccumuloPair(new Text(accumulo.columnFamily(id)), null: Text)).asJava)
       InputFormatBase.setBatchScan(job, true)
 
-      val rdd = new GeotrellisAccumuloRDD(sc,job.getConfiguration())
+      val configuration = job.getConfiguration
+      val rdd = new GeotrellisAccumuloRDD(sc,configuration,splitRanges)
 
       return new GeotrellisRasterRDD[V](keyIndex,writerSchema,rdd,layerMetadata,sc)
     }
@@ -100,7 +107,43 @@ import scala.reflect.ClassTag
     }
 
 
-    def pyramid_seq(layerName:String,bbox: Extent, bbox_srs: String,startDate: Option[ZonedDateTime]=Option.empty, endDate:Option[ZonedDateTime]=Option.empty ): immutable.Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = {
+    def load_rdd(layerName:String,level:Int,bbox: Extent, bbox_srs: String,startDate: Option[ZonedDateTime]=Option.empty, endDate:Option[ZonedDateTime]=Option.empty ): MultibandTileLayerRDD[SpaceTimeKey]  = {
+      val attributeStore = AccumuloAttributeStore(accumuloInstance)
+      val id = LayerId(layerName, level)
+      if (!attributeStore.layerExists(id)) throw new LayerNotFoundError(id)
+
+      val header: LayerHeader = attributeStore.readHeader[LayerHeader](id)
+      val query = createQuery(attributeStore,id,bbox,bbox_srs,startDate,endDate)
+      implicit val sc = SparkContext.getOrCreate()
+      val result: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = header.valueClass match {
+        case "geotrellis.raster.Tile" =>
+           rdd[Tile](layerName, level,query).withContext(_.mapValues{MultibandTile(_)})
+        case "geotrellis.raster.MultibandTile" =>
+          rdd[MultibandTile](layerName, level,query)
+      }
+      return new ContextRDD(result,result.metadata)
+    }
+
+    def createQuery(attributeStore: AccumuloAttributeStore, id: LayerId, bbox: Extent, bbox_srs: String, startDate: Option[ZonedDateTime], endDate: Option[ZonedDateTime]): LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]] = {
+      val metadata = attributeStore.readMetadata[TileLayerMetadata[SpaceTimeKey]](id)
+
+      val extent = ProjectedExtent(bbox, CRS.fromName(bbox_srs)).reproject(metadata.crs)
+      if (!metadata.extent.intersects(extent)) {
+        throw new IllegalArgumentException("Requested bounding box does not intersect the layer. Layer: " + id.name + ".Bounding box: '" + extent + "' Layer bounding box: " + metadata.extent)
+      }
+
+      var query = new LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]]
+      query = query.where(Intersects(extent))
+      //startDate can be null because py4j calls this method directly
+      if (startDate != null && endDate != null && startDate.isDefined && endDate.isDefined) {
+        query = query.where(Between(startDate.get, endDate.get))
+      }
+      return query
+    }
+
+
+
+    def pyramid_seq(layerName:String, bbox: Extent, bbox_srs: String, startDate: Option[ZonedDateTime]=Option.empty, endDate:Option[ZonedDateTime]=Option.empty ): immutable.Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = {
 
       val maxLevel:Int = maxZoom(layerName)
       val minLevel:Int = minZoom(layerName)
@@ -108,20 +151,9 @@ import scala.reflect.ClassTag
       val id = LayerId(layerName, maxLevel)
       if (!attributeStore.layerExists(id)) throw new LayerNotFoundError(id)
 
-      val metadata = attributeStore.readMetadata[TileLayerMetadata[SpaceTimeKey]](id)
       val header: LayerHeader = attributeStore.readHeader[LayerHeader](id)
 
-      val extent = ProjectedExtent(bbox, CRS.fromName(bbox_srs)).reproject(metadata.crs)
-      if(!metadata.extent.intersects(extent)) {
-        throw new IllegalArgumentException("Requested bounding box does not intersect the layer. Layer: " + layerName + ".Bounding box: '" + extent + "' Layer bounding box: " + metadata.extent)
-      }
-
-      var query = new LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]]
-      query = query.where(Intersects(extent))
-      //startDate can be null because py4j calls this method directly
-      if(startDate!=null && endDate != null && startDate.isDefined && endDate.isDefined) {
-        query = query.where(Between(startDate.get,endDate.get))
-      }
+      val query = createQuery(attributeStore,id,bbox,bbox_srs,startDate,endDate)
 
       implicit val sc = SparkContext.getOrCreate()
 
