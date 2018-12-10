@@ -14,7 +14,7 @@
         <gt-version>18.0</gt-version>
         <scala.binary.version>2.11</scala.binary.version>
         <scala.version>2.11.8</scala.version>
-        <geotrellis.version>1.2.0</geotrellis.version>
+        <geotrellis.version>2.1.0</geotrellis.version>
         <commons-compress-version>1.10</commons-compress-version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>

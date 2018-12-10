@@ -15,7 +15,7 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <geotrellis.version>2.0.0</geotrellis.version>
+        <geotrellis.version>2.1.0</geotrellis.version>
     </properties>
 
     <repositories>
@@ -27,16 +27,9 @@
 
     <dependencies>
         <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-mapreduce-client-core</artifactId>
-            <version>${hadoop.version}</version>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-common</artifactId>
-            <version>${hadoop.version}</version>
-            <scope>provided</scope>
+            <groupId>org.locationtech.geotrellis</groupId>
+            <artifactId>geotrellis-accumulo_${scala.binary.version}</artifactId>
+            <version>${geotrellis.version}</version>
         </dependency>
         <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
@@ -60,20 +53,23 @@
                 </exclusion>
             </exclusions>
         </dependency>
-        <dependency>
-            <groupId>org.locationtech.geotrellis</groupId>
-            <artifactId>geotrellis-accumulo_${scala.binary.version}</artifactId>
-            <version>${geotrellis.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.github.pureconfig</groupId>
-            <artifactId>pureconfig-macros_${scala.binary.version}</artifactId>
-            <version>0.9.1</version>
-        </dependency>
+
         <dependency>
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-core_${scala.binary.version}</artifactId>
             <version>${spark.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-mapreduce-client-core</artifactId>
+            <version>${hadoop.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-common</artifactId>
+            <version>${hadoop.version}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -113,66 +109,7 @@
                     </excludes>
                 </configuration>
             </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>2.2</version>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>shade</goal>
-                        </goals>
-                        <configuration>
-                            <!--Relocations are copied from geopyspark build.sbt-->
-                            <relocations>
-                                <relocation>
-                                    <pattern>com.typesafe.scalalogging</pattern>
-                                    <shadedPattern>org.locationtech.geopyspark.shaded.com.typesafe.scalalogging</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>shapeless</pattern>
-                                    <shadedPattern>org.locationtech.geopyspark.shaded.shapeless</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>org.apache.avro</pattern>
-                                    <shadedPattern>org.locationtech.geopyspark.shaded.org.apache.avro</shadedPattern>
-                                </relocation>
-                            </relocations>
-                            <filters>
-                                <filter>
-                                    <artifact>*:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/license/*</exclude>
-                                        <exclude>META-INF/*.SF</exclude>
-                                        <exclude>META-INF/*.DSA</exclude>
-                                        <exclude>META-INF/*.RSA</exclude>
-                                    </excludes>
-                                </filter>
-                            </filters>
-                            <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>WebApp</mainClass>
-                                    <manifestEntries>
-                                        <!--These vendor properties are needed for JAI to work! -->
-                                        <Specification-Vendor>Vito</Specification-Vendor>
-                                        <Specification-Version>1.1</Specification-Version>
-                                        <Implementation-Vendor>Vito</Implementation-Vendor>
-                                        <Implementation-Version>1.1</Implementation-Version>
-                                    </manifestEntries>
-                                </transformer>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
-                                    <resource>META-INF/registryFile.jai</resource>
-                                </transformer>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
-                                    <resource>reference.conf</resource>
-                                </transformer>
-                            </transformers>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
+
         </plugins>
     </build>
 </project>

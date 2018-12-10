@@ -15,7 +15,7 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <geotrellis.version>2.0.0</geotrellis.version>
+        <geotrellis.version>2.1.0</geotrellis.version>
     </properties>
 
     <repositories>
@@ -26,6 +26,11 @@
     </repositories>
 
     <dependencies>
+        <dependency>
+            <groupId>org.scala-lang.modules</groupId>
+            <artifactId>scala-java8-compat_2.11</artifactId>
+            <version>0.8.0</version>
+        </dependency>
         <dependency>
             <groupId>org.openeo</groupId>
             <artifactId>geotrellis-accumulo-extensions</artifactId>
@@ -90,7 +95,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
-                <version>2.2</version>
+                <version>3.2.1</version>
                 <executions>
                     <execution>
                         <phase>package</phase>
@@ -98,6 +103,20 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <relocations>
+                                <relocation>
+                                    <pattern>com.typesafe.scalalogging</pattern>
+                                    <shadedPattern>org.locationtech.geopyspark.shaded.com.typesafe.scalalogging</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>shapeless</pattern>
+                                    <shadedPattern>org.locationtech.geopyspark.shaded.shapeless</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.apache.avro</pattern>
+                                    <shadedPattern>org.locationtech.geopyspark.shaded.org.apache.avro</shadedPattern>
+                                </relocation>
+                            </relocations>
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>
