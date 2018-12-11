@@ -129,7 +129,7 @@ void build(tests = true){
 }
 
 void withMavenEnv(List envVars = [], def body) {
-    String mvntool = tool name: "Maven 3.5.0", type: 'hudson.tasks.Maven$MavenInstallation'
+    String mvntool = tool name: "Maven 3.5.4", type: 'hudson.tasks.Maven$MavenInstallation'
     String jdktool = tool name: "OpenJDK 8 Centos7", type: 'hudson.model.JDK'
 
     List mvnEnv = ["PATH+MVN=${mvntool}/bin", "PATH+JDK=${jdktool}/bin", "JAVA_HOME=${jdktool}", "MAVEN_HOME=${mvntool}"]
