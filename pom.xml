@@ -38,6 +38,7 @@
             </activation>
             <modules>
                 <module>geotrellis-accumulo-extensions</module>
+                <module>geotrellis-sentinelhub</module>
                 <module>geotrellis-extensions</module>
             </modules>
         </profile>
