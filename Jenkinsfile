@@ -1,5 +1,5 @@
 def deployable_branches = ["master"]
-def maven = 'Maven 3.5.4'
+maven = 'Maven 3.5.4'
 
 node ('jenkinsslave1.vgt.vito.be') {
     stage('Build and Test') {
