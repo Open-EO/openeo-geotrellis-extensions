@@ -1,4 +1,5 @@
 def deployable_branches = ["master"]
+def maven = 'Maven 3.5.4'
 
 node ('jenkinsslave1.vgt.vito.be') {
     stage('Build and Test') {
@@ -100,7 +101,7 @@ void build(tests = true){
         def server = Artifactory.server('vitoartifactory')
         def rtMaven = Artifactory.newMavenBuild()
         rtMaven.deployer server: server, releaseRepo: 'libs-release-local', snapshotRepo: 'libs-snapshot-public'
-        rtMaven.tool = 'Maven 3.5.0'
+        rtMaven.tool = maven
         if (!tests) {
             rtMaven.opts += ' -DskipTests'
         }
@@ -129,7 +130,7 @@ void build(tests = true){
 }
 
 void withMavenEnv(List envVars = [], def body) {
-    String mvntool = tool name: "Maven 3.5.4", type: 'hudson.tasks.Maven$MavenInstallation'
+    String mvntool = tool name: maven, type: 'hudson.tasks.Maven$MavenInstallation'
     String jdktool = tool name: "OpenJDK 8 Centos7", type: 'hudson.model.JDK'
 
     List mvnEnv = ["PATH+MVN=${mvntool}/bin", "PATH+JDK=${jdktool}/bin", "JAVA_HOME=${jdktool}", "MAVEN_HOME=${mvntool}"]
