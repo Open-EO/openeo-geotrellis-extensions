@@ -2,6 +2,7 @@ package org.openeo.geotrellissentinelhub
 
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util.Base64
 
 import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.vector.{Extent, ProjectedExtent}
@@ -27,7 +28,20 @@ class TestSentinelHubRDD extends FlatSpec with Matchers {
     //creating context may have screwed up security settings
     UserGroupInformation.setConfiguration(config)
   }
+
+  it should "download a single sentinelhub tile" in {
+    val script = createSentinelHubScript(Array("B04", "B03","B02"))
+    val encodedScript = new String(Base64.getEncoder.encode(script.getBytes))
+    val tile = retrieveTileFromSentinelHub("2018-10-28",bbox.reproject(LatLng,WebMercator),Some(encodedScript))
+    print(tile.band(0).asciiDraw())
+  }
   sparkContext()
+
+  it should "create a valid script" in {
+    val result = createSentinelHubScript(Array("B02","VAA"))
+    print(result)
+    result should include ("[a.B02,a.VAA]")
+  }
 
   it should "load data from SentinelHub" in {
 
@@ -36,8 +50,7 @@ class TestSentinelHubRDD extends FlatSpec with Matchers {
   }
 
   it should "load timeseries data from SentinelHub" in {
-
-    val date = ZonedDateTime.of(2018,10,1,0,0,0,0,ZoneId.systemDefault())
+    val date = ZonedDateTime.of(2018,10,7,0,0,0,0,ZoneId.systemDefault())
     val endDate = ZonedDateTime.of(2018,11,1,0,0,0,0,ZoneId.systemDefault())
     val rdd = createGeotrellisRDD(ProjectedExtent(bbox.reproject(LatLng,WebMercator),WebMercator),date,endDate).cache()
     rdd.toSpatial(parse("2018-10-28")).stitch().tile.renderPng().write("/tmp/out2018-10-28.png")
@@ -45,10 +58,7 @@ class TestSentinelHubRDD extends FlatSpec with Matchers {
     rdd.toSpatial(parse("2018-10-10")).stitch().tile.renderPng().write("/tmp/out2018-10-10.png")
   }
 
-  it should "download a single sentinelhub tile" in {
-    val tile = retrieveTileFromSentinelHub("2018-10-28",bbox.reproject(LatLng,WebMercator))
-    print(tile.band(0).asciiDraw())
-  }
+
 
 
   it should "return only dates for extent" in {

@@ -1,8 +1,11 @@
 package org.openeo
 
 
+import java.awt.image.RenderedImage
+import java.io.InputStream
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util.{Base64, Scanner}
 
 import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.raster.{CellSize, FloatCellType, GridBounds, MultibandTile}
@@ -29,31 +32,90 @@ package object geotrellissentinelhub {
 
   private def parseDate(dateString:String) = LocalDate.from(DateTimeFormatter.ISO_DATE.parse(dateString)).atStartOfDay(ZoneId.of("UTC"))
 
+  def createSentinelHubScript(bands:Array[String]): String ={
+    val customScript =
+      """//VERSION=2
+ |      function setup(ds) {
+ |        return {
+ |          components: extractBands(ds),
+ |          normalization: false,  // disables input band "normalization" to [0,1], inputs are raw DNs
+ |          output: [
+ |          {
+ |            id: "default",
+ |            sampleType: SampleType.UINT8,
+ |            componentCount: 3
+ |          }
+ |          ]
+ |        };
+ |      }
+ |
+ |      // samples is array with length 1
+ |      // samples[0] properties include bands 'BXX'
+ |      //            and 'viewAzimuthMean','viewZenithMean','sunZenithAngles','sunAzimuthAngles'
+ |
+ |      function evaluatePixel(samples, scenes, metadata) {
+ |        const DN_to_reflectance = (a) => (a * metadata.normalizationFactor);
+ |        const gain = 5;
+ |        const px = extractBands(samples[0]);
+ |        return {
+        |        default: px.map(a => int8_from_01(DN_to_reflectance(a) * gain))
+        |        //default: px.map(a => int8_from_01((a + 180)/360))
+        |    };
+ |      }
+ |
+ |      function int8_from_01(a) {
+ |        return (a >= 0) ? (a <= 1 ? 255 * a : 255) : 0;
+ |      }
+ |
+ |      function extractBands(a) {
+ |        if(a !== undefined)
+ |          return [""".stripMargin  + bands.map(b => "a."+b).mkString(",") + """];
+ |        else return [0.0,0.0,0.0];
+       }
+      """.stripMargin
 
-  def createGeotrellisRDD(extent:ProjectedExtent, startDate:ZonedDateTime,endDate:ZonedDateTime): MultibandTileLayerRDD[SpaceTimeKey] ={
+
+    return customScript
+  }
+
+  def createGeotrellisRDD(extent:ProjectedExtent, startDate:ZonedDateTime,endDate:ZonedDateTime, bands:Array[String]=Array("B04","B03","B02")): MultibandTileLayerRDD[SpaceTimeKey] ={
     val metadata = createRDDMetadata(extent, startDate, endDate)
     val allDates = fetchDates(extent,startDate,endDate)
     val extents = metadata.gridBounds.coordsIter//.map(t => SpatialKey(t._1,t._2).extent(metadata.layout))
+    val script = new String(Base64.getEncoder.encode(createSentinelHubScript(bands).getBytes))
     val sc = SparkContext.getOrCreate()
     val rdd = sc.parallelize(allDates).cartesian(sc.parallelize(extents.toSeq)).map(date_extent => {
       val date = date_extent._1
       val spatialKey = SpatialKey(date_extent._2._1,date_extent._2._2)
       val extent = spatialKey.extent(metadata.layout)
-      val tile = retrieveTileFromSentinelHub(date,extent)
+      val tile = retrieveTileFromSentinelHub(date,extent,Some(script))
       (SpaceTimeKey(spatialKey,TemporalKey(parseDate(date))),tile)
     })
     return  MultibandTileLayerRDD[SpaceTimeKey](rdd, metadata)
 
   }
 
-  def retrieveTileFromSentinelHub(date:String,extent: Extent): MultibandTile = {
-    val url = "https://services.sentinel-hub.com/ogc/wms/ef60cfb1-53db-4766-9069-c5369c3161e6?CmxldCBtaW5WYWwgPSAwLjA7CmxldCBtYXhWYWwgPSAwLjQ7CgpsZXQgdml6ID0gbmV3IEhpZ2hsaWdodENvbXByZXNzVmlzdWFsaXplcihtaW5WYWwsIG1heFZhbCk7CgpmdW5jdGlvbiBldmFsdWF0ZVBpeGVsKHNhbXBsZXMpIHsKICAgIGxldCB2YWwgPSBbc2FtcGxlc1swXS5CMDQsIHNhbXBsZXNbMF0uQjAzLCBzYW1wbGVzWzBdLkIwMl07CiAgICByZXR1cm4gdmFsLm1hcCgodiwgaSkgPT4gdml6LnByb2Nlc3ModiwgaSkpOwp9CgpmdW5jdGlvbiBzZXR1cChkcykgewogICAgc2V0SW5wdXRDb21wb25lbnRzKFtkcy5CMDIsIGRzLkIwMywgZHMuQjA0XSk7CiAgICBzZXRPdXRwdXRDb21wb25lbnRDb3VudCgzKTsKfQo=&service=WMS&request=GetMap&layers=L2A&styles=&format=image%2Fpng&transparent=false&version=1.1.1&evalscript=CmxldCBtaW5WYWwgPSAwLjA7CmxldCBtYXhWYWwgPSAwLjQ7CgpsZXQgdml6ID0gbmV3IEhpZ2hsaWdodENvbXByZXNzVmlzdWFsaXplcihtaW5WYWwsIG1heFZhbCk7CgpmdW5jdGlvbiBldmFsdWF0ZVBpeGVsKHNhbXBsZXMpIHsKICAgIGxldCB2YWwgPSBbc2FtcGxlc1swXS5CMDQsIHNhbXBsZXNbMF0uQjAzLCBzYW1wbGVzWzBdLkIwMl07CiAgICByZXR1cm4gdmFsLm1hcCgodiwgaSkgPT4gdml6LnByb2Nlc3ModiwgaSkpOwp9CgpmdW5jdGlvbiBzZXR1cChkcykgewogICAgc2V0SW5wdXRDb21wb25lbnRzKFtkcy5CMDIsIGRzLkIwMywgZHMuQjA0XSk7CiAgICBzZXRPdXRwdXRDb21wb25lbnRDb3VudCgzKTsKfQo%3D&width=256&height=256"
-    val request = Http(url)
+  private def toString(is:InputStream):String = {
+    val result = new Scanner(is, "utf-8").useDelimiter("\\Z").next
+    println(result)
+    return result
+  }
+
+  def retrieveTileFromSentinelHub(date:String,extent: Extent, script:Option[String] = Option.empty): MultibandTile = {
+    val url = "https://services.sentinel-hub.com/ogc/wms/ef60cfb1-53db-4766-9069-c5369c3161e6?service=WMS&request=GetMap&layers=L2A&styles=&format=image%2Fpng&transparent=false&version=1.1.1&width=256&height=256"
+    var request = Http(url)
       .param("TIME", date + "/" + date)
       .param("BBOX", extent.xmin + "," + extent.ymin + "," + extent.xmax + "," + extent.ymax)
       .param("SRSNAME", "EPSG:3857")
-    val bufferedImage = request.execute(parser = { inputStream => ImageIO.read(inputStream) })
-    val tile = GridCoverage2DConverters.convertToMultibandTile(bufferedImage.body,GridCoverage2DConverters.getCellType(bufferedImage.body))
+
+    if(script.isDefined) {
+      request = request.param("evalscript",script.get)
+    }
+    print(request.urlBuilder(request))
+    val bufferedImage = request.exec(parser = { (code: Int, headers: Map[String, IndexedSeq[String]], inputStream: InputStream) => if( code == 200 ) ImageIO.read(inputStream) else  toString(inputStream)})
+    bufferedImage.throwError
+
+    val tile = GridCoverage2DConverters.convertToMultibandTile(bufferedImage.body.asInstanceOf[RenderedImage],GridCoverage2DConverters.getCellType(bufferedImage.body.asInstanceOf[RenderedImage]))
     return tile
   }
 
