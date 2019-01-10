@@ -1,6 +1,6 @@
 package org.openeo.geotrellisvlm
 
-import java.io.File
+import java.nio.file.{Path, Paths}
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 
@@ -9,10 +9,6 @@ import geotrellis.contrib.vlm._
 import geotrellis.contrib.vlm.geotiff.GeoTiffRasterSource
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster._
-import geotrellis.raster.render.Png
-import geotrellis.raster.reproject.Reproject
-import geotrellis.raster.{CellSize, MultibandTile, RasterExtent}
-import geotrellis.spark.join.SpatialJoin
 import geotrellis.spark.tiling._
 import geotrellis.spark.{ContextRDD, KeyBounds, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.vector.Extent
@@ -20,10 +16,13 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 
 import scala.collection.mutable.ArrayBuilder
-import scala.reflect.ClassTag
 import scala.math._
+import scala.reflect.ClassTag
 
 object LoadSigma0 {
+  
+  val ROOT_PATH = Paths.get("/", "home", "niels", "Data", "PngTest-RDD")
+  
   def createRDD(layername: String, envelope: Extent, str: String, startDate: Option[ZonedDateTime], endDate: Option[ZonedDateTime]): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
 
     val layout = new GlobalLayout(256,14,0.1)
@@ -37,7 +36,6 @@ object LoadSigma0 {
 //    val source = new geotrellis.contrib.vlm.gdal.GDALRasterSource("/home/driesj/alldata/CGS_S1/S1B_IW_GRDH_SIGMA0_DV_20181216T054946_DESCENDING_37_130C_V110_VH.tif")
 //    val secondfile = "/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1/2018/12/09/S1B_IW_GRDH_SIGMA0_DV_20181209T055749_DESCENDING_110_520B_V110/S1B_IW_GRDH_SIGMA0_DV_20181209T055749_DESCENDING_110_520B_V110_VH.tif"
 //    val source2 = new geotrellis.contrib.vlm.gdal.GDALRasterSource(secondfile)
-    val envelope = source.extent
     val croppedSource = source.resampleToRegion(RasterExtent(envelope,source.cellSize))
     val localLayoutDefWithZoom = localLayout.layoutDefinitionWithZoom(utm31,envelope,croppedSource.cellSize)
     val conf = new SparkConf().setMaster("local[4]").setAppName("Geotiffloading")
@@ -57,22 +55,28 @@ object LoadSigma0 {
 
   def test(): Unit = {
 
-//    val layout = GlobalLayout(256,14,0.1)
+    val layout = GlobalLayout(256,14,0.1)
     val localLayout = new LocalLayout(256,256)
 
 //    val utm31 = CRS.fromEpsgCode(32631)
-    val sourceVV = new GeoTiffRasterSource("/home/niels/Data/20180502/S1B_IW_GRDH_SIGMA0_DV_20180502T054914_DESCENDING_37_B39C_V110_VV.tif")
-    val sourceVH = new GeoTiffRasterSource("/home/niels/Data/20180502/S1B_IW_GRDH_SIGMA0_DV_20180502T054914_DESCENDING_37_B39C_V110_VH.tif")
+    val sourceVV_1 = new GeoTiffRasterSource("/home/niels/Data/20180502/S1B_IW_GRDH_SIGMA0_DV_20180502T054914_DESCENDING_37_B39C_V110_VV.tif")
+    val sourceVH_1 = new GeoTiffRasterSource("/home/niels/Data/20180502/S1B_IW_GRDH_SIGMA0_DV_20180502T054914_DESCENDING_37_B39C_V110_VH.tif")
 
-//    val layoutDefWithZoom = layout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10,10))
+    val sourceVV_2 = new GeoTiffRasterSource("/home/niels/Data/20180502/S1B_IW_GRDH_SIGMA0_DV_20180502T054939_DESCENDING_37_A1E0_V110_VV.tif")
+    val sourceVH_2 = new GeoTiffRasterSource("/home/niels/Data/20180502/S1B_IW_GRDH_SIGMA0_DV_20180502T054939_DESCENDING_37_A1E0_V110_VH.tif")
+
+    val sourceVV_3 = new GeoTiffRasterSource("/home/niels/Data/20180502/S1B_IW_GRDH_SIGMA0_DV_20180502T055004_DESCENDING_37_5165_V110_VV.tif")
+    val sourceVH_3 = new GeoTiffRasterSource("/home/niels/Data/20180502/S1B_IW_GRDH_SIGMA0_DV_20180502T055004_DESCENDING_37_5165_V110_VH.tif")
+
+    val layoutDefWithZoom = layout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10,10))
     //in the case of global layout, we need to warp input into the right format
     //val source = new geotrellis.contrib.vlm.gdal.GDALReprojectRasterSource("/home/driesj/alldata/S1B_IW_GRDH_1SDV_20180713T055010_20180713T055035_011788_015B03_5310.zip.tif",WebMercator, options = Reproject.Options(targetCellSize = Some(layoutDefWithZoom._1.cellSize)))
 
-    val localLayoutDefWithZoom = localLayout.layoutDefinitionWithZoom(WebMercator, sourceVV.extent, sourceVH.cellSize)
-//    val layoutTileSourceVV = LayoutTileSource(sourceVV,localLayoutDefWithZoom._1)
-//    val layoutTileSourceVH = LayoutTileSource(sourceVH,localLayoutDefWithZoom._1)
+//    val localLayoutDefWithZoom = localLayout.layoutDefinitionWithZoom(WebMercator, sourceVV.extent, sourceVH.cellSize)
+//    val layoutTileSourceVV = LayoutTileSource(sourceVV,layoutDefWithZoom._1)
+//    val layoutTileSourceVH = LayoutTileSource(sourceVH,layoutDefWithZoom._1)
 //    val spatialKeys = layoutTileSourceVV.keys()
-//    
+
 //    var break = 0
 //    for (key <- spatialKeys) {
 //      if (break < 500) {
@@ -81,15 +85,15 @@ object LoadSigma0 {
 //          val tileR = tileForKey(key, layoutTileSourceVV)
 //          val tileG = tileForKey(key, layoutTileSourceVH)
 //          val tileB = tileR.combineDouble(tileG)((a, b) => a / b)
-//          
+//
 //          val normTileR = logTile(tileR).normalize(-25, 3, 0, 255)
 //          val normTileG = logTile(tileG).normalize(-30, -2, 0, 255)
 //          val normTileB = tileB.normalize(0.2, 1, 0, 255)
-//          
+//
 //          val arrayTile = ArrayMultibandTile(normTileR, normTileG, normTileB)
-//          val png: Png = arrayTile.renderPng()
+//          val png = arrayTile.renderPng()
 //          val path = "/home/niels/Data/PngTest-4/"
-//          createDirs(path)
+//          Paths.get(path).toFile.mkdirs()
 //          png.write(path + s"$break.png")
 //        } catch {
 //          case ex: IllegalArgumentException => println(ex.getMessage)
@@ -102,16 +106,12 @@ object LoadSigma0 {
       .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       .set("spark.kryoserializer.buffer.max","1024m"))
 
-    var rdd = loadArrayMultibandTiles(Seq(sourceVV), Seq(sourceVH), localLayoutDefWithZoom._1)
-    
-    rdd.zipWithIndex().foreach(x => {
-      val (input, i) = x //TODO deconstruct in lambda
-      val (_, tile) = input
+    val rdd = loadArrayMultibandTiles(Seq(sourceVV_1, sourceVV_2), Seq(sourceVH_1, sourceVH_2), layoutDefWithZoom._1)
+
+    rdd.foreach { case (key, tile) =>
       val png = tile.renderPng()
-      val path = "/home/niels/Data/PngTest-RDD/"
-      createDirs(path)
-      png.write(path + s"$i.png")
-    })
+      png.write(pathForTile(ROOT_PATH, key, layout).toString)
+    }
     
     //    var rdd = loadRasterRegions(Seq(source),localLayoutDefWithZoom._1)
 //    //rdd = ContextRDD(rdd.repartitionAndSortWithinPartitions(SpatialPartitioner(100)),rdd.metadata)
@@ -135,10 +135,25 @@ object LoadSigma0 {
     tile.mapDouble(d => 10 * log10(d))
   }
   
-  def createDirs(str: String) {
-    val file = new File(str)
-    if (!file.exists)
-      file.mkdirs()
+  def pathForTile(rootPath: Path, key: SpaceTimeKey, layout: GlobalLayout): Path = {
+    val grid = "g"
+    val dateStr = key.time.format(DateTimeFormatter.ISO_LOCAL_DATE)
+    
+    val z = layout.zoom.formatted("%02d")
+    
+    val x = key.col.formatted("%09d")
+    val x2 = x.substring(0, 3)
+    val x1 = x.substring(3, 6)
+    val x0 = x.substring(6)
+
+    val y = key.row.formatted("%09d")
+    val y2 = y.substring(0, 3)
+    val y1 = y.substring(3, 6)
+    val y0 = y.substring(6)
+    
+    val dir = ROOT_PATH.resolve(Paths.get(grid, dateStr, z, x2, x1, x0, y2, y1))
+    dir.toFile.mkdirs()
+    dir.resolve(y0 + ".png")
   }
   
   def loadArrayMultibandTiles(sourcesVV: Seq[RasterSource],
@@ -174,10 +189,9 @@ object LoadSigma0 {
     val sourcesVHRDD: RDD[(SpaceTimeKey, Tile)] = tileRDDFromSources(sourcesVH, layout)
       
     val sourcesRDD: RDD[(SpaceTimeKey, (Tile, Tile))] = sourcesVVRDD.join(sourcesVHRDD)
-    
+
     val resultRDD: RDD[(SpaceTimeKey, ArrayMultibandTile)] =
-      sourcesRDD.map(input => {
-        val (key, (tileR, tileG)) = input //TODO how to deconstruct in lambda
+      sourcesRDD.map { case (key, (tileR, tileG)) =>
         val tileB = tileR.combineDouble(tileG)((a, b) => a / b)
 
         val normTileR = logTile(tileR).normalize(-25, 3, 0, 255)
@@ -185,9 +199,9 @@ object LoadSigma0 {
         val normTileB = tileB.normalize(0.2, 1, 0, 255)
 
         val arrayTile = ArrayMultibandTile(normTileR, normTileG, normTileB)
-        
+
         (key, arrayTile)
-      })
+      }
     
     ContextRDD(resultRDD, layerMetadata)
   }
@@ -196,9 +210,14 @@ object LoadSigma0 {
     sc.parallelize(sources).flatMap { source =>
       val date = LocalDate.from(DateTimeFormatter.BASIC_ISO_DATE.parse(source.uri.split("_DV_")(1).substring(0,8)))
       val tileSource = new LayoutTileSource(source, layout)
-      tileSource.keys().take(2000).map { key => //TODO partition to avoid out of memory
-        val tile = tileForKey(key, tileSource)
-        (SpaceTimeKey(key, date.atStartOfDay(ZoneId.of("UTC"))), tile)
+      tileSource.keys().take(500).flatMap { key =>
+        try {
+          val tile = tileForKey(key, tileSource)
+          
+          Some(SpaceTimeKey(key, date.atStartOfDay(ZoneId.of("UTC"))), tile)
+        } catch {
+          case _: IllegalArgumentException => None
+        }
       }
     }
   }
