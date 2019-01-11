@@ -54,7 +54,6 @@ object LoadSigma0 {
 
 
   def test(): Unit = {
-
     val layout = GlobalLayout(256,14,0.1)
     val localLayout = new LocalLayout(256,256)
 
@@ -72,81 +71,34 @@ object LoadSigma0 {
     //in the case of global layout, we need to warp input into the right format
     //val source = new geotrellis.contrib.vlm.gdal.GDALReprojectRasterSource("/home/driesj/alldata/S1B_IW_GRDH_1SDV_20180713T055010_20180713T055035_011788_015B03_5310.zip.tif",WebMercator, options = Reproject.Options(targetCellSize = Some(layoutDefWithZoom._1.cellSize)))
 
-//    val localLayoutDefWithZoom = localLayout.layoutDefinitionWithZoom(WebMercator, sourceVV.extent, sourceVH.cellSize)
-//    val layoutTileSourceVV = LayoutTileSource(sourceVV,layoutDefWithZoom._1)
-//    val layoutTileSourceVH = LayoutTileSource(sourceVH,layoutDefWithZoom._1)
-//    val spatialKeys = layoutTileSourceVV.keys()
-
-//    var break = 0
-//    for (key <- spatialKeys) {
-//      if (break < 500) {
-//        try {
-//          println(key)
-//          val tileR = tileForKey(key, layoutTileSourceVV)
-//          val tileG = tileForKey(key, layoutTileSourceVH)
-//          val tileB = tileR.combineDouble(tileG)((a, b) => a / b)
-//
-//          val normTileR = logTile(tileR).normalize(-25, 3, 0, 255)
-//          val normTileG = logTile(tileG).normalize(-30, -2, 0, 255)
-//          val normTileB = tileB.normalize(0.2, 1, 0, 255)
-//
-//          val arrayTile = ArrayMultibandTile(normTileR, normTileG, normTileB)
-//          val png = arrayTile.renderPng()
-//          val path = "/home/niels/Data/PngTest-4/"
-//          Paths.get(path).toFile.mkdirs()
-//          png.write(path + s"$break.png")
-//        } catch {
-//          case ex: IllegalArgumentException => println(ex.getMessage)
-//        }
-//      }
-//      break += 1
-//    }
-
     implicit val sc = SparkContext.getOrCreate(new SparkConf().setMaster("local[4]").setAppName("Geotiffloading")
       .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       .set("spark.kryoserializer.buffer.max","1024m"))
 
-    val rdd = loadArrayMultibandTiles(Seq(sourceVV_1, sourceVV_2), Seq(sourceVH_1, sourceVH_2), layoutDefWithZoom._1)
+    val rdd = loadArrayMultibandTiles(Seq(sourceVV_1, sourceVV_2, sourceVV_3), Seq(sourceVH_1, sourceVH_2, sourceVH_3), layoutDefWithZoom._1)
 
     rdd.foreach { case (key, tile) =>
       val png = tile.renderPng()
-      png.write(pathForTile(ROOT_PATH, key, layout).toString)
+      png.write(pathForTile(ROOT_PATH, key, layout.zoom).toString)
     }
-    
-    //    var rdd = loadRasterRegions(Seq(source),localLayoutDefWithZoom._1)
-//    //rdd = ContextRDD(rdd.repartitionAndSortWithinPartitions(SpatialPartitioner(100)),rdd.metadata)
-//    //rdd.spatiallyPartition().filterByKeyBounds()
-//    println(rdd.partitioner)
-//    //val histogram = rdd.histogram()
-//    val start = System.currentTimeMillis()
-//    println(rdd.count())
-//    println("duration: " + (System.currentTimeMillis() - start) / 1000.0)
-//    val entries = rdd.take(5)
-//
-//    println(entries)
-
   }
   
-  def tileForKey(key: SpatialKey, layoutTileSource: LayoutTileSource): Tile = {
-    layoutTileSource.rasterRegionForKey(key).raster.get.tile.band(0)
-  }
-  
-  def logTile(tile: Tile): Tile = {
-    tile.mapDouble(d => 10 * log10(d))
-  }
-  
-  def pathForTile(rootPath: Path, key: SpaceTimeKey, layout: GlobalLayout): Path = {
+  def pathForTile(rootPath: Path, key: SpaceTimeKey, zoom: Int): Path = {
     val grid = "g"
     val dateStr = key.time.format(DateTimeFormatter.ISO_LOCAL_DATE)
     
-    val z = layout.zoom.formatted("%02d")
+    val z = zoom.formatted("%02d")
     
     val x = key.col.formatted("%09d")
     val x2 = x.substring(0, 3)
     val x1 = x.substring(3, 6)
     val x0 = x.substring(6)
+    
+    def invertedRow = {
+      math.pow(2, zoom).toInt - 1 - key.row
+    }
 
-    val y = key.row.formatted("%09d")
+    val y = invertedRow.formatted("%09d")
     val y2 = y.substring(0, 3)
     val y1 = y.substring(3, 6)
     val y0 = y.substring(6)
@@ -187,12 +139,16 @@ object LoadSigma0 {
     
     val sourcesVVRDD: RDD[(SpaceTimeKey, Tile)] = tileRDDFromSources(sourcesVV, layout)
     val sourcesVHRDD: RDD[(SpaceTimeKey, Tile)] = tileRDDFromSources(sourcesVH, layout)
-      
+
     val sourcesRDD: RDD[(SpaceTimeKey, (Tile, Tile))] = sourcesVVRDD.join(sourcesVHRDD)
 
     val resultRDD: RDD[(SpaceTimeKey, ArrayMultibandTile)] =
-      sourcesRDD.map { case (key, (tileR, tileG)) =>
+      sourcesRDD.flatMap { case (key, (tileR, tileG)) =>
         val tileB = tileR.combineDouble(tileG)((a, b) => a / b)
+
+        def logTile(tile: Tile): Tile = {
+          tile.mapDouble(d => 10 * log10(d))
+        }
 
         val normTileR = logTile(tileR).normalize(-25, 3, 0, 255)
         val normTileG = logTile(tileG).normalize(-30, -2, 0, 255)
@@ -200,14 +156,14 @@ object LoadSigma0 {
 
         val arrayTile = ArrayMultibandTile(normTileR, normTileG, normTileB)
 
-        (key, arrayTile)
+        Some(key, arrayTile)
       }
     
     ContextRDD(resultRDD, layerMetadata)
   }
-  
+
   def tileRDDFromSources(sources: Seq[RasterSource], layout: LayoutDefinition)(implicit sc: SparkContext): RDD[(SpaceTimeKey, Tile)] = {
-    sc.parallelize(sources).flatMap { source =>
+    val rdd = sc.parallelize(sources).flatMap { source =>
       val date = LocalDate.from(DateTimeFormatter.BASIC_ISO_DATE.parse(source.uri.split("_DV_")(1).substring(0,8)))
       val tileSource = new LayoutTileSource(source, layout)
       tileSource.keys().take(500).flatMap { key =>
@@ -218,6 +174,27 @@ object LoadSigma0 {
         } catch {
           case _: IllegalArgumentException => None
         }
+      }
+    }
+    mapToUniqueKeysWithSingleTile(rdd)
+  }
+
+  def tileForKey(key: SpatialKey, layoutTileSource: LayoutTileSource): Tile = {
+    layoutTileSource.rasterRegionForKey(key).raster.get.tile.band(0)
+  }
+
+  def mapToUniqueKeysWithSingleTile(rdd: RDD[(SpaceTimeKey, Tile)]): RDD[(SpaceTimeKey, Tile)] = {
+    rdd.groupByKey().map { case (key, tiles) =>
+      if (tiles.size > 1) {
+        val nonNullTiles = tiles.filter(t => t.toArrayDouble().exists(d => !isNoData(d)))
+        if (nonNullTiles.isEmpty) {
+          (key, tiles.head)
+        } else {
+          require(nonNullTiles.size == 1)
+          (key, nonNullTiles.head)
+        }
+      } else {
+        (key, tiles.head)
       }
     }
   }
