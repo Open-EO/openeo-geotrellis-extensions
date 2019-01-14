@@ -1,9 +1,13 @@
 package org.openeo.geotrellisvlm
 
+import java.net.URI
 import java.nio.file.{Path, Paths}
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util
 
+import be.vito.eodata.biopar.EOProduct
+import be.vito.eodata.catalog.CatalogClient
 import geotrellis.contrib.vlm.RasterSourceRDD.PARTITION_BYTES
 import geotrellis.contrib.vlm._
 import geotrellis.contrib.vlm.geotiff.GeoTiffRasterSource
@@ -15,7 +19,7 @@ import geotrellis.vector.Extent
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 
-import scala.collection.mutable.ArrayBuilder
+import scala.collection.mutable.{ArrayBuilder, ListBuffer}
 import scala.math._
 import scala.reflect.ClassTag
 
@@ -55,18 +59,33 @@ object LoadSigma0 {
 
   def test(): Unit = {
     val layout = GlobalLayout(256,14,0.1)
-    val localLayout = new LocalLayout(256,256)
 
-//    val utm31 = CRS.fromEpsgCode(32631)
-    val sourceVV_1 = new GeoTiffRasterSource("/home/niels/Data/20180502/S1B_IW_GRDH_SIGMA0_DV_20180502T054914_DESCENDING_37_B39C_V110_VV.tif")
-    val sourceVH_1 = new GeoTiffRasterSource("/home/niels/Data/20180502/S1B_IW_GRDH_SIGMA0_DV_20180502T054914_DESCENDING_37_B39C_V110_VH.tif")
+    val date = LocalDate.of(2018, 5, 2)
+    val catalog = new CatalogClient()
+    val products = catalog.getProducts("CGS_S1_GRD_SIGMA0_L1", date, date, "GEOTIFF")
 
-    val sourceVV_2 = new GeoTiffRasterSource("/home/niels/Data/20180502/S1B_IW_GRDH_SIGMA0_DV_20180502T054939_DESCENDING_37_A1E0_V110_VV.tif")
-    val sourceVH_2 = new GeoTiffRasterSource("/home/niels/Data/20180502/S1B_IW_GRDH_SIGMA0_DV_20180502T054939_DESCENDING_37_A1E0_V110_VH.tif")
+    def sourceListsFromProducts(products: util.Collection[_ <: EOProduct]) = {
+      val pathsVV = new ListBuffer[URI]
+      val pathsVH = new ListBuffer[URI]
+      
+      products.toArray(new Array[EOProduct](0)).foreach(p => {
+        p.getFiles.toArray(new Array[EOProduct.File](0)).foreach(f => {
+          if (f.getBands.contains("VV")) {
+            pathsVV += f.getFilename
+          }
+          if (f.getBands.contains("VH"))  {
+            pathsVH += f.getFilename
+          }
+        })
+      })
+      
+      val sourcesVV = pathsVV.map(p => new GeoTiffRasterSource(p.toString)).toList
+      val sourcesVH = pathsVH.map(p => new GeoTiffRasterSource(p.toString)).toList
+      (sourcesVV, sourcesVH)
+    }
 
-    val sourceVV_3 = new GeoTiffRasterSource("/home/niels/Data/20180502/S1B_IW_GRDH_SIGMA0_DV_20180502T055004_DESCENDING_37_5165_V110_VV.tif")
-    val sourceVH_3 = new GeoTiffRasterSource("/home/niels/Data/20180502/S1B_IW_GRDH_SIGMA0_DV_20180502T055004_DESCENDING_37_5165_V110_VH.tif")
-
+    val (sourcesVV, sourcesVH) = sourceListsFromProducts(products)
+    
     val layoutDefWithZoom = layout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10,10))
     //in the case of global layout, we need to warp input into the right format
     //val source = new geotrellis.contrib.vlm.gdal.GDALReprojectRasterSource("/home/driesj/alldata/S1B_IW_GRDH_1SDV_20180713T055010_20180713T055035_011788_015B03_5310.zip.tif",WebMercator, options = Reproject.Options(targetCellSize = Some(layoutDefWithZoom._1.cellSize)))
@@ -75,7 +94,7 @@ object LoadSigma0 {
       .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       .set("spark.kryoserializer.buffer.max","1024m"))
 
-    val rdd = loadArrayMultibandTiles(Seq(sourceVV_1, sourceVV_2, sourceVV_3), Seq(sourceVH_1, sourceVH_2, sourceVH_3), layoutDefWithZoom._1)
+    val rdd = loadArrayMultibandTiles(sourcesVV, sourcesVH, layoutDefWithZoom._1)
 
     rdd.foreach { case (key, tile) =>
       val png = tile.renderPng()
