@@ -19,6 +19,7 @@ import geotrellis.vector.Extent
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 
+import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.collection.mutable.{ArrayBuilder, ListBuffer}
 import scala.math._
 import scala.reflect.ClassTag
@@ -68,8 +69,8 @@ object LoadSigma0 {
       val pathsVV = new ListBuffer[URI]
       val pathsVH = new ListBuffer[URI]
       
-      products.toArray(new Array[EOProduct](0)).foreach(p => {
-        p.getFiles.toArray(new Array[EOProduct.File](0)).foreach(f => {
+      products.asScala.foreach(p => {
+        p.getFiles.asScala.foreach(f => {
           if (f.getBands.contains("VV")) {
             pathsVV += f.getFilename
           }
