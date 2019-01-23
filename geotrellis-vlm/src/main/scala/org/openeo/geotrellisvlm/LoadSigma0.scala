@@ -194,7 +194,7 @@ object LoadSigma0 {
       tile.convert(FloatConstantNoDataCellType)
     }
 
-    val tileB = convert(tileR).combineDouble(convert(tileG))((a, b) => a / b)
+    val tileB = tileR.toArrayTile().combineDouble(tileG.toArrayTile())((a, b) => a / b)
 
     val normTileR = convert(logTile(tileR)).normalize(-25, 3, 0, 255)
     val normTileG = convert(logTile(tileG)).normalize(-30, -2, 0, 255)
