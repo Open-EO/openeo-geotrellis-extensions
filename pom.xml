@@ -13,7 +13,6 @@
         <spark.version>2.3.0</spark.version>
         <gt-version>18.0</gt-version>
         <scala.binary.version>2.11</scala.binary.version>
-        <scala.library.version>2.11.12</scala.library.version>
         <scala.version>2.11.8</scala.version>
         <geotrellis.version>2.1.0</geotrellis.version>
         <commons-compress-version>1.10</commons-compress-version>
@@ -71,7 +70,9 @@
                 </executions>
             </plugin>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
+                <version>3.1.1</version>
                 <configuration>
                     <archive>
                         <manifestEntries>
