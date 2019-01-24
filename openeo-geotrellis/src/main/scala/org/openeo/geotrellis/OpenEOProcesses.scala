@@ -60,6 +60,15 @@ class OpenEOProcesses extends Serializable {
 
   }
 
+  def mapBands[K](datacube:MultibandTileLayerRDD[K], scriptBuilder:OpenEOProcessScriptBuilder): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
+    val function = scriptBuilder.generateFunction()
+    return ContextRDD[K,MultibandTile,TileLayerMetadata[K]](datacube.map(tile => {
+      val resultTiles = function(tile._2.bands)
+      (tile._1,MultibandTile(resultTiles))
+    }),datacube.metadata)
+  }
+
+
   def rasterMask(datacube:MultibandTileLayerRDD[SpaceTimeKey],mask:MultibandTileLayerRDD[SpaceTimeKey], replacement:Double):ContextRDD[SpaceTimeKey,MultibandTile,TileLayerMetadata[SpaceTimeKey]] = {
 
     val joined = datacube.leftOuterJoin(mask)
