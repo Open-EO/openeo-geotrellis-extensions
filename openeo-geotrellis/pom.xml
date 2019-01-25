@@ -1,4 +1,6 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
         <artifactId>openeo-geotrellis-extensions</artifactId>
@@ -7,53 +9,15 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>geotrellis-accumulo-extensions</artifactId>
-    <packaging>jar</packaging>
-
-    <name>geotrellis-accumulo-extensions</name>
-    <url>http://maven.apache.org</url>
-
-    <properties>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <geotrellis.version>2.1.0</geotrellis.version>
-    </properties>
-
-    <repositories>
-        <repository>
-            <id>geotrellis-snapshots</id>
-            <url>https://repo.locationtech.org/content/groups/snapshots</url>
-        </repository>
-    </repositories>
-
+    <artifactId>openeo-geotrellis</artifactId>
     <dependencies>
-        <dependency>
-            <groupId>org.locationtech.geotrellis</groupId>
-            <artifactId>geotrellis-accumulo_${scala.binary.version}</artifactId>
-            <version>${geotrellis.version}</version>
-        </dependency>
+
         <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
             <artifactId>geotrellis-spark_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>
             <scope>provided</scope>
         </dependency>
-        <!--accumulo version should match the server-->
-        <dependency>
-            <groupId>org.apache.accumulo</groupId>
-            <artifactId>accumulo-core</artifactId>
-            <version>1.7.1</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.apache.hadoop</groupId>
-                    <artifactId>hadoop-client</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.google.guava</groupId>
-                    <artifactId>guava</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
         <dependency>
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-core_${scala.binary.version}</artifactId>
@@ -61,10 +25,10 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-mapreduce-client-core</artifactId>
-            <version>${hadoop.version}</version>
-            <scope>provided</scope>
+            <groupId>org.locationtech.geotrellis</groupId>
+            <artifactId>geotrellis-spark-testkit_${scala.binary.version}</artifactId>
+            <version>${geotrellis.version}</version>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.hadoop</groupId>
@@ -72,27 +36,28 @@
             <version>${hadoop.version}</version>
             <scope>provided</scope>
         </dependency>
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.12</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.scalatest</groupId>
-            <artifactId>scalatest_${scala.binary.version}</artifactId>
-            <version>3.0.5</version>
-            <scope>test</scope>
-        </dependency>
 
+
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>5.3.2</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.vintage</groupId>
+            <artifactId>junit-vintage-engine</artifactId>
+            <version>5.3.2</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
-
     <build>
         <plugins>
             <plugin>
                 <groupId>net.alchim31.maven</groupId>
                 <artifactId>scala-maven-plugin</artifactId>
-                <version>3.2.1</version>
+                <version>3.4.2</version>
                 <executions>
                     <execution>
                         <id>scala-compile-first</id>
@@ -119,4 +84,5 @@
 
         </plugins>
     </build>
+
 </project>
