@@ -3,13 +3,16 @@ package org.openeo.geotrellisvlm
 import java.nio.file.{Path, Paths}
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util
 
+import be.vito.eodata.biopar.EOProduct
 import be.vito.eodata.catalog.CatalogClient
 import geotrellis.contrib.vlm.RasterSourceRDD.PARTITION_BYTES
 import geotrellis.contrib.vlm._
 import geotrellis.contrib.vlm.gdal.GDALReprojectRasterSource
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster._
+import geotrellis.raster.render.ColorMap
 import geotrellis.raster.reproject.Reproject
 import geotrellis.spark.tiling._
 import geotrellis.spark.{ContextRDD, KeyBounds, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
@@ -24,98 +27,145 @@ import scala.reflect.ClassTag
 
 object LoadSigma0 {
 
-  val ROOT_PATH = Paths.get("/", "data", "users", "Private", "nielsh", "PNG")
+//  val ROOT_PATH = Paths.get("/", "data", "users", "Private", "nielsh", "PNG")
+  val ROOT_PATH = Paths.get("/", "home", "niels", "Data", "PNG")
+  val COLOR_MAP = Paths.get("/", "home", "niels", "Data", "styles_ColorTable_FAPAR_V12.sld")
 
-  def createRDD(layername: String, envelope: Extent, str: String, startDate: Option[ZonedDateTime], endDate: Option[ZonedDateTime]): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-
-    val layout = new GlobalLayout(256,14,0.1)
-    val localLayout = new LocalLayout(256,256)
-
-    val utm31 = CRS.fromEpsgCode(32631)
-
-    val source = new geotrellis.contrib.vlm.geotiff.GeoTiffRasterSource("/home/niels/Data/S1B_IW_GRDH_SIGMA0_DV_20180502T054914_DESCENDING_37_B39C_V110_VV.tif")
-    val source2 = new geotrellis.contrib.vlm.geotiff.GeoTiffRasterSource("/home/niels/Data/S1B_IW_GRDH_SIGMA0_DV_20181224T173153_ASCENDING_161_42B7_V110_VV.tif")
-    //in the case of global layout, we need to warp input into the right format
-//    val source = new geotrellis.contrib.vlm.gdal.GDALRasterSource("/home/driesj/alldata/CGS_S1/S1B_IW_GRDH_SIGMA0_DV_20181216T054946_DESCENDING_37_130C_V110_VH.tif")
-//    val secondfile = "/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1/2018/12/09/S1B_IW_GRDH_SIGMA0_DV_20181209T055749_DESCENDING_110_520B_V110/S1B_IW_GRDH_SIGMA0_DV_20181209T055749_DESCENDING_110_520B_V110_VH.tif"
-//    val source2 = new geotrellis.contrib.vlm.gdal.GDALRasterSource(secondfile)
-    val croppedSource = source.resampleToRegion(RasterExtent(envelope,source.cellSize))
-    val localLayoutDefWithZoom = localLayout.layoutDefinitionWithZoom(utm31,envelope,croppedSource.cellSize)
-    val conf = new SparkConf().setMaster("local[4]").setAppName("Geotiffloading")
-      .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-      .set("spark.kryoserializer.buffer.max","1024m")
-    implicit val sc = SparkContext.getOrCreate()
-
-    var rdd = loadRasterRegions(Seq(source,source2.resampleToRegion(RasterExtent(envelope,source.cellSize))),localLayoutDefWithZoom._1)
-
-    val tiledLayer = rdd.withContext(r => r.mapValues(f => f.raster.get.tile))
-
-    return tiledLayer
-
-  }
-
-  def test(): Unit = {
-    val date = LocalDate.of(2018, 5, 2)
-
-    val (sourcePathsVV, sourcePathsVH) = sourcePathsForDate(date)
-
+  def renderPng(productType: String, date: LocalDate, colorMap: Option[String] = None): Unit = {
     val layout = GlobalLayout(256, 14, 0.1)
     val layoutDefWithZoom = layout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10, 10))
 
-    //in the case of global layout, we need to warp input into the right format
-    def reproject(sourcePaths: List[String]) = {
-      sourcePaths.map(p => GDALReprojectRasterSource(p, WebMercator, 
-        Reproject.Options(targetCellSize = Some(layoutDefWithZoom._1.cellSize))))
+    implicit val sc: SparkContext =
+      SparkContext.getOrCreate(
+        new SparkConf()
+          .setMaster("local[8]")
+          .setAppName("Geotiffloading")
+          .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+          .set("spark.kryoserializer.buffer.max", "1024m"))
+    
+    getRddAndRender(productType, date, layoutDefWithZoom._1, layout.zoom, colorMap)(partitions = 500)
+  }
+
+  private def getRddAndRender(productType: String, date: LocalDate, layout: LayoutDefinition, zoom: Int, colorMap: Option[String])
+                             (partitions: Int)
+                             (implicit sc: SparkContext): Unit = {
+    colorMap match {
+      case Some(name) =>
+        val map = ColorMapParser.parse(name)
+        getSinglebandRDD(productType, date, layout)
+          .repartition(partitions)
+          .foreach(renderSinglebandRDD(zoom, map))
+      case None =>
+        getMultibandRDD(productType, date, layout)
+          .repartition(partitions)
+          .foreach(renderMultibandRDD(zoom))
     }
+  }
 
-    val (sourcesVV, sourcesVH) = (reproject(sourcePathsVV), reproject(sourcePathsVH))
+  private def getMultibandRDD(productType: String, date: LocalDate, layout: LayoutDefinition)(implicit sc: SparkContext) = {
+    val (sourcePathsVV, sourcePathsVH) = multibandSourcePathsForDate(productType, date)
+    val (sourcesVV, sourcesVH) = (reproject(sourcePathsVV, layout), reproject(sourcePathsVH, layout))
 
-    implicit val sc = SparkContext.getOrCreate(new SparkConf().setAppName("Geotiffloading")
+    implicit val sc = SparkContext.getOrCreate(new SparkConf().setMaster("local[8]").setAppName("Geotiffloading")
       .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       .set("spark.kryoserializer.buffer.max", "1024m"))
+ 
+    loadMultibandTiles(sourcesVV, sourcesVH, layout, date)
+  }
+  
+  private def getSinglebandRDD(productType: String, date: LocalDate, layout: LayoutDefinition)(implicit sc: SparkContext) = {
+    val sourcePaths = singlebandSourcePathsForDate(productType, date)
+    val sources = reproject(sourcePaths, layout)
+    
+    loadSinglebandTiles(sources, layout, date)
+  }
 
-    val rdd = loadMultibandTiles(sourcesVV, sourcesVH, layoutDefWithZoom._1)
+  private def reproject(sourcePaths: List[String], layout: LayoutDefinition) = {
+    //in the case of global layout, we need to warp input into the right format
+    sourcePaths.map(p => GDALReprojectRasterSource(p, WebMercator,
+      Reproject.Options(targetCellSize = Some(layout.cellSize))))
+  }
 
-    rdd.repartition(500).foreach { case (key, (vvRegions, vhRegions)) =>
-      val tileR = regionsToTile(vvRegions)
-      val tileG = regionsToTile(vhRegions)
+  private def renderMultibandRDD(zoom: Int)(item: (SpaceTimeKey, (Iterable[RasterRegion], Iterable[RasterRegion]))) {
+    item match {
+      case (key, (vvRegions, vhRegions)) =>
+        val tileR = regionsToTile(vvRegions)
+        val tileG = regionsToTile(vhRegions)
 
-      val multibandTile = tilesToArrayMultibandTile(tileR, tileG)
-      multibandTile.renderPng().write(pathForTile(ROOT_PATH, key, layout.zoom))
+        val multibandTile = tilesToArrayMultibandTile(tileR, tileG)
+        multibandTile.renderPng().write(pathForTile(ROOT_PATH, key, zoom))
     }
   }
-
-  def sourcePathsForDate(date: LocalDate): (List[String], List[String]) = {
+  
+  private def renderSinglebandRDD(zoom: Int, colorMap: ColorMap)(item: (SpaceTimeKey, Iterable[RasterRegion])) {
+    item match {
+      case (key, regions) =>
+        val tile = regionsToTile(regions)
+        val coloredTile = tile.color(colorMap)
+        coloredTile.renderPng().write(pathForTile(ROOT_PATH, key, zoom))
+    }
+  }
+  
+  private def multibandSourcePathsForDate(productType: String, date: LocalDate) = {
     val catalog = new CatalogClient()
-    val products = catalog.getProducts("CGS_S1_GRD_SIGMA0_L1", date, date, "GEOTIFF")
+    val products = catalog.getProducts(productType, date, date, "GEOTIFF")
 
-    val pathsVV = new ListBuffer[String]
-    val pathsVH = new ListBuffer[String]
-
-    products.asScala.foreach(p => {
-      p.getFiles.asScala.foreach(f => {
-        if (f.getBands.contains("VV")) {
-          pathsVV += f.getFilename.getPath
-        }
-        if (f.getBands.contains("VH")) {
-          pathsVH += f.getFilename.getPath
-        }
+    val paths = pathsFromProducts(products, "VV", "VH")
+    (paths(0), paths(1))
+  }
+  
+  private def singlebandSourcePathsForDate(productType: String, date: LocalDate) = {
+    val catalog = new CatalogClient()
+    val products = catalog.getProducts(productType, date, date, "GEOTIFF")
+    
+    pathsFromProducts(products, "FAPAR").head
+  }
+  
+  private def pathsFromProducts(products: util.Collection[_ <: EOProduct], bands: String*) = {
+    val result = new ListBuffer[List[String]]
+    
+    bands.foreach(b => {
+      val paths = new ListBuffer[String]
+      products.asScala.foreach(p => {
+        p.getFiles.asScala.foreach(f => {
+          if (f.getBands.contains(b)) {
+            paths += f.getFilename.getPath
+          }
+        })
       })
+      result += paths.toList
     })
-
-    (pathsVV.toList, pathsVH.toList)
+    
+    result.toList
   }
 
-  def loadMultibandTiles(sourcesVV: Seq[RasterSource],
-                         sourcesVH: Seq[RasterSource],
-                         layout: LayoutDefinition,
-                         partitionBytes: Long = PARTITION_BYTES)
-                        (implicit sc: SparkContext): RDD[(SpaceTimeKey, (Iterable[RasterRegion], Iterable[RasterRegion]))]
-    with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+  private def loadMultibandTiles(sourcesVV: Seq[RasterSource], sourcesVH: Seq[RasterSource], layout: LayoutDefinition, date: LocalDate)
+                                (implicit sc: SparkContext):
+                                RDD[(SpaceTimeKey, (Iterable[RasterRegion], Iterable[RasterRegion]))]
+                                with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
 
-    val allSources = sourcesVV ++ sourcesVH
-    val cellTypes = allSources.map { _.cellType }.toSet
-    val projections = allSources.map { _.crs }.toSet
+    val layerMetadata = getLayerMetadata(sourcesVV ++ sourcesVH, layout)
+
+    val vvRegionRDD: RDD[(SpaceTimeKey, Iterable[RasterRegion])] = rasterRegionRDDFromSources(sourcesVV, layout, date)
+    val vhRegionRDD: RDD[(SpaceTimeKey, Iterable[RasterRegion])] = rasterRegionRDDFromSources(sourcesVH, layout, date)
+
+    val regionRDD: RDD[(SpaceTimeKey, (Iterable[RasterRegion], Iterable[RasterRegion]))] = vvRegionRDD.join(vhRegionRDD)
+
+    ContextRDD(regionRDD, layerMetadata)
+  }
+  
+  private def loadSinglebandTiles(sources: List[RasterSource], layout: LayoutDefinition, date: LocalDate)(implicit sc: SparkContext) = {
+    
+    val layerMetadata = getLayerMetadata(sources, layout)
+
+    val regionRDD: RDD[(SpaceTimeKey, Iterable[RasterRegion])] = rasterRegionRDDFromSources(sources, layout, date)
+
+    ContextRDD(regionRDD, layerMetadata)
+  }
+  
+  private def getLayerMetadata(sources: Seq[RasterSource], layout: LayoutDefinition) = {
+    val cellTypes = sources.map { _.cellType }.toSet
+    val projections = sources.map { _.crs }.toSet
     require(
       projections.size == 1,
       s"All RasterSources must be in the same projection, but multiple ones were found: $projections"
@@ -125,26 +175,18 @@ object LoadSigma0 {
     val crs = projections.head
 
     val mapTransform = layout.mapTransform
-    val extent = mapTransform.extent
-    val combinedExtents = allSources.map { _.extent }.reduce { _ combine _ }
+    val combinedExtents = sources.map { _.extent }.reduce { _ combine _ }
 
     val layerKeyBounds = KeyBounds(mapTransform(combinedExtents))
     val spacetimeBounds = KeyBounds(SpaceTimeKey(layerKeyBounds._1, ZonedDateTime.now()), SpaceTimeKey(layerKeyBounds._2, ZonedDateTime.now()))
 
-    val layerMetadata =
-      TileLayerMetadata[SpaceTimeKey](cellType, layout, combinedExtents, crs, spacetimeBounds)
-
-    val vvRegionRDD: RDD[(SpaceTimeKey, Iterable[RasterRegion])] = rasterRegionRDDFromSources(sourcesVV, layout)
-    val vhRegionRDD: RDD[(SpaceTimeKey, Iterable[RasterRegion])] = rasterRegionRDDFromSources(sourcesVH, layout)
-
-    val regionRDD: RDD[(SpaceTimeKey, (Iterable[RasterRegion], Iterable[RasterRegion]))] = vvRegionRDD.join(vhRegionRDD)
-
-    ContextRDD(regionRDD, layerMetadata)
+    TileLayerMetadata[SpaceTimeKey](cellType, layout, combinedExtents, crs, spacetimeBounds)
   }
 
-  def rasterRegionRDDFromSources(sources: Seq[RasterSource], layout: LayoutDefinition)(implicit sc: SparkContext): RDD[(SpaceTimeKey, Iterable[RasterRegion])] = {
+  private def rasterRegionRDDFromSources(sources: Seq[RasterSource], layout: LayoutDefinition, date: LocalDate)
+                                        (implicit sc: SparkContext): RDD[(SpaceTimeKey, Iterable[RasterRegion])] = {
+    
     val rdd = sc.parallelize(sources).flatMap { source =>
-      val date = LocalDate.from(DateTimeFormatter.BASIC_ISO_DATE.parse(source.uri.split("_DV_")(1).substring(0, 8)))
       val tileSource = new LayoutTileSource(source, layout)
       tileSource.keys().flatMap { key =>
         try {
@@ -159,11 +201,11 @@ object LoadSigma0 {
     rdd.groupByKey()
   }
 
-  def regionsToTile(regions: Iterable[RasterRegion]): Tile = {
+  private def regionsToTile(regions: Iterable[RasterRegion]): Tile = {
     mapToSingleTile(regions.map(r => r.raster.get.tile.band(0)))
   }
 
-  def mapToSingleTile(tiles: Iterable[Tile]): Tile = {
+  private def mapToSingleTile(tiles: Iterable[Tile]): Tile = {
     if (tiles.size > 1) {
       val nonNullTiles = tiles.filter(t => t.toArrayDouble().exists(d => !isNoData(d)))
       if (nonNullTiles.isEmpty) {
@@ -171,12 +213,16 @@ object LoadSigma0 {
       } else if (nonNullTiles.size == 1) {
         nonNullTiles.head
       } else {
-        val tile1 = nonNullTiles.head
-        val tile2 = nonNullTiles.tail.head
+        val tile1 = nonNullTiles.head.toArrayTile()
+        val tile2 = nonNullTiles.tail.head.toArrayTile()
         
         tile1.combineDouble(tile2)((t1, t2) => {
-          require(isNoData(t1) || isNoData(t2))
-          if (isNoData(t1)) t2 else t1
+          if (isNoData(t1)) 
+            t2
+          else if (isNoData(t2)) 
+            t1
+          else 
+            (t1 + t2) / 2
         })
       }
     } else {
@@ -184,7 +230,7 @@ object LoadSigma0 {
     }
   }
 
-  def tilesToArrayMultibandTile(tileR: Tile, tileG: Tile): ArrayMultibandTile = {
+  private def tilesToArrayMultibandTile(tileR: Tile, tileG: Tile): ArrayMultibandTile = {
 
     def logTile(tile: Tile): Tile = {
       tile.mapDouble(d => 10 * log10(d))
@@ -203,7 +249,7 @@ object LoadSigma0 {
     ArrayMultibandTile(normTileR, normTileG, normTileB)
   }
 
-  def pathForTile(rootPath: Path, key: SpaceTimeKey, zoom: Int): String = {
+  private def pathForTile(rootPath: Path, key: SpaceTimeKey, zoom: Int): String = {
     val grid = "g"
     val dateStr = key.time.format(DateTimeFormatter.ISO_LOCAL_DATE)
 
@@ -328,9 +374,53 @@ object LoadSigma0 {
     }
   }
 
+  def createRDD(layername: String, envelope: Extent, str: String, startDate: Option[ZonedDateTime], endDate: Option[ZonedDateTime]): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+
+    val layout = new GlobalLayout(256,14,0.1)
+    val localLayout = new LocalLayout(256,256)
+
+    val utm31 = CRS.fromEpsgCode(32631)
+
+    val source = new geotrellis.contrib.vlm.geotiff.GeoTiffRasterSource("/home/niels/Data/S1B_IW_GRDH_SIGMA0_DV_20180502T054914_DESCENDING_37_B39C_V110_VV.tif")
+    val source2 = new geotrellis.contrib.vlm.geotiff.GeoTiffRasterSource("/home/niels/Data/S1B_IW_GRDH_SIGMA0_DV_20181224T173153_ASCENDING_161_42B7_V110_VV.tif")
+    //in the case of global layout, we need to warp input into the right format
+    //    val source = new geotrellis.contrib.vlm.gdal.GDALRasterSource("/home/driesj/alldata/CGS_S1/S1B_IW_GRDH_SIGMA0_DV_20181216T054946_DESCENDING_37_130C_V110_VH.tif")
+    //    val secondfile = "/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1/2018/12/09/S1B_IW_GRDH_SIGMA0_DV_20181209T055749_DESCENDING_110_520B_V110/S1B_IW_GRDH_SIGMA0_DV_20181209T055749_DESCENDING_110_520B_V110_VH.tif"
+    //    val source2 = new geotrellis.contrib.vlm.gdal.GDALRasterSource(secondfile)
+    val croppedSource = source.resampleToRegion(RasterExtent(envelope,source.cellSize))
+    val localLayoutDefWithZoom = localLayout.layoutDefinitionWithZoom(utm31,envelope,croppedSource.cellSize)
+    val conf = new SparkConf().setMaster("local[4]").setAppName("Geotiffloading")
+      .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+      .set("spark.kryoserializer.buffer.max","1024m")
+    implicit val sc = SparkContext.getOrCreate()
+
+    var rdd = loadRasterRegions(Seq(source,source2.resampleToRegion(RasterExtent(envelope,source.cellSize))),localLayoutDefWithZoom._1)
+
+    val tiledLayer = rdd.withContext(r => r.mapValues(f => f.raster.get.tile))
+
+    return tiledLayer
+
+  }
+
+  def testS1(): Unit = {
+    val productType = "CGS_S1_GRD_SIGMA0_L1"
+    val date = LocalDate.of(2018, 5, 2)
+    
+    renderPng(productType, date)
+  }
+  
+  def testS2(): Unit = {
+    val productType = "CGS_S2_FAPAR_10M"
+    val date = LocalDate.of(2018, 5, 31)
+    
+    renderPng(productType, date, Some(COLOR_MAP.toString))
+  }
+  
   def main(args: Array[String]): Unit = {
 
-    LoadSigma0.test()
+    LoadSigma0.testS1()
+    LoadSigma0.testS2()
+    
   }
 
 }
