@@ -1,6 +1,6 @@
 package org.openeo.geotrellisvlm
 
-import geotrellis.raster.render.{ColorMap, RGBA}
+import geotrellis.raster.render.{ColorMap, LessThanOrEqualTo, RGBA}
 
 import scala.collection.mutable.ListBuffer
 import scala.io.Source
@@ -28,7 +28,13 @@ object ColorMapParser {
     def hexToInt(hex: String): Int = {
       Integer.parseInt(hex, 16)
     }
-    
-    ColorMap(Map(elemList:_*))
+
+    ColorMap(
+      Map(elemList:_*),
+      ColorMap.Options(
+        classBoundaryType = LessThanOrEqualTo,
+        noDataColor = 0x00000000,
+        fallbackColor = 0x00000000
+      ))
   }
 }
