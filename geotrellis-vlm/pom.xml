@@ -44,6 +44,11 @@
             <version>0.5.0</version>
         </dependency>
         <dependency>
+            <groupId>com.beust</groupId>
+            <artifactId>jcommander</artifactId>
+            <version>1.72</version>
+        </dependency>
+        <dependency>
             <groupId>be.vito.eodata</groupId>
             <artifactId>BioParProcessing</artifactId>
             <version>2.10.0</version>

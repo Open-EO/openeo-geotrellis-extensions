@@ -7,6 +7,7 @@ import java.util
 
 import be.vito.eodata.biopar.EOProduct
 import be.vito.eodata.catalog.CatalogClient
+import com.beust.jcommander.JCommander
 import geotrellis.contrib.vlm.RasterSourceRDD.PARTITION_BYTES
 import geotrellis.contrib.vlm._
 import geotrellis.contrib.vlm.gdal.GDALReprojectRasterSource
@@ -28,8 +29,7 @@ import scala.reflect.ClassTag
 object LoadSigma0 {
 
 //  val ROOT_PATH = Paths.get("/", "data", "users", "Private", "nielsh", "PNG")
-  val ROOT_PATH = Paths.get("/", "home", "niels", "Data", "PNG")
-  val COLOR_MAP = Paths.get("/", "home", "niels", "Data", "styles_ColorTable_FAPAR_V12.sld")
+  val ROOT_PATH = Paths.get("/", "home", "niels", "Data", "PNG2")
 
   def renderPng(productType: String, date: LocalDate, colorMap: Option[String] = None): Unit = {
     val layout = GlobalLayout(256, 14, 0.1)
@@ -49,21 +49,27 @@ object LoadSigma0 {
   private def getRddAndRender(productType: String, date: LocalDate, layout: LayoutDefinition, zoom: Int, colorMap: Option[String])
                              (partitions: Int)
                              (implicit sc: SparkContext): Unit = {
+
+    val catalog = new CatalogClient()
+    val products = catalog.getProducts(productType, date, date, "GEOTIFF")
+    
     colorMap match {
       case Some(name) =>
         val map = ColorMapParser.parse(name)
-        getSinglebandRDD(productType, date, layout)
+        getSinglebandRDD(products, date, layout)
           .repartition(partitions)
           .foreach(renderSinglebandRDD(zoom, map))
       case None =>
-        getMultibandRDD(productType, date, layout)
+        getMultibandRDD(products, date, layout)
           .repartition(partitions)
           .foreach(renderMultibandRDD(zoom))
     }
   }
 
-  private def getMultibandRDD(productType: String, date: LocalDate, layout: LayoutDefinition)(implicit sc: SparkContext) = {
-    val (sourcePathsVV, sourcePathsVH) = multibandSourcePathsForDate(productType, date)
+  private def getMultibandRDD(products: util.Collection[_ <: EOProduct], date: LocalDate, layout: LayoutDefinition)
+                             (implicit sc: SparkContext) = {
+    
+    val (sourcePathsVV, sourcePathsVH) = multibandSourcePathsForDate(products)
     val (sourcesVV, sourcesVH) = (reproject(sourcePathsVV, layout), reproject(sourcePathsVH, layout))
 
     implicit val sc = SparkContext.getOrCreate(new SparkConf().setMaster("local[8]").setAppName("Geotiffloading")
@@ -73,8 +79,10 @@ object LoadSigma0 {
     loadMultibandTiles(sourcesVV, sourcesVH, layout, date)
   }
   
-  private def getSinglebandRDD(productType: String, date: LocalDate, layout: LayoutDefinition)(implicit sc: SparkContext) = {
-    val sourcePaths = singlebandSourcePathsForDate(productType, date)
+  private def getSinglebandRDD(products: util.Collection[_ <: EOProduct], date: LocalDate, layout: LayoutDefinition)
+                              (implicit sc: SparkContext) = {
+    
+    val sourcePaths = singlebandSourcePathsForDate(products)
     val sources = reproject(sourcePaths, layout)
     
     loadSinglebandTiles(sources, layout, date)
@@ -106,18 +114,12 @@ object LoadSigma0 {
     }
   }
   
-  private def multibandSourcePathsForDate(productType: String, date: LocalDate) = {
-    val catalog = new CatalogClient()
-    val products = catalog.getProducts(productType, date, date, "GEOTIFF")
-
+  private def multibandSourcePathsForDate(products: util.Collection[_ <: EOProduct]) = {
     val paths = pathsFromProducts(products, "VV", "VH")
     (paths(0), paths(1))
   }
   
-  private def singlebandSourcePathsForDate(productType: String, date: LocalDate) = {
-    val catalog = new CatalogClient()
-    val products = catalog.getProducts(productType, date, date, "GEOTIFF")
-    
+  private def singlebandSourcePathsForDate(products: util.Collection[_ <: EOProduct]) = {
     pathsFromProducts(products, "FAPAR").head
   }
   
@@ -402,25 +404,22 @@ object LoadSigma0 {
 
   }
 
-  def testS1(): Unit = {
-    val productType = "CGS_S1_GRD_SIGMA0_L1"
-    val date = LocalDate.of(2018, 5, 2)
-    
-    renderPng(productType, date)
-  }
-  
-  def testS2(): Unit = {
-    val productType = "CGS_S2_FAPAR_10M"
-    val date = LocalDate.of(2018, 5, 31)
-    
-    renderPng(productType, date, Some(COLOR_MAP.toString))
-  }
-  
   def main(args: Array[String]): Unit = {
+    val appName = "Geotiffloading"
 
-    LoadSigma0.testS1()
-    LoadSigma0.testS2()
-    
+    val jCommanderArgs = new JCommanderArgs
+    val jCommander = new JCommander(jCommanderArgs, args: _*)
+    jCommander.setProgramName(appName)
+
+    if (jCommanderArgs.help) {
+      jCommander.usage()
+    } else {
+      val date = jCommanderArgs.date
+      val productType = jCommanderArgs.productType
+      val colorMap = jCommanderArgs.colorMap
+      
+      renderPng(productType, date, colorMap)
+    }
   }
 
 }
