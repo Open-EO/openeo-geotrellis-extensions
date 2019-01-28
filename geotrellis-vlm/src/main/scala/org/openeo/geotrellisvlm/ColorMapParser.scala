@@ -1,6 +1,6 @@
 package org.openeo.geotrellisvlm
 
-import geotrellis.raster.render.{ColorMap, LessThanOrEqualTo, RGBA}
+import geotrellis.raster.render.{ColorMap, RGBA}
 
 import scala.collection.mutable.ListBuffer
 import scala.io.Source
@@ -20,7 +20,7 @@ object ColorMapParser {
         case opacityRegex(o) => opacity = o  
         case colorRegex(r, g, b, value, o) => 
           val a = Option(o).getOrElse(opacity).toDouble * 100
-          elemList += ((value.toInt, RGBA(hexToInt(r), hexToInt(g), hexToInt(b), a)))
+          elemList += ((value.toInt.toByte, RGBA(hexToInt(r), hexToInt(g), hexToInt(b), a)))
         case _ =>
       }
     }
@@ -29,12 +29,6 @@ object ColorMapParser {
       Integer.parseInt(hex, 16)
     }
 
-    ColorMap(
-      Map(elemList:_*),
-      ColorMap.Options(
-        classBoundaryType = LessThanOrEqualTo,
-        noDataColor = 0x00000000,
-        fallbackColor = 0x00000000
-      ))
+    ColorMap(Map(elemList:_*))
   }
 }

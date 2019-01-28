@@ -28,21 +28,13 @@ import scala.reflect.ClassTag
 
 object LoadSigma0 {
 
-//  val ROOT_PATH = Paths.get("/", "data", "users", "Private", "nielsh", "PNG")
-  val ROOT_PATH = Paths.get("/", "home", "niels", "Data", "PNG2")
+//  val ROOT_PATH = Paths.get("/", "data", "users", "Private", "nielsh", "PNG-S2")
+  val ROOT_PATH = Paths.get("/", "home", "niels", "Data", "PNG3")
 
-  def renderPng(productType: String, date: LocalDate, colorMap: Option[String] = None): Unit = {
+  def renderPng(productType: String, date: LocalDate, colorMap: Option[String] = None)(implicit sc: SparkContext): Unit = {
     val layout = GlobalLayout(256, 14, 0.1)
     val layoutDefWithZoom = layout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10, 10))
 
-    implicit val sc: SparkContext =
-      SparkContext.getOrCreate(
-        new SparkConf()
-          .setMaster("local[8]")
-          .setAppName("Geotiffloading")
-          .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-          .set("spark.kryoserializer.buffer.max", "1024m"))
-    
     getRddAndRender(productType, date, layoutDefWithZoom._1, layout.zoom, colorMap)(partitions = 500)
   }
 
@@ -68,14 +60,11 @@ object LoadSigma0 {
 
   private def getMultibandRDD(products: util.Collection[_ <: EOProduct], date: LocalDate, layout: LayoutDefinition)
                              (implicit sc: SparkContext) = {
-    
-    val (sourcePathsVV, sourcePathsVH) = multibandSourcePathsForDate(products)
-    val (sourcesVV, sourcesVH) = (reproject(sourcePathsVV, layout), reproject(sourcePathsVH, layout))
 
-    implicit val sc = SparkContext.getOrCreate(new SparkConf().setMaster("local[8]").setAppName("Geotiffloading")
-      .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-      .set("spark.kryoserializer.buffer.max", "1024m"))
- 
+    val r = reproject(_: List[String], layout)
+    val (sourcePathsVV, sourcePathsVH) = multibandSourcePathsForDate(products)
+    val (sourcesVV, sourcesVH) = (r(sourcePathsVV), r(sourcePathsVH))
+
     loadMultibandTiles(sourcesVV, sourcesVH, layout, date)
   }
   
@@ -90,8 +79,9 @@ object LoadSigma0 {
 
   private def reproject(sourcePaths: List[String], layout: LayoutDefinition) = {
     //in the case of global layout, we need to warp input into the right format
-    sourcePaths.map(p => GDALReprojectRasterSource(p, WebMercator,
-      Reproject.Options(targetCellSize = Some(layout.cellSize))))
+    sourcePaths.map {
+      GDALReprojectRasterSource(_, WebMercator, Reproject.Options(targetCellSize = Some(layout.cellSize)))
+    }
   }
 
   private def renderMultibandRDD(zoom: Int)(item: (SpaceTimeKey, (Iterable[RasterRegion], Iterable[RasterRegion]))) {
@@ -109,6 +99,7 @@ object LoadSigma0 {
     item match {
       case (key, regions) =>
         val tile = regionsToTile(regions)
+        
         val coloredTile = tile.color(colorMap)
         coloredTile.renderPng().write(pathForTile(ROOT_PATH, key, zoom))
     }
@@ -235,14 +226,14 @@ object LoadSigma0 {
   private def tilesToArrayMultibandTile(tileR: Tile, tileG: Tile): ArrayMultibandTile = {
 
     def logTile(tile: Tile): Tile = {
-      tile.mapDouble(d => 10 * log10(d))
+      tile.mapDouble(10 * log10(_))
     }
 
     def convert(tile: Tile) = {
       tile.convert(FloatConstantNoDataCellType)
     }
 
-    val tileB = tileR.toArrayTile().combineDouble(tileG.toArrayTile())((a, b) => a / b)
+    val tileB = tileR.toArrayTile().combineDouble(tileG.toArrayTile())(_ / _)
 
     val normTileR = convert(logTile(tileR)).normalize(-25, 3, 0, 255)
     val normTileG = convert(logTile(tileG)).normalize(-30, -2, 0, 255)
@@ -255,15 +246,15 @@ object LoadSigma0 {
     val grid = "g"
     val dateStr = key.time.format(DateTimeFormatter.ISO_LOCAL_DATE)
 
-    val z = zoom.formatted("%02d")
+    val z = f"$zoom%02d"
 
-    val x = key.col.formatted("%09d")
+    val x = f"${key.col}%09d"
     val x2 = x.substring(0, 3)
     val x1 = x.substring(3, 6)
     val x0 = x.substring(6)
 
     val invertedRow = math.pow(2, zoom).toInt - 1 - key.row
-    val y = invertedRow.formatted("%09d")
+    val y = f"$invertedRow%09d"
     val y2 = y.substring(0, 3)
     val y1 = y.substring(3, 6)
     val y0 = y.substring(6)
@@ -417,6 +408,13 @@ object LoadSigma0 {
       val date = jCommanderArgs.date
       val productType = jCommanderArgs.productType
       val colorMap = jCommanderArgs.colorMap
+
+      implicit val sc: SparkContext =
+        SparkContext.getOrCreate(
+          new SparkConf()
+            .setAppName("Geotiffloading")
+            .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+            .set("spark.kryoserializer.buffer.max", "1024m"))
       
       renderPng(productType, date, colorMap)
     }

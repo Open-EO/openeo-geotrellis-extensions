@@ -18,7 +18,7 @@ class DateConverter extends IStringConverter[LocalDate] {
     }
 
     tryDate.recover {
-      case _: DateTimeParseException => throw new IllegalArgumentException(s"unparseable date: $s")
+      case _: DateTimeParseException => throw new IllegalArgumentException(s"unparsable date: $s")
     }.get
   }
 }
