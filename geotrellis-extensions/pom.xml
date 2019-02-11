@@ -38,7 +38,7 @@
             <exclusions>
                 <exclusion>
                     <groupId>org.locationtech.geotrellis</groupId>
-                    <artifactId>*</artifactId>
+                    <artifactId>geotrellis-spark_2.11</artifactId>
                 </exclusion>
                 <exclusion>
                     <groupId>org.scala-lang</groupId>
