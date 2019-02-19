@@ -2,11 +2,11 @@ import java.time.LocalDate;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
-import org.openeo.geotrellisvlm.LoadSigma0;
+import org.openeo.geotrellisvlm.TileSeeder;
 import org.openeo.geotrellisvlm.MemoryLogger;
 import scala.Option;
 
-public class LoadSigma0Runner {
+public class TileSeederRunner {
     
     public static void main(String... args) {
         MemoryLogger ml = new MemoryLogger("main");
@@ -27,7 +27,7 @@ public class LoadSigma0Runner {
             String productType = args[0];
             LocalDate date = LocalDate.parse(args[1]);
             
-            LoadSigma0.renderPng(productType, date, colorMap, sc);
+            TileSeeder.renderPng(productType, date, colorMap, sc);
         }
         
         ml.logMem();

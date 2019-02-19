@@ -14,11 +14,11 @@ class MemoryLogger(name: String) {
   def logMem() {
     processTree.updateProcessTree()
 
-    val stream = new PrintStream(new FileOutputStream("/home/niels/memory.txt", true))
+    val stream = new PrintStream(new FileOutputStream(System.getProperty("user.home") + "/memory.txt", false))
     try {
-      stream.append(s"$name-cpuTime: ${processTree.getCumulativeCpuTime()}${System.lineSeparator()}")
-      stream.append(s"$name-rssMem: ${processTree.getCumulativeRssmem()}${System.lineSeparator()}")
-      stream.append(s"$name-vMem: ${processTree.getCumulativeVmem()}${System.lineSeparator()}")
+      stream.println(s"$name-cpuTime: ${processTree.getCumulativeCpuTime()}")
+      stream.println(s"$name-rssMem: ${processTree.getCumulativeRssmem()}")
+      stream.println(s"$name-vMem: ${processTree.getCumulativeVmem()}")
     } finally {
       stream.close()
     }

@@ -8,29 +8,25 @@ import java.util
 import be.vito.eodata.biopar.EOProduct
 import be.vito.eodata.catalog.CatalogClient
 import com.beust.jcommander.JCommander
-import geotrellis.contrib.vlm.RasterSourceRDD.PARTITION_BYTES
 import geotrellis.contrib.vlm._
-import geotrellis.contrib.vlm.gdal.GDALReprojectRasterSource
-import geotrellis.proj4.{CRS, WebMercator}
+import geotrellis.contrib.vlm.geotiff.GeoTiffReprojectRasterSource
+import geotrellis.proj4.WebMercator
 import geotrellis.raster._
 import geotrellis.raster.render.ColorMap
 import geotrellis.raster.reproject.Reproject
 import geotrellis.spark.tiling._
-import geotrellis.spark.{ContextRDD, KeyBounds, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
-import geotrellis.vector.Extent
+import geotrellis.spark.{ContextRDD, KeyBounds, Metadata, SpaceTimeKey, TileLayerMetadata}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 
 import scala.collection.JavaConverters.collectionAsScalaIterableConverter
-import scala.collection.mutable.{ArrayBuilder, ListBuffer}
+import scala.collection.mutable.ListBuffer
 import scala.math._
-import scala.reflect.ClassTag
 
-object LoadSigma0 {
+object TileSeeder {
 
-//  val ROOT_PATH = Paths.get("/", "data", "users", "Private", "nielsh", "PNG-S2")
-  val ROOT_PATH = Paths.get("/", "home", "niels", "Data", "PNG3")
-
+  private val ROOT_PATH = Paths.get("/", "data", "tiles")
+  
   def renderPng(productType: String, date: LocalDate, colorMap: Option[String] = None)(implicit sc: SparkContext): Unit = {
     val layout = GlobalLayout(256, 14, 0.1)
     val layoutDefWithZoom = layout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10, 10))
@@ -50,11 +46,11 @@ object LoadSigma0 {
         val map = ColorMapParser.parse(name)
         getSinglebandRDD(products, date, layout)
           .repartition(partitions)
-          .foreach(renderSinglebandRDD(zoom, map))
+          .foreach(renderSinglebandRDD(productType, zoom, map))
       case None =>
         getMultibandRDD(products, date, layout)
           .repartition(partitions)
-          .foreach(renderMultibandRDD(zoom))
+          .foreach(renderMultibandRDD(productType, zoom))
     }
   }
 
@@ -80,28 +76,32 @@ object LoadSigma0 {
   private def reproject(sourcePaths: List[String], layout: LayoutDefinition) = {
     //in the case of global layout, we need to warp input into the right format
     sourcePaths.map {
-      GDALReprojectRasterSource(_, WebMercator, Reproject.Options(targetCellSize = Some(layout.cellSize)))
+      GeoTiffReprojectRasterSource(_, WebMercator, Reproject.Options(targetCellSize = Some(layout.cellSize)))
     }
   }
 
-  private def renderMultibandRDD(zoom: Int)(item: (SpaceTimeKey, (Iterable[RasterRegion], Iterable[RasterRegion]))) {
+  private def renderSinglebandRDD(productType: String, zoom: Int, colorMap: ColorMap)(item: (SpaceTimeKey, Iterable[RasterRegion])) {
+    item match {
+      case (key, regions) =>
+        val tile = regionsToTile(regions)
+
+        if (!tile.isNoDataTile) {
+          val path = pathForTile(ROOT_PATH, productType, key, zoom)
+          tile.toArrayTile().color(colorMap).renderPng().write(path)
+        }
+    }
+  }
+
+  private def renderMultibandRDD(productType: String, zoom: Int)(item: (SpaceTimeKey, (Iterable[RasterRegion], Iterable[RasterRegion]))) {
     item match {
       case (key, (vvRegions, vhRegions)) =>
         val tileR = regionsToTile(vvRegions)
         val tileG = regionsToTile(vhRegions)
 
-        val multibandTile = tilesToArrayMultibandTile(tileR, tileG)
-        multibandTile.renderPng().write(pathForTile(ROOT_PATH, key, zoom))
-    }
-  }
-  
-  private def renderSinglebandRDD(zoom: Int, colorMap: ColorMap)(item: (SpaceTimeKey, Iterable[RasterRegion])) {
-    item match {
-      case (key, regions) =>
-        val tile = regionsToTile(regions)
-        
-        val coloredTile = tile.color(colorMap)
-        coloredTile.renderPng().write(pathForTile(ROOT_PATH, key, zoom))
+        if (!tileR.isNoDataTile || !tileG.isNoDataTile) {
+          val path = pathForTile(ROOT_PATH, productType, key, zoom)
+          tilesToArrayMultibandTile(tileR, tileG).renderPng().write(path)
+        }
     }
   }
   
@@ -167,10 +167,8 @@ object LoadSigma0 {
     val cellType = cellTypes.head
     val crs = projections.head
 
-    val mapTransform = layout.mapTransform
     val combinedExtents = sources.map { _.extent }.reduce { _ combine _ }
-
-    val layerKeyBounds = KeyBounds(mapTransform(combinedExtents))
+    val layerKeyBounds = KeyBounds(layout.mapTransform(combinedExtents))
     val spacetimeBounds = KeyBounds(SpaceTimeKey(layerKeyBounds._1, ZonedDateTime.now()), SpaceTimeKey(layerKeyBounds._2, ZonedDateTime.now()))
 
     TileLayerMetadata[SpaceTimeKey](cellType, layout, combinedExtents, crs, spacetimeBounds)
@@ -181,7 +179,7 @@ object LoadSigma0 {
     
     val rdd = sc.parallelize(sources).flatMap { source =>
       val tileSource = new LayoutTileSource(source, layout)
-      tileSource.keys().flatMap { key =>
+      tileSource.keys.flatMap { key =>
         try {
           val region = tileSource.rasterRegionForKey(key)
 
@@ -200,7 +198,7 @@ object LoadSigma0 {
 
   private def mapToSingleTile(tiles: Iterable[Tile]): Tile = {
     if (tiles.size > 1) {
-      val nonNullTiles = tiles.filter(t => t.toArrayDouble().exists(d => !isNoData(d)))
+      val nonNullTiles = tiles.filter(t => !t.isNoDataTile)
       if (nonNullTiles.isEmpty) {
         tiles.head
       } else if (nonNullTiles.size == 1) {
@@ -242,7 +240,7 @@ object LoadSigma0 {
     ArrayMultibandTile(normTileR, normTileG, normTileB)
   }
 
-  private def pathForTile(rootPath: Path, key: SpaceTimeKey, zoom: Int): String = {
+  private def pathForTile(rootPath: Path, productType: String, key: SpaceTimeKey, zoom: Int): String = {
     val grid = "g"
     val dateStr = key.time.format(DateTimeFormatter.ISO_LOCAL_DATE)
 
@@ -259,140 +257,13 @@ object LoadSigma0 {
     val y1 = y.substring(3, 6)
     val y0 = y.substring(6)
 
-    val dir = ROOT_PATH.resolve(Paths.get(grid, dateStr, z, x2, x1, x0, y2, y1))
+    val dir = resolvePath(rootPath, productType).resolve(Paths.get(grid, dateStr, z, x2, x1, x0, y2, y1))
     dir.toFile.mkdirs()
     dir.resolve(y0 + ".png").toString
   }
 
-  def loadRasterRegions(sources: Seq[RasterSource],
-                        layout: LayoutDefinition,
-                        partitionBytes: Long = PARTITION_BYTES
-                       )(implicit sc: SparkContext): RDD[(SpaceTimeKey, RasterRegion)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
-
-    val cellTypes = sources.map { _.cellType }.toSet
-    //require(cellTypes.size == 1, s"All RasterSources must have the same CellType, but multiple ones were found: $cellTypes")
-
-    val projections = sources.map { _.crs }.toSet
-    require(
-      projections.size == 1,
-      s"All RasterSources must be in the same projection, but multiple ones were found: $projections"
-    )
-
-    val cellType = cellTypes.head
-    val crs = projections.head
-
-    val mapTransform = layout.mapTransform
-    val extent = mapTransform.extent
-    val combinedExtents = sources.map { _.extent }.reduce { _ combine _ }
-
-    val layerKeyBounds = KeyBounds(mapTransform(combinedExtents))
-    val spacetimeBounds = KeyBounds(SpaceTimeKey(layerKeyBounds._1,ZonedDateTime.now()),SpaceTimeKey(layerKeyBounds._2,ZonedDateTime.now()))
-
-    val layerMetadata =
-      TileLayerMetadata[SpaceTimeKey](cellType, layout, combinedExtents, crs, spacetimeBounds)
-
-    val sourcesRDD: RDD[(RasterSource, Array[SpatialKey])] =
-      sc.parallelize(sources).flatMap { source =>
-        val keys: Traversable[SpatialKey] =
-          extent.intersection(source.extent) match {
-            case Some(intersection) =>
-              layout.mapTransform.keysForGeometry(intersection.toPolygon)
-            case None =>
-              Seq.empty[SpatialKey]
-          }
-        val tileSize = layout.tileCols * layout.tileRows * cellType.bytes
-        partition(keys, partitionBytes)( _ => tileSize).map { res => (source, res) }
-      }
-
-    sourcesRDD.persist()
-
-    val repartitioned = {
-      val count = sourcesRDD.count.toInt
-      if (count > sourcesRDD.partitions.size)
-        sourcesRDD//.repartition(count)
-      else
-        sourcesRDD
-    }
-
-    val result: RDD[(SpaceTimeKey, RasterRegion)] =
-      repartitioned.flatMap { case (source, keys) =>
-        val date = LocalDate.from(DateTimeFormatter.BASIC_ISO_DATE.parse(source.uri.split("_DV_")(1).substring(0,8)))
-        val tileSource = new LayoutTileSource(source, layout)
-        tileSource.keyedRasterRegions().map(key => (SpaceTimeKey(key._1,date.atStartOfDay(ZoneId.of("UTC"))),key._2))
-      }
-
-    sourcesRDD.unpersist()
-
-    ContextRDD(result, layerMetadata)
-  }
-
-  def partition[T: ClassTag](
-                              chunks: Traversable[T],
-                              maxPartitionSize: Long
-                            )(chunkSize: T => Long = { c: T => 1l }): Array[Array[T]] = {
-    if (chunks.isEmpty) {
-      Array[Array[T]]()
-    } else {
-      val partition = ArrayBuilder.make[T]
-      partition.sizeHintBounded(128, chunks)
-      var partitionSize: Long = 0l
-      var partitionCount: Long = 0l
-      val partitions = ArrayBuilder.make[Array[T]]
-
-      def finalizePartition() {
-        val res = partition.result
-        if (res.nonEmpty) partitions += res
-        partition.clear()
-        partitionSize = 0l
-        partitionCount = 0l
-      }
-
-      def addToPartition(chunk: T) {
-        partition += chunk
-        partitionSize += chunkSize(chunk)
-        partitionCount += 1
-      }
-
-      for (chunk <- chunks) {
-        if ((partitionCount == 0) || (partitionSize + chunkSize(chunk)) < maxPartitionSize)
-          addToPartition(chunk)
-        else {
-          finalizePartition()
-          addToPartition(chunk)
-        }
-      }
-
-      finalizePartition()
-      partitions.result
-    }
-  }
-
-  def createRDD(layername: String, envelope: Extent, str: String, startDate: Option[ZonedDateTime], endDate: Option[ZonedDateTime]): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-
-    val layout = new GlobalLayout(256,14,0.1)
-    val localLayout = new LocalLayout(256,256)
-
-    val utm31 = CRS.fromEpsgCode(32631)
-
-    val source = new geotrellis.contrib.vlm.geotiff.GeoTiffRasterSource("/home/niels/Data/S1B_IW_GRDH_SIGMA0_DV_20180502T054914_DESCENDING_37_B39C_V110_VV.tif")
-    val source2 = new geotrellis.contrib.vlm.geotiff.GeoTiffRasterSource("/home/niels/Data/S1B_IW_GRDH_SIGMA0_DV_20181224T173153_ASCENDING_161_42B7_V110_VV.tif")
-    //in the case of global layout, we need to warp input into the right format
-    //    val source = new geotrellis.contrib.vlm.gdal.GDALRasterSource("/home/driesj/alldata/CGS_S1/S1B_IW_GRDH_SIGMA0_DV_20181216T054946_DESCENDING_37_130C_V110_VH.tif")
-    //    val secondfile = "/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1/2018/12/09/S1B_IW_GRDH_SIGMA0_DV_20181209T055749_DESCENDING_110_520B_V110/S1B_IW_GRDH_SIGMA0_DV_20181209T055749_DESCENDING_110_520B_V110_VH.tif"
-    //    val source2 = new geotrellis.contrib.vlm.gdal.GDALRasterSource(secondfile)
-    val croppedSource = source.resampleToRegion(RasterExtent(envelope,source.cellSize))
-    val localLayoutDefWithZoom = localLayout.layoutDefinitionWithZoom(utm31,envelope,croppedSource.cellSize)
-    val conf = new SparkConf().setMaster("local[4]").setAppName("Geotiffloading")
-      .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-      .set("spark.kryoserializer.buffer.max","1024m")
-    implicit val sc = SparkContext.getOrCreate()
-
-    var rdd = loadRasterRegions(Seq(source,source2.resampleToRegion(RasterExtent(envelope,source.cellSize))),localLayoutDefWithZoom._1)
-
-    val tiledLayer = rdd.withContext(r => r.mapValues(f => f.raster.get.tile))
-
-    return tiledLayer
-
+  private def resolvePath(path: Path, productType: String) = {
+    path.resolve(s"tiles_$productType").resolve(productType)
   }
 
   def main(args: Array[String]): Unit = {
@@ -419,5 +290,4 @@ object LoadSigma0 {
       renderPng(productType, date, colorMap)
     }
   }
-
 }
