@@ -32,6 +32,9 @@ class JCommanderArgs {
   
   @Parameter(names = Array("--colorMap", "-c"), required = false, description = "path to color map file", converter = classOf[StringOptionConverter])
   var colorMap: Option[String] = None
+  
+  @Parameter(names = Array("--verbose", "-v"), required = false, description = "print debug logs")
+  var verbose: Boolean = false
 
   @Parameter(names = Array("--help", "-h"), description = "display help", help = true)
   var help = false

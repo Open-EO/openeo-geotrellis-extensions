@@ -27,6 +27,8 @@ object TileSeeder {
 
   private val ROOT_PATH = Paths.get("/", "data", "tiles")
   
+  private var logger: Logger = new EmptyLogger
+
   def renderPng(productType: String, date: LocalDate, colorMap: Option[String] = None)(implicit sc: SparkContext): Unit = {
     val layout = GlobalLayout(256, 14, 0.1)
     val layoutDefWithZoom = layout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10, 10))
@@ -83,11 +85,17 @@ object TileSeeder {
   private def renderSinglebandRDD(productType: String, zoom: Int, colorMap: ColorMap)(item: (SpaceTimeKey, Iterable[RasterRegion])) {
     item match {
       case (key, regions) =>
-        val tile = regionsToTile(regions)
+        logger.logKey(key.spatialKey)
+        
+        val tile = regionsToTile(regions).convert(IntCellType)
 
         if (!tile.isNoDataTile) {
           val path = pathForTile(ROOT_PATH, productType, key, zoom)
-          tile.toArrayTile().color(colorMap).renderPng().write(path)
+          tile.toArrayTile().renderPng(colorMap).write(path)
+
+          logger.logTile(key.spatialKey, path)
+        } else {
+          logger.logNoDataTile(key.spatialKey)
         }
     }
   }
@@ -95,12 +103,18 @@ object TileSeeder {
   private def renderMultibandRDD(productType: String, zoom: Int)(item: (SpaceTimeKey, (Iterable[RasterRegion], Iterable[RasterRegion]))) {
     item match {
       case (key, (vvRegions, vhRegions)) =>
+        logger.logKey(key.spatialKey)
+        
         val tileR = regionsToTile(vvRegions)
         val tileG = regionsToTile(vhRegions)
 
         if (!tileR.isNoDataTile || !tileG.isNoDataTile) {
           val path = pathForTile(ROOT_PATH, productType, key, zoom)
           tilesToArrayMultibandTile(tileR, tileG).renderPng().write(path)
+
+          logger.logTile(key.spatialKey, path)
+        } else {
+          logger.logNoDataTile(key.spatialKey)
         }
     }
   }
@@ -264,6 +278,12 @@ object TileSeeder {
 
   private def resolvePath(path: Path, productType: String) = {
     path.resolve(s"tiles_$productType").resolve(productType)
+  
+  def verboseLogging() {
+    logger match {
+      case _: VerboseLogger => 
+      case _ => logger = new VerboseLogger
+    }
   }
 
   def main(args: Array[String]): Unit = {
@@ -276,16 +296,20 @@ object TileSeeder {
     if (jCommanderArgs.help) {
       jCommander.usage()
     } else {
-      val date = jCommanderArgs.date
-      val productType = jCommanderArgs.productType
-      val colorMap = jCommanderArgs.colorMap
-
       implicit val sc: SparkContext =
         SparkContext.getOrCreate(
           new SparkConf()
             .setAppName("Geotiffloading")
             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
             .set("spark.kryoserializer.buffer.max", "1024m"))
+
+      if (!jCommanderArgs.verbose) {
+        verboseLogging()
+      }
+
+      val date = jCommanderArgs.date
+      val productType = jCommanderArgs.productType
+      val colorMap = jCommanderArgs.colorMap
       
       renderPng(productType, date, colorMap)
     }
