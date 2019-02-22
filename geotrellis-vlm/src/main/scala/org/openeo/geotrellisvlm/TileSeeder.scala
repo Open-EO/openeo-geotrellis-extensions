@@ -9,7 +9,7 @@ import be.vito.eodata.biopar.EOProduct
 import be.vito.eodata.catalog.CatalogClient
 import com.beust.jcommander.JCommander
 import geotrellis.contrib.vlm._
-import geotrellis.contrib.vlm.geotiff.GeoTiffReprojectRasterSource
+import geotrellis.contrib.vlm.gdal.GDALReprojectRasterSource
 import geotrellis.proj4.WebMercator
 import geotrellis.raster._
 import geotrellis.raster.render.ColorMap
@@ -78,7 +78,7 @@ object TileSeeder {
   private def reproject(sourcePaths: List[String], layout: LayoutDefinition) = {
     //in the case of global layout, we need to warp input into the right format
     sourcePaths.map {
-      GeoTiffReprojectRasterSource(_, WebMercator, Reproject.Options(targetCellSize = Some(layout.cellSize)))
+      GDALReprojectRasterSource(_, WebMercator, Reproject.Options(targetCellSize = Some(layout.cellSize)))
     }
   }
 
@@ -87,8 +87,8 @@ object TileSeeder {
       case (key, regions) =>
         logger.logKey(key.spatialKey)
         
-        val tile = regionsToTile(regions).convert(IntCellType)
 
+        val tile = regionsToTile(regions).convert(UByteConstantNoDataCellType).convert(IntUserDefinedNoDataCellType(255))
         if (!tile.isNoDataTile) {
           val path = pathForTile(ROOT_PATH, productType, key, zoom)
           tile.toArrayTile().renderPng(colorMap).write(path)
