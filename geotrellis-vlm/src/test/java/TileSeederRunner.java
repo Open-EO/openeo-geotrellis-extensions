@@ -2,8 +2,8 @@ import java.time.LocalDate;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
-import org.openeo.geotrellisvlm.TileSeeder;
 import org.openeo.geotrellisvlm.MemoryLogger;
+import org.openeo.geotrellisvlm.TileSeeder;
 import scala.Option;
 
 public class TileSeederRunner {

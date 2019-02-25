@@ -1,15 +1,25 @@
 package org.openeo.geotrellisvlm
 
+import java.io.InputStream
 import java.lang.Integer.parseInt
 
 import geotrellis.raster.render.{ColorMap, ColorRamp, RGBA}
 
 import scala.collection.mutable.ListBuffer
-import scala.io.Source
+import scala.io.BufferedSource
+import scala.io.Source.{fromFile, fromInputStream}
 
 object ColorMapParser {
 
   def parse(fileName: String): ColorMap = {
+    parse(fromFile(fileName))
+  }
+  
+  def parse(input: InputStream): ColorMap = {
+    parse(fromInputStream(input))
+  }
+  
+  private def parse(source: BufferedSource) = {
     val colorBuffer = new ListBuffer[(Double, Int)]
     
     var opacity = "1.0"
@@ -20,7 +30,7 @@ object ColorMapParser {
     var previousVal: Option[Int] = None
     var previousColor: Option[Int] = None
     
-    for (line <- Source.fromFile(fileName).getLines()) {
+    for (line <- source.getLines()) {
       line.trim match {
         case opacityRegex(o) => opacity = o  
         case colorRegex(r, g, b, q, o) => addColorsToBuffer(r, g, b, q, o)
