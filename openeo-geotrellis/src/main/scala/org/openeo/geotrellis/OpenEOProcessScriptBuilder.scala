@@ -50,18 +50,16 @@ class OpenEOProcessScriptBuilder {
       case "sum" => unaryFunction("data", (tiles:Seq[Tile]) =>{
           Seq(tiles.reduce( _.localAdd(_)))
         })
-      case "divide" => {
-        val x = storedArgs.get("x").get
-        val y = storedArgs.get("y").get
-        (tiles:Seq[Tile]) =>{
-          val xTile: Seq[Tile] = x.apply(tiles)
-          val yTile: Seq[Tile] = y.apply(tiles)
-          Seq(xTile.head.localDivide(yTile.head))
-        }
-      }
+      case "divide" => unaryFunction("data", (tiles:Seq[Tile]) =>{
+        Seq(tiles.reduce( _.localDivide(_)))
+      })
+      case "product" => unaryFunction("data", (tiles:Seq[Tile]) =>{
+        Seq(tiles.reduce( _.localMultiply(_)))
+      })
       case "subtract" => unaryFunction("data", (tiles:Seq[Tile]) =>{
         Seq(tiles.reduce( _.localSubtract(_)))
       })
+      case _ => throw new IllegalArgumentException("Unsupported operation: " + operator)
 
     }
 
