@@ -14,6 +14,8 @@ import scala.collection.mutable.Buffer;
 import java.util.Arrays;
 import java.util.Collections;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 public class TestOpenEOProcessScriptBuilder {
 
     @DisplayName("Test NDVI process graph")
@@ -27,25 +29,31 @@ public class TestOpenEOProcessScriptBuilder {
         Tile ndvi = result.apply(0);
 
         System.out.println("Arrays.toString(ndvi.toArrayDouble()) = " + Arrays.toString(ndvi.toArrayDouble()));
+        assertEquals(3.0, ndvi.get(0, 0));
     }
 
     static OpenEOProcessScriptBuilder createNormalizedDifferenceProcess() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Buffer<String> empty = JavaConversions.asScalaBuffer(Collections.emptyList());
         builder.expressionStart("divide", empty);
-        builder.argumentStart("x");
+
+        ArrayBuilder arrayBuilder = builder.arrayStart("data");
+
+        builder = arrayBuilder.element();
         builder.expressionStart("sum", empty);
         builder.argumentStart("data");
         builder.argumentEnd();
         builder.expressionEnd("sum",empty);
-        builder.argumentEnd();
+        //builder.argumentEnd();
 
-        builder.argumentStart("y");
+        //builder.argumentStart("y");
+        builder = arrayBuilder.element();
         builder.expressionStart("subtract", empty);
         builder.argumentStart("data");
         builder.argumentEnd();
         builder.expressionEnd("subtract",empty);
-        builder.argumentEnd();
+
+        builder = arrayBuilder.endArray();
 
         builder.expressionEnd("divide", empty);
         return builder;

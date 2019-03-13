@@ -20,7 +20,7 @@ class OpenEOProcessScriptBuilder {
     val inputFunction = storedArgs.get(argName).get
 
     if(inputFunction !=null)
-      inputFunction compose operator
+      operator compose inputFunction
     else
       operator
 
@@ -36,6 +36,35 @@ class OpenEOProcessScriptBuilder {
     var scope = contextStack.head
     scope.put(name,inputFunction)
   }
+
+  /**
+    * Called for each element in the array.
+    * @param name
+    * @param index
+    */
+  def arrayStart(name:String): ArrayBuilder = {
+    argNames.push(name)
+    return new ArrayBuilder(this)
+  }
+
+  def arrayEnd(arrayBuilder:ArrayBuilder):OpenEOProcessScriptBuilder = {
+    val name = argNames.pop()
+    val scope = contextStack.head
+
+    inputFunction = (tiles:Seq[Tile]) => {
+      var results = Seq[Tile]()
+      for( builder <- arrayBuilder.elements.reverse) {
+        val myTiles = builder.generateFunction()(tiles)
+        results = results ++ myTiles
+      }
+      results
+    }
+
+    scope.put(name,inputFunction)
+    return this
+  }
+
+
   def expressionStart(operator:String,arguments:Seq[String]): Unit = {
     processStack.push(operator)
     contextStack.push(mutable.Map[String,Seq[Tile] => Seq[Tile]]())
@@ -71,5 +100,24 @@ class OpenEOProcessScriptBuilder {
 
 
   def generateFunction() = inputFunction
+
+
+
+}
+
+class ArrayBuilder(val parent:OpenEOProcessScriptBuilder) {
+
+  val elements = new mutable.Stack[OpenEOProcessScriptBuilder]()
+
+
+  def element() : OpenEOProcessScriptBuilder = {
+    elements.push(new OpenEOProcessScriptBuilder())
+    return elements.head
+  }
+
+  def endArray(): OpenEOProcessScriptBuilder = {
+    return parent.arrayEnd(this)
+
+  }
 
 }
