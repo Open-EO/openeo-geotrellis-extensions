@@ -1,6 +1,6 @@
 package org.openeo.geotrellis
 
-import geotrellis.raster.Tile
+import geotrellis.raster.{DoubleConstantTile, IntConstantTile, Tile}
 
 import scala.collection.mutable
 
@@ -12,7 +12,7 @@ class OpenEOProcessScriptBuilder {
   val processStack: mutable.Stack[String] = new mutable.Stack[String]()
   val argNames: mutable.Stack[String] = new mutable.Stack[String]()
   val contextStack: mutable.Stack[mutable.Map[String,Seq[Tile] => Seq[Tile]]] = new mutable.Stack[mutable.Map[String, Seq[Tile] => Seq[Tile]]]()
-
+  var arrayCounter : Int =  0
   var inputFunction: Seq[Tile] => Seq[Tile] = null
 
   private def unaryFunction(argName:String,operator:Seq[Tile] => Seq[Tile] ) = {
@@ -35,6 +35,7 @@ class OpenEOProcessScriptBuilder {
     var name = argNames.pop()
     var scope = contextStack.head
     scope.put(name,inputFunction)
+    inputFunction = null
   }
 
   /**
@@ -42,26 +43,57 @@ class OpenEOProcessScriptBuilder {
     * @param name
     * @param index
     */
-  def arrayStart(name:String): ArrayBuilder = {
+  def arrayStart(name:String): Unit = {
     argNames.push(name)
-    return new ArrayBuilder(this)
+    contextStack.push(mutable.Map[String,Seq[Tile] => Seq[Tile]]())
+    processStack.push("array")
+    arrayCounter = 0
   }
 
-  def arrayEnd(arrayBuilder:ArrayBuilder):OpenEOProcessScriptBuilder = {
-    val name = argNames.pop()
+  def arrayElementDone():Unit = {
     val scope = contextStack.head
+    scope.put(arrayCounter.toString,inputFunction)
+    arrayCounter += 1
+    inputFunction = null
+  }
 
+  def constantArrayElement(value: Number):Unit = {
+    val constantTileFunction:Seq[Tile] => Seq[Tile] = (tiles:Seq[Tile]) => {
+      if(tiles.isEmpty) {
+        tiles
+      }else{
+        val rows= tiles.head.rows
+        val cols = tiles.head.cols
+        value match {
+          case x: Integer => Seq(IntConstantTile(value.intValue(),cols,rows))
+          case _ => Seq(DoubleConstantTile(value.doubleValue(),cols,rows))
+        }
+      }
+
+    }
+    val scope = contextStack.head
+    scope.put(arrayCounter.toString,constantTileFunction)
+    arrayCounter += 1
+  }
+
+  def arrayEnd():Unit = {
+    val name = argNames.pop()
+    val scope = contextStack.pop()
+    processStack.pop()
+
+    val nbElements = arrayCounter
     inputFunction = (tiles:Seq[Tile]) => {
       var results = Seq[Tile]()
-      for( builder <- arrayBuilder.elements.reverse) {
-        val myTiles = builder.generateFunction()(tiles)
-        results = results ++ myTiles
+      for( i <- 0 until nbElements) {
+        val tileFunction = scope.get(i.toString).get
+        results = results ++ tileFunction(tiles)
       }
       results
     }
+    arrayCounter = 0
 
-    scope.put(name,inputFunction)
-    return this
+    contextStack.head.put(name,inputFunction)
+
   }
 
 
@@ -102,22 +134,5 @@ class OpenEOProcessScriptBuilder {
   def generateFunction() = inputFunction
 
 
-
-}
-
-class ArrayBuilder(val parent:OpenEOProcessScriptBuilder) {
-
-  val elements = new mutable.Stack[OpenEOProcessScriptBuilder]()
-
-
-  def element() : OpenEOProcessScriptBuilder = {
-    elements.push(new OpenEOProcessScriptBuilder())
-    return elements.head
-  }
-
-  def endArray(): OpenEOProcessScriptBuilder = {
-    return parent.arrayEnd(this)
-
-  }
 
 }

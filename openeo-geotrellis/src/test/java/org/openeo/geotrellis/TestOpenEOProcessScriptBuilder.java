@@ -37,25 +37,48 @@ public class TestOpenEOProcessScriptBuilder {
         Buffer<String> empty = JavaConversions.asScalaBuffer(Collections.emptyList());
         builder.expressionStart("divide", empty);
 
-        ArrayBuilder arrayBuilder = builder.arrayStart("data");
+        builder.arrayStart("data");
 
-        builder = arrayBuilder.element();
         builder.expressionStart("sum", empty);
         builder.argumentStart("data");
         builder.argumentEnd();
         builder.expressionEnd("sum",empty);
-        //builder.argumentEnd();
+        builder.arrayElementDone();
 
-        //builder.argumentStart("y");
-        builder = arrayBuilder.element();
         builder.expressionStart("subtract", empty);
         builder.argumentStart("data");
         builder.argumentEnd();
         builder.expressionEnd("subtract",empty);
+        builder.arrayElementDone();
 
-        builder = arrayBuilder.endArray();
+        builder.arrayEnd();
 
         builder.expressionEnd("divide", empty);
         return builder;
+    }
+
+    @DisplayName("Test add constant")
+    @Test
+    public void testAddConstant() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Buffer<String> empty = JavaConversions.asScalaBuffer(Collections.emptyList());
+        builder.expressionStart("sum", empty);
+
+        builder.arrayStart("data");
+        builder.constantArrayElement(10);
+        builder.constantArrayElement(20);
+        builder.arrayEnd();
+
+        builder.expressionEnd("sum",empty);
+
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        ByteArrayTile tile2 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1, tile2)));
+        Tile ndvi = result.apply(0);
+
+        System.out.println("Arrays.toString(ndvi.toArrayDouble()) = " + Arrays.toString(ndvi.toArrayDouble()));
+        assertEquals(30.0, ndvi.get(0, 0));
     }
 }
