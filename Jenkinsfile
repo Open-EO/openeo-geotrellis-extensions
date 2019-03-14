@@ -1,7 +1,8 @@
 def deployable_branches = ["master"]
 maven = 'Maven 3.5.4'
 
-node ('jenkinsslave1.vgt.vito.be') {
+
+node ('devdmz') {
     stage('Build and Test') {
         sh "rm -rf *"
         sh "rm -rf .git/"
@@ -26,7 +27,7 @@ if(deployable_branches.contains(env.BRANCH_NAME)){
         milestone()
     }
 
-    node('jenkinsslave2.vgt.vito.be'){
+    node('devdmz'){
         stage('Releasing'){
             checkout scm
             rel_version = getReleaseVersion()
