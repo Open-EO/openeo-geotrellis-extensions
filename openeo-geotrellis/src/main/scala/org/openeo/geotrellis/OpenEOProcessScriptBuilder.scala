@@ -97,12 +97,12 @@ class OpenEOProcessScriptBuilder {
   }
 
 
-  def expressionStart(operator:String,arguments:Seq[String]): Unit = {
+  def expressionStart(operator:String,arguments:java.util.Map[String,Object]): Unit = {
     processStack.push(operator)
     contextStack.push(mutable.Map[String,Seq[Tile] => Seq[Tile]]())
   }
 
-  def expressionEnd(operator:String,arguments:Seq[String]): Unit = {
+  def expressionEnd(operator:String,arguments:java.util.Map[String,Object]): Unit = {
     val expectedOperator = processStack.pop()
     assert(expectedOperator.equals(operator))
     val storedArgs = contextStack.head
@@ -120,6 +120,29 @@ class OpenEOProcessScriptBuilder {
       case "subtract" => unaryFunction("data", (tiles:Seq[Tile]) =>{
         Seq(tiles.reduce( _.localSubtract(_)))
       })
+      case "array_element" =>{
+        val inputFunction = storedArgs.get("data").get
+        val index = arguments.getOrDefault("index",null)
+        if(index == null) {
+          throw new IllegalArgumentException("Missing 'index' argument in array_element.")
+        }
+        if(!index.isInstanceOf[Integer]){
+          throw new IllegalArgumentException("The 'index argument should be an integer, but got: " + index)
+        }
+        val bandFunction = (tiles:Seq[Tile]) =>{
+          val input: Seq[Tile] =
+          if(inputFunction!=null) {
+            inputFunction.apply(tiles)
+          }else{
+            tiles
+          }
+          if(input.size <= index.asInstanceOf[Integer]) {
+            throw new IllegalArgumentException("Invalid band index, only " + input.size + " bands available.")
+          }
+          Seq(input(index.asInstanceOf[Integer]))
+        }
+        bandFunction
+      }
       case _ => throw new IllegalArgumentException("Unsupported operation: " + operator)
 
     }

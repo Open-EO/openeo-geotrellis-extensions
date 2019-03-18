@@ -9,10 +9,10 @@ import org.junit.jupiter.api.Test;
 import scala.Function1;
 import scala.collection.JavaConversions;
 import scala.collection.Seq;
-import scala.collection.mutable.Buffer;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -34,7 +34,7 @@ public class TestOpenEOProcessScriptBuilder {
 
     static OpenEOProcessScriptBuilder createNormalizedDifferenceProcess() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
-        Buffer<String> empty = JavaConversions.asScalaBuffer(Collections.emptyList());
+        Map<String, Object> empty = Collections.emptyMap();
         builder.expressionStart("divide", empty);
 
         builder.arrayStart("data");
@@ -61,7 +61,7 @@ public class TestOpenEOProcessScriptBuilder {
     @Test
     public void testAddConstant() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
-        Buffer<String> empty = JavaConversions.asScalaBuffer(Collections.emptyList());
+        Map<String, Object> empty = Collections.emptyMap();
         builder.expressionStart("sum", empty);
 
         builder.arrayStart("data");
@@ -80,5 +80,30 @@ public class TestOpenEOProcessScriptBuilder {
 
         System.out.println("Arrays.toString(ndvi.toArrayDouble()) = " + Arrays.toString(ndvi.toArrayDouble()));
         assertEquals(30.0, ndvi.get(0, 0));
+    }
+
+    @DisplayName("Test array_element process")
+    @Test
+    public void testArrayElement() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.singletonMap("index",1);
+        builder.expressionStart("array_element", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.argumentStart("index");
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_element",arguments);
+
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        ByteArrayTile tile2 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1, tile2)));
+        Tile ndvi = result.apply(0);
+
+        System.out.println("Arrays.toString(ndvi.toArrayDouble()) = " + Arrays.toString(ndvi.toArrayDouble()));
+        assertEquals(5, ndvi.get(0, 0));
     }
 }
