@@ -18,7 +18,7 @@ public class TileSeederRunner {
                         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
                         .set("spark.kryoserializer.buffer.max", "1024m"));
 
-        Option<String> colorMap = Option.apply(null);
+        Option<String> colorMap = Option.empty();
         if (args.length > 2) {
             colorMap = Option.apply(args[2]);
         }

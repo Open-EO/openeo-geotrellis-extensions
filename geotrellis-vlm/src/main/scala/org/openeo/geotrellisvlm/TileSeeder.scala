@@ -31,7 +31,19 @@ object TileSeeder {
   private val globalLayout = GlobalLayout(256, 14, 0.1)
   private val layout = globalLayout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10, 10))._1
   
-  private val partitions = 500
+  private var partitions = 500
+  
+  private var targetPath: Option[Path] = None
+  private var spatialKey: Option[SpatialKey] = None
+  
+  def renderSinglePng(productType: String, date: LocalDate, key: SpatialKey, path: Path, colorMap: Option[String] = None)(implicit sc: SparkContext): Unit = {
+    partitions = 1
+    
+    targetPath = Some(path)
+    spatialKey = Some(key)
+    
+    renderPng(productType, date, colorMap)
+  }
 
   def renderPng(productType: String, date: LocalDate, colorMap: Option[String] = None)(implicit sc: SparkContext): Unit = {
   
@@ -188,8 +200,12 @@ object TileSeeder {
                                         (implicit sc: SparkContext): RDD[(SpatialKey, Iterable[RasterRegion])] = {
     
     val rdd = sc.parallelize(sources).flatMap { source =>
-      val tileSource = new LayoutTileSource(source, layout)
-      tileSource.keys.flatMap { key =>
+      val tileSource = source.tileToLayout(layout)
+      val keys = spatialKey match {
+        case Some(k) => tileSource.keys.filter(_ == k)
+        case None => tileSource.keys
+      }
+      keys.flatMap { key =>
         try {
           val region = tileSource.rasterRegionForKey(key).get
 
@@ -252,25 +268,29 @@ object TileSeeder {
   
 
   private def pathForTile(rootPath: Path, productType: String, date: LocalDate, key: SpatialKey, zoom: Int): String = {
-    val grid = "g"
-    val dateStr = date.format(DateTimeFormatter.ISO_LOCAL_DATE)
+    targetPath match {
+      case Some(p) => p.toString
+      case None => 
+        val grid = "g"
+        val dateStr = date.format(DateTimeFormatter.ISO_LOCAL_DATE)
 
-    val z = f"$zoom%02d"
+        val z = f"$zoom%02d"
 
-    val x = f"${key.col}%09d"
-    val x2 = x.substring(0, 3)
-    val x1 = x.substring(3, 6)
-    val x0 = x.substring(6)
+        val x = f"${key.col}%09d"
+        val x2 = x.substring(0, 3)
+        val x1 = x.substring(3, 6)
+        val x0 = x.substring(6)
 
-    val invertedRow = math.pow(2, zoom).toInt - 1 - key.row
-    val y = f"$invertedRow%09d"
-    val y2 = y.substring(0, 3)
-    val y1 = y.substring(3, 6)
-    val y0 = y.substring(6)
+        val invertedRow = math.pow(2, zoom).toInt - 1 - key.row
+        val y = f"$invertedRow%09d"
+        val y2 = y.substring(0, 3)
+        val y1 = y.substring(3, 6)
+        val y0 = y.substring(6)
 
-    val dir = resolvePath(rootPath, productType).resolve(Paths.get(grid, dateStr, z, x2, x1, x0, y2, y1))
-    dir.toFile.mkdirs()
-    dir.resolve(y0 + ".png").toString
+        val dir = resolvePath(rootPath, productType).resolve(Paths.get(grid, dateStr, z, x2, x1, x0, y2, y1))
+        dir.toFile.mkdirs()
+        dir.resolve(y0 + ".png").toString
+    }
   }
 
   private def resolvePath(path: Path, productType: String) = {

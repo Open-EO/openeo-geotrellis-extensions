@@ -12,7 +12,12 @@ import scala.io.Source.{fromFile, fromInputStream}
 object ColorMapParser {
 
   def parse(fileName: String): ColorMap = {
-    parse(fromFile(fileName))
+    val inputStream = getClass.getResourceAsStream(s"/colorMaps/$fileName")
+    if (inputStream != null) {
+      parse(inputStream)
+    } else {
+      parse(fromFile(fileName))
+    }
   }
   
   def parse(input: InputStream): ColorMap = {
