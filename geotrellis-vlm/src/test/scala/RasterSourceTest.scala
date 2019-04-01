@@ -3,10 +3,9 @@ import java.time.LocalDate
 import be.vito.eodata.catalog.CatalogClient
 import geotrellis.contrib.vlm.gdal.{GDALRasterSource, GDALReprojectRasterSource}
 import geotrellis.contrib.vlm.geotiff.{GeoTiffRasterSource, GeoTiffReprojectRasterSource}
-import geotrellis.contrib.vlm.{GlobalLayout, LayoutTileSource, RasterSource}
+import geotrellis.contrib.vlm.{GlobalLayout, RasterSource}
 import geotrellis.proj4.WebMercator
 import geotrellis.raster.render.Png
-import geotrellis.raster.reproject.Reproject
 import geotrellis.raster.{CellSize, UByteConstantNoDataCellType}
 import geotrellis.spark.SpatialKey
 import geotrellis.spark.tiling.CRSWorldExtent
@@ -34,16 +33,16 @@ class RasterSourceTest {
  
     assertEquals(geo.extent, gdal.extent)
     
-    val reprGeo = GeoTiffReprojectRasterSource(source, WebMercator, Reproject.Options(targetCellSize = Some(layout.cellSize)))
-    val reprGdal = GDALReprojectRasterSource(source, WebMercator, Reproject.Options(targetCellSize = Some(layout.cellSize)))
+    val reprGeo = GeoTiffReprojectRasterSource(source, WebMercator)
+    val reprGdal = GDALReprojectRasterSource(source, WebMercator)
     
     assertNotEquals(reprGeo.extent, reprGdal.extent)
 
-    val colorMap = ColorMapParser.parse(getClass.getResourceAsStream("styles_ColorTable_NDVI_V2.sld"))
+    val colorMap = ColorMapParser.parse(getClass.getResourceAsStream("colorMaps/styles_ColorTable_NDVI_V2.sld"))
     val keys = Array(SpatialKey(8777, 5246), SpatialKey(8777, 5245), SpatialKey(8776, 5246), SpatialKey(8776, 5245))
 
     def renderPng(source: RasterSource): Png = {
-      LayoutTileSource(source, layout).readAll(keys.iterator).map(s => (s._1, s._2.band(0).convert(UByteConstantNoDataCellType))).toList.stitch().renderPng(colorMap)
+      source.tileToLayout(layout).readAll(keys.iterator).map(s => (s._1, s._2.band(0).convert(UByteConstantNoDataCellType))).toList.stitch().renderPng(colorMap)
     }
     
     val pngGeo = renderPng(reprGeo)

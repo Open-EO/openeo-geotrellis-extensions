@@ -9,11 +9,10 @@ import be.vito.eodata.biopar.EOProduct
 import be.vito.eodata.catalog.CatalogClient
 import com.beust.jcommander.JCommander
 import geotrellis.contrib.vlm._
-import geotrellis.contrib.vlm.gdal.GDALReprojectRasterSource
+import geotrellis.contrib.vlm.geotiff.GeoTiffReprojectRasterSource
 import geotrellis.proj4.WebMercator
 import geotrellis.raster._
 import geotrellis.raster.render.ColorMap
-import geotrellis.raster.reproject.Reproject
 import geotrellis.spark.tiling._
 import geotrellis.spark.{ContextRDD, KeyBounds, Metadata, SpatialKey, TileLayerMetadata}
 import org.apache.spark.rdd.RDD
@@ -78,10 +77,7 @@ object TileSeeder {
   }
 
   private def reproject(sourcePaths: List[String], layout: LayoutDefinition) = {
-    //in the case of global layout, we need to warp input into the right format
-    sourcePaths.map {
-      GDALReprojectRasterSource(_, WebMercator, Reproject.Options(targetCellSize = Some(layout.cellSize)))
-    }
+    sourcePaths.map(GeoTiffReprojectRasterSource(_, WebMercator))
   }
 
   private def renderSinglebandRDD(productType: String, date: LocalDate, colorMap: ColorMap)(item: (SpatialKey, Iterable[RasterRegion])) {
@@ -89,7 +85,7 @@ object TileSeeder {
       case (key, regions) =>
         logger.logKey(key)
 
-        val tile = regionsToTile(regions).convert(UByteConstantNoDataCellType)
+        val tile = regionsToTile(regions).convert(UByteUserDefinedNoDataCellType(-1))
         if (!tile.isNoDataTile) {
           val path = pathForTile(ROOT_PATH, productType, date, key, globalLayout.zoom)
           tile.toArrayTile().renderPng(colorMap).write(path)
@@ -126,7 +122,7 @@ object TileSeeder {
   }
   
   private def singlebandSourcePathsForDate(products: util.Collection[_ <: EOProduct]) = {
-    pathsFromProducts(products, "FAPAR").head
+    pathsFromProducts(products, "").head
   }
   
   private def pathsFromProducts(products: util.Collection[_ <: EOProduct], bands: String*) = {
@@ -136,7 +132,7 @@ object TileSeeder {
       val paths = new ListBuffer[String]
       products.asScala.foreach(p => {
         p.getFiles.asScala.foreach(f => {
-          if (f.getBands.contains(b)) {
+          if (b.isEmpty || f.getBands.contains(b)) {
             paths += f.getFilename.getPath
           }
         })
@@ -195,7 +191,7 @@ object TileSeeder {
       val tileSource = new LayoutTileSource(source, layout)
       tileSource.keys.flatMap { key =>
         try {
-          val region = tileSource.rasterRegionForKey(key)
+          val region = tileSource.rasterRegionForKey(key).get
 
           Some(key, region)
         } catch {
