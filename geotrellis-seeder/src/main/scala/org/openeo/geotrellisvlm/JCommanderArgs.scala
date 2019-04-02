@@ -1,5 +1,6 @@
 package org.openeo.geotrellisvlm
 
+import java.nio.file.{Path, Paths}
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
 
@@ -29,6 +30,9 @@ class JCommanderArgs {
   
   @Parameter(names = Array("--productType", "-p"), required = true, description = "product type")
   var productType: String = _
+  
+  @Parameter(names = Array("--rootPath", "-r"), required = true, description = "root path")
+  var rootPath: String = _
   
   @Parameter(names = Array("--colorMap", "-c"), required = false, description = "path to color map file", converter = classOf[StringOptionConverter])
   var colorMap: Option[String] = None

@@ -18,8 +18,7 @@ import scala.Some;
 
 public class ReferenceTileTest {
     
-//    private static final String REFERENCE_IMAGES_DIR = StringUtils.defaultString(System.getenv("GEOTRELLIS_REF_DIR"), "/tmp/ref");
-    private static final String REFERENCE_IMAGES_DIR = "/home/niels/Data/tmp";
+    private static final String REFERENCE_IMAGES_DIR = "/data/TERRASCOPE/automated_test_files/geotrellis-seeder";
 
     private static final String COMPARE_SCRIPT= "/compare/compare.sh";
 
@@ -44,7 +43,7 @@ public class ReferenceTileTest {
             Path refFile = layerDir.resolve("ref.png");
             
             Path newFile = layerDir.resolve("actual.png");
-            layer.generateTile(newFile);
+            layer.generateTile(newFile.toString());
 
             Path diffFile = layerDir.resolve("diff.png");
             
@@ -87,7 +86,7 @@ public class ReferenceTileTest {
     private enum Layers {
         CGS_S2_FAPAR {
             @Override
-            void generateTile(Path path) {
+            void generateTile(String path) {
                 LocalDate date = LocalDate.of(2019, 3, 3);
                 SpatialKey key = SpatialKey.apply(8660, 5978);
                 Option<String> colorMap = Some.apply("styles_ColorTable_NDVI_V2.sld");
@@ -97,7 +96,7 @@ public class ReferenceTileTest {
         },
         CGS_S2_LAI {
             @Override
-            void generateTile(Path path) {
+            void generateTile(String path) {
                 LocalDate date = LocalDate.of(2019, 3, 1);
                 SpatialKey key = SpatialKey.apply(13036, 6311);
                 Option<String> colorMap = Some.apply("styles_ColorTable_LAI_V12.sld");
@@ -107,7 +106,7 @@ public class ReferenceTileTest {
         },
         CGS_S1_GRD_SIGMA0_L1 {
             @Override
-            void generateTile(Path path) {
+            void generateTile(String path) {
                 LocalDate date = LocalDate.of(2019, 3, 3);
                 SpatialKey key = SpatialKey.apply(8274, 5584);
 
@@ -115,7 +114,7 @@ public class ReferenceTileTest {
             }
         };
         
-        abstract void generateTile(Path target);
+        abstract void generateTile(String target);
         
         Path getDir() {
             return Paths.get(REFERENCE_IMAGES_DIR, name());   
