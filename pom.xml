@@ -40,7 +40,7 @@
                 <module>geotrellis-accumulo-extensions</module>
                 <module>geotrellis-sentinelhub</module>
                 <module>geotrellis-extensions</module>
-                <module>geotrellis-vlm</module>
+                <module>geotrellis-seeder</module>
                 <module>openeo-geotrellis</module>
             </modules>
         </profile>

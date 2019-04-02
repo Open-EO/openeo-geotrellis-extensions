@@ -97,8 +97,8 @@ public class ReferenceTileTest {
         CGS_S2_LAI {
             @Override
             void generateTile(String path) {
-                LocalDate date = LocalDate.of(2019, 3, 1);
-                SpatialKey key = SpatialKey.apply(13036, 6311);
+                LocalDate date = LocalDate.of(2019, 3, 28);
+                SpatialKey key = SpatialKey.apply(8092, 5347);
                 Option<String> colorMap = Some.apply("styles_ColorTable_LAI_V12.sld");
 
                 TileSeeder.renderSinglePng(name(), date, key, path, colorMap, sc);
