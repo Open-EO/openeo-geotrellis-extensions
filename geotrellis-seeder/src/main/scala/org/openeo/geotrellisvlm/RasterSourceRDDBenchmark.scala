@@ -1,11 +1,8 @@
 package org.openeo.geotrellisvlm
 
-import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
 
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.spark.{MultibandTileLayerRDD, SpaceTimeKey}
-import geotrellis.vector.MultiPolygon
 import geotrellis.vector.io.json.{GeoJson, _}
 import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
@@ -83,17 +80,17 @@ object RasterSourceRDDBenchmark extends App {
     val bbox = polygon.envelope
     val reprojected = polygon.reproject(LatLng,layerCRS)
 
-    val t0 = System.currentTimeMillis()
-    val rdd: MultibandTileLayerRDD[SpaceTimeKey] = LoadSigma0.createRDD(layername, reprojected.envelope, "EPSG:" + layerCRS.epsgCode.get, Option.apply(ZonedDateTime.parse("2017-12-31T00:00:00Z")), Option.apply(ZonedDateTime.parse("2018-06-30T02:00:00Z")))//.persist()
-    val tileRDD = rdd.withContext(_.mapValues{_.band(0)})
-    val series = tileRDD.meanSeries(MultiPolygon(reprojected))
+    //val t0 = System.currentTimeMillis()
+    //val rdd: MultibandTileLayerRDD[SpaceTimeKey] = TileSeeder.createRDD(layername, reprojected.envelope, "EPSG:" + layerCRS.epsgCode.get, Option.apply(ZonedDateTime.parse("2017-12-31T00:00:00Z")), Option.apply(ZonedDateTime.parse("2018-06-30T02:00:00Z")))//.persist()
+    //val tileRDD = rdd.withContext(_.mapValues{_.band(0)})
+    //val series = tileRDD.meanSeries(MultiPolygon(reprojected))
     //rdd.unpersist()
     //println(series)
-    val t1 = System.currentTimeMillis()
+    //val t1 = System.currentTimeMillis()
 
     //val  numberOfPoints = series.size
-    durations = (t1-t0) :: durations
-    println("Total time:" + (t1-t0) + " result: " + series)
+    //durations = (t1-t0) :: durations
+    //println("Total time:" + (t1-t0) + " result: " + series)
 
     //val timePerPoint = (t1 - t0) / numberOfPoints.toDouble
     //println( " Time per point: " + timePerPoint +  " Points: " + numberOfPoints)
