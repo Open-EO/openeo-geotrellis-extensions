@@ -103,15 +103,6 @@ public class ReferenceTileTest {
 
                 TileSeeder.renderSinglePng(name(), date, key, path, colorMap, sc);
             }
-        },
-        CGS_S1_GRD_SIGMA0_L1 {
-            @Override
-            void generateTile(String path) {
-                LocalDate date = LocalDate.of(2019, 3, 3);
-                SpatialKey key = SpatialKey.apply(8274, 5584);
-
-                TileSeeder.renderSinglePng(name(), date, key, path, Option.empty(), sc);
-            }
         };
         
         abstract void generateTile(String target);
