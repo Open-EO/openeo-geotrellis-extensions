@@ -2,7 +2,6 @@ package org.openeo.geotrellisvlm
 
 import java.nio.file.Paths
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import java.util
 
 import be.vito.eodata.biopar.EOProduct
@@ -26,7 +25,7 @@ object TileSeeder {
   
   private var logger: Logger = new EmptyLogger
 
-  private val globalLayout = GlobalLayout(256, 14, 0.1)
+  private val globalLayout = GlobalLayout(256, 13, 0.1)
   private val layout = globalLayout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10, 10))._1
   
   private var partitions = 500
@@ -34,11 +33,13 @@ object TileSeeder {
   def renderSinglePng(productType: String, date: LocalDate, key: SpatialKey, path: String, colorMap: Option[String] = None)(implicit sc: SparkContext): Unit = {
     partitions = 1
     
-    renderPng(path, productType, date, colorMap, Some(key))
+    renderPng(path, productType, date.toString, colorMap, Some(key))
   }
 
-  def renderPng(path: String, productType: String, date: LocalDate, colorMap: Option[String] = None, spatialKey: Option[SpatialKey] = None)(implicit sc: SparkContext): Unit = {
+  def renderPng(path: String, productType: String, dateStr: String, colorMap: Option[String] = None, spatialKey: Option[SpatialKey] = None)(implicit sc: SparkContext): Unit = {
   
+    val date = LocalDate.parse(dateStr.substring(0, 10))
+    
     val catalog = new CatalogClient()
     val products = catalog.getProducts(productType, date, date, "GEOTIFF")
     
@@ -47,11 +48,11 @@ object TileSeeder {
         val map = ColorMapParser.parse(name)
         getSinglebandRDD(products, date, spatialKey)
           .repartition(partitions)
-          .foreach(renderSinglebandRDD(path, date, map))
+          .foreach(renderSinglebandRDD(path, dateStr, map))
       case None =>
         getMultibandRDD(products, date, spatialKey)
           .repartition(partitions)
-          .foreach(renderMultibandRDD(path, date))
+          .foreach(renderMultibandRDD(path, dateStr))
     }
   }
 
@@ -84,14 +85,14 @@ object TileSeeder {
     sourcePaths.map(GeoTiffReprojectRasterSource(_, WebMercator))
   }
 
-  private def renderSinglebandRDD(path: String, date: LocalDate, colorMap: ColorMap)(item: (SpatialKey, Iterable[RasterRegion])) {
+  private def renderSinglebandRDD(path: String, dateStr: String, colorMap: ColorMap)(item: (SpatialKey, Iterable[RasterRegion])) {
     item match {
       case (key, regions) =>
         logger.logKey(key)
 
         val tile = regionsToTile(regions).convert(UByteUserDefinedNoDataCellType(-1))
         if (!tile.isNoDataTile) {
-          val tilePath = pathForTile(path, date, key, globalLayout.zoom)
+          val tilePath = pathForTile(path, dateStr, key, globalLayout.zoom)
           tile.toArrayTile().renderPng(colorMap).write(tilePath)
 
           logger.logTile(key, tilePath)
@@ -101,7 +102,7 @@ object TileSeeder {
     }
   }
 
-  private def renderMultibandRDD(path: String, date: LocalDate)(item: (SpatialKey, (Iterable[RasterRegion], Iterable[RasterRegion]))) {
+  private def renderMultibandRDD(path: String, dateStr: String)(item: (SpatialKey, (Iterable[RasterRegion], Iterable[RasterRegion]))) {
     item match {
       case (key, (vvRegions, vhRegions)) =>
         logger.logKey(key)
@@ -110,7 +111,7 @@ object TileSeeder {
         val tileG = regionsToTile(vhRegions)
 
         if (!tileR.isNoDataTile && !tileG.isNoDataTile) {
-          val tilePath = pathForTile(path, date, key, globalLayout.zoom)
+          val tilePath = pathForTile(path, dateStr, key, globalLayout.zoom)
           tilesToArrayMultibandTile(tileR, tileG).renderPng().write(tilePath)
 
           logger.logTile(key, tilePath)
@@ -259,12 +260,11 @@ object TileSeeder {
   }
 
 
-  private def pathForTile(path: String, date: LocalDate, key: SpatialKey, zoom: Int): String = {
+  private def pathForTile(path: String, dateStr: String, key: SpatialKey, zoom: Int): String = {
     if (path.endsWith(".png")) {
       path
     } else {
       val grid = "g"
-      val dateStr = date.format(DateTimeFormatter.ISO_LOCAL_DATE)
 
       val z = f"$zoom%02d"
 

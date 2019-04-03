@@ -1,5 +1,3 @@
-import java.time.LocalDate;
-
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.openeo.geotrellisvlm.MemoryLogger;
@@ -21,7 +19,7 @@ public class TileSeederRunner {
         if (args.length > 1) {
             String productType = args[0];
             String rootPath = args[1];
-            LocalDate date = LocalDate.parse(args[2]);
+            String date = args[2];
 
             SparkContext sc = SparkContext.getOrCreate(
                     new SparkConf()
