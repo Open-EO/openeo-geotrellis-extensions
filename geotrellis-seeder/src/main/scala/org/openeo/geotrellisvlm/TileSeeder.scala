@@ -319,6 +319,8 @@ object TileSeeder {
             .set("spark.kryoserializer.buffer.max", "1024m"))
 
       renderPng(rootPath, productType, date, colorMap)
+      
+      sc.stop()
     }
   }
 }
