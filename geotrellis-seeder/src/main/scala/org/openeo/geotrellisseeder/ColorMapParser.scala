@@ -1,4 +1,4 @@
-package org.openeo.geotrellisvlm
+package org.openeo.geotrellisseeder
 
 import java.io.InputStream
 import java.lang.Integer.parseInt

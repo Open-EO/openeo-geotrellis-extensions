@@ -1,9 +1,9 @@
-package org.openeo.geotrellisvlm
+package org.openeo.geotrellisseeder
 
 import geotrellis.spark.SpatialKey
 import org.slf4j.LoggerFactory
 
-trait Logger {
+trait Logger extends Serializable {
   def logKey(key: SpatialKey) {}
   def logTile(key: SpatialKey, path: String) {}
   def logNoDataTile(key: SpatialKey) {}

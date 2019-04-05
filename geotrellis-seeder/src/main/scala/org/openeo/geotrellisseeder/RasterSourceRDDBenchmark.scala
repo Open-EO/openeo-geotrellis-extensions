@@ -1,4 +1,4 @@
-package org.openeo.geotrellisvlm
+package org.openeo.geotrellisseeder
 
 import java.util.concurrent.TimeUnit
 

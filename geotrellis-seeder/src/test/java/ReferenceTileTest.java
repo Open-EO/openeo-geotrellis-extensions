@@ -12,7 +12,8 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.openeo.geotrellisvlm.TileSeeder;
+import org.openeo.geotrellisseeder.Band;
+import org.openeo.geotrellisseeder.TileSeeder;
 import scala.Option;
 import scala.Some;
 
@@ -23,15 +24,19 @@ public class ReferenceTileTest {
     private static final String COMPARE_SCRIPT= "/compare/compare.sh";
 
     private static SparkContext sc;
+    
+    private static TileSeeder seeder;
 
     @BeforeClass
-    public static void createSparkContext() {
+    public static void createSparkContextAndSeeder() {
         sc = SparkContext.getOrCreate(
                 new SparkConf()
                         .setMaster("local[1]")
                         .setAppName("ReferenceTileTest")
                         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
                         .set("spark.kryoserializer.buffer.max", "1024m"));
+        
+        seeder = new TileSeeder(13, 1, false);
     }
 
 
@@ -89,9 +94,10 @@ public class ReferenceTileTest {
             void generateTile(String path) {
                 LocalDate date = LocalDate.of(2019, 3, 3);
                 SpatialKey key = SpatialKey.apply(4330, 2989);
-                Option<String> colorMap = Some.apply("styles_ColorTable_NDVI_V2.sld");
-                
-                TileSeeder.renderSinglePng(name(), date, key, path, colorMap, sc);
+                Option<String> colorMap = Some.<String>apply("styles_ColorTable_NDVI_V2.sld");
+                Option<Band[]> bands = Option.<Band[]>empty();
+
+                seeder.renderSinglePng(name(), date, key, path, colorMap, bands, sc);
             }
         },
         CGS_S2_LAI {
@@ -99,9 +105,40 @@ public class ReferenceTileTest {
             void generateTile(String path) {
                 LocalDate date = LocalDate.of(2019, 3, 28);
                 SpatialKey key = SpatialKey.apply(4046, 2673);
-                Option<String> colorMap = Some.apply("styles_ColorTable_LAI_V12.sld");
+                Option<String> colorMap = Some.<String>apply("styles_ColorTable_LAI_V12.sld");
+                Option<Band[]> bands = Option.<Band[]>empty();
 
-                TileSeeder.renderSinglePng(name(), date, key, path, colorMap, sc);
+                seeder.renderSinglePng(name(), date, key, path, colorMap, bands, sc);
+            }
+        },
+        CGS_S2_RADIOMETRY {
+            @Override
+            void generateTile(String path) {
+                LocalDate date = LocalDate.of(2019, 4, 1);
+                SpatialKey key = SpatialKey.apply(4209, 2803);
+                Option<String> colorMap = Some.<String>empty();
+                Option<Band[]> bands = Option.<Band[]>apply(new Band[] { 
+                        Band.apply("B04", 200, 1600), 
+                        Band.apply("B03", 200, 1600), 
+                        Band.apply("B02", 200, 1600) 
+                });
+
+                seeder.renderSinglePng(name(), date, key, path, colorMap, bands, sc);
+            }
+        },
+        CGS_S2_NIR {
+            @Override
+            void generateTile(String path) {
+                LocalDate date = LocalDate.of(2019, 4, 1);
+                SpatialKey key = SpatialKey.apply(4209, 2803);
+                Option<String> colorMap = Some.<String>empty();
+                Option<Band[]> bands = Option.<Band[]>apply(new Band[] {
+                        Band.apply("B08", 0, 4000),
+                        Band.apply("B04", 0, 2600),
+                        Band.apply("B03", 0, 2600)
+                });
+
+                seeder.renderSinglePng(CGS_S2_RADIOMETRY.name(), date, key, path, colorMap, bands, sc);
             }
         };
         

@@ -11,7 +11,7 @@ import geotrellis.spark.SpatialKey
 import geotrellis.spark.tiling.CRSWorldExtent
 import org.junit.Assert.{assertEquals, assertNotEquals}
 import org.junit.{Ignore, Test}
-import org.openeo.geotrellisvlm.ColorMapParser
+import org.openeo.geotrellisseeder.ColorMapParser
 
 import scala.collection.JavaConverters.iterableAsScalaIterableConverter
 
