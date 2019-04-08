@@ -94,7 +94,7 @@ public class ReferenceTileTest {
             void generateTile(String path) {
                 LocalDate date = LocalDate.of(2019, 3, 3);
                 SpatialKey key = SpatialKey.apply(4330, 2989);
-                Option<String> colorMap = Some.<String>apply("styles_ColorTable_NDVI_V2.sld");
+                Option<String> colorMap = Some.<String>apply("ColorTable_NDVI_V2.sld");
                 Option<Band[]> bands = Option.<Band[]>empty();
 
                 seeder.renderSinglePng(name(), date, key, path, colorMap, bands, sc);
@@ -105,7 +105,29 @@ public class ReferenceTileTest {
             void generateTile(String path) {
                 LocalDate date = LocalDate.of(2019, 3, 28);
                 SpatialKey key = SpatialKey.apply(4046, 2673);
-                Option<String> colorMap = Some.<String>apply("styles_ColorTable_LAI_V12.sld");
+                Option<String> colorMap = Some.<String>apply("ColorTable_LAI_V12.sld");
+                Option<Band[]> bands = Option.<Band[]>empty();
+
+                seeder.renderSinglePng(name(), date, key, path, colorMap, bands, sc);
+            }
+        },
+        CGS_S2_NDVI {
+            @Override
+            void generateTile(String path) {
+                LocalDate date = LocalDate.of(2019, 3, 3);
+                SpatialKey key = SpatialKey.apply(4410, 2590);
+                Option<String> colorMap = Some.<String>apply("ColorTable_NDVI_PROBAV.sld");
+                Option<Band[]> bands = Option.<Band[]>empty();
+
+                seeder.renderSinglePng(name(), date, key, path, colorMap, bands, sc);
+            }
+        },
+        CGS_S2_FCOVER {
+            @Override
+            void generateTile(String path) {
+                LocalDate date = LocalDate.of(2019, 3, 3);
+                SpatialKey key = SpatialKey.apply(4403, 2595);
+                Option<String> colorMap = Some.<String>apply("ColorTable_FCOVER_V12.sld");
                 Option<Band[]> bands = Option.<Band[]>empty();
 
                 seeder.renderSinglePng(name(), date, key, path, colorMap, bands, sc);
