@@ -104,7 +104,7 @@ void build(tests = true){
         rtMaven.deployer server: server, releaseRepo: 'libs-release-local', snapshotRepo: 'libs-snapshot-public'
         rtMaven.tool = maven
         if (!tests) {
-            rtMaven.opts += ' -DskipTests'
+            rtMaven.opts += ' -DskipTests=true'
         }
         rtMaven.deployer.deployArtifacts = publishable_branches.contains(env.BRANCH_NAME)
         //use '--projects StatisticsMapReduce' in 'goals' to build specific module
