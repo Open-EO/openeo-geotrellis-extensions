@@ -42,6 +42,7 @@
                 <module>geotrellis-extensions</module>
                 <module>geotrellis-vlm</module>
                 <module>openeo-geotrellis</module>
+                <module>geotrellis-integrationtests</module>
             </modules>
         </profile>
     </profiles>
