@@ -1,4 +1,4 @@
-import org.openeo.geotrellisvlm.RasterSourceRDDBenchmark;
+import org.openeo.geotrellisseeder.RasterSourceRDDBenchmark;
 
 public class BenchmarkRunner {
     public static void main(String[] args) {
