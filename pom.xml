@@ -94,7 +94,7 @@
               <repository>
                       <id>artifactory.vgt.vito.be</id>
                       <name>artifactory.vgt.vito.be-releases</name>
-                      <url>http://artifactory.vgt.vito.be/libs-release-local</url>
+                      <url>http://artifactory.vgt.vito.be/libs-release-public</url>
               </repository>
               <snapshotRepository>
                   <id>snapshots</id>
@@ -109,7 +109,7 @@
                 <enabled>false</enabled>
             </snapshots>
             <id>artifactory-release</id>
-            <url>http://artifactory.vgt.vito.be/libs-release-local</url>
+            <url>http://artifactory.vgt.vito.be/libs-release-public</url>
         </repository>
         <repository>
             <id>artifactory-snapshot</id>
