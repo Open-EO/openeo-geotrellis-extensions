@@ -125,7 +125,9 @@ void build(tests = true){
             throw err
         }
         finally {
-            junit '*/target/*-reports/*.xml'
+            if (tests) {
+                junit '*/target/*-reports/*.xml'
+            }
         }
     }
 }
