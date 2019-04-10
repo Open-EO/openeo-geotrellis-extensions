@@ -277,17 +277,7 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
       } else if (nonNullTiles.size == 1) {
         nonNullTiles.head
       } else {
-        val tile1 = nonNullTiles.head.toArrayTile()
-        val tile2 = nonNullTiles.tail.head.toArrayTile()
-
-        tile1.combineDouble(tile2)((t1, t2) => {
-          if (isNoData(t1))
-            t2
-          else if (isNoData(t2))
-            t1
-          else
-            (t1 + t2) / 2
-        })
+        nonNullTiles.reduce(_.combine(_)((t1, t2) => if (isNoData(t1)) t2 else if (isNoData(t2)) t1 else max(t1, t2)))
       }
     } else {
       tiles.head
@@ -365,6 +355,7 @@ object TileSeeder {
     } else {
       val date = jCommanderArgs.date
       val productType = jCommanderArgs.productType
+      val layer = jCommanderArgs.layer
       val rootPath = jCommanderArgs.rootPath
       val zoomLevel = jCommanderArgs.zoomLevel
       val colorMap = jCommanderArgs.colorMap
@@ -376,7 +367,7 @@ object TileSeeder {
       implicit val sc: SparkContext =
         SparkContext.getOrCreate(
           new SparkConf()
-            .setAppName(s"GeotrellisSeeder:$productType:$date")
+            .setAppName(s"GeotrellisSeeder:${layer.getOrElse(productType)}:$date")
             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
             .set("spark.kryoserializer.buffer.max", "1024m"))
 

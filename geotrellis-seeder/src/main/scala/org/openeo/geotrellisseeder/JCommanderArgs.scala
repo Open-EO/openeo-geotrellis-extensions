@@ -23,6 +23,9 @@ class JCommanderArgs {
   @Parameter(names = Array("--productType", "-p"), required = true, description = "product type")
   var productType: String = _
   
+  @Parameter(names = Array("--layer", "-l"), required = false, description = "layer name", converter = classOf[StringOptionConverter])
+  var layer: Option[String] = None
+  
   @Parameter(names = Array("--rootPath", "-r"), required = true, description = "root path")
   var rootPath: String = _
   

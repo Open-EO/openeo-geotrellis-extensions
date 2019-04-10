@@ -30,7 +30,7 @@ public class TileSeederRunner {
 
             SparkContext sc = SparkContext.getOrCreate(
                     new SparkConf()
-                            .setMaster("local[8]")
+                            .setMaster("local[2]")
                             .setAppName(join(":", "GeotrellisSeeder", productType, date))
                             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
                             .set("spark.kryoserializer.buffer.max", "1024m"));

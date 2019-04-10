@@ -5,6 +5,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import geotrellis.spark.SpatialKey;
 import org.apache.commons.io.IOUtils;
@@ -16,6 +19,9 @@ import org.openeo.geotrellisseeder.Band;
 import org.openeo.geotrellisseeder.TileSeeder;
 import scala.Option;
 import scala.Some;
+
+import static java.lang.Integer.parseInt;
+import static java.util.stream.Collectors.toList;
 
 public class ReferenceTileTest {
     
@@ -45,14 +51,28 @@ public class ReferenceTileTest {
         for (Layers layer: Layers.values()) {
             Path layerDir = layer.getDir();
             
-            Path refFile = layerDir.resolve("ref.png");
-            
-            Path newFile = layerDir.resolve("actual.png");
-            layer.generateTile(newFile.toString());
+            List<Path> refs = Files.find(layerDir, 1, (path, fileAttributes) -> path.toString().contains("ref")).collect(toList());
+            for (Path ref : refs) {
+                String fileName = ref.getFileName().toString();
+                String[] fileParts = fileName.split("_");
+               
+                LocalDate date = LocalDate.parse(fileParts[1]);
+                
+                Pattern p = Pattern.compile("(\\d*)x(\\d*)\\.png");
+                Matcher m = p.matcher(fileParts[2]);
+                if (m.find()) {
+                    SpatialKey key = SpatialKey.apply(parseInt(m.group(1)), parseInt(m.group(2)));
 
-            Path diffFile = layerDir.resolve("diff.png");
-            
-            compare(newFile, refFile, diffFile);
+                    Path refFile = layerDir.resolve(fileName);
+
+                    Path newFile = layerDir.resolve(fileName.replace("ref", "actual"));
+                    layer.generateTile(newFile.toString(), date, key);
+
+                    Path diffFile = layerDir.resolve(fileName.replace("ref", "diff"));
+
+                    compare(newFile, refFile, diffFile);
+                }
+            }
         }
     }
 
@@ -91,9 +111,7 @@ public class ReferenceTileTest {
     private enum Layers {
         CGS_S2_FAPAR {
             @Override
-            void generateTile(String path) {
-                LocalDate date = LocalDate.of(2019, 3, 3);
-                SpatialKey key = SpatialKey.apply(4330, 2989);
+            void generateTile(String path, LocalDate date, SpatialKey key) {
                 Option<String> colorMap = Some.<String>apply("ColorTable_NDVI_V2.sld");
                 Option<Band[]> bands = Option.<Band[]>empty();
 
@@ -102,9 +120,7 @@ public class ReferenceTileTest {
         },
         CGS_S2_LAI {
             @Override
-            void generateTile(String path) {
-                LocalDate date = LocalDate.of(2019, 3, 28);
-                SpatialKey key = SpatialKey.apply(4046, 2673);
+            void generateTile(String path, LocalDate date, SpatialKey key) {
                 Option<String> colorMap = Some.<String>apply("ColorTable_LAI_V12.sld");
                 Option<Band[]> bands = Option.<Band[]>empty();
 
@@ -113,9 +129,7 @@ public class ReferenceTileTest {
         },
         CGS_S2_NDVI {
             @Override
-            void generateTile(String path) {
-                LocalDate date = LocalDate.of(2019, 3, 3);
-                SpatialKey key = SpatialKey.apply(4410, 2590);
+            void generateTile(String path, LocalDate date, SpatialKey key) {
                 Option<String> colorMap = Some.<String>apply("ColorTable_NDVI_PROBAV.sld");
                 Option<Band[]> bands = Option.<Band[]>empty();
 
@@ -124,9 +138,7 @@ public class ReferenceTileTest {
         },
         CGS_S2_FCOVER {
             @Override
-            void generateTile(String path) {
-                LocalDate date = LocalDate.of(2019, 3, 3);
-                SpatialKey key = SpatialKey.apply(4403, 2595);
+            void generateTile(String path, LocalDate date, SpatialKey key) {
                 Option<String> colorMap = Some.<String>apply("ColorTable_FCOVER_V12.sld");
                 Option<Band[]> bands = Option.<Band[]>empty();
 
@@ -135,9 +147,7 @@ public class ReferenceTileTest {
         },
         CGS_S2_RADIOMETRY {
             @Override
-            void generateTile(String path) {
-                LocalDate date = LocalDate.of(2019, 4, 1);
-                SpatialKey key = SpatialKey.apply(4209, 2803);
+            void generateTile(String path, LocalDate date, SpatialKey key) {
                 Option<String> colorMap = Some.<String>empty();
                 Option<Band[]> bands = Option.<Band[]>apply(new Band[] { 
                         Band.apply("B04", 200, 1600), 
@@ -150,9 +160,7 @@ public class ReferenceTileTest {
         },
         CGS_S2_NIR {
             @Override
-            void generateTile(String path) {
-                LocalDate date = LocalDate.of(2019, 4, 1);
-                SpatialKey key = SpatialKey.apply(4209, 2803);
+            void generateTile(String path, LocalDate date, SpatialKey key) {
                 Option<String> colorMap = Some.<String>empty();
                 Option<Band[]> bands = Option.<Band[]>apply(new Band[] {
                         Band.apply("B08", 0, 4000),
@@ -164,7 +172,7 @@ public class ReferenceTileTest {
             }
         };
         
-        abstract void generateTile(String target);
+        abstract void generateTile(String target, LocalDate date, SpatialKey key);
         
         Path getDir() {
             return Paths.get(REFERENCE_IMAGES_DIR, name());   
