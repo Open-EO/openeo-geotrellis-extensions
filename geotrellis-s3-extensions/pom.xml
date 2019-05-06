@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
         <artifactId>openeo-geotrellis-extensions</artifactId>
@@ -9,15 +9,17 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>openeo-geotrellis</artifactId>
-    <dependencies>
+    <artifactId>geotrellis-s3-extensions</artifactId>
 
-        <dependency>
-            <groupId>org.locationtech.geotrellis</groupId>
-            <artifactId>geotrellis-spark_${scala.binary.version}</artifactId>
-            <version>${geotrellis.version}</version>
-            <scope>provided</scope>
-        </dependency>
+    <name>geotrellis-s3-extensions</name>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
+    </properties>
+
+    <dependencies>
         <dependency>
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-core_${scala.binary.version}</artifactId>
@@ -26,38 +28,30 @@
         </dependency>
         <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
-            <artifactId>geotrellis-spark-testkit_${scala.binary.version}</artifactId>
+            <artifactId>geotrellis-spark_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-common</artifactId>
-            <version>${hadoop.version}</version>
             <scope>provided</scope>
         </dependency>
-
-
-
         <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-api</artifactId>
-            <version>5.3.2</version>
-            <scope>test</scope>
+            <groupId>org.locationtech.geotrellis</groupId>
+            <artifactId>geotrellis-s3_${scala.binary.version}</artifactId>
+            <version>${geotrellis.version}</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>org.junit.vintage</groupId>
-            <artifactId>junit-vintage-engine</artifactId>
-            <version>5.3.2</version>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.12</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
+
     <build>
         <plugins>
             <plugin>
                 <groupId>net.alchim31.maven</groupId>
                 <artifactId>scala-maven-plugin</artifactId>
-                <version>3.4.2</version>
+                <version>3.2.1</version>
                 <executions>
                     <execution>
                         <id>scala-compile-first</id>
@@ -72,17 +66,6 @@
                     <scalaCompatVersion>${scala.binary.version}</scalaCompatVersion>
                 </configuration>
             </plugin>
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>versions-maven-plugin</artifactId>
-                <configuration>
-                    <excludes>
-                        <exclude>org.locationtech.geotrellis:*</exclude>
-                    </excludes>
-                </configuration>
-            </plugin>
-
         </plugins>
     </build>
-
 </project>

@@ -109,12 +109,14 @@ void build(tests = true){
         rtMaven.deployer.deployArtifacts = publishable_branches.contains(env.BRANCH_NAME)
         //use '--projects StatisticsMapReduce' in 'goals' to build specific module
         try {
-            buildInfo = rtMaven.run pom: 'pom.xml', goals: 'clean install'
-            try{
-                if(rtMaven.deployer.deployArtifacts )
-                    server.publishBuildInfo buildInfo
-            }catch(e){
-                print e.message
+            withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'CephS3']]) {
+                buildInfo = rtMaven.run pom: 'pom.xml', goals: 'clean install'
+                try {
+                    if (rtMaven.deployer.deployArtifacts)
+                        server.publishBuildInfo buildInfo
+                } catch (e) {
+                    print e.message
+                }
             }
         }catch(err){
             mail body: "project build error is here: ${env.BUILD_URL}" ,
