@@ -4,6 +4,7 @@ package org.openeo.geotrellis;
 import geotrellis.raster.ByteArrayTile;
 import geotrellis.raster.ByteConstantNoDataArrayTile;
 import geotrellis.raster.Tile;
+import geotrellis.raster.UByteConstantNoDataArrayTile;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import scala.Function1;
@@ -80,6 +81,76 @@ public class TestOpenEOProcessScriptBuilder {
 
         System.out.println("Arrays.toString(ndvi.toArrayDouble()) = " + Arrays.toString(ndvi.toArrayDouble()));
         assertEquals(30.0, ndvi.get(0, 0));
+    }
+
+    @DisplayName("Test logical operations")
+    @Test
+    public void testLogicalEquals() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> empty = Collections.emptyMap();
+        builder.expressionStart("eq", empty);
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.constantArgument("y",(byte)10);
+        builder.expressionEnd("eq",empty);
+
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        Tile tile1 = UByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1)));
+        Tile ndvi = result.apply(0);
+
+        System.out.println("Arrays.toString(ndvi.toArrayDouble()) = " + Arrays.toString(ndvi.toBytes()));
+        assertEquals(1, ndvi.get(0, 0));
+    }
+
+    @DisplayName("Test logical operations: not after equals")
+    @Test
+    public void testLogicalNot() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> empty = Collections.emptyMap();
+        builder.expressionStart("not", empty);
+        builder.argumentStart("expression");
+        builder.expressionStart("eq", empty);
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.constantArgument("y",(byte)10);
+        builder.expressionEnd("eq",empty);
+        builder.argumentEnd();
+        builder.expressionEnd("not",empty);
+
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        Tile tile1 = UByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1)));
+        Tile ndvi = result.apply(0);
+
+        System.out.println("Arrays.toString(ndvi.toArrayDouble()) = " + Arrays.toString(ndvi.toBytes()));
+        assertEquals(0, ndvi.get(0, 0));
+    }
+
+    @DisplayName("Test logical equals, not equal constant")
+    @Test
+    public void testLogicalEquals2() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> empty = Collections.emptyMap();
+        builder.expressionStart("eq", empty);
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.constantArgument("y",(byte)11);
+        builder.expressionEnd("eq",empty);
+
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        Tile tile1 = UByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1)));
+        Tile ndvi = result.apply(0);
+
+        System.out.println("Arrays.toString(ndvi.toArrayDouble()) = " + Arrays.toString(ndvi.toBytes()));
+        assertEquals(0, ndvi.get(0, 0));
     }
 
     @DisplayName("Test array_element process")
