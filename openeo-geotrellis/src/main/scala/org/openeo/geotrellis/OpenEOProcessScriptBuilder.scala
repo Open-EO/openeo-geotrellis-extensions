@@ -1,6 +1,7 @@
 package org.openeo.geotrellis
 
-import geotrellis.raster.{DoubleConstantTile, IntConstantTile, Tile}
+import geotrellis.raster.mapalgebra.local._
+import geotrellis.raster.{DoubleConstantTile, IntConstantTile, ShortConstantTile, Tile, UByteConstantTile}
 
 import scala.collection.mutable
 
@@ -26,6 +27,35 @@ class OpenEOProcessScriptBuilder {
 
   }
 
+  private def xyFunction(operator:(Tile,Tile) => Tile ) = {
+    val storedArgs = contextStack.head
+    val x_function = storedArgs.get("x").get
+    val y_function = storedArgs.get("y").get
+    val bandFunction = (tiles:Seq[Tile]) =>{
+      val x_input: Seq[Tile] =
+        if(x_function!=null) {
+          x_function.apply(tiles)
+        }else{
+          tiles
+        }
+      val y_input: Seq[Tile] =
+        if(y_function!=null) {
+          y_function.apply(tiles)
+        }else{
+          tiles
+        }
+      if (x_input.size != 1 || y_input.size!=1){
+        throw new IllegalArgumentException("Eq only supports single tile inputs.")
+      }
+      Seq(operator(x_input(0),y_input(0)))
+    }
+    bandFunction
+  }
+
+  def constantArgument(name:String,value:Number): Unit = {
+    var scope = contextStack.head
+    scope.put(name,createConstantTileFunction(value))
+  }
 
   def argumentStart(name:String): Unit = {
     argNames.push(name)
@@ -57,7 +87,7 @@ class OpenEOProcessScriptBuilder {
     inputFunction = null
   }
 
-  def constantArrayElement(value: Number):Unit = {
+  private def createConstantTileFunction(value:Number): Seq[Tile] => Seq[Tile] = {
     val constantTileFunction:Seq[Tile] => Seq[Tile] = (tiles:Seq[Tile]) => {
       if(tiles.isEmpty) {
         tiles
@@ -65,12 +95,19 @@ class OpenEOProcessScriptBuilder {
         val rows= tiles.head.rows
         val cols = tiles.head.cols
         value match {
+          case x: java.lang.Byte => Seq(UByteConstantTile(value.byteValue(),cols,rows))
+          case x: java.lang.Short => Seq(ShortConstantTile(value.byteValue(),cols,rows))
           case x: Integer => Seq(IntConstantTile(value.intValue(),cols,rows))
           case _ => Seq(DoubleConstantTile(value.doubleValue(),cols,rows))
         }
       }
 
     }
+    return constantTileFunction
+  }
+
+  def constantArrayElement(value: Number):Unit = {
+    val constantTileFunction:Seq[Tile] => Seq[Tile] = createConstantTileFunction(value)
     val scope = contextStack.head
     scope.put(arrayCounter.toString,constantTileFunction)
     arrayCounter += 1
@@ -107,7 +144,21 @@ class OpenEOProcessScriptBuilder {
     assert(expectedOperator.equals(operator))
     val storedArgs = contextStack.head
 
-    val operation = operator match {
+    val operation: Seq[Tile] => Seq[Tile] = operator match {
+      case "gt" => xyFunction(Greater.apply)
+      case "lt" => xyFunction(Less.apply)
+      case "gte" => xyFunction(GreaterOrEqual.apply)
+      case "lte" => xyFunction(LessOrEqual.apply)
+      case "eq" => xyFunction(Equal.apply)
+      case "not" => unaryFunction("expression", (tiles:Seq[Tile]) =>{
+        tiles.map( Not(_))
+      })
+      case "and" => unaryFunction("expressions", (tiles:Seq[Tile]) =>{
+        Seq(tiles.reduce( _.localAnd(_)))
+      })
+      case "or" => unaryFunction("expressions", (tiles:Seq[Tile]) =>{
+        Seq(tiles.reduce( _.localOr(_)))
+      })
       case "sum" => unaryFunction("data", (tiles:Seq[Tile]) =>{
           Seq(tiles.reduce( _.localAdd(_)))
         })
