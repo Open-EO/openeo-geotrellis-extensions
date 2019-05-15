@@ -98,7 +98,7 @@ class GeotrellisAccumuloRDD(
   override def getPartitions: Array[Partition] = {
     val inputFormat = new AccumuloInputFormat()
 
-    val jobContext = new JobContextImpl(_conf, jobId)
+    val jobContext = new JobContextImpl(getConf, jobId)
     var rawSplits = inputFormat.getSplits(jobContext).toArray
 
     if(splitRanges) {

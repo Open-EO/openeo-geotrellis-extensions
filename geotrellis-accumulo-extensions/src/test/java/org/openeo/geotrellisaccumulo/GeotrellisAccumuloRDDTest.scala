@@ -3,6 +3,8 @@ package org.openeo.geotrellisaccumulo
 import geotrellis.raster.MultibandTile
 import geotrellis.spark.SpaceTimeKey
 import geotrellis.vector.Extent
+import org.apache.hadoop.hdfs.HdfsConfiguration
+import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.{SparkConf, SparkContext}
 import org.scalatest.{FlatSpec, Matchers}
 
@@ -16,12 +18,16 @@ class GeotrellisAccumuloRDDTest  extends FlatSpec with Matchers{
 
 
   it should "load data from accumulo" in {
+    val config = new HdfsConfiguration
+    config.set("hadoop.security.authentication", "kerberos")
+    UserGroupInformation.setConfiguration(config)
     val conf = new SparkConf
     conf.setAppName("IngestS2")
     conf.setMaster("local[4]")
     conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
     conf.set("spark.hadoop.fs.permissions.umask-mode", "000")
     val sc = new SparkContext(conf)
+    UserGroupInformation.setConfiguration(config)
 
     val layername = "CGS_SENTINEL2_RADIOMETRY_V102"
     val bbox = new Extent(3, 51, 3.5, 52)
