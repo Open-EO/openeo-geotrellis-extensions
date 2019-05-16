@@ -70,8 +70,7 @@ class OpenEOProcesses extends Serializable {
 
 
   def rasterMask(datacube:MultibandTileLayerRDD[SpaceTimeKey],mask:MultibandTileLayerRDD[SpaceTimeKey], replacement:Double):ContextRDD[SpaceTimeKey,MultibandTile,TileLayerMetadata[SpaceTimeKey]] = {
-
-    val joined = datacube.leftOuterJoin(mask)
+    val joined = datacube.spatialLeftOuterJoin(mask)
     val replacementInt: Int = replacement.intValue()
     val replacementDouble: Double = replacement
     val masked = joined.mapValues(t => {
