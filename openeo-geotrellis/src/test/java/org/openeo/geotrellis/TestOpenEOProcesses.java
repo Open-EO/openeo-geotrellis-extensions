@@ -133,8 +133,8 @@ public class TestOpenEOProcesses {
         TileLayerMetadata<SpatialKey> m = datacube.metadata();
         Bounds<SpatialKey> bounds = m.bounds();
 
-        SpaceTimeKey minKey = SpaceTimeKey.apply(bounds.get().minKey(), new TemporalKey(minDate.toEpochSecond()));
-        SpaceTimeKey maxKey = SpaceTimeKey.apply(bounds.get().maxKey(), new TemporalKey(maxDate.toEpochSecond()));
+        SpaceTimeKey minKey = SpaceTimeKey.apply(bounds.get().minKey(), TemporalKey.apply(minDate));
+        SpaceTimeKey maxKey = SpaceTimeKey.apply(bounds.get().maxKey(), TemporalKey.apply(maxDate));
         KeyBounds<SpaceTimeKey> updatedKeyBounds = new KeyBounds<>(minKey,maxKey);
         TileLayerMetadata<SpaceTimeKey> metadata = new TileLayerMetadata<>(m.cellType(), m.layout(), m.extent(),m.crs(), updatedKeyBounds);
 
