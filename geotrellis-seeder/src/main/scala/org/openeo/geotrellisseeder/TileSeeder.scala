@@ -1,9 +1,8 @@
 package org.openeo.geotrellisseeder
 
 import java.io.File
-import java.nio.file.{Files, Paths}
+import java.nio.file.Paths
 import java.time.LocalDate
-import java.util
 
 import be.vito.eodata.biopar.EOProduct
 import be.vito.eodata.catalog.CatalogClient
@@ -24,7 +23,7 @@ import scala.math._
 
 case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
 
-  private val logger: Logger = if (verbose) new VerboseLogger else new EmptyLogger
+  private val logger = if (verbose) VerboseLogger(classOf[TileSeeder]) else StandardLogger(classOf[TileSeeder])
 
   def renderSinglePng(productType: String, date: LocalDate, key: SpatialKey, path: String, colorMap: Option[String] = None,
                       bands: Option[Array[Band]] = None)(implicit sc: SparkContext): Unit = {
@@ -38,7 +37,9 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
     val date = LocalDate.parse(dateStr.substring(0, 10))
 
     val catalog = new CatalogClient()
-    val products = catalog.getProducts(productType, date, date, "GEOTIFF")
+    val products = catalog.getProducts(productType, date, date, "GEOTIFF").asScala
+    
+    logger.logProducts(products)
 
     val globalLayout = GlobalLayout(256, zoomLevel, 0.1)
 
@@ -61,7 +62,7 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
     }
   }
 
-  private def getMultibandRDD(products: util.Collection[_ <: EOProduct], date: LocalDate, bands: Array[String], spatialKey: Option[SpatialKey])
+  private def getMultibandRDD(products: Iterable[_ <: EOProduct], date: LocalDate, bands: Array[String], spatialKey: Option[SpatialKey])
                              (implicit sc: SparkContext, layout: LayoutDefinition) = {
 
     val sources = multibandSourcePathsForDate(products, bands).map(reproject)
@@ -69,7 +70,7 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
     loadMultibandTiles(sources, date, spatialKey)
   }
 
-  private def getMultibandRDD(products: util.Collection[_ <: EOProduct], date: LocalDate, spatialKey: Option[SpatialKey])
+  private def getMultibandRDD(products: Iterable[_ <: EOProduct], date: LocalDate, spatialKey: Option[SpatialKey])
                              (implicit sc: SparkContext, layout:LayoutDefinition) = {
 
     val (sourcePathsVV, sourcePathsVH) = multibandSourcePathsForDate(products)
@@ -78,7 +79,7 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
     loadMultibandTiles(sourcesVV, sourcesVH, date, spatialKey)
   }
 
-  private def getSinglebandRDD(products: util.Collection[_ <: EOProduct], date: LocalDate, spatialKey: Option[SpatialKey])
+  private def getSinglebandRDD(products: Iterable[_ <: EOProduct], date: LocalDate, spatialKey: Option[SpatialKey])
                               (implicit sc: SparkContext, layout: LayoutDefinition): RDD[(SpatialKey, Iterable[RasterRegion])] with Metadata[TileLayerMetadata[SpatialKey]] = {
 
     val sourcePaths = singlebandSourcePathsForDate(products)
@@ -163,25 +164,25 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
       file.delete()
   }
 
-  private def multibandSourcePathsForDate(products: util.Collection[_ <: EOProduct], bands: Array[String]) = {
+  private def multibandSourcePathsForDate(products: Iterable[_ <: EOProduct], bands: Array[String]) = {
     pathsFromProducts(products, bands: _*).toArray
   }
 
-  private def multibandSourcePathsForDate(products: util.Collection[_ <: EOProduct]) = {
+  private def multibandSourcePathsForDate(products: Iterable[_ <: EOProduct]) = {
     val paths = pathsFromProducts(products, "VV", "VH")
     (paths(0), paths(1))
   }
 
-  private def singlebandSourcePathsForDate(products: util.Collection[_ <: EOProduct]) = {
+  private def singlebandSourcePathsForDate(products: Iterable[_ <: EOProduct]) = {
     pathsFromProducts(products, "").head
   }
 
-  private def pathsFromProducts(products: util.Collection[_ <: EOProduct], bands: String*) = {
+  private def pathsFromProducts(products: Iterable[_ <: EOProduct], bands: String*) = {
     val result = new ListBuffer[List[String]]
 
     bands.foreach(b => {
       val paths = new ListBuffer[String]
-      products.asScala.foreach(p => {
+      products.foreach(p => {
         p.getFiles.asScala.foreach(f => {
           if (b.isEmpty || f.getBands.contains(b)) {
             paths += f.getFilename.getPath
