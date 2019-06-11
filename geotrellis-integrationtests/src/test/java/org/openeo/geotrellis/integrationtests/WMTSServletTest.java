@@ -48,7 +48,7 @@ public class WMTSServletTest {
         wmtsServer.start();
         try{
             System.out.println("wmtsServer.getPort() = " + wmtsServer.getPort());
-            PyramidFactory accumuloTileLayerRepository = new PyramidFactory("hdp-accumulo-instance", "epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181");
+            PyramidFactory accumuloTileLayerRepository = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181");
 
             Extent bbox = new Extent(3, 51, 3.5, 52);
             Pyramid<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> pyramid = accumuloTileLayerRepository.pyramid(layername, bbox,"EPSG:4326", Option.apply( ZonedDateTime.parse("2017-07-01T00:00:00Z")),Option.apply( ZonedDateTime.parse("2017-09-01T00:00:00Z")));
@@ -88,7 +88,7 @@ public class WMTSServletTest {
         wmtsServer.start();
         try{
             System.out.println("wmtsServer.getPort() = " + wmtsServer.getPort());
-            PyramidFactory accumuloTileLayerRepository = new PyramidFactory("hdp-accumulo-instance", "epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181");
+            PyramidFactory accumuloTileLayerRepository = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181");
 
             Extent bbox = new Extent(10.5, 46.5, 11.4, 46.9);
             //Extent bbox = new Extent(3, 51, 3.5, 52);
@@ -128,7 +128,7 @@ public class WMTSServletTest {
         conf.set("spark.hadoop.fs.permissions.umask-mode", "000");
         SparkContext sc = SparkContext.getOrCreate(conf);
         String layername = "CGS_SENTINEL2_RADIOMETRY_V102";
-        PyramidFactory accumuloTileLayerRepository = new PyramidFactory("hdp-accumulo-instance", "epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181");
+        PyramidFactory accumuloTileLayerRepository = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181");
 
         Extent bbox = new Extent(3, 51, 4.5, 52);
         Pyramid<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> pyramid = accumuloTileLayerRepository.pyramid(layername,bbox,"EPSG:4326",Option.apply( ZonedDateTime.parse("2017-07-01T00:00:00Z")),Option.apply( ZonedDateTime.parse("2017-09-01T00:00:00Z")));

@@ -32,7 +32,7 @@ class GeotrellisAccumuloRDDTest  extends FlatSpec with Matchers{
     val layername = "CGS_SENTINEL2_RADIOMETRY_V102"
     val bbox = new Extent(3, 51, 3.5, 52)
 
-    val accumuloTileLayerRepository = new PyramidFactory("hdp-accumulo-instance", "epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181")
+    val accumuloTileLayerRepository = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
     accumuloTileLayerRepository.pyramid(layername,bbox,"EPSG:4326")
     val rdd = accumuloTileLayerRepository.rdd[MultibandTile](layername)
 

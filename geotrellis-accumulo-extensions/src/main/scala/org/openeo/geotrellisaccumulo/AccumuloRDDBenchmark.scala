@@ -71,7 +71,7 @@ object AccumuloRDDBenchmark extends App {
   //construct query, similar to:
   //https://proba-v-mep.esa.int/api/timeseries/v1.0/ts/S2_FAPAR_V102_WEBMERCATOR2/point?lon=4.959340&lat=51.190701&startDate=2017-01-01&endDate=2018-03-01
   //val bbox = new Extent(3.4, 51, 3.5, 52)
-  val pyramidFactory: PyramidFactory = new PyramidFactory("hdp-accumulo-instance", "epod6.vgt.vito.be:2181,epod17.vgt.vito.be:2181,epod1.vgt.vito.be:2181")
+  val pyramidFactory: PyramidFactory = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
   pyramidFactory.setSplitRanges(splitRanges)
 
 
