@@ -21,45 +21,6 @@ import org.junit.Test
 
 object Sentinel2FileDataCubeTest {
 
-  private def overlappingFiles(at: ZonedDateTime, bbox: ProjectedExtent): Iterable[URI] = {
-    // e.g. with an AttributeStore
-
-    Seq("file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B01_60M_V102.tif")
-      .map(URI.create)
-  }
-
-  private def correspondingBandFiles(file: URI, bandIds: Seq[String]): Seq[URI] = {
-    // e.g. replace placeholder with specific bands in file name
-
-    val geoTiff10m = "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B02_10M_V102.tif"
-    val geoTiff20m = "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B8A_20M_V102.tif"
-    val geoTiff60m = "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B01_60M_V102.tif"
-
-    Seq(geoTiff10m, geoTiff20m, geoTiff60m)
-      .map(URI.create)
-
-    /*val allBands = Seq(
-      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B01_60M_V102.tif",
-      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B02_10M_V102.tif",
-      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B03_10M_V102.tif",
-      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B04_10M_V102.tif",
-      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B05_20M_V102.tif",
-      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B06_20M_V102.tif",
-      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B07_20M_V102.tif",
-      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B08_10M_V102.tif",
-      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B11_20M_V102.tif",
-      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B12_20M_V102.tif",
-      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B8A_20M_V102.tif"
-    )
-
-    allBands
-      .map(URI.create)*/
-  }
-}
-
-class Sentinel2FileDataCubeTest {
-  import Sentinel2FileDataCubeTest._
-
   object FileIMGeoTiffAttributeStore {
     def apply(name: String, path: Path): InMemoryGeoTiffAttributeStore =
       new InMemoryGeoTiffAttributeStore {
@@ -78,15 +39,74 @@ class Sentinel2FileDataCubeTest {
       }
   }
 
+  private def overlappingFiles(at: ZonedDateTime, bbox: ProjectedExtent): Iterable[String] = {
+    // e.g. with an AttributeStore
+
+    Seq("file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B01_60M_V102.tif")
+      .map(URI.create)
+
+    geoTiffBandUriTemplates(at, bbox)
+  }
+
+  private def correspondingBandFiles(file: String, bandIds: Seq[String]): Seq[String] = {
+    // e.g. replace placeholder with specific bands in file name
+
+    val geoTiff10m = "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B02_10M_V102.tif"
+    val geoTiff20m = "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B8A_20M_V102.tif"
+    val geoTiff60m = "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B01_60M_V102.tif"
+
+    Seq(geoTiff10m, geoTiff20m, geoTiff60m)
+      .map(URI.create)
+
+    val allBands = Seq(
+      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B01_60M_V102.tif",
+      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B02_10M_V102.tif",
+      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B03_10M_V102.tif",
+      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B04_10M_V102.tif",
+      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B05_20M_V102.tif",
+      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B06_20M_V102.tif",
+      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B07_20M_V102.tif",
+      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B08_10M_V102.tif",
+      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B11_20M_V102.tif",
+      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B12_20M_V102.tif",
+      "file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/03/25/S2B_20190325T105709Z_31UDS_CGS_V102_000/S2B_20190325T105709Z_31UDS_TOC_V102/S2B_20190325T105709Z_31UDS_TOC-B8A_20M_V102.tif"
+    )
+
+    allBands
+      .map(URI.create)
+
+    bandIds.map(bandId => file.replace("<your band here>", bandId))
+  }
+
+  private def geoTiffBandUriTemplates(at: ZonedDateTime, bbox: ProjectedExtent): Seq[String] = {
+    val (year, month, day) = (at.getYear, at.getMonthValue, at.getDayOfMonth)
+
+    val arbitraryBand = "TOC-B01_60M"
+    val arbitraryBandGlob = new Path(f"file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/$year/$month%02d/$day%02d/*/*/*_${arbitraryBand}_V102.tif")
+
+    val attributeStore = FileIMGeoTiffAttributeStore(at.toString, arbitraryBandGlob)
+
+    attributeStore.query(bbox)
+      .map(_.uri.toString.replace(arbitraryBand, "<your band here>"))
+  }
+}
+
+class Sentinel2FileDataCubeTest {
+  import Sentinel2FileDataCubeTest._
+
   @Test
   def test(): Unit = {
     val bbox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
     val from = ZonedDateTime.of(LocalDate.of(2019, 3, 25), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    val to = from
+    val to = from plusWeeks 1
 
     val sparkConf = new SparkConf()
       .set("spark.kryoserializer.buffer.max", "512m")
       .set("spark.rdd.compress","true")
+
+    /*geoTiffBandUriTemplates(at = from, bbox)
+      .map(correspondingBandFiles(_, Seq("TOC-B02_10M", "TOC-B8A_20M", "TOC-B01_60M")))
+      .foreach(println)*/
 
     implicit val sc =
       SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName, sparkConf)
@@ -97,40 +117,29 @@ class Sentinel2FileDataCubeTest {
 
       println(s"got $tileCount tiles")
 
-      rasterSourceRDD.keys
+      val timestamps = rasterSourceRDD.keys
         .map(_.time)
         .distinct()
         .collect()
         .sortWith(_ isBefore _)
-        .foreach(println)
 
-      val Raster(multibandTile, extent) = rasterSourceRDD
-          .toSpatial(from)
+      for (timestamp <- timestamps) {
+        val Raster(multibandTile, extent) = rasterSourceRDD
+          .toSpatial(timestamp)
           .crop(bbox.reproject(rasterSourceRDD.metadata.crs))
           .stitch()
 
-      MultibandGeoTiff(multibandTile, extent, rasterSourceRDD.metadata.crs).write("/tmp/stitched.geotiff")
+        MultibandGeoTiff(multibandTile, extent, rasterSourceRDD.metadata.crs).write(s"/tmp/stitched_$timestamp.geotiff")
+      }
     } finally {
       sc.stop()
     }
   }
 
-  private def geoTiffBandUriTemplates(at: ZonedDateTime, bbox: ProjectedExtent): Seq[String] = {
-    val (year, month, day) = ("2019", "03", "25")
-
-    val arbitraryBand = "TOC-B01"
-    val arbitraryBandGlob = new Path(s"file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/$year/$month/$day/*/*/*_${arbitraryBand}_*_V102.tif")
-
-    val attributeStore = FileIMGeoTiffAttributeStore("???", arbitraryBandGlob)
-
-    attributeStore.query("???", bbox)
-      .map(_.uri.toString.replace(arbitraryBand, "!!!"))
-  }
-
   private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
 
   private def tileLayerRdd(bbox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val bandIds = Seq("2", "8A", "1")
+    val bandIds = Seq("TOC-B02_10M", "TOC-B8A_20M", "TOC-B01_60M")
 
     val dates = sequentialDates(from)
       .takeWhile(date => !(date isAfter to))
@@ -140,13 +149,13 @@ class Sentinel2FileDataCubeTest {
 
     val layout = ZoomedLayoutScheme(targetCrs).levelForZoom(targetCrs.worldExtent, 14).layout
 
-    val overlappingFilesPerDay: RDD[(ZonedDateTime, Iterable[URI])] = sc.parallelize(dates, dates.size)
+    val overlappingFilesPerDay: RDD[(ZonedDateTime, Iterable[String])] = sc.parallelize(dates, dates.size)
       .map(date => (date, overlappingFiles(date, reprojectedBoundingBox)))
 
     val overlappingTilesPerDay: RDD[(ZonedDateTime, Iterable[(SpatialKey, MultibandTile)])] = overlappingFilesPerDay.map { case (date, overlappingFiles) =>
       val overlappingMultibandTiles: Iterable[(SpatialKey, MultibandTile)] = overlappingFiles.flatMap(overlappingFile => {
         val bandTileSources: Seq[LayoutTileSource] = correspondingBandFiles(overlappingFile, bandIds)
-          .map(bandFile => GeoTiffRasterSource(bandFile.toString).reproject(targetCrs).tileToLayout(layout))
+          .map(bandFile => GeoTiffRasterSource(bandFile).reproject(targetCrs).tileToLayout(layout))
 
         val overlappingKeys = layout.mapTransform.keysForGeometry(reprojectedBoundingBox.extent.toPolygon())
 
