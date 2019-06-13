@@ -10,6 +10,7 @@ import geotrellis.raster.{MultibandTile, ShortUserDefinedNoDataCellType}
 import geotrellis.raster.io.geotiff.reader.TiffTagsReader
 import geotrellis.spark.io.hadoop.{HdfsRangeReader, HdfsUtils}
 import geotrellis.spark.io.hadoop.geotiff.{GeoTiffMetadata, InMemoryGeoTiffAttributeStore}
+import geotrellis.spark.pyramid.Pyramid
 import geotrellis.spark.tiling._
 import geotrellis.spark.{ContextRDD, KeyBounds, MultibandTileLayerRDD, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.vector.ProjectedExtent
@@ -19,14 +20,22 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 
 object Sentinel2RadiometryPyramidFactory {
+  private val maxZoom = 14
+
   sealed abstract class Band(private[file] val id: String)
   case object B01 extends Band("TOC-B01_60M")
   case object B02 extends Band("TOC-B02_10M")
   case object B03 extends Band("TOC-B03_10M")
   case object B04 extends Band("TOC-B04_10M")
+  case object B05 extends Band("TOC-B05_20M")
+  case object B06 extends Band("TOC-B06_20M")
+  case object B07 extends Band("TOC-B07_20M")
+  case object B08 extends Band("TOC-B08_10M")
+  case object B11 extends Band("TOC-B11_20M")
+  case object B12 extends Band("TOC-B12_20M")
   case object B8A extends Band("TOC-B8A_20M")
 
-  private val allBands = Seq(B01, B02, B03, B04, B8A)
+  private val allBands = Seq(B01, B02, B03, B04, B05, B06, B07, B08, B11, B12, B8A)
 
   private object FileIMGeoTiffAttributeStore {
     def apply(name: String, path: Path): InMemoryGeoTiffAttributeStore =
@@ -72,7 +81,10 @@ class Sentinel2RadiometryPyramidFactory {
 
   private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
 
-  def layer(zoom: Int, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, bands: Seq[Band] = allBands)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
+  def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom, bands: Seq[Band] = allBands)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
+    require(zoom >= 0)
+    require(zoom <= maxZoom)
+
     val bandIds = bands.map(_.id)
 
     val dates = sequentialDates(from)
@@ -126,5 +138,12 @@ class Sentinel2RadiometryPyramidFactory {
     }
 
     ContextRDD(tilesRdd, metadata)
+  }
+
+  def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, bands: Seq[Band] = allBands): Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    implicit val sc = SparkContext.getOrCreate()
+
+    val layers = for (zoom <- maxZoom to 0 by -1) yield zoom -> layer(boundingBox, from, to, zoom, bands)
+    Pyramid(layers.toMap)
   }
 }
