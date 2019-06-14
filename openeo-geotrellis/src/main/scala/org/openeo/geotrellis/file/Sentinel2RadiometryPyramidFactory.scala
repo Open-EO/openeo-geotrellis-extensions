@@ -13,7 +13,7 @@ import geotrellis.spark.io.hadoop.geotiff.{GeoTiffMetadata, InMemoryGeoTiffAttri
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.spark.tiling._
 import geotrellis.spark.{ContextRDD, KeyBounds, MultibandTileLayerRDD, SpaceTimeKey, SpatialKey, TileLayerMetadata}
-import geotrellis.vector.ProjectedExtent
+import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.SparkContext
@@ -22,20 +22,23 @@ import org.apache.spark.rdd.RDD
 object Sentinel2RadiometryPyramidFactory {
   private val maxZoom = 14
 
-  sealed abstract class Band(private[file] val id: String)
-  case object B01 extends Band("TOC-B01_60M")
-  case object B02 extends Band("TOC-B02_10M")
-  case object B03 extends Band("TOC-B03_10M")
-  case object B04 extends Band("TOC-B04_10M")
-  case object B05 extends Band("TOC-B05_20M")
-  case object B06 extends Band("TOC-B06_20M")
-  case object B07 extends Band("TOC-B07_20M")
-  case object B08 extends Band("TOC-B08_10M")
-  case object B11 extends Band("TOC-B11_20M")
-  case object B12 extends Band("TOC-B12_20M")
-  case object B8A extends Band("TOC-B8A_20M")
+  object Band extends Enumeration {
+    private[file] case class Val(fileMarker: String) extends super.Val
 
-  private val allBands = Seq(B01, B02, B03, B04, B05, B06, B07, B08, B11, B12, B8A)
+    implicit def valueToVal(x: Value): Val = x.asInstanceOf[Val]
+
+    val B01 = Val("TOC-B01_60M")
+    val B02 = Val("TOC-B02_10M")
+    val B03 = Val("TOC-B03_10M")
+    val B04 = Val("TOC-B04_10M")
+    val B05 = Val("TOC-B05_20M")
+    val B06 = Val("TOC-B06_20M")
+    val B07 = Val("TOC-B07_20M")
+    val B08 = Val("TOC-B08_10M")
+    val B11 = Val("TOC-B11_20M")
+    val B12 = Val("TOC-B12_20M")
+    val B8A = Val("TOC-B8A_20M")
+  }
 
   private object FileIMGeoTiffAttributeStore {
     def apply(name: String, path: Path): InMemoryGeoTiffAttributeStore =
@@ -61,7 +64,7 @@ object Sentinel2RadiometryPyramidFactory {
   private def overlappingFilePathTemplates(at: ZonedDateTime, bbox: ProjectedExtent): Iterable[FilePathTemplate] = {
     val (year, month, day) = (at.getYear, at.getMonthValue, at.getDayOfMonth)
 
-    val arbitraryBandId = B01.id
+    val arbitraryBandId = Band.B01.fileMarker
     val arbitraryBandGlob = new Path(f"file:/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/$year/$month%02d/$day%02d/*/*/*_${arbitraryBandId}_V102.tif")
 
     val attributeStore = FileIMGeoTiffAttributeStore(at.toString, arbitraryBandGlob)
@@ -81,11 +84,11 @@ class Sentinel2RadiometryPyramidFactory {
 
   private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
 
-  def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom, bands: Seq[Band] = allBands)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
+  def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom, bands: Seq[Band.Value] = Band.values.toSeq)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     require(zoom >= 0)
     require(zoom <= maxZoom)
 
-    val bandIds = bands.map(_.id)
+    val bandFileMarkers = bands.map(_.fileMarker)
 
     val dates = sequentialDates(from)
       .takeWhile(date => !(date isAfter to))
@@ -100,7 +103,7 @@ class Sentinel2RadiometryPyramidFactory {
 
     val overlappingTilesPerDay: RDD[(ZonedDateTime, Iterable[(SpatialKey, MultibandTile)])] = overlappingFilesPerDay.map { case (date, overlappingFiles) =>
       val overlappingMultibandTiles: Iterable[(SpatialKey, MultibandTile)] = overlappingFiles.flatMap(overlappingFile => {
-        val bandTileSources: Seq[LayoutTileSource] = correspondingBandFiles(overlappingFile, bandIds)
+        val bandTileSources: Seq[LayoutTileSource] = correspondingBandFiles(overlappingFile, bandFileMarkers)
           .map(bandFile => GeoTiffRasterSource(bandFile).reproject(targetCrs).tileToLayout(layout))
 
         val overlappingKeys = layout.mapTransform.keysForGeometry(reprojectedBoundingBox.extent.toPolygon())
@@ -140,10 +143,24 @@ class Sentinel2RadiometryPyramidFactory {
     ContextRDD(tilesRdd, metadata)
   }
 
-  def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, bands: Seq[Band] = allBands): Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    implicit val sc = SparkContext.getOrCreate()
-
+  def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, bands: Seq[Band.Value] = Band.values.toSeq)(implicit sc: SparkContext): Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val layers = for (zoom <- maxZoom to 0 by -1) yield zoom -> layer(boundingBox, from, to, zoom, bands)
     Pyramid(layers.toMap)
+  }
+
+  def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String, band_indices: Array[Int]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+    implicit val sc = SparkContext.getOrCreate()
+
+    val projectedExtent = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
+    val from = ZonedDateTime.parse(from_date)
+    val to = ZonedDateTime.parse(to_date)
+
+    val bands: Seq[Band.Value] =
+      if (band_indices.isEmpty) Band.values.toSeq
+      else band_indices map Band.apply
+
+    pyramid(projectedExtent, from, to, bands).levels.toSeq
+      .sortBy { case (zoom, _) => zoom }
+      .reverse
   }
 }
