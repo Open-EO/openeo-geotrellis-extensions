@@ -18,13 +18,14 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import scala.collection.JavaConverters._
 
 object Sentinel2RadiometryPyramidFactory {
   private val maxZoom = 14
 
   object Band extends Enumeration {
+    // Jesus Christ almighty
     private[file] case class Val(fileMarker: String) extends super.Val
-
     implicit def valueToVal(x: Value): Val = x.asInstanceOf[Val]
 
     val B01 = Val("TOC-B01_60M")
@@ -148,8 +149,8 @@ class Sentinel2RadiometryPyramidFactory {
     Pyramid(layers.toMap)
   }
 
-  def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String, band_indices: Array[Int]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
-    implicit val sc = SparkContext.getOrCreate()
+  def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String, band_indices: java.util.List[Int]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+    implicit val sc: SparkContext = SparkContext.getOrCreate()
 
     val projectedExtent = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
     val from = ZonedDateTime.parse(from_date)
@@ -157,7 +158,7 @@ class Sentinel2RadiometryPyramidFactory {
 
     val bands: Seq[Band.Value] =
       if (band_indices.isEmpty) Band.values.toSeq
-      else band_indices map Band.apply
+      else band_indices.asScala map Band.apply
 
     pyramid(projectedExtent, from, to, bands).levels.toSeq
       .sortBy { case (zoom, _) => zoom }

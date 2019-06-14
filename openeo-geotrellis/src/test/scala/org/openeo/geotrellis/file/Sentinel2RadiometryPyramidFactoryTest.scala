@@ -12,6 +12,9 @@ import org.apache.spark.SparkConf
 import org.junit.{Test, Ignore}
 import Sentinel2RadiometryPyramidFactory.Band._
 
+import scala.collection.mutable.ArrayBuffer
+import scala.collection.JavaConverters._
+
 class Sentinel2RadiometryPyramidFactoryTest {
 
   private val pyramidFactory = new Sentinel2RadiometryPyramidFactory
@@ -31,7 +34,7 @@ class Sentinel2RadiometryPyramidFactoryTest {
 
     try {
       val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
-      val bandIndices = Array(B02, B8A, B01).map(_.id)
+      val bandIndices = ArrayBuffer(B02, B8A, B01).map(_.id).asJava
 
       val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs,
         DateTimeFormatter.ISO_OFFSET_DATE_TIME format from, DateTimeFormatter.ISO_OFFSET_DATE_TIME format to,
