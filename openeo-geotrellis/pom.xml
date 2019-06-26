@@ -37,6 +37,12 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>com.azavea.geotrellis</groupId>
+            <artifactId>geotrellis-contrib-vlm_${scala.binary.version}</artifactId>
+            <version>0.10.0</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-common</artifactId>
             <version>${hadoop.version}</version>
