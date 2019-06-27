@@ -11,6 +11,12 @@
 
     <artifactId>openeo-geotrellis</artifactId>
     <dependencies>
+        <dependency>
+            <artifactId>ExtractTimeSeries</artifactId>
+            <groupId>be.vito.eodata</groupId>
+            <version>3.5.0</version>
+            <scope>provided</scope>
+        </dependency>
 
         <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
