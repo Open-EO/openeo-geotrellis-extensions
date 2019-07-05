@@ -8,6 +8,7 @@ import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaPairRDD$;
 import org.apache.spark.rdd.RDD;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
@@ -36,6 +37,10 @@ public class TestOpenEOProcesses {
 
     }
 
+    @AfterClass
+    public static void shutDownSparkContext() {
+        SparkContext.getOrCreate().stop();
+    }
 
     @Test
     public void testSimpleUnaryProcess() {

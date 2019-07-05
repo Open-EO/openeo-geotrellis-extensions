@@ -13,6 +13,7 @@ import geotrellis.spark.SpatialKey;
 import org.apache.commons.io.IOUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.openeo.geotrellisseeder.Band;
@@ -45,6 +46,10 @@ public class ReferenceTileTest {
         seeder = new TileSeeder(13, 1, false);
     }
 
+    @AfterClass
+    public static void shutDownSparkContext() {
+        sc.stop();
+    }
 
     @Test
     public void testSaveAndCompareAll() throws ImageComparisonFailedException, IOException, InterruptedException {

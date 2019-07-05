@@ -8,6 +8,7 @@ import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.rdd.RDD;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import scala.Tuple2;
@@ -31,6 +32,12 @@ public class PyramidFactoryTest {
         //creating context may have screwed up security settings
         UserGroupInformation.setConfiguration(config);
     }
+
+    @AfterClass
+    public static void shutDownSparkContext() {
+        SparkContext.getOrCreate().stop();
+    }
+
     @Test
     public void createPyramid() {
 
