@@ -157,7 +157,7 @@ class Sentinel2RadiometryPyramidFactory {
     val to = ZonedDateTime.parse(to_date)
 
     val bands: Seq[Band.Value] =
-      if (band_indices.isEmpty) Band.values.toSeq
+      if (band_indices == null) Band.values.toSeq
       else band_indices.asScala map Band.apply
 
     pyramid(projectedExtent, from, to, bands).levels.toSeq
