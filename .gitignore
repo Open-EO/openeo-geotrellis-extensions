@@ -26,3 +26,5 @@ hs_err_pid*
 *.timestamp
 target/
 .idea/
+dependency-reduced-pom.xml
+
