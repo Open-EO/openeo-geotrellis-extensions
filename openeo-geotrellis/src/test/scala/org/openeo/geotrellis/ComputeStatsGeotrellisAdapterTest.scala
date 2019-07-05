@@ -24,7 +24,7 @@ class ComputeStatsGeotrellisAdapterTest {
     val computeStatsGeotrellisAdapter = new ComputeStatsGeotrellisAdapter
 
     val from = ZonedDateTime.of(LocalDate.of(2019, 1, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    val to = from plusMonths 1
+    val to = from plusWeeks 1
 
     val polygon1 =
       """
@@ -97,18 +97,26 @@ class ComputeStatsGeotrellisAdapterTest {
     val sc = SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName)
 
     try {
-      val results = computeStatsGeotrellisAdapter.compute_average_timeseries(
-        "S2_FAPAR",
+      val stats = computeStatsGeotrellisAdapter.compute_average_timeseries(
+        "S1_GRD_SIGMA0_ASCENDING",
         polygons.asJava,
         polygons_srs = "EPSG:4326",
         from_date = ISO_OFFSET_DATE_TIME format from,
         to_date = ISO_OFFSET_DATE_TIME format to,
-        zoom = 14
+        zoom = 14,
+        band_index = 2
       ).asScala
 
-      for ((date, means) <- results) {
+      for ((date, means) <- stats) {
         println(s"$date: $means")
       }
+
+      assertFalse(stats.isEmpty)
+
+      val means = stats
+        .flatMap { case (_, dailyMeans) => dailyMeans.asScala }
+
+      assertTrue(means.exists(mean => !mean.isNaN))
     } finally {
       sc.stop()
     }
