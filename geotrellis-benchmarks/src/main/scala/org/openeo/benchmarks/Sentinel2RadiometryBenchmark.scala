@@ -5,7 +5,7 @@ import java.net.URL
 import org.openeo.geotrellisaccumulo.{PyramidFactory => AccumuloPyramidFactory}
 import java.time.{Duration, Instant, LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-import java.util.Arrays
+import scala.collection.JavaConverters._
 
 import geotrellis.proj4.LatLng
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
@@ -14,6 +14,7 @@ import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import geotrellis.shapefile.ShapeFileReader
 import org.apache.spark.{SparkConf, SparkContext}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
+import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory.Band._
 
 object Sentinel2RadiometryBenchmark {
 
@@ -31,8 +32,8 @@ object Sentinel2RadiometryBenchmark {
       val bboxes = randomFields(shapeFile, amount = nFields)
         .map(field => ProjectedExtent(field.envelope, crs))
 
-      val startDate = ZonedDateTime.of(LocalDate.of(2019, 7, 5), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-      val endDate = startDate
+      val startDate = ZonedDateTime.of(LocalDate.of(2018, 7, 5), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+      val endDate = startDate plusYears 1
 
       val bbox_srs = s"EPSG:${crs.epsgCode.get}"
       val (start_date, end_date) = (ISO_OFFSET_DATE_TIME format startDate, ISO_OFFSET_DATE_TIME format endDate)
@@ -44,27 +45,45 @@ object Sentinel2RadiometryBenchmark {
 
       def filePyramid(bbox: ProjectedExtent): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
         val fromFile = new Sentinel2RadiometryPyramidFactory
-        fromFile.pyramid_seq(bbox.extent, bbox_srs, start_date, end_date, Arrays.asList(1, 2, 3, 7))
+        val band_indices = Seq(B02, B03, B04, B08).map(_.id).asJava
+        fromFile.pyramid_seq(bbox.extent, bbox_srs, start_date, end_date, band_indices)
       }
 
-      for ((bbox, i) <- bboxes.zipWithIndex) {
-        val (_, accumuloDuration) = time {
-          writeGeoTiff(accumuloPyramid(bbox), bbox, s"/tmp/fromAccumulo_$i.tif")
-        }
-
-        val (_, fileDuration) = time {
-          writeGeoTiff(filePyramid(bbox), bbox, s"/tmp/fromFile_$i.tif")
-        }
-
-        println(s"Stitching an Accumulo pyramid took $accumuloDuration, while a file pyramid took $fileDuration.")
+      val durations = for {
+        (bbox, i) <- bboxes.zipWithIndex
+        (_, accumuloDuration) = time { evaluate(accumuloPyramid(bbox)) }
+        (_, fileDuration) = time { evaluate(filePyramid(bbox)) }
+      } yield {
+        println(s"Evaluating an Accumulo pyramid took $accumuloDuration, while a file pyramid took $fileDuration.")
+        (accumuloDuration, fileDuration)
       }
+
+      val (totalAccumuloDuration, totalFileDuration) = durations reduce[(Duration, Duration)] {
+        case ((ad1, fd1), (ad2, fd2)) => (ad1 plus ad2, fd1 plus fd2)
+      }
+
+      val (averageAccumuloDuration, averageFileDuration) =
+        (totalAccumuloDuration dividedBy durations.size, totalFileDuration dividedBy durations.size)
+
+      println(s"""
+            |Accumulo average: ${averageAccumuloDuration.getSeconds} seconds
+            |    file average: ${averageFileDuration.getSeconds} seconds
+         """.stripMargin
+      )
     } finally sc.stop()
   }
 
-  private def writeGeoTiff(pyramid: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])], bbox: ProjectedExtent, outputFile: String): Unit = {
+  private def evaluate(pyramid: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])]): Unit = {
+    val (_, baseLayer) = pyramid
+      .maxBy { case (zoom, _) => zoom }
+
+    baseLayer.count()
+  }
+
+  private def writeGeoTiff(pyramid: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])], bbox: ProjectedExtent, at: ZonedDateTime, outputFile: String): Unit = {
     val (_, baseLayer) = pyramid.head
 
-    val raster = baseLayer.toSpatial()
+    val raster = baseLayer.toSpatial(at)
       .crop(bbox.reproject(baseLayer.metadata.crs))
       .stitch()
 
