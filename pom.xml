@@ -44,6 +44,7 @@
                 <module>geotrellis-seeder</module>
                 <module>openeo-geotrellis</module>
                 <module>geotrellis-integrationtests</module>
+                <module>geotrellis-benchmarks</module>
             </modules>
         </profile>
     </profiles>

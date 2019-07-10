@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+set -exo pipefail
+
+spark-submit \
+	--master yarn --deploy-mode cluster \
+	--num-executors 1 \
+	--principal vdboschj@VGT.VITO.BE --keytab $HOME/Documents/VITO/vdboschj.keytab \
+	--conf spark.hadoop.security.authentication=kerberos \
+	--conf spark.yarn.maxAppAttempts=1 \
+	--class org.openeo.benchmarks.Sentinel2RadiometryBenchmark \
+	target/geotrellis-benchmarks-1.2.0-SNAPSHOT.jar
+
