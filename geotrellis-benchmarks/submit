@@ -6,7 +6,8 @@ n_fields=$1
 
 spark-submit \
 	--master yarn --deploy-mode cluster \
-	--driver-memory 4g --num-executors 1 \
+	--driver-memory 10G \
+	--num-executors 5 --executor-memory 5G \
 	--principal vdboschj@VGT.VITO.BE --keytab $HOME/Documents/VITO/vdboschj.keytab \
 	--conf spark.hadoop.security.authentication=kerberos \
 	--conf spark.yarn.maxAppAttempts=1 \
