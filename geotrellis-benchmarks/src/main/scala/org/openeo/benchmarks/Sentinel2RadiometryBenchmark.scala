@@ -10,7 +10,7 @@ import scala.collection.JavaConverters._
 import geotrellis.proj4.LatLng
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.spark.{MultibandTileLayerRDD, SpaceTimeKey}
-import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
+import geotrellis.vector.{MultiPolygon, ProjectedExtent}
 import geotrellis.shapefile.ShapeFileReader
 import org.apache.spark.{SparkConf, SparkContext}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
@@ -20,6 +20,13 @@ object Sentinel2RadiometryBenchmark {
 
   def main(args: Array[String]): Unit = {
     val nFields = if (args.size >= 1) args(0).toInt else 1
+
+    val startDate = ZonedDateTime.of(if (args.size >= 2) LocalDate.parse(args(1)) else LocalDate.of(2018, 7, 5), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+    val endDate = if (args.size >= 3) ZonedDateTime.of(LocalDate.parse(args(2)), LocalTime.MIDNIGHT, ZoneOffset.UTC) else startDate
+
+    require(!endDate.isBefore(startDate))
+
+    println(s"an average over $nFields random field(s) from $startDate to $endDate")
 
     // Kryo can't serialize java.io.Serializable types by default -> broadcast variables end up null in the executors
     // val sc = SparkUtils.createSparkContext("Sentinel2RadiometryBenchmark")
@@ -31,9 +38,6 @@ object Sentinel2RadiometryBenchmark {
 
       val bboxes = randomFields(shapeFile, amount = nFields)
         .map(field => ProjectedExtent(field.envelope, crs))
-
-      val startDate = ZonedDateTime.of(LocalDate.of(2018, 7, 5), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-      val endDate = startDate plusYears 1
 
       val bbox_srs = s"EPSG:${crs.epsgCode.get}"
       val (start_date, end_date) = (ISO_OFFSET_DATE_TIME format startDate, ISO_OFFSET_DATE_TIME format endDate)
@@ -50,7 +54,7 @@ object Sentinel2RadiometryBenchmark {
       }
 
       val durations = for {
-        (bbox, i) <- bboxes.zipWithIndex
+        bbox <- bboxes
         (_, accumuloDuration) = time { evaluate(accumuloPyramid(bbox)) }
         (_, fileDuration) = time { evaluate(filePyramid(bbox)) }
       } yield {
