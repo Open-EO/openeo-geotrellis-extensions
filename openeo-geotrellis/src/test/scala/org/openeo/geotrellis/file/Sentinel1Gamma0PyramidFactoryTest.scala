@@ -1,6 +1,7 @@
 package org.openeo.geotrellis.file
 
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 
 import geotrellis.proj4.LatLng
@@ -24,7 +25,7 @@ class Sentinel1Gamma0PyramidFactoryTest {
   def writeGeoTiffs(): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
     val from = ZonedDateTime.of(LocalDate.of(2019, 3, 25), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    val to = from// plusWeeks 1
+    val to = from
 
     val sparkConf = new SparkConf()
       .set("spark.kryoserializer.buffer.max", "512m")
@@ -37,7 +38,7 @@ class Sentinel1Gamma0PyramidFactoryTest {
       val bandIndices = ArrayBuffer(IW_VH, IW_VV).map(gamma0Bands.indexOf(_)).asJava
 
       val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs,
-        DateTimeFormatter.ISO_OFFSET_DATE_TIME format from, DateTimeFormatter.ISO_OFFSET_DATE_TIME format to,
+        ISO_OFFSET_DATE_TIME format from, ISO_OFFSET_DATE_TIME format to,
         bandIndices)
       
       val zoom = 14

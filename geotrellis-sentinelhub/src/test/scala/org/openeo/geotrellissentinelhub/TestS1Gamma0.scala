@@ -14,7 +14,7 @@ class TestS1Gamma0 {
 
     val date = LocalDate.of(2019, 6, 1).atStartOfDay(ZoneId.systemDefault())
     
-    retrieveS1Gamma0TileFromSentinelHubTiff(bbox, date, 256, 256, gamma0Bands)
+    retrieveS1Gamma0TileFromSentinelHub(bbox, date, 256, 256, gamma0Bands)
   }
 
 }

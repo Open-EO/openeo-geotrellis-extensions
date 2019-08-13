@@ -22,6 +22,7 @@ import org.json4s.jackson.JsonMethods._
 import org.openeo.geotrellissentinelhub.Gamma0Bands.Band
 import scalaj.http.{Http, HttpResponse}
 
+import scala.annotation.tailrec
 import scala.collection.immutable
 
 package object geotrellissentinelhub {
@@ -185,6 +186,7 @@ package object geotrellissentinelhub {
     }
   }
 
+  @tailrec
   private def retry[T](n: Int, message: String)(fn: => T): T = {
     try {
       fn
