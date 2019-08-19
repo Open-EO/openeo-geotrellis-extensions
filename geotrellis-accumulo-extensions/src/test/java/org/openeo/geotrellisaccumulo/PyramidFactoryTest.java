@@ -26,6 +26,7 @@ public class PyramidFactoryTest {
         SparkConf conf = new SparkConf();
         conf.setAppName("PyramidFactoryTest");
         conf.setMaster("local[4]");
+        conf.set("spark.driver.bindAddress", "127.0.0.1");
         conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
 
         SparkContext sc =SparkContext.getOrCreate(conf);
