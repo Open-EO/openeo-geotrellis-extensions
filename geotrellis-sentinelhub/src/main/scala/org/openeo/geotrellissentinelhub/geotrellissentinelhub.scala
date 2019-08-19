@@ -191,10 +191,11 @@ package object geotrellissentinelhub {
     try {
       fn
     } catch {
-      case e: Exception if n > 1 =>
+      case e: Exception =>
+        if (n > 1) {
           println(s"Retry $n: ${e.getMessage} -> $message")
           retry(n - 1, message)(fn)
+        } else throw e
     }
   }
-
 }
