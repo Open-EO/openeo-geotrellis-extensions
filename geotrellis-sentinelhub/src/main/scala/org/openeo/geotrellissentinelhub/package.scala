@@ -1,27 +1,31 @@
 package org.openeo
 
-
 import java.awt.image.RenderedImage
 import java.io.InputStream
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatter.ISO_LOCAL_DATE
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.{Base64, Scanner}
 
 import geotrellis.proj4.{LatLng, WebMercator}
-import geotrellis.raster.{CellSize, FloatCellType, GridBounds, MultibandTile}
+import geotrellis.raster.io.geotiff.SinglebandGeoTiff
+import geotrellis.raster.io.geotiff.reader.GeoTiffReader
+import geotrellis.raster.{ArrayTile, CellSize, FloatCellType, GridBounds, MultibandTile, Tile}
 import geotrellis.spark.tiling.{LayoutLevel, ZoomedLayoutScheme}
 import geotrellis.spark.{KeyBounds, MultibandTileLayerRDD, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata, TileLayerRDD}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import javax.imageio.ImageIO
+import org.apache.commons.io.IOUtils
 import org.apache.spark.SparkContext
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
+import org.openeo.geotrellissentinelhub.Gamma0Bands.Band
 import scalaj.http.{Http, HttpResponse}
 
+import scala.annotation.tailrec
 import scala.collection.immutable
 
 package object geotrellissentinelhub {
-
 
   def createGeotrellisRDD(extent:ProjectedExtent, date:ZonedDateTime): TileLayerRDD[SpaceTimeKey] ={
     val metadata = createRDDMetadata(extent, date, date)
@@ -135,7 +139,7 @@ package object geotrellissentinelhub {
     val latlon = bbox.reproject(LatLng)
     val request = Http(url)
       .param("MAXCC", maxCloudCover.toString)
-      .param("TIME", DateTimeFormatter.ISO_LOCAL_DATE.format(startDate) + "/" + DateTimeFormatter.ISO_LOCAL_DATE.format(endDate))
+      .param("TIME", ISO_LOCAL_DATE.format(startDate) + "/" + ISO_LOCAL_DATE.format(endDate))
       .param("BBOX", latlon.ymin + "," + latlon.xmin + "," + latlon.ymax + "," + latlon.xmax)
       .param("SRSNAME", "EPSG:4326" )
 
@@ -146,5 +150,52 @@ package object geotrellissentinelhub {
     val dates =(response.body \\ "features" \ "properties" \ "date").extract[List[String]]
     return dates
 
+  }
+
+  def retrieveS1Gamma0TileFromSentinelHub(extent: Extent, date: ZonedDateTime, width: Int, height: Int, bands: Seq[Band]): MultibandTile = {
+    MultibandTile.apply(bands.map(retrieveS1Gamma0TileFromSentinelHub(extent, date, width, height, _)))
+  }
+
+  def retrieveS1Gamma0TileFromSentinelHub(extent: Extent, date: ZonedDateTime, width: Int, height: Int, band: Band): Tile = {
+    val url = "https://services.sentinel-hub.com/ogc/wcs/482b4783-9a62-4275-8728-63ee2baa2087?service=WCS&request=GetCoverage&format=image/tiff;depth=32f"
+
+    val request = Http(url)
+      .param("width", width.toString)
+      .param("height", height.toString)
+      .param("coverage", band.toString)
+      .param("time", date.format(ISO_LOCAL_DATE))
+      .param("bbox", extent.xmin + "," + extent.ymin + "," + extent.xmax + "," + extent.ymax)
+      .param("crs", "EPSG:3857")
+      .param("maxcc", "20")
+
+    try {
+      retry(3, s"$date + $extent") {
+        val bufferedImage = request.exec(parser = 
+          (code: Int, headers: Map[String, IndexedSeq[String]], inputStream: InputStream) => 
+            if (code == 200) GeoTiffReader.singlebandGeoTiffReader.read(IOUtils.toByteArray(inputStream)) else toString(inputStream))
+        bufferedImage.throwError
+
+        val tiff = bufferedImage.body.asInstanceOf[SinglebandGeoTiff]
+
+        tiff.tile
+      }
+    } catch {
+      case e: Exception =>
+        println(s"${e.getMessage}")
+        ArrayTile.empty(FloatCellType, width, height)
+    }
+  }
+
+  @tailrec
+  private def retry[T](n: Int, message: String)(fn: => T): T = {
+    try {
+      fn
+    } catch {
+      case e: Exception =>
+        if (n > 1) {
+          println(s"Retry $n: ${e.getMessage} -> $message")
+          retry(n - 1, message)(fn)
+        } else throw e
+    }
   }
 }
