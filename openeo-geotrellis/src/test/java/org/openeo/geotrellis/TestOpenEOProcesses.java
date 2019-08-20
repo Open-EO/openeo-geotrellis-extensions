@@ -31,6 +31,7 @@ public class TestOpenEOProcesses {
         SparkConf conf = new SparkConf();
         conf.setAppName("OpenEOTest");
         conf.setMaster("local[4]");
+        conf.set("spark.driver.bindAddress", "127.0.0.1");
         conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
         SparkContext.getOrCreate(conf);
 

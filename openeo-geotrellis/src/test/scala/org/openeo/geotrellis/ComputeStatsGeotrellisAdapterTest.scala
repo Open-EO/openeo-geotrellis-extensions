@@ -12,6 +12,8 @@ import geotrellis.vector.io._
 
 import scala.collection.JavaConverters._
 
+import org.apache.spark.SparkConf
+
 class ComputeStatsGeotrellisAdapterTest {
 
   @Before
@@ -94,7 +96,8 @@ class ComputeStatsGeotrellisAdapterTest {
 
     val polygons = Seq(polygon1.toWKT(), polygon2.toWKT())
 
-    val sc = SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName)
+    val conf = new SparkConf().set("spark.driver.bindAddress", "127.0.0.1")
+    val sc = SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName, conf)
 
     try {
       val stats = computeStatsGeotrellisAdapter.compute_average_timeseries(
