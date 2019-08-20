@@ -3,12 +3,15 @@ package org.openeo.geotrellis
 import java.time.{Instant, ZonedDateTime}
 
 import geotrellis.raster._
+import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.spark.{ContextRDD, Metadata, MultibandTileLayerRDD, SpaceTimeKey, TemporalKey, TileLayerMetadata}
+import geotrellis.spark.{ContextRDD, Metadata, MultibandTileLayerRDD, SpaceTimeKey, SpatialComponent, SpatialKey, TemporalKey, TileLayerMetadata}
 import org.apache.spark.rdd.RDD
+import org.openeo.geotrellis.focal._
 
 import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
+import scala.reflect.ClassTag
 
 
 class OpenEOProcesses extends Serializable {
@@ -92,6 +95,39 @@ class OpenEOProcesses extends Serializable {
     })
 
     return new ContextRDD(masked,datacube.metadata)
+  }
+
+  /**
+    * Implementation of openeo apply_kernel
+    * https://open-eo.github.io/openeo-api/v/0.4.2/processreference/#apply_kernel
+    *
+    * @param datacube
+    * @param kernel The kernel to be applied on the data cube. The kernel has to be as many dimensions as the data cube has dimensions.
+    *
+    *               This is basically a shortcut for explicitly multiplying each value by a factor afterwards, which is often required for some kernel-based algorithms such as the Gaussian blur.
+    * @tparam K
+    * @return
+    */
+  def apply_kernel[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K],kernel:Tile): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+    val k = new Kernel(kernel)
+    return MultibandFocalOperation(datacube, k, None){ (tile, bounds) => Convolve(tile, k, bounds, TargetCell.All) }
+  }
+
+  /**
+    * Apply kernel for spacetime data cubes.
+    * @see #apply_kernel
+    *
+    */
+  def apply_kernel_spacetime(datacube:MultibandTileLayerRDD[SpaceTimeKey],kernel:Tile): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+    return apply_kernel(datacube,kernel)
+  }
+
+  /**
+    * Apply kernel for spatial data cubes.
+    * @see #apply_kernel
+    */
+  def apply_kernel_spatial(datacube:MultibandTileLayerRDD[SpatialKey], kernel:Tile): RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]] = {
+    return apply_kernel(datacube,kernel)
   }
 
 }
