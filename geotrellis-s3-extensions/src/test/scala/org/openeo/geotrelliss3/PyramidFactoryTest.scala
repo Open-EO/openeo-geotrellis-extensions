@@ -4,7 +4,7 @@ import geotrellis.proj4.CRS
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark._
 import org.junit.Assert._
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.{AfterClass, BeforeClass, Test, Ignore}
 
 object PyramidFactoryTest {
 
@@ -13,6 +13,7 @@ object PyramidFactoryTest {
     val conf = new SparkConf
     conf.setAppName("PyramidFactoryTest")
     conf.setMaster("local[*]")
+    conf.set("spark.driver.bindAddress", "127.0.0.1")
     conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
     conf.set("spark.driver.maxResultSize", "4g")
 
@@ -25,6 +26,7 @@ object PyramidFactoryTest {
   }
 }
 
+@Ignore("until there's a suitable/reachable replacement for the to-be phased out ceph-mds1.vgt.vito.be")
 class PyramidFactoryTest {
 
   @Test

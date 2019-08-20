@@ -39,6 +39,7 @@ public class ReferenceTileTest {
         sc = SparkContext.getOrCreate(
                 new SparkConf()
                         .setMaster("local[1]")
+                        .set("spark.driver.bindAddress", "127.0.0.1")
                         .setAppName("ReferenceTileTest")
                         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
                         .set("spark.kryoserializer.buffer.max", "1024m"));
