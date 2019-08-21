@@ -100,6 +100,8 @@ class OpenEOProcesses extends Serializable {
   /**
     * Implementation of openeo apply_kernel
     * https://open-eo.github.io/openeo-api/v/0.4.2/processreference/#apply_kernel
+    * celltype is automatically converted to an appropriate celltype, depending on the kernel.
+    *
     *
     * @param datacube
     * @param kernel The kernel to be applied on the data cube. The kernel has to be as many dimensions as the data cube has dimensions.
@@ -110,7 +112,7 @@ class OpenEOProcesses extends Serializable {
     */
   def apply_kernel[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K],kernel:Tile): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
     val k = new Kernel(kernel)
-    return MultibandFocalOperation(datacube, k, None){ (tile, bounds) => Convolve(tile, k, bounds, TargetCell.All) }
+    return MultibandFocalOperation(datacube.convert(datacube.metadata.cellType.union(kernel.cellType)), k, None){ (tile, bounds) => Convolve(tile, k, bounds, TargetCell.All) }
   }
 
   /**
