@@ -33,8 +33,9 @@ class Sentinel1Gamma0PyramidFactory {
     val dates = sequentialDates(from)
       .takeWhile(date => !(date isAfter to))
 
-    val tilesRdd = sc.parallelize(dates, dates.size)
-      .flatMap(date => layout.mapTransform.keysForGeometry(reprojectedBoundingBox.toPolygon()).map(key => SpaceTimeKey(key, date)))
+    val overlappingKeys = dates.flatMap(date =>layout.mapTransform.keysForGeometry(reprojectedBoundingBox.toPolygon()).map(key => SpaceTimeKey(key, date)))
+
+    val tilesRdd = sc.parallelize(overlappingKeys)
       .map(key => (key, retrieveS1Gamma0TileFromSentinelHub(key.spatialKey.extent(layout), key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, bands)))
 
     val metadata: TileLayerMetadata[SpaceTimeKey] = {
