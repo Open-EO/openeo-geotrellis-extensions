@@ -16,6 +16,7 @@ import java.util.Collections;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class TestOpenEOProcessScriptBuilder {
 
@@ -129,6 +130,25 @@ public class TestOpenEOProcessScriptBuilder {
 
         System.out.println("Arrays.toString(ndvi.toArrayDouble()) = " + Arrays.toString(ndvi.toBytes()));
         assertEquals(0, ndvi.get(0, 0));
+    }
+
+    @DisplayName("Test proper error handling in case argument is missing.")
+    @Test
+    public void testException() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> empty = Collections.emptyMap();
+        builder.expressionStart("not", empty);
+        builder.argumentStart("expression");
+        builder.expressionStart("eq", empty);
+        //builder.argumentStart("x");
+        //builder.argumentEnd();
+
+        builder.constantArgument("y",(byte)10);
+
+        assertThrows(IllegalArgumentException.class,() -> {
+            builder.expressionEnd("eq", empty);
+        });
+
     }
 
     @DisplayName("Test logical equals, not equal constant")
