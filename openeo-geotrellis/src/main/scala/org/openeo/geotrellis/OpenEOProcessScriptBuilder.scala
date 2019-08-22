@@ -11,6 +11,7 @@ import scala.collection.mutable
 class OpenEOProcessScriptBuilder {
 
   val processStack: mutable.Stack[String] = new mutable.Stack[String]()
+  val arrayElementStack: mutable.Stack[Integer] = new mutable.Stack[Integer]()
   val argNames: mutable.Stack[String] = new mutable.Stack[String]()
   val contextStack: mutable.Stack[mutable.Map[String,Seq[Tile] => Seq[Tile]]] = new mutable.Stack[mutable.Map[String, Seq[Tile] => Seq[Tile]]]()
   var arrayCounter : Int =  0
@@ -80,6 +81,9 @@ class OpenEOProcessScriptBuilder {
     * @param index
     */
   def arrayStart(name:String): Unit = {
+
+    //save current arrayCounter
+    arrayElementStack.push(arrayCounter)
     argNames.push(name)
     contextStack.push(mutable.Map[String,Seq[Tile] => Seq[Tile]]())
     processStack.push("array")
@@ -133,7 +137,7 @@ class OpenEOProcessScriptBuilder {
       }
       results
     }
-    arrayCounter = 0
+    arrayCounter = arrayElementStack.pop()
 
     contextStack.head.put(name,inputFunction)
 

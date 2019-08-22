@@ -34,6 +34,20 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(3.0, ndvi.get(0, 0));
     }
 
+    @DisplayName("Test NDVI process graph with band selection")
+    @Test
+    public void testNDVIScriptBandSelection() {
+        OpenEOProcessScriptBuilder builder = createNormalizedDifferenceProcess2();
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        ByteArrayTile tile2 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1, tile2)));
+        Tile ndvi = result.apply(0);
+
+        System.out.println("Arrays.toString(ndvi.toArrayDouble()) = " + Arrays.toString(ndvi.toArrayDouble()));
+        assertEquals(3.0, ndvi.get(0, 0));
+    }
+
     static OpenEOProcessScriptBuilder createNormalizedDifferenceProcess() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Map<String, Object> empty = Collections.emptyMap();
@@ -57,6 +71,55 @@ public class TestOpenEOProcessScriptBuilder {
 
         builder.expressionEnd("divide", empty);
         return builder;
+    }
+
+    /**
+     * This normalized difference process actually selects bands from the array using array_element
+     * @return
+     */
+    static OpenEOProcessScriptBuilder createNormalizedDifferenceProcess2() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> empty = Collections.emptyMap();
+        builder.expressionStart("divide", empty);
+
+        builder.arrayStart("data");
+
+        builder.expressionStart("sum", empty);
+        specifyBands(builder);
+        builder.expressionEnd("sum",empty);
+        builder.arrayElementDone();
+
+        builder.expressionStart("subtract", empty);
+        specifyBands(builder);
+        builder.expressionEnd("subtract",empty);
+        builder.arrayElementDone();
+
+        builder.arrayEnd();
+
+        builder.expressionEnd("divide", empty);
+        return builder;
+    }
+
+    private static void specifyBands(OpenEOProcessScriptBuilder builder) {
+        builder.arrayStart("data");
+
+        Map<String, Object> args = Collections.singletonMap("index", 0);
+        builder.expressionStart("array_element", args);
+        builder.constantArgument("index",0);
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.expressionEnd("array_element",args);
+        builder.arrayElementDone();
+
+        args = Collections.singletonMap("index", 1);
+        builder.expressionStart("array_element",args);
+        builder.constantArgument("index",1);
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.expressionEnd("array_element",args);
+        builder.arrayElementDone();
+
+        builder.arrayEnd();
     }
 
     @DisplayName("Test add constant")
