@@ -6,6 +6,7 @@ import java.time.format.DateTimeFormatter
 import be.vito.eodata.extracttimeseries.geotrellis.{AccumuloLayerProvider, CancellationContext, ComputeStatsGeotrellis, ComputeStatsGeotrellisHelpers, LayerConfig, LayersConfig, MultibandLayerConfig, StatisticsCallback}
 import be.vito.eodata.processing.MaskedStatisticsProcessor.StatsMeanResult
 import geotrellis.proj4.CRS
+import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.{FloatConstantNoDataCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, SpaceTimeKey, TileLayerRDD}
 import geotrellis.vector.io._
@@ -46,26 +47,49 @@ class ComputeStatsGeotrellisAdapter {
   type JMap[K, V] = java.util.Map[K, V]
   type JList[T] = java.util.List[T]
 
+  private val unusedCancellationContext = new CancellationContext(null, null)
+
   def compute_average_timeseries(product_id: String, polygon_wkts: JList[String], polygons_srs: String, from_date: String, to_date: String, zoom: Int, band_index: Int): JMap[String, JList[Double]] = {
     val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
 
-    val polygons = polygon_wkts.asScala
-      .map(_.parseWKT().asInstanceOf[Polygon])
-      .map(MultiPolygon(_))
-      .toArray
+    val polygons = parsePolygonWkts(polygon_wkts)
 
     val crs: CRS = CRS.fromName(polygons_srs)
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
     val statisticsCollector = new StatisticsCollector
-    val cancellationContext: CancellationContext = new CancellationContext(null, null)
-    val sc = SparkContext.getOrCreate()
 
     computeStatsGeotrellis.computeAverageTimeSeries(product_id, polygons, crs, startDate, endDate, zoom,
-      statisticsCollector, cancellationContext, sc)
+      statisticsCollector, unusedCancellationContext, sc)
 
     statisticsCollector.results
   }
+
+  def compute_histogram_time_series(product_id: String, polygon_wkts: JList[String], polygons_srs: String,
+                                    from_date: String, to_date: String, zoom: Int, band_index: Int):
+  JMap[String, JList[JMap[Double, Long]]] = { // date -> polygon -> value/count
+    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
+
+    val polygons = parsePolygonWkts(polygon_wkts)
+
+    val crs: CRS = CRS.fromName(polygons_srs)
+    val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
+    val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
+    val histogramsCollector = new HistogramsCollector
+
+    computeStatsGeotrellis.computeHistogramTimeSeries(product_id, polygons, crs, startDate, endDate, zoom,
+      histogramsCollector, unusedCancellationContext, sc)
+
+    histogramsCollector.results
+  }
+
+  private def parsePolygonWkts(polygonWkts: JList[String]): Array[MultiPolygon] =
+    polygonWkts.asScala
+      .map(_.parseWKT().asInstanceOf[Polygon])
+      .map(MultiPolygon(_))
+      .toArray
+
+  private def sc: SparkContext = SparkContext.getOrCreate()
 
   private def layersConfig(bandIndex: Int): LayersConfig = new LayersConfig {
     private implicit val accumuloSupplier: () => AccumuloInstance = ComputeStatsGeotrellisHelpers.accumuloSupplier.get
@@ -126,6 +150,28 @@ class ComputeStatsGeotrellisAdapter {
       val means = results.map(_.getAverage)
 
       this.results.put(timestamp, means.asJava)
+    }
+
+    override def onCompleted(): Unit = ()
+  }
+
+  private class HistogramsCollector extends StatisticsCallback[Histogram[Double]] {
+    import java.util._
+
+    val results: JMap[String, JList[JMap[Double, Long]]] =
+      Collections.synchronizedMap(new HashMap[String, JList[JMap[Double, Long]]])
+
+    override def onComputed(date: ZonedDateTime, results: Seq[Histogram[Double]]): Unit = {
+      val timestamp = date format DateTimeFormatter.ISO_DATE_TIME
+
+      val polygonalHistograms: Seq[JMap[Double, Long]] = results.map { histogram =>
+        val buckets: JMap[Double, Long] = new HashMap[Double, Long]
+        histogram.foreach { case (value, count) => buckets.put(value, count) }
+
+        buckets
+      }
+
+      this.results.put(timestamp, polygonalHistograms.asJava)
     }
 
     override def onCompleted(): Unit = ()
