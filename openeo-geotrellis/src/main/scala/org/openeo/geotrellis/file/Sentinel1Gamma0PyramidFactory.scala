@@ -12,6 +12,8 @@ import org.apache.spark.SparkContext
 import org.openeo.geotrellissentinelhub.Gamma0Bands._
 import org.openeo.geotrellissentinelhub._
 
+import scala.collection.JavaConverters._
+
 object Sentinel1Gamma0PyramidFactory {
   private val maxZoom = 14
 }
@@ -67,7 +69,7 @@ class Sentinel1Gamma0PyramidFactory {
 
     val bands: Seq[Band] =
       if (band_indices == null) gamma0Bands
-      else gamma0Bands.filter(b => band_indices.contains(gamma0Bands.indexOf(b)))
+      else band_indices.asScala.map(gamma0Bands(_))
 
     pyramid(projectedExtent, from, to, bands).levels.toSeq
       .sortBy { case (zoom, _) => zoom }
