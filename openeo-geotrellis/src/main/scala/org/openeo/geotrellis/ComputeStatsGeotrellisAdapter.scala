@@ -17,6 +17,9 @@ import org.apache.spark.SparkContext
 import scala.collection.JavaConverters._
 
 object ComputeStatsGeotrellisAdapter {
+  type JMap[K, V] = java.util.Map[K, V]
+  type JList[T] = java.util.List[T]
+
   // OpenEO doesn't return physical values
   val noScaling = 1.0
   val noOffset = 0.0
@@ -39,55 +42,78 @@ object ComputeStatsGeotrellisAdapter {
       dataType = FloatConstantNoDataCellType,
       multiBandMath = singleBand(band.id)
     )
+
+  private def toMap(histogram: Histogram[Double]): JMap[Double, Long] = {
+    import java.util.HashMap
+
+    val buckets: JMap[Double, Long] = new HashMap[Double, Long]
+    histogram.foreach { case (value, count) => buckets.put(value, count) }
+
+    buckets
+  }
+
+  private def isoFormat(timestamp: ZonedDateTime): String = timestamp format DateTimeFormatter.ISO_DATE_TIME
 }
 
 class ComputeStatsGeotrellisAdapter {
   import ComputeStatsGeotrellisAdapter._
-
-  type JMap[K, V] = java.util.Map[K, V]
-  type JList[T] = java.util.List[T]
 
   private val unusedCancellationContext = new CancellationContext(null, null)
 
   def compute_average_timeseries(product_id: String, polygon_wkts: JList[String], polygons_srs: String, from_date: String, to_date: String, zoom: Int, band_index: Int): JMap[String, JList[Double]] = {
     val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
 
-    val polygons = parsePolygonWkts(polygon_wkts)
+    val polygons = polygon_wkts.asScala.map(parsePolygonWkt)
 
     val crs: CRS = CRS.fromName(polygons_srs)
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
     val statisticsCollector = new StatisticsCollector
 
-    computeStatsGeotrellis.computeAverageTimeSeries(product_id, polygons, crs, startDate, endDate, zoom,
+    computeStatsGeotrellis.computeAverageTimeSeries(product_id, polygons.toArray, crs, startDate, endDate, zoom,
       statisticsCollector, unusedCancellationContext, sc)
 
     statisticsCollector.results
   }
 
-  def compute_histogram_time_series(product_id: String, polygon_wkts: JList[String], polygons_srs: String,
+  def compute_histogram_time_series(product_id: String, polygon_wkt: String, polygon_srs: String,
+                                    from_date: String, to_date: String, zoom: Int, band_index: Int):
+  JMap[String, JMap[Double, Long]] = { // date -> value/count
+    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
+
+    val polygon = parsePolygonWkt(polygon_wkt)
+    val crs: CRS = CRS.fromName(polygon_srs)
+    val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
+    val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
+
+    val histograms = computeStatsGeotrellis.computeHistogramTimeSeries(product_id, polygon, crs, startDate, endDate, zoom, sc)
+
+    histograms
+      .map { case (temporalKey, histogram) => (isoFormat(temporalKey.time), toMap(histogram)) }
+      .collectAsMap()
+      .asJava
+  }
+
+  def compute_histograms_time_series(product_id: String, polygon_wkts: JList[String], polygons_srs: String,
                                     from_date: String, to_date: String, zoom: Int, band_index: Int):
   JMap[String, JList[JMap[Double, Long]]] = { // date -> polygon -> value/count
     val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
 
-    val polygons = parsePolygonWkts(polygon_wkts)
+    val polygons = polygon_wkts.asScala.map(parsePolygonWkt)
 
     val crs: CRS = CRS.fromName(polygons_srs)
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
     val histogramsCollector = new HistogramsCollector
 
-    computeStatsGeotrellis.computeHistogramTimeSeries(product_id, polygons, crs, startDate, endDate, zoom,
+    computeStatsGeotrellis.computeHistogramTimeSeries(product_id, polygons.toArray, crs, startDate, endDate, zoom,
       histogramsCollector, unusedCancellationContext, sc)
 
     histogramsCollector.results
   }
 
-  private def parsePolygonWkts(polygonWkts: JList[String]): Array[MultiPolygon] =
-    polygonWkts.asScala
-      .map(_.parseWKT().asInstanceOf[Polygon])
-      .map(MultiPolygon(_))
-      .toArray
+  private def parsePolygonWkt(polygonWkt: String): MultiPolygon =
+    MultiPolygon(polygonWkt.parseWKT().asInstanceOf[Polygon])
 
   private def sc: SparkContext = SparkContext.getOrCreate()
 
@@ -146,10 +172,9 @@ class ComputeStatsGeotrellisAdapter {
       Collections.synchronizedMap(new HashMap[String, JList[Double]])
 
     override def onComputed(date: ZonedDateTime, results: Seq[StatsMeanResult]): Unit = {
-      val timestamp = date format DateTimeFormatter.ISO_DATE_TIME
       val means = results.map(_.getAverage)
 
-      this.results.put(timestamp, means.asJava)
+      this.results.put(isoFormat(date), means.asJava)
     }
 
     override def onCompleted(): Unit = ()
@@ -162,16 +187,9 @@ class ComputeStatsGeotrellisAdapter {
       Collections.synchronizedMap(new HashMap[String, JList[JMap[Double, Long]]])
 
     override def onComputed(date: ZonedDateTime, results: Seq[Histogram[Double]]): Unit = {
-      val timestamp = date format DateTimeFormatter.ISO_DATE_TIME
+      val polygonalHistograms = results map toMap
 
-      val polygonalHistograms: Seq[JMap[Double, Long]] = results.map { histogram =>
-        val buckets: JMap[Double, Long] = new HashMap[Double, Long]
-        histogram.foreach { case (value, count) => buckets.put(value, count) }
-
-        buckets
-      }
-
-      this.results.put(timestamp, polygonalHistograms.asJava)
+      this.results.put(isoFormat(date), polygonalHistograms.asJava)
     }
 
     override def onCompleted(): Unit = ()
