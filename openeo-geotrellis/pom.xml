@@ -14,7 +14,7 @@
         <dependency>
             <artifactId>ExtractTimeSeries</artifactId>
             <groupId>be.vito.eodata</groupId>
-            <version>3.5.0</version>
+            <version>3.5.1</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
