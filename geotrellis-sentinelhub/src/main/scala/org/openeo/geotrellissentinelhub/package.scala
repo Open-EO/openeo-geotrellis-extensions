@@ -167,15 +167,17 @@ package object geotrellissentinelhub {
       .param("bbox", extent.xmin + "," + extent.ymin + "," + extent.xmax + "," + extent.ymax)
       .param("crs", "EPSG:3857")
       .param("maxcc", "20")
-
+    
     try {
-      retry(3, s"$date + $extent") {
-        val bufferedImage = request.exec(parser = 
+      retry(5, s"$date + $extent") {
+        val response = request.exec(parser = 
           (code: Int, headers: Map[String, IndexedSeq[String]], inputStream: InputStream) => 
             if (code == 200) GeoTiffReader.singlebandGeoTiffReader.read(IOUtils.toByteArray(inputStream)) else toString(inputStream))
-        bufferedImage.throwError
 
-        val tiff = bufferedImage.body.asInstanceOf[SinglebandGeoTiff]
+        if (response.isError)
+          throw new RetryException(response)
+
+        val tiff = response.body.asInstanceOf[SinglebandGeoTiff]
 
         tiff.tile
       }
@@ -187,15 +189,19 @@ package object geotrellissentinelhub {
   }
 
   @tailrec
-  private def retry[T](n: Int, message: String)(fn: => T): T = {
+  private def retry[T](nb: Int, message: String, i: Int = 1)(fn: => T): T = {
     try {
       fn
     } catch {
-      case e: Exception =>
-        if (n > 1) {
-          println(s"Retry $n: ${e.getMessage} -> $message")
-          retry(n - 1, message)(fn)
+      case e: RetryException =>
+        println(s"Retry $i: ${e.response.code}: ${e.response.header("Status").getOrElse("UNKNOWN")} -> $message")
+        if (i < nb) {
+          val retryAfter = e.response.header("Retry-After").getOrElse("0").toInt
+          Thread.sleep(retryAfter)
+          retry(nb, message, i + 1)(fn)
         } else throw e
     }
   }
+
+  class RetryException(val response: HttpResponse[Object]) extends Exception
 }
