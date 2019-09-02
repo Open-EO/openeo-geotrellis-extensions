@@ -2,6 +2,7 @@ package org.openeo
 
 import java.awt.image.RenderedImage
 import java.io.InputStream
+import java.lang.Math.pow
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ISO_LOCAL_DATE
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
@@ -194,10 +195,11 @@ package object geotrellissentinelhub {
       fn
     } catch {
       case e: RetryException =>
-        println(s"Retry $i: ${e.response.code}: ${e.response.header("Status").getOrElse("UNKNOWN")} -> $message")
+        println(s"Retry $i: $message -> ${e.response.code}: ${e.response.header("Status").getOrElse("UNKNOWN")}")
         if (i < nb) {
           val retryAfter = e.response.header("Retry-After").getOrElse("0").toInt
-          Thread.sleep(retryAfter)
+          val exponentialRetryAfter = retryAfter * pow(2, i - 1).toInt
+          Thread.sleep(exponentialRetryAfter)
           retry(nb, message, i + 1)(fn)
         } else throw e
     }
