@@ -4,7 +4,7 @@ import java.awt.image.RenderedImage
 import java.io.InputStream
 import java.lang.Math.pow
 import java.time.format.DateTimeFormatter
-import java.time.format.DateTimeFormatter.ISO_LOCAL_DATE
+import java.time.format.DateTimeFormatter.{ISO_DATE_TIME, ISO_LOCAL_DATE}
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.{Base64, Scanner}
 
@@ -21,12 +21,15 @@ import org.apache.spark.SparkContext
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
 import org.openeo.geotrellissentinelhub.Gamma0Bands.Band
+import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpResponse}
 
 import scala.annotation.tailrec
 import scala.collection.immutable
 
 package object geotrellissentinelhub {
+  
+  val logger = LoggerFactory.getLogger(getClass)
 
   def createGeotrellisRDD(extent:ProjectedExtent, date:ZonedDateTime): TileLayerRDD[SpaceTimeKey] ={
     val metadata = createRDDMetadata(extent, date, date)
@@ -164,10 +167,12 @@ package object geotrellissentinelhub {
       .param("width", width.toString)
       .param("height", height.toString)
       .param("coverage", band.toString)
-      .param("time", date.format(ISO_LOCAL_DATE) + "/" + date.format(ISO_LOCAL_DATE))
+      .param("time", date.format(ISO_DATE_TIME) + "/" + date.format(ISO_DATE_TIME))
       .param("bbox", extent.xmin + "," + extent.ymin + "," + extent.xmax + "," + extent.ymax)
       .param("crs", "EPSG:3857")
       .param("maxcc", "20")
+    
+    logger.info(s"Executing request: ${request.urlBuilder(request)}")
     
     try {
       retry(5, s"$date + $extent") {
@@ -184,7 +189,7 @@ package object geotrellissentinelhub {
       }
     } catch {
       case e: Exception =>
-        println(s"${e.getMessage}")
+        logger.info(s"Returning empty tile: $e")
         ArrayTile.empty(FloatCellType, width, height)
     }
   }
@@ -195,7 +200,7 @@ package object geotrellissentinelhub {
       fn
     } catch {
       case e: RetryException =>
-        println(s"Retry $i: $message -> ${e.response.code}: ${e.response.header("Status").getOrElse("UNKNOWN")}")
+        logger.info(s"Retry $i: $message -> ${e.response.code}: ${e.response.header("Status").getOrElse("UNKNOWN")}")
         if (i < nb) {
           val retryAfter = e.response.header("Retry-After").getOrElse("0").toInt
           val exponentialRetryAfter = retryAfter * pow(2, i - 1).toInt
