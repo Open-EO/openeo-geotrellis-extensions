@@ -185,7 +185,7 @@ package object geotrellissentinelhub {
 
         val tiff = response.body.asInstanceOf[SinglebandGeoTiff]
 
-        tiff.tile.toArrayTile()
+        tiff.tile.toArrayTile().withNoData(Some(1.0))
       }
     } catch {
       case e: Exception =>
