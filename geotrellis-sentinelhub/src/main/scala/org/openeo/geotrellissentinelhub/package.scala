@@ -167,7 +167,7 @@ package object geotrellissentinelhub {
       .param("width", width.toString)
       .param("height", height.toString)
       .param("coverage", band.toString)
-      .param("time", date.format(ISO_DATE_TIME) + "/" + date.format(ISO_DATE_TIME))
+      .param("time", date.format(ISO_DATE_TIME) + "/" + date.plusDays(1).format(ISO_DATE_TIME))
       .param("bbox", extent.xmin + "," + extent.ymin + "," + extent.xmax + "," + extent.ymax)
       .param("crs", "EPSG:3857")
       .param("maxcc", "20")
