@@ -15,12 +15,12 @@ public class TileSeederRunner {
     public static void main(String... args) {
         MemoryLogger ml = new MemoryLogger("main");
         
-        Option<Band[]> bands = Option.<Band[]>empty();
-        Option<String> colorMap = Option.<String>empty();
+        Option<Band[]> bands = Option.empty();
+        Option<String> colorMap = Option.empty();
         if (args.length > 4) {
-            bands = Option.<Band[]>apply(Arrays.stream(args[4].split(":")).map(Band::apply).toArray(Band[]::new));
+            bands = Option.apply(Arrays.stream(args[4].split(":")).map(Band::apply).toArray(Band[]::new));
         } else if (args.length > 3) {
-            colorMap = Option.<String>apply(args[3]);
+            colorMap = Option.apply(args[3]);
         }
         
         if (args.length > 1) {
@@ -35,7 +35,8 @@ public class TileSeederRunner {
                             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
                             .set("spark.kryoserializer.buffer.max", "1024m"));
             
-            new TileSeeder(13, 500, false).renderPng(rootPath, productType, date, colorMap, bands, Option.<SpatialKey>empty(), sc);
+            new TileSeeder(13, 500, false)
+                    .renderPng(rootPath, productType, date, colorMap, bands, Option.empty(), Option.empty(), Option.empty(), sc);
         }
         
         ml.logMem();

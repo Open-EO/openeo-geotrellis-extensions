@@ -16,6 +16,12 @@ class BandArrayConverter extends IStringConverter[Option[Array[Band]]] {
   }
 }
 
+class MaskArrayConverter extends IStringConverter[Option[Array[Int]]] {
+  override def convert(s: String): Option[Array[Int]] = {
+    Some(s.split(",").map(_.toInt))
+  }
+}
+
 class JCommanderArgs {
   @Parameter(names = Array("--date", "-d"), required = true, description = "a date (yyyy-MM-ddThh:mm:ss.sssZ)")
   var date: String = _
@@ -37,6 +43,12 @@ class JCommanderArgs {
   
   @Parameter(names = Array("--bands", "-b"), required = false, description = "order of RGB bands", converter = classOf[BandArrayConverter])
   var bands: Option[Array[Band]] = None
+  
+  @Parameter(names = Array("--productGlob", "-g"), required = false, description = "product glob", converter = classOf[StringOptionConverter])
+  var productGlob: Option[String] = None
+  
+  @Parameter(names = Array("--maskValues", "-m"), required = false, description = "mask values", converter = classOf[MaskArrayConverter])
+  var maskValues: Option[Array[Int]] = None
   
   @Parameter(names = Array("--verbose", "-v"), required = false, description = "print debug logs")
   var verbose: Boolean = false

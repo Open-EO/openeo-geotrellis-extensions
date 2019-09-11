@@ -3,6 +3,7 @@ package org.openeo.geotrellisseeder
 import java.io.File
 import java.nio.file.Paths
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 import be.vito.eodata.biopar.EOProduct
 import be.vito.eodata.catalog.CatalogClient
@@ -12,8 +13,10 @@ import geotrellis.contrib.vlm.geotiff.GeoTiffReprojectRasterSource
 import geotrellis.proj4.WebMercator
 import geotrellis.raster._
 import geotrellis.raster.render.ColorMap
+import geotrellis.spark.io.hadoop.HdfsUtils
 import geotrellis.spark.tiling._
 import geotrellis.spark.{ContextRDD, KeyBounds, Metadata, SpatialKey, TileLayerMetadata}
+import org.apache.hadoop.fs.Path
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 
@@ -28,18 +31,43 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
   def renderSinglePng(productType: String, date: LocalDate, key: SpatialKey, path: String, colorMap: Option[String] = None,
                       bands: Option[Array[Band]] = None)(implicit sc: SparkContext): Unit = {
 
-    renderPng(path, productType, date.toString, colorMap, bands, Some(key))
+    renderPng(path, productType, date.toString, colorMap, bands, spatialKey = Some(key))
   }
 
   def renderPng(path: String, productType: String, dateStr: String, colorMap: Option[String] = None, bands: Option[Array[Band]] = None,
-                spatialKey: Option[SpatialKey] = None)(implicit sc: SparkContext): Unit = {
+                productGlob: Option[String] = None, maskValues: Option[Array[Int]] = None, spatialKey: Option[SpatialKey] = None)
+               (implicit sc: SparkContext): Unit = {
 
     val date = LocalDate.parse(dateStr.substring(0, 10))
-
-    val catalog = new CatalogClient()
-    val products = catalog.getProducts(productType, date, date, "GEOTIFF").asScala
     
-    logger.logProducts(products)
+    var sourcePaths = None: Option[Seq[Seq[String]]]
+    
+    if (productGlob.isEmpty) {
+      val catalog = new CatalogClient()
+      val products = catalog.getProducts(productType, date, date, "GEOTIFF").asScala
+
+      logger.logProducts(products)
+
+      if (colorMap.isDefined) {
+        sourcePaths = Some(singlebandSourcePathsForDate(products))
+      } else if (bands.isDefined) {
+        sourcePaths = Some(multibandSourcePathsForDate(products, bands.get.map(_.name)))
+      } else {
+        sourcePaths = Some(multibandSourcePathsForDate(products))
+      }
+    } else {
+      def listFiles(path: Path) = HdfsUtils.listFiles(path, sc.hadoopConfiguration).map(_.toString)
+      
+      val dateGlob = productGlob.get.replace("#DATE#", date.format(DateTimeFormatter.ofPattern("yyyy/MM/dd")))
+      
+      if (colorMap.isDefined) {
+        sourcePaths = Some(Seq(listFiles(new Path(dateGlob))))
+      } else if (bands.isDefined) {
+        sourcePaths = Some(bands.get.map(b => listFiles(new Path(s"file://${dateGlob.replace("#BAND#", b.name)}"))))
+      } else {
+        sourcePaths = Some(Array("VV, VH").map(b => listFiles(new Path(dateGlob.replace("#BAND#", b)))))
+      }
+    }
 
     val globalLayout = GlobalLayout(256, zoomLevel, 0.1)
 
@@ -48,47 +76,45 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
 
     if (colorMap.isDefined) {
       val map = ColorMapParser.parse(colorMap.get)
-      getSinglebandRDD(products, date, spatialKey)
+      getSinglebandRDD(sourcePaths.get.head, date, spatialKey)
         .repartition(partitions)
         .foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel))
     } else if (bands.isDefined) {
-      getMultibandRDD(products, date, bands.get.map(_.name), spatialKey)
+      getMultibandRDD(sourcePaths.get, date, bands.get.map(_.name), spatialKey)
         .repartition(partitions)
-        .foreach(renderMultibandRDD(path, dateStr, bands.get, zoomLevel))
+        .foreach(renderMultibandRDD(path, dateStr, bands.get, zoomLevel, maskValues))
     } else {
-      getMultibandRDD(products, date, spatialKey)
+      getMultibandRDD(sourcePaths.get, date, spatialKey)
         .repartition(partitions)
         .foreach(renderMultibandRDD(path, dateStr, zoomLevel))
     }
   }
-
-  private def getMultibandRDD(products: Iterable[_ <: EOProduct], date: LocalDate, bands: Array[String], spatialKey: Option[SpatialKey])
+  
+  private def getMultibandRDD(sourcePaths: Seq[Seq[String]], date: LocalDate, bands: Array[String], spatialKey: Option[SpatialKey])
                              (implicit sc: SparkContext, layout: LayoutDefinition) = {
 
-    val sources = multibandSourcePathsForDate(products, bands).map(reproject)
+    val sources = sourcePaths.map(reproject)
 
-    loadMultibandTiles(sources, date, spatialKey)
+    loadMultibandTiles(sources, spatialKey)
   }
 
-  private def getMultibandRDD(products: Iterable[_ <: EOProduct], date: LocalDate, spatialKey: Option[SpatialKey])
+  private def getMultibandRDD(sourcePaths: Seq[Seq[String]], date: LocalDate, spatialKey: Option[SpatialKey])
                              (implicit sc: SparkContext, layout:LayoutDefinition) = {
 
-    val (sourcePathsVV, sourcePathsVH) = multibandSourcePathsForDate(products)
-    val (sourcesVV, sourcesVH) = (reproject(sourcePathsVV), reproject(sourcePathsVH))
+    val (sourcesVV, sourcesVH) = (reproject(sourcePaths(0)), reproject(sourcePaths(1)))
 
-    loadMultibandTiles(sourcesVV, sourcesVH, date, spatialKey)
+    loadMultibandTiles(sourcesVV, sourcesVH, spatialKey)
   }
 
-  private def getSinglebandRDD(products: Iterable[_ <: EOProduct], date: LocalDate, spatialKey: Option[SpatialKey])
+  private def getSinglebandRDD(sourcePaths: Seq[String], date: LocalDate, spatialKey: Option[SpatialKey])
                               (implicit sc: SparkContext, layout: LayoutDefinition): RDD[(SpatialKey, Iterable[RasterRegion])] with Metadata[TileLayerMetadata[SpatialKey]] = {
 
-    val sourcePaths = singlebandSourcePathsForDate(products)
     val sources = reproject(sourcePaths)
 
-    loadSinglebandTiles(sources, date, spatialKey)
+    loadSinglebandTiles(sources, spatialKey)
   }
 
-  private def reproject(sourcePaths: List[String]) = {
+  private def reproject(sourcePaths: Seq[String]) = {
     sourcePaths.map(GeoTiffReprojectRasterSource(_, WebMercator))
   }
 
@@ -112,7 +138,8 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
     }
   }
 
-  private def renderMultibandRDD(path: String, dateStr: String, bands: Array[Band], zoom: Int)(item: (SpatialKey, (Iterable[RasterRegion], Iterable[RasterRegion], Iterable[RasterRegion]))): Unit = {
+  private def renderMultibandRDD(path: String, dateStr: String, bands: Array[Band], zoom: Int, maskValues: Option[Array[Int]])
+                                (item: (SpatialKey, (Iterable[RasterRegion], Iterable[RasterRegion], Iterable[RasterRegion]))): Unit = {
     item match {
       case (key, (rRegions, gRegions, bRegions)) =>
         logger.logKey(key)
@@ -126,7 +153,7 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
           
           deleteSymLink(tilePath)
 
-          tilesToArrayMultibandTile(tileR, tileG, tileB, bands).renderPng().write(tilePath)
+          tilesToArrayMultibandTile(tileR, tileG, tileB, bands, maskValues).renderPng().write(tilePath)
 
           logger.logTile(key, tilePath)
         } else {
@@ -165,20 +192,19 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
   }
 
   private def multibandSourcePathsForDate(products: Iterable[_ <: EOProduct], bands: Array[String]) = {
-    pathsFromProducts(products, bands: _*).toArray
+    pathsFromProducts(products, bands: _*)
   }
 
   private def multibandSourcePathsForDate(products: Iterable[_ <: EOProduct]) = {
-    val paths = pathsFromProducts(products, "VV", "VH")
-    (paths(0), paths(1))
+    pathsFromProducts(products, "VV", "VH")
   }
 
   private def singlebandSourcePathsForDate(products: Iterable[_ <: EOProduct]) = {
-    pathsFromProducts(products, "").head
+    pathsFromProducts(products, "")
   }
 
   private def pathsFromProducts(products: Iterable[_ <: EOProduct], bands: String*) = {
-    val result = new ListBuffer[List[String]]
+    val result = new ListBuffer[Seq[String]]
 
     bands.foreach(b => {
       val paths = new ListBuffer[String]
@@ -189,13 +215,13 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
           }
         })
       })
-      result += paths.toList
+      result += paths
     })
 
-    result.toList
+    Seq(result: _*)
   }
 
-  private def loadMultibandTiles(sources: Array[_ <: Seq[RasterSource]], date: LocalDate, spatialKey: Option[SpatialKey])
+  private def loadMultibandTiles(sources: Seq[_ <: Seq[RasterSource]], spatialKey: Option[SpatialKey])
                                 (implicit sc: SparkContext, layout: LayoutDefinition):
                                 RDD[(SpatialKey, (Iterable[RasterRegion], Iterable[RasterRegion], Iterable[RasterRegion]))]
                                 with Metadata[TileLayerMetadata[SpatialKey]] = {
@@ -203,48 +229,45 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
     val allSources = sources.foldLeft(Seq[RasterSource]())((r1: Seq[RasterSource], r2: Seq[RasterSource]) => r1 ++ r2)
     val layerMetadata = getLayerMetadata(allSources)
 
-    val rRegionRDD = rasterRegionRDDFromSources(sources(0), date, spatialKey)
-    val gRegionRDD = rasterRegionRDDFromSources(sources(1), date, spatialKey)
-    val bRegionRDD = rasterRegionRDDFromSources(sources(2), date, spatialKey)
+    val rRegionRDD = rasterRegionRDDFromSources(sources(0), spatialKey)
+    val gRegionRDD = rasterRegionRDDFromSources(sources(1), spatialKey)
+    val bRegionRDD = rasterRegionRDDFromSources(sources(2), spatialKey)
 
     val regionRDD = rRegionRDD.join(gRegionRDD).join(bRegionRDD).mapValues(v => (v._1._1, v._1._2, v._2))
 
     ContextRDD(regionRDD, layerMetadata)
   }
 
-  private def loadMultibandTiles(sourcesVV: Seq[RasterSource], sourcesVH: Seq[RasterSource], date: LocalDate, spatialKey: Option[SpatialKey])
+  private def loadMultibandTiles(sourcesVV: Seq[RasterSource], sourcesVH: Seq[RasterSource], spatialKey: Option[SpatialKey])
                                 (implicit sc: SparkContext, layout: LayoutDefinition):
                                 RDD[(SpatialKey, (Iterable[RasterRegion], Iterable[RasterRegion]))]
                                 with Metadata[TileLayerMetadata[SpatialKey]] = {
 
     val layerMetadata = getLayerMetadata(sourcesVV ++ sourcesVH)
 
-    val vvRegionRDD = rasterRegionRDDFromSources(sourcesVV, date, spatialKey)
-    val vhRegionRDD = rasterRegionRDDFromSources(sourcesVH, date, spatialKey)
+    val vvRegionRDD = rasterRegionRDDFromSources(sourcesVV, spatialKey)
+    val vhRegionRDD = rasterRegionRDDFromSources(sourcesVH, spatialKey)
 
     val regionRDD = vvRegionRDD.join(vhRegionRDD)
 
     ContextRDD(regionRDD, layerMetadata)
   }
 
-  private def loadSinglebandTiles(sources: List[RasterSource], date: LocalDate, spatialKey: Option[SpatialKey])(implicit sc: SparkContext, layout: LayoutDefinition) = {
+  private def loadSinglebandTiles(sources: Seq[RasterSource], spatialKey: Option[SpatialKey])(implicit sc: SparkContext, layout: LayoutDefinition) = {
 
     val layerMetadata = getLayerMetadata(sources)
 
-    val regionRDD = rasterRegionRDDFromSources(sources, date, spatialKey)
+    val regionRDD = rasterRegionRDDFromSources(sources, spatialKey)
 
     ContextRDD(regionRDD, layerMetadata)
   }
 
   private def getLayerMetadata(sources: Seq[RasterSource])(implicit layout: LayoutDefinition) = {
-    val cellTypes = sources.map {
-      _.cellType
-    }.toSet
-    val projections = sources.map {
-      _.crs
-    }.toSet
+    val cellTypes = sources.map(_.cellType).toSet
+    val projections = sources.map(_.crs).toSet
+    
     require(
-      projections.size == 1,
+      projections.size <= 1,
       s"All RasterSources must be in the same projection, but multiple ones were found: $projections"
     )
 
@@ -261,7 +284,7 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
     TileLayerMetadata[SpatialKey](cellType, layout, combinedExtents, crs, layerKeyBounds)
   }
 
-  private def rasterRegionRDDFromSources(sources: Seq[RasterSource], date: LocalDate, spatialKey: Option[SpatialKey])
+  private def rasterRegionRDDFromSources(sources: Seq[RasterSource], spatialKey: Option[SpatialKey])
                                         (implicit sc: SparkContext, layout: LayoutDefinition): RDD[(SpatialKey, Iterable[RasterRegion])] = {
 
     val rdd = sc.parallelize(sources).flatMap { source =>
@@ -302,14 +325,19 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
     }
   }
 
-  private def tilesToArrayMultibandTile(tileR: Tile, tileG: Tile, tileB: Tile, bands: Array[Band]): ArrayMultibandTile = {
-    def norm(tile: Tile, oldMin: Int, oldMax: Int, newMin: Int, newMax: Int) = {
-      tile.normalize(oldMin, oldMax, newMin, newMax).map(i => if (i > newMax) newMax else if (i < newMin && !isNoData(i)) newMin else i)
+  private def tilesToArrayMultibandTile(tileR: Tile, tileG: Tile, tileB: Tile, bands: Array[Band], maskValues: Option[Array[Int]]): ArrayMultibandTile = {
+    def convertCloudsToNoData(tile: Tile) = {
+      tile.map(i => if (maskValues.getOrElse(Array()).contains(i)) Short.MaxValue else i)
+    }
+    
+    def normalize(tile: Tile, bandIndex: Int) = {
+      val band = bands(bandIndex)
+      tile.normalize(band.min, band.max, 1, 255).mapIfSet(1 max _ min 255)
     }
 
-    val normTileR = norm(tileR, bands(0).min, bands(0).max, 1, 255)
-    val normTileG = norm(tileG, bands(1).min, bands(1).max, 1, 255)
-    val normTileB = norm(tileB, bands(2).min, bands(2).max, 1, 255)
+    val normTileR = normalize(convertCloudsToNoData(tileR), 0)
+    val normTileG = normalize(convertCloudsToNoData(tileG), 1)
+    val normTileB = normalize(convertCloudsToNoData(tileB), 2)
 
     ArrayMultibandTile(normTileR, normTileG, normTileB)
   }
@@ -378,6 +406,8 @@ object TileSeeder {
       val zoomLevel = jCommanderArgs.zoomLevel
       val colorMap = jCommanderArgs.colorMap
       val bands = jCommanderArgs.bands
+      val productGlob = jCommanderArgs.productGlob
+      val maskValues = jCommanderArgs.maskValues
       val verbose = jCommanderArgs.verbose
 
       val seeder = new TileSeeder(zoomLevel, 500, verbose)
@@ -389,7 +419,7 @@ object TileSeeder {
             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
             .set("spark.kryoserializer.buffer.max", "1024m"))
 
-      seeder.renderPng(rootPath, productType, date, colorMap, bands)
+      seeder.renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues)
       
       sc.stop()
     }
