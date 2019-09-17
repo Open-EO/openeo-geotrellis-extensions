@@ -24,7 +24,7 @@ import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.collection.mutable.ListBuffer
 import scala.math._
 
-case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
+case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] = None) {
 
   private val logger = if (verbose) VerboseLogger(classOf[TileSeeder]) else StandardLogger(classOf[TileSeeder])
 
@@ -74,18 +74,20 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
     implicit val layout: LayoutDefinition =
       globalLayout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10, 10))._1
 
+    def getPartitions = partitions.getOrElse(round(pow(2, zoomLevel) / 20).toInt)
+    
     if (colorMap.isDefined) {
       val map = ColorMapParser.parse(colorMap.get)
       getSinglebandRDD(sourcePaths.get.head, date, spatialKey)
-        .repartition(partitions)
+        .repartition(getPartitions)
         .foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel))
     } else if (bands.isDefined) {
       getMultibandRDD(sourcePaths.get, date, bands.get.map(_.name), spatialKey)
-        .repartition(partitions)
+        .repartition(getPartitions)
         .foreach(renderMultibandRDD(path, dateStr, bands.get, zoomLevel, maskValues))
     } else {
       getMultibandRDD(sourcePaths.get, date, spatialKey)
-        .repartition(partitions)
+        .repartition(getPartitions)
         .foreach(renderMultibandRDD(path, dateStr, zoomLevel))
     }
   }
@@ -136,6 +138,8 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
           logger.logNoDataTile(key)
         }
     }
+
+    setFilePermissions(path, dateStr)
   }
 
   private def renderMultibandRDD(path: String, dateStr: String, bands: Array[Band], zoom: Int, maskValues: Option[Array[Int]])
@@ -160,6 +164,8 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
           logger.logNoDataTile(key)
         }
     }
+
+    setFilePermissions(path, dateStr)
   }
 
   private def renderMultibandRDD(path: String, dateStr: String, zoom: Int)(item: (SpatialKey, (Iterable[RasterRegion], Iterable[RasterRegion]))) {
@@ -182,6 +188,8 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
           logger.logNoDataTile(key)
         }
     }
+    
+    setFilePermissions(path, dateStr)
   }
   
   private def deleteSymLink(path: String) {
@@ -189,6 +197,17 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
     
     if (file.getAbsolutePath != file.getCanonicalPath || !file.exists())
       file.delete()
+  }
+  
+  private def setFilePermissions(path: String, dateStr: String) {
+    val datePath = Paths.get(path, "g", dateStr)
+    val builder = new ProcessBuilder("find", s"${datePath.toString}", "-type", "d", "-exec", "chmod", "755", "{}", ";")
+    val command = String.join(" ", builder.command)
+    val process = builder.start
+    val exitCode = process.waitFor
+    if (exitCode != 0) {
+      throw new IllegalStateException(s"Command $command exited with status code $exitCode")
+    }
   }
 
   private def multibandSourcePathsForDate(products: Iterable[_ <: EOProduct], bands: Array[String]) = {
@@ -375,13 +394,13 @@ case class TileSeeder(zoomLevel: Int, partitions: Int, verbose: Boolean) {
       val x1 = x.substring(3, 6)
       val x0 = x.substring(6)
 
-      val invertedRow = math.pow(2, zoom).toInt - 1 - key.row
+      val invertedRow = pow(2, zoom).toInt - 1 - key.row
       val y = f"$invertedRow%09d"
       val y2 = y.substring(0, 3)
       val y1 = y.substring(3, 6)
       val y0 = y.substring(6)
 
-      val dir = Paths.get(path).resolve(Paths.get(grid, dateStr, z, x2, x1, x0, y2, y1))
+      val dir = Paths.get(path, grid, dateStr, z, x2, x1, x0, y2, y1)
       dir.toFile.mkdirs()
       dir.resolve(y0 + ".png").toString
     }
@@ -410,7 +429,7 @@ object TileSeeder {
       val maskValues = jCommanderArgs.maskValues
       val verbose = jCommanderArgs.verbose
 
-      val seeder = new TileSeeder(zoomLevel, 500, verbose)
+      val seeder = new TileSeeder(zoomLevel, verbose)
 
       implicit val sc: SparkContext =
         SparkContext.getOrCreate(

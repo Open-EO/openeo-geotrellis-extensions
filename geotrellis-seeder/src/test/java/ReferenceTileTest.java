@@ -44,7 +44,7 @@ public class ReferenceTileTest {
                         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
                         .set("spark.kryoserializer.buffer.max", "1024m"));
         
-        seeder = new TileSeeder(13, 1, false);
+        seeder = new TileSeeder(13, false, Option.apply(1));
     }
 
     @AfterClass
