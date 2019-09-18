@@ -35,7 +35,8 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
   }
 
   def renderPng(path: String, productType: String, dateStr: String, colorMap: Option[String] = None, bands: Option[Array[Band]] = None,
-                productGlob: Option[String] = None, maskValues: Option[Array[Int]] = None, spatialKey: Option[SpatialKey] = None)
+                productGlob: Option[String] = None, maskValues: Option[Array[Int]] = None, permissions: Option[String] = None,
+                spatialKey: Option[SpatialKey] = None)
                (implicit sc: SparkContext): Unit = {
 
     val date = LocalDate.parse(dateStr.substring(0, 10))
@@ -80,15 +81,15 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       val map = ColorMapParser.parse(colorMap.get)
       getSinglebandRDD(sourcePaths.get.head, date, spatialKey)
         .repartition(getPartitions)
-        .foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel))
+        .foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel, permissions))
     } else if (bands.isDefined) {
       getMultibandRDD(sourcePaths.get, date, bands.get.map(_.name), spatialKey)
         .repartition(getPartitions)
-        .foreach(renderMultibandRDD(path, dateStr, bands.get, zoomLevel, maskValues))
+        .foreach(renderMultibandRDD(path, dateStr, bands.get, zoomLevel, maskValues, permissions))
     } else {
       getMultibandRDD(sourcePaths.get, date, spatialKey)
         .repartition(getPartitions)
-        .foreach(renderMultibandRDD(path, dateStr, zoomLevel))
+        .foreach(renderMultibandRDD(path, dateStr, zoomLevel, permissions))
     }
   }
   
@@ -120,7 +121,8 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     sourcePaths.map(GeoTiffReprojectRasterSource(_, WebMercator))
   }
 
-  private def renderSinglebandRDD(path: String, dateStr: String, colorMap: ColorMap, zoom: Int)(item: (SpatialKey, Iterable[RasterRegion])) {
+  private def renderSinglebandRDD(path: String, dateStr: String, colorMap: ColorMap, zoom: Int, permissions: Option[String])
+                                 (item: (SpatialKey, Iterable[RasterRegion])) {
     item match {
       case (key, regions) =>
         logger.logKey(key)
@@ -139,10 +141,10 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
         }
     }
 
-    setFilePermissions(path, dateStr)
+    permissions.foreach(setFilePermissions(path, dateStr, _))
   }
 
-  private def renderMultibandRDD(path: String, dateStr: String, bands: Array[Band], zoom: Int, maskValues: Option[Array[Int]])
+  private def renderMultibandRDD(path: String, dateStr: String, bands: Array[Band], zoom: Int, maskValues: Option[Array[Int]], permissions: Option[String])
                                 (item: (SpatialKey, (Iterable[RasterRegion], Iterable[RasterRegion], Iterable[RasterRegion]))): Unit = {
     item match {
       case (key, (rRegions, gRegions, bRegions)) =>
@@ -165,10 +167,11 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
         }
     }
 
-    setFilePermissions(path, dateStr)
+    permissions.foreach(setFilePermissions(path, dateStr, _))
   }
 
-  private def renderMultibandRDD(path: String, dateStr: String, zoom: Int)(item: (SpatialKey, (Iterable[RasterRegion], Iterable[RasterRegion]))) {
+  private def renderMultibandRDD(path: String, dateStr: String, zoom: Int, permissions: Option[String])
+                                (item: (SpatialKey, (Iterable[RasterRegion], Iterable[RasterRegion]))) {
     item match {
       case (key, (vvRegions, vhRegions)) =>
         logger.logKey(key)
@@ -189,7 +192,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
         }
     }
     
-    setFilePermissions(path, dateStr)
+    permissions.foreach(setFilePermissions(path, dateStr, _))
   }
   
   private def deleteSymLink(path: String) {
@@ -199,9 +202,9 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       file.delete()
   }
   
-  private def setFilePermissions(path: String, dateStr: String) {
+  private def setFilePermissions(path: String, dateStr: String, permissions: String) {
     val datePath = Paths.get(path, "g", dateStr)
-    val builder = new ProcessBuilder("find", s"${datePath.toString}", "-type", "d", "-exec", "chmod", "755", "{}", ";")
+    val builder = new ProcessBuilder("find", s"${datePath.toString}", "-type", "d", "-exec", "chmod", permissions, "{}", ";")
     val command = String.join(" ", builder.command)
     val process = builder.start
     val exitCode = process.waitFor
@@ -427,6 +430,7 @@ object TileSeeder {
       val bands = jCommanderArgs.bands
       val productGlob = jCommanderArgs.productGlob
       val maskValues = jCommanderArgs.maskValues
+      val permissions = jCommanderArgs.setPermissions
       val verbose = jCommanderArgs.verbose
 
       val seeder = new TileSeeder(zoomLevel, verbose)
@@ -438,7 +442,7 @@ object TileSeeder {
             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
             .set("spark.kryoserializer.buffer.max", "1024m"))
 
-      seeder.renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues)
+      seeder.renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions)
       
       sc.stop()
     }

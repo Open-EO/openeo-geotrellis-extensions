@@ -22,10 +22,11 @@ class ProductGlobTest {
 
     val productGlob = Some("/data/MTDA_DEV/CGS_S2/CGS_S2_RADIOMETRY/V110/#DATE#/*/*/S2*_TOC-#BAND#_10M_V110.tif") 
     val maskValues = Some(Array(21000))
+    val permissions = Some("755")
     val key = Some(SpatialKey(1071, 656))
     
     new TileSeeder(11, false, Some(1))
-      .renderPng(rootPath, productType, date, None, bands, productGlob, maskValues, key)
+      .renderPng(rootPath, productType, date, None, bands, productGlob, maskValues, permissions, key)
   }
 
 }
