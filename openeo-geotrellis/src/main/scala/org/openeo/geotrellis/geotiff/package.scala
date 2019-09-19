@@ -13,7 +13,7 @@ import scala.collection.JavaConverters._
 package object geotiff {
   type SRDD = RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]]
 
-  private def toExtent(extent: util.Map[String, Double]) =  Extent(
+  private def toExtent(extent: util.Map[String, Double]) = Extent(
     extent.get("xmin"),
     extent.get("ymin"),
     extent.get("xmax"),
@@ -23,6 +23,9 @@ package object geotiff {
   // ~ SpatialTiledRasterLayer in GeoPySpark but supports compression
   def saveStitched(rdd: SRDD, path: String, compression: Compression): Unit =
     saveStitched(rdd, path, None, None, compression)
+
+  def saveStitched(rdd: SRDD, path: String, cropBounds: util.Map[String, Double], compression: Compression): Unit =
+    saveStitched(rdd, path, Some(cropBounds), None, compression)
 
   def saveStitched(
     rdd: SRDD,
