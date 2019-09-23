@@ -81,16 +81,18 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       val map = ColorMapParser.parse(colorMap.get)
       getSinglebandRDD(sourcePaths.get.head, date, spatialKey)
         .repartition(getPartitions)
-        .foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel, permissions))
+        .foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel))
     } else if (bands.isDefined) {
       getMultibandRDD(sourcePaths.get, date, bands.get.map(_.name), spatialKey)
         .repartition(getPartitions)
-        .foreach(renderMultibandRDD(path, dateStr, bands.get, zoomLevel, maskValues, permissions))
+        .foreach(renderMultibandRDD(path, dateStr, bands.get, zoomLevel, maskValues))
     } else {
       getMultibandRDD(sourcePaths.get, date, spatialKey)
         .repartition(getPartitions)
-        .foreach(renderMultibandRDD(path, dateStr, zoomLevel, permissions))
+        .foreach(renderMultibandRDD(path, dateStr, zoomLevel))
     }
+    
+    permissions.foreach(setFilePermissions(path, dateStr, _))
   }
   
   private def getMultibandRDD(sourcePaths: Seq[Seq[String]], date: LocalDate, bands: Array[String], spatialKey: Option[SpatialKey])
@@ -121,7 +123,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     sourcePaths.map(GeoTiffReprojectRasterSource(_, WebMercator))
   }
 
-  private def renderSinglebandRDD(path: String, dateStr: String, colorMap: ColorMap, zoom: Int, permissions: Option[String])
+  private def renderSinglebandRDD(path: String, dateStr: String, colorMap: ColorMap, zoom: Int)
                                  (item: (SpatialKey, Iterable[RasterRegion])) {
     item match {
       case (key, regions) =>
@@ -140,11 +142,9 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
           logger.logNoDataTile(key)
         }
     }
-
-    permissions.foreach(setFilePermissions(path, dateStr, _))
   }
 
-  private def renderMultibandRDD(path: String, dateStr: String, bands: Array[Band], zoom: Int, maskValues: Option[Array[Int]], permissions: Option[String])
+  private def renderMultibandRDD(path: String, dateStr: String, bands: Array[Band], zoom: Int, maskValues: Option[Array[Int]])
                                 (item: (SpatialKey, (Iterable[RasterRegion], Iterable[RasterRegion], Iterable[RasterRegion]))): Unit = {
     item match {
       case (key, (rRegions, gRegions, bRegions)) =>
@@ -166,11 +166,9 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
           logger.logNoDataTile(key)
         }
     }
-
-    permissions.foreach(setFilePermissions(path, dateStr, _))
   }
 
-  private def renderMultibandRDD(path: String, dateStr: String, zoom: Int, permissions: Option[String])
+  private def renderMultibandRDD(path: String, dateStr: String, zoom: Int)
                                 (item: (SpatialKey, (Iterable[RasterRegion], Iterable[RasterRegion]))) {
     item match {
       case (key, (vvRegions, vhRegions)) =>
@@ -191,8 +189,6 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
           logger.logNoDataTile(key)
         }
     }
-    
-    permissions.foreach(setFilePermissions(path, dateStr, _))
   }
   
   private def deleteSymLink(path: String) {
@@ -204,12 +200,14 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
   
   private def setFilePermissions(path: String, dateStr: String, permissions: String) {
     val datePath = Paths.get(path, "g", dateStr)
-    val builder = new ProcessBuilder("find", s"${datePath.toString}", "-type", "d", "-exec", "chmod", permissions, "{}", ";")
-    val command = String.join(" ", builder.command)
-    val process = builder.start
-    val exitCode = process.waitFor
-    if (exitCode != 0) {
-      throw new IllegalStateException(s"Command $command exited with status code $exitCode")
+    if (datePath.toFile.exists()) {
+      val builder = new ProcessBuilder("find", s"${datePath.toString}", "-type", "d", "-exec", "chmod", permissions, "{}", ";")
+      val command = String.join(" ", builder.command)
+      val process = builder.start
+      val exitCode = process.waitFor
+      if (exitCode != 0) {
+        throw new IllegalStateException(s"Command $command exited with status code $exitCode")
+      }
     }
   }
 
