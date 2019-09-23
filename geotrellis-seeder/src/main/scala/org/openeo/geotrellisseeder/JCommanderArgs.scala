@@ -50,6 +50,9 @@ class JCommanderArgs {
   @Parameter(names = Array("--maskValues", "-m"), required = false, description = "mask values", converter = classOf[MaskArrayConverter])
   var maskValues: Option[Array[Int]] = None
   
+  @Parameter(names = Array("--setPermissions"), required = false, description = "set permissions", converter = classOf[StringOptionConverter])
+  var setPermissions: Option[String] = None
+  
   @Parameter(names = Array("--verbose", "-v"), required = false, description = "print debug logs")
   var verbose: Boolean = false
 
