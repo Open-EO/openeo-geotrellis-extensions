@@ -37,7 +37,10 @@ class Sentinel1Gamma0PyramidFactoryTest {
       val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
       val bandIndices = ArrayBuffer(IW_VH, IW_VV).map(gamma0Bands.indexOf(_)).asJava
 
-      val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs,
+      val uuid = System.getProperty("uuid")
+      
+      val pyramid = pyramidFactory.pyramid_seq(uuid, 
+        boundingBox.extent, srs,
         ISO_OFFSET_DATE_TIME format from, ISO_OFFSET_DATE_TIME format to,
         bandIndices)
       
