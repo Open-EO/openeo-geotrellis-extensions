@@ -1,17 +1,20 @@
 package org.openeo.geotrellis
 
+import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 
-import org.junit.{AfterClass, BeforeClass, Test}
-import org.junit.Assert._
-import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-
+import geotrellis.proj4.LatLng
+import geotrellis.raster.{ByteCells, ByteConstantTile}
+import geotrellis.spark.ContextRDD
+import geotrellis.spark.tiling.LayoutDefinition
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.Polygon
 import geotrellis.vector.io._
+import org.apache.spark.{SparkConf, SparkContext}
+import org.junit.Assert._
+import org.junit.{AfterClass, BeforeClass, Test}
 
 import scala.collection.JavaConverters._
-import org.apache.spark.{SparkConf, SparkContext}
 
 object ComputeStatsGeotrellisAdapterTest {
   private var sc: SparkContext = _
@@ -133,6 +136,43 @@ class ComputeStatsGeotrellisAdapterTest {
       .flatMap { case (_, dailyMeans) => dailyMeans.asScala }
 
     assertTrue(means.exists(mean => !mean.isNaN))
+  }
+
+  @Test
+  def compute_average_timeseries_on_datacube(): Unit = {
+
+    val minDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
+    val maxDate = ZonedDateTime.parse("2017-03-10T00:00:00Z")
+
+    val polygons = Seq(polygon1.toWKT(), polygon2.toWKT())
+
+    val tile10 = new ByteConstantTile(10.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))
+    val tile5 = new ByteConstantTile(5.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))
+    //val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, new ArrayMultibandTile(Array[Tile](tile10, tile5)), new TileLayout(1, 1, 256, 256))
+
+    val datacube = TestOpenEOProcesses.tileToSpaceTimeDataCube(tile10)
+    val polygonExtent = polygon1.envelope.combine(polygon2.envelope)
+    val updatedMetadata = datacube.metadata.copy(extent = polygonExtent,crs = LatLng,layout=LayoutDefinition(polygonExtent,datacube.metadata.tileLayout))
+
+    val stats = computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
+      ContextRDD(datacube,updatedMetadata),
+      polygons.asJava,
+      polygons_srs = "EPSG:4326",
+      from_date = ISO_OFFSET_DATE_TIME format minDate,
+      to_date = ISO_OFFSET_DATE_TIME format maxDate,
+      band_index = 0
+    ).asScala
+
+    for ((date, means) <- stats) {
+      println(s"$date: $means")
+    }
+
+    assertFalse(stats.isEmpty)
+
+    val means = stats
+      .flatMap { case (_, dailyMeans) => dailyMeans.asScala }.filter(!_.isEmpty)
+
+    assertTrue(means.exists(mean => !mean.get(0).isNaN))
   }
 
   @Test

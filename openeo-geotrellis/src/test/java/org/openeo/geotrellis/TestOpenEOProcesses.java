@@ -123,7 +123,7 @@ public class TestOpenEOProcesses {
 
     }
 
-    private ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> tileToSpaceTimeDataCube(Tile zeroTile) {
+    static ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> tileToSpaceTimeDataCube(Tile zeroTile) {
         ContextRDD<SpatialKey, MultibandTile, TileLayerMetadata<SpatialKey>> datacube = (ContextRDD<SpatialKey, MultibandTile, TileLayerMetadata<SpatialKey>>) TileLayerRDDBuilders$.MODULE$.createMultibandTileLayerRDD(SparkContext.getOrCreate(), new ArrayMultibandTile(new Tile[]{zeroTile}), new TileLayout(1, 1, zeroTile.cols(), zeroTile.rows()));
         final ZonedDateTime minDate = ZonedDateTime.parse("2017-01-01T00:00:00Z");
         final ZonedDateTime maxDate = ZonedDateTime.parse("2018-01-15T00:00:00Z");

@@ -3,14 +3,14 @@ package org.openeo.geotrellis
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
-import be.vito.eodata.extracttimeseries.geotrellis.{AccumuloLayerProvider, CancellationContext, ComputeStatsGeotrellis, ComputeStatsGeotrellisHelpers, LayerConfig, LayersConfig, MultibandLayerConfig, StatisticsCallback}
+import be.vito.eodata.extracttimeseries.geotrellis._
 import be.vito.eodata.processing.MaskedStatisticsProcessor.StatsMeanResult
 import geotrellis.proj4.CRS
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.{FloatConstantNoDataCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType}
+import geotrellis.spark.io.accumulo.AccumuloInstance
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, SpaceTimeKey, TileLayerRDD}
 import geotrellis.vector.io._
-import geotrellis.spark.io.accumulo.AccumuloInstance
 import geotrellis.vector.{MultiPolygon, Polygon}
 import org.apache.spark.SparkContext
 
@@ -72,6 +72,21 @@ class ComputeStatsGeotrellisAdapter {
 
     computeStatsGeotrellis.computeAverageTimeSeries(product_id, polygons.toArray, crs, startDate, endDate, zoom,
       statisticsCollector, unusedCancellationContext, sc)
+
+    statisticsCollector.results
+  }
+
+  def compute_average_timeseries_from_datacube(datacube:MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
+    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
+
+    val polygons = polygon_wkts.asScala.map(parsePolygonWkt)
+
+    val crs: CRS = CRS.fromName(polygons_srs)
+    val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
+    val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
+    val statisticsCollector = new MultibandStatisticsCollector
+
+    computeStatsGeotrellis.computeAverageTimeSeries(datacube, polygons.toArray, crs, startDate, endDate, statisticsCollector, unusedCancellationContext, sc)
 
     statisticsCollector.results
   }
@@ -175,6 +190,21 @@ class ComputeStatsGeotrellisAdapter {
       val means = results.map(_.getAverage)
 
       this.results.put(isoFormat(date), means.asJava)
+    }
+
+    override def onCompleted(): Unit = ()
+  }
+
+  private class MultibandStatisticsCollector extends StatisticsCallback[Seq[StatsMeanResult]] {
+    import java.util._
+
+    val results: JMap[String, JList[JList[Double]]] =
+      Collections.synchronizedMap(new HashMap[String, JList[JList[Double]]])
+
+    override def onComputed(date: ZonedDateTime, results: Seq[Seq[StatsMeanResult]]): Unit = {
+      val means = results.map(_.map(_.getAverage))
+
+      this.results.put(isoFormat(date), means.map(_.asJava).asJava)
     }
 
     override def onCompleted(): Unit = ()
