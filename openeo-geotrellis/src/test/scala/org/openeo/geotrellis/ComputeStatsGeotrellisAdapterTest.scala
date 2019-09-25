@@ -107,7 +107,10 @@ object ComputeStatsGeotrellisAdapterTest {
 class ComputeStatsGeotrellisAdapterTest {
   import ComputeStatsGeotrellisAdapterTest._
 
-  private val computeStatsGeotrellisAdapter = new ComputeStatsGeotrellisAdapter
+  private val computeStatsGeotrellisAdapter = new ComputeStatsGeotrellisAdapter(
+    zookeepers = "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",
+    accumuloInstanceName = "hdp-accumulo-instance"
+  )
 
   @Test
   def compute_average_timeseries(): Unit = {
