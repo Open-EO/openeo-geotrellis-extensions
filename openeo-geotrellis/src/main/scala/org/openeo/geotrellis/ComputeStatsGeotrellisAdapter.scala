@@ -109,6 +109,23 @@ class ComputeStatsGeotrellisAdapter {
       .asJava
   }
 
+  def compute_histograms_time_series_from_datacube(datacube:MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String,
+                                     from_date: String, to_date: String, band_index: Int):
+  JMap[String, JList[JList[JMap[Double, Long]]]] = { // date -> polygon -> value/count
+    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
+
+    val polygons = polygon_wkts.asScala.map(parsePolygonWkt)
+
+    val crs: CRS = CRS.fromName(polygons_srs)
+    val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
+    val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
+    val histogramsCollector = new MultibandHistogramsCollector
+
+    computeStatsGeotrellis.computeHistogramTimeSeries(datacube, polygons.toArray, crs, startDate, endDate, histogramsCollector, unusedCancellationContext, sc)
+
+    histogramsCollector.results
+  }
+
   def compute_histograms_time_series(product_id: String, polygon_wkts: JList[String], polygons_srs: String,
                                     from_date: String, to_date: String, zoom: Int, band_index: Int):
   JMap[String, JList[JMap[Double, Long]]] = { // date -> polygon -> value/count
@@ -219,6 +236,20 @@ class ComputeStatsGeotrellisAdapter {
     override def onComputed(date: ZonedDateTime, results: Seq[Histogram[Double]]): Unit = {
       val polygonalHistograms = results map toMap
 
+      this.results.put(isoFormat(date), polygonalHistograms.asJava)
+    }
+
+    override def onCompleted(): Unit = ()
+  }
+
+  private class MultibandHistogramsCollector extends StatisticsCallback[Seq[Histogram[Double]]] {
+    import java.util._
+
+    val results: JMap[String, JList[JList[JMap[Double, Long]]]] =
+      Collections.synchronizedMap(new HashMap[String, JList[JList[JMap[Double, Long]]]])
+
+    override def onComputed(date: ZonedDateTime, results: Seq[Seq[Histogram[Double]]]): Unit = {
+      val polygonalHistograms: Seq[JList[JMap[Double, Long]]] = results.map( _.map(toMap).asJava)
       this.results.put(isoFormat(date), polygonalHistograms.asJava)
     }
 

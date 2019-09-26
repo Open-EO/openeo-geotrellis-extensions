@@ -176,6 +176,44 @@ class ComputeStatsGeotrellisAdapterTest {
   }
 
   @Test
+  def compute_histogram_timeseries_on_datacube(): Unit = {
+
+    val minDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
+    val maxDate = ZonedDateTime.parse("2017-03-10T00:00:00Z")
+
+    val polygons = Seq(polygon1.toWKT(), polygon2.toWKT())
+
+    val tile10 = new ByteConstantTile(10.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))
+    val tile5 = new ByteConstantTile(5.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))
+    //val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, new ArrayMultibandTile(Array[Tile](tile10, tile5)), new TileLayout(1, 1, 256, 256))
+
+    val datacube = TestOpenEOProcesses.tileToSpaceTimeDataCube(tile10)
+    val polygonExtent = polygon1.envelope.combine(polygon2.envelope)
+    val updatedMetadata = datacube.metadata.copy(extent = polygonExtent,crs = LatLng,layout=LayoutDefinition(polygonExtent,datacube.metadata.tileLayout))
+
+    val stats = computeStatsGeotrellisAdapter.compute_histograms_time_series_from_datacube(
+      ContextRDD(datacube,updatedMetadata),
+      polygons.asJava,
+      polygons_srs = "EPSG:4326",
+      from_date = ISO_OFFSET_DATE_TIME format minDate,
+      to_date = ISO_OFFSET_DATE_TIME format maxDate,
+      band_index = 0
+    ).asScala
+
+    for ((date, means) <- stats) {
+      println(s"$date: $means")
+    }
+
+    assertFalse(stats.isEmpty)
+
+    val histogramlist = stats.get("2017-01-01T00:00:00Z")
+    val histogramPoly1 = histogramlist.get.get(0)
+    assertEquals(507,histogramPoly1.get(0).get(10.0),0.01)
+
+    //assertTrue(means.exists(mean => !mean.get(0).isNaN))
+  }
+
+  @Test
   def compute_histograms_time_series(): Unit = {
     val from = ZonedDateTime.of(LocalDate.of(2019, 1, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC)
     val to = from plusWeeks 1
