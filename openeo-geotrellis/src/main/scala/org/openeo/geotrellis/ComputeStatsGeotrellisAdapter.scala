@@ -2,8 +2,10 @@ package org.openeo.geotrellis
 
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.util
 
 import be.vito.eodata.extracttimeseries.geotrellis._
+import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
 import be.vito.eodata.processing.MaskedStatisticsProcessor.StatsMeanResult
 import geotrellis.proj4.CRS
 import geotrellis.raster.histogram.Histogram
@@ -17,12 +19,12 @@ import org.apache.spark.SparkContext
 import scala.collection.JavaConverters._
 
 object ComputeStatsGeotrellisAdapter {
-  type JMap[K, V] = java.util.Map[K, V]
-  type JList[T] = java.util.List[T]
+  private type JMap[K, V] = java.util.Map[K, V]
+  private type JList[T] = java.util.List[T]
 
   // OpenEO doesn't return physical values
-  val noScaling = 1.0
-  val noOffset = 0.0
+  private val noScaling = 1.0
+  private val noOffset = 0.0
 
   private object Sigma0Band extends Enumeration {
     val VH, VV, Angle = Value
@@ -44,9 +46,7 @@ object ComputeStatsGeotrellisAdapter {
     )
 
   private def toMap(histogram: Histogram[Double]): JMap[Double, Long] = {
-    import java.util.HashMap
-
-    val buckets: JMap[Double, Long] = new HashMap[Double, Long]
+    val buckets: JMap[Double, Long] = new util.HashMap[Double, Long]
     histogram.foreach { case (value, count) => buckets.put(value, count) }
 
     buckets
@@ -55,7 +55,7 @@ object ComputeStatsGeotrellisAdapter {
   private def isoFormat(timestamp: ZonedDateTime): String = timestamp format DateTimeFormatter.ISO_DATE_TIME
 }
 
-class ComputeStatsGeotrellisAdapter {
+class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: String) {
   import ComputeStatsGeotrellisAdapter._
 
   private val unusedCancellationContext = new CancellationContext(null, null)
@@ -150,7 +150,8 @@ class ComputeStatsGeotrellisAdapter {
   private def sc: SparkContext = SparkContext.getOrCreate()
 
   private def layersConfig(bandIndex: Int): LayersConfig = new LayersConfig {
-    private implicit val accumuloSupplier: () => AccumuloInstance = ComputeStatsGeotrellisHelpers.accumuloSupplier.get
+    private implicit val accumuloSupplier: () => AccumuloInstance =
+      () => KerberizedAccumuloInstance(zookeepers, accumuloInstanceName)
 
     override val layers: Map[String, LayerConfig] =
       Map(
@@ -201,7 +202,7 @@ class ComputeStatsGeotrellisAdapter {
     import java.util._
 
     val results: JMap[String, JList[Double]] =
-      Collections.synchronizedMap(new HashMap[String, JList[Double]])
+      Collections.synchronizedMap(new util.HashMap[String, JList[Double]])
 
     override def onComputed(date: ZonedDateTime, results: Seq[StatsMeanResult]): Unit = {
       val means = results.map(_.getAverage)
@@ -216,7 +217,7 @@ class ComputeStatsGeotrellisAdapter {
     import java.util._
 
     val results: JMap[String, JList[JList[Double]]] =
-      Collections.synchronizedMap(new HashMap[String, JList[JList[Double]]])
+      Collections.synchronizedMap(new util.HashMap[String, JList[JList[Double]]])
 
     override def onComputed(date: ZonedDateTime, results: Seq[Seq[StatsMeanResult]]): Unit = {
       val means = results.map(_.map(_.getAverage))
@@ -231,7 +232,7 @@ class ComputeStatsGeotrellisAdapter {
     import java.util._
 
     val results: JMap[String, JList[JMap[Double, Long]]] =
-      Collections.synchronizedMap(new HashMap[String, JList[JMap[Double, Long]]])
+      Collections.synchronizedMap(new util.HashMap[String, JList[JMap[Double, Long]]])
 
     override def onComputed(date: ZonedDateTime, results: Seq[Histogram[Double]]): Unit = {
       val polygonalHistograms = results map toMap
