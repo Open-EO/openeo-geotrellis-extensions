@@ -11,10 +11,11 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.{FloatConstantNoDataCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.spark.io.accumulo.AccumuloInstance
-import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, SpaceTimeKey, TileLayerRDD}
+import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, SpaceTimeKey, TemporalKey, TileLayerRDD}
 import geotrellis.vector.io._
 import geotrellis.vector.{MultiPolygon, Polygon}
 import org.apache.spark.SparkContext
+import org.apache.spark.rdd.RDD
 
 import scala.collection.JavaConverters._
 
@@ -105,6 +106,24 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
 
     histograms
       .map { case (temporalKey, histogram) => (isoFormat(temporalKey.time), toMap(histogram)) }
+      .collectAsMap()
+      .asJava
+  }
+
+  def compute_histogram_time_series_from_datacube(datacube:MultibandTileLayerRDD[SpaceTimeKey], polygon_wkt: String, polygon_srs: String,
+                                    from_date: String, to_date: String, band_index: Int):
+  JMap[String, JList[JMap[Double, Long]]] = { // date -> value/count
+    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
+
+    val polygon = parsePolygonWkt(polygon_wkt)
+    val crs: CRS = CRS.fromName(polygon_srs)
+    val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
+    val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
+
+    val histograms: Array[RDD[(TemporalKey, Array[Histogram[Double]])]] = computeStatsGeotrellis.computeHistogramTimeSeries(datacube, Array(polygon), crs, startDate, endDate,  sc)
+
+    histograms(0)
+      .map { case (temporalKey, histogram) => (isoFormat(temporalKey.time), histogram.map(toMap(_)).toSeq.asJava) }
       .collectAsMap()
       .asJava
   }
