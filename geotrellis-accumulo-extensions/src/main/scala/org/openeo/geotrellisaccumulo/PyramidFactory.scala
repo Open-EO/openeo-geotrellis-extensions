@@ -21,7 +21,6 @@ import org.apache.hadoop.io.Text
 import org.apache.hadoop.mapreduce.Job
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.apache.spark.storage.StorageLevel
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable
@@ -160,9 +159,9 @@ import scala.reflect.ClassTag
       val seq = for (z <- maxLevel to minLevel by -1) yield {
         header.valueClass match {
           case "geotrellis.raster.Tile" =>
-            (z, rdd[Tile](layerName, z,query).withContext(_.mapValues{MultibandTile(_)}).persist(StorageLevel.MEMORY_AND_DISK_SER))
+            (z, rdd[Tile](layerName, z,query).withContext(_.mapValues{MultibandTile(_)}))
           case "geotrellis.raster.MultibandTile" =>
-            (z, rdd[MultibandTile](layerName, z,query).persist(StorageLevel.MEMORY_AND_DISK_SER))
+            (z, rdd[MultibandTile](layerName, z,query))
         }
 
       }
