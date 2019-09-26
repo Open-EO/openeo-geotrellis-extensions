@@ -72,10 +72,10 @@ class OpenEOProcesses extends Serializable {
   }
 
 
-  def rasterMask(datacube:MultibandTileLayerRDD[SpaceTimeKey],mask:MultibandTileLayerRDD[SpaceTimeKey], replacement:Double):ContextRDD[SpaceTimeKey,MultibandTile,TileLayerMetadata[SpaceTimeKey]] = {
+  def rasterMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], mask: MultibandTileLayerRDD[SpaceTimeKey], replacement: java.lang.Double): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val joined = datacube.spatialLeftOuterJoin(mask)
-    val replacementInt: Int = replacement.intValue()
-    val replacementDouble: Double = replacement
+    val replacementInt: Int = if (replacement == null) NODATA else replacement.intValue()
+    val replacementDouble: Double = if (replacement == null) doubleNODATA else replacement
     val masked = joined.mapValues(t => {
       val dataTile = t._1
       if (!t._2.isEmpty) {
@@ -85,7 +85,7 @@ class OpenEOProcesses extends Serializable {
           if(dataTile.bandCount == maskTile.bandCount){
             maskIndex = index
           }
-          tile.dualCombine(maskTile.band(maskIndex))((v1,v2) => if (v2 > 0 && isData(v1)) replacementInt else v1)((v1,v2) => if (v2 > 0.0 && isData(v1)) replacementDouble else v1)
+          tile.dualCombine(maskTile.band(maskIndex))((v1,v2) => if (v2 != 0 && isData(v1)) replacementInt else v1)((v1,v2) => if (v2 != 0.0 && isData(v1)) replacementDouble else v1)
         })
 
       } else {
@@ -94,7 +94,7 @@ class OpenEOProcesses extends Serializable {
 
     })
 
-    return new ContextRDD(masked,datacube.metadata)
+    new ContextRDD(masked, datacube.metadata)
   }
 
   /**
