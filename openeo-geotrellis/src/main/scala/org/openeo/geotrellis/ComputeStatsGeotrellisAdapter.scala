@@ -13,7 +13,7 @@ import geotrellis.raster.{FloatConstantNoDataCellType, UByteConstantNoDataCellTy
 import geotrellis.spark.io.accumulo.AccumuloInstance
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, SpaceTimeKey, TemporalKey, TileLayerRDD}
 import geotrellis.vector.io._
-import geotrellis.vector.{MultiPolygon, Polygon}
+import geotrellis.vector.{Geometry, MultiPolygon, Polygon}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 
@@ -163,8 +163,15 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     histogramsCollector.results
   }
 
-  private def parsePolygonWkt(polygonWkt: String): MultiPolygon =
-    MultiPolygon(polygonWkt.parseWKT().asInstanceOf[Polygon])
+  private def parsePolygonWkt(polygonWkt: String): MultiPolygon = {
+    val geometry: Geometry = polygonWkt.parseWKT()
+    geometry match {
+      case polygon: MultiPolygon =>
+        polygon
+      case _ =>
+        MultiPolygon(geometry.asInstanceOf[Polygon])
+    }
+  }
 
   private def sc: SparkContext = SparkContext.getOrCreate()
 
