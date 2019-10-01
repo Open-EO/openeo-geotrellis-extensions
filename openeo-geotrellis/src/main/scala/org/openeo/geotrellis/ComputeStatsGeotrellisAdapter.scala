@@ -130,7 +130,24 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
 
   def compute_histograms_time_series_from_datacube(datacube:MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String,
                                      from_date: String, to_date: String, band_index: Int):
+
   JMap[String, JList[JList[JMap[Double, Long]]]] = { // date -> polygon -> value/count
+    val histogramsCollector = new MultibandHistogramsCollector
+    _compute_histograms_time_series_from_datacube(datacube, polygon_wkts, polygons_srs, from_date, to_date, band_index, histogramsCollector)
+    histogramsCollector.results
+  }
+
+  def compute_median_time_series_from_datacube(datacube:MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String,
+                                                   from_date: String, to_date: String, band_index: Int):
+  JMap[String, JList[JList[Double]]] = { // date -> polygon -> value/count
+
+    val histogramsCollector = new MultibandMediansCollector
+    _compute_histograms_time_series_from_datacube(datacube, polygon_wkts, polygons_srs, from_date, to_date, band_index, histogramsCollector)
+    histogramsCollector.results
+
+  }
+
+  private def _compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String, from_date: String, to_date: String, band_index: Int, histogramsCollector: StatisticsCallback[_ >: Seq[Histogram[Double]]]) = {
     val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
 
     val polygons = polygon_wkts.asScala.map(parsePolygonWkt)
@@ -138,15 +155,12 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     val crs: CRS = CRS.fromName(polygons_srs)
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
-    val histogramsCollector = new MultibandHistogramsCollector
 
     computeStatsGeotrellis.computeHistogramTimeSeries(datacube, polygons.toArray, crs, startDate, endDate, histogramsCollector, unusedCancellationContext, sc)
-
-    histogramsCollector.results
   }
 
   def compute_histograms_time_series(product_id: String, polygon_wkts: JList[String], polygons_srs: String,
-                                    from_date: String, to_date: String, zoom: Int, band_index: Int):
+                                     from_date: String, to_date: String, zoom: Int, band_index: Int):
   JMap[String, JList[JMap[Double, Long]]] = { // date -> polygon -> value/count
     val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
 
@@ -277,6 +291,34 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
 
     override def onComputed(date: ZonedDateTime, results: Seq[Seq[Histogram[Double]]]): Unit = {
       val polygonalHistograms: Seq[JList[JMap[Double, Long]]] = results.map( _.map(toMap).asJava)
+      this.results.put(isoFormat(date), polygonalHistograms.asJava)
+    }
+
+    override def onCompleted(): Unit = ()
+  }
+
+  private class MultibandMediansCollector extends StatisticsCallback[Seq[Histogram[Double]]] {
+    import java.util._
+
+    val results: JMap[String, JList[JList[Double]]] =
+      Collections.synchronizedMap(new HashMap[String, JList[JList[Double]]])
+
+    override def onComputed(date: ZonedDateTime, results: Seq[Seq[Histogram[Double]]]): Unit = {
+      val polygonalHistograms: Seq[JList[Double]] = results.map( _.map(_.median().get).asJava)
+      this.results.put(isoFormat(date), polygonalHistograms.asJava)
+    }
+
+    override def onCompleted(): Unit = ()
+  }
+
+  private class MultibandStdDevCollector extends StatisticsCallback[Seq[Histogram[Double]]] {
+    import java.util._
+
+    val results: JMap[String, JList[JList[Double]]] =
+      Collections.synchronizedMap(new HashMap[String, JList[JList[Double]]])
+
+    override def onComputed(date: ZonedDateTime, results: Seq[Seq[Histogram[Double]]]): Unit = {
+      val polygonalHistograms: Seq[JList[Double]] = results.map( _.map(_.statistics().get.stddev).asJava)
       this.results.put(isoFormat(date), polygonalHistograms.asJava)
     }
 
