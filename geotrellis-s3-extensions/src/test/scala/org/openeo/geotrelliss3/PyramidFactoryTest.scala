@@ -46,4 +46,22 @@ class PyramidFactoryTest {
       assertFalse(layer.isEmpty())
     }
   }
+  
+  @Test
+  def testJp2Pyramid(): Unit = {
+    val pyramidFactory = new Jp2PyramidFactory(
+      endpoint = "http://oss.eu-west-0.prod-cloud-ocb.orange-business.com",
+      region = "eu-west-0",
+      bucketName = "s2-sample-jp2000"
+    )
+
+    val boundingBox: ProjectedExtent = ProjectedExtent(Extent(xmin = 35.5517518249512, ymin = 33.7390099230957, xmax = 35.79345103698731, ymax = 33.85985951904297), CRS.fromEpsgCode(4326))
+    val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, boundingBox.crs.toString, "2019-01-01T00:00:00+00:00", "2019-01-01T00:00:00+00:00", null)
+
+    assertEquals(15, pyramid.size)
+
+    for ((_, layer) <- pyramid) {
+      assertFalse(layer.isEmpty())
+    }
+  }
 }
