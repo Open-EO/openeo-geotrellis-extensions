@@ -8,8 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
 import geotrellis.vector.Polygon
-import geotrellis.vector.io.wkt.WKT
 import javax.ws.rs.client.ClientBuilder
+import org.openeo.geotrelliss3.Catalog.buildPolygon
 
 import scala.collection.mutable.ListBuffer
 
@@ -26,12 +26,19 @@ object Catalog {
 
 case class Catalog(mission: String, level: String) {
 
+  def query(startDate: ZonedDateTime, endDate: ZonedDateTime,
+            ulx: Double, uly: Double, brx: Double, bry: Double): Seq[CatalogEntry] = {
+
+    query(startDate, endDate, Seq(), buildPolygon(ulx, uly, brx, bry))
+  }
+
   def query(startDate: ZonedDateTime, endDate: ZonedDateTime, tileIds: Seq[String] = Seq(),
-            ulx: Double = -180, uly: Double = 90, brx: Double = 180, bry: Double = -90, cloudPercentage: Double = 100): Seq[CatalogEntry] = {
+            polygon: Polygon = buildPolygon(-180, 90, 180, -90),
+            cloudPercentage: Double = 100): Seq[CatalogEntry] = {
 
     val result = ListBuffer[CatalogEntry]()
 
-    val firstPage = query_page(startDate, endDate, tileIds, ulx, uly, brx, bry, cloudPercentage)
+    val firstPage = query_page(startDate, endDate, tileIds, polygon, cloudPercentage)
 
     val totalHits = firstPage.totalHits
     if (totalHits > 10000)
@@ -39,7 +46,7 @@ case class Catalog(mission: String, level: String) {
     if (totalHits > 0) {
       result ++= Catalog.parseProductIds(firstPage)
       while (result.length < totalHits) {
-        val nextPage = query_page(startDate, endDate, tileIds, ulx, uly, brx, bry, cloudPercentage, result.length)
+        val nextPage = query_page(startDate, endDate, tileIds, polygon, cloudPercentage, result.length)
         result ++= Catalog.parseProductIds(nextPage)
       }
     }
@@ -48,19 +55,21 @@ case class Catalog(mission: String, level: String) {
   }
 
   def count(startDate: ZonedDateTime, endDate: ZonedDateTime, tileIds: Seq[String] = Seq(),
-            ulx: Double = -180, uly: Double = 90, brx: Double = 180, bry: Double = -90, cloudPercentage: Double = 100) = {
+            ulx: Double = -180, uly: Double = 90, brx: Double = 180, bry: Double = -90, cloudPercentage: Double = 100): Int = {
 
-    query_page(startDate, endDate, tileIds, ulx, uly, brx, bry, cloudPercentage).totalHits
+    query_page(startDate, endDate, tileIds, buildPolygon(ulx, uly, brx, bry), cloudPercentage).totalHits
   }
 
   private def query_page(startDate: ZonedDateTime, endDate: ZonedDateTime, tileIds: Seq[String],
-                         ulx: Double, uly: Double, brx: Double, bry: Double, cloudPercentage: Double, fromIndex: Int = 0) = {
+                         polygon: Polygon, cloudPercentage: Double, fromIndex: Int = 0) = {
+
+    val newEndDate = if (startDate == endDate) startDate.plusDays(1) else endDate
 
     var target = ClientBuilder.newClient()
       .target("https://sobloo.eu/api/v1/services/search")
       .queryParam("f", s"production.levelCode:eq:$level")
       .queryParam("f", s"acquisition.beginViewingDate:gte:${startDate.toInstant.toEpochMilli}")
-      .queryParam("f", s"acquisition.beginViewingDate:lt:${endDate.toInstant.toEpochMilli}")
+      .queryParam("f", s"acquisition.beginViewingDate:lt:${newEndDate.toInstant.toEpochMilli}")
       .queryParam("f", "state.services.download:eq:internal")
       .queryParam("f", s"contentDescription.cloudCoverPercentage:lte:$cloudPercentage")
       .queryParam("from", fromIndex.toString)
@@ -68,8 +77,7 @@ case class Catalog(mission: String, level: String) {
       .queryParam("sort", "acquisition.beginViewingDate")
 
     if (tileIds.isEmpty) {
-      val polygon = Catalog.buildPolygon(ulx, uly, brx, bry)
-      target = target.queryParam("gintersect", WKT.write(polygon))
+      target = target.queryParam("gintersect", polygon.toString)
     } else {
       val tileIdFilter = tileIds.map(t => s"identification.externalId:like:_T${t}_;").mkString("")
       target = target.queryParam("f", tileIdFilter)
@@ -96,11 +104,11 @@ case class CatalogEntry(productId: String) {
   }
 
   def getS3Key: String = {
-    val tileNb = getTileNb
-    s"tiles/${tileNb.substring(0, 2)}/${tileNb(2)}/${tileNb.substring(3)}/$productId.SAFE"
+    val tileId = getTileId
+    s"tiles/${tileId.substring(0, 2)}/${tileId(2)}/${tileId.substring(3)}/$productId.SAFE"
   }
 
-  def getTileNb: String = {
+  def getTileId: String = {
     productId.split("_")(5).substring(1)
   }
 }
@@ -108,7 +116,7 @@ case class CatalogEntry(productId: String) {
 case class CatalogException(message: String = "", cause: Throwable = None.orNull) extends Exception(message, cause)
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-case class CatalogResponse(@JsonProperty("totalnb") totalHits: Int, @JsonProperty("nbhits") nbHits: Int, collection: String, hits: Seq[Hit])
+case class CatalogResponse(@JsonProperty("totalnb") totalHits: Int, collection: String, hits: Seq[Hit])
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 case class Hit(md: Md, data: Data)

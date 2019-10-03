@@ -10,13 +10,12 @@ class CatalogTest {
 
   val catalog = Catalog("Sentinel-2", "Level-2A")
 
-  val startDate = ZonedDateTime.of(LocalDate.of(2019, 10, 1), MIDNIGHT, UTC)
-  val endDate = ZonedDateTime.of(LocalDate.of(2019, 10, 2), MIDNIGHT, UTC)
+  val date = ZonedDateTime.of(LocalDate.of(2019, 10, 1), MIDNIGHT, UTC)
 
   @Test
   def testQueryOnePage() {
-    val results = catalog.query(startDate, endDate, ulx = 0, uly = 55, brx = 10, bry = 50)
-    val count = catalog.count(startDate, endDate, ulx = 0, uly = 55, brx = 10, bry = 50)
+    val results = catalog.query(date, date, ulx = 0, uly = 55, brx = 10, bry = 50)
+    val count = catalog.count(date, date, ulx = 0, uly = 55, brx = 10, bry = 50)
 
     assert(count > 0 && count <= 100)
     assert(results.length == count)
@@ -24,8 +23,8 @@ class CatalogTest {
 
   @Test
   def testQueryMultiplePages() {
-    val results = catalog.query(startDate, endDate, ulx = 0, uly = 60, brx = 20, bry = 40)
-    val count = catalog.count(startDate, endDate, ulx = 0, uly = 60, brx = 20, bry = 40)
+    val results = catalog.query(date, date, ulx = 0, uly = 60, brx = 20, bry = 40)
+    val count = catalog.count(date, date, ulx = 0, uly = 60, brx = 20, bry = 40)
 
     assert(count > 100)
     assert(results.length == count)
@@ -35,7 +34,7 @@ class CatalogTest {
   def testQueryTileIds() {
     val tileIds = Seq("55UGV", "56VNL")
 
-    val results = catalog.query(startDate, endDate, tileIds)
+    val results = catalog.query(date, date, tileIds)
 
     assert(results.length == 2)
   }
@@ -52,7 +51,7 @@ class CatalogTest {
   }
 
   @Test
-  def testGetTileNb() {
-    assert("55UGV" == CatalogEntry("S2B_MSIL2A_20191001T005649_N0213_R088_T55UGV_20191001T030835").getTileNb)
+  def testGetTileId() {
+    assert("55UGV" == CatalogEntry("S2B_MSIL2A_20191001T005649_N0213_R088_T55UGV_20191001T030835").getTileId)
   }
 }
