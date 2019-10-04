@@ -75,7 +75,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     implicit val layout: LayoutDefinition =
       globalLayout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10, 10))._1
 
-    def getPartitions = partitions.getOrElse(round(pow(2, zoomLevel) / 20).toInt)
+    def getPartitions = partitions.getOrElse(max(1, round(pow(2, zoomLevel) / 20).toInt))
     
     if (colorMap.isDefined) {
       val map = ColorMapParser.parse(colorMap.get)

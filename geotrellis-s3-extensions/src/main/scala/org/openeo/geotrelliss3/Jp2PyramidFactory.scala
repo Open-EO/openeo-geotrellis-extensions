@@ -1,13 +1,14 @@
 package org.openeo.geotrelliss3
 
-import java.net.URI
+import java.lang.System.getenv
 import java.time._
 
 import com.amazonaws.client.builder.AwsClientBuilder
+import com.amazonaws.services.s3.AmazonS3ClientBuilder
 import com.amazonaws.services.s3.model.ListObjectsRequest
-import com.amazonaws.services.s3.{AmazonS3ClientBuilder, AmazonS3URI}
 import geotrellis.contrib.vlm.gdal.GDALReprojectRasterSource
 import geotrellis.gdal.config.GDALOptionsConfig
+import geotrellis.gdal.config.GDALOptionsConfig.registerOption
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.{MultibandTile, Tile, UByteUserDefinedNoDataCellType, isNoData}
 import geotrellis.spark.io.s3.{AmazonS3Client, S3Client}
@@ -25,18 +26,7 @@ object Jp2PyramidFactory {
   private val layoutScheme = ZoomedLayoutScheme(crs, 256)
   private val layerName = "S3"
   private val maxZoom = 14
-
-  private def getS3Client(endpoint: String, region: String): S3Client = {
-    val s3builder: AmazonS3ClientBuilder = AmazonS3ClientBuilder.standard()
-      .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(endpoint, region))
-
-    AmazonS3Client(s3builder)
-  }
-
-  private implicit val dateOrdering: Ordering[ZonedDateTime] = new Ordering[ZonedDateTime] {
-    override def compare(a: ZonedDateTime, b: ZonedDateTime): Int =
-      a.withZoneSameInstant(ZoneId.of("UTC")) compareTo b.withZoneSameInstant(ZoneId.of("UTC"))
-  }
+  private val catalog = Catalog("Sentinel-2", "Level-2A")
 
   sealed trait Band
 
@@ -48,32 +38,39 @@ object Jp2PyramidFactory {
 
   case object B08 extends Band
 
-  val allBands: Seq[Band] = Seq(B02, B03, B04, B08)
+  private val allBands: Seq[Band] = Seq(B02, B03, B04, B08)
 
-  val catalog = Catalog("Sentinel-2", "Level-2A")
+  private implicit val dateOrdering: Ordering[ZonedDateTime] = new Ordering[ZonedDateTime] {
+    override def compare(a: ZonedDateTime, b: ZonedDateTime): Int =
+      a.withZoneSameInstant(ZoneId.of("UTC")) compareTo b.withZoneSameInstant(ZoneId.of("UTC"))
+  }
 
-  GDALOptionsConfig.registerOption("AWS_S3_ENDPOINT", "oss.eu-west-0.prod-cloud-ocb.orange-business.com")
-  //TODO: secrets
+  private def getS3Client(endpoint: String, region: String): S3Client = {
+    val s3builder: AmazonS3ClientBuilder = AmazonS3ClientBuilder.standard()
+      .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(endpoint, region))
+
+    AmazonS3Client(s3builder)
+  }
 }
 
-class Jp2PyramidFactory(endpoint: String, region: String, bucketName: String) extends Serializable {
+class Jp2PyramidFactory(endpoint: String, region: String) extends Serializable {
 
   import Jp2PyramidFactory._
 
-  private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
+  registerOption("AWS_S3_ENDPOINT", endpoint)
+  registerOption("AWS_SECRET_ACCESS_KEY", getenv("AWS_SECRET_ACCESS_KEY"))
+  registerOption("AWS_ACCESS_KEY_ID", getenv("AWS_ACCESS_KEY_ID"))
 
-  private val s3Uri = URI.create(s"s3://$bucketName")
+  private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
 
   private def getS3Client: S3Client = Jp2PyramidFactory.getS3Client(endpoint, region)
 
-  private lazy val listKeys: Seq[String] = {
-    val uri = new AmazonS3URI(s3Uri)
-
+  private def listProducts(bucket: String, key: String) = {
     val request = (new ListObjectsRequest)
-      .withBucketName(uri.getBucket)
-      .withPrefix(uri.getKey)
+      .withBucketName(bucket)
+      .withPrefix(key)
 
-    val keyPattern = raw".*S2._MSIL2A_\d{8}T.*\.jp2$$".r
+    val keyPattern = raw".*S2._MSIL2A_\d{8}T.*B\d{2}_10m\.jp2$$".r
 
     getS3Client
       .listKeys(request)
@@ -83,13 +80,14 @@ class Jp2PyramidFactory(endpoint: String, region: String, bucketName: String) ex
       })
   }
 
-  private def uri(key: String) = s"/vsis3/$bucketName/$key"
+  private val uri = ((bucket: String, key: String) => s"/vsis3/$bucket/$key").tupled
 
-  private lazy val extent = {
-    listKeys
+  private def extent(productKeys: Seq[(String, String)]) = {
+    productKeys
       .map(key => GDALReprojectRasterSource(uri(key), crs))
       .map(_.extent)
-      .reduce((e1, e2) => e1 combine e2)
+      .reduceOption((e1, e2) => e1 combine e2)
+      .getOrElse(Extent(0, 0, 0, 0))
   }
 
   private def tileLayerMetadata(layout: LayoutDefinition, extent: Extent, from: ZonedDateTime, to: ZonedDateTime): TileLayerMetadata[SpaceTimeKey] = {
@@ -133,7 +131,9 @@ class Jp2PyramidFactory(endpoint: String, region: String, bucketName: String) ex
       layout.mapTransform.keysForGeometry(reprojectedBoundingBox.toPolygon())
         .map(key => SpaceTimeKey(key, date)))
 
-    val utmTiles = catalog.query(from, to, polygon = boundingBox.reproject(LatLng).toPolygon()).map(_.getTileId)
+    val catalogEntries = catalog.query(from, to, polygon = boundingBox.reproject(LatLng).toPolygon())
+
+    val productKeys = catalogEntries.flatMap(e => listProducts(e.getS3bucket, e.getS3Key).map((e.getS3bucket, _)))
 
     def extractDate(key: String): ZonedDateTime = {
       val date = raw"S2._MSIL2A_(\d{4})(\d{2})(\d{2})T".r.unanchored
@@ -143,11 +143,11 @@ class Jp2PyramidFactory(endpoint: String, region: String, bucketName: String) ex
     }
 
     val bandFileMaps = bands.map(b =>
-      listKeys.filter(k => utmTiles.exists(k.contains))
-        .filter(k => k.contains(s"${b.toString}_10m.jp2"))
-        .map(k => extractDate(k) -> k)
+      productKeys.filter(pk => pk._2.contains(s"${b.toString}_10m.jp2"))
+        .map(pk => extractDate(pk._2) -> pk)
         .groupBy(_._1)
-        .map { case (k, v) => (k, v.map(_._2)) })
+        .map { case (k, v) => (k, v.map(_._2)) }
+    )
 
     val tiles = sc.parallelize(overlappingKeys)
       .map(key => (key, bandFileMaps
@@ -156,9 +156,9 @@ class Jp2PyramidFactory(endpoint: String, region: String, bucketName: String) ex
           .flatMap(_.rasterRegionForKey(key.spatialKey).flatMap(_.raster))
           .map(_.tile.band(0)))
         .flatMap(mapToSingleTile)))
-      .mapValues(MultibandTile(_))
+      .flatMapValues(v => if (v.isEmpty) None else Some(MultibandTile(v)))
 
-    val metadata = tileLayerMetadata(layout, extent, from, to)
+    val metadata = tileLayerMetadata(layout, extent(productKeys), from, to)
 
     ContextRDD(tiles, metadata)
   }
