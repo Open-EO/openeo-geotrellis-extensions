@@ -12,7 +12,7 @@ import org.apache.accumulo.core.data.Key
 import org.apache.avro.Schema
 import org.apache.hadoop.io.Text
 import org.apache.spark.rdd.RDD
-import org.apache.spark.{Partition, SparkContext, TaskContext}
+import org.apache.spark.{Partition, RangePartitioner, SparkContext, TaskContext}
 
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
@@ -22,7 +22,7 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
   val codec = KryoWrapper(KeyValueRecordCodec[SpaceTimeKey, V])
   val kwWriterSchema = KryoWrapper(Some(writerSchema))
 
-  override val partitioner: Option[org.apache.spark.Partitioner] = Some(new org.apache.spark.Partitioner(){
+  override val partitioner: Option[org.apache.spark.Partitioner] = Some(new RangePartitioner[SpaceTimeKey,V](partitions.length,SparkContext.getOrCreate().emptyRDD[(SpaceTimeKey, V)]){
     override def numPartitions: Int = {
       partitions.length
     }
