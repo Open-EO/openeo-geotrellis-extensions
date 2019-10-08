@@ -2,22 +2,38 @@ package org.openeo.geotrellis
 
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
+import java.util
 
 import geotrellis.proj4.LatLng
-import geotrellis.raster.{ByteCells, ByteConstantTile}
-import geotrellis.spark.ContextRDD
+import geotrellis.raster.{ByteCells, ByteConstantTile, MultibandTile}
 import geotrellis.spark.tiling.LayoutDefinition
 import geotrellis.spark.util.SparkUtils
+import geotrellis.spark.{ContextRDD, Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.vector.Polygon
 import geotrellis.vector.io._
+import org.apache.hadoop.hdfs.HdfsConfiguration
+import org.apache.hadoop.security.UserGroupInformation
+import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.runner.RunWith
+import org.junit.runners.Parameterized
+import org.junit.runners.Parameterized.Parameters
+import org.junit.{AfterClass, Before, BeforeClass, Test}
+import org.openeo.geotrellisaccumulo.PyramidFactory
 
 import scala.collection.JavaConverters._
+import scala.collection.immutable.Seq
 
 object ComputeStatsGeotrellisAdapterTest {
   private var sc: SparkContext = _
+
+  @Parameters(name = "PixelThreshold: {0}") def data: java.lang.Iterable[Array[Integer]] = {
+    val list = new util.ArrayList[Array[Integer]]()
+    list.add(Array[Integer](0))
+    list.add(Array[Integer](5000000))
+    list
+  }
 
   @BeforeClass
   def assertKerberosAuthentication(): Unit = {
@@ -27,6 +43,10 @@ object ComputeStatsGeotrellisAdapterTest {
   @BeforeClass
   def setUpSpark(): Unit = {
     sc = {
+      val config = new HdfsConfiguration
+      config.set("hadoop.security.authentication", "kerberos")
+      UserGroupInformation.setConfiguration(config)
+
       val conf = new SparkConf().set("spark.driver.bindAddress", "127.0.0.1")
       SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName, conf)
     }
@@ -104,8 +124,18 @@ object ComputeStatsGeotrellisAdapterTest {
       """.stripMargin.parseGeoJson[Polygon]()
 }
 
-class ComputeStatsGeotrellisAdapterTest {
+@RunWith(classOf[Parameterized])
+class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   import ComputeStatsGeotrellisAdapterTest._
+
+
+
+  @Before
+  def setup():Unit = {
+    System.setProperty("pixels.treshold","" + threshold)
+
+  }
+
 
   private val computeStatsGeotrellisAdapter = new ComputeStatsGeotrellisAdapter(
     zookeepers = "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",

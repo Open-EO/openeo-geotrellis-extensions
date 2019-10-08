@@ -9,6 +9,7 @@ import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
 import be.vito.eodata.processing.MaskedStatisticsProcessor.StatsMeanResult
 import geotrellis.proj4.CRS
 import geotrellis.raster.histogram.Histogram
+import geotrellis.raster.summary.Statistics
 import geotrellis.raster.{FloatConstantNoDataCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.spark.io.accumulo.AccumuloInstance
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, SpaceTimeKey, TemporalKey, TileLayerRDD}
@@ -314,7 +315,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
       Collections.synchronizedMap(new HashMap[String, JList[JList[Double]]])
 
     override def onComputed(date: ZonedDateTime, results: Seq[Seq[Histogram[Double]]]): Unit = {
-      val polygonalHistograms: Seq[JList[Double]] = results.map( _.map(_.median().get).asJava)
+      val polygonalHistograms: Seq[JList[Double]] = results.map( _.map(_.median().getOrElse(Double.NaN)).asJava)
       this.results.put(isoFormat(date), polygonalHistograms.asJava)
     }
 
@@ -328,7 +329,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
       Collections.synchronizedMap(new HashMap[String, JList[JList[Double]]])
 
     override def onComputed(date: ZonedDateTime, results: Seq[Seq[Histogram[Double]]]): Unit = {
-      val polygonalHistograms: Seq[JList[Double]] = results.map( _.map(_.statistics().get.stddev).asJava)
+      val polygonalHistograms: Seq[JList[Double]] = results.map( _.map(_.statistics().getOrElse(Statistics.EMPTYDouble()).stddev).asJava)
       this.results.put(isoFormat(date), polygonalHistograms.asJava)
     }
 
