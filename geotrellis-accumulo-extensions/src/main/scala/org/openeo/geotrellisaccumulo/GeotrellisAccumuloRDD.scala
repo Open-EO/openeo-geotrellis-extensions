@@ -134,9 +134,11 @@ class GeotrellisAccumuloRDD(
       })
 
     }
-    val result = new Array[Partition](rawSplits.size)
-    for (i <- 0 until rawSplits.size) {
-      result(i) = new NewHadoopPartition(id, i, rawSplits(i).asInstanceOf[InputSplit with Writable])
+
+    val orderedSplits = rawSplits.sortBy(f => f.asInstanceOf[BatchInputSplit].getRanges.iterator.next())
+    val result = new Array[Partition](orderedSplits.size)
+    for (i <- 0 until orderedSplits.size) {
+      result(i) = new NewHadoopPartition(id, i, orderedSplits(i).asInstanceOf[InputSplit with Writable])
     }
     result
   }
@@ -144,7 +146,7 @@ class GeotrellisAccumuloRDD(
   override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(Key, Value)] = {
     val iter = new Iterator[(Key, Value)] {
       val split = theSplit.asInstanceOf[NewHadoopPartition]
-      logInfo("Input split: " + split.serializableHadoopSplit)
+      logDebug("Input split: " + split.serializableHadoopSplit)
       val conf = getConf
 
       val inputMetrics = context.taskMetrics().inputMetrics

@@ -4,7 +4,8 @@ import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
 
-import geotrellis.proj4.LatLng
+import geotrellis.proj4.{LatLng, WebMercator}
+import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.{ByteCells, ByteConstantTile, MultibandTile}
 import geotrellis.spark.tiling.LayoutDefinition
 import geotrellis.spark.util.SparkUtils
@@ -122,6 +123,23 @@ object ComputeStatsGeotrellisAdapterTest {
       |  ]
       |}
       """.stripMargin.parseGeoJson[Polygon]()
+
+  //this polygon is also used in python tests with S2 data
+  private val polygon3 =
+    """
+      |{
+      |  "type": "Polygon",
+      |  "coordinates": [
+      |    [
+      |            [7.022705078125007, 51.75432477678571],
+      |            [7.659912109375007, 51.74333844866071],
+      |            [7.659912109375007, 51.29289899553571],
+      |            [7.044677734375007, 51.31487165178571],
+      |            [7.022705078125007, 51.75432477678571]
+      |    ]
+      |  ]
+      |}
+      """.stripMargin.parseGeoJson[Polygon]()
 }
 
 @RunWith(classOf[Parameterized])
@@ -206,6 +224,65 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
       .flatMap { case (_, dailyMeans) => dailyMeans.asScala }.filter(!_.isEmpty)
 
     assertTrue(means.exists(mean => !mean.get(0).isNaN))
+  }
+
+
+  /**
+    * This test is similar in setup to the openeo integrationtest:
+    * test_validate_timeseries.Test#test_zonal_statistics
+    *
+    * But it is easier to debug.
+    *
+    * Testing against accumulo is necessary, because we have a custom RangePartitioner for performance, that affects the result if not implemented correctly
+    */
+  @Test
+  def compute_median_timeseries_on_accumulo_datacube(): Unit = {
+
+    val minDateString = "2017-11-01T00:00:00Z"
+    val minDate = ZonedDateTime.parse(minDateString)
+    val maxDate = ZonedDateTime.parse("2017-11-16T00:00:00Z")
+
+    val polygons = Seq(polygon3)
+
+    val pyramidFactory = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
+    val bbox = polygons.envelope
+    val srs = "EPSG:4326"
+
+    //bbox = new Extent(10.5, 46.5, 11.4, 46.9);
+    //srs = "EPSG:4326";
+    val pyramid: Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = pyramidFactory.pyramid_seq("S2_FAPAR_PYRAMID_20190708", bbox, srs, minDateString, "2017-11-16T02:00:00Z")
+    System.out.println("pyramid = " + pyramid)
+
+    val pyramidAsMap = pyramid.toMap
+    val maxZoom = pyramidAsMap.keys.max
+    val datacube = pyramidAsMap.get(maxZoom).get
+
+    //alternative way to compute a histogram that works for this simple case
+    val histogram: Histogram[Int] = datacube.toSpatial(minDate).mask(polygon3.reproject(LatLng,WebMercator)).histogramExactInt(0)
+    print("MEDIAN: ")
+    val expectedMedian = histogram.median()
+    print(expectedMedian)
+
+    val stats= computeStatsGeotrellisAdapter.compute_median_time_series_from_datacube(
+      datacube,
+      polygons.map(_.toWKT()).asJava,
+      polygons_srs = "EPSG:4326",
+      from_date = ISO_OFFSET_DATE_TIME format minDate,
+      to_date = ISO_OFFSET_DATE_TIME format maxDate,
+      band_index = 0
+    ).asScala
+
+    for ((date, means) <- stats) {
+      println(s"$date: $means")
+    }
+
+    assertFalse(stats.isEmpty)
+
+    val means = stats
+      .flatMap { case (_, dailyMeans) => dailyMeans.asScala }.filter(!_.isEmpty)
+
+    assertTrue(means.exists(mean => !mean.get(0).isNaN))
+    assertEquals(stats(minDateString).get(0).get(0),expectedMedian.get,0.1)
   }
 
   @Test
