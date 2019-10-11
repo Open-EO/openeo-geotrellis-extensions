@@ -39,12 +39,6 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>org.locationtech.geotrellis</groupId>
-            <artifactId>geotrellis-s3_${scala.binary.version}</artifactId>
-            <version>${geotrellis.version}</version>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
             <groupId>com.azavea.geotrellis</groupId>
             <artifactId>geotrellis-contrib-vlm_${scala.binary.version}</artifactId>
             <version>0.10.0</version>
