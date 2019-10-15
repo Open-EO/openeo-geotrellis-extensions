@@ -106,8 +106,8 @@ class PyramidFactoryTest {
 
     val pyramidFactory = PyramidFactory.from_s3(
       s3_uri = "s3://openeo-vito-test/cogs/",
-      key_regex = raw"_20180428T",
-      date_regex = raw"_(\d{4})(\d{2})(\d{2})T\d{6}\.tiff"
+      key_regex = raw".*_20180428T.*\.tiff",
+      date_regex = raw".*_(\d{4})(\d{2})(\d{2})T\d{6}\.tiff"
     )
 
     val sparkConf = new SparkConf()

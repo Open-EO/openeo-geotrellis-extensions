@@ -48,7 +48,7 @@ object PyramidFactory {
     new PyramidFactory({
       // adapted from geotrellis.spark.io.s3.geotiff.S3GeoTiffInput.list
       val s3Uri = new AmazonS3URI(s3_uri)
-      val keyPattern = key_regex.r.unanchored
+      val keyPattern = key_regex.r
 
       val s3Client = {
         // pass e.g. non-AWS S3 endpoint and temporary credentials (as described at
@@ -73,7 +73,7 @@ object PyramidFactory {
             case _ => None
           }
         }
-        .map(uri => (GeoTiffRasterSource(uri.toString), deriveDate(uri.getKey, date_regex.r.unanchored)))
+        .map(uri => (GeoTiffRasterSource(uri.toString), deriveDate(uri.getKey, date_regex.r)))
     })
   }
 
