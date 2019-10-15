@@ -23,7 +23,7 @@ class PyramidFactoryTest {
     val to = from
 
     singleBandGeoTiffFromDisk(
-      globPattern = "file:/data/MTDA/CGS_S2/CGS_S2_FAPAR/2019/04/24/*/*/10M/*_FAPAR_10M_V102.tif", from, to)
+      globPattern = "/data/MTDA/CGS_S2/CGS_S2_FAPAR/2019/04/24/*/*/10M/*_FAPAR_10M_V102.tif", from, to)
   }
 
   @Test

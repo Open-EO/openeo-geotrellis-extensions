@@ -29,9 +29,17 @@ import scala.util.matching.Regex
 object PyramidFactory {
   def from_disk(glob_pattern: String, date_regex: String): PyramidFactory = {
     new PyramidFactory({
-      val conf = new Configuration
+      val path = { // default to file: scheme
+        val path = new Path(glob_pattern)
+        val uri = path.toUri
 
-      HdfsUtils.listFiles(new Path(glob_pattern), conf)
+        uri.getScheme match {
+          case null => new Path("file", uri.getAuthority, uri.getPath)
+          case _ => path
+        }
+      }
+
+      HdfsUtils.listFiles(path, new Configuration)
         .map(path => (GeoTiffRasterSource(path.toString), deriveDate(path.getName, date_regex.r.unanchored)))
     })
   }
