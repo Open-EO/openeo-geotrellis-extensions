@@ -40,7 +40,7 @@ object PyramidFactory {
       }
 
       HdfsUtils.listFiles(path, new Configuration)
-        .map(path => (GeoTiffRasterSource(path.toString), deriveDate(path.getName, date_regex.r.unanchored)))
+        .map(path => (GeoTiffRasterSource(path.toString), deriveDate(path.toString, date_regex.r)))
     })
   }
 

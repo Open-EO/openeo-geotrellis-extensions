@@ -40,7 +40,7 @@ class PyramidFactoryTest {
 
     val pyramidFactory = PyramidFactory.from_disk(
       globPattern,
-      date_regex = raw"_(\d{4})(\d{2})(\d{2})T"
+      date_regex = raw".*\/S2._(\d{4})(\d{2})(\d{2})T.*"
     )
 
     val sparkConf = new SparkConf()
