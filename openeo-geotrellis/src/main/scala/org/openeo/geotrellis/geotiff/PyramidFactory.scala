@@ -133,9 +133,9 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
   private lazy val reprojectedRasterSources =
     rasterSources.map { case (rasterSource, date) => (rasterSource.reproject(targetCrs), date) }
 
-  private lazy val maxZoom = {
-    val (rasterSource, _) = reprojectedRasterSources.head
-    ZoomedLayoutScheme(targetCrs).zoom(rasterSource.extent.center.x, rasterSource.extent.center.y, rasterSource.cellSize)
+  private lazy val maxZoom = reprojectedRasterSources.headOption match {
+    case Some((rasterSource, _)) => ZoomedLayoutScheme(targetCrs).zoom(rasterSource.extent.center.x, rasterSource.extent.center.y, rasterSource.cellSize)
+    case None => throw new IllegalStateException("no raster sources found")
   }
 
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
