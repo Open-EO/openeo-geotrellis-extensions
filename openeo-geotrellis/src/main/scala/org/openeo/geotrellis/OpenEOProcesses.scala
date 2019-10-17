@@ -63,12 +63,16 @@ class OpenEOProcesses extends Serializable {
 
   }
 
-  def mapBands[K](datacube:MultibandTileLayerRDD[K], scriptBuilder:OpenEOProcessScriptBuilder): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
+  def mapBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]= {
+    mapBandsGeneric(datacube,scriptBuilder)
+  }
+
+  def mapBandsGeneric[K:ClassTag](datacube:MultibandTileLayerRDD[K], scriptBuilder:OpenEOProcessScriptBuilder): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
     val function = scriptBuilder.generateFunction()
-    return ContextRDD[K,MultibandTile,TileLayerMetadata[K]](datacube.map(tile => {
-      val resultTiles = function(tile._2.bands)
-      (tile._1,MultibandTile(resultTiles))
-    }),datacube.metadata)
+    return datacube.withContext(new org.apache.spark.rdd.PairRDDFunctions[K,MultibandTile](_).mapValues(tile => {
+      val resultTiles = function(tile.bands)
+      MultibandTile(resultTiles)
+    }))
   }
 
 

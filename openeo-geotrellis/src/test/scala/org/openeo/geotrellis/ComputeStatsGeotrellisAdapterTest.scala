@@ -10,8 +10,8 @@ import geotrellis.raster.{ByteCells, ByteConstantTile, MultibandTile}
 import geotrellis.spark.tiling.LayoutDefinition
 import geotrellis.spark.util.SparkUtils
 import geotrellis.spark.{ContextRDD, Metadata, SpaceTimeKey, TileLayerMetadata}
-import geotrellis.vector.Polygon
 import geotrellis.vector.io._
+import geotrellis.vector.{Extent, Polygon}
 import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.rdd.RDD
@@ -32,13 +32,13 @@ object ComputeStatsGeotrellisAdapterTest {
   @Parameters(name = "PixelThreshold: {0}") def data: java.lang.Iterable[Array[Integer]] = {
     val list = new util.ArrayList[Array[Integer]]()
     list.add(Array[Integer](0))
-    list.add(Array[Integer](5000000))
+    list.add(Array[Integer](500000000))
     list
   }
 
   @BeforeClass
   def assertKerberosAuthentication(): Unit = {
-    assertNotNull(getClass.getResourceAsStream("/core-site.xml"))
+    //assertNotNull(getClass.getResourceAsStream("/core-site.xml"))
   }
 
   @BeforeClass
@@ -227,6 +227,9 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   }
 
 
+  private lazy val accumuloPyramidFactory = {new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")}
+
+
   /**
     * This test is similar in setup to the openeo integrationtest:
     * test_validate_timeseries.Test#test_zonal_statistics
@@ -239,32 +242,59 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   def compute_median_timeseries_on_accumulo_datacube(): Unit = {
 
     val minDateString = "2017-11-01T00:00:00Z"
+    val maxDateString = "2017-11-16T02:00:00Z"
     val minDate = ZonedDateTime.parse(minDateString)
-    val maxDate = ZonedDateTime.parse("2017-11-16T00:00:00Z")
+    val maxDate = ZonedDateTime.parse(maxDateString)
 
     val polygons = Seq(polygon3)
 
-    val pyramidFactory = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
-    val bbox = polygons.envelope
-    val srs = "EPSG:4326"
-
     //bbox = new Extent(10.5, 46.5, 11.4, 46.9);
     //srs = "EPSG:4326";
-    val pyramid: Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = pyramidFactory.pyramid_seq("S2_FAPAR_PYRAMID_20190708", bbox, srs, minDateString, "2017-11-16T02:00:00Z")
+
+
+    val datacube = accumuloDataCube("S2_FAPAR_PYRAMID_20190708", minDateString, maxDateString,  polygons.envelope,  "EPSG:4326")
+
+    assertMedianComputedCorrectly(datacube, minDateString, minDate, maxDate, polygons)
+  }
+
+  private def accumuloDataCube(layer: String, minDateString: String, maxDateString: String, bbox: Extent, srs: String) = {
+    val pyramid: Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = accumuloPyramidFactory.pyramid_seq(layer, bbox, srs, minDateString, maxDateString)
     System.out.println("pyramid = " + pyramid)
 
     val pyramidAsMap = pyramid.toMap
     val maxZoom = pyramidAsMap.keys.max
     val datacube = pyramidAsMap.get(maxZoom).get
+    datacube
+  }
 
+  @Test
+  def compute_median_ndvi_timeseries_on_accumulo_datacube(): Unit = {
+
+    val minDateString = "2017-11-01T00:00:00Z"
+    val maxDateString = "2017-11-16T02:00:00Z"
+    val minDate = ZonedDateTime.parse(minDateString)
+
+    val maxDate = ZonedDateTime.parse(maxDateString)
+
+    val polygons = Seq(polygon3)
+    val datacube= accumuloDataCube("CGS_SENTINEL2_RADIOMETRY_V102_EARLY", minDateString, maxDateString, polygons.envelope, "EPSG:4326")
+
+    val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1,3)))
+    val ndviProcess = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess
+    val ndviDataCube = new OpenEOProcesses().mapBandsGeneric(selectedBands, ndviProcess)
+
+    assertMedianComputedCorrectly(ndviDataCube, minDateString, minDate, maxDate, polygons)
+  }
+
+  private def assertMedianComputedCorrectly(ndviDataCube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], minDateString: String, minDate: ZonedDateTime, maxDate: ZonedDateTime, polygons: Seq[Polygon]) = {
     //alternative way to compute a histogram that works for this simple case
-    val histogram: Histogram[Int] = datacube.toSpatial(minDate).mask(polygon3.reproject(LatLng,WebMercator)).histogramExactInt(0)
+    val histogram: Histogram[Double] = ndviDataCube.toSpatial(minDate).mask(polygon3.reproject(LatLng, WebMercator)).histogram(255)(0)
     print("MEDIAN: ")
     val expectedMedian = histogram.median()
     print(expectedMedian)
 
-    val stats= computeStatsGeotrellisAdapter.compute_median_time_series_from_datacube(
-      datacube,
+    val stats = computeStatsGeotrellisAdapter.compute_median_time_series_from_datacube(
+      ndviDataCube,
       polygons.map(_.toWKT()).asJava,
       polygons_srs = "EPSG:4326",
       from_date = ISO_OFFSET_DATE_TIME format minDate,
@@ -282,7 +312,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
       .flatMap { case (_, dailyMeans) => dailyMeans.asScala }.filter(!_.isEmpty)
 
     assertTrue(means.exists(mean => !mean.get(0).isNaN))
-    assertEquals(stats(minDateString).get(0).get(0),expectedMedian.get,0.1)
+    assertEquals(stats(minDateString).get(0).get(0), expectedMedian.get, 0.1)
   }
 
   @Test
