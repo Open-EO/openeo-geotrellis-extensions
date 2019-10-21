@@ -2,6 +2,7 @@ package org.openeo.geotrellisaccumulo
 
 import java.time.ZonedDateTime
 
+import be.vito.eodata.extracttimeseries.geotrellis.ComputeStatsGeotrellisHelpers
 import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
 import geotrellis.proj4.CRS
 import geotrellis.raster.{MultibandTile, Tile}
@@ -14,7 +15,9 @@ import geotrellis.spark.pyramid.Pyramid
 import geotrellis.spark.{Bounds, EmptyBounds, KeyBounds, LayerId, SpaceTimeKey, TileLayerMetadata, _}
 import geotrellis.util._
 import geotrellis.vector.{Extent, ProjectedExtent}
+import org.apache.accumulo.core.client.mapred.AccumuloInputFormat
 import org.apache.accumulo.core.client.mapreduce.InputFormatBase
+import org.apache.accumulo.core.client.mapreduce.lib.impl.ConfiguratorBase
 import org.apache.accumulo.core.data.{Range => AccumuloRange}
 import org.apache.accumulo.core.util.{Pair => AccumuloPair}
 import org.apache.hadoop.io.Text
@@ -85,6 +88,11 @@ import scala.reflect.ClassTag
         }
 
       val job = Job.getInstance(sc.hadoopConfiguration)
+      val principal = ConfiguratorBase.getPrincipal(classOf[AccumuloInputFormat], job.getConfiguration)
+      val token = ConfiguratorBase.getAuthenticationToken(classOf[AccumuloInputFormat], job.getConfiguration)
+      println("Principal: " + principal)
+      println("Token: " + token)
+
       accumuloInstance.setAccumuloConfig(job)
       InputFormatBase.setInputTableName(job, table)
 
@@ -114,11 +122,16 @@ import scala.reflect.ClassTag
       val header: LayerHeader = attributeStore.readHeader[LayerHeader](id)
       val query = createQuery(attributeStore,id,bbox,bbox_srs,startDate,endDate)
       implicit val sc = SparkContext.getOrCreate()
-      val result: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = header.valueClass match {
-        case "geotrellis.raster.Tile" =>
-           rdd[Tile](layerName, level,query).withContext(_.mapValues{MultibandTile(_)})
-        case "geotrellis.raster.MultibandTile" =>
-          rdd[MultibandTile](layerName, level,query)
+
+      val result: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = ComputeStatsGeotrellisHelpers.authenticated(sc) {
+        header.valueClass match {
+          case "geotrellis.raster.Tile" =>
+            rdd[Tile](layerName, level, query).withContext(_.mapValues {
+              MultibandTile(_)
+            })
+          case "geotrellis.raster.MultibandTile" =>
+            rdd[MultibandTile](layerName, level, query)
+        }
       }
       return new ContextRDD(result,result.metadata)
     }
@@ -156,16 +169,21 @@ import scala.reflect.ClassTag
 
       implicit val sc = SparkContext.getOrCreate()
 
-      val seq = for (z <- maxLevel to minLevel by -1) yield {
-        header.valueClass match {
-          case "geotrellis.raster.Tile" =>
-            (z, rdd[Tile](layerName, z,query).withContext(_.mapValues{MultibandTile(_)}))
-          case "geotrellis.raster.MultibandTile" =>
-            (z, rdd[MultibandTile](layerName, z,query))
-        }
+      return ComputeStatsGeotrellisHelpers.authenticated(sc)({
+        val seq = for (z <- maxLevel to minLevel by -1) yield {
+          header.valueClass match {
+            case "geotrellis.raster.Tile" =>
+              (z, rdd[Tile](layerName, z,query).withContext(_.mapValues{MultibandTile(_)}))
+            case "geotrellis.raster.MultibandTile" =>
+              (z, rdd[MultibandTile](layerName, z,query))
+          }
 
-      }
-      return seq
+        }
+        return seq
+      })
+
+
+
 
       //val reader = AccumuloLayerReader(accumuloInstance)
       //Pyramid.fromLayerReader[SpaceTimeKey,MultibandTile,TileLayerMetadata[SpaceTimeKey]](layerName,reader)
