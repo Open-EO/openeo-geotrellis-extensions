@@ -15,8 +15,7 @@ import geotrellis.spark.pyramid.Pyramid
 import geotrellis.spark.{Bounds, EmptyBounds, KeyBounds, LayerId, SpaceTimeKey, TileLayerMetadata, _}
 import geotrellis.util._
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.apache.accumulo.core.client.mapred.AccumuloInputFormat
-import org.apache.accumulo.core.client.mapreduce.InputFormatBase
+import org.apache.accumulo.core.client.mapreduce.{AccumuloInputFormat, InputFormatBase}
 import org.apache.accumulo.core.client.mapreduce.lib.impl.ConfiguratorBase
 import org.apache.accumulo.core.data.{Range => AccumuloRange}
 import org.apache.accumulo.core.util.{Pair => AccumuloPair}
@@ -88,12 +87,13 @@ import scala.reflect.ClassTag
         }
 
       val job = Job.getInstance(sc.hadoopConfiguration)
+
+      accumuloInstance.setAccumuloConfig(job)
+
       val principal = ConfiguratorBase.getPrincipal(classOf[AccumuloInputFormat], job.getConfiguration)
       val token = ConfiguratorBase.getAuthenticationToken(classOf[AccumuloInputFormat], job.getConfiguration)
       println("Principal: " + principal)
       println("Token: " + token)
-
-      accumuloInstance.setAccumuloConfig(job)
       InputFormatBase.setInputTableName(job, table)
 
       val ranges = queryKeyBounds.flatMap(decompose).asJava
