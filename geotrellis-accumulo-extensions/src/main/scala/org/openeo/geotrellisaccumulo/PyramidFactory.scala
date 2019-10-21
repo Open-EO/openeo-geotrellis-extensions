@@ -15,10 +15,11 @@ import geotrellis.spark.pyramid.Pyramid
 import geotrellis.spark.{Bounds, EmptyBounds, KeyBounds, LayerId, SpaceTimeKey, TileLayerMetadata, _}
 import geotrellis.util._
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.apache.accumulo.core.client.mapreduce.{AccumuloInputFormat, InputFormatBase}
 import org.apache.accumulo.core.client.mapreduce.lib.impl.ConfiguratorBase
+import org.apache.accumulo.core.client.mapreduce.{AccumuloInputFormat, InputFormatBase}
 import org.apache.accumulo.core.data.{Range => AccumuloRange}
 import org.apache.accumulo.core.util.{Pair => AccumuloPair}
+import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.Text
 import org.apache.hadoop.mapreduce.Job
 import org.apache.spark.SparkContext
@@ -86,7 +87,7 @@ import scala.reflect.ClassTag
           }
         }
 
-      val job = Job.getInstance(sc.hadoopConfiguration)
+      val job = Job.getInstance(new Configuration(sc.hadoopConfiguration))
 
       accumuloInstance.setAccumuloConfig(job)
 
