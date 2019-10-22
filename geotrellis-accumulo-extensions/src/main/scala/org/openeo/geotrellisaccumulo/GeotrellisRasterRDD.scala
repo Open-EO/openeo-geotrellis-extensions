@@ -32,6 +32,10 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
       val accumuloKey = new Key(new Text(AccumuloKeyEncoder.long2Bytes(keyIndex.toIndex(key.asInstanceOf[SpaceTimeKey]))))
       println(accumuloKey)
       val index = partitions.indexWhere(p => p.asInstanceOf[NewHadoopPartition].serializableHadoopSplit.value.asInstanceOf[BatchInputSplit].getRanges().asScala.exists( r => r.contains(accumuloKey)) )
+      if(index < 0) {
+        //cannot find this key in the partition, avoid breaking spark by returning -1
+        return 0
+      }
       return index
     }
   })
