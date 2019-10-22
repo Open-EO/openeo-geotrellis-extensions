@@ -15,12 +15,10 @@ import geotrellis.spark.pyramid.Pyramid
 import geotrellis.spark.{Bounds, EmptyBounds, KeyBounds, LayerId, SpaceTimeKey, TileLayerMetadata, _}
 import geotrellis.util._
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.apache.accumulo.core.client.mapreduce.lib.impl.ConfiguratorBase
-import org.apache.accumulo.core.client.mapreduce.{AccumuloInputFormat, InputFormatBase}
+import org.apache.accumulo.core.client.mapreduce.InputFormatBase
 import org.apache.accumulo.core.data.{Range => AccumuloRange}
 import org.apache.accumulo.core.util.{Pair => AccumuloPair}
 import org.apache.hadoop.io.Text
-import org.apache.hadoop.mapred.JobConf
 import org.apache.hadoop.mapreduce.Job
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -91,17 +89,13 @@ import scala.reflect.ClassTag
 
       accumuloInstance.setAccumuloConfig(job)
 
-      val principal = ConfiguratorBase.getPrincipal(classOf[AccumuloInputFormat], job.getConfiguration)
-      val token = ConfiguratorBase.getAuthenticationToken(classOf[AccumuloInputFormat], job.getConfiguration)
-      println("Principal: " + principal)
-
       InputFormatBase.setInputTableName(job, table)
 
       val ranges = queryKeyBounds.flatMap(decompose).asJava
       InputFormatBase.setRanges(job, ranges)
       InputFormatBase.fetchColumns(job, List(new AccumuloPair(new Text(accumulo.columnFamily(id)), null: Text)).asJava)
       InputFormatBase.setBatchScan(job, true)
-      println("Cred: " + job.getConfiguration.asInstanceOf[JobConf].getCredentials)
+
       val configuration = job.getConfiguration
       val rdd = new GeotrellisAccumuloRDD(sc,configuration,splitRanges)
 
