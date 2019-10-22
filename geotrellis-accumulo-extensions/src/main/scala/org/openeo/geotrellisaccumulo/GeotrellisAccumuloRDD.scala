@@ -23,10 +23,9 @@ import java.util.Date
 
 import org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat
 import org.apache.accumulo.core.client.mapreduce.impl.BatchInputSplit
-import org.apache.accumulo.core.client.mapreduce.lib.impl.ConfiguratorBase
 import org.apache.accumulo.core.data.{Key, Value}
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.io.{Text, Writable}
+import org.apache.hadoop.io.Writable
 import org.apache.hadoop.mapred.{JobConf, SplitLocationInfo}
 import org.apache.hadoop.mapreduce._
 import org.apache.hadoop.mapreduce.task.{JobContextImpl, TaskAttemptContextImpl}
@@ -102,13 +101,6 @@ class GeotrellisAccumuloRDD(
 
     val jobContext = new JobContextImpl(getConf, jobId)
     SparkHadoopUtil.get.addCredentials(jobContext.getConfiguration.asInstanceOf[JobConf])
-    import org.apache.accumulo.core.client.mapreduce.impl.DelegationTokenStub
-    val token = ConfiguratorBase.getAuthenticationToken(classOf[AccumuloInputFormat], getConf)
-    val delTokenStub = token.asInstanceOf[DelegationTokenStub]
-    println(delTokenStub.getServiceName)
-    val hadoopToken = jobContext.getCredentials.getToken(new Text(delTokenStub.getServiceName))
-
-    println("hadoopToken: " + hadoopToken)
 
     var rawSplits = inputFormat.getSplits(jobContext).toArray
 
