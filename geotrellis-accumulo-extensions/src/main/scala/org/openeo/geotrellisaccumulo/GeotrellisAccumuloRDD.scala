@@ -23,11 +23,10 @@ import java.util.Date
 
 import org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat
 import org.apache.accumulo.core.client.mapreduce.impl.BatchInputSplit
-import org.apache.accumulo.core.client.mapreduce.lib.impl.ConfiguratorBase
 import org.apache.accumulo.core.data.{Key, Value}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.Writable
-import org.apache.hadoop.mapred.SplitLocationInfo
+import org.apache.hadoop.mapred.{JobConf, SplitLocationInfo}
 import org.apache.hadoop.mapreduce._
 import org.apache.hadoop.mapreduce.task.{JobContextImpl, TaskAttemptContextImpl}
 import org.apache.spark._
@@ -101,8 +100,9 @@ class GeotrellisAccumuloRDD(
 
     val jobContext = new JobContextImpl(getConf, jobId)
 
-    val token = ConfiguratorBase.getAuthenticationToken(classOf[AccumuloInputFormat], jobContext.getConfiguration)
-    println("RDDToken: " + token)
+    println("conf: " + getConf)
+    println("newCreds: " + new JobConf(getConf).getCredentials)
+    println("Creds: " + jobContext.getCredentials)
     var rawSplits = inputFormat.getSplits(jobContext).toArray
 
     if(splitRanges) {
