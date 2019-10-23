@@ -1,5 +1,7 @@
 package be.vito.eodata.geopysparkextensions
 import java.security.PrivilegedAction
+import java.time.{LocalDateTime, ZoneOffset}
+import java.util.concurrent.TimeUnit
 
 import geotrellis.spark.io.accumulo.AccumuloInstance
 import org.apache.accumulo.core.client.ClientConfiguration
@@ -40,7 +42,9 @@ class AccumuloDelegationTokenProvider extends org.apache.spark.deploy.yarn.secur
               "hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",
               token.getPrincipal(),
               token)
-            val delegationToken: DelegationTokenImpl = accumulo.connector.securityOperations.getDelegationToken(new DelegationTokenConfig).asInstanceOf[DelegationTokenImpl]
+            val config = new DelegationTokenConfig
+            config.setTokenLifetime(6,TimeUnit.HOURS)
+            val delegationToken: DelegationTokenImpl = accumulo.connector.securityOperations.getDelegationToken(config).asInstanceOf[DelegationTokenImpl]
 
             val identifier = delegationToken.getIdentifier
             val hadoopToken = new Token(identifier.getBytes, delegationToken.getPassword, identifier.getKind, delegationToken.getServiceName)
@@ -48,6 +52,7 @@ class AccumuloDelegationTokenProvider extends org.apache.spark.deploy.yarn.secur
 
           }
         })
+        return Some(LocalDateTime.now().plusHours(4).toEpochSecond(ZoneOffset.UTC))
 
       } else {
         throw new RuntimeException("No Kerberos credentials to log in to Accumulo found, please log in first.")
