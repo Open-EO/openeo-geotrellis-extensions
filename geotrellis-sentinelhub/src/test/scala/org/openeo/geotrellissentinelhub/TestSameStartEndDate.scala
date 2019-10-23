@@ -1,11 +1,10 @@
-package org.openeo.geotrellis
+package org.openeo.geotrellissentinelhub
 
 import java.util
 
 import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.{Ignore, Test}
-import org.openeo.geotrellis.file.Sentinel1Gamma0PyramidFactory
 
 class TestSameStartEndDate {
 
@@ -29,9 +28,9 @@ class TestSameStartEndDate {
         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
         .set("spark.kryoserializer.buffer.max", "1024m"))
 
-    val uuid = System.getProperty("uuid")
+    val uuid = System.getProperty("uuid-gamma0")
     
-    val pyramid = new Sentinel1Gamma0PyramidFactory().pyramid_seq(uuid, extent, bbox_srs, from, to, bands)
+    val pyramid = new Sentinel1Gamma0PyramidFactory(uuid).pyramid_seq(extent, bbox_srs, from, to, bands)
     
     val topLevelRdd = pyramid.filter(r => r._1 == 14).head._2
     

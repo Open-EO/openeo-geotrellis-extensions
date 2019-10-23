@@ -20,7 +20,8 @@ import org.apache.commons.io.IOUtils
 import org.apache.spark.SparkContext
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
-import org.openeo.geotrellissentinelhub.Gamma0Bands.Band
+import org.openeo.geotrellissentinelhub.bands.Gamma0Bands.Gamma0Band
+import org.openeo.geotrellissentinelhub.bands.Sentinel2Bands.Sentinel2Band
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpResponse}
 
@@ -156,11 +157,11 @@ package object geotrellissentinelhub {
 
   }
 
-  def retrieveS1Gamma0TileFromSentinelHub(uuid: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, bands: Seq[Band]): MultibandTile = {
+  def retrieveS1Gamma0TileFromSentinelHub(uuid: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, bands: Seq[Gamma0Band]): MultibandTile = {
     MultibandTile.apply(bands.map(retrieveS1Gamma0TileFromSentinelHub(uuid, extent, date, width, height, _)))
   }
 
-  def retrieveS1Gamma0TileFromSentinelHub(uuid: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, band: Band): Tile = {
+  def retrieveS1Gamma0TileFromSentinelHub(uuid: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, band: Gamma0Band): Tile = {
     val url = s"https://services.sentinel-hub.com/ogc/wcs/$uuid?service=WCS&request=GetCoverage&format=image/tiff;depth=32f"
 
     val request = Http(url)
@@ -178,6 +179,44 @@ package object geotrellissentinelhub {
       retry(5, s"$date + $extent") {
         val response = request.exec(parser = 
           (code: Int, headers: Map[String, IndexedSeq[String]], inputStream: InputStream) => 
+            if (code == 200) GeoTiffReader.singlebandGeoTiffReader.read(IOUtils.toByteArray(inputStream)) else toString(inputStream))
+
+        if (response.isError)
+          throw new RetryException(response)
+
+        val tiff = response.body.asInstanceOf[SinglebandGeoTiff]
+
+        tiff.tile.toArrayTile().withNoData(Some(1.0))
+      }
+    } catch {
+      case e: Exception =>
+        logger.info(s"Returning empty tile: $e")
+        ArrayTile.empty(FloatCellType, width, height)
+    }
+  }
+
+  def retrieveS2TileFromSentinelHub(uuid: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, bands: Seq[Sentinel2Band]): MultibandTile = {
+    MultibandTile.apply(bands.map(retrieveS2TileFromSentinelHub(uuid, extent, date, width, height, _)))
+  }
+
+  def retrieveS2TileFromSentinelHub(uuid: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, band: Sentinel2Band): Tile = {
+    val url = s"https://services.sentinel-hub.com/ogc/wcs/$uuid?service=WCS&request=GetCoverage&format=image/tiff;depth=32f"
+
+    val request = Http(url)
+      .param("width", width.toString)
+      .param("height", height.toString)
+      .param("coverage", band.toString)
+      .param("time", date.format(ISO_DATE_TIME) + "/" + date.plusDays(1).format(ISO_DATE_TIME))
+      .param("bbox", extent.xmin + "," + extent.ymin + "," + extent.xmax + "," + extent.ymax)
+      .param("crs", "EPSG:3857")
+      .param("maxcc", "20")
+
+    logger.info(s"Executing request: ${request.urlBuilder(request)}")
+
+    try {
+      retry(5, s"$date + $extent") {
+        val response = request.exec(parser =
+          (code: Int, headers: Map[String, IndexedSeq[String]], inputStream: InputStream) =>
             if (code == 200) GeoTiffReader.singlebandGeoTiffReader.read(IOUtils.toByteArray(inputStream)) else toString(inputStream))
 
         if (response.isError)

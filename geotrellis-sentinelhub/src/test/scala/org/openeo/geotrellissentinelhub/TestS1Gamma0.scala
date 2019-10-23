@@ -4,7 +4,7 @@ import java.time.{LocalDate, ZoneId}
 
 import geotrellis.vector.Extent
 import org.junit.{Ignore, Test}
-import org.openeo.geotrellissentinelhub.Gamma0Bands._
+import org.openeo.geotrellissentinelhub.bands.Gamma0Bands._
 
 class TestS1Gamma0 {
   
@@ -17,7 +17,7 @@ class TestS1Gamma0 {
     
     val uuid = System.getProperty("uuid")
     
-    retrieveS1Gamma0TileFromSentinelHub(uuid, bbox, date, 256, 256, gamma0Bands)
+    retrieveS1Gamma0TileFromSentinelHub(uuid, bbox, date, 256, 256, allBands)
   }
 
 }

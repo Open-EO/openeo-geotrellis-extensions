@@ -29,13 +29,9 @@ object Jp2PyramidFactory {
   private val catalog = Catalog("Sentinel-2", "Level-2A")
 
   sealed trait Band
-
   case object B02 extends Band
-
   case object B03 extends Band
-
   case object B04 extends Band
-
   case object B08 extends Band
 
   private val allBands: Seq[Band] = Seq(B02, B03, B04, B08)
