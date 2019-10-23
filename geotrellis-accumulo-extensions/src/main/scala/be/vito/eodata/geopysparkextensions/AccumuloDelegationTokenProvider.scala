@@ -29,29 +29,33 @@ class AccumuloDelegationTokenProvider extends org.apache.spark.deploy.yarn.secur
       .loadDefault()
       .getBoolean(ClientConfiguration.ClientProperty.INSTANCE_RPC_SASL_ENABLED.getKey, false)
 
-
+    println("Obtaining accumulo creds")
     if (useKerberos) {
-      if (UserGroupInformation.getLoginUser.hasKerberosCredentials) {
+      def setupToken = new PrivilegedAction[Unit] {
+        override def run() = {
+          val token = new KerberosToken()
+          import org.apache.accumulo.core.client.admin.DelegationTokenConfig
 
-        UserGroupInformation.getLoginUser.doAs[Unit](new PrivilegedAction[Unit] {
-          override def run() = {
-            val token = new KerberosToken()
-            import org.apache.accumulo.core.client.admin.DelegationTokenConfig
+          val accumulo = AccumuloInstance(
+            "hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",
+            token.getPrincipal(),
+            token)
+          val config = new DelegationTokenConfig
+          config.setTokenLifetime(6, TimeUnit.HOURS)
+          val delegationToken: DelegationTokenImpl = accumulo.connector.securityOperations.getDelegationToken(config).asInstanceOf[DelegationTokenImpl]
 
-            val accumulo = AccumuloInstance(
-              "hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",
-              token.getPrincipal(),
-              token)
-            val config = new DelegationTokenConfig
-            config.setTokenLifetime(6,TimeUnit.HOURS)
-            val delegationToken: DelegationTokenImpl = accumulo.connector.securityOperations.getDelegationToken(config).asInstanceOf[DelegationTokenImpl]
+          val identifier = delegationToken.getIdentifier
+          val hadoopToken = new Token(identifier.getBytes, delegationToken.getPassword, identifier.getKind, delegationToken.getServiceName)
+          println("Created token for: " + delegationToken.getServiceName.toString)
+          creds.addToken(delegationToken.getServiceName, hadoopToken)
 
-            val identifier = delegationToken.getIdentifier
-            val hadoopToken = new Token(identifier.getBytes, delegationToken.getPassword, identifier.getKind, delegationToken.getServiceName)
-            creds.addToken(delegationToken.getServiceName, hadoopToken)
+        }
+      }
+      if (UserGroupInformation.getCurrentUser.hasKerberosCredentials) {
+        setupToken.run()
+      } else if (UserGroupInformation.getLoginUser.hasKerberosCredentials) {
 
-          }
-        })
+        UserGroupInformation.getLoginUser.doAs[Unit](setupToken)
         return Some(LocalDateTime.now().plusHours(4).toEpochSecond(ZoneOffset.UTC))
 
       } else {
