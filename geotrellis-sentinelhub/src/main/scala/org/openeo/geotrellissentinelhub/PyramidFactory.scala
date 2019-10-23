@@ -9,20 +9,19 @@ import geotrellis.spark.tiling._
 import geotrellis.spark.{ContextRDD, KeyBounds, MultibandTileLayerRDD, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
-import org.openeo.geotrellissentinelhub.bands.Gamma0Bands._
+import org.openeo.geotrellissentinelhub.bands.{Band, Sentinel1Bands, Sentinel2Bands}
+import org.openeo.geotrellissentinelhub.bands.Sentinel1Bands.Sentinel1Band
+import org.openeo.geotrellissentinelhub.bands.Sentinel2Bands.Sentinel2Band
 
 import scala.collection.JavaConverters._
 
-object Sentinel1Gamma0PyramidFactory {
+abstract class PyramidFactory[B <: Band](val uuid: String) extends Serializable {
   private val maxZoom = 14
-}
-
-class Sentinel1Gamma0PyramidFactory(val uuid: String) extends Serializable {
-  import Sentinel1Gamma0PyramidFactory._
-
+  val allBands: Seq[B] = Seq()
+  
   private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
   
-  def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom, bands: Seq[Gamma0Band] = allBands)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
+  def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom, bands: Seq[B] = allBands)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     require(zoom >= 0)
     require(zoom <= maxZoom)
 
@@ -37,7 +36,7 @@ class Sentinel1Gamma0PyramidFactory(val uuid: String) extends Serializable {
     val overlappingKeys = dates.flatMap(date =>layout.mapTransform.keysForGeometry(reprojectedBoundingBox.toPolygon()).map(key => SpaceTimeKey(key, date)))
 
     val tilesRdd = sc.parallelize(overlappingKeys)
-      .map(key => (key, retrieveS1Gamma0TileFromSentinelHub(uuid, key.spatialKey.extent(layout), key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, bands)))
+      .map(key => (key, retrieveTileFromSentinelHub(uuid, key.spatialKey.extent(layout), key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, bands)))
 
     val metadata: TileLayerMetadata[SpaceTimeKey] = {
       val gridBounds = layout.mapTransform.extentToBounds(reprojectedBoundingBox)
@@ -54,7 +53,7 @@ class Sentinel1Gamma0PyramidFactory(val uuid: String) extends Serializable {
     ContextRDD(tilesRdd, metadata)
   }
   
-  def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, bands: Seq[Gamma0Band] = allBands)(implicit sc: SparkContext): Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+  def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, bands: Seq[B] = allBands)(implicit sc: SparkContext): Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val layers = for (zoom <- maxZoom to 0 by -1) yield zoom -> layer(boundingBox, from, to, zoom, bands)
     Pyramid(layers.toMap)
   }
@@ -66,7 +65,7 @@ class Sentinel1Gamma0PyramidFactory(val uuid: String) extends Serializable {
     val from = ZonedDateTime.parse(from_date)
     val to = ZonedDateTime.parse(to_date)
 
-    val bands: Seq[Gamma0Band] =
+    val bands: Seq[B] =
       if (band_indices == null) allBands
       else band_indices.asScala.map(allBands(_))
 
@@ -74,5 +73,12 @@ class Sentinel1Gamma0PyramidFactory(val uuid: String) extends Serializable {
       .sortBy { case (zoom, _) => zoom }
       .reverse
   }
+}
 
+class S1PyramidFactory(override val uuid: String) extends PyramidFactory[Sentinel1Band](uuid) {
+  override val allBands: Seq[Sentinel1Band] = Sentinel1Bands.allBands
+}
+
+class S2PyramidFactory(override val uuid: String) extends PyramidFactory[Sentinel2Band](uuid) {
+  override val allBands: Seq[Sentinel2Band] = Sentinel2Bands.allBands
 }
