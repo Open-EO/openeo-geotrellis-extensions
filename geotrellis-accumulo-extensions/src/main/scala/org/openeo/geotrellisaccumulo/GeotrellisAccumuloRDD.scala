@@ -21,14 +21,17 @@ import java.io.{ObjectInputStream, ObjectOutputStream}
 import java.text.SimpleDateFormat
 import java.util.Date
 
+import org.apache.accumulo.core.client.impl.DelegationTokenImpl
 import org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat
 import org.apache.accumulo.core.client.mapreduce.impl.BatchInputSplit
+import org.apache.accumulo.core.client.mapreduce.lib.impl.ConfiguratorBase
 import org.apache.accumulo.core.data.{Key, Value}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.Writable
 import org.apache.hadoop.mapred.{JobConf, SplitLocationInfo}
 import org.apache.hadoop.mapreduce._
 import org.apache.hadoop.mapreduce.task.{JobContextImpl, TaskAttemptContextImpl}
+import org.apache.hadoop.security.token.Token
 import org.apache.spark._
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.rdd.RDD
@@ -101,6 +104,16 @@ class GeotrellisAccumuloRDD(
 
     val jobContext = new JobContextImpl(getConf, jobId)
     SparkHadoopUtil.get.addCredentials(jobContext.getConfiguration.asInstanceOf[JobConf])
+
+    val token = ConfiguratorBase.getAuthenticationToken(classOf[AccumuloInputFormat], jobContext.getConfiguration)
+    if(token.isInstanceOf[DelegationTokenImpl]) {
+      //normally the sparkhadooputil should have configured our token...
+      println("Configuring delegationtoken directly")
+      val delegationToken = token.asInstanceOf[DelegationTokenImpl]
+      val identifier = delegationToken.getIdentifier
+      val hadoopToken = new Token(identifier.getBytes, delegationToken.getPassword, identifier.getKind, delegationToken.getServiceName)
+      jobContext.getConfiguration.asInstanceOf[JobConf].getCredentials.addToken(delegationToken.getServiceName, hadoopToken)
+    }
 
     var rawSplits = inputFormat.getSplits(jobContext).toArray
 
