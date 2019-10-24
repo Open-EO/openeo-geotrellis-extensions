@@ -11,7 +11,7 @@ import java.util.{Base64, Scanner}
 import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.raster.io.geotiff.SinglebandGeoTiff
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
-import geotrellis.raster.{ArrayTile, CellSize, FloatCellType, GridBounds, MultibandTile, Tile}
+import geotrellis.raster.{ArrayTile, CellSize, FloatCellType, FloatUserDefinedNoDataCellType, GridBounds, MultibandTile, Tile}
 import geotrellis.spark.tiling.{LayoutLevel, ZoomedLayoutScheme}
 import geotrellis.spark.{KeyBounds, MultibandTileLayerRDD, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata, TileLayerRDD}
 import geotrellis.vector.{Extent, ProjectedExtent}
@@ -21,8 +21,6 @@ import org.apache.spark.SparkContext
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
 import org.openeo.geotrellissentinelhub.bands.Band
-import org.openeo.geotrellissentinelhub.bands.Sentinel1Bands.Sentinel1Band
-import org.openeo.geotrellissentinelhub.bands.Sentinel2Bands.Sentinel2Band
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpResponse}
 
@@ -192,7 +190,7 @@ package object geotrellissentinelhub {
     } catch {
       case e: Exception =>
         logger.info(s"Returning empty tile: $e")
-        ArrayTile.empty(FloatCellType, width, height)
+        ArrayTile.empty(FloatUserDefinedNoDataCellType(1), width, height)
     }
   }
 
@@ -203,7 +201,7 @@ package object geotrellissentinelhub {
     } catch {
       case e: RetryException =>
         logger.info(s"Retry $i: $message -> ${e.response.code}: ${e.response.header("Status").getOrElse("UNKNOWN")}")
-        if (i < nb) {
+        if (i < nb && e.response.code == 429) {
           val retryAfter = e.response.header("Retry-After").getOrElse("0").toInt
           val exponentialRetryAfter = retryAfter * pow(2, i - 1).toInt
           Thread.sleep(exponentialRetryAfter)
