@@ -3,15 +3,15 @@ package org.openeo.geotrellissentinelhub
 import java.time.ZonedDateTime
 
 import geotrellis.proj4.{CRS, WebMercator}
-import geotrellis.raster.{FloatCellType, MultibandTile}
+import geotrellis.raster.{FloatUserDefinedNoDataCellType, MultibandTile}
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.spark.tiling._
 import geotrellis.spark.{ContextRDD, KeyBounds, MultibandTileLayerRDD, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
-import org.openeo.geotrellissentinelhub.bands.{Band, Sentinel1Bands, Sentinel2Bands}
 import org.openeo.geotrellissentinelhub.bands.Sentinel1Bands.Sentinel1Band
 import org.openeo.geotrellissentinelhub.bands.Sentinel2Bands.Sentinel2Band
+import org.openeo.geotrellissentinelhub.bands.{Band, Sentinel1Bands, Sentinel2Bands}
 
 import scala.collection.JavaConverters._
 
@@ -42,7 +42,7 @@ abstract class PyramidFactory[B <: Band](val uuid: String) extends Serializable 
       val gridBounds = layout.mapTransform.extentToBounds(reprojectedBoundingBox)
 
       TileLayerMetadata(
-        cellType = FloatCellType,
+        cellType = FloatUserDefinedNoDataCellType(1.0f),
         layout = layout,
         extent = reprojectedBoundingBox,
         crs = targetCrs,
