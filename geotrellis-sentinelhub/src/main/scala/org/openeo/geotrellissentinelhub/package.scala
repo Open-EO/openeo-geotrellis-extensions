@@ -170,7 +170,6 @@ package object geotrellissentinelhub {
       .param("time", date.format(ISO_DATE_TIME) + "/" + date.plusDays(1).format(ISO_DATE_TIME))
       .param("bbox", extent.xmin + "," + extent.ymin + "," + extent.xmax + "," + extent.ymax)
       .param("crs", "EPSG:3857")
-      .param("maxcc", "20")
     
     logger.info(s"Executing request: ${request.urlBuilder(request)}")
     
