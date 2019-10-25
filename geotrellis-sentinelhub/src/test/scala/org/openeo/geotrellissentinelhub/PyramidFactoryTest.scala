@@ -11,10 +11,9 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkConf
 import org.junit.{Ignore, Test}
-import org.openeo.geotrellissentinelhub.bands.Band
 import org.openeo.geotrellissentinelhub.bands.Landsat8Bands.{B10, B11}
 import org.openeo.geotrellissentinelhub.bands.Sentinel1Bands.{IW_VH, IW_VV}
-import org.openeo.geotrellissentinelhub.bands.Sentinel2L2ABands.{B02, B03, B04, B08}
+import org.openeo.geotrellissentinelhub.bands.{Band, Sentinel2L1CBands, Sentinel2L2ABands}
 
 import scala.collection.JavaConverters._
 
@@ -31,14 +30,14 @@ class PyramidFactoryTest {
   @Test
   def testSentinel2L1C(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new S2L1CPyramidFactory(System.getProperty("uuid-sentinel2-L1C")), "sentinel2-L1C", date, Seq(B04, B03, B02))
+    testLayer(new S2L1CPyramidFactory(System.getProperty("uuid-sentinel2-L1C")), "sentinel2-L1C", date, Seq(Sentinel2L1CBands.B04, Sentinel2L1CBands.B03, Sentinel2L1CBands.B02))
   }
 
   @Ignore
   @Test
   def testSentinel2L2A(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new S2L2APyramidFactory(System.getProperty("uuid-sentinel2-L2A")), "sentinel2-L2A", date, Seq(B08, B04, B03))
+    testLayer(new S2L2APyramidFactory(System.getProperty("uuid-sentinel2-L2A")), "sentinel2-L2A", date, Seq(Sentinel2L2ABands.B08, Sentinel2L2ABands.B04, Sentinel2L2ABands.B03))
   }
 
   @Ignore
