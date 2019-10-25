@@ -37,6 +37,7 @@ abstract class PyramidFactory[B <: Band](val uuid: String) extends Serializable 
 
     val tilesRdd = sc.parallelize(overlappingKeys)
       .map(key => (key, retrieveTileFromSentinelHub(uuid, key.spatialKey.extent(layout), key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, bands)))
+      .filter(_._2.bands.exists(b => !b.isNoDataTile))
 
     val metadata: TileLayerMetadata[SpaceTimeKey] = {
       val gridBounds = layout.mapTransform.extentToBounds(reprojectedBoundingBox)
