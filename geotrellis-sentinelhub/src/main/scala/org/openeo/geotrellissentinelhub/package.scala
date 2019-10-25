@@ -156,14 +156,17 @@ package object geotrellissentinelhub {
 
   }
 
-  def retrieveTileFromSentinelHub(uuid: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, bands: Seq[_ <: Band]): MultibandTile = {
-    MultibandTile.apply(bands.map(retrieveTileFromSentinelHub(uuid, extent, date, width, height, _)))
+  def retrieveTileFromSentinelHub(uuid: String, endpoint: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, bands: Seq[_ <: Band]): MultibandTile = {
+    MultibandTile.apply(bands.map(retrieveTileFromSentinelHub(uuid, endpoint, extent, date, width, height, _)))
   }
 
-  def retrieveTileFromSentinelHub(uuid: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, band: Band): Tile = {
-    val url = s"https://services.sentinel-hub.com/ogc/wcs/$uuid?service=WCS&request=GetCoverage&format=image/tiff;depth=32f"
+  def retrieveTileFromSentinelHub(uuid: String, endpoint: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, band: Band): Tile = {
+    val url = s"$endpoint/ogc/wcs/$uuid"
 
     val request = Http(url)
+      .param("service", "WCS")
+      .param("request", "getCoverage")
+      .param("format", "image/tiff;depth=32f")
       .param("width", width.toString)
       .param("height", height.toString)
       .param("coverage", band.toString)

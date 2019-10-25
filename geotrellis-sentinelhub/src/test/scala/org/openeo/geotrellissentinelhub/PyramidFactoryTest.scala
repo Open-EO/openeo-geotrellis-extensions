@@ -12,8 +12,9 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkConf
 import org.junit.{Ignore, Test}
 import org.openeo.geotrellissentinelhub.bands.Band
+import org.openeo.geotrellissentinelhub.bands.Landsat8Bands.{B10, B11}
 import org.openeo.geotrellissentinelhub.bands.Sentinel1Bands.{IW_VH, IW_VV}
-import org.openeo.geotrellissentinelhub.bands.Sentinel2Bands.{B02, B03, B04, B08}
+import org.openeo.geotrellissentinelhub.bands.Sentinel2L2ABands.{B02, B03, B04, B08}
 
 import scala.collection.JavaConverters._
 
@@ -30,17 +31,24 @@ class PyramidFactoryTest {
   @Test
   def testSentinel2L1C(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new S2PyramidFactory(System.getProperty("uuid-sentinel2-L1C")), "sentinel2-L1C", date, Seq(B04, B03, B02))
+    testLayer(new S2L1CPyramidFactory(System.getProperty("uuid-sentinel2-L1C")), "sentinel2-L1C", date, Seq(B04, B03, B02))
   }
 
   @Ignore
   @Test
   def testSentinel2L2A(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new S2PyramidFactory(System.getProperty("uuid-sentinel2-L2A")), "sentinel2-L2A", date, Seq(B08, B04, B03))
+    testLayer(new S2L2APyramidFactory(System.getProperty("uuid-sentinel2-L2A")), "sentinel2-L2A", date, Seq(B08, B04, B03))
+  }
+
+  @Ignore
+  @Test
+  def testLandsat8(): Unit = {
+    val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+    testLayer(new L8PyramidFactory(System.getProperty("uuid-landsat8")), "landsat8", date, Seq(B10, B11))
   }
   
-  def testLayer[P <: Band](pyramidFactory: PyramidFactory[P], layer: String, date: ZonedDateTime, bands: Seq[P]): Unit = {
+  def testLayer[B <: Band](pyramidFactory: PyramidFactory[B], layer: String, date: ZonedDateTime, bands: Seq[B]): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
 
     val sparkConf = new SparkConf()

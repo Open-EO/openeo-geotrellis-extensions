@@ -9,14 +9,17 @@ import geotrellis.spark.tiling._
 import geotrellis.spark.{ContextRDD, KeyBounds, MultibandTileLayerRDD, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
+import org.openeo.geotrellissentinelhub.bands.Landsat8Bands.Landsat8Band
 import org.openeo.geotrellissentinelhub.bands.Sentinel1Bands.Sentinel1Band
-import org.openeo.geotrellissentinelhub.bands.Sentinel2Bands.Sentinel2Band
-import org.openeo.geotrellissentinelhub.bands.{Band, Sentinel1Bands, Sentinel2Bands}
+import org.openeo.geotrellissentinelhub.bands.Sentinel2L1CBands.Sentinel2L1CBand
+import org.openeo.geotrellissentinelhub.bands.Sentinel2L2ABands.Sentinel2L2ABand
+import org.openeo.geotrellissentinelhub.bands._
 
 import scala.collection.JavaConverters._
 
 abstract class PyramidFactory[B <: Band](val uuid: String) extends Serializable {
   private val maxZoom = 14
+  protected val endpoint = "https://services.sentinel-hub.com"
   val allBands: Seq[B] = Seq()
   
   private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
@@ -36,7 +39,7 @@ abstract class PyramidFactory[B <: Band](val uuid: String) extends Serializable 
     val overlappingKeys = dates.flatMap(date =>layout.mapTransform.keysForGeometry(reprojectedBoundingBox.toPolygon()).map(key => SpaceTimeKey(key, date)))
 
     val tilesRdd = sc.parallelize(overlappingKeys)
-      .map(key => (key, retrieveTileFromSentinelHub(uuid, key.spatialKey.extent(layout), key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, bands)))
+      .map(key => (key, retrieveTileFromSentinelHub(uuid, endpoint, key.spatialKey.extent(layout), key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, bands)))
       .filter(_._2.bands.exists(b => !b.isNoDataTile))
 
     val metadata: TileLayerMetadata[SpaceTimeKey] = {
@@ -80,6 +83,15 @@ class S1PyramidFactory(override val uuid: String) extends PyramidFactory[Sentine
   override val allBands: Seq[Sentinel1Band] = Sentinel1Bands.allBands
 }
 
-class S2PyramidFactory(override val uuid: String) extends PyramidFactory[Sentinel2Band](uuid) {
-  override val allBands: Seq[Sentinel2Band] = Sentinel2Bands.allBands
+class S2L1CPyramidFactory(override val uuid: String) extends PyramidFactory[Sentinel2L1CBand](uuid) {
+  override val allBands: Seq[Sentinel2L1CBand] = Sentinel2L1CBands.allBands
+}
+
+class S2L2APyramidFactory(override val uuid: String) extends PyramidFactory[Sentinel2L2ABand](uuid) {
+  override val allBands: Seq[Sentinel2L2ABand] = Sentinel2L2ABands.allBands
+}
+
+class L8PyramidFactory(override val uuid: String) extends PyramidFactory[Landsat8Band](uuid) {
+  override val allBands: Seq[Landsat8Band] = Landsat8Bands.allBands
+  override val endpoint = "https://services-uswest2.sentinel-hub.com"
 }

@@ -7,7 +7,6 @@ import com.amazonaws.client.builder.AwsClientBuilder
 import com.amazonaws.services.s3.AmazonS3ClientBuilder
 import com.amazonaws.services.s3.model.ListObjectsRequest
 import geotrellis.contrib.vlm.gdal.GDALReprojectRasterSource
-import geotrellis.gdal.config.GDALOptionsConfig
 import geotrellis.gdal.config.GDALOptionsConfig.registerOption
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.{MultibandTile, Tile, UByteUserDefinedNoDataCellType, isNoData}

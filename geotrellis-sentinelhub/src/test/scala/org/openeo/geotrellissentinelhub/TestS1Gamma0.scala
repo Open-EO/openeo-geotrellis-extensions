@@ -16,8 +16,9 @@ class TestS1Gamma0 {
     val date = LocalDate.of(2019, 6, 1).atStartOfDay(ZoneId.systemDefault())
     
     val uuid = System.getProperty("uuid")
+    val endpoint = "https://services.sentinel-hub.com"
     
-    retrieveTileFromSentinelHub(uuid, bbox, date, 256, 256, allBands)
+    retrieveTileFromSentinelHub(uuid, endpoint, bbox, date, 256, 256, allBands)
   }
 
 }
