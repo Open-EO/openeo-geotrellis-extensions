@@ -21,12 +21,6 @@ package object geotrellissentinelhub {
   
   val logger = LoggerFactory.getLogger(getClass)
 
-  private def toString(is:InputStream):String = {
-    val result = new Scanner(is, "utf-8").useDelimiter("\\Z").next
-    logger.warn(result)
-    result
-  }
-
   def retrieveTileFromSentinelHub(uuid: String, endpoint: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, bands: Seq[_ <: Band]): MultibandTile = {
     MultibandTile.apply(bands.map(retrieveTileFromSentinelHub(uuid, endpoint, extent, date, width, height, _)))
   }
@@ -62,9 +56,15 @@ package object geotrellissentinelhub {
       }
     } catch {
       case e: Exception =>
-        logger.info(s"Returning empty tile: $e")
+        logger.warn(s"Returning empty tile: $e")
         ArrayTile.empty(FloatUserDefinedNoDataCellType(1), width, height)
     }
+  }
+
+  private def toString(is:InputStream):String = {
+    val result = new Scanner(is, "utf-8").useDelimiter("\\Z").next
+    logger.warn(result)
+    result
   }
 
   @tailrec
@@ -72,12 +72,20 @@ package object geotrellissentinelhub {
     try {
       fn
     } catch {
-      case e: RetryException =>
-        logger.info(s"Retry $i: $message -> ${e.response.code}: ${e.response.header("Status").getOrElse("UNKNOWN")}")
-        if (i < nb && e.response.code == 429) {
-          val retryAfter = e.response.header("Retry-After").getOrElse("0").toInt
+      case e: Exception =>
+        val exMessage = e match {
+          case r: RetryException => s"${r.response.code}: ${r.response.header("Status").getOrElse("UNKNOWN")}"
+          case _ => e.getMessage
+        }
+        val retryAfter = e match {
+          case r: RetryException => r.response.header("Retry-After").getOrElse("10").toInt
+          case _ => 10
+        }
+        logger.info(s"Attempt $i failed: $message -> $exMessage")
+        if (i < nb) {
           val exponentialRetryAfter = retryAfter * pow(2, i - 1).toInt
           Thread.sleep(exponentialRetryAfter)
+          logger.info(s"Retry $i after ${exponentialRetryAfter}ms: $message")
           retry(nb, message, i + 1)(fn)
         } else throw e
     }
