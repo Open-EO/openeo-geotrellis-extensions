@@ -284,21 +284,21 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
   private def getLayerMetadata(sources: Seq[RasterSource])(implicit layout: LayoutDefinition) = {
     val cellTypes = sources.map(_.cellType).toSet
+    require(
+      cellTypes.size <= 1, 
+      s"All RasterSources must have the same CellType, but multiple ones were found: $cellTypes"
+    )
+
     val projections = sources.map(_.crs).toSet
-    
     require(
       projections.size <= 1,
       s"All RasterSources must be in the same projection, but multiple ones were found: $projections"
     )
-
+    
     val cellType = cellTypes.head
     val crs = projections.head
 
-    val combinedExtents = sources.map {
-      _.extent
-    }.reduce {
-      _ combine _
-    }
+    val combinedExtents = sources.map(_.extent).reduce(_ combine _)
     val layerKeyBounds = KeyBounds(layout.mapTransform(combinedExtents))
 
     TileLayerMetadata[SpatialKey](cellType, layout, combinedExtents, crs, layerKeyBounds)
@@ -331,18 +331,9 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
   }
 
   private def mapToSingleTile(tiles: Iterable[Tile]): Tile = {
-    if (tiles.size > 1) {
-      val nonNullTiles = tiles.filter(t => !t.isNoDataTile)
-      if (nonNullTiles.isEmpty) {
-        tiles.head
-      } else if (nonNullTiles.size == 1) {
-        nonNullTiles.head
-      } else {
-        nonNullTiles.reduce(_.combine(_)((t1, t2) => if (isNoData(t1)) t2 else if (isNoData(t2)) t1 else max(t1, t2)))
-      }
-    } else {
-      tiles.head
-    }
+    val intCombine = (t1: Int, t2: Int) => if (isNoData(t1)) t2 else if (isNoData(t2)) t1 else max(t1, t2)
+    val doubleCombine = (t1: Double, t2: Double) => if (isNoData(t1)) t2 else if (isNoData(t2)) t1 else max(t1, t2)
+    tiles.map(_.toArrayTile()).reduce[Tile](_.dualCombine(_)(intCombine)(doubleCombine))
   }
 
   private def tilesToArrayMultibandTile(tileR: Tile, tileG: Tile, tileB: Tile, bands: Array[Band], maskValues: Option[Array[Int]]): ArrayMultibandTile = {
@@ -368,15 +359,18 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       tile.mapDouble(10 * log10(_))
     }
 
-    def convert(tile: Tile) = {
-      tile.convert(FloatConstantNoDataCellType)
+    def normalize(t: Tile, min: Double, max: Double) = {
+      t.normalize(min, max, 1, 255)
+        .mapIfSet(1 max _ min 255)
     }
 
-    val tileB = tileR.toArrayTile().combineDouble(tileG.toArrayTile())(_ / _)
+    val logTileR = logTile(tileR.toArrayTile())
+    val logTileG = logTile(tileG.toArrayTile())
+    val tileB = logTileR.combineDouble(logTileG)(_ / _)
 
-    val normTileR = convert(logTile(tileR)).normalize(-25, 3, 0, 255)
-    val normTileG = convert(logTile(tileG)).normalize(-30, -2, 0, 255)
-    val normTileB = convert(tileB).normalize(0.2, 1, 0, 255)
+    val normTileR = normalize(logTileR, -25, 3)
+    val normTileG = normalize(logTileG, -30, -2)
+    val normTileB = normalize(tileB, 0.2, 1)
 
     ArrayMultibandTile(normTileR, normTileG, normTileB)
   }
