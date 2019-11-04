@@ -9,8 +9,10 @@ import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkConf
-import org.junit.{Test, Ignore}
+import org.junit.{Assert, Ignore, Test}
 import Sentinel2RadiometryPyramidFactory.Band._
+import geotrellis.spark.SpaceTimeKey
+import geotrellis.spark.partition.SpacePartitioner
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.JavaConverters._
@@ -24,7 +26,7 @@ class Sentinel2RadiometryPyramidFactoryTest {
   def writeGeoTiffs(): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
     val from = ZonedDateTime.of(LocalDate.of(2019, 3, 25), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    val to = from plusWeeks 1
+    val to = from plusDays  2
 
     val sparkConf = new SparkConf()
       .set("spark.kryoserializer.buffer.max", "512m")
@@ -45,6 +47,7 @@ class Sentinel2RadiometryPyramidFactoryTest {
         .map { case (_, layer) => layer }
         .get.cache()
 
+      Assert.assertTrue(baseLayer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
       println(s"got ${baseLayer.count()} tiles")
 
       val timestamps = baseLayer.keys
