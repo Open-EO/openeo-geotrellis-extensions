@@ -6,18 +6,21 @@ import java.time.ZonedDateTime
 import geotrellis.contrib.vlm.LayoutTileSource
 import geotrellis.contrib.vlm.geotiff.GeoTiffRasterSource
 import geotrellis.proj4.{CRS, WebMercator}
-import geotrellis.raster.{MultibandTile, ShortUserDefinedNoDataCellType}
 import geotrellis.raster.io.geotiff.reader.TiffTagsReader
-import geotrellis.spark.io.hadoop.{HdfsRangeReader, HdfsUtils}
+import geotrellis.raster.{MultibandTile, ShortUserDefinedNoDataCellType, Tile}
 import geotrellis.spark.io.hadoop.geotiff.{GeoTiffMetadata, InMemoryGeoTiffAttributeStore}
+import geotrellis.spark.io.hadoop.{HdfsRangeReader, HdfsUtils}
+import geotrellis.spark.partition.PartitionerIndex.SpaceTimePartitioner
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.spark.tiling._
-import geotrellis.spark.{ContextRDD, KeyBounds, MultibandTileLayerRDD, SpaceTimeKey, SpatialKey, TileLayerMetadata}
+import geotrellis.spark.{ContextRDD, KeyBounds, MultibandTileLayerRDD, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+
 import scala.collection.JavaConverters._
 
 object Sentinel2RadiometryPyramidFactory {
@@ -99,35 +102,31 @@ class Sentinel2RadiometryPyramidFactory {
 
     val layout = ZoomedLayoutScheme(targetCrs).levelForZoom(targetCrs.worldExtent, zoom).layout
 
-    val overlappingFilesPerDay: RDD[(ZonedDateTime, Iterable[String => String])] = sc.parallelize(dates, dates.size)
-      .map(date => (date, overlappingFilePathTemplates(date, reprojectedBoundingBox)))
+    val overlappingKeys: Set[SpatialKey] = layout.mapTransform.keysForGeometry(reprojectedBoundingBox.extent.toPolygon())
+    val overlappingFilesPerDay: RDD[(SpaceTimeKey, Iterable[String => String])] = sc.parallelize(dates).cartesian(sc.parallelize[SpatialKey](overlappingKeys.toSeq))
+      .map({case (date,spatialkey) => (SpaceTimeKey(spatialkey,TemporalKey(date)), overlappingFilePathTemplates(date, reprojectedBoundingBox))})
+      .filter(!_._2.isEmpty)
+    //val overlappingFilesPerDay: RDD[(ZonedDateTime, Iterable[String => String])] = sc.parallelize(dates, dates.size)
 
-    val overlappingTilesPerDay: RDD[(ZonedDateTime, Iterable[(SpatialKey, MultibandTile)])] = overlappingFilesPerDay.map { case (date, overlappingFiles) =>
-      val overlappingMultibandTiles: Iterable[(SpatialKey, MultibandTile)] = overlappingFiles.flatMap(overlappingFile => {
+    val gridBounds = layout.mapTransform.extentToBounds(reprojectedBoundingBox.extent)
+    val rddBounds = KeyBounds(SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from), SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to))
+
+    val partitioned = overlappingFilesPerDay.partitionBy( SpacePartitioner(rddBounds))
+    val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = partitioned.map { case (key, overlappingFiles) =>
+      val overlappingMultibandTiles: Iterable[MultibandTile] = overlappingFiles.map(overlappingFile => {
         val bandTileSources: Seq[LayoutTileSource] = correspondingBandFiles(overlappingFile, bandFileMarkers)
           .map(bandFile => GeoTiffRasterSource(bandFile).reproject(targetCrs).tileToLayout(layout))
 
-        val overlappingKeys = layout.mapTransform.keysForGeometry(reprojectedBoundingBox.extent.toPolygon())
+        val multibandTilesPerFile: Seq[Option[MultibandTile]] = bandTileSources.map(_.read(key.spatialKey))
 
-        val multibandTilesPerFile: Seq[Iterator[(SpatialKey, MultibandTile)]] = bandTileSources.map(_.readAll(overlappingKeys.toIterator))
+        val singleTile = multibandTilesPerFile.foldLeft[Vector[Tile]](Vector[Tile]())(_ ++ _.get.bands)
 
-        val tilesCombinedBySpatialKey: Iterator[(SpatialKey, MultibandTile)] = multibandTilesPerFile.reduce((rowA, rowB) => {
-          // combine rowA and rowB into one row by keeping the SpatialKey and combining the tiles for each column
-          val result: Iterator[(SpatialKey, MultibandTile)] = (rowA zip rowB)
-            .map { case ((commonKey, tileA), (_, tileB)) => (commonKey, MultibandTile(tileA.bands ++: tileB.bands)) }
-
-          result
-        })
-
-        tilesCombinedBySpatialKey
+        MultibandTile(singleTile)
       })
 
-      (date, overlappingMultibandTiles)
-    }
+      (key, overlappingMultibandTiles.head)
+    }.partitionBy( SpacePartitioner(rddBounds))
 
-    val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = overlappingTilesPerDay.flatMap { case (date, tiles) =>
-      tiles.map { case (SpatialKey(col, row), tile) => (SpaceTimeKey(col = col, row = row, date), tile) }
-    }
 
     val metadata: TileLayerMetadata[SpaceTimeKey] = {
       val gridBounds = layout.mapTransform.extentToBounds(reprojectedBoundingBox.extent)
