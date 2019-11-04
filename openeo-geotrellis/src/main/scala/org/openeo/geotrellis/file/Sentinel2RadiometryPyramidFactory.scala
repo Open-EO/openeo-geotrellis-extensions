@@ -6,10 +6,10 @@ import java.time.ZonedDateTime
 import geotrellis.contrib.vlm.LayoutTileSource
 import geotrellis.contrib.vlm.geotiff.GeoTiffRasterSource
 import geotrellis.proj4.{CRS, WebMercator}
-import geotrellis.raster.{MultibandTile, ShortUserDefinedNoDataCellType, Tile}
 import geotrellis.raster.io.geotiff.reader.TiffTagsReader
-import geotrellis.spark.io.hadoop.{HdfsRangeReader, HdfsUtils}
+import geotrellis.raster.{MultibandTile, ShortUserDefinedNoDataCellType, Tile}
 import geotrellis.spark.io.hadoop.geotiff.{GeoTiffMetadata, InMemoryGeoTiffAttributeStore}
+import geotrellis.spark.io.hadoop.{HdfsRangeReader, HdfsUtils}
 import geotrellis.spark.partition.PartitionerIndex.SpaceTimePartitioner
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
@@ -105,6 +105,7 @@ class Sentinel2RadiometryPyramidFactory {
     val overlappingKeys: Set[SpatialKey] = layout.mapTransform.keysForGeometry(reprojectedBoundingBox.extent.toPolygon())
     val overlappingFilesPerDay: RDD[(SpaceTimeKey, Iterable[String => String])] = sc.parallelize(dates).cartesian(sc.parallelize[SpatialKey](overlappingKeys.toSeq))
       .map({case (date,spatialkey) => (SpaceTimeKey(spatialkey,TemporalKey(date)), overlappingFilePathTemplates(date, reprojectedBoundingBox))})
+      .filter(!_._2.isEmpty)
     //val overlappingFilesPerDay: RDD[(ZonedDateTime, Iterable[String => String])] = sc.parallelize(dates, dates.size)
 
     val gridBounds = layout.mapTransform.extentToBounds(reprojectedBoundingBox.extent)
