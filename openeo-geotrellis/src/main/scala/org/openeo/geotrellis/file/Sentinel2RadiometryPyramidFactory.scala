@@ -119,7 +119,7 @@ class Sentinel2RadiometryPyramidFactory {
 
         val multibandTilesPerFile: Seq[Option[MultibandTile]] = bandTileSources.map(_.read(key.spatialKey))
 
-        val singleTile = multibandTilesPerFile.foldLeft[Vector[Tile]](Vector[Tile]())(_ ++ _.get.bands)
+        val singleTile = multibandTilesPerFile.filter(_.isDefined).foldLeft[Vector[Tile]](Vector[Tile]())(_ ++ _.get.bands)
 
         MultibandTile(singleTile)
       })
