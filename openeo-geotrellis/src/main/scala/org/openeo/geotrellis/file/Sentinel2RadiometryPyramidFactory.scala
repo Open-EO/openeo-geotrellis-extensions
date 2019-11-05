@@ -118,7 +118,6 @@ class Sentinel2RadiometryPyramidFactory {
           .map(bandFile => GeoTiffRasterSource(bandFile).reproject(targetCrs).tileToLayout(layout))
 
         val multibandTilesPerFile: Seq[Option[MultibandTile]] = bandTileSources.map(_.read(key.spatialKey))
-
         val singleTile = multibandTilesPerFile.filter(_.isDefined).foldLeft[Vector[Tile]](Vector[Tile]())(_ ++ _.get.bands)
 
         if(singleTile.size>0) {
@@ -129,9 +128,8 @@ class Sentinel2RadiometryPyramidFactory {
       })
       if(overlappingMultibandTiles.size>0) {
         Some(key, overlappingMultibandTiles.head)
-
       }else{
-        Option.empty
+        Option.empty[(SpaceTimeKey,MultibandTile)]
       }
     }.partitionBy( SpacePartitioner(rddBounds))
 
