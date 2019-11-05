@@ -112,8 +112,8 @@ class Sentinel2RadiometryPyramidFactory {
     val rddBounds = KeyBounds(SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from), SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to))
 
     val partitioned = overlappingFilesPerDay.partitionBy( SpacePartitioner(rddBounds))
-    val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = partitioned.map { case (key, overlappingFiles) =>
-      val overlappingMultibandTiles: Iterable[MultibandTile] = overlappingFiles.map(overlappingFile => {
+    val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = partitioned.flatMap { case (key, overlappingFiles) =>
+      val overlappingMultibandTiles: Iterable[MultibandTile] = overlappingFiles.flatMap(overlappingFile => {
         val bandTileSources: Seq[LayoutTileSource] = correspondingBandFiles(overlappingFile, bandFileMarkers)
           .map(bandFile => GeoTiffRasterSource(bandFile).reproject(targetCrs).tileToLayout(layout))
 
@@ -121,10 +121,18 @@ class Sentinel2RadiometryPyramidFactory {
 
         val singleTile = multibandTilesPerFile.filter(_.isDefined).foldLeft[Vector[Tile]](Vector[Tile]())(_ ++ _.get.bands)
 
-        MultibandTile(singleTile)
+        if(singleTile.size>0) {
+          Some(MultibandTile(singleTile))
+        }else{
+          Option.empty[MultibandTile]
+        }
       })
+      if(overlappingMultibandTiles.size>0) {
+        Some(key, overlappingMultibandTiles.head)
 
-      (key, overlappingMultibandTiles.head)
+      }else{
+        Option.empty
+      }
     }.partitionBy( SpacePartitioner(rddBounds))
 
 
