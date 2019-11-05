@@ -104,7 +104,7 @@ class Sentinel2RadiometryPyramidFactory {
 
     val overlappingKeys: Set[SpatialKey] = layout.mapTransform.keysForGeometry(reprojectedBoundingBox.extent.toPolygon())
     val overlappingFilesPerDay: RDD[(SpaceTimeKey, Iterable[String => String])] = sc.parallelize(dates,dates.length).cartesian(sc.parallelize[SpatialKey](overlappingKeys.toSeq, Math.max(1,overlappingKeys.size / 20)))
-      .map({case (date,spatialkey) => (SpaceTimeKey(spatialkey,TemporalKey(date)), overlappingFilePathTemplates(date, reprojectedBoundingBox))})
+      .map({case (date,spatialkey) => (SpaceTimeKey(spatialkey,TemporalKey(date)), overlappingFilePathTemplates(date, ProjectedExtent(spatialkey.extent(layout),targetCrs)))})
       .filter(!_._2.isEmpty)
     //val overlappingFilesPerDay: RDD[(ZonedDateTime, Iterable[String => String])] = sc.parallelize(dates, dates.size)
 
