@@ -5,6 +5,8 @@ import java.time.{Instant, ZonedDateTime}
 import geotrellis.raster._
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
+import geotrellis.spark.io.file.cog.FileCOGLayerWriter
+import geotrellis.spark.io.index.ZCurveKeyIndexMethod
 import geotrellis.spark.{ContextRDD, Metadata, MultibandTileLayerRDD, SpaceTimeKey, SpatialComponent, SpatialKey, TemporalKey, TileLayerMetadata}
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.focal._
@@ -134,6 +136,12 @@ class OpenEOProcesses extends Serializable {
     */
   def apply_kernel_spatial(datacube:MultibandTileLayerRDD[SpatialKey], kernel:Tile): RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]] = {
     return apply_kernel(datacube,kernel)
+  }
+
+  def write_geotiffs(datacube:MultibandTileLayerRDD[SpatialKey],location: String) = {
+    import geotrellis.spark.io._
+    val writer = FileCOGLayerWriter(location)
+    writer.write("output",datacube,0,ZCurveKeyIndexMethod,10000)
   }
 
 }
