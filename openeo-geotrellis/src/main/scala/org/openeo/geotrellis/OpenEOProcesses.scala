@@ -1,13 +1,15 @@
 package org.openeo.geotrellis
 
+import java.io.File
 import java.time.{Instant, ZonedDateTime}
 
 import geotrellis.raster._
+import geotrellis.raster.io.geotiff.compression.DeflateCompression
+import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.spark.io.file.cog.FileCOGLayerWriter
-import geotrellis.spark.io.index.ZCurveKeyIndexMethod
 import geotrellis.spark.{ContextRDD, Metadata, MultibandTileLayerRDD, SpaceTimeKey, SpatialComponent, SpatialKey, TemporalKey, TileLayerMetadata}
+import geotrellis.util.Filesystem
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.focal._
 
@@ -138,10 +140,14 @@ class OpenEOProcesses extends Serializable {
     return apply_kernel(datacube,kernel)
   }
 
-  def write_geotiffs(datacube:MultibandTileLayerRDD[SpatialKey],location: String) = {
-    import geotrellis.spark.io._
-    val writer = FileCOGLayerWriter(location)
-    writer.write("output",datacube,0,ZCurveKeyIndexMethod,10000)
+  def write_geotiffs(datacube:MultibandTileLayerRDD[SpatialKey],location: String, zoom:Int) = {
+    Filesystem.ensureDirectory(new File(location).getAbsolutePath)
+    //val currentLayout = datacube.metadata.layout.tileLayout
+    //datacube.tileToLayout(datacube.metadata.copy(layout =  datacube.metadata.layout.copy(tileLayout = TileLayout() )))
+    datacube.toGeoTiffs(Tags.empty,GeoTiffOptions(DeflateCompression)).foreach(t=>{
+      val path = location + "/tile" + t._1.col.toString + "_" + t._1.row.toString + ".tiff"
+      t._2.write(path,true)
+    })
   }
 
 }
