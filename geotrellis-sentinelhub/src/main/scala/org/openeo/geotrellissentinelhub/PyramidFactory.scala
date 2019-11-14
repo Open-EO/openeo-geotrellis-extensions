@@ -70,7 +70,7 @@ abstract class PyramidFactory[B <: Band](val uuid: String) extends Serializable 
     val to = ZonedDateTime.parse(to_date)
 
     val bands: Seq[B] =
-      if (band_indices == null) allBands
+      if (band_indices == null || band_indices.isEmpty) allBands
       else band_indices.asScala.map(allBands(_))
 
     pyramid(projectedExtent, from, to, bands).levels.toSeq
