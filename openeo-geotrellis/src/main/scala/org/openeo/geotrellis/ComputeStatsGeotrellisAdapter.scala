@@ -113,7 +113,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
 
   def compute_histogram_time_series_from_datacube(datacube:MultibandTileLayerRDD[SpaceTimeKey], polygon_wkt: String, polygon_srs: String,
                                     from_date: String, to_date: String, band_index: Int):
-  JMap[String, JList[JMap[Double, Long]]] = { // date -> value/count
+  JMap[String, JList[JMap[Double, Long]]] = { // date -> band -> value/count
     val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
 
     val polygon = parsePolygonWkt(polygon_wkt)
@@ -132,7 +132,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   def compute_histograms_time_series_from_datacube(datacube:MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String,
                                      from_date: String, to_date: String, band_index: Int):
 
-  JMap[String, JList[JList[JMap[Double, Long]]]] = { // date -> polygon -> value/count
+  JMap[String, JList[JList[JMap[Double, Long]]]] = { // date -> polygon -> band -> value/count
     val histogramsCollector = new MultibandHistogramsCollector
     _compute_histograms_time_series_from_datacube(datacube, polygon_wkts, polygons_srs, from_date, to_date, band_index, histogramsCollector)
     histogramsCollector.results
