@@ -1,10 +1,7 @@
 package org.openeo.geotrellis;
 
 
-import geotrellis.raster.ByteArrayTile;
-import geotrellis.raster.ByteConstantNoDataArrayTile;
-import geotrellis.raster.Tile;
-import geotrellis.raster.UByteConstantNoDataArrayTile;
+import geotrellis.raster.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import scala.Function1;
@@ -145,6 +142,27 @@ public class TestOpenEOProcessScriptBuilder {
 
         System.out.println("Arrays.toString(ndvi.toArrayDouble()) = " + Arrays.toString(ndvi.toArrayDouble()));
         assertEquals(30.0, ndvi.get(0, 0));
+    }
+
+    @DisplayName("Test logical Or")
+    @Test
+    public void testLogicalOr() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> empty = Collections.emptyMap();
+        builder.expressionStart("or", empty);
+        //not specifying expressions means that we're working on the input coming from the tiles?
+        //see https://github.com/Open-EO/openeo-processes/issues/87#issuecomment-559448790
+        builder.expressionEnd("or",empty);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        Tile tile1 = BitArrayTile.fill(true, 4, 4);
+        Tile tile2 = BitArrayTile.fill(false, 4, 4);
+
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1,tile2)));
+        Tile merged = result.apply(0);
+
+        System.out.println("Arrays.toString(ndvi.toArrayDouble()) = " + Arrays.toString(merged.toBytes()));
+        assertEquals(1, merged.get(0, 0));
     }
 
     @DisplayName("Test logical operations")
