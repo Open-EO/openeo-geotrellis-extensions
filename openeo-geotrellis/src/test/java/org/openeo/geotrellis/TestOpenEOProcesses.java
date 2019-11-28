@@ -20,8 +20,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.*;
 
 
 public class TestOpenEOProcesses {
@@ -122,6 +121,52 @@ public class TestOpenEOProcesses {
             assertEquals(10,tile.get(0,2));
         }
 
+
+    }
+
+    @Test
+    public void testMergeCubes() {
+        DataType celltype = CellType$.MODULE$.fromName("int8raw").withDefaultNoData();
+        MutableArrayTile zeroTile = new ByteConstantTile((byte)0,256,256, (ByteCells) celltype).mutable();
+        zeroTile.set(0,0,1);
+        zeroTile.set(0,1,ByteConstantNoDataCellType.noDataValue());
+
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> tileLayerRDD = tileToSpaceTimeDataCube(zeroTile);
+
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> merged = new OpenEOProcesses().mergeCubes(tileLayerRDD, tileLayerRDD,null);
+
+        MultibandTile firstTile = merged.toJavaRDD().take(1).get(0)._2();
+        System.out.println("firstTile = " + firstTile);
+        assertEquals(4,firstTile.bandCount());
+        assertEquals(zeroTile,firstTile.band(0));
+        assertEquals(zeroTile,firstTile.band(2));
+
+
+
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> mergedOr = new OpenEOProcesses().mergeCubes(tileLayerRDD, tileLayerRDD,"sum");
+        MultibandTile firstTileSum = mergedOr.toJavaRDD().take(1).get(0)._2();
+        System.out.println("firstTileOr = " + firstTileSum);
+        assertEquals(2,firstTileSum.bandCount());
+        assertEquals(2, firstTileSum.band(0).get(0, 0));
+
+        assertTrue(firstTileSum.band(1).isNoDataTile());
+    }
+
+    @Test
+    public void testMergeCubesBadOperator() {
+        DataType celltype = CellType$.MODULE$.fromName("int8raw").withDefaultNoData();
+        MutableArrayTile zeroTile = new ByteConstantTile((byte)0,256,256, (ByteCells) celltype).mutable();
+        zeroTile.set(0,0,1);
+        zeroTile.set(0,1,ByteConstantNoDataCellType.noDataValue());
+
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> tileLayerRDD = tileToSpaceTimeDataCube(zeroTile);
+
+        try {
+            new OpenEOProcesses().mergeCubes(tileLayerRDD, tileLayerRDD, "unsupported");
+            fail("Should have thrown an exception.");
+        } catch (UnsupportedOperationException e) {
+
+        }
 
     }
 
