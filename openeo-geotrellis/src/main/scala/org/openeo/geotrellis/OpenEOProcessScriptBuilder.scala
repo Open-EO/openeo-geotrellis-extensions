@@ -19,10 +19,10 @@ class OpenEOProcessScriptBuilder {
 
   private def unaryFunction(argName:String,operator:Seq[Tile] => Seq[Tile] ) = {
     val storedArgs = contextStack.head
-    val inputFunction = storedArgs.get(argName).get
+    val inputFunction = storedArgs.get(argName)
 
-    if(inputFunction !=null)
-      operator compose inputFunction
+    if(inputFunction.isDefined)
+      operator compose inputFunction.get
     else
       operator
 
