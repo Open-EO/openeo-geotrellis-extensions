@@ -11,10 +11,10 @@ import scala.Option;
 import static java.lang.String.join;
 
 public class TileSeederRunner {
-    
+
     public static void main(String... args) {
         MemoryLogger ml = new MemoryLogger("main");
-        
+
         Option<Band[]> bands = Option.empty();
         Option<String> colorMap = Option.empty();
         if (args.length > 4) {
@@ -22,19 +22,19 @@ public class TileSeederRunner {
         } else if (args.length > 3) {
             colorMap = Option.apply(args[3]);
         }
-        
+
         Option<String> productGlob = Option.empty();
         if (args.length > 5)
             productGlob = Option.apply(args[5]);
 
-        Option<int[]> maskValues = Option.empty();
+        int[] maskValues = new int[0];
         if (args.length > 6)
-            maskValues = Option.apply(Arrays.stream(args[6].split(",")).mapToInt(Integer::valueOf).toArray());
+            maskValues = Arrays.stream(args[6].split(",")).mapToInt(Integer::valueOf).toArray();
 
         Option<String> permissions = Option.empty();
         if (args.length > 7)
             permissions = Option.apply(args[7]);
-        
+
         if (args.length > 1) {
             String productType = args[0];
             String rootPath = args[1];
@@ -46,11 +46,11 @@ public class TileSeederRunner {
                             .setAppName(join(":", "GeotrellisSeeder", productType, date))
                             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
                             .set("spark.kryoserializer.buffer.max", "1024m"));
-            
+
             new TileSeeder(13, false, Option.empty())
                     .renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, Option.empty(), sc);
         }
-        
+
         ml.logMem();
     }
 }
