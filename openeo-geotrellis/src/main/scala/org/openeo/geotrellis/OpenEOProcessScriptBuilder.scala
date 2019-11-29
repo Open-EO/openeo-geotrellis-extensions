@@ -21,7 +21,7 @@ class OpenEOProcessScriptBuilder {
     val storedArgs = contextStack.head
     val inputFunction = storedArgs.get(argName)
 
-    if(inputFunction.isDefined)
+    if(inputFunction.isDefined && inputFunction.get != null)
       operator compose inputFunction.get
     else
       operator
