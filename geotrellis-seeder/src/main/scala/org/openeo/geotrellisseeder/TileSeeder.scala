@@ -19,6 +19,7 @@ import geotrellis.spark.{ContextRDD, KeyBounds, Metadata, SpatialKey, TileLayerM
 import org.apache.hadoop.fs.Path
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
+import org.openeo.geotrellisseeder.TileSeeder.CLOUD_MILKINESS
 
 import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.collection.mutable.ListBuffer
@@ -35,14 +36,14 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
   }
 
   def renderPng(path: String, productType: String, dateStr: String, colorMap: Option[String] = None, bands: Option[Array[Band]] = None,
-                productGlob: Option[String] = None, maskValues: Option[Array[Int]] = None, permissions: Option[String] = None,
+                productGlob: Option[String] = None, maskValues: Array[Int] = Array(), permissions: Option[String] = None,
                 spatialKey: Option[SpatialKey] = None)
                (implicit sc: SparkContext): Unit = {
 
     val date = LocalDate.parse(dateStr.substring(0, 10))
-    
+
     var sourcePaths = None: Option[Seq[Seq[String]]]
-    
+
     if (productGlob.isEmpty) {
       val catalog = new CatalogClient()
       val products = catalog.getProducts(productType, date, date, "GEOTIFF").asScala
@@ -58,9 +59,9 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       }
     } else {
       def listFiles(path: Path) = HdfsUtils.listFiles(path, sc.hadoopConfiguration).map(_.toString)
-      
+
       val dateGlob = productGlob.get.replace("#DATE#", date.format(DateTimeFormatter.ofPattern("yyyy/MM/dd")))
-      
+
       if (colorMap.isDefined) {
         sourcePaths = Some(Seq(listFiles(new Path(dateGlob))))
       } else if (bands.isDefined) {
@@ -76,7 +77,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       globalLayout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10, 10))._1
 
     def getPartitions = partitions.getOrElse(max(1, round(pow(2, zoomLevel) / 20).toInt))
-    
+
     if (colorMap.isDefined) {
       val map = ColorMapParser.parse(colorMap.get)
       getSinglebandRDD(sourcePaths.get.head, date, spatialKey)
@@ -91,10 +92,10 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
         .repartition(getPartitions)
         .foreach(renderMultibandRDD(path, dateStr, zoomLevel))
     }
-    
+
     permissions.foreach(setFilePermissions(path, dateStr, _))
   }
-  
+
   private def getMultibandRDD(sourcePaths: Seq[Seq[String]], date: LocalDate, bands: Array[String], spatialKey: Option[SpatialKey])
                              (implicit sc: SparkContext, layout: LayoutDefinition) = {
 
@@ -132,9 +133,9 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
         val tile = regionsToTile(regions).convert(UByteUserDefinedNoDataCellType(-1))
         if (!tile.isNoDataTile) {
           val tilePath = pathForTile(path, dateStr, key, zoom)
-          
+
           deleteSymLink(tilePath)
-          
+
           tile.toArrayTile().renderPng(colorMap).write(tilePath)
 
           logger.logTile(key, tilePath)
@@ -144,7 +145,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     }
   }
 
-  private def renderMultibandRDD(path: String, dateStr: String, bands: Array[Band], zoom: Int, maskValues: Option[Array[Int]])
+  private def renderMultibandRDD(path: String, dateStr: String, bands: Array[Band], zoom: Int, maskValues: Array[Int])
                                 (item: (SpatialKey, (Iterable[RasterRegion], Iterable[RasterRegion], Iterable[RasterRegion]))): Unit = {
     item match {
       case (key, (rRegions, gRegions, bRegions)) =>
@@ -156,7 +157,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
         if (!tileR.isNoDataTile && !tileG.isNoDataTile && !tileB.isNoDataTile) {
           val tilePath = pathForTile(path, dateStr, key, zoom)
-          
+
           deleteSymLink(tilePath)
 
           tilesToArrayMultibandTile(tileR, tileG, tileB, bands, maskValues).renderPng().write(tilePath)
@@ -179,9 +180,9 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
         if (!tileR.isNoDataTile && !tileG.isNoDataTile) {
           val tilePath = pathForTile(path, dateStr, key, zoom)
-          
+
           deleteSymLink(tilePath)
-          
+
           tilesToArrayMultibandTile(tileR, tileG).renderPng().write(tilePath)
 
           logger.logTile(key, tilePath)
@@ -190,14 +191,14 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
         }
     }
   }
-  
+
   private def deleteSymLink(path: String) {
     val file = new File(path)
-    
+
     if (file.getAbsolutePath != file.getCanonicalPath || !file.exists())
       file.delete()
   }
-  
+
   private def setFilePermissions(path: String, dateStr: String, permissions: String) {
     val datePath = Paths.get(path, "g", dateStr)
     if (datePath.toFile.exists()) {
@@ -285,7 +286,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
   private def getLayerMetadata(sources: Seq[RasterSource])(implicit layout: LayoutDefinition) = {
     val cellTypes = sources.map(_.cellType).toSet
     require(
-      cellTypes.size <= 1, 
+      cellTypes.size <= 1,
       s"All RasterSources must have the same CellType, but multiple ones were found: $cellTypes"
     )
 
@@ -294,7 +295,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       projections.size <= 1,
       s"All RasterSources must be in the same projection, but multiple ones were found: $projections"
     )
-    
+
     val cellType = cellTypes.head
     val crs = projections.head
 
@@ -336,21 +337,30 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     tiles.map(_.toArrayTile()).reduce[Tile](_.dualCombine(_)(intCombine)(doubleCombine))
   }
 
-  private def tilesToArrayMultibandTile(tileR: Tile, tileG: Tile, tileB: Tile, bands: Array[Band], maskValues: Option[Array[Int]]): ArrayMultibandTile = {
-    def convertCloudsToNoData(tile: Tile) = {
-      tile.map(i => if (maskValues.getOrElse(Array()).contains(i)) Short.MaxValue else i)
+  private def tilesToArrayMultibandTile(tileR: Tile, tileG: Tile, tileB: Tile, bands: Array[Band], maskValues: Array[Int]): MultibandTile = {
+    def markClouds(t: Tile, array: Array[Short]) {
+      t.toArray().zipWithIndex.foreach {
+        case (v, i) => if (maskValues.contains(v)) {
+          array(i) = CLOUD_MILKINESS.asInstanceOf[Short]
+        }
+      }
     }
-    
-    def normalize(tile: Tile, bandIndex: Int) = {
+
+    def normalize(bandIndex: Int, tile: Tile) = {
       val band = bands(bandIndex)
       tile.normalize(band.min, band.max, 1, 255).mapIfSet(1 max _ min 255)
     }
 
-    val normTileR = normalize(convertCloudsToNoData(tileR), 0)
-    val normTileG = normalize(convertCloudsToNoData(tileG), 1)
-    val normTileB = normalize(convertCloudsToNoData(tileB), 2)
+    val tile = MultibandTile(tileR, tileG, tileB)
 
-    ArrayMultibandTile(normTileR, normTileG, normTileB)
+    val alphaArray = Array.fill[Short](tile.size)(255)
+    tile.bands.foreach(markClouds(_, alphaArray))
+
+    val alphaTile = ArrayTile(alphaArray, tile.cols, tile.rows).withNoData(Some(Short.MaxValue))
+
+    val normalizedTile = tile.mapBands(normalize)
+
+    MultibandTile(normalizedTile.bands :+ alphaTile)
   }
 
   private def tilesToArrayMultibandTile(tileR: Tile, tileG: Tile): ArrayMultibandTile = {
@@ -403,6 +413,8 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 }
 
 object TileSeeder {
+  private val CLOUD_MILKINESS = 150
+
   def main(args: Array[String]): Unit = {
     val appName = "GeotrellisSeeder"
 
@@ -435,7 +447,7 @@ object TileSeeder {
             .set("spark.kryoserializer.buffer.max", "1024m"))
 
       seeder.renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions)
-      
+
       sc.stop()
     }
   }
