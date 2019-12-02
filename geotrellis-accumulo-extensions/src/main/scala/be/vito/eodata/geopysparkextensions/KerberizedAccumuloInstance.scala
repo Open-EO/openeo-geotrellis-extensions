@@ -5,8 +5,11 @@ import java.security.PrivilegedAction
 
 import geotrellis.spark.io.accumulo.AccumuloInstance
 import org.apache.accumulo.core.client.ClientConfiguration
+import org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat
+import org.apache.accumulo.core.client.mapreduce.lib.impl.ConfiguratorBase
 import org.apache.accumulo.core.client.security.tokens._
 import org.apache.hadoop.security.UserGroupInformation
+import org.apache.spark.SparkContext
 
 object KerberizedAccumuloInstance {
 
@@ -26,7 +29,12 @@ object KerberizedAccumuloInstance {
 
     val (username: String, token: AuthenticationToken) = {
       if (useKerberos) {
-        if (UserGroupInformation.getCurrentUser.hasKerberosCredentials) {
+        val theSparkConfiguration = SparkContext.getOrCreate().hadoopConfiguration
+        if(ConfiguratorBase.isConnectorInfoSet(classOf[AccumuloInputFormat],theSparkConfiguration)) {
+          val token = ConfiguratorBase.getAuthenticationToken(classOf[AccumuloInputFormat], theSparkConfiguration)
+          val principal: String = ConfiguratorBase.getPrincipal(classOf[AccumuloInputFormat], theSparkConfiguration)
+          (principal,token)
+        }else if (UserGroupInformation.getCurrentUser.hasKerberosCredentials) {
           val token = new KerberosToken()
           (user.getOrElse(token.getPrincipal()), token)
         } else if (UserGroupInformation.getLoginUser.hasKerberosCredentials) {
