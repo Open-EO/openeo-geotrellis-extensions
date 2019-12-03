@@ -6,16 +6,11 @@ import java.security.PrivilegedAction
 import geotrellis.spark.io.accumulo.AccumuloInstance
 import org.apache.accumulo.core.client.ClientConfiguration
 import org.apache.accumulo.core.client.impl.{AuthenticationTokenIdentifier, DelegationTokenImpl}
-import org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat
-import org.apache.accumulo.core.client.mapreduce.lib.impl.ConfiguratorBase
 import org.apache.accumulo.core.client.security.tokens._
-import org.apache.hadoop.mapred.JobConf
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.hadoop.security.token.{Token, TokenIdentifier}
-import org.apache.spark.SparkContext
-import org.apache.spark.deploy.SparkHadoopUtil
 
-import collection.JavaConverters._
+import scala.collection.JavaConverters._
 
 object KerberizedAccumuloInstance {
 
@@ -36,8 +31,11 @@ object KerberizedAccumuloInstance {
     val (username: String, token: AuthenticationToken) = {
       if (useKerberos) {
         val accumuloCreds: Option[Token[_ <: TokenIdentifier]] = UserGroupInformation.getCurrentUser.getCredentials.getAllTokens().asScala.find(_.getKind == AuthenticationTokenIdentifier.TOKEN_KIND)
-        if(accumuloCreds.isDefined) {
-          val identifier = accumuloCreds.get.decodeIdentifier.asInstanceOf[AuthenticationTokenIdentifier]
+        if(accumuloCreds.isDefined && accumuloCreds.get != null) {
+          var identifier = accumuloCreds.get.decodeIdentifier.asInstanceOf[AuthenticationTokenIdentifier]
+          if(identifier==null) {
+            identifier = new AuthenticationTokenIdentifier(UserGroupInformation.getCurrentUser.getUserName)
+          }
           val token = new DelegationTokenImpl(accumuloCreds.get,identifier)
           (identifier.getUser.getUserName,token)
         }
