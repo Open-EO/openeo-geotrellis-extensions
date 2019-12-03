@@ -31,15 +31,8 @@ object KerberizedAccumuloInstance {
     val (username: String, token: AuthenticationToken) = {
       if (useKerberos) {
         val accumuloCreds: Option[Token[_ <: TokenIdentifier]] = UserGroupInformation.getCurrentUser.getCredentials.getAllTokens().asScala.find(_.getKind == AuthenticationTokenIdentifier.TOKEN_KIND)
-        if(accumuloCreds.isDefined && accumuloCreds.get != null) {
-          var identifier = accumuloCreds.get.decodeIdentifier.asInstanceOf[AuthenticationTokenIdentifier]
-          if(identifier==null) {
-            identifier = new AuthenticationTokenIdentifier(UserGroupInformation.getCurrentUser.getUserName)
-          }
-          val token = new DelegationTokenImpl(accumuloCreds.get,identifier)
-          (identifier.getUser.getUserName,token)
-        }
-        else if (UserGroupInformation.getCurrentUser.hasKerberosCredentials) {
+
+        if (UserGroupInformation.getCurrentUser.hasKerberosCredentials) {
           val token = new KerberosToken()
           (user.getOrElse(token.getPrincipal()), token)
         } else if (UserGroupInformation.getLoginUser.hasKerberosCredentials) {
@@ -65,6 +58,13 @@ object KerberizedAccumuloInstance {
             }
           })
 
+        }else if(accumuloCreds.isDefined && accumuloCreds.get != null) {
+          var identifier = accumuloCreds.get.decodeIdentifier.asInstanceOf[AuthenticationTokenIdentifier]
+          if(identifier==null) {
+            identifier = new AuthenticationTokenIdentifier(UserGroupInformation.getCurrentUser.getUserName)
+          }
+          val token = new DelegationTokenImpl(accumuloCreds.get,identifier)
+          (identifier.getUser.getUserName,token)
         } else {
           throw new RuntimeException("No Kerberos credentials to log in to Accumulo found, please log in first.")
         }
