@@ -21,6 +21,8 @@ import java.io.{ObjectInputStream, ObjectOutputStream}
 import java.text.SimpleDateFormat
 import java.util.Date
 
+import com.esotericsoftware.kryo.io.{Input, KryoDataInput, KryoDataOutput, Output}
+import com.esotericsoftware.kryo.{Kryo, KryoSerializable}
 import org.apache.accumulo.core.client.impl.DelegationTokenImpl
 import org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat
 import org.apache.accumulo.core.client.mapreduce.impl.BatchInputSplit
@@ -50,7 +52,7 @@ class NewHadoopPartition(
   override def equals(other: Any): Boolean = super.equals(other)
 }
 
-private class SerializableConfiguration(@transient var value: Configuration) extends Serializable {
+private class SerializableConfiguration(@transient var value: Configuration) extends Serializable with KryoSerializable {
   private def writeObject(out: ObjectOutputStream): Unit = {
     out.defaultWriteObject()
     value.write(out)
@@ -59,6 +61,15 @@ private class SerializableConfiguration(@transient var value: Configuration) ext
   private def readObject(in: ObjectInputStream): Unit = {
     value = new Configuration(false)
     value.readFields(in)
+  }
+
+  override def write(kryo: Kryo, output: Output): Unit = {
+    value.write(new KryoDataOutput(output))
+  }
+
+  override def read(kryo: Kryo, input: Input): Unit = {
+    value = new Configuration(false)
+    value.readFields(new KryoDataInput(input))
   }
 }
 
@@ -102,7 +113,15 @@ class GeotrellisAccumuloRDD(
   override def getPartitions: Array[Partition] = {
     val inputFormat = new AccumuloInputFormat()
 
-    val jobContext = new JobContextImpl(getConf, jobId)
+    val serialized_conf = {
+      if (getConf!=null)
+        getConf
+      else{
+        new Configuration()
+      }
+    }
+
+    val jobContext = new JobContextImpl(serialized_conf, jobId)
     SparkHadoopUtil.get.addCredentials(jobContext.getConfiguration.asInstanceOf[JobConf])
 
     val token = ConfiguratorBase.getAuthenticationToken(classOf[AccumuloInputFormat], jobContext.getConfiguration)
