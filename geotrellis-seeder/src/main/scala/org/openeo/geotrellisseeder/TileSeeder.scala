@@ -4,24 +4,29 @@ import java.io.File
 import java.nio.file.Paths
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatter.ofPattern
 
 import be.vito.eodata.biopar.EOProduct
 import be.vito.eodata.catalog.CatalogClient
 import com.beust.jcommander.JCommander
+import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.contrib.vlm._
 import geotrellis.contrib.vlm.geotiff.GeoTiffReprojectRasterSource
-import geotrellis.proj4.WebMercator
+import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.raster._
+import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.render.ColorMap
 import geotrellis.spark.io.hadoop.HdfsUtils
 import geotrellis.spark.tiling._
 import geotrellis.spark.{ContextRDD, KeyBounds, Metadata, SpatialKey, TileLayerMetadata}
+import geotrellis.vector.io.wkt.WKT
+import javax.ws.rs.client.ClientBuilder
 import org.apache.hadoop.fs.Path
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.openeo.geotrellisseeder.TileSeeder.CLOUD_MILKINESS
 
-import scala.collection.JavaConverters.collectionAsScalaIterableConverter
+import scala.collection.JavaConverters.{asScalaIteratorConverter, collectionAsScalaIterableConverter}
 import scala.collection.mutable.ListBuffer
 import scala.math._
 
@@ -85,6 +90,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
         .foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel))
     } else if (bands.isDefined) {
       getMultibandRDD(sourcePaths.get, date, bands.get.map(_.name), spatialKey)
+        .fullOuterJoin(getTooCloudyRdd(date, maskValues))
         .repartition(getPartitions)
         .foreach(renderMultibandRDD(path, dateStr, bands.get, zoomLevel, maskValues))
     } else {
@@ -94,6 +100,39 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     }
 
     permissions.foreach(setFilePermissions(path, dateStr, _))
+  }
+
+  private def getTooCloudyRdd(date: LocalDate, maskValues: Array[Int])(implicit sc: SparkContext, layout: LayoutDefinition) = {
+    var result = sc.emptyRDD[(SpatialKey, Tile)]
+
+    if (maskValues.nonEmpty) {
+      val response = ClientBuilder.newClient()
+        .target("http://es1.vgt.vito.be:9200/product_catalog_prod/_search")
+        .queryParam("q", s"properties.identifier:S2*MSIL1C_${date.format(ofPattern("yyyyMMdd"))}*%20AND%20properties.processing_status.status:TOO_CLOUDY")
+        .queryParam("size", "10000")
+        .request()
+        .get()
+
+      if (response.getStatus == 200) {
+        val json = new ObjectMapper().readTree(response.readEntity(classOf[String]))
+
+        val geometries = json.get("hits").get("hits").elements().asScala
+          .map(hit => WKT.read(hit.get("_source").get("properties").get("footprint").textValue()))
+          .map(_.reproject(LatLng, WebMercator))
+
+        result = sc.parallelize(geometries.toSeq)
+          .flatMap(g => layout.mapTransform.keysForGeometry(g).map(k => (k, g)))
+          .groupByKey()
+          .map { case (key, geoms) =>
+            val extent = layout.mapTransform(key)
+            val rasterExtent = RasterExtent(extent, layout.tileCols, layout.tileRows)
+            (key, geoms.map(Rasterizer.rasterizeWithValue(_, rasterExtent, maskValues(0))))
+          }
+          .mapValues(mapToSingleTile(maskValues))
+      }
+    }
+
+    result
   }
 
   private def getMultibandRDD(sourcePaths: Seq[Seq[String]], date: LocalDate, bands: Array[String], spatialKey: Option[SpatialKey])
@@ -146,21 +185,33 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
   }
 
   private def renderMultibandRDD(path: String, dateStr: String, bands: Array[Band], zoom: Int, maskValues: Array[Int])
-                                (item: (SpatialKey, (Iterable[RasterRegion], Iterable[RasterRegion], Iterable[RasterRegion]))): Unit = {
+                                (item: (SpatialKey, (Option[(Iterable[RasterRegion], Iterable[RasterRegion], Iterable[RasterRegion])], Option[Tile]))): Unit = {
     item match {
-      case (key, (rRegions, gRegions, bRegions)) =>
+      case (key, (regions, cloudTile)) =>
         logger.logKey(key)
 
-        val tileR = regionsToTile(rRegions)
-        val tileG = regionsToTile(gRegions)
-        val tileB = regionsToTile(bRegions)
+        val tile = regions
+          .flatMap { case (rRegions, gRegions, bRegions) =>
+            val tileR = regionsToTile(rRegions)
+            val tileG = regionsToTile(gRegions)
+            val tileB = regionsToTile(bRegions)
 
-        if (!tileR.isNoDataTile && !tileG.isNoDataTile && !tileB.isNoDataTile) {
+            if (!tileR.isNoDataTile && !tileG.isNoDataTile && !tileB.isNoDataTile) {
+              Some(MultibandTile(tileR, tileG, tileB))
+            } else {
+              None
+            }
+          }
+          .map(t => cloudTile.map(ct => t.mapBands((_, b) => mapToSingleTile(maskValues)(Seq(b, ct)))).getOrElse(t))
+          .orElse(cloudTile.map(ct => MultibandTile(ct, ct, ct)))
+          .map(t => toNormalizedMultibandTile(t, bands, maskValues))
+
+        if (tile.isDefined) {
           val tilePath = pathForTile(path, dateStr, key, zoom)
 
           deleteSymLink(tilePath)
 
-          tilesToArrayMultibandTile(tileR, tileG, tileB, bands, maskValues).renderPng().write(tilePath)
+          tile.get.renderPng().write(tilePath)
 
           logger.logTile(key, tilePath)
         } else {
@@ -183,7 +234,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
           deleteSymLink(tilePath)
 
-          tilesToArrayMultibandTile(tileR, tileG).renderPng().write(tilePath)
+          toNormalizedMultibandTile(tileR, tileG).renderPng().write(tilePath)
 
           logger.logTile(key, tilePath)
         } else {
@@ -328,42 +379,53 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
   }
 
   private def regionsToTile(regions: Iterable[RasterRegion]): Tile = {
-    mapToSingleTile(regions.map(r => r.raster.get.tile.band(0)))
+    mapToSingleTile(Array())(regions.map(r => r.raster.get.tile.band(0)))
   }
 
-  private def mapToSingleTile(tiles: Iterable[Tile]): Tile = {
-    val intCombine = (t1: Int, t2: Int) => if (isNoData(t1)) t2 else if (isNoData(t2)) t1 else max(t1, t2)
-    val doubleCombine = (t1: Double, t2: Double) => if (isNoData(t1)) t2 else if (isNoData(t2)) t1 else max(t1, t2)
+  private def mapToSingleTile(maskValues: Array[Int])(tiles: Iterable[Tile]): Tile = {
+    val intCombine = (t1: Int, t2: Int) =>
+      if (isNoData(t1)) t2
+      else if (isNoData(t2)) t1
+      else if (maskValues.contains(t1)) t2
+      else if (maskValues.contains(t2)) t1
+      else max(t1, t2)
+    val doubleCombine = (t1: Double, t2: Double) =>
+      if (isNoData(t1)) t2
+      else if (isNoData(t2)) t1
+      else if (maskValues.contains(t1)) t2
+      else if (maskValues.contains(t2)) t1
+      else max(t1, t2)
+
     tiles.map(_.toArrayTile()).reduce[Tile](_.dualCombine(_)(intCombine)(doubleCombine))
   }
 
-  private def tilesToArrayMultibandTile(tileR: Tile, tileG: Tile, tileB: Tile, bands: Array[Band], maskValues: Array[Int]): MultibandTile = {
-    def markClouds(t: Tile, array: Array[Short]) {
+  private def toNormalizedMultibandTile(tile: MultibandTile, bands: Array[Band], maskValues: Array[Int]): MultibandTile = {
+    def markClouds(t: Tile, array: Array[Int]) {
       t.toArray().zipWithIndex.foreach {
         case (v, i) => if (maskValues.contains(v)) {
-          array(i) = CLOUD_MILKINESS.asInstanceOf[Short]
+          array(i) = CLOUD_MILKINESS
         }
       }
     }
 
     def normalize(bandIndex: Int, tile: Tile) = {
       val band = bands(bandIndex)
-      tile.normalize(band.min, band.max, 1, 255).mapIfSet(1 max _ min 255)
+      tile.normalize(band.min, band.max, 1, 255)
+        .mapIfSet(1 max _ min 255)
+        .convert(IntConstantNoDataCellType)
     }
 
-    val tile = MultibandTile(tileR, tileG, tileB)
-
-    val alphaArray = Array.fill[Short](tile.size)(255)
+    val alphaArray = Array.fill(tile.size)(255)
     tile.bands.foreach(markClouds(_, alphaArray))
 
-    val alphaTile = ArrayTile(alphaArray, tile.cols, tile.rows).withNoData(Some(Short.MaxValue))
+    val alphaTile = ArrayTile(alphaArray, tile.cols, tile.rows)
 
     val normalizedTile = tile.mapBands(normalize)
 
     MultibandTile(normalizedTile.bands :+ alphaTile)
   }
 
-  private def tilesToArrayMultibandTile(tileR: Tile, tileG: Tile): ArrayMultibandTile = {
+  private def toNormalizedMultibandTile(tileR: Tile, tileG: Tile): MultibandTile = {
 
     def logTile(tile: Tile): Tile = {
       tile.mapDouble(10 * log10(_))
@@ -382,7 +444,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     val normTileG = normalize(logTileG, -30, -2)
     val normTileB = normalize(tileB, 0.2, 1)
 
-    ArrayMultibandTile(normTileR, normTileG, normTileB)
+    MultibandTile(normTileR, normTileG, normTileB)
   }
 
 
