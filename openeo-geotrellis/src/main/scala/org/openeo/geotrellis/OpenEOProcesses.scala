@@ -176,8 +176,8 @@ class OpenEOProcesses extends Serializable {
     val k = new Kernel(kernel)
     val outputCellType = datacube.convert(datacube.metadata.cellType.union(kernel.cellType))
     if (kernel.cols > 10 || kernel.rows > 10) {
-      MultibandFocalOperation(outputCellType, k, None) { (tile, bounds) => {
-        FFTConvolve(tile, kernel)
+      MultibandFocalOperation(outputCellType, k, None) { (tile, bounds: Option[GridBounds]) => {
+        FFTConvolve(tile, kernel).crop(bounds.get)
       }
       }
     } else {
