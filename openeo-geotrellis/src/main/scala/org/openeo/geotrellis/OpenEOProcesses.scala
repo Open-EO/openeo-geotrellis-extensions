@@ -104,7 +104,6 @@ class OpenEOProcesses extends Serializable {
 
   def outerJoin(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey]): RDD[(SpaceTimeKey, (Option[MultibandTile], Option[MultibandTile]))] with Metadata[Bounds[SpaceTimeKey]] = {
     val kb: Bounds[SpaceTimeKey] = leftCube.metadata.bounds.combine(rightCube.metadata.bounds)
-    implicit val index = SpaceTimeByMonthPartitioner
     val part = SpacePartitioner(kb)
 
     val joinRdd =
