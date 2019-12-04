@@ -70,10 +70,16 @@ object FFTConvolve {
   }
 
   def apply(tile:Tile,kernel:Kernel):Tile ={
-    val paddedKernel = PaddedTile(kernel.tile,0,0,5,5)
-    val paddedInput = PaddedTile(tile, 0, 0, 5, 5).withNoData(Some(0.0))
+
+    val paddedCols = tile.cols + kernel.tile.cols - 1
+    val paddedRows = tile.rows + kernel.tile.rows - 1
+    val paddedKernel = PaddedTile(kernel.tile, 0, 0, paddedCols, paddedRows)
+    val paddedInput = PaddedTile(tile, 0, 0, paddedCols, paddedRows)
 
     val paddedOutput = fftConvolve(paddedInput,paddedKernel)
-    return paddedOutput.crop(1,1,3,3)
+
+    val colOffset = (paddedCols-tile.cols) / 2
+    val rowOffset = (paddedRows-tile.rows) / 2
+    return paddedOutput.crop(colOffset,rowOffset,colOffset+tile.cols-1,rowOffset+tile.rows-1)
   }
 }

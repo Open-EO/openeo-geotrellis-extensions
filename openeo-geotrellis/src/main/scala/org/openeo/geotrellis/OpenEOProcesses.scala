@@ -174,7 +174,15 @@ class OpenEOProcesses extends Serializable {
     */
   def apply_kernel[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K],kernel:Tile): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
     val k = new Kernel(kernel)
-    return MultibandFocalOperation(datacube.convert(datacube.metadata.cellType.union(kernel.cellType)), k, None){ (tile, bounds) => Convolve(tile, k, bounds, TargetCell.All) }
+    val outputCellType = datacube.convert(datacube.metadata.cellType.union(kernel.cellType))
+    if (kernel.cols > 10 || kernel.rows > 10) {
+      MultibandFocalOperation(outputCellType, k, None) { (tile, bounds) => {
+        FFTConvolve(tile, kernel)
+      }
+      }
+    } else {
+      MultibandFocalOperation(outputCellType, k, None) { (tile, bounds) => Convolve(tile, k, bounds, TargetCell.All) }
+    }
   }
 
   /**
