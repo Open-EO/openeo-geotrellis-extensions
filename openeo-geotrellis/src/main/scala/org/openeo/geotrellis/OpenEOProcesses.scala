@@ -8,7 +8,8 @@ import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.spark.partition.SpacePartitioner
+import geotrellis.spark.io.index.zcurve.Z3
+import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.{Bounds, ContextRDD, Metadata, MultibandTileLayerRDD, SpaceTimeKey, SpatialComponent, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.util.Filesystem
 import org.apache.spark.rdd.{CoGroupedRDD, RDD}
@@ -92,9 +93,20 @@ class OpenEOProcesses extends Serializable {
     }))
   }
 
+  implicit object SpaceTimeByMonthPartitioner extends  PartitionerIndex[SpaceTimeKey] {
+    private def toZ(key: SpaceTimeKey): Z3 = Z3(key.col >> 4, key.row >> 4, 13*key.time.getYear + key.time.getMonthValue)
+
+    def toIndex(key: SpaceTimeKey): BigInt = toZ(key).z
+
+    def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] =
+      Z3.zranges(toZ(keyRange._1), toZ(keyRange._2))
+  }
+
   def outerJoin(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey]): RDD[(SpaceTimeKey, (Option[MultibandTile], Option[MultibandTile]))] with Metadata[Bounds[SpaceTimeKey]] = {
     val kb: Bounds[SpaceTimeKey] = leftCube.metadata.bounds.combine(rightCube.metadata.bounds)
+    implicit val index = SpaceTimeByMonthPartitioner
     val part = SpacePartitioner(kb)
+
     val joinRdd =
       new CoGroupedRDD[SpaceTimeKey](List(part(leftCube), part(rightCube)), part)
         .flatMapValues { case Array(l, r) =>
