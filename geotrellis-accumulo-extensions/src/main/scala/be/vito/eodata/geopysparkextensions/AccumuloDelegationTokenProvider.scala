@@ -1,6 +1,5 @@
 package be.vito.eodata.geopysparkextensions
 import java.security.PrivilegedAction
-import java.time.{LocalDateTime, ZoneOffset}
 import java.util.concurrent.TimeUnit
 
 import geotrellis.spark.io.accumulo.AccumuloInstance
@@ -31,8 +30,8 @@ class AccumuloDelegationTokenProvider extends org.apache.spark.deploy.yarn.secur
 
     println("Obtaining accumulo creds")
     if (useKerberos) {
-      def setupToken = new PrivilegedAction[Unit] {
-        override def run() = {
+      def setupToken = new PrivilegedAction[Long] {
+        override def run():Long = {
           val token = new KerberosToken()
           import org.apache.accumulo.core.client.admin.DelegationTokenConfig
 
@@ -46,18 +45,15 @@ class AccumuloDelegationTokenProvider extends org.apache.spark.deploy.yarn.secur
 
           val identifier = delegationToken.getIdentifier
           val hadoopToken = new Token(identifier.getBytes, delegationToken.getPassword, identifier.getKind, delegationToken.getServiceName)
-          println("Created token for: " + delegationToken.getServiceName.toString)
           creds.addToken(delegationToken.getServiceName, hadoopToken)
-
+          println("Created token for: " + delegationToken.getServiceName.toString + " , expires: " + identifier.getExpirationDate.toString)
+          identifier.getExpirationDate
         }
       }
       if (UserGroupInformation.getCurrentUser.hasKerberosCredentials) {
-        setupToken.run()
+        return Some(setupToken.run())
       } else if (UserGroupInformation.getLoginUser.hasKerberosCredentials) {
-
-        UserGroupInformation.getLoginUser.doAs[Unit](setupToken)
-        return Some(LocalDateTime.now().plusHours(4).toEpochSecond(ZoneOffset.UTC))
-
+        return Some(UserGroupInformation.getLoginUser.doAs[Long](setupToken))
       } else {
         throw new RuntimeException("No Kerberos credentials to log in to Accumulo found, please log in first.")
       }
