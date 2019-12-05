@@ -47,6 +47,7 @@ class AccumuloDelegationTokenProvider extends org.apache.spark.deploy.yarn.secur
           val hadoopToken = new Token(identifier.getBytes, delegationToken.getPassword, identifier.getKind, delegationToken.getServiceName)
           creds.addToken(delegationToken.getServiceName, hadoopToken)
           println("Created token for: " + delegationToken.getServiceName.toString + " , expires: " + identifier.getExpirationDate.toString)
+          //expiration date is provided in milliseconds
           identifier.getExpirationDate
         }
       }
