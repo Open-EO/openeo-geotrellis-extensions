@@ -139,7 +139,7 @@ class GeotrellisAccumuloRDD(
     if(splitRanges) {
       rawSplits = rawSplits.flatMap(split=>{
         val batchSplit = split.asInstanceOf[BatchInputSplit]
-        val maxRangesPerSplit = 6
+        val maxRangesPerSplit = 1
         if(batchSplit.getRanges.size()>maxRangesPerSplit){
           val numberOfSubRanges = batchSplit.getRanges.size()/maxRangesPerSplit
           val elementsPerRange = batchSplit.getRanges.size()/numberOfSubRanges
