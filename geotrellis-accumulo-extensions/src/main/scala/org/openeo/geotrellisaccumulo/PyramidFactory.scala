@@ -21,6 +21,7 @@ import org.apache.accumulo.core.util.{Pair => AccumuloPair}
 import org.apache.hadoop.io.Text
 import org.apache.hadoop.mapreduce.Job
 import org.apache.spark.SparkContext
+import org.apache.spark.api.java.StorageLevels
 import org.apache.spark.rdd.RDD
 
 import scala.collection.JavaConverters._
@@ -99,7 +100,7 @@ import scala.reflect.ClassTag
       val configuration = job.getConfiguration
       val rdd = new GeotrellisAccumuloRDD(sc,configuration,splitRanges)
 
-      return new GeotrellisRasterRDD[V](keyIndex,writerSchema,rdd,layerMetadata,sc)
+      return new GeotrellisRasterRDD[V](keyIndex,writerSchema,rdd,layerMetadata,sc).persist(StorageLevels.MEMORY_ONLY_SER)
     }
 
     def pyramid_seq(layerName:String,bbox: Extent, bbox_srs: String,startDate: String, endDate:String ): immutable.Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = {
