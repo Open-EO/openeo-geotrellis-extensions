@@ -182,9 +182,9 @@ public class TestOpenEOProcesses {
 
     static ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> tileToSpaceTimeDataCube(Tile zeroTile) {
 
-        MutableArrayTile emptyTile = ArrayTile$.MODULE$.empty(zeroTile.cellType(), ((scala.Int) zeroTile.cols()).toInt(), ((scala.Int) zeroTile.rows()).toInt());
+        MutableArrayTile emptyTile = ArrayTile$.MODULE$.empty(zeroTile.cellType(), ((Integer) zeroTile.cols()), ((Integer) zeroTile.rows()));
 
-        ContextRDD<SpatialKey, MultibandTile, TileLayerMetadata<SpatialKey>> datacube = (ContextRDD<SpatialKey, MultibandTile, TileLayerMetadata<SpatialKey>>) TileLayerRDDBuilders$.MODULE$.createMultibandTileLayerRDD(SparkContext.getOrCreate(), new ArrayMultibandTile(new Tile[]{zeroTile,emptyTile}), new TileLayout(1, 1, ((scala.Int) zeroTile.cols()).toInt(), ((scala.Int) zeroTile.rows()).toInt()));
+        ContextRDD<SpatialKey, MultibandTile, TileLayerMetadata<SpatialKey>> datacube = (ContextRDD<SpatialKey, MultibandTile, TileLayerMetadata<SpatialKey>>) TileLayerRDDBuilders$.MODULE$.createMultibandTileLayerRDD(SparkContext.getOrCreate(), new ArrayMultibandTile(new Tile[]{zeroTile,emptyTile}), new TileLayout(1, 1, ((Integer) zeroTile.cols()), ((Integer) zeroTile.rows())));
         final ZonedDateTime minDate = ZonedDateTime.parse("2017-01-01T00:00:00Z");
         final ZonedDateTime maxDate = ZonedDateTime.parse("2018-01-15T00:00:00Z");
         JavaPairRDD<SpaceTimeKey, MultibandTile> spacetimeDataCube = JavaPairRDD$.MODULE$.fromJavaRDD(datacube.toJavaRDD()).flatMapToPair(spatialKeyMultibandTileTuple2 -> {
