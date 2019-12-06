@@ -1,22 +1,22 @@
 package org.openeo.geotrelliss3
 
 import java.net.URI
-import java.time.{LocalDate, LocalTime, ZoneId, ZoneOffset, ZonedDateTime}
+import java.time._
 
-import com.amazonaws.client.builder.AwsClientBuilder
-import com.amazonaws.services.s3.model.ListObjectsRequest
-import com.amazonaws.services.s3.{AmazonS3ClientBuilder, AmazonS3URI}
+import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{MultibandTile, Raster, UByteUserDefinedNoDataCellType}
-import geotrellis.spark.io.hadoop.geotiff.InMemoryGeoTiffAttributeStore
-import geotrellis.spark.io.s3.geotiff.{S3GeoTiffLayerReader, S3IMGeoTiffAttributeStore}
-import geotrellis.spark.io.s3.{AmazonS3Client, S3Client}
+import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
-import geotrellis.spark.tiling.{LayoutDefinition, LayoutLevel, ZoomedLayoutScheme}
-import geotrellis.spark.{ContextRDD, KeyBounds, LayerId, MultibandTileLayerRDD, SpaceTimeKey, SpatialKey, TileLayerMetadata}
+import geotrellis.spark.store.hadoop.geotiff.InMemoryGeoTiffAttributeStore
+import geotrellis.store.LayerId
+import geotrellis.store.s3.AmazonS3URI
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import software.amazon.awssdk.awscore.client.builder.AwsClientBuilder
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.ListObjectsRequest
 
 import scala.util.matching.Regex
 
@@ -62,9 +62,10 @@ class PyramidFactory(endpoint: String, region: String, bucketName: String) {
   private def listBlobKeys(s3Uri: URI, keyPattern: Regex): Seq[String] = {
     val uri = new AmazonS3URI(s3Uri)
 
-    val request = (new ListObjectsRequest)
-      .withBucketName(uri.getBucket)
-      .withPrefix(uri.getKey)
+    val request = ListObjectsRequest.builder()
+      .bucket(uri.getBucket)
+      .prefix(uri.getKey)
+
 
     getS3Client
       .listKeys(request)
@@ -149,7 +150,6 @@ class PyramidFactory(endpoint: String, region: String, bucketName: String) {
             }
           } yield key -> tile
         } finally {
-          reader.shutdown
         }
     }
 
