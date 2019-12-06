@@ -100,6 +100,8 @@ class Sentinel2RadiometryPyramidFactoryTest {
       baseLayer.toSpatial()
       new OpenEOProcesses().write_geotiffs(baseLayer.toSpatial(),"/tmp/catalog",14)
 
+    }finally{
+      sc.stop()
     }
 
   }
