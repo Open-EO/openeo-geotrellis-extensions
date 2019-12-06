@@ -4,24 +4,22 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
 
-import geotrellis.contrib.vlm.geotiff.GeoTiffRasterSource
-import com.amazonaws.services.s3.{AmazonS3ClientBuilder, AmazonS3URI}
-import com.amazonaws.services.s3.model.ListObjectsRequest
-import geotrellis.contrib.vlm.spark.RasterSourceRDD.DEFAULT_PARTITION_BYTES
-import geotrellis.contrib.vlm.RasterSource
+import geotrellis.layer._
 import geotrellis.proj4.{CRS, WebMercator}
-import geotrellis.raster.MultibandTile
-import geotrellis.spark.io.hadoop.HdfsUtils
-import geotrellis.spark.io.s3.AmazonS3Client
+import geotrellis.raster.geotiff.GeoTiffRasterSource
+import geotrellis.raster.{MultibandTile, RasterSource}
+import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
-import geotrellis.spark.tiling.{LayoutDefinition, ZoomedLayoutScheme}
-import geotrellis.spark.{ContextRDD, KeyBounds, MultibandTileLayerRDD, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
+import geotrellis.store.hadoop.util.HdfsUtils
+import geotrellis.store.s3.{AmazonS3URI, S3ClientProducer}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import software.amazon.awssdk.services.s3.model.ListObjectsRequest
 
+import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.collection.mutable.ArrayBuilder
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
@@ -50,30 +48,24 @@ object PyramidFactory {
       val s3Uri = new AmazonS3URI(s3_uri)
       val keyPattern = key_regex.r
 
-      val s3Client = {
-        // pass e.g. non-AWS S3 endpoint and temporary credentials (as described at
-        // https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/prog-services-sts.html) here
 
-        AmazonS3Client(
-          AmazonS3ClientBuilder
-            .standard()
-            .build()
-        )
-      }
 
-      val objectRequest = (new ListObjectsRequest)
-        .withBucketName(s3Uri.getBucket)
-        .withPrefix(s3Uri.getKey)
-        .withDelimiter("/") // recursive
+      val request = ListObjectsRequest.builder()
+        .bucket(s3Uri.getBucket)
+        .prefix(s3Uri.getKey)
+        .delimiter("/")
+        .build()
 
-      s3Client.listKeys(objectRequest)
-        .flatMap { key =>
-          key match {
-            case keyPattern(_*) => Some(new AmazonS3URI(s"s3://${s3Uri.getBucket}/${key}"))
-            case _ => None
-          }
-        }
-        .map(uri => (GeoTiffRasterSource(uri.toString), deriveDate(uri.getKey, date_regex.r)))
+      S3ClientProducer.get.apply()
+        .listObjects(request)
+        .contents()
+        .asScala
+        .map(_.key())
+        .flatMap(key => key match {
+          case keyPattern(_*) => Some(new AmazonS3URI(s"s3://${s3Uri.getBucket}/${key}"))
+          case _ => None
+        })
+        .map(uri => (GeoTiffRasterSource(uri.toString), deriveDate(uri.getKey, date_regex.r))).toSeq
     })
   }
 
@@ -134,7 +126,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
     rasterSources.map { case (rasterSource, date) => (rasterSource.reproject(targetCrs), date) }
 
   private lazy val maxZoom = reprojectedRasterSources.headOption match {
-    case Some((rasterSource, _)) => ZoomedLayoutScheme(targetCrs).zoom(rasterSource.extent.center.x, rasterSource.extent.center.y, rasterSource.cellSize)
+    case Some((rasterSource, _)) => ZoomedLayoutScheme(targetCrs).zoom(rasterSource.extent.center.getX, rasterSource.extent.center.getY, rasterSource.cellSize)
     case None => throw new IllegalStateException("no raster sources found")
   }
 
@@ -179,7 +171,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
   private def rasterSourceRDD(
     sources: Seq[(RasterSource, ZonedDateTime)],
     layout: LayoutDefinition,
-    partitionBytes: Long = DEFAULT_PARTITION_BYTES
+    partitionBytes: Long = RasterSourceRDD.DEFAULT_PARTITION_BYTES
   )(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     val cellTypes = sources.map { case (source, _) => source.cellType }.toSet
     require(cellTypes.size == 1, s"All RasterSources must have the same CellType, but multiple ones were found: $cellTypes")
