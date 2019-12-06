@@ -1,21 +1,24 @@
 package org.openeo.geotrelliss3
 
 import java.lang.System.getenv
+import java.net.URI
 import java.time._
 
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
+import geotrellis.raster.gdal.GDALRasterSource
+import geotrellis.raster.gdal.config.GDALOptionsConfig.registerOption
 import geotrellis.raster.{MultibandTile, Tile, UByteUserDefinedNoDataCellType, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.store.LayerId
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
-import software.amazon.awssdk.awscore.client.builder.AwsClientBuilder
+import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.ListObjectsRequest
 
-import scala.collection.JavaConverters._
+import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.math.max
 
 object Jp2PyramidFactory {
@@ -39,10 +42,10 @@ object Jp2PyramidFactory {
   }
 
   private def getS3Client(endpoint: String, region: String): S3Client = {
-    val s3builder = S3Client.builder().endpointOverride()
-      .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(endpoint, region))
-
-    AmazonS3Client(s3builder)
+    S3Client.builder()
+      .endpointOverride(new URI(endpoint))
+      .region(Region.of(region))
+      .build()
   }
 }
 
@@ -65,17 +68,21 @@ class Jp2PyramidFactory(endpoint: String, region: String) extends Serializable {
 
     getS3Client
       .listObjects(request)
+      .contents()
+      .asScala
+      .map(_.key())
       .flatMap(key => key match {
         case keyPattern(_*) => Some(key)
         case _ => None
       })
+      .toSeq
   }
 
   private val uri = ((bucket: String, key: String) => s"/vsis3/$bucket/$key").tupled
 
   private def extent(productKeys: Seq[(String, String)]) = {
     productKeys
-      .map(key => GDALRasterSource(uri(key), crs))
+      .map(key => GDALRasterSource(uri(key)).reproject(crs))
       .map(_.extent)
       .reduceOption((e1, e2) => e1 combine e2)
       .getOrElse(Extent(0, 0, 0, 0))
@@ -94,14 +101,7 @@ class Jp2PyramidFactory(endpoint: String, region: String) extends Serializable {
   }
 
   private def mapToSingleTile(tiles: Iterable[Tile]): Option[Tile] = {
-    if (tiles.size > 1) {
-      val nonNullTiles = tiles.filter(t => !t.isNoDataTile)
-      if (nonNullTiles.isEmpty) {
-        Some(tiles.head)
-      } else {
-        Some(nonNullTiles.reduce(_.combine(_)((t1, t2) => if (isNoData(t1)) t2 else if (isNoData(t2)) t1 else max(t1, t2))))
-      }
-    } else tiles.headOption
+    tiles.map(_.toArrayTile()).reduceOption[Tile](_.combine(_)((t1, t2) => if (isNoData(t1)) t2 else if (isNoData(t2)) t1 else max(t1, t2)))
   }
 
   private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom, bands: Seq[Band] = allBands): MultibandTileLayerRDD[SpaceTimeKey] = {
@@ -143,10 +143,10 @@ class Jp2PyramidFactory(endpoint: String, region: String) extends Serializable {
     val tiles = sc.parallelize(overlappingKeys)
       .map(key => (key, bandFileMaps
         .flatMap(_.get(key.time))
-        .map(_.map(s3Key => GDALRasterSource(uri(s3Key), crs).tileToLayout(layout))
+        .map(_.map(s3Key => GDALRasterSource(uri(s3Key)).reproject(crs).tileToLayout(layout))
           .flatMap(_.rasterRegionForKey(key.spatialKey).flatMap(_.raster))
           .map(_.tile.band(0)))
-        .flatMap(mapToSingleTile)))
+        .flatMap(mapToSingleTile(_))))
       .flatMapValues(v => if (v.isEmpty) None else Some(MultibandTile(v)))
 
     val metadata = tileLayerMetadata(layout, extent(productKeys), from, to)
@@ -166,7 +166,7 @@ class Jp2PyramidFactory(endpoint: String, region: String) extends Serializable {
 
     val bands: Seq[Band] =
       if (band_indices == null) allBands
-      else band_indices.asScala.map(allBands(_))
+      else band_indices.asScala.map(allBands(_)).toSeq
 
     pyramid(projectedExtent, from, to, bands).levels.toSeq
       .sortBy { case (zoom, _) => zoom }
