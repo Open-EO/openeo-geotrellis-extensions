@@ -7,14 +7,14 @@ import java.util
 import be.vito.eodata.extracttimeseries.geotrellis._
 import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
 import be.vito.eodata.processing.MaskedStatisticsProcessor.StatsMeanResult
+import geotrellis.layer._
 import geotrellis.proj4.CRS
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.summary.Statistics
 import geotrellis.raster.{FloatConstantNoDataCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType}
-import geotrellis.spark.io.accumulo.AccumuloInstance
-import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, SpaceTimeKey, TemporalKey, TileLayerRDD}
-import geotrellis.vector.io._
-import geotrellis.vector.{Geometry, MultiPolygon, Polygon}
+import geotrellis.spark._
+import geotrellis.store.accumulo.AccumuloInstance
+import geotrellis.vector.{Geometry, MultiPolygon, Polygon, _}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 

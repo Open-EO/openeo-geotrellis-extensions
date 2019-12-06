@@ -16,6 +16,7 @@
 
 package org.openeo.geotrellis.focal
 
+import geotrellis.layer.SpatialComponent
 import geotrellis.spark._
 
 import scala.reflect.ClassTag

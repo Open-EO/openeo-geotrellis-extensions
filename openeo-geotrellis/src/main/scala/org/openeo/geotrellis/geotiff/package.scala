@@ -2,12 +2,14 @@ package org.openeo.geotrellis
 
 import java.util
 
+import geotrellis.layer._
 import geotrellis.raster.io.geotiff._
 import geotrellis.raster.io.geotiff.compression.Compression
 import geotrellis.raster.{MultibandTile, Raster}
-import geotrellis.spark.{ContextRDD, Metadata, SpatialKey, TileLayerMetadata}
+import geotrellis.spark._
 import geotrellis.vector.Extent
 import org.apache.spark.rdd.RDD
+
 import scala.collection.JavaConverters._
 
 package object geotiff {
