@@ -152,7 +152,7 @@ class PyramidFactoryTest {
       val s3Client = S3Client.builder()
         .endpointOverride(new URI(endpoint))
         .region(Region.of(region))
-        .credentialsProvider(StaticCredentialsProvider.create(new AwsBasicCredentials(accessKey, secretKey)))
+        .credentialsProvider(StaticCredentialsProvider.create( AwsBasicCredentials.create(accessKey, secretKey)))
         .build()
 
 
