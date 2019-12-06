@@ -4,15 +4,14 @@ import java.time.ZonedDateTime
 
 import be.vito.eodata.extracttimeseries.geotrellis.ComputeStatsGeotrellisHelpers
 import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
+import geotrellis.layer.{Bounds, EmptyBounds, KeyBounds, Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
 import geotrellis.raster.{MultibandTile, Tile}
-import geotrellis.spark.io.accumulo.{AccumuloAttributeStore, AccumuloKeyEncoder, AccumuloLayerHeader}
-import geotrellis.spark.io.avro.AvroRecordCodec
-import geotrellis.spark.io.json.Implicits.tileLayerMetadataFormat
-import geotrellis.spark.io.json.KeyFormats.SpaceTimeKeyFormat
-import geotrellis.spark.io.{AttributeNotFoundError, Between, Intersects, LayerAttributes, LayerHeader, LayerNotFoundError, LayerQuery, LayerReadError, accumulo}
+import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
-import geotrellis.spark.{Bounds, EmptyBounds, KeyBounds, LayerId, SpaceTimeKey, TileLayerMetadata, _}
+import geotrellis.store.{LayerQuery, _}
+import geotrellis.store.accumulo.{AccumuloAttributeStore, AccumuloKeyEncoder, AccumuloLayerHeader}
+import geotrellis.store.avro.AvroRecordCodec
 import geotrellis.util._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.accumulo.core.client.mapreduce.InputFormatBase
@@ -53,7 +52,7 @@ import scala.reflect.ClassTag
       KerberizedAccumuloInstance(zooKeeper,instanceName)
     }
 
-    def rdd[V : AvroRecordCodec: ClassTag](layerName:String,zoom:Int=0,tileQuery: LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]] = new LayerQuery[SpaceTimeKey,TileLayerMetadata[SpaceTimeKey]]() ): RDD[(SpaceTimeKey, V)] with geotrellis.spark.Metadata[TileLayerMetadata[SpaceTimeKey]] ={
+    def rdd[V : AvroRecordCodec: ClassTag](layerName:String,zoom:Int=0,tileQuery: LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]] = new LayerQuery[SpaceTimeKey,TileLayerMetadata[SpaceTimeKey]]() ): RDD[(SpaceTimeKey, V)] with Metadata[TileLayerMetadata[SpaceTimeKey]] ={
       implicit val sc = SparkContext.getOrCreate()
       val id = LayerId(layerName, zoom)
 
@@ -94,7 +93,7 @@ import scala.reflect.ClassTag
 
       val ranges = queryKeyBounds.flatMap(decompose).asJava
       InputFormatBase.setRanges(job, ranges)
-      InputFormatBase.fetchColumns(job, List(new AccumuloPair(new Text(accumulo.columnFamily(id)), null: Text)).asJava)
+      InputFormatBase.fetchColumns(job, List(new AccumuloPair(new Text(geotrellis.store.accumulo.columnFamily(id)), null: Text)).asJava)
       InputFormatBase.setBatchScan(job, true)
 
       val configuration = job.getConfiguration

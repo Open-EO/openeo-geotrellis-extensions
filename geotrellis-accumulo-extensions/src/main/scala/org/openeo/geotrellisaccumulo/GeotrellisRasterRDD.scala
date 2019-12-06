@@ -1,12 +1,11 @@
 package org.openeo.geotrellisaccumulo
 
-import geotrellis.spark.io.accumulo.AccumuloKeyEncoder
-import geotrellis.spark.io.avro.codecs.Implicits._
-import geotrellis.spark.io.avro.codecs.KeyValueRecordCodec
-import geotrellis.spark.io.avro.{AvroEncoder, AvroRecordCodec}
-import geotrellis.spark.io.index.KeyIndex
+import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.spark.util.KryoWrapper
-import geotrellis.spark.{SpaceTimeKey, TileLayerMetadata}
+import geotrellis.store.accumulo.AccumuloKeyEncoder
+import geotrellis.store.avro.codecs.KeyValueRecordCodec
+import geotrellis.store.avro.{AvroEncoder, AvroRecordCodec}
+import geotrellis.store.index.KeyIndex
 import org.apache.accumulo.core.client.mapreduce.impl.BatchInputSplit
 import org.apache.accumulo.core.data.Key
 import org.apache.avro.Schema
@@ -17,7 +16,7 @@ import org.apache.spark.{Partition, RangePartitioner, SparkContext, TaskContext}
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 
-class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[SpaceTimeKey],writerSchema:Schema,parent:GeotrellisAccumuloRDD,val metadata: TileLayerMetadata[SpaceTimeKey], sc : SparkContext) extends RDD[(SpaceTimeKey, V)](sc,Nil) with geotrellis.spark.Metadata[TileLayerMetadata[SpaceTimeKey]] {
+class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[SpaceTimeKey],writerSchema:Schema,parent:GeotrellisAccumuloRDD,val metadata: TileLayerMetadata[SpaceTimeKey], sc : SparkContext) extends RDD[(SpaceTimeKey, V)](sc,Nil) with Metadata[TileLayerMetadata[SpaceTimeKey]] {
 
   val codec = KryoWrapper(KeyValueRecordCodec[SpaceTimeKey, V])
   val kwWriterSchema = KryoWrapper(Some(writerSchema))

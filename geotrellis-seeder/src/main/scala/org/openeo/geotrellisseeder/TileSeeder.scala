@@ -10,15 +10,15 @@ import be.vito.eodata.biopar.EOProduct
 import be.vito.eodata.catalog.CatalogClient
 import com.beust.jcommander.JCommander
 import com.fasterxml.jackson.databind.ObjectMapper
-import geotrellis.contrib.vlm._
-import geotrellis.contrib.vlm.geotiff.GeoTiffReprojectRasterSource
+import geotrellis.layer.{KeyBounds, LayoutDefinition, Metadata, SpatialKey, TileLayerMetadata, _}
 import geotrellis.proj4.{LatLng, WebMercator}
-import geotrellis.raster._
+import geotrellis.raster.{RasterRegion, RasterSource, _}
+import geotrellis.raster.geotiff.GeoTiffReprojectRasterSource
 import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.render.ColorMap
-import geotrellis.spark.io.hadoop.HdfsUtils
-import geotrellis.spark.tiling._
-import geotrellis.spark.{ContextRDD, KeyBounds, Metadata, SpatialKey, TileLayerMetadata}
+import geotrellis.spark._
+import geotrellis.store.hadoop.util.HdfsUtils
+import geotrellis.vector._
 import geotrellis.vector.io.wkt.WKT
 import javax.ws.rs.client.ClientBuilder
 import org.apache.hadoop.fs.Path

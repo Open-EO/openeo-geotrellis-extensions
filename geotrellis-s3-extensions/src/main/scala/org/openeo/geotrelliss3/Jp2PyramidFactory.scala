@@ -3,19 +3,17 @@ package org.openeo.geotrelliss3
 import java.lang.System.getenv
 import java.time._
 
-import com.amazonaws.client.builder.AwsClientBuilder
-import com.amazonaws.services.s3.AmazonS3ClientBuilder
-import com.amazonaws.services.s3.model.ListObjectsRequest
-import geotrellis.contrib.vlm.gdal.GDALReprojectRasterSource
-import geotrellis.gdal.config.GDALOptionsConfig.registerOption
+import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.{MultibandTile, Tile, UByteUserDefinedNoDataCellType, isNoData}
-import geotrellis.spark.io.s3.{AmazonS3Client, S3Client}
+import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
-import geotrellis.spark.tiling.{LayoutDefinition, LayoutLevel, ZoomedLayoutScheme}
-import geotrellis.spark.{ContextRDD, KeyBounds, LayerId, MultibandTileLayerRDD, SpaceTimeKey, TileLayerMetadata}
+import geotrellis.store.LayerId
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
+import software.amazon.awssdk.awscore.client.builder.AwsClientBuilder
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.ListObjectsRequest
 
 import scala.collection.JavaConverters._
 import scala.math.max
@@ -41,7 +39,7 @@ object Jp2PyramidFactory {
   }
 
   private def getS3Client(endpoint: String, region: String): S3Client = {
-    val s3builder: AmazonS3ClientBuilder = AmazonS3ClientBuilder.standard()
+    val s3builder = S3Client.builder().endpointOverride()
       .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(endpoint, region))
 
     AmazonS3Client(s3builder)
@@ -61,14 +59,12 @@ class Jp2PyramidFactory(endpoint: String, region: String) extends Serializable {
   private def getS3Client: S3Client = Jp2PyramidFactory.getS3Client(endpoint, region)
 
   private def listProducts(bucket: String, key: String) = {
-    val request = (new ListObjectsRequest)
-      .withBucketName(bucket)
-      .withPrefix(key)
+    val request = ListObjectsRequest.builder().bucket(bucket).prefix(key).build()
 
     val keyPattern = raw".*S2._MSIL2A_\d{8}T.*B\d{2}_10m\.jp2$$".r
 
     getS3Client
-      .listKeys(request)
+      .listObjects(request)
       .flatMap(key => key match {
         case keyPattern(_*) => Some(key)
         case _ => None
@@ -79,7 +75,7 @@ class Jp2PyramidFactory(endpoint: String, region: String) extends Serializable {
 
   private def extent(productKeys: Seq[(String, String)]) = {
     productKeys
-      .map(key => GDALReprojectRasterSource(uri(key), crs))
+      .map(key => GDALRasterSource(uri(key), crs))
       .map(_.extent)
       .reduceOption((e1, e2) => e1 combine e2)
       .getOrElse(Extent(0, 0, 0, 0))
@@ -147,7 +143,7 @@ class Jp2PyramidFactory(endpoint: String, region: String) extends Serializable {
     val tiles = sc.parallelize(overlappingKeys)
       .map(key => (key, bandFileMaps
         .flatMap(_.get(key.time))
-        .map(_.map(s3Key => GDALReprojectRasterSource(uri(s3Key), crs).tileToLayout(layout))
+        .map(_.map(s3Key => GDALRasterSource(uri(s3Key), crs).tileToLayout(layout))
           .flatMap(_.rasterRegionForKey(key.spatialKey).flatMap(_.raster))
           .map(_.tile.band(0)))
         .flatMap(mapToSingleTile)))

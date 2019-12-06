@@ -7,6 +7,7 @@ import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.Raster
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
+import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkConf

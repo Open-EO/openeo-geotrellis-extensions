@@ -3,7 +3,7 @@ package be.vito.eodata.geopysparkextensions
 import java.net.URI
 import java.security.PrivilegedAction
 
-import geotrellis.spark.io.accumulo.AccumuloInstance
+import geotrellis.store.accumulo.AccumuloInstance
 import org.apache.accumulo.core.client.ClientConfiguration
 import org.apache.accumulo.core.client.impl.{AuthenticationTokenIdentifier, DelegationTokenImpl}
 import org.apache.accumulo.core.client.security.tokens._

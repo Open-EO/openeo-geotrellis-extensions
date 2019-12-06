@@ -1,7 +1,10 @@
 package org.openeo.geotrellisaccumulo
 
+import java.time.{LocalDate, ZoneId}
+
+import geotrellis.layer.{SpaceTimeKey, TileLayerMetadata}
 import geotrellis.raster.MultibandTile
-import geotrellis.spark.SpaceTimeKey
+import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector.Extent
 import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation

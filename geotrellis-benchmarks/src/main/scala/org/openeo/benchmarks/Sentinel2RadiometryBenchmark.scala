@@ -1,20 +1,21 @@
 package org.openeo.benchmarks
 
 import java.net.URL
-
-import org.openeo.geotrellisaccumulo.{PyramidFactory => AccumuloPyramidFactory}
-import java.time.{Duration, Instant, LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-import scala.collection.JavaConverters._
+import java.time._
 
+import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.LatLng
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
-import geotrellis.spark.{MultibandTileLayerRDD, SpaceTimeKey}
-import geotrellis.vector.{MultiPolygon, ProjectedExtent}
 import geotrellis.shapefile.ShapeFileReader
+import geotrellis.spark.{MultibandTileLayerRDD, _}
+import geotrellis.vector.{MultiPolygon, ProjectedExtent, _}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory.Band._
+import org.openeo.geotrellisaccumulo.{PyramidFactory => AccumuloPyramidFactory}
+
+import scala.collection.JavaConverters._
 
 object Sentinel2RadiometryBenchmark {
 
@@ -37,7 +38,7 @@ object Sentinel2RadiometryBenchmark {
       val crs = LatLng
 
       val bboxes = randomFields(shapeFile, amount = nFields)
-        .map(field => ProjectedExtent(field.envelope, crs))
+        .map(field => ProjectedExtent(field.extent, crs))
 
       val bbox_srs = s"EPSG:${crs.epsgCode.get}"
       val (start_date, end_date) = (ISO_OFFSET_DATE_TIME format startDate, ISO_OFFSET_DATE_TIME format endDate)

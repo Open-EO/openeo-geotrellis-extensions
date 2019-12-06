@@ -1,20 +1,21 @@
 package be.vito.eodata.geopysparkextensions
 
-import geotrellis.spark._
-import geotrellis.spark.io._
-import geotrellis.spark.io.accumulo.conf.AccumuloConfig
-import geotrellis.util.UriUtils
-import org.apache.spark.SparkContext
 import java.net.URI
 
-import geotrellis.spark.io.accumulo._
+import geotrellis.spark.store.accumulo._
+import geotrellis.spark.store.{FilteringLayerReader, LayerReaderProvider, LayerWriter, LayerWriterProvider}
+import geotrellis.store.accumulo.conf.AccumuloConfig
+import geotrellis.store.accumulo.{AccumuloAttributeStore, AccumuloCollectionLayerReader, AccumuloValueReader}
+import geotrellis.store.{AttributeStore, AttributeStoreProvider, CollectionLayerReader, CollectionLayerReaderProvider, LayerId, ValueReader, ValueReaderProvider}
+import geotrellis.util.UriUtils
+import org.apache.spark.SparkContext
 
 /**
-  * Provides [[AccumuloAttributeStore]] instance for URI with `accumulo+kerberos` scheme.
+  * Provides [[geotrellis.store.accumulo.AccumuloAttributeStore]] instance for URI with `accumulo+kerberos` scheme.
   *  ex: `accumulo://[user[:password]@]zookeeper/instance-name[?attributes=table1[&layers=table2]]`
   *
   * Attributes table name is optional, not provided default value will be used.
-  * Layers table name is required to instantiate a [[LayerWriter]]
+  * Layers table name is required to instantiate a [[geotrellis.spark.store.LayerWriter]]
   */
 class KerberizedAccumuloLayerProvider extends AttributeStoreProvider
   with LayerReaderProvider with LayerWriterProvider with ValueReaderProvider with CollectionLayerReaderProvider {

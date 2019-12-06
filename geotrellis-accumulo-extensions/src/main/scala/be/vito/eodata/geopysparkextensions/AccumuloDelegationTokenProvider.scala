@@ -2,7 +2,7 @@ package be.vito.eodata.geopysparkextensions
 import java.security.PrivilegedAction
 import java.util.concurrent.TimeUnit
 
-import geotrellis.spark.io.accumulo.AccumuloInstance
+import geotrellis.store.accumulo.AccumuloInstance
 import org.apache.accumulo.core.client.ClientConfiguration
 import org.apache.accumulo.core.client.impl.DelegationTokenImpl
 import org.apache.accumulo.core.client.security.tokens.KerberosToken

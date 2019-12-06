@@ -3,14 +3,15 @@ package org.openeo.geotrellis
 import java.io.File
 import java.time.{Instant, ZonedDateTime}
 
+import geotrellis.layer._
 import geotrellis.raster._
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.spark.io.index.zcurve.Z3
+import geotrellis.spark._
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
-import geotrellis.spark.{Bounds, ContextRDD, Metadata, MultibandTileLayerRDD, SpaceTimeKey, SpatialComponent, SpatialKey, TemporalKey, TileLayerMetadata}
+import geotrellis.store.index.zcurve.Z3
 import geotrellis.util.Filesystem
 import org.apache.spark.rdd.{CoGroupedRDD, RDD}
 import org.openeo.geotrellis.focal._
@@ -187,7 +188,7 @@ class OpenEOProcesses extends Serializable {
     val k = new Kernel(kernel)
     val outputCellType = datacube.convert(datacube.metadata.cellType.union(kernel.cellType))
     if (kernel.cols > 10 || kernel.rows > 10) {
-      MultibandFocalOperation(outputCellType, k, None) { (tile, bounds: Option[GridBounds]) => {
+      MultibandFocalOperation(outputCellType, k, None) { (tile, bounds: Option[GridBounds[Int]]) => {
         FFTConvolve(tile, kernel).crop(bounds.get)
       }
       }

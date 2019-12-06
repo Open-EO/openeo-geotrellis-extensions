@@ -3,6 +3,7 @@ package org.openeo.geotrellisseeder
 import java.util.concurrent.TimeUnit
 
 import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.vector._
 import geotrellis.vector.io.json.{GeoJson, _}
 import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
@@ -77,7 +78,7 @@ object RasterSourceRDDBenchmark extends App {
   var perPoints = List[Double]()
   for( polygon <- polygons ){
 
-    val bbox = polygon.envelope
+    val bbox = polygon.extent
     val reprojected = polygon.reproject(LatLng,layerCRS)
 
     //val t0 = System.currentTimeMillis()

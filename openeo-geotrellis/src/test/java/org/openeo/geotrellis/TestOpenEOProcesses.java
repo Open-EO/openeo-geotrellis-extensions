@@ -1,7 +1,9 @@
 package org.openeo.geotrellis;
 
+
+import geotrellis.layer.*;
 import geotrellis.raster.*;
-import geotrellis.spark.*;
+import geotrellis.spark.ContextRDD;
 import geotrellis.spark.testkit.TileLayerRDDBuilders$;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
