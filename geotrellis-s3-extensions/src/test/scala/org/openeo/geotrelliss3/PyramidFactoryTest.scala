@@ -50,7 +50,7 @@ class PyramidFactoryTest {
   @Test
   def testJp2Pyramid(): Unit = {
     val pyramidFactory = new Jp2PyramidFactory(
-      endpoint = "oss.eu-west-0.prod-cloud-ocb.orange-business.com",
+      endpoint = "http://oss.eu-west-0.prod-cloud-ocb.orange-business.com",
       region = "eu-west-0"
     )
 

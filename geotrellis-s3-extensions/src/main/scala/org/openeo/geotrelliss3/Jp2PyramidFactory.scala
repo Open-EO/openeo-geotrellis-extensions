@@ -53,7 +53,7 @@ class Jp2PyramidFactory(endpoint: String, region: String) extends Serializable {
 
   import Jp2PyramidFactory._
 
-  registerOption("AWS_S3_ENDPOINT", endpoint)
+  registerOption("AWS_S3_ENDPOINT", URI.create(endpoint).getAuthority)
   registerOption("AWS_SECRET_ACCESS_KEY", getenv("AWS_SECRET_ACCESS_KEY"))
   registerOption("AWS_ACCESS_KEY_ID", getenv("AWS_ACCESS_KEY_ID"))
 
