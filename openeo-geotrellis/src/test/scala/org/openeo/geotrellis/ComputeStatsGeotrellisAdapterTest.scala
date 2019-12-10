@@ -234,6 +234,39 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     assertTrue(means.exists(mean => !mean.get(0).isNaN))
   }
 
+  @Test
+  def compute_average_timeseries_on_datacube_from_GeoJson_file(): Unit = {
+    val minDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
+    val maxDate = ZonedDateTime.parse("2017-03-10T00:00:00Z")
+
+    val vector_file = getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath
+
+    val tile10 = new ByteConstantTile(10.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))
+
+    val datacube = TestOpenEOProcesses.tileToSpaceTimeDataCube(tile10)
+    val polygonExtent = polygon1.extent.combine(polygon2.extent)
+    val updatedMetadata = datacube.metadata.copy(extent = polygonExtent,crs = LatLng,layout=LayoutDefinition(polygonExtent,datacube.metadata.tileLayout))
+
+    val stats = computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
+      ContextRDD(datacube,updatedMetadata),
+      vector_file,
+      from_date = ISO_OFFSET_DATE_TIME format minDate,
+      to_date = ISO_OFFSET_DATE_TIME format maxDate,
+      band_index = 0
+    ).asScala
+
+    for ((date, means) <- stats) {
+      println(s"$date: $means")
+    }
+
+    assertFalse(stats.isEmpty)
+
+    val means = stats
+      .flatMap { case (_, dailyMeans) => dailyMeans.asScala }.filter(!_.isEmpty)
+
+    assertTrue(means.exists(mean => !mean.get(0).isNaN))
+  }
+
 
   private lazy val accumuloPyramidFactory = {new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")}
 

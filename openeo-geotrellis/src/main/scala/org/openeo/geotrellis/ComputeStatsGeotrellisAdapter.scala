@@ -3,22 +3,28 @@ package org.openeo.geotrellis
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
+import java.net.{MalformedURLException, URL}
 
 import be.vito.eodata.extracttimeseries.geotrellis._
 import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
 import be.vito.eodata.processing.MaskedStatisticsProcessor.StatsMeanResult
 import geotrellis.layer._
-import geotrellis.proj4.CRS
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.summary.Statistics
 import geotrellis.raster.{FloatConstantNoDataCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.spark._
 import geotrellis.store.accumulo.AccumuloInstance
+import geotrellis.vector.io.json.GeoJson
 import geotrellis.vector.{Geometry, MultiPolygon, Polygon, _}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.geotools.data.Query
+import org.geotools.data.shapefile.ShapefileDataStore
+import org.geotools.data.simple.SimpleFeatureIterator
 
 import scala.collection.JavaConverters._
+import scala.io.Source
 
 object ComputeStatsGeotrellisAdapter {
   private type JMap[K, V] = java.util.Map[K, V]
@@ -55,6 +61,14 @@ object ComputeStatsGeotrellisAdapter {
   }
 
   private def isoFormat(timestamp: ZonedDateTime): String = timestamp format DateTimeFormatter.ISO_DATE_TIME
+
+  private def geometries(geometryCollection: GeometryCollection): Stream[Geometry] = {
+    def from(i: Int): Stream[Geometry] =
+      if (i >= geometryCollection.getNumGeometries) Stream.empty
+      else geometryCollection.getGeometryN(i) #:: from(i + 1)
+
+    from(0)
+  }
 }
 
 class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: String) {
@@ -78,19 +92,90 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     statisticsCollector.results
   }
 
-  def compute_average_timeseries_from_datacube(datacube:MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
-    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
-
-    val polygons = polygon_wkts.asScala.map(parsePolygonWkt)
+  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
+    val polygons = polygon_wkts.asScala
+      .map(parsePolygonWkt)
+      .toArray
 
     val crs: CRS = CRS.fromName(polygons_srs)
+
+    compute_average_timeseries_from_datacube(datacube, polygons, crs, from_date, to_date, band_index)
+  }
+
+  private def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
+    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
+
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
     val statisticsCollector = new MultibandStatisticsCollector
 
-    computeStatsGeotrellis.computeAverageTimeSeries(datacube, polygons.toArray, crs, startDate, endDate, statisticsCollector, unusedCancellationContext, sc)
+    computeStatsGeotrellis.computeAverageTimeSeries(datacube, polygons, crs, startDate, endDate, statisticsCollector, unusedCancellationContext, sc)
 
     statisticsCollector.results
+  }
+
+  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], vector_file: String, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
+    val vectorUrl = try {
+      new URL(vector_file)
+    } catch {
+      case _: MalformedURLException => new URL(s"file://$vector_file")
+    }
+
+    val filename = vectorUrl.getPath.split("/").last
+
+    val (polygons, crs) =
+      if (filename.endsWith(".shp")) readSimpleFeatures(vectorUrl)
+      else readMultiPolygonsFromGeoJson(vectorUrl)
+
+    compute_average_timeseries_from_datacube(datacube, polygons, crs, from_date, to_date, band_index)
+  }
+
+  // adapted from Geotrellis' ShapeFileReader to avoid having too much in memory
+  private def readSimpleFeatures(shpUrl: URL): (Array[MultiPolygon], CRS) = {
+    val ds = new ShapefileDataStore(shpUrl)
+    val ftItr: SimpleFeatureIterator = ds.getFeatureSource.getFeatures.features
+
+    try {
+      val featureCount = ds.getCount(Query.ALL)
+      require(featureCount < Int.MaxValue)
+
+      val simpleFeatures = new Array[MultiPolygon](featureCount.toInt)
+
+      for (i <- simpleFeatures.indices) {
+        val multiPolygon = ftItr.next().getAttribute(0) match {
+          case multiPolygon: MultiPolygon => multiPolygon
+          case polygon: Polygon => MultiPolygon(polygon)
+        }
+
+        simpleFeatures(i) = multiPolygon
+      }
+
+      // FIXME: read it from the shp and default to LatLng
+      (simpleFeatures, LatLng)
+    } finally {
+      ftItr.close()
+      ds.dispose()
+    }
+  }
+
+  private def readMultiPolygonsFromGeoJson(geoJsonUrl: URL): (Array[MultiPolygon], CRS) = {
+    // FIXME: stream it instead
+    val src = Source.fromURL(geoJsonUrl)
+
+    try {
+      val geoJson = src.mkString
+
+      val multiPolygons = GeoJson.parse[Geometry](geoJson) match {
+        case polygon: Polygon => Array(MultiPolygon(polygon))
+        case multiPolygon: MultiPolygon => Array(multiPolygon)
+        case geometryCollection: GeometryCollection => geometries(geometryCollection).map {
+          case polygon: Polygon => MultiPolygon(polygon)
+          case multiPolygon: MultiPolygon => multiPolygon
+        }.toArray
+      }
+
+      (multiPolygons, LatLng)
+    } finally src.close()
   }
 
   def compute_histogram_time_series(product_id: String, polygon_wkt: String, polygon_srs: String,
@@ -191,10 +276,8 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   private def parsePolygonWkt(polygonWkt: String): MultiPolygon = {
     val geometry: Geometry = polygonWkt.parseWKT()
     geometry match {
-      case polygon: MultiPolygon =>
-        polygon
-      case _ =>
-        MultiPolygon(geometry.asInstanceOf[Polygon])
+      case multiPolygon: MultiPolygon => multiPolygon
+      case _ => MultiPolygon(geometry.asInstanceOf[Polygon])
     }
   }
 
