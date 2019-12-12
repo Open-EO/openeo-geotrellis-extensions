@@ -13,6 +13,7 @@ import geotrellis.spark.SpatialKey;
 import org.apache.commons.io.IOUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.openeo.geotrellisseeder.Band;
@@ -38,13 +39,18 @@ public class ReferenceTileTest {
         sc = SparkContext.getOrCreate(
                 new SparkConf()
                         .setMaster("local[1]")
+                        .set("spark.driver.bindAddress", "127.0.0.1")
                         .setAppName("ReferenceTileTest")
                         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
                         .set("spark.kryoserializer.buffer.max", "1024m"));
         
-        seeder = new TileSeeder(13, 1, false);
+        seeder = new TileSeeder(13, false, Option.apply(1));
     }
 
+    @AfterClass
+    public static void shutDownSparkContext() {
+        sc.stop();
+    }
 
     @Test
     public void testSaveAndCompareAll() throws ImageComparisonFailedException, IOException, InterruptedException {
@@ -112,8 +118,8 @@ public class ReferenceTileTest {
         CGS_S2_FAPAR {
             @Override
             void generateTile(String path, LocalDate date, SpatialKey key) {
-                Option<String> colorMap = Some.<String>apply("ColorTable_NDVI_V2.sld");
-                Option<Band[]> bands = Option.<Band[]>empty();
+                Option<String> colorMap = Some.apply("ColorTable_NDVI_V2.sld");
+                Option<Band[]> bands = Option.empty();
 
                 seeder.renderSinglePng(name(), date, key, path, colorMap, bands, sc);
             }
@@ -121,8 +127,8 @@ public class ReferenceTileTest {
         CGS_S2_LAI {
             @Override
             void generateTile(String path, LocalDate date, SpatialKey key) {
-                Option<String> colorMap = Some.<String>apply("ColorTable_LAI_V12.sld");
-                Option<Band[]> bands = Option.<Band[]>empty();
+                Option<String> colorMap = Some.apply("ColorTable_LAI_V12.sld");
+                Option<Band[]> bands = Option.empty();
 
                 seeder.renderSinglePng(name(), date, key, path, colorMap, bands, sc);
             }
@@ -130,8 +136,8 @@ public class ReferenceTileTest {
         CGS_S2_NDVI {
             @Override
             void generateTile(String path, LocalDate date, SpatialKey key) {
-                Option<String> colorMap = Some.<String>apply("ColorTable_NDVI_PROBAV.sld");
-                Option<Band[]> bands = Option.<Band[]>empty();
+                Option<String> colorMap = Some.apply("ColorTable_NDVI_PROBAV.sld");
+                Option<Band[]> bands = Option.empty();
 
                 seeder.renderSinglePng(name(), date, key, path, colorMap, bands, sc);
             }
@@ -139,8 +145,8 @@ public class ReferenceTileTest {
         CGS_S2_FCOVER {
             @Override
             void generateTile(String path, LocalDate date, SpatialKey key) {
-                Option<String> colorMap = Some.<String>apply("ColorTable_FCOVER_V12.sld");
-                Option<Band[]> bands = Option.<Band[]>empty();
+                Option<String> colorMap = Some.apply("ColorTable_FCOVER_V12.sld");
+                Option<Band[]> bands = Option.empty();
 
                 seeder.renderSinglePng(name(), date, key, path, colorMap, bands, sc);
             }
@@ -148,8 +154,8 @@ public class ReferenceTileTest {
         CGS_S2_RADIOMETRY {
             @Override
             void generateTile(String path, LocalDate date, SpatialKey key) {
-                Option<String> colorMap = Some.<String>empty();
-                Option<Band[]> bands = Option.<Band[]>apply(new Band[] { 
+                Option<String> colorMap = Some.empty();
+                Option<Band[]> bands = Option.apply(new Band[] { 
                         Band.apply("B04", 200, 1600), 
                         Band.apply("B03", 200, 1600), 
                         Band.apply("B02", 200, 1600) 
@@ -161,8 +167,8 @@ public class ReferenceTileTest {
         CGS_S2_NIR {
             @Override
             void generateTile(String path, LocalDate date, SpatialKey key) {
-                Option<String> colorMap = Some.<String>empty();
-                Option<Band[]> bands = Option.<Band[]>apply(new Band[] {
+                Option<String> colorMap = Some.empty();
+                Option<Band[]> bands = Option.apply(new Band[] {
                         Band.apply("B08", 0, 4000),
                         Band.apply("B04", 0, 2600),
                         Band.apply("B03", 0, 2600)

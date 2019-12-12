@@ -8,18 +8,19 @@ import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaPairRDD$;
 import org.apache.spark.rdd.RDD;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
 import scala.Tuple2;
+import scala.reflect.ClassTag;
 
 import java.time.ZonedDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.*;
 
 
 public class TestOpenEOProcesses {
@@ -30,12 +31,17 @@ public class TestOpenEOProcesses {
         SparkConf conf = new SparkConf();
         conf.setAppName("OpenEOTest");
         conf.setMaster("local[4]");
+        conf.set("spark.driver.bindAddress", "127.0.0.1");
         conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
         SparkContext.getOrCreate(conf);
 
 
     }
 
+    @AfterClass
+    public static void shutDownSparkContext() {
+        SparkContext.getOrCreate().stop();
+    }
 
     @Test
     public void testSimpleUnaryProcess() {
@@ -57,7 +63,8 @@ public class TestOpenEOProcesses {
         Tile tile10 = new ByteConstantTile((byte)10,256,256, (ByteCells) CellType$.MODULE$.fromName("int8raw"));
         Tile tile5 = new ByteConstantTile((byte)5,256,256, (ByteCells) CellType$.MODULE$.fromName("int8raw"));
         RDD<Tuple2<SpatialKey, MultibandTile>> datacube = TileLayerRDDBuilders$.MODULE$.createMultibandTileLayerRDD(SparkContext.getOrCreate(), new ArrayMultibandTile(new Tile[]{tile10,tile5}), new TileLayout(1, 1, 256, 256));
-        RDD<Tuple2<SpatialKey, MultibandTile>> ndviDatacube = new OpenEOProcesses().<SpatialKey>mapBands(datacube, processBuilder);
+        ClassTag<SpatialKey> tag = scala.reflect.ClassTag$.MODULE$.apply(SpatialKey.class);
+        RDD<Tuple2<SpatialKey, MultibandTile>> ndviDatacube = new OpenEOProcesses().<SpatialKey>mapBandsGeneric(datacube, processBuilder,tag);
         List<Tuple2<SpatialKey, MultibandTile>> result = ndviDatacube.toJavaRDD().collect();
         System.out.println("result = " + result);
         double[] doubles = result.get(0)._2().band(0).toArrayDouble();
@@ -101,7 +108,7 @@ public class TestOpenEOProcesses {
         maskTile.set(0,2,1);
 
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> maskRDD = tileToSpaceTimeDataCube(maskTile);
-        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> masked = new OpenEOProcesses().rasterMask(tileLayerRDD, maskRDD, 10);
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> masked = new OpenEOProcesses().rasterMask(tileLayerRDD, maskRDD, 10.0);
 
         JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(masked.toJavaRDD());
         assertFalse(result.isEmpty());
@@ -117,8 +124,65 @@ public class TestOpenEOProcesses {
 
     }
 
-    private ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> tileToSpaceTimeDataCube(Tile zeroTile) {
-        ContextRDD<SpatialKey, MultibandTile, TileLayerMetadata<SpatialKey>> datacube = (ContextRDD<SpatialKey, MultibandTile, TileLayerMetadata<SpatialKey>>) TileLayerRDDBuilders$.MODULE$.createMultibandTileLayerRDD(SparkContext.getOrCreate(), new ArrayMultibandTile(new Tile[]{zeroTile}), new TileLayout(1, 1, zeroTile.cols(), zeroTile.rows()));
+    @Test
+    public void testMergeCubes() {
+        DataType celltype = CellType$.MODULE$.fromName("int8raw").withDefaultNoData();
+        MutableArrayTile zeroTile = new ByteConstantTile((byte)0,256,256, (ByteCells) celltype).mutable();
+        zeroTile.set(0,0,1);
+        zeroTile.set(0,1,ByteConstantNoDataCellType.noDataValue());
+
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> tileLayerRDD = tileToSpaceTimeDataCube(zeroTile);
+
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> merged = new OpenEOProcesses().mergeCubes(tileLayerRDD, tileLayerRDD,null);
+
+        MultibandTile firstTile = merged.toJavaRDD().take(1).get(0)._2();
+        System.out.println("firstTile = " + firstTile);
+        assertEquals(4,firstTile.bandCount());
+        assertEquals(zeroTile,firstTile.band(0));
+        assertEquals(zeroTile,firstTile.band(2));
+
+
+
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> mergedOr = new OpenEOProcesses().mergeCubes(tileLayerRDD, tileLayerRDD,"sum");
+        MultibandTile firstTileSum = mergedOr.toJavaRDD().take(1).get(0)._2();
+        System.out.println("firstTileOr = " + firstTileSum);
+        assertEquals(2,firstTileSum.bandCount());
+        assertEquals(2, firstTileSum.band(0).get(0, 0));
+
+        assertTrue(firstTileSum.band(1).isNoDataTile());
+    }
+
+    @Test
+    public void testMergeCubesBadOperator() {
+        DataType celltype = CellType$.MODULE$.fromName("int8raw").withDefaultNoData();
+        MutableArrayTile zeroTile = new ByteConstantTile((byte)0,256,256, (ByteCells) celltype).mutable();
+        zeroTile.set(0,0,1);
+        zeroTile.set(0,1,ByteConstantNoDataCellType.noDataValue());
+
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> tileLayerRDD = tileToSpaceTimeDataCube(zeroTile);
+
+        try {
+            new OpenEOProcesses().mergeCubes(tileLayerRDD, tileLayerRDD, "unsupported");
+            fail("Should have thrown an exception.");
+        } catch (UnsupportedOperationException e) {
+
+        }
+
+    }
+
+    @Test
+    public void testWriteCatalog() {
+        Tile tile10 = new ByteConstantTile((byte)10,256,256, (ByteCells) CellType$.MODULE$.fromName("int8raw"));
+        Tile tile5 = new ByteConstantTile((byte)5,256,256, (ByteCells) CellType$.MODULE$.fromName("int8raw"));
+        RDD<Tuple2<SpatialKey, MultibandTile>> datacube = TileLayerRDDBuilders$.MODULE$.createMultibandTileLayerRDD(SparkContext.getOrCreate(), new ArrayMultibandTile(new Tile[]{tile10,tile5}), new TileLayout(1, 1, 256, 256));
+        new OpenEOProcesses().write_geotiffs(datacube,"catalog",14);
+    }
+
+    static ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> tileToSpaceTimeDataCube(Tile zeroTile) {
+
+        MutableArrayTile emptyTile = ArrayTile$.MODULE$.empty(zeroTile.cellType(), zeroTile.cols(), zeroTile.rows());
+
+        ContextRDD<SpatialKey, MultibandTile, TileLayerMetadata<SpatialKey>> datacube = (ContextRDD<SpatialKey, MultibandTile, TileLayerMetadata<SpatialKey>>) TileLayerRDDBuilders$.MODULE$.createMultibandTileLayerRDD(SparkContext.getOrCreate(), new ArrayMultibandTile(new Tile[]{zeroTile,emptyTile}), new TileLayout(1, 1, zeroTile.cols(), zeroTile.rows()));
         final ZonedDateTime minDate = ZonedDateTime.parse("2017-01-01T00:00:00Z");
         final ZonedDateTime maxDate = ZonedDateTime.parse("2018-01-15T00:00:00Z");
         JavaPairRDD<SpaceTimeKey, MultibandTile> spacetimeDataCube = JavaPairRDD$.MODULE$.fromJavaRDD(datacube.toJavaRDD()).flatMapToPair(spatialKeyMultibandTileTuple2 -> {

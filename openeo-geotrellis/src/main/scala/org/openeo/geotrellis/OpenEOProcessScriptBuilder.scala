@@ -11,6 +11,7 @@ import scala.collection.mutable
 class OpenEOProcessScriptBuilder {
 
   val processStack: mutable.Stack[String] = new mutable.Stack[String]()
+  val arrayElementStack: mutable.Stack[Integer] = new mutable.Stack[Integer]()
   val argNames: mutable.Stack[String] = new mutable.Stack[String]()
   val contextStack: mutable.Stack[mutable.Map[String,Seq[Tile] => Seq[Tile]]] = new mutable.Stack[mutable.Map[String, Seq[Tile] => Seq[Tile]]]()
   var arrayCounter : Int =  0
@@ -18,10 +19,10 @@ class OpenEOProcessScriptBuilder {
 
   private def unaryFunction(argName:String,operator:Seq[Tile] => Seq[Tile] ) = {
     val storedArgs = contextStack.head
-    val inputFunction = storedArgs.get(argName).get
+    val inputFunction = storedArgs.get(argName)
 
-    if(inputFunction !=null)
-      operator compose inputFunction
+    if(inputFunction.isDefined && inputFunction.get != null)
+      operator compose inputFunction.get
     else
       operator
 
@@ -29,6 +30,12 @@ class OpenEOProcessScriptBuilder {
 
   private def xyFunction(operator:(Tile,Tile) => Tile ) = {
     val storedArgs = contextStack.head
+    if(!storedArgs.contains("x")){
+      throw new IllegalArgumentException("This function expects an 'x' argument, function tree: " + processStack.reverse.mkString("->") + ". These arguments were found: " + storedArgs.keys.mkString(", "))
+    }
+    if(!storedArgs.contains("y")){
+      throw new IllegalArgumentException("This function expects an 'y' argument, function tree: " + processStack.reverse.mkString("->") + ". These arguments were found: " + storedArgs.keys.mkString(", "))
+    }
     val x_function = storedArgs.get("x").get
     val y_function = storedArgs.get("y").get
     val bandFunction = (tiles:Seq[Tile]) =>{
@@ -74,6 +81,9 @@ class OpenEOProcessScriptBuilder {
     * @param index
     */
   def arrayStart(name:String): Unit = {
+
+    //save current arrayCounter
+    arrayElementStack.push(arrayCounter)
     argNames.push(name)
     contextStack.push(mutable.Map[String,Seq[Tile] => Seq[Tile]]())
     processStack.push("array")
@@ -127,7 +137,7 @@ class OpenEOProcessScriptBuilder {
       }
       results
     }
-    arrayCounter = 0
+    arrayCounter = arrayElementStack.pop()
 
     contextStack.head.put(name,inputFunction)
 
@@ -140,8 +150,7 @@ class OpenEOProcessScriptBuilder {
   }
 
   def expressionEnd(operator:String,arguments:java.util.Map[String,Object]): Unit = {
-    val expectedOperator = processStack.pop()
-    assert(expectedOperator.equals(operator))
+
     val storedArgs = contextStack.head
 
     val operation: Seq[Tile] => Seq[Tile] = operator match {
@@ -197,6 +206,9 @@ class OpenEOProcessScriptBuilder {
       case _ => throw new IllegalArgumentException("Unsupported operation: " + operator)
 
     }
+
+    val expectedOperator = processStack.pop()
+    assert(expectedOperator.equals(operator))
 
     contextStack.pop()
     inputFunction = operation

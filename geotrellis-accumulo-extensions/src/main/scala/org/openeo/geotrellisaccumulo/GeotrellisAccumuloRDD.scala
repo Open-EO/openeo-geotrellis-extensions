@@ -21,15 +21,21 @@ import java.io.{ObjectInputStream, ObjectOutputStream}
 import java.text.SimpleDateFormat
 import java.util.Date
 
+import com.esotericsoftware.kryo.io.{Input, KryoDataInput, KryoDataOutput, Output}
+import com.esotericsoftware.kryo.{Kryo, KryoSerializable}
+import org.apache.accumulo.core.client.impl.DelegationTokenImpl
 import org.apache.accumulo.core.client.mapreduce.AccumuloInputFormat
 import org.apache.accumulo.core.client.mapreduce.impl.BatchInputSplit
+import org.apache.accumulo.core.client.mapreduce.lib.impl.ConfiguratorBase
 import org.apache.accumulo.core.data.{Key, Value}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.Writable
-import org.apache.hadoop.mapred.SplitLocationInfo
+import org.apache.hadoop.mapred.{JobConf, SplitLocationInfo}
 import org.apache.hadoop.mapreduce._
 import org.apache.hadoop.mapreduce.task.{JobContextImpl, TaskAttemptContextImpl}
+import org.apache.hadoop.security.token.Token
 import org.apache.spark._
+import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 
@@ -46,7 +52,7 @@ class NewHadoopPartition(
   override def equals(other: Any): Boolean = super.equals(other)
 }
 
-private class SerializableConfiguration(@transient var value: Configuration) extends Serializable {
+private class SerializableConfiguration(@transient var value: Configuration) extends Serializable with KryoSerializable {
   private def writeObject(out: ObjectOutputStream): Unit = {
     out.defaultWriteObject()
     value.write(out)
@@ -55,6 +61,15 @@ private class SerializableConfiguration(@transient var value: Configuration) ext
   private def readObject(in: ObjectInputStream): Unit = {
     value = new Configuration(false)
     value.readFields(in)
+  }
+
+  override def write(kryo: Kryo, output: Output): Unit = {
+    value.write(new KryoDataOutput(output))
+  }
+
+  override def read(kryo: Kryo, input: Input): Unit = {
+    value = new Configuration(false)
+    value.readFields(new KryoDataInput(input))
   }
 }
 
@@ -98,13 +113,33 @@ class GeotrellisAccumuloRDD(
   override def getPartitions: Array[Partition] = {
     val inputFormat = new AccumuloInputFormat()
 
-    val jobContext = new JobContextImpl(getConf, jobId)
+    val serialized_conf = {
+      if (getConf!=null)
+        getConf
+      else{
+        new Configuration()
+      }
+    }
+
+    val jobContext = new JobContextImpl(serialized_conf, jobId)
+    SparkHadoopUtil.get.addCredentials(jobContext.getConfiguration.asInstanceOf[JobConf])
+
+    val token = ConfiguratorBase.getAuthenticationToken(classOf[AccumuloInputFormat], jobContext.getConfiguration)
+    if(token.isInstanceOf[DelegationTokenImpl]) {
+      //normally the sparkhadooputil should have configured our token...
+      println("Configuring delegationtoken directly")
+      val delegationToken = token.asInstanceOf[DelegationTokenImpl]
+      val identifier = delegationToken.getIdentifier
+      val hadoopToken = new Token(identifier.getBytes, delegationToken.getPassword, identifier.getKind, delegationToken.getServiceName)
+      jobContext.getConfiguration.asInstanceOf[JobConf].getCredentials.addToken(delegationToken.getServiceName, hadoopToken)
+    }
+
     var rawSplits = inputFormat.getSplits(jobContext).toArray
 
     if(splitRanges) {
       rawSplits = rawSplits.flatMap(split=>{
         val batchSplit = split.asInstanceOf[BatchInputSplit]
-        val maxRangesPerSplit = 6
+        val maxRangesPerSplit = 1
         if(batchSplit.getRanges.size()>maxRangesPerSplit){
           val numberOfSubRanges = batchSplit.getRanges.size()/maxRangesPerSplit
           val elementsPerRange = batchSplit.getRanges.size()/numberOfSubRanges
@@ -134,9 +169,11 @@ class GeotrellisAccumuloRDD(
       })
 
     }
-    val result = new Array[Partition](rawSplits.size)
-    for (i <- 0 until rawSplits.size) {
-      result(i) = new NewHadoopPartition(id, i, rawSplits(i).asInstanceOf[InputSplit with Writable])
+
+    val orderedSplits = rawSplits.sortBy(f => f.asInstanceOf[BatchInputSplit].getRanges.iterator.next())
+    val result = new Array[Partition](orderedSplits.size)
+    for (i <- 0 until orderedSplits.size) {
+      result(i) = new NewHadoopPartition(id, i, orderedSplits(i).asInstanceOf[InputSplit with Writable])
     }
     result
   }
@@ -144,7 +181,7 @@ class GeotrellisAccumuloRDD(
   override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(Key, Value)] = {
     val iter = new Iterator[(Key, Value)] {
       val split = theSplit.asInstanceOf[NewHadoopPartition]
-      logInfo("Input split: " + split.serializableHadoopSplit)
+      logDebug("Input split: " + split.serializableHadoopSplit)
       val conf = getConf
 
       val inputMetrics = context.taskMetrics().inputMetrics

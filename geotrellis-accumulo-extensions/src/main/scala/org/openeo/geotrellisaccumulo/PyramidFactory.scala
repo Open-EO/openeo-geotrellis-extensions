@@ -2,6 +2,7 @@ package org.openeo.geotrellisaccumulo
 
 import java.time.ZonedDateTime
 
+import be.vito.eodata.extracttimeseries.geotrellis.ComputeStatsGeotrellisHelpers
 import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
 import geotrellis.proj4.CRS
 import geotrellis.raster.{MultibandTile, Tile}
@@ -20,8 +21,8 @@ import org.apache.accumulo.core.util.{Pair => AccumuloPair}
 import org.apache.hadoop.io.Text
 import org.apache.hadoop.mapreduce.Job
 import org.apache.spark.SparkContext
+import org.apache.spark.api.java.StorageLevels
 import org.apache.spark.rdd.RDD
-import org.apache.spark.storage.StorageLevel
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable
@@ -86,7 +87,9 @@ import scala.reflect.ClassTag
         }
 
       val job = Job.getInstance(sc.hadoopConfiguration)
+
       accumuloInstance.setAccumuloConfig(job)
+
       InputFormatBase.setInputTableName(job, table)
 
       val ranges = queryKeyBounds.flatMap(decompose).asJava
@@ -97,7 +100,7 @@ import scala.reflect.ClassTag
       val configuration = job.getConfiguration
       val rdd = new GeotrellisAccumuloRDD(sc,configuration,splitRanges)
 
-      return new GeotrellisRasterRDD[V](keyIndex,writerSchema,rdd,layerMetadata,sc)
+      return new GeotrellisRasterRDD[V](keyIndex,writerSchema,rdd,layerMetadata,sc).persist(StorageLevels.MEMORY_ONLY_SER_2)
     }
 
     def pyramid_seq(layerName:String,bbox: Extent, bbox_srs: String,startDate: String, endDate:String ): immutable.Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = {
@@ -115,11 +118,16 @@ import scala.reflect.ClassTag
       val header: LayerHeader = attributeStore.readHeader[LayerHeader](id)
       val query = createQuery(attributeStore,id,bbox,bbox_srs,startDate,endDate)
       implicit val sc = SparkContext.getOrCreate()
-      val result: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = header.valueClass match {
-        case "geotrellis.raster.Tile" =>
-           rdd[Tile](layerName, level,query).withContext(_.mapValues{MultibandTile(_)})
-        case "geotrellis.raster.MultibandTile" =>
-          rdd[MultibandTile](layerName, level,query)
+
+      val result: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = ComputeStatsGeotrellisHelpers.authenticated(sc) {
+        header.valueClass match {
+          case "geotrellis.raster.Tile" =>
+            rdd[Tile](layerName, level, query).withContext(_.mapValues {
+              MultibandTile(_)
+            })
+          case "geotrellis.raster.MultibandTile" =>
+            rdd[MultibandTile](layerName, level, query)
+        }
       }
       return new ContextRDD(result,result.metadata)
     }
@@ -157,16 +165,21 @@ import scala.reflect.ClassTag
 
       implicit val sc = SparkContext.getOrCreate()
 
-      val seq = for (z <- maxLevel to minLevel by -1) yield {
-        header.valueClass match {
-          case "geotrellis.raster.Tile" =>
-            (z, rdd[Tile](layerName, z,query).withContext(_.mapValues{MultibandTile(_)}).persist(StorageLevel.MEMORY_AND_DISK_SER))
-          case "geotrellis.raster.MultibandTile" =>
-            (z, rdd[MultibandTile](layerName, z,query).persist(StorageLevel.MEMORY_AND_DISK_SER))
-        }
+      return ComputeStatsGeotrellisHelpers.authenticated(sc)({
+        val seq = for (z <- maxLevel to minLevel by -1) yield {
+          header.valueClass match {
+            case "geotrellis.raster.Tile" =>
+              (z, rdd[Tile](layerName, z,query).withContext(_.mapValues{MultibandTile(_)}))
+            case "geotrellis.raster.MultibandTile" =>
+              (z, rdd[MultibandTile](layerName, z,query))
+          }
 
-      }
-      return seq
+        }
+        return seq
+      })
+
+
+
 
       //val reader = AccumuloLayerReader(accumuloInstance)
       //Pyramid.fromLayerReader[SpaceTimeKey,MultibandTile,TileLayerMetadata[SpaceTimeKey]](layerName,reader)

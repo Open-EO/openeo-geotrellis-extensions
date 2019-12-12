@@ -11,18 +11,30 @@ import scala.Option;
 import static java.lang.String.join;
 
 public class TileSeederRunner {
-    
+
     public static void main(String... args) {
         MemoryLogger ml = new MemoryLogger("main");
-        
-        Option<Band[]> bands = Option.<Band[]>empty();
-        Option<String> colorMap = Option.<String>empty();
+
+        Option<Band[]> bands = Option.empty();
+        Option<String> colorMap = Option.empty();
         if (args.length > 4) {
-            bands = Option.<Band[]>apply(Arrays.stream(args[4].split(":")).map(Band::apply).toArray(Band[]::new));
+            bands = Option.apply(Arrays.stream(args[4].split(":")).map(Band::apply).toArray(Band[]::new));
         } else if (args.length > 3) {
-            colorMap = Option.<String>apply(args[3]);
+            colorMap = Option.apply(args[3]);
         }
-        
+
+        Option<String> productGlob = Option.empty();
+        if (args.length > 5)
+            productGlob = Option.apply(args[5]);
+
+        int[] maskValues = new int[0];
+        if (args.length > 6)
+            maskValues = Arrays.stream(args[6].split(",")).mapToInt(Integer::valueOf).toArray();
+
+        Option<String> permissions = Option.empty();
+        if (args.length > 7)
+            permissions = Option.apply(args[7]);
+
         if (args.length > 1) {
             String productType = args[0];
             String rootPath = args[1];
@@ -34,10 +46,11 @@ public class TileSeederRunner {
                             .setAppName(join(":", "GeotrellisSeeder", productType, date))
                             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
                             .set("spark.kryoserializer.buffer.max", "1024m"));
-            
-            new TileSeeder(13, 500, false).renderPng(rootPath, productType, date, colorMap, bands, Option.<SpatialKey>empty(), sc);
+
+            new TileSeeder(13, false, Option.empty())
+                    .renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, Option.empty(), sc);
         }
-        
+
         ml.logMem();
     }
 }

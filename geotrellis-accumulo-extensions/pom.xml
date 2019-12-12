@@ -3,7 +3,7 @@
     <parent>
         <artifactId>openeo-geotrellis-extensions</artifactId>
         <groupId>org.openeo</groupId>
-        <version>1.1.0-SNAPSHOT</version>
+        <version>1.2.0-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -15,7 +15,6 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <geotrellis.version>2.1.0</geotrellis.version>
     </properties>
 
     <repositories>
@@ -26,6 +25,11 @@
     </repositories>
 
     <dependencies>
+        <dependency>
+            <groupId>be.vito.eodata</groupId>
+            <artifactId>ExtractTimeSeries</artifactId>
+            <version>3.7.0-SNAPSHOT</version>
+        </dependency>
         <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
             <artifactId>geotrellis-accumulo_${scala.binary.version}</artifactId>
@@ -57,6 +61,18 @@
         <dependency>
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-core_${scala.binary.version}</artifactId>
+            <version>${spark.version}</version>
+            <scope>provided</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>net.java.dev.jets3t</groupId>
+                    <artifactId>jets3t</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-yarn_${scala.binary.version}</artifactId>
             <version>${spark.version}</version>
             <scope>provided</scope>
             <exclusions>
@@ -116,6 +132,7 @@
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>versions-maven-plugin</artifactId>
+                <version>2.7</version>
                 <configuration>
                     <excludes>
                         <exclude>org.locationtech.geotrellis:*</exclude>

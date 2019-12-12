@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+set -exo pipefail
+
+n_fields=$1
+start_date=$2
+end_date=$3
+
+spark-submit \
+	--master yarn --deploy-mode cluster \
+	--driver-memory 10G \
+	--num-executors 5 --executor-memory 5G \
+	--principal vdboschj@VGT.VITO.BE --keytab $HOME/Documents/VITO/vdboschj.keytab \
+	--conf spark.hadoop.security.authentication=kerberos \
+	--conf spark.yarn.maxAppAttempts=1 \
+	--class org.openeo.benchmarks.Sentinel2RadiometryBenchmark \
+	target/geotrellis-benchmarks-1.2.0-SNAPSHOT.jar $n_fields $start_date $end_date
+

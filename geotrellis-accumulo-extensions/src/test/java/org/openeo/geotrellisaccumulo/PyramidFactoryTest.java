@@ -8,6 +8,7 @@ import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.rdd.RDD;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import scala.Tuple2;
@@ -25,12 +26,19 @@ public class PyramidFactoryTest {
         SparkConf conf = new SparkConf();
         conf.setAppName("PyramidFactoryTest");
         conf.setMaster("local[4]");
+        conf.set("spark.driver.bindAddress", "127.0.0.1");
         conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
 
         SparkContext sc =SparkContext.getOrCreate(conf);
         //creating context may have screwed up security settings
         UserGroupInformation.setConfiguration(config);
     }
+
+    @AfterClass
+    public static void shutDownSparkContext() {
+        SparkContext.getOrCreate().stop();
+    }
+
     @Test
     public void createPyramid() {
 
