@@ -68,7 +68,7 @@
         <dependency>
             <groupId>be.vito.eodata.gwc-geotrellis</groupId>
             <artifactId>gwc-geotrellis-core</artifactId>
-            <version>0.1.1-SNAPSHOT</version>
+            <version>0.2.0</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.locationtech.geotrellis</groupId>
