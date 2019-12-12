@@ -1,8 +1,8 @@
 package org.openeo
 
+import geotrellis.layer._
 import geotrellis.raster.MultibandTile
 import geotrellis.spark.pyramid.Pyramid
-import geotrellis.spark.{Metadata, SpaceTimeKey, TileLayerMetadata}
 import org.apache.spark.rdd.RDD
 
 import scala.collection.JavaConverters.mapAsScalaMapConverter

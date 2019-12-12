@@ -1,23 +1,25 @@
 package org.openeo.geotrelliss3
 
 import java.net.URI
-import java.time.{LocalDate, LocalTime, ZoneId, ZoneOffset, ZonedDateTime}
+import java.time._
 
-import com.amazonaws.client.builder.AwsClientBuilder
-import com.amazonaws.services.s3.model.ListObjectsRequest
-import com.amazonaws.services.s3.{AmazonS3ClientBuilder, AmazonS3URI}
+import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{MultibandTile, Raster, UByteUserDefinedNoDataCellType}
-import geotrellis.spark.io.hadoop.geotiff.InMemoryGeoTiffAttributeStore
-import geotrellis.spark.io.s3.geotiff.{S3GeoTiffLayerReader, S3IMGeoTiffAttributeStore}
-import geotrellis.spark.io.s3.{AmazonS3Client, S3Client}
+import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
-import geotrellis.spark.tiling.{LayoutDefinition, LayoutLevel, ZoomedLayoutScheme}
-import geotrellis.spark.{ContextRDD, KeyBounds, LayerId, MultibandTileLayerRDD, SpaceTimeKey, SpatialKey, TileLayerMetadata}
+import geotrellis.spark.store.hadoop.geotiff.InMemoryGeoTiffAttributeStore
+import geotrellis.spark.store.s3.geotiff.{S3GeoTiffLayerReader, S3IMGeoTiffAttributeStore}
+import geotrellis.store.LayerId
+import geotrellis.store.s3.AmazonS3URI
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.ListObjectsRequest
 
+import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.util.matching.Regex
 
 object PyramidFactory {
@@ -27,10 +29,10 @@ object PyramidFactory {
   private val maxZoom = 14
 
   private def getS3Client(endpoint: String, region: String): S3Client = {
-    val s3builder: AmazonS3ClientBuilder = AmazonS3ClientBuilder.standard()
-      .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(endpoint, region))
-
-    AmazonS3Client(s3builder)
+    S3Client.builder()
+      .endpointOverride(new URI(endpoint))
+      .region(Region.of(region))
+      .build()
   }
 
   private implicit val dateOrdering: Ordering[ZonedDateTime] = new Ordering[ZonedDateTime] {
@@ -62,16 +64,21 @@ class PyramidFactory(endpoint: String, region: String, bucketName: String) {
   private def listBlobKeys(s3Uri: URI, keyPattern: Regex): Seq[String] = {
     val uri = new AmazonS3URI(s3Uri)
 
-    val request = (new ListObjectsRequest)
-      .withBucketName(uri.getBucket)
-      .withPrefix(uri.getKey)
+    val request = ListObjectsRequest.builder()
+      .bucket(uri.getBucket)
+      .prefix(uri.getKey)
+      .build()
 
     getS3Client
-      .listKeys(request)
+      .listObjects(request)
+      .contents()
+      .asScala
+      .map(_.key())
       .flatMap(key => key match {
         case keyPattern(_*) => Some(key)
         case _ => None
       })
+      .toSeq
   }
 
   private def dates: Seq[ZonedDateTime] = {
@@ -113,7 +120,7 @@ class PyramidFactory(endpoint: String, region: String, bucketName: String) {
           s3Uri,
           pattern.regex,
           recursive = true,
-          () => PyramidFactory.getS3Client(endpoint, region)
+          PyramidFactory.getS3Client(endpoint, region)
         )
       )
   }
@@ -136,7 +143,7 @@ class PyramidFactory(endpoint: String, region: String, bucketName: String) {
         case None => false
       }}*/
       .flatMap { case (date, attributeStore) =>
-        val reader = S3GeoTiffLayerReader(attributeStore, layoutScheme, getS3Client = getS3Client)
+        val reader = S3GeoTiffLayerReader(attributeStore, layoutScheme, s3Client = getS3Client())
 
         try {
           for {
@@ -149,7 +156,6 @@ class PyramidFactory(endpoint: String, region: String, bucketName: String) {
             }
           } yield key -> tile
         } finally {
-          reader.shutdown
         }
     }
 

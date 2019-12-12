@@ -1,8 +1,7 @@
 package org.openeo.geotrellis
 
-import geotrellis.contrib.vlm.PaddedTile
 import geotrellis.raster.mapalgebra.focal.Kernel
-import geotrellis.raster.{DoubleArrayTile, Tile}
+import geotrellis.raster.{DoubleArrayTile, PaddedTile, Tile}
 import org.jtransforms.fft.DoubleFFT_2D
 import spire.syntax.cfor._
 

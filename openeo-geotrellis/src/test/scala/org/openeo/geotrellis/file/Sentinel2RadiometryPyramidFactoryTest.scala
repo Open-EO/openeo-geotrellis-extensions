@@ -3,19 +3,21 @@ package org.openeo.geotrellis.file
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 
+import geotrellis.layer._
 import geotrellis.proj4.LatLng
 import geotrellis.raster.Raster
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
+import geotrellis.spark._
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkConf
 import org.junit.{Assert, Ignore, Test}
-import Sentinel2RadiometryPyramidFactory.Band._
-import geotrellis.spark.SpaceTimeKey
-import geotrellis.spark.partition.SpacePartitioner
+import org.openeo.geotrellis.OpenEOProcesses
+import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory.Band._
 
-import scala.collection.mutable.ArrayBuffer
 import scala.collection.JavaConverters._
+import scala.collection.mutable.ArrayBuffer
 
 class Sentinel2RadiometryPyramidFactoryTest {
 
@@ -26,11 +28,11 @@ class Sentinel2RadiometryPyramidFactoryTest {
   def writeGeoTiffs(): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
     val from = ZonedDateTime.of(LocalDate.of(2019, 3, 25), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    val to = from plusDays  2
+    val to = from plusDays 2
 
     val sparkConf = new SparkConf()
       .set("spark.kryoserializer.buffer.max", "512m")
-      .set("spark.rdd.compress","true")
+      .set("spark.rdd.compress", "true")
 
     val sc = SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName, sparkConf)
 
@@ -68,5 +70,39 @@ class Sentinel2RadiometryPyramidFactoryTest {
     } finally {
       sc.stop()
     }
+  }
+
+  @Test
+  def writeToCatalog(): Unit = {
+    val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
+    val from = ZonedDateTime.of(LocalDate.of(2019, 3, 25), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+    val to = from plusDays 2
+
+    val sparkConf = new SparkConf()
+      .set("spark.kryoserializer.buffer.max", "512m")
+      .set("spark.rdd.compress", "true")
+
+    val sc = SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName, sparkConf)
+
+    try {
+      val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
+      val bandIndices = ArrayBuffer(B02, B01).map(_.id).asJava
+
+      val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs,
+        DateTimeFormatter.ISO_OFFSET_DATE_TIME format from, DateTimeFormatter.ISO_OFFSET_DATE_TIME format to,
+        bandIndices)
+
+      val baseLayer = pyramid
+        .find { case (index, _) => index == 14 }
+        .map { case (_, layer) => layer }
+        .get.cache()
+
+      baseLayer.toSpatial()
+      new OpenEOProcesses().write_geotiffs(baseLayer.toSpatial(),"/tmp/catalog",14)
+
+    }finally{
+      sc.stop()
+    }
+
   }
 }

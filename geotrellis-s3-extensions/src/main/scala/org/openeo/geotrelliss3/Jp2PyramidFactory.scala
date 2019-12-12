@@ -1,23 +1,24 @@
 package org.openeo.geotrelliss3
 
 import java.lang.System.getenv
+import java.net.URI
 import java.time._
 
-import com.amazonaws.client.builder.AwsClientBuilder
-import com.amazonaws.services.s3.AmazonS3ClientBuilder
-import com.amazonaws.services.s3.model.ListObjectsRequest
-import geotrellis.contrib.vlm.gdal.GDALReprojectRasterSource
-import geotrellis.gdal.config.GDALOptionsConfig.registerOption
+import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
+import geotrellis.raster.gdal.GDALRasterSource
+import geotrellis.raster.gdal.config.GDALOptionsConfig.registerOption
 import geotrellis.raster.{MultibandTile, Tile, UByteUserDefinedNoDataCellType, isNoData}
-import geotrellis.spark.io.s3.{AmazonS3Client, S3Client}
+import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
-import geotrellis.spark.tiling.{LayoutDefinition, LayoutLevel, ZoomedLayoutScheme}
-import geotrellis.spark.{ContextRDD, KeyBounds, LayerId, MultibandTileLayerRDD, SpaceTimeKey, TileLayerMetadata}
+import geotrellis.store.LayerId
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
+import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.ListObjectsRequest
 
-import scala.collection.JavaConverters._
+import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.math.max
 
 object Jp2PyramidFactory {
@@ -41,10 +42,10 @@ object Jp2PyramidFactory {
   }
 
   private def getS3Client(endpoint: String, region: String): S3Client = {
-    val s3builder: AmazonS3ClientBuilder = AmazonS3ClientBuilder.standard()
-      .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(endpoint, region))
-
-    AmazonS3Client(s3builder)
+    S3Client.builder()
+      .endpointOverride(new URI(endpoint))
+      .region(Region.of(region))
+      .build()
   }
 }
 
@@ -52,7 +53,7 @@ class Jp2PyramidFactory(endpoint: String, region: String) extends Serializable {
 
   import Jp2PyramidFactory._
 
-  registerOption("AWS_S3_ENDPOINT", endpoint)
+  registerOption("AWS_S3_ENDPOINT", URI.create(endpoint).getAuthority)
   registerOption("AWS_SECRET_ACCESS_KEY", getenv("AWS_SECRET_ACCESS_KEY"))
   registerOption("AWS_ACCESS_KEY_ID", getenv("AWS_ACCESS_KEY_ID"))
 
@@ -61,25 +62,27 @@ class Jp2PyramidFactory(endpoint: String, region: String) extends Serializable {
   private def getS3Client: S3Client = Jp2PyramidFactory.getS3Client(endpoint, region)
 
   private def listProducts(bucket: String, key: String) = {
-    val request = (new ListObjectsRequest)
-      .withBucketName(bucket)
-      .withPrefix(key)
+    val request = ListObjectsRequest.builder().bucket(bucket).prefix(key).build()
 
     val keyPattern = raw".*S2._MSIL2A_\d{8}T.*B\d{2}_10m\.jp2$$".r
 
     getS3Client
-      .listKeys(request)
+      .listObjects(request)
+      .contents()
+      .asScala
+      .map(_.key())
       .flatMap(key => key match {
         case keyPattern(_*) => Some(key)
         case _ => None
       })
+      .toSeq
   }
 
   private val uri = ((bucket: String, key: String) => s"/vsis3/$bucket/$key").tupled
 
   private def extent(productKeys: Seq[(String, String)]) = {
     productKeys
-      .map(key => GDALReprojectRasterSource(uri(key), crs))
+      .map(key => GDALRasterSource(uri(key)).reproject(crs))
       .map(_.extent)
       .reduceOption((e1, e2) => e1 combine e2)
       .getOrElse(Extent(0, 0, 0, 0))
@@ -98,14 +101,7 @@ class Jp2PyramidFactory(endpoint: String, region: String) extends Serializable {
   }
 
   private def mapToSingleTile(tiles: Iterable[Tile]): Option[Tile] = {
-    if (tiles.size > 1) {
-      val nonNullTiles = tiles.filter(t => !t.isNoDataTile)
-      if (nonNullTiles.isEmpty) {
-        Some(tiles.head)
-      } else {
-        Some(nonNullTiles.reduce(_.combine(_)((t1, t2) => if (isNoData(t1)) t2 else if (isNoData(t2)) t1 else max(t1, t2))))
-      }
-    } else tiles.headOption
+    tiles.map(_.toArrayTile()).reduceOption[Tile](_.combine(_)((t1, t2) => if (isNoData(t1)) t2 else if (isNoData(t2)) t1 else max(t1, t2)))
   }
 
   private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom, bands: Seq[Band] = allBands): MultibandTileLayerRDD[SpaceTimeKey] = {
@@ -147,10 +143,10 @@ class Jp2PyramidFactory(endpoint: String, region: String) extends Serializable {
     val tiles = sc.parallelize(overlappingKeys)
       .map(key => (key, bandFileMaps
         .flatMap(_.get(key.time))
-        .map(_.map(s3Key => GDALReprojectRasterSource(uri(s3Key), crs).tileToLayout(layout))
+        .map(_.map(s3Key => GDALRasterSource(uri(s3Key)).reproject(crs).tileToLayout(layout))
           .flatMap(_.rasterRegionForKey(key.spatialKey).flatMap(_.raster))
           .map(_.tile.band(0)))
-        .flatMap(mapToSingleTile)))
+        .flatMap(mapToSingleTile(_))))
       .flatMapValues(v => if (v.isEmpty) None else Some(MultibandTile(v)))
 
     val metadata = tileLayerMetadata(layout, extent(productKeys), from, to)
@@ -170,7 +166,7 @@ class Jp2PyramidFactory(endpoint: String, region: String) extends Serializable {
 
     val bands: Seq[Band] =
       if (band_indices == null) allBands
-      else band_indices.asScala.map(allBands(_))
+      else band_indices.asScala.map(allBands(_)).toSeq
 
     pyramid(projectedExtent, from, to, bands).levels.toSeq
       .sortBy { case (zoom, _) => zoom }

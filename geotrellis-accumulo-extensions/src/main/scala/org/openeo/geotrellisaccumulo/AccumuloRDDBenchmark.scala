@@ -3,10 +3,11 @@ package org.openeo.geotrellisaccumulo
 import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
 
+import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.{LatLng, WebMercator}
-import geotrellis.spark.{MultibandTileLayerRDD, SpaceTimeKey}
-import geotrellis.vector.MultiPolygon
+import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.vector.io.json.{GeoJson, _}
+import geotrellis.vector.{MultiPolygon, Polygon, _}
 import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.util.StatCounter
@@ -81,13 +82,12 @@ object AccumuloRDDBenchmark extends App {
   val polygons = value.getAllPolygons()
   var durations = List[Long]()
   var perPoints = List[Double]()
-  for( polygon <- polygons ){
+  for( polygon: Polygon <- polygons){
 
-    val bbox = polygon.envelope
     val reprojected = polygon.reproject(LatLng,layerCRS)
 
     val t0 = System.currentTimeMillis()
-    val rdd: MultibandTileLayerRDD[SpaceTimeKey] = pyramidFactory.load_rdd(layername, 14, reprojected.envelope, "EPSG:" + layerCRS.epsgCode.get, Option.apply(ZonedDateTime.parse("2017-12-31T00:00:00Z")), Option.apply(ZonedDateTime.parse("2018-06-30T02:00:00Z")))
+    val rdd: MultibandTileLayerRDD[SpaceTimeKey] = pyramidFactory.load_rdd(layername, 14, reprojected.extent, "EPSG:" + layerCRS.epsgCode.get, Option.apply(ZonedDateTime.parse("2017-12-31T00:00:00Z")), Option.apply(ZonedDateTime.parse("2018-06-30T02:00:00Z")))
     val tileRDD = rdd.withContext(_.mapValues{_.band(0)})
     val series = tileRDD.meanSeries(MultiPolygon(reprojected))
     val t1 = System.currentTimeMillis()

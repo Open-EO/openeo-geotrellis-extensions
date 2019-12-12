@@ -1,9 +1,11 @@
 package org.openeo.geotrellisaccumulo;
 
+import be.vito.eodata.geopysparkextensions.AccumuloDelegationTokenProvider;
+import geotrellis.layer.SpaceTimeKey;
 import geotrellis.raster.MultibandTile;
-import geotrellis.spark.SpaceTimeKey;
 import geotrellis.vector.Extent;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
+import org.apache.hadoop.security.Credentials;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
@@ -14,12 +16,14 @@ import org.junit.Test;
 import scala.Tuple2;
 import scala.collection.immutable.Seq;
 
+import java.io.IOException;
+
 import static org.junit.Assert.assertFalse;
 
 public class PyramidFactoryTest {
 
     @BeforeClass
-    public static void sparkContext() {
+    public static void sparkContext() throws IOException {
         HdfsConfiguration config = new HdfsConfiguration();
         config.set("hadoop.security.authentication", "kerberos");
         UserGroupInformation.setConfiguration(config);
@@ -32,6 +36,9 @@ public class PyramidFactoryTest {
         SparkContext sc =SparkContext.getOrCreate(conf);
         //creating context may have screwed up security settings
         UserGroupInformation.setConfiguration(config);
+        Credentials creds = new Credentials();
+        new AccumuloDelegationTokenProvider().obtainCredentials(config, conf, creds);
+        UserGroupInformation.getCurrentUser().addCredentials(creds);
     }
 
     @AfterClass

@@ -2,11 +2,11 @@ package org.openeo.geotrellissentinelhub
 
 import java.time.ZonedDateTime
 
+import geotrellis.layer.{KeyBounds, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.{FloatUserDefinedNoDataCellType, MultibandTile}
+import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
-import geotrellis.spark.tiling._
-import geotrellis.spark.{ContextRDD, KeyBounds, MultibandTileLayerRDD, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.openeo.geotrellissentinelhub.bands.Landsat8Bands.Landsat8Band

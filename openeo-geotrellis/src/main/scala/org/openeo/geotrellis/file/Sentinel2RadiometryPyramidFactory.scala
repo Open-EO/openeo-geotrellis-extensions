@@ -3,18 +3,17 @@ package org.openeo.geotrellis.file
 import java.net.URI
 import java.time.ZonedDateTime
 
-import geotrellis.contrib.vlm.LayoutTileSource
-import geotrellis.contrib.vlm.geotiff.GeoTiffRasterSource
+import geotrellis.layer._
 import geotrellis.proj4.{CRS, WebMercator}
-import geotrellis.raster.io.geotiff.reader.TiffTagsReader
+import geotrellis.raster.geotiff.GeoTiffRasterSource
+import geotrellis.raster.io.geotiff.tags.TiffTags
 import geotrellis.raster.{MultibandTile, ShortUserDefinedNoDataCellType, Tile}
-import geotrellis.spark.io.hadoop.geotiff.{GeoTiffMetadata, InMemoryGeoTiffAttributeStore}
-import geotrellis.spark.io.hadoop.{HdfsRangeReader, HdfsUtils}
+import geotrellis.spark._
 import geotrellis.spark.partition.PartitionerIndex.SpaceTimePartitioner
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
-import geotrellis.spark.tiling._
-import geotrellis.spark.{ContextRDD, KeyBounds, MultibandTileLayerRDD, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
+import geotrellis.spark.store.hadoop.geotiff.{GeoTiffMetadata, InMemoryGeoTiffAttributeStore}
+import geotrellis.store.hadoop.util.{HdfsRangeReader, HdfsUtils}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
@@ -53,7 +52,7 @@ object Sentinel2RadiometryPyramidFactory {
           HdfsUtils
             .listFiles(path, conf)
             .map { p =>
-              val tiffTags = TiffTagsReader.read(HdfsRangeReader(p, conf))
+              val tiffTags = TiffTags.read(HdfsRangeReader(p, conf))
               GeoTiffMetadata(tiffTags.extent, tiffTags.crs, name, p.toUri)
             }
         }
@@ -114,7 +113,7 @@ class Sentinel2RadiometryPyramidFactory {
     val partitioned = overlappingFilesPerDay.partitionBy( SpacePartitioner(rddBounds))
     val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = partitioned.flatMap { case (key, overlappingFiles) =>
       val overlappingMultibandTiles: Iterable[MultibandTile] = overlappingFiles.flatMap(overlappingFile => {
-        val bandTileSources: Seq[LayoutTileSource] = correspondingBandFiles(overlappingFile, bandFileMarkers)
+        val bandTileSources = correspondingBandFiles(overlappingFile, bandFileMarkers)
           .map(bandFile => GeoTiffRasterSource(bandFile).reproject(targetCrs).tileToLayout(layout))
 
         val multibandTilesPerFile: Seq[Option[MultibandTile]] = bandTileSources.map(_.read(key.spatialKey))

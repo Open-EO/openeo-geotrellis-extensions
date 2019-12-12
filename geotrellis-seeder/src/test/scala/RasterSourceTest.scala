@@ -1,14 +1,12 @@
 import java.time.LocalDate
 
 import be.vito.eodata.catalog.CatalogClient
-import geotrellis.contrib.vlm.gdal.{GDALRasterSource, GDALReprojectRasterSource}
-import geotrellis.contrib.vlm.geotiff.{GeoTiffRasterSource, GeoTiffReprojectRasterSource}
-import geotrellis.contrib.vlm.{GlobalLayout, RasterSource}
 import geotrellis.proj4.WebMercator
 import geotrellis.raster.render.Png
-import geotrellis.raster.{CellSize, UByteConstantNoDataCellType}
-import geotrellis.spark.SpatialKey
-import geotrellis.spark.tiling.CRSWorldExtent
+import geotrellis.raster.{CellSize, RasterSource, UByteConstantNoDataCellType}
+import geotrellis.layer._
+import geotrellis.raster.gdal.GDALRasterSource
+import geotrellis.raster.geotiff.{GeoTiffRasterSource, GeoTiffReprojectRasterSource}
 import org.junit.Assert.{assertEquals, assertNotEquals}
 import org.junit.{Ignore, Test}
 import org.openeo.geotrellisseeder.ColorMapParser
@@ -34,7 +32,7 @@ class RasterSourceTest {
     assertEquals(geo.extent, gdal.extent)
     
     val reprGeo = GeoTiffReprojectRasterSource(source, WebMercator)
-    val reprGdal = GDALReprojectRasterSource(source, WebMercator)
+    val reprGdal = new GDALRasterSource(source).reproject(WebMercator)
     
     assertNotEquals(reprGeo.extent, reprGdal.extent)
 

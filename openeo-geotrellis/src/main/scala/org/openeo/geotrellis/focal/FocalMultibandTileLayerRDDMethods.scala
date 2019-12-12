@@ -16,8 +16,9 @@
 
 package org.openeo.geotrellis.focal
 
-import geotrellis.raster._
+import geotrellis.raster.DoubleConstantNoDataCellType
 import geotrellis.raster.mapalgebra.focal._
+import geotrellis.spark._
 import org.apache.spark.Partitioner
 
 

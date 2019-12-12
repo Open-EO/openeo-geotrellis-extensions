@@ -1,19 +1,26 @@
 package org.openeo.geotrellis.geotiff
 
+import java.net.URI
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
-import java.time.{LocalDate, ZonedDateTime}
 import java.time.format.DateTimeFormatter.{ISO_LOCAL_DATE, ISO_OFFSET_DATE_TIME}
+import java.time.{LocalDate, ZonedDateTime}
 
+import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.Raster
+import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
-import geotrellis.spark.{MultibandTileLayerRDD, SpaceTimeKey}
+import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
+import geotrellis.store.s3.util.S3RangeReader
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkConf
-import org.junit.{Ignore, Test}
 import org.junit.Assert._
+import org.junit.{Ignore, Test}
+import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
+import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.s3.S3Client
 
 class PyramidFactoryTest {
 
@@ -131,15 +138,10 @@ class PyramidFactoryTest {
   @Ignore("not a real test but trying to pass a custom S3 client to a GeoTiffRasterSource")
   @Test
   def anonymousInnerClass(): Unit = {
-    import geotrellis.contrib.vlm.geotiff.GeoTiffRasterSource
+
     import geotrellis.raster.io.geotiff.reader.GeoTiffReader
     import geotrellis.util.StreamingByteReader
-    import geotrellis.spark.io.s3.util.S3RangeReader
-    import com.amazonaws.auth.AWSStaticCredentialsProvider
-    import com.amazonaws.auth.BasicAWSCredentials
-    import com.amazonaws.services.s3.AmazonS3ClientBuilder
-    import com.amazonaws.client.builder.AwsClientBuilder
-    import geotrellis.spark.io.s3.AmazonS3Client
+
 
     def getByteReader(uri: String): StreamingByteReader = {
       val endpoint = "https://oss.eu-west-0.prod-cloud-ocb.orange-business.com:443"
@@ -147,19 +149,19 @@ class PyramidFactoryTest {
       val accessKey = System.getProperty("aws.accessKeyId")
       val secretKey = System.getProperty("aws.secretKey")
 
-      val s3Client = AmazonS3Client(
-        AmazonS3ClientBuilder
-          .standard()
-          .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(endpoint, region))
-          .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials(accessKey, secretKey)))
-          .build()
-      )
+      val s3Client = S3Client.builder()
+        .endpointOverride(new URI(endpoint))
+        .region(Region.of(region))
+        .credentialsProvider(StaticCredentialsProvider.create( AwsBasicCredentials.create(accessKey, secretKey)))
+        .build()
+
 
       val rr = S3RangeReader(uri, s3Client)
       new StreamingByteReader(rr)
     }
 
-    val rasterSource = new GeoTiffRasterSource("s3://s2-ndvi/cogs/S2A_MSIL1C_20180401T105031_N0206_R051_T31UES_20180401T144530.tiff") {
+    val uri = "s3://s2-ndvi/cogs/S2A_MSIL1C_20180401T105031_N0206_R051_T31UES_20180401T144530.tiff"
+    val rasterSource = new GeoTiffRasterSource(uri) {
       @transient override lazy val tiff: MultibandGeoTiff =
         GeoTiffReader.readMultiband(getByteReader(uri), streaming = true)
     }

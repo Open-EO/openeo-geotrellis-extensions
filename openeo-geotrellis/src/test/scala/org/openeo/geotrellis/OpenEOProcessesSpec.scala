@@ -5,6 +5,7 @@ import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.raster.{ArrayMultibandTile, DoubleArrayTile, Tile, TileLayout}
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
+import geotrellis.spark._
 import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.{SparkConf, SparkContext}

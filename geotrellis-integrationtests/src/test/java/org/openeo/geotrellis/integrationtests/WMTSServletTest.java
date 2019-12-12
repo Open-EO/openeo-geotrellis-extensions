@@ -2,12 +2,12 @@ package org.openeo.geotrellis.integrationtests;
 
 import be.vito.eodata.gwcgeotrellis.wmts.WMTSServer;
 import com.google.common.io.ByteStreams;
+import geotrellis.layer.SpaceTimeKey;
+import geotrellis.layer.TileLayerMetadata;
 import geotrellis.raster.MultibandTile;
 import geotrellis.raster.render.ColorMap;
 import geotrellis.raster.render.ColorMap$;
 import geotrellis.raster.render.ColorRamps;
-import geotrellis.spark.SpaceTimeKey;
-import geotrellis.spark.TileLayerMetadata;
 import geotrellis.spark.pyramid.Pyramid;
 import geotrellis.vector.Extent;
 import org.apache.hadoop.conf.Configuration;

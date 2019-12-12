@@ -1,6 +1,5 @@
 import java.util.Arrays;
 
-import geotrellis.spark.SpatialKey;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.openeo.geotrellisseeder.Band;

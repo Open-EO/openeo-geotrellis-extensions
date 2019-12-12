@@ -4,14 +4,13 @@ import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
 
+import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.{ByteCells, ByteConstantTile, DoubleConstantNoDataCellType, MultibandTile}
-import geotrellis.spark.tiling.LayoutDefinition
+import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
-import geotrellis.spark.{ContextRDD, Metadata, SpaceTimeKey, TileLayerMetadata}
-import geotrellis.vector.io._
-import geotrellis.vector.{Extent, Polygon}
+import geotrellis.vector.{Extent, Polygon, _}
 import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.rdd.RDD
@@ -211,7 +210,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     //val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, new ArrayMultibandTile(Array[Tile](tile10, tile5)), new TileLayout(1, 1, 256, 256))
 
     val datacube = TestOpenEOProcesses.tileToSpaceTimeDataCube(tile10)
-    val polygonExtent = polygon1.envelope.combine(polygon2.envelope)
+    val polygonExtent = polygon1.extent.combine(polygon2.extent)
     val updatedMetadata = datacube.metadata.copy(extent = polygonExtent,crs = LatLng,layout=LayoutDefinition(polygonExtent,datacube.metadata.tileLayout))
 
     val stats = computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
@@ -261,7 +260,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     //srs = "EPSG:4326";
 
 
-    val datacube = accumuloDataCube("S2_FAPAR_PYRAMID_20190708", minDateString, maxDateString,  polygons.envelope,  "EPSG:4326")
+    val datacube = accumuloDataCube("S2_FAPAR_PYRAMID_20190708", minDateString, maxDateString,  polygons.extent,  "EPSG:4326")
 
     assertMedianComputedCorrectly(datacube, minDateString, minDate, maxDate, polygons)
   }
@@ -286,7 +285,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val maxDate = ZonedDateTime.parse(maxDateString)
 
     val polygons = Seq(polygon3)
-    val datacube= accumuloDataCube("CGS_SENTINEL2_RADIOMETRY_V102_EARLY", minDateString, maxDateString, polygons.envelope, "EPSG:4326")
+    val datacube= accumuloDataCube("CGS_SENTINEL2_RADIOMETRY_V102_EARLY", minDateString, maxDateString, polygons.extent, "EPSG:4326")
 
     val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1,3)))
     val ndviProcess = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess
@@ -305,14 +304,14 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val maxDate = ZonedDateTime.parse(maxDateString)
 
     val polygons = Seq(polygon4)
-    val datacube= accumuloDataCube("CGS_SENTINEL2_RADIOMETRY_V102_EARLY", minDateString, maxDateString, polygons.envelope, "EPSG:4326")
+    val datacube= accumuloDataCube("CGS_SENTINEL2_RADIOMETRY_V102_EARLY", minDateString, maxDateString, polygons.extent, "EPSG:4326")
 
     val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1,3))).convert(DoubleConstantNoDataCellType)
     val ndviProcess = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess
     val processes = new OpenEOProcesses()
     val ndviDataCube = processes.mapBandsGeneric(selectedBands, ndviProcess)//.withContext(_.mapValues(_.mapDouble(0)(pixel => 0.1)))
 
-    val mask = accumuloDataCube("S2_SCENECLASSIFICATION_PYRAMID_20190624", minDateString, maxDateString, polygons.envelope, "EPSG:4326")
+    val mask = accumuloDataCube("S2_SCENECLASSIFICATION_PYRAMID_20190624", minDateString, maxDateString, polygons.extent, "EPSG:4326")
     val binaryMask = mask.withContext(_.mapValues( _.map(0)(pixel => if ( pixel < 5) 1 else 0)))
 
     print(binaryMask.partitioner)
@@ -363,7 +362,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     //val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, new ArrayMultibandTile(Array[Tile](tile10, tile5)), new TileLayout(1, 1, 256, 256))
 
     val datacube = TestOpenEOProcesses.tileToSpaceTimeDataCube(tile10)
-    val polygonExtent = polygon1.envelope.combine(polygon2.envelope)
+    val polygonExtent = polygon1.extent.combine(polygon2.extent)
     val updatedMetadata = datacube.metadata.copy(extent = polygonExtent,crs = LatLng,layout=LayoutDefinition(polygonExtent,datacube.metadata.tileLayout))
 
     val stats = computeStatsGeotrellisAdapter.compute_histograms_time_series_from_datacube(
@@ -401,7 +400,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     //val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, new ArrayMultibandTile(Array[Tile](tile10, tile5)), new TileLayout(1, 1, 256, 256))
 
     val datacube = TestOpenEOProcesses.tileToSpaceTimeDataCube(tile10)
-    val polygonExtent = polygon1.envelope.combine(polygon2.envelope)
+    val polygonExtent = polygon1.extent.combine(polygon2.extent)
     val updatedMetadata = datacube.metadata.copy(extent = polygonExtent,crs = LatLng,layout=LayoutDefinition(polygonExtent,datacube.metadata.tileLayout))
 
     val stats = computeStatsGeotrellisAdapter.compute_median_time_series_from_datacube(

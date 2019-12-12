@@ -20,7 +20,7 @@
         <dependency>
             <groupId>be.vito.eodata.gwc-geotrellis</groupId>
             <artifactId>gwc-geotrellis-core</artifactId>
-            <version>0.2.0</version>
+            <version>0.3.0-SNAPSHOT</version>
         </dependency>
         <!--accumulo version should match the server-->
         <dependency>

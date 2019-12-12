@@ -4,7 +4,7 @@ import java.io.File
 import java.lang.System.lineSeparator
 
 import be.vito.eodata.biopar.EOProduct
-import geotrellis.spark.SpatialKey
+import geotrellis.layer.SpatialKey
 import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters.collectionAsScalaIterableConverter
