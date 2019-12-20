@@ -19,6 +19,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.openeo.geotrellis.OpenEOProcesses
 
 import scala.collection.JavaConverters._
 
@@ -111,7 +112,7 @@ class Sentinel2RadiometryPyramidFactory {
     val rddBounds = KeyBounds(SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from), SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to))
 
     val partitioned = overlappingFilesPerDay.partitionBy( SpacePartitioner(rddBounds))
-    val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = partitioned.flatMap { case (key, overlappingFiles) =>
+    val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = new OpenEOProcesses().applySpacePartitioner(partitioned.flatMap { case (key, overlappingFiles) =>
       val overlappingMultibandTiles: Iterable[MultibandTile] = overlappingFiles.flatMap(overlappingFile => {
         val bandTileSources = correspondingBandFiles(overlappingFile, bandFileMarkers)
           .map(bandFile => GeoTiffRasterSource(bandFile).reproject(targetCrs).tileToLayout(layout))
@@ -130,7 +131,7 @@ class Sentinel2RadiometryPyramidFactory {
       }else{
         Option.empty[(SpaceTimeKey,MultibandTile)]
       }
-    }.partitionBy( SpacePartitioner(rddBounds))
+    },rddBounds)
 
 
     val metadata: TileLayerMetadata[SpaceTimeKey] = {

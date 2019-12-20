@@ -1,8 +1,12 @@
 package org.openeo.geotrellis
 
+import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
+import org.openeo.geotrellisaccumulo.PyramidFactory
+
+import geotrellis.vector._
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ArrayMultibandTile, DoubleArrayTile, Tile, TileLayout}
+import geotrellis.raster.{ArrayMultibandTile, DoubleArrayTile, DoubleConstantNoDataCellType, MultibandTile, Tile, TileLayout}
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
 import geotrellis.spark._
@@ -43,6 +47,52 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val t1 = System.nanoTime()
     println("Elapsed time: " + (t1 - t0) + "ns")
     result
+  }
+
+  private lazy val accumuloPyramidFactory = {new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")}
+  private val pyramidFactory = new Sentinel2RadiometryPyramidFactory
+
+  private def dataCube(minDateString: String, maxDateString: String, bbox: Extent, srs: String) = {
+    val pyramid = pyramidFactory.pyramid_seq(bbox, srs, minDateString, maxDateString, java.util.Arrays.asList(1, 2))
+    System.out.println("pyramid = " + pyramid)
+
+    val pyramidAsMap = pyramid.toMap
+    val maxZoom = pyramidAsMap.keys.max
+    val datacube = pyramidAsMap.get(maxZoom).get
+    datacube
+  }
+
+  private def accumuloDataCube(layer: String, minDateString: String, maxDateString: String, bbox: Extent, srs: String) = {
+    val pyramid = accumuloPyramidFactory.pyramid_seq(layer,bbox, srs, minDateString, maxDateString)
+    System.out.println("pyramid = " + pyramid)
+
+    val pyramidAsMap = pyramid.toMap
+    val maxZoom = pyramidAsMap.keys.max
+    val datacube = pyramidAsMap.get(maxZoom).get
+    datacube
+  }
+
+  /**
+    * Test created in the frame of:
+    * https://github.com/locationtech/geotrellis/issues/3168
+    */
+  @Test
+  def applyMask() = {
+    val date = "2018-05-06T00:00:00Z"
+
+    val extent = Extent(3.4, 51.0, 3.5, 51.05)
+    val datacube= dataCube( date, date, extent, "EPSG:4326")
+
+    val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1)))
+
+    val mask = accumuloDataCube("S2_SCENECLASSIFICATION_PYRAMID_20190624", date, date, extent, "EPSG:4326")
+    val binaryMask = mask.withContext(_.mapValues( _.map(0)(pixel => if ( pixel == 5) 0 else 1)))
+
+    print(binaryMask.partitioner)
+
+    val maskedCube: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().rasterMask(selectedBands,binaryMask,Double.NaN)
+    val stitched = maskedCube.toSpatial().stitch()
+    print(stitched)
   }
 
   @Test

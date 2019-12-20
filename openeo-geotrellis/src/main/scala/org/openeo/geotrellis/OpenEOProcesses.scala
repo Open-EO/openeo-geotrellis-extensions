@@ -103,6 +103,10 @@ class OpenEOProcesses extends Serializable {
       Z3.zranges(toZ(keyRange._1), toZ(keyRange._2))
   }
 
+  def applySpacePartitioner(datacube: RDD[(SpaceTimeKey, MultibandTile)], keyBounds: KeyBounds[SpaceTimeKey]): RDD[(SpaceTimeKey, MultibandTile)] = {
+    datacube.partitionBy( SpacePartitioner(keyBounds))
+  }
+
   def outerJoin(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey]): RDD[(SpaceTimeKey, (Option[MultibandTile], Option[MultibandTile]))] with Metadata[Bounds[SpaceTimeKey]] = {
     val kb: Bounds[SpaceTimeKey] = leftCube.metadata.bounds.combine(rightCube.metadata.bounds)
     val part = SpacePartitioner(kb)
