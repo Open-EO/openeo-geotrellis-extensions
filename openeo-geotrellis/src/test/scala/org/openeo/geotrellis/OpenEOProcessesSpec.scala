@@ -1,19 +1,19 @@
 package org.openeo.geotrellis
 
-import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
-import org.openeo.geotrellisaccumulo.PyramidFactory
-
-import geotrellis.vector._
+import geotrellis.layer._
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ArrayMultibandTile, DoubleArrayTile, DoubleConstantNoDataCellType, MultibandTile, Tile, TileLayout}
+import geotrellis.raster.{ArrayMultibandTile, DoubleArrayTile, MultibandTile, Tile, TileLayout}
+import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
-import geotrellis.spark._
+import geotrellis.vector._
 import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.{AfterClass, BeforeClass, Test}
+import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
+import org.openeo.geotrellisaccumulo.PyramidFactory
 
 object OpenEOProcessesSpec{
 
