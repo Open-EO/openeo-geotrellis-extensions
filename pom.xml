@@ -8,7 +8,7 @@
     <name>openeo-geotrellis-extensions</name>
     <properties>
         <geotrellistimeseries.version>3.8.0-SNAPSHOT</geotrellistimeseries.version>
-        <hadoop.version>2.9.1</hadoop.version>
+        <hadoop.version>3.1.1</hadoop.version>
         <avro.version>1.7.7</avro.version>
         <spark.version>2.3.1</spark.version>
         <scala.binary.version>2.11</scala.binary.version>
