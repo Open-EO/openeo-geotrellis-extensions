@@ -1,9 +1,9 @@
 package org.openeo.geotrellis
 
+import java.net.{MalformedURLException, URL}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
-import java.net.{MalformedURLException, URL}
 
 import be.vito.eodata.extracttimeseries.geotrellis._
 import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
@@ -15,7 +15,7 @@ import geotrellis.raster.summary.Statistics
 import geotrellis.raster.{FloatConstantNoDataCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.spark._
 import geotrellis.store.accumulo.AccumuloInstance
-import geotrellis.vector.io.json.GeoJson
+import geotrellis.vector.io.json.{GeoJson, JsonFeatureCollection}
 import geotrellis.vector.{Geometry, MultiPolygon, Polygon, _}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -168,6 +168,10 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
       val multiPolygons = GeoJson.parse[Geometry](geoJson) match {
         case polygon: Polygon => Array(MultiPolygon(polygon))
         case multiPolygon: MultiPolygon => Array(multiPolygon)
+        case featureCollection: JsonFeatureCollection => featureCollection.getAllGeometries().map {
+          case polygon: Polygon => MultiPolygon(polygon)
+          case multiPolygon: MultiPolygon => multiPolygon
+        }.toArray
         case geometryCollection: GeometryCollection => geometries(geometryCollection).map {
           case polygon: Polygon => MultiPolygon(polygon)
           case multiPolygon: MultiPolygon => multiPolygon
