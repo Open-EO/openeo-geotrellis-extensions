@@ -8,21 +8,42 @@ import java.time.{LocalDate, ZonedDateTime}
 
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.Raster
+import geotrellis.raster._
 import geotrellis.raster.geotiff.GeoTiffRasterSource
-import geotrellis.raster.io.geotiff.MultibandGeoTiff
+import geotrellis.raster.io.geotiff.{GeoTiff, MultibandGeoTiff}
 import geotrellis.spark._
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
 import geotrellis.store.s3.util.S3RangeReader
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.apache.spark.SparkConf
+import org.apache.spark.rdd.RDD
+import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
-import org.junit.{Ignore, Test}
+import org.junit.{AfterClass, BeforeClass, Ignore, Test}
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 
+object PyramidFactoryTest {
+  private implicit var sc: SparkContext = _
+
+  @BeforeClass
+  def setupSpark(): Unit = {
+    val sparkConf = new SparkConf()
+      .set("spark.kryoserializer.buffer.max", "512m")
+      .set("spark.rdd.compress","true")
+
+    sc = SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName, sparkConf)
+  }
+
+  @AfterClass
+  def tearDownSpark(): Unit = {
+    sc.stop()
+  }
+}
+
 class PyramidFactoryTest {
+  import PyramidFactoryTest._
 
   @Test
   def singleBandGeoTiffFromDiskForSingleDate(): Unit = {
@@ -50,23 +71,15 @@ class PyramidFactoryTest {
       date_regex = raw".*\/S2._(\d{4})(\d{2})(\d{2})T.*"
     )
 
-    val sparkConf = new SparkConf()
-      .set("spark.kryoserializer.buffer.max", "512m")
-      .set("spark.rdd.compress","true")
+    val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
 
-    val sc = SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName, sparkConf)
+    val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs,
+      ISO_OFFSET_DATE_TIME format from, ISO_OFFSET_DATE_TIME format to)
 
-    try {
-      val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
+    val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
+    assertEquals(14, maxZoom)
 
-      val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs,
-        ISO_OFFSET_DATE_TIME format from, ISO_OFFSET_DATE_TIME format to)
-
-      val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
-      assertEquals(14, maxZoom)
-
-      saveLayerAsGeoTiff(pyramid, boundingBox, zoom = 10)
-    } finally sc.stop()
+    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = 10)
   }
 
   private def saveLayerAsGeoTiff(pyramid: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])], boundingBox: ProjectedExtent,
@@ -117,22 +130,56 @@ class PyramidFactoryTest {
       date_regex = raw".*_(\d{4})(\d{2})(\d{2})T\d{6}\.tiff"
     )
 
-    val sparkConf = new SparkConf()
-      .set("spark.kryoserializer.buffer.max", "512m")
-      .set("spark.rdd.compress","true")
+    val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
+    val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs,
+      ISO_OFFSET_DATE_TIME format from, ISO_OFFSET_DATE_TIME format to)
 
-    val sc = SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName, sparkConf)
+    val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
+    assertEquals(14, maxZoom)
 
-    try {
-      val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
-      val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs,
-        ISO_OFFSET_DATE_TIME format from, ISO_OFFSET_DATE_TIME format to)
+    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = 10)
+  }
 
-      val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
-      assertEquals(14, maxZoom)
+  @Test
+  def joinLayers(): Unit = {
+    val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
 
-      saveLayerAsGeoTiff(pyramid, boundingBox, zoom = 10)
-    } finally sc.stop()
+    val from = ZonedDateTime.of(LocalDate.of(2019, 4, 24), MIDNIGHT, UTC)
+    val to = from
+
+    val zoom = 10
+
+    val data = PyramidFactory.from_disk(
+      glob_pattern = "/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/04/24/*/*/*_TOC-B02_10M_V102.tif",
+      date_regex = raw".*\/S2._(\d{4})(\d{2})(\d{2})T.*"
+    ).layer(boundingBox, from, to, zoom).cache()
+
+    assertTrue(data.partitioner == Some(SpacePartitioner(data.metadata.bounds)))
+
+    saveAsGeotiff(data, from, "/tmp/data.tif")
+
+    val mask = PyramidFactory.from_disk(
+      glob_pattern = "/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/04/24/*/*/*_SHADOWMASK_10M_V102.tif",
+      date_regex = raw".*\/S2._(\d{4})(\d{2})(\d{2})T.*"
+    ).layer(boundingBox, from, to, zoom).cache()
+
+    assertTrue(mask.partitioner == Some(SpacePartitioner(mask.metadata.bounds)))
+
+    saveAsGeotiff(mask, from, "/tmp/mask.tif")
+
+    val joined =
+      data.spatialJoin(mask)
+        .mapValues { case (data, mask) => data.localMask(mask, readMask = 1, writeMask = NODATA) }
+
+    val joinedLayer = ContextRDD(joined, data.metadata)
+    assertTrue(joinedLayer.partitioner == Some(SpacePartitioner(joinedLayer.metadata.bounds)))
+
+    saveAsGeotiff(joinedLayer, from, "/tmp/masked.tif")
+  }
+
+  private def saveAsGeotiff(layer: MultibandTileLayerRDD[SpaceTimeKey], at: ZonedDateTime, path: String) = {
+    val Raster(tile, extent) = layer.toSpatial(at).stitch()
+    GeoTiff(tile, extent, layer.metadata.crs).write(path)
   }
 
   @Ignore("not a real test but trying to pass a custom S3 client to a GeoTiffRasterSource")

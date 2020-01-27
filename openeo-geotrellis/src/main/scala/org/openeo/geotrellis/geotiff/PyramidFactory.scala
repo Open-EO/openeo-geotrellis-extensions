@@ -6,9 +6,10 @@ import java.time.{LocalDate, ZonedDateTime}
 
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, WebMercator}
-import geotrellis.raster.geotiff.GeoTiffRasterSource
+import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource}
 import geotrellis.raster.{MultibandTile, RasterSource}
 import geotrellis.spark._
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.store.hadoop.util.HdfsUtils
 import geotrellis.store.s3.{AmazonS3URI, S3ClientProducer}
@@ -16,12 +17,9 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.SparkContext
-import org.apache.spark.rdd.RDD
 import software.amazon.awssdk.services.s3.model.ListObjectsRequest
 
 import scala.collection.JavaConverters.collectionAsScalaIterableConverter
-import scala.collection.mutable.ArrayBuilder
-import scala.reflect.ClassTag
 import scala.util.matching.Regex
 
 object PyramidFactory {
@@ -39,7 +37,7 @@ object PyramidFactory {
 
       HdfsUtils.listFiles(path, new Configuration)
         .map(path => (GeoTiffRasterSource(path.toString), deriveDate(path.toString, date_regex.r)))
-    })
+    }, date_regex.r)
   }
 
   def from_s3(s3_uri: String, key_regex: String = ".*", date_regex: String): PyramidFactory = {
@@ -47,8 +45,6 @@ object PyramidFactory {
       // adapted from geotrellis.spark.io.s3.geotiff.S3GeoTiffInput.list
       val s3Uri = new AmazonS3URI(s3_uri)
       val keyPattern = key_regex.r
-
-
 
       val request = ListObjectsRequest.builder()
         .bucket(s3Uri.getBucket)
@@ -66,7 +62,7 @@ object PyramidFactory {
           case _ => None
         })
         .map(uri => (GeoTiffRasterSource(uri.toString), deriveDate(uri.getKey, date_regex.r))).toSeq
-    })
+    }, date_regex.r)
   }
 
   private def deriveDate(filename: String, date: Regex): ZonedDateTime = {
@@ -74,50 +70,9 @@ object PyramidFactory {
       case date(year, month, day) => ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), MIDNIGHT, UTC)
     }
   }
-
-  private def partition[T: ClassTag](
-    chunks: Traversable[T],
-    maxPartitionSize: Long
-  )(chunkSize: T => Long = { c: T => 1l }): Array[Array[T]] = {
-    if (chunks.isEmpty) {
-      Array[Array[T]]()
-    } else {
-      val partition = ArrayBuilder.make[T]
-      partition.sizeHintBounded(128, chunks)
-      var partitionSize: Long = 0l
-      var partitionCount: Long = 0l
-      val partitions = ArrayBuilder.make[Array[T]]
-
-      def finalizePartition() {
-        val res = partition.result
-        if (res.nonEmpty) partitions += res
-        partition.clear()
-        partitionSize = 0l
-        partitionCount = 0l
-      }
-
-      def addToPartition(chunk: T) {
-        partition += chunk
-        partitionSize += chunkSize(chunk)
-        partitionCount += 1
-      }
-
-      for (chunk <- chunks) {
-        if ((partitionCount == 0) || (partitionSize + chunkSize(chunk)) < maxPartitionSize)
-          addToPartition(chunk)
-        else {
-          finalizePartition()
-          addToPartition(chunk)
-        }
-      }
-
-      finalizePartition()
-      partitions.result
-    }
-  }
 }
 
-class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime)]) {
+class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime)], date: Regex) {
   import PyramidFactory._
 
   private val targetCrs = WebMercator
@@ -164,77 +119,29 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
 
     val layout = ZoomedLayoutScheme(targetCrs).levelForZoom(zoom).layout
 
-    rasterSourceRDD(overlappingRasterSources, layout)
+    val bounds = {
+      val spatialBounds = layout.mapTransform.extentToBounds(reprojectedBoundingBox.extent)
+      val KeyBounds(SpatialKey(minCol, minRow), SpatialKey(maxCol, maxRow)) = KeyBounds(spatialBounds)
+      KeyBounds(SpaceTimeKey(minCol, minRow, from), SpaceTimeKey(maxCol, maxRow, to))
+    }
+
+    val (rasterSources, _) = overlappingRasterSources.unzip
+    rasterSourceRDD(rasterSources, layout, bounds)
   }
 
-  // adapted from geotrellis.contrib.vlm.spark.RasterSourceRDD.apply
   private def rasterSourceRDD(
-    sources: Seq[(RasterSource, ZonedDateTime)],
+    rasterSources: Seq[RasterSource],
     layout: LayoutDefinition,
-    partitionBytes: Long = RasterSourceRDD.DEFAULT_PARTITION_BYTES
+    bounds: KeyBounds[SpaceTimeKey]
   )(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val cellTypes = sources.map { case (source, _) => source.cellType }.toSet
-    require(cellTypes.size == 1, s"All RasterSources must have the same CellType, but multiple ones were found: $cellTypes")
+    val date = this.date
+    val keyExtractor = TemporalKeyExtractor.fromPath { case GeoTiffPath(value) => deriveDate(value, date) }
 
-    val projections = sources.map { case (source, _) => source.crs }.toSet
-    require(
-      projections.size == 1,
-      s"All RasterSources must be in the same projection, but multiple ones were found: $projections"
-    )
+    val sources = sc.parallelize(rasterSources).cache()
+    val summary = RasterSummary.fromRDD(sources, keyExtractor.getMetadata)
+    val layerMetadata = summary.toTileLayerMetadata(layout, keyExtractor.getKey)
 
-    val Some((lowerTimestamp, upperTimestamp)) = sources
-      .map { case (_, timestamp) => timestamp }
-      .foldLeft(z = None: Option[(ZonedDateTime, ZonedDateTime)]) { case (acc, timestamp) =>
-        acc match {
-          case None => Some((timestamp, timestamp))
-          case Some((lower, upper)) => Some((
-            if (timestamp isBefore lower) timestamp else lower,
-            if (timestamp isAfter upper) timestamp else upper
-          ))
-        }
-      }
-
-    val cellType = cellTypes.head
-    val crs = projections.head
-
-    val mapTransform = layout.mapTransform
-    val extent = mapTransform.extent
-    val combinedExtents = sources.map { case (source, _) => source.extent }.reduce { _ combine _ }
-
-    val spatialKeyBounds = KeyBounds(mapTransform(combinedExtents))
-    val layerKeyBounds = KeyBounds(
-      SpaceTimeKey(spatialKeyBounds.minKey, TemporalKey(lowerTimestamp)),
-      SpaceTimeKey(spatialKeyBounds.maxKey, TemporalKey(upperTimestamp))
-    )
-
-    val layerMetadata =
-      TileLayerMetadata[SpaceTimeKey](cellType, layout, combinedExtents, crs, layerKeyBounds)
-
-    val sourcesRDD: RDD[((RasterSource, ZonedDateTime), Array[SpatialKey])] =
-      sc.parallelize(sources).flatMap { case (source, timestamp) =>
-        val keys: Traversable[SpatialKey] =
-          extent.intersection(source.extent) match {
-            case Some(intersection) =>
-              layout.mapTransform.keysForGeometry(intersection.toPolygon)
-            case None =>
-              Seq.empty[SpatialKey]
-          }
-        val tileSize = layout.tileCols * layout.tileRows * cellType.bytes
-        partition(keys, partitionBytes)( _ => tileSize).map { res => ((source, timestamp), res) }
-      }
-
-    val repartitioned = sourcesRDD
-
-    val result: RDD[(SpaceTimeKey, MultibandTile)] =
-      repartitioned.flatMap { case ((source, timestamp), keys) =>
-        // might need to e.g. anonymously subclass GeoTiffReprojectRasterSource to be able to pass a custom S3 client
-        // (see org.openeo.geotrellis.geotiff.PyramidFactoryTest.anonymousInnerClass)
-        val tileSource = source.tileToLayout(layout)
-        tileSource.readAll(keys.toIterator).map { case (SpatialKey(col, row), tile) =>
-          (SpaceTimeKey(col = col, row = row, timestamp), tile)
-        }
-      }
-
-    ContextRDD(result, layerMetadata)
+    // FIXME: supply our own RasterSummary? (use bounds)
+    RasterSourceRDD.tiledLayerRDD(sources, layout, keyExtractor, partitioner = Some(SpacePartitioner(layerMetadata.bounds)))
   }
 }
