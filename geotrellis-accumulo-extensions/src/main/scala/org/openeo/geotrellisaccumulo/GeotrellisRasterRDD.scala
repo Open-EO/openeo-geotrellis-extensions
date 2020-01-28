@@ -42,6 +42,7 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
     val myRegions = partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].regions
 
     var splitsForRegions = mutable.Seq[BatchInputSplit]()
+    var currentStart = 0
     for (region <- myRegions){
       val startKey = geotrellisaccumulo.decodeIndexKey(region)
       val endKey = geotrellisaccumulo.decodeIndexKey(region+1)
@@ -49,7 +50,6 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
       println("Region: " + region + " date: " + DateTimeFormatter.BASIC_ISO_DATE.format(startKey.time) + " enddate: " + DateTimeFormatter.BASIC_ISO_DATE.format(endKey.time))
 
       var newSplit:BatchInputSplit = null
-      var currentStart = 0
       for(partition <- myPartitions.drop(currentStart)) {
         var rangesForRegion = mutable.Seq[data.Range]()
         val inputSplit = partition.asInstanceOf[NewHadoopPartition].serializableHadoopSplit.value.asInstanceOf[BatchInputSplit]
@@ -62,8 +62,14 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
           val start = new Key(AccumuloKeyEncoder.index2RowId(keyIndex.toIndex(startKey)))
           val end = new Key(AccumuloKeyEncoder.index2RowId(keyIndex.toIndex(endKey)))
           if(!theRange.beforeStartKey(end) && (! theRange.afterEndKey(start) || theRange.getEndKey == start )){
-            indices += (rangeIdx + ", ")
-            rangesForRegion = rangesForRegion :+ theRange
+            val clippedRange = theRange.clip(new data.Range(start, true, end, false), true)
+            if(clippedRange!=null){
+              indices += (rangeIdx + ", ")
+              rangesForRegion = rangesForRegion :+ clippedRange
+            }else{
+              println("No overlap!!")
+            }
+
           }
           rangeIdx += 1
         }
