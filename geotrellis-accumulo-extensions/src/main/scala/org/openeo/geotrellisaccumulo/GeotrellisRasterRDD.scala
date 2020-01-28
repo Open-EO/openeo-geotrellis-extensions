@@ -38,7 +38,7 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
   }
 
   override protected def getPartitions: Array[Partition] = {
-    val myPartitions = parent.getPartitions
+    val myPartitions: Array[Partition] = parent.getPartitions
     val myRegions = partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].regions
 
     var splitsForRegions = mutable.Seq[BatchInputSplit]()
@@ -49,7 +49,8 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
       println("Region: " + region + " date: " + DateTimeFormatter.BASIC_ISO_DATE.format(startKey.time) + " enddate: " + DateTimeFormatter.BASIC_ISO_DATE.format(endKey.time))
 
       var newSplit:BatchInputSplit = null
-      for(partition <- myPartitions) {
+      var currentStart = 0
+      for(partition <- myPartitions.drop(currentStart)) {
         var rangesForRegion = mutable.Seq[data.Range]()
         val inputSplit = partition.asInstanceOf[NewHadoopPartition].serializableHadoopSplit.value.asInstanceOf[BatchInputSplit]
 
@@ -68,6 +69,7 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
         }
         if(indices.length>0){
           println("Partition: " + partition.index + " idx: " + indices)
+          currentStart = partition.index
           if(newSplit==null){
             newSplit = new BatchInputSplit(inputSplit.getTable,inputSplit.getTableId,new util.ArrayList(rangesForRegion.asJavaCollection),inputSplit.getLocations)
             newSplit.setInstanceName(inputSplit.getInstanceName)
