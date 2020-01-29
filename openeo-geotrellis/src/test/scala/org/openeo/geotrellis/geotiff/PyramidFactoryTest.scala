@@ -20,6 +20,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Ignore, Test}
+import org.openeo.geotrellis.OpenEOProcesses
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
@@ -154,7 +155,7 @@ class PyramidFactoryTest {
       date_regex = raw".*\/S2._(\d{4})(\d{2})(\d{2})T.*"
     ).layer(boundingBox, from, to, zoom).cache()
 
-    assertTrue(data.partitioner == Some(SpacePartitioner(data.metadata.bounds)))
+    assertTrue(data.partitioner.contains(SpacePartitioner(data.metadata.bounds)))
 
     saveAsGeotiff(data, from, "/tmp/data.tif")
 
@@ -163,16 +164,12 @@ class PyramidFactoryTest {
       date_regex = raw".*\/S2._(\d{4})(\d{2})(\d{2})T.*"
     ).layer(boundingBox, from, to, zoom).cache()
 
-    assertTrue(mask.partitioner == Some(SpacePartitioner(mask.metadata.bounds)))
+    assertTrue(mask.partitioner.contains(SpacePartitioner(mask.metadata.bounds)))
 
     saveAsGeotiff(mask, from, "/tmp/mask.tif")
 
-    val joined =
-      data.spatialJoin(mask)
-        .mapValues { case (data, mask) => data.localMask(mask, readMask = 1, writeMask = NODATA) }
-
-    val joinedLayer = ContextRDD(joined, data.metadata)
-    assertTrue(joinedLayer.partitioner == Some(SpacePartitioner(joinedLayer.metadata.bounds)))
+    val joinedLayer = new OpenEOProcesses().rasterMask(data, mask, replacement = null)
+    assertTrue(joinedLayer.partitioner.contains(SpacePartitioner(joinedLayer.metadata.bounds)))
 
     saveAsGeotiff(joinedLayer, from, "/tmp/masked.tif")
   }

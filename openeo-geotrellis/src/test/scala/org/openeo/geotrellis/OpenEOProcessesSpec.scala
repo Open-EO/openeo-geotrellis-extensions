@@ -90,7 +90,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     print(binaryMask.partitioner)
 
-    val maskedCube: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().rasterMask(selectedBands,binaryMask,Double.NaN)
+    val maskedCube: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().rasterMask(selectedBands, binaryMask, Double.NaN)
     val stitched = maskedCube.toSpatial().stitch()
     print(stitched)
   }
