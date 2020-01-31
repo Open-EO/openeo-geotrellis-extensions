@@ -4,6 +4,7 @@ import java.time.format.DateTimeFormatter
 import java.util
 
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata}
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.KryoWrapper
 import geotrellis.store.accumulo.AccumuloKeyEncoder
 import geotrellis.store.avro.codecs.KeyValueRecordCodec
@@ -19,6 +20,7 @@ import org.openeo.geotrellisaccumulo
 
 import scala.collection.mutable
 import org.apache.spark.{Partition, RangePartitioner, SparkContext, TaskContext}
+
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 

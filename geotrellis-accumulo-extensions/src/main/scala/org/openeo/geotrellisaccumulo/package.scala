@@ -3,6 +3,7 @@ package org.openeo
 import geotrellis.layer._
 import geotrellis.raster.MultibandTile
 import geotrellis.spark.pyramid.Pyramid
+import geotrellis.spark.partition.PartitionerIndex
 import geotrellis.store.index.zcurve.{Z3, ZSpaceTimeKeyIndex}
 import org.apache.spark.rdd.RDD
 
