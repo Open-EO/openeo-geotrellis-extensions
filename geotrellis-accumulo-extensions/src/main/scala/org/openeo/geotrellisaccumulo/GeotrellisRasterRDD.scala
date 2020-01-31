@@ -14,14 +14,12 @@ import org.apache.accumulo.core.client.mapreduce.impl.BatchInputSplit
 import org.apache.accumulo.core.data
 import org.apache.accumulo.core.data.Key
 import org.apache.avro.Schema
-import org.apache.hadoop.io.Text
 import org.apache.spark.rdd.RDD
+import org.apache.spark.{Partition, SparkContext, TaskContext}
 import org.openeo.geotrellisaccumulo
 
-import scala.collection.mutable
-import org.apache.spark.{Partition, RangePartitioner, SparkContext, TaskContext}
-
 import scala.collection.JavaConverters._
+import scala.collection.mutable
 import scala.reflect.ClassTag
 
 class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[SpaceTimeKey],writerSchema:Schema,parent:GeotrellisAccumuloRDD,val metadata: TileLayerMetadata[SpaceTimeKey], sc : SparkContext) extends RDD[(SpaceTimeKey, V)](sc,Nil) with Metadata[TileLayerMetadata[SpaceTimeKey]] {
@@ -34,11 +32,9 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
   override def compute(split: Partition, context: TaskContext): Iterator[(SpaceTimeKey, V)] = {
     val parentIterator = parent.compute(split, context)
 
-    return parentIterator.map{ case (_, value) =>
+    parentIterator.map { case (_, value) =>
       AvroEncoder.fromBinary(kwWriterSchema.value.getOrElse(codec.value.schema), value.get)(codec.value)
-    }.flatMap { pairs: Vector[(SpaceTimeKey, V)] =>
-      pairs
-    }
+    }.flatten
   }
 
   override protected def getPartitions: Array[Partition] = {
