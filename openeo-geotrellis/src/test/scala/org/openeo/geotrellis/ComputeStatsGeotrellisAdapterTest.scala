@@ -267,9 +267,33 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     assertTrue(means.exists(mean => !mean.get(0).isNaN))
   }
 
+  @Test
+  def shapefile_ArrayIndexOutOfBoundsException(): Unit = {
+    accumuloPyramidFactory.setSplitRanges(true)
 
-  private lazy val accumuloPyramidFactory = {new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")}
+    val pyramid = accumuloPyramidFactory.pyramid_seq(
+      "S1_GRD_SIGMA0_ASCENDING_PYRAMID",
+      Extent(2.7018695091614826, 50.875524514346715, 3.366826213573422, 51.30898846322647),
+      "EPSG:4326",
+      "2017-10-05T00:00:00+00:00",
+      "2017-10-05T00:00:00+00:00"
+    )
 
+    val (_, datacube) = pyramid.maxBy { case (zoom, _) => zoom }
+
+    val stats = computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
+      datacube,
+      vector_file = getClass.getResource("/org/openeo/geotrellis/minimallyOverlappingGeometryCollection.json").getPath,
+      from_date = "2017-10-05T00:00:00+00:00",
+      to_date = "2017-10-05T00:00:00+00:00",
+      band_index = 0
+    ).asScala
+
+    for {
+      (date, means) <- stats
+      (bandMeans, polygon) <- means.asScala.zipWithIndex
+    } println(s"$date: [$polygon] $bandMeans")
+  }
 
   /**
     * This test is similar in setup to the openeo integrationtest:
@@ -297,6 +321,8 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
 
     assertMedianComputedCorrectly(datacube, minDateString, minDate, maxDate, polygons)
   }
+
+  private def accumuloPyramidFactory = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
 
   private def accumuloDataCube(layer: String, minDateString: String, maxDateString: String, bbox: Extent, srs: String) = {
     val pyramid: Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = accumuloPyramidFactory.pyramid_seq(layer, bbox, srs, minDateString, maxDateString)

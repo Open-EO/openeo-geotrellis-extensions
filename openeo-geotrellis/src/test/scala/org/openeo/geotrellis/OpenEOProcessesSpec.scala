@@ -5,7 +5,6 @@ import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.raster.{ArrayMultibandTile, DoubleArrayTile, MultibandTile, Tile, TileLayout}
 import geotrellis.spark._
-import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
@@ -13,7 +12,6 @@ import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.{AfterClass, BeforeClass, Test}
-import org.junit.Assert._
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellisaccumulo.PyramidFactory
 
@@ -92,32 +90,9 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     print(binaryMask.partitioner)
 
-    val maskedCube: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().rasterMask(selectedBands,binaryMask,Double.NaN)
+    val maskedCube: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().rasterMask(selectedBands, binaryMask, Double.NaN)
     val stitched = maskedCube.toSpatial().stitch()
     print(stitched)
-  }
-
-  @Test
-  def assertAccumuloRDDsCarrySpacePartitioner(): Unit = {
-    val date = "2018-05-06T00:00:00Z"
-
-    val extent = Extent(3.4, 51.0, 3.5, 51.05)
-    val datacube = accumuloDataCube("CGS_SENTINEL2_RADIOMETRY_V102_EARLY", date, date, extent, "EPSG:4326")
-
-    val mask = accumuloDataCube("S2_SCENECLASSIFICATION_PYRAMID_20190624", date, date, extent, "EPSG:4326")
-    val binaryMask = mask.withContext(_.mapValues( _.map(0)(pixel => if ( pixel == 5) 0 else 1)))
-
-    val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1)))
-
-    assertEquals(selectedBands.partitioner.toString, SpacePartitioner(selectedBands.metadata.bounds), selectedBands.partitioner.get)
-    assertEquals(binaryMask.partitioner.toString, SpacePartitioner(binaryMask.metadata.bounds), binaryMask.partitioner.get)
-
-    val maskedCube: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().rasterMask(selectedBands,binaryMask,Double.NaN)
-
-    assertEquals(maskedCube.partitioner.toString, SpacePartitioner(maskedCube.metadata.bounds), maskedCube.partitioner.get)
-
-    val stitched = maskedCube.toSpatial().stitch()
-    println(stitched)
   }
 
   @Test
