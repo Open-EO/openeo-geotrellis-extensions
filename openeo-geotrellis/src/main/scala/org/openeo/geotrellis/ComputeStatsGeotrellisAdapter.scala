@@ -1,9 +1,9 @@
 package org.openeo.geotrellis
 
+import java.net.{MalformedURLException, URL}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
-import java.net.{MalformedURLException, URL}
 
 import be.vito.eodata.extracttimeseries.geotrellis._
 import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
@@ -15,9 +15,8 @@ import geotrellis.raster.summary.Statistics
 import geotrellis.raster.{FloatConstantNoDataCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.spark._
 import geotrellis.store.accumulo.AccumuloInstance
-import _root_.io.circe.DecodingFailure
-import geotrellis.vector.{Geometry, MultiPolygon, Polygon, _}
 import geotrellis.vector.io.json.JsonFeatureCollection
+import geotrellis.vector.{Geometry, MultiPolygon, Polygon, _}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.geotools.data.Query
@@ -26,6 +25,7 @@ import org.geotools.data.simple.SimpleFeatureIterator
 
 import scala.collection.JavaConverters._
 import scala.io.Source
+import _root_.io.circe.DecodingFailure
 
 object ComputeStatsGeotrellisAdapter {
   private type JMap[K, V] = java.util.Map[K, V]

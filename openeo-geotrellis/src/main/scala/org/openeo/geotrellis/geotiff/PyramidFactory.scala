@@ -4,7 +4,7 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
 
-import org.openeo.geotrellis.OpenEOProcesses.SpaceTimeByMonthPartitioner
+import org.openeo.geotrellisaccumulo.SpaceTimeByMonthPartitioner
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource}
