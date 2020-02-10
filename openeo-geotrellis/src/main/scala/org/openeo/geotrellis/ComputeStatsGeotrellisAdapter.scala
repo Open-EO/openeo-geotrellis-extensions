@@ -15,7 +15,7 @@ import geotrellis.raster.summary.Statistics
 import geotrellis.raster.{FloatConstantNoDataCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.spark._
 import geotrellis.store.accumulo.AccumuloInstance
-import geotrellis.vector.io.json.{GeoJson, JsonFeatureCollection}
+import geotrellis.vector.io.json.JsonFeatureCollection
 import geotrellis.vector.{Geometry, MultiPolygon, Polygon, _}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -25,6 +25,7 @@ import org.geotools.data.simple.SimpleFeatureIterator
 
 import scala.collection.JavaConverters._
 import scala.io.Source
+import _root_.io.circe.DecodingFailure
 
 object ComputeStatsGeotrellisAdapter {
   private type JMap[K, V] = java.util.Map[K, V]
@@ -61,14 +62,6 @@ object ComputeStatsGeotrellisAdapter {
   }
 
   private def isoFormat(timestamp: ZonedDateTime): String = timestamp format DateTimeFormatter.ISO_DATE_TIME
-
-  private def geometries(geometryCollection: GeometryCollection): Stream[Geometry] = {
-    def from(i: Int): Stream[Geometry] =
-      if (i >= geometryCollection.getNumGeometries) Stream.empty
-      else geometryCollection.getGeometryN(i) #:: from(i + 1)
-
-    from(0)
-  }
 }
 
 class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: String) {
@@ -115,6 +108,11 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   }
 
   def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], vector_file: String, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
+    val (polygons, crs) = projectedPolygons(vector_file)
+    compute_average_timeseries_from_datacube(datacube, polygons, crs, from_date, to_date, band_index)
+  }
+
+  private def projectedPolygons(vector_file: String): (Array[MultiPolygon], CRS) = {
     val vectorUrl = try {
       new URL(vector_file)
     } catch {
@@ -123,11 +121,8 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
 
     val filename = vectorUrl.getPath.split("/").last
 
-    val (polygons, crs) =
-      if (filename.endsWith(".shp")) readSimpleFeatures(vectorUrl)
-      else readMultiPolygonsFromGeoJson(vectorUrl)
-
-    compute_average_timeseries_from_datacube(datacube, polygons, crs, from_date, to_date, band_index)
+    if (filename.endsWith(".shp")) readSimpleFeatures(vectorUrl)
+    else readMultiPolygonsFromGeoJson(vectorUrl)
   }
 
   // adapted from Geotrellis' ShapeFileReader to avoid having too much in memory
@@ -162,24 +157,39 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     // FIXME: stream it instead
     val src = Source.fromURL(geoJsonUrl)
 
-    try {
+    val multiPolygons = try {
       val geoJson = src.mkString
 
-      val multiPolygons = GeoJson.parse[Geometry](geoJson) match {
+      def children(geometryCollection: GeometryCollection): Stream[Geometry] = {
+        def from(i: Int): Stream[Geometry] =
+          if (i >= geometryCollection.getNumGeometries) Stream.empty
+          else geometryCollection.getGeometryN(i) #:: from(i + 1)
+
+        from(0)
+      }
+
+      def asMultiPolygons(geometry: Geometry): Array[MultiPolygon] = geometry match {
         case polygon: Polygon => Array(MultiPolygon(polygon))
         case multiPolygon: MultiPolygon => Array(multiPolygon)
-        case featureCollection: JsonFeatureCollection => featureCollection.getAllGeometries().map {
-          case polygon: Polygon => MultiPolygon(polygon)
-          case multiPolygon: MultiPolygon => multiPolygon
-        }.toArray
-        case geometryCollection: GeometryCollection => geometries(geometryCollection).map {
+        case geometryCollection: GeometryCollection => children(geometryCollection).map {
           case polygon: Polygon => MultiPolygon(polygon)
           case multiPolygon: MultiPolygon => multiPolygon
         }.toArray
       }
 
-      (multiPolygons, LatLng)
+      try {
+        asMultiPolygons(geoJson.parseGeoJson[Geometry]())
+      } catch {
+        case _: DecodingFailure => {
+          val featureCollection = geoJson.parseGeoJson[JsonFeatureCollection]()
+          featureCollection.getAllGeometries()
+            .flatMap(asMultiPolygons)
+            .toArray
+        }
+      }
     } finally src.close()
+
+    (multiPolygons, LatLng)
   }
 
   def compute_histogram_time_series(product_id: String, polygon_wkt: String, polygon_srs: String,
@@ -213,7 +223,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     val histograms: Array[RDD[(TemporalKey, Array[Histogram[Double]])]] = computeStatsGeotrellis.computeHistogramTimeSeries(datacube, Array(polygon), crs, startDate, endDate,  sc)
 
     histograms(0)
-      .map { case (temporalKey, histogram) => (isoFormat(temporalKey.time), histogram.map(toMap(_)).toSeq.asJava) }
+      .map { case (temporalKey, histogram) => (isoFormat(temporalKey.time), histogram.map(toMap).toSeq.asJava) }
       .collectAsMap()
       .asJava
   }
@@ -222,41 +232,56 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
                                      from_date: String, to_date: String, band_index: Int):
 
   JMap[String, JList[JList[JMap[Double, Long]]]] = { // date -> polygon -> band -> value/count
+    val polygons = polygon_wkts.asScala.map(parsePolygonWkt)
+    val crs: CRS = CRS.fromName(polygons_srs)
+
     val histogramsCollector = new MultibandHistogramsCollector
-    _compute_histograms_time_series_from_datacube(datacube, polygon_wkts, polygons_srs, from_date, to_date, band_index, histogramsCollector)
+    _compute_histograms_time_series_from_datacube(datacube, polygons.toArray, crs, from_date, to_date, band_index, histogramsCollector)
     histogramsCollector.results
   }
 
-  def compute_median_time_series_from_datacube(datacube:MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String,
+  def compute_median_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String,
                                                    from_date: String, to_date: String, band_index: Int):
-  JMap[String, JList[JList[Double]]] = { // date -> polygon -> value/count
+  JMap[String, JList[JList[Double]]] = { // date -> polygon -> band -> median
+    val polygons = polygon_wkts.asScala.map(parsePolygonWkt)
+    val crs: CRS = CRS.fromName(polygons_srs)
 
-    val histogramsCollector = new MultibandMediansCollector
-    _compute_histograms_time_series_from_datacube(datacube, polygon_wkts, polygons_srs, from_date, to_date, band_index, histogramsCollector)
-    histogramsCollector.results
+    _compute_median_time_series_from_datacube(datacube, polygons.toArray, crs, from_date, to_date, band_index)
+  }
 
+  def compute_median_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], vector_file: String,
+                                               from_date: String, to_date: String, band_index: Int):
+  JMap[String, JList[JList[Double]]] = { // date -> polygon -> band -> median
+    val (polygons, crs) = projectedPolygons(vector_file)
+
+    _compute_median_time_series_from_datacube(datacube, polygons, crs, from_date, to_date, band_index)
+  }
+
+  private def _compute_median_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
+    val mediansCollector = new MultibandMediansCollector
+    _compute_histograms_time_series_from_datacube(datacube, polygons, crs, from_date, to_date, band_index, mediansCollector)
+    mediansCollector.results
   }
 
   def compute_sd_time_series_from_datacube(datacube:MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String,
-                                               from_date: String, to_date: String, band_index: Int):
+                                           from_date: String, to_date: String, band_index: Int):
   JMap[String, JList[JList[Double]]] = { // date -> polygon -> value/count
+    val polygons = polygon_wkts.asScala.map(parsePolygonWkt)
+    val crs: CRS = CRS.fromName(polygons_srs)
 
-    val histogramsCollector = new MultibandStdDevCollector
-    _compute_histograms_time_series_from_datacube(datacube, polygon_wkts, polygons_srs, from_date, to_date, band_index, histogramsCollector)
-    histogramsCollector.results
+    val stdDevCollector = new MultibandStdDevCollector
+    _compute_histograms_time_series_from_datacube(datacube, polygons.toArray, crs, from_date, to_date, band_index, stdDevCollector)
+    stdDevCollector.results
 
   }
 
-  private def _compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String, from_date: String, to_date: String, band_index: Int, histogramsCollector: StatisticsCallback[_ >: Seq[Histogram[Double]]]) = {
+  private def _compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, from_date: String, to_date: String, band_index: Int, histogramsCollector: StatisticsCallback[_ >: Seq[Histogram[Double]]]): Unit = {
     val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
 
-    val polygons = polygon_wkts.asScala.map(parsePolygonWkt)
-
-    val crs: CRS = CRS.fromName(polygons_srs)
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
 
-    computeStatsGeotrellis.computeHistogramTimeSeries(datacube, polygons.toArray, crs, startDate, endDate, histogramsCollector, unusedCancellationContext, sc)
+    computeStatsGeotrellis.computeHistogramTimeSeries(datacube, polygons, crs, startDate, endDate, histogramsCollector, unusedCancellationContext, sc)
   }
 
   def compute_histograms_time_series(product_id: String, polygon_wkts: JList[String], polygons_srs: String,
@@ -385,7 +410,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     import java.util._
 
     val results: JMap[String, JList[JList[JMap[Double, Long]]]] =
-      Collections.synchronizedMap(new HashMap[String, JList[JList[JMap[Double, Long]]]])
+      Collections.synchronizedMap(new util.HashMap[String, JList[JList[JMap[Double, Long]]]])
 
     override def onComputed(date: ZonedDateTime, results: Seq[Seq[Histogram[Double]]]): Unit = {
       val polygonalHistograms: Seq[JList[JMap[Double, Long]]] = results.map( _.map(toMap).asJava)
@@ -399,11 +424,11 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     import java.util._
 
     val results: JMap[String, JList[JList[Double]]] =
-      Collections.synchronizedMap(new HashMap[String, JList[JList[Double]]])
+      Collections.synchronizedMap(new util.HashMap[String, JList[JList[Double]]])
 
     override def onComputed(date: ZonedDateTime, results: Seq[Seq[Histogram[Double]]]): Unit = {
-      val polygonalHistograms: Seq[JList[Double]] = results.map( _.map(_.median().getOrElse(Double.NaN)).asJava)
-      this.results.put(isoFormat(date), polygonalHistograms.asJava)
+      val polygonalMedians: Seq[JList[Double]] = results.map( _.map(_.median().getOrElse(Double.NaN)).asJava)
+      this.results.put(isoFormat(date), polygonalMedians.asJava)
     }
 
     override def onCompleted(): Unit = ()
@@ -413,11 +438,11 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     import java.util._
 
     val results: JMap[String, JList[JList[Double]]] =
-      Collections.synchronizedMap(new HashMap[String, JList[JList[Double]]])
+      Collections.synchronizedMap(new util.HashMap[String, JList[JList[Double]]])
 
     override def onComputed(date: ZonedDateTime, results: Seq[Seq[Histogram[Double]]]): Unit = {
-      val polygonalHistograms: Seq[JList[Double]] = results.map( _.map(_.statistics().getOrElse(Statistics.EMPTYDouble()).stddev).asJava)
-      this.results.put(isoFormat(date), polygonalHistograms.asJava)
+      val polygonalStdDevs: Seq[JList[Double]] = results.map( _.map(_.statistics().getOrElse(Statistics.EMPTYDouble()).stddev).asJava)
+      this.results.put(isoFormat(date), polygonalStdDevs.asJava)
     }
 
     override def onCompleted(): Unit = ()

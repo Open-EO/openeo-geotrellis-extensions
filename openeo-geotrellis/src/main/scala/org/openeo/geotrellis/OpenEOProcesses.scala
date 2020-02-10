@@ -10,8 +10,8 @@ import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.spark._
-import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
-import geotrellis.store.index.zcurve.Z3
+import geotrellis.spark.partition.SpacePartitioner
+import org.openeo.geotrellisaccumulo.SpaceTimeByMonthPartitioner
 import geotrellis.util.Filesystem
 import org.apache.spark.rdd.{CoGroupedRDD, RDD}
 import org.openeo.geotrellis.focal._
@@ -20,21 +20,7 @@ import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 
-object OpenEOProcesses {
-  implicit object SpaceTimeByMonthPartitioner extends  PartitionerIndex[SpaceTimeKey] {
-    private def toZ(key: SpaceTimeKey): Z3 = Z3(key.col >> 4, key.row >> 4, 13*key.time.getYear + key.time.getMonthValue)
-
-    def toIndex(key: SpaceTimeKey): BigInt = toZ(key).z
-
-    def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] =
-      Z3.zranges(toZ(keyRange._1), toZ(keyRange._2))
-  }
-}
-
-
 class OpenEOProcesses extends Serializable {
-  import OpenEOProcesses._
-
   val unaryProcesses: Map[String, Tile => Tile] = Map(
     "absolute" -> Abs.apply,
     //TODO "exp"
