@@ -4,6 +4,7 @@ import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
 
+import be.vito.eodata.model.BandDefinition
 import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.raster.histogram.Histogram
@@ -24,6 +25,9 @@ import org.openeo.geotrellisaccumulo.PyramidFactory
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable.Seq
+import org.apache.commons.io.IOUtils
+import TimeSeriesServiceResponses._
+import TimeSeriesServiceResponses.GeometriesHistograms.Bin
 
 object ComputeStatsGeotrellisAdapterTest {
   private var sc: SparkContext = _
@@ -328,9 +332,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val pyramid: Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = accumuloPyramidFactory.pyramid_seq(layer, bbox, srs, minDateString, maxDateString)
     System.out.println("pyramid = " + pyramid)
 
-    val pyramidAsMap = pyramid.toMap
-    val maxZoom = pyramidAsMap.keys.max
-    val datacube = pyramidAsMap.get(maxZoom).get
+    val (_, datacube) = pyramid.maxBy { case (zoom, _) => zoom }
     datacube
   }
 
@@ -351,6 +353,95 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val ndviDataCube = new OpenEOProcesses().mapBandsGeneric(selectedBands, ndviProcess)
 
     assertMedianComputedCorrectly(ndviDataCube, minDateString, minDate, maxDate, polygons)
+  }
+
+  @Test
+  def validateAccumuloDataCubeAgainstTimeSeriesServiceMeans(): Unit = {
+    val minDateString = "2017-11-01T00:00:00Z"
+    val maxDateString = "2017-11-16T00:00:00Z"
+
+    val polygons = Seq(polygon1, polygon2, polygon4)
+    val srs = "EPSG:4326"
+    val band = 0
+
+    val datacube = accumuloDataCube("S2_FAPAR_PYRAMID_20190708", minDateString, maxDateString, polygons.extent, srs)
+
+    val stats = computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
+      datacube,
+      polygon_wkts = polygons.map(_.toWKT()).asJava,
+      srs,
+      minDateString, maxDateString,
+      band
+    )
+      .asScala
+      .toSeq
+      .sortBy { case (date, _) => date }
+
+    val scaleFactor = BandDefinition.CGS.FAPAR_10M.getScaleFactor
+    val offset = BandDefinition.CGS.FAPAR_10M.getOffset
+
+    val actualAverages = (for {
+      (date, polygonalMeans) <- stats
+      physicalMeans = polygonalMeans.asScala.map(_.asScala.applyOrElse(0, default = (_: Int) => Double.NaN) * scaleFactor + offset)
+    } yield (ZonedDateTime.parse(date), physicalMeans)).toMap
+
+    // run scripts/tsservice_means to regenerate these reference values
+    val referenceJson = IOUtils.toString(this.getClass.getResource("/org/openeo/geotrellis/TimeSeriesServiceFaparGeometriesMeans.json"))
+
+    val referenceAverages = GeometriesMeans.parse(referenceJson)
+      .results
+      .map { case (date, results) => (date.atStartOfDay(ZoneOffset.UTC), results.map(_.average)) }
+
+    for {
+      (date, expectedAverages) <- referenceAverages
+      (expectedAverage, actualAverage) <- expectedAverages zip actualAverages(date)
+    } assertEquals(expectedAverage, actualAverage, 0.000001)
+  }
+
+  @Test
+  def validateAccumuloDataCubeAgainstTimeSeriesServiceHistograms(): Unit = {
+    val minDateString = "2017-11-01T00:00:00Z"
+    val maxDateString = "2017-11-16T00:00:00Z"
+
+    val polygons = Seq(polygon1, polygon2, polygon4)
+    val srs = "EPSG:4326"
+    val band = 0
+
+    val datacube = accumuloDataCube("S2_FAPAR_PYRAMID_20190708", minDateString, maxDateString, polygons.extent, srs)
+
+    val stats = computeStatsGeotrellisAdapter.compute_histograms_time_series_from_datacube(
+      datacube,
+      polygon_wkts = polygons.map(_.toWKT()).asJava,
+      srs,
+      minDateString, maxDateString,
+      band
+    ).asScala
+
+    val scaleFactor = BandDefinition.CGS.FAPAR_10M.getScaleFactor
+    val offset = BandDefinition.CGS.FAPAR_10M.getOffset
+
+    val actualHistograms = for {
+      (date, polygonalBandHistograms) <- stats
+      polygonalHistograms = polygonalBandHistograms.asScala.map { bandHistograms =>
+        bandHistograms.asScala.applyOrElse(0, (_: Int) => new util.HashMap).asScala.map { case (bin, count) => // take out the single band
+          val physicalBin = bin * scaleFactor + offset
+          (physicalBin, count)
+        }
+      }
+    } yield (ZonedDateTime.parse(date), polygonalHistograms)
+
+    // run scripts/tsservice_histograms to regenerate these reference values
+    val referenceJson = IOUtils.toString(this.getClass.getResource("/org/openeo/geotrellis/TimeSeriesServiceFaparGeometriesHistograms.json"))
+
+    val referenceHistograms = GeometriesHistograms.parse(referenceJson).results
+      .map { case (date, polygonalHistograms) => (date.atStartOfDay(ZoneOffset.UTC), polygonalHistograms) }
+
+    for {
+      (date, referencePolygonalHistograms) <- referenceHistograms
+      actualPolygonalHistograms = actualHistograms.applyOrElse(date, (_: ZonedDateTime) => Seq.empty)
+      (referenceHistogram, actualHistogram) <- referencePolygonalHistograms zip actualPolygonalHistograms
+      Bin(referenceValue, referenceCount) <- referenceHistogram
+    } assertEquals(s"counts deviate for value $referenceValue on $date", referenceCount, actualHistogram(referenceValue))
   }
 
   @Test
