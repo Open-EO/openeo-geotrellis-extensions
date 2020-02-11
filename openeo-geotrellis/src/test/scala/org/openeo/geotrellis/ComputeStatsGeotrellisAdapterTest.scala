@@ -496,7 +496,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
       .flatMap { case (_, dailyMeans) => dailyMeans.asScala }.filter(!_.isEmpty)
 
     assertTrue(means.exists(mean => !mean.get(0).isNaN))
-    assertEquals( expectedMedian.get,stats(minDateString).get(0).get(0), 0.1)
+    assertEquals( expectedMedian.get,stats(minDateString).get(0).get(0), 0.001)
   }
 
   @Test
