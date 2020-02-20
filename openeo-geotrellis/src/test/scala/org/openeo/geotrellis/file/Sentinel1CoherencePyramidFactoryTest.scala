@@ -4,7 +4,7 @@ import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 
 import geotrellis.layer.SpaceTimeKey
-import geotrellis.proj4.{LatLng, WebMercator}
+import geotrellis.proj4.LatLng
 import geotrellis.raster.Raster
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.spark._
