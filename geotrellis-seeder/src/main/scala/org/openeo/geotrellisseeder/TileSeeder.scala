@@ -68,11 +68,11 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       val dateGlob = productGlob.get.replace("#DATE#", date.format(DateTimeFormatter.ofPattern("yyyy/MM/dd")))
 
       if (colorMap.isDefined) {
-        sourcePaths = Some(Seq(listFiles(new Path(dateGlob))))
+        sourcePaths = Some(Seq(listFiles(new Path(s"file://$dateGlob"))))
       } else if (bands.isDefined) {
         sourcePaths = Some(bands.get.map(b => listFiles(new Path(s"file://${dateGlob.replace("#BAND#", b.name)}"))))
       } else {
-        sourcePaths = Some(Array("VV, VH").map(b => listFiles(new Path(dateGlob.replace("#BAND#", b)))))
+        sourcePaths = Some(Array("VV, VH").map(b => listFiles(new Path(s"file://${dateGlob.replace("#BAND#", b)}"))))
       }
     }
 
