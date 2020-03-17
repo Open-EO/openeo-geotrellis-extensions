@@ -52,7 +52,9 @@ class OpenEOProcesses extends Serializable {
     "min" -> Min,
     "multiply" -> Multiply,
     "product" -> Multiply,
+    "add" -> Add,
     "sum" -> Add,
+    "subtract" -> Subtract,
     "xor" -> Xor
   )
 
