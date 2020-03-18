@@ -299,6 +299,35 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     } println(s"$date: [$polygon] $bandMeans")
   }
 
+  @Test
+  def multiBandMedianArrayIndexOutOfBoundsException(): Unit = {
+    val startDate = LocalDate.of(2019, 4, 11).atStartOfDay(ZoneOffset.UTC)
+    val endDate = startDate plusWeeks 1
+
+    val datacube: MultibandTileLayerRDD[SpaceTimeKey] = accumuloPyramidFactory.load_rdd(
+      layerName = "CGS_SENTINEL2_RADIOMETRY_V102_EARLY",
+      level = 9,
+      bbox = Extent(2.7018695091614826, 50.875524514346715, 3.366826213573422, 51.30898846322647),
+      bbox_srs = "EPSG:4326",
+      Some(startDate),
+      Some(endDate)
+    )
+
+    val stats = computeStatsGeotrellisAdapter.compute_median_time_series_from_datacube(
+      datacube,
+      vector_file = getClass.getResource("/org/openeo/geotrellis/minimallyOverlappingGeometryCollection.json").getPath,
+      from_date = ISO_OFFSET_DATE_TIME format startDate,
+      to_date = ISO_OFFSET_DATE_TIME format endDate,
+      band_index = 0
+    ).asScala
+
+    for {
+      (date, polygonalHistograms) <- stats
+      (bandHistograms, polygon) <- polygonalHistograms.asScala.zipWithIndex
+      (median, band) <- bandHistograms.asScala.zipWithIndex
+    } println(s"$date: polygon $polygon/band $band: median $median")
+  }
+
   /**
     * This test is similar in setup to the openeo integrationtest:
     * test_validate_timeseries.Test#test_zonal_statistics
