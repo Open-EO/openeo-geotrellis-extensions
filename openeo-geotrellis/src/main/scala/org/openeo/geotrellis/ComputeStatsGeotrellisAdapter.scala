@@ -420,15 +420,21 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     override def onCompleted(): Unit = ()
   }
 
-  private class MultibandMediansCollector extends StatisticsCallback[Seq[Histogram[Double]]] {
+  private class MultibandMediansCollector extends StatisticsCallback[MultibandHistogram[Double]] {
     import java.util._
 
     val results: JMap[String, JList[JList[Double]]] =
       Collections.synchronizedMap(new util.HashMap[String, JList[JList[Double]]])
 
-    override def onComputed(date: ZonedDateTime, results: Seq[Seq[Histogram[Double]]]): Unit = {
-      val polygonalMedians: Seq[JList[Double]] = results.map( _.map(_.median().getOrElse(Double.NaN)).asJava)
-      this.results.put(isoFormat(date), polygonalMedians.asJava)
+    override def onComputed(date: ZonedDateTime, multibandHistograms: Seq[MultibandHistogram[Double]]): Unit = {
+      val polygonalMultibandMedians: Seq[Seq[Double]] = for {
+        multibandHistogram <- multibandHistograms
+        multibandMedian = multibandHistogram.map(_.median().getOrElse(Double.NaN))
+      } yield multibandMedian
+
+      if (polygonalMultibandMedians.flatten.nonEmpty) {
+        this.results.put(isoFormat(date), polygonalMultibandMedians.map(_.asJava).asJava)
+      }
     }
 
     override def onCompleted(): Unit = ()
