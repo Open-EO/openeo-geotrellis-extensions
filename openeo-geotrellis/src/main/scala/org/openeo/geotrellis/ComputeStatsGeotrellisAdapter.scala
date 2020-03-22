@@ -427,14 +427,12 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
       Collections.synchronizedMap(new util.HashMap[String, JList[JList[Double]]])
 
     override def onComputed(date: ZonedDateTime, multibandHistograms: Seq[MultibandHistogram[Double]]): Unit = {
-      val polygonalMultibandMedians: Seq[Seq[Double]] = for {
+      val polygonalMultibandMedians: Seq[JList[Double]] = for {
         multibandHistogram <- multibandHistograms
         multibandMedian = multibandHistogram.map(_.median().getOrElse(Double.NaN))
-      } yield multibandMedian
+      } yield multibandMedian.asJava
 
-      if (polygonalMultibandMedians.flatten.nonEmpty) {
-        this.results.put(isoFormat(date), polygonalMultibandMedians.map(_.asJava).asJava)
-      }
+      this.results.put(isoFormat(date), polygonalMultibandMedians.asJava)
     }
 
     override def onCompleted(): Unit = ()
