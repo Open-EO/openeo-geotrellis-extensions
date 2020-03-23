@@ -106,9 +106,9 @@ class OpenEOProcesses extends Serializable {
       new CoGroupedRDD[SpaceTimeKey](List(part(leftCube), part(rightCube)), part)
         .flatMapValues { case Array(l, r) =>
           if (l.isEmpty)
-            for (v <- r.iterator) yield (None, v)
+            for (v <- r.iterator) yield (None, Some(v))
           else if (r.isEmpty)
-            for (v <- l.iterator) yield (v, None)
+            for (v <- l.iterator) yield (Some(v), None)
           else
             for (v <- l.iterator; w <- r.iterator) yield (Some(v), Some(w))
         }.asInstanceOf[RDD[(SpaceTimeKey, (Option[MultibandTile], Option[MultibandTile]))]]
