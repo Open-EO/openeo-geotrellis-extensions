@@ -103,6 +103,7 @@ void build(tests = true){
         def rtMaven = Artifactory.newMavenBuild()
         rtMaven.deployer server: server, releaseRepo: 'libs-release-public', snapshotRepo: 'libs-snapshot-public'
         rtMaven.tool = maven
+        rtMaven.opts = '-T C1'
         if (!tests) {
             rtMaven.opts += ' -DskipTests=true'
         }
