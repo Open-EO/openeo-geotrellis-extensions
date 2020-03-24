@@ -22,6 +22,7 @@ import org.apache.spark.rdd.RDD
 import org.geotools.data.Query
 import org.geotools.data.shapefile.ShapefileDataStore
 import org.geotools.data.simple.SimpleFeatureIterator
+import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
 import scala.io.Source
@@ -30,6 +31,8 @@ import _root_.io.circe.DecodingFailure
 object ComputeStatsGeotrellisAdapter {
   private type JMap[K, V] = java.util.Map[K, V]
   private type JList[T] = java.util.List[T]
+
+  private val logger = LoggerFactory.getLogger(classOf[ComputeStatsGeotrellisAdapter])
 
   // OpenEO doesn't return physical values
   private val noScaling = 1.0
@@ -108,8 +111,14 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   }
 
   def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], vector_file: String, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
-    val (polygons, crs) = projectedPolygons(vector_file)
-    compute_average_timeseries_from_datacube(datacube, polygons, crs, from_date, to_date, band_index)
+    val (result, duration) = time {
+      val (polygons, crs) = projectedPolygons(vector_file)
+      compute_average_timeseries_from_datacube(datacube, polygons, crs, from_date, to_date, band_index)
+    }
+
+    if (logger.isDebugEnabled) logger.debug(s"compute_average_timeseries_from_datacube took $duration to compute ${result.size()} results")
+
+    result
   }
 
   private def projectedPolygons(vector_file: String): (Array[MultiPolygon], CRS) = {
