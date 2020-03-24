@@ -21,6 +21,7 @@ import java.time.ZonedDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.junit.Assert.*;
 
@@ -127,7 +128,7 @@ public class TestOpenEOProcesses {
     }
 
     @Test
-    public void testMergeCubes() {
+    public void testMergeCubesBasic() {
         DataType celltype = CellType$.MODULE$.fromName("int8raw").withDefaultNoData();
         MutableArrayTile zeroTile = new ByteConstantTile((byte)0,256,256, (ByteCells) celltype).mutable();
         zeroTile.set(0,0,1);
@@ -142,16 +143,221 @@ public class TestOpenEOProcesses {
         assertEquals(4,firstTile.bandCount());
         assertEquals(zeroTile,firstTile.band(0));
         assertEquals(zeroTile,firstTile.band(2));
+    }
 
-
+    @Test
+    public void testMergeCubesSumOperator() {
+        DataType celltype = CellType$.MODULE$.fromName("int8raw").withDefaultNoData();
+        MutableArrayTile zeroTile = new ByteConstantTile((byte) 0, 256, 256, (ByteCells) celltype).mutable();
+        zeroTile.set(0, 0, 1);
+        zeroTile.set(0, 1, ByteConstantNoDataCellType.noDataValue());
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> tileLayerRDD = tileToSpaceTimeDataCube(zeroTile);
 
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> mergedOr = new OpenEOProcesses().mergeCubes(tileLayerRDD, tileLayerRDD,"sum");
         MultibandTile firstTileSum = mergedOr.toJavaRDD().take(1).get(0)._2();
         System.out.println("firstTileOr = " + firstTileSum);
         assertEquals(2,firstTileSum.bandCount());
         assertEquals(2, firstTileSum.band(0).get(0, 0));
-
         assertTrue(firstTileSum.band(1).isNoDataTile());
+    }
+
+    @Test
+    public void testMergeCubeConcat() {
+        // Set up
+        ByteArrayTile band1 = ByteArrayTile.fill((byte) 2, 256, 256);
+        ByteArrayTile band2 = ByteArrayTile.fill((byte) 3, 256, 256);
+        ByteArrayTile band3 = ByteArrayTile.fill((byte) 5, 256, 256);
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> cube1 = buildSpatioTemporalDataCube(
+                Arrays.asList(band1, band2),
+                Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z")
+        );
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> cube2 = buildSpatioTemporalDataCube(
+                Arrays.asList(band3, band3, band3),
+                Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z")
+        );
+
+        // Do merge
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> merged = new OpenEOProcesses().mergeCubes(cube1, cube2, null);
+
+        // Check result
+        List<TemporalKey> mergedTimes = merged.toJavaRDD().map(p -> p._1.temporalKey()).collect();
+        assertEquals(2, mergedTimes.size());
+        for (Tuple2<SpaceTimeKey, MultibandTile> item : merged.toJavaRDD().collect()) {
+            assertEquals(5, item._2.bandCount());
+            assertEquals(2, item._2.band(0).get(0, 0));
+            assertEquals(3, item._2.band(1).get(0, 0));
+            assertEquals(5, item._2.band(2).get(0, 0));
+            assertEquals(5, item._2.band(3).get(0, 0));
+            assertEquals(5, item._2.band(4).get(0, 0));
+        }
+    }
+
+
+    @Test
+    public void testMergeCubeTemporalDisjointNoOp() {
+        // Set up
+        ByteArrayTile band1 = ByteArrayTile.fill((byte) 2, 256, 256);
+        ByteArrayTile band2 = ByteArrayTile.fill((byte) 3, 256, 256);
+        ByteArrayTile band3 = ByteArrayTile.fill((byte) 5, 256, 256);
+        ByteArrayTile band4 = ByteArrayTile.fill((byte) 8, 256, 256);
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> cube1 = buildSpatioTemporalDataCube(
+                Arrays.asList(band1, band2),
+                Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z", "2020-03-03T00:00:00Z")
+        );
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> cube2 = buildSpatioTemporalDataCube(
+                Arrays.asList(band3, band4),
+                Arrays.asList("2020-11-11T00:00:00Z", "2020-12-12T00:00:00Z")
+        );
+
+        // Do merge
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> merged = new OpenEOProcesses().mergeCubes(cube1, cube2, null);
+
+        // Check result
+        List<TemporalKey> mergedTimes = merged.toJavaRDD().map(p -> p._1.temporalKey()).collect();
+        assertEquals(5, mergedTimes.size());
+        for (Tuple2<SpaceTimeKey, MultibandTile> item : merged.toJavaRDD().collect()) {
+            assertEquals(4, item._2.bandCount());
+            if (item._1.temporalKey().time().isBefore(ZonedDateTime.parse("2020-10-01T00:00:00Z"))) {
+                // time range with left part bands
+                assertEquals(2, item._2.band(0).get(0, 0));
+                assertEquals(3, item._2.band(1).get(0, 0));
+                assertTrue(item._2.band(2).isNoDataTile());
+                assertTrue(item._2.band(3).isNoDataTile());
+            } else {
+                // time range with right part bands
+                assertTrue(item._2.band(0).isNoDataTile());
+                assertTrue(item._2.band(1).isNoDataTile());
+                assertEquals(5, item._2.band(2).get(0, 0));
+                assertEquals(8, item._2.band(3).get(0, 0));
+            }
+        }
+    }
+
+    @Test
+    public void testMergeCubePartialOverlapDifference() {
+        // Set up
+        ByteArrayTile band1 = ByteArrayTile.fill((byte) 2, 256, 256);
+        ByteArrayTile band2 = ByteArrayTile.fill((byte) 3, 256, 256);
+        ByteArrayTile band3 = ByteArrayTile.fill((byte) 5, 256, 256);
+        ByteArrayTile band4 = ByteArrayTile.fill((byte) 8, 256, 256);
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> cube1 = buildSpatioTemporalDataCube(
+                Arrays.asList(band1, band2),
+                Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z")
+        );
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> cube2 = buildSpatioTemporalDataCube(
+                Arrays.asList(band3, band4),
+                Arrays.asList("2020-02-02T00:00:00Z", "2020-03-03T00:00:00Z")
+        );
+
+        // Do merge
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> merged = new OpenEOProcesses().mergeCubes(cube1, cube2, "subtract");
+
+        // Check result
+        List<TemporalKey> mergedTimes = merged.toJavaRDD().map(p -> p._1.temporalKey()).collect();
+        assertEquals(3, mergedTimes.size());
+        for (Tuple2<SpaceTimeKey, MultibandTile> item : merged.toJavaRDD().collect()) {
+            assertEquals(2, item._2.bandCount());
+            int month = item._1.temporalKey().time().getMonthValue();
+            if (month == 1) {
+                assertEquals(2, item._2.band(0).get(0, 0));
+                assertEquals(3, item._2.band(1).get(0, 0));
+            } else if (month == 2){
+                assertEquals(-3, item._2.band(0).get(0, 0));
+                assertEquals(-5, item._2.band(1).get(0, 0));
+            } else {
+                assertEquals(5, item._2.band(0).get(0, 0));
+                assertEquals(8, item._2.band(1).get(0, 0));
+            }
+        }
+    }
+
+    @Test
+    public void testMergeCubeFullOverlapNoOp() {
+        // Set up
+        ByteArrayTile band1 = ByteArrayTile.fill((byte) 1, 256, 256);
+        ByteArrayTile band2 = ByteArrayTile.fill((byte) 2, 256, 256);
+        ByteArrayTile band3 = ByteArrayTile.fill((byte) 3, 256, 256);
+        ByteArrayTile band4 = ByteArrayTile.fill((byte) 4, 256, 256);
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> cube1 = buildSpatioTemporalDataCube(
+                Arrays.asList(band1, band2),
+                Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z")
+        );
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> cube2 = buildSpatioTemporalDataCube(
+                Arrays.asList(band3, band4),
+                Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z")
+        );
+
+        // Do merge
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> merged = new OpenEOProcesses().mergeCubes(cube1, cube2, null);
+
+        // Check result
+        List<TemporalKey> mergedTimes = merged.toJavaRDD().map(p -> p._1.temporalKey()).collect();
+        assertEquals(2, mergedTimes.size());
+        for (Tuple2<SpaceTimeKey, MultibandTile> item : merged.toJavaRDD().collect()) {
+            assertEquals(4, item._2.bandCount());
+            assertEquals(1, item._2.band(0).get(0, 0));
+            assertEquals(2, item._2.band(1).get(0, 0));
+            assertEquals(3, item._2.band(2).get(0, 0));
+            assertEquals(4, item._2.band(3).get(0, 0));
+        }
+    }
+
+    @Test
+    public void testMergeCubeFullOverlapDifference() {
+        // Set up
+        ByteArrayTile band1 = ByteArrayTile.fill((byte) 2, 256, 256);
+        ByteArrayTile band2 = ByteArrayTile.fill((byte) 3, 256, 256);
+        ByteArrayTile band3 = ByteArrayTile.fill((byte) 5, 256, 256);
+        ByteArrayTile band4 = ByteArrayTile.fill((byte) 8, 256, 256);
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> cube1 = buildSpatioTemporalDataCube(
+                Arrays.asList(band1, band2),
+                Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z")
+        );
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> cube2 = buildSpatioTemporalDataCube(
+                Arrays.asList(band3, band4),
+                Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z")
+        );
+
+        // Do merge
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> merged = new OpenEOProcesses().mergeCubes(cube1, cube2, "subtract");
+
+        // Check result
+        List<TemporalKey> mergedTimes = merged.toJavaRDD().map(p -> p._1.temporalKey()).collect();
+        assertEquals(2, mergedTimes.size());
+        for (Tuple2<SpaceTimeKey, MultibandTile> item : merged.toJavaRDD().collect()) {
+            assertEquals(2, item._2.bandCount());
+            assertEquals(-3, item._2.band(0).get(0, 0));
+            assertEquals(-5, item._2.band(1).get(0, 0));
+        }
+    }
+
+    @Test
+    public void testMergeCubeOverlapBandMismatch() {
+        // Set up
+        ByteArrayTile band1 = ByteArrayTile.fill((byte) 2, 256, 256);
+        ByteArrayTile band2 = ByteArrayTile.fill((byte) 3, 256, 256);
+        ByteArrayTile band3 = ByteArrayTile.fill((byte) 5, 256, 256);
+        ByteArrayTile band4 = ByteArrayTile.fill((byte) 8, 256, 256);
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> cube1 = buildSpatioTemporalDataCube(
+                Arrays.asList(band1, band2),
+                Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z")
+        );
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> cube2 = buildSpatioTemporalDataCube(
+                Arrays.asList(band3, band4),
+                Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z")
+        );
+
+        // Do merge
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> merged = new OpenEOProcesses().mergeCubes(cube1, cube2, "subtract");
+
+        // Check result
+        List<TemporalKey> mergedTimes = merged.toJavaRDD().map(p -> p._1.temporalKey()).collect();
+        assertEquals(2, mergedTimes.size());
+        for (Tuple2<SpaceTimeKey, MultibandTile> item : merged.toJavaRDD().collect()) {
+            assertEquals(2, item._2.bandCount());
+            assertEquals(-3, item._2.band(0).get(0, 0));
+            assertEquals(-5, item._2.band(1).get(0, 0));
+        }
     }
 
     @Test
@@ -205,6 +411,27 @@ public class TestOpenEOProcesses {
         TileLayerMetadata<SpaceTimeKey> metadata = new TileLayerMetadata<>(m.cellType(), m.layout(), m.extent(),m.crs(), updatedKeyBounds);
 
         return (ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>>) new ContextRDD(spacetimeDataCube.rdd(), metadata);
+    }
+
+    static ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> buildSpatioTemporalDataCube(List<Tile> tiles, List<String> dates) {
+        ContextRDD<SpatialKey, MultibandTile, TileLayerMetadata<SpatialKey>> cubeXYB = (ContextRDD<SpatialKey, MultibandTile, TileLayerMetadata<SpatialKey>>) TileLayerRDDBuilders$.MODULE$.createMultibandTileLayerRDD(
+                SparkContext.getOrCreate(),
+                new ArrayMultibandTile((Tile[]) tiles.toArray()),
+                new TileLayout(1, 1, ((Integer) tiles.get(0).cols()), ((Integer) tiles.get(0).rows()))
+        );
+        List<ZonedDateTime> times = dates.stream().map(ZonedDateTime::parse).collect(Collectors.toList());
+        JavaPairRDD<SpaceTimeKey, MultibandTile> cubeXYTB = JavaPairRDD$.MODULE$.fromJavaRDD(cubeXYB.toJavaRDD()).flatMapToPair(pair -> {
+            return times.stream().map(time ->
+                    Tuple2.apply(SpaceTimeKey.apply(pair._1, TemporalKey.apply(time)), pair._2)
+            ).iterator();
+        });
+        TileLayerMetadata<SpatialKey> md = cubeXYB.metadata();
+        Bounds<SpatialKey> bounds = md.bounds();
+        SpaceTimeKey minKey = SpaceTimeKey.apply(bounds.get().minKey(), TemporalKey.apply(times.get(0)));
+        SpaceTimeKey maxKey = SpaceTimeKey.apply(bounds.get().maxKey(), TemporalKey.apply(times.get(times.size() - 1)));
+        TileLayerMetadata<SpaceTimeKey> metadata = new TileLayerMetadata<>(md.cellType(), md.layout(), md.extent(), md.crs(), new KeyBounds<SpaceTimeKey>(minKey, maxKey));
+
+        return (ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>>) new ContextRDD(cubeXYTB.rdd(), metadata);
     }
 
 

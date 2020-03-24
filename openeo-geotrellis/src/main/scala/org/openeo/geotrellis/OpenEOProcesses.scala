@@ -116,26 +116,43 @@ class OpenEOProcesses extends Serializable {
     ContextRDD(joinRdd, part.bounds)
   }
 
+  /**
+   * Get band count used in RDD (each tile in RDD should have same band count)
+   */
+  def RDDBandCount[K](cube: MultibandTileLayerRDD[K]): Int = {
+    val counts = cube.map({ case (k, t) => t.bandCount }).distinct().collect()
+    if (counts.length != 1) {
+      throw new IllegalArgumentException("Cube doesn't have single bands count across tiles: %s".format(counts.mkString(", ")))
+    }
+    counts(0)
+  }
+
   def mergeCubes(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey], operator:String): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    val leftBandCount = RDDBandCount(leftCube)
+    val rightBandCount = RDDBandCount(rightCube)
     val joined = outerJoin(leftCube,rightCube)
     val updatedMetadata: TileLayerMetadata[SpaceTimeKey] = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(rightCube.metadata.extent))
+
     if(operator==null) {
-      new ContextRDD(joined.mapValues({case (l,r) => MultibandTile(l.getOrElse(MultibandTile()).bands++r.getOrElse(MultibandTile()).bands)}),updatedMetadata)
+      // Concatenation
+      new ContextRDD(joined.mapValues({
+        case (None, Some(r)) => MultibandTile(Vector.fill(leftBandCount)(ArrayTile.empty(r.cellType, r.cols, r.rows)) ++ r.bands)
+        case (Some(l), None) => MultibandTile(l.bands ++ Vector.fill(leftBandCount)(ArrayTile.empty(l.cellType, l.cols, l.rows)))
+        case (Some(l), Some(r)) => MultibandTile(l.bands ++ r.bands)
+      }), updatedMetadata)
     }else{
+      // Pairwise merging of bands.
       //in theory we should be able to reuse the OpenEOProcessScriptBuilder instead of using a string.
       //val binaryOp: Seq[Tile] => Seq[Tile] = operator.generateFunction()
       val binaryOp = tileBinaryOp.getOrElse(operator, throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, tileBinaryOp.keys.toString())))
+      if (leftBandCount != rightBandCount) {
+        throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(leftBandCount, rightBandCount))
+      }
       new ContextRDD(joined.mapValues({case (l,r) =>
         if(r.isEmpty) l.get
         else if(l.isEmpty) r.get
-        else{
-          if(l.get.bandCount != r.get.bandCount) {
-            throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.get.bandCount,r.get.bandCount) )
-          }else{
-            MultibandTile(l.get.bands.zip(r.get.bands).map(t=>binaryOp.apply(Seq(t._1, t._2))))
-          }
-        }
-      }),updatedMetadata)
+        else MultibandTile(l.get.bands.zip(r.get.bands).map(t => binaryOp.apply(Seq(t._1, t._2))))
+      }), updatedMetadata)
     }
 
   }
