@@ -2,12 +2,22 @@ package org.openeo
 
 import java.time.{Duration, Instant}
 
-package object geotrellis {
-  def time[R](action: => R): (R, Duration) = {
-    val start = Instant.now()
-    val result = action
-    val end = Instant.now()
+import org.slf4j.Logger
 
-    (result, Duration.between(start, end))
+package object geotrellis {
+  def logTiming[R](context: String)(action: => R)(implicit logger: Logger): R = {
+    if (logger.isDebugEnabled()) {
+      val start = Instant.now()
+      logger.debug(s"$context: start")
+
+      try
+        action
+      finally {
+        val end = Instant.now()
+        val elapsed = Duration.between(start, end)
+
+        logger.debug(s"$context: end, elapsed $elapsed")
+      }
+    } else action
   }
 }

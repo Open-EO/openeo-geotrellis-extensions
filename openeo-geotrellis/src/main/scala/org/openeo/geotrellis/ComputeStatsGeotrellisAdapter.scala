@@ -1,5 +1,6 @@
 package org.openeo.geotrellis
 
+import java.io.File
 import java.net.{MalformedURLException, URL}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -22,7 +23,7 @@ import org.apache.spark.rdd.RDD
 import org.geotools.data.Query
 import org.geotools.data.shapefile.ShapefileDataStore
 import org.geotools.data.simple.SimpleFeatureIterator
-import org.slf4j.LoggerFactory
+import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.JavaConverters._
 import scala.io.Source
@@ -32,7 +33,9 @@ object ComputeStatsGeotrellisAdapter {
   private type JMap[K, V] = java.util.Map[K, V]
   private type JList[T] = java.util.List[T]
 
-  private val logger = LoggerFactory.getLogger(classOf[ComputeStatsGeotrellisAdapter])
+  private type MultibandMeans = Seq[StatsMeanResult]
+
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[ComputeStatsGeotrellisAdapter])
 
   // OpenEO doesn't return physical values
   private val noScaling = 1.0
@@ -110,16 +113,28 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     statisticsCollector.results
   }
 
-  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], vector_file: String, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
-    val (result, duration) = time {
+  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], vector_file: String, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] =
+    logTiming(s"compute_average_timeseries_from_datacube(datacube, $vector_file, $from_date, $to_date, $band_index)") {
       val (polygons, crs) = projectedPolygons(vector_file)
       compute_average_timeseries_from_datacube(datacube, polygons, crs, from_date, to_date, band_index)
     }
 
-    if (logger.isDebugEnabled) logger.debug(s"compute_average_timeseries_from_datacube took $duration to compute ${result.size()} results")
+  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], vector_file: String, from_date: String, to_date: String, band_index: Int, output_file: String): Unit =
+    logTiming(s"compute_average_timeseries_from_datacube(datacube, $vector_file, $from_date, $to_date, $band_index, $output_file)") {
+      val (polygons, crs) = projectedPolygons(vector_file)
 
-    result
-  }
+      val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
+
+      val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
+      val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
+
+      val statisticsWriter = new MultibandStatisticsWriter(new File(output_file))
+
+      try
+        computeStatsGeotrellis.computeAverageTimeSeries(datacube, polygons, crs, startDate, endDate, statisticsWriter, unusedCancellationContext, sc)
+      finally
+        statisticsWriter.close()
+    }
 
   private def projectedPolygons(vector_file: String): (Array[MultiPolygon], CRS) = {
     val vectorUrl = try {
@@ -189,12 +204,11 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
       try {
         asMultiPolygons(geoJson.parseGeoJson[Geometry]())
       } catch {
-        case _: DecodingFailure => {
+        case _: DecodingFailure =>
           val featureCollection = geoJson.parseGeoJson[JsonFeatureCollection]()
           featureCollection.getAllGeometries()
             .flatMap(asMultiPolygons)
             .toArray
-        }
       }
     } finally src.close()
 
@@ -398,6 +412,40 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     }
 
     override def onCompleted(): Unit = ()
+  }
+
+  private class MultibandStatisticsWriter(outputFile: File) extends StatisticsCallback[MultibandMeans] with AutoCloseable {
+    import com.fasterxml.jackson.databind.ObjectMapper
+    import com.fasterxml.jackson.core.JsonEncoding.UTF8
+
+    private val jsonGenerator = (new ObjectMapper).getFactory.createGenerator(outputFile, UTF8)
+
+    jsonGenerator.synchronized {
+      jsonGenerator.writeStartObject()
+      jsonGenerator.flush()
+    }
+
+    override def onComputed(date: ZonedDateTime, polygonalMultibandMeans: Seq[MultibandMeans]): Unit =
+      jsonGenerator.synchronized {
+        jsonGenerator.writeArrayFieldStart(isoFormat(date))
+
+        for (polygon <- polygonalMultibandMeans) {
+          jsonGenerator.writeStartArray()
+          for (bandMean <- polygon) jsonGenerator.writeNumber(bandMean.getAverage)
+          jsonGenerator.writeEndArray()
+        }
+
+        jsonGenerator.writeEndArray()
+        jsonGenerator.flush()
+      }
+
+    override def onCompleted(): Unit =
+      jsonGenerator.synchronized {
+        jsonGenerator.writeEndObject()
+        jsonGenerator.flush()
+      }
+
+    override def close(): Unit = jsonGenerator.close()
   }
 
   private class HistogramsCollector extends StatisticsCallback[Histogram[Double]] {

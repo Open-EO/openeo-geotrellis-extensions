@@ -272,6 +272,56 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   }
 
   @Test
+  def compute_average_timeseries_on_datacube_to_json_file(): Unit = {
+    import java.nio.file.Files
+    import scala.io.{Codec, Source}
+    import _root_.io.circe.parser.decode
+    import cats.syntax.either._
+
+    val vector_file = "/data/users/Public/vdboschj/EP-3025/BELCAM_fields_2017_winter_wheat_4326_non_overlapping.shp"
+    val bbox = Extent(xmin = 2.63388, ymin = 50.2939, xmax = 5.39269, ymax = 51.2592)
+
+    val from_date = "2018-06-01T00:00:00Z"
+    val to_date = "2018-06-11T00:00:00Z"
+
+    val datacube: MultibandTileLayerRDD[SpaceTimeKey] = accumuloDataCube(
+      layer = "PROBAV_L3_S10_TOC_NDVI_333M_V2",
+      minDateString = from_date,
+      maxDateString = to_date,
+      bbox,
+      srs = "EPSG:4326"
+    )
+
+    val tempFile = Files.createTempFile("timeseries-", ".json")
+
+    try {
+      computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
+        datacube,
+        vector_file,
+        from_date,
+        to_date,
+        band_index = 0,
+        output_file = tempFile.toString
+      )
+
+      val json = {
+        val source = Source.fromFile(tempFile.toFile)(Codec.UTF8)
+        try source.mkString
+        finally source.close()
+      }
+
+      val results = decode[Map[String, Seq[Seq[Double]]]](json).valueOr(throw _)
+
+      val secondDayResults = results("2018-06-11T00:00:00Z")
+
+      assertEquals(61, secondDayResults.size)
+
+      val singleBandMeans = secondDayResults.flatten
+      assertTrue(singleBandMeans.nonEmpty)
+    } finally Files.delete(tempFile)
+  }
+
+  @Test
   def shapefile_ArrayIndexOutOfBoundsException(): Unit = {
     accumuloPyramidFactory.setSplitRanges(true)
 
