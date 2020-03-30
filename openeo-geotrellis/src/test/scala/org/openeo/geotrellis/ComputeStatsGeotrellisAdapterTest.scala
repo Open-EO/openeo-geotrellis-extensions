@@ -278,8 +278,8 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     import _root_.io.circe.parser.decode
     import cats.syntax.either._
 
-    val vector_file = "/data/users/Public/vdboschj/EP-3025/BELCAM_fields_2017_winter_wheat_4326_non_overlapping.shp"
-    val bbox = Extent(xmin = 2.63388, ymin = 50.2939, xmax = 5.39269, ymax = 51.2592)
+    val vector_file = this.getClass.getResource("/org/openeo/geotrellis/minimallyOverlappingGeometryCollection.json").getPath
+    val bbox = Extent(xmin = 3.248235121238894, ymin = 50.9753557675801, xmax = 3.256396825072918, ymax = 50.98003212949561)
 
     val from_date = "2018-06-01T00:00:00Z"
     val to_date = "2018-06-11T00:00:00Z"
@@ -314,7 +314,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
 
       val secondDayResults = results("2018-06-11T00:00:00Z")
 
-      assertEquals(61, secondDayResults.size)
+      assertEquals(2, secondDayResults.size)
 
       val singleBandMeans = secondDayResults.flatten
       assertTrue(singleBandMeans.nonEmpty)

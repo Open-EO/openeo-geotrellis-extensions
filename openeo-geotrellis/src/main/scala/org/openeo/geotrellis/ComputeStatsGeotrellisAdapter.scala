@@ -431,7 +431,11 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
 
         for (polygon <- polygonalMultibandMeans) {
           jsonGenerator.writeStartArray()
-          for (bandMean <- polygon) jsonGenerator.writeNumber(bandMean.getAverage)
+
+          for (bandMean <- polygon)
+            if (bandMean.getAverage.isNaN) jsonGenerator.writeNull()
+            else jsonGenerator.writeNumber(bandMean.getAverage)
+
           jsonGenerator.writeEndArray()
         }
 
