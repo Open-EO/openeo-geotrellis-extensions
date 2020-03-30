@@ -101,6 +101,19 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     compute_average_timeseries_from_datacube(datacube, polygons, crs, from_date, to_date, band_index)
   }
 
+  /**
+   * Writes means to an UTF-8 encoded JSON file.
+   */
+  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String, from_date: String, to_date: String, band_index: Int, output_file: String): Unit = {
+    val polygons = polygon_wkts.asScala
+      .map(parsePolygonWkt)
+      .toArray
+
+    val crs: CRS = CRS.fromName(polygons_srs)
+
+    compute_average_timeseries_from_datacube(datacube, polygons, crs, from_date, to_date, band_index, output_file)
+  }
+
   private def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
     val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
 
@@ -119,22 +132,28 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
       compute_average_timeseries_from_datacube(datacube, polygons, crs, from_date, to_date, band_index)
     }
 
+  /**
+   * Writes means to an UTF-8 encoded JSON file.
+   */
   def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], vector_file: String, from_date: String, to_date: String, band_index: Int, output_file: String): Unit =
     logTiming(s"compute_average_timeseries_from_datacube(datacube, $vector_file, $from_date, $to_date, $band_index, $output_file)") {
       val (polygons, crs) = projectedPolygons(vector_file)
-
-      val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
-
-      val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
-      val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
-
-      val statisticsWriter = new MultibandStatisticsWriter(new File(output_file))
-
-      try
-        computeStatsGeotrellis.computeAverageTimeSeries(datacube, polygons, crs, startDate, endDate, statisticsWriter, unusedCancellationContext, sc)
-      finally
-        statisticsWriter.close()
+      compute_average_timeseries_from_datacube(datacube, polygons, crs, from_date, to_date, band_index, output_file)
     }
+
+  private def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, from_date: String, to_date: String, band_index: Int, output_file: String): Unit = {
+    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
+
+    val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
+    val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
+
+    val statisticsWriter = new MultibandStatisticsWriter(new File(output_file))
+
+    try
+      computeStatsGeotrellis.computeAverageTimeSeries(datacube, polygons, crs, startDate, endDate, statisticsWriter, unusedCancellationContext, sc)
+    finally
+      statisticsWriter.close()
+  }
 
   private def projectedPolygons(vector_file: String): (Array[MultiPolygon], CRS) = {
     val vectorUrl = try {
