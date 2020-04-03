@@ -6,7 +6,7 @@ import java.time.{LocalDate, ZonedDateTime}
 
 import org.openeo.geotrellisaccumulo.SpaceTimeByMonthPartitioner
 import geotrellis.layer._
-import geotrellis.proj4.{CRS, WebMercator}
+import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource}
 import geotrellis.raster.{MultibandTile, RasterSource}
 import geotrellis.spark._
@@ -89,9 +89,9 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
 
-    val projectedExtent = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
-    val from = ZonedDateTime.parse(from_date)
-    val to = ZonedDateTime.parse(to_date)
+    val projectedExtent = if (bbox != null) ProjectedExtent(bbox, CRS.fromName(bbox_srs)) else ProjectedExtent(LatLng.worldExtent, LatLng)
+    val from = if (from_date != null) ZonedDateTime.parse(from_date) else null
+    val to = if (to_date != null) ZonedDateTime.parse(to_date) else null
 
     pyramid(projectedExtent, from, to).levels.toSeq
       .sortBy { case (zoom, _) => zoom }
@@ -113,14 +113,18 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
         val overlaps = rasterSource.extent intersects reprojectedBoundingBox.extent
 
         // FIXME: this is also done in the driver while a RasterSource carries a URI so an executor can do it himself
-        val withinDateRange = !(date isBefore from) && !(date isAfter to)
+        val withinDateRange =
+          if (from == null && to == null) true
+          else if (from == null) !(date isAfter to)
+          else if (to == null) !(date isBefore from)
+          else !(date isBefore from) && !(date isAfter to)
 
         overlaps && withinDateRange
       }
 
     val layout = ZoomedLayoutScheme(targetCrs).levelForZoom(zoom).layout
 
-    val bounds = {
+    lazy val bounds = {
       val spatialBounds = layout.mapTransform.extentToBounds(reprojectedBoundingBox.extent)
       val KeyBounds(SpatialKey(minCol, minRow), SpatialKey(maxCol, maxRow)) = KeyBounds(spatialBounds)
       KeyBounds(SpaceTimeKey(minCol, minRow, from), SpaceTimeKey(maxCol, maxRow, to))
@@ -133,7 +137,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
   private def rasterSourceRDD(
     rasterSources: Seq[RasterSource],
     layout: LayoutDefinition,
-    bounds: KeyBounds[SpaceTimeKey]
+    bounds: => KeyBounds[SpaceTimeKey]
   )(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     val date = this.date
     val keyExtractor = TemporalKeyExtractor.fromPath { case GeoTiffPath(value) => deriveDate(value, date) }
@@ -143,6 +147,12 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
     val layerMetadata = summary.toTileLayerMetadata(layout, keyExtractor.getKey)
 
     // FIXME: supply our own RasterSummary? (use bounds)
-    RasterSourceRDD.tiledLayerRDD(sources, layout, keyExtractor, partitioner = Some(SpacePartitioner(layerMetadata.bounds)))
+    RasterSourceRDD.tiledLayerRDD(
+      sources,
+      layout,
+      keyExtractor,
+      rasterSummary = Some(summary),
+      partitioner = Some(SpacePartitioner(layerMetadata.bounds))
+    )
   }
 }
