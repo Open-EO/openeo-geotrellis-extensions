@@ -540,7 +540,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val processes = new OpenEOProcesses()
     val ndviDataCube = processes.mapBandsGeneric(selectedBands, ndviProcess)//.withContext(_.mapValues(_.mapDouble(0)(pixel => 0.1)))
 
-    val mask = accumuloDataCube("S2_SCENECLASSIFICATION_PYRAMID_20190624", minDateString, maxDateString, polygons.extent, "EPSG:4326")
+    val mask = accumuloDataCube("S2_SCENECLASSIFICATION_PYRAMID_20200407", minDateString, maxDateString, polygons.extent, "EPSG:4326")
     val binaryMask = mask.withContext(_.mapValues( _.map(0)(pixel => if ( pixel < 5) 1 else 0)))
 
     print(binaryMask.partitioner)

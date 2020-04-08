@@ -85,7 +85,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1)))
 
-    val mask = accumuloDataCube("S2_SCENECLASSIFICATION_PYRAMID_20190624", date, date, extent, "EPSG:4326")
+    val mask = accumuloDataCube("S2_SCENECLASSIFICATION_PYRAMID_20200407", date, date, extent, "EPSG:4326")
     val binaryMask = mask.withContext(_.mapValues( _.map(0)(pixel => if ( pixel == 5) 0 else 1)))
 
     print(binaryMask.partitioner)
