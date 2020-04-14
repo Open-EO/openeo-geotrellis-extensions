@@ -122,7 +122,7 @@ class OpenEOProcesses extends Serializable {
   def RDDBandCount[K](cube: MultibandTileLayerRDD[K]): Int = {
     val counts = cube.map({ case (k, t) => t.bandCount }).distinct().collect()
     if (counts.length != 1) {
-      throw new IllegalArgumentException("Cube doesn't have single bands count across tiles: %s".format(counts.mkString(", ")))
+      throw new IllegalArgumentException("Cube doesn't have single consistent band count across tiles: [%s]".format(counts.mkString(", ")))
     }
     counts(0)
   }

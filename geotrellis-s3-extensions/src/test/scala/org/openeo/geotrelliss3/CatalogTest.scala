@@ -4,7 +4,7 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
 
-import org.junit.Test
+import org.junit.{Ignore, Test}
 
 class CatalogTest {
 
@@ -28,6 +28,7 @@ class CatalogTest {
     assert(results.length == count)
   }
 
+  @Ignore
   @Test
   def testQueryTileIds() {
     val tileIds = Seq("39TVN", "39TWN")
