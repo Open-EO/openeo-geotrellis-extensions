@@ -179,6 +179,29 @@ class PyramidFactoryTest {
     GeoTiff(tile, extent, layer.metadata.crs).write(path)
   }
 
+  @Test
+  def fromDiskIsLazy(): Unit = {
+    val invalidPathPyramidFactory = PyramidFactory.from_disk(
+      glob_pattern = "/does/not/exist/*.tif",
+      date_regex = raw"S2._(\d{4})(\d{2})(\d{2}).*_FAPAR_10M_V.*tif"
+    ) // succeeds
+
+    val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
+
+    val from = ZonedDateTime.of(LocalDate.of(2019, 4, 24), MIDNIGHT, UTC)
+    val to = from
+
+    val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
+
+    try {
+      invalidPathPyramidFactory.pyramid_seq(boundingBox.extent, srs,
+        ISO_OFFSET_DATE_TIME format from, ISO_OFFSET_DATE_TIME format to)
+      fail()
+    } catch {
+      case e: IllegalStateException if e.getMessage == "no raster sources found" => // expected failure
+    }
+  }
+
   @Ignore("not a real test but trying to pass a custom S3 client to a GeoTiffRasterSource")
   @Test
   def anonymousInnerClass(): Unit = {
