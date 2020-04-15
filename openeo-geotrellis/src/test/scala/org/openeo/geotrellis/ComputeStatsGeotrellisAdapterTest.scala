@@ -400,7 +400,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     //srs = "EPSG:4326";
 
 
-    val datacube = accumuloDataCube("S2_FAPAR_PYRAMID_20190708", minDateString, maxDateString,  polygons.extent,  "EPSG:4326")
+    val datacube = accumuloDataCube("S2_FAPAR_PYRAMID_20200408", minDateString, maxDateString,  polygons.extent,  "EPSG:4326")
 
     assertMedianComputedCorrectly(datacube, minDateString, minDate, maxDate, polygons)
   }
@@ -443,7 +443,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val srs = "EPSG:4326"
     val band = 0
 
-    val datacube = accumuloDataCube("S2_FAPAR_PYRAMID_20190708", minDateString, maxDateString, polygons.extent, srs)
+    val datacube = accumuloDataCube("S2_FAPAR_PYRAMID_20200408", minDateString, maxDateString, polygons.extent, srs)
 
     val stats = computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
       datacube,
@@ -486,7 +486,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val srs = "EPSG:4326"
     val band = 0
 
-    val datacube = accumuloDataCube("S2_FAPAR_PYRAMID_20190708", minDateString, maxDateString, polygons.extent, srs)
+    val datacube = accumuloDataCube("S2_FAPAR_PYRAMID_20200408", minDateString, maxDateString, polygons.extent, srs)
 
     val stats = computeStatsGeotrellisAdapter.compute_histograms_time_series_from_datacube(
       datacube,
