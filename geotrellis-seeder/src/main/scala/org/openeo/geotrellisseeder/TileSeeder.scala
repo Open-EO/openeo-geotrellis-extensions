@@ -107,8 +107,8 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
     if (maskValues.nonEmpty) {
       val response = ClientBuilder.newClient()
-        .target("http://es1.vgt.vito.be:9200/product_catalog_prod/_search")
-        .queryParam("q", s"properties.identifier:S2*MSIL1C_${date.format(ofPattern("yyyyMMdd"))}*%20AND%20properties.processing_status.status:TOO_CLOUDY")
+        .target("http://es-apps-01.vgt.vito.be:9200/product_catalog_prod/_search")
+        .queryParam("q", s"properties.identifier:S2*MSIL*_${date.format(ofPattern("yyyyMMdd"))}*%20AND%20properties.processing_status.status:TOO_CLOUDY")
         .queryParam("size", "10000")
         .request()
         .get()
