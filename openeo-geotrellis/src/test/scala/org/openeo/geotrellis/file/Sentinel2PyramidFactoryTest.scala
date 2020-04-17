@@ -4,6 +4,7 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZonedDateTime}
+import java.util.Collections.singletonList
 import java.util.zip.Deflater.BEST_COMPRESSION
 
 import geotrellis.proj4.CRS
@@ -65,7 +66,7 @@ class Sentinel2PyramidFactoryTest {
               .write(path)
         }
 
-        // writeGeoTiff("/tmp/Sentinel2FileLayerProvider_cropped_openeo.tif")
+        // writeGeoTiff("/tmp/Sentinel2PyramidFactory_cropped_openeo.tif")
 
         val polygon = bbox.reproject(spatialLayer.metadata.crs).toPolygon()
 
@@ -78,8 +79,8 @@ class Sentinel2PyramidFactoryTest {
     }
 
     private def sceneClassificationV200PyramidFactory = new Sentinel2PyramidFactory(
-        oscarsCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
-        oscarsLinkTitle = "SCENECLASSIFICATION_20M",
-        rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2"
+        oscarsCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+        oscarsLinkTitles = singletonList("SCENECLASSIFICATION_20M"),
+        rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"
     )
 }
