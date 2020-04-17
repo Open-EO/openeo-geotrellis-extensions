@@ -42,7 +42,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
   def renderPng(path: String, productType: String, dateStr: String, colorMap: Option[String] = None, bands: Option[Array[Band]] = None,
                 productGlob: Option[String] = None, maskValues: Array[Int] = Array(), permissions: Option[String] = None,
-                spatialKey: Option[SpatialKey] = None)
+                spatialKey: Option[SpatialKey] = None, tooCloudyFile: Option[String] = None)
                (implicit sc: SparkContext): Unit = {
 
     val date = LocalDate.parse(dateStr.substring(0, 10))
@@ -90,7 +90,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
         .foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel))
     } else if (bands.isDefined) {
       getMultibandRDD(sourcePaths.get, date, bands.get.map(_.name), spatialKey)
-        .fullOuterJoin(getTooCloudyRdd(date, maskValues))
+        .fullOuterJoin(getTooCloudyRdd(date, maskValues, tooCloudyFile))
         .repartition(getPartitions)
         .foreach(renderMultibandRDD(path, dateStr, bands.get, zoomLevel, maskValues))
     } else {
@@ -102,25 +102,33 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     permissions.foreach(setFilePermissions(path, dateStr, _))
   }
 
-  private def getTooCloudyRdd(date: LocalDate, maskValues: Array[Int])(implicit sc: SparkContext, layout: LayoutDefinition) = {
+  private def getTooCloudyRdd(date: LocalDate, maskValues: Array[Int], tooCloudyFile: Option[String] = None)(implicit sc: SparkContext, layout: LayoutDefinition) = {
     var result = sc.emptyRDD[(SpatialKey, Tile)]
 
     if (maskValues.nonEmpty) {
-      val response = ClientBuilder.newClient()
-        .target("http://es1.vgt.vito.be:9200/product_catalog_prod/_search")
-        .queryParam("q", s"properties.identifier:S2*MSIL*_${date.format(ofPattern("yyyyMMdd"))}*%20AND%20properties.processing_status.status:TOO_CLOUDY")
-        .queryParam("size", "10000")
-        .request()
-        .get()
+      def getJson = {
+        tooCloudyFile
+          .map(file => new ObjectMapper().readTree(new File(file)))
+          .orElse {
+            val response = ClientBuilder.newClient()
+              .target("http://es1.vgt.vito.be:9200/product_catalog_prod/_search")
+              .queryParam("q", s"properties.identifier:S2*MSIL*_${date.format(ofPattern("yyyyMMdd"))}*%20AND%20properties.processing_status.status:TOO_CLOUDY")
+              .queryParam("size", "10000")
+              .request()
+              .get()
 
-      if (response.getStatus == 200) {
-        val json = new ObjectMapper().readTree(response.readEntity(classOf[String]))
+            if (response.getStatus == 200) {
+              Some(new ObjectMapper().readTree(response.readEntity(classOf[String])))
+            } else None
+          }
+      }
 
-        val geometries = json.get("hits").get("hits").elements().asScala
-          .map(hit => WKT.read(hit.get("_source").get("properties").get("footprint").textValue()))
-          .map(_.reproject(LatLng, WebMercator))
+      val geometries = getJson.map(json => json.get("hits").get("hits").elements().asScala
+        .map(hit => WKT.read(hit.get("_source").get("properties").get("footprint").textValue()))
+        .map(_.reproject(LatLng, WebMercator)))
 
-        result = sc.parallelize(geometries.toSeq)
+      if (geometries.isDefined) {
+        result = sc.parallelize(geometries.get.toSeq)
           .flatMap(g => layout.mapTransform.keysForGeometry(g).map(k => (k, g)))
           .groupByKey()
           .map { case (key, geoms) =>
@@ -497,6 +505,7 @@ object TileSeeder {
       val productGlob = jCommanderArgs.productGlob
       val maskValues = jCommanderArgs.maskValues
       val permissions = jCommanderArgs.setPermissions
+      val tooCloudyFile = jCommanderArgs.tooCloudyFile
       val verbose = jCommanderArgs.verbose
 
       val seeder = new TileSeeder(zoomLevel, verbose)
@@ -508,7 +517,7 @@ object TileSeeder {
             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
             .set("spark.kryoserializer.buffer.max", "1024m"))
 
-      seeder.renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions)
+      seeder.renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, tooCloudyFile = tooCloudyFile)
 
       sc.stop()
     }

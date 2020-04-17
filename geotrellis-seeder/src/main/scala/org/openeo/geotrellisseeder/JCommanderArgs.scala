@@ -53,6 +53,9 @@ class JCommanderArgs {
   @Parameter(names = Array("--setPermissions"), required = false, description = "set permissions", converter = classOf[StringOptionConverter])
   var setPermissions: Option[String] = None
 
+  @Parameter(names = Array("--tooCloudyFile"), required = false, description= "file with too cloudy products", converter = classOf[StringOptionConverter])
+  var tooCloudyFile: Option[String] = None
+
   @Parameter(names = Array("--verbose", "-v"), required = false, description = "print debug logs")
   var verbose: Boolean = false
 

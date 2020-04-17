@@ -22,7 +22,7 @@ public class TileSeederRunner {
             colorMap = Option.apply(args[3]);
         }
 
-        Option<String> productGlob = Option.empty();
+        Option<String> productGlob = Option.apply("/data/MTDA/TERRASCOPE_Sentinel2/FCOVER_V2/#DATE#/S2*_FCOVER_V200/10M/S2*_FCOVER_10M_V200.tif");
         if (args.length > 5)
             productGlob = Option.apply(args[5]);
 
@@ -46,8 +46,8 @@ public class TileSeederRunner {
                             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
                             .set("spark.kryoserializer.buffer.max", "1024m"));
 
-            new TileSeeder(13, false, Option.empty())
-                    .renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, Option.empty(), sc);
+            new TileSeeder(5, false, Option.empty())
+                    .renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, Option.empty(), Option.empty(), sc);
         }
 
         ml.logMem();
