@@ -80,6 +80,6 @@ class Sentinel2PyramidFactoryTest {
     private def sceneClassificationV200PyramidFactory = new Sentinel2PyramidFactory(
         oscarsCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
         oscarsLinkTitle = "SCENECLASSIFICATION_20M",
-        rootPath = "/data/MTDA_DEV/CGS_S2/FAPAR_V2"
+        rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2"
     )
 }
