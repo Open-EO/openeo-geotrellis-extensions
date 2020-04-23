@@ -33,7 +33,7 @@ class Sentinel1CoherencePyramidFactory extends AbstractPyramidFactory[Sentinel1B
   override protected def overlappingFilePathTemplates(at: ZonedDateTime, bbox: ProjectedExtent): Iterable[FilePathTemplate] = {
     val (year, month, day) = (at.getYear, at.getMonthValue, at.getDayOfMonth)
 
-    val vvGlob = new Path(f"file:/data/MTDA_DEV/CGS_S1/CGS_S1_SLC_COHERENCE/$year/$month%02d/$day%02d/*/*_VV.tif")
+    val vvGlob = new Path(f"file:/data/MTDA/TERRASCOPE_Sentinel1/SLC_COHERENCE/$year/$month%02d/$day%02d/*/*_VV.tif")
 
     val attributeStore = FileIMGeoTiffAttributeStore(at.toString, vvGlob)
 
