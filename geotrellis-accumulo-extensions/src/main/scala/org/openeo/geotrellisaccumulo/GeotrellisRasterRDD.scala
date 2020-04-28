@@ -47,7 +47,7 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
       val startKey = geotrellisaccumulo.decodeIndexKey(region)
       val endKey = geotrellisaccumulo.decodeIndexKey(region+1)
       // assert(region+1==geotrellisaccumulo.SpaceTimeByMonthPartitioner.toIndex(endKey))
-      println("Region: " + region + " date: " + DateTimeFormatter.BASIC_ISO_DATE.format(startKey.time) + " enddate: " + DateTimeFormatter.BASIC_ISO_DATE.format(endKey.time))
+      // println("Region: " + region + " date: " + DateTimeFormatter.BASIC_ISO_DATE.format(startKey.time) + " enddate: " + DateTimeFormatter.BASIC_ISO_DATE.format(endKey.time))
 
       var newSplit:BatchInputSplit = null
       for(partition <- myPartitions.drop(currentStart)) {
@@ -67,14 +67,14 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
               indices += (rangeIdx + ", ")
               rangesForRegion = rangesForRegion :+ clippedRange
             }else{
-              println("No overlap!!")
+              // println("No overlap!!")
             }
 
           }
           rangeIdx += 1
         }
         if(indices.length>0){
-          println("Partition: " + partition.index + " idx: " + indices)
+          // println("Partition: " + partition.index + " idx: " + indices)
           currentStart = partition.index
           if(newSplit==null){
             newSplit = new BatchInputSplit(inputSplit.getTable,inputSplit.getTableId,new util.ArrayList(rangesForRegion.asJavaCollection),inputSplit.getLocations)
