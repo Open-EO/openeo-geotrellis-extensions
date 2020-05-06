@@ -383,7 +383,7 @@ public class TestOpenEOProcesses {
         Tile tile10 = new ByteConstantTile((byte)10,256,256, (ByteCells) CellType$.MODULE$.fromName("int8raw"));
         Tile tile5 = new ByteConstantTile((byte)5,256,256, (ByteCells) CellType$.MODULE$.fromName("int8raw"));
         RDD<Tuple2<SpatialKey, MultibandTile>> datacube = TileLayerRDDBuilders$.MODULE$.createMultibandTileLayerRDD(SparkContext.getOrCreate(), new ArrayMultibandTile(new Tile[]{tile10,tile5}), new TileLayout(1, 1, 256, 256));
-        new OpenEOProcesses().write_geotiffs(datacube,"catalog",14);
+        new OpenEOProcesses().write_geotiffs(datacube,"tmpcatalog",14);
     }
 
     static ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> tileToSpaceTimeDataCube(Tile zeroTile) {
