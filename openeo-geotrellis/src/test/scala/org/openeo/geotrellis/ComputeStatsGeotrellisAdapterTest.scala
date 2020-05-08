@@ -6,7 +6,7 @@ import java.util
 
 import be.vito.eodata.model.BandDefinition
 import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, TileLayerMetadata}
-import geotrellis.proj4.{LatLng, WebMercator}
+import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.{ByteCells, ByteConstantTile, DoubleConstantNoDataCellType, MultibandTile}
 import geotrellis.spark._
@@ -30,6 +30,9 @@ import TimeSeriesServiceResponses._
 import TimeSeriesServiceResponses.GeometriesHistograms.Bin
 
 object ComputeStatsGeotrellisAdapterTest {
+  type JMap[K, V] = java.util.Map[K, V]
+  type JList[T] = java.util.List[T]
+
   private var sc: SparkContext = _
 
   @Parameters(name = "PixelThreshold: {0}") def data: java.lang.Iterable[Array[Integer]] = {
@@ -152,6 +155,13 @@ object ComputeStatsGeotrellisAdapterTest {
       |  "coordinates": [[[5.608215013735893, 51.032165152086264], [5.608271547800293, 51.03221788952301], [5.608276702058292, 51.03222293623101], [5.60849596808989, 51.032448502828444], [5.608716500868006, 51.032663757587436], [5.608825832560376, 51.032770514885485], [5.608945000622374, 51.032880067275485], [5.609034654329857, 51.032962466956384], [5.6108271092295565, 51.03200900180982], [5.6108243802523665, 51.032005046553195], [5.610765550277478, 51.031906904685506], [5.610730775512867, 51.03185731710986], [5.610728864439129, 51.03185450621938], [5.61068097777416, 51.031781806466725], [5.610648884176528, 51.0317343801373], [5.610647867072976, 51.03173285113396], [5.61056103219013, 51.031600028841], [5.610464592173136, 51.031620528338046], [5.610108166306372, 51.03169612090491], [5.610099694700648, 51.03169779497791], [5.6098587750999505, 51.031741960985435], [5.609583519929178, 51.03179242194306], [5.6095812925908355, 51.0317928220292], [5.609462795599489, 51.031813670192285], [5.609462557298256, 51.03181371202481], [5.6094265107381105, 51.0318200256364], [5.609420285041724, 51.03182105270213], [5.609335088450095, 51.03183424727698], [5.609264660589062, 51.03184521822665], [5.609258526965428, 51.03184611349288], [5.609158373400448, 51.03185975557609], [5.6091581558557895, 51.03185978513339], [5.609101330081307, 51.0318674864013], [5.6090929559728915, 51.031868511547074], [5.608913831137317, 51.031888110200775], [5.608906493782254, 51.031888830479645], [5.608726551315478, 51.03190448174909], [5.60871912778759, 51.031905044225965], [5.608609468745772, 51.0319121289672], [5.608538666998535, 51.031916736443236], [5.60851084566201, 51.03191739795041], [5.608487750205862, 51.0319169979628], [5.608215013735893, 51.032165152086264]]]
       |}
       """.stripMargin.parseGeoJson[Polygon]()
+
+  def assertEqualTimeseriesStats(expected: Seq[Seq[Double]], actual: JList[JList[Double]]): Unit = {
+    assertEquals("should have same polygon count", expected.length, actual.size())
+    expected.indices.foreach { i =>
+      assertArrayEquals("should have same band stats", expected(i).toArray, actual.get(i).asScala.toArray, 1e-6)
+    }
+  }
 }
 
 @RunWith(classOf[Parameterized])
@@ -173,7 +183,24 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   )
 
   @Test
-  def compute_average_timeseries(): Unit = {
+  def projected_polygons_from_wkt(): Unit = {
+    val pp = ProjectedPolygons.fromWkt(List(polygon1.toWKT()).asJava, "EPSG:4326")
+    assertEquals(1, pp.polygons.length)
+    assertEquals(MultiPolygon(polygon1), pp.polygons(0))
+    assertEquals(CRS.fromEpsgCode(4326), pp.crs)
+  }
+
+  @Test
+  def projected_polygons_from_vector_file(): Unit = {
+    val pp = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath)
+    assertEquals(2, pp.polygons.length)
+    assertEquals(MultiPolygon(polygon1), pp.polygons(0))
+    assertEquals(MultiPolygon(polygon2), pp.polygons(1))
+    assertEquals(CRS.fromEpsgCode(4326), pp.crs)
+  }
+
+  @Test
+  def compute_average_timeseries_on_productid_from_polygons(): Unit = {
     val from = ZonedDateTime.of(LocalDate.of(2019, 1, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC)
     val to = from plusWeeks 1
 
@@ -201,74 +228,54 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     assertTrue(means.exists(mean => !mean.isNaN))
   }
 
-  @Test
-  def compute_average_timeseries_on_datacube(): Unit = {
 
-    val minDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
-    val maxDate = ZonedDateTime.parse("2017-03-10T00:00:00Z")
-
-    val polygons = Seq(polygon1.toWKT(), polygon2.toWKT())
-
+  private def buildCubeRdd(): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
     val tile10 = new ByteConstantTile(10.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))
-    val tile5 = new ByteConstantTile(5.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))
-    //val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, new ArrayMultibandTile(Array[Tile](tile10, tile5)), new TileLayout(1, 1, 256, 256))
-
     val datacube = TestOpenEOProcesses.tileToSpaceTimeDataCube(tile10)
     val polygonExtent = polygon1.extent.combine(polygon2.extent)
-    val updatedMetadata = datacube.metadata.copy(extent = polygonExtent,crs = LatLng,layout=LayoutDefinition(polygonExtent,datacube.metadata.tileLayout))
+    val updatedMetadata = datacube.metadata.copy(
+      extent = polygonExtent,
+      crs = LatLng,
+      layout = LayoutDefinition(polygonExtent, datacube.metadata.tileLayout)
+    )
+    ContextRDD(datacube, updatedMetadata)
+  }
 
+  @Test
+  def compute_average_timeseries_on_datacube_from_polygons(): Unit = {
     val stats = computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
-      ContextRDD(datacube,updatedMetadata),
-      polygons.asJava,
+      buildCubeRdd(),
+      polygon_wkts = Seq(polygon1.toWKT(), polygon2.toWKT()).asJava,
       polygons_srs = "EPSG:4326",
-      from_date = ISO_OFFSET_DATE_TIME format minDate,
-      to_date = ISO_OFFSET_DATE_TIME format maxDate,
+      from_date = "2017-01-01T00:00:00Z",
+      to_date = "2017-03-10T00:00:00Z",
       band_index = 0
-    ).asScala
+    )
+    stats.asScala.foreach(println)
 
-    for ((date, means) <- stats) {
-      println(s"$date: $means")
-    }
-
-    assertFalse(stats.isEmpty)
-
-    val means = stats
-      .flatMap { case (_, dailyMeans) => dailyMeans.asScala }.filter(!_.isEmpty)
-
-    assertTrue(means.exists(mean => !mean.get(0).isNaN))
+    val keys = Seq("2017-01-01T00:00:00Z", "2017-01-15T00:00:00Z", "2017-02-01T00:00:00Z")
+    keys.foreach(k => assertEqualTimeseriesStats(
+      Seq(Seq(10.0, Double.NaN), Seq(10.0, Double.NaN)),
+      stats.get(k)
+    ))
   }
 
   @Test
   def compute_average_timeseries_on_datacube_from_GeoJson_file(): Unit = {
-    val minDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
-    val maxDate = ZonedDateTime.parse("2017-03-10T00:00:00Z")
-
-    val vector_file = getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath
-
-    val tile10 = new ByteConstantTile(10.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))
-
-    val datacube = TestOpenEOProcesses.tileToSpaceTimeDataCube(tile10)
-    val polygonExtent = polygon1.extent.combine(polygon2.extent)
-    val updatedMetadata = datacube.metadata.copy(extent = polygonExtent,crs = LatLng,layout=LayoutDefinition(polygonExtent,datacube.metadata.tileLayout))
-
     val stats = computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
-      ContextRDD(datacube,updatedMetadata),
-      vector_file,
-      from_date = ISO_OFFSET_DATE_TIME format minDate,
-      to_date = ISO_OFFSET_DATE_TIME format maxDate,
+      buildCubeRdd(),
+      vector_file = getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath,
+      from_date = "2017-01-01T00:00:00Z",
+      to_date = "2017-03-10T00:00:00Z",
       band_index = 0
-    ).asScala
+    )
+    stats.asScala.foreach(println)
 
-    for ((date, means) <- stats) {
-      println(s"$date: $means")
-    }
-
-    assertFalse(stats.isEmpty)
-
-    val means = stats
-      .flatMap { case (_, dailyMeans) => dailyMeans.asScala }.filter(!_.isEmpty)
-
-    assertTrue(means.exists(mean => !mean.get(0).isNaN))
+    val keys = Seq("2017-01-01T00:00:00Z", "2017-01-15T00:00:00Z", "2017-02-01T00:00:00Z")
+    keys.foreach(k => assertEqualTimeseriesStats(
+      Seq(Seq(10.0, Double.NaN), Seq(10.0, Double.NaN)),
+      stats.get(k)
+    ))
   }
 
   @Test
@@ -617,41 +624,41 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   }
 
   @Test
-  def compute_median_timeseries_on_datacube(): Unit = {
-
-    val minDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
-    val maxDate = ZonedDateTime.parse("2017-03-10T00:00:00Z")
-
-    val polygons = Seq(polygon1.toWKT(), polygon2.toWKT())
-
-    val tile10 = new ByteConstantTile(10.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))
-    val tile5 = new ByteConstantTile(5.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))
-    //val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, new ArrayMultibandTile(Array[Tile](tile10, tile5)), new TileLayout(1, 1, 256, 256))
-
-    val datacube = TestOpenEOProcesses.tileToSpaceTimeDataCube(tile10)
-    val polygonExtent = polygon1.extent.combine(polygon2.extent)
-    val updatedMetadata = datacube.metadata.copy(extent = polygonExtent,crs = LatLng,layout=LayoutDefinition(polygonExtent,datacube.metadata.tileLayout))
-
+  def compute_median_timeseries_on_datacube_from_polygons(): Unit = {
     val stats = computeStatsGeotrellisAdapter.compute_median_time_series_from_datacube(
-      ContextRDD(datacube,updatedMetadata),
-      polygons.asJava,
+      buildCubeRdd(),
+      polygon_wkts = Seq(polygon1.toWKT(), polygon2.toWKT()).asJava,
       polygons_srs = "EPSG:4326",
-      from_date = ISO_OFFSET_DATE_TIME format minDate,
-      to_date = ISO_OFFSET_DATE_TIME format maxDate,
+      from_date = "2017-01-01T00:00:00Z",
+      to_date = "2017-03-10T00:00:00Z",
       band_index = 0
-    ).asScala
+    )
+    stats.asScala.foreach(println)
 
-    for ((date, medians) <- stats) {
-      println(s"$date: $medians")
-    }
+    val keys = Seq("2017-01-01T00:00:00Z", "2017-01-15T00:00:00Z", "2017-02-01T00:00:00Z")
+    keys.foreach(k => assertEqualTimeseriesStats(
+      Seq(Seq(10.0, Double.NaN), Seq(10.0, Double.NaN)),
+      stats.get(k)
+    ))
+  }
 
-    assertFalse(stats.isEmpty)
 
-    val histogramlist = stats.get("2017-01-01T00:00:00Z")
-    val histogramPoly1 = histogramlist.get.get(0)
-    assertEquals(10.0,histogramPoly1.get(0),0.01)
+  @Test
+  def compute_median_timeseries_on_datacube_from_GeoJson_file(): Unit = {
+    val stats = computeStatsGeotrellisAdapter.compute_median_time_series_from_datacube(
+      buildCubeRdd(),
+      vector_file = getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath,
+      from_date = "2017-01-01T00:00:00Z",
+      to_date = "2017-03-10T00:00:00Z",
+      band_index = 0
+    )
+    stats.asScala.foreach(println)
 
-    //assertTrue(means.exists(mean => !mean.get(0).isNaN))
+    val keys = Seq("2017-01-01T00:00:00Z", "2017-01-15T00:00:00Z", "2017-02-01T00:00:00Z")
+    keys.foreach(k => assertEqualTimeseriesStats(
+      Seq(Seq(10.0, Double.NaN), Seq(10.0, Double.NaN)),
+      stats.get(k)
+    ))
   }
 
   @Test
@@ -716,4 +723,89 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
 
     assertFalse(buckets.isEmpty)
   }
+
+
+  @Test
+  def compute_sd_timeseries_on_datacube_from_polygons(): Unit = {
+    val stats = computeStatsGeotrellisAdapter.compute_sd_time_series_from_datacube(
+      buildCubeRdd(),
+      polygon_wkts = Seq(polygon1.toWKT(), polygon2.toWKT()).asJava,
+      polygons_srs = "EPSG:4326",
+      from_date = "2017-01-01T00:00:00Z",
+      to_date = "2017-03-10T00:00:00Z",
+      band_index = 0
+    )
+    stats.asScala.foreach(println)
+
+    val keys = Seq("2017-01-01T00:00:00Z", "2017-01-15T00:00:00Z", "2017-02-01T00:00:00Z")
+    keys.foreach(k => assertEqualTimeseriesStats(
+      Seq(Seq(0.0, Double.NaN), Seq(0.0, Double.NaN)),
+      stats.get(k)
+    ))
+  }
+
+  @Test
+  def compute_sd_timeseries_on_datacube_from_GeoJson_file(): Unit = {
+    val stats = computeStatsGeotrellisAdapter.compute_sd_time_series_from_datacube(
+      buildCubeRdd(),
+      vector_file = getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath,
+      from_date = "2017-01-01T00:00:00Z",
+      to_date = "2017-03-10T00:00:00Z",
+      band_index = 0
+    )
+    stats.asScala.foreach(println)
+
+    val keys = Seq("2017-01-01T00:00:00Z", "2017-01-15T00:00:00Z", "2017-02-01T00:00:00Z")
+    keys.foreach(k => assertEqualTimeseriesStats(
+      Seq(Seq(0.0, Double.NaN), Seq(0.0, Double.NaN)),
+      stats.get(k)
+    ))
+  }
+
+  @Test
+  def compute_histograms_timeseries_on_datacube_from_polygons(): Unit = {
+    val stats = computeStatsGeotrellisAdapter.compute_histograms_time_series_from_datacube(
+      buildCubeRdd(),
+      polygon_wkts=Seq(polygon1.toWKT(), polygon2.toWKT()).asJava,
+      polygons_srs="EPSG:4326",
+      from_date = "2017-01-01T00:00:00Z",
+      to_date = "2017-03-10T00:00:00Z",
+      band_index = 0
+    )
+    stats.asScala.foreach(println)
+
+    val keys = Seq("2017-01-01T00:00:00Z", "2017-01-15T00:00:00Z", "2017-02-01T00:00:00Z")
+    keys.map(stats.get(_)).foreach((dayStats: JList[JList[JMap[Double, Long]]]) => {
+      assertEquals(2, dayStats.size())
+      dayStats.asScala.foreach((polygonStats: JList[JMap[Double, Long]]) => {
+        assertEquals(2, polygonStats.size())
+        assertTrue(polygonStats.get(0).get(10.0) > 0)
+        assertTrue(polygonStats.get(1).isEmpty)
+      })
+    })
+  }
+
+  @Test
+  def compute_histograms_timeseries_on_datacube_from_GeoJson_file(): Unit = {
+    val stats = computeStatsGeotrellisAdapter.compute_histograms_time_series_from_datacube(
+      buildCubeRdd(),
+      vector_file = getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath,
+      from_date = "2017-01-01T00:00:00Z",
+      to_date = "2017-03-10T00:00:00Z",
+      band_index = 0
+    )
+    stats.asScala.foreach(println)
+
+    val keys = Seq("2017-01-01T00:00:00Z", "2017-01-15T00:00:00Z", "2017-02-01T00:00:00Z")
+    keys.map(stats.get(_)).foreach((dayStats: JList[JList[JMap[Double, Long]]]) => {
+      assertEquals(2, dayStats.size())
+      dayStats.asScala.foreach((polygonStats: JList[JMap[Double, Long]]) => {
+        assertEquals(2, polygonStats.size())
+        assertTrue(polygonStats.get(0).get(10.0) > 0)
+        assertTrue(polygonStats.get(1).isEmpty)
+      })
+    })
+  }
+
+
 }
