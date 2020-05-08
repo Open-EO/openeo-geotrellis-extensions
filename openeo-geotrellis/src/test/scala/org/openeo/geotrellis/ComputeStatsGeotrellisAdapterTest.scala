@@ -270,6 +270,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
       band_index = 0
     )
     stats.asScala.foreach(println)
+    assertEquals(stats.keySet().asScala.toSeq.sorted.toString, "dummy")
 
     val keys = Seq("2017-01-01T00:00:00Z", "2017-01-15T00:00:00Z", "2017-02-01T00:00:00Z")
     keys.foreach(k => assertEqualTimeseriesStats(
@@ -653,6 +654,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
       band_index = 0
     )
     stats.asScala.foreach(println)
+    assertEquals(stats.keySet().asScala.toSeq.sorted.toString, "dummy")
 
     val keys = Seq("2017-01-01T00:00:00Z", "2017-01-15T00:00:00Z", "2017-02-01T00:00:00Z")
     keys.foreach(k => assertEqualTimeseriesStats(
@@ -754,6 +756,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
       band_index = 0
     )
     stats.asScala.foreach(println)
+    assertEquals(stats.keySet().asScala.toSeq.sorted.toString, "dummy")
 
     val keys = Seq("2017-01-01T00:00:00Z", "2017-01-15T00:00:00Z", "2017-02-01T00:00:00Z")
     keys.foreach(k => assertEqualTimeseriesStats(
@@ -795,6 +798,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
       band_index = 0
     )
     stats.asScala.foreach(println)
+    assertEquals(stats.keySet().asScala.toSeq.sorted.toString, "dummy")
 
     val keys = Seq("2017-01-01T00:00:00Z", "2017-01-15T00:00:00Z", "2017-02-01T00:00:00Z")
     keys.map(stats.get(_)).foreach((dayStats: JList[JList[JMap[Double, Long]]]) => {
