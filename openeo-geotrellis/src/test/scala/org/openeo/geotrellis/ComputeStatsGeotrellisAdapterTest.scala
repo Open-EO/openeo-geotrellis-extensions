@@ -64,7 +64,7 @@ object ComputeStatsGeotrellisAdapterTest {
     sc.stop()
   }
 
-  private val polygon1 =
+  val polygon1: Polygon =
     """
       |{
       |  "type": "Polygon",
@@ -99,7 +99,7 @@ object ComputeStatsGeotrellisAdapterTest {
       |}
       """.stripMargin.parseGeoJson[Polygon]()
 
-  private val polygon2 =
+  val polygon2: Polygon =
     """
       |{
       |  "type": "Polygon",
@@ -131,7 +131,7 @@ object ComputeStatsGeotrellisAdapterTest {
       """.stripMargin.parseGeoJson[Polygon]()
 
   //this polygon is also used in python tests with S2 data
-  private val polygon3 =
+  val polygon3: Polygon =
     """
       |{
       |  "type": "Polygon",
@@ -148,7 +148,7 @@ object ComputeStatsGeotrellisAdapterTest {
       """.stripMargin.parseGeoJson[Polygon]()
 
 
-  private val polygon4 =
+  val polygon4: Polygon =
     """
       |{
       |  "type": "Polygon",
@@ -181,23 +181,6 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     zookeepers = "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",
     accumuloInstanceName = "hdp-accumulo-instance"
   )
-
-  @Test
-  def projected_polygons_from_wkt(): Unit = {
-    val pp = ProjectedPolygons.fromWkt(List(polygon1.toWKT()).asJava, "EPSG:4326")
-    assertEquals(1, pp.polygons.length)
-    assertEquals(MultiPolygon(polygon1), pp.polygons(0))
-    assertEquals(CRS.fromEpsgCode(4326), pp.crs)
-  }
-
-  @Test
-  def projected_polygons_from_vector_file(): Unit = {
-    val pp = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath)
-    assertEquals(2, pp.polygons.length)
-    assertEquals(MultiPolygon(polygon1), pp.polygons(0))
-    assertEquals(MultiPolygon(polygon2), pp.polygons(1))
-    assertEquals(CRS.fromEpsgCode(4326), pp.crs)
-  }
 
   @Test
   def compute_average_timeseries_on_productid_from_polygons(): Unit = {
