@@ -82,18 +82,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     statisticsCollector.results
   }
 
-  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
-    compute_average_timeseries_from_datacube(datacube, ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs), from_date, to_date, band_index)
-  }
-
-  /**
-   * Writes means to an UTF-8 encoded JSON file.
-   */
-  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String, from_date: String, to_date: String, band_index: Int, output_file: String): Unit = {
-    compute_average_timeseries_from_datacube(datacube, ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs), from_date, to_date, band_index, output_file)
-  }
-
-  private def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
+  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
     val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
 
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
@@ -105,19 +94,9 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     statisticsCollector.results
   }
 
-  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], vector_file: String, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] =
-    logTiming(s"compute_average_timeseries_from_datacube(datacube, $vector_file, $from_date, $to_date, $band_index)") {
-      compute_average_timeseries_from_datacube(datacube, ProjectedPolygons.fromVectorFile(vector_file), from_date, to_date, band_index)
-    }
-
   /**
    * Writes means to an UTF-8 encoded JSON file.
    */
-  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], vector_file: String, from_date: String, to_date: String, band_index: Int, output_file: String): Unit =
-    logTiming(s"compute_average_timeseries_from_datacube(datacube, $vector_file, $from_date, $to_date, $band_index, $output_file)") {
-      compute_average_timeseries_from_datacube(datacube, ProjectedPolygons.fromVectorFile(vector_file), from_date, to_date, band_index, output_file)
-    }
-
   def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, from_date: String, to_date: String, band_index: Int, output_file: String): Unit = {
     val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
 
@@ -176,18 +155,6 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     histogramsCollector.results
   }
 
-  def compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String,
-                                                   from_date: String, to_date: String, band_index: Int
-                                                  ): JMap[String, JList[JList[JMap[Double, Long]]]] = { // date -> polygon -> band -> value/count
-    compute_histograms_time_series_from_datacube(datacube, ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs), from_date, to_date, band_index)
-  }
-
-  def compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], vector_file: String,
-                                                   from_date: String, to_date: String, band_index: Int
-                                                  ): JMap[String, JList[JList[JMap[Double, Long]]]] = { // date -> polygon -> band -> value/count
-    compute_histograms_time_series_from_datacube(datacube,ProjectedPolygons.fromVectorFile(vector_file), from_date, to_date, band_index)
-  }
-
   def compute_median_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
                                                from_date: String, to_date: String, band_index: Int
                                               ): JMap[String, JList[JList[Double]]] = {
@@ -196,36 +163,12 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     mediansCollector.results
   }
 
-  def compute_median_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String,
-                                               from_date: String, to_date: String, band_index: Int
-                                              ): JMap[String, JList[JList[Double]]] = { // date -> polygon -> band -> median
-    compute_median_time_series_from_datacube(datacube, ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs), from_date, to_date, band_index)
-  }
-
-  def compute_median_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], vector_file: String,
-                                               from_date: String, to_date: String, band_index: Int
-                                              ): JMap[String, JList[JList[Double]]] = { // date -> polygon -> band -> median
-    compute_median_time_series_from_datacube(datacube, ProjectedPolygons.fromVectorFile(vector_file), from_date, to_date, band_index)
-  }
-
   def compute_sd_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
                                            from_date: String, to_date: String, band_index: Int
                                           ): JMap[String, JList[JList[Double]]] = { // date -> polygon -> value/count
     val stdDevCollector = new MultibandStdDevCollector
     _compute_histograms_time_series_from_datacube(datacube, polygons, from_date, to_date, band_index, stdDevCollector)
     stdDevCollector.results
-  }
-
-  def compute_sd_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String,
-                                           from_date: String, to_date: String, band_index: Int
-                                          ): JMap[String, JList[JList[Double]]] = { // date -> polygon -> value/count
-    compute_sd_time_series_from_datacube(datacube, polygons = ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs), from_date, to_date, band_index)
-  }
-
-  def compute_sd_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], vector_file: String,
-                                           from_date: String, to_date: String, band_index: Int
-                                          ): JMap[String, JList[JList[Double]]] = { // date -> polygon -> value/count
-    compute_sd_time_series_from_datacube(datacube, polygons = ProjectedPolygons.fromVectorFile(vector_file), from_date, to_date, band_index)
   }
 
   private def _compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, from_date: String, to_date: String, band_index: Int, histogramsCollector: StatisticsCallback[_ >: Seq[Histogram[Double]]]): Unit = {

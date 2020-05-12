@@ -18,6 +18,10 @@ case class ProjectedPolygons(polygons: Array[MultiPolygon], crs: CRS)
 object ProjectedPolygons {
   private type JList[T] = java.util.List[T]
 
+  def apply(polygons: Seq[Polygon], crs: String): ProjectedPolygons = {
+    ProjectedPolygons(polygons.map(MultiPolygon(_)).toArray, CRS.fromName(crs))
+  }
+
   def fromWkt(polygon_wkts: JList[String], polygons_srs: String): ProjectedPolygons = {
     val polygons = polygon_wkts.asScala.map(parsePolygonWkt).toArray
     val crs: CRS = CRS.fromName(polygons_srs)

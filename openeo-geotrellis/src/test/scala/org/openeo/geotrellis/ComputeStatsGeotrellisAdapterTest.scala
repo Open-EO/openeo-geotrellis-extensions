@@ -228,8 +228,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   def compute_average_timeseries_on_datacube_from_polygons(): Unit = {
     val stats = computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
       buildCubeRdd(),
-      polygon_wkts = Seq(polygon1.toWKT(), polygon2.toWKT()).asJava,
-      polygons_srs = "EPSG:4326",
+      polygons=ProjectedPolygons(Seq(polygon1, polygon2),  "EPSG:4326"),
       from_date = "2017-01-01T00:00:00Z",
       to_date = "2017-03-10T00:00:00Z",
       band_index = 0
@@ -247,7 +246,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   def compute_average_timeseries_on_datacube_from_GeoJson_file(): Unit = {
     val stats = computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
       buildCubeRdd(),
-      vector_file = getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath,
+      polygons=ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath),
       from_date = "2017-01-01T00:00:00Z",
       to_date = "2017-03-10T00:00:00Z",
       band_index = 0
@@ -287,7 +286,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     try {
       computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
         datacube,
-        vector_file,
+        ProjectedPolygons.fromVectorFile(vector_file),
         from_date,
         to_date,
         band_index = 0,
@@ -327,7 +326,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
 
     val stats = computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
       datacube,
-      vector_file = getClass.getResource("/org/openeo/geotrellis/minimallyOverlappingGeometryCollection.json").getPath,
+      polygons=ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/minimallyOverlappingGeometryCollection.json").getPath),
       from_date = "2017-10-05T00:00:00+00:00",
       to_date = "2017-10-05T00:00:00+00:00",
       band_index = 0
@@ -355,7 +354,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
 
     val stats = computeStatsGeotrellisAdapter.compute_median_time_series_from_datacube(
       datacube,
-      vector_file = getClass.getResource("/org/openeo/geotrellis/minimallyOverlappingGeometryCollection.json").getPath,
+      polygons=ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/minimallyOverlappingGeometryCollection.json").getPath),
       from_date = ISO_OFFSET_DATE_TIME format startDate,
       to_date = ISO_OFFSET_DATE_TIME format endDate,
       band_index = 0
@@ -437,8 +436,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
 
     val stats = computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
       datacube,
-      polygon_wkts = polygons.map(_.toWKT()).asJava,
-      srs,
+      ProjectedPolygons(polygons, srs),
       minDateString, maxDateString,
       band
     )
@@ -480,8 +478,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
 
     val stats = computeStatsGeotrellisAdapter.compute_histograms_time_series_from_datacube(
       datacube,
-      polygon_wkts = polygons.map(_.toWKT()).asJava,
-      srs,
+      ProjectedPolygons(polygons, srs),
       minDateString, maxDateString,
       band
     ).asScala
@@ -548,8 +545,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
 
     val stats = computeStatsGeotrellisAdapter.compute_median_time_series_from_datacube(
       ndviDataCube,
-      polygons.map(_.toWKT()).asJava,
-      polygons_srs = "EPSG:4326",
+      polygons=ProjectedPolygons(polygons, "EPSG:4326"),
       from_date = ISO_OFFSET_DATE_TIME format minDate,
       to_date = ISO_OFFSET_DATE_TIME format maxDate,
       band_index = 0
@@ -574,8 +570,6 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val minDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
     val maxDate = ZonedDateTime.parse("2017-03-10T00:00:00Z")
 
-    val polygons = Seq(polygon1.toWKT(), polygon2.toWKT())
-
     val tile10 = new ByteConstantTile(10.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))
     val tile5 = new ByteConstantTile(5.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))
     //val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, new ArrayMultibandTile(Array[Tile](tile10, tile5)), new TileLayout(1, 1, 256, 256))
@@ -586,8 +580,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
 
     val stats = computeStatsGeotrellisAdapter.compute_histograms_time_series_from_datacube(
       ContextRDD(datacube,updatedMetadata),
-      polygons.asJava,
-      polygons_srs = "EPSG:4326",
+      polygons = ProjectedPolygons(Seq(polygon1, polygon2), "EPSG:4326"),
       from_date = ISO_OFFSET_DATE_TIME format minDate,
       to_date = ISO_OFFSET_DATE_TIME format maxDate,
       band_index = 0
@@ -610,8 +603,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   def compute_median_timeseries_on_datacube_from_polygons(): Unit = {
     val stats = computeStatsGeotrellisAdapter.compute_median_time_series_from_datacube(
       buildCubeRdd(),
-      polygon_wkts = Seq(polygon1.toWKT(), polygon2.toWKT()).asJava,
-      polygons_srs = "EPSG:4326",
+      polygons = ProjectedPolygons(Seq(polygon1, polygon2), "EPSG:4326"),
       from_date = "2017-01-01T00:00:00Z",
       to_date = "2017-03-10T00:00:00Z",
       band_index = 0
@@ -630,7 +622,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   def compute_median_timeseries_on_datacube_from_GeoJson_file(): Unit = {
     val stats = computeStatsGeotrellisAdapter.compute_median_time_series_from_datacube(
       buildCubeRdd(),
-      vector_file = getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath,
+      ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath),
       from_date = "2017-01-01T00:00:00Z",
       to_date = "2017-03-10T00:00:00Z",
       band_index = 0
@@ -712,8 +704,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   def compute_sd_timeseries_on_datacube_from_polygons(): Unit = {
     val stats = computeStatsGeotrellisAdapter.compute_sd_time_series_from_datacube(
       buildCubeRdd(),
-      polygon_wkts = Seq(polygon1.toWKT(), polygon2.toWKT()).asJava,
-      polygons_srs = "EPSG:4326",
+      polygons = ProjectedPolygons(Seq(polygon1, polygon2), "EPSG:4326"),
       from_date = "2017-01-01T00:00:00Z",
       to_date = "2017-03-10T00:00:00Z",
       band_index = 0
@@ -731,7 +722,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   def compute_sd_timeseries_on_datacube_from_GeoJson_file(): Unit = {
     val stats = computeStatsGeotrellisAdapter.compute_sd_time_series_from_datacube(
       buildCubeRdd(),
-      vector_file = getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath,
+      ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath),
       from_date = "2017-01-01T00:00:00Z",
       to_date = "2017-03-10T00:00:00Z",
       band_index = 0
@@ -749,8 +740,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   def compute_histograms_timeseries_on_datacube_from_polygons(): Unit = {
     val stats = computeStatsGeotrellisAdapter.compute_histograms_time_series_from_datacube(
       buildCubeRdd(),
-      polygon_wkts=Seq(polygon1.toWKT(), polygon2.toWKT()).asJava,
-      polygons_srs="EPSG:4326",
+      ProjectedPolygons(Seq(polygon1, polygon2), "EPSG:4326"),
       from_date = "2017-01-01T00:00:00Z",
       to_date = "2017-03-10T00:00:00Z",
       band_index = 0
@@ -772,7 +762,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   def compute_histograms_timeseries_on_datacube_from_GeoJson_file(): Unit = {
     val stats = computeStatsGeotrellisAdapter.compute_histograms_time_series_from_datacube(
       buildCubeRdd(),
-      vector_file = getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath,
+      ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath),
       from_date = "2017-01-01T00:00:00Z",
       to_date = "2017-03-10T00:00:00Z",
       band_index = 0
