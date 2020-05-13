@@ -111,42 +111,6 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
       statisticsWriter.close()
   }
 
-  def compute_histogram_time_series(product_id: String, polygon_wkt: String, polygon_srs: String,
-                                    from_date: String, to_date: String, zoom: Int, band_index: Int):
-  JMap[String, JMap[Double, Long]] = { // date -> value/count
-    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
-
-    val polygon = ProjectedPolygons.parsePolygonWkt(polygon_wkt)
-    val crs: CRS = CRS.fromName(polygon_srs)
-    val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
-    val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
-
-    val histograms = computeStatsGeotrellis.computeHistogramTimeSeries(product_id, polygon, crs, startDate, endDate, zoom, sc)
-
-    histograms
-      .map { case (temporalKey, histogram) => (isoFormat(temporalKey.time), toMap(histogram)) }
-      .collectAsMap()
-      .asJava
-  }
-
-  def compute_histogram_time_series_from_datacube(datacube:MultibandTileLayerRDD[SpaceTimeKey], polygon_wkt: String, polygon_srs: String,
-                                    from_date: String, to_date: String, band_index: Int):
-  JMap[String, JList[JMap[Double, Long]]] = { // date -> band -> value/count
-    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
-
-    val polygon = ProjectedPolygons.parsePolygonWkt(polygon_wkt)
-    val crs: CRS = CRS.fromName(polygon_srs)
-    val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
-    val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
-
-    val histograms: Array[RDD[(TemporalKey, Array[Histogram[Double]])]] = computeStatsGeotrellis.computeHistogramTimeSeries(datacube, Array(polygon), crs, startDate, endDate,  sc)
-
-    histograms(0)
-      .map { case (temporalKey, histogram) => (isoFormat(temporalKey.time), histogram.map(toMap).toSeq.asJava) }
-      .collectAsMap()
-      .asJava
-  }
-
   def compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
                                                    from_date: String, to_date: String, band_index: Int
                                                   ): JMap[String, JList[JList[JMap[Double, Long]]]] = { // date -> polygon -> band -> value/count

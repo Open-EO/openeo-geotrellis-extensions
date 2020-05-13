@@ -669,38 +669,6 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   }
 
   @Test
-  def compute_histogram_time_series(): Unit = {
-    val from = ZonedDateTime.of(LocalDate.of(2019, 1, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    val to = from plusWeeks 1
-
-    val polygon = polygon1.toWKT()
-
-    val histograms = computeStatsGeotrellisAdapter.compute_histogram_time_series(
-      "S1_GRD_SIGMA0_ASCENDING",
-      polygon,
-      polygon_srs = "EPSG:4326",
-      from_date = ISO_OFFSET_DATE_TIME format from,
-      to_date = ISO_OFFSET_DATE_TIME format to,
-      zoom = 14,
-      band_index = 2
-    ).asScala
-
-    for ((date, polygonalHistogram) <- histograms) {
-      println(s"$date: $polygonalHistogram")
-    }
-
-    assertFalse(histograms.isEmpty)
-
-    val buckets = for {
-      (_, polygonalHistogram) <- histograms
-      bucket <- polygonalHistogram.asScala
-    } yield bucket
-
-    assertFalse(buckets.isEmpty)
-  }
-
-
-  @Test
   def compute_sd_timeseries_on_datacube_from_polygons(): Unit = {
     val stats = computeStatsGeotrellisAdapter.compute_sd_time_series_from_datacube(
       buildCubeRdd(),

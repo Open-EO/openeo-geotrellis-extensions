@@ -28,7 +28,7 @@ object ProjectedPolygons {
     ProjectedPolygons(polygons, crs)
   }
 
-  def parsePolygonWkt(polygonWkt: String): MultiPolygon = {
+  private def parsePolygonWkt(polygonWkt: String): MultiPolygon = {
     val geometry: Geometry = polygonWkt.parseWKT()
     geometry match {
       case multiPolygon: MultiPolygon => multiPolygon
