@@ -59,7 +59,14 @@ class OpenEOProcesses extends Serializable {
   )
 
   def applyProcess[K](datacube:MultibandTileLayerRDD[K], process:String): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]= {
-    return ContextRDD(datacube.map(multibandtile => (multibandtile._1,multibandtile._2.mapBands((b,t) => unaryProcesses.get(process).get(t) ))),datacube.metadata)
+    val proc = unaryProcesses(process)
+    return ContextRDD(
+      datacube.map(multibandtile => (
+        multibandtile._1,
+        multibandtile._2.mapBands((b, tile) => proc(tile))
+      )),
+      datacube.metadata
+    )
   }
 
   def mapInstantToInterval(datacube:MultibandTileLayerRDD[SpaceTimeKey], intervals:java.lang.Iterable[String],labels:java.lang.Iterable[String]) :MultibandTileLayerRDD[SpaceTimeKey] = {
