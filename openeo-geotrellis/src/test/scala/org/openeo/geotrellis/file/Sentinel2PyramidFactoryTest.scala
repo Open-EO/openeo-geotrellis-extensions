@@ -42,7 +42,7 @@ class Sentinel2PyramidFactoryTest {
     @Test
     def pyramid_seq(): Unit = {
         val bbox = ProjectedExtent(Extent(373863.50, 5212258.22, 378241.73, 5216244.73), CRS.fromEpsgCode(32631))
-        val date = ZonedDateTime.of(LocalDate.of(2020, 3, 29), MIDNIGHT, UTC)
+        val date = ZonedDateTime.of(LocalDate.of(2020, 10, 13), MIDNIGHT, UTC)
 
         val bbox_srs = s"EPSG:${bbox.crs.epsgCode.get}"
         val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format date
@@ -66,7 +66,7 @@ class Sentinel2PyramidFactoryTest {
               .write(path)
         }
 
-        // writeGeoTiff("/tmp/Sentinel2PyramidFactory_cropped_openeo.tif")
+        writeGeoTiff("/tmp/Sentinel2PyramidFactory_cropped_openeo.tif")
 
         val polygon = bbox.reproject(spatialLayer.metadata.crs).toPolygon()
 
