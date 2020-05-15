@@ -96,6 +96,8 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
       }
 
     }
+    //region indices map directly to partition indices!
+    assert( myRegions.size == splitsForRegions.size)
     var i = -1
     splitsForRegions.seq.map(split => {
       i+=1
