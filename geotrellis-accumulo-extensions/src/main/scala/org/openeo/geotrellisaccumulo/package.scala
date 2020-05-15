@@ -47,7 +47,18 @@ package object geotrellisaccumulo {
 
     def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
       val originalRanges = keyIndex.indexRanges(keyRange)
-      val mappedRanges = originalRanges.map(range => (range._1 >> 8,(range._2 >> 8) + 1 ))
+
+      var index = 0
+      val mappedRanges = originalRanges.map(range => {
+        index += 1
+        //avoid that start of next range is same as end of this range
+        if(index < originalRanges.size && originalRanges(index)._1 >> 8 <=  (range._2 >> 8) + 1 ){
+          (range._1 >> 8,(range._2 >> 8) )
+        }else{
+          (range._1 >> 8,(range._2 >> 8) + 1 )
+        }
+      })
+
       val distinct = mappedRanges.distinct
       var previousEnd: BigInt = null
       var wasSingleValue: Boolean = false
