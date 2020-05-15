@@ -159,6 +159,7 @@ class OpenEOProcessScriptBuilder {
       case "gte" => xyFunction(GreaterOrEqual.apply)
       case "lte" => xyFunction(LessOrEqual.apply)
       case "eq" => xyFunction(Equal.apply)
+      case "neq" => xyFunction(Unequal.apply)
       case "not" => unaryFunction("expression", (tiles:Seq[Tile]) =>{
         tiles.map( Not(_))
       })
