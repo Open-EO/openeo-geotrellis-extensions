@@ -30,7 +30,7 @@ class SpaceTimePartitionerOptimizationTest {
 
   private def generateKeys = {
     val startDate = LocalDate.of(2018,2,2).atStartOfDay(ZoneId.systemDefault())
-    for (f <- 0 to 500) yield SpaceTimeKey(10 + f, 0 + f, startDate.plusDays(f))
+    for (f <- 0 to 100) yield SpaceTimeKey(10 + f, 0 + f, startDate.plusDays(f))
   }
 
   /**
