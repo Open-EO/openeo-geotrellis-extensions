@@ -66,7 +66,7 @@ class Sentinel2PyramidFactoryTest {
               .write(path)
         }
 
-        writeGeoTiff("/tmp/Sentinel2PyramidFactory_cropped_openeo.tif")
+        //writeGeoTiff("/tmp/Sentinel2PyramidFactory_cropped_openeo.tif")
 
         val polygon = bbox.reproject(spatialLayer.metadata.crs).toPolygon()
 
@@ -74,7 +74,7 @@ class Sentinel2PyramidFactoryTest {
             case Summary(values) => values.head.mean
         }
 
-        val qgisZonalStaticsPluginResult = 6.04121061930658
+        val qgisZonalStaticsPluginResult = 4.510951226022072
         assertEquals(qgisZonalStaticsPluginResult, singleBandMean, 0.1)
     }
 
