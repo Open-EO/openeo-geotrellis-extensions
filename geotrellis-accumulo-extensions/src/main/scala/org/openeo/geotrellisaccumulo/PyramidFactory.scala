@@ -33,18 +33,10 @@ import scala.reflect.ClassTag
     def setSplitRanges(split: Boolean): Unit ={
       splitRanges = split
     }
-    private def maxZoom(layerName: String): Int = {
-      AccumuloAttributeStore(accumuloInstance).layerIds
-        .filter(_.name == layerName)
-        .maxBy(_.zoom)
-        .zoom
-    }
 
-    private def minZoom(layerName: String): Int = {
-      AccumuloAttributeStore(accumuloInstance).layerIds
-        .filter(_.name == layerName)
-        .minBy(_.zoom)
-        .zoom
+    private def zoomRange(layerName: String): (Int, Int) = {
+      val layerIds = AccumuloAttributeStore(accumuloInstance).layerIds.filter(_.name == layerName)
+      (layerIds.minBy(_.zoom).zoom, layerIds.maxBy(_.zoom).zoom)
     }
 
     private def accumuloInstance = {
@@ -148,11 +140,8 @@ import scala.reflect.ClassTag
     }
 
 
-
     def pyramid_seq(layerName:String, bbox: Extent, bbox_srs: String, startDate: Option[ZonedDateTime]=Option.empty, endDate:Option[ZonedDateTime]=Option.empty ): immutable.Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = {
-
-      val maxLevel:Int = maxZoom(layerName)
-      val minLevel:Int = minZoom(layerName)
+      val (minLevel:Int, maxLevel:Int) = zoomRange(layerName)
       val attributeStore = AccumuloAttributeStore(accumuloInstance)
       val id = LayerId(layerName, maxLevel)
       if (!attributeStore.layerExists(id)) throw new LayerNotFoundError(id)
