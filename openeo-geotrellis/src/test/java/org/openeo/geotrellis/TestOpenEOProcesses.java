@@ -62,18 +62,17 @@ public class TestOpenEOProcesses {
     @DisplayName("Test combining all bands.")
     @Test
     public void testMapBands() {
-        OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess();
-        Tile tile10 = new ByteConstantTile((byte)10,256,256, (ByteCells) CellType$.MODULE$.fromName("int8raw"));
-        Tile tile5 = new ByteConstantTile((byte)5,256,256, (ByteCells) CellType$.MODULE$.fromName("int8raw"));
-        RDD<Tuple2<SpatialKey, MultibandTile>> datacube = TileLayerRDDBuilders$.MODULE$.createMultibandTileLayerRDD(SparkContext.getOrCreate(), new ArrayMultibandTile(new Tile[]{tile10,tile5}), new TileLayout(1, 1, 256, 256));
+        OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess10AddXY();
+        Tile tile0 = new DoubleConstantTile(3.0,256,256, (DoubleCells) CellType$.MODULE$.fromName("float64"));
+        Tile tile1 = new DoubleConstantTile(1.0,256,256, (DoubleCells) CellType$.MODULE$.fromName("float64"));
+        RDD<Tuple2<SpatialKey, MultibandTile>> datacube = TileLayerRDDBuilders$.MODULE$.createMultibandTileLayerRDD(SparkContext.getOrCreate(), new ArrayMultibandTile(new Tile[]{tile0,tile1}), new TileLayout(1, 1, 256, 256));
         ClassTag<SpatialKey> tag = scala.reflect.ClassTag$.MODULE$.apply(SpatialKey.class);
         RDD<Tuple2<SpatialKey, MultibandTile>> ndviDatacube = new OpenEOProcesses().<SpatialKey>mapBandsGeneric(datacube, processBuilder,tag);
         List<Tuple2<SpatialKey, MultibandTile>> result = ndviDatacube.toJavaRDD().collect();
         System.out.println("result = " + result);
-        double[] doubles = result.get(0)._2().band(0).toArrayDouble();
         assertEquals(1, result.get(0)._2().bandCount());
-
-        assertEquals(3.0,doubles[0],0.0);
+        double[] doubles = result.get(0)._2().band(0).toArrayDouble();
+        assertEquals(0.5,doubles[0],0.0);
     }
 
     @Test

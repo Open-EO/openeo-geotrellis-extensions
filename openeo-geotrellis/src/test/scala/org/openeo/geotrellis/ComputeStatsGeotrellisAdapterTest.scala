@@ -417,7 +417,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val datacube= accumuloDataCube("CGS_SENTINEL2_RADIOMETRY_V102_EARLY", minDateString, maxDateString, polygons.extent, "EPSG:4326")
 
     val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1,3)))
-    val ndviProcess = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess
+    val ndviProcess = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess10AddXY
     val ndviDataCube = new OpenEOProcesses().mapBandsGeneric(selectedBands, ndviProcess)
 
     assertMedianComputedCorrectly(ndviDataCube, minDateString, minDate, maxDate, polygons)
@@ -523,7 +523,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val datacube= accumuloDataCube("CGS_SENTINEL2_RADIOMETRY_V102_EARLY", minDateString, maxDateString, polygons.extent, "EPSG:4326")
 
     val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1,3))).convert(DoubleConstantNoDataCellType)
-    val ndviProcess = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess
+    val ndviProcess = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess10AddXY
     val processes = new OpenEOProcesses()
     val ndviDataCube = processes.mapBandsGeneric(selectedBands, ndviProcess)//.withContext(_.mapValues(_.mapDouble(0)(pixel => 0.1)))
 
