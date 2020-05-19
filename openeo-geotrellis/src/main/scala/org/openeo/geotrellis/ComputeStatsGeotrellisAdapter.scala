@@ -1,7 +1,6 @@
 package org.openeo.geotrellis
 
 import java.io.File
-import java.net.{MalformedURLException, URL}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
@@ -10,24 +9,18 @@ import be.vito.eodata.extracttimeseries.geotrellis._
 import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
 import be.vito.eodata.processing.MaskedStatisticsProcessor.StatsMeanResult
 import geotrellis.layer._
-import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.proj4.CRS
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.summary.Statistics
 import geotrellis.raster.{FloatConstantNoDataCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.spark._
 import geotrellis.store.accumulo.AccumuloInstance
-import geotrellis.vector.io.json.JsonFeatureCollection
-import geotrellis.vector.{Geometry, MultiPolygon, Polygon, _}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.geotools.data.Query
-import org.geotools.data.shapefile.ShapefileDataStore
-import org.geotools.data.simple.SimpleFeatureIterator
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.JavaConverters._
-import scala.io.Source
-import _root_.io.circe.DecodingFailure
+
 
 object ComputeStatsGeotrellisAdapter {
   private type JMap[K, V] = java.util.Map[K, V]
@@ -78,70 +71,33 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   def compute_average_timeseries(product_id: String, polygon_wkts: JList[String], polygons_srs: String, from_date: String, to_date: String, zoom: Int, band_index: Int): JMap[String, JList[Double]] = {
     val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
 
-    val polygons = polygon_wkts.asScala.map(parsePolygonWkt)
-
-    val crs: CRS = CRS.fromName(polygons_srs)
+    val polygons = ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
     val statisticsCollector = new StatisticsCollector
 
-    computeStatsGeotrellis.computeAverageTimeSeries(product_id, polygons.toArray, crs, startDate, endDate, zoom,
+    computeStatsGeotrellis.computeAverageTimeSeries(product_id, polygons.polygons, polygons.crs, startDate, endDate, zoom,
       statisticsCollector, unusedCancellationContext, sc)
 
     statisticsCollector.results
   }
 
-  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
-    val polygons = polygon_wkts.asScala
-      .map(parsePolygonWkt)
-      .toArray
-
-    val crs: CRS = CRS.fromName(polygons_srs)
-
-    compute_average_timeseries_from_datacube(datacube, polygons, crs, from_date, to_date, band_index)
-  }
-
-  /**
-   * Writes means to an UTF-8 encoded JSON file.
-   */
-  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String, from_date: String, to_date: String, band_index: Int, output_file: String): Unit = {
-    val polygons = polygon_wkts.asScala
-      .map(parsePolygonWkt)
-      .toArray
-
-    val crs: CRS = CRS.fromName(polygons_srs)
-
-    compute_average_timeseries_from_datacube(datacube, polygons, crs, from_date, to_date, band_index, output_file)
-  }
-
-  private def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
+  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
     val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
 
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
     val statisticsCollector = new MultibandStatisticsCollector
 
-    computeStatsGeotrellis.computeAverageTimeSeries(datacube, polygons, crs, startDate, endDate, statisticsCollector, unusedCancellationContext, sc)
+    computeStatsGeotrellis.computeAverageTimeSeries(datacube, polygons.polygons, polygons.crs, startDate, endDate, statisticsCollector, unusedCancellationContext, sc)
 
     statisticsCollector.results
   }
 
-  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], vector_file: String, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] =
-    logTiming(s"compute_average_timeseries_from_datacube(datacube, $vector_file, $from_date, $to_date, $band_index)") {
-      val (polygons, crs) = projectedPolygons(vector_file)
-      compute_average_timeseries_from_datacube(datacube, polygons, crs, from_date, to_date, band_index)
-    }
-
   /**
    * Writes means to an UTF-8 encoded JSON file.
    */
-  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], vector_file: String, from_date: String, to_date: String, band_index: Int, output_file: String): Unit =
-    logTiming(s"compute_average_timeseries_from_datacube(datacube, $vector_file, $from_date, $to_date, $band_index, $output_file)") {
-      val (polygons, crs) = projectedPolygons(vector_file)
-      compute_average_timeseries_from_datacube(datacube, polygons, crs, from_date, to_date, band_index, output_file)
-    }
-
-  private def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, from_date: String, to_date: String, band_index: Int, output_file: String): Unit = {
+  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, from_date: String, to_date: String, band_index: Int, output_file: String): Unit = {
     val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
 
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
@@ -150,207 +106,57 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     val statisticsWriter = new MultibandStatisticsWriter(new File(output_file))
 
     try
-      computeStatsGeotrellis.computeAverageTimeSeries(datacube, polygons, crs, startDate, endDate, statisticsWriter, unusedCancellationContext, sc)
+      computeStatsGeotrellis.computeAverageTimeSeries(datacube, polygons.polygons, polygons.crs, startDate, endDate, statisticsWriter, unusedCancellationContext, sc)
     finally
       statisticsWriter.close()
   }
 
-  private def projectedPolygons(vector_file: String): (Array[MultiPolygon], CRS) = {
-    val vectorUrl = try {
-      new URL(vector_file)
-    } catch {
-      case _: MalformedURLException => new URL(s"file://$vector_file")
-    }
-
-    val filename = vectorUrl.getPath.split("/").last
-
-    if (filename.endsWith(".shp")) readSimpleFeatures(vectorUrl)
-    else readMultiPolygonsFromGeoJson(vectorUrl)
-  }
-
-  // adapted from Geotrellis' ShapeFileReader to avoid having too much in memory
-  private def readSimpleFeatures(shpUrl: URL): (Array[MultiPolygon], CRS) = {
-    val ds = new ShapefileDataStore(shpUrl)
-    val ftItr: SimpleFeatureIterator = ds.getFeatureSource.getFeatures.features
-
-    try {
-      val featureCount = ds.getCount(Query.ALL)
-      require(featureCount < Int.MaxValue)
-
-      val simpleFeatures = new Array[MultiPolygon](featureCount.toInt)
-
-      for (i <- simpleFeatures.indices) {
-        val multiPolygon = ftItr.next().getAttribute(0) match {
-          case multiPolygon: MultiPolygon => multiPolygon
-          case polygon: Polygon => MultiPolygon(polygon)
-        }
-
-        simpleFeatures(i) = multiPolygon
-      }
-
-      // FIXME: read it from the shp and default to LatLng
-      (simpleFeatures, LatLng)
-    } finally {
-      ftItr.close()
-      ds.dispose()
-    }
-  }
-
-  private def readMultiPolygonsFromGeoJson(geoJsonUrl: URL): (Array[MultiPolygon], CRS) = {
-    // FIXME: stream it instead
-    val src = Source.fromURL(geoJsonUrl)
-
-    val multiPolygons = try {
-      val geoJson = src.mkString
-
-      def children(geometryCollection: GeometryCollection): Stream[Geometry] = {
-        def from(i: Int): Stream[Geometry] =
-          if (i >= geometryCollection.getNumGeometries) Stream.empty
-          else geometryCollection.getGeometryN(i) #:: from(i + 1)
-
-        from(0)
-      }
-
-      def asMultiPolygons(geometry: Geometry): Array[MultiPolygon] = geometry match {
-        case polygon: Polygon => Array(MultiPolygon(polygon))
-        case multiPolygon: MultiPolygon => Array(multiPolygon)
-        case geometryCollection: GeometryCollection => children(geometryCollection).map {
-          case polygon: Polygon => MultiPolygon(polygon)
-          case multiPolygon: MultiPolygon => multiPolygon
-        }.toArray
-      }
-
-      try {
-        asMultiPolygons(geoJson.parseGeoJson[Geometry]())
-      } catch {
-        case _: DecodingFailure =>
-          val featureCollection = geoJson.parseGeoJson[JsonFeatureCollection]()
-          featureCollection.getAllGeometries()
-            .flatMap(asMultiPolygons)
-            .toArray
-      }
-    } finally src.close()
-
-    (multiPolygons, LatLng)
-  }
-
-  def compute_histogram_time_series(product_id: String, polygon_wkt: String, polygon_srs: String,
-                                    from_date: String, to_date: String, zoom: Int, band_index: Int):
-  JMap[String, JMap[Double, Long]] = { // date -> value/count
-    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
-
-    val polygon = parsePolygonWkt(polygon_wkt)
-    val crs: CRS = CRS.fromName(polygon_srs)
-    val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
-    val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
-
-    val histograms = computeStatsGeotrellis.computeHistogramTimeSeries(product_id, polygon, crs, startDate, endDate, zoom, sc)
-
-    histograms
-      .map { case (temporalKey, histogram) => (isoFormat(temporalKey.time), toMap(histogram)) }
-      .collectAsMap()
-      .asJava
-  }
-
-  def compute_histogram_time_series_from_datacube(datacube:MultibandTileLayerRDD[SpaceTimeKey], polygon_wkt: String, polygon_srs: String,
-                                    from_date: String, to_date: String, band_index: Int):
-  JMap[String, JList[JMap[Double, Long]]] = { // date -> band -> value/count
-    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
-
-    val polygon = parsePolygonWkt(polygon_wkt)
-    val crs: CRS = CRS.fromName(polygon_srs)
-    val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
-    val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
-
-    val histograms: Array[RDD[(TemporalKey, Array[Histogram[Double]])]] = computeStatsGeotrellis.computeHistogramTimeSeries(datacube, Array(polygon), crs, startDate, endDate,  sc)
-
-    histograms(0)
-      .map { case (temporalKey, histogram) => (isoFormat(temporalKey.time), histogram.map(toMap).toSeq.asJava) }
-      .collectAsMap()
-      .asJava
-  }
-
-  def compute_histograms_time_series_from_datacube(datacube:MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String,
-                                     from_date: String, to_date: String, band_index: Int):
-
-  JMap[String, JList[JList[JMap[Double, Long]]]] = { // date -> polygon -> band -> value/count
-    val polygons = polygon_wkts.asScala.map(parsePolygonWkt)
-    val crs: CRS = CRS.fromName(polygons_srs)
-
+  def compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
+                                                   from_date: String, to_date: String, band_index: Int
+                                                  ): JMap[String, JList[JList[JMap[Double, Long]]]] = { // date -> polygon -> band -> value/count
     val histogramsCollector = new MultibandHistogramsCollector
-    _compute_histograms_time_series_from_datacube(datacube, polygons.toArray, crs, from_date, to_date, band_index, histogramsCollector)
+    _compute_histograms_time_series_from_datacube(datacube, polygons, from_date, to_date, band_index, histogramsCollector)
     histogramsCollector.results
   }
 
-  def compute_median_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String,
-                                                   from_date: String, to_date: String, band_index: Int):
-  JMap[String, JList[JList[Double]]] = { // date -> polygon -> band -> median
-    val polygons = polygon_wkts.asScala.map(parsePolygonWkt)
-    val crs: CRS = CRS.fromName(polygons_srs)
-
-    _compute_median_time_series_from_datacube(datacube, polygons.toArray, crs, from_date, to_date, band_index)
-  }
-
-  def compute_median_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], vector_file: String,
-                                               from_date: String, to_date: String, band_index: Int):
-  JMap[String, JList[JList[Double]]] = { // date -> polygon -> band -> median
-    val (polygons, crs) = projectedPolygons(vector_file)
-
-    _compute_median_time_series_from_datacube(datacube, polygons, crs, from_date, to_date, band_index)
-  }
-
-  private def _compute_median_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
+  def compute_median_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
+                                               from_date: String, to_date: String, band_index: Int
+                                              ): JMap[String, JList[JList[Double]]] = {
     val mediansCollector = new MultibandMediansCollector
-    _compute_histograms_time_series_from_datacube(datacube, polygons, crs, from_date, to_date, band_index, mediansCollector)
+    _compute_histograms_time_series_from_datacube(datacube, polygons, from_date, to_date, band_index, mediansCollector)
     mediansCollector.results
   }
 
-  def compute_sd_time_series_from_datacube(datacube:MultibandTileLayerRDD[SpaceTimeKey], polygon_wkts: JList[String], polygons_srs: String,
-                                           from_date: String, to_date: String, band_index: Int):
-  JMap[String, JList[JList[Double]]] = { // date -> polygon -> value/count
-    val polygons = polygon_wkts.asScala.map(parsePolygonWkt)
-    val crs: CRS = CRS.fromName(polygons_srs)
-
+  def compute_sd_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
+                                           from_date: String, to_date: String, band_index: Int
+                                          ): JMap[String, JList[JList[Double]]] = { // date -> polygon -> value/count
     val stdDevCollector = new MultibandStdDevCollector
-    _compute_histograms_time_series_from_datacube(datacube, polygons.toArray, crs, from_date, to_date, band_index, stdDevCollector)
+    _compute_histograms_time_series_from_datacube(datacube, polygons, from_date, to_date, band_index, stdDevCollector)
     stdDevCollector.results
-
   }
 
-  private def _compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, from_date: String, to_date: String, band_index: Int, histogramsCollector: StatisticsCallback[_ >: Seq[Histogram[Double]]]): Unit = {
+  private def _compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, from_date: String, to_date: String, band_index: Int, histogramsCollector: StatisticsCallback[_ >: Seq[Histogram[Double]]]): Unit = {
     val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
-
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
-
-    computeStatsGeotrellis.computeHistogramTimeSeries(datacube, polygons, crs, startDate, endDate, histogramsCollector, unusedCancellationContext, sc)
+    computeStatsGeotrellis.computeHistogramTimeSeries(datacube, polygons.polygons, polygons.crs, startDate, endDate, histogramsCollector, unusedCancellationContext, sc)
   }
 
   def compute_histograms_time_series(product_id: String, polygon_wkts: JList[String], polygons_srs: String,
                                      from_date: String, to_date: String, zoom: Int, band_index: Int):
   JMap[String, JList[JMap[Double, Long]]] = { // date -> polygon -> value/count
     val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
-
-    val polygons = polygon_wkts.asScala.map(parsePolygonWkt)
-
-    val crs: CRS = CRS.fromName(polygons_srs)
+    val polygons = ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
     val histogramsCollector = new HistogramsCollector
 
-    computeStatsGeotrellis.computeHistogramTimeSeries(product_id, polygons.toArray, crs, startDate, endDate, zoom,
+    computeStatsGeotrellis.computeHistogramTimeSeries(product_id, polygons.polygons, polygons.crs, startDate, endDate, zoom,
       histogramsCollector, unusedCancellationContext, sc)
 
     histogramsCollector.results
   }
 
-  private def parsePolygonWkt(polygonWkt: String): MultiPolygon = {
-    val geometry: Geometry = polygonWkt.parseWKT()
-    geometry match {
-      case multiPolygon: MultiPolygon => multiPolygon
-      case _ => MultiPolygon(geometry.asInstanceOf[Polygon])
-    }
-  }
 
   private def sc: SparkContext = SparkContext.getOrCreate()
 
