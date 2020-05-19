@@ -18,6 +18,7 @@ import geotrellis.store.accumulo.AccumuloInstance
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
+import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK_SER
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.JavaConverters._
@@ -90,7 +91,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
     val statisticsCollector = new MultibandStatisticsCollector
 
-    computeStatsGeotrellis.computeAverageTimeSeries(datacube.persist(StorageLevel.MEMORY_ONLY_SER), polygons.polygons, polygons.crs, startDate, endDate, statisticsCollector, unusedCancellationContext, sc)
+    computeStatsGeotrellis.computeAverageTimeSeries(datacube.persist(MEMORY_AND_DISK_SER), polygons.polygons, polygons.crs, startDate, endDate, statisticsCollector, unusedCancellationContext, sc)
 
     statisticsCollector.results
   }
@@ -107,7 +108,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     val statisticsWriter = new MultibandStatisticsWriter(new File(output_file))
 
     try
-      computeStatsGeotrellis.computeAverageTimeSeries(datacube.persist(StorageLevel.MEMORY_ONLY_SER), polygons.polygons, polygons.crs, startDate, endDate, statisticsWriter, unusedCancellationContext, sc)
+      computeStatsGeotrellis.computeAverageTimeSeries(datacube.persist(MEMORY_AND_DISK_SER), polygons.polygons, polygons.crs, startDate, endDate, statisticsWriter, unusedCancellationContext, sc)
     finally
       statisticsWriter.close()
   }
