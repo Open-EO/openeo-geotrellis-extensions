@@ -74,4 +74,25 @@ package object geotrellisaccumulo {
     }
 
   }
+
+  /**
+   * Simple in-memory TTL cache
+   *
+   * TODO: replace this with more advanced cache from some library?
+   */
+  class TtlCache[K, V](val ttl: Int = 60) {
+    private val cache = collection.mutable.Map[K, (Long, V)]()
+
+    def getOrElseUpdate(key: K, op: => V): V = {
+      val now = java.time.Instant.now().getEpochSecond
+      cache.get(key) match {
+        case Some((expiry, value)) if now < expiry => value
+        case _ =>
+          val value = op
+          cache.put(key, (now + ttl, value))
+          value
+      }
+    }
+  }
+
 }

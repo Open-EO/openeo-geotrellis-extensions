@@ -26,6 +26,12 @@ import scala.collection.JavaConverters._
 import scala.collection.immutable
 import scala.reflect.ClassTag
 
+object PyramidFactory {
+
+  val zoomRangeCache = new TtlCache[String, (Int, Int)](ttl = 3600)
+
+}
+
   class PyramidFactory(instanceName: String, zooKeeper: String) {
 
     var splitRanges: Boolean = false
@@ -35,8 +41,13 @@ import scala.reflect.ClassTag
     }
 
     private def zoomRange(layerName: String): (Int, Int) = {
-      val layerIds = AccumuloAttributeStore(accumuloInstance).layerIds.filter(_.name == layerName)
-      (layerIds.minBy(_.zoom).zoom, layerIds.maxBy(_.zoom).zoom)
+      PyramidFactory.zoomRangeCache.getOrElseUpdate(
+        layerName,
+        {
+          val layerIds = AccumuloAttributeStore(accumuloInstance).layerIds.filter(_.name == layerName)
+          (layerIds.minBy(_.zoom).zoom, layerIds.maxBy(_.zoom).zoom)
+        }
+      )
     }
 
     private def accumuloInstance = {
