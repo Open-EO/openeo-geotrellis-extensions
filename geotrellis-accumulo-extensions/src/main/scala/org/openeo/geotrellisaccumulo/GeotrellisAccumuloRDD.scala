@@ -113,26 +113,7 @@ class GeotrellisAccumuloRDD(
   override def getPartitions: Array[Partition] = {
     val inputFormat = new AccumuloInputFormat()
 
-    val serialized_conf = {
-      if (getConf!=null)
-        getConf
-      else{
-        new Configuration()
-      }
-    }
-
-    val jobContext = new JobContextImpl(serialized_conf, jobId)
-    SparkHadoopUtil.get.addCredentials(jobContext.getConfiguration.asInstanceOf[JobConf])
-
-    val token = ConfiguratorBase.getAuthenticationToken(classOf[AccumuloInputFormat], jobContext.getConfiguration)
-    if(token.isInstanceOf[DelegationTokenImpl]) {
-      //normally the sparkhadooputil should have configured our token...
-      println("Configuring delegationtoken directly")
-      val delegationToken = token.asInstanceOf[DelegationTokenImpl]
-      val identifier = delegationToken.getIdentifier
-      val hadoopToken = new Token(identifier.getBytes, delegationToken.getPassword, identifier.getKind, delegationToken.getServiceName)
-      jobContext.getConfiguration.asInstanceOf[JobConf].getCredentials.addToken(delegationToken.getServiceName, hadoopToken)
-    }
+    val jobContext: JobContextImpl = createJobContextWithTokens
 
     var rawSplits = inputFormat.getSplits(jobContext).toArray
 
@@ -178,11 +159,35 @@ class GeotrellisAccumuloRDD(
     result
   }
 
+  private def createJobContextWithTokens = {
+    val serialized_conf = {
+      if (getConf != null)
+        getConf
+      else {
+        new Configuration()
+      }
+    }
+
+    val jobContext = new JobContextImpl(serialized_conf, jobId)
+    SparkHadoopUtil.get.addCredentials(jobContext.getConfiguration.asInstanceOf[JobConf])
+
+    val token = ConfiguratorBase.getAuthenticationToken(classOf[AccumuloInputFormat], jobContext.getConfiguration)
+    if (token.isInstanceOf[DelegationTokenImpl]) {
+      //normally the sparkhadooputil should have configured our token...
+      println("Configuring delegationtoken directly")
+      val delegationToken = token.asInstanceOf[DelegationTokenImpl]
+      val identifier = delegationToken.getIdentifier
+      val hadoopToken = new Token(identifier.getBytes, delegationToken.getPassword, identifier.getKind, delegationToken.getServiceName)
+      jobContext.getConfiguration.asInstanceOf[JobConf].getCredentials.addToken(delegationToken.getServiceName, hadoopToken)
+    }
+    jobContext
+  }
+
   override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(Key, Value)] = {
     val iter = new Iterator[(Key, Value)] {
       val split = theSplit.asInstanceOf[NewHadoopPartition]
       logDebug("Input split: " + split.serializableHadoopSplit)
-      val conf = getConf
+      val conf =  createJobContextWithTokens.getConfiguration
 
       val inputMetrics = context.taskMetrics().inputMetrics
       val existingBytesRead = inputMetrics.bytesRead
