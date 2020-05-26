@@ -17,7 +17,9 @@ class OpenEOProcessScriptBuilder {
   var arrayCounter : Int =  0
   var inputFunction: Seq[Tile] => Seq[Tile] = null
 
-  private def unaryFunction(argName:String,operator:Seq[Tile] => Seq[Tile] ) = {
+  def generateFunction(): Seq[Tile] => Seq[Tile] = inputFunction
+
+  private def unaryFunction(argName: String, operator: Seq[Tile] => Seq[Tile]): Seq[Tile] => Seq[Tile] = {
     val storedArgs = contextStack.head
     val inputFunction = storedArgs.get(argName)
 
@@ -25,7 +27,14 @@ class OpenEOProcessScriptBuilder {
       operator compose inputFunction.get
     else
       operator
+  }
 
+  private def mapFunction(argName: String, operator: Tile => Tile): Seq[Tile] => Seq[Tile] = {
+    unaryFunction(argName, (tiles: Seq[Tile]) => tiles.map(operator))
+  }
+
+  private def reduceFunction(argName: String, operator: (Tile, Tile) => Tile): Seq[Tile] => Seq[Tile] = {
+    unaryFunction(argName, (tiles: Seq[Tile]) => Seq(tiles.reduce(operator)))
   }
 
   private def xyFunction(operator:(Tile,Tile) => Tile ) = {
@@ -51,9 +60,13 @@ class OpenEOProcessScriptBuilder {
         }else{
           tiles
         }
-      if (x_input.size != 1 || y_input.size!=1){
-        throw new IllegalArgumentException("Eq only supports single tile inputs.")
+      if (x_input.size != 1) {
+        throw new IllegalArgumentException("Expected single tile, but got for x:" + x_input.size)
       }
+      if (y_input.size != 1) {
+        throw new IllegalArgumentException("Expected single tile, but got for y:" + y_input.size)
+      }
+
       Seq(operator(x_input(0),y_input(0)))
     }
     bandFunction
@@ -78,7 +91,6 @@ class OpenEOProcessScriptBuilder {
   /**
     * Called for each element in the array.
     * @param name
-    * @param index
     */
   def arrayStart(name:String): Unit = {
 
@@ -150,76 +162,78 @@ class OpenEOProcessScriptBuilder {
   }
 
   def expressionEnd(operator:String,arguments:java.util.Map[String,Object]): Unit = {
+    // TODO: this is not only about expressions anymore. Rename it to e.g. "leaveProcess" to be more in line with graph visitor in Python?
 
-    val storedArgs = contextStack.head
+    // Bit of argument sniffing to support multiple versions/variants of processes
+    val hasXY = arguments.containsKey("x") && arguments.containsKey("y")
+    val hasX = arguments.containsKey("x")
+    val hasExpression = arguments.containsKey("expression")
+    val hasExpressions = arguments.containsKey("expressions")
+    val hasData = arguments.containsKey("data")
 
     val operation: Seq[Tile] => Seq[Tile] = operator match {
-      case "gt" => xyFunction(Greater.apply)
-      case "lt" => xyFunction(Less.apply)
-      case "gte" => xyFunction(GreaterOrEqual.apply)
-      case "lte" => xyFunction(LessOrEqual.apply)
-      case "eq" => xyFunction(Equal.apply)
-      case "neq" => xyFunction(Unequal.apply)
-      case "not" => unaryFunction("expression", (tiles:Seq[Tile]) =>{
-        tiles.map( Not(_))
-      })
-      case "and" => unaryFunction("expressions", (tiles:Seq[Tile]) =>{
-        Seq(tiles.reduce( _.localAnd(_)))
-      })
-      case "or" => unaryFunction("expressions", (tiles:Seq[Tile]) =>{
-        Seq(tiles.reduce( _.localOr(_)))
-      })
-      case "sum" => unaryFunction("data", (tiles:Seq[Tile]) =>{
-          Seq(tiles.reduce( _.localAdd(_)))
-        })
-      case "divide" => unaryFunction("data", (tiles:Seq[Tile]) =>{
-        Seq(tiles.reduce( _.localDivide(_)))
-      })
-      case "product" => unaryFunction("data", (tiles:Seq[Tile]) =>{
-        Seq(tiles.reduce( _.localMultiply(_)))
-      })
-      case "subtract" => unaryFunction("data", (tiles:Seq[Tile]) =>{
-        Seq(tiles.reduce( _.localSubtract(_)))
-      })
-      case "array_element" =>{
-        val inputFunction = storedArgs.get("data").get
-        val index = arguments.getOrDefault("index",null)
-        if(index == null) {
-          throw new IllegalArgumentException("Missing 'index' argument in array_element.")
-        }
-        if(!index.isInstanceOf[Integer]){
-          throw new IllegalArgumentException("The 'index argument should be an integer, but got: " + index)
-        }
-        val bandFunction = (tiles:Seq[Tile]) =>{
-          val input: Seq[Tile] =
-          if(inputFunction!=null) {
-            inputFunction.apply(tiles)
-          }else{
-            tiles
-          }
-          if(input.size <= index.asInstanceOf[Integer]) {
-            throw new IllegalArgumentException("Invalid band index, only " + input.size + " bands available.")
-          }
-          Seq(input(index.asInstanceOf[Integer]))
-        }
-        bandFunction
-      }
-      case _ => throw new IllegalArgumentException("Unsupported operation: " + operator)
-
+      // Comparison operators
+      case "gt" if hasXY => xyFunction(Greater.apply)
+      case "lt" if hasXY => xyFunction(Less.apply)
+      case "gte" if hasXY => xyFunction(GreaterOrEqual.apply)
+      case "lte" if hasXY => xyFunction(LessOrEqual.apply)
+      case "eq" if hasXY => xyFunction(Equal.apply)
+      case "neq" if hasXY => xyFunction(Unequal.apply)
+      // Boolean operators
+      case "not" if hasX => mapFunction("x", Not.apply)
+      case "not" if hasExpression => mapFunction("expression", Not.apply) // legacy 0.4 style
+      case "and" if hasXY => xyFunction(And.apply)
+      case "and" if hasExpressions => reduceFunction("expressions", And.apply) // legacy 0.4 style
+      case "or" if hasXY => xyFunction(Or.apply)
+      case "or" if hasExpressions => reduceFunction("expressions", Or.apply) // legacy 0.4 style
+      case "xor" if hasXY => xyFunction(Xor.apply)
+      case "xor" if hasExpressions => reduceFunction("expressions", Xor.apply) // legacy 0.4 style
+      // Mathematical operators
+      case "sum" if hasData => reduceFunction("data", Add.apply)
+      case "add" if hasXY => xyFunction(Add.apply)
+      case "subtract" if hasXY => xyFunction(Subtract.apply)
+      case "subtract" if hasData => reduceFunction("data", Subtract.apply) // legacy 0.4 style
+      case "product" if hasData => reduceFunction("data", Multiply.apply)
+      case "multiply" if hasXY => xyFunction(Multiply.apply)
+      case "multiply" if hasData => reduceFunction("data", Multiply.apply) // legacy 0.4 style
+      case "divide" if hasXY => xyFunction(Divide.apply)
+      case "divide" if hasData => reduceFunction("data", Divide.apply) // legacy 0.4 style
+      // Other
+      case "array_element" => arrayElementFunction(arguments)
+      case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
     }
 
     val expectedOperator = processStack.pop()
     assert(expectedOperator.equals(operator))
-
     contextStack.pop()
     inputFunction = operation
-
-
   }
 
 
-  def generateFunction() = inputFunction
-
+  private def arrayElementFunction(arguments:java.util.Map[String,Object]) = {
+    val storedArgs = contextStack.head
+    val inputFunction = storedArgs.get("data").get
+    val index = arguments.getOrDefault("index",null)
+    if(index == null) {
+      throw new IllegalArgumentException("Missing 'index' argument in array_element.")
+    }
+    if(!index.isInstanceOf[Integer]){
+      throw new IllegalArgumentException("The 'index argument should be an integer, but got: " + index)
+    }
+    val bandFunction = (tiles:Seq[Tile]) =>{
+      val input: Seq[Tile] =
+        if(inputFunction!=null) {
+          inputFunction.apply(tiles)
+        }else{
+          tiles
+        }
+      if(input.size <= index.asInstanceOf[Integer]) {
+        throw new IllegalArgumentException("Invalid band index, only " + input.size + " bands available.")
+      }
+      Seq(input(index.asInstanceOf[Integer]))
+    }
+    bandFunction
+  }
 
 
 }
