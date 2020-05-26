@@ -9,7 +9,7 @@ class PackageTest {
   def testTtlCache(): Unit = {
 
     val logs = collection.mutable.ArrayBuffer[Int]()
-    val cache = new TtlCache[String, Int](ttl = 1)
+    val cache = new TtlCache[String, Int](ttl = 2)
 
     // Do calculation with side effect (for inspection)
     def calculate(x: Int): Int = {
@@ -29,7 +29,7 @@ class PackageTest {
     Assert.assertEquals(111, cache.getOrElseUpdate("foo", calculate(444)))
     Assert.assertArrayEquals(List(111, 333).toArray, logs.toArray)
 
-    Thread.sleep(1000)
+    Thread.sleep(2100)
 
     Assert.assertEquals(555, cache.getOrElseUpdate("foo", calculate(555)))
     Assert.assertArrayEquals(List(111, 333, 555).toArray, logs.toArray)
