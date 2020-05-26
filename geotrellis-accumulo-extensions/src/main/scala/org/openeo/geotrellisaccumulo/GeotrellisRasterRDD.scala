@@ -21,6 +21,7 @@ import org.openeo.geotrellisaccumulo
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.reflect.ClassTag
+import scala.util.control.Breaks._
 
 class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[SpaceTimeKey],writerSchema:Schema,parent:GeotrellisAccumuloRDD,val metadata: TileLayerMetadata[SpaceTimeKey], sc : SparkContext) extends RDD[(SpaceTimeKey, V)](sc,Nil) with Metadata[TileLayerMetadata[SpaceTimeKey]] {
 
@@ -43,59 +44,72 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
 
     var splitsForRegions = mutable.Seq[BatchInputSplit]()
     var currentStart = 0
-    for (region <- myRegions){
+    println("Required input data is computed, this can take a while!")
+    val start = System.currentTimeMillis()
+    for (region <- myRegions) {
       val startKey = geotrellisaccumulo.decodeIndexKey(region)
-      val endKey = geotrellisaccumulo.decodeIndexKey(region+1)
+      val endKey = geotrellisaccumulo.decodeIndexKey(region + 1)
+      val start = new Key(AccumuloKeyEncoder.index2RowId(keyIndex.toIndex(startKey)))
+      val end = new Key(AccumuloKeyEncoder.index2RowId(keyIndex.toIndex(endKey)))
       // assert(region+1==geotrellisaccumulo.SpaceTimeByMonthPartitioner.toIndex(endKey))
       // println("Region: " + region + " date: " + DateTimeFormatter.BASIC_ISO_DATE.format(startKey.time) + " enddate: " + DateTimeFormatter.BASIC_ISO_DATE.format(endKey.time))
 
-      var newSplit:BatchInputSplit = null
-      for(partition <- myPartitions.drop(currentStart)) {
-        var rangesForRegion = mutable.Seq[data.Range]()
-        val inputSplit = partition.asInstanceOf[NewHadoopPartition].serializableHadoopSplit.value.asInstanceOf[BatchInputSplit]
+      var newSplit: BatchInputSplit = null
+      breakable {
+        for (partition <- myPartitions.drop(currentStart)) {
 
-        var rangeIdx = 0
-        var indices = ""
-        for(range <- inputSplit.getRanges().toArray){
+          var rangesForRegion = mutable.Seq[data.Range]()
+          val inputSplit = partition.asInstanceOf[NewHadoopPartition].serializableHadoopSplit.value.asInstanceOf[BatchInputSplit]
 
-          val theRange = range.asInstanceOf[data.Range]
-          val start = new Key(AccumuloKeyEncoder.index2RowId(keyIndex.toIndex(startKey)))
-          val end = new Key(AccumuloKeyEncoder.index2RowId(keyIndex.toIndex(endKey)))
-          if(!theRange.beforeStartKey(end) && (! theRange.afterEndKey(start) || theRange.getEndKey == start )){
-            val clippedRange = theRange.clip(new data.Range(start, true, end, false), true)
-            if(clippedRange!=null){
-              indices += (rangeIdx + ", ")
-              rangesForRegion = rangesForRegion :+ clippedRange
-            }else{
-              // println("No overlap!!")
+          var indices = ""
+          var rangeIdx = 0
+          var partitionOutOfCurrentBounds = false
+
+          for (range <- inputSplit.getRanges().toArray) {
+            val theRange = range.asInstanceOf[data.Range]
+            if (!theRange.beforeStartKey(end) && (!theRange.afterEndKey(start) || theRange.getEndKey == start)) {
+              val clippedRange = theRange.clip(new data.Range(start, true, end, false), true)
+              if (clippedRange != null) {
+                indices += (rangeIdx + ", ")
+                rangesForRegion = rangesForRegion :+ clippedRange
+              } else {
+                // println("No overlap!!")
+              }
+
+            } else if (theRange.beforeStartKey(end)) {
+              //the end of the region lies before the start key of the range, so this partition is entirely out of bounds
+              partitionOutOfCurrentBounds = true
             }
-
+            rangeIdx += 1
           }
-          rangeIdx += 1
-        }
-        if(indices.length>0){
-          // println("Partition: " + partition.index + " idx: " + indices)
-          currentStart = partition.index
-          if(newSplit==null){
-            newSplit = new BatchInputSplit(inputSplit.getTable,inputSplit.getTableId,new util.ArrayList(rangesForRegion.asJavaCollection),inputSplit.getLocations)
-            newSplit.setInstanceName(inputSplit.getInstanceName)
-            newSplit.setZooKeepers(inputSplit.getZooKeepers)
-            newSplit.setMockInstance(false)
-            newSplit.setPrincipal(inputSplit.getPrincipal)
-            newSplit.setToken(inputSplit.getToken)
-            newSplit.setAuths(inputSplit.getAuths)
-            newSplit.setFetchedColumns(inputSplit.getFetchedColumns)
-            newSplit.setIterators(inputSplit.getIterators)
-            newSplit.setLogLevel(inputSplit.getLogLevel)
-            splitsForRegions = splitsForRegions :+ newSplit
-          }else{
+          if (indices.length > 0) {
+            //println("Partition: " + partition.index + " idx: " + indices)
+            currentStart = partition.index
+            if (newSplit == null) {
+              newSplit = new BatchInputSplit(inputSplit.getTable, inputSplit.getTableId, new util.ArrayList(rangesForRegion.asJavaCollection), inputSplit.getLocations)
+              newSplit.setInstanceName(inputSplit.getInstanceName)
+              newSplit.setZooKeepers(inputSplit.getZooKeepers)
+              newSplit.setMockInstance(false)
+              newSplit.setPrincipal(inputSplit.getPrincipal)
+              newSplit.setToken(inputSplit.getToken)
+              newSplit.setAuths(inputSplit.getAuths)
+              newSplit.setFetchedColumns(inputSplit.getFetchedColumns)
+              newSplit.setIterators(inputSplit.getIterators)
+              newSplit.setLogLevel(inputSplit.getLogLevel)
+              splitsForRegions = splitsForRegions :+ newSplit
+            } else {
 
-            newSplit.getRanges.addAll(rangesForRegion.asJavaCollection)
+              newSplit.getRanges.addAll(rangesForRegion.asJavaCollection)
+            }
+          }
+          if (partitionOutOfCurrentBounds) {
+            break
           }
         }
+
       }
-
     }
+    println("Computed input data in: " + (System.currentTimeMillis()-start)/1000.0 + " seconds")
     //region indices map directly to partition indices!
     assert( myRegions.size == splitsForRegions.size)
     var i = -1
