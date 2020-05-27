@@ -128,6 +128,7 @@ class OpenEOProcesses extends Serializable {
    */
   def RDDBandCount[K](cube: MultibandTileLayerRDD[K]): Int = {
     // For performance reasons we only check a small subset of tile band counts
+    println("Computing number of bands in cube: " + cube.metadata)
     val counts = cube.take(10).map({ case (k, t) => t.bandCount }).distinct
     if (counts.size != 1) {
       throw new IllegalArgumentException("Cube doesn't have single consistent band count across tiles: [%s]".format(counts.mkString(", ")))
@@ -136,16 +137,16 @@ class OpenEOProcesses extends Serializable {
   }
 
   def mergeCubes(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey], operator:String): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val leftBandCount = RDDBandCount(leftCube)
-    val rightBandCount = RDDBandCount(rightCube)
     val joined = outerJoin(leftCube,rightCube)
     val updatedMetadata: TileLayerMetadata[SpaceTimeKey] = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(rightCube.metadata.extent))
 
     if(operator==null) {
-      // Concatenation
+      val leftBandCount = RDDBandCount(leftCube)
+      val rightBandCount = RDDBandCount(rightCube)
+      // Concatenation band counts are allowed to differ, but all resulting multiband tiles should have the same count
       new ContextRDD(joined.mapValues({
         case (None, Some(r)) => MultibandTile(Vector.fill(leftBandCount)(ArrayTile.empty(r.cellType, r.cols, r.rows)) ++ r.bands)
-        case (Some(l), None) => MultibandTile(l.bands ++ Vector.fill(leftBandCount)(ArrayTile.empty(l.cellType, l.cols, l.rows)))
+        case (Some(l), None) => MultibandTile(l.bands ++ Vector.fill(rightBandCount)(ArrayTile.empty(l.cellType, l.cols, l.rows)))
         case (Some(l), Some(r)) => MultibandTile(l.bands ++ r.bands)
       }), updatedMetadata)
     }else{
@@ -153,13 +154,16 @@ class OpenEOProcesses extends Serializable {
       //in theory we should be able to reuse the OpenEOProcessScriptBuilder instead of using a string.
       //val binaryOp: Seq[Tile] => Seq[Tile] = operator.generateFunction()
       val binaryOp = tileBinaryOp.getOrElse(operator, throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, tileBinaryOp.keys.toString())))
-      if (leftBandCount != rightBandCount) {
-        throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(leftBandCount, rightBandCount))
-      }
+
       new ContextRDD(joined.mapValues({case (l,r) =>
         if(r.isEmpty) l.get
         else if(l.isEmpty) r.get
-        else MultibandTile(l.get.bands.zip(r.get.bands).map(t => binaryOp.apply(Seq(t._1, t._2))))
+        else {
+          if(l.get.bandCount != r.get.bandCount){
+            throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.get.bandCount, r.get.bandCount)))
+          }
+          MultibandTile(l.get.bands.zip(r.get.bands).map(t => binaryOp.apply(Seq(t._1, t._2))))
+        }
       }), updatedMetadata)
     }
 
