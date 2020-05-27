@@ -19,6 +19,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK_SER
+import org.openeo.geotrellis.aggregate_polygon.AggregatePolygonProcess
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.JavaConverters._
@@ -85,7 +86,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   }
 
   def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
-    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
+    val computeStatsGeotrellis = new AggregatePolygonProcess(layersConfig(band_index))
 
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
@@ -100,7 +101,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
    * Writes means to an UTF-8 encoded JSON file.
    */
   def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, from_date: String, to_date: String, band_index: Int, output_file: String): Unit = {
-    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
+    val computeStatsGeotrellis = new AggregatePolygonProcess(layersConfig(band_index))
 
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
