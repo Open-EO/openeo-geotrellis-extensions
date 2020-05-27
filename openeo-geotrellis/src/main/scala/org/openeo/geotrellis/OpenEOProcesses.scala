@@ -160,7 +160,7 @@ class OpenEOProcesses extends Serializable {
         else if(l.isEmpty) r.get
         else {
           if(l.get.bandCount != r.get.bandCount){
-            throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.get.bandCount, r.get.bandCount)))
+            throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.get.bandCount, r.get.bandCount))
           }
           MultibandTile(l.get.bands.zip(r.get.bands).map(t => binaryOp.apply(Seq(t._1, t._2))))
         }
