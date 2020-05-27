@@ -42,7 +42,12 @@ class AggregatePolygonProcess(layersConfig: LayersConfig) {
       }
 
     if (exceeds && splitPolygons.isDefined) {
-      computeMultibandCollectionTimeSeries(datacube, splitPolygons.get, crs, startDate, endDate, statisticsCallback, sc, cancellationContext)
+      if(!datacube.partitioner.isEmpty && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
+        //Use optimized implementation for space partitioner
+        computeMultibandCollectionTimeSeries(datacube, splitPolygons.get, crs, startDate, endDate, statisticsCallback, sc, cancellationContext)
+      } else{
+        computeStatsGeotrellis.computeMultibandCollectionTimeSeries(datacube, splitPolygons.get, crs, startDate, endDate, statisticsCallback, cancellationContext, sc)
+      }
     } else {
       val sparkPool = sc.getLocalProperty("spark.scheduler.pool")
       val results: Array[Map[TemporalKey, Array[MeanResult]]] = computeStatsGeotrellis.computeAverageTimeSeries(datacube, polygons, crs, startDate, endDate,  sc).par.flatMap { rdd =>
@@ -101,7 +106,19 @@ class AggregatePolygonProcess(layersConfig: LayersConfig) {
       for (date <- dates){
         val valuesForDate: collection.Map[Int, Seq[StatsMeanResult]] = zonalStats.filter(_._1._1==date).map(t=>(t._1._2,t._2.map{ meanResult => new StatsMeanResult(meanResult.mean.getOrElse(Double.NaN), meanResult.totalCount, meanResult.validCount)
         }))
-        statisticsCallback.onComputed(date,valuesForDate.toSeq.sortBy(_._1).map(_._2))
+
+        //the map might not contain results for all features, it is sparse, so we have to make it dense
+        //we also have to merge results of features that were splitted because of overlap
+        val denseResults = indexMapping.map { splitIndices =>
+          val empty = new StatsMeanResult(Double.NaN, 0L, 0L)
+
+          splitIndices.flatMap(valuesForDate.get).fold(Seq.empty) { (denseMean1, denseMean2) =>
+            val meansPairedByBand = denseMean1.zipAll(denseMean2, empty, empty)
+            meansPairedByBand.map { case (leftMean, rightMean) => leftMean merge rightMean }
+          }
+        }
+
+        statisticsCallback.onComputed(date,denseResults)
       }
       statisticsCallback.onCompleted()
     }finally{
