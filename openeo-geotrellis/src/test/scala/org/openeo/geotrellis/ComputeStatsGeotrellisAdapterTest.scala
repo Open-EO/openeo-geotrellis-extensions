@@ -458,11 +458,15 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val referenceAverages = GeometriesMeans.parse(referenceJson)
       .results
       .map { case (date, results) => (date.atStartOfDay(ZoneOffset.UTC), results.map(_.average)) }
+      .filter(_._2.exists(!_.isNaN))
+
 
     for {
       (date, expectedAverages) <- referenceAverages
       (expectedAverage, actualAverage) <- expectedAverages zip actualAverages(date)
     } assertEquals(expectedAverage, actualAverage, 0.000001)
+
+    assertArrayEquals(referenceAverages.keys.map((_.toEpochSecond)).toArray.sorted,actualAverages.filter(_._2.exists(!_.isNaN)).keys.map((_.toEpochSecond)).toArray.sorted)
   }
 
   @Test
