@@ -5,7 +5,7 @@ import java.time.ZonedDateTime
 import be.vito.eodata.extracttimeseries.geotrellis.ComputeStatsGeotrellisHelpers
 import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
 import geotrellis.layer.{Bounds, EmptyBounds, KeyBounds, Metadata, SpaceTimeKey, TileLayerMetadata}
-import geotrellis.proj4.CRS
+import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.{MultibandTile, Tile}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
@@ -13,7 +13,7 @@ import geotrellis.store.accumulo.{AccumuloAttributeStore, AccumuloKeyEncoder, Ac
 import geotrellis.store.avro.AvroRecordCodec
 import geotrellis.store.{LayerQuery, _}
 import geotrellis.util._
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector._
 import org.apache.accumulo.core.client.mapreduce.InputFormatBase
 import org.apache.accumulo.core.data.{Range => AccumuloRange}
 import org.apache.accumulo.core.util.{Pair => AccumuloPair}
@@ -110,6 +110,53 @@ object PyramidFactory {
       return pyramid_seq(layerName,bbox,bbox_srs,start,end)
     }
 
+    def pyramid_seq(layerName: String, polygons: Array[MultiPolygon], polygons_crs: CRS, startDate: String, endDate: String): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+      val query = {
+        // 500m buffer for kernel operations
+        val bufferDistanceInMeters = 500.0
+        val bufferDistance = Extent(0.0, 0.0, bufferDistanceInMeters, 1.0).reproject(WebMercator, polygons_crs).width
+
+        val intersectsPolygons = polygons
+          .map(polygon =>
+            polygon.buffer(bufferDistance) match {
+              case polygon: Polygon => MultiPolygon(polygon)
+              case multiPolygon: MultiPolygon => multiPolygon
+            })
+          .map(bufferedPolygon => Intersects(bufferedPolygon, polygons_crs): LayerFilter.Expression[Intersects.type, (MultiPolygon, CRS)])
+          .reduce(_ or _)
+
+        val spatialQuery = new LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]]
+          .where(intersectsPolygons)
+
+        (Option(startDate).map(ZonedDateTime.parse), Option(endDate).map(ZonedDateTime.parse)) match {
+          case (Some(start), Some(end)) => spatialQuery.where(Between(start, end))
+          case _ => spatialQuery
+        }
+      }
+
+      val sc = SparkContext.getOrCreate()
+
+      ComputeStatsGeotrellisHelpers.authenticated(sc) {
+        val (minLevel: Int, maxLevel: Int) = zoomRange(layerName)
+
+        val attributeStore = AccumuloAttributeStore(accumuloInstance)
+        val id = LayerId(layerName, maxLevel)
+        if (!attributeStore.layerExists(id)) throw new LayerNotFoundError(id)
+
+        val header: LayerHeader = attributeStore.readHeader[LayerHeader](id)
+
+        val pyramid = for (z <- maxLevel to minLevel by -1) yield {
+          header.valueClass match {
+            case "geotrellis.raster.Tile" =>
+              (z, rdd[Tile](layerName, z, query).withContext(_.mapValues(MultibandTile(_))))
+            case "geotrellis.raster.MultibandTile" =>
+              (z, rdd[MultibandTile](layerName, z, query))
+          }
+        }
+
+        pyramid
+      }
+    }
 
     def load_rdd(layerName:String,level:Int,bbox: Extent, bbox_srs: String,startDate: Option[ZonedDateTime]=Option.empty, endDate:Option[ZonedDateTime]=Option.empty ): MultibandTileLayerRDD[SpaceTimeKey]  = {
       val attributeStore = AccumuloAttributeStore(accumuloInstance)

@@ -31,11 +31,18 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
   override val partitioner: Option[org.apache.spark.Partitioner] = Some(SpacePartitioner(metadata.bounds))
 
   override def compute(split: Partition, context: TaskContext): Iterator[(SpaceTimeKey, V)] = {
+    if(!split.isInstanceOf[NewHadoopPartition]) {
+      return Iterator.empty
+    }
     val parentIterator = parent.compute(split, context)
 
     parentIterator.map { case (_, value) =>
       AvroEncoder.fromBinary(kwWriterSchema.value.getOrElse(codec.value.schema), value.get)(codec.value)
     }.flatten
+  }
+
+  class EmptyPartition(theIndex:Int) extends Partition{
+    override def index: Int = theIndex
   }
 
   override protected def getPartitions: Array[Partition] = {
@@ -96,9 +103,7 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
               newSplit.setFetchedColumns(inputSplit.getFetchedColumns)
               newSplit.setIterators(inputSplit.getIterators)
               newSplit.setLogLevel(inputSplit.getLogLevel)
-              splitsForRegions = splitsForRegions :+ newSplit
             } else {
-
               newSplit.getRanges.addAll(rangesForRegion.asJavaCollection)
             }
           }
@@ -107,7 +112,9 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
           }
         }
 
+
       }
+      splitsForRegions = splitsForRegions :+ newSplit
     }
     println("Computed input data in: " + (System.currentTimeMillis()-start)/1000.0 + " seconds")
     //region indices map directly to partition indices!
@@ -115,6 +122,11 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
     var i = -1
     splitsForRegions.seq.map(split => {
       i+=1
-      new NewHadoopPartition(id, i, split)}).toArray[Partition]
+      if(split==null){
+        new EmptyPartition(i)
+      }else{
+        new NewHadoopPartition(id, i, split)
+      }
+    }).toArray[Partition]
   }
 }

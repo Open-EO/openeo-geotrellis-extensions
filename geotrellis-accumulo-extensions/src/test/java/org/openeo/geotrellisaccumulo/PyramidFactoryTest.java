@@ -1,7 +1,10 @@
 package org.openeo.geotrellisaccumulo;
 
 import be.vito.eodata.geopysparkextensions.AccumuloDelegationTokenProvider;
+import static be.vito.eodata.extracttimeseries.geotrellis.ComputeStatsGeotrellis.parseGeometry;
 import geotrellis.layer.SpaceTimeKey;
+import geotrellis.proj4.CRS;
+import geotrellis.proj4.LatLng$;
 import geotrellis.raster.MultibandTile;
 import geotrellis.vector.Extent;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
@@ -13,8 +16,11 @@ import org.apache.spark.rdd.RDD;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.locationtech.jts.geom.GeometryFactory;
+import org.locationtech.jts.geom.MultiPolygon;
+import org.locationtech.jts.geom.Polygon;
 import scala.Tuple2;
-import scala.collection.immutable.Seq;
+import scala.collection.Seq;
 
 import java.io.IOException;
 
@@ -60,5 +66,25 @@ public class PyramidFactoryTest {
         System.out.println("pyramid = " + pyramid);
         assertFalse(pyramid.apply(0)._2.isEmpty());
 
+    }
+
+    @Test
+    public void createPyramidFromPolygons() throws Exception {
+        PyramidFactory pyramidFactory = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181");
+
+        Polygon polygon1 = (Polygon) parseGeometry("{\"type\":\"Polygon\",\"coordinates\":[[[5.0761587693484875,51.21222494794898],[5.166854684377381,51.21222494794898],[5.166854684377381,51.268936260927404],[5.0761587693484875,51.268936260927404],[5.0761587693484875,51.21222494794898]]]}")._2();
+        Polygon polygon2 = (Polygon) parseGeometry("{\"type\":\"Polygon\",\"coordinates\":[[[3.043212890625,51.17934297928927],[3.087158203125,51.17934297928927],[3.087158203125,51.210324789481355],[3.043212890625,51.210324789481355],[3.043212890625,51.17934297928927]]]}")._2();
+
+        MultiPolygon[] polygons = new MultiPolygon[]{new MultiPolygon(new Polygon[]{polygon1,polygon2}, new GeometryFactory())};
+        CRS polygons_crs = LatLng$.MODULE$;
+
+        String startDate = "2017-11-01T00:00:00Z";
+        String endDate = "2017-11-21T00:00:00Z";
+
+        Seq<Tuple2<Object, RDD<Tuple2<SpaceTimeKey, MultibandTile>>>> pyramid =
+                pyramidFactory.pyramid_seq("S2_FAPAR_V102_WEBMERCATOR2", polygons, polygons_crs, startDate, endDate);
+
+        System.out.println("pyramid = " + pyramid);
+        assertFalse(pyramid.apply(0)._2().isEmpty());
     }
 }
