@@ -123,6 +123,8 @@ object PyramidFactory {
               case multiPolygon: MultiPolygon => multiPolygon
             })
           .map(bufferedPolygon => Intersects(bufferedPolygon, polygons_crs): LayerFilter.Expression[Intersects.type, (MultiPolygon, CRS)])
+          .grouped(250) // sub-reduces to prevent StackOverflowError in LayerFilter's recursive flatten further on
+          .map(_.reduce(_ or _))
           .reduce(_ or _)
 
         val spatialQuery = new LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]]

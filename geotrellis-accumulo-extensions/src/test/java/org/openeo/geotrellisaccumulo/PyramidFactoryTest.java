@@ -52,17 +52,20 @@ public class PyramidFactoryTest {
         SparkContext.getOrCreate().stop();
     }
 
+    private PyramidFactory pyramidFactory() {
+        return new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181");
+    }
+
     @Test
     public void createPyramid() {
 
 
-        PyramidFactory pyramidFactory = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181");
         Extent bbox = new Extent(652000, 5161000, 672000, 5181000);
         String srs = "EPSG:32632";
 
         //bbox = new Extent(10.5, 46.5, 11.4, 46.9);
         //srs = "EPSG:4326";
-        Seq<Tuple2<Object, RDD<Tuple2<SpaceTimeKey, MultibandTile>>>> pyramid = pyramidFactory.pyramid_seq("PROBAV_L3_S10_TOC_NDVI_333M", bbox, srs, "2016-12-31T00:00:00Z", "2018-01-01T02:00:00Z");
+        Seq<Tuple2<Object, RDD<Tuple2<SpaceTimeKey, MultibandTile>>>> pyramid = pyramidFactory().pyramid_seq("PROBAV_L3_S10_TOC_NDVI_333M", bbox, srs, "2016-12-31T00:00:00Z", "2018-01-01T02:00:00Z");
         System.out.println("pyramid = " + pyramid);
         assertFalse(pyramid.apply(0)._2.isEmpty());
 
@@ -70,19 +73,21 @@ public class PyramidFactoryTest {
 
     @Test
     public void createPyramidFromPolygons() throws Exception {
-        PyramidFactory pyramidFactory = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181");
-
         Polygon polygon1 = (Polygon) parseGeometry("{\"type\":\"Polygon\",\"coordinates\":[[[5.0761587693484875,51.21222494794898],[5.166854684377381,51.21222494794898],[5.166854684377381,51.268936260927404],[5.0761587693484875,51.268936260927404],[5.0761587693484875,51.21222494794898]]]}")._2();
         Polygon polygon2 = (Polygon) parseGeometry("{\"type\":\"Polygon\",\"coordinates\":[[[3.043212890625,51.17934297928927],[3.087158203125,51.17934297928927],[3.087158203125,51.210324789481355],[3.043212890625,51.210324789481355],[3.043212890625,51.17934297928927]]]}")._2();
 
-        MultiPolygon[] polygons = new MultiPolygon[]{new MultiPolygon(new Polygon[]{polygon1,polygon2}, new GeometryFactory())};
+        MultiPolygon[] multiPolygons = new MultiPolygon[] {
+                new MultiPolygon(new Polygon[]{polygon1}, new GeometryFactory()),
+                new MultiPolygon(new Polygon[]{polygon2}, new GeometryFactory())
+        };
+
         CRS polygons_crs = LatLng$.MODULE$;
 
         String startDate = "2017-11-01T00:00:00Z";
         String endDate = "2017-11-21T00:00:00Z";
 
         Seq<Tuple2<Object, RDD<Tuple2<SpaceTimeKey, MultibandTile>>>> pyramid =
-                pyramidFactory.pyramid_seq("S2_FAPAR_V102_WEBMERCATOR2", polygons, polygons_crs, startDate, endDate);
+                pyramidFactory().pyramid_seq("S2_FAPAR_V102_WEBMERCATOR2", multiPolygons, polygons_crs, startDate, endDate);
 
         System.out.println("pyramid = " + pyramid);
         assertFalse(pyramid.apply(0)._2().isEmpty());
