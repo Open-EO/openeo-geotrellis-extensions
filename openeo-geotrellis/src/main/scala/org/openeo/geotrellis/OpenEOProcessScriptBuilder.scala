@@ -176,7 +176,7 @@ class OpenEOProcessScriptBuilder {
     val hasExpression = arguments.containsKey("expression")
     val hasExpressions = arguments.containsKey("expressions")
     val hasData = arguments.containsKey("data")
-    val ignoreNoData = !(arguments.getOrDefault("ignore_nodata",true) == false || arguments.getOrDefault("ignore_nodata",None) == "false" )
+    val ignoreNoData = !(arguments.getOrDefault("ignore_nodata",Boolean.box(true).asInstanceOf[Object]) == Boolean.box(false) || arguments.getOrDefault("ignore_nodata",None) == "false" )
 
     val operation: Seq[Tile] => Seq[Tile] = operator match {
       // Comparison operators
@@ -214,7 +214,7 @@ class OpenEOProcessScriptBuilder {
         //TODO take ignorenodata into account!
       case "mean" if hasData => reduceListFunction("data", Mean.apply)
       case "variance" if hasData => reduceListFunction("data", Variance.apply)
-      case "sd" if hasData => reduceListFunction("data", Sqrt.apply compose Variance.apply)
+      case "sd" if hasData => reduceListFunction("data", Sqrt.apply _ compose Variance.apply)
       // Unary math
       case "abs" if hasX => mapFunction("x", Abs.apply)
       //TODO "log"
