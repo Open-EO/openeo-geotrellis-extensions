@@ -198,6 +198,28 @@ class OpenEOProcessScriptBuilder {
       case "multiply" if hasData => reduceFunction("data", Multiply.apply) // legacy 0.4 style
       case "divide" if hasXY => xyFunction(Divide.apply)
       case "divide" if hasData => reduceFunction("data", Divide.apply) // legacy 0.4 style
+      case "max" if hasData => reduceFunction("data", Max.apply)
+      case "min" if hasData => reduceFunction("data", Min.apply)
+      // Unary math
+      case "abs" if hasX => mapFunction("x", Abs.apply)
+      //TODO "log"
+      //TODO: "int" integer part of a number
+      //TODO "arccos" -> Acosh.apply,
+      //TODO: arctan 2 is not unary! "arctan2" -> Atan2.apply,
+      case "ln" if hasX => mapFunction( "x", Log.apply)
+      case "sqrt" if hasX => mapFunction("x", Sqrt.apply)
+      case "ceil" if hasX => mapFunction("x", Ceil.apply)
+      case "floor" if hasX => mapFunction("x", Floor.apply)
+      case "round" if hasX => mapFunction("x", Round.apply)
+      case "arccos" if hasX => mapFunction("x", Acos.apply)
+      case "arcsin" if hasX => mapFunction("x", Asin.apply)
+      case "arctan" if hasX => mapFunction("x", Atan.apply)
+      case "cos" if hasX => mapFunction("x", Cos.apply)
+      case "cosh" if hasX => mapFunction("x", Cosh.apply)
+      case "sin" if hasX => mapFunction("x", Sin.apply)
+      case "sinh" if hasX => mapFunction("x", Sinh.apply)
+      case "tan" if hasX => mapFunction("x", Tan.apply)
+      case "tanh" if hasX => mapFunction("x", Tanh.apply)
       // Other
       case "array_element" => arrayElementFunction(arguments)
       case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
