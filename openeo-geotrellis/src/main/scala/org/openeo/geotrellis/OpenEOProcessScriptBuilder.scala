@@ -1,7 +1,9 @@
 package org.openeo.geotrellis
 
+import be.vito.eodata.extracttimeseries.geotrellis.ComputeStatsGeotrellisHelpers.{MaxIgnoreNoData, MinIgnoreNoData}
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.{DoubleConstantTile, IntConstantTile, ShortConstantTile, Tile, UByteConstantTile}
+import org.openeo.geotrellis.mapalgebra.AddIgnoreNodata
 
 import scala.collection.mutable
 
@@ -170,6 +172,7 @@ class OpenEOProcessScriptBuilder {
     val hasExpression = arguments.containsKey("expression")
     val hasExpressions = arguments.containsKey("expressions")
     val hasData = arguments.containsKey("data")
+    val ignoreNoData = !(arguments.getOrDefault("ignore_nodata",true) == false || arguments.getOrDefault("ignore_nodata",None) == "false" )
 
     val operation: Seq[Tile] => Seq[Tile] = operator match {
       // Comparison operators
@@ -189,7 +192,8 @@ class OpenEOProcessScriptBuilder {
       case "xor" if hasXY => xyFunction(Xor.apply)
       case "xor" if hasExpressions => reduceFunction("expressions", Xor.apply) // legacy 0.4 style
       // Mathematical operators
-      case "sum" if hasData => reduceFunction("data", Add.apply)
+      case "sum" if hasData && !ignoreNoData => reduceFunction("data", Add.apply)
+      case "sum" if hasData && ignoreNoData => reduceFunction("data", AddIgnoreNodata.apply)
       case "add" if hasXY => xyFunction(Add.apply)
       case "subtract" if hasXY => xyFunction(Subtract.apply)
       case "subtract" if hasData => reduceFunction("data", Subtract.apply) // legacy 0.4 style
@@ -198,8 +202,10 @@ class OpenEOProcessScriptBuilder {
       case "multiply" if hasData => reduceFunction("data", Multiply.apply) // legacy 0.4 style
       case "divide" if hasXY => xyFunction(Divide.apply)
       case "divide" if hasData => reduceFunction("data", Divide.apply) // legacy 0.4 style
-      case "max" if hasData => reduceFunction("data", Max.apply)
-      case "min" if hasData => reduceFunction("data", Min.apply)
+      case "max" if hasData && !ignoreNoData => reduceFunction("data", Max.apply)
+      case "max" if hasData && ignoreNoData => reduceFunction("data", MaxIgnoreNoData.apply)
+      case "min" if hasData && !ignoreNoData => reduceFunction("data", Min.apply)
+      case "min" if hasData && ignoreNoData => reduceFunction("data", MinIgnoreNoData.apply)
       // Unary math
       case "abs" if hasX => mapFunction("x", Abs.apply)
       //TODO "log"
