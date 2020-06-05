@@ -39,6 +39,10 @@ class OpenEOProcessScriptBuilder {
     unaryFunction(argName, (tiles: Seq[Tile]) => Seq(tiles.reduce(operator)))
   }
 
+  private def reduceListFunction(argName: String, operator: Seq[Tile] => Tile): Seq[Tile] => Seq[Tile] = {
+    unaryFunction(argName, (tiles: Seq[Tile]) => Seq(operator(tiles)))
+  }
+
   private def xyFunction(operator:(Tile,Tile) => Tile ) = {
     val storedArgs = contextStack.head
     if(!storedArgs.contains("x")){
@@ -202,10 +206,15 @@ class OpenEOProcessScriptBuilder {
       case "multiply" if hasData => reduceFunction("data", Multiply.apply) // legacy 0.4 style
       case "divide" if hasXY => xyFunction(Divide.apply)
       case "divide" if hasData => reduceFunction("data", Divide.apply) // legacy 0.4 style
+        //statistics
       case "max" if hasData && !ignoreNoData => reduceFunction("data", Max.apply)
       case "max" if hasData && ignoreNoData => reduceFunction("data", MaxIgnoreNoData.apply)
       case "min" if hasData && !ignoreNoData => reduceFunction("data", Min.apply)
       case "min" if hasData && ignoreNoData => reduceFunction("data", MinIgnoreNoData.apply)
+        //TODO take ignorenodata into account!
+      case "mean" if hasData => reduceListFunction("data", Mean.apply)
+      case "variance" if hasData => reduceListFunction("data", Variance.apply)
+      case "sd" if hasData => reduceListFunction("data", Sqrt.apply compose Variance.apply)
       // Unary math
       case "abs" if hasX => mapFunction("x", Abs.apply)
       //TODO "log"
