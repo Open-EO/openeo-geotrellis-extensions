@@ -10,9 +10,12 @@ import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.spark._
+import geotrellis.vector._
 import geotrellis.spark.partition.SpacePartitioner
+import geotrellis.raster.vectorize._
 import org.openeo.geotrellisaccumulo.SpaceTimeByMonthPartitioner
 import geotrellis.util.Filesystem
+import geotrellis.vector.PolygonFeature
 import org.apache.spark.rdd.{CoGroupedRDD, RDD}
 import org.openeo.geotrellis.focal._
 
@@ -99,6 +102,28 @@ class OpenEOProcesses extends Serializable {
       val resultTiles = function(tile.bands)
       MultibandTile(resultTiles)
     }))
+  }
+
+  /**
+   * Simple vectorize implementation
+   * Rasters are combined to a max size of 5120, larger rasters are supported, but resulting features will not be merged
+   * Only first band is taken into account, other bands are ignored.
+   *
+   * @param datacube
+   * @return
+   */
+  def vectorize(datacube:MultibandTileLayerRDD[SpaceTimeKey]): Array[PolygonFeature[Int]] = {
+    val layout = datacube.metadata.layout
+
+    //naive approach: combine tiles and hope that we don't exceed the max size
+    //if we exceed the max, vectorize will run on separate tiles, and we'll need to merge results
+    val newCols = Math.min(256*20,layout.cols)
+    val newRows = Math.min(256*20,layout.rows)
+
+    val singleBandLayer: TileLayerRDD[SpaceTimeKey] = datacube.withContext(_.mapValues(_.band(0)))
+    val retiled = singleBandLayer.regrid(newCols.intValue(),newRows.intValue())
+    val collectedFeatures = retiled.toRasters.mapValues(_.toVector()).flatMap(_._2).collect()
+    return collectedFeatures
   }
 
   def applySpacePartitioner(datacube: RDD[(SpaceTimeKey, MultibandTile)], keyBounds: KeyBounds[SpaceTimeKey]): RDD[(SpaceTimeKey, MultibandTile)] = {
