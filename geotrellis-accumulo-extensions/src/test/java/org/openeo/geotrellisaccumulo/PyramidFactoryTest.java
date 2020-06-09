@@ -65,7 +65,7 @@ public class PyramidFactoryTest {
 
         //bbox = new Extent(10.5, 46.5, 11.4, 46.9);
         //srs = "EPSG:4326";
-        Seq<Tuple2<Object, RDD<Tuple2<SpaceTimeKey, MultibandTile>>>> pyramid = pyramidFactory().pyramid_seq("PROBAV_L3_S10_TOC_NDVI_333M", bbox, srs, "2016-12-31T00:00:00Z", "2018-01-01T02:00:00Z");
+        Seq<Tuple2<Object, RDD<Tuple2<SpaceTimeKey, MultibandTile>>>> pyramid = pyramidFactory().pyramid_seq("PROBAV_L3_S10_TOC_NDVI_333M_V3", bbox, srs, "2016-12-31T00:00:00Z", "2018-01-01T02:00:00Z");
         System.out.println("pyramid = " + pyramid);
         assertFalse(pyramid.apply(0)._2.isEmpty());
 
