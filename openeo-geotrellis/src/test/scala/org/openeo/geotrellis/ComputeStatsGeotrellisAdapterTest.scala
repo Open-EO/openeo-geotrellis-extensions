@@ -281,7 +281,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val to_date = "2018-06-11T00:00:00Z"
 
     val datacube: MultibandTileLayerRDD[SpaceTimeKey] = accumuloDataCube(
-      layer = "PROBAV_L3_S10_TOC_NDVI_333M_V2",
+      layer = "PROBAV_L3_S10_TOC_NDVI_333M_V3",
       minDateString = from_date,
       maxDateString = to_date,
       bbox,
