@@ -129,7 +129,7 @@ class OpenEOProcesses extends Serializable {
     return collectedFeatures
   }
 
-  def vectorize(datacube:MultibandTileLayerRDD[SpaceTimeKey], outputFile:String) = {
+  def vectorize(datacube:MultibandTileLayerRDD[SpaceTimeKey], outputFile:String): Unit = {
     val features = this.vectorize(datacube)
     val json = JsonFeatureCollection(features).asJson
     Files.write(Paths.get(outputFile), json.toString().getBytes(StandardCharsets.UTF_8))
