@@ -1,6 +1,8 @@
 package org.openeo.geotrellis
 
 import java.io.File
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Paths}
 import java.time.{Instant, ZonedDateTime}
 
 import geotrellis.layer._
@@ -16,6 +18,7 @@ import geotrellis.raster.vectorize._
 import org.openeo.geotrellisaccumulo.SpaceTimeByMonthPartitioner
 import geotrellis.util.Filesystem
 import geotrellis.vector.PolygonFeature
+import geotrellis.vector.io.json.JsonFeatureCollection
 import org.apache.spark.rdd.{CoGroupedRDD, RDD}
 import org.openeo.geotrellis.focal._
 
@@ -124,6 +127,12 @@ class OpenEOProcesses extends Serializable {
     val retiled = singleBandLayer.regrid(newCols.intValue(),newRows.intValue())
     val collectedFeatures = retiled.toRasters.mapValues(_.toVector()).flatMap(_._2).collect()
     return collectedFeatures
+  }
+
+  def vectorize(datacube:MultibandTileLayerRDD[SpaceTimeKey], outputFile:String) = {
+    val features = this.vectorize(datacube)
+    val json = JsonFeatureCollection(features).asJson
+    Files.write(Paths.get(outputFile), json.toString().getBytes(StandardCharsets.UTF_8))
   }
 
   def applySpacePartitioner(datacube: RDD[(SpaceTimeKey, MultibandTile)], keyBounds: KeyBounds[SpaceTimeKey]): RDD[(SpaceTimeKey, MultibandTile)] = {
