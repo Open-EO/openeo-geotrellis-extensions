@@ -3,7 +3,7 @@ package org.openeo.geotrellis.file
 import java.time.ZonedDateTime
 import java.util
 
-import be.vito.eodata.extracttimeseries.geotrellis.S1CoherenceOscarsLayerProvider
+import be.vito.eodata.extracttimeseries.geotrellis.Sentinel1CoherenceFileLayerProvider
 
 import scala.collection.JavaConverters._
 import cats.data.NonEmptyList
@@ -18,7 +18,7 @@ import scala.collection.Map
 class Sentinel1CoherencePyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util.List[String], rootPath: String) {
   require(oscarsLinkTitles.size() > 0)
 
-  private def sentinel1CoherenceOscarsPyramidFactory(metadataProperties: Map[String, Any]) = new S1CoherenceOscarsLayerProvider(
+  private def sentinel1CoherenceOscarsPyramidFactory(metadataProperties: Map[String, Any]) = new Sentinel1CoherenceFileLayerProvider(
     oscarsCollectionId,
     NonEmptyList.fromListUnsafe(oscarsLinkTitles.asScala.toList),
     rootPath,

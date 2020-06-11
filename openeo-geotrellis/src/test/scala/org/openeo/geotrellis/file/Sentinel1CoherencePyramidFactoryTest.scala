@@ -38,8 +38,6 @@ object Sentinel1CoherencePyramidFactoryTest {
 
 class Sentinel1CoherencePyramidFactoryTest {
 
-  private val pyramidFactory = new Sentinel1CoherencePyramidFactory
-
   @Test
   def polygonalMean(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
