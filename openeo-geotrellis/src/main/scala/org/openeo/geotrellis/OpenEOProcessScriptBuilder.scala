@@ -43,7 +43,7 @@ class OpenEOProcessScriptBuilder {
     unaryFunction(argName, (tiles: Seq[Tile]) => Seq(operator(tiles)))
   }
 
-  private def xyFunction(operator:(Tile,Tile) => Tile ) = {
+  private def xyFunction(operator:(Tile,Tile) => Tile,xArgName:String = "x",yArgName:String = "y" ) = {
     val storedArgs = contextStack.head
     if(!storedArgs.contains("x")){
       throw new IllegalArgumentException("This function expects an 'x' argument, function tree: " + processStack.reverse.mkString("->") + ". These arguments were found: " + storedArgs.keys.mkString(", "))
@@ -51,8 +51,8 @@ class OpenEOProcessScriptBuilder {
     if(!storedArgs.contains("y")){
       throw new IllegalArgumentException("This function expects an 'y' argument, function tree: " + processStack.reverse.mkString("->") + ". These arguments were found: " + storedArgs.keys.mkString(", "))
     }
-    val x_function = storedArgs.get("x").get
-    val y_function = storedArgs.get("y").get
+    val x_function = storedArgs.get(xArgName).get
+    val y_function = storedArgs.get(yArgName).get
     val bandFunction = (tiles:Seq[Tile]) =>{
       val x_input: Seq[Tile] =
         if(x_function!=null) {
@@ -206,6 +206,7 @@ class OpenEOProcessScriptBuilder {
       case "multiply" if hasData => reduceFunction("data", Multiply.apply) // legacy 0.4 style
       case "divide" if hasXY => xyFunction(Divide.apply)
       case "divide" if hasData => reduceFunction("data", Divide.apply) // legacy 0.4 style
+      case "power" => xyFunction(Pow.apply,xArgName = "base",yArgName = "p")
         //statistics
       case "max" if hasData && !ignoreNoData => reduceFunction("data", Max.apply)
       case "max" if hasData && ignoreNoData => reduceFunction("data", MaxIgnoreNoData.apply)
