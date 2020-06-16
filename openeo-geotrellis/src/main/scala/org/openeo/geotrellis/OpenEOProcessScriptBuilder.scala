@@ -45,35 +45,35 @@ class OpenEOProcessScriptBuilder {
 
   private def xyFunction(operator:(Tile,Tile) => Tile,xArgName:String = "x",yArgName:String = "y" ) = {
     val storedArgs = contextStack.head
-    if(!storedArgs.contains("x")){
-      throw new IllegalArgumentException("This function expects an 'x' argument, function tree: " + processStack.reverse.mkString("->") + ". These arguments were found: " + storedArgs.keys.mkString(", "))
+    if (!storedArgs.contains(xArgName)) {
+      throw new IllegalArgumentException("This function expects an '" + xArgName + "' argument, function tree: " + processStack.reverse.mkString("->") + ". These arguments were found: " + storedArgs.keys.mkString(", "))
     }
-    if(!storedArgs.contains("y")){
-      throw new IllegalArgumentException("This function expects an 'y' argument, function tree: " + processStack.reverse.mkString("->") + ". These arguments were found: " + storedArgs.keys.mkString(", "))
+    if (!storedArgs.contains(yArgName)) {
+      throw new IllegalArgumentException("This function expects an '" + yArgName + "' argument, function tree: " + processStack.reverse.mkString("->") + ". These arguments were found: " + storedArgs.keys.mkString(", "))
     }
     val x_function = storedArgs.get(xArgName).get
     val y_function = storedArgs.get(yArgName).get
-    val bandFunction = (tiles:Seq[Tile]) =>{
+    val bandFunction = (tiles: Seq[Tile]) => {
       val x_input: Seq[Tile] =
-        if(x_function!=null) {
+        if (x_function != null) {
           x_function.apply(tiles)
-        }else{
+        } else {
           tiles
         }
       val y_input: Seq[Tile] =
-        if(y_function!=null) {
+        if (y_function != null) {
           y_function.apply(tiles)
-        }else{
+        } else {
           tiles
         }
       if (x_input.size != 1) {
-        throw new IllegalArgumentException("Expected single tile, but got for x:" + x_input.size)
+        throw new IllegalArgumentException("Expected single tile, but got for " + xArgName + ":" + x_input.size)
       }
       if (y_input.size != 1) {
-        throw new IllegalArgumentException("Expected single tile, but got for y:" + y_input.size)
+        throw new IllegalArgumentException("Expected single tile, but got for " + yArgName + ":" + y_input.size)
       }
 
-      Seq(operator(x_input(0),y_input(0)))
+      Seq(operator(x_input(0), y_input(0)))
     }
     bandFunction
   }
