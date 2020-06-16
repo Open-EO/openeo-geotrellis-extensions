@@ -7,7 +7,7 @@
     <packaging>pom</packaging>
     <name>openeo-geotrellis-extensions</name>
     <properties>
-        <geotrellistimeseries.version>4.1.0-SNAPSHOT</geotrellistimeseries.version>
+        <geotrellistimeseries.version>4.2.0-SNAPSHOT</geotrellistimeseries.version>
         <hadoop.version>3.1.1</hadoop.version>
         <avro.version>1.7.7</avro.version>
         <spark.version>2.3.1</spark.version>
@@ -90,7 +90,7 @@
         <name>VITO</name>
         <url>www.vito.be</url>
     </organization>
-      
+
       <distributionManagement>
               <repository>
                       <id>artifactory.vgt.vito.be</id>
