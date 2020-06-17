@@ -66,14 +66,16 @@ class OpenEOProcessScriptBuilder {
         } else {
           tiles
         }
-      if (x_input.size != 1) {
-        throw new IllegalArgumentException("Expected single tile, but got for " + xArgName + ":" + x_input.size)
-      }
-      if (y_input.size != 1) {
-        throw new IllegalArgumentException("Expected single tile, but got for " + yArgName + ":" + y_input.size)
+      if(x_input.size == y_input.size) {
+        x_input.zip(y_input).map(t=>operator(t._1,t._2))
+      }else if(x_input.size == 1) {
+        y_input.map(operator(x_input.head,_))
+      }else if(y_input.size == 1) {
+        x_input.map(operator(_,y_input.head))
+      }else{
+        throw new IllegalArgumentException("Incompatible numbers of tiles in this XY operation '"+processStack.reverse.mkString("->")+"' " + xArgName + " has:" + x_input.size +", "+yArgName+" has: " + y_input.size+ "\n We expect either equal counts, are one of them should be 1.")
       }
 
-      Seq(operator(x_input(0), y_input(0)))
     }
     bandFunction
   }
