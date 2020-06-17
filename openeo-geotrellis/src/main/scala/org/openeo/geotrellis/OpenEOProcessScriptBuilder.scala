@@ -45,11 +45,12 @@ class OpenEOProcessScriptBuilder {
 
   private def xyFunction(operator:(Tile,Tile) => Tile,xArgName:String = "x",yArgName:String = "y" ) = {
     val storedArgs = contextStack.head
+    val processString = processStack.reverse.mkString("->")
     if (!storedArgs.contains(xArgName)) {
-      throw new IllegalArgumentException("This function expects an '" + xArgName + "' argument, function tree: " + processStack.reverse.mkString("->") + ". These arguments were found: " + storedArgs.keys.mkString(", "))
+      throw new IllegalArgumentException("This function expects an '" + xArgName + "' argument, function tree: " + processString + ". These arguments were found: " + storedArgs.keys.mkString(", "))
     }
     if (!storedArgs.contains(yArgName)) {
-      throw new IllegalArgumentException("This function expects an '" + yArgName + "' argument, function tree: " + processStack.reverse.mkString("->") + ". These arguments were found: " + storedArgs.keys.mkString(", "))
+      throw new IllegalArgumentException("This function expects an '" + yArgName + "' argument, function tree: " + processString + ". These arguments were found: " + storedArgs.keys.mkString(", "))
     }
     val x_function = storedArgs.get(xArgName).get
     val y_function = storedArgs.get(yArgName).get
@@ -73,7 +74,7 @@ class OpenEOProcessScriptBuilder {
       }else if(y_input.size == 1) {
         x_input.map(operator(_,y_input.head))
       }else{
-        throw new IllegalArgumentException("Incompatible numbers of tiles in this XY operation '"+processStack.reverse.mkString("->")+"' " + xArgName + " has:" + x_input.size +", "+yArgName+" has: " + y_input.size+ "\n We expect either equal counts, are one of them should be 1.")
+        throw new IllegalArgumentException("Incompatible numbers of tiles in this XY operation '"+processString+"' " + xArgName + " has:" + x_input.size +", "+yArgName+" has: " + y_input.size+ "\n We expect either equal counts, are one of them should be 1.")
       }
 
     }
