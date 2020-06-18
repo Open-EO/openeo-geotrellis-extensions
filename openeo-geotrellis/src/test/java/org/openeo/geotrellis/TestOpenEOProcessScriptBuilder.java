@@ -166,6 +166,49 @@ public class TestOpenEOProcessScriptBuilder {
         assertTileEquals(fillIntArrayTile(3, 3, 30, 30, 30, 30, 30, 30, 30, 30, 30), res);
     }
 
+    @DisplayName("Test multiband XY constant")
+    @Test
+    public void testMultiBandMultiplyConstant() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> args = dummyMap("x", "y");
+        String operator = "multiply";
+        builder.expressionStart(operator, args);
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.constantArgument("y", 10);
+        builder.expressionEnd(operator, args);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile1 = fillByteArrayTile(3, 3, 9, 10, 11, 12);
+        ByteArrayTile tile2 = fillByteArrayTile(3, 3, 5, 6, 7, 8);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1, tile2)));
+
+        assertTileEquals(fillByteArrayTile(3, 3, 90, 100, 110, 120, 0, 0, 0, 0, 0), result.apply(0));
+        assertTileEquals(fillByteArrayTile(3, 3, 50, 60, 70, 80, 0, 0, 0, 0, 0), result.apply(1));
+    }
+
+    @DisplayName("Test multiplying multiple tiles.")
+    @Test
+    public void testMultiBandMultiply() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> args = dummyMap("x", "y");
+        String operator = "multiply";
+        builder.expressionStart(operator, args);
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.argumentStart("y");
+        builder.argumentEnd();
+        builder.expressionEnd(operator, args);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile1 = fillByteArrayTile(3, 3, 9, 10, 11, 12);
+        ByteArrayTile tile2 = fillByteArrayTile(3, 3, 5, 6, 7, 8);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1, tile2)));
+
+        assertTileEquals(fillByteArrayTile(3, 3, 81, 100, 121, 144, 0, 0, 0, 0, 0), result.apply(0));
+        assertTileEquals(fillByteArrayTile(3, 3, 25, 36, 49, 64, 0, 0, 0, 0, 0), result.apply(1));
+    }
+
     private void testLogicalComparisonWithConstant(String operator, int... expectedValues) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Map<String, Object> args = dummyMap("x", "y");

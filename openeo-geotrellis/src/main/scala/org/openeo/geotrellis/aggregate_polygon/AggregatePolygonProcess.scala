@@ -102,9 +102,11 @@ class AggregatePolygonProcess(layersConfig: LayersConfig) {
       val zonalStats = combinedRDD.flatMap { case (date, (t1, t2)) => ZonalRunningTotal(t1, t2).map(index_total => ((date.time,index_total._1),index_total._2)).filterKeys(_._2>=0) }
         .reduceByKey((a,b) =>a.zip(b).map({ case (total_a,total_b) => total_a + total_b})).collectAsMap()
 
-      val dates: Iterable[ZonedDateTime] = zonalStats.map(_._1._1)
-      for (date <- dates){
-        val valuesForDate: collection.Map[Int, Seq[StatsMeanResult]] = zonalStats.filter(_._1._1==date).map(t=>(t._1._2,t._2.map{ meanResult => new StatsMeanResult(meanResult.mean.getOrElse(Double.NaN), meanResult.totalCount, meanResult.validCount)
+      val statsByDate = zonalStats.groupBy(_._1._1)
+
+      for (stats <- statsByDate){
+        val date = stats._1
+        val valuesForDate: collection.Map[Int, Seq[StatsMeanResult]] = stats._2.map(t=>(t._1._2,t._2.map{ meanResult => new StatsMeanResult(meanResult.mean.getOrElse(Double.NaN), meanResult.totalCount, meanResult.validCount)
         }))
 
         //the map might not contain results for all features, it is sparse, so we have to make it dense
