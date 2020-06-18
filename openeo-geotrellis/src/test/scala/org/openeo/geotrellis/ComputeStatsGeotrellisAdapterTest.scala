@@ -777,5 +777,25 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     })
   }
 
+  @Test
+  def testHandlingOfEmptyGeomtries(): Unit = {
+    val from_date = "2017-01-01T00:00:00Z"
+    val to_date = "2017-03-10T00:00:00Z"
+
+    val stats = computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
+      buildCubeRdd(ZonedDateTime.parse(from_date), ZonedDateTime.parse(to_date)),
+      polygons=ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/EmptyGeometry.shp").getPath),
+      from_date,
+      to_date,
+      band_index = 0
+    )
+    stats.asScala.foreach(println)
+
+    val keys = Seq("2017-01-01T00:00:00Z", "2017-01-15T00:00:00Z", "2017-02-01T00:00:00Z")
+    keys.foreach(k => assertEqualTimeseriesStats(
+      Seq(Seq(Double.NaN, Double.NaN)),
+      stats.get(k)
+    ))
+  }
 
 }
