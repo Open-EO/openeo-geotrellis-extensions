@@ -64,6 +64,7 @@ object ProjectedPolygons {
         val multiPolygon = ftItr.next().getAttribute(0) match {
           case multiPolygon: MultiPolygon => multiPolygon
           case polygon: Polygon => MultiPolygon(polygon)
+          case _ => MultiPolygon.EMPTY
         }
 
         simpleFeatures(i) = multiPolygon
