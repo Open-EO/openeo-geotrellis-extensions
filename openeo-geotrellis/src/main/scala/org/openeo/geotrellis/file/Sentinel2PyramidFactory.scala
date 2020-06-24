@@ -37,7 +37,7 @@ class Sentinel2PyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util
       yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox, zoom, sc)
   }
 
-  def pyramid_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,metadata_properties: util.Map[String, Any] = util.Collections.emptyMap()): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+  def pyramid_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,metadata_properties: util.Map[String, Any]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
 
     val bbox = polygons.toSeq.extent
