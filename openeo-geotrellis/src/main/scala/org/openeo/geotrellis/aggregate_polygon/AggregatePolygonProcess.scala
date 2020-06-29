@@ -43,12 +43,15 @@ class AggregatePolygonProcess(layersConfig: LayersConfig) {
 
     if (exceeds && splitPolygons.isDefined) {
       if(!datacube.partitioner.isEmpty && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
+        println("Large number of pixels requested, we can use an optimized implementation.")
         //Use optimized implementation for space partitioner
         computeMultibandCollectionTimeSeries(datacube, splitPolygons.get, crs, startDate, endDate, statisticsCallback, sc, cancellationContext)
       } else{
+        println("Large numbers of pixels found, we will run one job per date, that computes aggregate values for all polygons.")
         computeStatsGeotrellis.computeMultibandCollectionTimeSeries(datacube, splitPolygons.get, crs, startDate, endDate, statisticsCallback, cancellationContext, sc)
       }
     } else {
+      println("The number of pixels in your request is below the threshold, we'll compute the timeseries for each polygon separately.")
       val sparkPool = sc.getLocalProperty("spark.scheduler.pool")
       val results: Array[Map[TemporalKey, Array[MeanResult]]] = computeStatsGeotrellis.computeAverageTimeSeries(datacube, polygons, crs, startDate, endDate,  sc).par.flatMap { rdd =>
         if (!cancellationContext.canceled) {
