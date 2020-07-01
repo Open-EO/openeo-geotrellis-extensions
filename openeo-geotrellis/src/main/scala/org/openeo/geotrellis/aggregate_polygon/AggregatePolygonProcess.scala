@@ -31,7 +31,8 @@ class AggregatePolygonProcess(layersConfig: LayersConfig) {
   def computeAverageTimeSeries(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, startDate: ZonedDateTime, endDate: ZonedDateTime, statisticsCallback: StatisticsCallback[_ >: Seq[StatsMeanResult]], cancellationContext: CancellationContext, sc: SparkContext): Unit = {
 
 
-    val boundingBox = ProjectedExtent(polygons.toSeq.extent, crs)
+    val extent = sc.parallelize(polygons).map(_.extent).reduce(_.combine(_))
+    val boundingBox = ProjectedExtent(extent, crs)
     val exceeds = exceedsTreshold(boundingBox, datacube.metadata, sc)
 
     val splitPolygons =
@@ -45,9 +46,11 @@ class AggregatePolygonProcess(layersConfig: LayersConfig) {
       if(!datacube.partitioner.isEmpty && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
         println("Large number of pixels requested, we can use an optimized implementation.")
         //Use optimized implementation for space partitioner
+        sc.setJobDescription("Avg timeseries: " + polygons.length + " from: " + startDate + " to: " + endDate + " using SpacePartitioner")
         computeMultibandCollectionTimeSeries(datacube, splitPolygons.get, crs, startDate, endDate, statisticsCallback, sc, cancellationContext)
       } else{
         println("Large numbers of pixels found, we will run one job per date, that computes aggregate values for all polygons.")
+        sc.setJobDescription("Avg timeseries: " + polygons.length + " from: " + startDate + " to: " + endDate + " using one Spark job per date!")
         computeStatsGeotrellis.computeMultibandCollectionTimeSeries(datacube, splitPolygons.get, crs, startDate, endDate, statisticsCallback, cancellationContext, sc)
       }
     } else {
