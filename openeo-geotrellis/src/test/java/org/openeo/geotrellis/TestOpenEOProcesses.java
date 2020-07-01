@@ -165,7 +165,7 @@ public class TestOpenEOProcesses {
         // Set up
         ByteArrayTile band1 = ByteArrayTile.fill((byte) 2, 256, 256);
         ByteArrayTile band2 = ByteArrayTile.fill((byte) 3, 256, 256);
-        ByteArrayTile band3 = ByteArrayTile.fill((byte) 5, 256, 256);
+        ArrayTile band3 = ByteArrayTile.fill((byte) 5, 256, 256).convert(CellType.fromName("uint16"));
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> cube1 = buildSpatioTemporalDataCube(
                 Arrays.asList(band1, band2),
                 Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z")
@@ -189,6 +189,7 @@ public class TestOpenEOProcesses {
             assertEquals(5, item._2.band(3).get(0, 0));
             assertEquals(5, item._2.band(4).get(0, 0));
         }
+        assertEquals(CellType.fromName("uint16"),merged.metadata().cellType());
     }
 
 
