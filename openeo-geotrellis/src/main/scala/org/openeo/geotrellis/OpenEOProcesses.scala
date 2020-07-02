@@ -11,10 +11,11 @@ import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.spark._
+import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.vector._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.raster.vectorize._
+import geotrellis.spark.reproject.Reproject
 import org.openeo.geotrellisaccumulo.SpaceTimeByMonthPartitioner
 import geotrellis.util.Filesystem
 import geotrellis.vector.PolygonFeature
@@ -168,6 +169,10 @@ class OpenEOProcesses extends Serializable {
       throw new IllegalArgumentException("Cube doesn't have single consistent band count across tiles: [%s]".format(counts.mkString(", ")))
     }
     counts(0)
+  }
+
+  def resampleCubeSpatial(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey], method:ResampleMethod): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
+    data.reproject(target.metadata.crs,target.metadata.layout,16,method,target.partitioner)
   }
 
   def mergeCubes(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey], operator:String): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
