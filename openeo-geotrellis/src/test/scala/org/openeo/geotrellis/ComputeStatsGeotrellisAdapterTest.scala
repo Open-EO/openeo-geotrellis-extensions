@@ -6,12 +6,13 @@ import java.util
 
 import be.vito.eodata.model.BandDefinition
 import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, TileLayerMetadata}
-import geotrellis.proj4.{CRS, LatLng, WebMercator}
+import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.{ByteCells, ByteConstantTile, DoubleConstantNoDataCellType, MultibandTile}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, Polygon, _}
+import org.apache.commons.io.IOUtils
 import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.rdd.RDD
@@ -21,13 +22,13 @@ import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 import org.junit.runners.Parameterized.Parameters
 import org.junit.{AfterClass, Before, BeforeClass, Test}
+import org.openeo.geotrellis.LayerFixtures._
+import org.openeo.geotrellis.TimeSeriesServiceResponses.GeometriesHistograms.Bin
+import org.openeo.geotrellis.TimeSeriesServiceResponses._
 import org.openeo.geotrellisaccumulo.PyramidFactory
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable.Seq
-import org.apache.commons.io.IOUtils
-import TimeSeriesServiceResponses._
-import TimeSeriesServiceResponses.GeometriesHistograms.Bin
 
 object ComputeStatsGeotrellisAdapterTest {
   type JMap[K, V] = java.util.Map[K, V]
@@ -270,9 +271,11 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   @Test
   def compute_average_timeseries_on_datacube_to_json_file(): Unit = {
     import java.nio.file.Files
-    import scala.io.{Codec, Source}
+
     import _root_.io.circe.parser.decode
     import cats.syntax.either._
+
+    import scala.io.{Codec, Source}
 
     val vector_file = this.getClass.getResource("/org/openeo/geotrellis/minimallyOverlappingGeometryCollection.json").getPath
     val bbox = Extent(xmin = 3.248235121238894, ymin = 50.9753557675801, xmax = 3.256396825072918, ymax = 50.98003212949561)
@@ -403,13 +406,6 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
 
   private def accumuloPyramidFactory = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
 
-  private def accumuloDataCube(layer: String, minDateString: String, maxDateString: String, bbox: Extent, srs: String) = {
-    val pyramid: Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = accumuloPyramidFactory.pyramid_seq(layer, bbox, srs, minDateString, maxDateString)
-    System.out.println("pyramid = " + pyramid)
-
-    val (_, datacube) = pyramid.maxBy { case (zoom, _) => zoom }
-    datacube
-  }
 
   @Test
   def compute_median_ndvi_timeseries_on_accumulo_datacube(): Unit = {

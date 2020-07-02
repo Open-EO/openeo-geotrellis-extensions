@@ -6,7 +6,7 @@ import java.time.{LocalDate, ZonedDateTime}
 import java.util
 import java.util.Collections.singletonList
 
-import geotrellis.layer.{Bounds, KeyBounds, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
+import geotrellis.layer.{Bounds, KeyBounds, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.{ArrayMultibandTile, ArrayTile, MultibandTile, Tile, TileLayout}
 import geotrellis.spark.testkit.TileLayerRDDBuilders
@@ -15,6 +15,7 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.file.Sentinel2PyramidFactory
+import org.openeo.geotrellisaccumulo.PyramidFactory
 
 object LayerFixtures {
 
@@ -53,4 +54,33 @@ object LayerFixtures {
     buildSpatioTemporalDataCube(tiles,dates)
   }
 
+  private def accumuloPyramidFactory = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
+
+  def accumuloDataCube(layer: String, minDateString: String, maxDateString: String, bbox: Extent, srs: String) = {
+    val pyramid: Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = accumuloPyramidFactory.pyramid_seq(layer, bbox, srs, minDateString, maxDateString)
+    System.out.println("pyramid = " + pyramid)
+
+    val (_, datacube) = pyramid.maxBy { case (zoom, _) => zoom }
+    datacube
+  }
+
+  def defaultExtent = Extent(xmin = 3.248235121238894, ymin = 50.9753557675801, xmax = 3.256396825072918, ymax = 50.98003212949561)
+
+  def probav_ndvi(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent) = accumuloDataCube(
+    layer = "PROBAV_L3_S10_TOC_NDVI_333M_V3",
+    minDateString = from_date,
+    maxDateString = to_date,
+    bbox,
+    srs = "EPSG:4326"
+  )
+
+  def s2_fapar(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent)=accumuloDataCube("S2_FAPAR_PYRAMID_20200408", from_date, to_date, bbox, "EPSG:4326")
+
+  def sceneClassificationV200PyramidFactory = new Sentinel2PyramidFactory(
+    oscarsCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+    oscarsLinkTitles = singletonList("SCENECLASSIFICATION_20M"),
+    rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"
+  )
+
+  def s2_scl(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent) = sceneClassificationV200PyramidFactory.layer(ProjectedExtent(defaultExtent,LatLng),ZonedDateTime.parse(from_date),ZonedDateTime.parse(to_date),12)(SparkContext.getOrCreate())
 }
