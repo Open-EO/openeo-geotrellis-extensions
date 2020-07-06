@@ -1,6 +1,7 @@
 package org.openeo.geotrellisaccumulo
 
 import java.time.ZonedDateTime
+import java.util
 
 import be.vito.eodata.extracttimeseries.geotrellis.ComputeStatsGeotrellisHelpers
 import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
@@ -94,7 +95,9 @@ object PyramidFactory {
       InputFormatBase.setInputTableName(job, table)
 
       val ranges = queryKeyBounds.flatMap(decompose).asJava
-      InputFormatBase.setRanges(job, ranges)
+      val mergedRanges = AccumuloRange.mergeOverlapping(ranges)
+      //EP-3478 Note that these ranges are set on the 'Configuration' object, making it very large and taking up a lot of memory!
+      InputFormatBase.setRanges(job, mergedRanges)
       InputFormatBase.fetchColumns(job, List(new AccumuloPair(new Text(geotrellis.store.accumulo.columnFamily(id)), null: Text)).asJava)
       InputFormatBase.setBatchScan(job, true)
 

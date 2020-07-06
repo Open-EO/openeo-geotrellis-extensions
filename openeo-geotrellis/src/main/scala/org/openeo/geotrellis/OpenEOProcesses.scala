@@ -11,10 +11,11 @@ import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.spark._
+import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.vector._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.raster.vectorize._
+import geotrellis.spark.reproject.Reproject
 import org.openeo.geotrellisaccumulo.SpaceTimeByMonthPartitioner
 import geotrellis.util.Filesystem
 import geotrellis.vector.PolygonFeature
@@ -170,15 +171,21 @@ class OpenEOProcesses extends Serializable {
     counts(0)
   }
 
+  def resampleCubeSpatial(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey], method:ResampleMethod): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
+    data.reproject(target.metadata.crs,target.metadata.layout,16,method,target.partitioner)
+  }
+
   def mergeCubes(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey], operator:String): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val joined = outerJoin(leftCube,rightCube)
-    val updatedMetadata: TileLayerMetadata[SpaceTimeKey] = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(rightCube.metadata.extent))
+    val outputCellType = leftCube.metadata.cellType.union(rightCube.metadata.cellType)
 
+    val updatedMetadata: TileLayerMetadata[SpaceTimeKey] = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(rightCube.metadata.extent),cellType = outputCellType)
+    val converted = joined.mapValues{t=> (t._1.map(_.convert(outputCellType)),t._2.map(_.convert(outputCellType)))}
     if(operator==null) {
       val leftBandCount = RDDBandCount(leftCube)
       val rightBandCount = RDDBandCount(rightCube)
       // Concatenation band counts are allowed to differ, but all resulting multiband tiles should have the same count
-      new ContextRDD(joined.mapValues({
+      new ContextRDD(converted.mapValues({
         case (None, Some(r)) => MultibandTile(Vector.fill(leftBandCount)(ArrayTile.empty(r.cellType, r.cols, r.rows)) ++ r.bands)
         case (Some(l), None) => MultibandTile(l.bands ++ Vector.fill(rightBandCount)(ArrayTile.empty(l.cellType, l.cols, l.rows)))
         case (Some(l), Some(r)) => MultibandTile(l.bands ++ r.bands)
@@ -189,7 +196,7 @@ class OpenEOProcesses extends Serializable {
       //val binaryOp: Seq[Tile] => Seq[Tile] = operator.generateFunction()
       val binaryOp = tileBinaryOp.getOrElse(operator, throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, tileBinaryOp.keys.toString())))
 
-      new ContextRDD(joined.mapValues({case (l,r) =>
+      new ContextRDD(converted.mapValues({case (l,r) =>
         if(r.isEmpty) l.get
         else if(l.isEmpty) r.get
         else {
