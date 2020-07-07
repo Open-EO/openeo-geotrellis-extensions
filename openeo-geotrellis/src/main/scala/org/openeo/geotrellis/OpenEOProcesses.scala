@@ -7,21 +7,19 @@ import java.time.{Instant, ZonedDateTime}
 
 import geotrellis.layer._
 import geotrellis.raster._
+import geotrellis.raster.buffer.BufferSizes
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.spark.{MultibandTileLayerRDD, _}
-import geotrellis.vector._
 import geotrellis.spark.partition.SpacePartitioner
-import geotrellis.raster.vectorize._
-import geotrellis.spark.reproject.Reproject
-import org.openeo.geotrellisaccumulo.SpaceTimeByMonthPartitioner
+import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util.Filesystem
 import geotrellis.vector.PolygonFeature
 import geotrellis.vector.io.json.JsonFeatureCollection
 import org.apache.spark.rdd.{CoGroupedRDD, RDD}
 import org.openeo.geotrellis.focal._
+import org.openeo.geotrellisaccumulo.SpaceTimeByMonthPartitioner
 
 import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
@@ -206,6 +204,21 @@ class OpenEOProcesses extends Serializable {
           MultibandTile(l.get.bands.zip(r.get.bands).map(t => binaryOp.apply(Seq(t._1, t._2))))
         }
       }), updatedMetadata)
+    }
+
+  }
+
+  def retile(datacube: MultibandTileLayerRDD[SpaceTimeKey], sizeX:Int, sizeY:Int, overlapX:Int, overlapY:Int): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val regridded =
+    if(sizeX >0 && sizeY > 0){
+      datacube.regrid(sizeX,sizeY)
+    }else{
+      datacube
+    }
+    if(overlapX >0 && overlapY > 0) {
+      regridded.withContext(_.bufferTiles(_ => BufferSizes(overlapX,overlapX,overlapY,overlapY)).mapValues(_.tile))
+    }else{
+      regridded
     }
 
   }
