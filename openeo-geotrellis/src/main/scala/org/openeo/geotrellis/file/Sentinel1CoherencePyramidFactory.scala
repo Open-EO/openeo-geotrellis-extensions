@@ -1,47 +1,44 @@
 package org.openeo.geotrellis.file
 
-import java.net.URI
 import java.time.ZonedDateTime
 import java.util
 
-import geotrellis.raster.{CellType, UByteUserDefinedNoDataCellType}
-import geotrellis.vector.ProjectedExtent
-import org.apache.hadoop.fs.Path
-import org.openeo.geotrellis.file.AbstractPyramidFactory.{FileIMGeoTiffAttributeStore, FilePathTemplate}
-import org.openeo.geotrellis.file.Sentinel1CoherencePyramidFactory.Sentinel1Bands._
+import be.vito.eodata.extracttimeseries.geotrellis.Sentinel1CoherenceFileLayerProvider
 
 import scala.collection.JavaConverters._
+import cats.data.NonEmptyList
+import geotrellis.layer.SpaceTimeKey
+import geotrellis.proj4.CRS
+import geotrellis.spark.MultibandTileLayerRDD
+import geotrellis.vector.{Extent, ProjectedExtent}
+import org.apache.spark.SparkContext
 
-object Sentinel1CoherencePyramidFactory {
-  object Sentinel1Bands {
-    val allBands: Seq[Sentinel1Band] = Seq(VV, VH)
+import scala.collection.Map
 
-    sealed trait Sentinel1Band
-    case object VV extends Sentinel1Band
-    case object VH extends Sentinel1Band
+class Sentinel1CoherencePyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util.List[String], rootPath: String) {
+  require(oscarsLinkTitles.size() > 0)
+
+  private def sentinel1CoherenceOscarsPyramidFactory(metadataProperties: Map[String, Any]) = new Sentinel1CoherenceFileLayerProvider(
+    oscarsCollectionId,
+    NonEmptyList.fromListUnsafe(oscarsLinkTitles.asScala.toList),
+    rootPath,
+    metadataProperties
+  )
+
+  def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String,
+                  metadata_properties: util.Map[String, Any] = util.Collections.emptyMap()): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+    implicit val sc: SparkContext = SparkContext.getOrCreate()
+
+    val boundingBox = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
+    val from = ZonedDateTime.parse(from_date)
+    val to = ZonedDateTime.parse(to_date)
+
+    val layerProvider = sentinel1CoherenceOscarsPyramidFactory(metadata_properties.asScala)
+
+    for (zoom <- layerProvider.maxZoom to 0 by -1)
+      yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox, zoom, sc)
   }
-}
 
-class Sentinel1CoherencePyramidFactory extends AbstractPyramidFactory[Sentinel1Band] {
-  override protected val cellType: CellType = UByteUserDefinedNoDataCellType(0)
-
-  override protected def bandsFromIndices(band_indices: util.List[Int]): Seq[Sentinel1Band] = {
-    if (band_indices == null || band_indices.isEmpty) allBands
-    else band_indices.asScala.map(allBands(_))
-  }
-
-  override protected def overlappingFilePathTemplates(at: ZonedDateTime, bbox: ProjectedExtent): Iterable[FilePathTemplate] = {
-    val (year, month, day) = (at.getYear, at.getMonthValue, at.getDayOfMonth)
-
-    val vvGlob = new Path(f"file:/data/MTDA/TERRASCOPE_Sentinel1/SLC_COHERENCE/$year/$month%02d/$day%02d/*/*_VV.tif")
-
-    val attributeStore = FileIMGeoTiffAttributeStore(at.toString, vvGlob)
-
-    def pathTemplate(uri: URI): FilePathTemplate = bandId => uri.toString.replace("_VV.tif", s"_$bandId.tif")
-
-    attributeStore.query(bbox).map(md => pathTemplate(md.uri))
-  }
-
-  override protected def correspondingBandFiles(pathTemplate: FilePathTemplate, bands: Seq[Sentinel1Band]): Seq[String] =
-    bands.map(_.toString).map(pathTemplate)
+  def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, metadataProperties: Map[String, Any] = Map())(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] =
+    sentinel1CoherenceOscarsPyramidFactory(metadataProperties).readMultibandTileLayer(from, to, boundingBox, zoom, sc)
 }

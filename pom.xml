@@ -90,7 +90,7 @@
         <name>VITO</name>
         <url>www.vito.be</url>
     </organization>
-      
+
       <distributionManagement>
               <repository>
                       <id>artifactory.vgt.vito.be</id>
