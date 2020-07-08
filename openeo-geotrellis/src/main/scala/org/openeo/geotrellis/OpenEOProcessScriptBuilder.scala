@@ -221,6 +221,7 @@ class OpenEOProcessScriptBuilder {
       case "sd" if hasData => reduceListFunction("data", Sqrt.apply _ compose Variance.apply)
       // Unary math
       case "abs" if hasX => mapFunction("x", Abs.apply)
+      case "absolute" if hasX => mapFunction("x", Abs.apply)
       //TODO "log"
       //TODO: "int" integer part of a number
       //TODO "arccos" -> Acosh.apply,
