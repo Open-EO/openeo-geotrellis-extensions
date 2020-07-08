@@ -1,16 +1,11 @@
 package org.openeo.geotrellis
 
-import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, Paths}
+import java.nio.file.Paths
 
 import geotrellis.spark.util.SparkUtils
-import geotrellis.vector.PolygonFeature
-import geotrellis.vector.io.json.JsonFeatureCollection
-import org.apache.hadoop.hdfs.HdfsConfiguration
-import org.apache.hadoop.security.UserGroupInformation
+import geotrellis.vector.io.json.{GeoJson, JsonFeatureCollection}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.{BeforeClass, Test}
-import org.openeo.geotrellis.OpenEOProcessesSpec.{getClass, sc}
 
 object VectorizeSpec{
 
@@ -35,11 +30,10 @@ class VectorizeSpec {
   @Test
   def vectorize() = {
     val layer = LayerFixtures.ClearNDVILayerForSingleDate()(VectorizeSpec.sc)
-    val polygons: Array[PolygonFeature[Int]] = new OpenEOProcesses().vectorize(layer)
-    print(polygons)
-    val json = JsonFeatureCollection(polygons).asJson
+    val outputPath = Paths.get("polygons.geojson")
+    new OpenEOProcesses().vectorize(layer,outputPath.toString)
 
-    Files.write(Paths.get("polygons.geojson"), json.toString().getBytes(StandardCharsets.UTF_8))
+    val json: JsonFeatureCollection = GeoJson.fromFile[JsonFeatureCollection](outputPath.toString)
     print(json)
   }
 }

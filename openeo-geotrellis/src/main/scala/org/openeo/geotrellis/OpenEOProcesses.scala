@@ -131,7 +131,10 @@ class OpenEOProcesses extends Serializable {
   def vectorize(datacube:MultibandTileLayerRDD[SpaceTimeKey], outputFile:String): Unit = {
     val features = this.vectorize(datacube)
     val json = JsonFeatureCollection(features).asJson
-    Files.write(Paths.get(outputFile), json.toString().getBytes(StandardCharsets.UTF_8))
+    val epsg = "epsg:"+datacube.metadata.crs.epsgCode.get
+    val crs_json = _root_.io.circe.parser.parse("""{"crs":{"type":"name","properties":{"name":"THE_CRS"}}}""".replace("THE_CRS",epsg))
+    val jsonWithCRS = json.deepMerge(crs_json.right.get)
+    Files.write(Paths.get(outputFile), jsonWithCRS.toString().getBytes(StandardCharsets.UTF_8))
   }
 
   def applySpacePartitioner(datacube: RDD[(SpaceTimeKey, MultibandTile)], keyBounds: KeyBounds[SpaceTimeKey]): RDD[(SpaceTimeKey, MultibandTile)] = {
