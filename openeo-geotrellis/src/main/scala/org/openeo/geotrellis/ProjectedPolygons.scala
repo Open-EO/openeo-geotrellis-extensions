@@ -52,7 +52,9 @@ object ProjectedPolygons {
   // adapted from Geotrellis' ShapeFileReader to avoid having too much in memory
   private def readSimpleFeatures(shpUrl: URL): ProjectedPolygons = {
     val ds = new ShapefileDataStore(shpUrl)
-    val ftItr: SimpleFeatureIterator = ds.getFeatureSource.getFeatures.features
+    val featureSource = ds.getFeatureSource
+    val crs = featureSource.getSchema.getCoordinateReferenceSystem
+    val ftItr: SimpleFeatureIterator = featureSource.getFeatures.features
 
     try {
       val featureCount = ds.getCount(Query.ALL)
@@ -70,8 +72,7 @@ object ProjectedPolygons {
         simpleFeatures(i) = multiPolygon
       }
 
-      // FIXME: read it from the shp and default to LatLng
-      ProjectedPolygons(simpleFeatures, LatLng)
+      ProjectedPolygons(simpleFeatures, CRS.fromWKT(crs.toWKT).get)
     } finally {
       ftItr.close()
       ds.dispose()
