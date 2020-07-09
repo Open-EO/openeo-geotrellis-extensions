@@ -72,7 +72,13 @@ object ProjectedPolygons {
         simpleFeatures(i) = multiPolygon
       }
 
-      ProjectedPolygons(simpleFeatures, CRS.fromWKT(crs.toWKT).get)
+      val geotrellisCRS=
+      if(crs == null) {
+        LatLng
+      }else{
+        CRS.fromWKT(crs.toWKT).get
+      }
+      ProjectedPolygons(simpleFeatures,geotrellisCRS )
     } finally {
       ftItr.close()
       ds.dispose()
