@@ -14,7 +14,7 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.spark.store.hadoop.geotiff.{GeoTiffMetadata, InMemoryGeoTiffAttributeStore}
 import geotrellis.store.hadoop.util.{HdfsRangeReader, HdfsUtils}
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector.{Extent, MultiPolygon, Polygon, ProjectedExtent}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.SparkContext
@@ -24,6 +24,21 @@ import org.openeo.geotrellis.file.AbstractPyramidFactory._
 
 object AbstractPyramidFactory {
   private val maxZoom = 14
+
+
+  def preparePolygons(polygons: Array[MultiPolygon], polygons_crs: CRS) = {
+    // 500m buffer for kernel operations
+    val bufferDistanceInMeters = 500.0
+    val bufferDistance = Extent(0.0, 0.0, bufferDistanceInMeters, 1.0).reproject(WebMercator, polygons_crs).width
+
+    val intersectsPolygons: Array[MultiPolygon] = polygons
+      .map(polygon =>
+        polygon.buffer(bufferDistance) match {
+          case polygon: Polygon => MultiPolygon(polygon)
+          case multiPolygon: MultiPolygon => multiPolygon
+        })
+    intersectsPolygons
+  }
 
   private[file] object FileIMGeoTiffAttributeStore {
     def apply(name: String, path: Path): InMemoryGeoTiffAttributeStore =
