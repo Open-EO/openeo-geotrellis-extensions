@@ -76,7 +76,13 @@ object ProjectedPolygons {
       if(crs == null) {
         LatLng
       }else{
-        CRS.fromWKT(crs.toWKT).get
+        val identifiers = crs.getIdentifiers.asScala
+        if(identifiers.isEmpty) {
+          LatLng
+        } else {
+          val crs = identifiers.head
+          CRS.fromName(s"${crs.getCodeSpace}:${crs.getCode}")
+        }
       }
       ProjectedPolygons(simpleFeatures,geotrellisCRS )
     } finally {
