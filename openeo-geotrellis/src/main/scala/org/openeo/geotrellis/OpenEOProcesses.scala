@@ -7,7 +7,7 @@ import java.time.{Instant, ZonedDateTime}
 
 import geotrellis.layer._
 import geotrellis.raster._
-import geotrellis.raster.buffer.BufferSizes
+import geotrellis.raster.buffer.{BufferSizes, BufferedTile}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
@@ -219,13 +219,34 @@ class OpenEOProcesses extends Serializable {
       datacube
     }
     if(overlapX >0 && overlapY > 0) {
-      regridded.withContext(_.bufferTiles(_ => BufferSizes(overlapX,overlapX,overlapY,overlapY)).mapValues(_.tile))
+      regridded.withContext(_.bufferTiles(_ => BufferSizes(overlapX,overlapX,overlapY,overlapY)).mapValues(tile=>{
+        makeSquareTile(tile, sizeX, sizeY, overlapX, overlapY)
+      }))
     }else{
       regridded
     }
 
   }
 
+
+  def makeSquareTile(tile: BufferedTile[MultibandTile], sizeX: Int, sizeY: Int, overlapX: Int, overlapY: Int) = {
+    val result = tile.tile
+
+    val fullSizeX = sizeX + 2 * overlapX
+    val fullSizeY = sizeY + 2 * overlapY
+    if (result.cols == fullSizeX && result.rows == fullSizeY) {
+      result
+    }
+    else if (tile.targetArea.colMin < overlapX && tile.targetArea.rowMin < overlapY) {
+      result.mapBands { (index, t) => PaddedTile(t, overlapX, overlapY, fullSizeX, fullSizeY) }
+    } else if (tile.targetArea.colMin < overlapX) {
+      result.mapBands { (index, t) => PaddedTile(t, overlapX, 0, fullSizeX, fullSizeY) }
+    } else if (tile.targetArea.rowMin < overlapY) {
+      result.mapBands { (index, t) => PaddedTile(t, 0, overlapY, fullSizeX, fullSizeY) }
+    } else {
+      result.mapBands { (index, t) => PaddedTile(t, 0, 0, fullSizeX, fullSizeY) }
+    }
+  }
 
   def rasterMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], mask: MultibandTileLayerRDD[SpaceTimeKey], replacement: java.lang.Double): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val joined = datacube.spatialLeftOuterJoin(mask)

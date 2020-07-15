@@ -1,9 +1,10 @@
 package org.openeo.geotrellis
 
 import geotrellis.layer._
+import geotrellis.raster.buffer.BufferedTile
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ArrayMultibandTile, DoubleArrayTile, MultibandTile, Tile, TileLayout}
+import geotrellis.raster.{ArrayMultibandTile, DoubleArrayTile, GridBounds, MultibandTile, Tile, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
@@ -11,6 +12,7 @@ import geotrellis.vector._
 import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.{SparkConf, SparkContext}
+import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellisaccumulo.PyramidFactory
@@ -107,5 +109,28 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val theResultTile = time{ resultCube.stitch().tile.band(0) }
     val expectedConvolution = time{Convolve.apply(tile, new Kernel(kernel), Option.empty, TargetCell.All)}
     assertEqual(expectedConvolution,theResultTile)
+  }
+
+  @Test
+  def makeSquareTile(): Unit = {
+    val tile: MultibandTile = MultibandTile( DoubleArrayTile.fill(1.0,144, 160))
+    var squareTile = new OpenEOProcesses().makeSquareTile(BufferedTile(tile,new GridBounds[Int](0,16,128,144)),128,128,16,16)
+    assertEquals(squareTile.cols,160)
+    assertEquals(squareTile.rows,160)
+    assertEquals(Double.NaN,squareTile.band(0).getDouble(4,20),0.0)
+    assertEquals(1.0,squareTile.band(0).getDouble(20,4),0.0)
+
+    squareTile = new OpenEOProcesses().makeSquareTile(BufferedTile(MultibandTile( DoubleArrayTile.fill(1.0,160, 144)),new GridBounds[Int](16,0,144,128)),128,128,16,16)
+    assertEquals(squareTile.cols,160)
+    assertEquals(squareTile.rows,160)
+    assertEquals(1.0,squareTile.band(0).getDouble(4,20),0.0)
+    assertEquals(Double.NaN,squareTile.band(0).getDouble(20,4),0.0)
+
+    squareTile = new OpenEOProcesses().makeSquareTile(BufferedTile(MultibandTile( DoubleArrayTile.fill(1.0,160, 144)),new GridBounds[Int](16,16,144,144)),128,128,16,16)
+    assertEquals(squareTile.cols,160)
+    assertEquals(squareTile.rows,160)
+    assertEquals(Double.NaN,squareTile.band(0).getDouble(20,150),0.0)
+    assertEquals(1.0,squareTile.band(0).getDouble(20,140),0.0)
+    assertEquals(1.0,squareTile.band(0).getDouble(4,20),0.0)
   }
 }
