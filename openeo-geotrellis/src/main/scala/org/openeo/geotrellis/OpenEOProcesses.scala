@@ -166,6 +166,14 @@ class OpenEOProcesses extends Serializable {
     // For performance reasons we only check a small subset of tile band counts
     println("Computing number of bands in cube: " + cube.metadata)
     val counts = cube.take(10).map({ case (k, t) => t.bandCount }).distinct
+
+    if(counts.size==0){
+      if(cube.isEmpty())
+        println("This cube is empty, no band count.")
+      else
+        println("This cube is not empty, but could not determine band count.")
+      return 1
+    }
     if (counts.size != 1) {
       throw new IllegalArgumentException("Cube doesn't have single consistent band count across tiles: [%s]".format(counts.mkString(", ")))
     }
