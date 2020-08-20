@@ -1,6 +1,7 @@
 package org.openeo.geotrellis
 
 import java.io.File
+import java.lang.Math.pow
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
@@ -9,15 +10,12 @@ import be.vito.eodata.extracttimeseries.geotrellis._
 import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
 import be.vito.eodata.processing.MaskedStatisticsProcessor.StatsMeanResult
 import geotrellis.layer._
-import geotrellis.proj4.CRS
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.summary.Statistics
 import geotrellis.raster.{FloatConstantNoDataCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.spark._
 import geotrellis.store.accumulo.AccumuloInstance
 import org.apache.spark.SparkContext
-import org.apache.spark.rdd.RDD
-import org.apache.spark.storage.StorageLevel
 import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK_SER
 import org.openeo.geotrellis.aggregate_polygon.AggregatePolygonProcess
 import org.slf4j.{Logger, LoggerFactory}
@@ -46,6 +44,21 @@ object ComputeStatsGeotrellisAdapter {
       val valueRdd = multiBandRdd.mapValues(multiBandTile => multiBandTile.band(bandIndex))
       ContextRDD(valueRdd, multiBandRdd.metadata)
     }
+
+  private def s1GrdGamma0DbValueLayerConfig(accumuloLayerId: String, band: Sigma0Band.Value)(implicit accumuloSupplier: () => AccumuloInstance): LayerConfig = {
+    LayerConfig(
+      layerProvider = new AccumuloLayerProvider(accumuloLayerId),
+      scalingFactor = 1,
+      offset = 0,
+      dataType = FloatConstantNoDataCellType,
+      multiBandMath = multiBandRdd => {
+        val valueRdd = multiBandRdd.mapValues(multiBandTile =>
+          multiBandTile.band(band.id)
+            .convert(FloatConstantNoDataCellType)
+            .mapIfSetDouble(d => pow(10, (d * 0.001 - 45) / 10)))
+        ContextRDD(valueRdd, multiBandRdd.metadata)
+      })
+  }
 
   private def s1GrdSigma0LayerConfig(accumuloLayerId: String, band: Sigma0Band.Value)(implicit accumuloSupplier: () => AccumuloInstance): LayerConfig =
     LayerConfig(
@@ -206,7 +219,9 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
           dataType = UByteConstantNoDataCellType
         ),
         "S1_GRD_SIGMA0_ASCENDING" -> s1GrdSigma0LayerConfig("S1_GRD_SIGMA0_ASCENDING_PYRAMID", Sigma0Band(bandIndex)),
-        "S1_GRD_SIGMA0_DESCENDING" -> s1GrdSigma0LayerConfig("S1_GRD_SIGMA0_DESCENDING_PYRAMID", Sigma0Band(bandIndex))
+        "S1_GRD_SIGMA0_DESCENDING" -> s1GrdSigma0LayerConfig("S1_GRD_SIGMA0_DESCENDING_PYRAMID", Sigma0Band(bandIndex)),
+        "S1_GRD_GAMMA0_VH" -> s1GrdGamma0DbValueLayerConfig("S1_GRD_GAMMA0_PYRAMID_V2", Sigma0Band.VH),
+        "S1_GRD_GAMMA0_VV" -> s1GrdGamma0DbValueLayerConfig("S1_GRD_GAMMA0_PYRAMID_V2", Sigma0Band.VV)
       )
 
     override val multibandLayers: Map[String, MultibandLayerConfig] = Map()
@@ -243,8 +258,8 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   }
 
   private class MultibandStatisticsWriter(outputFile: File) extends StatisticsCallback[MultibandMeans] with AutoCloseable {
-    import com.fasterxml.jackson.databind.ObjectMapper
     import com.fasterxml.jackson.core.JsonEncoding.UTF8
+    import com.fasterxml.jackson.databind.ObjectMapper
 
     private val jsonGenerator = (new ObjectMapper).getFactory.createGenerator(outputFile, UTF8)
 

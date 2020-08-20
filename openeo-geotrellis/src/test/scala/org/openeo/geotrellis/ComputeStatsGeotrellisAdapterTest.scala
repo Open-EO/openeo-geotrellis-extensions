@@ -657,7 +657,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val polygons = Seq(polygon1.toWKT(), polygon2.toWKT())
 
     val histograms = computeStatsGeotrellisAdapter.compute_histograms_time_series(
-      "S1_GRD_SIGMA0_ASCENDING",
+      "S1_GRD_GAMMA0_VH",
       polygons.asJava,
       polygons_srs = "EPSG:4326",
       from_date = ISO_OFFSET_DATE_TIME format from,
