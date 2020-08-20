@@ -67,9 +67,14 @@ package object geotiff {
       ArrayTile.empty(rdd.metadata.cellType, tileLayout.tileCols, tileLayout.tileRows).toBytes
 
     val segments: Array[Array[Byte]] = Array.ofDim(segmentCount)
-    cfor (0)(_ < segmentCount, _ + 1){ index =>{
-        segments(index) = tiffs.getOrElse(index,compressor.compress(emptySegment, index))
+    cfor (0)(_ < segmentCount, _ + 1){ index => {
+      val maybeBytes = tiffs.get(index)
+      if (maybeBytes.isEmpty) {
+        segments(index) = compressor.compress(emptySegment, index)
+      } else {
+        segments(index) = maybeBytes.get
       }
+    }
     }
 
     val tiffTile: GeoTiffMultibandTile = GeoTiffMultibandTile(
