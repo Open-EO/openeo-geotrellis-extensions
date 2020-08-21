@@ -36,16 +36,23 @@ package object geotiff {
 
     val tileLayout = rdd.metadata.tileLayout
 
+    val keyBounds: Bounds[SpatialKey] = rdd.metadata.bounds
+    val maxKey = keyBounds.get.maxKey
+    val minKey = keyBounds.get.minKey
+
+    val totalCols = maxKey.col - minKey.col +1
+    val totalRows = maxKey.row - minKey.row + 1
     val segmentLayout = GeoTiffSegmentLayout(
-      totalCols = tileLayout.totalCols.toInt,
-      totalRows = tileLayout.totalRows.toInt,
+      totalCols = totalCols * tileLayout.tileCols,
+      totalRows = totalRows * tileLayout.tileRows,
       Tiled(tileLayout.tileCols,tileLayout.tileRows),
       BandInterleave,
       BandType.forCellType(rdd.metadata.cellType))
 
-    val bandSegmentCount = tileLayout.layoutCols * tileLayout.layoutRows
+    val bandSegmentCount = totalCols * totalRows
     //val bandCount = 1
     val segmentCount = bandSegmentCount * bandCount
+    println("Saving geotiff with "+ segmentCount + " segments.")
     val compressor = compression.createCompressor(segmentCount)
 
     val tiffs: collection.Map[Int, Array[Byte]] = rdd.flatMap{ case (key:SpatialKey,multibandTile:MultibandTile) => {
@@ -53,10 +60,10 @@ package object geotiff {
       multibandTile.bands.map{
       tile => {
         bandIndex+=1
-        val layoutCol = key._1
-        val layoutRow = key._2
+        val layoutCol = key._1 - minKey._1
+        val layoutRow = key._2 - minKey._2
         val bandSegmentOffset = bandSegmentCount * bandIndex
-        val index = tileLayout.layoutCols * layoutRow + layoutCol + bandSegmentOffset
+        val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
         val compressedBytes = compressor.compress(tile.toBytes(), index)
         (index,compressedBytes)
       }
