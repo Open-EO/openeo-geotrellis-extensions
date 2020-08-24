@@ -6,6 +6,7 @@ import java.util
 import geotrellis.layer._
 import geotrellis.raster._
 import geotrellis.spark._
+import geotrellis.spark.testkit.TileLayerRDDBuilders
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{BeforeClass, Test}
@@ -135,6 +136,36 @@ class MergeCubesSpec {
           assertEquals(5, item._2.band(0).get(0, 0))
           assertEquals(8, item._2.band(1).get(0, 0))
         }
+      }
+    }
+  }
+
+
+  @Test def testMergeCubeDifference_SpatialSpaceTime(): Unit = {
+    val band1: ByteArrayTile = ByteArrayTile.fill(2.toByte, 256, 256)
+    val band2: ByteArrayTile = ByteArrayTile.fill(3.toByte, 256, 256)
+    val band3: ByteArrayTile = ByteArrayTile.fill(5.toByte, 256, 256)
+    val band4: ByteArrayTile = ByteArrayTile.fill(8.toByte, 256, 256)
+    val cube1: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = LayerFixtures.buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"))
+    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(MergeCubesSpec.sc,MultibandTile(band3,band4),cube1.metadata.tileLayout)
+    val processes = new OpenEOProcesses()
+    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1,cube1.metadata.bounds.get),cube1.metadata), cube2, "subtract",true)
+    val mergedTimes: Array[TemporalKey] = merged.map((p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey).collect
+    assertEquals(2, mergedTimes.size)
+    import scala.collection.JavaConversions._
+    for (item <- merged.toJavaRDD.collect) {
+      assertEquals(2, item._2.bandCount)
+      val month: Int = item._1.temporalKey.time.getMonthValue
+      if (month == 1) {
+        assertEquals(3, item._2.band(0).get(0, 0))
+        assertEquals(5, item._2.band(1).get(0, 0))
+      }
+      else {
+        if (month == 2) {
+          assertEquals(3, item._2.band(0).get(0, 0))
+          assertEquals(5, item._2.band(1).get(0, 0))
+        }
+
       }
     }
   }
