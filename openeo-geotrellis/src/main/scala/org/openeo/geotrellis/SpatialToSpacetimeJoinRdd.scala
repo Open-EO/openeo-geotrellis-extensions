@@ -2,7 +2,7 @@ package org.openeo.geotrellis
 
 import geotrellis.layer.{SpaceTimeKey, SpatialKey}
 import geotrellis.raster.MultibandTile
-import geotrellis.spark.MultibandTileLayerRDD
+import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.store.index.zcurve.Z3
 import org.apache.spark._
@@ -13,8 +13,17 @@ import scala.reflect._
 
 class SpatialToSpacetimeJoinRdd[T : ClassTag](spacetimeRDD: MultibandTileLayerRDD[SpaceTimeKey], spatialRdd: RDD[(SpatialKey,T)]) extends RDD[(SpaceTimeKey, (MultibandTile,T))](spacetimeRDD.context,Nil) {
 
-  val spacePartitioner:SpacePartitioner[SpaceTimeKey] = spacetimeRDD.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]]
-  val someDate = spacetimeRDD.metadata.bounds.get._1.time
+  val spatiallyPartitionedRdd: MultibandTileLayerRDD[SpaceTimeKey] =  {
+    if(spacetimeRDD.partitioner.isEmpty || !spacetimeRDD.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]){
+      spacetimeRDD.withContext{_.partitionBy( SpacePartitioner(spacetimeRDD.metadata.bounds.get)) }
+    }else{
+      spacetimeRDD
+    }
+  }
+  val spacePartitioner:SpacePartitioner[SpaceTimeKey] = spatiallyPartitionedRdd.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]]
+
+
+  val someDate = spatiallyPartitionedRdd.metadata.bounds.get._1.time
   val spatialRDDAsSpacetime = new ShuffledRDD[SpaceTimeKey, T, T](spatialRdd.map(spatialkey_tile => {
     (SpaceTimeKey(spatialkey_tile._1, someDate), spatialkey_tile._2)
   }),spacePartitioner)
@@ -44,12 +53,12 @@ class SpatialToSpacetimeJoinRdd[T : ClassTag](spacetimeRDD: MultibandTileLayerRD
   }
 
   override def getDependencies: Seq[Dependency[_]] = {
-    Seq(new OneToOneDependency(spacetimeRDD), new SpatialDependency())
+    Seq(new OneToOneDependency(spatiallyPartitionedRdd), new SpatialDependency())
   }
 
   override def compute(split: Partition, context: TaskContext): Iterator[(SpaceTimeKey, (MultibandTile,T))] = {
 
-    val originalIterator = spacetimeRDD.compute(split, context).toSeq
+    val originalIterator = spatiallyPartitionedRdd.compute(split, context).toSeq
     if(originalIterator.isEmpty) {
       return Iterator.empty
     }
@@ -62,5 +71,5 @@ class SpatialToSpacetimeJoinRdd[T : ClassTag](spacetimeRDD: MultibandTileLayerRD
 
   }
 
-  override protected def getPartitions: Array[Partition] ={spacetimeRDD.partitions}
+  override protected def getPartitions: Array[Partition] ={spatiallyPartitionedRdd.partitions}
 }
