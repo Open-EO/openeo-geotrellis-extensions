@@ -9,7 +9,7 @@ import geotrellis.layer._
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.tags.TiffTags
-import geotrellis.raster.{ByteConstantNoDataCellType, CellType, MultibandTile, ShortUserDefinedNoDataCellType, Tile}
+import geotrellis.raster.{CellType, MultibandTile, ShortUserDefinedNoDataCellType, Tile}
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.spark.store.hadoop.geotiff.{GeoTiffMetadata, InMemoryGeoTiffAttributeStore}
@@ -43,6 +43,7 @@ object ProbaVPyramidFactory {
     val SWIRVZA = Val("GEOMETRY:3")
     val VNIRVAA = Val("GEOMETRY:4")
     val VNIRVZA = Val("GEOMETRY:5")
+    val SM = Val("SM")
   }
 
   private[file] object FileIMGeoTiffAttributeStore {
