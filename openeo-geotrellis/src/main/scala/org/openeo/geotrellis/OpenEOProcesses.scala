@@ -184,6 +184,19 @@ class OpenEOProcesses extends Serializable {
     data.reproject(target.metadata.crs,target.metadata.layout,16,method,target.partitioner)
   }
 
+  def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String, swapOperands:Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](leftCube, rightCube)
+    val binaryOp = tileBinaryOp.getOrElse(operator, throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, tileBinaryOp.keys.toString())))
+
+    return new ContextRDD(rdd.mapValues({case (l,r) =>
+      if(l.bandCount != r.bandCount){
+        throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.bandCount, r.bandCount))
+      }
+      MultibandTile(l.bands.zip(r.bands).map(t => binaryOp.apply(if(swapOperands){Seq(t._2, t._1)} else Seq(t._1, t._2))))
+
+    }), leftCube.metadata)
+  }
+
   def mergeCubes(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey], operator:String): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val joined = outerJoin(leftCube,rightCube)
     val outputCellType = leftCube.metadata.cellType.union(rightCube.metadata.cellType)

@@ -5,10 +5,12 @@ import java.util.{ArrayList, Map}
 import geotrellis.layer._
 import geotrellis.raster.io.geotiff._
 import geotrellis.raster.io.geotiff.compression.Compression
-import geotrellis.raster.{MultibandTile, Raster}
+import geotrellis.raster.io.geotiff.writer.GeoTiffWriter
+import geotrellis.raster.{ArrayTile, MultibandTile, Raster}
 import geotrellis.spark._
 import geotrellis.vector.Extent
 import org.apache.spark.rdd.RDD
+import spire.syntax.cfor.cfor
 
 import scala.collection.JavaConverters._
 
@@ -28,6 +30,72 @@ package object geotiff {
 
   def saveStitched(rdd: SRDD, path: String, cropBounds: Map[String, Double], compression: Compression): Unit =
     saveStitched(rdd, path, Some(cropBounds), None, compression)
+
+  def saveRDD(rdd:MultibandTileLayerRDD[SpatialKey], bandCount:Int, path:String,zLevel:Int=6):Unit = {
+    val compression = Deflate(zLevel)
+
+    val tileLayout = rdd.metadata.tileLayout
+
+    val keyBounds: Bounds[SpatialKey] = rdd.metadata.bounds
+    val maxKey = keyBounds.get.maxKey
+    val minKey = keyBounds.get.minKey
+
+    val totalCols = maxKey.col - minKey.col +1
+    val totalRows = maxKey.row - minKey.row + 1
+    val segmentLayout = GeoTiffSegmentLayout(
+      totalCols = totalCols * tileLayout.tileCols,
+      totalRows = totalRows * tileLayout.tileRows,
+      Tiled(tileLayout.tileCols,tileLayout.tileRows),
+      BandInterleave,
+      BandType.forCellType(rdd.metadata.cellType))
+
+    val bandSegmentCount = totalCols * totalRows
+    //val bandCount = 1
+    val segmentCount = bandSegmentCount * bandCount
+    println("Saving geotiff with "+ segmentCount + " segments.")
+    val compressor = compression.createCompressor(segmentCount)
+
+    val tiffs: collection.Map[Int, Array[Byte]] = rdd.flatMap{ case (key:SpatialKey,multibandTile:MultibandTile) => {
+      var bandIndex = -1
+      multibandTile.bands.map{
+      tile => {
+        bandIndex+=1
+        val layoutCol = key._1 - minKey._1
+        val layoutRow = key._2 - minKey._2
+        val bandSegmentOffset = bandSegmentCount * bandIndex
+        val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
+        val compressedBytes = compressor.compress(tile.toBytes(), index)
+        (index,compressedBytes)
+      }
+
+    }}}.collectAsMap()
+
+    lazy val emptySegment =
+      ArrayTile.empty(rdd.metadata.cellType, tileLayout.tileCols, tileLayout.tileRows).toBytes
+
+    val segments: Array[Array[Byte]] = Array.ofDim(segmentCount)
+    cfor (0)(_ < segmentCount, _ + 1){ index => {
+      val maybeBytes = tiffs.get(index)
+      if (maybeBytes.isEmpty) {
+        segments(index) = compressor.compress(emptySegment, index)
+      } else {
+        segments(index) = maybeBytes.get
+      }
+    }
+    }
+
+    val tiffTile: GeoTiffMultibandTile = GeoTiffMultibandTile(
+      new ArraySegmentBytes(segments),
+      compressor.createDecompressor(),
+      segmentLayout,
+      compression,
+      bandCount,
+      rdd.metadata.cellType)
+    val thegeotiff = MultibandGeoTiff(tiffTile,rdd.metadata.extent,rdd.metadata.crs)
+
+    GeoTiffWriter.write(thegeotiff,path)
+
+  }
 
   def saveStitched(
                     rdd: SRDD,

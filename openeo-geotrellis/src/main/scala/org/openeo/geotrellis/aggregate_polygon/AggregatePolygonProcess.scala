@@ -3,21 +3,19 @@ package org.openeo.geotrellis.aggregate_polygon
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit.DAYS
 
-import be.vito.eodata.extracttimeseries.geotrellis.ComputeStatsGeotrellis.{PolygonsWithIndexMapping, splitOverlappingPolygons}
+import be.vito.eodata.extracttimeseries.geotrellis.ComputeStatsGeotrellis.splitOverlappingPolygons
 import be.vito.eodata.extracttimeseries.geotrellis.PixelRateValidator.exceedsTreshold
-import be.vito.eodata.extracttimeseries.geotrellis.{CancellationContext, ComputeStatsGeotrellis, LayerConfig, LayerProvider, LayersConfig, MeanResult, RunningTotal, StatisticsCallback, ZonalRunningTotal}
+import be.vito.eodata.extracttimeseries.geotrellis._
 import be.vito.eodata.processing.MaskedStatisticsProcessor.StatsMeanResult
-import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileBounds, TileLayerMetadata}
+import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey}
 import geotrellis.proj4.CRS
 import geotrellis.raster.{MultibandTile, Tile}
-import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.spark.partition.SpacePartitioner
+import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.vector._
-import org.apache.spark.{RangePartitioner, SparkContext}
-import org.apache.spark.rdd.{PartitionPruningRDD, RDD}
+import org.apache.spark.SparkContext
+import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.SpatialToSpacetimeJoinRdd
-
-import scala.Double.NaN
 
 object AggregatePolygonProcess {
   private type PolygonsWithIndexMapping = (Seq[MultiPolygon], Seq[Set[Int]])
@@ -105,7 +103,7 @@ class AggregatePolygonProcess(layersConfig: LayersConfig) {
     try {
       val spatiallyPartitionedIndexMaskLayer: RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition] = ContextRDD(byIndexMask.persist(MEMORY_ONLY_2), byIndexMask.metadata)
       val combinedRDD = new SpatialToSpacetimeJoinRdd(datacube, spatiallyPartitionedIndexMaskLayer)
-      val zonalStats = combinedRDD.flatMap { case (date, (t1, t2)) => ZonalRunningTotal(t1, t2).map(index_total => ((date.time,index_total._1),index_total._2)).filterKeys(_._2>=0) }
+      val zonalStats = combinedRDD.flatMap { case (date, (t1:MultibandTile, t2:Tile)) => ZonalRunningTotal(t1, t2).map(index_total => ((date.time,index_total._1),index_total._2)).filterKeys(_._2>=0) }
         .reduceByKey((a,b) =>a.zip(b).map({ case (total_a,total_b) => total_a + total_b})).collectAsMap()
 
       val statsByDate = zonalStats.groupBy(_._1._1)
