@@ -5,8 +5,8 @@ import java.util
 
 import be.vito.eodata.extracttimeseries.geotrellis.Sentinel2FileLayerProvider
 import cats.data.NonEmptyList
-import geotrellis.layer.SpaceTimeKey
-import geotrellis.proj4.CRS
+import geotrellis.layer.{FloatingLayoutScheme, LayoutScheme, SpaceTimeKey, ZoomedLayoutScheme}
+import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.vector._
 import org.apache.spark.SparkContext
@@ -17,11 +17,14 @@ import scala.collection.Map
 class Sentinel2PyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util.List[String], rootPath: String) {
   require(oscarsLinkTitles.size() > 0)
 
-  private def sentinel2FileLayerProvider(metadataProperties: Map[String, Any]) = new Sentinel2FileLayerProvider(
+  var crs: CRS = WebMercator
+
+  private def sentinel2FileLayerProvider(metadataProperties: Map[String, Any],layoutScheme:LayoutScheme=ZoomedLayoutScheme(crs, 256)) = new Sentinel2FileLayerProvider(
     oscarsCollectionId,
     NonEmptyList.fromListUnsafe(oscarsLinkTitles.asScala.toList),
     rootPath,
-    metadataProperties
+    metadataProperties,
+    layoutScheme
   )
 
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String,
@@ -53,6 +56,22 @@ class Sentinel2PyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util
 
     for (zoom <- layerProvider.maxZoom to 0 by -1)
       yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, zoom, sc)
+  }
+
+  def datacube(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String, metadata_properties: util.Map[String, Any] = util.Collections.emptyMap()) = {
+    implicit val sc: SparkContext = SparkContext.getOrCreate()
+    val bbox = polygons.toSeq.extent
+
+    val boundingBox = ProjectedExtent(bbox, polygons_crs)
+    val from = ZonedDateTime.parse(from_date)
+    val to = ZonedDateTime.parse(to_date)
+
+    val intersectsPolygons = AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
+
+
+
+    val layerProvider: Sentinel2FileLayerProvider = sentinel2FileLayerProvider(metadata_properties.asScala,FloatingLayoutScheme(256))
+    layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, 0, sc)
   }
 
 
