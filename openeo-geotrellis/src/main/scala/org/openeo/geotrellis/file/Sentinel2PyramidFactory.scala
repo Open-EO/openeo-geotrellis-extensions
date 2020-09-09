@@ -59,7 +59,7 @@ class Sentinel2PyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util
       yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, zoom, sc)
   }
 
-  def datacube(polygons:ProjectedPolygons, from_date: String, to_date: String, metadata_properties: util.Map[String, Any] = util.Collections.emptyMap()): MultibandTileLayerRDD[SpaceTimeKey] = {
+  def datacube(polygons:ProjectedPolygons, from_date: String, to_date: String, metadata_properties: util.Map[String, Any]): MultibandTileLayerRDD[SpaceTimeKey] = {
     return datacube(polygons.polygons,polygons.crs,from_date,to_date,metadata_properties)
   }
 
