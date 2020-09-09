@@ -10,6 +10,7 @@ import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.vector._
 import org.apache.spark.SparkContext
+import org.openeo.geotrellis.ProjectedPolygons
 
 import scala.collection.JavaConverters._
 import scala.collection.Map
@@ -58,7 +59,11 @@ class Sentinel2PyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util
       yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, zoom, sc)
   }
 
-  def datacube(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String, metadata_properties: util.Map[String, Any] = util.Collections.emptyMap()) = {
+  def datacube(polygons:ProjectedPolygons, from_date: String, to_date: String, metadata_properties: util.Map[String, Any] = util.Collections.emptyMap()): MultibandTileLayerRDD[SpaceTimeKey] = {
+    return datacube(polygons.polygons,polygons.crs,from_date,to_date,metadata_properties)
+  }
+
+  def datacube(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String, metadata_properties: util.Map[String, Any] = util.Collections.emptyMap()): MultibandTileLayerRDD[SpaceTimeKey] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
     val bbox = polygons.toSeq.extent
 
@@ -67,8 +72,6 @@ class Sentinel2PyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util
     val to = ZonedDateTime.parse(to_date)
 
     val intersectsPolygons = AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
-
-
 
     val layerProvider: Sentinel2FileLayerProvider = sentinel2FileLayerProvider(metadata_properties.asScala,FloatingLayoutScheme(256))
     layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, 0, sc)
