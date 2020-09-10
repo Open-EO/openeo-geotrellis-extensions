@@ -19,6 +19,9 @@ trait Logger[T] extends Serializable {
     val files = products.flatMap(_.getFiles.asScala.map(f => new File(f.getFilename.getPath).getName))
     logger.info(s"Using products -> $lineSeparator${files.toStream.sorted.mkString(lineSeparator)}")
   }
+  def logParseException(filePath: String): Unit = {
+    logger.error(s"Invalid characters in metadata of $filePath")
+  }
 }
 
 case class StandardLogger[T](cls: Class[T]) extends Logger[T]
@@ -27,7 +30,7 @@ case class VerboseLogger[T](cls: Class[T]) extends Logger[T] {
   override def logKey(key: SpatialKey) {
     logger.info(s"Treatment of $key")
   }
-  
+
   override def logTile(key: SpatialKey, path: String) {
     logger.info(s"Writing tile with $key to $path")
   }
