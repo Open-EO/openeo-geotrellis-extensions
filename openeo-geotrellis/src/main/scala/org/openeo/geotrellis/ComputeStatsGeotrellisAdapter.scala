@@ -18,6 +18,8 @@ import geotrellis.store.accumulo.AccumuloInstance
 import org.apache.spark.SparkContext
 import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK_SER
 import org.openeo.geotrellis.aggregate_polygon.AggregatePolygonProcess
+import org.openeo.geotrellis.aggregate_polygon.intern.{CancellationContext, StatisticsCallback}
+import org.openeo.geotrellis.layers.AccumuloLayerProvider
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.JavaConverters._

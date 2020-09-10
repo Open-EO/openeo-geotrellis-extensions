@@ -4,7 +4,6 @@ import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit.DAYS
 
 import be.vito.eodata.extracttimeseries.geotrellis.ComputeStatsGeotrellis.splitOverlappingPolygons
-import be.vito.eodata.extracttimeseries.geotrellis.PixelRateValidator.exceedsTreshold
 import be.vito.eodata.extracttimeseries.geotrellis._
 import be.vito.eodata.processing.MaskedStatisticsProcessor.StatsMeanResult
 import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey}
@@ -16,6 +15,9 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.SpatialToSpacetimeJoinRdd
+import org.openeo.geotrellis.aggregate_polygon.intern.PixelRateValidator.exceedsTreshold
+import org.openeo.geotrellis.aggregate_polygon.intern.{CancellationContext, StatisticsCallback, ZonalRunningTotal}
+import org.openeo.geotrellis.layers.LayerProvider
 
 object AggregatePolygonProcess {
   private type PolygonsWithIndexMapping = (Seq[MultiPolygon], Seq[Set[Int]])
@@ -23,8 +25,6 @@ object AggregatePolygonProcess {
 
 class AggregatePolygonProcess(layersConfig: LayersConfig) {
   import AggregatePolygonProcess._
-
-  val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig)
 
   def computeAverageTimeSeries(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, startDate: ZonedDateTime, endDate: ZonedDateTime, statisticsCallback: StatisticsCallback[_ >: Seq[StatsMeanResult]], cancellationContext: CancellationContext, sc: SparkContext): Unit = {
 
@@ -49,12 +49,12 @@ class AggregatePolygonProcess(layersConfig: LayersConfig) {
       } else{
         println("Large numbers of pixels found, we will run one job per date, that computes aggregate values for all polygons.")
         sc.setJobDescription("Avg timeseries: " + polygons.length + " from: " + startDate + " to: " + endDate + " using one Spark job per date!")
-        computeStatsGeotrellis.computeMultibandCollectionTimeSeries(datacube, splitPolygons.get, crs, startDate, endDate, statisticsCallback, cancellationContext, sc)
+        org.openeo.geotrellis.aggregate_polygon.intern.computeMultibandCollectionTimeSeries(datacube, splitPolygons.get, crs, startDate, endDate, statisticsCallback, cancellationContext, sc)
       }
     } else {
       println("The number of pixels in your request is below the threshold, we'll compute the timeseries for each polygon separately.")
       val sparkPool = sc.getLocalProperty("spark.scheduler.pool")
-      val results: Array[Map[TemporalKey, Array[MeanResult]]] = computeStatsGeotrellis.computeAverageTimeSeries(datacube, polygons, crs, startDate, endDate,  sc).par.flatMap { rdd =>
+      val results: Array[Map[TemporalKey, Array[MeanResult]]] = org.openeo.geotrellis.aggregate_polygon.intern.computeAverageTimeSeries(datacube, polygons, crs, startDate, endDate,  sc).par.flatMap { rdd =>
         if (!cancellationContext.canceled) {
           sc.setJobGroup(cancellationContext.id, cancellationContext.description, interruptOnCancel = true)
           sc.setLocalProperty("spark.scheduler.pool", sparkPool)
