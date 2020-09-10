@@ -443,7 +443,11 @@ public class TestOpenEOProcessScriptBuilder {
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
         assertEquals(1, result.length());
         Tile res = result.apply(0);
-        assertTileEquals(fillIntArrayTile(3, 2, expectedValues), res);
+        IntArrayTile expectedTile = fillIntArrayTile(3, 2, expectedValues);
+        assertTileEquals(expectedTile, res);
+
+        Tile doubleResult = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0.convert(CellType.fromName("float64")), tile1.convert(CellType.fromName("float64"))))).apply(0);
+        assertTileEquals(expectedTile.convert(CellType.fromName("float64")), doubleResult);
     }
 
     @DisplayName("Test math 'add(x,y)'")

@@ -7,18 +7,20 @@ import java.time.{LocalDate, ZonedDateTime}
 import java.util.Collections.singletonList
 import java.util.zip.Deflater.BEST_COMPRESSION
 
+import geotrellis.layer.{Metadata, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
-import geotrellis.raster.Raster
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, MultibandGeoTiff, Tags}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
+import geotrellis.raster.{MultibandTile, Raster}
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
+import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert.assertEquals
+import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
 
 object Sentinel2PyramidFactoryTest {
@@ -40,21 +42,24 @@ object Sentinel2PyramidFactoryTest {
 class Sentinel2PyramidFactoryTest {
 
     @Test
-    def pyramid_seq(): Unit = {
+    def testStatsFromPyramid(): Unit = {
         val bbox = ProjectedExtent(Extent(373863.50, 5212258.22, 378241.73, 5216244.73), CRS.fromEpsgCode(32631))
-        val date = ZonedDateTime.of(LocalDate.of(2019, 10, 11), MIDNIGHT, UTC)
+        val localDate = LocalDate.of(2019, 10, 11)
+        val spatialLayer = createLayerForDate(bbox, localDate)
 
-        val bbox_srs = s"EPSG:${bbox.crs.epsgCode.get}"
-        val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format date
-        val to_date = from_date
+        checkStatsResult(bbox, spatialLayer)
+    }
 
-        val (_, baseLayer) = sceneClassificationV200PyramidFactory.pyramid_seq(bbox.extent, bbox_srs, from_date, to_date)
-          .maxBy { case (zoom, _) => zoom }
+    @Test
+    def testStatsFromNativeUTM(): Unit = {
+        val bbox = ProjectedExtent(Extent(373863.50, 5212258.22, 378241.73, 5216244.73), CRS.fromEpsgCode(32631))
+        val localDate = LocalDate.of(2019, 10, 11)
+        val spatialLayer = createLayerForDate(bbox, localDate,pyramid = false)
 
-        val spatialLayer = baseLayer
-          .toSpatial(date)
-          .cache()
+        checkStatsResult(bbox, spatialLayer)
+    }
 
+    private def checkStatsResult(bbox: ProjectedExtent, spatialLayer: RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]]) = {
         def writeGeoTiff(path: String): Unit = {
             val Raster(tile, extent) = spatialLayer
               .crop(bbox.reproject(spatialLayer.metadata.crs))
@@ -75,7 +80,29 @@ class Sentinel2PyramidFactoryTest {
         }
 
         val qgisZonalStaticsPluginResult = 4.510951226022072
-        assertEquals(qgisZonalStaticsPluginResult, singleBandMean, 0.1)
+        assertEquals(qgisZonalStaticsPluginResult, singleBandMean, 0.005)
+    }
+
+
+    private def createLayerForDate(bbox: ProjectedExtent, localDate: LocalDate, pyramid:Boolean=true) = {
+        val date = ZonedDateTime.of(localDate, MIDNIGHT, UTC)
+
+        val bbox_srs = s"EPSG:${bbox.crs.epsgCode.get}"
+        val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format date
+        val to_date = from_date
+
+        val baseLayer =
+            if(pyramid) {
+                sceneClassificationV200PyramidFactory.pyramid_seq(bbox.extent, bbox_srs, from_date, to_date)
+                  .maxBy { case (zoom, _) => zoom }._2
+            }else{
+                sceneClassificationV200PyramidFactory.datacube(Array(MultiPolygon(bbox.extent.toPolygon())), bbox.crs, from_date, to_date)
+            }
+
+        val spatialLayer = baseLayer
+          .toSpatial(date)
+          .cache()
+        spatialLayer
     }
 
     private def sceneClassificationV200PyramidFactory = new Sentinel2PyramidFactory(

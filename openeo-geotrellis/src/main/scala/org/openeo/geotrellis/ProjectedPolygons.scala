@@ -36,6 +36,15 @@ object ProjectedPolygons {
     }
   }
 
+  def reproject(projectedPolygons: ProjectedPolygons,epsg_code:Int): ProjectedPolygons = {
+    val targetCRS = CRS.fromEpsgCode(epsg_code)
+    new ProjectedPolygons(projectedPolygons.polygons.map{_.reproject(projectedPolygons.crs,targetCRS)},targetCRS)
+  }
+
+  def fromExtent(extent:Extent,crs:String): ProjectedPolygons = {
+    ProjectedPolygons(Array(MultiPolygon(extent.toPolygon())),CRS.fromName(crs))
+  }
+
   def fromVectorFile(vector_file: String): ProjectedPolygons = {
     val vectorUrl = try {
       new URL(vector_file)
