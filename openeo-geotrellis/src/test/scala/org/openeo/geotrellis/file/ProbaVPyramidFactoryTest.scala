@@ -45,7 +45,7 @@ class ProbaVPyramidFactoryTest {
         bandIndices)
 
       val baseLayer = pyramid
-        .find { case (index, _) => index == 9 }
+        .find { case (index, _) => index == 11 }
         .map { case (_, layer) => layer }
         .get.cache()
 

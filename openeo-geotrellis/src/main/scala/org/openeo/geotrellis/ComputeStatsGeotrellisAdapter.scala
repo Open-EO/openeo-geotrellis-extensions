@@ -1,23 +1,19 @@
 package org.openeo.geotrellis
 
 import java.io.File
-import java.lang.Math.pow
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
 
-import be.vito.eodata.extracttimeseries.geotrellis._
-import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
 import be.vito.eodata.processing.MaskedStatisticsProcessor.StatsMeanResult
 import geotrellis.layer._
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.summary.Statistics
-import geotrellis.raster.{FloatConstantNoDataCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.spark._
-import geotrellis.store.accumulo.AccumuloInstance
 import org.apache.spark.SparkContext
 import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK_SER
-import org.openeo.geotrellis.aggregate_polygon.AggregatePolygonProcess
+import org.openeo.geotrellis.aggregate_polygon.intern._
+import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, intern}
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.JavaConverters._
@@ -45,29 +41,6 @@ object ComputeStatsGeotrellisAdapter {
       ContextRDD(valueRdd, multiBandRdd.metadata)
     }
 
-  private def s1GrdGamma0DbValueLayerConfig(accumuloLayerId: String, band: Sigma0Band.Value)(implicit accumuloSupplier: () => AccumuloInstance): LayerConfig = {
-    LayerConfig(
-      layerProvider = new AccumuloLayerProvider(accumuloLayerId),
-      scalingFactor = 1,
-      offset = 0,
-      dataType = FloatConstantNoDataCellType,
-      multiBandMath = multiBandRdd => {
-        val valueRdd = multiBandRdd.mapValues(multiBandTile =>
-          multiBandTile.band(band.id)
-            .convert(FloatConstantNoDataCellType)
-            .mapIfSetDouble(d => pow(10, (d * 0.001 - 45) / 10)))
-        ContextRDD(valueRdd, multiBandRdd.metadata)
-      })
-  }
-
-  private def s1GrdSigma0LayerConfig(accumuloLayerId: String, band: Sigma0Band.Value)(implicit accumuloSupplier: () => AccumuloInstance): LayerConfig =
-    LayerConfig(
-      layerProvider = new AccumuloLayerProvider(accumuloLayerId),
-      scalingFactor = noScaling,
-      offset = noOffset,
-      dataType = FloatConstantNoDataCellType,
-      multiBandMath = singleBand(band.id)
-    )
 
   private def toMap(histogram: Histogram[Double]): JMap[Double, Long] = {
     val buckets: JMap[Double, Long] = new util.HashMap[Double, Long]
@@ -84,22 +57,9 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
 
   private val unusedCancellationContext = new CancellationContext(null, null)
 
-  def compute_average_timeseries(product_id: String, polygon_wkts: JList[String], polygons_srs: String, from_date: String, to_date: String, zoom: Int, band_index: Int): JMap[String, JList[Double]] = {
-    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
-
-    val polygons = ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
-    val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
-    val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
-    val statisticsCollector = new StatisticsCollector
-
-    computeStatsGeotrellis.computeAverageTimeSeries(product_id, polygons.polygons, polygons.crs, startDate, endDate, zoom,
-      statisticsCollector, unusedCancellationContext, sc)
-
-    statisticsCollector.results
-  }
 
   def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
-    val computeStatsGeotrellis = new AggregatePolygonProcess(layersConfig(band_index))
+    val computeStatsGeotrellis = new AggregatePolygonProcess()
 
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
@@ -114,7 +74,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
    * Writes means to an UTF-8 encoded JSON file.
    */
   def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, from_date: String, to_date: String, band_index: Int, output_file: String): Unit = {
-    val computeStatsGeotrellis = new AggregatePolygonProcess(layersConfig(band_index))
+    val computeStatsGeotrellis = new AggregatePolygonProcess()
 
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
@@ -152,80 +112,15 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   }
 
   private def _compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, from_date: String, to_date: String, band_index: Int, histogramsCollector: StatisticsCallback[_ >: Seq[Histogram[Double]]]): Unit = {
-    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
     val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
     val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
-    computeStatsGeotrellis.computeHistogramTimeSeries(datacube, polygons.polygons, polygons.crs, startDate, endDate, histogramsCollector, unusedCancellationContext, sc)
+    intern.computeHistogramTimeSeries(datacube, polygons.polygons, polygons.crs, startDate, endDate, histogramsCollector, unusedCancellationContext, sc)
   }
 
-  def compute_histograms_time_series(product_id: String, polygon_wkts: JList[String], polygons_srs: String,
-                                     from_date: String, to_date: String, zoom: Int, band_index: Int):
-  JMap[String, JList[JMap[Double, Long]]] = { // date -> polygon -> value/count
-    val computeStatsGeotrellis = new ComputeStatsGeotrellis(layersConfig(band_index))
-    val polygons = ProjectedPolygons.fromWkt(polygon_wkts, polygons_srs)
-    val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
-    val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
-    val histogramsCollector = new HistogramsCollector
-
-    computeStatsGeotrellis.computeHistogramTimeSeries(product_id, polygons.polygons, polygons.crs, startDate, endDate, zoom,
-      histogramsCollector, unusedCancellationContext, sc)
-
-    histogramsCollector.results
-  }
 
 
   private def sc: SparkContext = SparkContext.getOrCreate()
 
-  private def layersConfig(bandIndex: Int): LayersConfig = new LayersConfig {
-    private implicit val accumuloSupplier: () => AccumuloInstance =
-      () => KerberizedAccumuloInstance(zookeepers, accumuloInstanceName)
-
-    override val layers: Map[String, LayerConfig] =
-      Map(
-        "BIOPAR_FAPAR_V1_GLOBAL" -> LayerConfig(
-          layerProvider = new AccumuloLayerProvider("BIOPAR_FAPAR_V1_GLOBAL"),
-          scalingFactor = noScaling,
-          offset = noOffset,
-          dataType = UByteUserDefinedNoDataCellType(255.asInstanceOf[Byte])
-        ),
-        "S2_FAPAR_V102_WEBMERCATOR2" -> LayerConfig(
-          layerProvider = new AccumuloLayerProvider("S2_FAPAR_V102_WEBMERCATOR2"),
-          scalingFactor = noScaling,
-          offset = noOffset,
-          dataType = UByteConstantNoDataCellType
-        ),
-        "S2_FCOVER_PYRAMID" -> LayerConfig(
-          layerProvider = new AccumuloLayerProvider("S2_FCOVER_PYRAMID_EARLY"),
-          scalingFactor = noScaling,
-          offset = noOffset,
-          dataType = UByteConstantNoDataCellType
-        ),
-        "PROBAV_L3_S10_TOC_NDVI_333M_V2" -> LayerConfig(
-          layerProvider = new AccumuloLayerProvider("PROBAV_L3_S10_TOC_NDVI_333M_V2"),
-          scalingFactor = noScaling,
-          offset = noOffset,
-          dataType = UByteUserDefinedNoDataCellType(255.asInstanceOf[Byte])
-        ),
-        "S2_NDVI_PYRAMID" -> LayerConfig(
-          layerProvider = new AccumuloLayerProvider("S2_NDVI_PYRAMID_EARLY"),
-          scalingFactor = noScaling,
-          offset = noOffset,
-          dataType = UByteConstantNoDataCellType
-        ),
-        "S2_LAI_PYRAMID" -> LayerConfig(
-          layerProvider = new AccumuloLayerProvider("S2_LAI_PYRAMID_20190625"),
-          scalingFactor = noScaling,
-          offset = noOffset,
-          dataType = UByteConstantNoDataCellType
-        ),
-        "S1_GRD_SIGMA0_ASCENDING" -> s1GrdSigma0LayerConfig("S1_GRD_SIGMA0_ASCENDING_PYRAMID", Sigma0Band(bandIndex)),
-        "S1_GRD_SIGMA0_DESCENDING" -> s1GrdSigma0LayerConfig("S1_GRD_SIGMA0_DESCENDING_PYRAMID", Sigma0Band(bandIndex)),
-        "S1_GRD_GAMMA0_VH" -> s1GrdGamma0DbValueLayerConfig("S1_GRD_GAMMA0_PYRAMID_V2", Sigma0Band.VH),
-        "S1_GRD_GAMMA0_VV" -> s1GrdGamma0DbValueLayerConfig("S1_GRD_GAMMA0_PYRAMID_V2", Sigma0Band.VV)
-      )
-
-    override val multibandLayers: Map[String, MultibandLayerConfig] = Map()
-  }
 
   private class StatisticsCollector extends StatisticsCallback[StatsMeanResult] {
     import java.util._
@@ -324,7 +219,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     override def onCompleted(): Unit = ()
   }
 
-  private class MultibandMediansCollector extends StatisticsCallback[MultibandHistogram[Double]] {
+  private class MultibandMediansCollector extends StatisticsCallback[intern.MultibandHistogram[Double]] {
     import java.util._
 
     val results: JMap[String, JList[JList[Double]]] =

@@ -3,21 +3,20 @@ package org.openeo.geotrellis.file
 import java.time.ZonedDateTime
 import java.util
 
-import be.vito.eodata.extracttimeseries.geotrellis.Sentinel1CoherenceFileLayerProvider
 import cats.data.NonEmptyList
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.CRS
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.vector._
 import org.apache.spark.SparkContext
+import org.openeo.geotrellis.layers.FileLayerProvider
 
 import scala.collection.JavaConverters._
-import scala.collection.Map
 
 class Sentinel1CoherencePyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util.List[String], rootPath: String) {
   require(oscarsLinkTitles.size() > 0)
 
-  private def sentinel1CoherenceOscarsPyramidFactory(metadataProperties: Map[String, Any]) = new Sentinel1CoherenceFileLayerProvider(
+  private def sentinel1CoherenceOscarsPyramidFactory(metadataProperties: Map[String, Any]) = new FileLayerProvider(
     oscarsCollectionId,
     NonEmptyList.fromListUnsafe(oscarsLinkTitles.asScala.toList),
     rootPath,
@@ -35,7 +34,7 @@ class Sentinel1CoherencePyramidFactory(oscarsCollectionId: String, oscarsLinkTit
 
     val intersectsPolygons = AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
 
-    val layerProvider = sentinel1CoherenceOscarsPyramidFactory(metadata_properties.asScala)
+    val layerProvider = sentinel1CoherenceOscarsPyramidFactory(metadata_properties.asScala.toMap)
 
     for (zoom <- layerProvider.maxZoom to 0 by -1)
       yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, zoom, sc)
@@ -49,7 +48,7 @@ class Sentinel1CoherencePyramidFactory(oscarsCollectionId: String, oscarsLinkTit
     val from = ZonedDateTime.parse(from_date)
     val to = ZonedDateTime.parse(to_date)
 
-    val layerProvider = sentinel1CoherenceOscarsPyramidFactory(metadata_properties.asScala)
+    val layerProvider = sentinel1CoherenceOscarsPyramidFactory(metadata_properties.asScala.toMap)
 
     for (zoom <- layerProvider.maxZoom to 0 by -1)
       yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox, zoom, sc)

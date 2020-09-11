@@ -28,7 +28,6 @@ import scala.collection.JavaConverters._
 import scala.collection.Map
 
 object ProbaVPyramidFactory {
-  private val maxZoom = 9
 
   object Band extends Enumeration {
     // Jesus Christ almighty
@@ -53,6 +52,8 @@ object ProbaVPyramidFactory {
 class ProbaVPyramidFactory(oscarsCollectionId: String, rootPath: String) extends Serializable {
 
   import ProbaVPyramidFactory._
+
+  private val maxZoom = if (rootPath.contains("100M")) 11 else 9
 
   private def probaVOscarsPyramidFactory(bands: Seq[Band.Value]) = {
     val oscarsLinkTitlesWithBandIds = bands.map(b => {

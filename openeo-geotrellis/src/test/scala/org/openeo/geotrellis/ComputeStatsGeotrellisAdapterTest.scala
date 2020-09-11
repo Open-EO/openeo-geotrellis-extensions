@@ -1,10 +1,9 @@
 package org.openeo.geotrellis
 
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
+import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
 import java.util
 
-import be.vito.eodata.model.BandDefinition
 import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.raster.histogram.Histogram
@@ -183,34 +182,6 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     accumuloInstanceName = "hdp-accumulo-instance"
   )
 
-  @Test
-  def compute_average_timeseries_on_productid_from_polygons(): Unit = {
-    val from = ZonedDateTime.of(LocalDate.of(2019, 1, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    val to = from plusWeeks 1
-
-    val polygons = Seq(polygon1.toWKT(), polygon2.toWKT())
-
-    val stats = computeStatsGeotrellisAdapter.compute_average_timeseries(
-      "S1_GRD_SIGMA0_ASCENDING",
-      polygons.asJava,
-      polygons_srs = "EPSG:4326",
-      from_date = ISO_OFFSET_DATE_TIME format from,
-      to_date = ISO_OFFSET_DATE_TIME format to,
-      zoom = 14,
-      band_index = 2
-    ).asScala
-
-    for ((date, means) <- stats) {
-      println(s"$date: $means")
-    }
-
-    assertFalse(stats.isEmpty)
-
-    val means = stats
-      .flatMap { case (_, dailyMeans) => dailyMeans.asScala }
-
-    assertTrue(means.exists(mean => !mean.isNaN))
-  }
 
 
   private def buildCubeRdd(from: ZonedDateTime, to: ZonedDateTime): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
@@ -447,8 +418,8 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
       .toSeq
       .sortBy { case (date, _) => date }
 
-    val scaleFactor = BandDefinition.CGS.FAPAR_10M.getScaleFactor
-    val offset = BandDefinition.CGS.FAPAR_10M.getOffset
+    val scaleFactor = 0.005
+    val offset = 0.0
 
     val actualAverages = (for {
       (date, polygonalMeans) <- stats
@@ -490,8 +461,8 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
       band
     ).asScala
 
-    val scaleFactor = BandDefinition.CGS.FAPAR_10M.getScaleFactor
-    val offset = BandDefinition.CGS.FAPAR_10M.getOffset
+    val scaleFactor = 0.005
+    val offset = 0.0
 
     val actualHistograms = for {
       (date, polygonalBandHistograms) <- stats
@@ -649,37 +620,6 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     ))
   }
 
-  @Test
-  def compute_histograms_time_series(): Unit = {
-    val from = ZonedDateTime.of(LocalDate.of(2019, 1, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    val to = from plusWeeks 1
-
-    val polygons = Seq(polygon1.toWKT(), polygon2.toWKT())
-
-    val histograms = computeStatsGeotrellisAdapter.compute_histograms_time_series(
-      "S1_GRD_GAMMA0_VH",
-      polygons.asJava,
-      polygons_srs = "EPSG:4326",
-      from_date = ISO_OFFSET_DATE_TIME format from,
-      to_date = ISO_OFFSET_DATE_TIME format to,
-      zoom = 14,
-      band_index = 2
-    ).asScala
-
-    for ((date, polygonalHistograms) <- histograms) {
-      println(s"$date: $polygonalHistograms")
-    }
-
-    assertFalse(histograms.isEmpty)
-
-    val buckets = for {
-      (_, polygonalHistograms) <- histograms.toSeq
-      histogram <- polygonalHistograms.asScala
-      bucket <- histogram.asScala
-    } yield bucket
-
-    assertFalse(buckets.isEmpty)
-  }
 
   @Test
   def compute_sd_timeseries_on_datacube_from_polygons(): Unit = {
