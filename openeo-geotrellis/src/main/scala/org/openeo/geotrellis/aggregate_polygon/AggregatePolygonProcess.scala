@@ -16,14 +16,14 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.SpatialToSpacetimeJoinRdd
 import org.openeo.geotrellis.aggregate_polygon.intern.PixelRateValidator.exceedsTreshold
-import org.openeo.geotrellis.aggregate_polygon.intern.{CancellationContext, StatisticsCallback, ZonalRunningTotal}
+import org.openeo.geotrellis.aggregate_polygon.intern.{CancellationContext, MeanResult, StatisticsCallback, ZonalRunningTotal}
 import org.openeo.geotrellis.layers.LayerProvider
 
 object AggregatePolygonProcess {
   private type PolygonsWithIndexMapping = (Seq[MultiPolygon], Seq[Set[Int]])
 }
 
-class AggregatePolygonProcess(layersConfig: LayersConfig) {
+class AggregatePolygonProcess(val layersConfig: LayersConfig=null) {
   import AggregatePolygonProcess._
 
   def computeAverageTimeSeries(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, startDate: ZonedDateTime, endDate: ZonedDateTime, statisticsCallback: StatisticsCallback[_ >: Seq[StatsMeanResult]], cancellationContext: CancellationContext, sc: SparkContext): Unit = {
