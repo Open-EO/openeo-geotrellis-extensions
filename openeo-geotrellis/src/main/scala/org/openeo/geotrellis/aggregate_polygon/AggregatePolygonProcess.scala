@@ -113,7 +113,7 @@ class AggregatePolygonProcess() {
         //the map might not contain results for all features, it is sparse, so we have to make it dense
         //we also have to merge results of features that were splitted because of overlap
         val denseResults = indexMapping.map { splitIndices =>
-          val empty = new MeanResult(Double.NaN, 0L, 0L,Option.empty,Option.empty)
+          val empty = MeanResult()
 
           splitIndices.flatMap(valuesForDate.get).fold(Seq.empty) { (denseMean1, denseMean2) =>
             val meansPairedByBand = denseMean1.zipAll(denseMean2, empty, empty)
