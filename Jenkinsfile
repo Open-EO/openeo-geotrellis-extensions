@@ -103,8 +103,9 @@ void build(tests = true){
         def rtMaven = Artifactory.newMavenBuild()
         rtMaven.deployer server: server, releaseRepo: 'libs-release-public', snapshotRepo: 'libs-snapshot-public'
         rtMaven.tool = maven
+        rtMaven.opts += '-U'
         if (!tests) {
-            rtMaven.opts += '-U -DskipTests=true'
+            rtMaven.opts += ' -DskipTests=true'
         }
         rtMaven.deployer.deployArtifacts = publishable_branches.contains(env.BRANCH_NAME)
         //use '--projects StatisticsMapReduce' in 'goals' to build specific module
