@@ -1,9 +1,7 @@
 package org.openeo.geotrellisaccumulo
 
 import java.time.ZonedDateTime
-import java.util
 
-import be.vito.eodata.extracttimeseries.geotrellis.ComputeStatsGeotrellisHelpers
 import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
 import geotrellis.layer.{Bounds, EmptyBounds, KeyBounds, Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, WebMercator}
@@ -141,26 +139,26 @@ object PyramidFactory {
 
       val sc = SparkContext.getOrCreate()
 
-      ComputeStatsGeotrellisHelpers.authenticated(sc) {
-        val (minLevel: Int, maxLevel: Int) = zoomRange(layerName)
 
-        val attributeStore = AccumuloAttributeStore(accumuloInstance)
-        val id = LayerId(layerName, maxLevel)
-        if (!attributeStore.layerExists(id)) throw new LayerNotFoundError(id)
+      val (minLevel: Int, maxLevel: Int) = zoomRange(layerName)
 
-        val header: LayerHeader = attributeStore.readHeader[LayerHeader](id)
+      val attributeStore = AccumuloAttributeStore(accumuloInstance)
+      val id = LayerId(layerName, maxLevel)
+      if (!attributeStore.layerExists(id)) throw new LayerNotFoundError(id)
 
-        val pyramid = for (z <- maxLevel to minLevel by -1) yield {
-          header.valueClass match {
-            case "geotrellis.raster.Tile" =>
-              (z, rdd[Tile](layerName, z, query).withContext(_.mapValues(MultibandTile(_))))
-            case "geotrellis.raster.MultibandTile" =>
-              (z, rdd[MultibandTile](layerName, z, query))
-          }
+      val header: LayerHeader = attributeStore.readHeader[LayerHeader](id)
+
+      val pyramid = for (z <- maxLevel to minLevel by -1) yield {
+        header.valueClass match {
+          case "geotrellis.raster.Tile" =>
+            (z, rdd[Tile](layerName, z, query).withContext(_.mapValues(MultibandTile(_))))
+          case "geotrellis.raster.MultibandTile" =>
+            (z, rdd[MultibandTile](layerName, z, query))
         }
-
-        pyramid
       }
+
+      pyramid
+
     }
 
     def load_rdd(layerName:String,level:Int,bbox: Extent, bbox_srs: String,startDate: Option[ZonedDateTime]=Option.empty, endDate:Option[ZonedDateTime]=Option.empty ): MultibandTileLayerRDD[SpaceTimeKey]  = {
@@ -170,9 +168,8 @@ object PyramidFactory {
 
       val header: LayerHeader = attributeStore.readHeader[LayerHeader](id)
       val query = createQuery(attributeStore,id,bbox,bbox_srs,startDate,endDate)
-      implicit val sc = SparkContext.getOrCreate()
 
-      val result: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = ComputeStatsGeotrellisHelpers.authenticated(sc) {
+      val result: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
         header.valueClass match {
           case "geotrellis.raster.Tile" =>
             rdd[Tile](layerName, level, query).withContext(_.mapValues {
@@ -215,7 +212,7 @@ object PyramidFactory {
 
       implicit val sc = SparkContext.getOrCreate()
 
-      return ComputeStatsGeotrellisHelpers.authenticated(sc)({
+      return {
         val seq = for (z <- maxLevel to minLevel by -1) yield {
           header.valueClass match {
             case "geotrellis.raster.Tile" =>
@@ -226,7 +223,7 @@ object PyramidFactory {
 
         }
         return seq
-      })
+      }
 
 
 
