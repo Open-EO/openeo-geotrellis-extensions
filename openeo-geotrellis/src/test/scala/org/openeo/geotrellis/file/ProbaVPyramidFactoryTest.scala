@@ -20,8 +20,8 @@ import scala.collection.mutable.ArrayBuffer
 
 class ProbaVPyramidFactoryTest {
 
-  private val pyramidFactoryS5 = new ProbaVPyramidFactory("PROBAV_L3_S5_TOC_100M")
-  private val pyramidFactoryS10 =  new ProbaVPyramidFactory("PROBAV_L3_S10_TOC_333M")
+  private val pyramidFactoryS5 = new ProbaVPyramidFactory("/data/MTDA/TIFFDERIVED/PROBAV_L3_S5_TOC_100M")
+  private val pyramidFactoryS10 =  new ProbaVPyramidFactory("/data/MTDA/TIFFDERIVED/PROBAV_L3_S10_TOC_333M")
 
   @Ignore
   @Test
@@ -45,7 +45,7 @@ class ProbaVPyramidFactoryTest {
         bandIndices)
 
       val baseLayer = pyramid
-        .find { case (index, _) => index == 9 }
+        .find { case (index, _) => index == 11 }
         .map { case (_, layer) => layer }
         .get.cache()
 

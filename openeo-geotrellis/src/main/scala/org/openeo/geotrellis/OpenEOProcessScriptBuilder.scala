@@ -1,16 +1,44 @@
 package org.openeo.geotrellis
 
-import be.vito.eodata.extracttimeseries.geotrellis.ComputeStatsGeotrellisHelpers.{MaxIgnoreNoData, MinIgnoreNoData}
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{DoubleConstantTile, IntConstantTile, ShortConstantTile, Tile, UByteConstantTile}
+import geotrellis.raster.{DoubleConstantTile, IntConstantTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, isNoData}
 import org.openeo.geotrellis.mapalgebra.AddIgnoreNodata
 
+import scala.Double.NaN
 import scala.collection.mutable
 
 /**
   * Builder to help converting an OpenEO process graph into a transformation of Geotrellis tiles.
   */
 class OpenEOProcessScriptBuilder {
+
+  object MinIgnoreNoData extends LocalTileBinaryOp {
+    def combine(z1:Int,z2:Int) =
+      if( isNoData(z1) && isNoData(z2)) NODATA
+      else if( isNoData(z1) ) z2
+      else if( isNoData(z2) ) z1
+      else math.min(z1, z2)
+
+    def combine(z1:Double,z2:Double) =
+      if( isNoData(z1) && isNoData(z2)) NaN
+      else if( isNoData(z1) ) z2
+      else if( isNoData(z2) ) z1
+      else math.min(z1, z2)
+  }
+
+  object MaxIgnoreNoData extends LocalTileBinaryOp {
+    def combine(z1:Int,z2:Int) =
+      if( isNoData(z1) && isNoData(z2)) NODATA
+      else if( isNoData(z1) ) z2
+      else if( isNoData(z2) ) z1
+      else math.max(z1, z2)
+
+    def combine(z1:Double,z2:Double) =
+      if( isNoData(z1) && isNoData(z2)) NaN
+      else if( isNoData(z1) ) z2
+      else if( isNoData(z2) ) z1
+      else math.max(z1, z2)
+  }
 
   val processStack: mutable.Stack[String] = new mutable.Stack[String]()
   val arrayElementStack: mutable.Stack[Integer] = new mutable.Stack[Integer]()

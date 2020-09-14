@@ -1,10 +1,10 @@
 package org.openeo
 
-import geotrellis.layer._
-import geotrellis.raster.MultibandTile
-import geotrellis.spark.pyramid.Pyramid
-import geotrellis.spark.partition.PartitionerIndex
-import geotrellis.store.index.zcurve.{Z3, ZSpaceTimeKeyIndex}
+import _root_.geotrellis.layer._
+import _root_.geotrellis.raster.MultibandTile
+import _root_.geotrellis.spark.partition.PartitionerIndex
+import _root_.geotrellis.spark.pyramid.Pyramid
+import _root_.geotrellis.store.index.zcurve.{Z3, ZSpaceTimeKeyIndex}
 import org.apache.spark.rdd.RDD
 
 import scala.collection.JavaConverters.mapAsScalaMapConverter

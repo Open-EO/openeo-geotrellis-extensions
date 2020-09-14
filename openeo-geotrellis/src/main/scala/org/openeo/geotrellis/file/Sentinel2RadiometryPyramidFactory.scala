@@ -32,6 +32,9 @@ object Sentinel2RadiometryPyramidFactory {
   }
 }
 
+/**
+ * Deprecated: hardcoded to work for V102, which is phased out.
+ */
 class Sentinel2RadiometryPyramidFactory extends AbstractPyramidFactory[Band.Value] {
   override protected val cellType: CellType = ShortUserDefinedNoDataCellType(32767)
 

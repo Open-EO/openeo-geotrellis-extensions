@@ -25,7 +25,6 @@ import org.openeo.geotrellis.OpenEOProcesses
 import scala.collection.JavaConverters._
 
 object ProbaVPyramidFactory {
-  private val maxZoom = 9
 
   object Band extends Enumeration {
     // Jesus Christ almighty
@@ -70,6 +69,8 @@ object ProbaVPyramidFactory {
 class ProbaVPyramidFactory(val rootPath: String) extends Serializable {
 
   import ProbaVPyramidFactory._
+
+  private val maxZoom = if (rootPath.contains("100M")) 11 else 9
 
   private val cellType: CellType = ShortUserDefinedNoDataCellType(-1)
 
