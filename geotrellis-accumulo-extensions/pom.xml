@@ -31,6 +31,11 @@
             <version>${geotrellistimeseries.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.locationtech.sfcurve</groupId>
+            <artifactId>sfcurve-zorder_2.11</artifactId>
+            <version>0.2.3-SNAPSHOT</version>
+        </dependency>
+        <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
             <artifactId>geotrellis-accumulo_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>
