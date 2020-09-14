@@ -5,7 +5,6 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
 
-import be.vito.eodata.processing.MaskedStatisticsProcessor.StatsMeanResult
 import geotrellis.layer._
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.summary.Statistics
@@ -23,7 +22,7 @@ object ComputeStatsGeotrellisAdapter {
   private type JMap[K, V] = java.util.Map[K, V]
   private type JList[T] = java.util.List[T]
 
-  private type MultibandMeans = Seq[StatsMeanResult]
+  private type MultibandMeans = Seq[MeanResult]
 
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[ComputeStatsGeotrellisAdapter])
 
@@ -122,14 +121,14 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   private def sc: SparkContext = SparkContext.getOrCreate()
 
 
-  private class StatisticsCollector extends StatisticsCallback[StatsMeanResult] {
+  private class StatisticsCollector extends StatisticsCallback[MeanResult] {
     import java.util._
 
     val results: JMap[String, JList[Double]] =
       Collections.synchronizedMap(new util.HashMap[String, JList[Double]])
 
-    override def onComputed(date: ZonedDateTime, results: Seq[StatsMeanResult]): Unit = {
-      val means = results.map(_.getAverage)
+    override def onComputed(date: ZonedDateTime, results: Seq[MeanResult]): Unit = {
+      val means = results.map(_.mean)
 
       this.results.put(isoFormat(date), means.asJava)
     }
@@ -137,14 +136,14 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     override def onCompleted(): Unit = ()
   }
 
-  private class MultibandStatisticsCollector extends StatisticsCallback[Seq[StatsMeanResult]] {
+  private class MultibandStatisticsCollector extends StatisticsCallback[Seq[MeanResult]] {
     import java.util._
 
     val results: JMap[String, JList[JList[Double]]] =
       Collections.synchronizedMap(new util.HashMap[String, JList[JList[Double]]])
 
-    override def onComputed(date: ZonedDateTime, results: Seq[Seq[StatsMeanResult]]): Unit = {
-      val means = results.map(_.map(_.getAverage))
+    override def onComputed(date: ZonedDateTime, results: Seq[Seq[MeanResult]]): Unit = {
+      val means = results.map(_.map(_.mean))
 
       this.results.put(isoFormat(date), means.map(_.asJava).asJava)
     }
@@ -171,8 +170,8 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
           jsonGenerator.writeStartArray()
 
           for (bandMean <- polygon)
-            if (bandMean.getAverage.isNaN) jsonGenerator.writeNull()
-            else jsonGenerator.writeNumber(bandMean.getAverage)
+            if (bandMean.mean.isNaN) jsonGenerator.writeNull()
+            else jsonGenerator.writeNumber(bandMean.mean)
 
           jsonGenerator.writeEndArray()
         }

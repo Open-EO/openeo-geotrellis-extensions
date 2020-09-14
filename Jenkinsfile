@@ -110,7 +110,7 @@ void build(tests = true){
         //use '--projects StatisticsMapReduce' in 'goals' to build specific module
         try {
             withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'CephS3']]) {
-                buildInfo = rtMaven.run pom: 'pom.xml', goals: 'clean install'
+                buildInfo = rtMaven.run pom: 'pom.xml', goals: '-U clean install'
                 try {
                     if (rtMaven.deployer.deployArtifacts)
                         server.publishBuildInfo buildInfo
