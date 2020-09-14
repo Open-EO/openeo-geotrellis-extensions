@@ -1,31 +1,18 @@
 package org.openeo.geotrellis.file
 
-import java.lang.Math.max
-import java.net.URI
 import java.time.ZonedDateTime
 import java.util
 
-import be.vito.eodata.extracttimeseries.geotrellis.ProbavFileLayerProvider
 import cats.data.NonEmptyList
 import geotrellis.layer._
-import geotrellis.proj4.{CRS, WebMercator}
-import geotrellis.raster.geotiff.GeoTiffRasterSource
-import geotrellis.raster.io.geotiff.tags.TiffTags
-import geotrellis.raster.{CellType, MultibandTile, ShortUserDefinedNoDataCellType, Tile}
-import geotrellis.spark.partition.SpacePartitioner
-import geotrellis.spark.pyramid.Pyramid
-import geotrellis.spark.store.hadoop.geotiff.{GeoTiffMetadata, InMemoryGeoTiffAttributeStore}
+import geotrellis.proj4.CRS
+import geotrellis.raster.MultibandTile
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
-import geotrellis.store.hadoop.util.{HdfsRangeReader, HdfsUtils}
-import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
-import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.Path
+import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
-import org.apache.spark.rdd.RDD
-import org.openeo.geotrellis.OpenEOProcesses
+import org.openeo.geotrellis.layers.FileLayerProvider
 
 import scala.collection.JavaConverters._
-import scala.collection.Map
 
 object ProbaVPyramidFactory {
 
@@ -53,8 +40,6 @@ class ProbaVPyramidFactory(oscarsCollectionId: String, rootPath: String) extends
 
   import ProbaVPyramidFactory._
 
-  private val maxZoom = if (rootPath.contains("100M")) 11 else 9
-
   private def probaVOscarsPyramidFactory(bands: Seq[Band.Value]) = {
     val oscarsLinkTitlesWithBandIds = bands.map(b => {
       val split = b.fileMarker.split(":")
@@ -65,10 +50,12 @@ class ProbaVPyramidFactory(oscarsCollectionId: String, rootPath: String) extends
     }).groupBy(_._1)
       .map({case (k, v) => (k, v.map(_._2))})
       .toList
-    new ProbavFileLayerProvider(
+    new FileLayerProvider(
       oscarsCollectionId,
-      NonEmptyList.fromListUnsafe(oscarsLinkTitlesWithBandIds),
-      rootPath
+      NonEmptyList.fromListUnsafe(oscarsLinkTitlesWithBandIds.map(_._1)),
+      rootPath,
+      bandIds = oscarsLinkTitlesWithBandIds.map(_._2),
+      probaV = true
     )
   }
 
