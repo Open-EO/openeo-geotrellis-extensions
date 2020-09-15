@@ -26,13 +26,8 @@
 
     <dependencies>
         <dependency>
-            <groupId>be.vito.eodata</groupId>
-            <artifactId>ExtractTimeSeries</artifactId>
-            <version>${geotrellistimeseries.version}</version>
-        </dependency>
-        <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
-            <artifactId>geotrellis-accumulo_${scala.binary.version}</artifactId>
+            <artifactId>geotrellis-accumulo-spark_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>
         </dependency>
         <dependency>
