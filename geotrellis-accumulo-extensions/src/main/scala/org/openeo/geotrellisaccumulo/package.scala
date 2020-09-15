@@ -6,6 +6,8 @@ import _root_.geotrellis.spark.partition.PartitionerIndex
 import _root_.geotrellis.spark.pyramid.Pyramid
 import _root_.geotrellis.store.index.zcurve.{Z3, ZSpaceTimeKeyIndex}
 import org.apache.spark.rdd.RDD
+import org.locationtech.sfcurve.zorder
+import org.locationtech.sfcurve.zorder.ZRange
 
 import scala.collection.JavaConverters.mapAsScalaMapConverter
 
@@ -49,6 +51,45 @@ package object geotrellisaccumulo {
       val originalRanges = keyIndex.indexRanges(keyRange)
 
       val mappedRanges = originalRanges.map(range => (range._1 >> 8,(range._2 >> 8) ))
+
+      val distinct = mappedRanges.distinct
+      var previousEnd: BigInt = null
+
+      //filter out regions that only span 1 value, and are already included in another region, so basically duplicates
+      var lookAheadIndex = 0
+      val filtered = distinct.filter(range => {
+        lookAheadIndex +=1
+        try{
+          if(range._1 == previousEnd && range._1 == range._2) {
+            false
+          }else if(lookAheadIndex < distinct.size && range._1 == range._2 && distinct(lookAheadIndex)._1 == range._2) {
+            false
+          }else{
+            true
+          }
+        }finally {
+          previousEnd = range._2
+        }
+
+      })
+      return filtered
+    }
+
+  }
+
+  object SpaceTimeByMonthSfCurvePartitioner extends  PartitionerIndex[SpaceTimeKey] {
+
+    private val dayMillis = 1000L * 60 * 60 * 24
+    private def toZ(key: SpaceTimeKey): zorder.Z3 = zorder.Z3(key.col, key.row, (key.instant / dayMillis).toInt)
+
+    def originalRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] =
+      zorder.Z3.zranges(Array(ZRange(toZ(keyRange._1), toZ(keyRange._2))), maxRecurse = Some(10)).map(r => (BigInt(r.lower), BigInt(r.upper)))
+
+    def toIndex(key: SpaceTimeKey): BigInt = toZ(key).z >> 8
+
+    def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
+
+      val mappedRanges = originalRanges(keyRange).map(range => (range._1 >> 8,(range._2 >> 8) ))
 
       val distinct = mappedRanges.distinct
       var previousEnd: BigInt = null
