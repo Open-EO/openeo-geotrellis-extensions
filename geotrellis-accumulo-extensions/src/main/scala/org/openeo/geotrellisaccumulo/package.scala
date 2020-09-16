@@ -6,8 +6,7 @@ import _root_.geotrellis.spark.partition.PartitionerIndex
 import _root_.geotrellis.spark.pyramid.Pyramid
 import _root_.geotrellis.store.index.zcurve.{Z3, ZSpaceTimeKeyIndex}
 import org.apache.spark.rdd.RDD
-import org.locationtech.sfcurve.zorder
-import org.locationtech.sfcurve.zorder.ZRange
+import org.openeo.geotrellisaccumulo.zcurve.SfCurveZSpaceTimeKeyIndex
 
 import scala.collection.JavaConverters.mapAsScalaMapConverter
 
@@ -79,17 +78,20 @@ package object geotrellisaccumulo {
 
   object SpaceTimeByMonthSfCurvePartitioner extends  PartitionerIndex[SpaceTimeKey] {
 
-    private val dayMillis = 1000L * 60 * 60 * 24
-    private def toZ(key: SpaceTimeKey): zorder.Z3 = zorder.Z3(key.col, key.row, (key.instant / dayMillis).toInt)
+    val keyIndex = SfCurveZSpaceTimeKeyIndex.byDay(null)
 
-    def originalRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] =
-      zorder.Z3.zranges(Array(ZRange(toZ(keyRange._1), toZ(keyRange._2))), maxRecurse = Some(10)).map(r => (BigInt(r.lower), BigInt(r.upper)))
-
-    def toIndex(key: SpaceTimeKey): BigInt = toZ(key).z >> 8
+    def toIndex(key: SpaceTimeKey): BigInt = keyIndex.toIndex(key) >> 8
 
     def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
+      indexRanges(keyIndex.indexRanges(keyRange))
+    }
 
-      val mappedRanges = originalRanges(keyRange).map(range => (range._1 >> 8,(range._2 >> 8) ))
+    def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey), maxRecurse: Int): Seq[(BigInt, BigInt)] = {
+      indexRanges(keyIndex.indexRanges(keyRange, maxRecurse))
+    }
+
+    def indexRanges(originalRanges: Seq[(BigInt, BigInt)]) = {
+      val mappedRanges = originalRanges.map(range => (range._1 >> 8,(range._2 >> 8) ))
 
       val distinct = mappedRanges.distinct
       var previousEnd: BigInt = null
@@ -111,7 +113,8 @@ package object geotrellisaccumulo {
         }
 
       })
-      return filtered
+
+      filtered
     }
 
   }
