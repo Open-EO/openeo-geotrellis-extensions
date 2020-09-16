@@ -74,7 +74,7 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
 class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(RasterSource, Seq[Int])], override val crs: CRS, override val attributes: Map[String,String] = Map.empty)
   extends BandCompositeRasterSource(sourcesListWithBandIds.map(_._1), crs, attributes) {
 
-  override def bandCount: Int = sources.map(_.bandCount).toList.sum//sourcesListWithBandIds.map(_._2.size).toList.sum
+  override def bandCount: Int = sourcesListWithBandIds.map(_._2.size).toList.sum
 
   private val sourcesWithBandIds = NonEmptyList.fromListUnsafe(sources.toList.zip(sourcesListWithBandIds.map(_._2).toList))
 
