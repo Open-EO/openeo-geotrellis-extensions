@@ -236,6 +236,8 @@ class OpenEOProcesses extends Serializable {
     datacube.withContext(_.mapValues(_.crop(overlapX,overlapY,overlapX+sizeX-1,overlapY+sizeY-1).mapBands{ (index,tile) => tile.toArrayTile()}))
   }
 
+
+
   def retile(datacube: MultibandTileLayerRDD[SpaceTimeKey], sizeX:Int, sizeY:Int, overlapX:Int, overlapY:Int): MultibandTileLayerRDD[SpaceTimeKey] = {
     val regridded =
     if(sizeX >0 && sizeY > 0){

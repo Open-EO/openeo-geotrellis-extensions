@@ -26,18 +26,13 @@
 
     <dependencies>
         <dependency>
-            <groupId>be.vito.eodata</groupId>
-            <artifactId>ExtractTimeSeries</artifactId>
-            <version>${geotrellistimeseries.version}</version>
-        </dependency>
-        <dependency>
             <groupId>org.locationtech.sfcurve</groupId>
             <artifactId>sfcurve-zorder_2.11</artifactId>
             <version>0.2.2</version>
         </dependency>
         <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
-            <artifactId>geotrellis-accumulo_${scala.binary.version}</artifactId>
+            <artifactId>geotrellis-accumulo-spark_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>
         </dependency>
         <dependency>
