@@ -51,7 +51,7 @@ class SfCurveZSpaceTimeKeyIndex(val keyBounds: KeyBounds[SpaceTimeKey], val temp
   def toIndex(key: SpaceTimeKey): BigInt = toZ(key).z
 
   def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] =
-    indexRanges(keyRange, 11)
+    indexRanges(keyRange, 100)
 
   def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey), maxRecurse: Int): Seq[(BigInt, BigInt)] =
     Z3.zranges(Array(ZRange(toZ(keyRange._1), toZ(keyRange._2))), maxRecurse = Some(maxRecurse)).map(r => (BigInt(r.lower), BigInt(r.upper)))
