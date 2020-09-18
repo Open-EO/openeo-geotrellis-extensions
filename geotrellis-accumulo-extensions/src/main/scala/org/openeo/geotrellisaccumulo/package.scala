@@ -13,6 +13,7 @@ import geotrellis.vector.io.json.GeoJson
 import geotrellis.vector.{Geometry, GeometryCollection, MultiPolygon, Point, Polygon}
 import io.circe._
 import org.apache.spark.rdd.RDD
+import org.openeo.geotrellisaccumulo.zcurve.SfCurveZSpaceTimeKeyIndex
 
 import scala.collection.JavaConverters.mapAsScalaMapConverter
 
@@ -47,7 +48,7 @@ package object geotrellisaccumulo {
   }*/
   implicit object SpaceTimeByMonthPartitioner extends  PartitionerIndex[SpaceTimeKey] {
 
-    val keyIndex = ZSpaceTimeKeyIndex.byDay(null)
+    val keyIndex = SfCurveZSpaceTimeKeyIndex.byDay(null)
     //private def toZ(key: SpaceTimeKey): Z3 = Z3(key.col , key.row , 31*13*key.time.getYear + 31*key.time.getMonthValue + key.time.getDayOfMonth-1)
 
     def toIndex(key: SpaceTimeKey): BigInt = keyIndex.toIndex(key) >> 8
