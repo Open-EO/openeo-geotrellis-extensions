@@ -13,6 +13,7 @@ import org.openeo.geotrellis.layers.FileLayerProvider
 
 import scala.collection.JavaConverters._
 
+@Deprecated("Replace with org.openeo.geotrellis.file.Sentinel2PyramidFactory")
 class Sentinel1CoherencePyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util.List[String], rootPath: String) {
   require(oscarsLinkTitles.size() > 0)
 

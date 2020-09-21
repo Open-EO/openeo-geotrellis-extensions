@@ -14,6 +14,14 @@ import org.openeo.geotrellis.layers.FileLayerProvider
 
 import scala.collection.JavaConverters._
 
+
+/**
+ * Pyramid factory based on OpenSearch metadata lookup and file based access.
+ *
+ * @param oscarsCollectionId
+ * @param oscarsLinkTitles
+ * @param rootPath
+ */
 class Sentinel2PyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util.List[String], rootPath: String) {
   require(oscarsLinkTitles.size() > 0)
 

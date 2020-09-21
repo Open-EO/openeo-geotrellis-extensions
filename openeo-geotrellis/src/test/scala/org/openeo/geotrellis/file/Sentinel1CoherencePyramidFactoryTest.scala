@@ -14,11 +14,9 @@ import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
-import org.apache.spark.SparkContext
+import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertArrayEquals, assertEquals, assertTrue}
-import org.junit.{AfterClass, BeforeClass}
-import org.apache.spark.SparkConf
-import org.junit.Test
+import org.junit.{AfterClass, BeforeClass, Test}
 
 object Sentinel1CoherencePyramidFactoryTest {
   private var sc: SparkContext = _
@@ -68,7 +66,7 @@ class Sentinel1CoherencePyramidFactoryTest {
     assertArrayEquals(qgisZonalStatisticsPluginResult, meanList.map(_.mean), 0.1)
   }
 
-  private def sentinel1CoherencePyramidFactory = new Sentinel1CoherencePyramidFactory(
+  private def sentinel1CoherencePyramidFactory = new Sentinel2PyramidFactory(
     oscarsCollectionId = "urn:eop:VITO:TERRASCOPE_S1_SLC_COHERENCE_V1",
     oscarsLinkTitles = asList("VH", "VV"),
     rootPath = "/data/MTDA/TERRASCOPE_Sentinel1/SLC_COHERENCE"
