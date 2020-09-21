@@ -14,12 +14,23 @@ public class AtmosphericCorrectionICOR implements Serializable{
 //		return 8;
 //	}
 	
-	Tile correct(int b, Tile t) {
-		System.out.println("CLASS: "+t.getClass().toString()+" at band: "+Integer.toString(b));
-		Tile r=t.map(func(i -> 11));
-//		Tile r=t.map(func(i -> AtmosphericCorrectionICOR.getCorr(i)));
-//		Tile r=t.map(func(AtmosphericCorrectionICOR::getCorr));
-		return r;
-	}
+	
+//	public int setValue=19;
+//	
+//	
+//	public int correctPixel(int i) {
+//		return 17;
+//	}
+	
+	
+//	public Tile correct(int b, Tile t) {
+//		System.out.println("CLASS: "+t.getClass().toString()+" at band: "+Integer.toString(b));
+//		Tile r=t.map(func(i -> 11));
+////		Tile r=t.map(func(i -> AtmosphericCorrectionICOR.getCorr(i)));
+////		Tile r=t.map(func(AtmosphericCorrectionICOR::getCorr));
+//		return r;
+//	}
+	
+	
 }
 
