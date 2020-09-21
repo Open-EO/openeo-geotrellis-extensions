@@ -134,7 +134,7 @@ public class TestOpenEOProcesses {
         new OpenEOProcesses().write_geotiffs(datacube,"tmpcatalog",14);
     }
 
-    static ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> tileToSpaceTimeDataCube(Tile zeroTile) {
+    public static ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> tileToSpaceTimeDataCube(Tile zeroTile) {
 
         MutableArrayTile emptyTile = ArrayTile$.MODULE$.empty(zeroTile.cellType(), ((Integer) zeroTile.cols()), ((Integer) zeroTile.rows()));
 
