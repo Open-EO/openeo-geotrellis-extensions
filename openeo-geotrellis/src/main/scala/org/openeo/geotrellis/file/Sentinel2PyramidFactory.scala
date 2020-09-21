@@ -70,6 +70,19 @@ class Sentinel2PyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util
     return datacube(polygons.polygons,polygons.crs,from_date,to_date,metadata_properties)
   }
 
+  /**
+   * Same as #datacube, but return same structure as pyramid_seq
+   * @param polygons
+   * @param from_date
+   * @param to_date
+   * @param metadata_properties
+   * @return
+   */
+  def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String, metadata_properties: util.Map[String, Any]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+    val cube = datacube(polygons.polygons, polygons.crs, from_date, to_date, metadata_properties)
+    return Seq((0,cube))
+  }
+
   def datacube(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String, metadata_properties: util.Map[String, Any] = util.Collections.emptyMap()): MultibandTileLayerRDD[SpaceTimeKey] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
     val bbox = polygons.toSeq.extent
