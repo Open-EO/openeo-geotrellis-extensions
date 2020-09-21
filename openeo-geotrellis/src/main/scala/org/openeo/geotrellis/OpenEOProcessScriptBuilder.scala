@@ -114,6 +114,10 @@ class OpenEOProcessScriptBuilder {
     scope.put(name,createConstantTileFunction(value))
   }
 
+  def constantArgument(name:String,value:Boolean): Unit = {
+    //can be skipped, will simply be available when executing function
+  }
+
   def argumentStart(name:String): Unit = {
     argNames.push(name)
   }
