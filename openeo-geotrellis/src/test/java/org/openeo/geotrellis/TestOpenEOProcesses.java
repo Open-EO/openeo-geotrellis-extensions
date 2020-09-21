@@ -14,7 +14,6 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
-import org.openeo.geotrellis.icor.AtmosphericCorrection;
 
 import scala.Tuple2;
 import scala.reflect.ClassTag;
@@ -161,26 +160,5 @@ public class TestOpenEOProcesses {
 
         return (ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>>) new ContextRDD(spacetimeDataCube.rdd(), metadata);
     }
-
-
-    @Test
-    public void testAtmosphericCorrection() {
-
-    	System.out.println("**RRRR******************************************************************************************************************");
-
-        Tile tile0 = new IntConstantTile(1,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
-        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube = tileToSpaceTimeDataCube(tile0);
-        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(datacube);
-        System.out.println(resultRDD.getClass().toString());
-
-        JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(resultRDD.toJavaRDD());
-        assertFalse(result.isEmpty());
-        Map<SpaceTimeKey, MultibandTile> tiles = result.collectAsMap();
-        
-        System.out.println("**RRRR******************************************************************************************************************");
-
-    }
-
-
 
 }
