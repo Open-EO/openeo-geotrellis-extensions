@@ -197,12 +197,12 @@ class OpenEOProcesses extends Serializable {
     }), leftCube.metadata)
   }
 
-  def mergeCubes(leftCube: MultibandTileLayerRDD[SpatialKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String): ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = {
+  def mergeSpatialCubes(leftCube: MultibandTileLayerRDD[SpatialKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String): ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = {
     val joined: RDD[(SpatialKey, (MultibandTile, MultibandTile))] with Metadata[Bounds[SpatialKey]] = leftCube.spatialJoin(rightCube)
 
     val outputCellType = leftCube.metadata.cellType.union(rightCube.metadata.cellType)
     val updatedMetadata: TileLayerMetadata[SpatialKey] = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(rightCube.metadata.extent),cellType = outputCellType)
-    val converted = joined.mapValues{t:(MultibandTile,MultibandTile)=> (Some(t._1.convert(outputCellType)),Some(t._2.convert(outputCellType)))}
+    val converted = joined.mapValues{t:(MultibandTile,MultibandTile)=> (Option(t._1.convert(outputCellType)),Option(t._2.convert(outputCellType)))}
     if(operator==null) {
       combine_bands[SpatialKey](converted, leftCube, rightCube, updatedMetadata)
     }else{
@@ -224,7 +224,7 @@ class OpenEOProcesses extends Serializable {
 
   }
 
-  private def combine_bands[K](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], leftCube: MultibandTileLayerRDD[K], rightCube: MultibandTileLayerRDD[K], updatedMetadata: TileLayerMetadata[K]) = {
+  private def combine_bands[K](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], leftCube: MultibandTileLayerRDD[K], rightCube: MultibandTileLayerRDD[K], updatedMetadata: TileLayerMetadata[K])(implicit kt: ClassTag[K], ord: Ordering[K] = null) = {
     val leftBandCount = RDDBandCount(leftCube)
     val rightBandCount = RDDBandCount(rightCube)
     // Concatenation band counts are allowed to differ, but all resulting multiband tiles should have the same count
@@ -235,7 +235,7 @@ class OpenEOProcesses extends Serializable {
     }), updatedMetadata)
   }
 
-  private def resolve_merge_overlap[K](joinedRDD: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], operator: String, updatedMetadata: TileLayerMetadata[K]) = {
+  private def resolve_merge_overlap[K](joinedRDD: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], operator: String, updatedMetadata: TileLayerMetadata[K])(implicit kt: ClassTag[K], ord: Ordering[K] = null) = {
     // Pairwise merging of bands.
     //in theory we should be able to reuse the OpenEOProcessScriptBuilder instead of using a string.
     //val binaryOp: Seq[Tile] => Seq[Tile] = operator.generateFunction()
