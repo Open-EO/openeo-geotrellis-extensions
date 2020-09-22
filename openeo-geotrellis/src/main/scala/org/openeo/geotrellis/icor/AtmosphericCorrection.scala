@@ -1,8 +1,6 @@
 package org.openeo.geotrellis.icor
 
 import org.apache.spark.api.java.JavaSparkContext
-//import org.apache.spark.SparkContext
-
 import geotrellis.layer._
 import geotrellis.spark._
 import geotrellis.raster.MultibandTile
@@ -20,7 +18,7 @@ class AtmosphericCorrection {
   def correct(jsc: JavaSparkContext, datacube: MultibandTileLayerRDD[SpaceTimeKey], tableId: String): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]  = {
     // TODO: mechanism to map bands properly
     val sc = JavaSparkContext.toSparkContext(jsc)
-    val lut=new LookupTable(tableId)
+    val lut=LookupTableIO.readLUT(tableId)
     val bcLUT = sc.broadcast(lut)
     new ContextRDD(
       datacube.map(multibandtile => (

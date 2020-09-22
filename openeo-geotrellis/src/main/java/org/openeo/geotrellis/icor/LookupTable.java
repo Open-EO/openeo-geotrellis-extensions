@@ -1,18 +1,16 @@
 package org.openeo.geotrellis.icor;
 
-import java.io.File;
-//import java.io.InputStream;
-import java.util.Scanner;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.io.Serializable;
+import java.util.Arrays;
 
 /**
  *
  * @author Sven Jochems
  */
-public class LookupTable {
+@SuppressWarnings("serial")
+public class LookupTable implements Serializable{
     
-    private int numberOfValues;
+	private int numberOfValues;
     private int dimensions;
     private int[] bandids;
     private double[] sza;
@@ -25,161 +23,69 @@ public class LookupTable {
     
     double[][] values;
 
-
-//    // arbitrary file on driver's filesystem
-//    public LookupTable(File tableFile) throws Exception {
-//        Logger log = Logger.getLogger(LookupTable.class.getName());
-//        //File lut = new File(location);
-//        if(!tableFile.exists()) {
-//            log.log(Level.INFO, "Lut not found: {0}", tableFile.getPath());
-//        }
-//        FileInputStream fin = new FileInputStream(tableFile);
-//        BufferedInputStream bin = new BufferedInputStream(fin);
-//		read(bin);
-//	}
-
-    // looked up from jar
-    public LookupTable(String tableId) throws Exception {
-//    	InputStream inpstr=getClass().getResourceAsStream(tableId+".txt");
-//    	if(!(inpstr instanceof BufferedInputStream))
-//    		inpstr=new BufferedInputStream(inpstr);
-		read(tableId);
+	public LookupTable(
+			int numberOfValues, 
+			int dimensions, 
+			int[] bandids, 
+			double[] sza, 
+			double[] vza, 
+			double[] raa,
+			double[] gnd, 
+			double[] aot, 
+			double[] cwv, 
+			double[] ozone, 
+			double[][] values
+	) {
+		this.numberOfValues = numberOfValues;
+		this.dimensions = dimensions;
+		this.bandids = bandids;
+		this.sza = sza;
+		this.vza = vza;
+		this.raa = raa;
+		this.gnd = gnd;
+		this.aot = aot;
+		this.cwv = cwv;
+		this.ozone = ozone;
+		this.values = values;
 	}
-    
-    
-	public void setValues(double[][] values){
-        this.values = values;
-    }
-    
-    public void readHeader(String location) throws Exception {
-        Logger log = Logger.getLogger(LookupTable.class.getName());
-        String[] header = new String[]{"bandids", "sza", "vza", "raa", "gnd", "aot", "cwv", "ozon"};
-        
-        File lut = new File(location);
-        if(!lut.exists()) {
-            log.log(Level.INFO, "Lut not found: {0}", location);
-        }
-        
-        Scanner input = new Scanner(lut);
-        input.useDelimiter(",");
-        
-        dimensions = Integer.parseInt(input.next());
-        if(dimensions != header.length) {
-            String message = "Wrong header length";
-            log.log(Level.SEVERE, message);
-            input.close();
-            throw new Exception(message);
-        }
-        
-        // Read Header
-        int NumberBands = Integer.parseInt(input.next());
-        bandids = new int[NumberBands];
-        for (int i = 0; i < NumberBands; i++) { bandids[i] = Integer.parseInt(input.next()); }
-        
-        int NumberSza = Integer.parseInt(input.next());
-        sza = new double[NumberSza];
-        for (int i = 0; i < NumberSza; i++) { sza[i] = Double.parseDouble(input.next()); }
-        
-        int NumberVza = Integer.parseInt(input.next());
-        vza = new double[NumberVza];
-        for (int i = 0; i < NumberVza; i++) { vza[i] = Double.parseDouble(input.next()); }
-        
-        int NumberRaa = Integer.parseInt(input.next());
-        raa = new double[NumberRaa];
-        for (int i = 0; i < NumberRaa; i++) { raa[i] = Double.parseDouble(input.next()); }
-        
-        int NumberGnd = Integer.parseInt(input.next());
-        gnd = new double[NumberGnd];
-        for (int i = 0; i < NumberGnd; i++) { gnd[i] = Double.parseDouble(input.next()); }
-        
-        int NumberAot = Integer.parseInt(input.next());
-        aot = new double[NumberAot];
-        for (int i = 0; i < NumberAot; i++) { aot[i] = Double.parseDouble(input.next()); }
-        
-        int NumberCwv = Integer.parseInt(input.next());
-        cwv = new double[NumberCwv];
-        for (int i = 0; i < NumberCwv; i++) { cwv[i] = Double.parseDouble(input.next()); }
-        
-        int NumberOzon = Integer.parseInt(input.next());
-        ozone = new double[NumberOzon];
-        for (int i = 0; i < NumberOzon; i++) { ozone[i] = Double.parseDouble(input.next()); }
-                
-        numberOfValues = Integer.parseInt(input.next());
-        
-        input.close();
-    }
-    
-    // Read Lookup table in memory    
-    public void read(String tableId) throws Exception {
-        Logger log = Logger.getLogger(LookupTable.class.getName());
-        String[] header = new String[]{"bandids", "sza", "vza", "raa", "gnd", "aot", "cwv", "ozon"};
-                
-        Scanner input = new Scanner(getClass().getResourceAsStream(tableId+".txt"));
-        //Scanner input = new Scanner(inputStream);
-        input.useDelimiter(",");
-        
-        dimensions = Integer.parseInt(input.next());
-        if(dimensions != header.length) {
-            String message = "Wrong header length";
-            log.log(Level.SEVERE, message);
-            input.close();
-            throw new Exception(message);
-        }
-        
-        // Read Header
-        int NumberBands = Integer.parseInt(input.next());
-        bandids = new int[NumberBands];
-        for (int i = 0; i < NumberBands; i++) { bandids[i] = Integer.parseInt(input.next()); }
-        
-        int NumberSza = Integer.parseInt(input.next());
-        sza = new double[NumberSza];
-        for (int i = 0; i < NumberSza; i++) { sza[i] = Double.parseDouble(input.next()); }
-        
-        int NumberVza = Integer.parseInt(input.next());
-        vza = new double[NumberVza];
-        for (int i = 0; i < NumberVza; i++) { vza[i] = Double.parseDouble(input.next()); }
-        
-        int NumberRaa = Integer.parseInt(input.next());
-        raa = new double[NumberRaa];
-        for (int i = 0; i < NumberRaa; i++) { raa[i] = Double.parseDouble(input.next()); }
-        
-        int NumberGnd = Integer.parseInt(input.next());
-        gnd = new double[NumberGnd];
-        for (int i = 0; i < NumberGnd; i++) { gnd[i] = Double.parseDouble(input.next()); }
-        
-        int NumberAot = Integer.parseInt(input.next());
-        aot = new double[NumberAot];
-        for (int i = 0; i < NumberAot; i++) { aot[i] = Double.parseDouble(input.next()); }
-        
-        int NumberCwv = Integer.parseInt(input.next());
-        cwv = new double[NumberCwv];
-        for (int i = 0; i < NumberCwv; i++) { cwv[i] = Double.parseDouble(input.next()); }
-        
-        int NumberOzon = Integer.parseInt(input.next());
-        ozone = new double[NumberOzon];
-        for (int i = 0; i < NumberOzon; i++) { ozone[i] = Double.parseDouble(input.next()); }
-                
-        numberOfValues = Integer.parseInt(input.next());
-        
-        int numberOfEntries = NumberBands * NumberSza * NumberVza * NumberRaa * NumberGnd * NumberAot * NumberCwv * NumberOzon;
-        
-        // Read Values
-        values = new double[numberOfEntries][];
-        int j = 0;
-        
-        while (input.hasNext()){
-            double[] temp = new double[numberOfValues];
-            for (int i = 0; i < numberOfValues; i++) {
-                 temp[i] = Double.parseDouble(input.next());
-            }
-            values[j++] = temp;
-        }
-        
-        input.close();
-    }
-    
-    
-    // Get interpolated array from lookup table based on parameters
+	
+	
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		LookupTable other = (LookupTable) obj;
+		if (!Arrays.equals(aot, other.aot))
+			return false;
+		if (!Arrays.equals(bandids, other.bandids))
+			return false;
+		if (!Arrays.equals(cwv, other.cwv))
+			return false;
+		if (dimensions != other.dimensions)
+			return false;
+		if (!Arrays.equals(gnd, other.gnd))
+			return false;
+		if (numberOfValues != other.numberOfValues)
+			return false;
+		if (!Arrays.equals(ozone, other.ozone))
+			return false;
+		if (!Arrays.equals(raa, other.raa))
+			return false;
+		if (!Arrays.equals(sza, other.sza))
+			return false;
+		if (!Arrays.deepEquals(values, other.values))
+			return false;
+		if (!Arrays.equals(vza, other.vza))
+			return false;
+		return true;
+	}
+
+
+	// Get interpolated array from lookup table based on parameters
     public double[] getInterpolated(int band, double sza, double vza, double raa, double gnd, double aot, double cwv, double ozone){
         
         int[] lowerIndexes = new int[dimensions - 1];
@@ -321,5 +227,6 @@ public class LookupTable {
         position += ozone;
                 
         return values[position];
-    }    
+    }
+
 }

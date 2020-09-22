@@ -11,7 +11,7 @@ public class testCorrectionDescriptor {
 
 	@BeforeClass
     public static void LUT() throws Exception {
-		lut=new LookupTable("test_lut");
+		lut=LookupTableIO.readLUT("test_lut");
     }
 
 	@Test
