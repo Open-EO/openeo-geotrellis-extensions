@@ -10,6 +10,7 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaPairRDD$;
+import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.rdd.RDD;
 
 import org.junit.AfterClass;
@@ -32,8 +33,6 @@ public class testAtmosphericCorrectionProcess {
         conf.set("spark.driver.bindAddress", "127.0.0.1");
         conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
         SparkContext.getOrCreate(conf);
-
-
     }
 
     @AfterClass
@@ -44,19 +43,15 @@ public class testAtmosphericCorrectionProcess {
     @Test
     public void testAtmosphericCorrection() {
 
-    	System.out.println("**RRRR******************************************************************************************************************");
-
-        Tile tile0 = new IntConstantTile(1,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
+        Tile tile0 = new IntConstantTile(256,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube = org.openeo.geotrellis.TestOpenEOProcesses.tileToSpaceTimeDataCube(tile0);
-        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(datacube);
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),datacube,"test_lut");
         System.out.println(resultRDD.getClass().toString());
 
         JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(resultRDD.toJavaRDD());
         assertFalse(result.isEmpty());
         Map<SpaceTimeKey, MultibandTile> tiles = result.collectAsMap();
         
-        System.out.println("**RRRR******************************************************************************************************************");
-
     }
 
 }
