@@ -13,30 +13,9 @@
     <dependencies>
         <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
-            <artifactId>geotrellis-accumulo_${scala.binary.version}</artifactId>
-            <version>${geotrellis.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.locationtech.geotrellis</groupId>
             <artifactId>geotrellis-spark_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>
             <scope>provided</scope>
-        </dependency>
-        <!--accumulo version should match the server-->
-        <dependency>
-            <groupId>org.apache.accumulo</groupId>
-            <artifactId>accumulo-core</artifactId>
-            <version>1.7.1</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.apache.hadoop</groupId>
-                    <artifactId>hadoop-client</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.google.guava</groupId>
-                    <artifactId>guava</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
 
         <dependency>

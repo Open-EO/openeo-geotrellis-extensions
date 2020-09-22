@@ -24,6 +24,7 @@ import org.junit.{AfterClass, Before, BeforeClass, Test}
 import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.TimeSeriesServiceResponses.GeometriesHistograms.Bin
 import org.openeo.geotrellis.TimeSeriesServiceResponses._
+import org.openeo.geotrellis.aggregate_polygon.intern.{CancellationContext, StatisticsCallback}
 import org.openeo.geotrellisaccumulo.PyramidFactory
 
 import scala.collection.JavaConverters._
@@ -732,6 +733,44 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
       Seq(Seq(Double.NaN, Double.NaN)),
       stats.get(k)
     ))
+  }
+
+
+  @Test
+  def testHistogramTimeseries(): Unit = {
+
+    val minDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
+    val maxDate = ZonedDateTime.parse("2017-03-10T00:00:00Z")
+
+    val polygons = Array(MultiPolygon(polygon1), MultiPolygon(polygon2))
+
+    val tile10 = new ByteConstantTile(10.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))
+    val tile5 = new ByteConstantTile(5.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))
+
+    val datacube = tileToSpaceTimeDataCube(tile10)
+    val polygonExtent = polygon1.extent.combine(polygon2.extent)
+    val updatedMetadata = datacube.metadata.copy(extent = polygonExtent,crs = LatLng,layout=LayoutDefinition(polygonExtent,datacube.metadata.tileLayout))
+
+    val stats = collection.mutable.Map[ZonedDateTime, scala.Seq[collection.Seq[Histogram[Double]]]]()
+    val appender = new StatisticsCallback[collection.Seq[Histogram[Double]]] {
+      override def onComputed(date: ZonedDateTime, results: scala.Seq[collection.Seq[Histogram[Double]]]): Unit = stats += (date -> results)
+      override def onCompleted(): Unit = {}
+    }
+    val mySparkContext = sc
+    org.openeo.geotrellis.aggregate_polygon.intern.computeHistogramTimeSeries(ContextRDD(datacube,updatedMetadata), polygons, LatLng, minDate, maxDate, appender, new CancellationContext("!!!", "other job description"), mySparkContext)
+
+
+    for ((date, means) <- stats) {
+      println(s"$date: $means")
+    }
+
+    assertFalse(stats.isEmpty)
+
+    val stat:Histogram[Double] = stats.get(ZonedDateTime.parse("2017-01-15T00:00Z")).get(0)(0)
+    assertEquals(1,stat.bucketCount())
+    assertEquals(507,stat.itemCount(10.0))
+
+
   }
 
 }

@@ -100,15 +100,18 @@ class AggregatePolygonProcess() {
     try {
       val spatiallyPartitionedIndexMaskLayer: RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition] = ContextRDD(byIndexMask.persist(MEMORY_ONLY_2), byIndexMask.metadata)
       val combinedRDD = new SpatialToSpacetimeJoinRdd(datacube, spatiallyPartitionedIndexMaskLayer)
-      val zonalStats = combinedRDD.flatMap { case (date, (t1:MultibandTile, t2:Tile)) => ZonalRunningTotal(t1, t2).map(index_total => ((date.time,index_total._1),index_total._2)).filterKeys(_._2>=0) }
-        .reduceByKey((a,b) =>a.zip(b).map({ case (total_a,total_b) => total_a + total_b})).collectAsMap()
+      val zonalStats: RDD[(ZonedDateTime, Iterable[((ZonedDateTime, Int), Seq[RunningTotal])])] = combinedRDD.flatMap { case (date, (t1:MultibandTile, t2:Tile)) => ZonalRunningTotal(t1, t2).map(index_total => ((date.time,index_total._1),index_total._2)).filterKeys(_._2>=0) }
+        .reduceByKey((a,b) =>a.zip(b).map({ case (total_a,total_b) => total_a + total_b})).groupBy(_._1._1)
 
-      val statsByDate: Map[ZonedDateTime, collection.Map[(ZonedDateTime, Int), Seq[RunningTotal]]] = zonalStats.groupBy(_._1._1)
+      val statsByDate: collection.Map[ZonedDateTime, Map[Int, Seq[MeanResult]]] = zonalStats.mapValues(_.map{
+        case ((date,id:Int),stats: Seq[RunningTotal]) => (id,stats.map{ meanResult: RunningTotal => new MeanResult(meanResult.validSum, meanResult.validCount, meanResult.totalCount,Option.empty,Option.empty)})
+      }.toMap
+      ).collectAsMap()
+
 
       for (stats <- statsByDate){
         val date = stats._1
-        val valuesForDate: collection.Map[Int, Seq[MeanResult]] = stats._2.map(t=>(t._1._2,t._2.map{ meanResult: RunningTotal => new MeanResult(meanResult.validSum, meanResult.validCount, meanResult.totalCount,Option.empty,Option.empty)
-        }))
+        val valuesForDate: Map[Int, Seq[MeanResult]] = stats._2
 
         //the map might not contain results for all features, it is sparse, so we have to make it dense
         //we also have to merge results of features that were splitted because of overlap
