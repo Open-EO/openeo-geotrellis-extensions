@@ -1,6 +1,7 @@
 package org.openeo.geotrellis.icor;
 
 import java.io.File;
+//import java.io.InputStream;
 import java.util.Scanner;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -24,7 +25,29 @@ public class LookupTable {
     
     double[][] values;
 
-    public void setValues(double[][] values){
+
+//    // arbitrary file on driver's filesystem
+//    public LookupTable(File tableFile) throws Exception {
+//        Logger log = Logger.getLogger(LookupTable.class.getName());
+//        //File lut = new File(location);
+//        if(!tableFile.exists()) {
+//            log.log(Level.INFO, "Lut not found: {0}", tableFile.getPath());
+//        }
+//        FileInputStream fin = new FileInputStream(tableFile);
+//        BufferedInputStream bin = new BufferedInputStream(fin);
+//		read(bin);
+//	}
+
+    // looked up from jar
+    public LookupTable(String tableId) throws Exception {
+//    	InputStream inpstr=getClass().getResourceAsStream(tableId+".txt");
+//    	if(!(inpstr instanceof BufferedInputStream))
+//    		inpstr=new BufferedInputStream(inpstr);
+		read(tableId);
+	}
+    
+    
+	public void setValues(double[][] values){
         this.values = values;
     }
     
@@ -87,16 +110,12 @@ public class LookupTable {
     }
     
     // Read Lookup table in memory    
-    public void read(String location) throws Exception {
+    public void read(String tableId) throws Exception {
         Logger log = Logger.getLogger(LookupTable.class.getName());
         String[] header = new String[]{"bandids", "sza", "vza", "raa", "gnd", "aot", "cwv", "ozon"};
-        
-        File lut = new File(location);
-        if(!lut.exists()) {
-            log.log(Level.INFO, "Lut not found: {0}", location);
-        }
-        
-        Scanner input = new Scanner(lut);
+                
+        Scanner input = new Scanner(getClass().getResourceAsStream(tableId+".txt"));
+        //Scanner input = new Scanner(inputStream);
         input.useDelimiter(",");
         
         dimensions = Integer.parseInt(input.next());
