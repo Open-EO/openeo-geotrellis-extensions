@@ -93,6 +93,13 @@
                 </executions>
                 <configuration>
                     <scalaCompatVersion>${scala.binary.version}</scalaCompatVersion>
+                    <compilerPlugins>
+                        <compilerPlugin>
+                            <groupId>org.typelevel</groupId>
+                            <artifactId>kind-projector_${scala.binary.version}</artifactId>
+                            <version>0.10.3</version>
+                        </compilerPlugin>
+                    </compilerPlugins>
                 </configuration>
             </plugin>
             <plugin>
