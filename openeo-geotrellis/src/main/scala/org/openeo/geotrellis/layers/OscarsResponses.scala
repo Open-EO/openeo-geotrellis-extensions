@@ -5,6 +5,7 @@ import java.time.ZonedDateTime
 
 import _root_.io.circe.parser.decode
 import cats.syntax.either._
+import cats.syntax.show._
 import geotrellis.vector.Extent
 import io.circe.generic.auto._
 import io.circe.{Decoder, HCursor}
@@ -36,7 +37,8 @@ object OscarsResponses {
         }
       }
 
-      decode[FeatureCollection](json).valueOr(throw _)
+      decode[FeatureCollection](json)
+        .valueOr(e => throw new IllegalArgumentException(s"${e.show} while parsing $json", e))
     }
   }
 }
