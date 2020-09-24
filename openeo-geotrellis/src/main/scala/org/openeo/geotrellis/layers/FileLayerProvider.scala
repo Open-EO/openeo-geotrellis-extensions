@@ -286,6 +286,7 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
       from.toLocalDate,
       to.toLocalDate,
       boundingBox,
+      correlationId = ???,
       attributeValues
     )
 
@@ -449,8 +450,9 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
 }
 
 /**
- * DEPRECATED, use FileLayerProvider directly
+ * @deprecated use {@link org.openeo.geotrellis.layers.FileLayerProvider} directly*
  */
+@Deprecated
 class Sentinel1CoherenceFileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyList[String], rootPath: String, attributeValues: Map[String, Any] = Map())
   extends FileLayerProvider(oscarsCollectionId, oscarsLinkTitles, rootPath, attributeValues) {
 
@@ -463,8 +465,9 @@ class Sentinel1CoherenceFileLayerProvider(oscarsCollectionId: String, oscarsLink
 }
 
 /**
- * DEPRECATED, use FileLayerProvider directly
+ * @deprecated use {@link org.openeo.geotrellis.layers.FileLayerProvider} directly*
  */
+@Deprecated
 class Sentinel2FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyList[String], rootPath: String, attributeValues: Map[String, Any] = Map(), layoutScheme:LayoutScheme = ZoomedLayoutScheme(WebMercator, 256))
   extends FileLayerProvider(oscarsCollectionId, oscarsLinkTitles, rootPath, attributeValues, layoutScheme) {
 
@@ -477,9 +480,11 @@ class Sentinel2FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: N
 }
 
 /**
-  * DEPRECATED, use FileLayerProvider directly
-  */
-class ProbavFileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyList[String], rootPath: String, attributeValues: Map[String, Any] = Map(), bandIds: Seq[Seq[Int]] = Seq())
+ * @deprecated use {@link org.openeo.geotrellis.layers.FileLayerProvider} directly*
+ */
+@Deprecated
+class ProbavFileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyList[String], rootPath: String,
+                              attributeValues: Map[String, Any] = Map(), bandIds: Seq[Seq[Int]] = Seq())
   extends FileLayerProvider(oscarsCollectionId, oscarsLinkTitles, rootPath, attributeValues, bandIds = bandIds) {
 
   import FileLayerProvider._
