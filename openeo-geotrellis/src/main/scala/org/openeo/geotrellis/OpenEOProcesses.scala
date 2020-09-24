@@ -383,7 +383,7 @@ class OpenEOProcesses extends Serializable {
   }
 
   def crop_spatial(datacube:MultibandTileLayerRDD[SpatialKey], bounds:Extent):MultibandTileLayerRDD[SpatialKey]={
-    datacube.crop(bounds,Options(force=true))
+    datacube.crop(bounds,Options(force=false))
   }
 
 }

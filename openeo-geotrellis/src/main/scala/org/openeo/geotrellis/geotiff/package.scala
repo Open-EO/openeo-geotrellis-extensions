@@ -3,6 +3,7 @@ package org.openeo.geotrellis
 import java.util.{ArrayList, Map}
 
 import geotrellis.layer._
+import geotrellis.raster
 import geotrellis.raster.io.geotiff._
 import geotrellis.raster.io.geotiff.compression.Compression
 import geotrellis.raster.io.geotiff.writer.GeoTiffWriter
@@ -31,8 +32,12 @@ package object geotiff {
   def saveStitched(rdd: SRDD, path: String, cropBounds: Map[String, Double], compression: Compression): Unit =
     saveStitched(rdd, path, Some(cropBounds), None, compression)
 
-  def saveRDD(rdd:MultibandTileLayerRDD[SpatialKey], bandCount:Int, path:String,zLevel:Int=6):Unit = {
+  def saveRDD(rdd:MultibandTileLayerRDD[SpatialKey], bandCount:Int, path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]):Unit = {
     val compression = Deflate(zLevel)
+
+    val re = rdd.metadata.toRasterExtent()
+    val gridBounds = re.gridBoundsFor(cropBounds.getOrElse(rdd.metadata.extent), clamp = true)
+    val croppedExtent = re.extentFor(gridBounds, clamp = true)
 
     val tileLayout = rdd.metadata.tileLayout
 
@@ -42,9 +47,10 @@ package object geotiff {
 
     val totalCols = maxKey.col - minKey.col +1
     val totalRows = maxKey.row - minKey.row + 1
+
     val segmentLayout = GeoTiffSegmentLayout(
-      totalCols = totalCols * tileLayout.tileCols,
-      totalRows = totalRows * tileLayout.tileRows,
+      totalCols = gridBounds.width,
+      totalRows = gridBounds.height,
       Tiled(tileLayout.tileCols,tileLayout.tileRows),
       BandInterleave,
       BandType.forCellType(rdd.metadata.cellType))
@@ -64,7 +70,9 @@ package object geotiff {
         val layoutRow = key._2 - minKey._2
         val bandSegmentOffset = bandSegmentCount * bandIndex
         val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
-        val compressedBytes = compressor.compress(tile.toBytes(), index)
+        //tiff format seems to require that we provide 'full' tiles
+        val bytes = raster.CroppedTile(tile,raster.GridBounds(0,0,tileLayout.tileCols-1,tileLayout.tileRows-1)).toBytes()
+        val compressedBytes = compressor.compress(bytes, index)
         (index,compressedBytes)
       }
 
@@ -91,7 +99,7 @@ package object geotiff {
       compression,
       bandCount,
       rdd.metadata.cellType)
-    val thegeotiff = MultibandGeoTiff(tiffTile,rdd.metadata.extent,rdd.metadata.crs)
+    val thegeotiff = MultibandGeoTiff(tiffTile,croppedExtent,rdd.metadata.crs)
 
     GeoTiffWriter.write(thegeotiff,path)
 
