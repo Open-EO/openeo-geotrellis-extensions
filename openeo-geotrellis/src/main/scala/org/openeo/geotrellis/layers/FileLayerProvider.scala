@@ -148,7 +148,7 @@ object FileLayerProvider {
 
 class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyList[String], rootPath: String,
                         attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
-                        bandIds: Seq[Seq[Int]] = Seq(), probaV: Boolean = false) extends LayerProvider {
+                        bandIds: Seq[Seq[Int]] = Seq(), probaV: Boolean = false, correlationId: String = "") extends LayerProvider {
 
   import FileLayerProvider._
 
@@ -286,7 +286,7 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
       from.toLocalDate,
       to.toLocalDate,
       boundingBox,
-      correlationId = ???,
+      correlationId,
       attributeValues
     )
 

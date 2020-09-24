@@ -47,7 +47,7 @@ class Sentinel1CoherencePyramidFactoryTest {
     val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format date
     val to_date = from_date
 
-    val (_, baseLayer) = sentinel1CoherencePyramidFactory.pyramid_seq(bbox.extent, bbox_srs, from_date, to_date)
+    val (_, baseLayer) = sentinel1CoherencePyramidFactory.pyramid_seq(bbox.extent, bbox_srs, from_date, to_date, correlationId = "")
       .maxBy { case (zoom, _) => zoom }
 
     val spatialLayer = baseLayer

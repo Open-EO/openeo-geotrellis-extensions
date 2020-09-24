@@ -93,10 +93,12 @@ class Sentinel2PyramidFactoryTest {
 
         val baseLayer =
             if(pyramid) {
-                sceneClassificationV200PyramidFactory.pyramid_seq(bbox.extent, bbox_srs, from_date, to_date)
+                sceneClassificationV200PyramidFactory.pyramid_seq(bbox.extent, bbox_srs, from_date, to_date,
+                    correlationId = "")
                   .maxBy { case (zoom, _) => zoom }._2
             }else{
-                sceneClassificationV200PyramidFactory.datacube(Array(MultiPolygon(bbox.extent.toPolygon())), bbox.crs, from_date, to_date)
+                sceneClassificationV200PyramidFactory.datacube(Array(MultiPolygon(bbox.extent.toPolygon())), bbox.crs,
+                    from_date, to_date, correlationId = "")
             }
 
         val spatialLayer = baseLayer
