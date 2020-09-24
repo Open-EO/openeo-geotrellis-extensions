@@ -81,6 +81,10 @@ class ProbaVPyramidFactory(oscarsCollectionId: String, rootPath: String) extends
       }
   }
 
+  def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String,
+                  band_indices: java.util.List[Int]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] =
+    pyramid_seq(bbox, bbox_srs, from_date, to_date, band_indices, correlationId = "")
+
   private def bandsFromIndices(band_indices: util.List[Int]): Seq[((Band.Value, Int), Int)] = {
     val bands =
       if (band_indices == null) Band.values.toSeq

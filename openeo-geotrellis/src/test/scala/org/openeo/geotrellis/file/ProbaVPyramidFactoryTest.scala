@@ -42,7 +42,7 @@ class ProbaVPyramidFactoryTest {
 
       val pyramid = pyramidFactoryS5.pyramid_seq(boundingBox.extent, srs,
         DateTimeFormatter.ISO_OFFSET_DATE_TIME format from, DateTimeFormatter.ISO_OFFSET_DATE_TIME format to,
-        bandIndices, correlationId = "")
+        bandIndices)
 
       val baseLayer = pyramid
         .find { case (index, _) => index == 11 }
@@ -93,7 +93,7 @@ class ProbaVPyramidFactoryTest {
 
       val pyramid = pyramidFactoryS10.pyramid_seq(boundingBox.extent, srs,
         DateTimeFormatter.ISO_OFFSET_DATE_TIME format from, DateTimeFormatter.ISO_OFFSET_DATE_TIME format to,
-        bandIndices, correlationId = "")
+        bandIndices)
 
       val baseLayer = pyramid
         .find { case (index, _) => index == 9 }

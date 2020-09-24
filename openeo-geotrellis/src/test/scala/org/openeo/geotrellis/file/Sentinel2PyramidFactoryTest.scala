@@ -5,6 +5,7 @@ import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZonedDateTime}
 import java.util.Collections.singletonList
+import java.util.Collections.emptyMap
 import java.util.zip.Deflater.BEST_COMPRESSION
 
 import geotrellis.layer.{Metadata, SpatialKey, TileLayerMetadata}
@@ -94,7 +95,7 @@ class Sentinel2PyramidFactoryTest {
         val baseLayer =
             if(pyramid) {
                 sceneClassificationV200PyramidFactory.pyramid_seq(bbox.extent, bbox_srs, from_date, to_date,
-                    correlationId = "")
+                    metadata_properties = emptyMap[String, Any]())
                   .maxBy { case (zoom, _) => zoom }._2
             }else{
                 sceneClassificationV200PyramidFactory.datacube(Array(MultiPolygon(bbox.extent.toPolygon())), bbox.crs,

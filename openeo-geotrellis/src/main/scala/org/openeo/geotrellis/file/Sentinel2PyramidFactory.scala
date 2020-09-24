@@ -53,6 +53,10 @@ class Sentinel2PyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util
       yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox, zoom, sc)
   }
 
+  def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String, metadata_properties: util.Map[String, Any]):
+  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] =
+    pyramid_seq(bbox, bbox_srs, from_date, to_date, metadata_properties, correlationId = "")
+
   def pyramid_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
                   metadata_properties: util.Map[String, Any], correlationId: String): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
@@ -70,6 +74,10 @@ class Sentinel2PyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util
     for (zoom <- layerProvider.maxZoom to 0 by -1)
       yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, zoom, sc)
   }
+
+  def pyramid_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
+                  metadata_properties: util.Map[String, Any]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] =
+    pyramid_seq(polygons, polygons_crs, from_date, to_date, metadata_properties, correlationId = "")
 
   def datacube(polygons:ProjectedPolygons, from_date: String, to_date: String,
                metadata_properties: util.Map[String, Any], correlationId: String): MultibandTileLayerRDD[SpaceTimeKey] =
@@ -89,6 +97,10 @@ class Sentinel2PyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util
     val cube = datacube(polygons.polygons, polygons.crs, from_date, to_date, metadata_properties, correlationId)
    Seq((0,cube))
   }
+
+  def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
+                   metadata_properties: util.Map[String, Any]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] =
+    datacube_seq(polygons, from_date, to_date, metadata_properties, correlationId = "")
 
   def datacube(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
                metadata_properties: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String):
