@@ -58,7 +58,7 @@ class Oscars(endpoint: URL) {
       .param("startIndex", startIndex.toString)
       .param("accessedFrom", "MEP") // get direct access links instead of download urls
       .params(attributeValues.mapValues(_.toString).toSeq)
-      .param("correlationId", correlationId)
+      .param("clientId", correlationId)
 
     val response = getProducts.asString
 
