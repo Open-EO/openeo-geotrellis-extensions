@@ -40,7 +40,7 @@ class ProbaVPyramidFactory(oscarsCollectionId: String, rootPath: String) extends
 
   import ProbaVPyramidFactory._
 
-  private def probaVOscarsPyramidFactory(bands: Seq[Band.Value]) = {
+  private def probaVOscarsPyramidFactory(bands: Seq[Band.Value], correlationId: String) = {
     val oscarsLinkTitlesWithBandIds = bands.map(b => {
       val split = b.fileMarker.split(":")
       val band = split(0)
@@ -55,11 +55,13 @@ class ProbaVPyramidFactory(oscarsCollectionId: String, rootPath: String) extends
       NonEmptyList.fromListUnsafe(oscarsLinkTitlesWithBandIds.map(_._1)),
       rootPath,
       bandIds = oscarsLinkTitlesWithBandIds.map(_._2),
-      probaV = true
+      probaV = true,
+      correlationId = correlationId
     )
   }
 
-  def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String, band_indices: java.util.List[Int]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+  def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String, band_indices: java.util.List[Int],
+                  correlationId: String): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
 
     val boundingBox = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
@@ -68,7 +70,7 @@ class ProbaVPyramidFactory(oscarsCollectionId: String, rootPath: String) extends
 
     val bands: Seq[((Band.Value, Int), Int)] = bandsFromIndices(band_indices)
 
-    val layerProvider = probaVOscarsPyramidFactory(bands.map(_._1._1))
+    val layerProvider = probaVOscarsPyramidFactory(bands.map(_._1._1), correlationId)
 
     for (zoom <- layerProvider.maxZoom to 0 by -1)
       yield zoom -> {
@@ -78,6 +80,10 @@ class ProbaVPyramidFactory(oscarsCollectionId: String, rootPath: String) extends
         ContextRDD(orderedBandsRdd, tileLayerRdd.metadata)
       }
   }
+
+  def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String,
+                  band_indices: java.util.List[Int]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] =
+    pyramid_seq(bbox, bbox_srs, from_date, to_date, band_indices, correlationId = "")
 
   private def bandsFromIndices(band_indices: util.List[Int]): Seq[((Band.Value, Int), Int)] = {
     val bands =
