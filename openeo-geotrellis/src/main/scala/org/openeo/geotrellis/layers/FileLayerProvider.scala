@@ -20,6 +20,7 @@ import geotrellis.store.index.zcurve.ZSpaceTimeKeyIndex
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.locationtech.proj4j.proj.TransverseMercatorProjection
 import org.openeo.geotrellis.layers.OscarsResponses.Feature
 
 import scala.util.matching.Regex
@@ -267,7 +268,23 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
 
     val LayoutLevel(_, worldLayout) = layoutScheme match {
       case scheme: ZoomedLayoutScheme => scheme.levelForZoom(zoom min maxZoom)
-      case scheme: FloatingLayoutScheme => scheme.levelFor(boundingBox.extent, maxSpatialResolution())
+      case scheme: FloatingLayoutScheme => {
+        //Giving the layout a deterministic extent simplifies merging of data with spatial partitioner
+        val layoutExtent =
+          if(boundingBox.crs.proj4jCrs.getProjection.getName == "utm") {
+            //for utm, we return an extent that goes beyound the utm zone bounds, to avoid negative spatial keys
+            if(boundingBox.crs.proj4jCrs.getProjection.asInstanceOf[TransverseMercatorProjection].getSouthernHemisphere)
+              //official extent: Extent(166021.4431, 1116915.0440, 833978.5569, 10000000.0000)
+              Extent(0.0, 1000000.0, 833978.5569 + 100000.0, 10000000.0000 + 100000.0)
+            else{
+              //official extent: Extent(166021.4431, 0.0000, 833978.5569, 9329005.1825)
+              Extent(0.0, -1000000.0000, 833978.5569 + 100000.0, 9329005.1825 + 100000.0)
+            }
+          }else{
+            boundingBox.extent
+          }
+        scheme.levelFor(layoutExtent, maxSpatialResolution())
+      }
     }
 
     val crs = bestCRS(boundingBox)
