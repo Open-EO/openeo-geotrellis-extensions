@@ -49,7 +49,15 @@ public class LookupTable implements Serializable{
 		this.values = values;
 	}
 	
-	
+	@Override
+	public String toString() {
+		return "LookupTable [numberOfValues=" + numberOfValues + ", dimensions=" + dimensions + ", bandids="
+				+ Arrays.toString(bandids) + ", sza=" + Arrays.toString(sza) + ", vza=" + Arrays.toString(vza)
+				+ ", raa=" + Arrays.toString(raa) + ", gnd=" + Arrays.toString(gnd) + ", aot=" + Arrays.toString(aot)
+				+ ", cwv=" + Arrays.toString(cwv) + ", ozone=" + Arrays.toString(ozone) + ", values="
+				+ Arrays.deepToString(values) + "]";
+	}
+
 	@Override
 	public boolean equals(Object obj) {
 		if (this == obj)
