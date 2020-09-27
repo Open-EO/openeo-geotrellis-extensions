@@ -9,15 +9,16 @@ import geotrellis.layer.SpatialKey._
 import geotrellis.layer._
 import geotrellis.raster._
 import geotrellis.raster.buffer.{BufferSizes, BufferedTile}
+import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
+import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
-import geotrellis.vector.PolygonFeature
 import geotrellis.vector.io.json.JsonFeatureCollection
+import geotrellis.vector.{Extent, PolygonFeature}
 import org.apache.spark.rdd._
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellisaccumulo.SpaceTimeByMonthPartitioner
@@ -379,6 +380,10 @@ class OpenEOProcesses extends Serializable {
       val path = location + "/tile" + t._1.col.toString + "_" + t._1.row.toString + ".tiff"
       t._2.write(path,true)
     })
+  }
+
+  def crop_spatial(datacube:MultibandTileLayerRDD[SpatialKey], bounds:Extent):MultibandTileLayerRDD[SpatialKey]={
+    datacube.crop(bounds,Options(force=false))
   }
 
 }

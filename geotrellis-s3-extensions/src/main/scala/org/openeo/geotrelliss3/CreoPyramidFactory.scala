@@ -2,6 +2,7 @@ package org.openeo.geotrelliss3
 
 import java.nio.file.{Files, Paths}
 import java.time._
+import java.util
 
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, WebMercator}
@@ -31,6 +32,9 @@ object CreoPyramidFactory {
 class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends Serializable {
 
   import CreoPyramidFactory._
+
+  def this(productPaths: util.List[String], bands: util.List[String]) =
+    this(productPaths.asScala, bands.asScala)
 
   private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
 

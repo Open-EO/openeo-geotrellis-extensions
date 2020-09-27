@@ -5,13 +5,14 @@ import java.awt.image.DataBufferByte
 import geotrellis.layer.ZoomedLayoutScheme
 import geotrellis.proj4.LatLng
 import geotrellis.raster.io.geotiff.GeoTiff
-import geotrellis.raster.{ByteArrayTile, MultibandTile, TileLayout}
+import geotrellis.raster.{ByteArrayTile, MultibandTile, Raster, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit._
+import org.openeo.geotrellis.OpenEOProcesses
 
 
 
@@ -89,6 +90,36 @@ class WriteRDDToGeotiffTest {
     assertArrayEquals(imageTile.toArray(),result.band(0).toArray())
     assertArrayEquals(secondBand.toArray(),result.band(1).toArray())
     assertArrayEquals(thirdBand.toArray(),result.band(2).toArray())
+  }
+
+
+  @Test
+  def testWriteCroppedRDD(): Unit ={
+    val layoutCols = 8
+    val layoutRows = 4
+
+    val intImage = createTextImage( layoutCols*256, layoutRows*256)
+    val imageTile = ByteArrayTile(intImage,layoutCols*256, layoutRows*256)
+
+    val secondBand = imageTile.map{x => if(x >= 5 ) 10 else 100 }
+    val thirdBand = imageTile.map{x => if(x >= 5 ) 50 else 200 }
+    //
+
+    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile,secondBand,thirdBand),TileLayout(layoutCols,layoutRows,256,256),LatLng)
+    val currentExtent = tileLayerRDD.metadata.extent
+    val cropBounds = Extent(currentExtent.xmin, -60, -5.0, currentExtent.ymax)
+    val croppedRDD = new OpenEOProcesses().crop_spatial(tileLayerRDD, cropBounds)
+    val croppedRaster: Raster[MultibandTile] = tileLayerRDD.stitch().crop(cropBounds)
+    val referenceFile = "croppedRaster.tif"
+    GeoTiff(croppedRaster,LatLng).write(referenceFile)
+    val filename = "outRGBCropped2.tif"
+    saveRDD(croppedRDD.withContext{_.repartition(layoutCols*layoutRows)},3,filename,cropBounds = Some(cropBounds))
+    val result = GeoTiff.readMultiband(filename).raster
+    val reference = GeoTiff.readMultiband(referenceFile).raster
+
+    assertEquals(result.extent,reference.extent)
+    assertArrayEquals(reference.tile.band(0).toArray(),result.tile.band(0).toArray())
+
   }
 
   @Test
