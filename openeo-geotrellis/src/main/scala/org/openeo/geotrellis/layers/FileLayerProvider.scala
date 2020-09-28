@@ -125,7 +125,7 @@ object FileLayerProvider {
   }
 
   private def fetchExtentFromOscars(oscars: Oscars, collectionId: String): ProjectedExtent = {
-    val collection = oscars.getCollections
+    val collection = oscars.getCollections()
       .find(_.id == collectionId)
       .getOrElse(throw new IllegalArgumentException(s"unknown OSCARS collection $collectionId"))
 
@@ -209,7 +209,7 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
   }
 
   private val _rootPath = Paths.get(rootPath)
-  val maxZoom: Int = oscars.getCollections
+  val maxZoom: Int = oscars.getCollections(correlationId)
     .find(_.id == oscarsCollectionId)
     .flatMap(_.resolution)
     .flatMap(r => layoutScheme match {
@@ -517,7 +517,7 @@ class ProbavFileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonE
 
   override protected val oscars = new Oscars(new URL("https://oscars-dev.vgt.vito.be"))
 
-  override val maxZoom: Int = oscars.getCollections
+  override val maxZoom: Int = oscars.getCollections()
     .find(_.id == oscarsCollectionId)
     .flatMap(_.resolution)
     .map(r => layoutScheme.zoom(0, 0, CellSize(r, r)))
