@@ -38,7 +38,7 @@ object OscarsResponses {
       }
 
       decode[FeatureCollection](json)
-        .valueOr(e => throw new IllegalArgumentException(s"${e.show} while parsing $json", e))
+        .valueOr(e => throw new IllegalArgumentException(s"${e.show} while parsing '$json'", e))
     }
   }
 }

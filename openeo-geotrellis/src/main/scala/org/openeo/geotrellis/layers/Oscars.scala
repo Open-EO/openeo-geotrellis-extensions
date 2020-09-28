@@ -68,7 +68,7 @@ class Oscars(endpoint: URL) {
 
     val json = response.throwError.body // note: the HttpStatusException's message doesn't include the response body
 
-    if (json.isEmpty) {
+    if (json.trim.isEmpty) {
       throw new IllegalStateException(s"${getProducts.urlBuilder(getProducts)} returned an empty body")
     }
 
