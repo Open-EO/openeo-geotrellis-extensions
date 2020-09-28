@@ -9,7 +9,7 @@ import geotrellis.proj4.LatLng
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.openeo.geotrellis.layers.OscarsResponses.{Feature, FeatureCollection}
 import org.slf4j.LoggerFactory
-import scalaj.http.Http
+import scalaj.http.{Http, HttpRequest}
 
 import scala.collection.Map
 
@@ -60,25 +60,30 @@ class Oscars(endpoint: URL) {
       .params(attributeValues.mapValues(_.toString).toSeq)
       .param("clientId", correlationId)
 
-    val response = getProducts.asString
+    FeatureCollection.parse(execute(getProducts))
+  }
+
+  def getCollections(correlationId: String = ""): Seq[Feature] = {
+    val getCollections = Http(s"$endpoint/collections")
+      .param("clientId", correlationId)
+
+    FeatureCollection.parse(execute(getCollections)).features
+  }
+
+  private def execute(request: HttpRequest): String = {
+    val url = request.urlBuilder(request)
+    val response = request.asString
 
     if (response.isError) {
-      logger.error("Error while invoking Oscars request: " + getProducts.urlBuilder(getProducts))
+      logger.error(s"Error while invoking Oscars request: $url")
     }
 
     val json = response.throwError.body // note: the HttpStatusException's message doesn't include the response body
 
-    if (json.isEmpty) {
-      throw new IllegalStateException(s"${getProducts.urlBuilder(getProducts)} returned an empty body")
+    if (json.trim.isEmpty) {
+      throw new IllegalStateException(s"$url returned an empty body")
     }
 
-    FeatureCollection.parse(json)
-  }
-
-  def getCollections: Seq[Feature] = {
-    val getCollections = Http(s"$endpoint/collections")
-
-    val json = getCollections.asString.throwError.body
-    FeatureCollection.parse(json).features
+    json
   }
 }
