@@ -17,9 +17,9 @@ public class testLookupTable {
 
 	// TODO: test binary reader methods in LookupTableIO
 	
-	@Test
-	public void testLookupTableReadBinary() throws Exception{
-		LookupTable lut=LookupTableIO.readLUT("lut_s2a");
-	}
+//	@Test
+//	public void testLookupTableReadBinary() throws Exception{
+//		LookupTable lut=LookupTableIO.readLUT("lut_s2a");
+//	}
 
 }

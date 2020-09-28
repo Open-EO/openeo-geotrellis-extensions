@@ -1,30 +1,22 @@
 package org.openeo.geotrellis.icor;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Map;
-import java.util.List;
 
 import geotrellis.layer.*;
 import geotrellis.raster.*;
 import geotrellis.spark.ContextRDD;
-import geotrellis.spark.testkit.TileLayerRDDBuilders$;
-import scala.Tuple2;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
-import org.apache.spark.api.java.JavaPairRDD$;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.rdd.RDD;
 
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.junit.jupiter.api.DisplayName;
 
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
 public class testAtmosphericCorrectionProcess {
@@ -47,9 +39,9 @@ public class testAtmosphericCorrectionProcess {
     @Test
     public void testAtmosphericCorrection() {
 
-    	ArrayList<Object> bandIds=new ArrayList<Object>();
-    	bandIds.add(new Integer(1));
-    	bandIds.add(new Integer(3));
+    	ArrayList<String> bandIds=new ArrayList<String>();
+    	bandIds.add(new String("TOC-B02_10M"));
+    	bandIds.add(new String("TOC-B04_10M"));
     	ArrayList<Object> scales=new ArrayList<Object>();
     	scales.add(new Double(1.));
     	scales.add(new Double(1.));

@@ -28,7 +28,7 @@ public class CorrectionDescriptorSentinel2{
      * @param sza degree
      * @param vza degree
      * @param raa degree
-     * @param gnd ?
+     * @param gnd ?UNIT?
      * @param aot
      * @param cwv 
      * @param ozone

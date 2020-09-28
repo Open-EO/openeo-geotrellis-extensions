@@ -81,7 +81,7 @@ public class LookupTableIO {
         // read the values
         int numberOfValues= readInt(in);
         int numberOfEntries = band.length * sza.length * vza.length * raa.length * height.length * aot.length * cwv.length * ozone.length;
-        if (is_binary) { readInt(in); } // dummy read in binary, because it also save numberofentries
+        if (is_binary) { readInt(in); } // dummy read in binary, because it also save number of entries
         double[][] values=new double[numberOfEntries][];
         for (int i=0; i<numberOfEntries; i++) 
         	values[i]=readDoubleArray(in,numberOfValues);
