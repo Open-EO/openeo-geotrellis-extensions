@@ -16,7 +16,7 @@ import scala.collection.Map
 object Oscars {
   private val logger = LoggerFactory.getLogger(classOf[Oscars])
 
-  def apply(endpoint: URL = new URL("https://services.terrascope.be/catalogue")) = new Oscars(endpoint)
+  def apply(endpoint: URL = new URL("http://oscars-01.vgt.vito.be:8080")) = new Oscars(endpoint)
 }
 
 class Oscars(endpoint: URL) {
