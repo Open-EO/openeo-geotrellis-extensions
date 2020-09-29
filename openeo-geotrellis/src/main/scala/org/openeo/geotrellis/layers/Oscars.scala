@@ -62,7 +62,7 @@ class Oscars(endpoint: URL) {
       .params(attributeValues.mapValues(_.toString).toSeq)
       .param("clientId", correlationId)
 
-    val json = withRetry { execute(getProducts) }
+    val json = withRetries { execute(getProducts) }
     FeatureCollection.parse(json)
   }
 
@@ -70,7 +70,7 @@ class Oscars(endpoint: URL) {
     val getCollections = Http(s"$endpoint/collections")
       .param("clientId", correlationId)
 
-    val json = withRetry { execute(getCollections) }
+    val json = withRetries { execute(getCollections) }
     FeatureCollection.parse(json).features
   }
 
@@ -91,21 +91,24 @@ class Oscars(endpoint: URL) {
     json
   }
 
-  private def withRetry[R](action: => R): R = withRetry(attempts = 5, initialDelay = (5, SECONDS)) { action }
+  private def withRetries[R](action: => R): R = {
+    def attempt[R](retries: Int, delay: (Long, TimeUnit))(action: => R): R = {
+      val (amount, timeUnit) = delay
 
-  private def withRetry[R](attempts: Int, initialDelay: (Long, TimeUnit))(action: => R): R = {
-    require(attempts > 0)
+      def retryable(e: Exception): Boolean = retries > 0 && (e match {
+        case _: HttpStatusException => true
+        case e: IllegalStateException if e.getMessage.endsWith("returned an empty body") => true
+        case _ => false
+      })
 
-    val (amount, timeUnit) = initialDelay
-
-    try action
-    catch {
-      case _: HttpStatusException if attempts > 0 =>
-        timeUnit.sleep(amount)
-        withRetry(attempts - 1, (amount * 2, timeUnit)) { action }
-      case e: IllegalStateException if e.getMessage.endsWith("returned an empty body") && attempts > 0 =>
-        timeUnit.sleep(amount)
-        withRetry(attempts - 1, (amount * 2, timeUnit)) { action }
+      try action
+      catch {
+        case e: Exception if retryable(e) =>
+          timeUnit.sleep(amount)
+          attempt(retries - 1, (amount * 2, timeUnit)) { action }
+      }
     }
+
+    attempt(retries = 4, delay = (5, SECONDS)) { action }
   }
 }
