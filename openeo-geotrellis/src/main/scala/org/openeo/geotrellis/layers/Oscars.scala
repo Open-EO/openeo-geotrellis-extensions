@@ -12,11 +12,13 @@ import org.openeo.geotrellis.layers.OscarsResponses.{Feature, FeatureCollection}
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpRequest, HttpStatusException}
 import java.util.concurrent.TimeUnit.SECONDS
+import java.util.concurrent.atomic.AtomicLong
 
 import scala.collection.Map
 
 object Oscars {
   private val logger = LoggerFactory.getLogger(classOf[Oscars])
+  private val requestCounter = new AtomicLong
 
   def apply(endpoint: URL = new URL("http://oscars-01.vgt.vito.be:8080")) = new Oscars(endpoint)
 }
@@ -60,7 +62,7 @@ class Oscars(endpoint: URL) {
       .param("startIndex", startIndex.toString)
       .param("accessedFrom", "MEP") // get direct access links instead of download urls
       .params(attributeValues.mapValues(_.toString).toSeq)
-      .param("clientId", correlationId)
+      .param("clientId", clientId(correlationId))
 
     val json = withRetries { execute(getProducts) }
     FeatureCollection.parse(json)
@@ -68,19 +70,25 @@ class Oscars(endpoint: URL) {
 
   def getCollections(correlationId: String = ""): Seq[Feature] = {
     val getCollections = Http(s"$endpoint/collections")
-      .param("clientId", correlationId)
+      .param("clientId", clientId(correlationId))
 
     val json = withRetries { execute(getCollections) }
     FeatureCollection.parse(json).features
+  }
+
+  private def clientId(correlationId: String): String = {
+    if (correlationId.isEmpty) correlationId
+    else {
+      val count = requestCounter.getAndIncrement()
+      s"${correlationId}_$count"
+    }
   }
 
   private def execute(request: HttpRequest): String = {
     val url = request.urlBuilder(request)
     val response = request.asString
 
-    if (response.isError) {
-      logger.error(s"Error while invoking Oscars request: $url")
-    }
+    logger.debug(s"$url returned ${response.code}")
 
     val json = response.throwError.body // note: the HttpStatusException's message doesn't include the response body
 
