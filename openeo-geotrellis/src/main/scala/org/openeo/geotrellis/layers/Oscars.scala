@@ -4,12 +4,14 @@ import java.net.URL
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter.ISO_INSTANT
 import java.time.{LocalDate, OffsetTime, ZonedDateTime}
+import java.util.concurrent.TimeUnit
 
 import geotrellis.proj4.LatLng
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.openeo.geotrellis.layers.OscarsResponses.{Feature, FeatureCollection}
 import org.slf4j.LoggerFactory
-import scalaj.http.{Http, HttpRequest}
+import scalaj.http.{Http, HttpRequest, HttpStatusException}
+import java.util.concurrent.TimeUnit.SECONDS
 
 import scala.collection.Map
 
@@ -60,14 +62,16 @@ class Oscars(endpoint: URL) {
       .params(attributeValues.mapValues(_.toString).toSeq)
       .param("clientId", correlationId)
 
-    FeatureCollection.parse(execute(getProducts))
+    val json = withRetry { execute(getProducts) }
+    FeatureCollection.parse(json)
   }
 
   def getCollections(correlationId: String = ""): Seq[Feature] = {
     val getCollections = Http(s"$endpoint/collections")
       .param("clientId", correlationId)
 
-    FeatureCollection.parse(execute(getCollections)).features
+    val json = withRetry { execute(getCollections) }
+    FeatureCollection.parse(json).features
   }
 
   private def execute(request: HttpRequest): String = {
@@ -85,5 +89,23 @@ class Oscars(endpoint: URL) {
     }
 
     json
+  }
+
+  private def withRetry[R](action: => R): R = withRetry(attempts = 5, initialDelay = (5, SECONDS)) { action }
+
+  private def withRetry[R](attempts: Int, initialDelay: (Long, TimeUnit))(action: => R): R = {
+    require(attempts > 0)
+
+    val (amount, timeUnit) = initialDelay
+
+    try action
+    catch {
+      case _: HttpStatusException if attempts > 0 =>
+        timeUnit.sleep(amount)
+        withRetry(attempts - 1, (amount * 2, timeUnit)) { action }
+      case e: IllegalStateException if e.getMessage.endsWith("returned an empty body") && attempts > 0 =>
+        timeUnit.sleep(amount)
+        withRetry(attempts - 1, (amount * 2, timeUnit)) { action }
+    }
   }
 }
