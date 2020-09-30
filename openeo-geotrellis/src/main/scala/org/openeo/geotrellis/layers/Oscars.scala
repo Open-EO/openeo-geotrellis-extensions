@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.layers
 
+import java.io.IOException
 import java.net.URL
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter.ISO_INSTANT
@@ -93,7 +94,7 @@ class Oscars(endpoint: URL) {
     val json = response.throwError.body // note: the HttpStatusException's message doesn't include the response body
 
     if (json.trim.isEmpty) {
-      throw new IllegalStateException(s"$url returned an empty body")
+      throw new IOException(s"$url returned an empty body")
     }
 
     json
@@ -105,7 +106,9 @@ class Oscars(endpoint: URL) {
 
       def retryable(e: Exception): Boolean = retries > 0 && (e match {
         case _: HttpStatusException => true
-        case e: IllegalStateException if e.getMessage.endsWith("returned an empty body") => true
+        case e: IOException if e.getMessage.endsWith("returned an empty body") =>
+          logger.warn(s"encountered empty body: retrying within $amount $timeUnit", e)
+          true
         case _ => false
       })
 
