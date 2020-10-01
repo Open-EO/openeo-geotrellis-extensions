@@ -13,7 +13,7 @@ import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{CellSize, ConvertTargetCellType, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.store.index.zcurve.ZSpaceTimeKeyIndex
@@ -50,8 +50,7 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
       .map { _.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
       .collect { case Some(raster) => raster }
 
-    val combinedCellType = singleBandRasters.map(_.cellType).reduce( (c1,c2) => c1.union(c2))
-    if (singleBandRasters.size == sources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(combinedCellType))), singleBandRasters.head.extent))
+    if (singleBandRasters.size == sources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType))), singleBandRasters.head.extent))
     else None
   }
 
@@ -93,8 +92,7 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
       .map { s => s._1.read(bounds, s._2) }
       .collect { case Some(raster) => raster }
 
-    val combinedCellType = rasters.map(_.cellType).reduce( (c1,c2) => c1.union(c2))
-    if (rasters.size == sources.size) Some(Raster(MultibandTile(rasters.flatMap(_.tile.convert(combinedCellType).bands)), rasters.head.extent))
+    if (rasters.size == sources.size) Some(Raster(MultibandTile(rasters.flatMap(_.tile.convert(cellType).bands)), rasters.head.extent))
     else None
   }
 
@@ -225,8 +223,9 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
 
   def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     val overlappingRasterSources: Seq[RasterSource] = loadRasterSourceRDD(boundingBox, from, to, zoom,sc)
+    val combinedCellType = overlappingRasterSources.map(_.cellType).reduce(_ union _)
 
-    val metadata = layerMetadata(boundingBox, from, to, zoom)
+    val metadata = layerMetadata(boundingBox, from, to, zoom, combinedCellType)
 
     val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map{_.reproject(polygons_crs,metadata.crs)}.clipToGrid(metadata.layout).groupByKey()
 
@@ -264,7 +263,7 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
     }
   }
 
-  private def layerMetadata(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int) = {
+  private def layerMetadata(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, cellType: CellType) = {
 
     val LayoutLevel(_, worldLayout) = layoutScheme match {
       case scheme: ZoomedLayoutScheme => scheme.levelForZoom(zoom min maxZoom)
@@ -291,7 +290,7 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
 
     val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(crs), crs)
 
-    val metadata: TileLayerMetadata[SpaceTimeKey] = this.tileLayerMetadata(worldLayout, reprojectedBoundingBox, from, to)
+    val metadata: TileLayerMetadata[SpaceTimeKey] = this.tileLayerMetadata(worldLayout, reprojectedBoundingBox, from, to, cellType)
     metadata
   }
 
@@ -396,11 +395,11 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
       ContextRDD(tiledRDD, metadata)
   }
 
-  private def tileLayerMetadata(layout: LayoutDefinition, projectedExtent: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime): TileLayerMetadata[SpaceTimeKey] = {
+  private def tileLayerMetadata(layout: LayoutDefinition, projectedExtent: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, cellType: CellType): TileLayerMetadata[SpaceTimeKey] = {
     val gridBounds = layout.mapTransform.extentToBounds(projectedExtent.extent)
 
     TileLayerMetadata(
-      UByteUserDefinedNoDataCellType(255.asInstanceOf[Byte]),
+      cellType,
       layout,
       projectedExtent.extent,
       projectedExtent.crs,
@@ -419,7 +418,7 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
   override def readMetadata(zoom: Int, sc: SparkContext): TileLayerMetadata[SpaceTimeKey] = {
     val Some((projectedExtent, dates)) = loadMetadata(sc)
 
-    layerMetadata(projectedExtent,dates.head,dates.last,zoom)
+    layerMetadata(projectedExtent,dates.head,dates.last,zoom, FloatConstantNoDataCellType)
   }
 
   override def collectMetadata(sc: SparkContext): (ProjectedExtent, Array[ZonedDateTime]) = loadMetadata(sc).get
