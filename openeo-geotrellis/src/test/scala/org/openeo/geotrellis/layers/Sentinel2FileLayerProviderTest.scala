@@ -126,8 +126,8 @@ class Sentinel2FileLayerProviderTest {
     println("Time: "+ (System.currentTimeMillis() - start)/1000.0)
     assertEquals(1,meanList.length)
     assertEquals(29874.0/7225.0,meanList.head.mean,0.01)
-    assertEquals(10742.0,meanList.head.sum,0.01)
-    assertEquals(2601,meanList.head.count)
+    assertEquals(11202.0, meanList.head.sum, 0.01)
+    assertEquals(2704, meanList.head.count)
 
   }
 

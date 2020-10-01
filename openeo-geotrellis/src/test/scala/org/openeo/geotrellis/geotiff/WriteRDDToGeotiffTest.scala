@@ -29,6 +29,9 @@ object WriteRDDToGeotiffTest{
       SparkContext.getOrCreate(conf)
     }
   }
+
+  @AfterClass
+  def tearDownSpark(): Unit = sc.stop()
 }
 
 class WriteRDDToGeotiffTest {
