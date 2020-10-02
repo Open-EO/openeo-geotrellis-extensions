@@ -13,10 +13,7 @@ import org.geotools.data.simple.SimpleFeatureIterator
 import scala.collection.JavaConverters._
 import scala.io.Source
 
-case class ProjectedPolygons(polygons: Array[MultiPolygon], crs: CRS) {
-  // TODO: remove method in companion object and adapt GeoPySparkDriver
-  def reproject(epsg_code: Int): ProjectedPolygons = ProjectedPolygons.reproject(this, epsg_code)
-}
+case class ProjectedPolygons(polygons: Array[MultiPolygon], crs: CRS)
 
 object ProjectedPolygons {
   private type JList[T] = java.util.List[T]
@@ -39,6 +36,7 @@ object ProjectedPolygons {
     }
   }
 
+  // FIXME: make this an instance method
   def reproject(projectedPolygons: ProjectedPolygons,epsg_code:Int): ProjectedPolygons = {
     val targetCRS = CRS.fromEpsgCode(epsg_code)
     ProjectedPolygons(projectedPolygons.polygons.map{_.reproject(projectedPolygons.crs,targetCRS)},targetCRS)
