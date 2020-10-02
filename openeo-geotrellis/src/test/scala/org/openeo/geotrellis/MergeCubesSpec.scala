@@ -9,7 +9,7 @@ import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
-import org.junit.{BeforeClass, Test}
+import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.LayerFixtures._
 
 
@@ -26,6 +26,9 @@ object MergeCubesSpec{
       SparkContext.getOrCreate(conf)
     }
   }
+
+  @AfterClass
+  def tearDownSpark() = sc.stop()
 }
 
 class MergeCubesSpec {
