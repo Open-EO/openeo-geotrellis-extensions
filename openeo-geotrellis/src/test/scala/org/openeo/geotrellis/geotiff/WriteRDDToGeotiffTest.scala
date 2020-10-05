@@ -12,7 +12,6 @@ import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit._
-import org.openeo.geotrellis.OpenEOProcesses
 
 
 
@@ -106,17 +105,17 @@ class WriteRDDToGeotiffTest {
 
     val secondBand = imageTile.map{x => if(x >= 5 ) 10 else 100 }
     val thirdBand = imageTile.map{x => if(x >= 5 ) 50 else 200 }
-    //
+    //,secondBand,thirdBand
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile,secondBand,thirdBand),TileLayout(layoutCols,layoutRows,256,256),LatLng)
     val currentExtent = tileLayerRDD.metadata.extent
-    val cropBounds = Extent(currentExtent.xmin, -60, -5.0, currentExtent.ymax)
-    val croppedRDD = new OpenEOProcesses().crop_spatial(tileLayerRDD, cropBounds)
+    val cropBounds = Extent(-115, -65, 5.0, 56)
+
     val croppedRaster: Raster[MultibandTile] = tileLayerRDD.stitch().crop(cropBounds)
     val referenceFile = "croppedRaster.tif"
     GeoTiff(croppedRaster,LatLng).write(referenceFile)
-    val filename = "outRGBCropped2.tif"
-    saveRDD(croppedRDD.withContext{_.repartition(layoutCols*layoutRows)},3,filename,cropBounds = Some(cropBounds))
+    val filename = "outRGBCropped3.tif"
+    saveRDD(tileLayerRDD.withContext{_.repartition(layoutCols*layoutRows)},3,filename,cropBounds = Some(cropBounds))
     val result = GeoTiff.readMultiband(filename).raster
     val reference = GeoTiff.readMultiband(referenceFile).raster
 
@@ -139,15 +138,21 @@ class WriteRDDToGeotiffTest {
     val level = ZoomedLayoutScheme(LatLng).levelForZoom(3)
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile,secondBand,thirdBand),level.layout.tileLayout,LatLng)
-    val croppedRDD = tileLayerRDD.crop(Extent(0,-90,180,90))
-    assertEquals(croppedRDD.metadata.tileLayout,level.layout.tileLayout)
-    val filename = "outCropped.tif"
-    saveRDD(croppedRDD.withContext{_.repartition(croppedRDD.count().toInt)},3,filename)
-    val resultRaster = GeoTiff.readMultiband(filename).raster
-    val result = resultRaster.tile
-    assertEquals(1024,result.cols)
-    assertEquals(0.0,resultRaster.extent.xmin,0.01)
 
+    val cropBounds = Extent(0, -90, 180, 90)
+    val croppedRaster: Raster[MultibandTile] = tileLayerRDD.stitch().crop(cropBounds)
+    val referenceFile = "croppedRasterGlobalLayout.tif"
+    GeoTiff(croppedRaster,LatLng).write(referenceFile)
+
+    val filename = "outCropped.tif"
+    saveRDD(tileLayerRDD.withContext{_.repartition(tileLayerRDD.count().toInt)},3,filename,cropBounds = Some(cropBounds))
+    val resultRaster = GeoTiff.readMultiband(filename).raster
+
+
+    val reference = GeoTiff.readMultiband(referenceFile).raster
+
+    assertEquals(resultRaster.extent,reference.extent)
+    assertArrayEquals(reference.tile.band(0).toArray(),resultRaster.tile.band(0).toArray())
   }
 
   @Test

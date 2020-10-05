@@ -4,10 +4,11 @@ import java.util.{ArrayList, Map}
 
 import geotrellis.layer._
 import geotrellis.raster
+import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.io.geotiff._
 import geotrellis.raster.io.geotiff.compression.Compression
 import geotrellis.raster.io.geotiff.writer.GeoTiffWriter
-import geotrellis.raster.{ArrayTile, MultibandTile, Raster}
+import geotrellis.raster.{ArrayTile, MultibandTile, Raster, RasterExtent}
 import geotrellis.spark._
 import geotrellis.vector.Extent
 import org.apache.spark.rdd.RDD
@@ -36,14 +37,24 @@ package object geotiff {
     val compression = Deflate(zLevel)
 
     val re = rdd.metadata.toRasterExtent()
-    val gridBounds = re.gridBoundsFor(cropBounds.getOrElse(rdd.metadata.extent), clamp = true)
+    var gridBounds = re.gridBoundsFor(cropBounds.getOrElse(rdd.metadata.extent), clamp = true)
     val croppedExtent = re.extentFor(gridBounds, clamp = true)
+    val preprocessedRdd =
+    if (gridBounds.colMin != 0 || gridBounds.rowMin != 0) {
+      val geotiffLayout: LayoutDefinition = LayoutDefinition(RasterExtent(croppedExtent, re.cellSize), 256)
+      val retiledRDD = rdd.reproject(rdd.metadata.crs,geotiffLayout)._2.crop(croppedExtent,Options(force=false))
 
-    val tileLayout = rdd.metadata.tileLayout
+      gridBounds = retiledRDD.metadata.toRasterExtent().gridBoundsFor(cropBounds.getOrElse(retiledRDD.metadata.extent), clamp = true)
+      retiledRDD
+    }else{
+      rdd.crop(croppedExtent,Options(force=false))
+    }
 
-    val keyBounds: Bounds[SpatialKey] = rdd.metadata.bounds
+    val keyBounds: Bounds[SpatialKey] = preprocessedRdd.metadata.bounds
     val maxKey = keyBounds.get.maxKey
     val minKey = keyBounds.get.minKey
+
+    val tileLayout = preprocessedRdd.metadata.tileLayout
 
     val totalCols = maxKey.col - minKey.col +1
     val totalRows = maxKey.row - minKey.row + 1
@@ -51,38 +62,40 @@ package object geotiff {
     val segmentLayout = GeoTiffSegmentLayout(
       totalCols = gridBounds.width,
       totalRows = gridBounds.height,
-      Tiled(tileLayout.tileCols,tileLayout.tileRows),
+      Tiled(tileLayout.tileCols, tileLayout.tileRows),
       BandInterleave,
       BandType.forCellType(rdd.metadata.cellType))
 
     val bandSegmentCount = totalCols * totalRows
     //val bandCount = 1
     val segmentCount = bandSegmentCount * bandCount
-    println("Saving geotiff with "+ segmentCount + " segments.")
+    println("Saving geotiff with " + segmentCount + " segments.")
     val compressor = compression.createCompressor(segmentCount)
 
-    val tiffs: collection.Map[Int, Array[Byte]] = rdd.flatMap{ case (key:SpatialKey,multibandTile:MultibandTile) => {
+    val tiffs: collection.Map[Int, Array[Byte]] = preprocessedRdd.flatMap { case (key: SpatialKey, multibandTile: MultibandTile) => {
       var bandIndex = -1
-      multibandTile.bands.map{
-      tile => {
-        bandIndex+=1
-        val layoutCol = key._1 - minKey._1
-        val layoutRow = key._2 - minKey._2
-        val bandSegmentOffset = bandSegmentCount * bandIndex
-        val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
-        //tiff format seems to require that we provide 'full' tiles
-        val bytes = raster.CroppedTile(tile,raster.GridBounds(0,0,tileLayout.tileCols-1,tileLayout.tileRows-1)).toBytes()
-        val compressedBytes = compressor.compress(bytes, index)
-        (index,compressedBytes)
-      }
+      multibandTile.bands.map {
+        tile => {
+          bandIndex += 1
+          val layoutCol = key._1 - minKey._1
+          val layoutRow = key._2 - minKey._2
+          val bandSegmentOffset = bandSegmentCount * bandIndex
+          val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
+          //tiff format seems to require that we provide 'full' tiles
+          val bytes = raster.CroppedTile(tile, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
+          val compressedBytes = compressor.compress(bytes, index)
+          (index, compressedBytes)
+        }
 
-    }}}.collectAsMap()
+      }
+    }
+    }.collectAsMap()
 
     lazy val emptySegment =
       ArrayTile.empty(rdd.metadata.cellType, tileLayout.tileCols, tileLayout.tileRows).toBytes
 
     val segments: Array[Array[Byte]] = Array.ofDim(segmentCount)
-    cfor (0)(_ < segmentCount, _ + 1){ index => {
+    cfor(0)(_ < segmentCount, _ + 1) { index => {
       val maybeBytes = tiffs.get(index)
       if (maybeBytes.isEmpty) {
         segments(index) = compressor.compress(emptySegment, index)
@@ -98,10 +111,10 @@ package object geotiff {
       segmentLayout,
       compression,
       bandCount,
-      rdd.metadata.cellType)
-    val thegeotiff = MultibandGeoTiff(tiffTile,croppedExtent,rdd.metadata.crs)
+      preprocessedRdd.metadata.cellType)
+    val thegeotiff = MultibandGeoTiff(tiffTile, croppedExtent, preprocessedRdd.metadata.crs)
 
-    GeoTiffWriter.write(thegeotiff,path)
+    GeoTiffWriter.write(thegeotiff, path)
 
   }
 
