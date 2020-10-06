@@ -2,6 +2,7 @@ package org.openeo
 
 import java.io.InputStream
 import java.lang.Math.pow
+import java.lang.Math.random
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.ISO_DATE_TIME
 import java.util.Scanner
@@ -77,15 +78,12 @@ package object geotrellissentinelhub {
           case r: RetryException => s"${r.response.code}: ${r.response.header("Status").getOrElse("UNKNOWN")}"
           case _ => e.getMessage
         }
-        val retryAfter = e match {
-          case r: RetryException => r.response.header("Retry-After").getOrElse("10").toInt
-          case _ => 10
-        }
         logger.info(s"Attempt $i failed: $message -> $exMessage")
         if (i < nb) {
-          val exponentialRetryAfter = retryAfter * pow(2, i - 1).toInt
-          Thread.sleep(exponentialRetryAfter)
-          logger.info(s"Retry $i after ${exponentialRetryAfter}ms: $message")
+          val exponentialRetryAfter = 1000 * pow(2, i - 1)
+          val retryAfterWithJitter = (exponentialRetryAfter * (0.5 + random)).toInt
+          Thread.sleep(retryAfterWithJitter)
+          logger.info(s"Retry $i after ${retryAfterWithJitter}ms: $message")
           retry(nb, message, i + 1)(fn)
         } else throw e
     }
