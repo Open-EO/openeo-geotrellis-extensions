@@ -1,9 +1,10 @@
 package org.openeo
 
 import java.io.InputStream
+import java.io.StringWriter
 import java.lang.Math.pow
 import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter.ISO_DATE_TIME
+import java.time.format.DateTimeFormatter.ISO_INSTANT
 import java.util.Scanner
 
 import geotrellis.raster.io.geotiff.SinglebandGeoTiff
@@ -14,6 +15,8 @@ import org.apache.commons.io.IOUtils
 import org.openeo.geotrellissentinelhub.bands.Band
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpResponse}
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonGenerator;
 
 import scala.annotation.tailrec
 
@@ -21,24 +24,83 @@ package object geotrellissentinelhub {
   
   val logger = LoggerFactory.getLogger(getClass)
 
-  def retrieveTileFromSentinelHub(uuid: String, endpoint: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, bands: Seq[_ <: Band]): MultibandTile = {
-    MultibandTile.apply(bands.map(retrieveTileFromSentinelHub(uuid, endpoint, extent, date, width, height, _)))
+  def retrieveTileFromSentinelHub(datasetId: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, bands: Seq[_ <: Band]): MultibandTile = {
+    MultibandTile.apply(bands.map(retrieveTileFromSentinelHub(datasetId, extent, date, width, height, _)))
   }
 
-  def retrieveTileFromSentinelHub(uuid: String, endpoint: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, band: Band): Tile = {
-    val url = s"$endpoint/ogc/wcs/$uuid"
+  def retrieveTileFromSentinelHub(datasetId: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, band: Band): Tile = {
 
+    // This token should be generated through authentication process and not hard-coded here. Please see:
+    // https://docs.sentinel-hub.com/api/latest/api/overview/authentication/
+    val authToken = "<put your auth token here>"
+
+    // See: https://docs.sentinel-hub.com/api/latest/evalscript/v3/
+    val nBands = 1
+    val evalscript = s"""//VERSION=3
+      function setup() {
+        return {
+          input: ["${band}"],
+          output: {
+            bands: ${nBands},
+            sampleType: "FLOAT32",
+          }
+        };
+      }
+
+      function evaluatePixel(sample) {
+        return [sample.${band}];
+      }
+    """
+    val jsonFactory = new JsonFactory();
+    val stringWriter = new StringWriter();
+    val json = jsonFactory.createGenerator(stringWriter);
+    json.writeString(evalscript);
+    json.flush
+    val evalscriptJson = stringWriter.toString()
+
+    val jsonData = s"""{
+      "input": {
+        "bounds": {
+          "bbox": [${extent.xmin}, ${extent.ymin}, ${extent.xmax}, ${extent.ymax}],
+          "properties": {
+            "crs": "http://www.opengis.net/def/crs/EPSG/0/3857"
+          }
+        },
+        "data": [
+          {
+            "type": "${datasetId}",
+            "dataFilter": {
+              "timeRange": {
+                "from": "${date.format(ISO_INSTANT)}",
+                "to": "${date.plusDays(1).format(ISO_INSTANT)}"
+              }
+            }
+          }
+        ]
+      },
+      "output": {
+        "width": ${width.toString},
+        "height": ${height.toString},
+        "responses": [
+          {
+            "identifier": "default",
+            "format": {
+              "type": "image/tiff"
+            }
+          }
+        ]
+      },
+      "evalscript": ${evalscriptJson}
+    }"""
+    logger.info(s"JSON data for Sentinel Hub Process API: ${jsonData}")
+
+    val url = "https://services.sentinel-hub.com/api/v1/process"
     val request = Http(url)
-      .param("service", "WCS")
-      .param("request", "getCoverage")
-      .param("format", "image/tiff;depth=32f")
-      .param("width", width.toString)
-      .param("height", height.toString)
-      .param("coverage", band.toString)
-      .param("time", date.format(ISO_DATE_TIME) + "/" + date.plusDays(1).format(ISO_DATE_TIME))
-      .param("bbox", extent.xmin + "," + extent.ymin + "," + extent.xmax + "," + extent.ymax)
-      .param("crs", "EPSG:3857")
-    
+      .header("Content-Type", "application/json")
+      .header("Authorization", s"Bearer ${authToken}")
+      .header("Accept", "*/*")
+      .postData(jsonData)
+
     logger.info(s"Executing request: ${request.urlBuilder(request)}")
     
     try {

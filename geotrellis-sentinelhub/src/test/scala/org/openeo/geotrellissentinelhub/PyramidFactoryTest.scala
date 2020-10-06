@@ -24,28 +24,28 @@ class PyramidFactoryTest {
   @Test
   def testGamma0(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 10, 10), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new S1PyramidFactory(System.getProperty("uuid-gamma0")), "gamma0", date, Seq(IW_VV, IW_VH))
+    testLayer(new S1PyramidFactory(), "gamma0", date, Seq(IW_VV, IW_VH))
   }
 
   @Ignore
   @Test
   def testSentinel2L1C(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new S2L1CPyramidFactory(System.getProperty("uuid-sentinel2-L1C")), "sentinel2-L1C", date, Seq(Sentinel2L1CBands.B04, Sentinel2L1CBands.B03, Sentinel2L1CBands.B02))
+    testLayer(new S2L1CPyramidFactory(), "sentinel2-L1C", date, Seq(Sentinel2L1CBands.B04, Sentinel2L1CBands.B03, Sentinel2L1CBands.B02))
   }
 
   @Ignore
   @Test
   def testSentinel2L2A(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new S2L2APyramidFactory(System.getProperty("uuid-sentinel2-L2A")), "sentinel2-L2A", date, Seq(Sentinel2L2ABands.B08, Sentinel2L2ABands.B04, Sentinel2L2ABands.B03))
+    testLayer(new S2L2APyramidFactory(), "sentinel2-L2A", date, Seq(Sentinel2L2ABands.B08, Sentinel2L2ABands.B04, Sentinel2L2ABands.B03))
   }
 
   @Ignore
   @Test
   def testLandsat8(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new L8PyramidFactory(System.getProperty("uuid-landsat8")), "landsat8", date, Seq(B10, B11))
+    testLayer(new L8PyramidFactory(), "landsat8", date, Seq(B10, B11))
   }
   
   def testLayer[B <: Band](pyramidFactory: PyramidFactory[B], layer: String, date: ZonedDateTime, bands: Seq[B]): Unit = {

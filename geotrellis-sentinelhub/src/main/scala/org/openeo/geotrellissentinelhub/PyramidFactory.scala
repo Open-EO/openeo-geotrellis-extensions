@@ -17,11 +17,11 @@ import org.openeo.geotrellissentinelhub.bands._
 
 import scala.collection.JavaConverters._
 
-abstract class PyramidFactory[B <: Band](val uuid: String) extends Serializable {
+abstract class PyramidFactory[B <: Band]() extends Serializable {
   private val maxZoom = 14
-  protected val endpoint = "https://services.sentinel-hub.com"
   val allBands: Seq[B] = Seq()
-  
+  val datasetId: String = ""
+
   private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
   
   def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom, bands: Seq[B] = allBands)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
@@ -39,7 +39,7 @@ abstract class PyramidFactory[B <: Band](val uuid: String) extends Serializable 
     val overlappingKeys = dates.flatMap(date =>layout.mapTransform.keysForGeometry(reprojectedBoundingBox.toPolygon()).map(key => SpaceTimeKey(key, date)))
 
     val tilesRdd = sc.parallelize(overlappingKeys)
-      .map(key => (key, retrieveTileFromSentinelHub(uuid, endpoint, key.spatialKey.extent(layout), key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, bands)))
+      .map(key => (key, retrieveTileFromSentinelHub(datasetId, key.spatialKey.extent(layout), key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, bands)))
       .filter(_._2.bands.exists(b => !b.isNoDataTile))
 
     val metadata: TileLayerMetadata[SpaceTimeKey] = {
@@ -79,19 +79,22 @@ abstract class PyramidFactory[B <: Band](val uuid: String) extends Serializable 
   }
 }
 
-class S1PyramidFactory(override val uuid: String) extends PyramidFactory[Sentinel1Band](uuid) {
+class S1PyramidFactory() extends PyramidFactory[Sentinel1Band]() {
   override val allBands: Seq[Sentinel1Band] = Sentinel1Bands.allBands
+  override val datasetId = "S1GRD"
 }
 
-class S2L1CPyramidFactory(override val uuid: String) extends PyramidFactory[Sentinel2L1CBand](uuid) {
+class S2L1CPyramidFactory() extends PyramidFactory[Sentinel2L1CBand]() {
   override val allBands: Seq[Sentinel2L1CBand] = Sentinel2L1CBands.allBands
+  override val datasetId = "S2L1C"
 }
 
-class S2L2APyramidFactory(override val uuid: String) extends PyramidFactory[Sentinel2L2ABand](uuid) {
+class S2L2APyramidFactory() extends PyramidFactory[Sentinel2L2ABand]() {
   override val allBands: Seq[Sentinel2L2ABand] = Sentinel2L2ABands.allBands
+  override val datasetId = "S2L2A"
 }
 
-class L8PyramidFactory(override val uuid: String) extends PyramidFactory[Landsat8Band](uuid) {
+class L8PyramidFactory() extends PyramidFactory[Landsat8Band]() {
   override val allBands: Seq[Landsat8Band] = Landsat8Bands.allBands
-  override val endpoint = "https://services-uswest2.sentinel-hub.com"
+  override val datasetId = "L8L1C"
 }
