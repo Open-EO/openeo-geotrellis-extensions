@@ -77,13 +77,9 @@ package object geotrellissentinelhub {
           case r: RetryException => s"${r.response.code}: ${r.response.header("Status").getOrElse("UNKNOWN")}"
           case _ => e.getMessage
         }
-        val retryAfter = e match {
-          case r: RetryException => r.response.header("Retry-After").getOrElse("10").toInt
-          case _ => 10
-        }
         logger.info(s"Attempt $i failed: $message -> $exMessage")
         if (i < nb) {
-          val exponentialRetryAfter = retryAfter * pow(2, i - 1).toInt
+          val exponentialRetryAfter = 1000 * pow(2, i - 1).toInt
           Thread.sleep(exponentialRetryAfter)
           logger.info(s"Retry $i after ${exponentialRetryAfter}ms: $message")
           retry(nb, message, i + 1)(fn)
