@@ -23,10 +23,9 @@ object TestImplicits {
   }
 
   implicit class MultibandTileGeoTiffOutputMethods(spatialLayer: MultibandTileLayerRDD[SpatialKey]) {
-    def writeGeoTiff(bbox: ProjectedExtent, path: String): Unit = {
-      val Raster(tile, extent) = spatialLayer
-        .crop(bbox.reproject(spatialLayer.metadata.crs))
-        .stitch()
+    def writeGeoTiff(path: String, bbox: ProjectedExtent = null): Unit = {
+      val Raster(tile, extent) =
+        (if (bbox != null) spatialLayer.crop(bbox.reproject(spatialLayer.metadata.crs)) else spatialLayer).stitch()
 
       val options = GeoTiffOptions(DeflateCompression(BEST_COMPRESSION))
 

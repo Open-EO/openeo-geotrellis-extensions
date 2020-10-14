@@ -158,7 +158,7 @@ class Sentinel2FileLayerProviderTest {
       .toSpatial(date)
       .cache()
 
-    spatialLayer.writeGeoTiff(bbox, "/tmp/Sentinel2FileLayerProvider_multiband.tif")
+    spatialLayer.writeGeoTiff("/tmp/Sentinel2FileLayerProvider_multiband.tif", bbox)
   }
 
   @Ignore("TODO: verify output")
@@ -174,7 +174,7 @@ class Sentinel2FileLayerProviderTest {
       .toSpatial(date)
       .cache()
 
-    spatialLayer.writeGeoTiff(bbox, "/tmp/Sentinel2FileLayerProvider_10_UFS.tif")
+    spatialLayer.writeGeoTiff("/tmp/Sentinel2FileLayerProvider_10_UFS.tif", bbox)
   }
 
   @Ignore("TODO: verify output")

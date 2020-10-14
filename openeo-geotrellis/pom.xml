@@ -56,6 +56,11 @@
             </exclusions>
         </dependency>
         <dependency>
+            <groupId>ar.com.hjg</groupId>
+            <artifactId>pngj</artifactId>
+            <version>2.0.1</version>
+        </dependency>
+        <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
             <artifactId>geotrellis-spark-testkit_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>
