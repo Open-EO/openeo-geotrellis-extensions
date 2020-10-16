@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit.SECONDS
 
 import geotrellis.raster.io.geotiff.SinglebandGeoTiff
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
-import geotrellis.raster.{ArrayTile, FloatUserDefinedNoDataCellType, MultibandTile, Tile}
+import geotrellis.raster.{ArrayTile, MultibandTile, Tile, UShortConstantNoDataCellType}
 import geotrellis.vector.Extent
 import org.apache.commons.io.IOUtils
 import org.openeo.geotrellissentinelhub.bands.Band
@@ -71,13 +71,13 @@ package object geotrellissentinelhub {
           input: ["${band}"],
           output: {
             bands: ${nBands},
-            sampleType: "FLOAT32",
+            sampleType: "UINT16",
           }
         };
       }
 
       function evaluatePixel(sample) {
-        return [sample.${band}];
+        return [sample.${band} * 65535];
       }
     """
     val jsonFactory = new JsonFactory();
@@ -143,12 +143,12 @@ package object geotrellissentinelhub {
 
         val tiff = response.body.asInstanceOf[SinglebandGeoTiff]
 
-        tiff.tile.toArrayTile().withNoData(Some(1.0))
+        tiff.tile.withNoData(Some(UShortConstantNoDataCellType.noDataValue))
       }
     } catch {
       case e: Exception =>
         logger.warn(s"Returning empty tile: $e")
-        ArrayTile.empty(FloatUserDefinedNoDataCellType(1), width, height)
+        ArrayTile.empty(UShortConstantNoDataCellType, width, height)
     }
   }
 
