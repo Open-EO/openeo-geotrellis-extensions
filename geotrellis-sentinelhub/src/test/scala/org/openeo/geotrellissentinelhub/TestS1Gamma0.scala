@@ -7,7 +7,10 @@ import org.junit.{Ignore, Test}
 import org.openeo.geotrellissentinelhub.bands.Sentinel1Bands._
 
 class TestS1Gamma0 {
-  
+
+  private val clientId = Utils.getRequiredSystemProperty("SENTINELHUB_CLIENT_ID")
+  private val clientSecret = Utils.getRequiredSystemProperty("SENTINELHUB_CLIENT_SECRET")
+
   @Test
   @Ignore
   def testGamma0(): Unit = {
@@ -16,7 +19,7 @@ class TestS1Gamma0 {
     val date = LocalDate.of(2019, 6, 1).atStartOfDay(ZoneId.systemDefault())
 
     val datasetId = "S1GRD"
-    retrieveTileFromSentinelHub(datasetId, bbox, date, 256, 256, allBands)
+    retrieveTileFromSentinelHub(datasetId, bbox, date, 256, 256, allBands, clientId, clientSecret)
   }
 
 }

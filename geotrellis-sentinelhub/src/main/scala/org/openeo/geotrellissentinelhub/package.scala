@@ -6,7 +6,9 @@ import java.lang.Math.pow
 import java.lang.Math.random
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.ISO_INSTANT
+import java.util
 import java.util.Scanner
+import java.util.concurrent.TimeUnit.SECONDS
 
 import geotrellis.raster.io.geotiff.SinglebandGeoTiff
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
@@ -16,25 +18,51 @@ import org.apache.commons.io.IOUtils
 import org.openeo.geotrellissentinelhub.bands.Band
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpResponse}
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonFactory
+import com.fasterxml.jackson.core.`type`.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.google.common.cache.{CacheBuilder, CacheLoader}
 
 import scala.annotation.tailrec
 
 package object geotrellissentinelhub {
   
-  val logger = LoggerFactory.getLogger(getClass)
+  private val logger = LoggerFactory.getLogger(getClass)
+  private val authTokenCache = CacheBuilder // can be replaced with a memoizing supplier if we encapsulate this stuff
+    .newBuilder()
+    .expireAfterWrite(1800L, SECONDS)
+    .build(new CacheLoader[(String, String), String] {
+      override def load(credentials: (String, String)): String = credentials match {
+        case (clientId, clientSecret) => retrieveAuthToken(clientId, clientSecret)
+      }
+    })
 
-  def retrieveTileFromSentinelHub(datasetId: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, bands: Seq[_ <: Band]): MultibandTile = {
-    MultibandTile.apply(bands.map(retrieveTileFromSentinelHub(datasetId, extent, date, width, height, _)))
+  private def retrieveAuthToken(clientId: String, clientSecret: String): String = {
+    val getAuthToken = Http("https://services.sentinel-hub.com/oauth/token")
+      .postForm(Seq(
+        "grant_type" -> "client_credentials",
+        "client_id" -> clientId,
+        "client_secret" -> clientSecret
+      ))
+      .asString
+      .throwError
+
+    val response = new ObjectMapper()
+      .readValue[util.Map[String, Object]](getAuthToken.body, new TypeReference[util.Map[String, Object]](){})
+
+    val token = response.get("access_token").asInstanceOf[String]
+    logger.debug("received a new access token")
+
+    token
   }
 
-  def retrieveTileFromSentinelHub(datasetId: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int, band: Band): Tile = {
+  def retrieveTileFromSentinelHub(datasetId: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int,
+                                  bands: Seq[_ <: Band], clientId: String, clientSecret: String): MultibandTile = {
+    MultibandTile.apply(bands.map(retrieveTileFromSentinelHub(datasetId, extent, date, width, height, _, clientId, clientSecret)))
+  }
 
-    // This token should be generated through authentication process and not hard-coded here. Please see:
-    // https://docs.sentinel-hub.com/api/latest/api/overview/authentication/
-    val authToken = "<put your auth token here>"
-
+  def retrieveTileFromSentinelHub(datasetId: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int,
+                                  band: Band, clientId: String, clientSecret: String): Tile = {
     // See: https://docs.sentinel-hub.com/api/latest/evalscript/v3/
     val nBands = 1
     val evalscript = s"""//VERSION=3
@@ -98,7 +126,7 @@ package object geotrellissentinelhub {
     val url = "https://services.sentinel-hub.com/api/v1/process"
     val request = Http(url)
       .header("Content-Type", "application/json")
-      .header("Authorization", s"Bearer ${authToken}")
+      .header("Authorization", s"Bearer ${authTokenCache.get((clientId, clientSecret))}")
       .header("Accept", "*/*")
       .postData(jsonData)
 
