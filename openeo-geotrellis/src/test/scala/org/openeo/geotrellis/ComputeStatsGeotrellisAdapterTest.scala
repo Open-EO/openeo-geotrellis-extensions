@@ -297,7 +297,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     accumuloPyramidFactory.setSplitRanges(true)
 
     val pyramid = accumuloPyramidFactory.pyramid_seq(
-      "S1_GRD_SIGMA0_ASCENDING_PYRAMID",
+      "S1_GRD_GAMMA0_PYRAMID_V2",
       Extent(2.7018695091614826, 50.875524514346715, 3.366826213573422, 51.30898846322647),
       "EPSG:4326",
       "2017-10-05T00:00:00+00:00",
@@ -326,8 +326,8 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val endDate = startDate plusWeeks 1
 
     val datacube: MultibandTileLayerRDD[SpaceTimeKey] = accumuloPyramidFactory.load_rdd(
-      layerName = "CGS_SENTINEL2_RADIOMETRY_V102_EARLY",
-      level = 9,
+      layerName = "S1_GRD_GAMMA0_PYRAMID_V2",
+      level = 14,
       bbox = Extent(2.7018695091614826, 50.875524514346715, 3.366826213573422, 51.30898846322647),
       bbox_srs = "EPSG:4326",
       Some(startDate),
