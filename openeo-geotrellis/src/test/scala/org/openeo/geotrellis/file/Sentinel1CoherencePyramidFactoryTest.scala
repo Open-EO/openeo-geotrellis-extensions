@@ -64,6 +64,7 @@ class Sentinel1CoherencePyramidFactoryTest {
     val meanList = summary.toOption.get
     assertEquals(2, meanList.length)
     assertArrayEquals(qgisZonalStatisticsPluginResult, meanList.map(_.mean), 0.2)
+    println(meanList.map(_.count))
   }
 
   private def sentinel1CoherencePyramidFactory = new Sentinel2PyramidFactory(
