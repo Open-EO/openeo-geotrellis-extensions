@@ -2,7 +2,7 @@ package org.openeo.geotrellis
 
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.{DoubleConstantTile, IntConstantTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, isNoData}
-import org.openeo.geotrellis.mapalgebra.AddIgnoreNodata
+import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase}
 
 import scala.Double.NaN
 import scala.collection.mutable
@@ -40,15 +40,6 @@ class OpenEOProcessScriptBuilder {
       else math.max(z1, z2)
   }
 
-  object LogBase extends LocalTileBinaryOp {
-    def combine(x: Int, base: Int) =
-      if (isNoData(x) || isNoData(base)) NODATA
-      else if (base == 0) NODATA
-      else math.log(x).toInt / math.log(base).toInt
-
-    def combine(x: Double, base: Double) =
-      math.log(x) / math.log(base)
-  }
 
   val processStack: mutable.Stack[String] = new mutable.Stack[String]()
   val arrayElementStack: mutable.Stack[Integer] = new mutable.Stack[Integer]()
