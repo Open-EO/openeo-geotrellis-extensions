@@ -40,6 +40,16 @@ class OpenEOProcessScriptBuilder {
       else math.max(z1, z2)
   }
 
+  object LogBase extends LocalTileBinaryOp {
+    def combine(x: Int, base: Int) =
+      if (isNoData(x) || isNoData(base)) NODATA
+      else if (base == 0) NODATA
+      else math.log(x).toInt / math.log(base).toInt
+
+    def combine(x: Double, base: Double) =
+      math.log(x) / math.log(base)
+  }
+
   val processStack: mutable.Stack[String] = new mutable.Stack[String]()
   val arrayElementStack: mutable.Stack[Integer] = new mutable.Stack[Integer]()
   val argNames: mutable.Stack[String] = new mutable.Stack[String]()
@@ -254,10 +264,10 @@ class OpenEOProcessScriptBuilder {
       // Unary math
       case "abs" if hasX => mapFunction("x", Abs.apply)
       case "absolute" if hasX => mapFunction("x", Abs.apply)
-      //TODO "log"
       //TODO: "int" integer part of a number
       //TODO "arccos" -> Acosh.apply,
       //TODO: arctan 2 is not unary! "arctan2" -> Atan2.apply,
+      case "log" => xyFunction(LogBase.apply,xArgName = "x",yArgName = "base")
       case "ln" if hasX => mapFunction( "x", Log.apply)
       case "sqrt" if hasX => mapFunction("x", Sqrt.apply)
       case "ceil" if hasX => mapFunction("x", Ceil.apply)
