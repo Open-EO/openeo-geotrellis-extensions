@@ -7,12 +7,12 @@ import java.lang.Math.random
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.ISO_INSTANT
 import java.util
-import java.util.Scanner
 import java.util.concurrent.TimeUnit.SECONDS
 
-import geotrellis.raster.io.geotiff.SinglebandGeoTiff
+import scala.io.Source
+import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
-import geotrellis.raster.{ArrayTile, MultibandTile, Tile, UShortConstantNoDataCellType}
+import geotrellis.raster.{ArrayTile, MultibandTile, UShortConstantNoDataCellType}
 import geotrellis.vector.Extent
 import org.apache.commons.io.IOUtils
 import org.openeo.geotrellissentinelhub.bands.Band
@@ -58,26 +58,19 @@ package object geotrellissentinelhub {
 
   def retrieveTileFromSentinelHub(datasetId: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int,
                                   bands: Seq[_ <: Band], clientId: String, clientSecret: String): MultibandTile = {
-    MultibandTile.apply(bands.map(retrieveTileFromSentinelHub(datasetId, extent, date, width, height, _, clientId, clientSecret)))
-  }
-
-  def retrieveTileFromSentinelHub(datasetId: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int,
-                                  band: Band, clientId: String, clientSecret: String): Tile = {
-    // See: https://docs.sentinel-hub.com/api/latest/evalscript/v3/
-    val nBands = 1
     val evalscript = s"""//VERSION=3
       function setup() {
         return {
-          input: ["${band}"],
+          input: [${bands.map(band => s""""$band"""") mkString ", "}],
           output: {
-            bands: ${nBands},
+            bands: ${bands.size},
             sampleType: "UINT16",
           }
         };
       }
 
       function evaluatePixel(sample) {
-        return [sample.${band} * 65535];
+        return [${bands.map(band => s"sample.$band * 65535") mkString ", "}];
       }
     """
     val jsonFactory = new JsonFactory();
@@ -134,28 +127,25 @@ package object geotrellissentinelhub {
     
     try {
       retry(5, s"$date + $extent") {
-        val response = request.exec(parser = 
-          (code: Int, headers: Map[String, IndexedSeq[String]], inputStream: InputStream) => 
-            if (code == 200) GeoTiffReader.singlebandGeoTiffReader.read(IOUtils.toByteArray(inputStream)) else toString(inputStream))
+        val response = request.exec(parser = (code: Int, _: Map[String, IndexedSeq[String]], in: InputStream) =>
+            if (code == 200)
+              Some(GeoTiffReader.readMultiband(IOUtils.toByteArray(in)))
+            else {
+              val textBody = Source.fromInputStream(in, "utf-8").mkString
+              logger.warn(textBody)
+              None
+            }
+        )
 
-        if (response.isError)
-          throw new RetryException(response)
-
-        val tiff = response.body.asInstanceOf[SinglebandGeoTiff]
-
-        tiff.tile.withNoData(Some(UShortConstantNoDataCellType.noDataValue))
+        response.body
+          .map(_.tile.mapBands { case (_, tile) => tile.withNoData(Some(UShortConstantNoDataCellType.noDataValue)) })
+          .getOrElse(throw new RetryException(response))
       }
     } catch {
       case e: Exception =>
         logger.warn(s"Returning empty tile: $e")
-        ArrayTile.empty(UShortConstantNoDataCellType, width, height)
+        MultibandTile(Seq.fill(bands.size)(ArrayTile.empty(UShortConstantNoDataCellType, width, height)))
     }
-  }
-
-  private def toString(is:InputStream):String = {
-    val result = new Scanner(is, "utf-8").useDelimiter("\\Z").next
-    logger.warn(result)
-    result
   }
 
   @tailrec
@@ -179,5 +169,5 @@ package object geotrellissentinelhub {
     }
   }
 
-  class RetryException(val response: HttpResponse[Object]) extends Exception
+  class RetryException(val response: HttpResponse[Option[MultibandGeoTiff]]) extends Exception
 }
