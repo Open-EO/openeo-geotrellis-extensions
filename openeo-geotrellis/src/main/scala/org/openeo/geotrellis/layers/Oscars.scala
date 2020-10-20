@@ -15,6 +15,7 @@ import scalaj.http.{Http, HttpRequest, HttpStatusException}
 import java.util.concurrent.TimeUnit.SECONDS
 import java.util.concurrent.atomic.AtomicLong
 
+import scala.annotation.tailrec
 import scala.collection.Map
 
 object Oscars {
@@ -101,23 +102,26 @@ class Oscars(endpoint: URL) {
   }
 
   private def withRetries[R](action: => R): R = {
+    @tailrec
     def attempt[R](retries: Int, delay: (Long, TimeUnit))(action: => R): R = {
       val (amount, timeUnit) = delay
 
       def retryable(e: Exception): Boolean = retries > 0 && (e match {
-        case _: HttpStatusException => true
+        case h: HttpStatusException if h.code >= 500 => true
         case e: IOException if e.getMessage.endsWith("returned an empty body") =>
           logger.warn(s"encountered empty body: retrying within $amount $timeUnit", e)
           true
         case _ => false
       })
 
-      try action
+      try
+        return action
       catch {
-        case e: Exception if retryable(e) =>
-          timeUnit.sleep(amount)
-          attempt(retries - 1, (amount * 2, timeUnit)) { action }
+        case e: Exception if retryable(e) => Unit
       }
+
+      timeUnit.sleep(amount)
+      attempt(retries - 1, (amount * 2, timeUnit)) { action }
     }
 
     attempt(retries = 4, delay = (5, SECONDS)) { action }

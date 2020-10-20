@@ -1,6 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import java.net.URL
 import java.time.LocalDate
 
 import geotrellis.proj4.LatLng
@@ -11,7 +10,7 @@ class OscarsTest {
 
   @Test
   def test(): Unit = {
-    val oscars = Oscars(new URL("http://oscars-01.vgt.vito.be:8080"))
+    val oscars = Oscars()
 
     val features = oscars.getProducts(
       collectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
