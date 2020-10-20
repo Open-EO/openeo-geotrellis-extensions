@@ -21,6 +21,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>org.openeo</groupId>
+            <artifactId>openeo-geotrellis</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-core_${scala.binary.version}</artifactId>
             <version>${spark.version}</version>

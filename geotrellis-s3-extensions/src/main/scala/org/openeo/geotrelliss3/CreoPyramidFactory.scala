@@ -5,21 +5,23 @@ import java.time._
 import java.util
 
 import geotrellis.layer._
-import geotrellis.proj4.{CRS, WebMercator}
+import geotrellis.proj4.CRS
 import geotrellis.raster.gdal.GDALRasterSource
-import geotrellis.raster.{MultibandTile, Tile, UByteUserDefinedNoDataCellType, isNoData}
+import geotrellis.raster.{MultibandTile, Tile, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
-import geotrellis.store.LayerId
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
+import org.apache.spark.rdd.RDD
+import org.openeo.geotrellis.layers.FileLayerProvider.{bestCRS, getLayout, layerMetadata}
 
 import scala.collection.JavaConverters._
+import scala.collection.immutable
 import scala.math.max
 
 object CreoPyramidFactory {
-  private val crs = WebMercator
-  private val layoutScheme = ZoomedLayoutScheme(crs, 256)
+
+  private val layoutScheme = FloatingLayoutScheme(256)
   private val layerName = "S3"
   private val maxZoom = 14
 
@@ -50,26 +52,6 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
       .toSeq
   }
 
-  private def extent(productPaths: Seq[String]) = {
-    productPaths
-      .map(key => GDALRasterSource(key).reproject(crs))
-      .map(_.extent)
-      .reduceOption((e1, e2) => e1 combine e2)
-      .getOrElse(Extent(0, 0, 0, 0))
-  }
-
-  private def tileLayerMetadata(layout: LayoutDefinition, extent: Extent, from: ZonedDateTime, to: ZonedDateTime): TileLayerMetadata[SpaceTimeKey] = {
-    val gridBounds = layout.mapTransform.extentToBounds(extent)
-
-    TileLayerMetadata(
-      UByteUserDefinedNoDataCellType(255.asInstanceOf[Byte]),
-      layout,
-      extent,
-      crs,
-      KeyBounds(SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from), SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to))
-    )
-  }
-
   private def mapToSingleTile(tiles: Iterable[Tile]): Option[Tile] = {
     val intCombine = (t1: Int, t2: Int) => if (isNoData(t1)) t2 else if (isNoData(t2)) t1 else max(t1, t2)
     val doubleCombine = (t1: Double, t2: Double) => if (isNoData(t1)) t2 else if (isNoData(t2)) t1 else max(t1, t2)
@@ -83,15 +65,16 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     val sc: SparkContext = SparkContext.getOrCreate()
 
+    val crs = bestCRS(boundingBox, layoutScheme)
+
     val reprojectedBoundingBox = boundingBox.reproject(crs)
 
-    val layerId = LayerId(layerName, zoom)
-    val LayoutLevel(_, layout) = layoutScheme.levelForZoom(layerId.zoom)
+    val layout = getLayout(layoutScheme, boundingBox, zoom)
 
     val dates = sequentialDates(from)
       .takeWhile(date => !(date isAfter to))
 
-    val overlappingKeys = dates.flatMap(date =>
+    val overlappingKeys: immutable.Seq[SpaceTimeKey] = dates.flatMap(date =>
       layout.mapTransform.keysForGeometry(reprojectedBoundingBox.toPolygon())
         .map(key => SpaceTimeKey(key, date)))
 
@@ -104,25 +87,31 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
       }
     }
 
-    val bandFileMaps = bands.map(b =>
+    val bandFileMaps: Seq[Map[ZonedDateTime, Seq[String]]] = bands.map(b =>
       productKeys.filter(_.contains(b))
         .map(pk => extractDate(pk) -> pk)
         .groupBy(_._1)
         .map { case (k, v) => (k, v.map(_._2)) }
     )
 
-    val tiles = sc.parallelize(overlappingKeys)
+
+    val rastersources: RDD[(SpaceTimeKey,Seq[Seq[GDALRasterSource]])] = sc.parallelize(overlappingKeys)
       .map(key => (key, bandFileMaps
         .flatMap(_.get(key.time))
-        .map(_.map(path => GDALRasterSource(path).reproject(crs).tileToLayout(layout))
-          .flatMap(_.rasterRegionForKey(key.spatialKey).flatMap(_.raster))
-          .map(_.tile.band(0)))
-        .flatMap(mapToSingleTile(_))))
-      .flatMapValues(v => if (v.isEmpty) None else Some(MultibandTile(v)))
+        .map(_.map(path => GDALRasterSource(path)))))
 
-    val metadata = tileLayerMetadata(layout, extent(productKeys.filter(_.contains(bands.head))), from, to)
+    //unsafe, don't we need union of cell type?
+    val commonCellType = rastersources.take(1).head._2.head.head.cellType
+    val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType,layoutScheme)
 
-    ContextRDD(tiles, metadata)
+    val tiles:RDD[(SpaceTimeKey,Seq[Tile])] = rastersources.map{ case (key,value) => (key,value.map(_.map(rastersource => rastersource.reproject(metadata.crs).tileToLayout(metadata.layout))
+        .flatMap(_.rasterRegionForKey(key.spatialKey).flatMap(_.raster))
+        .map(_.tile.band(0)))
+      .flatMap(mapToSingleTile(_)))}
+
+      val cube = tiles.flatMapValues(v => if (v.isEmpty) None else Some(MultibandTile(v)))
+
+    ContextRDD(cube, metadata)
   }
 
   def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime): Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
