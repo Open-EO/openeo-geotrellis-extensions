@@ -4,20 +4,20 @@ import java.io.InputStream
 import java.io.StringWriter
 import java.lang.Math.pow
 import java.lang.Math.random
+import java.net.SocketTimeoutException
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.ISO_INSTANT
 import java.util
 import java.util.concurrent.TimeUnit.SECONDS
 
 import scala.io.Source
-import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
 import geotrellis.raster.{ArrayTile, MultibandTile, UShortConstantNoDataCellType}
 import geotrellis.vector.Extent
 import org.apache.commons.io.IOUtils
 import org.openeo.geotrellissentinelhub.bands.Band
 import org.slf4j.LoggerFactory
-import scalaj.http.{Http, HttpResponse}
+import scalaj.http.{Http, HttpStatusException}
 import com.fasterxml.jackson.core.JsonFactory
 import com.fasterxml.jackson.core.`type`.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -126,21 +126,18 @@ package object geotrellissentinelhub {
     logger.info(s"Executing request: ${request.urlBuilder(request)}")
     
     try {
-      retry(5, s"$date + $extent") {
-        val response = request.exec(parser = (code: Int, _: Map[String, IndexedSeq[String]], in: InputStream) =>
-            if (code == 200)
-              Some(GeoTiffReader.readMultiband(IOUtils.toByteArray(in)))
-            else {
-              val textBody = Source.fromInputStream(in, "utf-8").mkString
-              logger.warn(textBody)
-              None
-            }
+      val response = retry(5, s"$date + $extent") {
+        request.exec(parser = (code: Int, header: Map[String, IndexedSeq[String]], in: InputStream) =>
+          if (code == 200)
+            GeoTiffReader.readMultiband(IOUtils.toByteArray(in))
+          else {
+            val textBody = Source.fromInputStream(in, "utf-8").mkString
+            throw HttpStatusException(code, header.get("Status").flatMap(_.headOption).getOrElse("UNKNOWN"), textBody)
+          }
         )
-
-        response.body
-          .map(_.tile.mapBands { case (_, tile) => tile.withNoData(Some(UShortConstantNoDataCellType.noDataValue)) })
-          .getOrElse(throw new RetryException(response))
       }
+
+      response.body.tile.mapBands { case (_, tile) => tile.withNoData(Some(UShortConstantNoDataCellType.noDataValue)) }
     } catch {
       case e: Exception =>
         logger.warn(s"Returning empty tile: $e")
@@ -150,24 +147,26 @@ package object geotrellissentinelhub {
 
   @tailrec
   private def retry[T](nb: Int, message: String, i: Int = 1)(fn: => T): T = {
-    try {
-      fn
-    } catch {
-      case e: Exception =>
-        val exMessage = e match {
-          case r: RetryException => s"${r.response.code}: ${r.response.header("Status").getOrElse("UNKNOWN")}"
-          case _ => e.getMessage
-        }
-        logger.info(s"Attempt $i failed: $message -> $exMessage")
-        if (i < nb) {
-          val exponentialRetryAfter = 1000 * pow(2, i - 1)
-          val retryAfterWithJitter = (exponentialRetryAfter * (0.5 + random)).toInt
-          Thread.sleep(retryAfterWithJitter)
-          logger.info(s"Retry $i after ${retryAfterWithJitter}ms: $message")
-          retry(nb, message, i + 1)(fn)
-        } else throw e
-    }
-  }
+    def retryable(e: Exception): Boolean = {
+      logger.info(s"Attempt $i failed: $message -> ${e.getMessage}")
 
-  class RetryException(val response: HttpResponse[Option[MultibandGeoTiff]]) extends Exception
+      i < nb && (e match {
+        case h: HttpStatusException if h.code == 429 || h.code >= 500 => true
+        case _: SocketTimeoutException => true
+        case _ => false
+      })
+    }
+
+    try
+      return fn
+    catch {
+      case e: Exception if retryable(e) => Unit // won't recognize tail-recursive calls in a catch block as such
+    }
+
+    val exponentialRetryAfter = 1000 * pow(2, i - 1)
+    val retryAfterWithJitter = (exponentialRetryAfter * (0.5 + random)).toInt
+    Thread.sleep(retryAfterWithJitter)
+    logger.info(s"Retry $i after ${retryAfterWithJitter}ms: $message")
+    retry(nb, message, i + 1)(fn)
+  }
 }
