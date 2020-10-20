@@ -8,6 +8,9 @@ import org.junit.{Ignore, Test}
 
 class TestSameStartEndDate {
 
+  private val clientId = Utils.getRequiredSystemProperty("SENTINELHUB_CLIENT_ID")
+  private val clientSecret = Utils.getRequiredSystemProperty("SENTINELHUB_CLIENT_SECRET")
+
   @Test
   @Ignore
   def testSameStartEndDate(): Unit = {
@@ -28,10 +31,8 @@ class TestSameStartEndDate {
         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
         .set("spark.kryoserializer.buffer.max", "1024m"))
 
-    val uuid = System.getProperty("uuid-gamma0")
-    
-    val pyramid = new S1PyramidFactory(uuid).pyramid_seq(extent, bbox_srs, from, to, bands)
-    
+    val pyramid = new S1PyramidFactory(clientId, clientSecret).pyramid_seq(extent, bbox_srs, from, to, bands)
+
     val topLevelRdd = pyramid.filter(r => r._1 == 14).head._2
     
     val results = topLevelRdd.collect()
