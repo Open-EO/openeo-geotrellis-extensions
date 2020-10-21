@@ -7,7 +7,7 @@ import java.util
 import geotrellis.layer._
 import geotrellis.proj4.CRS
 import geotrellis.raster.gdal.GDALRasterSource
-import geotrellis.raster.{MultibandTile, Tile, isNoData}
+import geotrellis.raster.{MultibandTile, TargetAlignment, Tile, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector._
@@ -105,7 +105,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
     val commonCellType = rastersources.take(1).head._2.head.head.cellType
     val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType,layoutScheme)
 
-    val tiles:RDD[(SpaceTimeKey,Seq[Tile])] = rastersources.map{ case (key,value) => (key,value.map(_.map(rastersource => rastersource.reproject(metadata.crs).tileToLayout(metadata.layout))
+    val tiles:RDD[(SpaceTimeKey,Seq[Tile])] = rastersources.map{ case (key,value) => (key,value.map(_.map(rastersource => rastersource.reproject(metadata.crs,TargetAlignment(metadata)).tileToLayout(metadata.layout))
         .flatMap(_.rasterRegionForKey(key.spatialKey).flatMap(_.raster))
         .map(_.tile.band(0)))
       .flatMap(mapToSingleTile(_)))}
