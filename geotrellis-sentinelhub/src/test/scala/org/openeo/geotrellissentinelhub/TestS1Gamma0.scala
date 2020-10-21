@@ -8,8 +8,8 @@ import org.openeo.geotrellissentinelhub.bands.Sentinel1Bands._
 
 class TestS1Gamma0 {
 
-  private val clientId = Utils.getRequiredSystemProperty("SENTINELHUB_CLIENT_ID")
-  private val clientSecret = Utils.getRequiredSystemProperty("SENTINELHUB_CLIENT_SECRET")
+  private val clientId = Utils.clientId
+  private val clientSecret = Utils.clientSecret
 
   @Test
   @Ignore
