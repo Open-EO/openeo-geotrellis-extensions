@@ -7,13 +7,14 @@ import java.util
 import geotrellis.layer._
 import geotrellis.proj4.CRS
 import geotrellis.raster.gdal.GDALRasterSource
-import geotrellis.raster.{MultibandTile, TargetAlignment, Tile, isNoData}
+import geotrellis.raster.{MultibandTile, RasterRegion, TargetAlignment, Tile, isNoData}
 import geotrellis.spark._
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrellis.{ProjectedPolygons, _}
 import org.openeo.geotrellis.layers.FileLayerProvider.{bestCRS, getLayout, layerMetadata}
 
 import scala.collection.JavaConverters._
@@ -105,12 +106,18 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
     val commonCellType = rastersources.take(1).head._2.head.head.cellType
     val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType,layoutScheme)
 
-    val tiles:RDD[(SpaceTimeKey,Seq[Tile])] = rastersources.map{ case (key,value) => (key,value.map(_.map(rastersource => rastersource.reproject(metadata.crs,TargetAlignment(metadata)).tileToLayout(metadata.layout))
-        .flatMap(_.rasterRegionForKey(key.spatialKey).flatMap(_.raster))
-        .map(_.tile.band(0)))
-      .flatMap(mapToSingleTile(_)))}
+    val regions:RDD[(SpaceTimeKey,Seq[Seq[RasterRegion]])] = rastersources.map{ case (key,value) => (key,value.map(_.map(rastersource => rastersource.reproject(metadata.crs,TargetAlignment(metadata)).tileToLayout(metadata.layout))
+        .flatMap(_.rasterRegionForKey(key.spatialKey))
+        )
+      )}
 
-      val cube = tiles.flatMapValues(v => if (v.isEmpty) None else Some(MultibandTile(v)))
+    val partitioner = SpacePartitioner(metadata.bounds)
+    assert(partitioner.index == SpaceTimeByMonthPartitioner)
+    val tiles:RDD[(SpaceTimeKey,Seq[Tile])] = regions.repartitionAndSortWithinPartitions(partitioner).map{ case (key,value) =>
+      (key,value.map(_.flatMap(_.raster).map(_.tile.band(0))).flatMap(mapToSingleTile(_)))
+    }
+
+    val cube = tiles.flatMapValues(v => if (v.isEmpty) None else Some(MultibandTile(v)))
 
     ContextRDD(cube, metadata)
   }
