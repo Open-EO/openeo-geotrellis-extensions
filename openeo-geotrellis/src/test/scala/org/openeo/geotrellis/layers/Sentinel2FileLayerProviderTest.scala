@@ -4,7 +4,6 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time._
 
-import org.openeo.geotrellis.TestImplicits._
 import cats.data.NonEmptyList
 import geotrellis.layer.FloatingLayoutScheme
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
@@ -19,6 +18,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Ignore, Test}
+import org.openeo.geotrellis.TestImplicits._
 
 object Sentinel2FileLayerProviderTest {
   private var sc: SparkContext = _
@@ -126,8 +126,8 @@ class Sentinel2FileLayerProviderTest {
     println("Time: "+ (System.currentTimeMillis() - start)/1000.0)
     assertEquals(1,meanList.length)
     assertEquals(29874.0/7225.0,meanList.head.mean,0.01)
-    assertEquals(11202.0, meanList.head.sum, 0.01)
-    assertEquals(2704, meanList.head.count)
+    assertEquals(10966.0, meanList.head.sum, 0.01)
+    assertEquals(2652, meanList.head.count)
 
   }
 
@@ -180,8 +180,8 @@ class Sentinel2FileLayerProviderTest {
   @Ignore("TODO: verify output")
   @Test
   def testBlackStreak(): Unit = {
-    import org.apache.commons.io.IOUtils
     import geotrellis.vector.io.json.GeoJson
+    import org.apache.commons.io.IOUtils
 
     val date = ZonedDateTime.of(LocalDate.of(2020, 6, 24), MIDNIGHT, UTC)
 
