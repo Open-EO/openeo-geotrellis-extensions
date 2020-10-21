@@ -10,9 +10,10 @@ import geotrellis.raster.gdal.GDALRasterSource
 import geotrellis.raster.{MultibandTile, Tile, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.FileLayerProvider.{bestCRS, getLayout, layerMetadata}
 
 import scala.collection.JavaConverters._
@@ -121,6 +122,10 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     val projectedExtent = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
+    pyramid_seq_internal(projectedExtent, from_date, to_date)
+  }
+
+  private def pyramid_seq_internal(projectedExtent: ProjectedExtent, from_date: String, to_date: String): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     val from = ZonedDateTime.parse(from_date)
     val to = ZonedDateTime.parse(to_date)
 
@@ -128,5 +133,21 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
       .sortBy { case (zoom, _) => zoom }
       .reverse
   }
+
+  /**
+   * Same as #datacube, but return same structure as pyramid_seq
+   *
+   * @param polygons
+   * @param from_date
+   * @param to_date
+   * @param metadata_properties
+   * @return
+   */
+  def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
+                   metadata_properties: util.Map[String, Any], correlationId: String):
+  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+    pyramid_seq_internal(ProjectedExtent(polygons.polygons.toSeq.extent,polygons.crs),from_date, to_date)
+  }
+
 
 }
