@@ -8,8 +8,8 @@ import org.junit.{Ignore, Test}
 
 class TestSameStartEndDate {
 
-  private val clientId = Utils.getRequiredSystemProperty("SENTINELHUB_CLIENT_ID")
-  private val clientSecret = Utils.getRequiredSystemProperty("SENTINELHUB_CLIENT_SECRET")
+  private val clientId = Utils.clientId
+  private val clientSecret = Utils.clientSecret
 
   @Test
   @Ignore

@@ -109,7 +109,10 @@ void build(tests = true){
         rtMaven.deployer.deployArtifacts = publishable_branches.contains(env.BRANCH_NAME)
         //use '--projects StatisticsMapReduce' in 'goals' to build specific module
         try {
-            withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'CephS3']]) {
+            withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'CephS3'],
+                    [$class: 'UsernamePasswordMultiBinding', credentialsId: 'SentinelHubVdboschj', usernameVariable: 'SENTINELHUB_CLIENT_ID', passwordVariable: 'SENTINELHUB_CLIENT_SECRET']
+            ]) {
                 buildInfo = rtMaven.run pom: 'pom.xml', goals: '-U clean install'
                 try {
                     if (rtMaven.deployer.deployArtifacts)

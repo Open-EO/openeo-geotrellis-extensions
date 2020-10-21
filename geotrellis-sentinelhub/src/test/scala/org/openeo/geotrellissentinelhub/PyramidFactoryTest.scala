@@ -20,8 +20,8 @@ import scala.collection.JavaConverters._
 
 class PyramidFactoryTest {
 
-  private val clientId = Utils.getRequiredSystemProperty("SENTINELHUB_CLIENT_ID")
-  private val clientSecret = Utils.getRequiredSystemProperty("SENTINELHUB_CLIENT_SECRET")
+  private val clientId = Utils.clientId
+  private val clientSecret = Utils.clientSecret
 
   @Ignore
   @Test
@@ -37,7 +37,6 @@ class PyramidFactoryTest {
     testLayer(new S2L1CPyramidFactory(clientId, clientSecret), "sentinel2-L1C", date, Seq(Sentinel2L1CBands.B04, Sentinel2L1CBands.B03, Sentinel2L1CBands.B02))
   }
 
-  @Ignore
   @Test
   def testSentinel2L2A(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
@@ -68,29 +67,19 @@ class PyramidFactoryTest {
       val isoDate = ISO_OFFSET_DATE_TIME format date
       val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs, isoDate, isoDate, bandIndices)
 
-      val zoom = 14
+      val (zoom, baseLayer) = pyramid
+        .maxBy { case (zoom, _) => zoom }
 
-      val baseLayer = pyramid
-        .find { case (index, _) => index == zoom }
-        .map { case (_, layer) => layer }
-        .get.cache()
+      baseLayer.cache()
 
       println(s"got ${baseLayer.count()} tiles")
 
-      val timestamps = baseLayer.keys
-        .map(_.time)
-        .distinct()
-        .collect()
-        .sortWith(_ isBefore _)
+      val Raster(multibandTile, extent) = baseLayer
+        .toSpatial()
+        .stitch()
 
-      for (timestamp <- timestamps) {
-        val Raster(multibandTile, extent) = baseLayer
-          .toSpatial(timestamp)
-          .stitch()
-
-        val tif = MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs)
-        tif.write(s"/home/niels/pyramidFactory/$layer/${zoom}_${DateTimeFormatter.ISO_LOCAL_DATE format timestamp}.tif")
-      }
+      val tif = MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs)
+      tif.write(s"/tmp/${layer}_${zoom}_${DateTimeFormatter.ISO_LOCAL_DATE format date}.tif")
     } finally {
       sc.stop()
     }
