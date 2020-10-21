@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit.SECONDS
 
 import scala.io.Source
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
-import geotrellis.raster.{ArrayTile, MultibandTile, UShortConstantNoDataCellType}
+import geotrellis.raster.{MultibandTile, UShortConstantNoDataCellType}
 import geotrellis.vector.Extent
 import org.apache.commons.io.IOUtils
 import org.openeo.geotrellissentinelhub.bands.Band
@@ -33,7 +33,7 @@ package object geotrellissentinelhub {
     .expireAfterWrite(1800L, SECONDS)
     .build(new CacheLoader[(String, String), String] {
       override def load(credentials: (String, String)): String = credentials match {
-        case (clientId, clientSecret) => retrieveAuthToken(clientId, clientSecret)
+        case (clientId, clientSecret) => retry(5, clientId) { retrieveAuthToken(clientId, clientSecret) }
       }
     })
 
@@ -125,24 +125,18 @@ package object geotrellissentinelhub {
 
     logger.info(s"Executing request: ${request.urlBuilder(request)}")
     
-    try {
-      val response = retry(5, s"$date + $extent") {
-        request.exec(parser = (code: Int, header: Map[String, IndexedSeq[String]], in: InputStream) =>
-          if (code == 200)
-            GeoTiffReader.readMultiband(IOUtils.toByteArray(in))
-          else {
-            val textBody = Source.fromInputStream(in, "utf-8").mkString
-            throw HttpStatusException(code, header.get("Status").flatMap(_.headOption).getOrElse("UNKNOWN"), textBody)
-          }
-        )
-      }
-
-      response.body.tile.mapBands { case (_, tile) => tile.withNoData(Some(UShortConstantNoDataCellType.noDataValue)) }
-    } catch {
-      case e: Exception =>
-        logger.warn(s"Returning empty tile: $e")
-        MultibandTile(Seq.fill(bands.size)(ArrayTile.empty(UShortConstantNoDataCellType, width, height)))
+    val response = retry(5, s"$date + $extent") {
+      request.exec(parser = (code: Int, header: Map[String, IndexedSeq[String]], in: InputStream) =>
+        if (code == 200)
+          GeoTiffReader.readMultiband(IOUtils.toByteArray(in))
+        else {
+          val textBody = Source.fromInputStream(in, "utf-8").mkString
+          throw HttpStatusException(code, header.get("Status").flatMap(_.headOption).getOrElse("UNKNOWN"), textBody)
+        }
+      )
     }
+
+    response.body.tile.mapBands { case (_, tile) => tile.withNoData(Some(UShortConstantNoDataCellType.noDataValue)) }
   }
 
   @tailrec
