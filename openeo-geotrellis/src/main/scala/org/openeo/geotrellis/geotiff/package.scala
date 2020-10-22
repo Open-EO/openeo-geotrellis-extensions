@@ -67,9 +67,14 @@ package object geotiff {
       BandType.forCellType(rdd.metadata.cellType))
 
     val bandSegmentCount = totalCols * totalRows
-    //val bandCount = 1
-    val segmentCount = bandSegmentCount * bandCount
-    println("Saving geotiff with " + segmentCount + " segments.")
+    val actualBandcount =
+    if (bandCount < 0) {
+      new OpenEOProcesses().RDDBandCount(rdd)
+    }else{
+      bandCount
+    }
+    val segmentCount = bandSegmentCount * actualBandcount
+    println("Saving geotiff with " + segmentCount + " segments. Celltype: " + rdd.metadata.cellType)
     val compressor = compression.createCompressor(segmentCount)
 
     val tiffs: collection.Map[Int, Array[Byte]] = preprocessedRdd.flatMap { case (key: SpatialKey, multibandTile: MultibandTile) => {
@@ -110,7 +115,7 @@ package object geotiff {
       compressor.createDecompressor(),
       segmentLayout,
       compression,
-      bandCount,
+      actualBandcount,
       preprocessedRdd.metadata.cellType)
     val thegeotiff = MultibandGeoTiff(tiffTile, croppedExtent, preprocessedRdd.metadata.crs)
 
