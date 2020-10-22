@@ -4,7 +4,7 @@ import java.time.ZonedDateTime
 
 import geotrellis.layer.{KeyBounds, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, WebMercator}
-import geotrellis.raster.{FloatUserDefinedNoDataCellType, MultibandTile}
+import geotrellis.raster.{UShortConstantNoDataCellType, MultibandTile}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector.{Extent, ProjectedExtent}
@@ -44,7 +44,7 @@ abstract class PyramidFactory[B <: Band](val allBands: Seq[B], datasetId: String
       val gridBounds = layout.mapTransform.extentToBounds(reprojectedBoundingBox)
 
       TileLayerMetadata(
-        cellType = FloatUserDefinedNoDataCellType(1.0f),
+        cellType = UShortConstantNoDataCellType,
         layout = layout,
         extent = reprojectedBoundingBox,
         crs = targetCrs,

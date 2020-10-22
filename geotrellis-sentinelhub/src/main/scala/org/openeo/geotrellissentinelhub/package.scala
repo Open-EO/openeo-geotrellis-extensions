@@ -136,7 +136,9 @@ package object geotrellissentinelhub {
       )
     }
 
-    response.body.tile.mapBands { case (_, tile) => tile.withNoData(Some(UShortConstantNoDataCellType.noDataValue)) }
+    response.body.tile
+      .toArrayTile()
+      .mapBands { case (_, tile) => tile.withNoData(Some(UShortConstantNoDataCellType.noDataValue)) }
   }
 
   @tailrec
