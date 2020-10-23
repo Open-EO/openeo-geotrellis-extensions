@@ -67,18 +67,19 @@ package object geotiff {
       BandType.forCellType(rdd.metadata.cellType))
 
     val bandSegmentCount = totalCols * totalRows
-    val actualBandcount =
-    if (bandCount < 0) {
-      new OpenEOProcesses().RDDBandCount(rdd)
-    }else{
-      bandCount
-    }
-    val segmentCount = bandSegmentCount * actualBandcount
-    println("Saving geotiff with " + segmentCount + " segments. Celltype: " + rdd.metadata.cellType)
-    val compressor = compression.createCompressor(segmentCount)
 
+    println("Saving geotiff with Celltype: " + rdd.metadata.cellType)
+
+    val totalBandCount = rdd.sparkContext.longAccumulator("TotalBandCount")
     val tiffs: collection.Map[Int, Array[Byte]] = preprocessedRdd.flatMap { case (key: SpatialKey, multibandTile: MultibandTile) => {
       var bandIndex = -1
+      if(multibandTile.bandCount>0) {
+        totalBandCount.add(multibandTile.bandCount)
+      }
+      //Warning: for deflate compression, the segmentcount and index is not really used, making it stateless.
+      //Not sure how this works out for other types of compression!!!
+      val theCompressor = compression.createCompressor( multibandTile.bandCount)
+
       multibandTile.bands.map {
         tile => {
           bandIndex += 1
@@ -88,7 +89,7 @@ package object geotiff {
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
           //tiff format seems to require that we provide 'full' tiles
           val bytes = raster.CroppedTile(tile, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
-          val compressedBytes = compressor.compress(bytes, index)
+          val compressedBytes = theCompressor.compress(bytes, 0)
           (index, compressedBytes)
         }
 
@@ -96,6 +97,8 @@ package object geotiff {
     }
     }.collectAsMap()
 
+    val segmentCount = (bandSegmentCount*totalBandCount.avg).toInt
+    val compressor = compression.createCompressor(segmentCount)
     lazy val emptySegment =
       ArrayTile.empty(rdd.metadata.cellType, tileLayout.tileCols, tileLayout.tileRows).toBytes
 
@@ -109,13 +112,12 @@ package object geotiff {
       }
     }
     }
-
     val tiffTile: GeoTiffMultibandTile = GeoTiffMultibandTile(
       new ArraySegmentBytes(segments),
       compressor.createDecompressor(),
       segmentLayout,
       compression,
-      actualBandcount,
+      totalBandCount.avg.toInt,
       preprocessedRdd.metadata.cellType)
     val thegeotiff = MultibandGeoTiff(tiffTile, croppedExtent, preprocessedRdd.metadata.crs)
 
