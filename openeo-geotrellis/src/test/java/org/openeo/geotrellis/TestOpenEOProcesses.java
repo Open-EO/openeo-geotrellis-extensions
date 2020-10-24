@@ -14,7 +14,6 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
-
 import scala.Tuple2;
 import scala.reflect.ClassTag;
 
@@ -110,7 +109,7 @@ public class TestOpenEOProcesses {
         maskTile.set(0,2,1);
 
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> maskRDD = tileToSpaceTimeDataCube(maskTile);
-        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> masked = new OpenEOProcesses().rasterMask(tileLayerRDD, maskRDD, 10.0);
+        RDD<Tuple2<SpaceTimeKey, MultibandTile>> masked = new OpenEOProcesses().rasterMask(tileLayerRDD, maskRDD, 10.0);
 
         JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(masked.toJavaRDD());
         assertFalse(result.isEmpty());
