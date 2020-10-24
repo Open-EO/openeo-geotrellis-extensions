@@ -2,13 +2,14 @@ package org.openeo.geotrellis.geotiff
 
 import java.awt.image.DataBufferByte
 
-import geotrellis.layer.ZoomedLayoutScheme
+import geotrellis.layer.{CRSWorldExtent, SpatialKey, ZoomedLayoutScheme}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.io.geotiff.GeoTiff
-import geotrellis.raster.{ByteArrayTile, MultibandTile, Raster, TileLayout}
+import geotrellis.raster.{ByteArrayTile, ByteConstantTile, MultibandTile, Raster, Tile, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector.Extent
+import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit._
@@ -153,6 +154,29 @@ class WriteRDDToGeotiffTest {
 
     assertEquals(resultRaster.extent,reference.extent)
     assertArrayEquals(reference.tile.band(0).toArray(),resultRaster.tile.band(0).toArray())
+  }
+
+  @Test
+  def testWriteEmptyRdd(): Unit ={
+    val layoutCols = 8
+    val layoutRows = 4
+
+    val intImage = createTextImage( layoutCols*256, layoutRows*256)
+    val imageTile = ByteArrayTile(intImage,layoutCols*256, layoutRows*256,256.toByte)
+
+    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile),TileLayout(layoutCols,layoutRows,256,256),LatLng)
+    val empty = tileLayerRDD.withContext{_.filter(_ => false)}
+    val filename = "outEmpty.tif"
+    val cropBounds = Extent(-115, -65, 5.0, 56)
+    saveRDD(empty,-1,filename,cropBounds = Some(cropBounds))
+
+    val emptyTile = ByteConstantTile.apply(256.toByte, 2048, 1024)
+    val croppedReference: Raster[Tile] = new Raster(emptyTile,LatLng.worldExtent).crop(cropBounds)
+
+    val result = GeoTiff.readMultiband(filename).raster.tile
+    val croppedOutput = result.band(0).toArrayTile()
+    assertArrayEquals(croppedReference.tile.toBytes(),croppedOutput.toBytes())
+
   }
 
   @Test

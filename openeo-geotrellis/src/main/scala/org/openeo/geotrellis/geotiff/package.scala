@@ -97,16 +97,18 @@ package object geotiff {
     }
     }.collectAsMap()
 
-    val segmentCount = (bandSegmentCount*totalBandCount.avg).toInt
+    val detectedBandCount =  if(totalBandCount.avg >0) totalBandCount.avg else 1
+    val segmentCount = (bandSegmentCount*detectedBandCount).toInt
     val compressor = compression.createCompressor(segmentCount)
     lazy val emptySegment =
       ArrayTile.empty(rdd.metadata.cellType, tileLayout.tileCols, tileLayout.tileRows).toBytes
 
     val segments: Array[Array[Byte]] = Array.ofDim(segmentCount)
+    val emptySegmentCompressed = compressor.compress(emptySegment, 0)
     cfor(0)(_ < segmentCount, _ + 1) { index => {
       val maybeBytes = tiffs.get(index)
       if (maybeBytes.isEmpty) {
-        segments(index) = compressor.compress(emptySegment, index)
+        segments(index) = emptySegmentCompressed
       } else {
         segments(index) = maybeBytes.get
       }
@@ -117,7 +119,7 @@ package object geotiff {
       compressor.createDecompressor(),
       segmentLayout,
       compression,
-      totalBandCount.avg.toInt,
+      detectedBandCount.toInt,
       preprocessedRdd.metadata.cellType)
     val thegeotiff = MultibandGeoTiff(tiffTile, croppedExtent, preprocessedRdd.metadata.crs)
 
