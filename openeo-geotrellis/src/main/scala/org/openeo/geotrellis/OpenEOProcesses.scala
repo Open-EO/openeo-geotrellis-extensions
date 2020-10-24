@@ -303,7 +303,7 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
-  def rasterMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], mask: MultibandTileLayerRDD[SpaceTimeKey], replacement: java.lang.Double): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+  def rasterMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], mask: MultibandTileLayerRDD[SpaceTimeKey], replacement: java.lang.Double): MultibandTileLayerRDD[SpaceTimeKey] = {
     val joined = datacube.spatialLeftOuterJoin(mask)
     val replacementInt: Int = if (replacement == null) NODATA else replacement.intValue()
     val replacementDouble: Double = if (replacement == null) doubleNODATA else replacement
@@ -324,8 +324,8 @@ class OpenEOProcesses extends Serializable {
       }
 
     })
-    val outputCellType = datacube.metadata.cellType.union(mask.metadata.cellType)
-    new ContextRDD(masked, datacube.metadata.copy(cellType = outputCellType))
+
+    new ContextRDD(masked, datacube.metadata).convert(datacube.metadata.cellType)
   }
 
   /**
