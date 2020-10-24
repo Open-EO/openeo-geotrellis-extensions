@@ -21,7 +21,6 @@ import geotrellis.vector.io.json.JsonFeatureCollection
 import geotrellis.vector.{Extent, PolygonFeature}
 import org.apache.spark.rdd._
 import org.openeo.geotrellis.focal._
-import org.openeo.geotrellisaccumulo.SpaceTimeByMonthPartitioner
 
 import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
@@ -325,8 +324,8 @@ class OpenEOProcesses extends Serializable {
       }
 
     })
-
-    new ContextRDD(masked, datacube.metadata)
+    val outputCellType = datacube.metadata.cellType.union(mask.metadata.cellType)
+    new ContextRDD(masked, datacube.metadata.copy(cellType = outputCellType))
   }
 
   /**
