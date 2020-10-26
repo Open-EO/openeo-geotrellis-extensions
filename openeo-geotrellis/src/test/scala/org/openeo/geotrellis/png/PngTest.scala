@@ -9,6 +9,7 @@ import geotrellis.proj4.LatLng
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
+import org.apache.spark.storage.StorageLevel.DISK_ONLY
 import org.apache.spark.SparkContext
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.layers.Sentinel2FileLayerProvider
@@ -17,8 +18,20 @@ object PngTest {
   private var sc: SparkContext = _
 
   @BeforeClass
-  def setupSpark(): Unit =
-    sc = SparkUtils.createLocalSparkContext("local[*]", PngTest.getClass.getName)
+  def setupSpark(): Unit = {
+    // originally geotrellis.spark.util.SparkUtils.createLocalSparkContext
+    val conf = SparkUtils.createSparkConf
+      .setMaster("local[*]")
+      .setAppName(PngTest.getClass.getName)
+      .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+      // .set("spark.kryo.registrationRequired", "true") // this requires e.g. RasterSource to be registered too
+      .set("spark.kryo.registrator", Seq(
+        classOf[geotrellis.spark.store.kryo.KryoRegistrator].getName,
+        classOf[org.openeo.geotrellis.png.KryoRegistrator].getName) mkString ","
+      )
+
+    sc = new SparkContext(conf)
+  }
 
   @AfterClass
   def tearDownSpark(): Unit =
@@ -37,7 +50,7 @@ class PngTest {
 
     val spatialLayer = layer
       .toSpatial()
-      .cache()
+      .persist(DISK_ONLY)
 
     saveStitched(spatialLayer, "/tmp/testSaveStitched.png")
     saveStitched(spatialLayer, "/tmp/testSaveStitched_cropped.png", bbox.reproject(spatialLayer.metadata.crs))
