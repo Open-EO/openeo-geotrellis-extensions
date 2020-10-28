@@ -15,7 +15,6 @@ import geotrellis.raster.io.geotiff.reader.GeoTiffReader
 import geotrellis.raster.{MultibandTile, UShortConstantNoDataCellType}
 import geotrellis.vector.Extent
 import org.apache.commons.io.IOUtils
-import org.openeo.geotrellissentinelhub.bands.Band
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpStatusException}
 import com.fasterxml.jackson.core.JsonFactory
@@ -57,20 +56,20 @@ package object geotrellissentinelhub {
   }
 
   def retrieveTileFromSentinelHub(datasetId: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int,
-                                  bands: Seq[_ <: Band], clientId: String, clientSecret: String): MultibandTile = {
+                                  bandNames: Seq[String], clientId: String, clientSecret: String): MultibandTile = {
     val evalscript = s"""//VERSION=3
       function setup() {
         return {
-          input: [${bands.map(band => s""""$band"""") mkString ", "}],
+          input: [${bandNames.map(bandName => s""""$bandName"""") mkString ", "}],
           output: {
-            bands: ${bands.size},
+            bands: ${bandNames.size},
             sampleType: "UINT16",
           }
         };
       }
 
       function evaluatePixel(sample) {
-        return [${bands.map(band => s"sample.$band * 65535") mkString ", "}];
+        return [${bandNames.map(bandName => s"sample.$bandName * 65535") mkString ", "}];
       }
     """
     val jsonFactory = new JsonFactory();

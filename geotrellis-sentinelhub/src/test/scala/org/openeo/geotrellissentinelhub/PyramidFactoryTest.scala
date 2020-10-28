@@ -11,10 +11,7 @@ import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkConf
-import org.junit.{Ignore, Test}
-import org.openeo.geotrellissentinelhub.bands.Landsat8Bands.{B10, B11}
-import org.openeo.geotrellissentinelhub.bands.Sentinel1Bands.{VH, VV}
-import org.openeo.geotrellissentinelhub.bands.{Band, Sentinel2L1CBands, Sentinel2L2ABands}
+import org.junit.Test
 
 import scala.collection.JavaConverters._
 
@@ -26,28 +23,28 @@ class PyramidFactoryTest {
   @Test
   def testGamma0(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 10, 10), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new S1PyramidFactory(clientId, clientSecret), "gamma0", date, Seq(VV, VH))
+    testLayer(new PyramidFactory("S1GRD", clientId, clientSecret), "gamma0", date, Seq("VV", "VH"))
   }
 
   @Test
   def testSentinel2L1C(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new S2L1CPyramidFactory(clientId, clientSecret), "sentinel2-L1C", date, Seq(Sentinel2L1CBands.B04, Sentinel2L1CBands.B03, Sentinel2L1CBands.B02))
+    testLayer(new PyramidFactory("S2L1C", clientId, clientSecret), "sentinel2-L1C", date, Seq("B04", "B03", "B02"))
   }
 
   @Test
   def testSentinel2L2A(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new S2L2APyramidFactory(clientId, clientSecret), "sentinel2-L2A", date, Seq(Sentinel2L2ABands.B08, Sentinel2L2ABands.B04, Sentinel2L2ABands.B03))
+    testLayer(new PyramidFactory("S2L2A", clientId, clientSecret), "sentinel2-L2A", date, Seq("B08", "B04", "B03"))
   }
 
   @Test
   def testLandsat8(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new L8PyramidFactory(clientId, clientSecret), "landsat8", date, Seq(B10, B11))
+    testLayer(new PyramidFactory("L8L1C", clientId, clientSecret), "landsat8", date, Seq("B10", "B11"))
   }
   
-  def testLayer[B <: Band](pyramidFactory: PyramidFactory[B], layer: String, date: ZonedDateTime, bands: Seq[B]): Unit = {
+  def testLayer(pyramidFactory: PyramidFactory, layer: String, date: ZonedDateTime, bandNames: Seq[String]): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
 
     val sparkConf = new SparkConf()
@@ -59,10 +56,8 @@ class PyramidFactoryTest {
     try {
       val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
 
-      val bandIndices = bands.map(pyramidFactory.allBands.indexOf(_)).asJava
-
       val isoDate = ISO_OFFSET_DATE_TIME format date
-      val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs, isoDate, isoDate, bandIndices)
+      val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs, isoDate, isoDate, bandNames.asJava)
 
       val (zoom, baseLayer) = pyramid
         .maxBy { case (zoom, _) => zoom }
