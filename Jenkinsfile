@@ -111,7 +111,7 @@ void build(tests = true){
         try {
             withCredentials([
                     [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'CephS3'],
-                    [$class: 'UsernamePasswordMultiBinding', credentialsId: 'SentinelHubMiha', usernameVariable: 'SENTINELHUB_CLIENT_ID', passwordVariable: 'SENTINELHUB_CLIENT_SECRET']
+                    [$class: 'UsernamePasswordMultiBinding', credentialsId: 'SentinelHubGeodatadev', usernameVariable: 'SENTINELHUB_CLIENT_ID', passwordVariable: 'SENTINELHUB_CLIENT_SECRET']
             ]) {
                 buildInfo = rtMaven.run pom: 'pom.xml', goals: '-U clean install'
                 try {

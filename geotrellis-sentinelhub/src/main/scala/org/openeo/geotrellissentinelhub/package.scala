@@ -15,7 +15,6 @@ import geotrellis.raster.io.geotiff.reader.GeoTiffReader
 import geotrellis.raster.{MultibandTile, UShortConstantNoDataCellType}
 import geotrellis.vector.Extent
 import org.apache.commons.io.IOUtils
-import org.openeo.geotrellissentinelhub.bands.Band
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpStatusException}
 import com.fasterxml.jackson.core.JsonFactory
@@ -57,20 +56,20 @@ package object geotrellissentinelhub {
   }
 
   def retrieveTileFromSentinelHub(datasetId: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int,
-                                  bands: Seq[_ <: Band], clientId: String, clientSecret: String): MultibandTile = {
+                                  bandNames: Seq[String], clientId: String, clientSecret: String): MultibandTile = {
     val evalscript = s"""//VERSION=3
       function setup() {
         return {
-          input: [${bands.map(band => s""""$band"""") mkString ", "}],
+          input: [${bandNames.map(bandName => s""""$bandName"""") mkString ", "}],
           output: {
-            bands: ${bands.size},
+            bands: ${bandNames.size},
             sampleType: "UINT16",
           }
         };
       }
 
       function evaluatePixel(sample) {
-        return [${bands.map(band => s"sample.$band * 65535") mkString ", "}];
+        return [${bandNames.map(bandName => s"sample.$bandName * 65535") mkString ", "}];
       }
     """
     val jsonFactory = new JsonFactory();
@@ -142,9 +141,14 @@ package object geotrellissentinelhub {
   }
 
   @tailrec
-  private def retry[T](nb: Int, message: String, i: Int = 1)(fn: => T): T = {
+  private def retry[T](nb: Int, context: String, i: Int = 1)(fn: => T): T = {
     def retryable(e: Exception): Boolean = {
-      logger.info(s"Attempt $i failed: $message -> ${e.getMessage}")
+      val errorMessage = e match {
+        case h: HttpStatusException => s"${h.getMessage}: ${h.body}"
+        case _ => e.getMessage
+      }
+
+      logger.warn(s"Attempt $i failed: $context -> $errorMessage")
 
       i < nb && (e match {
         case h: HttpStatusException if h.code == 429 || h.code >= 500 => true
@@ -162,7 +166,7 @@ package object geotrellissentinelhub {
     val exponentialRetryAfter = 1000 * pow(2, i - 1)
     val retryAfterWithJitter = (exponentialRetryAfter * (0.5 + random)).toInt
     Thread.sleep(retryAfterWithJitter)
-    logger.info(s"Retry $i after ${retryAfterWithJitter}ms: $message")
-    retry(nb, message, i + 1)(fn)
+    logger.info(s"Retry $i after ${retryAfterWithJitter}ms: $context")
+    retry(nb, context, i + 1)(fn)
   }
 }
