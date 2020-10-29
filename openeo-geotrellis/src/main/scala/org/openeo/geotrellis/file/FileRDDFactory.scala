@@ -7,9 +7,11 @@ import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLay
 import geotrellis.proj4.CRS
 import geotrellis.raster.FloatConstantNoDataCellType
 import geotrellis.spark._
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.openeo.geotrellis.SpaceTimeByMonthPartitioner
 import org.openeo.geotrellis.layers.FileLayerProvider.layerMetadata
 import org.openeo.geotrellis.layers.Oscars
 import org.openeo.geotrellis.layers.OscarsResponses.Feature
@@ -57,6 +59,6 @@ class FileRDDFactory(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyList[
      * Further possible improvements:
      * already filter out spatialkeys that do not match the feature extent
      */
-    return new ContextRDD(spatialRDD,metadata)
+    return new ContextRDD(spatialRDD.partitionBy(SpacePartitioner(metadata.bounds)),metadata)
   }
 }
