@@ -60,7 +60,10 @@ package object geotrellissentinelhub {
     val evalscript = s"""//VERSION=3
       function setup() {
         return {
-          input: [${bandNames.map(bandName => s""""$bandName"""") mkString ", "}],
+          input: [{
+            "bands": [${bandNames.map(bandName => s""""$bandName"""") mkString ", "}],
+            "units": "DN"
+          }],
           output: {
             bands: ${bandNames.size},
             sampleType: "UINT16",
@@ -69,7 +72,7 @@ package object geotrellissentinelhub {
       }
 
       function evaluatePixel(sample) {
-        return [${bandNames.map(bandName => s"sample.$bandName * 65535") mkString ", "}];
+        return [${bandNames.map(bandName => s"sample.$bandName") mkString ", "}];
       }
     """
     val jsonFactory = new JsonFactory();

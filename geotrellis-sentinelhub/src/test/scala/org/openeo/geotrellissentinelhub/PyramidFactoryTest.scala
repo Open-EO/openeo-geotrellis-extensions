@@ -43,8 +43,14 @@ class PyramidFactoryTest {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
     testLayer(new PyramidFactory("L8L1C", clientId, clientSecret), "landsat8", date, Seq("B10", "B11"))
   }
+
+  @Test
+  def testDigitalNumbersOutput(): Unit = { // TODO: check output values programmatically
+    val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+    testLayer(new PyramidFactory("S2L2A", clientId, clientSecret), "sentinel2-L2A_mix", date, Seq("B04", "sunAzimuthAngles", "SCL"))
+  }
   
-  def testLayer(pyramidFactory: PyramidFactory, layer: String, date: ZonedDateTime, bandNames: Seq[String]): Unit = {
+  private def testLayer(pyramidFactory: PyramidFactory, layer: String, date: ZonedDateTime, bandNames: Seq[String]): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
 
     val sparkConf = new SparkConf()
