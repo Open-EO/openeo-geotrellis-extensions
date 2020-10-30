@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit.SECONDS
 import scala.io.Source
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
 import geotrellis.raster.{MultibandTile, UShortConstantNoDataCellType}
-import geotrellis.vector.Extent
+import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.commons.io.IOUtils
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpStatusException}
@@ -55,8 +55,11 @@ package object geotrellissentinelhub {
     token
   }
 
-  def retrieveTileFromSentinelHub(datasetId: String, extent: Extent, date: ZonedDateTime, width: Int, height: Int,
+  def retrieveTileFromSentinelHub(datasetId: String, projectedExtent: ProjectedExtent, date: ZonedDateTime, width: Int, height: Int,
                                   bandNames: Seq[String], clientId: String, clientSecret: String): MultibandTile = {
+    val ProjectedExtent(extent, crs) = projectedExtent
+    val epsgCode = crs.epsgCode.getOrElse(s"unsupported crs $crs")
+
     val evalscript = s"""//VERSION=3
       function setup() {
         return {
@@ -87,7 +90,7 @@ package object geotrellissentinelhub {
         "bounds": {
           "bbox": [${extent.xmin}, ${extent.ymin}, ${extent.xmax}, ${extent.ymax}],
           "properties": {
-            "crs": "http://www.opengis.net/def/crs/EPSG/0/3857"
+            "crs": "http://www.opengis.net/def/crs/EPSG/0/$epsgCode"
           }
         },
         "data": [

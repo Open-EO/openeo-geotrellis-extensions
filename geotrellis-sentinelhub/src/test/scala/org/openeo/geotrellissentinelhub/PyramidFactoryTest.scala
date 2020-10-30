@@ -4,12 +4,13 @@ import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 
-import geotrellis.proj4.LatLng
+import geotrellis.proj4.util.UTM
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.Raster
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector._
 import org.apache.spark.SparkConf
 import org.junit.Test
 
@@ -74,6 +75,7 @@ class PyramidFactoryTest {
 
       val Raster(multibandTile, extent) = baseLayer
         .toSpatial()
+        .crop(boundingBox.reproject(baseLayer.metadata.crs).extent)
         .stitch()
 
       val tif = MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs)
@@ -81,5 +83,40 @@ class PyramidFactoryTest {
     } finally {
       sc.stop()
     }
+  }
+
+  @Test
+  def testUtm(): Unit = {
+    val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
+      val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+      val utmBoundingBox = {
+        val center = boundingBox.extent.center
+        val utmCrs = UTM.getZoneCrs(lon = center.getX, lat = center.getY)
+        ProjectedExtent(boundingBox.reproject(utmCrs), utmCrs)
+      }
+
+      val pyramidFactory = new PyramidFactory("S2L2A", clientId, clientSecret)
+
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
+        from_date = ISO_OFFSET_DATE_TIME format date,
+        to_date = ISO_OFFSET_DATE_TIME format date,
+        band_names = Seq("B08", "B04", "B03").asJava
+      )
+
+      val spatialLayer = layer
+        .toSpatial()
+        .crop(utmBoundingBox.extent)
+        .cache()
+
+      val Raster(multibandTile, extent) = spatialLayer.stitch()
+
+      val tif = MultibandGeoTiff(multibandTile, extent, layer.metadata.crs)
+      tif.write(s"/tmp/utm.tif")
+    } finally sc.stop()
   }
 }
