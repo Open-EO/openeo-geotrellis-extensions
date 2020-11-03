@@ -103,7 +103,7 @@ class PyramidFactory(datasetId: String, clientId: String, clientSecret: String) 
 
         val overlappingKeys = for {
           date <- dates
-          spatialKey <- layout.mapTransform.keysForGeometry(boundingBox.extent.toPolygon())
+          spatialKey <- layout.mapTransform.keysForGeometry(GeometryCollection(polygons))
         } yield SpaceTimeKey(spatialKey, date)
 
         val tilesRdd = for {
