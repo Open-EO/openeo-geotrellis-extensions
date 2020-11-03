@@ -44,6 +44,7 @@
                 <module>openeo-geotrellis</module>
                 <module>geotrellis-integrationtests</module>
                 <module>geotrellis-benchmarks</module>
+                <module>geotrellis-common</module>
             </modules>
         </profile>
     </profiles>

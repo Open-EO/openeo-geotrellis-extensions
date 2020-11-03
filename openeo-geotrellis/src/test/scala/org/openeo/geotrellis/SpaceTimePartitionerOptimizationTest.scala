@@ -3,8 +3,7 @@ import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import geotrellis.layer.{KeyBounds, SpaceTimeKey}
 import geotrellis.spark.partition.SpacePartitioner
 import org.junit.Test
-import org.openeo.geotrellisaccumulo._
-import org.scalatest.time.Days
+import org.openeo.geotrelliscommon._
 import org.junit.Assert._
 
 import scala.collection.immutable

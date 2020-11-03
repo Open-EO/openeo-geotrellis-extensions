@@ -1,9 +1,9 @@
 import java.time.{LocalDate, ZoneId}
 
+import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.store.index.zcurve.ZSpaceTimeKeyIndex
 import org.junit.{Ignore, Test}
-import org.openeo.geotrellisaccumulo.zcurve.SfCurveZSpaceTimeKeyIndex
 
 @Ignore
 class Z3Test {

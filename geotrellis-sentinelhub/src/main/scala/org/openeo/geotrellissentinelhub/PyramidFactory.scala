@@ -6,10 +6,13 @@ import geotrellis.layer.{KeyBounds, SpaceTimeKey, TileLayerMetadata, ZoomedLayou
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.{CellSize, MultibandTile, UShortConstantNoDataCellType}
 import geotrellis.spark._
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.locationtech.proj4j.proj.TransverseMercatorProjection
+import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
 import scala.collection.JavaConverters._
 
@@ -33,10 +36,6 @@ class PyramidFactory(datasetId: String, clientId: String, clientSecret: String) 
     // TODO: write as a for-comprehension?
     val overlappingKeys = dates.flatMap(date =>layout.mapTransform.keysForGeometry(reprojectedBoundingBox.toPolygon()).map(key => SpaceTimeKey(key, date)))
 
-    val tilesRdd = sc.parallelize(overlappingKeys)
-      .map(key => (key, retrieveTileFromSentinelHub(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs), key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, bandNames, clientId, clientSecret)))
-      .filter(_._2.bands.exists(b => !b.isNoDataTile))
-
     val metadata: TileLayerMetadata[SpaceTimeKey] = {
       val gridBounds = layout.mapTransform.extentToBounds(reprojectedBoundingBox)
 
@@ -48,6 +47,14 @@ class PyramidFactory(datasetId: String, clientId: String, clientSecret: String) 
         KeyBounds(SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from), SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to))
       )
     }
+
+    val partitioner = SpacePartitioner(metadata.bounds)
+    assert(partitioner.index == SpaceTimeByMonthPartitioner)
+
+    val tilesRdd = sc.parallelize(overlappingKeys)
+      .map(key => (key, retrieveTileFromSentinelHub(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs), key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, bandNames, clientId, clientSecret)))
+      .filter(_._2.bands.exists(b => !b.isNoDataTile))
+      .partitionBy(partitioner)
 
     ContextRDD(tilesRdd, metadata)
   }
@@ -81,9 +88,7 @@ class PyramidFactory(datasetId: String, clientId: String, clientSecret: String) 
 
       // TODO: call into AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
 
-      val layoutScheme = FloatingLayoutScheme(256)
-      val LayoutLevel(_, layout) = layoutScheme // TODO: derive from FloatingLayoutScheme like FileLayerProvider#165 instead
-        .levelFor(boundingBox.extent, CellSize(10, 10))
+      val layout = this.layout(FloatingLayoutScheme(256), boundingBox)
 
       val metadata: TileLayerMetadata[SpaceTimeKey] = {
         val gridBounds = layout.mapTransform.extentToBounds(boundingBox.extent)
@@ -112,12 +117,36 @@ class PyramidFactory(datasetId: String, clientId: String, clientSecret: String) 
           if !tile.bands.forall(_.isNoDataTile)
         } yield (key, tile)
 
-        tilesRdd
+        val partitioner = SpacePartitioner(metadata.bounds)
+        assert(partitioner.index == SpaceTimeByMonthPartitioner)
+
+        tilesRdd.partitionBy(partitioner)
       }
 
       ContextRDD(tilesRdd, metadata)
     }
 
     Seq(0 -> cube)
+  }
+
+  private def maxSpatialResolution: CellSize = CellSize(10, 10)
+
+  private def layout(layoutScheme: FloatingLayoutScheme, boundingBox: ProjectedExtent): LayoutDefinition = {
+    //Giving the layout a deterministic extent simplifies merging of data with spatial partitioner
+    val layoutExtent =
+      if (boundingBox.crs.proj4jCrs.getProjection.getName == "utm") {
+        //for utm, we return an extent that goes beyound the utm zone bounds, to avoid negative spatial keys
+        if (boundingBox.crs.proj4jCrs.getProjection.asInstanceOf[TransverseMercatorProjection].getSouthernHemisphere)
+        //official extent: Extent(166021.4431, 1116915.0440, 833978.5569, 10000000.0000) -> round to 10m + extend
+          Extent(0.0, 1000000.0, 833970.0 + 100000.0, 10000000.0000 + 100000.0)
+        else {
+          //official extent: Extent(166021.4431, 0.0000, 833978.5569, 9329005.1825) -> round to 10m + extend
+          Extent(0.0, -1000000.0000, 833970.0 + 100000.0, 9329000.0 + 100000.0)
+        }
+      } else {
+        boundingBox.extent
+      }
+
+    layoutScheme.levelFor(layoutExtent, maxSpatialResolution).layout
   }
 }
