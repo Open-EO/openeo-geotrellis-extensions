@@ -20,7 +20,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
-import org.openeo.geotrellis._
+import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.openeo.geotrellis.layers.OscarsResponses.Feature
 
 import scala.util.matching.Regex

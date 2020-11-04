@@ -11,7 +11,7 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrellis.SpaceTimeByMonthPartitioner
+import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.openeo.geotrellis.layers.FileLayerProvider.layerMetadata
 import org.openeo.geotrellis.layers.Oscars
 import org.openeo.geotrellis.layers.OscarsResponses.Feature

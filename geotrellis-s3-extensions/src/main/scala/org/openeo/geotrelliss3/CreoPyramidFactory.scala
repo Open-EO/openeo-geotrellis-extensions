@@ -14,7 +14,8 @@ import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrellis.{ProjectedPolygons, _}
+import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.openeo.geotrellis.layers.FileLayerProvider.{bestCRS, getLayout, layerMetadata}
 
 import scala.collection.JavaConverters._

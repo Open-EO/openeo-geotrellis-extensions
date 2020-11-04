@@ -2,7 +2,8 @@ package org.openeo.geotrellissentinelhub
 
 import java.time.{LocalDate, ZoneId}
 
-import geotrellis.vector.Extent
+import geotrellis.proj4.WebMercator
+import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.{Ignore, Test}
 
 class TestS1Gamma0 {
@@ -12,7 +13,7 @@ class TestS1Gamma0 {
 
   @Test
   def testGamma0(): Unit = {
-    val bbox = new Extent(-5948635.289265557,-1252344.2714243263,-5792092.255337516,-1095801.2374962857)
+    val bbox = ProjectedExtent(Extent(-5948635.289265557,-1252344.2714243263,-5792092.255337516,-1095801.2374962857), WebMercator)
 
     val date = LocalDate.of(2019, 6, 1).atStartOfDay(ZoneId.systemDefault())
 

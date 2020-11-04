@@ -12,6 +12,11 @@
     <artifactId>geotrellis-sentinelhub</artifactId>
     <dependencies>
         <dependency>
+            <groupId>org.openeo</groupId>
+            <artifactId>geotrellis-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
             <artifactId>geotrellis-spark_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>

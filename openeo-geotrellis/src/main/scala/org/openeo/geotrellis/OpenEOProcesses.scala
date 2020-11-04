@@ -21,6 +21,7 @@ import geotrellis.vector.io.json.JsonFeatureCollection
 import geotrellis.vector.{Extent, PolygonFeature}
 import org.apache.spark.rdd._
 import org.openeo.geotrellis.focal._
+import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
 import scala.collection.JavaConverters
 import scala.collection.JavaConverters._

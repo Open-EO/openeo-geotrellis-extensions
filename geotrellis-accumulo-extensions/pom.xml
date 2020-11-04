@@ -26,9 +26,9 @@
 
     <dependencies>
         <dependency>
-            <groupId>org.locationtech.sfcurve</groupId>
-            <artifactId>sfcurve-zorder_2.11</artifactId>
-            <version>0.2.2</version>
+            <groupId>org.openeo</groupId>
+            <artifactId>geotrellis-common</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>org.locationtech.geotrellis</groupId>

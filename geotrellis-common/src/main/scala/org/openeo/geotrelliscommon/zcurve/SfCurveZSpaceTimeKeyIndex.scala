@@ -1,4 +1,4 @@
-package org.openeo.geotrellisaccumulo.zcurve
+package org.openeo.geotrelliscommon.zcurve
 
 import geotrellis.layer.{KeyBounds, SpaceTimeKey}
 import geotrellis.store.index.KeyIndex
