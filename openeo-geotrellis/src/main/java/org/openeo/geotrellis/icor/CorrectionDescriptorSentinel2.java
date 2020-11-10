@@ -111,15 +111,38 @@ public class CorrectionDescriptorSentinel2{
          *  band3: swir
          **/
         
+        // source:
+        // https://oceancolor.gsfc.nasa.gov/docs/rsr/f0.txt
+        // http://www.ioccg.org/groups/Thuillier.pdf
+        // sola irradiance is in mW/m2/nm
+        // TODO: central wavelengths differ for S2A & S2B -> https://en.wikipedia.org/wiki/Sentinel-2
+        // TODO: do a proper interpolation to central bandwidth, now just taken the nearest integer wavelength on the average of S2A & S2B mission specs
+        // TODO: propagate referring by band name instead of index
+        
         switch (band){
-            case 1: solarIrradiance = 2021.260010; //blue
+            case 1: solarIrradiance = 2021.260010; //blue B02
                 break;
-            case 7: solarIrradiance = 1039.760010; //nir
+            case 7: solarIrradiance = 1039.760010; //nir B08
                 break;
-            case 3: solarIrradiance = 1553.199951; //red
+            case 3: solarIrradiance = 1553.199951; //red B04
                 break;
-            case 10: solarIrradiance = 250.481003; //swir
+            case 10: solarIrradiance = 250.481003; //swir B11
                 break;
+/*
+            case 'B01': solarIrradiance = 1953.449; break; //442nm
+            case 'B02': solarIrradiance = 1921.941; break; //492nm
+            case 'B03': solarIrradiance = 1744.613; break; //559nm
+            case 'B04': solarIrradiance = 1535.771; break; //665nm
+            case 'B05': solarIrradiance = 1438.637; break; //704nm
+            case 'B06': solarIrradiance = 1273.076; break; //740nm
+            case 'B07': solarIrradiance = 1163.672; break; //781nm
+            case 'B08': solarIrradiance = 1025.549; break; //833nm
+            case 'B8A': solarIrradiance =  994.924; break; //864nm
+            case 'B09': solarIrradiance =  804.205; break; //944nm
+            case 'B10': solarIrradiance =  364.619; break; //1375nm
+            case 'B11': solarIrradiance =  244.695; break; //1612nm
+            case 'B12': solarIrradiance =   86.909; break; //2194nm
+*/
         }
         return Math.PI * earthSunDistance(time) * earthSunDistance(time) / solarIrradiance;
     }
