@@ -1,7 +1,7 @@
 package org.openeo.geotrellis
 
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{DoubleConstantTile, IntConstantTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, isNoData}
+import geotrellis.raster.{DoubleConstantTile, IntConstantTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, d2i, isNoData}
 import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase}
 
 import scala.Double.NaN
@@ -70,6 +70,55 @@ class OpenEOProcessScriptBuilder {
 
   private def reduceListFunction(argName: String, operator: Seq[Tile] => Tile): Seq[Tile] => Seq[Tile] = {
     unaryFunction(argName, (tiles: Seq[Tile]) => Seq(operator(tiles)))
+  }
+
+  private def ifProcess() ={
+    val storedArgs = contextStack.head
+    val value = storedArgs.get("value").get
+    val accept = storedArgs.get("accept").get
+    val reject: Seq[Tile] => Seq[Tile] = storedArgs.get("reject").get
+    val ifElseProcess = (tiles: Seq[Tile]) => {
+      val value_input: Seq[Tile] =
+        if (value != null) {
+          value.apply(tiles)
+        } else {
+          tiles
+        }
+      val accept_input: Seq[Tile] =
+        if (accept != null) {
+          accept.apply(tiles)
+        } else {
+          tiles
+        }
+
+      val reject_input: Seq[Tile] =
+        if (reject != null) {
+          reject.apply(tiles)
+        } else {
+          tiles
+        }
+
+      def ifElse(value:Tile,accept:Tile,reject: Tile): Tile ={
+        val tile = value.dualCombine(accept) { (z1,z2) => if (z2==1) z1 else NODATA }
+        { (z1,z2) => if (d2i(z2)==1) z1 else Double.NaN }
+
+        val tileWithRejects = tile.dualCombine(reject){ (z1,z2) => if (z2==0) z1 else NODATA }
+        { (z1,z2) => if (d2i(z2)==0) z1 else Double.NaN }
+        tileWithRejects
+      }
+
+
+      if(value_input.size == accept_input.size) {
+        value_input.zip(accept_input).zip(reject_input).map{ t => ifElse(t._1._1,t._1._2,t._2)}
+      }else if(value_input.size == 1 ) {
+        accept_input.zip(reject_input).map{ t => ifElse(value_input.head,t._1,t._2)}
+      }
+      else{
+        throw new IllegalArgumentException("Incompatible numbers of tiles in this if process.")
+      }
+
+    }
+    ifElseProcess
   }
 
   private def xyFunction(operator:(Tile,Tile) => Tile,xArgName:String = "x",yArgName:String = "y" ) = {
@@ -215,6 +264,7 @@ class OpenEOProcessScriptBuilder {
     val ignoreNoData = !(arguments.getOrDefault("ignore_nodata",Boolean.box(true).asInstanceOf[Object]) == Boolean.box(false) || arguments.getOrDefault("ignore_nodata",None) == "false" )
 
     val operation: Seq[Tile] => Seq[Tile] = operator match {
+      case "if" => ifProcess()
       // Comparison operators
       case "gt" if hasXY => xyFunction(Greater.apply)
       case "lt" if hasXY => xyFunction(Less.apply)
