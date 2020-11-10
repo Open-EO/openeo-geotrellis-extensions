@@ -537,6 +537,66 @@ public class TestOpenEOProcessScriptBuilder {
         });
     }
 
+    @DisplayName("Test if process")
+    @Test
+    public void testIf() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = dummyMap("accept","reject");
+        builder.expressionStart("if", arguments);
+
+        builder.argumentStart("value");
+        buildArrayElementProcess(builder, 1);
+        builder.argumentEnd();
+        builder.argumentStart("accept");
+        builder.argumentEnd();
+
+        builder.expressionEnd("if",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        byte nodataVal = ByteConstantNoDataArrayTile.empty(1, 1).array()[0];
+
+        ByteArrayTile value = ByteConstantNoDataArrayTile.fill((byte) 1, 4, 4);
+        value.set(0, 0, 0);
+        value.set(1, 0, 0);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, value)));
+        Tile res = result.apply(0);
+        tile0.set(0,0,nodataVal);
+        tile0.set(1,0,nodataVal);
+        assertTileEquals(tile0, res);
+    }
+
+    @DisplayName("Test if process")
+    @Test
+    public void testIfWithReject() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = dummyMap("accept","reject");
+        builder.expressionStart("if", arguments);
+
+        builder.argumentStart("value");
+        buildArrayElementProcess(builder, 1);
+        builder.argumentEnd();
+        builder.argumentStart("accept");
+        builder.argumentEnd();
+        builder.constantArgument("reject",11);
+
+        builder.expressionEnd("if",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        byte nodataVal = ByteConstantNoDataArrayTile.empty(1, 1).array()[0];
+        tile0.set(2, 0, nodataVal);
+
+        ByteArrayTile value = ByteConstantNoDataArrayTile.fill((byte) 1, 4, 4);
+        value.set(0, 0, 0);
+        value.set(1, 0, 0);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, value)));
+        Tile res = result.apply(0);
+        tile0.set(0,0,11);
+        tile0.set(1,0,11);
+        assertTileEquals(tile0, res);
+    }
+
     @DisplayName("Test array_element process")
     @Test
     public void testArrayElement() {
