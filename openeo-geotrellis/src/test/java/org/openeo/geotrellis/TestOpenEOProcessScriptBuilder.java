@@ -577,6 +577,7 @@ public class TestOpenEOProcessScriptBuilder {
         buildArrayElementProcess(builder, 1);
         builder.argumentEnd();
         builder.argumentStart("accept");
+        builder.fromParameter("x");
         builder.argumentEnd();
         builder.constantArgument("reject",11);
 
