@@ -1,7 +1,7 @@
 package org.openeo.geotrellis
 
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{DoubleConstantTile, IntConstantTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, d2i, isNoData}
+import geotrellis.raster.{ArrayTile, DoubleConstantTile, FloatConstantTile, IntConstantTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, isNoData}
 import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase}
 
 import scala.Double.NaN
@@ -132,16 +132,27 @@ class OpenEOProcessScriptBuilder {
           Seq.fill(accept_input.length)(null)
         }
 
-      def ifElse(value:Tile,accept:Tile,reject: Tile): Tile = {
-        val tile = accept.toArrayTile().dualCombine(value) { (z1, z2) =>
-          if (z2 != 0) z1 else NODATA
-        } { (z1, z2) => if (d2i(z2) != 0) z1 else Double.NaN }
-        if (reject != null) {
-          val tileWithRejects = reject.toArrayTile().dualCombine(value) { (z1, z2) => if (z2 == 0) z1 else NODATA } { (z1, z2) => if (d2i(z2) == 0) z1 else Double.NaN }
-          tile.merge(tileWithRejects)
-        } else{
-          tile
+      def ifElse(value:Tile, acceptTile:Tile, rejectTile: Tile): Tile = {
+        val outputCellType = if(rejectTile==null) acceptTile.cellType else acceptTile.cellType.union(rejectTile.cellType)
+        val resultTile = ArrayTile.empty(outputCellType,acceptTile.cols,acceptTile.rows)
+
+        def setResult(col:Int,row:Int,fromTile:Tile): Unit ={
+          if(fromTile==null) {
+            if(outputCellType.isFloatingPoint) resultTile.setDouble(col,row,Double.NaN) else resultTile.set(col,row,NODATA)
+          }else{
+            if(outputCellType.isFloatingPoint) resultTile.setDouble(col,row,fromTile.getDouble(col,row)) else resultTile.set(col,row,fromTile.get(col,row))
+          }
         }
+        value.foreach{ (col,row,value) => {
+          if(value==0){
+            //reject
+            setResult(col,row,rejectTile)
+          }else{
+            //accept
+            setResult(col,row,acceptTile)
+          }
+        }}
+        resultTile
       }
 
 
@@ -254,6 +265,7 @@ class OpenEOProcessScriptBuilder {
           case x: java.lang.Byte => Seq(UByteConstantTile(value.byteValue(),cols,rows))
           case x: java.lang.Short => Seq(ShortConstantTile(value.byteValue(),cols,rows))
           case x: Integer => Seq(IntConstantTile(value.intValue(),cols,rows))
+          case x: java.lang.Float => Seq(FloatConstantTile(value.floatValue(),cols,rows))
           case _ => Seq(DoubleConstantTile(value.doubleValue(),cols,rows))
         }
       }

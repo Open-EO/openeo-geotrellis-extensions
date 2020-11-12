@@ -587,7 +587,7 @@ public class TestOpenEOProcessScriptBuilder {
         builder.argumentStart("accept");
         builder.fromParameter("x");
         builder.argumentEnd();
-        builder.constantArgument("reject",1.5);
+        builder.constantArgument("reject",1.5f);
 
         builder.expressionEnd("if",arguments);
 
@@ -603,7 +603,48 @@ public class TestOpenEOProcessScriptBuilder {
         tile0.setDouble(2,0,1.5);
         tile0.setDouble(1,0,1.5);
         tile0.setDouble(1,1,1.5);
-        assertDoubleTileEquals(tile0, res);
+        assertDoubleTileEquals(tile0,res);
+    }
+
+
+    @DisplayName("Test if process with a reject")
+    @Test
+    public void testIfWithRejectCube() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = dummyMap("accept","reject");
+        builder.expressionStart("if", arguments);
+
+        builder.argumentStart("value");
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("y", 7.0);
+        args.put("x", Collections.singletonMap("from_parameter","x"));
+        builder.expressionStart("gt", args);
+        builder.constantArgument("y", 7.0);
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.expressionEnd("gt", args);
+        builder.argumentEnd();
+        builder.argumentStart("reject");
+        builder.fromParameter("x");
+        builder.argumentEnd();
+        builder.constantArgument("accept",1.5f);
+
+        builder.expressionEnd("if",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        FloatArrayTile tile0 = FloatArrayTile.fill( 10.5f, 4, 4);
+
+        tile0.setDouble(2, 0, Float.NaN);
+        tile0.setDouble(1, 0, 5.5);
+        tile0.setDouble(1, 1, 5.5);
+
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0)));
+        FloatArrayTile expected = FloatArrayTile.fill( 1.5f, 4, 4);
+        expected.setDouble(2,0,Float.NaN);
+        expected.setDouble(1,0,5.5);
+        expected.setDouble(1,1,5.5);
+        assertDoubleTileEquals(expected,result.apply(0));
     }
 
     @DisplayName("Test array_element process")
