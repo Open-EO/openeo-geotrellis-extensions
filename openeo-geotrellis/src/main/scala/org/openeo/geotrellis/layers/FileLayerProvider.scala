@@ -20,8 +20,8 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
-import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.openeo.geotrellis.layers.OscarsResponses.Feature
+import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
 import scala.util.matching.Regex
 
@@ -269,6 +269,28 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
   }
 
 
+  private def deriveFilePath(href: URL): String = href.getProtocol match {
+    // as oscars requests now use accessedFrom=MEP, we will normally always get file paths
+    case "file" => // e.g. file:/data/MTDA_DEV/CGS_S2_DEV/FAPAR_V2/2020/03/19/S2A_20200319T032531_48SXD_FAPAR_V200/10M/S2A_20200319T032531_48SXD_FAPAR_10M_V200.tif
+      href.getPath.replaceFirst("CGS_S2_DEV", "CGS_S2") // temporary workaround?
+    case "https" => // e.g. https://oscars-dev.vgt.vito.be/download/FAPAR_V2/2020/03/20/S2B_20200320T102639_33VVF_FAPAR_V200/10M/S2B_20200320T102639_33VVF_FAPAR_10M_V200.tif
+      val subPath = href.getPath
+        .split("/")
+        .drop(4) // the empty string at the front too
+        .mkString("/")
+
+      (_rootPath resolve subPath).toString
+  }
+
+  private def deriveRasterSources(feature: Feature): List[(RasterSource, Seq[Int])] = {
+    for {
+      (title, bands) <- oscarsLinkTitlesWithBandIds.toList
+      link <- feature.links.find(_.title contains title)
+      path = deriveFilePath(link.href)
+      targetCellType = if (link.title contains "SCENECLASSIFICATION_20M") Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0))) else None
+    } yield (GeoTiffRasterSource(path, targetCellType), bands)
+  }
+
   private def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, sc:SparkContext): Seq[RasterSource] = {
     require(zoom >= 0)
 
@@ -281,27 +303,6 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
       attributeValues
     )
 
-    def deriveFilePath(href: URL): String = href.getProtocol match {
-      // as oscars requests now use accessedFrom=MEP, we will normally always get file paths
-      case "file" => // e.g. file:/data/MTDA_DEV/CGS_S2_DEV/FAPAR_V2/2020/03/19/S2A_20200319T032531_48SXD_FAPAR_V200/10M/S2A_20200319T032531_48SXD_FAPAR_10M_V200.tif
-        href.getPath.replaceFirst("CGS_S2_DEV", "CGS_S2") // temporary workaround?
-      case "https" => // e.g. https://oscars-dev.vgt.vito.be/download/FAPAR_V2/2020/03/20/S2B_20200320T102639_33VVF_FAPAR_V200/10M/S2B_20200320T102639_33VVF_FAPAR_10M_V200.tif
-        val subPath = href.getPath
-          .split("/")
-          .drop(4) // the empty string at the front too
-          .mkString("/")
-
-        (_rootPath resolve subPath).toString
-    }
-
-    def deriveRasterSources(feature: Feature): List[(GeoTiffRasterSource, Seq[Int])] = {
-      for {
-        (title, bands) <- oscarsLinkTitlesWithBandIds.toList
-        link <- feature.links.find(_.title contains title)
-        path = deriveFilePath(link.href)
-        targetCellType = if (link.title contains "SCENECLASSIFICATION_20M") Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0))) else None
-      } yield (GeoTiffRasterSource(path, targetCellType), bands)
-    }
 
     val crs = bestCRS(boundingBox,layoutScheme)
     val overlappingRasterSources = for {
