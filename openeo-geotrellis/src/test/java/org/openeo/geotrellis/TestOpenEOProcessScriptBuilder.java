@@ -566,7 +566,7 @@ public class TestOpenEOProcessScriptBuilder {
         assertTileEquals(tile0, res);
     }
 
-    @DisplayName("Test if process")
+    @DisplayName("Test if process with a reject")
     @Test
     public void testIfWithReject() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();

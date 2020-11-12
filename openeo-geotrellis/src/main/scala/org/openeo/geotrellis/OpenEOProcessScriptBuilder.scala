@@ -110,18 +110,19 @@ class OpenEOProcessScriptBuilder {
         if (reject != null) {
           reject.apply(context)(tiles)
         } else {
-          tiles
+          Seq.fill(accept_input.length)(null)
         }
 
-      def ifElse(value:Tile,accept:Tile,reject: Tile): Tile ={
-        val tile = value.dualCombine(accept) { (z1,z2) =>
-          if (z1 !=0) z2 else NODATA
+      def ifElse(value:Tile,accept:Tile,reject: Tile): Tile = {
+        val tile = value.dualCombine(accept) { (z1, z2) =>
+          if (z1 != 0) z2 else NODATA
+        } { (z1, z2) => if (d2i(z1) != 0) z2 else Double.NaN }
+        if (reject != null) {
+          val tileWithRejects = value.dualCombine(reject) { (z1, z2) => if (z1 == 0) z2 else NODATA } { (z1, z2) => if (d2i(z1) == 0) z2 else Double.NaN }
+          tile.merge(tileWithRejects)
+        } else{
+          tile
         }
-        { (z1,z2) =>if (d2i(z1)!=0) z2 else Double.NaN}
-
-        val tileWithRejects = value.dualCombine(reject){ (z1,z2) => if (z1==0) z2 else NODATA }
-        { (z1,z2) => if (d2i(z1)==0) z2 else Double.NaN }
-        tile.merge(tileWithRejects)
       }
 
 
