@@ -129,6 +129,7 @@ class OpenEOProcessScriptBuilder {
         if (reject != null) {
           reject.apply(context)(tiles)
         } else {
+          println("If process without reject clause found.")
           Seq.fill(accept_input.length)(null)
         }
 
@@ -222,7 +223,12 @@ class OpenEOProcessScriptBuilder {
 
   def fromParameter(parameterName:String): Unit = {
     inputFunction = (context:Map[String,Any]) => (tiles: Seq[Tile]) => {
-      context.getOrElse(parameterName,tiles).asInstanceOf[Seq[Tile]]
+      if(context.contains(parameterName)) {
+        context.getOrElse(parameterName,tiles).asInstanceOf[Seq[Tile]]
+      }else{
+        println("Parameter with name: " + parameterName  + "not found. Available parameters: " + context.keys.mkString(","))
+        return tiles;
+      }
     }
   }
 
