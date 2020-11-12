@@ -7,10 +7,25 @@ import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase}
 import scala.Double.NaN
 import scala.collection.mutable
 
+object OpenEOProcessScriptBuilder{
+
+  type OpenEOProcess =  Map[String,Any] => (Seq[Tile]  => Seq[Tile] )
+
+  private def wrapSimpleProcess(operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
+    def wrapper(context:Map[String,Any])(tiles: Seq[Tile]): Seq[Tile] = operator(tiles)
+    return wrapper
+  }
+
+  private def wrapProcessWithDefaultContext(process: OpenEOProcess): Seq[Tile] => Seq[Tile]  ={
+    (tiles:Seq[Tile]) => process(Map("x"->tiles, "data"-> tiles ))(tiles)
+  }
+}
 /**
   * Builder to help converting an OpenEO process graph into a transformation of Geotrellis tiles.
   */
 class OpenEOProcessScriptBuilder {
+
+  import OpenEOProcessScriptBuilder._
 
   object MinIgnoreNoData extends LocalTileBinaryOp {
     def combine(z1:Int,z2:Int) =
@@ -40,7 +55,6 @@ class OpenEOProcessScriptBuilder {
       else math.max(z1, z2)
   }
 
-  type OpenEOProcess =  Map[String,Any] => (Seq[Tile]  => Seq[Tile] )
 
   val processStack: mutable.Stack[String] = new mutable.Stack[String]()
   val arrayElementStack: mutable.Stack[Integer] = new mutable.Stack[Integer]()
@@ -54,12 +68,7 @@ class OpenEOProcessScriptBuilder {
   }
 
   def generateFunction(): Seq[Tile] => Seq[Tile] = {
-    (tiles:Seq[Tile]) => inputFunction(Map("x"->tiles, "data"-> tiles ))(tiles)
-  }
-
-  private def wrapSimpleProcess(operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
-    def wrapper(context:Map[String,Any])(tiles: Seq[Tile]): Seq[Tile] = operator(tiles)
-    return wrapper
+    wrapProcessWithDefaultContext(inputFunction)
   }
 
   private def unaryFunction(argName: String, operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
