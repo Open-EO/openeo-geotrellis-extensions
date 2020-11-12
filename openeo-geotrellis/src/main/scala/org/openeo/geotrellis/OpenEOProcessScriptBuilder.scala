@@ -19,6 +19,23 @@ object OpenEOProcessScriptBuilder{
   private def wrapProcessWithDefaultContext(process: OpenEOProcess): Seq[Tile] => Seq[Tile]  ={
     (tiles:Seq[Tile]) => process(Map("x"->tiles, "data"-> tiles ))(tiles)
   }
+
+  /**
+   * Do f(g(x))
+   * @param f
+   * @param g
+   * @return
+   */
+  private def composeFunctions(f: Seq[Tile] => Seq[Tile], g: Option[OpenEOProcess]): OpenEOProcess = {
+    if (g.isDefined && g.get != null) {
+      def composed(context: Map[String, Any])(tiles: Seq[Tile]): Seq[Tile] = {
+        f(g.get(context)(tiles))
+      }
+
+      composed
+    } else
+      wrapSimpleProcess(f)
+  }
 }
 /**
   * Builder to help converting an OpenEO process graph into a transformation of Geotrellis tiles.
@@ -73,15 +90,8 @@ class OpenEOProcessScriptBuilder {
 
   private def unaryFunction(argName: String, operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
     val storedArgs = contextStack.head
-    val inputFunction = storedArgs.get(argName)
-
-    if(inputFunction.isDefined && inputFunction.get != null) {
-      def composed(context:Map[String,Any])(tiles: Seq[Tile]): Seq[Tile] ={
-        operator(inputFunction.get(context)(tiles))
-      }
-      composed
-    } else
-      wrapSimpleProcess(operator)
+    val inputFunction: Option[OpenEOProcess] = storedArgs.get(argName)
+    composeFunctions(operator,inputFunction)
   }
 
   private def mapFunction(argName: String, operator: Tile => Tile): OpenEOProcess = {
