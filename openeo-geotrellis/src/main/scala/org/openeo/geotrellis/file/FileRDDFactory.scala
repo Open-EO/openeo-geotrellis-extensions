@@ -3,7 +3,6 @@ package org.openeo.geotrellis.file
 import java.time.ZonedDateTime
 import java.util
 
-import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.raster.FloatConstantNoDataCellType
 import geotrellis.spark._
@@ -23,7 +22,7 @@ import scala.collection.JavaConverters._
  * A class that looks like a pyramid factory, but does not build a full datacube. Instead, it generates an RDD[SpaceTimeKey, ProductPath].
  * This RDD can then be transformed into
  */
-class FileRDDFactory(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyList[String],attributeValues: util.Map[String, Any] = util.Collections.emptyMap(),correlationId: String = "") {
+class FileRDDFactory(oscarsCollectionId: String, oscarsLinkTitles: util.List[String],attributeValues: util.Map[String, Any] = util.Collections.emptyMap(),correlationId: String = "") {
 
   protected val oscars: Oscars = Oscars()
 
