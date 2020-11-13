@@ -115,19 +115,29 @@ class OpenEOProcessScriptBuilder {
     val value = storedArgs.get("value").get
     val accept = storedArgs.get("accept").get
     val reject: OpenEOProcess = storedArgs.get("reject").getOrElse(null)
-    val ifElseProcess = (context:Map[String,Any]) => (tiles: Seq[Tile]) => {
+    val ifElseProcess = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
       val value_input: Seq[Tile] =
         if (value != null) {
           value.apply(context)(tiles)
         } else {
           tiles
         }
-      val accept_input: Seq[Tile] =
-        if (accept != null) {
-          accept.apply(context)(tiles)
-        } else {
+
+      def makeSameLength(tiles: Seq[Tile]): Seq[Tile] ={
+        if(tiles.size == 1 && value_input.length >1) {
+          Seq.fill(value_input.length)(tiles(0))
+        }else{
           tiles
         }
+      }
+
+      val accept_input: Seq[Tile] =
+        if (accept != null) {
+          makeSameLength(accept.apply(context)(tiles))
+        } else {
+          makeSameLength(tiles)
+        }
+
 
       val reject_input: Seq[Tile] =
         if (reject != null) {
@@ -161,12 +171,12 @@ class OpenEOProcessScriptBuilder {
       }
 
 
-      if(value_input.size == accept_input.size) {
-        value_input.zip(accept_input).zip(reject_input).map{ t => ifElse(t._1._1,t._1._2,t._2)}
-      }else if(value_input.size == 1 ) {
-        accept_input.zip(reject_input).map{ t => ifElse(value_input.head,t._1,t._2)}
+      if (value_input.size == accept_input.size) {
+        value_input.zip(accept_input).zip(reject_input).map { t => ifElse(t._1._1, t._1._2, t._2) }
+      } else if (value_input.size == 1) {
+        accept_input.zip(reject_input).map { t => ifElse(value_input.head, t._1, t._2) }
       }
-      else{
+      else {
         throw new IllegalArgumentException("Incompatible numbers of tiles in this if process.")
       }
 

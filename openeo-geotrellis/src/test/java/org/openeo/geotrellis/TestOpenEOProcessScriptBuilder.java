@@ -639,7 +639,7 @@ public class TestOpenEOProcessScriptBuilder {
         tile0.setDouble(1, 0, 5.5);
         tile0.setDouble(1, 1, 5.5);
 
-        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0)));
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0,tile0)));
         FloatArrayTile expected = FloatArrayTile.fill( 1.5f, 4, 4);
         expected.setDouble(2,0,Float.NaN);
         expected.setDouble(1,0,5.5);
