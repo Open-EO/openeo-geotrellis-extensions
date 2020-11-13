@@ -5,12 +5,12 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.Tile
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 
-class DEMProvider(path:String="/data/MEP/DEM/DEM_NOAA_Globe/DEM_Globe_CS.tif") {
+class DEMProvider(layout:LayoutDefinition, crs:CRS,path:String="/data/MEP/DEM/DEM_NOAA_Globe/DEM_Globe_CS.tif") {
+  val rasterSource = GeoTiffRasterSource(path).reprojectToRegion(crs,layout.toRasterExtent())
 
   def computeDEM(key:SpaceTimeKey, targetCRS:CRS,layoutDefinition:LayoutDefinition): Tile = {
     val targetExtent = layoutDefinition.mapTransform.apply(key)
-    val rasterSource = GeoTiffRasterSource(path)
-    val raster = rasterSource.reprojectToRegion(targetCRS,layoutDefinition.toRasterExtent()).read(targetExtent)
+    val raster = rasterSource.read(targetExtent)
     raster.get.tile.band(0)
   }
 

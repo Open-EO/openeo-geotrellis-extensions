@@ -34,7 +34,7 @@ class AtmosphericCorrection {
       new ContextRDD(
         datacube.mapPartitions(partition => {
           val aotProvider = new AOTProvider()
-          val demProvider = new DEMProvider()
+          val demProvider = new DEMProvider(layoutDefinition,crs)
           partition.map {
             multibandtile =>
               (
