@@ -3,11 +3,15 @@ package org.openeo.geotrellis
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.{ArrayTile, DoubleConstantTile, FloatConstantTile, IntConstantTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, isNoData}
 import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase}
+import org.slf4j.LoggerFactory
 
 import scala.Double.NaN
+import scala.collection.JavaConversions.mapAsScalaMap
 import scala.collection.mutable
 
 object OpenEOProcessScriptBuilder{
+
+  private val logger = LoggerFactory.getLogger(classOf[OpenEOProcessScriptBuilder])
 
   type OpenEOProcess =  Map[String,Any] => (Seq[Tile]  => Seq[Tile] )
 
@@ -129,7 +133,7 @@ class OpenEOProcessScriptBuilder {
         if (reject != null) {
           reject.apply(context)(tiles)
         } else {
-          println("If process without reject clause found.")
+          logger.debug("If process without reject clause.")
           Seq.fill(accept_input.length)(null)
         }
 
@@ -226,7 +230,7 @@ class OpenEOProcessScriptBuilder {
       if(context.contains(parameterName)) {
         context.getOrElse(parameterName,tiles).asInstanceOf[Seq[Tile]]
       }else{
-        println("Parameter with name: " + parameterName  + "not found. Available parameters: " + context.keys.mkString(","))
+        logger.debug("Parameter with name: " + parameterName  + "not found. Available parameters: " + context.keys.mkString(","))
         return tiles;
       }
     }
@@ -315,7 +319,7 @@ class OpenEOProcessScriptBuilder {
 
   def expressionEnd(operator:String,arguments:java.util.Map[String,Object]): Unit = {
     // TODO: this is not only about expressions anymore. Rename it to e.g. "leaveProcess" to be more in line with graph visitor in Python?
-
+    logger.debug(operator + " process with arguments: " + contextStack.head.mkString(",") + " direct args: " + arguments.mkString(","))
     // Bit of argument sniffing to support multiple versions/variants of processes
     val hasXY = arguments.containsKey("x") && arguments.containsKey("y")
     val hasX = arguments.containsKey("x")
