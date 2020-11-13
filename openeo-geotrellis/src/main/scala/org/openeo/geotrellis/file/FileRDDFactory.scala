@@ -1,27 +1,29 @@
 package org.openeo.geotrellis.file
 
 import java.time.ZonedDateTime
+import java.util
 
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLayerMetadata}
-import geotrellis.proj4.CRS
 import geotrellis.raster.FloatConstantNoDataCellType
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
+import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.FileLayerProvider.layerMetadata
 import org.openeo.geotrellis.layers.Oscars
 import org.openeo.geotrellis.layers.OscarsResponses.Feature
+import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
+import scala.collection.JavaConverters._
 
 /**
  * A class that looks like a pyramid factory, but does not build a full datacube. Instead, it generates an RDD[SpaceTimeKey, ProductPath].
  * This RDD can then be transformed into
  */
-class FileRDDFactory(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyList[String],attributeValues: Map[String, Any] = Map(),correlationId: String = "") {
+class FileRDDFactory(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyList[String],attributeValues: util.Map[String, Any] = util.Collections.emptyMap(),correlationId: String = "") {
 
   protected val oscars: Oscars = Oscars()
 
@@ -29,18 +31,26 @@ class FileRDDFactory(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyList[
     require(zoom >= 0)
 
     val overlappingFeatures: Seq[Feature] = oscars.getProducts(
-      collectionId = oscarsCollectionId,
+      oscarsCollectionId,
       from.toLocalDate,
       to.toLocalDate,
       boundingBox,
       correlationId,
-      attributeValues
+      attributeValues.asScala.toMap
     )
     return overlappingFeatures
   }
 
 
-  def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext): ContextRDD[SpaceTimeKey,Feature,TileLayerMetadata[SpaceTimeKey]] = {
+  def readMultibandTileLayer(polygons:ProjectedPolygons, from_date: String, to_date: String, zoom: Int): ContextRDD[SpaceTimeKey,Feature,TileLayerMetadata[SpaceTimeKey]] = {
+    val sc = SparkContext.getOrCreate()
+
+    val from = ZonedDateTime.parse(from_date)
+    val to = ZonedDateTime.parse(to_date)
+
+    val bbox = polygons.polygons.toSeq.extent
+
+    val boundingBox = ProjectedExtent(bbox, polygons.crs)
     //load product metadata from oscars
     val productMetadata: Seq[Feature] = loadRasterSourceRDD(boundingBox, from, to, zoom,sc)
 
@@ -50,7 +60,7 @@ class FileRDDFactory(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyList[
     val metadata: TileLayerMetadata[SpaceTimeKey] = layerMetadata(boundingBox, from, to, 0, FloatConstantNoDataCellType,FloatingLayoutScheme(256))
 
     //construct Spatial Keys that we want to load
-    val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map{_.reproject(polygons_crs,metadata.crs)}.clipToGrid(metadata.layout).groupByKey()
+    val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons.polygons).map{_.reproject(polygons.crs,metadata.crs)}.clipToGrid(metadata.layout).groupByKey()
     val productsRDD = sc.parallelize(productMetadata)
     val spatialRDD: RDD[(SpaceTimeKey, Feature)] = requiredKeys.keys.cartesian(productsRDD).map{ case (key,value) => (SpaceTimeKey(key.col,key.row,value.nominalDate),value)}
 
