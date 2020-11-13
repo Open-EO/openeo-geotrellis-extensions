@@ -51,4 +51,24 @@ public class TestAOTProvider {
         //System.out.println(NumericEncoder.encodeIntegrals(tile));
 
     }
+
+    @Test
+    public void testComputeOverpasstime(){
+        assertEquals(ZonedDateTime.parse("2017-01-26T11:00:00Z"),AOTProvider.computeUTCOverPasstime(0, ZonedDateTime.parse("2017-01-26T00:00:00Z")));
+        assertEquals(ZonedDateTime.parse("2017-01-26T00:00:00Z"),AOTProvider.computeUTCOverPasstime(180, ZonedDateTime.parse("2017-01-26T00:00:00Z")));
+        assertEquals(ZonedDateTime.parse("2017-01-26T17:00:00Z"), AOTProvider.computeUTCOverPasstime(-90, ZonedDateTime.parse("2017-01-26T00:00:00Z")));
+        assertEquals(ZonedDateTime.parse("2017-01-26T17:00:00Z"), AOTProvider.computeUTCOverPasstime(-95.32156, ZonedDateTime.parse("2017-01-26T00:00:00Z")));
+    }
+
+    @Test
+    public void testClosestPathFinder(){
+
+        AOTProvider.ClosestPathFinder finder = new AOTProvider.ClosestPathFinder(ZonedDateTime.parse("2017-01-26T17:00:00Z"));
+        finder.accept(Paths.get("/bla/bla/CAMS_NRT_aod550_20170126T210000Z.tif"));
+        finder.accept(Paths.get("/bla/bla/CAMS_NRT_aod550_20170126T240000Z.tif"));
+        Path expected = Paths.get("/bla/bla/CAMS_NRT_aod550_20170126T180000Z.tif");
+        finder.accept(expected);
+        finder.accept(Paths.get("/bla/bla/CAMS_NRT_aod550_20170126T150000Z.tif"));
+        assertEquals(expected,finder.closestPath());
+    }
 }
