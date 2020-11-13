@@ -4,6 +4,7 @@ import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.util.Scanner;
 import java.util.logging.Logger;
 
@@ -52,6 +53,9 @@ public class LookupTableIO {
 
     
 	public static LookupTable readLUT(String resourceName) throws IOException {
+		if (resourceName.startsWith("http") && resourceName.endsWith(".bin")) {
+			return readLUT(URI.create(resourceName).toURL().openStream(),true);
+		}
 		if (LookupTableIO.class.getResourceAsStream(resourceName+".bin")!=null) {
 			return readLUT(LookupTableIO.class.getResourceAsStream(resourceName+".bin"),true);
 		}
