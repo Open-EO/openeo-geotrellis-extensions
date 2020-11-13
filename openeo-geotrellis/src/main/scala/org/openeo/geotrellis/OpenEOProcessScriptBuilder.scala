@@ -231,7 +231,7 @@ class OpenEOProcessScriptBuilder {
         context.getOrElse(parameterName,tiles).asInstanceOf[Seq[Tile]]
       }else{
         logger.debug("Parameter with name: " + parameterName  + "not found. Available parameters: " + context.keys.mkString(","))
-        return tiles;
+        tiles
       }
     }
   }
