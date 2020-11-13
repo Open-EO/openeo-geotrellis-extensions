@@ -12,7 +12,7 @@ class AOTProvider(basePath:String = "/data/MEP/ECMWF/cams/aod550/%1$tY/%1$tm/CAM
     val rasterSource = GeoTiffRasterSource(aotPath)
 
     val targetExtent = layoutDefinition.mapTransform.apply(key)
-    val raster = rasterSource.reprojectToGrid(targetCRS,layoutDefinition).read(targetExtent)
+    val raster = rasterSource.reprojectToRegion(targetCRS,layoutDefinition.toRasterExtent()).read(targetExtent)
     raster.get.tile.band(0)
 
   }
