@@ -34,6 +34,7 @@ class AtmosphericCorrection {
       new ContextRDD(
         datacube.mapPartitions(partition => {
           val aotProvider = new AOTProvider()
+          val demProvider = new DEMProvider()
           partition.map {
             multibandtile =>
               (
@@ -44,7 +45,8 @@ class AtmosphericCorrection {
                   val iband = cd.getBandFromName(bandIds.get(b))
 
                   val aotTile = aotProvider.computeAOT(multibandtile._1,crs,layoutDefinition)
-                  val resultTile:Tile = MultibandTile(tile,aotTile.convert(tile.cellType)).combine(0,1){(refl,aot) => if (refl != NODATA) (prePostMult.get(1) * cd.correct(bcLUT.value, iband, multibandtile._1.instant, refl.toDouble * prePostMult.get(0), defParams.get(0), defParams.get(1), defParams.get(2), defParams.get(3),aot, defParams.get(5),defParams.get(6),0)).toInt else NODATA}
+                  val demTile = demProvider.computeDEM(multibandtile._1,crs,layoutDefinition)
+                  val resultTile:Tile = MultibandTile(tile,aotTile.convert(tile.cellType),demTile.convert(tile.cellType)).combine(0,1,2){(refl,aot,dem) => if (refl != NODATA) (prePostMult.get(1) * cd.correct(bcLUT.value, iband, multibandtile._1.instant, refl.toDouble * prePostMult.get(0), defParams.get(0), defParams.get(1), defParams.get(2), dem ,aot, defParams.get(5),defParams.get(6),0)).toInt else NODATA}
                   resultTile
                 })
               )
