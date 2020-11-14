@@ -1,21 +1,21 @@
 package org.openeo.geotrellis.icor;
 
-import java.util.ArrayList;
-import java.util.Map;
-
-import geotrellis.layer.*;
+import geotrellis.layer.LayoutDefinition;
+import geotrellis.layer.SpaceTimeKey;
+import geotrellis.layer.TileLayerMetadata;
 import geotrellis.raster.*;
 import geotrellis.spark.ContextRDD;
-
+import geotrellis.vector.Extent;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.Map;
 
 import static org.junit.Assert.assertFalse;
 
@@ -25,8 +25,8 @@ public class testAtmosphericCorrectionProcess {
     public static void sparkContext() {
         SparkConf conf = new SparkConf();
         conf.setAppName("OpenEOTest");
-        conf.setMaster("local[4]");
-        conf.set("spark.driver.bindAddress", "127.0.0.1");
+        conf.setMaster("local[2]");
+        //conf.set("spark.driver.bindAddress", "127.0.0.1");
         conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
         SparkContext.getOrCreate(conf);
     }
@@ -56,9 +56,12 @@ public class testAtmosphericCorrectionProcess {
     	
         Tile tile0 = new IntConstantTile(256,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube = org.openeo.geotrellis.TestOpenEOProcesses.tileToSpaceTimeDataCube(tile0);
+        TileLayerMetadata<SpaceTimeKey> m = datacube.metadata();
+        Extent newExtent = new Extent(3.5, 50, 4.0, 51);
+        TileLayerMetadata<SpaceTimeKey> updatedMetadata = m.copy(m.cellType(),new LayoutDefinition(newExtent,m.layout().tileLayout()), newExtent,m.crs(),m.bounds());
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(
         	JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
-        	datacube,
+        	new ContextRDD<>(datacube.rdd(),updatedMetadata),
         	"test_lut",
         	bandIds,
         	scales,
