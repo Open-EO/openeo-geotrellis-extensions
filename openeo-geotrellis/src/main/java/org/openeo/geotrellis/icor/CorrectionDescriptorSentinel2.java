@@ -14,8 +14,13 @@ public class CorrectionDescriptorSentinel2{
 	public int getBandFromName(String name) throws Exception {
 		switch(name.toUpperCase()) {
 			case "TOC-B02_10M": return 1; // blue
+            case "B02": return 1; // blue
+            case "TOC-B03_10M": return 2; // green
+            case "B03": return 2; // green
 			case "TOC-B04_10M": return 3; // red
+            case "B04": return 3; // red
 			case "TOC-B08_10M": return 7; // nir
+            case "B08": return 7; // nir
 			case "TOC-B11_20M": return 10; // swir
 			default: throw new Exception("Unsupported band provided");
 		}
