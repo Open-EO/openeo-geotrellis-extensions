@@ -119,19 +119,20 @@ public class CorrectionDescriptorSentinel2{
         // source:
         // https://oceancolor.gsfc.nasa.gov/docs/rsr/f0.txt
         // http://www.ioccg.org/groups/Thuillier.pdf
+        //source on MEP: /data/TERRASCOPE/morpho_v2/process_data/process_data_20191021/auxdata/Solar_Irradiance/
         // sola irradiance is in mW/m2/nm
         // TODO: central wavelengths differ for S2A & S2B -> https://en.wikipedia.org/wiki/Sentinel-2
         // TODO: do a proper interpolation to central bandwidth, now just taken the nearest integer wavelength on the average of S2A & S2B mission specs
         // TODO: propagate referring by band name instead of index
         
         switch (band){
-            case 1: solarIrradiance = 2021.260010; //blue B02
+            case 1: solarIrradiance = 1959.68; //blue B02 192.1941
                 break;
-            case 2: solarIrradiance = 1921.941; //green B03
+            case 2: solarIrradiance = 1769.94; //green B03
                 break;
             case 7: solarIrradiance = 1039.760010; //nir B08
                 break;
-            case 3: solarIrradiance = 1553.199951; //red B04
+            case 3: solarIrradiance = 1535.771; //red B04
                 break;
             case 10: solarIrradiance = 250.481003; //swir B11
                 break;
