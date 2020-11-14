@@ -1,12 +1,12 @@
 package org.openeo.geotrellis.icor;
 
-import static org.junit.Assert.*;
-
-import java.io.IOException;
-import java.util.Arrays;
-
 import org.junit.BeforeClass;
 import org.junit.Test;
+
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+
+import static org.junit.Assert.assertArrayEquals;
 
 public class testCorrectionDescriptor {
 
@@ -38,10 +38,24 @@ public class testCorrectionDescriptor {
 			this.gnd = gnd;//elevation in meters
 			this.aot = aot;
 		}
+
+		public CorrectionInput(int band, long value, double gnd,double aot,double saa,double sza,double vaa,double vza,double cwv, String date) {
+
+			this.band = band;
+			this.value = value;//reflectance, between 0 and 1
+			this.gnd = gnd;//elevation in meters
+			this.aot = aot;
+			this.raa = saa-vaa;
+			this.sza = sza;
+			this.vza = vza;
+			this.time = DateTimeFormatter.ISO_DATE_TIME.parse(date,ZonedDateTime::from).toEpochSecond()*1000;
+		}
 	}
 
-	private CorrectionInput[] inputs = {new CorrectionInput(2,342L, 320.0,0.0001*1348.0)};
-
+	private CorrectionInput[] inputs = {
+			new CorrectionInput(2,342L, 320.0,0.0001*1348.0),
+			new CorrectionInput(1,1267, 1.0/1000.0,0.0001*1029.0,163,58,69,2, 0.83,"2017-03-07T10:50:00Z")};//expected icor:542 sen2cor:599
+//'sunAzimuthAngles','sunZenithAngles','viewAzimuthMean','viewZenithMean'
 	@Test
 	public void testCorrectionDescriptorCorrect() {
 		CorrectionDescriptorSentinel2 cd=new CorrectionDescriptorSentinel2();
