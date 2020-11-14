@@ -46,7 +46,7 @@ class AtmosphericCorrection {
                   val cd = new CorrectionDescriptorSentinel2()
                   multibandtile._2.mapBands((b, tile) => {
                   val iband = cd.getBandFromName(bandIds.get(b))
-                  val resultTile:Tile = MultibandTile(tile,aotTile.convert(tile.cellType),demTile.convert(tile.cellType)).combine(0,1,2){(refl,aot,dem) => if (refl != NODATA) (prePostMult.get(1) * cd.correct(bcLUT.value, iband, multibandtile._1.instant, refl.toDouble * prePostMult.get(0), defParams.get(0), defParams.get(1), defParams.get(2), dem ,aot, defParams.get(5),defParams.get(6),0)).toInt else NODATA}
+                  val resultTile:Tile = MultibandTile(tile,aotTile.convert(tile.cellType),demTile.convert(tile.cellType)).combine(0,1,2){(refl,aot,dem) => if (refl != NODATA) (prePostMult.get(1) * cd.correct(bcLUT.value, iband, multibandtile._1.instant, refl.toDouble * prePostMult.get(0), defParams.get(0), defParams.get(1), defParams.get(2), dem , 0.0001 * aot, defParams.get(5),defParams.get(6),0)).toInt else NODATA}
                   resultTile
                 })}
               )

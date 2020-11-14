@@ -127,6 +127,8 @@ public class CorrectionDescriptorSentinel2{
         switch (band){
             case 1: solarIrradiance = 2021.260010; //blue B02
                 break;
+            case 2: solarIrradiance = 1921.941; //green B03
+                break;
             case 7: solarIrradiance = 1039.760010; //nir B08
                 break;
             case 3: solarIrradiance = 1553.199951; //red B04
