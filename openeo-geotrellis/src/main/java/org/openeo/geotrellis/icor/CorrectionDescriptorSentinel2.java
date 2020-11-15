@@ -103,11 +103,70 @@ public class CorrectionDescriptorSentinel2{
         return radiance;
     }
 
-    
+    // source:
+    // https://oceancolor.gsfc.nasa.gov/docs/rsr/f0.txt
+    // http://www.ioccg.org/groups/Thuillier.pdf
+    //source on MEP: /data/TERRASCOPE/morpho_v2/process_data/process_data_20191021/auxdata/Solar_Irradiance/
+    // sola irradiance is in mW/m2/nm
+    // TODO: central wavelengths differ for S2A & S2B -> https://en.wikipedia.org/wiki/Sentinel-2
+    // TODO: do a proper interpolation to central bandwidth, now just taken the nearest integer wavelength on the average of S2A & S2B mission specs
+    // TODO: propagate referring by band name instead of index
+    // Solar irradiance and earth sun distance (U) are part of L1C metadata, and not constant:
+    /**
+     * From MTD_MSIL1C.xml, top level of L1C product zip
+     * /data/MTDA/CGS_S2/CGS_S2_L1C/2020/06/14/S2B_MSIL1C_20200614T104629_N0209_R051_T31UDS_20200614T132040/S2B_MSIL1C_20200614T104629_N0209_R051_T31UDS_20200614T132040.zip
+     * <U>0.969998121389827</U>
+     *         <Solar_Irradiance_List>
+     *           <SOLAR_IRRADIANCE bandId="0" unit="W/m²/µm"> 1874.3</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="1" unit="W/m²/µm"> 1959.75</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="2" unit="W/m²/µm"> 1824.93</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="3" unit="W/m²/µm"> 1512.79</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="4" unit="W/m²/µm"> 1425.78</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="5" unit="W/m²/µm"> 1291.13</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="6" unit="W/m²/µm"> 1175.57</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="7" unit="W/m²/µm"> 1041.28</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="8" unit="W/m²/µm"> 953.93 </SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="9" unit="W/m²/µm"> 817.58 </SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="10" unit="W/m²/µm">365.41 </SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="11" unit="W/m²/µm">247.08 </SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="12" unit="W/m²/µm">  87.75</SOLAR_IRRADIANCE>
+     *         </Solar_Irradiance_List>
+     *
+     *         Sentinel-2A list:
+     *         <Solar_Irradiance_List>
+     *           <SOLAR_IRRADIANCE bandId="0" unit="W/m²/µm">1913.57</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="1" unit="W/m²/µm">1941.63</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="2" unit="W/m²/µm">1822.61</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="3" unit="W/m²/µm">1512.79</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="4" unit="W/m²/µm">1425.56</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="5" unit="W/m²/µm">1288.32</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="6" unit="W/m²/µm">1163.19</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="7" unit="W/m²/µm">1036.39</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="8" unit="W/m²/µm">955.19</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="9" unit="W/m²/µm">813.04</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="10" unit="W/m²/µm">367.15</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="11" unit="W/m²/µm">245.59</SOLAR_IRRADIANCE>
+     *           <SOLAR_IRRADIANCE bandId="12" unit="W/m²/µm">85.25</SOLAR_IRRADIANCE>
+     *         </Solar_Irradiance_List>
+     */
+    double[] irradiances = {
+        1874.3f,
+        1959.75f,
+        1824.93f,
+        1512.79f,
+        1425.78f,
+        1291.13f,
+        1175.57f,
+        1041.28f,
+        953.93f,
+        817.58f,
+        365.41f,
+        247.08f,
+          87.75f
+    };
+
     // factor used for substitution between reflectance and radiance
     private double factor (Long time, int band) {
-        double solarIrradiance=-1.;
-        
         /**
          * Radiometry
          *  band0: red
@@ -115,43 +174,8 @@ public class CorrectionDescriptorSentinel2{
          *  band2: blue
          *  band3: swir
          **/
-        
-        // source:
-        // https://oceancolor.gsfc.nasa.gov/docs/rsr/f0.txt
-        // http://www.ioccg.org/groups/Thuillier.pdf
-        //source on MEP: /data/TERRASCOPE/morpho_v2/process_data/process_data_20191021/auxdata/Solar_Irradiance/
-        // sola irradiance is in mW/m2/nm
-        // TODO: central wavelengths differ for S2A & S2B -> https://en.wikipedia.org/wiki/Sentinel-2
-        // TODO: do a proper interpolation to central bandwidth, now just taken the nearest integer wavelength on the average of S2A & S2B mission specs
-        // TODO: propagate referring by band name instead of index
-        
-        switch (band){
-            case 1: solarIrradiance = 1959.68; //blue B02 192.1941
-                break;
-            case 2: solarIrradiance = 1769.94; //green B03
-                break;
-            case 7: solarIrradiance = 1039.760010; //nir B08
-                break;
-            case 3: solarIrradiance = 1535.771; //red B04
-                break;
-            case 10: solarIrradiance = 250.481003; //swir B11
-                break;
-/*
-            case 'B01': solarIrradiance = 1953.449; break; //442nm
-            case 'B02': solarIrradiance = 1921.941; break; //492nm
-            case 'B03': solarIrradiance = 1744.613; break; //559nm
-            case 'B04': solarIrradiance = 1535.771; break; //665nm
-            case 'B05': solarIrradiance = 1438.637; break; //704nm
-            case 'B06': solarIrradiance = 1273.076; break; //740nm
-            case 'B07': solarIrradiance = 1163.672; break; //781nm
-            case 'B08': solarIrradiance = 1025.549; break; //833nm
-            case 'B8A': solarIrradiance =  994.924; break; //864nm
-            case 'B09': solarIrradiance =  804.205; break; //944nm
-            case 'B10': solarIrradiance =  364.619; break; //1375nm
-            case 'B11': solarIrradiance =  244.695; break; //1612nm
-            case 'B12': solarIrradiance =   86.909; break; //2194nm
-*/
-        }
+
+        double solarIrradiance = irradiances[band];
         return Math.PI * earthSunDistance(time) * earthSunDistance(time) / solarIrradiance;
     }
     
