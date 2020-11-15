@@ -47,7 +47,7 @@ public class TestAOTProvider {
         System.out.println("tile = " + tile);
         assertEquals(256,tile.cols());
         assertEquals(256,tile.rows());
-        assertEquals(617,tile.get(0,0));
+        assertEquals(617.0 * 0.0001,tile.getDouble(0,0),0.00001);
         //System.out.println(NumericEncoder.encodeIntegrals(tile));
 
     }
