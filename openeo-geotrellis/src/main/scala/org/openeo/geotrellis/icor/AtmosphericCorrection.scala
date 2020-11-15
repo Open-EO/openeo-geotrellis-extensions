@@ -65,7 +65,7 @@ class AtmosphericCorrection {
                     try {
                       val iband: Int = cd.getBandFromName(bandName)
                       val resultTile: Tile = MultibandTile(tile.convert(FloatConstantNoDataCellType), aotTile.convert(FloatConstantNoDataCellType), demTile.convert(FloatConstantNoDataCellType),szaTile,vzaTile,raaTile).combineDouble(0, 1, 2,3,4,5) { (refl, aot, dem,sza,vza,raa) => if (refl != NODATA) (prePostMult.get(1) * cd.correct(bcLUT.value, iband, multibandtile._1.instant, refl.toDouble * prePostMult.get(0), sza, vza, raa, dem, aot, defParams.get(5), defParams.get(6), 0)).toInt else NODATA }
-                      resultTile
+                      resultTile.convert(tile.cellType)
                     } catch {
                       case e: IllegalArgumentException => tile
                     }
