@@ -22,7 +22,7 @@ public class CorrectionDescriptorSentinel2{
 			case "TOC-B08_10M": return 7; // nir
             case "B08": return 7; // nir
 			case "TOC-B11_20M": return 10; // swir
-			default: throw new Exception("Unsupported band provided");
+			default: throw new IllegalArgumentException("Unsupported band provided");
 		}
 	}
 	

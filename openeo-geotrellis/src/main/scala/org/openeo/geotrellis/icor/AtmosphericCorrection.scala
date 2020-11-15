@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.icor
 
 import geotrellis.layer._
-import geotrellis.raster.{FloatConstantNoDataCellType, MultibandTile, NODATA, Tile}
+import geotrellis.raster.{FloatConstantNoDataCellType, FloatConstantTile, MultibandTile, NODATA, Tile}
 import geotrellis.spark._
 import org.apache.spark.api.java.JavaSparkContext
 
@@ -34,21 +34,44 @@ class AtmosphericCorrection {
       new ContextRDD(
         datacube.mapPartitions(partition => {
           val aotProvider = new AOTProvider()
-          val demProvider = new DEMProvider(layoutDefinition,crs)
+          val demProvider = new DEMProvider(layoutDefinition, crs)
           partition.map {
             multibandtile =>
               (
                 multibandtile._1,
                 //          multibandtile._2.mapBands((b, tile) => tile.map(i => 23 ))
                 {
-                  val aotTile = aotProvider.computeAOT(multibandtile._1,crs,layoutDefinition)
-                  val demTile = demProvider.computeDEM(multibandtile._1,crs,layoutDefinition)
+
                   val cd = new CorrectionDescriptorSentinel2()
+                  def angleTile(index:Int,fallback:Double) :Tile ={
+                    if (index > 0) multibandtile._2.band(index).convert(FloatConstantNoDataCellType) else FloatConstantTile(fallback.toFloat, multibandtile._2.cols, multibandtile._2.rows)
+                  }
+                  val saaIdx = bandIds.indexOf("sunAzimuthAngles")
+                  val szaIdx = bandIds.indexOf("sunZenithAngles")
+                  val vaaIdx = bandIds.indexOf("viewAzimuthMean")
+                  val vzaIdx = bandIds.indexOf("viewZenithMean")
+
+                  val szaTile = angleTile(szaIdx,defParams.get(0))
+                  val vzaTile = angleTile(vzaIdx,defParams.get(1))
+                  val vaaTile = angleTile(vaaIdx,0.0)
+                  val saaTile = angleTile(saaIdx,130.0)
+                  val raaTile = saaTile - vaaTile
+
+                  val aotTile = aotProvider.computeAOT(multibandtile._1, crs, layoutDefinition)
+                  val demTile = demProvider.computeDEM(multibandtile._1, crs, layoutDefinition)
+
                   multibandtile._2.mapBands((b, tile) => {
-                  val iband = cd.getBandFromName(bandIds.get(b))
-                  val resultTile:Tile = MultibandTile(tile.convert(FloatConstantNoDataCellType),aotTile.convert(FloatConstantNoDataCellType),demTile.convert(FloatConstantNoDataCellType)).combineDouble(0,1,2){(refl,aot,dem) => if (refl != NODATA) (prePostMult.get(1) * cd.correct(bcLUT.value, iband, multibandtile._1.instant, refl.toDouble * prePostMult.get(0), defParams.get(0), defParams.get(1), defParams.get(2), dem ,  aot, defParams.get(5),defParams.get(6),0)).toInt else NODATA}
-                  resultTile
-                })}
+                    val bandName = bandIds.get(b)
+                    try {
+                      val iband: Int = cd.getBandFromName(bandName)
+                      val resultTile: Tile = MultibandTile(tile.convert(FloatConstantNoDataCellType), aotTile.convert(FloatConstantNoDataCellType), demTile.convert(FloatConstantNoDataCellType),szaTile,vzaTile,raaTile).combineDouble(0, 1, 2,3,4,5) { (refl, aot, dem,sza,vza,raa) => if (refl != NODATA) (prePostMult.get(1) * cd.correct(bcLUT.value, iband, multibandtile._1.instant, refl.toDouble * prePostMult.get(0), sza, vza, raa, dem, aot, defParams.get(5), defParams.get(6), 0)).toInt else NODATA }
+                      resultTile
+                    } catch {
+                      case e: IllegalArgumentException => tile
+                    }
+
+                  })
+                }
               )
           }
 
