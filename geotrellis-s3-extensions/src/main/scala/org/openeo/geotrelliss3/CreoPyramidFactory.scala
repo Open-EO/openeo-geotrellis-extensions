@@ -56,8 +56,10 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
   if (awsDirect) {
     registerOption("AWS_S3_ENDPOINT", URI.create(endpoint).getAuthority)
+    registerOption("AWS_DEFAULT_REGION", region)
     registerOption("AWS_SECRET_ACCESS_KEY", getenv("AWS_SECRET_ACCESS_KEY"))
     registerOption("AWS_ACCESS_KEY_ID", getenv("AWS_ACCESS_KEY_ID"))
+    registerOption("AWS_VIRTUAL_HOSTING", "FALSE")
   }
 
   def this(productPaths: util.List[String], bands: util.List[String]) =
