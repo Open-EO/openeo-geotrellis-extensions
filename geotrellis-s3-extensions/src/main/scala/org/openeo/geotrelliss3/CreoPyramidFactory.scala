@@ -1,5 +1,7 @@
 package org.openeo.geotrelliss3
 
+import java.lang.System.getenv
+import java.net.URI
 import java.nio.file.{Files, Paths}
 import java.time._
 import java.util
@@ -7,6 +9,7 @@ import java.util
 import geotrellis.layer._
 import geotrellis.proj4.CRS
 import geotrellis.raster.gdal.GDALRasterSource
+import geotrellis.raster.gdal.config.GDALOptionsConfig.registerOption
 import geotrellis.raster.{MultibandTile, RasterRegion, TargetAlignment, Tile, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
@@ -17,6 +20,9 @@ import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.openeo.geotrellis.layers.FileLayerProvider.{bestCRS, getLayout, layerMetadata}
+import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.ListObjectsRequest
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable
@@ -27,10 +33,20 @@ object CreoPyramidFactory {
   private val layoutScheme = FloatingLayoutScheme(256)
   private val layerName = "S3"
   private val maxZoom = 14
+  private val endpoint = "http://data.cloudferro.com"
+  private val region = "RegionOne"
+  private val awsDirect = "TRUE".equals(getenv("AWS_DIRECT"))
 
   private implicit val dateOrdering: Ordering[ZonedDateTime] = new Ordering[ZonedDateTime] {
     override def compare(a: ZonedDateTime, b: ZonedDateTime): Int =
       a.withZoneSameInstant(ZoneId.of("UTC")) compareTo b.withZoneSameInstant(ZoneId.of("UTC"))
+  }
+
+  private def getS3Client(endpoint: String, region: String): S3Client = {
+    S3Client.builder()
+      .endpointOverride(new URI(endpoint))
+      .region(Region.of(region))
+      .build()
   }
 }
 
@@ -38,21 +54,47 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
   import CreoPyramidFactory._
 
+  if (awsDirect) {
+    registerOption("AWS_S3_ENDPOINT", URI.create(endpoint).getAuthority)
+    registerOption("AWS_SECRET_ACCESS_KEY", getenv("AWS_SECRET_ACCESS_KEY"))
+    registerOption("AWS_ACCESS_KEY_ID", getenv("AWS_ACCESS_KEY_ID"))
+  }
+
   def this(productPaths: util.List[String], bands: util.List[String]) =
     this(productPaths.asScala, bands.asScala)
 
   private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
 
+  private def getS3Client: S3Client = CreoPyramidFactory.getS3Client(endpoint, region)
+
   private def listProducts(productPath: String) = {
     val keyPattern = raw".*\.jp2".r
 
-    Files.walk(Paths.get(productPath)).iterator().asScala
-      .map(p => p.toString)
-      .flatMap(key => key match {
-        case keyPattern(_*) => Some(key)
-        case _ => None
-      })
-      .toSeq
+    if (awsDirect) {
+      val path = Paths.get(productPath)
+      val bucket = path.getName(0).toString.toUpperCase()
+      val key = path.subpath(1, path.getNameCount).toString
+      val request = ListObjectsRequest.builder().bucket(bucket).prefix(key).build()
+
+      getS3Client
+        .listObjects(request)
+        .contents()
+        .asScala
+        .map(_.key())
+        .flatMap(key => key match {
+          case keyPattern(_*) => Some(key)
+          case _ => None
+        })
+        .map(k => s"/vsis3/$bucket/$k")
+    } else {
+      Files.walk(Paths.get(productPath)).iterator().asScala
+        .map(p => p.toString)
+        .flatMap(key => key match {
+          case keyPattern(_*) => Some(key)
+          case _ => None
+        })
+        .toSeq
+    }
   }
 
   private def mapToSingleTile(tiles: Iterable[Tile]): Option[Tile] = {
