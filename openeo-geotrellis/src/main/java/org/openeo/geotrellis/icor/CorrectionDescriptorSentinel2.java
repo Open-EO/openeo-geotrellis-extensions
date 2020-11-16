@@ -1,6 +1,9 @@
 package org.openeo.geotrellis.icor;
 
+import java.time.Duration;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 
 
 /**
@@ -11,7 +14,9 @@ import java.time.LocalDate;
 // Applies MODTRAN atmospheric correction based on preset values in a lookup table.
 public class CorrectionDescriptorSentinel2{
 
-	public int getBandFromName(String name) throws Exception {
+    public static final ZonedDateTime D19500101 = LocalDate.of(1950, 1, 1).atStartOfDay(ZoneId.of("UTC"));
+
+    public int getBandFromName(String name) throws Exception {
 		switch(name.toUpperCase()) {
 			case "TOC-B02_10M": return 1; // blue
             case "B02": return 1; // blue
@@ -44,7 +49,7 @@ public class CorrectionDescriptorSentinel2{
     public double correct(
     	LookupTable lut,
 		int band,
-		long time,
+		ZonedDateTime time,
 		double src, 
 		double sza, 
 		double vza, 
@@ -56,21 +61,27 @@ public class CorrectionDescriptorSentinel2{
 		int waterMask)
     {
     	// Get interpolated array from lookuptable
-        double[] params = lut.getInterpolated(band,sza,vza,raa,gnd,aot,cwv,ozone);
-        
+
         // Apply atmoshperic correction on pixel based on an array of parameters from MODTRAN
         double radiance=reflToRad(src, sza, time, band);
-        double bgRad=radiance;
+        //TODO there's a step missing here:
+        double corrected = correctRadiance(lut, band, radiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
+
+        return corrected;
+    }
+
+    double correctRadiance(LookupTable lut, int band, double radiance,  double sza, double vza, double raa, double gnd, double aot, double cwv, double ozone, int waterMask) {
+        double bgRad= radiance;
+        double[] params = lut.getInterpolated(band, sza, vza, raa, gnd, aot, cwv, ozone);
         double corrected = (-1. * params[0] + params[1] * radiance + params[2] * bgRad) / (params[3] + params[4] * bgRad);
-        if ( waterMask != 0/*==LAND*/ ){ 
+        if ( waterMask != 0/*==LAND*/ ){
             if (waterMask == 1/*==FRESH_WATER*/) { corrected -= params[5]; }
             else                                 { corrected -= params[6]; }
         }
-        
         return corrected;
-    }            
+    }
 
-    
+
     /**
      * @param src:              Band in reflectance range(0.,1.)
      * @param szaCoverage:      SZA in degrees 
@@ -80,26 +91,17 @@ public class CorrectionDescriptorSentinel2{
      * @throws Exception 
      */
     // this is highly sub-optimal many things can be calculated beforehand once for all pixels!
-    public double reflToRad(double src, double sza, long time, int bandToConvert) {
+    public double reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert) {
 
         // SZA to SZA in rad + apply scale factor
-    	// note sza is scaling by 2. is moved inside
-        //GridCoverage2D szaInRadCoverage = multiplyConst(szaCoverage, new double[]{Math.PI/360}, -1.);
         double szaInRadCoverage = 2.*sza*Math.PI/360.;
 
         // cos of SZA
-        //GridCoverage2D cosSzaCoverage = cosine(szaInRadCoverage, -1.);
         double cosSzaCoverage = Math.cos(szaInRadCoverage);
-        
-        // multiply with reflectance
-       	// note band scaling by 2000. is moved inside
-        //GridCoverage2D multiplyCoverage = multiply(bandCoverage, cosSzaCoverage, -1.);
-        double multiplyCoverage = 2000.*src*cosSzaCoverage;
-        
-        // divide by factor and scale
-        //GridCoverage2D radiance = divideByConst(multiplyCoverage, new double[]{factor(time, bandToConvert)*2000}, -1.);        
-        double radiance = multiplyCoverage/(factor(time, bandToConvert)*2000.);
-        
+
+        double solarIrradiance = irradiances[bandToConvert];
+
+        double radiance = src* (cosSzaCoverage * solarIrradiance) / (Math.PI);
         return radiance;
     }
 
@@ -151,7 +153,7 @@ public class CorrectionDescriptorSentinel2{
      */
     double[] irradiances = {
         1874.3f,
-        1959.75f,
+            1941.63f,
         1824.93f,
         1512.79f,
         1425.78f,
@@ -165,29 +167,17 @@ public class CorrectionDescriptorSentinel2{
           87.75f
     };
 
-    // factor used for substitution between reflectance and radiance
-    private double factor (Long time, int band) {
-        /**
-         * Radiometry
-         *  band0: red
-         *  band1: nir
-         *  band2: blue
-         *  band3: swir
-         **/
-
-        double solarIrradiance = irradiances[band];
-        return Math.PI * earthSunDistance(time) * earthSunDistance(time) / solarIrradiance;
-    }
     
     /**
      * @param time millisec from epoch
      * @return earth-sun distance in AU
      */
     // Get distance from earth to sun in Astronomical Units based on time in millis()
-    public double earthSunDistance(long time){
+    public static double earthSunDistance(ZonedDateTime time){
         
         // JD0 = number of days from 01/01/1950
-        double JD0 = ((double)time)/86.4e6 - ((double)LocalDate.of(1950,1,1).toEpochDay()); 
+
+        double JD0 = Duration.between(D19500101, time).toDays() ;
         
         double T = JD0 - 10000.;        
         

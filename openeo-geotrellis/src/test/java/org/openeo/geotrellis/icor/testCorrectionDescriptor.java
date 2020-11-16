@@ -3,10 +3,13 @@ package org.openeo.geotrellis.icor;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 
 import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 
 public class testCorrectionDescriptor {
 
@@ -21,10 +24,11 @@ public class testCorrectionDescriptor {
 
 		int band;
 		long value;
-		long time =  1577836800000L;
+		ZonedDateTime time =  ZonedDateTime.now();
 		double sza = 29.0;
 		double vza = 5.0;
 		double raa = 130.0;
+		double expectedRadiance=-1.0;
 		double gnd = 17;
 		double aot = 0.28;
 		double cwv = 2.64;
@@ -39,28 +43,31 @@ public class testCorrectionDescriptor {
 			this.aot = aot;
 		}
 
-		public CorrectionInput(int band, long value, double gnd,double aot,double saa,double sza,double vaa,double vza,double cwv, String date) {
+		public CorrectionInput(int band, long value,double expectedRadiance, double gnd,double aot,double saa,double sza,double vaa,double vza,double cwv, String date) {
 
 			this.band = band;
 			this.value = value;//reflectance, between 0 and 1
+			this.expectedRadiance = expectedRadiance;
 			this.gnd = gnd;//elevation in meters
 			this.aot = aot;
 			this.raa = saa-vaa;
 			this.sza = sza;
 			this.vza = vza;
-			this.time = DateTimeFormatter.ISO_DATE_TIME.parse(date,ZonedDateTime::from).toEpochSecond()*1000;
+			this.time = DateTimeFormatter.ISO_DATE_TIME.parse(date,ZonedDateTime::from);
 		}
 	}
 
 	private CorrectionInput[] inputs = {
-			new CorrectionInput(2,342L, 320.0,0.0001*1348.0),
-			new CorrectionInput(1,1267, 1.0/1000.0,0.0001*1029.0,163,58,69,2, 0.83,"2017-03-07T10:50:00Z")};//expected icor:542 sen2cor:599
+			//new CorrectionInput(2,342L, 320.0,0.0001*1348.0),
+			//expected earth sun= 1.01751709288327
+			new CorrectionInput(1,1267,41.708855, 1.0/1000.0,0.0001*1029.0,163,57.8566,69,2, 0.83,"2017-03-07T10:50:00Z")};//expected icor:574 sen2cor:598 AOT icor:0.078
 //'sunAzimuthAngles','sunZenithAngles','viewAzimuthMean','viewZenithMean'
 	@Test
 	public void testCorrectionDescriptorCorrect() {
 		CorrectionDescriptorSentinel2 cd=new CorrectionDescriptorSentinel2();
 		double tbc=1.;
-		double cv=cd.correct(lut, 1, 1577836800000L, tbc, 29.0, 5.0, 130.0, 0.0, 0.28, 2.64, 0.33, 0);
+		double cv=cd.correct(lut, 1, ZonedDateTime.ofInstant(
+				Instant.ofEpochMilli(1577836800000L), ZoneId.systemDefault()), tbc, 29.0, 5.0, 130.0, 0.0, 0.28, 2.64, 0.33, 0);
 		System.out.println(Double.toString(tbc)+" -> "+Double.toString(cv));
 		assertArrayEquals(new double[]{cv}, new double[]{1.4536087548063417}, 1.e-6);
 	}
