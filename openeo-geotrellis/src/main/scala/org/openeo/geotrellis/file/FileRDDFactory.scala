@@ -12,8 +12,8 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.FileLayerProvider.layerMetadata
-import org.openeo.geotrellis.layers.Oscars
-import org.openeo.geotrellis.layers.OscarsResponses.Feature
+import org.openeo.geotrellis.layers.OpenSearch
+import org.openeo.geotrellis.layers.OpenSearchResponses.Feature
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
 import scala.collection.JavaConverters._
@@ -22,15 +22,15 @@ import scala.collection.JavaConverters._
  * A class that looks like a pyramid factory, but does not build a full datacube. Instead, it generates an RDD[SpaceTimeKey, ProductPath].
  * This RDD can then be transformed into
  */
-class FileRDDFactory(oscarsCollectionId: String, oscarsLinkTitles: util.List[String],attributeValues: util.Map[String, Any] = util.Collections.emptyMap(),correlationId: String = "") {
+class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.List[String],attributeValues: util.Map[String, Any] = util.Collections.emptyMap(),correlationId: String = "") {
 
-  protected val oscars: Oscars = Oscars()
+  protected val openSearch: OpenSearch = OpenSearch()
 
   private def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, sc:SparkContext): Seq[Feature] = {
     require(zoom >= 0)
 
-    val overlappingFeatures: Seq[Feature] = oscars.getProducts(
-      oscarsCollectionId,
+    val overlappingFeatures: Seq[Feature] = openSearch.getProducts(
+      openSearchCollectionId,
       from.toLocalDate,
       to.toLocalDate,
       boundingBox,
@@ -50,7 +50,7 @@ class FileRDDFactory(oscarsCollectionId: String, oscarsLinkTitles: util.List[Str
     val bbox = polygons.polygons.toSeq.extent
 
     val boundingBox = ProjectedExtent(bbox, polygons.crs)
-    //load product metadata from oscars
+    //load product metadata from OpenSearch
     val productMetadata: Seq[Feature] = loadRasterSourceRDD(boundingBox, from, to, zoom,sc)
 
     //construct layer metadata

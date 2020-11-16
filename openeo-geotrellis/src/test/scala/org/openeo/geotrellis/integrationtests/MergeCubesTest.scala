@@ -63,14 +63,14 @@ class MergeCubesTest {
   }
 
   private def sigma0PyramidFactory = new Sentinel2PyramidFactory(
-    oscarsCollectionId = "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
-    oscarsLinkTitles = util.Arrays.asList("VH", "VV", "angle"),
+    openSearchCollectionId = "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+    openSearchLinkTitles = util.Arrays.asList("VH", "VV", "angle"),
     rootPath = "/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1"
   )
 
   private def faparPyramidFactory = new Sentinel2PyramidFactory(
-    oscarsCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
-    oscarsLinkTitles = util.Collections.singletonList("FAPAR_10M"),
+    openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
+    openSearchLinkTitles = util.Collections.singletonList("FAPAR_10M"),
     rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2"
   )
 }

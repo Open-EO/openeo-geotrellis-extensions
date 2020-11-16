@@ -9,7 +9,7 @@ import org.junit.Test
 
 import scala.io.{Codec, Source}
 
-class OscarsResponsesTest {
+class OpenSearchResponsesTest {
 
   private def loadJsonResource(classPathResourceName: String, codec: Codec = Codec.UTF8): String = {
     val jsonFile = Source.fromURL(getClass.getResource(classPathResourceName))(codec)
@@ -21,7 +21,7 @@ class OscarsResponsesTest {
   @Test
   def parseProductsResponse(): Unit = {
     val productsResponse = loadJsonResource("/org/openeo/geotrellis/layers/oscarsProductsResponse.json")
-    val features = OscarsResponses.FeatureCollection.parse(productsResponse).features
+    val features = OpenSearchResponses.FeatureCollection.parse(productsResponse).features
 
     assertEquals(1, features.length)
     assertEquals(Extent(35.6948436874, -0.991331687854, 36.6805874343, 0), features.head.bbox)
@@ -38,7 +38,7 @@ class OscarsResponsesTest {
   @Test
   def parseNoProductsResponse(): Unit = {
     val productsResponse = loadJsonResource("/org/openeo/geotrellis/layers/oscarsNoProductsResponse.json")
-    val features = OscarsResponses.FeatureCollection.parse(productsResponse).features
+    val features = OpenSearchResponses.FeatureCollection.parse(productsResponse).features
 
     assertEquals(0, features.length)
   }
@@ -46,7 +46,7 @@ class OscarsResponsesTest {
   @Test
   def parseCollectionsResponse(): Unit = {
     val collectionsResponse = loadJsonResource("/org/openeo/geotrellis/layers/oscarsCollectionsResponse.json")
-    val features = OscarsResponses.FeatureCollection.parse(collectionsResponse).features
+    val features = OpenSearchResponses.FeatureCollection.parse(collectionsResponse).features
 
     assertEquals(8, features.length)
 
@@ -61,7 +61,7 @@ class OscarsResponsesTest {
     val productsResponse = loadJsonResource("/org/openeo/geotrellis/layers/oscarsProductsResponse.json")
     val incompleteResponse = productsResponse.take(productsResponse.length / 2)
 
-    try OscarsResponses.FeatureCollection.parse(incompleteResponse)
+    try OpenSearchResponses.FeatureCollection.parse(incompleteResponse)
     catch {
       case e =>
         assertTrue(e.getMessage, e.getMessage contains """"type": "FeatureCollection"""")
@@ -76,7 +76,7 @@ class OscarsResponsesTest {
     val productsResponse = loadJsonResource("/org/openeo/geotrellis/layers/oscarsProductsResponse.json")
     val faultyResponse = productsResponse.replace("features", "featurez")
 
-    try OscarsResponses.FeatureCollection.parse(faultyResponse)
+    try OpenSearchResponses.FeatureCollection.parse(faultyResponse)
     catch {
       case e =>
         assertTrue(e.getMessage, e.getMessage contains """"type": "FeatureCollection"""")

@@ -58,8 +58,8 @@ class PngTest {
 
   private def rgbLayerProvider =
     new Sentinel2FileLayerProvider(
-      oscarsCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
-      oscarsLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M"),
+      openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+      openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"
     )
 }

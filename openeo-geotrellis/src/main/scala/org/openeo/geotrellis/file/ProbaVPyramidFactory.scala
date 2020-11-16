@@ -36,12 +36,12 @@ object ProbaVPyramidFactory {
   }
 }
 
-class ProbaVPyramidFactory(oscarsCollectionId: String, rootPath: String) extends Serializable {
+class ProbaVPyramidFactory(openSearchCollectionId: String, rootPath: String) extends Serializable {
 
   import ProbaVPyramidFactory._
 
-  private def probaVOscarsPyramidFactory(bands: Seq[Band.Value], correlationId: String) = {
-    val oscarsLinkTitlesWithBandIds = bands.map(b => {
+  private def probaVOpenSearchPyramidFactory(bands: Seq[Band.Value], correlationId: String) = {
+    val openSearchLinkTitlesWithBandIds = bands.map(b => {
       val split = b.fileMarker.split(":")
       val band = split(0)
       val index = if (split.length > 1) split(1).toInt else 0
@@ -51,10 +51,10 @@ class ProbaVPyramidFactory(oscarsCollectionId: String, rootPath: String) extends
       .map({case (k, v) => (k, v.map(_._2))})
       .toList
     new FileLayerProvider(
-      oscarsCollectionId,
-      NonEmptyList.fromListUnsafe(oscarsLinkTitlesWithBandIds.map(_._1)),
+      openSearchCollectionId,
+      NonEmptyList.fromListUnsafe(openSearchLinkTitlesWithBandIds.map(_._1)),
       rootPath,
-      bandIds = oscarsLinkTitlesWithBandIds.map(_._2),
+      bandIds = openSearchLinkTitlesWithBandIds.map(_._2),
       probaV = true,
       correlationId = correlationId
     )
@@ -70,7 +70,7 @@ class ProbaVPyramidFactory(oscarsCollectionId: String, rootPath: String) extends
 
     val bands: Seq[((Band.Value, Int), Int)] = bandsFromIndices(band_indices)
 
-    val layerProvider = probaVOscarsPyramidFactory(bands.map(_._1._1), correlationId)
+    val layerProvider = probaVOpenSearchPyramidFactory(bands.map(_._1._1), correlationId)
 
     for (zoom <- layerProvider.maxZoom to 0 by -1)
       yield zoom -> {

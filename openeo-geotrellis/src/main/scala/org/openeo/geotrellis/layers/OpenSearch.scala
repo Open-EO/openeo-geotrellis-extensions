@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
 
 import geotrellis.proj4.LatLng
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.openeo.geotrellis.layers.OscarsResponses.{Feature, FeatureCollection}
+import org.openeo.geotrellis.layers.OpenSearchResponses.{Feature, FeatureCollection}
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpRequest, HttpStatusException}
 import java.util.concurrent.TimeUnit.SECONDS
@@ -18,15 +18,15 @@ import java.util.concurrent.atomic.AtomicLong
 import scala.annotation.tailrec
 import scala.collection.Map
 
-object Oscars {
-  private val logger = LoggerFactory.getLogger(classOf[Oscars])
+object OpenSearch {
+  private val logger = LoggerFactory.getLogger(classOf[OpenSearch])
   private val requestCounter = new AtomicLong
 
-  def apply(endpoint: URL = new URL("http://oscars-01.vgt.vito.be:8080")) = new Oscars(endpoint)
+  def apply(endpoint: URL = new URL("http://oscars-01.vgt.vito.be:8080")) = new OpenSearch(endpoint)
 }
 
-class Oscars(endpoint: URL) {
-  import Oscars._
+class OpenSearch(endpoint: URL) {
+  import OpenSearch._
 
   def getProducts(collectionId: String, from: LocalDate, to: LocalDate, bbox: ProjectedExtent,
                   correlationId: String = "", attributeValues: Map[String, Any] = Map()): Seq[Feature] = {

@@ -94,8 +94,8 @@ class Sentinel1CoherenceFileLayerProviderTest {
 
   private def coherenceLayerProvider(attributeValues: Map[String, Any] = Map()) =
     new Sentinel1CoherenceFileLayerProvider(
-      oscarsCollectionId = "urn:eop:VITO:TERRASCOPE_S1_SLC_COHERENCE_V1",
-      oscarsLinkTitles = NonEmptyList.of("VH", "VV"),
+      openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S1_SLC_COHERENCE_V1",
+      openSearchLinkTitles = NonEmptyList.of("VH", "VV"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel1/SLC_COHERENCE/",
       attributeValues
     )

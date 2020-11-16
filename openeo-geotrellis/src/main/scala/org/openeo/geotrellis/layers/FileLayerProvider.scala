@@ -20,7 +20,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
-import org.openeo.geotrellis.layers.OscarsResponses.Feature
+import org.openeo.geotrellis.layers.OpenSearchResponses.Feature
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
 import scala.util.matching.Regex
@@ -122,10 +122,10 @@ object FileLayerProvider {
       ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), LocalTime.MIDNIGHT, ZoneId.of("UTC"))
   }
 
-  private def fetchExtentFromOscars(oscars: Oscars, collectionId: String): ProjectedExtent = {
-    val collection = oscars.getCollections()
+  private def fetchExtentFromOpenSearch(openSearch: OpenSearch, collectionId: String): ProjectedExtent = {
+    val collection = openSearch.getCollections()
       .find(_.id == collectionId)
-      .getOrElse(throw new IllegalArgumentException(s"unknown OSCARS collection $collectionId"))
+      .getOrElse(throw new IllegalArgumentException(s"unknown OpenSearch collection $collectionId"))
 
     ProjectedExtent(collection.bbox.reproject(LatLng, WebMercator), WebMercator)
   }
@@ -198,11 +198,11 @@ object FileLayerProvider {
   private val metadataCache =
     Caffeine.newBuilder()
       .refreshAfterWrite(15, TimeUnit.MINUTES)
-      .build(new CacheLoader[(Oscars, String, Path, FileLayerProvider), Option[(ProjectedExtent, Array[ZonedDateTime])]] {
-        override def load(key: (Oscars, String, Path, FileLayerProvider)): Option[(ProjectedExtent, Array[ZonedDateTime])] = {
-          val (oscars, collectionId, start, provider) = key
+      .build(new CacheLoader[(OpenSearch, String, Path, FileLayerProvider), Option[(ProjectedExtent, Array[ZonedDateTime])]] {
+        override def load(key: (OpenSearch, String, Path, FileLayerProvider)): Option[(ProjectedExtent, Array[ZonedDateTime])] = {
+          val (openSearch, collectionId, start, provider) = key
 
-          val bbox = fetchExtentFromOscars(oscars, collectionId)
+          val bbox = fetchExtentFromOpenSearch(openSearch, collectionId)
           val dates = provider.deriveDatesFromDirectoriesOnDisk(start)
 
           Some(bbox, dates)
@@ -210,26 +210,26 @@ object FileLayerProvider {
       })
 }
 
-class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyList[String], rootPath: String,
+class FileLayerProvider(openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
                         attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
                         bandIds: Seq[Seq[Int]] = Seq(), probaV: Boolean = false, correlationId: String = "") extends LayerProvider {
 
   import FileLayerProvider._
 
-  protected val oscars: Oscars = if (probaV) Oscars(new URL("https://oscars-dev.vgt.vito.be")) else Oscars()
+  protected val openSearch: OpenSearch = if (probaV) OpenSearch(new URL("https://oscars-dev.vgt.vito.be")) else OpenSearch()
 
-  val oscarsLinkTitlesWithBandIds: Seq[(String, Seq[Int])] = oscarsLinkTitles.toList.zipAll(bandIds, "", Seq(0))
+  val openSearchLinkTitlesWithBandIds: Seq[(String, Seq[Int])] = openSearchLinkTitles.toList.zipAll(bandIds, "", Seq(0))
 
-  def this(oscarsCollectionId: String, oscarsLinkTitle: String, rootPath: String, metadataProperties: Map[String, Any]) =
-    this(oscarsCollectionId, NonEmptyList.one(oscarsLinkTitle), rootPath, metadataProperties)
+  def this(openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, metadataProperties: Map[String, Any]) =
+    this(openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, metadataProperties)
 
-  def this(oscarsCollectionId: String, oscarsLinkTitle: String, rootPath: String) =
-    this(oscarsCollectionId, NonEmptyList.one(oscarsLinkTitle), rootPath)
+  def this(openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String) =
+    this(openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath)
 
 
   private val _rootPath = Paths.get(rootPath)
-  val maxZoom: Int = oscars.getCollections(correlationId)
-    .find(_.id == oscarsCollectionId)
+  val maxZoom: Int = openSearch.getCollections(correlationId)
+    .find(_.id == openSearchCollectionId)
     .flatMap(_.resolution)
     .flatMap(r => layoutScheme match {
       case l: ZoomedLayoutScheme => Some(l.zoom(0, 0, CellSize(r, r)))
@@ -284,7 +284,7 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
 
   private def deriveRasterSources(feature: Feature): List[(RasterSource, Seq[Int])] = {
     for {
-      (title, bands) <- oscarsLinkTitlesWithBandIds.toList
+      (title, bands) <- openSearchLinkTitlesWithBandIds.toList
       link <- feature.links.find(_.title contains title)
       path = deriveFilePath(link.href)
       targetCellType = if (link.title contains "SCENECLASSIFICATION_20M") Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0))) else None
@@ -294,8 +294,8 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
   private def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, sc:SparkContext): Seq[RasterSource] = {
     require(zoom >= 0)
 
-    val overlappingFeatures = oscars.getProducts(
-      collectionId = oscarsCollectionId,
+    val overlappingFeatures = openSearch.getProducts(
+      collectionId = openSearchCollectionId,
       from.toLocalDate,
       to.toLocalDate,
       boundingBox,
@@ -373,7 +373,7 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
 
 
   override def loadMetadata(sc: SparkContext): Option[(ProjectedExtent, Array[ZonedDateTime])] =
-    metadataCache.get((oscars, oscarsCollectionId, _rootPath, this))
+    metadataCache.get((openSearch, openSearchCollectionId, _rootPath, this))
 
   override def readTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, zoom: Int = maxZoom, sc: SparkContext): TileLayerRDD[SpaceTimeKey] =
     readMultibandTileLayer(from, to, boundingBox, zoom, sc).withContext { singleBandTiles =>
@@ -389,7 +389,7 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
   override def collectMetadata(sc: SparkContext): (ProjectedExtent, Array[ZonedDateTime]) = loadMetadata(sc).get
 
   override def toString: String =
-    s"${getClass.getSimpleName}($oscarsCollectionId, ${oscarsLinkTitlesWithBandIds.map(_._1).toList.mkString("[", ", ", "]")}, $rootPath)"
+    s"${getClass.getSimpleName}($openSearchCollectionId, ${openSearchLinkTitlesWithBandIds.map(_._1).toList.mkString("[", ", ", "]")}, $rootPath)"
 
 
   protected def deriveDatesFromDirectoriesOnDisk(start: Path): Array[ZonedDateTime] = {
@@ -434,29 +434,14 @@ class FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyLi
  * @deprecated use {@link org.openeo.geotrellis.layers.FileLayerProvider} directly
  */
 @Deprecated
-class Sentinel1CoherenceFileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyList[String], rootPath: String, attributeValues: Map[String, Any] = Map())
-  extends FileLayerProvider(oscarsCollectionId, oscarsLinkTitles, rootPath, attributeValues) {
+class Sentinel1CoherenceFileLayerProvider(openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String, attributeValues: Map[String, Any] = Map())
+  extends FileLayerProvider(openSearchCollectionId, openSearchLinkTitles, rootPath, attributeValues) {
 
-  def this(oscarsCollectionId: String, oscarsLinkTitle: String, rootPath: String, metadataProperties: Map[String, Any]) =
-    this(oscarsCollectionId, NonEmptyList.one(oscarsLinkTitle), rootPath, metadataProperties)
+  def this(openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, metadataProperties: Map[String, Any]) =
+    this(openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, metadataProperties)
 
-  def this(oscarsCollectionId: String, oscarsLinkTitle: String, rootPath: String) =
-    this(oscarsCollectionId, NonEmptyList.one(oscarsLinkTitle), rootPath)
-
-}
-
-/**
- * @deprecated use {@link org.openeo.geotrellis.layers.FileLayerProvider} directly
- */
-@Deprecated
-class Sentinel2FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyList[String], rootPath: String, attributeValues: Map[String, Any] = Map(), layoutScheme:LayoutScheme = ZoomedLayoutScheme(WebMercator, 256))
-  extends FileLayerProvider(oscarsCollectionId, oscarsLinkTitles, rootPath, attributeValues, layoutScheme) {
-
-  def this(oscarsCollectionId: String, oscarsLinkTitle: String, rootPath: String, metadataProperties: Map[String, Any]) =
-    this(oscarsCollectionId, NonEmptyList.one(oscarsLinkTitle), rootPath, metadataProperties)
-
-  def this(oscarsCollectionId: String, oscarsLinkTitle: String, rootPath: String) =
-    this(oscarsCollectionId, NonEmptyList.one(oscarsLinkTitle), rootPath)
+  def this(openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String) =
+    this(openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath)
 
 }
 
@@ -464,25 +449,40 @@ class Sentinel2FileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: N
  * @deprecated use {@link org.openeo.geotrellis.layers.FileLayerProvider} directly
  */
 @Deprecated
-class ProbavFileLayerProvider(oscarsCollectionId: String, oscarsLinkTitles: NonEmptyList[String], rootPath: String,
+class Sentinel2FileLayerProvider(openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String, attributeValues: Map[String, Any] = Map(), layoutScheme:LayoutScheme = ZoomedLayoutScheme(WebMercator, 256))
+  extends FileLayerProvider(openSearchCollectionId, openSearchLinkTitles, rootPath, attributeValues, layoutScheme) {
+
+  def this(openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, metadataProperties: Map[String, Any]) =
+    this(openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, metadataProperties)
+
+  def this(openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String) =
+    this(openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath)
+
+}
+
+/**
+ * @deprecated use {@link org.openeo.geotrellis.layers.FileLayerProvider} directly
+ */
+@Deprecated
+class ProbavFileLayerProvider(openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
                               attributeValues: Map[String, Any] = Map(), bandIds: Seq[Seq[Int]] = Seq())
-  extends FileLayerProvider(oscarsCollectionId, oscarsLinkTitles, rootPath, attributeValues, bandIds = bandIds) {
+  extends FileLayerProvider(openSearchCollectionId, openSearchLinkTitles, rootPath, attributeValues, bandIds = bandIds) {
 
   import FileLayerProvider._
 
   override val compositeRasterSource: (NonEmptyList[(RasterSource, Seq[Int])], CRS,  Map[String, String]) => MultibandCompositeRasterSource =
     (sources, crs, attributes) => new MultibandCompositeRasterSource(sources, crs, attributes)
 
-  def this(oscarsCollectionId: String, oscarsLinkTitle: String, rootPath: String, metadataProperties: Map[String, Any]) =
-    this(oscarsCollectionId, NonEmptyList.one(oscarsLinkTitle), rootPath, metadataProperties)
+  def this(openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, metadataProperties: Map[String, Any]) =
+    this(openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, metadataProperties)
 
-  def this(oscarsCollectionId: String, oscarsLinkTitle: String, rootPath: String) =
-    this(oscarsCollectionId, NonEmptyList.one(oscarsLinkTitle), rootPath, Map[String, Any]())
+  def this(openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String) =
+    this(openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, Map[String, Any]())
 
-  override protected val oscars = new Oscars(new URL("https://oscars-dev.vgt.vito.be"))
+  override protected val openSearch = new OpenSearch(new URL("https://oscars-dev.vgt.vito.be"))
 
-  override val maxZoom: Int = oscars.getCollections()
-    .find(_.id == oscarsCollectionId)
+  override val maxZoom: Int = openSearch.getCollections()
+    .find(_.id == openSearchCollectionId)
     .flatMap(_.resolution)
     .map(r => layoutScheme.zoom(0, 0, CellSize(r, r)))
     .getOrElse(9)

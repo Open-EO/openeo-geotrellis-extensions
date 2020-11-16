@@ -10,7 +10,7 @@ import geotrellis.vector.Extent
 import io.circe.generic.auto._
 import io.circe.{Decoder, HCursor}
 
-object OscarsResponses {
+object OpenSearchResponses {
   implicit val decodeUrl: Decoder[URL] = Decoder.decodeString.map(new URL(_))
   implicit val decodeDate: Decoder[ZonedDateTime] = Decoder.decodeString.map{s:CharSequence => ZonedDateTime.parse(  s.toString().split('/')(0))}
 

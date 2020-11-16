@@ -18,20 +18,20 @@ import scala.collection.JavaConverters._
 /**
  * Pyramid factory based on OpenSearch metadata lookup and file based access.
  *
- * @param oscarsCollectionId
- * @param oscarsLinkTitles
+ * @param openSearchCollectionId
+ * @param openSearchLinkTitles
  * @param rootPath
  */
-class Sentinel2PyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util.List[String], rootPath: String) {
-  require(oscarsLinkTitles.size() > 0)
+class Sentinel2PyramidFactory(openSearchCollectionId: String, openSearchLinkTitles: util.List[String], rootPath: String) {
+  require(openSearchLinkTitles.size() > 0)
 
   var crs: CRS = WebMercator
 
   private def sentinel2FileLayerProvider(metadataProperties: Map[String, Any],
                                          correlationId: String,
                                          layoutScheme: LayoutScheme = ZoomedLayoutScheme(crs, 256)) = new FileLayerProvider(
-    oscarsCollectionId,
-    NonEmptyList.fromListUnsafe(oscarsLinkTitles.asScala.toList),
+    openSearchCollectionId,
+    NonEmptyList.fromListUnsafe(openSearchLinkTitles.asScala.toList),
     rootPath,
     metadataProperties,
     layoutScheme,

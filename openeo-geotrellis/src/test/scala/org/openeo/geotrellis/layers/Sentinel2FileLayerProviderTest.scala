@@ -207,31 +207,31 @@ class Sentinel2FileLayerProviderTest {
 
   private def faparLayerProvider(attributeValues: Map[String, Any] = Map()) =
     new Sentinel2FileLayerProvider(
-      oscarsCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
-      oscarsLinkTitle = "FAPAR_10M",
+      openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
+      openSearchLinkTitle = "FAPAR_10M",
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2",
       attributeValues
     )
 
   private def tocLayerProvider =
     new Sentinel2FileLayerProvider(
-      oscarsCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
-      oscarsLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"),
+      openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+      openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"
     )
 
   private def sceneclassificationLayerProviderUTM =
     new Sentinel2FileLayerProvider(
-      oscarsCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
-      oscarsLinkTitles = NonEmptyList.of("SCENECLASSIFICATION_20M"),
+      openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+      openSearchLinkTitles = NonEmptyList.of("SCENECLASSIFICATION_20M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
       layoutScheme = FloatingLayoutScheme(256)
     )
 
   private def sceneclassificationLayerProvider =
     new Sentinel2FileLayerProvider(
-      oscarsCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
-      oscarsLinkTitles = NonEmptyList.of("SCENECLASSIFICATION_20M"),
+      openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+      openSearchLinkTitles = NonEmptyList.of("SCENECLASSIFICATION_20M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"
     )
 }

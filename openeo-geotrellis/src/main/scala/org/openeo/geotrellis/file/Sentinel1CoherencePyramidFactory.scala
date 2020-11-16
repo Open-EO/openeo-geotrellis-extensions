@@ -17,12 +17,12 @@ import scala.collection.JavaConverters._
  * @deprecated Replace with {@link org.openeo.geotrellis.file.Sentinel2PyramidFactory}
  */
 @Deprecated
-class Sentinel1CoherencePyramidFactory(oscarsCollectionId: String, oscarsLinkTitles: util.List[String], rootPath: String) {
-  require(oscarsLinkTitles.size() > 0)
+class Sentinel1CoherencePyramidFactory(openSearchCollectionId: String, openSearchLinkTitles: util.List[String], rootPath: String) {
+  require(openSearchLinkTitles.size() > 0)
 
-  private def sentinel1CoherenceOscarsPyramidFactory(metadataProperties: Map[String, Any]) = new FileLayerProvider(
-    oscarsCollectionId,
-    NonEmptyList.fromListUnsafe(oscarsLinkTitles.asScala.toList),
+  private def sentinel1CoherenceOpenSearchPyramidFactory(metadataProperties: Map[String, Any]) = new FileLayerProvider(
+    openSearchCollectionId,
+    NonEmptyList.fromListUnsafe(openSearchLinkTitles.asScala.toList),
     rootPath,
     metadataProperties
   )
@@ -38,7 +38,7 @@ class Sentinel1CoherencePyramidFactory(oscarsCollectionId: String, oscarsLinkTit
 
     val intersectsPolygons = AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
 
-    val layerProvider = sentinel1CoherenceOscarsPyramidFactory(metadata_properties.asScala.toMap)
+    val layerProvider = sentinel1CoherenceOpenSearchPyramidFactory(metadata_properties.asScala.toMap)
 
     for (zoom <- layerProvider.maxZoom to 0 by -1)
       yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, zoom, sc)
@@ -52,12 +52,12 @@ class Sentinel1CoherencePyramidFactory(oscarsCollectionId: String, oscarsLinkTit
     val from = ZonedDateTime.parse(from_date)
     val to = ZonedDateTime.parse(to_date)
 
-    val layerProvider = sentinel1CoherenceOscarsPyramidFactory(metadata_properties.asScala.toMap)
+    val layerProvider = sentinel1CoherenceOpenSearchPyramidFactory(metadata_properties.asScala.toMap)
 
     for (zoom <- layerProvider.maxZoom to 0 by -1)
       yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox, zoom, sc)
   }
 
   def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, metadataProperties: Map[String, Any] = Map())(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] =
-    sentinel1CoherenceOscarsPyramidFactory(metadataProperties).readMultibandTileLayer(from, to, boundingBox, zoom, sc)
+    sentinel1CoherenceOpenSearchPyramidFactory(metadataProperties).readMultibandTileLayer(from, to, boundingBox, zoom, sc)
 }

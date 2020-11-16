@@ -6,13 +6,13 @@ import geotrellis.proj4.LatLng
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.Test
 
-class OscarsTest {
+class OpenSearchTest {
 
   @Test
   def test(): Unit = {
-    val oscars = Oscars()
+    val openSearch = OpenSearch()
 
-    val features = oscars.getProducts(
+    val features = openSearch.getProducts(
       collectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
       from = LocalDate.of(2019, 10, 3),
       to = LocalDate.of(2020, 1, 2),
