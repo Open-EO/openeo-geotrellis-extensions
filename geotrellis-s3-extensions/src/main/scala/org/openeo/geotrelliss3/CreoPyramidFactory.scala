@@ -18,12 +18,12 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
-import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.openeo.geotrellis.layers.FileLayerProvider.{bestCRS, getLayout, layerMetadata}
+import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.ListObjectsRequest
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable
@@ -78,25 +78,31 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
       val path = Paths.get(productPath)
       val bucket = path.getName(0).toString.toUpperCase()
       val key = path.subpath(1, path.getNameCount).toString
-      val request = ListObjectsRequest.builder().bucket(bucket).prefix(key).build()
 
       val s3Client = getS3Client
 
       logger.info(s"Buckets: ${s3Client.listBuckets().buckets().asScala.map(_.name()).mkString(",")}")
 
       val keys = s3Client
-        .listObjects(request)
+        .listObjectsV2(ListObjectsV2Request.builder().bucket(bucket).maxKeys(100).build())
         .contents()
         .asScala
         .map(_.key())
 
-      logger.info(s"Keys:\n${keys.mkString("\n")}")
+      logger.info(s"Bucket: $bucket, Keys:\n${keys.mkString("\n")}")
 
-      keys.flatMap(key => key match {
-          case keyPattern(_*) => Some(key)
-          case _ => None
-        })
-        .map(k => {
+      val files = s3Client
+        .listObjectsV2(ListObjectsV2Request.builder().bucket(bucket).prefix(key).build())
+        .contents()
+        .asScala
+        .map(_.key())
+
+      logger.info(s"Files:\n${files.mkString("\n")}")
+
+      files.flatMap(key => key match {
+        case keyPattern(_*) => Some(key)
+        case _ => None
+      }).map(k => {
           val vsiPath = s"/vsis3/$bucket/$k"
           logger.info(s"VSI path: $vsiPath")
           vsiPath
