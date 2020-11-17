@@ -20,6 +20,7 @@ import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.openeo.geotrellis.layers.FileLayerProvider.{bestCRS, getLayout, layerMetadata}
+import org.slf4j.LoggerFactory
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.ListObjectsRequest
@@ -36,6 +37,7 @@ object CreoPyramidFactory {
   private val endpoint = "http://data.cloudferro.com"
   private val region = "RegionOne"
   private val awsDirect = "TRUE".equals(getenv("AWS_DIRECT"))
+  private val logger = LoggerFactory.getLogger(classOf[CreoPyramidFactory])
 
   private implicit val dateOrdering: Ordering[ZonedDateTime] = new Ordering[ZonedDateTime] {
     override def compare(a: ZonedDateTime, b: ZonedDateTime): Int =
@@ -78,16 +80,27 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
       val key = path.subpath(1, path.getNameCount).toString
       val request = ListObjectsRequest.builder().bucket(bucket).prefix(key).build()
 
-      getS3Client
+      val s3Client = getS3Client
+
+      logger.info(s"Buckets: ${s3Client.listBuckets().buckets().asScala.map(_.name()).mkString(",")}")
+
+      val keys = s3Client
         .listObjects(request)
         .contents()
         .asScala
         .map(_.key())
-        .flatMap(key => key match {
+
+      logger.info(s"Keys:\n${keys.mkString("\n")}")
+
+      keys.flatMap(key => key match {
           case keyPattern(_*) => Some(key)
           case _ => None
         })
-        .map(k => s"/vsis3/$bucket/$k")
+        .map(k => {
+          val vsiPath = s"/vsis3/$bucket/$k"
+          logger.info(s"VSI path: $vsiPath")
+          vsiPath
+        })
     } else {
       Files.walk(Paths.get(productPath)).iterator().asScala
         .map(p => p.toString)
@@ -125,7 +138,11 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
       layout.mapTransform.keysForGeometry(reprojectedBoundingBox.toPolygon())
         .map(key => SpaceTimeKey(key, date)))
 
+    logger.info(s"Overlapping keys:\n${overlappingKeys.map(_.toString).mkString("\n")}")
+
     val productKeys = productPaths.flatMap(listProducts)
+
+    logger.info(s"Products keys:\n${productKeys.mkString("\n")}")
 
     def extractDate(key: String): ZonedDateTime = {
       val date = raw"\/(\d{4})\/(\d{2})\/(\d{2})\/".r.unanchored
