@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.file
 
+import java.net.URL
 import java.time.ZonedDateTime
 import java.util
 
@@ -36,9 +37,11 @@ object ProbaVPyramidFactory {
   }
 }
 
-class ProbaVPyramidFactory(openSearchCollectionId: String, rootPath: String) extends Serializable {
+class ProbaVPyramidFactory(openSearchEndpoint: String, openSearchCollectionId: String, rootPath: String) extends Serializable {
 
   import ProbaVPyramidFactory._
+
+  private val openSearchEndpointUrl = new URL(openSearchEndpoint)
 
   private def probaVOpenSearchPyramidFactory(bands: Seq[Band.Value], correlationId: String) = {
     val openSearchLinkTitlesWithBandIds = bands.map(b => {
@@ -51,6 +54,7 @@ class ProbaVPyramidFactory(openSearchCollectionId: String, rootPath: String) ext
       .map({case (k, v) => (k, v.map(_._2))})
       .toList
     new FileLayerProvider(
+      openSearchEndpointUrl,
       openSearchCollectionId,
       NonEmptyList.fromListUnsafe(openSearchLinkTitlesWithBandIds.map(_._1)),
       rootPath,

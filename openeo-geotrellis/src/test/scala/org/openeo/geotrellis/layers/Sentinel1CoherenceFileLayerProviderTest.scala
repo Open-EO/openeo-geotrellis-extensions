@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.layers
 
+import java.net.URL
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
@@ -93,7 +94,8 @@ class Sentinel1CoherenceFileLayerProviderTest {
   }
 
   private def coherenceLayerProvider(attributeValues: Map[String, Any] = Map()) =
-    new Sentinel1CoherenceFileLayerProvider(
+    new FileLayerProvider(
+      openSearchEndpoint = new URL("http://oscars-01.vgt.vito.be:8080"),
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S1_SLC_COHERENCE_V1",
       openSearchLinkTitles = NonEmptyList.of("VH", "VV"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel1/SLC_COHERENCE/",

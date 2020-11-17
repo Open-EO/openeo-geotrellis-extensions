@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.layers
 
+import java.net.URL
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time._
@@ -22,6 +23,7 @@ import org.openeo.geotrellis.TestImplicits._
 
 object Sentinel2FileLayerProviderTest {
   private var sc: SparkContext = _
+  private val openSearchEndpoint = new URL("http://oscars-01.vgt.vito.be:8080")
 
   @BeforeClass
   def setupSpark(): Unit = sc = SparkUtils.createLocalSparkContext("local[*]",
@@ -206,7 +208,8 @@ class Sentinel2FileLayerProviderTest {
   }
 
   private def faparLayerProvider(attributeValues: Map[String, Any] = Map()) =
-    new Sentinel2FileLayerProvider(
+    new FileLayerProvider(
+      openSearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
       openSearchLinkTitle = "FAPAR_10M",
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2",
@@ -214,14 +217,16 @@ class Sentinel2FileLayerProviderTest {
     )
 
   private def tocLayerProvider =
-    new Sentinel2FileLayerProvider(
+    new FileLayerProvider(
+      openSearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"
     )
 
   private def sceneclassificationLayerProviderUTM =
-    new Sentinel2FileLayerProvider(
+    new FileLayerProvider(
+      openSearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("SCENECLASSIFICATION_20M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
@@ -229,7 +234,8 @@ class Sentinel2FileLayerProviderTest {
     )
 
   private def sceneclassificationLayerProvider =
-    new Sentinel2FileLayerProvider(
+    new FileLayerProvider(
+      openSearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("SCENECLASSIFICATION_20M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"

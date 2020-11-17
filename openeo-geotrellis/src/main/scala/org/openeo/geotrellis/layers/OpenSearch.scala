@@ -22,7 +22,7 @@ object OpenSearch {
   private val logger = LoggerFactory.getLogger(classOf[OpenSearch])
   private val requestCounter = new AtomicLong
 
-  def apply(endpoint: URL = new URL("http://oscars-01.vgt.vito.be:8080")) = new OpenSearch(endpoint)
+  def apply(endpoint: URL) = new OpenSearch(endpoint)
 }
 
 class OpenSearch(endpoint: URL) {

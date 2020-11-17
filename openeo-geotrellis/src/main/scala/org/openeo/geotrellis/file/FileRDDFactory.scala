@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.file
 
+import java.net.URL
 import java.time.ZonedDateTime
 import java.util
 
@@ -24,7 +25,7 @@ import scala.collection.JavaConverters._
  */
 class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.List[String],attributeValues: util.Map[String, Any] = util.Collections.emptyMap(),correlationId: String = "") {
 
-  protected val openSearch: OpenSearch = OpenSearch()
+  protected val openSearch: OpenSearch = OpenSearch(new URL("http://oscars-01.vgt.vito.be:8080"))
 
   private def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, sc:SparkContext): Seq[Feature] = {
     require(zoom >= 0)

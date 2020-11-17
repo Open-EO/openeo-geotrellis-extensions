@@ -2,6 +2,7 @@ package org.openeo.geotrellis.file
 
 import java.time.ZonedDateTime
 import java.util
+import java.net.URL
 
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutScheme, SpaceTimeKey, ZoomedLayoutScheme}
@@ -22,14 +23,17 @@ import scala.collection.JavaConverters._
  * @param openSearchLinkTitles
  * @param rootPath
  */
-class Sentinel2PyramidFactory(openSearchCollectionId: String, openSearchLinkTitles: util.List[String], rootPath: String) {
+class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId: String,
+                              openSearchLinkTitles: util.List[String], rootPath: String) {
   require(openSearchLinkTitles.size() > 0)
 
+  private val openSearchEndpointUrl = new URL(openSearchEndpoint)
   var crs: CRS = WebMercator
 
   private def sentinel2FileLayerProvider(metadataProperties: Map[String, Any],
                                          correlationId: String,
                                          layoutScheme: LayoutScheme = ZoomedLayoutScheme(crs, 256)) = new FileLayerProvider(
+    openSearchEndpointUrl,
     openSearchCollectionId,
     NonEmptyList.fromListUnsafe(openSearchLinkTitles.asScala.toList),
     rootPath,

@@ -1,6 +1,7 @@
 package org.openeo.geotrellis.layers
 
 // import org.openeo.geotrellis.TestImplicits._
+import java.net.URL
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
@@ -52,7 +53,8 @@ class S1GrdSigma0FileLayerProviderTest {
     assertEquals(33460.7361532273, angleMean.mean, 1)
   }
 
-  private def sigma0LayerProvider = new Sentinel2FileLayerProvider(
+  private def sigma0LayerProvider = new FileLayerProvider(
+    openSearchEndpoint = new URL("http://oscars-01.vgt.vito.be:8080"),
     openSearchCollectionId = "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
     openSearchLinkTitles = NonEmptyList.of("VH", "VV", "angle"),
     rootPath = "/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1"

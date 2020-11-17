@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.layers
 
+import java.net.URL
 import java.time.LocalDate
 
 import geotrellis.proj4.LatLng
@@ -10,7 +11,7 @@ class OpenSearchTest {
 
   @Test
   def test(): Unit = {
-    val openSearch = OpenSearch()
+    val openSearch = OpenSearch(new URL("http://oscars-01.vgt.vito.be:8080"))
 
     val features = openSearch.getProducts(
       collectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
