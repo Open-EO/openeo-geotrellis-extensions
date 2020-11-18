@@ -61,7 +61,6 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
     registerOption("AWS_DEFAULT_REGION", region)
     registerOption("AWS_SECRET_ACCESS_KEY", getenv("AWS_SECRET_ACCESS_KEY"))
     registerOption("AWS_ACCESS_KEY_ID", getenv("AWS_ACCESS_KEY_ID"))
-    registerOption("AWS_VIRTUAL_HOSTING", "FALSE")
   }
 
   def this(productPaths: util.List[String], bands: util.List[String]) =
@@ -169,6 +168,8 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
       .map(key => (key, bandFileMaps
         .flatMap(_.get(key.time))
         .map(_.map(path => GDALRasterSource(path)))))
+
+    if (rastersources.isEmpty) throw new IllegalArgumentException("no fitting raster sources found")
 
     //unsafe, don't we need union of cell type?
     val commonCellType = rastersources.take(1).head._2.head.head.cellType
