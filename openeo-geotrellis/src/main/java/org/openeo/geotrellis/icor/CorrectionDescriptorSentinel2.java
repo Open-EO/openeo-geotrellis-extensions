@@ -17,7 +17,35 @@ public class CorrectionDescriptorSentinel2{
     public static final ZonedDateTime D19500101 = LocalDate.of(1950, 1, 1).atStartOfDay(ZoneId.of("UTC"));
 
     public int getBandFromName(String name) throws Exception {
+    	// TODO: turn it into a map
 		switch(name.toUpperCase()) {
+			case "TOC-B01_60M": return 0;
+			case "B01":         return 0;
+			case "TOC-B02_10M": return 1;
+			case "B02":         return 1;
+			case "TOC-B03_10M": return 2;
+			case "B03":         return 2;
+			case "TOC-B04_10M": return 3;
+			case "B04":         return 3;
+			case "TOC-B05_20M": return 4;
+			case "B05":         return 4;
+			case "TOC-B06_20M": return 5;
+			case "B06":         return 5;
+			case "TOC-B07_20M": return 6;
+			case "B07":         return 6;
+			case "TOC-B08_10M": return 7;
+			case "B08":         return 7;
+			case "TOC-B8A_20M": return 8;
+			case "B8A":         return 8;
+			case "TOC-B09_60M": return 9;
+			case "B09":         return 9;
+			case "TOC-B10_60M": return 10;
+			case "B10":         return 10;
+			case "TOC-B11_20M": return 11;
+			case "B11":         return 11;
+			case "TOC-B12_20M": return 12;
+			case "B12":         return 12;
+			/*
 			case "TOC-B02_10M": return 1; // blue
             case "B02": return 1; // blue
             case "TOC-B03_10M": return 2; // green
@@ -26,7 +54,8 @@ public class CorrectionDescriptorSentinel2{
             case "B04": return 3; // red
 			case "TOC-B08_10M": return 7; // nir
             case "B08": return 7; // nir
-			case "TOC-B11_20M": return 10; // swir
+			case "TOC-B11_20M": return 10; // swir <- BUG: 11
+			*/
 			default: throw new IllegalArgumentException("Unsupported band provided");
 		}
 	}
@@ -151,20 +180,52 @@ public class CorrectionDescriptorSentinel2{
      *           <SOLAR_IRRADIANCE bandId="12" unit="W/m²/µm">85.25</SOLAR_IRRADIANCE>
      *         </Solar_Irradiance_List>
      */
+    // Sentinel-2B !
     double[] irradiances = {
-        1874.3f,
-            1941.63f,
+        1874.30f,
+        1941.63f,
         1824.93f,
         1512.79f,
         1425.78f,
         1291.13f,
         1175.57f,
         1041.28f,
-        953.93f,
-        817.58f,
-        365.41f,
-        247.08f,
+         953.93f,
+         817.58f,
+         365.41f,
+         247.08f,
           87.75f
+    };
+    /* from MTD_DS.xml as above
+        <CENTRAL unit="nm">442.3</CENTRAL>
+		<CENTRAL unit="nm">492.1</CENTRAL>
+		<CENTRAL unit="nm">559</CENTRAL>
+		<CENTRAL unit="nm">665</CENTRAL>
+		<CENTRAL unit="nm">703.8</CENTRAL>
+		<CENTRAL unit="nm">739.1</CENTRAL>
+		<CENTRAL unit="nm">779.7</CENTRAL>
+		<CENTRAL unit="nm">833</CENTRAL>
+		<CENTRAL unit="nm">864</CENTRAL>
+		<CENTRAL unit="nm">943.2</CENTRAL>
+		<CENTRAL unit="nm">1376.9</CENTRAL>
+		<CENTRAL unit="nm">1610.4</CENTRAL>
+		<CENTRAL unit="nm">2185.7</CENTRAL>
+    */
+    // Sentinel-2B !
+    double[] central_wavelengths = {
+         442.3,
+         492.1,
+         559.0,
+         665.0,
+         703.8,
+         739.1,
+         779.7,
+         833.0,
+         864.0,
+         943.2,
+        1376.9,
+        1610.4,
+        2185.7
     };
 
     
@@ -193,5 +254,20 @@ public class CorrectionDescriptorSentinel2{
         return DUA;
     }
 
+	public double getIrradiance(int iband) {
+		return irradiances[iband];
+	}
+	public double getIrradiance(String iband) throws Exception {
+		return irradiances[getBandFromName(iband)];
+	}
+
+	public double getCentralWavelength(int iband) {
+		return central_wavelengths[iband];
+	}
+	public double getCentralWavelength(String iband) throws Exception {
+		return central_wavelengths[getBandFromName(iband)];
+	}
+
+    
     
 }

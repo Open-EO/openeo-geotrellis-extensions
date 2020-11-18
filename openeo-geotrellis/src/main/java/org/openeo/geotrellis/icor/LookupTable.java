@@ -238,4 +238,10 @@ public class LookupTable implements Serializable{
         return values[position];
     }
 
+	public double[] getCwv() {
+		return cwv;
+	}
+
+
+    
 }
