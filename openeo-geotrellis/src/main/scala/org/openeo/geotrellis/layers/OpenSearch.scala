@@ -11,7 +11,7 @@ import geotrellis.proj4.LatLng
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.openeo.geotrellis.layers.OpenSearchResponses.{Feature, FeatureCollection}
 import org.slf4j.LoggerFactory
-import scalaj.http.{Http, HttpRequest, HttpStatusException}
+import scalaj.http.{Http, HttpOptions, HttpRequest, HttpStatusException}
 import java.util.concurrent.TimeUnit.SECONDS
 import java.util.concurrent.atomic.AtomicLong
 
@@ -55,7 +55,7 @@ class OpenSearch(endpoint: URL) {
                           correlationId: String, attributeValues: Map[String, Any], startIndex: Int): FeatureCollection = {
     val Extent(xMin, yMin, xMax, yMax) = bbox.reproject(LatLng)
 
-    val getProducts = Http(s"$endpoint/products")
+    val getProducts = http(s"$endpoint/products")
       .param("collection", collectionId)
       .param("start", start format ISO_INSTANT)
       .param("end", end format ISO_INSTANT)
@@ -71,12 +71,15 @@ class OpenSearch(endpoint: URL) {
   }
 
   def getCollections(correlationId: String = ""): Seq[Feature] = {
-    val getCollections = Http(s"$endpoint/collections")
+    val getCollections = http(s"$endpoint/collections")
+      .option(HttpOptions.followRedirects(true))
       .param("clientId", clientId(correlationId))
 
     val json = withRetries { execute(getCollections) }
     FeatureCollection.parse(json).features
   }
+
+  private def http(url: String): HttpRequest = Http(url).option(HttpOptions.followRedirects(true))
 
   private def clientId(correlationId: String): String = {
     if (correlationId.isEmpty) correlationId
