@@ -96,6 +96,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
         .asScala
         .map(_.key())
 
+      logger.info(s"Key: $key")
       logger.info(s"Files:\n${files.mkString("\n")}")
 
       files.flatMap(key => key match {
