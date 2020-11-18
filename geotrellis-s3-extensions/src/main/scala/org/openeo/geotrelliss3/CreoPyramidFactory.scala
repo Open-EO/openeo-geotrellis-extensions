@@ -22,7 +22,7 @@ import org.openeo.geotrellis.layers.FileLayerProvider.{bestCRS, getLayout, layer
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.regions.Region
-import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.{S3Client, S3Configuration}
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 
 import scala.collection.JavaConverters._
@@ -48,6 +48,9 @@ object CreoPyramidFactory {
     S3Client.builder()
       .endpointOverride(new URI(endpoint))
       .region(Region.of(region))
+      .serviceConfiguration(S3Configuration.builder()
+        .pathStyleAccessEnabled(true)
+        .build())
       .build()
   }
 }
@@ -61,6 +64,8 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
     registerOption("AWS_DEFAULT_REGION", region)
     registerOption("AWS_SECRET_ACCESS_KEY", getenv("AWS_SECRET_ACCESS_KEY"))
     registerOption("AWS_ACCESS_KEY_ID", getenv("AWS_ACCESS_KEY_ID"))
+    registerOption("AWS_VIRTUAL_HOSTING", "FALSE")
+    registerOption("AWS_HTTPS", "NO")
   }
 
   def this(productPaths: util.List[String], bands: util.List[String]) =
