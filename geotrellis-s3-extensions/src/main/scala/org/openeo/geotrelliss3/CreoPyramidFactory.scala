@@ -153,6 +153,8 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     val productKeys = productPaths.flatMap(listProducts)
 
+    if (productKeys.isEmpty) throw new IllegalArgumentException("no files found for given product paths")
+
     logger.info(s"Products keys:\n${productKeys.mkString("\n")}")
 
     def extractDate(key: String): ZonedDateTime = {
@@ -169,13 +171,10 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
         .map { case (k, v) => (k, v.map(_._2)) }
     )
 
-
     val rastersources: RDD[(SpaceTimeKey,Seq[Seq[GDALRasterSource]])] = sc.parallelize(overlappingKeys)
       .map(key => (key, bandFileMaps
         .flatMap(_.get(key.time))
         .map(_.map(path => GDALRasterSource(path)))))
-
-    if (rastersources.isEmpty) throw new IllegalArgumentException("no fitting raster sources found")
 
     //unsafe, don't we need union of cell type?
     val commonCellType = rastersources.take(1).head._2.head.head.cellType
