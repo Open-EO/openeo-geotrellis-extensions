@@ -7,6 +7,7 @@ import java.net.URL
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutScheme, SpaceTimeKey, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, WebMercator}
+import geotrellis.raster.CellSize
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.vector._
 import org.apache.spark.SparkContext
@@ -23,8 +24,9 @@ import scala.collection.JavaConverters._
  * @param openSearchLinkTitles
  * @param rootPath
  */
+// TODO: rename this to something more generic since it is also used for S1 (Sigma0/Coherence), S5P etc.
 class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId: String,
-                              openSearchLinkTitles: util.List[String], rootPath: String) {
+                              openSearchLinkTitles: util.List[String], rootPath: String, maxSpatialResolution: CellSize) {
   require(openSearchLinkTitles.size() > 0)
 
   private val openSearchEndpointUrl = new URL(openSearchEndpoint)
@@ -37,6 +39,7 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
     openSearchCollectionId,
     NonEmptyList.fromListUnsafe(openSearchLinkTitles.asScala.toList),
     rootPath,
+    maxSpatialResolution,
     metadataProperties,
     layoutScheme,
     correlationId = correlationId

@@ -8,6 +8,7 @@ import java.time._
 import cats.data.NonEmptyList
 import geotrellis.layer.FloatingLayoutScheme
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
+import geotrellis.raster.CellSize
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
@@ -24,6 +25,7 @@ import org.openeo.geotrellis.TestImplicits._
 object Sentinel2FileLayerProviderTest {
   private var sc: SparkContext = _
   private val openSearchEndpoint = new URL("http://oscars-01.vgt.vito.be:8080")
+  private val maxSpatialResolution = CellSize(10, 10)
 
   @BeforeClass
   def setupSpark(): Unit = sc = SparkUtils.createLocalSparkContext("local[*]",
@@ -213,6 +215,7 @@ class Sentinel2FileLayerProviderTest {
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
       openSearchLinkTitle = "FAPAR_10M",
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2",
+      maxSpatialResolution,
       attributeValues
     )
 
@@ -221,7 +224,8 @@ class Sentinel2FileLayerProviderTest {
       openSearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"),
-      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+      maxSpatialResolution
     )
 
   private def sceneclassificationLayerProviderUTM =
@@ -230,6 +234,7 @@ class Sentinel2FileLayerProviderTest {
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("SCENECLASSIFICATION_20M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+      maxSpatialResolution,
       layoutScheme = FloatingLayoutScheme(256)
     )
 
@@ -238,6 +243,7 @@ class Sentinel2FileLayerProviderTest {
       openSearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("SCENECLASSIFICATION_20M"),
-      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+      maxSpatialResolution
     )
 }

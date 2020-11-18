@@ -7,6 +7,7 @@ import java.time.{LocalDate, ZonedDateTime}
 
 import cats.data.NonEmptyList
 import geotrellis.proj4.LatLng
+import geotrellis.raster.CellSize
 import geotrellis.raster.summary.polygonal.PolygonalSummaryResult
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.types.MeanValue
@@ -99,6 +100,7 @@ class Sentinel1CoherenceFileLayerProviderTest {
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S1_SLC_COHERENCE_V1",
       openSearchLinkTitles = NonEmptyList.of("VH", "VV"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel1/SLC_COHERENCE/",
+      maxSpatialResolution = CellSize(10, 10),
       attributeValues
     )
 }

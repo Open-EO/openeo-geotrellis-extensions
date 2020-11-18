@@ -6,15 +6,12 @@ import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZonedDateTime}
 import java.util.Collections.singletonList
 import java.util.Collections.emptyMap
-import java.util.zip.Deflater.BEST_COMPRESSION
 
 import geotrellis.layer.{Metadata, SpatialKey, TileLayerMetadata}
-import geotrellis.proj4.CRS
-import geotrellis.raster.io.geotiff.compression.DeflateCompression
-import geotrellis.raster.io.geotiff.{GeoTiffOptions, MultibandGeoTiff, Tags}
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
-import geotrellis.raster.{MultibandTile, Raster}
+import geotrellis.raster.{CellSize, MultibandTile, Raster}
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
@@ -23,6 +20,8 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
+import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrellis.TestImplicits._
 
 object Sentinel2PyramidFactoryTest {
     private var sc: SparkContext = _
@@ -48,7 +47,7 @@ class Sentinel2PyramidFactoryTest {
         val localDate = LocalDate.of(2019, 10, 11)
         val spatialLayer = createLayerForDate(bbox, localDate)
 
-        checkStatsResult(bbox, spatialLayer)
+        checkStatsResult("testStatsFromPyramid", bbox, spatialLayer)
     }
 
     @Test
@@ -57,22 +56,11 @@ class Sentinel2PyramidFactoryTest {
         val localDate = LocalDate.of(2019, 10, 11)
         val spatialLayer = createLayerForDate(bbox, localDate,pyramid = false)
 
-        checkStatsResult(bbox, spatialLayer)
+        checkStatsResult("testStatsFromNativeUTM", bbox, spatialLayer)
     }
 
-    private def checkStatsResult(bbox: ProjectedExtent, spatialLayer: RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]]) = {
-        def writeGeoTiff(path: String): Unit = {
-            val Raster(tile, extent) = spatialLayer
-              .crop(bbox.reproject(spatialLayer.metadata.crs))
-              .stitch()
-
-            val options = GeoTiffOptions(DeflateCompression(BEST_COMPRESSION))
-
-            MultibandGeoTiff(tile, extent, spatialLayer.metadata.crs, Tags.empty, options)
-              .write(path)
-        }
-
-        //writeGeoTiff("/tmp/Sentinel2PyramidFactory_cropped_openeo.tif")
+    private def checkStatsResult(context: String, bbox: ProjectedExtent, spatialLayer: RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]]) = {
+        // spatialLayer.writeGeoTiff(s"/tmp/Sentinel2PyramidFactory_cropped_openeo_$context.tif", bbox)
 
         val polygon = bbox.reproject(spatialLayer.metadata.crs).toPolygon()
 
@@ -112,6 +100,39 @@ class Sentinel2PyramidFactoryTest {
         openSearchEndpoint = "http://oscars-01.vgt.vito.be:8080",
         openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
         openSearchLinkTitles = singletonList("SCENECLASSIFICATION_20M"),
-        rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"
+        rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+        maxSpatialResolution = CellSize(10, 10)
     )
+
+    @Test
+    def testSentinel5P(): Unit = {
+        val bbox = ProjectedExtent(Extent(-2.7925872802734375, 51.76953957596099, -2.640838623046875, 51.85317006332688), LatLng)
+
+        assertTrue(s"${bbox.extent.width}", bbox.extent.width > 0.05)
+        assertTrue(s"${bbox.extent.height}", bbox.extent.height > 0.05)
+
+        val date = LocalDate.of(2020, 1, 1).atStartOfDay(UTC)
+
+        val dailyCOPyramidFactory = new Sentinel2PyramidFactory(
+            openSearchEndpoint = "http://oscars-dev.vgt.vito.be",
+            openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_CO_TD_V1",
+            openSearchLinkTitles = singletonList("CO"),
+            rootPath = "/data/MTDA_DEV/TERRASCOPE_Sentinel5P/L3_CO_TD_V100",
+            maxSpatialResolution = CellSize(0.05, 0.05)
+        )
+
+        val Seq((_, baseLayer)) = dailyCOPyramidFactory.datacube_seq(
+            polygons = ProjectedPolygons.fromExtent(bbox.extent, s"EPSG:${bbox.crs.epsgCode.get}"),
+            from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format date,
+            to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format date,
+            metadata_properties = emptyMap[String, Any](),
+            correlationId = "testSentinel5P"
+        )
+
+        val spatialLayer = baseLayer
+          .toSpatial(date)
+          .cache()
+
+        spatialLayer.writeGeoTiff("/tmp/testSentinel5P_cropped.tif", bbox)
+    }
 }

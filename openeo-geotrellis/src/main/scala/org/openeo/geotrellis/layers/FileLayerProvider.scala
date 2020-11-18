@@ -130,11 +130,6 @@ object FileLayerProvider {
     ProjectedExtent(collection.bbox.reproject(LatLng, WebMercator), WebMercator)
   }
 
-
-  private def maxSpatialResolution(): CellSize = {
-    CellSize(10,10)
-  }
-
   /**
    * Find best CRS, can be location dependent (UTM)
    * @param boundingBox
@@ -147,9 +142,10 @@ object FileLayerProvider {
     }
   }
 
-  def layerMetadata(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, cellType: CellType,layoutScheme:LayoutScheme) = {
+  def layerMetadata(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, cellType: CellType,
+                    layoutScheme:LayoutScheme, maxSpatialResoluton: CellSize) = {
 
-    val worldLayout: LayoutDefinition = getLayout(layoutScheme, boundingBox, zoom)
+    val worldLayout: LayoutDefinition = getLayout(layoutScheme, boundingBox, zoom, maxSpatialResoluton)
 
     val crs = bestCRS(boundingBox,layoutScheme)
 
@@ -159,7 +155,7 @@ object FileLayerProvider {
     metadata
   }
 
-  def getLayout(layoutScheme: LayoutScheme, boundingBox: ProjectedExtent, zoom: Int) = {
+  def getLayout(layoutScheme: LayoutScheme, boundingBox: ProjectedExtent, zoom: Int, maxSpatialResolution: CellSize) = {
     val LayoutLevel(_, worldLayout) = layoutScheme match {
       case scheme: ZoomedLayoutScheme => scheme.levelForZoom(zoom)
       case scheme: FloatingLayoutScheme => {
@@ -177,7 +173,7 @@ object FileLayerProvider {
           } else {
             boundingBox.extent
           }
-        scheme.levelFor(layoutExtent, maxSpatialResolution())
+        scheme.levelFor(layoutExtent, maxSpatialResolution)
       }
     }
     worldLayout
@@ -211,7 +207,7 @@ object FileLayerProvider {
 }
 
 class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
-                        attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
+                        maxSpatialResolution: CellSize, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
                         bandIds: Seq[Seq[Int]] = Seq(), probaV: Boolean = false, correlationId: String = "") extends LayerProvider {
 
   import FileLayerProvider._
@@ -220,11 +216,11 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
 
   val openSearchLinkTitlesWithBandIds: Seq[(String, Seq[Int])] = openSearchLinkTitles.toList.zipAll(bandIds, "", Seq(0))
 
-  def this(openSearchEndpoint: URL, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, metadataProperties: Map[String, Any]) =
-    this(openSearchEndpoint, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, metadataProperties)
+  def this(openSearchEndpoint: URL, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize, metadataProperties: Map[String, Any]) =
+    this(openSearchEndpoint, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, maxSpatialResolution, metadataProperties)
 
-  def this(openSearchEndpoint: URL, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String) =
-    this(openSearchEndpoint, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath)
+  def this(openSearchEndpoint: URL, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize) =
+    this(openSearchEndpoint, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, maxSpatialResolution)
 
 
   private val _rootPath = Paths.get(rootPath)
@@ -246,7 +242,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
     val overlappingRasterSources: Seq[RasterSource] = loadRasterSourceRDD(boundingBox, from, to, zoom,sc)
     val commonCellType = overlappingRasterSources.head.cellType
 
-    val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType,layoutScheme)
+    val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType, layoutScheme, maxSpatialResolution)
 
     val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map{_.reproject(polygons_crs,metadata.crs)}.clipToGrid(metadata.layout).groupByKey()
 
@@ -383,7 +379,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
   override def readMetadata(zoom: Int, sc: SparkContext): TileLayerMetadata[SpaceTimeKey] = {
     val Some((projectedExtent, dates)) = loadMetadata(sc)
 
-    layerMetadata(projectedExtent,dates.head,dates.last,zoom, FloatConstantNoDataCellType,layoutScheme)
+    layerMetadata(projectedExtent,dates.head,dates.last,zoom, FloatConstantNoDataCellType, layoutScheme, maxSpatialResolution)
   }
 
   override def collectMetadata(sc: SparkContext): (ProjectedExtent, Array[ZonedDateTime]) = loadMetadata(sc).get

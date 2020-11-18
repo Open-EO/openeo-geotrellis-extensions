@@ -7,6 +7,7 @@ import java.time.{LocalDate, ZonedDateTime}
 
 import cats.data.NonEmptyList
 import geotrellis.proj4.LatLng
+import geotrellis.raster.CellSize
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
@@ -62,6 +63,7 @@ class PngTest {
       openSearchEndpoint = new URL("http://oscars-01.vgt.vito.be:8080"),
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M"),
-      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+      maxSpatialResolution = CellSize(10, 10)
     )
 }

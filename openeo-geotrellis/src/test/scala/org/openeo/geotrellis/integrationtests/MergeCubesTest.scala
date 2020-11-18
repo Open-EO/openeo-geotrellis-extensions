@@ -3,6 +3,7 @@ package org.openeo.geotrellis.integrationtests
 import java.util
 
 import geotrellis.layer.SpatialKey
+import geotrellis.raster.CellSize
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.spark._
@@ -68,13 +69,15 @@ class MergeCubesTest {
     openSearchEndpoint,
     openSearchCollectionId = "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
     openSearchLinkTitles = util.Arrays.asList("VH", "VV", "angle"),
-    rootPath = "/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1"
+    rootPath = "/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1",
+    maxSpatialResolution = CellSize(10, 10)
   )
 
   private def faparPyramidFactory = new Sentinel2PyramidFactory(
     openSearchEndpoint,
     openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
     openSearchLinkTitles = util.Collections.singletonList("FAPAR_10M"),
-    rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2"
+    rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2",
+    maxSpatialResolution = CellSize(10, 10)
   )
 }

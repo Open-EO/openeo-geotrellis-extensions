@@ -9,6 +9,7 @@ import java.time.{LocalDate, ZonedDateTime}
 import cats.data.NonEmptyList
 import geotrellis.layer.SpatialKey
 import geotrellis.proj4.CRS
+import geotrellis.raster.CellSize
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.spark._
@@ -57,6 +58,7 @@ class S1GrdSigma0FileLayerProviderTest {
     openSearchEndpoint = new URL("http://oscars-01.vgt.vito.be:8080"),
     openSearchCollectionId = "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
     openSearchLinkTitles = NonEmptyList.of("VH", "VV", "angle"),
-    rootPath = "/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1"
+    rootPath = "/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1",
+    maxSpatialResolution = CellSize(10, 10)
   )
 }

@@ -11,7 +11,7 @@ import geotrellis.layer._
 import geotrellis.proj4.CRS
 import geotrellis.raster.gdal.GDALRasterSource
 import geotrellis.raster.gdal.config.GDALOptionsConfig.registerOption
-import geotrellis.raster.{MultibandTile, RasterRegion, TargetAlignment, Tile, isNoData}
+import geotrellis.raster.{CellSize, MultibandTile, RasterRegion, TargetAlignment, Tile, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
@@ -31,6 +31,7 @@ import scala.xml.XML
 object CreoPyramidFactory {
 
   private val layoutScheme = FloatingLayoutScheme(256)
+  private val maxSpatialResolution = CellSize(10, 10)
   private val layerName = "S3"
   private val maxZoom = 14
   private val endpoint = "http://data.cloudferro.com"
@@ -104,7 +105,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     val reprojectedBoundingBox = boundingBox.reproject(crs)
 
-    val layout = getLayout(layoutScheme, boundingBox, zoom)
+    val layout = getLayout(layoutScheme, boundingBox, zoom, maxSpatialResolution)
 
     val dates = sequentialDates(from)
       .takeWhile(date => !(date isAfter to))
@@ -142,7 +143,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     //unsafe, don't we need union of cell type?
     val commonCellType = rasterSources.take(1).head._2.head.head.cellType
-    val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType,layoutScheme)
+    val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType,layoutScheme, maxSpatialResolution)
 
     val regions:RDD[(SpaceTimeKey,Seq[Seq[RasterRegion]])] = rasterSources.map {
       case (key,value) => (key, value.map(_.map(rastersource =>

@@ -7,7 +7,7 @@ import java.util
 import cats.data.NonEmptyList
 import geotrellis.layer._
 import geotrellis.proj4.CRS
-import geotrellis.raster.MultibandTile
+import geotrellis.raster.{CellSize, MultibandTile}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
@@ -58,6 +58,7 @@ class ProbaVPyramidFactory(openSearchEndpoint: String, openSearchCollectionId: S
       openSearchCollectionId,
       NonEmptyList.fromListUnsafe(openSearchLinkTitlesWithBandIds.map(_._1)),
       rootPath,
+      maxSpatialResolution = CellSize(10, 10),
       bandIds = openSearchLinkTitlesWithBandIds.map(_._2),
       probaV = true,
       correlationId = correlationId

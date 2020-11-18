@@ -5,7 +5,7 @@ import java.time.ZonedDateTime
 import java.util
 
 import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLayerMetadata}
-import geotrellis.raster.FloatConstantNoDataCellType
+import geotrellis.raster.{CellSize, FloatConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
@@ -25,6 +25,7 @@ import scala.collection.JavaConverters._
  */
 class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.List[String],attributeValues: util.Map[String, Any] = util.Collections.emptyMap(),correlationId: String = "") {
 
+  private val maxSpatialResolution = CellSize(10, 10)
   protected val openSearch: OpenSearch = OpenSearch(new URL("http://oscars-01.vgt.vito.be:8080"))
 
   private def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, sc:SparkContext): Seq[Feature] = {
@@ -57,7 +58,7 @@ class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.
     //construct layer metadata
     //hardcoded celltype of float: assuming we will generate floats in further processing
     //use a floating layout scheme, so we will process data in original utm projection and 10m resolution
-    val metadata: TileLayerMetadata[SpaceTimeKey] = layerMetadata(boundingBox, from, to, 0, FloatConstantNoDataCellType,FloatingLayoutScheme(256))
+    val metadata: TileLayerMetadata[SpaceTimeKey] = layerMetadata(boundingBox, from, to, 0, FloatConstantNoDataCellType, FloatingLayoutScheme(256), maxSpatialResolution)
 
     //construct Spatial Keys that we want to load
     val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons.polygons).map{_.reproject(polygons.crs,metadata.crs)}.clipToGrid(metadata.layout).groupByKey()

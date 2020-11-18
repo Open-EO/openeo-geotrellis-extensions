@@ -7,6 +7,7 @@ import java.time.{LocalDate, ZonedDateTime}
 import java.util.Arrays.asList
 
 import geotrellis.proj4.LatLng
+import geotrellis.raster.CellSize
 import geotrellis.raster.summary.polygonal.PolygonalSummaryResult
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.types.MeanValue
@@ -71,6 +72,7 @@ class Sentinel1CoherencePyramidFactoryTest {
     openSearchEndpoint = "http://oscars-01.vgt.vito.be:8080",
     openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S1_SLC_COHERENCE_V1",
     openSearchLinkTitles = asList("VH", "VV"),
-    rootPath = "/data/MTDA/TERRASCOPE_Sentinel1/SLC_COHERENCE"
+    rootPath = "/data/MTDA/TERRASCOPE_Sentinel1/SLC_COHERENCE",
+    maxSpatialResolution = CellSize(10, 10)
   )
 }
