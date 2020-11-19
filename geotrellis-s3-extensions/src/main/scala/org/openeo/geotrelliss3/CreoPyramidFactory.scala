@@ -1,5 +1,6 @@
 package org.openeo.geotrelliss3
 
+import java.io.FileInputStream
 import java.lang.System.getenv
 import java.net.URI
 import java.nio.file.{Files, Paths}
@@ -21,13 +22,11 @@ import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.FileLayerProvider.{bestCRS, getLayout, layerMetadata}
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.slf4j.LoggerFactory
-import software.amazon.awssdk.regions.Region
-import software.amazon.awssdk.services.s3.{S3Client, S3Configuration}
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable
 import scala.math.max
+import scala.xml.XML
 
 object CreoPyramidFactory {
 
@@ -42,16 +41,6 @@ object CreoPyramidFactory {
   private implicit val dateOrdering: Ordering[ZonedDateTime] = new Ordering[ZonedDateTime] {
     override def compare(a: ZonedDateTime, b: ZonedDateTime): Int =
       a.withZoneSameInstant(ZoneId.of("UTC")) compareTo b.withZoneSameInstant(ZoneId.of("UTC"))
-  }
-
-  private def getS3Client(endpoint: String, region: String): S3Client = {
-    S3Client.builder()
-      .endpointOverride(new URI(endpoint))
-      .region(Region.of(region))
-      .serviceConfiguration(S3Configuration.builder()
-        .pathStyleAccessEnabled(true)
-        .build())
-      .build()
   }
 }
 
@@ -73,53 +62,28 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
   private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
 
-  private def getS3Client: S3Client = CreoPyramidFactory.getS3Client(endpoint, region)
+  private def getFilePathsFromManifest(path: String) = {
+    val inputStream = new FileInputStream(Paths.get(path, "manifest.safe").toFile)
+    val xml = XML.load(inputStream)
+
+    (xml \\ "dataObject" \\ "fileLocation" \\ "@href")
+      .map(fileLocation => Paths.get("/vsis3", path, fileLocation.toString).normalize().toString)
+  }
 
   private def listProducts(productPath: String) = {
-    val keyPattern = raw".*\.jp2".r
+    val keyPattern =  """.*IMG_DATA.*jp2""".r
 
-    if (awsDirect) {
-      val path = Paths.get(productPath)
-      val bucket = path.getName(0).toString.toUpperCase()
-      val key = path.subpath(1, path.getNameCount).toString
+    val filePaths =
+      if (awsDirect) {
+        getFilePathsFromManifest(productPath)
+      } else {
+        Files.walk(Paths.get(productPath)).iterator().asScala
+          .map(p => p.toString)
+      }
 
-      val s3Client = getS3Client
-
-      logger.info(s"Buckets: ${s3Client.listBuckets().buckets().asScala.map(_.name()).mkString(",")}")
-
-      val keys = s3Client
-        .listObjectsV2(ListObjectsV2Request.builder().bucket(bucket).maxKeys(100).build())
-        .contents()
-        .asScala
-        .map(_.key())
-
-      logger.info(s"Bucket: $bucket, Keys:\n${keys.mkString("\n")}")
-
-      val files = s3Client
-        .listObjectsV2(ListObjectsV2Request.builder().bucket(bucket).prefix(key).build())
-        .contents()
-        .asScala
-        .map(_.key())
-
-      logger.info(s"Key: $key")
-      logger.info(s"Files:\n${files.mkString("\n")}")
-
-      files.flatMap(key => key match {
-        case keyPattern(_*) => Some(key)
-        case _ => None
-      }).map(k => {
-          val vsiPath = s"/vsis3/$bucket/$k"
-          logger.info(s"VSI path: $vsiPath")
-          vsiPath
-        })
-    } else {
-      Files.walk(Paths.get(productPath)).iterator().asScala
-        .map(p => p.toString)
-        .flatMap(key => key match {
-          case keyPattern(_*) => Some(key)
-          case _ => None
-        })
-        .toSeq
+    filePaths.flatMap {
+      case key@keyPattern(_*) => Some(key)
+      case _ => None
     }
   }
 
@@ -171,19 +135,20 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
         .map { case (k, v) => (k, v.map(_._2)) }
     )
 
-    val rastersources: RDD[(SpaceTimeKey,Seq[Seq[GDALRasterSource]])] = sc.parallelize(overlappingKeys)
+    val rasterSources: RDD[(SpaceTimeKey,Seq[Seq[GDALRasterSource]])] = sc.parallelize(overlappingKeys)
       .map(key => (key, bandFileMaps
         .flatMap(_.get(key.time))
         .map(_.map(path => GDALRasterSource(path)))))
 
     //unsafe, don't we need union of cell type?
-    val commonCellType = rastersources.take(1).head._2.head.head.cellType
+    val commonCellType = rasterSources.take(1).head._2.head.head.cellType
     val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType,layoutScheme)
 
-    val regions:RDD[(SpaceTimeKey,Seq[Seq[RasterRegion]])] = rastersources.map{ case (key,value) => (key,value.map(_.map(rastersource => rastersource.reproject(metadata.crs,TargetAlignment(metadata)).tileToLayout(metadata.layout))
-        .flatMap(_.rasterRegionForKey(key.spatialKey))
-        )
-      )}
+    val regions:RDD[(SpaceTimeKey,Seq[Seq[RasterRegion]])] = rasterSources.map {
+      case (key,value) => (key, value.map(_.map(rastersource =>
+        rastersource.reproject(metadata.crs, TargetAlignment(metadata)).tileToLayout(metadata.layout))
+        .flatMap(_.rasterRegionForKey(key.spatialKey))))
+    }
 
     val partitioner = SpacePartitioner(metadata.bounds)
     assert(partitioner.index == SpaceTimeByMonthPartitioner)
