@@ -17,7 +17,7 @@ public class testWaterVaporCalculator {
 
 	@BeforeClass
     public static void setup_fields() throws Exception {
-		lut=LookupTableIO.readLUT("lut_s2a");//"https://artifactory.vgt.vito.be/auxdata-public/lut/S2A_all.bin");
+		lut=LookupTableIO.readLUT("https://artifactory.vgt.vito.be/auxdata-public/lut/S2A_all.bin");
     }
 
 	@Test
