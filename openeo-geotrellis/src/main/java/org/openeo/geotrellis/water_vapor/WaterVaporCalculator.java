@@ -39,9 +39,18 @@ public class WaterVaporCalculator {
 		double r1,   // reference band 1 input [???]
 		double ozone // ozone [???]
 	) {
+		
 		double v0=2.0; // starting value
 		final int maxiter=100;
 		final double eps=1.e-5;
+		final double invalid_value=-1.;
+		final double vmin=0.;
+		final double vmax=7.;
+		
+		if ((cwv<0.0)||(cwv==invalid_value)) return invalid_value; 
+		if ((r0<0.0)||(r0==invalid_value)) return invalid_value; 
+		if ((r1<0.0)||(r1==invalid_value)) return invalid_value; 
+		
 /*
         for (size_t wv = 0; wv < cwv.size(); wv++) {
             params = this->lut->get( sza_val, vza_val, raa_val, elevation_val, aot_val, cwv[wv], ozone_val );
@@ -57,12 +66,16 @@ public class WaterVaporCalculator {
 			double wvParams[]=lut.getInterpolated(wvBand,      sza, vza, raa, dem, aot, wv[iwv], ozone);
 			double r0Params[]=lut.getInterpolated(refBands[0], sza, vza, raa, dem, aot, wv[iwv], ozone);
 			double r1Params[]=lut.getInterpolated(refBands[1], sza, vza, raa, dem, aot, wv[iwv], ozone);
-            abda[iwv] = (cwv - wvParams[0]);
-            abda[iwv] /= (refWeights[0] * (r0 - r0Params[0]) + (refWeights[1] * (r1 - r1Params[0])));
+			double icwv= get_toa_radiance(0.4, 0, wvParams);
+			double ir0=  get_toa_radiance(0.4, 0, r0Params);
+			double ir1=  get_toa_radiance(0.4, 0, r1Params);
+            abda[iwv] = (icwv - wvParams[0]);
+            abda[iwv] /= (refWeights[0] * (ir0 - r0Params[0]) + (refWeights[1] * (ir1 - r1Params[0])));
             wvluparams[iwv]=wvParams[0];
             r0luparams[iwv]=r0Params[0];
             r1luparams[iwv]=r1Params[0];
 		}
+		
 /*
         while (abs(previous_estimate - watervapor) > 0.00001 && watervapor != invalid_value && iteration < max_pixel_iterations)
         {
@@ -90,22 +103,53 @@ public class WaterVaporCalculator {
             watervaporlist.push_back(watervapor);
         }
 */
+		if ((v0<vmin)||(v0>vmax)) return invalid_value;
 		
-		return 0.;
+		return v0;
 	}
 
+	
+    double get_toa_radiance(double reflectance,int water_land, double[] params)
+    {
+        /*
+        from lookup table
+        c1 = -params[0]
+        c2 = params[1]
+        c3 = params[2]
+        c4 = params[3]
+        c5 = params[4]
+        d1f = params[5]
+        d1s = params[6]
+         rad = ((refl+ d1)*(c4+c5*bg) -c1 -c3*bg ) / c2 ) ;
+        */
+        double refl = reflectance;
+        if (!(water_land == 0)) { // no water
+            if (water_land == 1) { // freshwater
+                refl = reflectance + params[5];
+            }
+            else {
+                refl = reflectance + params[6];
+            }
+        }
+        double target = (refl * params[3] - (-1.0 * params[0])) / (params[1] + params[2] - params[4] * refl);
+        return target;
+    }
+	
+	
+	// TODO: this could be done much faster if cwv would be set to equidistant points when building from calling getInterpolated
 	double interpolate(double xi, double[] x, double[] y) {
 		int idx1=1;
 		boolean di;
-		boolean dn=(x[0]-xi)<0.;
+		boolean dn=x[0]<xi;
 		// searching for change of sign
 		for (; idx1<x.length; ++idx1) {
-			di=(x[idx1]-xi)<0.;
+			di=x[idx1]<xi;
 			if (di!=dn) break;
 		}
 		// if there was no change of sign, use the end closer to xi -> 
 		// -> out of x range will result in extrapolation based on closest line segment
-		if (idx1==x.length) idx1= xi<=x[0] ? 1 : x.length-1;
+		if (idx1==x.length) 
+			idx1= Math.abs(x[0]-xi)<Math.abs(x[x.length-1]-xi) ? 1 : x.length-1;
 		// interpolate
 		return y[idx1-1]+(xi-x[idx1-1])*(y[idx1]-y[idx1-1])/(x[idx1]-x[idx1-1]);
 	}
