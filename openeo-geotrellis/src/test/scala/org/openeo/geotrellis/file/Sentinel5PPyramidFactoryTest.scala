@@ -5,15 +5,19 @@ import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
 import java.util.Collections.{emptyMap, singletonList}
 
+import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.LatLng
+import geotrellis.raster.summary.polygonal.Summary
+import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.spark._
+import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.ProjectedPolygons
-import org.openeo.geotrellis.TestImplicits._
+// import org.openeo.geotrellis.TestImplicits._
 
 object Sentinel5PPyramidFactoryTest {
   private var sc: SparkContext = _
@@ -101,8 +105,21 @@ class Sentinel5PPyramidFactoryTest {
       baseLayer
     }
 
-    baseLayerByDatacube_seq.toSpatial(date).writeGeoTiff("/tmp/testSentinel5P_cropped_datacube.tif", bbox)
+    /*baseLayerByDatacube_seq.toSpatial(date).writeGeoTiff("/tmp/testSentinel5P_cropped_datacube.tif", bbox)
     baseLayerByPyramid_seq_polygons.toSpatial(date).writeGeoTiff("/tmp/testSentinel5P_cropped_polygons.tif", bbox)
-    baseLayerByPyramid_seq_extent.toSpatial(date).writeGeoTiff("/tmp/testSentinel5P_cropped_extent.tif", bbox)
+    baseLayerByPyramid_seq_extent.toSpatial(date).writeGeoTiff("/tmp/testSentinel5P_cropped_extent.tif", bbox)*/
+
+    def polygonalMean(layer: MultibandTileLayerRDD[SpaceTimeKey]): Double = {
+      val Summary(Array(singleBandMean)) = layer
+        .toSpatial(date)
+        .polygonalSummaryValue(bbox.extent.toPolygon(), MeanVisitor)
+
+      singleBandMean.mean
+    }
+
+    val qgisZonalStaticsPluginResult = 8.52374670184697
+    assertEquals(qgisZonalStaticsPluginResult, polygonalMean(baseLayerByDatacube_seq), 0.01)
+    assertEquals(qgisZonalStaticsPluginResult, polygonalMean(baseLayerByPyramid_seq_polygons), 0.01)
+    assertEquals(qgisZonalStaticsPluginResult, polygonalMean(baseLayerByPyramid_seq_extent), 0.01)
   }
 }

@@ -8,7 +8,7 @@ import java.util.Collections.singletonList
 import java.util.Collections.emptyMap
 
 import geotrellis.layer.{Metadata, SpatialKey, TileLayerMetadata}
-import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.proj4.CRS
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.{CellSize, MultibandTile}
@@ -20,7 +20,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
-import org.openeo.geotrellis.TestImplicits._
+// import org.openeo.geotrellis.TestImplicits._
 
 object Sentinel2PyramidFactoryTest {
     private var sc: SparkContext = _
