@@ -11,7 +11,7 @@ import geotrellis.layer.{Metadata, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
-import geotrellis.raster.{CellSize, MultibandTile, Raster}
+import geotrellis.raster.{CellSize, MultibandTile}
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
@@ -20,7 +20,6 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
-import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.TestImplicits._
 
 object Sentinel2PyramidFactoryTest {
@@ -103,36 +102,4 @@ class Sentinel2PyramidFactoryTest {
         rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
         maxSpatialResolution = CellSize(10, 10)
     )
-
-    @Test
-    def testSentinel5P(): Unit = {
-        val bbox = ProjectedExtent(Extent(-2.7925872802734375, 51.76953957596099, -2.640838623046875, 51.85317006332688), LatLng)
-
-        assertTrue(s"${bbox.extent.width}", bbox.extent.width > 0.05)
-        assertTrue(s"${bbox.extent.height}", bbox.extent.height > 0.05)
-
-        val date = LocalDate.of(2020, 1, 1).atStartOfDay(UTC)
-
-        val dailyCOPyramidFactory = new Sentinel2PyramidFactory(
-            openSearchEndpoint = "http://oscars-dev.vgt.vito.be",
-            openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_CO_TD_V1",
-            openSearchLinkTitles = singletonList("CO"),
-            rootPath = "/data/MTDA_DEV/TERRASCOPE_Sentinel5P/L3_CO_TD_V100",
-            maxSpatialResolution = CellSize(0.05, 0.05)
-        )
-
-        val Seq((_, baseLayer)) = dailyCOPyramidFactory.datacube_seq(
-            polygons = ProjectedPolygons.fromExtent(bbox.extent, s"EPSG:${bbox.crs.epsgCode.get}"),
-            from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format date,
-            to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format date,
-            metadata_properties = emptyMap[String, Any](),
-            correlationId = "testSentinel5P"
-        )
-
-        val spatialLayer = baseLayer
-          .toSpatial(date)
-          .cache()
-
-        spatialLayer.writeGeoTiff("/tmp/testSentinel5P_cropped.tif", bbox)
-    }
 }

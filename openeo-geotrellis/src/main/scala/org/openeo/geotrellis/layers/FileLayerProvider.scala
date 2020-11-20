@@ -212,6 +212,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
 
   import FileLayerProvider._
 
+  private val _rootPath = Paths.get(rootPath)
   protected val openSearch: OpenSearch = if (probaV) OpenSearch(new URL("https://oscars-dev.vgt.vito.be")) else OpenSearch(openSearchEndpoint)
 
   val openSearchLinkTitlesWithBandIds: Seq[(String, Seq[Int])] = openSearchLinkTitles.toList.zipAll(bandIds, "", Seq(0))
@@ -222,16 +223,11 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
   def this(openSearchEndpoint: URL, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize) =
     this(openSearchEndpoint, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, maxSpatialResolution)
 
+  val maxZoom: Int = layoutScheme match {
+    case z: ZoomedLayoutScheme => z.zoom(0, 0, maxSpatialResolution)
+    case _ => 14
+  }
 
-  private val _rootPath = Paths.get(rootPath)
-  val maxZoom: Int = openSearch.getCollections(correlationId)
-    .find(_.id == openSearchCollectionId)
-    .flatMap(_.resolution)
-    .flatMap(r => layoutScheme match {
-      case l: ZoomedLayoutScheme => Some(l.zoom(0, 0, CellSize(r, r)))
-      case _ => None
-    })
-    .getOrElse(14)
   protected val compositeRasterSource: (NonEmptyList[(RasterSource, Seq[Int])], CRS, Map[String, String]) => BandCompositeRasterSource = {
     (sources, crs, attributes) =>
       if (bandIds.isEmpty) new BandCompositeRasterSource(sources.map(_._1), crs, attributes)
