@@ -1,5 +1,7 @@
 package org.openeo.geotrellis.water_vapor;
 
+import java.util.List;
+
 import org.openeo.geotrellis.icor.CorrectionDescriptorSentinel2;
 import org.openeo.geotrellis.icor.LookupTable;
 
@@ -7,16 +9,16 @@ import org.openeo.geotrellis.icor.LookupTable;
 
 public class WaterVaporCalculator {
 
-	public void prepare(LookupTable lut, CorrectionDescriptorSentinel2 cdS2, String wv_Band, String ref_Bands[]) throws Exception {
+	public void prepare(LookupTable lut, CorrectionDescriptorSentinel2 cdS2, String wv_Band, String ref0_Band, String ref1_Band) throws Exception {
 
 		// get band ids
 		wvBand=cdS2.getBandFromName(wv_Band);
-		refBands[0]=cdS2.getBandFromName(ref_Bands[0]);
-		refBands[1]=cdS2.getBandFromName(ref_Bands[1]);
+		r0Band=cdS2.getBandFromName(ref0_Band);
+		r1Band=cdS2.getBandFromName(ref1_Band);
 
 		// weights of the reference bands
-	    refWeights[0]=(cdS2.getCentralWavelength(refBands[1]) - cdS2.getCentralWavelength(wvBand))      / (cdS2.getCentralWavelength(refBands[0]) + cdS2.getCentralWavelength(refBands[1]));
-	    refWeights[1]=(cdS2.getCentralWavelength(wvBand)      - cdS2.getCentralWavelength(refBands[0])) / (cdS2.getCentralWavelength(refBands[0]) + cdS2.getCentralWavelength(refBands[1]));
+	    refWeights[0]=(cdS2.getCentralWavelength(r1Band) - cdS2.getCentralWavelength(wvBand)) / (cdS2.getCentralWavelength(r0Band) + cdS2.getCentralWavelength(r1Band));
+	    refWeights[1]=(cdS2.getCentralWavelength(wvBand) - cdS2.getCentralWavelength(r0Band)) / (cdS2.getCentralWavelength(r0Band) + cdS2.getCentralWavelength(r1Band));
 	    
 	    // initialize helper buffers
 	    // to avoid always reallocating in a tight loop
@@ -29,28 +31,23 @@ public class WaterVaporCalculator {
 	}
 	
 	public double computePixel(LookupTable lut,
-		double sza,  // sun zenith angle [deg]
-		double vza,  // sensor zenith angle [deg]
-		double raa,  // relative azimuth angle [deg]
-		double dem,  // elevation [???]
-		double aot,  // aerosol optical thickness [???]
-		double cwv,  // wv band input [???]
-		double r0,   // reference band 0 input [???]
-		double r1,   // reference band 1 input [???]
-		double ozone // ozone [???]
+		double sza,   // sun zenith angle [deg]
+		double vza,   // sensor zenith angle [deg]
+		double raa,   // relative azimuth angle [deg]
+		double dem,   // elevation [???]
+		double aot,   // aerosol optical thickness [???]
+		double cwv,   // wv band input [???]
+		double r0,    // reference band 0 input [???]
+		double r1,    // reference band 1 input [???]
+		double ozone, // ozone [???]
+		double invalid_value
 	) {
-		
-		double v0=2.0; // starting value
-		final int maxiter=100;
-		final double eps=1.e-5;
-		final double invalid_value=-1.;
-		final double vmin=0.;
-		final double vmax=7.;
-		
+				
 		if ((cwv<0.0)||(cwv==invalid_value)) return invalid_value; 
 		if ((r0<0.0)||(r0==invalid_value)) return invalid_value; 
 		if ((r1<0.0)||(r1==invalid_value)) return invalid_value; 
 		
+		double v0=intialValue;
 /*
         for (size_t wv = 0; wv < cwv.size(); wv++) {
             params = this->lut->get( sza_val, vza_val, raa_val, elevation_val, aot_val, cwv[wv], ozone_val );
@@ -63,9 +60,9 @@ public class WaterVaporCalculator {
 */		
 		// get interpolated cwv/abda array
 		for (int iwv=0; iwv<wv.length; ++iwv) {
-			double wvParams[]=lut.getInterpolated(wvBand,      sza, vza, raa, dem, aot, wv[iwv], ozone);
-			double r0Params[]=lut.getInterpolated(refBands[0], sza, vza, raa, dem, aot, wv[iwv], ozone);
-			double r1Params[]=lut.getInterpolated(refBands[1], sza, vza, raa, dem, aot, wv[iwv], ozone);
+			double wvParams[]=lut.getInterpolated(wvBand, sza, vza, raa, dem, aot, wv[iwv], ozone);
+			double r0Params[]=lut.getInterpolated(r0Band, sza, vza, raa, dem, aot, wv[iwv], ozone);
+			double r1Params[]=lut.getInterpolated(r1Band, sza, vza, raa, dem, aot, wv[iwv], ozone);
 			double icwv= get_toa_radiance(0.4, 0, wvParams);
 			double ir0=  get_toa_radiance(0.4, 0, r0Params);
 			double ir1=  get_toa_radiance(0.4, 0, r1Params);
@@ -87,6 +84,7 @@ public class WaterVaporCalculator {
             iteration++;
         }
 */
+		// TODO: this is an undamped iteration -> prone to oscillate (-100 +100 -100 +100 ...), check if convergence radius could be computed and/or adding dissipation would lead anywhere
 		int iiter=0;
 		for(; iiter<=maxiter; ++iiter) {
 			final double v1=v0;
@@ -95,6 +93,7 @@ public class WaterVaporCalculator {
 			final double r1Param=interpolate(v0, wv, r1luparams);
             final double abda_eval = (cwv - wvParam) / (refWeights[0] * (r0 - r0Param) + refWeights[1] * (r1 - r1Param));
         	v0=interpolate(abda_eval, abda, wv);
+        	//System.out.println("ITER: "+Double.toString(v0));
         	if (Math.abs(v1-v0)<eps) break;
 		}
 		
@@ -108,6 +107,17 @@ public class WaterVaporCalculator {
 		return v0;
 	}
 
+	// TODO: move this into scala
+	public int findIndexOf(List<String> where, String what) {
+		int idx=-1;
+		for(int i=0; i<where.size(); ++i) {
+			if (where.get(i).toLowerCase().contains(what.toLowerCase())) {
+				idx=i;
+				break;
+			}
+		}
+		return idx;
+	}
 	
     double get_toa_radiance(double reflectance,int water_land, double[] params)
     {
@@ -153,23 +163,40 @@ public class WaterVaporCalculator {
 		// interpolate
 		return y[idx1-1]+(xi-x[idx1-1])*(y[idx1]-y[idx1-1])/(x[idx1]-x[idx1-1]);
 	}
+
+    /// FIELDS ///////////////////////////////////////////////////////////////////////////////////
+
+	// constants
+	final double intialValue=2.0;
+	final int maxiter=100;
+	final double eps=1.e-5;
+	final double vmin=0.;
+	final double vmax=7.;
 	
-	// bad indices
-	int wvBand;
-	int refBands[]= {-1,-1};
+	// band indices
+	int wvBand= -1;
+	int r0Band= -1;
+	int r1Band= -1;
 	
-	// weights of the refeence bands
+	// weights of the reference bands
 	double refWeights[]= {0.,0.};
 
-	// crop limits
-    double cwv_min=0.;
-    double cwv_max=7.;
-
-    double wv[];   // cwv - interolated:  cwv values
+	// temporary buffers (avoid realloc at every pixel)
+	double wv[];   // cwv - interolated:  cwv values
     double wvluparams[];   // lut[icwv][0] entries for all cwv-s in the lookup table for the water vapor band 
     double r0luparams[];   // lut[icwv][0] entries for all cwv-s in the lookup table for the 0th reference band
     double r1luparams[];   // lut[icwv][0] entries for all cwv-s in the lookup table for the 1st reference band
     double abda[]; // abda model
+    
+    /// GETTERS/SETTERS ///////////////////////////////////////////////////////////////////////////////////
+ 
+	public double getVmin() {
+		return vmin;
+	}
+
+	public double getVmax() {
+		return vmax;
+	}
     
 }
 
