@@ -42,10 +42,17 @@ public class WaterVaporCalculator {
 		double ozone, // ozone [???]
 		double invalid_value
 	) {
-				
+		
 		if ((cwv<0.0)||(cwv==invalid_value)) return invalid_value; 
 		if ((r0<0.0)||(r0==invalid_value)) return invalid_value; 
 		if ((r1<0.0)||(r1==invalid_value)) return invalid_value; 
+
+		// L1C comes earth-sun distance corrected to earth-sun distance, therefore 
+		// reflectance-radiance conversion is: cos(sza_radians)*solarirradiance[band]/3.14
+		// TODO: in this form this works for L1C but refl-radiance conversion has to be a step in front of the watervapor calculation
+		cwv=CorrectionDescriptorSentinel2.reflToRad(cwv, sza, null, wvBand);
+		r0=CorrectionDescriptorSentinel2.reflToRad(r0, sza, null, r0Band);
+		r1=CorrectionDescriptorSentinel2.reflToRad(r1, sza, null, r1Band);
 		
 		double v0=intialValue;
 /*
@@ -102,8 +109,9 @@ public class WaterVaporCalculator {
             watervaporlist.push_back(watervapor);
         }
 */
+
 		if ((v0<vmin)||(v0>vmax)) return invalid_value;
-		
+				
 		return v0;
 	}
 

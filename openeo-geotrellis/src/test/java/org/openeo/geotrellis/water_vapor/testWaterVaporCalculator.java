@@ -20,6 +20,21 @@ public class testWaterVaporCalculator {
 	private static CorrectionDescriptorSentinel2 cdS2=new CorrectionDescriptorSentinel2();
 	private static WaterVaporCalculator wvc=new WaterVaporCalculator();
 
+	static final double sza=43.5725342155;
+	static final double vza=6.95880821756;
+	static final double raa=116.584011516;
+	static final double dem=0.0;
+	static final double aot=0.1;
+	static final double cwv=42.557835;
+	static final double r0=112.916855;
+	static final double r1=11.206167;
+	static final double ozone=0.33;
+	static final double invalid_value=Double.NaN;
+	
+	static double rad2refl(double value, int band) {
+		return value*Math.PI/(Math.cos(sza*Math.PI/180.)*cdS2.getIrradiance(band));
+	}
+	
 	@BeforeClass
     public static void setup_fields() throws Exception {
 		lut=LookupTableIO.readLUT("https://artifactory.vgt.vito.be/auxdata-public/lut/S2A_all.bin");
@@ -71,58 +86,58 @@ public class testWaterVaporCalculator {
 
     	wvc.prepare(lut, cdS2, "B09", "B8A", "B11");
 		double r=wvc.computePixel(lut, 
-			43.5725342155,
-			6.95880821756,
-			116.584011516,
-			0.0, 
-			0.1, 
-			42.557835,  // cwv
-			112.916855, // r0
-			11.206167,  // r1
-			0.33,
-			Double.NaN
+			sza,
+			vza,
+			raa,
+			dem, 
+			aot, 
+			rad2refl(cwv, wvc.wvBand),
+			rad2refl(r0, wvc.r0Band),
+			rad2refl(r1, wvc.r1Band),
+			ozone,
+			invalid_value
 		);
 		assertEquals(r,0.5393735910926492,1.e-6);
 
 		r=wvc.computePixel(lut, 
-			43.5725342155,
-			6.95880821756,
-			116.584011516,
-			0.0, 
-			0.1, 
-			Double.NaN,  // cwv
-			112.916855, // r0
-			11.206167,  // r1
-			0.33,
-			Double.NaN
+			sza,
+			vza,
+			raa,
+			dem, 
+			aot, 
+			Double.NaN,
+			rad2refl(r0, wvc.r0Band),
+			rad2refl(r1, wvc.r1Band),
+			ozone,
+			invalid_value
 		);
 		assertEquals(r,Double.NaN,1.e-6);
 
 		r=wvc.computePixel(lut, 
-			43.5725342155,
-			6.95880821756,
-			116.584011516,
-			0.0, 
-			0.1, 
-			42.557835,  // cwv
-			Double.NaN, // r0
-			11.206167,  // r1
-			0.33,
-			Double.NaN
+			sza,
+			vza,
+			raa,
+			dem, 
+			aot, 
+			rad2refl(cwv, wvc.wvBand),
+			Double.NaN,
+			rad2refl(r1, wvc.r1Band),
+			ozone,
+			invalid_value
 		);
 		assertEquals(r,Double.NaN,1.e-6);
 
 		r=wvc.computePixel(lut, 
-			43.5725342155,
-			6.95880821756,
-			116.584011516,
-			0.0, 
-			0.1, 
-			42.557835,  // cwv
-			112.916855, // r0
-			Double.NaN,  // r1
-			0.33,
-			Double.NaN
+			sza,
+			vza,
+			raa,
+			dem, 
+			aot, 
+			rad2refl(cwv, wvc.wvBand),
+			rad2refl(r0, wvc.r0Band),
+			Double.NaN,
+			ozone,
+			invalid_value
 		);
 		assertEquals(r,Double.NaN,1.e-6);
 }
@@ -133,30 +148,31 @@ public class testWaterVaporCalculator {
 
     	wvc.prepare(lut, cdS2, "B09", "B8A", "B11");
 		double r=wvc.computePixel(lut, 
-			43.5725342155,
-			6.95880821756,
-			116.584011516,
-			0.0, 
-			0.1, 
-			75.,  // cwv
-			112., // r0
-			11.,  // r1
-			0.33,
-			Double.NaN
+			sza,
+			vza,
+			raa,
+			dem, 
+			aot, 
+			rad2refl(75., wvc.wvBand),
+			rad2refl(112., wvc.r0Band),
+			rad2refl(11., wvc.r1Band),
+			ozone,
+			invalid_value
+
 		);
 		assertEquals(r,Double.NaN,1.e-6);
 
 		r=wvc.computePixel(lut, 
-			43.5725342155,
-			6.95880821756,
-			116.584011516,
-			0.0, 
-			0.1, 
-			0.1,  // cwv
-			5., // r0
-			15.,  // r1
-			0.33,
-			Double.NaN
+			sza,
+			vza,
+			raa,
+			dem, 
+			aot, 
+			rad2refl(0.1, wvc.wvBand),
+			rad2refl(5., wvc.r0Band),
+			rad2refl(15., wvc.r1Band),
+			ozone,
+			invalid_value
 		);
 		assertEquals(r,Double.NaN,1.e-6);
 	}

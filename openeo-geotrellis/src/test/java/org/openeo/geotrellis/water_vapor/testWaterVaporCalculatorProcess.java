@@ -29,6 +29,18 @@ import scala.Tuple2;
 public class testWaterVaporCalculatorProcess {
 
 	static String lutPath="https://artifactory.vgt.vito.be/auxdata-public/lut/S2A_all.bin";
+
+	static final double sza=43.5725342155;
+	static final double vza=6.95880821756;
+	static final double saa=116.584011516;
+	static final double vaa=0.;
+	static final double aot=0.1;
+	static final double ozone=0.33;
+	static final double invalid_value=Double.NaN;
+
+	static final double cwv=42.557835*10000. *(Math.PI/Math.cos(sza*Math.PI/180.)/817.58);
+	static final double r0=112.916855*10000. *(Math.PI/Math.cos(sza*Math.PI/180.)/953.93);
+	static final double r1=11.206167*10000.  *(Math.PI/Math.cos(sza*Math.PI/180.)/247.08);
 	
     @BeforeClass
     public static void sparkContext() {
@@ -78,9 +90,9 @@ public class testWaterVaporCalculatorProcess {
     @Test
     public void testAtmosphericCorrectionOverrideAngles() {
 
-        Tile wvTile = new IntConstantTile(425578,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
-        Tile r0Tile = new IntConstantTile(1129168,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
-        Tile r1Tile = new IntConstantTile(112061,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
+        Tile wvTile = new IntConstantTile((int)cwv,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
+        Tile r0Tile = new IntConstantTile((int)r0,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
+        Tile r1Tile = new IntConstantTile((int)r1,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube = wvTilesToSpaceTimeDataCube(wvTile, r0Tile, r1Tile, null, null, null, null);
         TileLayerMetadata<SpaceTimeKey> m = datacube.metadata();
         Extent newExtent = new Extent(3.5, 50, 4.0, 51);
@@ -92,7 +104,7 @@ public class testWaterVaporCalculatorProcess {
         	lutPath,
         	Arrays.asList(new String[] {"B09","B8A","B11"}),
         	Arrays.asList(new Double[] {1.e-4,1.}),
-        	Arrays.asList(new Double[] {43.5725342155,116.584011516,6.95880821756,0.,0.1,0.33})
+        	Arrays.asList(new Double[] {sza,saa,vza,vaa,aot,ozone})
         );
         //System.out.println(resultRDD.getClass().toString());
 
@@ -103,20 +115,20 @@ public class testWaterVaporCalculatorProcess {
 
         double resultAt00=tiles.values().iterator().next().band(0).getDouble(0, 0);
         System.out.println(Double.toString(resultAt00));
-		assertEquals(resultAt00,0.53937,1.e-4);
+		assertEquals(resultAt00,0.53937,1.e-3); // elevated tolerance because input wv,r0,r1 is converted to int
 
     }
 
     @Test
     public void testAtmosphericCorrectionAnglesFromTiles() {
 
-        Tile wvTile = new DoubleConstantTile(425578.,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
-        Tile r0Tile = new DoubleConstantTile(1129168.,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
-        Tile r1Tile = new DoubleConstantTile(112061.,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
-        Tile vzaTile = new DoubleConstantTile(6.95880821756,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
-        Tile vaaTile = new DoubleConstantTile(0.,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
-        Tile szaTile = new DoubleConstantTile(43.5725342155,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
-        Tile saaTile = new DoubleConstantTile(116.584011516,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
+        Tile wvTile = new DoubleConstantTile(cwv,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
+        Tile r0Tile = new DoubleConstantTile(r0,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
+        Tile r1Tile = new DoubleConstantTile(r1,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
+        Tile vzaTile = new DoubleConstantTile(vza,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
+        Tile vaaTile = new DoubleConstantTile(vaa,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
+        Tile szaTile = new DoubleConstantTile(sza,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
+        Tile saaTile = new DoubleConstantTile(saa,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
 
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube = wvTilesToSpaceTimeDataCube(wvTile, r0Tile, r1Tile, szaTile, vzaTile, vaaTile, saaTile);
         TileLayerMetadata<SpaceTimeKey> m = datacube.metadata();
@@ -129,7 +141,7 @@ public class testWaterVaporCalculatorProcess {
         	lutPath,
         	Arrays.asList(new String[] {"B09","B8A","B11","sunZenithAngles","viewZenithMean","viewAzimuthMean","sunAzimuthAngles"}),
         	Arrays.asList(new Double[] {1.e-4,1.}),
-        	Arrays.asList(new Double[] {Double.NaN,Double.NaN,Double.NaN,Double.NaN,0.1,0.33})
+        	Arrays.asList(new Double[] {Double.NaN,Double.NaN,Double.NaN,Double.NaN,aot,ozone})
         );
         //System.out.println(resultRDD.getClass().toString());
         
@@ -139,7 +151,7 @@ public class testWaterVaporCalculatorProcess {
 
         double resultAt00=tiles.values().iterator().next().band(0).getDouble(0, 0);
         System.out.println(Double.toString(resultAt00));
-		assertEquals(resultAt00,0.53937,1.e-4);
+		assertEquals(resultAt00,0.5393735910926492,1.e-6);
 
     }
 

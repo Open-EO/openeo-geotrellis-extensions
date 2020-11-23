@@ -120,7 +120,7 @@ public class CorrectionDescriptorSentinel2{
      * @throws Exception 
      */
     // this is highly sub-optimal many things can be calculated beforehand once for all pixels!
-    public double reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert) {
+    public static double reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert) {
 
         // SZA to SZA in rad + apply scale factor
         double szaInRadCoverage = 2.*sza*Math.PI/360.;
@@ -181,7 +181,7 @@ public class CorrectionDescriptorSentinel2{
      *         </Solar_Irradiance_List>
      */
     // Sentinel-2B !
-    double[] irradiances = {
+    static double[] irradiances = {
         1874.30f,
         1941.63f,
         1824.93f,
@@ -212,7 +212,7 @@ public class CorrectionDescriptorSentinel2{
 		<CENTRAL unit="nm">2185.7</CENTRAL>
     */
     // Sentinel-2B !
-    double[] central_wavelengths = {
+    static double[] central_wavelengths = {
          442.3,
          492.1,
          559.0,
