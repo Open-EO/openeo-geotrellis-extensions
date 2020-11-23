@@ -22,9 +22,11 @@ import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.file.AbstractPyramidFactory
 import org.openeo.geotrellis.layers.FileLayerProvider.{bestCRS, getLayout, layerMetadata}
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
+import org.openeo.geotrelliss3.CreoPyramidFactory.getClass
 import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
+import scala.io.Source.fromFile
 import scala.math.max
 import scala.xml.XML
 
@@ -102,7 +104,6 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     val crs = bestCRS(xAlignedBoundingBox, layoutScheme)
 
-    val layout = getLayout(layoutScheme, xAlignedBoundingBox, zoom, maxSpatialResolution)
 
     val productKeys = productPaths.flatMap(listProducts)
 
@@ -118,10 +119,10 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
     }
 
     val bandFileMaps: Seq[Map[ZonedDateTime, Seq[String]]] = bands.map(b =>
-      productKeys.filter(_.contains(b))
-        .map(pk => extractDate(pk) -> pk)
-        .groupBy(_._1)
-        .map { case (k, v) => (k, v.map(_._2)) }
+    productKeys.filter(_.contains(b))
+      .map(pk => extractDate(pk) -> pk)
+      .groupBy(_._1)
+      .map { case (k, v) => (k, v.map(_._2)) }
     )
 
     val dates = bandFileMaps.flatMap(_.keys).distinct
