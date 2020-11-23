@@ -9,6 +9,11 @@ import org.openeo.geotrellis.icor.CorrectionDescriptorSentinel2;
 import org.openeo.geotrellis.icor.LookupTable;
 import org.openeo.geotrellis.icor.LookupTableIO;
 
+import geotrellis.raster.CellType$;
+import geotrellis.raster.DoubleCells;
+import geotrellis.raster.DoubleConstantTile;
+import geotrellis.raster.Tile;
+
 public class testWaterVaporCalculator {
 
 	private static LookupTable lut;
@@ -53,17 +58,18 @@ public class testWaterVaporCalculator {
 
 	@Test
 	public void testPrepare() throws Exception {
-		wvc.prepare(lut, cdS2, "B09", new String[]{"B8A","B11"});
+		wvc.prepare(lut, cdS2, "B09", "B8A", "B11");
 		assertEquals(wvc.wvBand,9);
-		assertEquals(wvc.refBands[0],8);
-		assertEquals(wvc.refBands[1],11);
+		assertEquals(wvc.r0Band,8);
+		assertEquals(wvc.r1Band,11);
 		assertArrayEquals(wvc.refWeights,new double[]{0.269641,0.032007},1.e-4);
 		assertArrayEquals(wvc.wv,new double[]{1.,2.,3.,3.5},1.e-4);
 	}
 
 	@Test
-	public void testComputePixel() throws Exception {
-		wvc.prepare(lut, cdS2, "B09", new String[]{"B8A","B11"});
+	public void testComputePixelInRange() throws Exception {
+
+    	wvc.prepare(lut, cdS2, "B09", "B8A", "B11");
 		double r=wvc.computePixel(lut, 
 			43.5725342155,
 			6.95880821756,
@@ -73,9 +79,86 @@ public class testWaterVaporCalculator {
 			42.557835,  // cwv
 			112.916855, // r0
 			11.206167,  // r1
-			0.33
+			0.33,
+			Double.NaN
 		);
 		assertEquals(r,0.5393735910926492,1.e-6);
-	}
+
+		r=wvc.computePixel(lut, 
+			43.5725342155,
+			6.95880821756,
+			116.584011516,
+			0.0, 
+			0.1, 
+			Double.NaN,  // cwv
+			112.916855, // r0
+			11.206167,  // r1
+			0.33,
+			Double.NaN
+		);
+		assertEquals(r,Double.NaN,1.e-6);
+
+		r=wvc.computePixel(lut, 
+			43.5725342155,
+			6.95880821756,
+			116.584011516,
+			0.0, 
+			0.1, 
+			42.557835,  // cwv
+			Double.NaN, // r0
+			11.206167,  // r1
+			0.33,
+			Double.NaN
+		);
+		assertEquals(r,Double.NaN,1.e-6);
+
+		r=wvc.computePixel(lut, 
+			43.5725342155,
+			6.95880821756,
+			116.584011516,
+			0.0, 
+			0.1, 
+			42.557835,  // cwv
+			112.916855, // r0
+			Double.NaN,  // r1
+			0.33,
+			Double.NaN
+		);
+		assertEquals(r,Double.NaN,1.e-6);
+}
+
 	
+	@Test
+	public void testComputePixelOutOfRange() throws Exception {
+
+    	wvc.prepare(lut, cdS2, "B09", "B8A", "B11");
+		double r=wvc.computePixel(lut, 
+			43.5725342155,
+			6.95880821756,
+			116.584011516,
+			0.0, 
+			0.1, 
+			75.,  // cwv
+			112., // r0
+			11.,  // r1
+			0.33,
+			Double.NaN
+		);
+		assertEquals(r,Double.NaN,1.e-6);
+
+		r=wvc.computePixel(lut, 
+			43.5725342155,
+			6.95880821756,
+			116.584011516,
+			0.0, 
+			0.1, 
+			0.1,  // cwv
+			5., // r0
+			15.,  // r1
+			0.33,
+			Double.NaN
+		);
+		assertEquals(r,Double.NaN,1.e-6);
+	}
+
 }
