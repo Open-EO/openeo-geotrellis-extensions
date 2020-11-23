@@ -12,7 +12,7 @@ import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.openeo.geotrellis.ProjectedPolygons
-import org.openeo.geotrellis.layers.FileLayerProvider
+import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 
 import scala.collection.JavaConverters._
 
@@ -40,6 +40,7 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
     NonEmptyList.fromListUnsafe(openSearchLinkTitles.asScala.toList),
     rootPath,
     maxSpatialResolution,
+    new SplitYearMonthDayPathDateExtractor,
     metadataProperties,
     layoutScheme,
     correlationId = correlationId

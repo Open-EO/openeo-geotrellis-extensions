@@ -59,6 +59,7 @@ class S1GrdSigma0FileLayerProviderTest {
     openSearchCollectionId = "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
     openSearchLinkTitles = NonEmptyList.of("VH", "VV", "angle"),
     rootPath = "/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1",
-    maxSpatialResolution = CellSize(10, 10)
+    maxSpatialResolution = CellSize(10, 10),
+    pathDateExtractor = new SplitYearMonthDayPathDateExtractor
   )
 }

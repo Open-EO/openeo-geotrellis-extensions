@@ -1,8 +1,7 @@
 package org.openeo.geotrellis.layers
 
 import java.net.URL
-import java.nio.file.{Files, Path, Paths}
-import java.time.format.DateTimeFormatter
+import java.nio.file.{Path, Paths}
 import java.time.temporal.ChronoUnit
 import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
 import java.util.concurrent.TimeUnit
@@ -194,12 +193,12 @@ object FileLayerProvider {
   private val metadataCache =
     Caffeine.newBuilder()
       .refreshAfterWrite(15, TimeUnit.MINUTES)
-      .build(new CacheLoader[(OpenSearch, String, Path, FileLayerProvider), Option[(ProjectedExtent, Array[ZonedDateTime])]] {
-        override def load(key: (OpenSearch, String, Path, FileLayerProvider)): Option[(ProjectedExtent, Array[ZonedDateTime])] = {
-          val (openSearch, collectionId, start, provider) = key
+      .build(new CacheLoader[(OpenSearch, String, Path, PathDateExtractor), Option[(ProjectedExtent, Array[ZonedDateTime])]] {
+        override def load(key: (OpenSearch, String, Path, PathDateExtractor)): Option[(ProjectedExtent, Array[ZonedDateTime])] = {
+          val (openSearch, collectionId, start, x) = key
 
           val bbox = fetchExtentFromOpenSearch(openSearch, collectionId)
-          val dates = provider.deriveDatesFromDirectoriesOnDisk(start)
+          val dates = x.extractDates(start)
 
           Some(bbox, dates)
         }
@@ -207,28 +206,28 @@ object FileLayerProvider {
 }
 
 class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
-                        maxSpatialResolution: CellSize, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
-                        bandIds: Seq[Seq[Int]] = Seq(), probaV: Boolean = false, correlationId: String = "") extends LayerProvider {
+                        maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
+                        bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "") extends LayerProvider {
 
   import FileLayerProvider._
 
   private val _rootPath = Paths.get(rootPath)
-  protected val openSearch: OpenSearch = if (probaV) OpenSearch(new URL("https://oscars-dev.vgt.vito.be")) else OpenSearch(openSearchEndpoint)
+  private val openSearch: OpenSearch = OpenSearch(openSearchEndpoint)
 
   val openSearchLinkTitlesWithBandIds: Seq[(String, Seq[Int])] = openSearchLinkTitles.toList.zipAll(bandIds, "", Seq(0))
 
-  def this(openSearchEndpoint: URL, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize, metadataProperties: Map[String, Any]) =
-    this(openSearchEndpoint, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, maxSpatialResolution, metadataProperties)
+  def this(openSearchEndpoint: URL, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, metadataProperties: Map[String, Any]) =
+    this(openSearchEndpoint, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, maxSpatialResolution, pathDateExtractor, metadataProperties)
 
-  def this(openSearchEndpoint: URL, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize) =
-    this(openSearchEndpoint, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, maxSpatialResolution)
+  def this(openSearchEndpoint: URL, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor) =
+    this(openSearchEndpoint, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, maxSpatialResolution, pathDateExtractor)
 
   val maxZoom: Int = layoutScheme match {
     case z: ZoomedLayoutScheme => z.zoom(0, 0, maxSpatialResolution)
     case _ => 14
   }
 
-  protected val compositeRasterSource: (NonEmptyList[(RasterSource, Seq[Int])], CRS, Map[String, String]) => BandCompositeRasterSource = {
+  private val compositeRasterSource: (NonEmptyList[(RasterSource, Seq[Int])], CRS, Map[String, String]) => BandCompositeRasterSource = {
     (sources, crs, attributes) =>
       if (bandIds.isEmpty) new BandCompositeRasterSource(sources.map(_._1), crs, attributes)
       else new MultibandCompositeRasterSource(sources, crs, attributes)
@@ -365,7 +364,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
 
 
   override def loadMetadata(sc: SparkContext): Option[(ProjectedExtent, Array[ZonedDateTime])] =
-    metadataCache.get((openSearch, openSearchCollectionId, _rootPath, this))
+    metadataCache.get((openSearch, openSearchCollectionId, _rootPath, pathDateExtractor))
 
   override def readTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, zoom: Int = maxZoom, sc: SparkContext): TileLayerRDD[SpaceTimeKey] =
     readMultibandTileLayer(from, to, boundingBox, zoom, sc).withContext { singleBandTiles =>
@@ -382,42 +381,4 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
 
   override def toString: String =
     s"${getClass.getSimpleName}($openSearchCollectionId, ${openSearchLinkTitlesWithBandIds.map(_._1).toList.mkString("[", ", ", "]")}, $rootPath)"
-
-
-  protected def deriveDatesFromDirectoriesOnDisk(start: Path): Array[ZonedDateTime] = {
-    import java.util.stream.Stream
-
-    import scala.compat.java8.FunctionConverters._
-
-    val dayDirectoryDepth = if (probaV) 2 else 3
-    val fullDateDirs = asJavaPredicate((path: Path) => path.getNameCount == start.getNameCount + dayDirectoryDepth)
-
-    val subDirs = Files.walk(start, dayDirectoryDepth)
-      .filter(fullDateDirs)
-
-    val dates = {
-      val toDate = if (probaV) {
-        ((path: Path) => {
-          val relativePath = start.relativize(path)
-          ZonedDateTime.of(LocalDate.parse(relativePath.getFileName.toString, DateTimeFormatter.ofPattern("yyyyMMdd")), LocalTime.MIDNIGHT, ZoneId.of("UTC"))
-        }).asJava
-      } else {
-        ((path: Path) => {
-          val relativePath = start.relativize(path)
-          val Array(year, month, day) = relativePath.toString.split("/")
-          ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), LocalTime.MIDNIGHT, ZoneId.of("UTC"))
-        }).asJava
-      }
-
-      // compiler needs all kinds of boilerplate for reasons I cannot comprehend
-      val dates: Stream[ZonedDateTime] = subDirs
-        .sorted()
-        .map(toDate)
-
-      val generator = asJavaIntFunction(new Array[ZonedDateTime](_))
-      dates.toArray(generator)
-    }
-
-    dates
-  }
 }

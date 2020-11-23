@@ -2,7 +2,7 @@ package org.openeo.geotrelliss3
 
 import java.io.FileInputStream
 import java.lang.System.getenv
-import java.net.URI
+import java.net.{URI, URL}
 import java.nio.file.{Files, Paths}
 import java.time._
 import java.util
@@ -16,6 +16,7 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector._
+import javax.net.ssl.HttpsURLConnection
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
@@ -31,7 +32,7 @@ import scala.xml.XML
 object CreoPyramidFactory {
 
   private val layoutScheme = FloatingLayoutScheme(256)
-  private val maxSpatialResolution = CellSize(10, 10)
+  private val maxSpatialResolution = CellSize(0.01, 0.01)
   private val layerName = "S3"
   private val maxZoom = 14
   private val endpoint = "http://data.cloudferro.com"
@@ -64,18 +65,33 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
   private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
 
   private def getFilePathsFromManifest(path: String) = {
-    val inputStream = new FileInputStream(Paths.get(path, "manifest.safe").toFile)
+    var gdalPrefix = ""
+
+    val inputStream = if (path.startsWith("https://")) {
+      gdalPrefix = "/vsicurl"
+
+      val uri = new URI(path)
+      uri.resolve(s"${uri.getPath}/manifest.safe").toURL
+        .openConnection.asInstanceOf[HttpsURLConnection]
+        .getInputStream
+    } else {
+      gdalPrefix = "/vsis3"
+
+      new FileInputStream(Paths.get(path, "manifest.safe").toFile)
+    }
+
     val xml = XML.load(inputStream)
 
     (xml \\ "dataObject" \\ "fileLocation" \\ "@href")
-      .map(fileLocation => Paths.get("/vsis3", path, fileLocation.toString).normalize().toString)
+      .map(fileLocation => s"$gdalPrefix${if (path.startsWith("/")) "" else "/"}$path" +
+        s"/${Paths.get(fileLocation.toString).normalize().toString}")
   }
 
   private def listProducts(productPath: String) = {
     val keyPattern =  """.*IMG_DATA.*jp2""".r
 
     val filePaths =
-      if (awsDirect) {
+      if (awsDirect || productPath.startsWith("https://")) {
         getFilePathsFromManifest(productPath)
       } else {
         Files.walk(Paths.get(productPath)).iterator().asScala
@@ -101,11 +117,13 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     val sc: SparkContext = SparkContext.getOrCreate()
 
-    val crs = bestCRS(boundingBox, layoutScheme)
+    val xAlignedBoundingBox = xAlign(boundingBox)
 
-    val reprojectedBoundingBox = boundingBox.reproject(crs)
+    val crs = bestCRS(xAlignedBoundingBox, layoutScheme)
 
-    val layout = getLayout(layoutScheme, boundingBox, zoom, maxSpatialResolution)
+    val reprojectedBoundingBox = xAlignedBoundingBox.reproject(crs)
+
+    val layout = getLayout(layoutScheme, xAlignedBoundingBox, zoom, maxSpatialResolution)
 
     val dates = sequentialDates(from)
       .takeWhile(date => !(date isAfter to))
@@ -143,7 +161,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     //unsafe, don't we need union of cell type?
     val commonCellType = rasterSources.take(1).head._2.head.head.cellType
-    val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType,layoutScheme, maxSpatialResolution)
+    val metadata = layerMetadata(xAlignedBoundingBox, from, to, zoom min maxZoom, commonCellType,layoutScheme, maxSpatialResolution)
 
     val regions:RDD[(SpaceTimeKey,Seq[Seq[RasterRegion]])] = rasterSources.map {
       case (key,value) => (key, value.map(_.map(rastersource =>
@@ -160,6 +178,23 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
     val cube = tiles.flatMapValues(v => if (v.isEmpty) None else Some(MultibandTile(v)))
 
     ContextRDD(cube, metadata)
+  }
+
+  private def xAlign(boundingBox: ProjectedExtent) = {
+    def floor(x: Double, precision: Double) = {
+      (BigDecimal.valueOf(math.floor(x / precision)) * precision).doubleValue()
+    }
+
+    def ceil(x: Double, precision: Double) = {
+      (BigDecimal.valueOf(math.ceil(x / precision)) * precision).doubleValue()
+    }
+
+    ProjectedExtent(Extent(
+      floor(boundingBox.extent.xmin, maxSpatialResolution.width),
+      floor(boundingBox.extent.ymin, maxSpatialResolution.height),
+      ceil(boundingBox.extent.xmax, maxSpatialResolution.width),
+      ceil(boundingBox.extent.ymax, maxSpatialResolution.height)
+    ), boundingBox.crs)
   }
 
   def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime): Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {

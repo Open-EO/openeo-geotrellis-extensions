@@ -10,11 +10,12 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
 import org.apache.spark.SparkContext
+import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.FileLayerProvider.layerMetadata
 import org.openeo.geotrellis.layers.OpenSearch
-import org.openeo.geotrellis.layers.OpenSearchResponses.Feature
+import org.openeo.geotrellis.layers.OpenSearchResponses.{Feature, Link}
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
 import scala.collection.JavaConverters._
@@ -72,4 +73,55 @@ class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.
      */
     return new ContextRDD(spatialRDD.partitionBy(SpacePartitioner(metadata.bounds)),metadata)
   }
+
+  /**
+   * Variant of readMultibandTileLayer that allows working with the data in JavaRDD format in PySpark context:
+   * (e.g. oscars response is JSON-serialized)
+   */
+  def readMultibandTileLayerJson(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey]) = {
+    import org.openeo.geotrellis.file.FileRDDFactory.{toJson, jsonObject}
+    val crdd = readMultibandTileLayer(polygons, from_date, to_date, zoom)
+    val jrdd = crdd.map { case (key, feature) => jsonObject(
+      "key" -> toJson(key),
+      "feature" -> jsonObject(
+        "id" -> toJson(feature.id),
+        "bbox" -> toJson(feature.bbox),
+        "nominalDate" -> toJson(feature.nominalDate.toLocalDate.toString),
+        "links" -> toJson(feature.links)
+      ))
+    }.toJavaRDD()
+    return (jrdd, crdd.metadata)
+  }
+}
+
+object FileRDDFactory {
+
+  /*
+   * Poor man's JSON serialization
+   * TODO: can we reuse some more standard/general JSON-serialization functionality?
+   */
+
+  def toJson(s: String): String =
+    "\"" + s + "\""
+
+  def toJson(s: Option[String]): String =
+    s.map(toJson).getOrElse("null")
+
+  def toJson(k: SpaceTimeKey): String =
+    s"""{"col": ${k.col}, "row": ${k.row}, "instant": ${k.instant} }"""
+
+  def toJson(e: Extent): String =
+    s"""{"xmin": ${e.xmin}, "ymin": ${e.ymin}, "xmax": ${e.xmax}, "ymax": ${e.ymax}}"""
+
+  def toJson(l: Link): String =
+    s"""{"href": {"file": ${toJson(l.href.getFile)}}, "title": ${toJson(l.title)}}"""
+
+  def toJson(a: Array[Link]): String =
+    "[" + a.map(toJson).mkString(",") + "]"
+
+  /**
+   * Helper to build JSON object (values should already be JSON-serialized)
+   */
+  def jsonObject(items: (String, String)*): String =
+    "{" + items.map { case (k, v) => toJson(k) + ": " + v }.toList.mkString(",") + "}"
 }
