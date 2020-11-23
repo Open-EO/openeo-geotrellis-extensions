@@ -11,7 +11,7 @@ import geotrellis.raster.{CellSize, MultibandTile}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
-import org.openeo.geotrellis.layers.FileLayerProvider
+import org.openeo.geotrellis.layers.{FileLayerProvider, ProbaVPathDateExtractor}
 
 import scala.collection.JavaConverters._
 
@@ -59,8 +59,8 @@ class ProbaVPyramidFactory(openSearchEndpoint: String, openSearchCollectionId: S
       NonEmptyList.fromListUnsafe(openSearchLinkTitlesWithBandIds.map(_._1)),
       rootPath,
       maxSpatialResolution = CellSize(10, 10),
+      pathDateExtractor = new ProbaVPathDateExtractor,
       bandIds = openSearchLinkTitlesWithBandIds.map(_._2),
-      probaV = true,
       correlationId = correlationId
     )
   }
