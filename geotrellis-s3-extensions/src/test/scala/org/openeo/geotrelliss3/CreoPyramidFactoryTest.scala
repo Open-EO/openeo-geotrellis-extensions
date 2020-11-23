@@ -1,15 +1,16 @@
 package org.openeo.geotrelliss3
 
 import java.time.format.DateTimeFormatter
+import java.util
 
 import geotrellis.proj4.CRS
 import geotrellis.spark._
-import geotrellis.raster.Raster
-import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
-import org.junit.{AfterClass, Assert, BeforeClass, Ignore, Test}
+import org.junit.{AfterClass, BeforeClass, Test}
+import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrellis.geotiff.saveRDD
 
 object CreoPyramidFactoryTest {
 
@@ -17,9 +18,9 @@ object CreoPyramidFactoryTest {
   def setupSpark(): Unit = {
     val conf = new SparkConf
     conf.setAppName("PyramidFactoryTest")
-    conf.setMaster("local[*]")
+    conf.setMaster("local[2]")
     conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-    conf.set("spark.driver.maxResultSize", "4g")
+    conf.set("spark.driver.maxResultSize", "1g")
 
     SparkContext.getOrCreate(conf)
   }
@@ -30,7 +31,7 @@ object CreoPyramidFactoryTest {
   }
 }
 
-@Ignore
+
 class CreoPyramidFactoryTest {
 
   @Test
@@ -43,8 +44,11 @@ class CreoPyramidFactoryTest {
 
     val date = "2019-01-01T00:00:00+00:00"
 
-    val boundingBox: ProjectedExtent = ProjectedExtent(Extent(xmin = 35.5517518249512, ymin = 33.7390099230957, xmax = 35.79345103698731, ymax = 33.85985951904297), CRS.fromEpsgCode(4326))
-    val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, boundingBox.crs.toString, date, date)
+    val boundingBox: ProjectedExtent = ProjectedExtent(Extent(xmin = 35.9517518249512, ymin = 33.7290099230957, xmax = 35.95255103698731, ymax = 33.73085951904297), CRS.fromEpsgCode(4326))
+    val utmExtent = boundingBox.reproject(CRS.fromEpsgCode(32637))
+    println(utmExtent)
+    val projectedPolys = ProjectedPolygons.fromExtent(utmExtent,"EPSG:32637")
+    val pyramid = pyramidFactory.datacube_seq(projectedPolys, date, date, new util.HashMap(), "NoID")
 
     assertEquals(15, pyramid.size)
 
@@ -57,12 +61,7 @@ class CreoPyramidFactoryTest {
       .sortWith(_ isBefore _)
 
     for (timestamp <- timestamps) {
-      val Raster(multibandTile, extent) = rdd
-        .toSpatial(timestamp)
-        .stitch()
-
-      val tif = MultibandGeoTiff(multibandTile, extent, rdd.metadata.crs)
-      tif.write(s"/home/niels/pyramidFactory/creo/${DateTimeFormatter.ISO_LOCAL_DATE format timestamp}.tif")
+      saveRDD(rdd.toSpatial(timestamp),-1,s"${DateTimeFormatter.ISO_LOCAL_DATE format timestamp}.tif")
     }
 
     for ((_, layer) <- pyramid) {
