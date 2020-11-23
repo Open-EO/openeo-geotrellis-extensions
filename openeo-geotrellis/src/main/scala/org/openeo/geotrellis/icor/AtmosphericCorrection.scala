@@ -20,11 +20,6 @@ class AtmosphericCorrection {
 
   import AtmosphericCorrection._
 
-  def printapply(){
-      println("Hello, world from my scala thinggy!")
-  }
-  
-     
   def correct(
         jsc: JavaSparkContext, 
         datacube: MultibandTileLayerRDD[SpaceTimeKey], 
@@ -79,7 +74,11 @@ class AtmosphericCorrection {
                 val vzaTile = angleTile(vzaIdx, defParams.get(1))
                 val vaaTile = angleTile(vaaIdx, 0.0)
                 val saaTile = angleTile(saaIdx, 130.0)
-                val raaTile = saaTile - vaaTile
+                
+                val raaTileDiff = saaTile - vaaTile
+                val raaTile=raaTileDiff.mapDouble(v =>
+                  ( if (v < -180.0) v+360.0 else if ( v > 180.0) v-360.0 else v ).abs  
+                )
 
                 val startMillis = System.currentTimeMillis();
                 val aotTile = aotProvider.computeAOT(multibandtile._1, crs, layoutDefinition)
