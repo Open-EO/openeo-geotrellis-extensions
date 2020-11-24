@@ -8,7 +8,7 @@ import geotrellis.spark._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.{AfterClass, BeforeClass, Ignore, Test}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.geotiff.saveRDD
 
@@ -31,7 +31,7 @@ object CreoPyramidFactoryTest {
   }
 }
 
-
+@Ignore
 class CreoPyramidFactoryTest {
 
   @Test
