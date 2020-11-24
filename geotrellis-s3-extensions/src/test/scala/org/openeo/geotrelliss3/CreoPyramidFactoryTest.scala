@@ -1,22 +1,20 @@
 package org.openeo.geotrelliss3
 
 import java.nio.file.{Files, Path, Paths}
-import java.time.{LocalDate, LocalTime, ZoneId, ZoneOffset, ZonedDateTime}
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
+import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
 
-import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.spark._
-import geotrellis.raster.{ArrayTile, MultibandTile, Raster, Tile}
+import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.{GeoTiff, MultibandGeoTiff}
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.raster.{ArrayTile, MultibandTile, Raster, Tile}
+import geotrellis.spark._
+import geotrellis.vector.{Extent, Polygon, ProjectedExtent}
 import org.apache.commons.io.FileUtils
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertArrayEquals, assertEquals, assertFalse, assertTrue}
-import org.junit.{AfterClass, BeforeClass, Test}
-import org.junit.{After, AfterClass, Assert, Before, BeforeClass, Ignore, Test}
-import org.junit.{AfterClass, Assert, BeforeClass, Ignore, Test}
+import org.junit._
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.geotiff.saveRDD
 
@@ -41,7 +39,7 @@ object CreoPyramidFactoryTest {
   }
 }
 
-
+@Ignore
 class CreoPyramidFactoryTest {
 
   private var tmpDir: Path = null
@@ -58,16 +56,20 @@ class CreoPyramidFactoryTest {
 
   @Test
   def testCreoPyramid(): Unit = {
+    val extent = Extent(200000, 3730000, 201000, 3731000)
+    val crs = CRS.fromEpsgCode(32637)
+    val boundingBox = ProjectedExtent(extent, crs)
+
     var tiles = ListBuffer[Tile]()
 
     def randomTile(cols: Int, rows: Int) = {
-      ArrayTile(Array.fill(cols * rows)((math.random * 2).toShort), cols, rows)
+      ArrayTile(Array.fill(cols * rows)((math.random * 1024).toShort), cols, rows)
     }
 
     def writeTile(dir: Path, band: String) = {
-      val tile = randomTile(10, 10)
+      val tile = randomTile(100, 100)
       tiles += tile
-      GeoTiff(tile, Extent(0, 0, 1, 1), LatLng).write(dir.resolve(s"$band.jp2").toString)
+      GeoTiff(tile, extent, crs).write(dir.resolve(s"$band.jp2").toString)
     }
 
     val year = "2019"
@@ -87,8 +89,7 @@ class CreoPyramidFactoryTest {
 
     val date = ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), LocalTime.MIDNIGHT, ZoneOffset.UTC).format(ISO_ZONED_DATE_TIME)
 
-    val boundingBox: ProjectedExtent = ProjectedExtent(Extent(xmin = 0, ymin = 0, xmax = 1, ymax = 1), CRS.fromEpsgCode(4326))
-    val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, boundingBox.crs.toString, date, date)
+    val pyramid = pyramidFactory.datacube_seq(ProjectedPolygons.fromExtent(extent, crs.toString()), date, date, new util.HashMap(), "NoID")
 
     assertEquals(1, pyramid.size)
 
@@ -120,7 +121,7 @@ class CreoPyramidFactoryTest {
           array.sum / array.length
         })
 
-      assertArrayEquals(avgResult.toArray, avgExpected.toArray, 0.01)
+      assertArrayEquals(avgExpected.toArray, avgResult.toArray, 0)
     }
 
     for ((_, layer) <- pyramid) {
@@ -132,8 +133,7 @@ class CreoPyramidFactoryTest {
   @Test
   def testCreoPyramidDatacube(): Unit = {
     val pyramidFactory = new CreoPyramidFactory(
-      Seq("https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE",
-        "https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE"),
+      Seq("https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE"),
       Seq("B02_10m", "B03_10m", "B04_10m")
     )
 
@@ -163,19 +163,19 @@ class CreoPyramidFactoryTest {
   @Test
   def testCreoPyramidDatacubePolygons(): Unit = {
     val pyramidFactory = new CreoPyramidFactory(
-      Seq("https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE",
-        "https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE"),
+      Seq("https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE"),
       Seq("B02_10m", "B03_10m", "B04_10m")
     )
 
     val date = "2019-01-01T00:00:00+00:00"
 
-    val polygon1 = Extent(xmin = 35.55, ymin = 33.75, xmax = 35.75, ymax = 33.95).toPolygon()
-    val polygon2 = Extent(xmin = 33.15, ymin = 35.25, xmax = 33.35, ymax = 35.45).toPolygon()
-    val polygon3 = Extent(xmin = 13.15, ymin = 15.25, xmax = 13.35, ymax = 15.45).toPolygon()
-    val polygons = Seq(polygon1, polygon2, polygon3)
+    val polygon1 = Extent(xmin = 195000, ymin = 3735000, xmax = 196000, ymax = 3736000).toPolygon()
+    val polygon2 = Extent(xmin = 54000, ymin = 3915000, xmax = 55000, ymax = 3916000).toPolygon()
+    val polygon3 = Extent(xmin = 19000, ymin = 1864000, xmax = 20000, ymax = 1865000).toPolygon()
 
-    val pyramid = pyramidFactory.datacube_seq(ProjectedPolygons.apply(polygons, CRS.fromEpsgCode(4326).toString), date, date, null, null)
+    val projectedPolygons = ProjectedPolygons(Seq[Polygon](polygon1, polygon2, polygon3), "EPSG:32637")
+
+    val pyramid = pyramidFactory.datacube_seq(projectedPolygons, date, date, new util.HashMap(), "NoID")
 
     assertEquals(1, pyramid.size)
 
@@ -201,7 +201,7 @@ class CreoPyramidFactoryTest {
             array.sum / array.length
           })
 
-      assertArrayEquals(Array(223.4749, 232.3029, 235.0112), avgResult.toArray, 0.01)
+      assertArrayEquals(Array(1320.3015, 1521.2037, 1482.7769), avgResult.toArray, 0.01)
     }
   }
 }

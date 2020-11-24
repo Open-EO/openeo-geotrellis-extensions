@@ -2,13 +2,13 @@ package org.openeo.geotrelliss3
 
 import java.io.FileInputStream
 import java.lang.System.getenv
-import java.net.{URI, URL}
+import java.net.URI
 import java.nio.file.{Files, Paths}
 import java.time._
 import java.util
 
 import geotrellis.layer._
-import geotrellis.proj4.CRS
+import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.gdal.GDALRasterSource
 import geotrellis.raster.gdal.config.GDALOptionsConfig.registerOption
 import geotrellis.raster.{CellSize, MultibandTile, RasterRegion, TargetAlignment, Tile, isNoData}
@@ -32,9 +32,8 @@ import scala.xml.XML
 
 object CreoPyramidFactory {
 
-  private val layoutScheme = FloatingLayoutScheme(256)
-  private val maxSpatialResolution = CellSize(0.01, 0.01)
-  private val endpoint = "http://data.cloudferro.com"
+  private val maxSpatialResolution = CellSize(10, 10)
+  private val endpoint = "data.cloudferro.com"
   private val region = "RegionOne"
   private val awsDirect = "TRUE".equals(getenv("AWS_DIRECT"))
   private val logger = LoggerFactory.getLogger(classOf[CreoPyramidFactory])
@@ -50,7 +49,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
   import CreoPyramidFactory._
 
   if (awsDirect) {
-    registerOption("AWS_S3_ENDPOINT", URI.create(endpoint).getAuthority)
+    registerOption("AWS_S3_ENDPOINT", endpoint)
     registerOption("AWS_DEFAULT_REGION", region)
     registerOption("AWS_SECRET_ACCESS_KEY", getenv("AWS_SECRET_ACCESS_KEY"))
     registerOption("AWS_ACCESS_KEY_ID", getenv("AWS_ACCESS_KEY_ID"))
@@ -64,7 +63,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
   private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
 
   def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime): Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val layers = Seq(0 -> layer(boundingBox, from, to))
+    val layers = for (zoom <- 14 to 0 by -1) yield zoom -> layer(boundingBox, from, to, zoom, ZoomedLayoutScheme(WebMercator, 256))
     Pyramid(layers.toMap)
   }
 
@@ -104,10 +103,10 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     val intersectsPolygons = AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
 
-    layer(intersectsPolygons, polygons_crs, from, to)
+    layer(intersectsPolygons, polygons_crs, from, to, 0, FloatingLayoutScheme(256))
   }
 
-  private def layer(polygons: Array[MultiPolygon], polygons_crs: CRS, from: ZonedDateTime, to: ZonedDateTime): MultibandTileLayerRDD[SpaceTimeKey] = {
+  private def layer(polygons: Array[MultiPolygon], polygons_crs: CRS, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, layoutScheme: LayoutScheme): MultibandTileLayerRDD[SpaceTimeKey] = {
     val sc: SparkContext = SparkContext.getOrCreate()
 
     val bbox = polygons.toSeq.extent
@@ -118,7 +117,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     val crs = bestCRS(xAlignedBoundingBox, layoutScheme)
 
-    val layout = getLayout(layoutScheme, xAlignedBoundingBox, 0, maxSpatialResolution)
+    val layout = getLayout(layoutScheme, xAlignedBoundingBox, zoom, maxSpatialResolution)
 
     val dates = sequentialDates(from)
       .takeWhile(date => !(date isAfter to))
@@ -159,7 +158,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     //unsafe, don't we need union of cell type?
     val commonCellType = rasterSources.take(1).head._2.head.head.cellType
-    val metadata = layerMetadata(xAlignedBoundingBox, from, to, 0, commonCellType, layoutScheme, maxSpatialResolution)
+    val metadata = layerMetadata(xAlignedBoundingBox, from, to, zoom, commonCellType, layoutScheme, maxSpatialResolution)
 
     val regions:RDD[(SpaceTimeKey,Seq[Seq[RasterRegion]])] = rasterSources.map {
       case (key,value) => (key, value.map(_.map(rasterSource =>
@@ -178,8 +177,8 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
     ContextRDD(cube, metadata)
   }
 
-  private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime): MultibandTileLayerRDD[SpaceTimeKey] = {
-    layer(Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs, from , to)
+  private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, layoutScheme: LayoutScheme): MultibandTileLayerRDD[SpaceTimeKey] = {
+    layer(Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs, from , to, zoom, layoutScheme)
   }
 
   private def xAlign(boundingBox: ProjectedExtent) = {
