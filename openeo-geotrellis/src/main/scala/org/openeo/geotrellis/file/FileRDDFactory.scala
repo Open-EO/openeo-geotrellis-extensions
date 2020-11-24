@@ -44,7 +44,7 @@ class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.
   }
 
 
-  def readMultibandTileLayer(polygons:ProjectedPolygons, from_date: String, to_date: String, zoom: Int): ContextRDD[SpaceTimeKey,Feature,TileLayerMetadata[SpaceTimeKey]] = {
+  def readMultibandTileLayer(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int, tileSize: Int = 256): ContextRDD[SpaceTimeKey, Feature, TileLayerMetadata[SpaceTimeKey]] = {
     val sc = SparkContext.getOrCreate()
 
     val from = ZonedDateTime.parse(from_date)
@@ -59,7 +59,7 @@ class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.
     //construct layer metadata
     //hardcoded celltype of float: assuming we will generate floats in further processing
     //use a floating layout scheme, so we will process data in original utm projection and 10m resolution
-    val metadata: TileLayerMetadata[SpaceTimeKey] = layerMetadata(boundingBox, from, to, 0, FloatConstantNoDataCellType, FloatingLayoutScheme(256), maxSpatialResolution)
+    val metadata: TileLayerMetadata[SpaceTimeKey] = layerMetadata(boundingBox, from, to, 0, FloatConstantNoDataCellType, FloatingLayoutScheme(tileSize), maxSpatialResolution)
 
     //construct Spatial Keys that we want to load
     val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons.polygons).map{_.reproject(polygons.crs,metadata.crs)}.clipToGrid(metadata.layout).groupByKey()
@@ -78,9 +78,9 @@ class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.
    * Variant of readMultibandTileLayer that allows working with the data in JavaRDD format in PySpark context:
    * (e.g. oscars response is JSON-serialized)
    */
-  def readMultibandTileLayerJson(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey]) = {
+  def readMultibandTileLayerJson(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int, tileSize: Int = 256): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey]) = {
     import org.openeo.geotrellis.file.FileRDDFactory.{toJson, jsonObject}
-    val crdd = readMultibandTileLayer(polygons, from_date, to_date, zoom)
+    val crdd = readMultibandTileLayer(polygons, from_date, to_date, zoom, tileSize)
     val jrdd = crdd.map { case (key, feature) => jsonObject(
       "key" -> toJson(key),
       "feature" -> jsonObject(
