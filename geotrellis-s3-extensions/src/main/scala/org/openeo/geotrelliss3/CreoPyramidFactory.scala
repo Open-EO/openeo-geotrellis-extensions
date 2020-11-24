@@ -20,6 +20,7 @@ import javax.net.ssl.HttpsURLConnection
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrellis.file.AbstractPyramidFactory
 import org.openeo.geotrellis.layers.FileLayerProvider.{bestCRS, getLayout, layerMetadata}
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.slf4j.LoggerFactory
@@ -33,8 +34,6 @@ object CreoPyramidFactory {
 
   private val layoutScheme = FloatingLayoutScheme(256)
   private val maxSpatialResolution = CellSize(0.01, 0.01)
-  private val layerName = "S3"
-  private val maxZoom = 14
   private val endpoint = "http://data.cloudferro.com"
   private val region = "RegionOne"
   private val awsDirect = "TRUE".equals(getenv("AWS_DIRECT"))
@@ -64,6 +63,142 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
   private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
 
+  def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime): Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    val layers = Seq(0 -> layer(boundingBox, from, to))
+    Pyramid(layers.toMap)
+  }
+
+  def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+    val projectedExtent = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
+
+    val from = ZonedDateTime.parse(from_date)
+    val to = ZonedDateTime.parse(to_date)
+
+    pyramid(projectedExtent, from, to).levels.toSeq
+      .sortBy { case (zoom, _) => zoom }
+      .reverse
+  }
+
+  /**
+   * Same as #datacube, but return same structure as pyramid_seq
+   *
+   * @param polygons
+   * @param from_date
+   * @param to_date
+   * @param metadata_properties
+   * @return
+   */
+  def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
+  metadata_properties: util.Map[String, Any], correlationId: String):
+  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+    val cube = datacube(polygons.polygons, polygons.crs, from_date, to_date)
+    Seq((0, cube))
+  }
+
+  def datacube(polygons:ProjectedPolygons, from_date: String, to_date: String): MultibandTileLayerRDD[SpaceTimeKey] =
+  datacube(polygons.polygons, polygons.crs, from_date, to_date)
+
+  def datacube(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val from = ZonedDateTime.parse(from_date)
+    val to = ZonedDateTime.parse(to_date)
+
+    val intersectsPolygons = AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
+
+    layer(intersectsPolygons, polygons_crs, from, to)
+  }
+
+  private def layer(polygons: Array[MultiPolygon], polygons_crs: CRS, from: ZonedDateTime, to: ZonedDateTime): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val sc: SparkContext = SparkContext.getOrCreate()
+
+    val bbox = polygons.toSeq.extent
+
+    val boundingBox = ProjectedExtent(bbox, polygons_crs)
+
+    val xAlignedBoundingBox = xAlign(boundingBox)
+
+    val crs = bestCRS(xAlignedBoundingBox, layoutScheme)
+
+    val layout = getLayout(layoutScheme, xAlignedBoundingBox, 0, maxSpatialResolution)
+
+    val dates = sequentialDates(from)
+      .takeWhile(date => !(date isAfter to))
+
+    val productKeys = productPaths.flatMap(listProducts)
+
+    if (productKeys.isEmpty) throw new IllegalArgumentException("no files found for given product paths")
+
+    logger.info(s"Products keys:\n${productKeys.mkString("\n")}")
+
+    def extractDate(key: String): ZonedDateTime = {
+      val date = raw"\/(\d{4})\/(\d{2})\/(\d{2})\/".r.unanchored
+      key match {
+        case date(year, month, day) => ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+      }
+    }
+
+    val bandFileMaps: Seq[Map[ZonedDateTime, Seq[String]]] = bands.map(b =>
+    productKeys.filter(_.contains(b))
+      .map(pk => extractDate(pk) -> pk)
+      .groupBy(_._1)
+      .map { case (k, v) => (k, v.map(_._2)) }
+    )
+
+    val overlappingKeys: immutable.Seq[SpaceTimeKey] = dates.flatMap(date => {
+      val set = polygons.map(_.reproject(polygons_crs, crs))
+        .flatMap(layout.mapTransform.keysForGeometry)
+        .toSet
+      set.map(key => SpaceTimeKey(key, date))
+    })
+
+    logger.info(s"Overlapping keys:\n${overlappingKeys.map(_.toString).mkString("\n")}")
+
+    val rasterSources: RDD[(SpaceTimeKey,Seq[Seq[GDALRasterSource]])] = sc.parallelize(overlappingKeys)
+      .map(key => (key, bandFileMaps
+      .flatMap(_.get(key.time))
+      .map(_.map(path => GDALRasterSource(path)))))
+
+    //unsafe, don't we need union of cell type?
+    val commonCellType = rasterSources.take(1).head._2.head.head.cellType
+    val metadata = layerMetadata(xAlignedBoundingBox, from, to, 0, commonCellType, layoutScheme, maxSpatialResolution)
+
+    val regions:RDD[(SpaceTimeKey,Seq[Seq[RasterRegion]])] = rasterSources.map {
+      case (key,value) => (key, value.map(_.map(rasterSource =>
+        rasterSource.reproject(metadata.crs, TargetAlignment(metadata)).tileToLayout(metadata.layout))
+          .flatMap(_.rasterRegionForKey(key.spatialKey))))
+    }
+
+    val partitioner = SpacePartitioner(metadata.bounds)
+    assert(partitioner.index == SpaceTimeByMonthPartitioner)
+    val tiles:RDD[(SpaceTimeKey,Seq[Tile])] = regions.repartitionAndSortWithinPartitions(partitioner).map{ case (key,value) =>
+      (key,value.map(_.flatMap(_.raster).map(_.tile.band(0))).flatMap(mapToSingleTile(_)))
+    }
+
+    val cube = tiles.flatMapValues(v => if (v.isEmpty) None else Some(MultibandTile(v)))
+
+    ContextRDD(cube, metadata)
+  }
+
+  private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime): MultibandTileLayerRDD[SpaceTimeKey] = {
+    layer(Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs, from , to)
+  }
+
+  private def xAlign(boundingBox: ProjectedExtent) = {
+    def floor(x: Double, precision: Double) = {
+      (BigDecimal.valueOf(math.floor(x / precision)) * precision).doubleValue()
+    }
+
+    def ceil(x: Double, precision: Double) = {
+      (BigDecimal.valueOf(math.ceil(x / precision)) * precision).doubleValue()
+    }
+
+    ProjectedExtent(Extent(
+      floor(boundingBox.extent.xmin, maxSpatialResolution.width),
+      floor(boundingBox.extent.ymin, maxSpatialResolution.height),
+      ceil(boundingBox.extent.xmax, maxSpatialResolution.width),
+      ceil(boundingBox.extent.ymax, maxSpatialResolution.height)
+    ), boundingBox.crs)
+  }
+
   private def getFilePathsFromManifest(path: String) = {
     var gdalPrefix = ""
 
@@ -91,7 +226,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
     val keyPattern =  """.*IMG_DATA.*jp2""".r
 
     val filePaths =
-      if (awsDirect || productPath.startsWith("https://")) {
+    if (awsDirect || productPath.startsWith("https://")) {
         getFilePathsFromManifest(productPath)
       } else {
         Files.walk(Paths.get(productPath)).iterator().asScala
@@ -110,126 +245,4 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     tiles.map(_.toArrayTile()).reduceOption[Tile](_.dualCombine(_)(intCombine)(doubleCombine))
   }
-
-  private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom): MultibandTileLayerRDD[SpaceTimeKey] = {
-    require(zoom >= 0)
-    require(zoom <= maxZoom)
-
-    val sc: SparkContext = SparkContext.getOrCreate()
-
-    val xAlignedBoundingBox = xAlign(boundingBox)
-
-    val crs = bestCRS(xAlignedBoundingBox, layoutScheme)
-
-    val reprojectedBoundingBox = xAlignedBoundingBox.reproject(crs)
-
-    val layout = getLayout(layoutScheme, xAlignedBoundingBox, zoom, maxSpatialResolution)
-
-    val dates = sequentialDates(from)
-      .takeWhile(date => !(date isAfter to))
-
-    val overlappingKeys: immutable.Seq[SpaceTimeKey] = dates.flatMap(date =>
-      layout.mapTransform.keysForGeometry(reprojectedBoundingBox.toPolygon())
-        .map(key => SpaceTimeKey(key, date)))
-
-    logger.info(s"Overlapping keys:\n${overlappingKeys.map(_.toString).mkString("\n")}")
-
-    val productKeys = productPaths.flatMap(listProducts)
-
-    if (productKeys.isEmpty) throw new IllegalArgumentException("no files found for given product paths")
-
-    logger.info(s"Products keys:\n${productKeys.mkString("\n")}")
-
-    def extractDate(key: String): ZonedDateTime = {
-      val date = raw"\/(\d{4})\/(\d{2})\/(\d{2})\/".r.unanchored
-      key match {
-        case date(year, month, day) => ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-      }
-    }
-
-    val bandFileMaps: Seq[Map[ZonedDateTime, Seq[String]]] = bands.map(b =>
-      productKeys.filter(_.contains(b))
-        .map(pk => extractDate(pk) -> pk)
-        .groupBy(_._1)
-        .map { case (k, v) => (k, v.map(_._2)) }
-    )
-
-    val rasterSources: RDD[(SpaceTimeKey,Seq[Seq[GDALRasterSource]])] = sc.parallelize(overlappingKeys)
-      .map(key => (key, bandFileMaps
-        .flatMap(_.get(key.time))
-        .map(_.map(path => GDALRasterSource(path)))))
-
-    //unsafe, don't we need union of cell type?
-    val commonCellType = rasterSources.take(1).head._2.head.head.cellType
-    val metadata = layerMetadata(xAlignedBoundingBox, from, to, zoom min maxZoom, commonCellType,layoutScheme, maxSpatialResolution)
-
-    val regions:RDD[(SpaceTimeKey,Seq[Seq[RasterRegion]])] = rasterSources.map {
-      case (key,value) => (key, value.map(_.map(rastersource =>
-        rastersource.reproject(metadata.crs, TargetAlignment(metadata)).tileToLayout(metadata.layout))
-        .flatMap(_.rasterRegionForKey(key.spatialKey))))
-    }
-
-    val partitioner = SpacePartitioner(metadata.bounds)
-    assert(partitioner.index == SpaceTimeByMonthPartitioner)
-    val tiles:RDD[(SpaceTimeKey,Seq[Tile])] = regions.repartitionAndSortWithinPartitions(partitioner).map{ case (key,value) =>
-      (key,value.map(_.flatMap(_.raster).map(_.tile.band(0))).flatMap(mapToSingleTile(_)))
-    }
-
-    val cube = tiles.flatMapValues(v => if (v.isEmpty) None else Some(MultibandTile(v)))
-
-    ContextRDD(cube, metadata)
-  }
-
-  private def xAlign(boundingBox: ProjectedExtent) = {
-    def floor(x: Double, precision: Double) = {
-      (BigDecimal.valueOf(math.floor(x / precision)) * precision).doubleValue()
-    }
-
-    def ceil(x: Double, precision: Double) = {
-      (BigDecimal.valueOf(math.ceil(x / precision)) * precision).doubleValue()
-    }
-
-    ProjectedExtent(Extent(
-      floor(boundingBox.extent.xmin, maxSpatialResolution.width),
-      floor(boundingBox.extent.ymin, maxSpatialResolution.height),
-      ceil(boundingBox.extent.xmax, maxSpatialResolution.width),
-      ceil(boundingBox.extent.ymax, maxSpatialResolution.height)
-    ), boundingBox.crs)
-  }
-
-  def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime): Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val layers = for (zoom <- maxZoom to 0 by -1) yield zoom -> layer(boundingBox, from, to, zoom)
-    Pyramid(layers.toMap)
-  }
-
-  def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
-    val projectedExtent = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
-    pyramid_seq_internal(projectedExtent, from_date, to_date)
-  }
-
-  private def pyramid_seq_internal(projectedExtent: ProjectedExtent, from_date: String, to_date: String): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
-    val from = ZonedDateTime.parse(from_date)
-    val to = ZonedDateTime.parse(to_date)
-
-    pyramid(projectedExtent, from, to).levels.toSeq
-      .sortBy { case (zoom, _) => zoom }
-      .reverse
-  }
-
-  /**
-   * Same as #datacube, but return same structure as pyramid_seq
-   *
-   * @param polygons
-   * @param from_date
-   * @param to_date
-   * @param metadata_properties
-   * @return
-   */
-  def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
-                   metadata_properties: util.Map[String, Any], correlationId: String):
-  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
-    pyramid_seq_internal(ProjectedExtent(polygons.polygons.toSeq.extent,polygons.crs),from_date, to_date)
-  }
-
-
 }
