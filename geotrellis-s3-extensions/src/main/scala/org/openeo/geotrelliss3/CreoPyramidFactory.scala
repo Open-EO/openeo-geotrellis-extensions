@@ -7,10 +7,11 @@ import java.nio.file.{Files, Paths}
 import java.time._
 import java.util
 
+import cats.data.NonEmptyList
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.gdal.GDALRasterSource
-import geotrellis.raster.{CellSize, MultibandTile, RasterRegion, TargetAlignment, Tile, isNoData}
+import geotrellis.raster.{CellSize, MultibandTile, RasterRegion, RasterSource, TargetAlignment, Tile, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
@@ -22,11 +23,9 @@ import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.file.AbstractPyramidFactory
 import org.openeo.geotrellis.layers.FileLayerProvider.{bestCRS, getLayout, layerMetadata}
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
-import org.openeo.geotrelliss3.CreoPyramidFactory.getClass
 import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
-import scala.io.Source.fromFile
 import scala.math.max
 import scala.xml.XML
 
@@ -45,6 +44,7 @@ object CreoPyramidFactory {
 class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends Serializable {
 
   import CreoPyramidFactory._
+  import org.openeo.geotrellis.layers.BandCompositeRasterSource
 
   def this(productPaths: util.List[String], bands: util.List[String]) =
     this(productPaths.asScala, bands.asScala)
@@ -104,8 +104,9 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     val crs = bestCRS(xAlignedBoundingBox, layoutScheme)
 
+    val layout = getLayout(layoutScheme, xAlignedBoundingBox, zoom, maxSpatialResolution)
 
-    val productKeys = productPaths.flatMap(listProducts)
+    val productKeys = productPaths.flatMap(listProducts) //TODO: map instead of flatmap
 
     if (productKeys.isEmpty) throw new IllegalArgumentException("no files found for given product paths")
 
@@ -119,7 +120,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
     }
 
     val bandFileMaps: Seq[Map[ZonedDateTime, Seq[String]]] = bands.map(b =>
-    productKeys.filter(_.contains(b))
+    productKeys.filter(_.contains(b)) //TODO map on product keys and filter out not needed bands
       .map(pk => extractDate(pk) -> pk)
       .groupBy(_._1)
       .map { case (k, v) => (k, v.map(_._2)) }
@@ -136,29 +137,28 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     logger.debug(s"Overlapping keys:\n${overlappingKeys.map(_.toString).mkString("\n")}")
 
-    val rasterSources: RDD[(SpaceTimeKey,Seq[Seq[GDALRasterSource]])] = sc.parallelize(overlappingKeys)
+    val rasterSources: RDD[(SpaceTimeKey, Seq[RasterSource])] = sc.parallelize(overlappingKeys)
       .map(key => (key, bandFileMaps
       .flatMap(_.get(key.time))
-      .map(_.map(path => GDALRasterSource(path)))))
+      .map(paths => new BandCompositeRasterSource(NonEmptyList.fromListUnsafe(paths.map(path => GDALRasterSource(path)).toList), crs))))
 
     //unsafe, don't we need union of cell type?
-    val commonCellType = rasterSources.take(1).head._2.head.head.cellType
+    val commonCellType = rasterSources.take(1).head._2.head.cellType
     val metadata = layerMetadata(xAlignedBoundingBox, from, to, zoom, commonCellType, layoutScheme, maxSpatialResolution)
 
-    val regions: RDD[(SpaceTimeKey, Seq[Seq[RasterRegion]])] = rasterSources.map {
-      case (key,value) =>
-        (key, value.map(_.map(rasterSource =>
-          rasterSource.reproject(metadata.crs, TargetAlignment(metadata)).tileToLayout(metadata.layout))
-          .flatMap(_.rasterRegionForKey(key.spatialKey))))
+    val regions: RDD[(SpaceTimeKey, Seq[RasterRegion])] = rasterSources.map {
+      case (key,value) => (key, value.map(rasterSource =>
+        rasterSource.reproject(metadata.crs, TargetAlignment(metadata)).tileToLayout(metadata.layout))
+          .flatMap(_.rasterRegionForKey(key.spatialKey)))
     }
 
     val partitioner = SpacePartitioner(metadata.bounds)
     assert(partitioner.index == SpaceTimeByMonthPartitioner)
-    val tiles:RDD[(SpaceTimeKey,Seq[Tile])] = regions.repartitionAndSortWithinPartitions(partitioner).map{ case (key,value) =>
-      (key,value.map(_.flatMap(_.raster).map(_.tile.band(0))).flatMap(mapToSingleTile(_)))
+    val tiles:RDD[(SpaceTimeKey, Seq[MultibandTile])] = regions.repartitionAndSortWithinPartitions(partitioner).map{ case (key, value) =>
+      (key, value.flatMap(_.raster).map(_.tile))
     }
 
-    val cube = tiles.flatMapValues(v => if (v.isEmpty) None else Some(MultibandTile(v)))
+    val cube = tiles.flatMapValues(v => if (v.isEmpty) None else Some(v))
 
     ContextRDD(cube, metadata)
   }
@@ -224,10 +224,14 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
     }
   }
 
-  private def mapToSingleTile(tiles: Iterable[Tile]): Option[Tile] = {
+  def mapToSingleMultibandTile(tiles: Iterable[MultibandTile]): Option[MultibandTile] = {
     val intCombine = (t1: Int, t2: Int) => if (isNoData(t1)) t2 else if (isNoData(t2)) t1 else max(t1, t2)
     val doubleCombine = (t1: Double, t2: Double) => if (isNoData(t1)) t2 else if (isNoData(t2)) t1 else max(t1, t2)
 
-    tiles.map(_.toArrayTile()).reduceOption[Tile](_.dualCombine(_)(intCombine)(doubleCombine))
+    tiles.map(_.toArrayTile()).reduceOption[MultibandTile]((t1,t2) => {
+      if (t1.bandCount > t2.bandCount) t1
+      else if (t2.bandCount > t1.bandCount) t2
+      else t1.mapBands((index,tile) => tile.dualCombine(t2.band(index))(intCombine)(doubleCombine))
+    })
   }
 }

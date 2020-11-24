@@ -1,18 +1,16 @@
 package org.openeo.geotrelliss3
 
 import java.nio.file.{Files, Path, Paths}
-import java.time.{LocalDate, LocalTime, ZoneId, ZoneOffset, ZonedDateTime}
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
 
-import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.{GeoTiff, MultibandGeoTiff}
 import geotrellis.raster.{ArrayTile, MultibandTile, Raster, Tile}
 import geotrellis.spark._
 import geotrellis.vector.{Extent, Polygon, ProjectedExtent}
-import org.apache.commons.io.FileUtils
 import org.apache.commons.io.FileUtils
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertArrayEquals, assertEquals, assertFalse, assertTrue}
@@ -41,6 +39,7 @@ object CreoPyramidFactoryTest {
   }
 }
 
+@Ignore
 class CreoPyramidFactoryTest {
 
   private var tmpDir: Path = null
@@ -60,83 +59,12 @@ class CreoPyramidFactoryTest {
     val extent = Extent(200000, 3730000, 201000, 3731000)
     val crs = CRS.fromEpsgCode(32637)
     val boundingBox = ProjectedExtent(extent, crs)
-      ArrayTile(Array.fill(cols * rows)((math.random * 2).toShort), cols, rows)
-    }
-
-    def writeTile(dir: Path, band: String) = {
-      val tile = randomTile(10, 10)
-      tiles += tile
-      GeoTiff(tile, Extent(0, 0, 1, 1), LatLng).write(dir.resolve(s"$band.jp2").toString)
-    }
-
-    val year = "2019"
-    val month = "01"
-    val day = "01"
-
-    val dateDir = tmpDir.resolve(Paths.get("Sentinel-2", "MSI", "L2A", year, month, day,
-      s"S2A_MSIL2A_$year$month${day}_T37SBT_$year$month$day.SAFE", "GRANULE", s"L2A_T37SBT_A018422_$year$month$day",
-      "IMG_DATA", "R10m"))
-    Files.createDirectories(dateDir)
-
-    val bands = Seq("B02_10m", "B03_10m", "B04_10m")
-
-    bands.foreach(writeTile(dateDir, _))
-
-    val pyramidFactory = new CreoPyramidFactory(Seq(dateDir.toString), bands)
-
-    val date = ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), LocalTime.MIDNIGHT, ZoneOffset.UTC).format(ISO_ZONED_DATE_TIME)
-
-    val boundingBox: ProjectedExtent = ProjectedExtent(Extent(xmin = 0, ymin = 0, xmax = 1, ymax = 1), CRS.fromEpsgCode(4326))
-    val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, boundingBox.crs.toString, date, date)
-
-    assertEquals(1, pyramid.size)
-
-    val rdd = pyramid.head._2.cache
-
-    val timestamps = rdd.keys
-      .map(_.time)
-      .distinct()
-      .collect()
-      .sortWith(_ isBefore _)
-
-    for (timestamp <- timestamps) {
-      val Raster(multibandTile, extent) = rdd
-        .toSpatial(timestamp)
-        .stitch()
-
-      val avgResult = MultibandGeoTiff(multibandTile, extent, rdd.metadata.crs).crop(boundingBox.reproject(rdd.metadata.crs))
-        .tile
-        .bands
-        .map(b => {
-          val array = b.toArrayDouble()
-          array.sum / array.length
-        })
-
-      val avgExpected = MultibandTile(tiles)
-        .bands
-        .map(b => {
-          val array = b.toArrayDouble()
-          array.sum / array.length
-        })
-
-      assertArrayEquals(avgResult.toArray, avgExpected.toArray, 0.01)
-    }
-
-    for ((_, layer) <- pyramid) {
-      assertFalse(layer.isEmpty())
-      assertTrue(layer.first()._2.bandCount == 3)
-    }
-  }
-
-  @Test
-  def testCreoPyramidDatacube(): Unit = {
 
     var tiles = ListBuffer[Tile]()
 
     def randomTile(cols: Int, rows: Int) = {
       ArrayTile(Array.fill(cols * rows)((math.random * 1024).toShort), cols, rows)
     }
-    val polygons = Seq(polygon1, polygon2, polygon3)
 
     def writeTile(dir: Path, band: String) = {
       val tile = randomTile(100, 100)
@@ -194,8 +122,11 @@ class CreoPyramidFactoryTest {
         })
 
       assertArrayEquals(avgExpected.toArray, avgResult.toArray, 0)
+    }
 
-      assertArrayEquals(avgResult.toArray, Array(223.4749, 232.3029, 235.0112), 0.01)
+    for ((_, layer) <- pyramid) {
+      assertFalse(layer.isEmpty())
+      assertTrue(layer.first()._2.bandCount == 3)
     }
   }
 
