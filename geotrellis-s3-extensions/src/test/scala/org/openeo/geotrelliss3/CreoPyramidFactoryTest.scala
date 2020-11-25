@@ -14,7 +14,7 @@ import geotrellis.vector.{Extent, Polygon, ProjectedExtent}
 import org.apache.commons.io.FileUtils
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertArrayEquals, assertEquals, assertFalse, assertTrue}
-import org.junit._
+import org.junit.{AfterClass, BeforeClass, Ignore, Test, _}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.geotiff.saveRDD
 

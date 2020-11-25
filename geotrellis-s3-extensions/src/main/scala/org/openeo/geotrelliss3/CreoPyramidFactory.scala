@@ -48,17 +48,18 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
   import CreoPyramidFactory._
 
-  if (awsDirect) {
-    registerOption("AWS_S3_ENDPOINT", endpoint)
+  def this(productPaths: util.List[String], bands: util.List[String]) =
+    this(productPaths.asScala, bands.asScala)
+
+  if (awsDirect) registerGdalOptions()
+
+  private def registerGdalOptions() {
     registerOption("AWS_DEFAULT_REGION", region)
     registerOption("AWS_SECRET_ACCESS_KEY", getenv("AWS_SECRET_ACCESS_KEY"))
     registerOption("AWS_ACCESS_KEY_ID", getenv("AWS_ACCESS_KEY_ID"))
     registerOption("AWS_VIRTUAL_HOSTING", "FALSE")
     registerOption("AWS_HTTPS", "NO")
   }
-
-  def this(productPaths: util.List[String], bands: util.List[String]) =
-    this(productPaths.asScala, bands.asScala)
 
   private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
 
@@ -160,9 +161,12 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
     val commonCellType = rasterSources.take(1).head._2.head.head.cellType
     val metadata = layerMetadata(xAlignedBoundingBox, from, to, zoom, commonCellType, layoutScheme, maxSpatialResolution)
 
-    val regions:RDD[(SpaceTimeKey,Seq[Seq[RasterRegion]])] = rasterSources.map {
-      case (key,value) => (key, value.map(_.map(rasterSource =>
-        rasterSource.reproject(metadata.crs, TargetAlignment(metadata)).tileToLayout(metadata.layout))
+    val regions: RDD[(SpaceTimeKey, Seq[Seq[RasterRegion]])] = rasterSources.map {
+      case (key,value) =>
+        if (awsDirect) registerGdalOptions()
+
+        (key, value.map(_.map(rasterSource =>
+          rasterSource.reproject(metadata.crs, TargetAlignment(metadata)).tileToLayout(metadata.layout))
           .flatMap(_.rasterRegionForKey(key.spatialKey))))
     }
 
