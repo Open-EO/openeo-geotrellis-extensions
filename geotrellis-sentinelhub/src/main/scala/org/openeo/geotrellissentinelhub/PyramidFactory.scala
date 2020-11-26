@@ -4,7 +4,7 @@ import java.time.ZonedDateTime
 
 import geotrellis.layer.{KeyBounds, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, WebMercator}
-import geotrellis.raster.{CellSize, MultibandTile, UShortConstantNoDataCellType}
+import geotrellis.raster.{CellSize, MultibandTile}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
@@ -13,11 +13,15 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
+import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 
 import scala.collection.JavaConverters._
 
-class PyramidFactory(datasetId: String, clientId: String, clientSecret: String) extends Serializable {
+class PyramidFactory(datasetId: String, clientId: String, clientSecret: String, sampleType: SampleType = UINT16) extends Serializable {
   private val maxZoom = 14
+
+  def this(datasetId: String, clientId: String, clientSecret: String, sampleType: String) =
+    this(datasetId, clientId, clientSecret, Option(sampleType).map(SampleType.withName).getOrElse(UINT16))
 
   private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
   
@@ -39,7 +43,7 @@ class PyramidFactory(datasetId: String, clientId: String, clientSecret: String) 
       val gridBounds = layout.mapTransform.extentToBounds(reprojectedBoundingBox)
 
       TileLayerMetadata(
-        cellType = UShortConstantNoDataCellType,
+        cellType = sampleType.cellType,
         layout = layout,
         extent = reprojectedBoundingBox,
         crs = targetCrs,
@@ -51,7 +55,7 @@ class PyramidFactory(datasetId: String, clientId: String, clientSecret: String) 
     assert(partitioner.index == SpaceTimeByMonthPartitioner)
 
     val tilesRdd = sc.parallelize(overlappingKeys)
-      .map(key => (key, retrieveTileFromSentinelHub(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs), key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, bandNames, clientId, clientSecret)))
+      .map(key => (key, retrieveTileFromSentinelHub(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs), key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, bandNames, sampleType, clientId, clientSecret)))
       .filter(_._2.bands.exists(b => !b.isNoDataTile))
       .partitionBy(partitioner)
 
@@ -96,7 +100,7 @@ class PyramidFactory(datasetId: String, clientId: String, clientSecret: String) 
         val gridBounds = layout.mapTransform.extentToBounds(boundingBox.extent)
 
         TileLayerMetadata(
-          cellType = UShortConstantNoDataCellType,
+          cellType = sampleType.cellType,
           layout,
           extent = boundingBox.extent,
           crs = boundingBox.crs,
@@ -115,7 +119,7 @@ class PyramidFactory(datasetId: String, clientId: String, clientSecret: String) 
 
         val tilesRdd = for {
           key <- sc.parallelize(overlappingKeys)
-          tile = retrieveTileFromSentinelHub(datasetId, ProjectedExtent(key.spatialKey.extent(layout), boundingBox.crs), key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, band_names.asScala, clientId, clientSecret)
+          tile = retrieveTileFromSentinelHub(datasetId, ProjectedExtent(key.spatialKey.extent(layout), boundingBox.crs), key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, band_names.asScala, sampleType, clientId, clientSecret)
           if !tile.bands.forall(_.isNoDataTile)
         } yield (key, tile)
 

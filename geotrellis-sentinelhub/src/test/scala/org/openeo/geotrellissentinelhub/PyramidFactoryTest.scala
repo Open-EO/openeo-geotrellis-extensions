@@ -4,14 +4,16 @@ import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 
+import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.util.UTM
-import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.Raster
+import geotrellis.proj4.LatLng
+import geotrellis.raster.{HasNoData, Raster}
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.SparkConf
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 import scala.collection.JavaConverters._
@@ -24,13 +26,25 @@ class PyramidFactoryTest {
   @Test
   def testGamma0(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 10, 10), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new PyramidFactory("S1GRD", clientId, clientSecret), "gamma0", date, Seq("VV", "VH"))
+
+    def testCellType(baseLayer: MultibandTileLayerRDD[SpaceTimeKey]): Unit = baseLayer.metadata.cellType match {
+      case cellType: HasNoData[Double] => assertTrue(cellType.isFloatingPoint && cellType.noDataValue == 0.0)
+    }
+
+    testLayer(new PyramidFactory("S1GRD", clientId, clientSecret, sampleType = "FLOAT32"), "gamma0", date,
+      Seq("VV", "VH"), testCellType)
   }
 
   @Test
   def testSentinel2L1C(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new PyramidFactory("S2L1C", clientId, clientSecret), "sentinel2-L1C", date, Seq("B04", "B03", "B02"))
+
+    def testCellType(baseLayer: MultibandTileLayerRDD[SpaceTimeKey]): Unit = baseLayer.metadata.cellType match {
+      case cellType: HasNoData[Double] => assertTrue(!cellType.isFloatingPoint && cellType.noDataValue == 0)
+    }
+
+    testLayer(new PyramidFactory("S2L1C", clientId, clientSecret), "sentinel2-L1C", date, Seq("B04", "B03", "B02"),
+      testCellType)
   }
 
   @Test
@@ -51,7 +65,8 @@ class PyramidFactoryTest {
     testLayer(new PyramidFactory("S2L2A", clientId, clientSecret), "sentinel2-L2A_mix", date, Seq("B04", "sunAzimuthAngles", "SCL"))
   }
   
-  private def testLayer(pyramidFactory: PyramidFactory, layer: String, date: ZonedDateTime, bandNames: Seq[String]): Unit = {
+  private def testLayer(pyramidFactory: PyramidFactory, layer: String, date: ZonedDateTime, bandNames: Seq[String],
+                        test: MultibandTileLayerRDD[SpaceTimeKey] => Unit = _ => ()): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
 
     val sparkConf = new SparkConf()
@@ -72,6 +87,8 @@ class PyramidFactoryTest {
       baseLayer.cache()
 
       println(s"got ${baseLayer.count()} tiles")
+
+      test(baseLayer)
 
       val Raster(multibandTile, extent) = baseLayer
         .toSpatial()
