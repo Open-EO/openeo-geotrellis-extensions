@@ -4,7 +4,7 @@ import java.util.concurrent.Callable
 
 import com.google.common.cache.{Cache, CacheBuilder}
 import geotrellis.layer._
-import geotrellis.raster.{FloatConstantNoDataCellType, FloatConstantTile, MultibandTile, NODATA, Tile}
+import geotrellis.raster.{FloatConstantNoDataCellType, FloatConstantTile, MultibandTile, doubleNODATA, Tile}
 import geotrellis.spark._
 import org.apache.spark.api.java.JavaSparkContext
 import org.apache.spark.broadcast.Broadcast
@@ -13,6 +13,11 @@ import org.openeo.geotrellis.icor.LookupTable
 import org.openeo.geotrellis.icor.LookupTableIO
 import org.openeo.geotrellis.icor.DEMProvider
 import org.openeo.geotrellis.icor.CorrectionDescriptorSentinel2
+import geotrellis.raster.TileLayout
+import geotrellis.raster.DoubleRawArrayTile
+import geotrellis.raster.resample.NearestNeighbor
+
+
 
 object ComputeWaterVapor{
   implicit val logger = LoggerFactory.getLogger(classOf[ComputeWaterVapor])
@@ -23,7 +28,42 @@ object ComputeWaterVapor{
 class ComputeWaterVapor {
 
   import ComputeWaterVapor._
-
+  
+  def computeDoubleBlocks(mbt: MultibandTile, blockSize: Int, aot: Double, ozone: Double, nodata: Double, lut: LookupTable, f: WaterVaporCalculator): MultibandTile = {
+    val ncols=(mbt.band(0).cols.doubleValue()/blockSize.doubleValue()).ceil.intValue()
+    val nrows=(mbt.band(0).rows.doubleValue()/blockSize.doubleValue()).ceil.intValue()
+    
+    val tileLayout= new TileLayout(ncols,nrows,blockSize,blockSize)
+    val smbt=mbt.split(tileLayout)
+    
+    val result_array=smbt.map( multibandTile => {
+        var blockValue: Double= nodata
+        multibandTile.foreachDouble(pixelArray =>{
+          if ((blockValue == nodata)||(nodata.isNaN()&&(blockValue!=blockValue))) // because NaN==NaN is false  
+            blockValue=f.computePixel(
+              lut,
+            	pixelArray(0),
+            	pixelArray(1),
+            	pixelArray(2),
+            	pixelArray(3),
+            	aot,
+            	pixelArray(4),
+            	pixelArray(5),
+            	pixelArray(6),
+            	ozone,
+            	nodata
+            )
+        })
+        println(blockValue)
+        blockValue
+    }).toArray
+    val result_tile=DoubleRawArrayTile(result_array,ncols,nrows)
+    
+    MultibandTile(result_tile)
+      .resample(blockSize*ncols, blockSize*nrows, NearestNeighbor)
+      .crop(mbt.band(0).cols, mbt.band(0).rows)
+  }
+  
   def correct(
         jsc: JavaSparkContext, 
         datacube: MultibandTileLayerRDD[SpaceTimeKey], 
@@ -68,7 +108,7 @@ class ComputeWaterVapor {
                 val r1BandId="B11"
                 
                 val cd = new CorrectionDescriptorSentinel2()
-                val wvCalc = new WaterVaporCalculator()
+                val wvCalc = new AbdaWaterVaporCalculator()
                 wvCalc.prepare(bcLUT.value,cd,wvBandId,r0BandId,r1BandId)
 
                 def angleTile(index: Int, fallback: Double): Tile = {
@@ -101,7 +141,7 @@ class ComputeWaterVapor {
                 val wvTile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,wvBandId))
                 val r0Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r0BandId))
                 val r1Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r1BandId))
-                
+                                
                 auxDataAccum.add(afterAuxData-startMillis)
 
                 val mbtresult : MultibandTile = try {
@@ -116,10 +156,10 @@ class ComputeWaterVapor {
                       r1Tile.convert(FloatConstantNoDataCellType)
                       ).combineDouble(0, 1, 2, 3, 4, 5, 6 /*AOT overriden , 7*/) { 
                         (sza, vza, raa, dem, /*AOT overriden aot,*/ wv, r0, r1) => 
-                          if ((wv != NODATA)&&(r0 != NODATA)&&(r1 != NODATA)) (prePostMult.get(1) * 
-                              wvCalc.computePixel(bcLUT.value, sza, vza, raa, dem, aot, wv*prePostMult.get(0), r0*prePostMult.get(0), r1*prePostMult.get(0), ozone, NODATA)
+                          if ( (wv != doubleNODATA) && (r0 != doubleNODATA) && (r1 != doubleNODATA)) (prePostMult.get(1) * 
+                              wvCalc.computePixel(bcLUT.value, sza, vza, raa, dem, aot, wv*prePostMult.get(0), r0*prePostMult.get(0), r1*prePostMult.get(0), ozone, doubleNODATA)
                           ) 
-                          else NODATA 
+                          else doubleNODATA 
                       }
 //                  result.convert(wvTile.cellType)
                   MultibandTile(result)
