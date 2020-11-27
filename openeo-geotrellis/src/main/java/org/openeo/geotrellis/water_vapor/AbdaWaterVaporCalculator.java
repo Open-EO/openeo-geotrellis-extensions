@@ -44,9 +44,9 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 		double invalid_value
 	) {
 		
-		if ((cwv<0.0)||(cwv==invalid_value)) return invalid_value; 
-		if ((r0<0.0)||(r0==invalid_value)) return invalid_value; 
-		if ((r1<0.0)||(r1==invalid_value)) return invalid_value; 
+		if ((cwv<0.0)||(cwv==invalid_value)||(Double.isNaN(cwv))) return invalid_value; 
+		if ((r0<0.0)||(r0==invalid_value)||(Double.isNaN(r0))) return invalid_value; 
+		if ((r1<0.0)||(r1==invalid_value)||(Double.isNaN(r1))) return invalid_value; 
 
 		// L1C comes earth-sun distance corrected to earth-sun distance, therefore 
 		// reflectance-radiance conversion is: cos(sza_radians)*solarirradiance[band]/3.14
@@ -112,7 +112,22 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 */
 
 		if ((v0<vmin)||(v0>vmax)) return invalid_value;
-				
+
+/*		
+		String msg=      Double.toString(sza)
+					+" "+Double.toString(vza)
+					+" "+Double.toString(raa)
+					+" "+Double.toString(dem)
+					+" "+Double.toString(aot)
+					+" "+Double.toString(cwv)
+					+" "+Double.toString(r0)
+					+" "+Double.toString(r1)
+					+" "+Double.toString(ozone)
+					+" "+Double.toString(invalid_value)
+					+" -> "+Double.toString(v0);
+		System.out.println(msg);
+*/
+		
 		return v0;
 	}
 

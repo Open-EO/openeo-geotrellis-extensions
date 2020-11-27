@@ -28,42 +28,7 @@ object ComputeWaterVapor{
 class ComputeWaterVapor {
 
   import ComputeWaterVapor._
-  
-  def computeDoubleBlocks(mbt: MultibandTile, blockSize: Int, aot: Double, ozone: Double, nodata: Double, lut: LookupTable, f: WaterVaporCalculator): MultibandTile = {
-    val ncols=(mbt.band(0).cols.doubleValue()/blockSize.doubleValue()).ceil.intValue()
-    val nrows=(mbt.band(0).rows.doubleValue()/blockSize.doubleValue()).ceil.intValue()
     
-    val tileLayout= new TileLayout(ncols,nrows,blockSize,blockSize)
-    val smbt=mbt.split(tileLayout)
-    
-    val result_array=smbt.map( multibandTile => {
-        var blockValue: Double= nodata
-        multibandTile.foreachDouble(pixelArray =>{
-          if ((blockValue == nodata)||(nodata.isNaN()&&(blockValue!=blockValue))) // because NaN==NaN is false  
-            blockValue=f.computePixel(
-              lut,
-            	pixelArray(0),
-            	pixelArray(1),
-            	pixelArray(2),
-            	pixelArray(3),
-            	aot,
-            	pixelArray(4),
-            	pixelArray(5),
-            	pixelArray(6),
-            	ozone,
-            	nodata
-            )
-        })
-        println(blockValue)
-        blockValue
-    }).toArray
-    val result_tile=DoubleRawArrayTile(result_array,ncols,nrows)
-    
-    MultibandTile(result_tile)
-      .resample(blockSize*ncols, blockSize*nrows, NearestNeighbor)
-      .crop(mbt.band(0).cols, mbt.band(0).rows)
-  }
-  
   def correct(
         jsc: JavaSparkContext, 
         datacube: MultibandTileLayerRDD[SpaceTimeKey], 
@@ -108,6 +73,7 @@ class ComputeWaterVapor {
                 val r1BandId="B11"
                 
                 val cd = new CorrectionDescriptorSentinel2()
+                val bp = new BlockProcessor()
                 val wvCalc = new AbdaWaterVaporCalculator()
                 wvCalc.prepare(bcLUT.value,cd,wvBandId,r0BandId,r1BandId)
 
@@ -138,12 +104,38 @@ class ComputeWaterVapor {
                 val afterAuxData = System.currentTimeMillis()
                 
                 // TODO: use reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert)
-                val wvTile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,wvBandId))
-                val r0Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r0BandId))
-                val r1Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r1BandId))
+                val wvTile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,wvBandId)).convert(FloatConstantNoDataCellType)*prePostMult.get(0)
+                val r0Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r0BandId)).convert(FloatConstantNoDataCellType)*prePostMult.get(0)
+                val r1Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r1BandId)).convert(FloatConstantNoDataCellType)*prePostMult.get(0)
                                 
                 auxDataAccum.add(afterAuxData-startMillis)
 
+                // try to get at least 1 valid value on 60m resolution
+                val mbtresult : MultibandTile = try { 
+                  val wvRawResultTile=bp.computeDoubleBlocks(
+                    MultibandTile(
+                      szaTile, 
+                      vzaTile, 
+                      raaTile,
+                      demTile.convert(FloatConstantNoDataCellType), 
+// AOT overriden                      aotTile.convert(FloatConstantNoDataCellType), 
+                      wvTile.convert(FloatConstantNoDataCellType), 
+                      r0Tile.convert(FloatConstantNoDataCellType), 
+                      r1Tile.convert(FloatConstantNoDataCellType)
+                    ),
+                    6, // on 10m base resolution looking for a value on 60m resolution
+                    aot,
+                    ozone,
+                    doubleNODATA,
+                    bcLUT.value,
+                    wvCalc
+                  )*prePostMult.get(1)
+                  MultibandTile(bp.replaceNoDataWithAverage(wvRawResultTile,doubleNODATA))
+                } catch {
+                  case e: IllegalArgumentException => MultibandTile(wvTile)
+                }
+                
+/*                
                 val mbtresult : MultibandTile = try {
                   val result : Tile = MultibandTile(
                       szaTile, 
@@ -166,7 +158,7 @@ class ComputeWaterVapor {
                 } catch {
                   case e: IllegalArgumentException => MultibandTile(wvTile)
                 }
-
+*/
                 correctionAccum.add(System.currentTimeMillis() - afterAuxData)
                 mbtresult
               }

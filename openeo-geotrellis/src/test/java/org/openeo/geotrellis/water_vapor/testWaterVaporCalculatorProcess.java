@@ -47,17 +47,17 @@ public class testWaterVaporCalculatorProcess {
 	
     @BeforeClass
     public static void sparkContext() {
-//        SparkConf conf = new SparkConf();
-//        conf.setAppName("OpenEOTest");
-//        conf.setMaster("local[2]");
-//        //conf.set("spark.driver.bindAddress", "127.0.0.1");
-//        conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
-//        SparkContext.getOrCreate(conf);
+        SparkConf conf = new SparkConf();
+        conf.setAppName("OpenEOTest");
+        conf.setMaster("local[2]");
+        //conf.set("spark.driver.bindAddress", "127.0.0.1");
+        conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
+        SparkContext.getOrCreate(conf);
     }
 
     @AfterClass
     public static void shutDownSparkContext() {
-//        SparkContext.getOrCreate().stop();
+        SparkContext.getOrCreate().stop();
     }
 
     
@@ -91,7 +91,6 @@ public class testWaterVaporCalculatorProcess {
 
     
     @Test
-    @Ignore
     public void testAtmosphericCorrectionOverrideAngles() {
 
         Tile wvTile = new IntConstantTile((int)cwv,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
@@ -121,10 +120,12 @@ public class testWaterVaporCalculatorProcess {
         System.out.println(Double.toString(resultAt00));
 		assertEquals(resultAt00,0.53937,1.e-3); // elevated tolerance because input wv,r0,r1 is converted to int
 
+        double resultAtNN=tiles.values().iterator().next().band(0).getDouble(255, 255);
+        System.out.println(Double.toString(resultAtNN));
+		assertEquals(resultAtNN,0.55865,1.e-3); // elevated tolerance because input wv,r0,r1 is converted to int
     }
 
     @Test
-    @Ignore
     public void testAtmosphericCorrectionAnglesFromTiles() {
 
         Tile wvTile = new DoubleConstantTile(cwv,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
@@ -158,8 +159,11 @@ public class testWaterVaporCalculatorProcess {
         System.out.println(Double.toString(resultAt00));
 		assertEquals(resultAt00,0.5393735910926492,1.e-6);
 
+        double resultAtNN=tiles.values().iterator().next().band(0).getDouble(255, 255);
+        System.out.println(Double.toString(resultAtNN));
+		assertEquals(resultAtNN,0.5586568894116127,1.e-6);
+		
     }
-    
     
     @Test
     public void testAtmosphericCorrectionBlockCalculator() {
@@ -181,17 +185,20 @@ public class testWaterVaporCalculatorProcess {
     	}; 
 
     	double ref[]=new double[]{
-    		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN, 
-    		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN, 
-    		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,
-    		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0,
-    		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0, 
-    		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0, 
-    		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0, 
-    		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0, 
-    		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0, 
-    		180.0, 180.0, 180.0,                186.0, 186.0, 186.0,                192.0, 192.0, 192.0,                198.0 
-    	};    	
+        		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN, 
+        		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN, 
+        		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,
+
+        		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0,
+        		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0, 
+        		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0, 
+
+        		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0, 
+        		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0, 
+        		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0, 
+
+        		180.0, 180.0, 180.0,                186.0, 186.0, 186.0,                192.0, 192.0, 192.0,                198.0 
+        	};    	
     	
     	Tile t0=new DoubleRawArrayTile(vals,10,10).mutable();
     	Tile t1=new DoubleRawArrayTile(vals,10,10).mutable();
@@ -201,18 +208,61 @@ public class testWaterVaporCalculatorProcess {
     	Tile t5=new DoubleRawArrayTile(vals,10,10).mutable();
     	Tile t6=new DoubleRawArrayTile(vals,10,10).mutable();
     	MultibandTile mbt=new ArrayMultibandTile(new Tile[]{t0,t1,t2,t3,t4,t5,t6});
-    	MultibandTile smbt=new ComputeWaterVapor().computeDoubleBlocks(mbt,3,0.,0.,Double.NaN, null, new WaterVaporCalculator() {
+    	Tile smbt=new BlockProcessor().computeDoubleBlocks(mbt,3,0.,0.,Double.NaN, null, new WaterVaporCalculator() {
 			@Override
 			public double computePixel(LookupTable lut, double sza, double vza, double raa, double dem, double aot, double cwv, double r0, double r1, double ozone, double invalid_value) {
 				return sza+cwv>=100. ? sza+cwv : invalid_value;
 			}
 		});
-    	double[] result=smbt.band(0).toArrayDouble();
+    	double[] result=smbt.toArrayDouble();
     	assertArrayEquals( result, ref, 1.e-6);
-    	System.out.println("HI");
 
     }
 
+    
+    @Test
+    public void testAtmosphericCorrectionAverage() {
+
+    	double vals[]=new double[]{
+    		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN, 
+    		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN, 
+    		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,
+
+    		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0,
+    		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0, 
+    		100.0, 100.0, 100.0,                106.0, 106.0, 106.0,                112.0, 112.0, 112.0,                118.0, 
+
+    		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0, 
+    		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0, 
+    		120.0, 120.0, 120.0,                126.0, 126.0, 126.0,                132.0, 132.0, 132.0,                138.0, 
+
+    		180.0, 180.0, 180.0,                186.0, 186.0, 186.0,                192.0, 192.0, 192.0,                198.0 
+    	};    	
+    	
+    	double ref[]=new double[]{
+        		127.2, 127.2, 127.2,   127.2, 127.2, 127.2,   127.2, 127.2, 127.2,   127.2, 
+        		127.2, 127.2, 127.2,   127.2, 127.2, 127.2,   127.2, 127.2, 127.2,   127.2, 
+        		127.2, 127.2, 127.2,   127.2, 127.2, 127.2,   127.2, 127.2, 127.2,   127.2,
+
+        		100.0, 100.0, 100.0,   106.0, 106.0, 106.0,   112.0, 112.0, 112.0,   118.0,
+        		100.0, 100.0, 100.0,   106.0, 106.0, 106.0,   112.0, 112.0, 112.0,   118.0, 
+        		100.0, 100.0, 100.0,   106.0, 106.0, 106.0,   112.0, 112.0, 112.0,   118.0, 
+
+        		120.0, 120.0, 120.0,   126.0, 126.0, 126.0,   132.0, 132.0, 132.0,   138.0, 
+        		120.0, 120.0, 120.0,   126.0, 126.0, 126.0,   132.0, 132.0, 132.0,   138.0, 
+        		120.0, 120.0, 120.0,   126.0, 126.0, 126.0,   132.0, 132.0, 132.0,   138.0, 
+
+        		180.0, 180.0, 180.0,   186.0, 186.0, 186.0,   192.0, 192.0, 192.0,   198.0 
+        	};    	
+
+    	Tile t=new DoubleRawArrayTile(vals,10,10).mutable();
+    	Tile at=new BlockProcessor().replaceNoDataWithAverage(t, Double.NaN);
+    	double[] result=at.toArrayDouble();
+    	assertArrayEquals( result, ref, 1.e-6);
+
+    }
+    
+    
 //    @Test
 //    public void testAtmosphericCorrection2() {
 //
