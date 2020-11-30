@@ -20,9 +20,6 @@ import scala.collection.JavaConverters._
 class PyramidFactory(datasetId: String, clientId: String, clientSecret: String, sampleType: SampleType = UINT16) extends Serializable {
   private val maxZoom = 14
 
-  def this(datasetId: String, clientId: String, clientSecret: String, sampleType: String) =
-    this(datasetId, clientId, clientSecret, Option(sampleType).map(SampleType.withName).getOrElse(UINT16))
-
   private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
   
   def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom, bandNames: Seq[String])(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
