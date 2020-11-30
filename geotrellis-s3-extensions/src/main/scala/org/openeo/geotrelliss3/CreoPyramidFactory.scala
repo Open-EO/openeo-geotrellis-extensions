@@ -120,14 +120,11 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     val layout = getLayout(layoutScheme, xAlignedBoundingBox, zoom, maxSpatialResolution)
 
-    val dates = sequentialDates(from)
-      .takeWhile(date => !(date isAfter to))
-
     val productKeys = productPaths.flatMap(listProducts)
 
     if (productKeys.isEmpty) throw new IllegalArgumentException("no files found for given product paths")
 
-    logger.info(s"Products keys:\n${productKeys.mkString("\n")}")
+    logger.debug(s"Products keys:\n${productKeys.mkString("\n")}")
 
     def extractDate(key: String): ZonedDateTime = {
       val date = raw"\/(\d{4})\/(\d{2})\/(\d{2})\/".r.unanchored
@@ -137,20 +134,22 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
     }
 
     val bandFileMaps: Seq[Map[ZonedDateTime, Seq[String]]] = bands.map(b =>
-    productKeys.filter(_.contains(b))
-      .map(pk => extractDate(pk) -> pk)
-      .groupBy(_._1)
-      .map { case (k, v) => (k, v.map(_._2)) }
+      productKeys.filter(_.contains(b))
+        .map(pk => extractDate(pk) -> pk)
+        .groupBy(_._1)
+        .map { case (k, v) => (k, v.map(_._2)) }
     )
 
-    val overlappingKeys: immutable.Seq[SpaceTimeKey] = dates.flatMap(date => {
+    val dates = bandFileMaps.flatMap(_.keys).distinct
+
+    val overlappingKeys = dates.flatMap(date => {
       val set = polygons.map(_.reproject(polygons_crs, crs))
         .flatMap(layout.mapTransform.keysForGeometry)
         .toSet
       set.map(key => SpaceTimeKey(key, date))
     })
 
-    logger.info(s"Overlapping keys:\n${overlappingKeys.map(_.toString).mkString("\n")}")
+    logger.debug(s"Overlapping keys:\n${overlappingKeys.map(_.toString).mkString("\n")}")
 
     val rasterSources: RDD[(SpaceTimeKey,Seq[Seq[GDALRasterSource]])] = sc.parallelize(overlappingKeys)
       .map(key => (key, bandFileMaps

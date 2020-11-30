@@ -4,7 +4,7 @@ import java.util.concurrent.Callable
 
 import com.google.common.cache.{Cache, CacheBuilder}
 import geotrellis.layer._
-import geotrellis.raster.{FloatConstantNoDataCellType, FloatConstantTile, MultibandTile, NODATA, Tile}
+import geotrellis.raster.{FloatConstantNoDataCellType, FloatConstantTile, MultibandTile, doubleNODATA, Tile}
 import geotrellis.spark._
 import org.apache.spark.api.java.JavaSparkContext
 import org.apache.spark.broadcast.Broadcast
@@ -13,6 +13,11 @@ import org.openeo.geotrellis.icor.LookupTable
 import org.openeo.geotrellis.icor.LookupTableIO
 import org.openeo.geotrellis.icor.DEMProvider
 import org.openeo.geotrellis.icor.CorrectionDescriptorSentinel2
+import geotrellis.raster.TileLayout
+import geotrellis.raster.DoubleRawArrayTile
+import geotrellis.raster.resample.NearestNeighbor
+
+
 
 object ComputeWaterVapor{
   implicit val logger = LoggerFactory.getLogger(classOf[ComputeWaterVapor])
@@ -23,7 +28,7 @@ object ComputeWaterVapor{
 class ComputeWaterVapor {
 
   import ComputeWaterVapor._
-
+    
   def correct(
         jsc: JavaSparkContext, 
         datacube: MultibandTileLayerRDD[SpaceTimeKey], 
@@ -68,7 +73,8 @@ class ComputeWaterVapor {
                 val r1BandId="B11"
                 
                 val cd = new CorrectionDescriptorSentinel2()
-                val wvCalc = new WaterVaporCalculator()
+                val bp = new BlockProcessor()
+                val wvCalc = new AbdaWaterVaporCalculator()
                 wvCalc.prepare(bcLUT.value,cd,wvBandId,r0BandId,r1BandId)
 
                 def angleTile(index: Int, fallback: Double): Tile = {
@@ -98,12 +104,38 @@ class ComputeWaterVapor {
                 val afterAuxData = System.currentTimeMillis()
                 
                 // TODO: use reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert)
-                val wvTile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,wvBandId))
-                val r0Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r0BandId))
-                val r1Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r1BandId))
-                
+                val wvTile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,wvBandId)).convert(FloatConstantNoDataCellType)*prePostMult.get(0)
+                val r0Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r0BandId)).convert(FloatConstantNoDataCellType)*prePostMult.get(0)
+                val r1Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r1BandId)).convert(FloatConstantNoDataCellType)*prePostMult.get(0)
+                                
                 auxDataAccum.add(afterAuxData-startMillis)
 
+                // try to get at least 1 valid value on 60m resolution
+                val mbtresult : MultibandTile = try { 
+                  val wvRawResultTile=bp.computeDoubleBlocks(
+                    MultibandTile(
+                      szaTile, 
+                      vzaTile, 
+                      raaTile,
+                      demTile.convert(FloatConstantNoDataCellType), 
+// AOT overriden                      aotTile.convert(FloatConstantNoDataCellType), 
+                      wvTile.convert(FloatConstantNoDataCellType), 
+                      r0Tile.convert(FloatConstantNoDataCellType), 
+                      r1Tile.convert(FloatConstantNoDataCellType)
+                    ),
+                    6, // on 10m base resolution looking for a value on 60m resolution
+                    aot,
+                    ozone,
+                    doubleNODATA,
+                    bcLUT.value,
+                    wvCalc
+                  )*prePostMult.get(1)
+                  MultibandTile(bp.replaceNoDataWithAverage(wvRawResultTile,doubleNODATA))
+                } catch {
+                  case e: IllegalArgumentException => MultibandTile(wvTile)
+                }
+                
+/*                
                 val mbtresult : MultibandTile = try {
                   val result : Tile = MultibandTile(
                       szaTile, 
@@ -116,17 +148,17 @@ class ComputeWaterVapor {
                       r1Tile.convert(FloatConstantNoDataCellType)
                       ).combineDouble(0, 1, 2, 3, 4, 5, 6 /*AOT overriden , 7*/) { 
                         (sza, vza, raa, dem, /*AOT overriden aot,*/ wv, r0, r1) => 
-                          if ((wv != NODATA)&&(r0 != NODATA)&&(r1 != NODATA)) (prePostMult.get(1) * 
-                              wvCalc.computePixel(bcLUT.value, sza, vza, raa, dem, aot, wv*prePostMult.get(0), r0*prePostMult.get(0), r1*prePostMult.get(0), ozone, NODATA)
+                          if ( (wv != doubleNODATA) && (r0 != doubleNODATA) && (r1 != doubleNODATA)) (prePostMult.get(1) * 
+                              wvCalc.computePixel(bcLUT.value, sza, vza, raa, dem, aot, wv*prePostMult.get(0), r0*prePostMult.get(0), r1*prePostMult.get(0), ozone, doubleNODATA)
                           ) 
-                          else NODATA 
+                          else doubleNODATA 
                       }
 //                  result.convert(wvTile.cellType)
                   MultibandTile(result)
                 } catch {
                   case e: IllegalArgumentException => MultibandTile(wvTile)
                 }
-
+*/
                 correctionAccum.add(System.currentTimeMillis() - afterAuxData)
                 mbtresult
               }

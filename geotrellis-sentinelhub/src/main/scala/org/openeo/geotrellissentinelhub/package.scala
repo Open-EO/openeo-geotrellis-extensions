@@ -12,8 +12,8 @@ import java.util.concurrent.TimeUnit.SECONDS
 
 import scala.io.Source
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
-import geotrellis.raster.{MultibandTile, UShortConstantNoDataCellType}
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.raster.MultibandTile
+import geotrellis.vector.ProjectedExtent
 import org.apache.commons.io.IOUtils
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpStatusException}
@@ -21,6 +21,7 @@ import com.fasterxml.jackson.core.JsonFactory
 import com.fasterxml.jackson.core.`type`.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.common.cache.{CacheBuilder, CacheLoader}
+import org.openeo.geotrellissentinelhub.SampleType.SampleType
 
 import scala.annotation.tailrec
 
@@ -57,8 +58,9 @@ package object geotrellissentinelhub {
     token
   }
 
-  def retrieveTileFromSentinelHub(datasetId: String, projectedExtent: ProjectedExtent, date: ZonedDateTime, width: Int, height: Int,
-                                  bandNames: Seq[String], clientId: String, clientSecret: String): MultibandTile = {
+  def retrieveTileFromSentinelHub(datasetId: String, projectedExtent: ProjectedExtent, date: ZonedDateTime, width: Int,
+                                  height: Int, bandNames: Seq[String], sampleType: SampleType, clientId: String,
+                                  clientSecret: String): MultibandTile = {
     val ProjectedExtent(extent, crs) = projectedExtent
     val epsgCode = crs.epsgCode.getOrElse(s"unsupported crs $crs")
 
@@ -71,7 +73,7 @@ package object geotrellissentinelhub {
           }],
           output: {
             bands: ${bandNames.size},
-            sampleType: "UINT16",
+            sampleType: "$sampleType",
           }
         };
       }
@@ -145,7 +147,9 @@ package object geotrellissentinelhub {
 
     response.body.tile
       .toArrayTile()
-      .mapBands { case (_, tile) => tile.withNoData(Some(UShortConstantNoDataCellType.noDataValue)) }
+      // unless handled differently, NODATA pîxels are 0 according to
+      // https://docs.sentinel-hub.com/api/latest/user-guides/datamask/#datamask---handling-of-pixels-with-no-data
+      .mapBands { case (_, tile) => tile.withNoData(Some(0)) }
   }
 
   @tailrec

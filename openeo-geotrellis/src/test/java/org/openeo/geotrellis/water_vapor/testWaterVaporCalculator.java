@@ -18,7 +18,7 @@ public class testWaterVaporCalculator {
 
 	private static LookupTable lut;
 	private static CorrectionDescriptorSentinel2 cdS2=new CorrectionDescriptorSentinel2();
-	private static WaterVaporCalculator wvc=new WaterVaporCalculator();
+	private static AbdaWaterVaporCalculator wvc=new AbdaWaterVaporCalculator();
 
 	static final double sza=43.5725342155;
 	static final double vza=6.95880821756;
