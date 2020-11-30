@@ -61,8 +61,6 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
     registerOption("AWS_HTTPS", "NO")
   }
 
-  private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
-
   def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime): Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val layers = for (zoom <- 14 to 0 by -1) yield zoom -> layer(boundingBox, from, to, zoom, ZoomedLayoutScheme(WebMercator, 256))
     Pyramid(layers.toMap)
