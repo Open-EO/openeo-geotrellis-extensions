@@ -51,16 +51,6 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
   def this(productPaths: util.List[String], bands: util.List[String]) =
     this(productPaths.asScala, bands.asScala)
 
-  if (awsDirect) registerGdalOptions()
-
-  private def registerGdalOptions() {
-    registerOption("AWS_DEFAULT_REGION", region)
-    registerOption("AWS_SECRET_ACCESS_KEY", getenv("AWS_SECRET_ACCESS_KEY"))
-    registerOption("AWS_ACCESS_KEY_ID", getenv("AWS_ACCESS_KEY_ID"))
-    registerOption("AWS_VIRTUAL_HOSTING", "FALSE")
-    registerOption("AWS_HTTPS", "NO")
-  }
-
   def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime): Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val layers = for (zoom <- 14 to 0 by -1) yield zoom -> layer(boundingBox, from, to, zoom, ZoomedLayoutScheme(WebMercator, 256))
     Pyramid(layers.toMap)
@@ -160,8 +150,6 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     val regions: RDD[(SpaceTimeKey, Seq[Seq[RasterRegion]])] = rasterSources.map {
       case (key,value) =>
-        if (awsDirect) registerGdalOptions()
-
         (key, value.map(_.map(rasterSource =>
           rasterSource.reproject(metadata.crs, TargetAlignment(metadata)).tileToLayout(metadata.layout))
           .flatMap(_.rasterRegionForKey(key.spatialKey))))
