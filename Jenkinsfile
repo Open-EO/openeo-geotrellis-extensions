@@ -113,7 +113,7 @@ void build(tests = true){
                     [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'CephS3'],
                     [$class: 'UsernamePasswordMultiBinding', credentialsId: 'SentinelHubGeodatadev', usernameVariable: 'SENTINELHUB_CLIENT_ID', passwordVariable: 'SENTINELHUB_CLIENT_SECRET']
             ]) {
-                buildInfo = rtMaven.run pom: 'pom.xml', goals: '-U clean install'
+                buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts -U clean install'
                 try {
                     if (rtMaven.deployer.deployArtifacts)
                         server.publishBuildInfo buildInfo

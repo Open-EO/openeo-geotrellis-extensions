@@ -15,6 +15,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkConf
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.openeo.geotrellissentinelhub.SampleType.FLOAT32
 
 import scala.collection.JavaConverters._
 
@@ -31,7 +32,7 @@ class PyramidFactoryTest {
       case cellType: HasNoData[Double] => assertTrue(cellType.isFloatingPoint && cellType.noDataValue == 0.0)
     }
 
-    testLayer(new PyramidFactory("S1GRD", clientId, clientSecret, sampleType = "FLOAT32"), "gamma0", date,
+    testLayer(new PyramidFactory("S1GRD", clientId, clientSecret, sampleType = FLOAT32), "gamma0", date,
       Seq("VV", "VH"), testCellType)
   }
 
