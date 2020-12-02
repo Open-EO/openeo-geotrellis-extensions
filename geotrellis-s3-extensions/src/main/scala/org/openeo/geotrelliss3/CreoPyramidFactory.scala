@@ -10,7 +10,6 @@ import java.util
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.gdal.GDALRasterSource
-import geotrellis.raster.gdal.config.GDALOptionsConfig.registerOption
 import geotrellis.raster.{CellSize, MultibandTile, RasterRegion, TargetAlignment, Tile, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
@@ -26,15 +25,12 @@ import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
-import scala.collection.immutable
 import scala.math.max
 import scala.xml.XML
 
 object CreoPyramidFactory {
 
   private val maxSpatialResolution = CellSize(10, 10)
-  private val endpoint = "data.cloudferro.com"
-  private val region = "RegionOne"
   private val awsDirect = "TRUE".equals(getenv("AWS_DIRECT"))
   private val logger = LoggerFactory.getLogger(classOf[CreoPyramidFactory])
 
