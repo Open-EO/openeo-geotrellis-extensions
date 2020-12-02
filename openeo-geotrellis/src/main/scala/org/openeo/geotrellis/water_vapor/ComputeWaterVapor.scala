@@ -160,7 +160,7 @@ class ComputeWaterVapor {
                 }
 */
                 correctionAccum.add(System.currentTimeMillis() - afterAuxData)
-                mbtresult
+                mbtresult.convert(FloatConstantNoDataCellType)
               }
             )
         }
