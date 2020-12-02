@@ -23,7 +23,7 @@
     </dependency>
     <dependency>
       <groupId>org.locationtech.sfcurve</groupId>
-      <artifactId>sfcurve-zorder_2.11</artifactId><!-- not yet available for scala 2.12!! -->
+      <artifactId>sfcurve-zorder_2.12</artifactId><!-- not yet available for scala 2.12!! -->
       <version>0.2.2</version>
     </dependency>
     <dependency>
