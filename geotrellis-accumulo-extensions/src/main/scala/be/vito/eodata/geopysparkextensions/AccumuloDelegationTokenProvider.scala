@@ -11,8 +11,8 @@ import org.apache.hadoop.security.token.Token
 import org.apache.hadoop.security.{Credentials, UserGroupInformation}
 import org.apache.spark.SparkConf
 
-class AccumuloDelegationTokenProvider extends org.apache.spark.deploy.yarn.security.ServiceCredentialProvider{
-  override def serviceName: String = "accumulo"
+class AccumuloDelegationTokenProvider {
+  def serviceName: String = "accumulo"
 
 
   /**
@@ -23,7 +23,7 @@ class AccumuloDelegationTokenProvider extends org.apache.spark.deploy.yarn.secur
     * @param creds
     * @return
     */
-  override def obtainCredentials(hadoopConf: Configuration, sparkConf: SparkConf, creds: Credentials): Option[Long] = {
+  def obtainCredentials(hadoopConf: Configuration, sparkConf: SparkConf, creds: Credentials): Option[Long] = {
     val useKerberos = ClientConfiguration
       .loadDefault()
       .getBoolean(ClientConfiguration.ClientProperty.INSTANCE_RPC_SASL_ENABLED.getKey, false)
