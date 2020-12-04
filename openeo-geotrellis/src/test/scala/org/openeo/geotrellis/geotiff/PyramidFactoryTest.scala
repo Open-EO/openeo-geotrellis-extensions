@@ -151,7 +151,7 @@ class PyramidFactoryTest {
     val from = LocalDate.of(2020, 11, 5).atStartOfDay(UTC)
     val to = from plusDays 1
 
-    val batchProcessId = "b97df260-a8f7-49f9-8c89-0fe5ec38751f"
+    val batchProcessId = "ba2788af-341b-44cf-90ad-2e4143fc90cd"
 
     // the results for this batch process obviously only contain the dates that were requested in the first place so
     // no additional key filtering is necessary here
