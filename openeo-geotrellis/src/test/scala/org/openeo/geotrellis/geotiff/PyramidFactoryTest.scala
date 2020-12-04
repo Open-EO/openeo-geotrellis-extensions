@@ -15,12 +15,11 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
 import geotrellis.store.s3.util.S3RangeReader
-import geotrellis.vector.{Extent, ProjectedExtent}
-import org.apache.spark.rdd.RDD
+import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Ignore, Test}
-import org.openeo.geotrellis.OpenEOProcesses
+import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
@@ -156,19 +155,20 @@ class PyramidFactoryTest {
     val batchProcessId = "b97df260-a8f7-49f9-8c89-0fe5ec38751f"
 
     val pyramidFactory = PyramidFactory.from_s3(
-      s3_uri = s"s3://openeo-sentinelhub-vito-test/$batchProcessId/33UWP_8_4/",
+      s3_uri = s"s3://openeo-sentinelhub-vito-test/$batchProcessId/",
       key_regex = raw".*\.tif",
-      date_regex = raw".*_(\d{4})(\d{2})(\d{2}).tif"
+      date_regex = raw".*_(\d{4})(\d{2})(\d{2}).tif",
+      recursive = true
     )
 
     val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
-    val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs,
+    val pyramid = pyramidFactory.datacube_seq(ProjectedPolygons(Array(boundingBox.extent.toPolygon()), srs),
       ISO_OFFSET_DATE_TIME format from, ISO_OFFSET_DATE_TIME format to)
 
     val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
-    assertEquals(14, maxZoom)
+    assertEquals(0, maxZoom)
 
-    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = 14)
+    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
   }
 
   @Test
