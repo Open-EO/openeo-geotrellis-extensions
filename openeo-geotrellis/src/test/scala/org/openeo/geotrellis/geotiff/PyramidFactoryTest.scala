@@ -139,10 +139,9 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = 10)
   }
 
+  @Ignore("there's no dedicated S3 bucket yet")
   @Test
-  def sentinelHubBatchProcessApiGeoTiffFromS3ForSingleDate(): Unit = {
-    // otherwise the S3 client will keep retrying to access
-    // http://169.254.169.254/latest/meta-data/iam/security-credentials/
+  def sentinelHubBatchProcessApiGeoTiffFromS3ForMultipleDates(): Unit = {
     assertNotNull("aws.accessKeyId is not set", System.getProperty("aws.accessKeyId"))
     assertNotNull("aws.secretAccessKey is not set", System.getProperty("aws.secretAccessKey"))
     System.setProperty("aws.region", "eu-central-1")
@@ -150,10 +149,12 @@ class PyramidFactoryTest {
     val boundingBox = ProjectedExtent(Extent(585913.04, 5356513.73, 587679.06, 5358051.49), CRS.fromEpsgCode(32633))
 
     val from = LocalDate.of(2020, 11, 5).atStartOfDay(UTC)
-    val to = from
+    val to = from plusDays 1
 
     val batchProcessId = "b97df260-a8f7-49f9-8c89-0fe5ec38751f"
 
+    // the results for this batch process obviously only contain the dates that were requested in the first place so
+    // no additional key filtering is necessary here
     val pyramidFactory = PyramidFactory.from_s3(
       s3_uri = s"s3://openeo-sentinelhub-vito-test/$batchProcessId/",
       key_regex = raw".*\.tif",
