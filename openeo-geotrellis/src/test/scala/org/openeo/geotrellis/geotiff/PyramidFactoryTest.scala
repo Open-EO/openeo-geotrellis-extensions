@@ -101,9 +101,8 @@ class PyramidFactoryTest {
     for (timestamp <- timestamps) {
       val Raster(multibandTile, extent) = layer
         .toSpatial(timestamp)
-        // note: the geotiff seems to move around for lower zoom levels (< 9) because of this crop operation :/
-        .crop(boundingBox.reproject(layer.metadata.crs))
         .stitch()
+        .crop(boundingBox.reproject(layer.metadata.crs))
 
       MultibandGeoTiff(multibandTile, extent, layer.metadata.crs)
         .write(s"/tmp/stitched_${ISO_LOCAL_DATE format timestamp}_$zoom.tif")
@@ -139,6 +138,37 @@ class PyramidFactoryTest {
     assertEquals(14, maxZoom)
 
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = 10)
+  }
+
+  @Test
+  def sentinelHubBatchProcessApiGeoTiffFromS3ForSingleDate(): Unit = {
+    // otherwise the S3 client will keep retrying to access
+    // http://169.254.169.254/latest/meta-data/iam/security-credentials/
+    assertNotNull("aws.accessKeyId is not set", System.getProperty("aws.accessKeyId"))
+    assertNotNull("aws.secretAccessKey is not set", System.getProperty("aws.secretAccessKey"))
+    System.setProperty("aws.region", "eu-central-1")
+
+    val boundingBox = ProjectedExtent(Extent(585913.04, 5356513.73, 587679.06, 5358051.49), CRS.fromEpsgCode(32633))
+
+    val from = LocalDate.of(2020, 11, 5).atStartOfDay(UTC)
+    val to = from
+
+    val batchProcessId = "b97df260-a8f7-49f9-8c89-0fe5ec38751f"
+
+    val pyramidFactory = PyramidFactory.from_s3(
+      s3_uri = s"s3://openeo-sentinelhub-vito-test/$batchProcessId/33UWP_8_4/",
+      key_regex = raw".*\.tif",
+      date_regex = raw".*_(\d{4})(\d{2})(\d{2}).tif"
+    )
+
+    val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
+    val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs,
+      ISO_OFFSET_DATE_TIME format from, ISO_OFFSET_DATE_TIME format to)
+
+    val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
+    assertEquals(14, maxZoom)
+
+    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = 14)
   }
 
   @Test
