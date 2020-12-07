@@ -106,9 +106,9 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     val layout = getLayout(layoutScheme, xAlignedBoundingBox, zoom, maxSpatialResolution)
 
-    val productKeys = productPaths.flatMap(listProducts) //TODO: map instead of flatmap
+    val productKeys = productPaths.map(listProducts)
 
-    if (productKeys.isEmpty) throw new IllegalArgumentException("no files found for given product paths")
+    if (productKeys.flatten.isEmpty) throw new IllegalArgumentException("no files found for given product paths")
 
     logger.debug(s"Products keys:\n${productKeys.mkString("\n")}")
 
@@ -119,28 +119,26 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
       }
     }
 
-    val bandFileMaps: Seq[Map[ZonedDateTime, Seq[String]]] = bands.map(b =>
-    productKeys.filter(_.contains(b)) //TODO map on product keys and filter out not needed bands
-      .map(pk => extractDate(pk) -> pk)
+    val productKeyDateMap = productKeys
+      .map(_.filter(p => bands.exists(b => p.contains(b))))
+      .map(k => extractDate(k.toIterator.next()) -> k)
       .groupBy(_._1)
       .map { case (k, v) => (k, v.map(_._2)) }
-    )
 
-    val dates = bandFileMaps.flatMap(_.keys).distinct
+    val dates = productKeyDateMap.keys.toSeq.distinct
 
-    val overlappingKeys = dates.flatMap(date => {
+    val overlappingKeys = {
       val set = polygons.map(_.reproject(polygons_crs, crs))
         .flatMap(layout.mapTransform.keysForGeometry)
         .toSet
-      set.map(key => SpaceTimeKey(key, date))
-    })
+      dates.flatMap(date => set.map(key => SpaceTimeKey(key, date)))
+    }
 
     logger.debug(s"Overlapping keys:\n${overlappingKeys.map(_.toString).mkString("\n")}")
 
     val rasterSources: RDD[(SpaceTimeKey, Seq[RasterSource])] = sc.parallelize(overlappingKeys)
-      .map(key => (key, bandFileMaps
-      .flatMap(_.get(key.time))
-      .map(paths => new BandCompositeRasterSource(NonEmptyList.fromListUnsafe(paths.map(path => GDALRasterSource(path)).toList), crs))))
+      .map(key => (key, productKeyDateMap(key.time)
+        .map(paths => new BandCompositeRasterSource(NonEmptyList.fromListUnsafe(paths.map(path => GDALRasterSource(path)).toList), crs))))
 
     //unsafe, don't we need union of cell type?
     val commonCellType = rasterSources.take(1).head._2.head.cellType
