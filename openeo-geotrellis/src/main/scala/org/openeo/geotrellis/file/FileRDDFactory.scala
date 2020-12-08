@@ -10,8 +10,8 @@ import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.FileLayerProvider.layerMetadata
+import org.openeo.geotrellis.layers.OpenSearch
 import org.openeo.geotrellis.layers.OpenSearchResponses.{Feature, Link}
-import org.openeo.geotrellis.layers.OscarsOpenSearch
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
 import java.net.URL
@@ -26,7 +26,7 @@ import scala.collection.JavaConverters._
 class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.List[String],attributeValues: util.Map[String, Any] = util.Collections.emptyMap(),correlationId: String = "") {
 
   private val maxSpatialResolution = CellSize(10, 10)
-  protected val openSearch: OscarsOpenSearch = OscarsOpenSearch(new URL("http://oscars-01.vgt.vito.be:8080"))
+  protected val openSearch: OpenSearch = OpenSearch.oscars(new URL("http://oscars-01.vgt.vito.be:8080"))
 
   /**
    * Lookup OpenSearch Features
@@ -40,7 +40,7 @@ class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.
       to.toLocalDate,
       boundingBox,
       correlationId,
-      attributeValues.asScala.toMap
+      attributeValues = attributeValues.asScala.toMap
     )
     return overlappingFeatures
   }

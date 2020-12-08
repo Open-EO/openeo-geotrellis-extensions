@@ -121,7 +121,7 @@ object FileLayerProvider {
       ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), LocalTime.MIDNIGHT, ZoneId.of("UTC"))
   }
 
-  private def fetchExtentFromOpenSearch(openSearch: OscarsOpenSearch, collectionId: String): ProjectedExtent = {
+  private def fetchExtentFromOpenSearch(openSearch: OpenSearch, collectionId: String): ProjectedExtent = {
     val collection = openSearch.getCollections()
       .find(_.id == collectionId)
       .getOrElse(throw new IllegalArgumentException(s"unknown OpenSearch collection $collectionId"))
@@ -193,8 +193,8 @@ object FileLayerProvider {
   private val metadataCache =
     Caffeine.newBuilder()
       .refreshAfterWrite(15, TimeUnit.MINUTES)
-      .build(new CacheLoader[(OscarsOpenSearch, String, Path, PathDateExtractor), Option[(ProjectedExtent, Array[ZonedDateTime])]] {
-        override def load(key: (OscarsOpenSearch, String, Path, PathDateExtractor)): Option[(ProjectedExtent, Array[ZonedDateTime])] = {
+      .build(new CacheLoader[(OpenSearch, String, Path, PathDateExtractor), Option[(ProjectedExtent, Array[ZonedDateTime])]] {
+        override def load(key: (OpenSearch, String, Path, PathDateExtractor)): Option[(ProjectedExtent, Array[ZonedDateTime])] = {
           val (openSearch, collectionId, start, x) = key
 
           val bbox = fetchExtentFromOpenSearch(openSearch, collectionId)
@@ -212,7 +212,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
   import FileLayerProvider._
 
   private val _rootPath = Paths.get(rootPath)
-  private val openSearch: OscarsOpenSearch = OscarsOpenSearch(openSearchEndpoint)
+  private val openSearch: OpenSearch = OpenSearch.oscars(openSearchEndpoint)
 
   val openSearchLinkTitlesWithBandIds: Seq[(String, Seq[Int])] = openSearchLinkTitles.toList.zipAll(bandIds, "", Seq(0))
 
@@ -291,7 +291,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
       to.toLocalDate,
       boundingBox,
       correlationId,
-      attributeValues
+      attributeValues = attributeValues
     )
 
 

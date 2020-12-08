@@ -6,41 +6,23 @@ import org.openeo.geotrellis.layers.OpenSearchResponses.{Feature, FeatureCollect
 import scalaj.http.HttpOptions
 
 import java.net.URL
-import java.time.ZoneOffset.UTC
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.ISO_INSTANT
-import java.time.{LocalDate, OffsetTime, ZonedDateTime}
 import scala.collection.Map
 
-object OscarsOpenSearch {
-  def apply(endpoint: URL) = new OscarsOpenSearch(endpoint)
-}
-
 class OscarsOpenSearch(endpoint: URL) extends OpenSearch {
-  def getProducts(collectionId: String, from: LocalDate, to: LocalDate, bbox: ProjectedExtent,
-                            correlationId: String = "", attributeValues: Map[String, Any] = Map()): Seq[Feature] = {
-    val endOfDay = OffsetTime.of(23, 59, 59, 999999999, UTC)
-
-    val start = from.atStartOfDay(UTC)
-    val end = to.atTime(endOfDay).toZonedDateTime
-
-    getProducts(collectionId, start, end, bbox, correlationId, attributeValues)
-  }
-
-  def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
-                            correlationId: String, attributeValues: Map[String, Any]): Seq[Feature] = {
+  def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, processingLevel: String,
+                  correlationId: String, attributeValues: Map[String, Any]): Seq[Feature] = {
     def from(startIndex: Int): Seq[Feature] = {
-      val FeatureCollection(itemsPerPage, features) = getProducts(collectionId, start, end, bbox, correlationId, attributeValues, startIndex)
+      val FeatureCollection(itemsPerPage, features) = getProducts(collectionId, start, end, bbox, processingLevel, correlationId, attributeValues, startIndex)
       if (itemsPerPage <= 0) Seq() else features ++ from(startIndex + itemsPerPage)
     }
 
     from(startIndex = 1)
   }
 
-  def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, correlationId: String): Seq[Feature] =
-    getProducts(collectionId, start, end, bbox, correlationId, Map[String, Any]())
-
-  override protected def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
-                          correlationId: String, attributeValues: Map[String, Any], startIndex: Int): FeatureCollection = {
+  override protected def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, processingLevel: String,
+                                     correlationId: String, attributeValues: Map[String, Any], startIndex: Int): FeatureCollection = {
     val Extent(xMin, yMin, xMax, yMax) = bbox.reproject(LatLng)
 
     val getProducts = http(s"$endpoint/products")
@@ -58,7 +40,7 @@ class OscarsOpenSearch(endpoint: URL) extends OpenSearch {
     FeatureCollection.parse(json)
   }
 
-  def getCollections(correlationId: String = ""): Seq[Feature] = {
+  override def getCollections(correlationId: String = ""): Seq[Feature] = {
     val getCollections = http(s"$endpoint/collections")
       .option(HttpOptions.followRedirects(true))
       .param("clientId", clientId(correlationId))

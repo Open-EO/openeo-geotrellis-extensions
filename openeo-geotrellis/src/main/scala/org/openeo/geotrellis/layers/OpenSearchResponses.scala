@@ -60,7 +60,7 @@ object OpenSearchResponses {
         }
       }
 
-      implicit val decodeFeatureCollecion: Decoder[FeatureCollection] = new Decoder[FeatureCollection] {
+      implicit val decodeFeatureCollection: Decoder[FeatureCollection] = new Decoder[FeatureCollection] {
         override def apply(c: HCursor): Decoder.Result[FeatureCollection] = {
           for {
             itemsPerPage <- c.downField("properties").downField("itemsPerPage").as[Int]

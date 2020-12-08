@@ -21,13 +21,34 @@ import scala.collection.Map
 object OpenSearch {
   private val logger = LoggerFactory.getLogger(classOf[OpenSearch])
   private val requestCounter = new AtomicLong
+
+  def oscars(endpoint: URL) = new OscarsOpenSearch(endpoint)
+  def creo() = new CreoOpenSearch
 }
 
 abstract class OpenSearch {
   import OpenSearch._
 
-  protected def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
+  def getProducts(collectionId: String, from: LocalDate, to: LocalDate, bbox: ProjectedExtent, processingLevel: String = "",
+                  correlationId: String = "", attributeValues: Map[String, Any] = Map()): Seq[Feature] = {
+    val endOfDay = OffsetTime.of(23, 59, 59, 999999999, UTC)
+
+    val start = from.atStartOfDay(UTC)
+    val end = to.atTime(endOfDay).toZonedDateTime
+
+    getProducts(collectionId, start, end, bbox, processingLevel, correlationId, attributeValues)
+  }
+
+  def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, processingLevel: String,
+                  correlationId: String, attributeValues: Map[String, Any]): Seq[Feature]
+
+  def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, correlationId: String, processingLevel: String): Seq[Feature] =
+    getProducts(collectionId, start, end, bbox, processingLevel, correlationId, Map[String, Any]())
+
+  protected def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, processingLevel: String,
                            correlationId: String, attributeValues: Map[String, Any], startIndex: Int): FeatureCollection
+
+  def getCollections(correlationId: String = ""): Seq[Feature]
 
   protected def http(url: String): HttpRequest = Http(url).option(HttpOptions.followRedirects(true))
 
