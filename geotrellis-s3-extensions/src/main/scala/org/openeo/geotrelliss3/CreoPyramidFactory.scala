@@ -25,7 +25,6 @@ import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
-import scala.collection.immutable
 import scala.math.max
 import scala.xml.XML
 
