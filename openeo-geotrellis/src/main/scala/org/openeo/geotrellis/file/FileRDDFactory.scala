@@ -1,9 +1,5 @@
 package org.openeo.geotrellis.file
 
-import java.net.URL
-import java.time.ZonedDateTime
-import java.util
-
 import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType}
 import geotrellis.spark._
@@ -14,10 +10,13 @@ import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.FileLayerProvider.layerMetadata
-import org.openeo.geotrellis.layers.OpenSearch
 import org.openeo.geotrellis.layers.OpenSearchResponses.{Feature, Link}
+import org.openeo.geotrellis.layers.OscarsOpenSearch
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
+import java.net.URL
+import java.time.ZonedDateTime
+import java.util
 import scala.collection.JavaConverters._
 
 /**
@@ -27,7 +26,7 @@ import scala.collection.JavaConverters._
 class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.List[String],attributeValues: util.Map[String, Any] = util.Collections.emptyMap(),correlationId: String = "") {
 
   private val maxSpatialResolution = CellSize(10, 10)
-  protected val openSearch: OpenSearch = OpenSearch(new URL("http://oscars-01.vgt.vito.be:8080"))
+  protected val openSearch: OscarsOpenSearch = OscarsOpenSearch(new URL("http://oscars-01.vgt.vito.be:8080"))
 
   /**
    * Lookup OpenSearch Features
@@ -82,7 +81,7 @@ class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.
    * (e.g. oscars response is JSON-serialized)
    */
   def loadSpatialFeatureJsonRDD(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int, tileSize: Int = 256): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey]) = {
-    import org.openeo.geotrellis.file.FileRDDFactory.{toJson, jsonObject}
+    import org.openeo.geotrellis.file.FileRDDFactory.{jsonObject, toJson}
     val crdd = loadSpatialFeatureRDD(polygons, from_date, to_date, zoom, tileSize)
     val jrdd = crdd.map { case (key, feature) => jsonObject(
       "key" -> toJson(key),

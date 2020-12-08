@@ -17,8 +17,8 @@ import scala.annotation.tailrec
 class OpenSearchTest {
 
   @Test
-  def test(): Unit = {
-    val openSearch = OpenSearch(new URL("http://oscars-01.vgt.vito.be:8080"))
+  def testOscars(): Unit = {
+    val openSearch = OscarsOpenSearch(new URL("http://oscars-01.vgt.vito.be:8080"))
 
     val features = openSearch.getProducts(
       collectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
@@ -33,11 +33,12 @@ class OpenSearchTest {
   }
 
   @Test
-  def test_creo(): Unit = {
+  def testCreo(): Unit = {
     val openSearch = CreoOpenSearch()
 
     val features = openSearch.getProducts(
       collectionId = "Sentinel2",
+      processingLevel = "LEVEL2A",
       from = LocalDate.of(2020, 10, 1),
       to = LocalDate.of(2020, 10, 5),
       bbox = ProjectedExtent(Extent(2.688081576665092, 50.71625006623287, 5.838282906674661, 51.42339628212806),
