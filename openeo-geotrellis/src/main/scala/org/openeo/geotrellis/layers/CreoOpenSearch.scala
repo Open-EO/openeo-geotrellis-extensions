@@ -19,10 +19,8 @@ class CreoOpenSearch extends OpenSearch {
 
   def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, processingLevel: String,
                   correlationId: String, attributeValues: Map[String, Any]): Seq[Feature] = {
-    val newAttributeValues = attributeValues + ("processingLevel" -> processingLevel)
-
     def from(page: Int): Seq[Feature] = {
-      val FeatureCollection(itemsPerPage, features) = getProducts(collectionId, start, end, bbox, processingLevel, correlationId, newAttributeValues, page)
+      val FeatureCollection(itemsPerPage, features) = getProducts(collectionId, start, end, bbox, processingLevel, correlationId, attributeValues, page)
       if (itemsPerPage <= 0) Seq() else features ++ from(page + 1)
     }
 
