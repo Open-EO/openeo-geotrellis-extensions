@@ -148,9 +148,6 @@ class PyramidFactoryTest {
 
     val boundingBox = ProjectedExtent(Extent(585913.04, 5356513.73, 587679.06, 5358051.49), CRS.fromEpsgCode(32633))
 
-    val from = LocalDate.of(2020, 11, 5).atStartOfDay(UTC)
-    val to = from plusDays 1
-
     val batchProcessId = "ba2788af-341b-44cf-90ad-2e4143fc90cd"
 
     // the results for this batch process obviously only contain the dates that were requested in the first place so
@@ -164,7 +161,7 @@ class PyramidFactoryTest {
 
     val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
     val pyramid = pyramidFactory.datacube_seq(ProjectedPolygons(Array(boundingBox.extent.toPolygon()), srs),
-      ISO_OFFSET_DATE_TIME format from, ISO_OFFSET_DATE_TIME format to)
+      from_date = null, to_date = null)
 
     val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
     assertEquals(0, maxZoom)
