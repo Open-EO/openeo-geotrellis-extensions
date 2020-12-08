@@ -11,7 +11,7 @@ import scala.collection.Map
 
 object CreoOpenSearch {
   val collections = "https://finder.creodias.eu/resto/collections.json"
-  val collection = "https://finder.creodias.eu/resto/api/collections/#COLLECTION#/search.json"
+  def collection(collectionId: String) = s"https://finder.creodias.eu/resto/api/collections/$collectionId/search.json"
 }
 
 class CreoOpenSearch extends OpenSearch {
@@ -31,7 +31,7 @@ class CreoOpenSearch extends OpenSearch {
                                      correlationId: String, attributeValues: Map[String, Any], page: Int): FeatureCollection = {
     val Extent(xMin, yMin, xMax, yMax) = bbox.reproject(LatLng)
 
-    val getProducts = http(collection.replace("#COLLECTION#", collectionId))
+    val getProducts = http(collection(collectionId))
       .param("processingLevel", processingLevel)
       .param("startDate", start format ISO_INSTANT)
       .param("completionDate", end format ISO_INSTANT)
