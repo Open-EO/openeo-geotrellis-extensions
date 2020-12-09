@@ -27,7 +27,8 @@ import scala.util.matching.Regex
 class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], override val crs: CRS, var theAttributes:Map[String,String]=Map.empty)
   extends MosaicRasterSource { // FIXME: don't inherit?
 
-  override val sources: NonEmptyList[RasterSource] = sourcesList map { _.reprojectToGrid(crs, sourcesList.head.gridExtent) }
+  override val sources: NonEmptyList[RasterSource] = sourcesList
+  def reprojectedSources: NonEmptyList[RasterSource] = sourcesList map { _.reproject(crs) }
 
   override def gridExtent: GridExtent[Long] = sources.head.gridExtent
 
@@ -36,20 +37,20 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
   override def bandCount: Int = sources.size
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    val singleBandRasters = sources
+    val singleBandRasters = reprojectedSources
       .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
       .collect { case Some(raster) => raster }
 
-    if (singleBandRasters.size == sources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile)), singleBandRasters.head.extent))
+    if (singleBandRasters.size == reprojectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile)), singleBandRasters.head.extent))
     else None
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    val singleBandRasters = sources
+    val singleBandRasters = reprojectedSources
       .map { _.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
       .collect { case Some(raster) => raster }
 
-    if (singleBandRasters.size == sources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType))), singleBandRasters.head.extent))
+    if (singleBandRasters.size == reprojectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType))), singleBandRasters.head.extent))
     else None
   }
 
@@ -58,14 +59,14 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
                          method: ResampleMethod,
                          strategy: OverviewStrategy
                        ): RasterSource = new BandCompositeRasterSource(
-    sources map { _.resample(resampleTarget, method, strategy) }, crs)
+    reprojectedSources map { _.resample(resampleTarget, method, strategy) }, crs)
 
   override def convert(targetCellType: TargetCellType): RasterSource =
-    new BandCompositeRasterSource(sources map { _.convert(targetCellType) }, crs)
+    new BandCompositeRasterSource(reprojectedSources map { _.convert(targetCellType) }, crs)
 
   override def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
     new BandCompositeRasterSource(
-      sources map { _.reproject(targetCRS, resampleTarget, method, strategy) },
+      reprojectedSources map { _.reproject(targetCRS, resampleTarget, method, strategy) },
       crs
     )
 }
@@ -75,7 +76,7 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 
   override def bandCount: Int = sourcesListWithBandIds.map(_._2.size).toList.sum
 
-  private val sourcesWithBandIds = NonEmptyList.fromListUnsafe(sources.toList.zip(sourcesListWithBandIds.map(_._2).toList))
+  private def sourcesWithBandIds = NonEmptyList.fromListUnsafe(reprojectedSources.toList.zip(sourcesListWithBandIds.map(_._2).toList))
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val rasters = sourcesWithBandIds
