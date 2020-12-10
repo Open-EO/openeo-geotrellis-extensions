@@ -104,7 +104,7 @@ class BatchProcessingApi(clientId: String, clientSecret: String) {
       s"""|{
           |    id: "$identifier",
           |    bands: 2,
-          |    sampleType: "FLOAT32"
+          |    sampleType: "FLOAT32" // FIXME: allow custom sampleType
           |}""".stripMargin
     }
 
