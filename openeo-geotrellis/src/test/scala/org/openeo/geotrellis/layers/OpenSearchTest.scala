@@ -42,7 +42,8 @@ class OpenSearchTest {
       from = LocalDate.of(2020, 10, 1),
       to = LocalDate.of(2020, 10, 5),
       bbox = ProjectedExtent(Extent(2.688081576665092, 50.71625006623287, 5.838282906674661, 51.42339628212806),
-        LatLng)
+        LatLng),
+      correlationId = "hello"
     )
 
     println(s"got ${features.size} features")

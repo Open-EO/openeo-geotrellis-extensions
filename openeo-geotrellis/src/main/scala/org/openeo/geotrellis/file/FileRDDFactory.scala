@@ -39,8 +39,8 @@ class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.
       from.toLocalDate,
       to.toLocalDate,
       boundingBox,
-      correlationId,
-      attributeValues = attributeValues.asScala.toMap
+      attributeValues = attributeValues.asScala.toMap,
+      correlationId = correlationId
     )
     return overlappingFeatures
   }

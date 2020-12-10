@@ -11,18 +11,19 @@ import java.time.format.DateTimeFormatter.ISO_INSTANT
 import scala.collection.Map
 
 class OscarsOpenSearch(endpoint: URL) extends OpenSearch {
-  def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, processingLevel: String,
-                  correlationId: String, attributeValues: Map[String, Any]): Seq[Feature] = {
+  override def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
+                           processingLevel: String, attributeValues: Map[String, Any], correlationId: String): Seq[Feature] = {
     def from(startIndex: Int): Seq[Feature] = {
-      val FeatureCollection(itemsPerPage, features) = getProducts(collectionId, start, end, bbox, processingLevel, correlationId, attributeValues, startIndex)
+      val FeatureCollection(itemsPerPage, features) = getProducts(collectionId, start, end, bbox, processingLevel, attributeValues, startIndex, correlationId = correlationId)
       if (itemsPerPage <= 0) Seq() else features ++ from(startIndex + itemsPerPage)
     }
 
     from(startIndex = 1)
   }
 
-  override protected def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, processingLevel: String,
-                                     correlationId: String, attributeValues: Map[String, Any], startIndex: Int): FeatureCollection = {
+  override protected def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
+                                     processingLevel: String, attributeValues: Map[String, Any], startIndex: Int,
+                                     correlationId: String): FeatureCollection = {
     val Extent(xMin, yMin, xMax, yMax) = bbox.reproject(LatLng)
 
     val getProducts = http(s"$endpoint/products")
