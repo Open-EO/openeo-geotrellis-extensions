@@ -1,18 +1,12 @@
 package org.openeo.geotrellis.layers
 
-import java.net.URL
-import java.time.LocalDate
 import geotrellis.proj4.LatLng
 import geotrellis.vector.{Extent, ProjectedExtent}
+import org.junit.Assert._
 import org.junit.Test
-import org.openeo.geotrellis.layers.OpenSearch.{logger, requestCounter}
-import org.openeo.geotrellis.layers.OpenSearchResponses.FeatureCollection
-import scalaj.http.{Http, HttpOptions, HttpRequest, HttpStatusException}
 
-import java.io.IOException
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeUnit.SECONDS
-import scala.annotation.tailrec
+import java.net.URL
+import java.time.LocalDate
 
 class OpenSearchTest {
 
@@ -30,6 +24,7 @@ class OpenSearchTest {
     )
 
     println(s"got ${features.size} features")
+    assertTrue(features.nonEmpty)
   }
 
   @Test
@@ -47,5 +42,6 @@ class OpenSearchTest {
     )
 
     println(s"got ${features.size} features")
+    assertTrue(features.nonEmpty)
   }
 }

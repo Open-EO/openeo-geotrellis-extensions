@@ -23,10 +23,9 @@ import scala.collection.JavaConverters._
  * A class that looks like a pyramid factory, but does not build a full datacube. Instead, it generates an RDD[SpaceTimeKey, ProductPath].
  * This RDD can then be transformed into
  */
-class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.List[String],attributeValues: util.Map[String, Any] = util.Collections.emptyMap(),correlationId: String = "") {
+class FileRDDFactory(openSearch: OpenSearch, openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = "") {
 
   private val maxSpatialResolution = CellSize(10, 10)
-  protected val openSearch: OpenSearch = OpenSearch.oscars(new URL("http://oscars-01.vgt.vito.be:8080"))
 
   /**
    * Lookup OpenSearch Features
@@ -97,6 +96,16 @@ class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.
 }
 
 object FileRDDFactory {
+
+  def oscars(openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = ""): FileRDDFactory = {
+    val openSearch: OpenSearch = OpenSearch.oscars(new URL("http://oscars-01.vgt.vito.be:8080"))
+    new FileRDDFactory(openSearch, openSearchCollectionId, openSearchLinkTitles, attributeValues, correlationId = correlationId)
+  }
+
+  def creo(openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = ""): FileRDDFactory = {
+    val openSearch: OpenSearch = OpenSearch.creo()
+    new FileRDDFactory(openSearch, openSearchCollectionId, openSearchLinkTitles, attributeValues, correlationId = correlationId)
+  }
 
   /*
    * Poor man's JSON serialization
