@@ -1,9 +1,8 @@
 package org.openeo.geotrellis.geotiff
 
 import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
+import java.time.ZoneId
 import java.time.{LocalDate, ZonedDateTime}
-
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
@@ -54,6 +53,7 @@ object PyramidFactory {
 
       val request = (if (recursive) requestBuilder else requestBuilder.delimiter("/")).build()
 
+      // FIXME: Sentinel Hub batch process geotiffs don't carry a NODATA (it is implicitly 0 according to the docs)
       S3ClientProducer.get()
         .listObjects(request)
         .contents()
@@ -69,7 +69,7 @@ object PyramidFactory {
 
   private def deriveDate(filename: String, date: Regex): ZonedDateTime = {
     filename match {
-      case date(year, month, day) => ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), MIDNIGHT, UTC)
+      case date(year, month, day) => ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), MIDNIGHT, ZoneId.of("UTC"))
     }
   }
 }

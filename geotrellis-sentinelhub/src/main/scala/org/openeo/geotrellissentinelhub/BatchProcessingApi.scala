@@ -33,14 +33,14 @@ class BatchProcessingApi(clientId: String, clientSecret: String) {
     val ProjectedExtent(Extent(xmin, ymin, xmax, ymax), crs) = boundingBox
     val epsgCode = crs.epsgCode.getOrElse(s"unsupported crs $crs")
 
-    val uniqueAscendingDateTimes = dateTimes
+    val ascendingDateTimes = dateTimes
       .sortWith(_ isBefore _)
-      .distinct
 
-    val (from, to) = (uniqueAscendingDateTimes.head, uniqueAscendingDateTimes.last)
+    val (from, to) = (ascendingDateTimes.head, ascendingDateTimes.last)
 
-    val identifiers = uniqueAscendingDateTimes
+    val identifiers = ascendingDateTimes
       .map(_.toLocalDate)
+      .distinct
       .map(date => s"_${BASIC_ISO_DATE format date}")
 
     val responses = this.responses(identifiers)
