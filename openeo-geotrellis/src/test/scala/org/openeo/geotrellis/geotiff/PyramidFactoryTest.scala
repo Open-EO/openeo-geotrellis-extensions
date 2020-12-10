@@ -146,9 +146,9 @@ class PyramidFactoryTest {
     assertNotNull("aws.secretAccessKey is not set", System.getProperty("aws.secretAccessKey"))
     System.setProperty("aws.region", "eu-central-1")
 
-    val boundingBox = ProjectedExtent(Extent(585913.04, 5356513.73, 587679.06, 5358051.49), CRS.fromEpsgCode(32633))
+    val boundingBox = ProjectedExtent(Extent(2.59003, 51.069, 2.8949, 51.2206), CRS.fromEpsgCode(4326))
 
-    val batchProcessId = "ba2788af-341b-44cf-90ad-2e4143fc90cd"
+    val batchProcessId = "8e1f83d5-1a65-4de3-9430-ba0435533647"
 
     // the results for this batch process obviously only contain the dates that were requested in the first place so
     // no additional key filtering is necessary here
@@ -166,7 +166,7 @@ class PyramidFactoryTest {
     val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
     assertEquals(0, maxZoom)
 
-    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
+    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom) // FIXME: obvious artifacts in the geotiff
   }
 
   @Test
