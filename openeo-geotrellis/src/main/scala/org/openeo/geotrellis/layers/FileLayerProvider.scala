@@ -214,7 +214,7 @@ object FileLayerProvider {
 
 class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
                         maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
-                        bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "", experimental: Boolean=false) extends LayerProvider {
+                        bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "", experimental: Boolean=true) extends LayerProvider {
 
   import FileLayerProvider._
 
