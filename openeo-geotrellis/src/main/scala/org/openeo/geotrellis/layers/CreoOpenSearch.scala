@@ -17,18 +17,20 @@ object CreoOpenSearch {
 class CreoOpenSearch extends OpenSearch {
   import CreoOpenSearch._
 
-  def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, processingLevel: String,
-                  correlationId: String, attributeValues: Map[String, Any]): Seq[Feature] = {
+  override def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
+                           processingLevel: String, attributeValues: Map[String, Any],
+                           correlationId: String): Seq[Feature] = {
     def from(page: Int): Seq[Feature] = {
-      val FeatureCollection(itemsPerPage, features) = getProducts(collectionId, start, end, bbox, processingLevel, correlationId, attributeValues, page)
+      val FeatureCollection(itemsPerPage, features) = getProducts(collectionId, start, end, bbox, processingLevel, attributeValues, page, correlationId = correlationId)
       if (itemsPerPage <= 0) Seq() else features ++ from(page + 1)
     }
 
     from(1)
   }
 
-  override protected def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, processingLevel: String,
-                                     correlationId: String, attributeValues: Map[String, Any], page: Int): FeatureCollection = {
+  override protected def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
+                                     processingLevel: String, attributeValues: Map[String, Any], page: Int,
+                                     correlationId: String): FeatureCollection = {
     val Extent(xMin, yMin, xMax, yMax) = bbox.reproject(LatLng)
 
     val getProducts = http(collection(collectionId))

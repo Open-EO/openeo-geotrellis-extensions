@@ -294,8 +294,8 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
       from.toLocalDate,
       to.toLocalDate,
       boundingBox,
-      correlationId,
-      attributeValues = attributeValues
+      attributeValues = attributeValues,
+      correlationId = correlationId
     )
 
 

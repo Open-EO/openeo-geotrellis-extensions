@@ -29,24 +29,29 @@ object OpenSearch {
 abstract class OpenSearch {
   import OpenSearch._
 
-  def getProducts(collectionId: String, from: LocalDate, to: LocalDate, bbox: ProjectedExtent, processingLevel: String = "",
-                  correlationId: String = "", attributeValues: Map[String, Any] = Map()): Seq[Feature] = {
+  def getProducts(collectionId: String, from: LocalDate, to: LocalDate, bbox: ProjectedExtent,
+                  processingLevel: String = "", attributeValues: Map[String, Any] = Map(),
+                  correlationId: String = ""): Seq[Feature] = {
     val endOfDay = OffsetTime.of(23, 59, 59, 999999999, UTC)
 
     val start = from.atStartOfDay(UTC)
     val end = to.atTime(endOfDay).toZonedDateTime
 
-    getProducts(collectionId, start, end, bbox, processingLevel, correlationId, attributeValues)
+    getProducts(collectionId, start, end, bbox, processingLevel, attributeValues, correlationId=correlationId)
   }
 
-  def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, processingLevel: String,
-                  correlationId: String, attributeValues: Map[String, Any]): Seq[Feature]
+  def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
+                  processingLevel: String, attributeValues: Map[String, Any],
+                  correlationId: String): Seq[Feature]
 
-  def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, correlationId: String, processingLevel: String): Seq[Feature] =
-    getProducts(collectionId, start, end, bbox, processingLevel, correlationId, Map[String, Any]())
+  def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
+                  processingLevel: String,
+                  correlationId: String): Seq[Feature] =
+    getProducts(collectionId, start, end, bbox, processingLevel, Map[String, Any](), correlationId=correlationId)
 
-  protected def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, processingLevel: String,
-                           correlationId: String, attributeValues: Map[String, Any], startIndex: Int): FeatureCollection
+  protected def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
+                            processingLevel: String,  attributeValues: Map[String, Any], startIndex: Int,
+                            correlationId: String): FeatureCollection
 
   def getCollections(correlationId: String = ""): Seq[Feature]
 
