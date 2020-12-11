@@ -329,8 +329,8 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
         val m = keyExtractor.getMetadata(rs)
         val tileKeyTransform: SpatialKey => SpaceTimeKey = { sk => keyExtractor.getKey(m, sk) }
         //The first form 'rs.tileToLayout' will check if rastersources are aligned, requiring reading of metadata, which has a serious performance impact!
-        //rs.tileToLayout(metadata.layout, tileKeyTransform)
-        LayoutTileSource(rs,metadata.layout,tileKeyTransform)
+        rs.tileToLayout(metadata.layout, tileKeyTransform)
+        //LayoutTileSource(rs,metadata.layout,tileKeyTransform)
       }
 
     tiledLayoutSourceRDD
