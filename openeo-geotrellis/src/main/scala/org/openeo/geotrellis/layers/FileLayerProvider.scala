@@ -10,10 +10,10 @@ import cats.data.NonEmptyList
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
-import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
-import geotrellis.raster.geotiff.GeoTiffRasterSource
+import geotrellis.raster.ResampleMethods.NearestNeighbor
+import geotrellis.raster.geotiff.{GeoTiffRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
@@ -280,10 +280,13 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
   }
 
   private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent): List[(RasterSource, Seq[Int])] = {
+    val re = RasterExtent(targetExtent.extent, maxSpatialResolution).alignTargetPixels
+    val alignment = TargetAlignment(re)
 
     def rasterSource(path:String,targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent ) = {
       if (experimental){
-        GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(CellSize(10, 10))), targetCellType = targetCellType)
+        GeoTiffResampleRasterSource(path, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None)
+        //GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType)
       }else {
         GeoTiffRasterSource(path, targetCellType)
       }
