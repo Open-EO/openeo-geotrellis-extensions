@@ -347,7 +347,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
     val sources = sc.parallelize(rasterSources,rasterSources.size)
 
     val noResampling = metadata.layout.cellSize==maxSpatialResolution && experimental
-
+    sc.setJobDescription("Load tiles: "+openSearchCollectionId + " rs: " + noResampling)
     val tiledLayoutSourceRDD =
       sources.map { rs =>
         val m = keyExtractor.getMetadata(rs)
