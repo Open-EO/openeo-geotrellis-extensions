@@ -17,7 +17,6 @@ class AuthApi {
   import AuthApi._
 
   def authenticate(clientId: String, clientSecret: String): AuthResponse = {
-    // FIXME: cache token for duration/2
     val getAuthToken = http("https://services.sentinel-hub.com/oauth/token")
       .postForm(Seq(
         "grant_type" -> "client_credentials",

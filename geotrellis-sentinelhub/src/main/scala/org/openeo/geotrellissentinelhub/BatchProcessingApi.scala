@@ -18,17 +18,18 @@ object BatchProcessingApi {
   private[geotrellissentinelhub] case class GetBatchProcessResponse(status: String)
 }
 
-class BatchProcessingApi(clientId: String, clientSecret: String) {
+class BatchProcessingApi {
   import BatchProcessingApi._
 
   private val endpoint = "https://services.sentinel-hub.com/api/v1/batch"
-  private val authApi = new AuthApi
 
-  private def http(url: String): HttpRequest = Http(url).option(HttpOptions.followRedirects(true))
-  private def authToken: String = authApi.authenticate(clientId, clientSecret).access_token
+  private def http(url: String, accessToken: String): HttpRequest =
+    Http(url)
+      .option(HttpOptions.followRedirects(true))
+      .headers("Authorization" -> s"Bearer $accessToken")
 
   def createBatchProcess(datasetId: String, boundingBox: ProjectedExtent, dateTimes: Seq[ZonedDateTime],
-                         bandNames: Seq[String], bucketName: String, description: String)
+                         bandNames: Seq[String], bucketName: String, description: String, accessToken: String)
   : CreateBatchProcessResponse = {
     val ProjectedExtent(Extent(xmin, ymin, xmax, ymax), crs) = boundingBox
     val epsgCode = crs.epsgCode.getOrElse(s"unsupported crs $crs")
@@ -84,11 +85,8 @@ class BatchProcessingApi(clientId: String, clientSecret: String) {
 
     logger.debug(requestBody)
 
-    val response = http(s"$endpoint/process")
-      .headers(
-        "Authorization" -> s"Bearer $authToken", // TODO: put this in the http() method
-        "Content-Type" -> "application/json"
-      )
+    val response = http(s"$endpoint/process", accessToken)
+      .headers("Content-Type" -> "application/json")
       .postData(requestBody)
       .asString
       .throwError
@@ -148,9 +146,9 @@ class BatchProcessingApi(clientId: String, clientSecret: String) {
         |""".stripMargin
   }
 
-  def getBatchProcess(batchRequestId: String): GetBatchProcessResponse = {
-    val response = http(s"$endpoint/process/$batchRequestId")
-      .headers("Authorization" -> s"Bearer $authToken")
+  def getBatchProcess(batchRequestId: String, accessToken: String): GetBatchProcessResponse = {
+    val response = http(s"$endpoint/process/$batchRequestId", accessToken)
+      .headers("Authorization" -> s"Bearer $accessToken")
       .asString
       .throwError
 
@@ -158,9 +156,9 @@ class BatchProcessingApi(clientId: String, clientSecret: String) {
       .valueOr(throw _)
   }
 
-  def startBatchProcess(batchRequestId: String): Unit = {
-    http(s"$endpoint/process/$batchRequestId/start")
-      .headers("Authorization" -> s"Bearer $authToken")
+  def startBatchProcess(batchRequestId: String, accessToken: String): Unit = {
+    http(s"$endpoint/process/$batchRequestId/start", accessToken)
+      .headers("Authorization" -> s"Bearer $accessToken")
       .postData("")
       .asString
       .throwError

@@ -10,7 +10,9 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 
 class BatchProcessingApiTest {
-  private val batchProcessingApi = new BatchProcessingApi(Utils.clientId, Utils.clientSecret)
+  private val batchProcessingApi = new BatchProcessingApi
+
+  private def accessToken: String = new AuthApi().authenticate(Utils.clientId, Utils.clientSecret).access_token
 
   @Ignore
   @Test
@@ -25,7 +27,8 @@ class BatchProcessingApiTest {
         dateTimes = dateTimes,
         bandNames = Seq("VV", "VH"),
         bucketName = "openeo-sentinelhub-vito-test",
-        description = "BatchProcessingApiTest.createBatchProcess"
+        description = "BatchProcessingApiTest.createBatchProcess",
+        accessToken
       )
 
       println(batchProcess.id)
@@ -36,7 +39,7 @@ class BatchProcessingApiTest {
 
   @Test
   def getBatchProcess(): Unit = {
-    val batchProcess = batchProcessingApi.getBatchProcess("479cca6e-53d5-4477-ac5b-2c0ba8d3beba")
+    val batchProcess = batchProcessingApi.getBatchProcess("479cca6e-53d5-4477-ac5b-2c0ba8d3beba", accessToken)
 
     assertEquals("DONE", batchProcess.status)
   }
@@ -44,6 +47,6 @@ class BatchProcessingApiTest {
   @Ignore
   @Test
   def startBatchProcess(): Unit = {
-    batchProcessingApi.startBatchProcess("479cca6e-53d5-4477-ac5b-2c0ba8d3beba")
+    batchProcessingApi.startBatchProcess("479cca6e-53d5-4477-ac5b-2c0ba8d3beba", accessToken)
   }
 }

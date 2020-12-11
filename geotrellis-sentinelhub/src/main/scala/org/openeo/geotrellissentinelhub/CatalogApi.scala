@@ -16,15 +16,13 @@ object CatalogApi {
   private case class FeatureCollection(features: Array[Feature])
 }
 
-class CatalogApi(clientId: String, clientSecret: String) {
+class CatalogApi {
   import CatalogApi._
 
   private val endpoint = "https://services.sentinel-hub.com/api/v1/catalog"
-  private val authApi = new AuthApi
 
-  private def authToken: String = authApi.authenticate(clientId, clientSecret).access_token
-
-  def dateTimes(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime):
+  def dateTimes(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
+                accessToken: String):
   Seq[ZonedDateTime] = {
     val Extent(xmin, ymin, xmax, ymax) = boundingBox.reproject(LatLng)
     val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
@@ -38,11 +36,8 @@ class CatalogApi(clientId: String, clientSecret: String) {
          |    "collections": ["$collectionId"]
          |}""".stripMargin
 
-    val response = http(s"$endpoint/search")
-      .headers(
-        "Authorization" -> s"Bearer $authToken", // TODO: put this in the http() method
-        "Content-Type" -> "application/json"
-      )
+    val response = http(s"$endpoint/search", accessToken)
+      .headers("Content-Type" -> "application/json")
       .postData(requestBody)
       .asString
       .throwError
@@ -56,5 +51,8 @@ class CatalogApi(clientId: String, clientSecret: String) {
     } yield ZonedDateTime.parse(datetime, ISO_OFFSET_DATE_TIME)
   }
 
-  private def http(url: String): HttpRequest = Http(url).option(HttpOptions.followRedirects(true))
+  private def http(url: String, accessToken: String): HttpRequest =
+    Http(url)
+      .option(HttpOptions.followRedirects(true))
+      .headers("Authorization" -> s"Bearer $accessToken")
 }

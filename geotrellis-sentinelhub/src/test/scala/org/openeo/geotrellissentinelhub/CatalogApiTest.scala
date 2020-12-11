@@ -8,11 +8,10 @@ import org.junit.Test
 import java.time.{LocalDate, ZoneId}
 
 class CatalogApiTest {
-  private val clientId = Utils.clientId
-  private val clientSecret = Utils.clientSecret
-
-  private val catalogApi = new CatalogApi(clientId, clientSecret)
+  private val catalogApi = new CatalogApi
   private val utc = ZoneId.of("UTC")
+
+  private def accessToken: String = new AuthApi().authenticate(Utils.clientId, Utils.clientSecret).access_token
 
   @Test
   def testSearch(): Unit = {
@@ -20,7 +19,8 @@ class CatalogApiTest {
       collectionId = "sentinel-1-grd",
       ProjectedExtent(Extent(16.162995875210488, 48.305237663134704, 16.198050293067634, 48.328618668560985), LatLng),
       from = LocalDate.of(2020, 11, 5).atStartOfDay(utc),
-      to = LocalDate.of(2020, 11, 7).atStartOfDay(utc)
+      to = LocalDate.of(2020, 11, 7).atStartOfDay(utc),
+      accessToken
     )
 
     println(dateTimes)
