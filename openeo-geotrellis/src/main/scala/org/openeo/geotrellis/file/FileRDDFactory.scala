@@ -84,7 +84,7 @@ class FileRDDFactory(openSearch: OpenSearch, openSearchCollectionId: String, ope
     val crdd = loadSpatialFeatureRDD(polygons, from_date, to_date, zoom, tileSize)
     val jrdd = crdd.map { case (key, feature) => jsonObject(
       "key" -> toJson(key),
-      "extent" -> toJson(crdd.metadata.mapTransform.keyToExtent(key)),
+      "key_extent" -> toJson(crdd.metadata.mapTransform.keyToExtent(key)),
       "feature" -> jsonObject(
         "id" -> toJson(feature.id),
         "bbox" -> toJson(feature.bbox),
@@ -131,6 +131,7 @@ object FileRDDFactory {
     s"""{"xmin": ${e.xmin}, "ymin": ${e.ymin}, "xmax": ${e.xmax}, "ymax": ${e.ymax}}"""
 
   def toJson(l: Link): String =
+    // TODO: href.toString fails with NullPointerException ???
     s"""{"href": {"file": ${toJson(l.href.getFile)}}, "title": ${toJson(l.title)}}"""
 
   def toJson(a: Array[Link]): String =
