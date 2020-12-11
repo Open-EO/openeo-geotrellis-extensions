@@ -10,9 +10,10 @@ import cats.data.NonEmptyList
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
+import geotrellis.raster.ResampleMethods.NearestNeighbor
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetCellSize, TargetCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
@@ -31,6 +32,7 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
   def reprojectedSources: NonEmptyList[RasterSource] = sourcesList map { _.reproject(crs) }
 
   override def gridExtent: GridExtent[Long] = sources.head.gridExtent
+  override def cellType: CellType = sources.head.cellType
 
   override def attributes: Map[String, String] = theAttributes
   override def name: SourceName = sources.head.name
@@ -280,7 +282,8 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
       link <- feature.links.find(_.title contains title)
       path = deriveFilePath(link.href)
       targetCellType = if (link.title contains "SCENECLASSIFICATION_20M") Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0))) else None
-    } yield (GeoTiffRasterSource(path, targetCellType), bands)
+    } yield (GeoTiffRasterSource(path, targetCellType).resample(TargetCellSize(maxSpatialResolution),NearestNeighbor,OverviewStrategy.DEFAULT), bands)
+    //} yield (GDALRasterSource(path, options= GDALWarpOptions(alignTargetPixels = true,cellSize = Some(CellSize(10,10))) ,targetCellType = targetCellType), bands)
   }
 
   private def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, sc:SparkContext): Seq[RasterSource] = {
@@ -325,7 +328,9 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
       sources.map { rs =>
         val m = keyExtractor.getMetadata(rs)
         val tileKeyTransform: SpatialKey => SpaceTimeKey = { sk => keyExtractor.getKey(m, sk) }
-        rs.tileToLayout(metadata.layout, tileKeyTransform)
+        //The first form 'rs.tileToLayout' will check if rastersources are aligned, requiring reading of metadata, which has a serious performance impact!
+        //rs.tileToLayout(metadata.layout, tileKeyTransform)
+        LayoutTileSource(rs,metadata.layout,tileKeyTransform)
       }
 
     tiledLayoutSourceRDD
