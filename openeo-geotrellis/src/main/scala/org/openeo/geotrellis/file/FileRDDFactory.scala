@@ -84,13 +84,19 @@ class FileRDDFactory(openSearch: OpenSearch, openSearchCollectionId: String, ope
     val crdd = loadSpatialFeatureRDD(polygons, from_date, to_date, zoom, tileSize)
     val jrdd = crdd.map { case (key, feature) => jsonObject(
       "key" -> toJson(key),
+      "extent" -> toJson(crdd.metadata.mapTransform.keyToExtent(key)),
       "feature" -> jsonObject(
         "id" -> toJson(feature.id),
         "bbox" -> toJson(feature.bbox),
         "nominalDate" -> toJson(feature.nominalDate.toLocalDate.toString),
         "links" -> toJson(feature.links)
-      ))
-    }.toJavaRDD()
+      ),
+      "metadata" -> jsonObject(
+        "extent" -> toJson(crdd.metadata.extent),
+        "crs_epsg" -> crdd.metadata.crs.epsgCode.getOrElse(0).toString
+      )
+    )}.toJavaRDD()
+
     return (jrdd, crdd.metadata)
   }
 }
