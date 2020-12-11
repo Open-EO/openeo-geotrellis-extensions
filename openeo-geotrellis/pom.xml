@@ -85,6 +85,12 @@
             <version>${geotrellis.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.locationtech.geotrellis</groupId>
+            <artifactId>geotrellis-gdal_${scala.binary.version}</artifactId>
+            <version>${geotrellis.version}</version>
+            <scope>compile</scope>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
