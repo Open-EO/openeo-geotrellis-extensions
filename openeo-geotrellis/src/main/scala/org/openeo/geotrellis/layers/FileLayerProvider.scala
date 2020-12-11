@@ -22,6 +22,7 @@ import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
 import org.openeo.geotrellis.layers.OpenSearchResponses.Feature
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
+import org.slf4j.LoggerFactory
 
 import scala.util.matching.Regex
 
@@ -116,6 +117,8 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 }
 
 object FileLayerProvider {
+
+  private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
   private[geotrellis] val crs = WebMercator
   private[geotrellis] val layoutScheme = ZoomedLayoutScheme(crs, 256)
 
@@ -217,6 +220,10 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
                         bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "", experimental: Boolean=false) extends LayerProvider {
 
   import FileLayerProvider._
+
+  if(experimental) {
+    logger.warn("Experimental features enabled for: " + openSearchCollectionId)
+  }
 
   private val _rootPath = Paths.get(rootPath)
   private val openSearch: OpenSearch = OpenSearch.oscars(openSearchEndpoint)
