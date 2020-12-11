@@ -11,6 +11,7 @@ import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
+import geotrellis.raster.{CellSize, ShortUserDefinedNoDataCellType}
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
