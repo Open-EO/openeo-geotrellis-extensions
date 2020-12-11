@@ -339,7 +339,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
 
   private def rasterSourceRDD(rasterSources: Seq[RasterSource], metadata: TileLayerMetadata[SpaceTimeKey])(implicit sc: SparkContext): RDD[LayoutTileSource[SpaceTimeKey]] = {
 
-    assert(rasterSources.map(_.crs).toSet == Set(metadata.crs))
+    //assert(rasterSources.map(_.crs).toSet == Set(metadata.crs))
 
     val keyExtractor = new TemporalKeyExtractor {
       def getMetadata(rs: RasterMetadata): ZonedDateTime = ZonedDateTime.parse(rs.attributes("date")).truncatedTo(ChronoUnit.DAYS)
