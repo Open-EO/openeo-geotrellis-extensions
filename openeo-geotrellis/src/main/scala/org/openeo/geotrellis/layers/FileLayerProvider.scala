@@ -257,7 +257,9 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
     val rasterSources: RDD[LayoutTileSource[SpaceTimeKey]] = this.rasterSourceRDD(overlappingRasterSources, metadata)(sc)
 
     val rasterRegionRDD = rasterSources.flatMap { tiledLayoutSource =>
-      tiledLayoutSource.keyedRasterRegions() map { case (key, rasterRegion) =>
+      tiledLayoutSource.keyedRasterRegions()
+        .filter({case(key,rasterRegion) => metadata.extent.intersects(key.spatialKey.extent(metadata.layout)) } )
+        .map { case (key, rasterRegion) =>
         (key, (rasterRegion, tiledLayoutSource.source.name))
       }
     }.map{tuple => (tuple._1.spatialKey,tuple)}
