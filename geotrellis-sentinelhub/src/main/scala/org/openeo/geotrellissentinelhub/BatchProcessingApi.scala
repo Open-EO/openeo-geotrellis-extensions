@@ -5,6 +5,7 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import io.circe.Json
 import io.circe.generic.auto._
 import io.circe.parser.decode
+import org.openeo.geotrellissentinelhub.SampleType.SampleType
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpOptions, HttpRequest}
 
@@ -29,7 +30,8 @@ class BatchProcessingApi {
       .headers("Authorization" -> s"Bearer $accessToken")
 
   def createBatchProcess(datasetId: String, boundingBox: ProjectedExtent, dateTimes: Seq[ZonedDateTime],
-                         bandNames: Seq[String], bucketName: String, description: String, accessToken: String)
+                         bandNames: Seq[String], sampleType: SampleType, bucketName: String, description: String,
+                         accessToken: String)
   : CreateBatchProcessResponse = {
     val ProjectedExtent(Extent(xmin, ymin, xmax, ymax), crs) = boundingBox
     val epsgCode = crs.epsgCode.getOrElse(s"unsupported crs $crs")
@@ -45,7 +47,7 @@ class BatchProcessingApi {
       .map(date => s"_${BASIC_ISO_DATE format date}")
 
     val responses = this.responses(identifiers)
-    val evalScript = this.evalScript(bandNames, identifiers)
+    val evalScript = this.evalScript(bandNames, identifiers, sampleType)
 
     val requestBody =
       s"""|{
@@ -95,14 +97,14 @@ class BatchProcessingApi {
       .valueOr(throw _)
   }
 
-  private def evalScript(bandNames: Seq[String], identifiers: Seq[String]): String = {
+  private def evalScript(bandNames: Seq[String], identifiers: Seq[String], sampleType: SampleType): String = {
     val quotedBandNames = bandNames.map(bandName => s""""$bandName"""")
 
     val outputs = identifiers map { identifier =>
       s"""|{
           |    id: "$identifier",
           |    bands: 2,
-          |    sampleType: "FLOAT32" // FIXME: allow custom sampleType
+          |    sampleType: "$sampleType"
           |}""".stripMargin
     }
 

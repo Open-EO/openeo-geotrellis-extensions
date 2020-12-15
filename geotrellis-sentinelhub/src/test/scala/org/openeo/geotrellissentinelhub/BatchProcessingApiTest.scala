@@ -24,8 +24,9 @@ class BatchProcessingApiTest {
       val batchProcess = batchProcessingApi.createBatchProcess(
         datasetId = "S1GRD",
         boundingBox = ProjectedExtent(Extent(586240.0, 5350920.0, 588800.0, 5353480.0), CRS.fromEpsgCode(32633)),
-        dateTimes = dateTimes,
+        dateTimes,
         bandNames = Seq("VV", "VH"),
+        SampleType.FLOAT32,
         bucketName = "openeo-sentinelhub-vito-test",
         description = "BatchProcessingApiTest.createBatchProcess",
         accessToken

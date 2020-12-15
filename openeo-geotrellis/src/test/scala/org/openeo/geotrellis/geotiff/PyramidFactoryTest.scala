@@ -166,7 +166,8 @@ class PyramidFactoryTest {
     val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
     assertEquals(0, maxZoom)
 
-    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom) // FIXME: obvious artifacts in the geotiff
+    // FIXME: obvious artifacts in the geotiff, needs something like MosaicRasterSource
+    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
   }
 
   @Test

@@ -53,7 +53,6 @@ object PyramidFactory {
 
       val request = (if (recursive) requestBuilder else requestBuilder.delimiter("/")).build()
 
-      // FIXME: Sentinel Hub batch process geotiffs don't carry a NODATA (it is implicitly 0 according to the docs)
       S3ClientProducer.get()
         .listObjects(request)
         .contents()
@@ -63,7 +62,11 @@ object PyramidFactory {
           case keyPattern(_*) => Some(new AmazonS3URI(s"s3://${s3Uri.getBucket}/${key}"))
           case _ => None
         })
-        .map(uri => (GeoTiffRasterSource(uri.toString), deriveDate(uri.getKey, date_regex.r))).toSeq
+        .map(uri =>
+          // FIXME: Sentinel Hub batch process geotiffs don't carry a NODATA (it is implicitly 0 according to the docs)
+          //  Should we pass an InterpretAsTargetCellType with a NODATA value?
+          (GeoTiffRasterSource(uri.toString), deriveDate(uri.getKey, date_regex.r))
+        ).toSeq
     }, date_regex.r)
   }
 
