@@ -81,7 +81,10 @@ class BatchProcessingApi {
           |        "id": 1,
           |        "resolution": 10.0
           |    },
-          |    "bucketName": "$bucketName",
+          |    "output": {
+          |        "defaultTilePath": "s3://$bucketName",
+          |        "cogOutput": true
+          |    },
           |    "description": "$description"
           |}""".stripMargin
 
