@@ -10,9 +10,10 @@ import cats.data.NonEmptyList
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
-import geotrellis.raster.geotiff.GeoTiffRasterSource
+import geotrellis.raster.ResampleMethods.NearestNeighbor
+import geotrellis.raster.geotiff.{GeoTiffRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetCellType, UByteUserDefinedNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
@@ -21,35 +22,38 @@ import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
 import org.openeo.geotrellis.layers.OpenSearchResponses.Feature
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
+import org.slf4j.LoggerFactory
 
 import scala.util.matching.Regex
 
 class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], override val crs: CRS, var theAttributes:Map[String,String]=Map.empty)
   extends MosaicRasterSource { // FIXME: don't inherit?
 
-  override val sources: NonEmptyList[RasterSource] = sourcesList map { _.reprojectToGrid(crs, sourcesList.head.gridExtent) }
+  override val sources: NonEmptyList[RasterSource] = sourcesList
+  def reprojectedSources: NonEmptyList[RasterSource] = sourcesList map { _.reproject(crs) }
 
   override def gridExtent: GridExtent[Long] = sources.head.gridExtent
+  override def cellType: CellType = sources.head.cellType
 
   override def attributes: Map[String, String] = theAttributes
   override def name: SourceName = sources.head.name
   override def bandCount: Int = sources.size
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    val singleBandRasters = sources
+    val singleBandRasters = reprojectedSources
       .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
       .collect { case Some(raster) => raster }
 
-    if (singleBandRasters.size == sources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile)), singleBandRasters.head.extent))
+    if (singleBandRasters.size == reprojectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile)), singleBandRasters.head.extent))
     else None
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    val singleBandRasters = sources
+    val singleBandRasters = reprojectedSources
       .map { _.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
       .collect { case Some(raster) => raster }
 
-    if (singleBandRasters.size == sources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType))), singleBandRasters.head.extent))
+    if (singleBandRasters.size == reprojectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType))), singleBandRasters.head.extent))
     else None
   }
 
@@ -58,14 +62,14 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
                          method: ResampleMethod,
                          strategy: OverviewStrategy
                        ): RasterSource = new BandCompositeRasterSource(
-    sources map { _.resample(resampleTarget, method, strategy) }, crs)
+    reprojectedSources map { _.resample(resampleTarget, method, strategy) }, crs)
 
   override def convert(targetCellType: TargetCellType): RasterSource =
-    new BandCompositeRasterSource(sources map { _.convert(targetCellType) }, crs)
+    new BandCompositeRasterSource(reprojectedSources map { _.convert(targetCellType) }, crs)
 
   override def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
     new BandCompositeRasterSource(
-      sources map { _.reproject(targetCRS, resampleTarget, method, strategy) },
+      reprojectedSources map { _.reproject(targetCRS, resampleTarget, method, strategy) },
       crs
     )
 }
@@ -75,7 +79,7 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 
   override def bandCount: Int = sourcesListWithBandIds.map(_._2.size).toList.sum
 
-  private val sourcesWithBandIds = NonEmptyList.fromListUnsafe(sources.toList.zip(sourcesListWithBandIds.map(_._2).toList))
+  private def sourcesWithBandIds = NonEmptyList.fromListUnsafe(reprojectedSources.toList.zip(sourcesListWithBandIds.map(_._2).toList))
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val rasters = sourcesWithBandIds
@@ -113,6 +117,8 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 }
 
 object FileLayerProvider {
+
+  private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
   private[geotrellis] val crs = WebMercator
   private[geotrellis] val layoutScheme = ZoomedLayoutScheme(crs, 256)
 
@@ -146,12 +152,16 @@ object FileLayerProvider {
 
     val worldLayout: LayoutDefinition = getLayout(layoutScheme, boundingBox, zoom, maxSpatialResoluton)
 
-    val crs = bestCRS(boundingBox,layoutScheme)
-
-    val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(crs), crs)
+    val reprojectedBoundingBox: ProjectedExtent = targetBoundingBox(boundingBox, layoutScheme)
 
     val metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, from, to, cellType)
     metadata
+  }
+
+  private def targetBoundingBox(boundingBox: ProjectedExtent, layoutScheme: LayoutScheme) = {
+    val crs = bestCRS(boundingBox, layoutScheme)
+    val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(crs), crs)
+    reprojectedBoundingBox
   }
 
   def getLayout(layoutScheme: LayoutScheme, boundingBox: ProjectedExtent, zoom: Int, maxSpatialResolution: CellSize) = {
@@ -207,12 +217,16 @@ object FileLayerProvider {
 
 class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
                         maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
-                        bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "") extends LayerProvider {
+                        bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "", experimental: Boolean=false) extends LayerProvider {
 
   import FileLayerProvider._
 
+  if(experimental) {
+    logger.warn("Experimental features enabled for: " + openSearchCollectionId)
+  }
+
   private val _rootPath = Paths.get(rootPath)
-  private val openSearch: OpenSearch = OpenSearch(openSearchEndpoint)
+  private val openSearch: OpenSearch = OpenSearch.oscars(openSearchEndpoint)
 
   val openSearchLinkTitlesWithBandIds: Seq[(String, Seq[Int])] = openSearchLinkTitles.toList.zipAll(bandIds, "", Seq(0))
 
@@ -236,7 +250,6 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
   def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     val overlappingRasterSources: Seq[RasterSource] = loadRasterSourceRDD(boundingBox, from, to, zoom,sc)
     val commonCellType = overlappingRasterSources.head.cellType
-
     val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType, layoutScheme, maxSpatialResolution)
 
     val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map{_.reproject(polygons_crs,metadata.crs)}.clipToGrid(metadata.layout).groupByKey()
@@ -244,7 +257,9 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
     val rasterSources: RDD[LayoutTileSource[SpaceTimeKey]] = this.rasterSourceRDD(overlappingRasterSources, metadata)(sc)
 
     val rasterRegionRDD = rasterSources.flatMap { tiledLayoutSource =>
-      tiledLayoutSource.keyedRasterRegions() map { case (key, rasterRegion) =>
+      tiledLayoutSource.keyedRasterRegions()
+        .filter({case(key,rasterRegion) => metadata.extent.intersects(key.spatialKey.extent(metadata.layout)) } )
+        .map { case (key, rasterRegion) =>
         (key, (rasterRegion, tiledLayoutSource.source.name))
       }
     }.map{tuple => (tuple._1.spatialKey,tuple)}
@@ -273,13 +288,25 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
       (_rootPath resolve subPath).toString
   }
 
-  private def deriveRasterSources(feature: Feature): List[(RasterSource, Seq[Int])] = {
+  private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent): List[(RasterSource, Seq[Int])] = {
+    val re = RasterExtent(targetExtent.extent, maxSpatialResolution).alignTargetPixels
+    val alignment = TargetAlignment(re)
+
+    def rasterSource(path:String,targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent ) = {
+      if (experimental){
+        GeoTiffResampleRasterSource(path, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None)
+        //GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType)
+      }else {
+        GeoTiffRasterSource(path, targetCellType)
+      }
+    }
+
     for {
       (title, bands) <- openSearchLinkTitlesWithBandIds.toList
       link <- feature.links.find(_.title contains title)
       path = deriveFilePath(link.href)
       targetCellType = if (link.title contains "SCENECLASSIFICATION_20M") Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0))) else None
-    } yield (GeoTiffRasterSource(path, targetCellType), bands)
+    } yield (rasterSource(path,targetCellType, targetExtent), bands)
   }
 
   private def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, sc:SparkContext): Seq[RasterSource] = {
@@ -290,15 +317,16 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
       from.toLocalDate,
       to.toLocalDate,
       boundingBox,
-      correlationId,
-      attributeValues
+      attributeValues = attributeValues,
+      correlationId = correlationId
     )
 
 
     val crs = bestCRS(boundingBox,layoutScheme)
+    val reprojectedBoundingBox: ProjectedExtent = targetBoundingBox(boundingBox, layoutScheme)
     val overlappingRasterSources = for {
       feature <- overlappingFeatures
-      rasterSources = deriveRasterSources(feature)
+      rasterSources = deriveRasterSources(feature,reprojectedBoundingBox)
       if rasterSources.nonEmpty
     } yield compositeRasterSource(NonEmptyList(rasterSources.head, rasterSources.tail), crs, Predef.Map("date"->feature.nominalDate.toString))
 
@@ -313,18 +341,24 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
 
   private def rasterSourceRDD(rasterSources: Seq[RasterSource], metadata: TileLayerMetadata[SpaceTimeKey])(implicit sc: SparkContext): RDD[LayoutTileSource[SpaceTimeKey]] = {
 
-    assert(rasterSources.map(_.crs).toSet == Set(metadata.crs))
+    //assert(rasterSources.map(_.crs).toSet == Set(metadata.crs))
 
     val keyExtractor = new TemporalKeyExtractor {
       def getMetadata(rs: RasterMetadata): ZonedDateTime = ZonedDateTime.parse(rs.attributes("date")).truncatedTo(ChronoUnit.DAYS)
     }
     val sources = sc.parallelize(rasterSources,rasterSources.size)
 
+    val noResampling = metadata.layout.cellSize==maxSpatialResolution && experimental
+    sc.setJobDescription("Load tiles: "+openSearchCollectionId + " rs: " + noResampling)
     val tiledLayoutSourceRDD =
       sources.map { rs =>
         val m = keyExtractor.getMetadata(rs)
         val tileKeyTransform: SpatialKey => SpaceTimeKey = { sk => keyExtractor.getKey(m, sk) }
-        rs.tileToLayout(metadata.layout, tileKeyTransform)
+        //The first form 'rs.tileToLayout' will check if rastersources are aligned, requiring reading of metadata, which has a serious performance impact!
+        if(noResampling)
+          LayoutTileSource(rs,metadata.layout,tileKeyTransform)
+        else
+          rs.tileToLayout(metadata.layout, tileKeyTransform)
       }
 
     tiledLayoutSourceRDD

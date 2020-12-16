@@ -1,8 +1,8 @@
 package org.openeo.geotrellis.file
 
+import java.net.URL
 import java.time.ZonedDateTime
 import java.util
-import java.net.URL
 
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutScheme, SpaceTimeKey, ZoomedLayoutScheme}
@@ -26,7 +26,7 @@ import scala.collection.JavaConverters._
  */
 // TODO: rename this to something more generic since it is also used for S1 (Sigma0/Coherence), S5P etc.
 class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId: String,
-                              openSearchLinkTitles: util.List[String], rootPath: String, maxSpatialResolution: CellSize) {
+                              openSearchLinkTitles: util.List[String], rootPath: String, maxSpatialResolution: CellSize, experimental:Boolean=false) {
   require(openSearchLinkTitles.size() > 0)
 
   private val openSearchEndpointUrl = new URL(openSearchEndpoint)
@@ -43,7 +43,8 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
     new SplitYearMonthDayPathDateExtractor,
     metadataProperties,
     layoutScheme,
-    correlationId = correlationId
+    correlationId = correlationId,
+    experimental = experimental
   )
 
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String,

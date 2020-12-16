@@ -1,9 +1,5 @@
 package org.openeo.geotrellis.file
 
-import java.net.URL
-import java.time.ZonedDateTime
-import java.util
-
 import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType}
 import geotrellis.spark._
@@ -18,16 +14,18 @@ import org.openeo.geotrellis.layers.OpenSearch
 import org.openeo.geotrellis.layers.OpenSearchResponses.{Feature, Link}
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
+import java.net.URL
+import java.time.ZonedDateTime
+import java.util
 import scala.collection.JavaConverters._
 
 /**
  * A class that looks like a pyramid factory, but does not build a full datacube. Instead, it generates an RDD[SpaceTimeKey, ProductPath].
  * This RDD can then be transformed into
  */
-class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.List[String],attributeValues: util.Map[String, Any] = util.Collections.emptyMap(),correlationId: String = "") {
+class FileRDDFactory(openSearch: OpenSearch, openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = "") {
 
   private val maxSpatialResolution = CellSize(10, 10)
-  protected val openSearch: OpenSearch = OpenSearch(new URL("http://oscars-01.vgt.vito.be:8080"))
 
   /**
    * Lookup OpenSearch Features
@@ -40,8 +38,8 @@ class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.
       from.toLocalDate,
       to.toLocalDate,
       boundingBox,
-      correlationId,
-      attributeValues.asScala.toMap
+      attributeValues = attributeValues.asScala.toMap,
+      correlationId = correlationId
     )
     return overlappingFeatures
   }
@@ -82,22 +80,38 @@ class FileRDDFactory(openSearchCollectionId: String, openSearchLinkTitles: util.
    * (e.g. oscars response is JSON-serialized)
    */
   def loadSpatialFeatureJsonRDD(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int, tileSize: Int = 256): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey]) = {
-    import org.openeo.geotrellis.file.FileRDDFactory.{toJson, jsonObject}
+    import org.openeo.geotrellis.file.FileRDDFactory.{jsonObject, toJson}
     val crdd = loadSpatialFeatureRDD(polygons, from_date, to_date, zoom, tileSize)
     val jrdd = crdd.map { case (key, feature) => jsonObject(
       "key" -> toJson(key),
+      "key_extent" -> toJson(crdd.metadata.mapTransform.keyToExtent(key)),
       "feature" -> jsonObject(
         "id" -> toJson(feature.id),
         "bbox" -> toJson(feature.bbox),
         "nominalDate" -> toJson(feature.nominalDate.toLocalDate.toString),
         "links" -> toJson(feature.links)
-      ))
-    }.toJavaRDD()
+      ),
+      "metadata" -> jsonObject(
+        "extent" -> toJson(crdd.metadata.extent),
+        "crs_epsg" -> crdd.metadata.crs.epsgCode.getOrElse(0).toString
+      )
+    )}.toJavaRDD()
+
     return (jrdd, crdd.metadata)
   }
 }
 
 object FileRDDFactory {
+
+  def oscars(openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = ""): FileRDDFactory = {
+    val openSearch: OpenSearch = OpenSearch.oscars(new URL("http://oscars-01.vgt.vito.be:8080"))
+    new FileRDDFactory(openSearch, openSearchCollectionId, openSearchLinkTitles, attributeValues, correlationId = correlationId)
+  }
+
+  def creo(openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = ""): FileRDDFactory = {
+    val openSearch: OpenSearch = OpenSearch.creo()
+    new FileRDDFactory(openSearch, openSearchCollectionId, openSearchLinkTitles, attributeValues, correlationId = correlationId)
+  }
 
   /*
    * Poor man's JSON serialization
@@ -117,6 +131,7 @@ object FileRDDFactory {
     s"""{"xmin": ${e.xmin}, "ymin": ${e.ymin}, "xmax": ${e.xmax}, "ymax": ${e.ymax}}"""
 
   def toJson(l: Link): String =
+    // TODO: href.toString fails with NullPointerException ???
     s"""{"href": {"file": ${toJson(l.href.getFile)}}, "title": ${toJson(l.title)}}"""
 
   def toJson(a: Array[Link]): String =

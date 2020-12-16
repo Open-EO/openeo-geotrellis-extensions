@@ -30,7 +30,9 @@ package object geotrellissentinelhub {
   // TODO: clean up JSON construction/parsing
   
   private val logger = LoggerFactory.getLogger(getClass)
-  private val authTokenCache = CacheBuilder // can be replaced with a memoizing supplier if we encapsulate this stuff
+
+  // TODO: invalidate key on 401 Unauthorized
+  private val authTokenCache = CacheBuilder
     .newBuilder()
     .expireAfterWrite(1800L, SECONDS)
     .build(new CacheLoader[(String, String), String] {
@@ -39,6 +41,7 @@ package object geotrellissentinelhub {
       }
     })
 
+  // TODO: use AuthApi
   private def retrieveAuthToken(clientId: String, clientSecret: String): String = {
     val getAuthToken = Http("https://services.sentinel-hub.com/oauth/token")
       .postForm(Seq(

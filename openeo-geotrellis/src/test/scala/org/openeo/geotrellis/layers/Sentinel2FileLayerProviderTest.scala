@@ -8,16 +8,17 @@ import java.time._
 import cats.data.NonEmptyList
 import geotrellis.layer.FloatingLayoutScheme
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
-import geotrellis.raster.CellSize
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
+import geotrellis.raster.{CellSize, ShortUserDefinedNoDataCellType}
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.SparkContext
+import org.apache.spark.util.SizeEstimator
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Ignore, Test}
 import org.openeo.geotrellis.TestImplicits._
@@ -166,6 +167,29 @@ class Sentinel2FileLayerProviderTest {
     spatialLayer.writeGeoTiff("/tmp/Sentinel2FileLayerProvider_multiband.tif", bbox)
   }
 
+
+  /**
+   *  Simulate 'patch extraction' as performed by WorldCereal.
+   *  This should be as efficiënt as possible, working in native projection.
+   */
+  @Test
+  def testPatchExtract(): Unit = {
+    val start = ZonedDateTime.of(LocalDate.of(2020, 4, 4), MIDNIGHT, UTC)
+    val end = ZonedDateTime.of(LocalDate.of(2020, 5, 5), MIDNIGHT, UTC)
+    val bbox = ProjectedExtent(Extent(687640, 5671180, 688280, 5671820), CRS.fromEpsgCode(32631))
+    //'(687640, 5671180, 688280, 5671820)'
+    val time = System.currentTimeMillis()
+    val layer = tocLayerProviderUTM.readMultibandTileLayer(from = start, to = end, bbox, sc = sc)
+
+    val localData = layer.collect()
+    println(SizeEstimator.estimate(localData))
+    println((System.currentTimeMillis()-time)/1000)
+    assertEquals(13,localData.length)
+    assertEquals(4,localData(0)._2.bandCount)
+    assertFalse(localData(0)._2.band(0).isNoDataTile)
+    assertEquals(ShortUserDefinedNoDataCellType(32767),localData(0)._2.band(0).cellType)
+  }
+
   @Ignore("TODO: verify output")
   @Test
   def filterByAttributeValue(): Unit = {
@@ -229,6 +253,17 @@ class Sentinel2FileLayerProviderTest {
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
       maxSpatialResolution,
       pathDateExtractor
+    )
+
+  private def tocLayerProviderUTM =
+    new FileLayerProvider(
+      openSearchEndpoint,
+      openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+      openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"),
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+      maxSpatialResolution,
+      pathDateExtractor,
+      layoutScheme = FloatingLayoutScheme(256)
     )
 
   private def sceneclassificationLayerProviderUTM =
