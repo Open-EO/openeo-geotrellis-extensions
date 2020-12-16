@@ -110,7 +110,7 @@ void build(tests = true){
         //use '--projects StatisticsMapReduce' in 'goals' to build specific module
         try {
             withCredentials([
-                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'CephS3'],
+                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'SentinelHubBatchS3'],
                     [$class: 'UsernamePasswordMultiBinding', credentialsId: 'SentinelHubGeodatadev', usernameVariable: 'SENTINELHUB_CLIENT_ID', passwordVariable: 'SENTINELHUB_CLIENT_SECRET']
             ]) {
                 buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts -U clean install'

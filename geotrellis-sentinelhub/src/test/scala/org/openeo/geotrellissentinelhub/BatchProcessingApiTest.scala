@@ -27,7 +27,7 @@ class BatchProcessingApiTest {
         dateTimes,
         bandNames = Seq("VV", "VH"),
         SampleType.FLOAT32,
-        bucketName = "openeo-sentinelhub-vito-test",
+        bucketName = "openeo-sentinelhub",
         description = "BatchProcessingApiTest.createBatchProcess",
         accessToken
       )
