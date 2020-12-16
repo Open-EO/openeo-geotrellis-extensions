@@ -27,7 +27,7 @@ object BatchProcessingService {
     })
 }
 
-class BatchProcessingService(clientId: String, clientSecret: String) {
+class BatchProcessingService(bucketName: String, clientId: String, clientSecret: String) {
   import BatchProcessingService._
 
   private def accessToken: String = accessTokenCache.get((clientId, clientSecret))
@@ -53,7 +53,7 @@ class BatchProcessingService(clientId: String, clientSecret: String) {
       dateTimes,
       band_names.asScala,
       sampleType,
-      bucketName = "openeo-sentinelhub-vito-test", // TODO: configure this somewhere (layercatalog.json?)
+      bucketName,
       description = s"$dataset_id $bbox $bbox_srs $from_date $to_date $band_names",
       accessToken
     ).id

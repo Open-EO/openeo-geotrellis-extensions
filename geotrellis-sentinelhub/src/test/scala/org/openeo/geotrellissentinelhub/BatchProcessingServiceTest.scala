@@ -7,7 +7,8 @@ import org.junit.{Ignore, Test}
 import java.util
 
 class BatchProcessingServiceTest {
-  private val batchProcessingService = new BatchProcessingService(Utils.clientId, Utils.clientSecret)
+  private val batchProcessingService = new BatchProcessingService(bucketName = "openeo-sentinelhub-vito-test",
+    Utils.clientId, Utils.clientSecret)
 
   @Ignore
   @Test
