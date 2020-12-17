@@ -35,7 +35,7 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
   override def gridExtent: GridExtent[Long] = sources.head.gridExtent
   override def cellType: CellType = sources.head.cellType
 
-  override def attributes: Map[String, String] = theAttributes
+  override def attributes: Map[String, String] = theAttributes // TODO: use override val attributes instead
   override def name: SourceName = sources.head.name
   override def bandCount: Int = sources.size
 
@@ -263,7 +263,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
         (key, (rasterRegion, tiledLayoutSource.source.name))
       }
     }.map{tuple => (tuple._1.spatialKey,tuple)}
-    // FIXME: doesn't this equal an inner join?
+    // TODO: doesn't this equal an inner join?
     val filteredRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = rasterRegionRDD.rightOuterJoin(requiredKeys).flatMap { t=> t._2._1.toList}
 
     rasterRegionsToTiles(filteredRDD,metadata)
@@ -310,7 +310,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
   }
 
   private def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, sc:SparkContext): Seq[RasterSource] = {
-    require(zoom >= 0)
+    require(zoom >= 0) // TODO: remove zoom and sc parameters
 
     val overlappingFeatures = openSearch.getProducts(
       collectionId = openSearchCollectionId,
