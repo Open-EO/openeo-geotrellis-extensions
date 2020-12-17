@@ -101,12 +101,10 @@ class BatchProcessingApi {
   }
 
   private def evalScript(bandNames: Seq[String], identifiers: Seq[String], sampleType: SampleType): String = {
-    val quotedBandNames = bandNames.map(bandName => s""""$bandName"""")
-
     val outputs = identifiers map { identifier =>
       s"""|{
           |    id: "$identifier",
-          |    bands: 2,
+          |    bands: ${bandNames.size},
           |    sampleType: "$sampleType"
           |}""".stripMargin
     }
@@ -114,6 +112,11 @@ class BatchProcessingApi {
     val evaluatePixelReturnProperties = identifiers.zipWithIndex map { case (identifier, i) =>
       s"$identifier: bandValues(samples, scenes, $i)"
     }
+
+    val quotedBandNames = bandNames.map(bandName => s""""$bandName"""")
+
+    val bandValues = bandNames.map(bandName => s"samples[sampleIndex].$bandName")
+    val noDataValues = bandNames.map(_ => "0")
 
     s"""|//VERSION=3
         |function setup() {
@@ -136,7 +139,7 @@ class BatchProcessingApi {
         |    }
         |
         |    let sampleIndex = indexOf(sceneIdx)
-        |    return sampleIndex >= 0 ? [samples[sampleIndex].VV, samples[sampleIndex].VH] : [0, 0]
+        |    return sampleIndex >= 0 ? [${bandValues mkString ","}] : [${noDataValues mkString ","}]
         |}
         |""".stripMargin
   }
