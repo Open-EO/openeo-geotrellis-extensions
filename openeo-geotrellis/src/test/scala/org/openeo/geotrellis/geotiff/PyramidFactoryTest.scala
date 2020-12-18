@@ -155,7 +155,8 @@ class PyramidFactoryTest {
       s3_uri = s"s3://openeo-sentinelhub/$batchProcessId/",
       key_regex = raw".*\.tif",
       date_regex = raw".*_(\d{4})(\d{2})(\d{2}).tif",
-      recursive = true
+      recursive = true,
+      interpret_as_cell_type = "float32ud0"
     )
 
     val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
