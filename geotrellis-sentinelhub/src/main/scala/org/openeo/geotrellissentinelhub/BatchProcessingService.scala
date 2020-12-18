@@ -6,12 +6,15 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
 import org.slf4j.LoggerFactory
 import scalaj.http.HttpStatusException
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.{Delete, DeleteObjectsRequest, ListObjectsV2Request, ObjectIdentifier, S3Object}
 
 import java.time.ZoneOffset.UTC
 import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
 import java.util.concurrent.TimeUnit.MINUTES
 import scala.collection.JavaConverters._
+import scala.compat.java8.FunctionConverters._
 
 object BatchProcessingService {
   private val logger = LoggerFactory.getLogger(classOf[BatchProcessingService])
@@ -69,4 +72,34 @@ class BatchProcessingService(bucketName: String, clientId: String, clientSecret:
 
   def get_batch_process_status(batchRequestId: String): String =
     new BatchProcessingApi().getBatchProcess(batchRequestId, accessToken).status
+
+  def delete_batch_process_results(batchRequestId: String): Unit = {
+    val s3Client = S3Client.builder()
+      .build()
+
+    val listObjectsResponse = s3Client.listObjectsV2Paginator(
+      ListObjectsV2Request.builder()
+        .bucket(bucketName)
+        .prefix(batchRequestId)
+        .build()
+    )
+
+    val objectIdentifiers = {
+      val toObjectIdentifier: S3Object => ObjectIdentifier =
+        obj => ObjectIdentifier.builder().key(obj.key()).build()
+
+      listObjectsResponse.contents().stream()
+        .map[ObjectIdentifier](toObjectIdentifier.asJava)
+        .collect(util.stream.Collectors.toList[ObjectIdentifier])
+    }
+
+    objectIdentifiers.forEach(asJavaConsumer[Any](println))
+
+    val deleteObjectsRequest = DeleteObjectsRequest.builder()
+      .bucket(bucketName)
+      .delete(Delete.builder().objects(objectIdentifiers).build())
+      .build()
+
+    s3Client.deleteObjects(deleteObjectsRequest)
+  }
 }
