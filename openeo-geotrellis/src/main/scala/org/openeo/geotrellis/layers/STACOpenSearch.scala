@@ -21,7 +21,6 @@ class STACOpenSearch(endpoint: URL=new URL("https://earth-search.aws.element84.c
     def from(startIndex: Int): Seq[Feature] = {
       val FeatureCollection(itemsPerPage, features) = getProducts(collectionId, start, end, bbox, processingLevel, attributeValues, startIndex, correlationId = correlationId)
       if (itemsPerPage <= 0) Seq() else features ++ from(startIndex + 1)
-      features
     }
 
     from(startIndex = 1)
@@ -35,7 +34,7 @@ class STACOpenSearch(endpoint: URL=new URL("https://earth-search.aws.element84.c
     val getProducts = http(s"$endpoint/search")
       .param("datetime",start.format(ISO_DATE_TIME)+"/"+end.format(ISO_DATE_TIME))
       .param("collections","[\""+collectionId+"\"]")
-      .param("limit","20")
+      .param("limit","200")
       .param("bbox", "["+(Array(xMin, yMin, xMax, yMax) mkString ",") + "]")
       .param("page",startIndex.toString)
 
