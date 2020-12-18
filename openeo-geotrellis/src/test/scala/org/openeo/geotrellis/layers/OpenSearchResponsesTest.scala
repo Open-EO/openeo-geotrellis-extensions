@@ -19,6 +19,22 @@ class OpenSearchResponsesTest {
   }
 
   @Test
+  def parseSTACItemsResponse(): Unit = {
+    val productsResponse = loadJsonResource("/org/openeo/geotrellis/layers/stacItemsResponse.json")
+    val features = OpenSearchResponses.STACFeatureCollection.parse(productsResponse).features
+    assertEquals(1, features.length)
+
+    assertEquals(Extent(80.15231456198393, 5.200107055229471, 81.08809406509769, 5.428209952833148), features.head.bbox)
+
+
+    val Some(dataUrl) = features.head.links
+      .find(_.title.getOrElse("") contains "SCL")
+      .map(_.href)
+
+    assertEquals(new URL("https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/44/N/ML/2020/12/S2A_44NML_20201218_0_L2A/SCL.tif"), dataUrl)
+  }
+
+  @Test
   def parseProductsResponse(): Unit = {
     val productsResponse = loadJsonResource("/org/openeo/geotrellis/layers/oscarsProductsResponse.json")
     val features = OpenSearchResponses.FeatureCollection.parse(productsResponse).features

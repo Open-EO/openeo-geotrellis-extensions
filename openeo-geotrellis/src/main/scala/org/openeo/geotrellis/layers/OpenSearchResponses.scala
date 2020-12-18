@@ -1,14 +1,14 @@
 package org.openeo.geotrellis.layers
 
+import java.net.URL
+import java.time.ZonedDateTime
+
 import _root_.io.circe.parser.decode
 import cats.syntax.either._
 import cats.syntax.show._
 import io.circe.generic.auto._
 import io.circe.{Decoder, HCursor, Json}
 import geotrellis.vector._
-
-import java.net.URL
-import java.time.ZonedDateTime
 
 object OpenSearchResponses {
   implicit val decodeUrl: Decoder[URL] = Decoder.decodeString.map(new URL(_))
@@ -33,6 +33,42 @@ object OpenSearchResponses {
             val extent = Extent(xMin, yMin, xMax, yMax)
 
             Feature(id, extent, nominalDate, links.values.flatten.toArray, resolution)
+          }
+        }
+      }
+
+      decode[FeatureCollection](json)
+        .valueOr(e => throw new IllegalArgumentException(s"${e.show} while parsing '$json'", e))
+    }
+  }
+
+  object STACFeatureCollection {
+    def parse(json: String): FeatureCollection = {
+      implicit val decodeFeature: Decoder[Feature] = new Decoder[Feature] {
+        override def apply(c: HCursor): Decoder.Result[Feature] = {
+          for {
+            id <- c.downField("id").as[String]
+            bbox <- c.downField("bbox").as[Array[Double]]
+            nominalDate <- c.downField("properties").downField("datetime").as[ZonedDateTime]
+            links <- c.downField("assets").as[Map[String, Link]]
+            resolution = c.downField("properties").downField("gsd").as[Int].toOption
+          } yield {
+            val Array(xMin, yMin, xMax, yMax) = bbox
+            val extent = Extent(xMin, yMin, xMax, yMax)
+
+            val harmonizedLinks = links.map { t => Link(t._2.href, Some(t._1)) }
+            Feature(id, extent, nominalDate, harmonizedLinks.toArray, resolution)
+          }
+        }
+      }
+
+      implicit val decodeFeatureCollection: Decoder[FeatureCollection] = new Decoder[FeatureCollection] {
+        override def apply(c: HCursor): Decoder.Result[FeatureCollection] = {
+          for {
+            itemsPerPage <- c.downField("numberReturned").as[Int]
+            features <- c.downField("features").as[Array[Feature]]
+          } yield {
+            FeatureCollection(itemsPerPage, features)
           }
         }
       }
