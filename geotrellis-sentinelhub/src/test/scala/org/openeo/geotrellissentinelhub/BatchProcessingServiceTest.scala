@@ -33,10 +33,4 @@ class BatchProcessingServiceTest {
 
     assertEquals("DONE", status)
   }
-
-  @Ignore
-  @Test
-  def deleteBatchProcessResults(): Unit = {
-    batchProcessingService.delete_batch_process_results("11065294-c2ca-434e-8a62-fed47fd7d105")
-  }
 }
