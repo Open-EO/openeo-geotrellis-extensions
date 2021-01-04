@@ -19,11 +19,6 @@
         </dependency>
         <dependency>
             <groupId>org.openeo</groupId>
-            <artifactId>geotrellis-sentinelhub</artifactId>
-            <version>${parent.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.openeo</groupId>
             <artifactId>geotrellis-accumulo-extensions</artifactId>
             <version>${parent.version}</version>
         </dependency>
@@ -96,6 +91,12 @@
             <artifactId>geotrellis-shapefile_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.locationtech.geotrellis</groupId>
+            <artifactId>geotrellis-gdal_${scala.binary.version}</artifactId>
+            <version>${geotrellis.version}</version>
+            <scope>compile</scope>
         </dependency>
     </dependencies>
     <build>

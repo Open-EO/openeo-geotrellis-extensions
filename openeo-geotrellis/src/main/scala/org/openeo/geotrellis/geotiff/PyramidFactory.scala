@@ -1,30 +1,32 @@
 package org.openeo.geotrellis.geotiff
 
 import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
+import java.time.ZoneId
 import java.time.{LocalDate, ZonedDateTime}
-
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource}
-import geotrellis.raster.{MultibandTile, RasterSource}
+import geotrellis.raster.{CellType, InterpretAsTargetCellType, MultibandTile, RasterRegion, RasterSource}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.store.hadoop.util.HdfsUtils
 import geotrellis.store.s3.{AmazonS3URI, S3ClientProducer}
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
-import org.apache.spark.SparkContext
+import org.apache.spark.{Partitioner, SparkContext}
+import org.apache.spark.rdd.RDD
+import org.openeo.geotrellis.ProjectedPolygons
 import software.amazon.awssdk.services.s3.model.ListObjectsRequest
 
 import scala.collection.JavaConverters.collectionAsScalaIterableConverter
+import scala.reflect.ClassTag
 import scala.util.matching.Regex
 
 object PyramidFactory {
-  def from_disk(glob_pattern: String, date_regex: String): PyramidFactory = {
+  def from_disk(glob_pattern: String, date_regex: String): PyramidFactory =
     new PyramidFactory({
       val path = { // default to file: scheme
         val path = new Path(glob_pattern)
@@ -39,21 +41,21 @@ object PyramidFactory {
       HdfsUtils.listFiles(path, new Configuration)
         .map(path => (GeoTiffRasterSource(path.toString), deriveDate(path.toString, date_regex.r)))
     }, date_regex.r)
-  }
 
-  def from_s3(s3_uri: String, key_regex: String = ".*", date_regex: String): PyramidFactory = {
+  def from_s3(s3_uri: String, key_regex: String = ".*", date_regex: String, recursive: Boolean = false,
+              interpret_as_cell_type: String = null): PyramidFactory =
     new PyramidFactory({
       // adapted from geotrellis.spark.io.s3.geotiff.S3GeoTiffInput.list
       val s3Uri = new AmazonS3URI(s3_uri)
       val keyPattern = key_regex.r
 
-      val request = ListObjectsRequest.builder()
+      val requestBuilder = ListObjectsRequest.builder()
         .bucket(s3Uri.getBucket)
         .prefix(s3Uri.getKey)
-        .delimiter("/")
-        .build()
 
-      S3ClientProducer.get.apply()
+      val request = (if (recursive) requestBuilder else requestBuilder.delimiter("/")).build()
+
+      S3ClientProducer.get()
         .listObjects(request)
         .contents()
         .asScala
@@ -62,15 +64,22 @@ object PyramidFactory {
           case keyPattern(_*) => Some(new AmazonS3URI(s"s3://${s3Uri.getBucket}/${key}"))
           case _ => None
         })
-        .map(uri => (GeoTiffRasterSource(uri.toString), deriveDate(uri.getKey, date_regex.r))).toSeq
+        .map(uri =>
+          (GeoTiffRasterSource(uri.toString, parseTargetCellType(interpret_as_cell_type)),
+            deriveDate(uri.getKey, date_regex.r))
+        ).toSeq
     }, date_regex.r)
-  }
 
   private def deriveDate(filename: String, date: Regex): ZonedDateTime = {
     filename match {
-      case date(year, month, day) => ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), MIDNIGHT, UTC)
+      case date(year, month, day) => ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), MIDNIGHT, ZoneId.of("UTC"))
     }
   }
+
+  private def parseTargetCellType(targetCellType: String): Option[InterpretAsTargetCellType] =
+    Option(targetCellType)
+      .map(CellType.fromName)
+      .map(InterpretAsTargetCellType.apply)
 }
 
 class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime)], date: Regex) {
@@ -147,12 +156,54 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
     val layerMetadata = summary.toTileLayerMetadata(layout, keyExtractor.getKey)
 
     // FIXME: supply our own RasterSummary? (use bounds)
-    RasterSourceRDD.tiledLayerRDD(
+    tiledLayerRDD(
       sources,
       layout,
       keyExtractor,
-      rasterSummary = Some(summary),
-      partitioner = Some(SpacePartitioner(layerMetadata.bounds))
+      layerMetadata,
+      SpacePartitioner(layerMetadata.bounds)
     )
+  }
+
+  // adapted from geotrellis.spark.RasterSourceRDD.tiledLayerRDD
+  private def tiledLayerRDD[K: SpatialComponent: Boundable: ClassTag, M: Boundable](
+    sources: RDD[RasterSource],
+    layout: LayoutDefinition,
+    keyExtractor: KeyExtractor.Aux[K, M],
+    layerMetadata: TileLayerMetadata[K],
+    partitioner: Partitioner
+  ): MultibandTileLayerRDD[K] = {
+    val tiledLayoutSourceRDD =
+      sources.map { rs =>
+        val m = keyExtractor.getMetadata(rs)
+        val tileKeyTransform: SpatialKey => K = { sk => keyExtractor.getKey(m, sk) }
+        rs.tileToLayout(layout, tileKeyTransform)
+      }
+
+    val rasterRegionRDD: RDD[(K, RasterRegion)] =
+      tiledLayoutSourceRDD.flatMap { _.keyedRasterRegions() }
+
+    val tiledRDD: RDD[(K, MultibandTile)] =
+      rasterRegionRDD
+        .groupByKey(partitioner)
+        .mapValues { overlappingRasterRegions =>
+          overlappingRasterRegions
+            .flatMap(_.raster.map(_.tile))
+            .reduce(_ merge _)
+        }
+
+    ContextRDD(tiledRDD, layerMetadata)
+  }
+
+  def datacube_seq(polygons: ProjectedPolygons, from_date: String, to_date: String):
+  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+    // TODO: optimize
+    implicit val sc: SparkContext = SparkContext.getOrCreate()
+
+    val boundingBox = ProjectedExtent(polygons.polygons.toTraversable.extent, polygons.crs)
+    val from = if (from_date != null) ZonedDateTime.parse(from_date) else null
+    val to = if (to_date != null) ZonedDateTime.parse(to_date) else null
+
+    Seq(0 -> layer(boundingBox, from, to))
   }
 }

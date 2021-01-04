@@ -3,17 +3,15 @@ package org.openeo.geotrellis.layers
 import java.io.IOException
 import java.net.URL
 import java.time.ZoneOffset.UTC
-import java.time.format.DateTimeFormatter.ISO_INSTANT
 import java.time.{LocalDate, OffsetTime, ZonedDateTime}
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeUnit.SECONDS
+import java.util.concurrent.atomic.AtomicLong
 
-import geotrellis.proj4.LatLng
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector.ProjectedExtent
 import org.openeo.geotrellis.layers.OpenSearchResponses.{Feature, FeatureCollection}
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpOptions, HttpRequest, HttpStatusException}
-import java.util.concurrent.TimeUnit.SECONDS
-import java.util.concurrent.atomic.AtomicLong
 
 import scala.annotation.tailrec
 import scala.collection.Map
@@ -22,66 +20,53 @@ object OpenSearch {
   private val logger = LoggerFactory.getLogger(classOf[OpenSearch])
   private val requestCounter = new AtomicLong
 
-  def apply(endpoint: URL) = new OpenSearch(endpoint)
+
+  def oscars(endpoint: URL) = new OscarsOpenSearch(endpoint)
+  def creo() = new CreoOpenSearch
+
+  def apply(endpoint:URL):OpenSearch = {
+    endpoint.toString match {
+      case s if(s.contains("creo")) => creo()
+      case s if(s.contains("aws")) => new STACOpenSearch(endpoint)
+      case _ => oscars(endpoint)
+    }
+
+  }
+
 }
 
-class OpenSearch(endpoint: URL) {
+abstract class OpenSearch {
   import OpenSearch._
 
   def getProducts(collectionId: String, from: LocalDate, to: LocalDate, bbox: ProjectedExtent,
-                  correlationId: String = "", attributeValues: Map[String, Any] = Map()): Seq[Feature] = {
+                  processingLevel: String = "", attributeValues: Map[String, Any] = Map(),
+                  correlationId: String = ""): Seq[Feature] = {
     val endOfDay = OffsetTime.of(23, 59, 59, 999999999, UTC)
 
     val start = from.atStartOfDay(UTC)
     val end = to.atTime(endOfDay).toZonedDateTime
 
-    getProducts(collectionId, start, end, bbox, correlationId, attributeValues)
+    getProducts(collectionId, start, end, bbox, processingLevel, attributeValues, correlationId=correlationId)
   }
 
   def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
-                  correlationId: String, attributeValues: Map[String, Any]): Seq[Feature] = {
-    def from(startIndex: Int): Seq[Feature] = {
-      val FeatureCollection(itemsPerPage, features) = getProducts(collectionId, start, end, bbox, correlationId, attributeValues, startIndex)
-      if (itemsPerPage <= 0) Seq() else features ++ from(startIndex + itemsPerPage)
-    }
+                  processingLevel: String, attributeValues: Map[String, Any],
+                  correlationId: String): Seq[Feature]
 
-    from(startIndex = 1)
-  }
+  def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
+                  processingLevel: String,
+                  correlationId: String): Seq[Feature] =
+    getProducts(collectionId, start, end, bbox, processingLevel, Map[String, Any](), correlationId=correlationId)
 
-  def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, correlationId: String): Seq[Feature] =
-    getProducts(collectionId, start, end, bbox, correlationId, Map[String, Any]())
+  protected def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
+                            processingLevel: String,  attributeValues: Map[String, Any], startIndex: Int,
+                            correlationId: String): FeatureCollection
 
-  private def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
-                          correlationId: String, attributeValues: Map[String, Any], startIndex: Int): FeatureCollection = {
-    val Extent(xMin, yMin, xMax, yMax) = bbox.reproject(LatLng)
+  def getCollections(correlationId: String = ""): Seq[Feature]
 
-    val getProducts = http(s"$endpoint/products")
-      .param("collection", collectionId)
-      .param("start", start format ISO_INSTANT)
-      .param("end", end format ISO_INSTANT)
-      .param("bbox", Array(xMin, yMin, xMax, yMax) mkString ",")
-      .param("sortKeys", "title") // paging requires deterministic order
-      .param("startIndex", startIndex.toString)
-      .param("accessedFrom", "MEP") // get direct access links instead of download urls
-      .params(attributeValues.mapValues(_.toString).toSeq)
-      .param("clientId", clientId(correlationId))
+  protected def http(url: String): HttpRequest = Http(url).option(HttpOptions.followRedirects(true))
 
-    val json = withRetries { execute(getProducts) }
-    FeatureCollection.parse(json)
-  }
-
-  def getCollections(correlationId: String = ""): Seq[Feature] = {
-    val getCollections = http(s"$endpoint/collections")
-      .option(HttpOptions.followRedirects(true))
-      .param("clientId", clientId(correlationId))
-
-    val json = withRetries { execute(getCollections) }
-    FeatureCollection.parse(json).features
-  }
-
-  private def http(url: String): HttpRequest = Http(url).option(HttpOptions.followRedirects(true))
-
-  private def clientId(correlationId: String): String = {
+  protected def clientId(correlationId: String): String = {
     if (correlationId.isEmpty) correlationId
     else {
       val count = requestCounter.getAndIncrement()
@@ -89,7 +74,7 @@ class OpenSearch(endpoint: URL) {
     }
   }
 
-  private def execute(request: HttpRequest): String = {
+  protected def execute(request: HttpRequest): String = {
     val url = request.urlBuilder(request)
     val response = request.asString
 
@@ -104,7 +89,7 @@ class OpenSearch(endpoint: URL) {
     json
   }
 
-  private def withRetries[R](action: => R): R = {
+  protected def withRetries[R](action: => R): R = {
     @tailrec
     def attempt[R](retries: Int, delay: (Long, TimeUnit))(action: => R): R = {
       val (amount, timeUnit) = delay
