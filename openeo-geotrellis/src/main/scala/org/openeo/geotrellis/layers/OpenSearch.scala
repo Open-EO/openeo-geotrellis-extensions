@@ -3,17 +3,15 @@ package org.openeo.geotrellis.layers
 import java.io.IOException
 import java.net.URL
 import java.time.ZoneOffset.UTC
-import java.time.format.DateTimeFormatter.ISO_INSTANT
 import java.time.{LocalDate, OffsetTime, ZonedDateTime}
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeUnit.SECONDS
+import java.util.concurrent.atomic.AtomicLong
 
-import geotrellis.proj4.LatLng
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector.ProjectedExtent
 import org.openeo.geotrellis.layers.OpenSearchResponses.{Feature, FeatureCollection}
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpOptions, HttpRequest, HttpStatusException}
-import java.util.concurrent.TimeUnit.SECONDS
-import java.util.concurrent.atomic.AtomicLong
 
 import scala.annotation.tailrec
 import scala.collection.Map
@@ -22,8 +20,19 @@ object OpenSearch {
   private val logger = LoggerFactory.getLogger(classOf[OpenSearch])
   private val requestCounter = new AtomicLong
 
+
   def oscars(endpoint: URL) = new OscarsOpenSearch(endpoint)
   def creo() = new CreoOpenSearch
+
+  def apply(endpoint:URL):OpenSearch = {
+    endpoint.toString match {
+      case s if(s.contains("creo")) => creo()
+      case s if(s.contains("aws")) => new STACOpenSearch(endpoint)
+      case _ => oscars(endpoint)
+    }
+
+  }
+
 }
 
 abstract class OpenSearch {

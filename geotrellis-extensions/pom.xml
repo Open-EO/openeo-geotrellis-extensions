@@ -66,6 +66,11 @@
             </exclusions>
         </dependency>
         <dependency>
+            <groupId>org.openeo</groupId>
+            <artifactId>geotrellis-sentinelhub</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>url-connection-client</artifactId>
             <version>2.13.74</version>

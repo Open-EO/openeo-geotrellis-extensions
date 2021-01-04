@@ -1,12 +1,12 @@
 package org.openeo.geotrellis.layers
 
+import java.net.URL
+import java.time.LocalDate
+
 import geotrellis.proj4.LatLng
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.Assert._
 import org.junit.Test
-
-import java.net.URL
-import java.time.LocalDate
 
 class OpenSearchTest {
 
@@ -43,5 +43,24 @@ class OpenSearchTest {
 
     println(s"got ${features.size} features")
     assertTrue(features.nonEmpty)
+  }
+
+  @Test
+  def testSTAC(): Unit = {
+    val openSearch = new STACOpenSearch()
+
+    val features = openSearch.getProducts(
+      collectionId = "sentinel-s2-l2a-cogs",
+      processingLevel = "LEVEL2A",
+      from = LocalDate.of(2020, 10, 1),
+      to = LocalDate.of(2020, 10, 5),
+      bbox = ProjectedExtent(Extent(2.688081576665092, 50.71625006623287, 5.838282906674661, 51.42339628212806),
+        LatLng),
+      correlationId = "hello"
+    )
+
+    println(s"got ${features.size} features")
+    assertTrue(features.nonEmpty)
+    assertEquals(15,features.length)
   }
 }

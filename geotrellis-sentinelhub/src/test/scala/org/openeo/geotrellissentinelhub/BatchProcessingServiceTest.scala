@@ -7,7 +7,7 @@ import org.junit.{Ignore, Test}
 import java.util
 
 class BatchProcessingServiceTest {
-  private val batchProcessingService = new BatchProcessingService(bucketName = "openeo-sentinelhub-vito-test",
+  private val batchProcessingService = new BatchProcessingService(bucketName = "openeo-sentinelhub",
     Utils.clientId, Utils.clientSecret)
 
   @Ignore
@@ -29,7 +29,7 @@ class BatchProcessingServiceTest {
 
   @Test
   def getBatchProcessStatus(): Unit = {
-    val status = batchProcessingService.get_batch_process_status(batchRequestId = "8e1f83d5-1a65-4de3-9430-ba0435533647")
+    val status = batchProcessingService.get_batch_process_status(batchRequestId = "7f3d98f2-4a9a-4fbe-adac-973f1cff5699")
 
     assertEquals("DONE", status)
   }

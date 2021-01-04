@@ -139,24 +139,24 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = 10)
   }
 
-  @Ignore("there's no dedicated S3 bucket yet")
   @Test
   def sentinelHubBatchProcessApiGeoTiffFromS3ForMultipleDates(): Unit = {
-    assertNotNull("aws.accessKeyId is not set", System.getProperty("aws.accessKeyId"))
-    assertNotNull("aws.secretAccessKey is not set", System.getProperty("aws.secretAccessKey"))
+    assertNotNull("AWS_ACCESS_KEY_ID is not set", System.getenv("AWS_ACCESS_KEY_ID"))
+    assertNotNull("AWS_SECRET_ACCESS_KEY is not set", System.getenv("AWS_SECRET_ACCESS_KEY"))
     System.setProperty("aws.region", "eu-central-1")
 
     val boundingBox = ProjectedExtent(Extent(2.59003, 51.069, 2.8949, 51.2206), CRS.fromEpsgCode(4326))
 
-    val batchProcessId = "8e1f83d5-1a65-4de3-9430-ba0435533647"
+    val batchProcessId = "7f3d98f2-4a9a-4fbe-adac-973f1cff5699"
 
     // the results for this batch process obviously only contain the dates that were requested in the first place so
     // no additional key filtering is necessary here
     val pyramidFactory = PyramidFactory.from_s3(
-      s3_uri = s"s3://openeo-sentinelhub-vito-test/$batchProcessId/",
+      s3_uri = s"s3://openeo-sentinelhub/$batchProcessId/",
       key_regex = raw".*\.tif",
       date_regex = raw".*_(\d{4})(\d{2})(\d{2}).tif",
-      recursive = true
+      recursive = true,
+      interpret_as_cell_type = "float32ud0"
     )
 
     val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"

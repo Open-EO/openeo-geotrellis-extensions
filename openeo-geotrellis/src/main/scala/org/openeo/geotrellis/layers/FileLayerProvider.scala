@@ -35,7 +35,7 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
   override def gridExtent: GridExtent[Long] = sources.head.gridExtent
   override def cellType: CellType = sources.head.cellType
 
-  override def attributes: Map[String, String] = theAttributes
+  override def attributes: Map[String, String] = theAttributes // TODO: use override val attributes instead
   override def name: SourceName = sources.head.name
   override def bandCount: Int = sources.size
 
@@ -225,8 +225,8 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
     logger.warn("Experimental features enabled for: " + openSearchCollectionId)
   }
 
-  private val _rootPath = Paths.get(rootPath)
-  private val openSearch: OpenSearch = OpenSearch.oscars(openSearchEndpoint)
+  private val _rootPath = if(rootPath != null) Paths.get(rootPath) else null
+  private val openSearch: OpenSearch = OpenSearch(openSearchEndpoint)
 
   val openSearchLinkTitlesWithBandIds: Seq[(String, Seq[Int])] = openSearchLinkTitles.toList.zipAll(bandIds, "", Seq(0))
 
@@ -263,7 +263,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
         (key, (rasterRegion, tiledLayoutSource.source.name))
       }
     }.map{tuple => (tuple._1.spatialKey,tuple)}
-    // FIXME: doesn't this equal an inner join?
+    // TODO: doesn't this equal an inner join?
     val filteredRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = rasterRegionRDD.rightOuterJoin(requiredKeys).flatMap { t=> t._2._1.toList}
 
     rasterRegionsToTiles(filteredRDD,metadata)
@@ -279,13 +279,14 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
     // as oscars requests now use accessedFrom=MEP, we will normally always get file paths
     case "file" => // e.g. file:/data/MTDA_DEV/CGS_S2_DEV/FAPAR_V2/2020/03/19/S2A_20200319T032531_48SXD_FAPAR_V200/10M/S2A_20200319T032531_48SXD_FAPAR_10M_V200.tif
       href.getPath.replaceFirst("CGS_S2_DEV", "CGS_S2") // temporary workaround?
-    case "https" => // e.g. https://oscars-dev.vgt.vito.be/download/FAPAR_V2/2020/03/20/S2B_20200320T102639_33VVF_FAPAR_V200/10M/S2B_20200320T102639_33VVF_FAPAR_10M_V200.tif
+    case "https" if( _rootPath !=null ) => // e.g. https://oscars-dev.vgt.vito.be/download/FAPAR_V2/2020/03/20/S2B_20200320T102639_33VVF_FAPAR_V200/10M/S2B_20200320T102639_33VVF_FAPAR_10M_V200.tif
       val subPath = href.getPath
         .split("/")
         .drop(4) // the empty string at the front too
         .mkString("/")
 
       (_rootPath resolve subPath).toString
+    case _ => href.toString
   }
 
   private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent): List[(RasterSource, Seq[Int])] = {
@@ -310,7 +311,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
   }
 
   private def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, sc:SparkContext): Seq[RasterSource] = {
-    require(zoom >= 0)
+    require(zoom >= 0) // TODO: remove zoom and sc parameters
 
     val overlappingFeatures = openSearch.getProducts(
       collectionId = openSearchCollectionId,

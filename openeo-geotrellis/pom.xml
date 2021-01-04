@@ -19,11 +19,6 @@
         </dependency>
         <dependency>
             <groupId>org.openeo</groupId>
-            <artifactId>geotrellis-sentinelhub</artifactId>
-            <version>${parent.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.openeo</groupId>
             <artifactId>geotrellis-accumulo-extensions</artifactId>
             <version>${parent.version}</version>
         </dependency>
