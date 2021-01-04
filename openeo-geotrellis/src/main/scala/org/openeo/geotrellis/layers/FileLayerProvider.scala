@@ -298,7 +298,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
         GeoTiffResampleRasterSource(path, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None)
         //GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType)
       }else {
-        GeoTiffRasterSource(path, targetCellType)
+        GeoTiffResampleRasterSource(path, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None)
       }
     }
 
@@ -349,7 +349,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
     }
     val sources = sc.parallelize(rasterSources,rasterSources.size)
 
-    val noResampling = metadata.layout.cellSize==maxSpatialResolution && experimental
+    val noResampling = metadata.layout.cellSize==maxSpatialResolution
     sc.setJobDescription("Load tiles: "+openSearchCollectionId + " rs: " + noResampling)
     val tiledLayoutSourceRDD =
       sources.map { rs =>
