@@ -95,7 +95,7 @@ String updateMavenVersion(){
 }
 
 void build(tests = true){
-    def publishable_branches = ["master","develop"]
+    def publishable_branches = ["master","develop", "feature/spark3"]
     String jdktool = tool name: "OpenJDK 8 Centos7", type: 'hudson.model.JDK'
     List jdkEnv = ["PATH+JDK=${jdktool}/bin", "JAVA_HOME=${jdktool}", "HADOOP_CONF_DIR=/etc/hadoop/conf/"]
     withEnv(jdkEnv) {
