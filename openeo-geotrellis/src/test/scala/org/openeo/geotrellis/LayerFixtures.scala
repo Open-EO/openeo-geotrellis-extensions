@@ -8,7 +8,7 @@ import java.util.Collections.singletonList
 
 import geotrellis.layer.{Bounds, KeyBounds, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.proj4.LatLng
-import geotrellis.raster.{ArrayMultibandTile, ArrayTile, MultibandTile, Tile, TileLayout}
+import geotrellis.raster.{ArrayMultibandTile, ArrayTile, CellSize, MultibandTile, Tile, TileLayout}
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.vector.{Extent, ProjectedExtent}
@@ -21,13 +21,15 @@ object LayerFixtures {
 
   def ClearNDVILayerForSingleDate()(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] ={
     val factory = new Sentinel2PyramidFactory(
-      oscarsCollectionId = "urn:eop:VITO:TERRASCOPE_S2_NDVI_V2",
-      oscarsLinkTitles = singletonList("NDVI_10M"),
-      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/NDVI_V2"
+      openSearchEndpoint = "http://oscars-01.vgt.vito.be:8080",
+      openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_NDVI_V2",
+      openSearchLinkTitles = singletonList("NDVI_10M"),
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/NDVI_V2",
+      maxSpatialResolution = CellSize(10, 10)
     )
     val dateWithClearPostelArea = ZonedDateTime.of(LocalDate.of(2020, 5, 5), MIDNIGHT, UTC)
     val bbox = ProjectedExtent(Extent(5.176178620365679,51.24922676145928,5.258576081303179,51.27449711952613), LatLng)
-    val layer = factory.layer(bbox, dateWithClearPostelArea, dateWithClearPostelArea, 11)
+    val layer = factory.layer(bbox, dateWithClearPostelArea, dateWithClearPostelArea, 11, correlationId = "")
     return layer
   }
 
@@ -77,10 +79,12 @@ object LayerFixtures {
   def s2_fapar(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent)=accumuloDataCube("S2_FAPAR_PYRAMID_20200408", from_date, to_date, bbox, "EPSG:4326")
 
   def sceneClassificationV200PyramidFactory = new Sentinel2PyramidFactory(
-    oscarsCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
-    oscarsLinkTitles = singletonList("SCENECLASSIFICATION_20M"),
-    rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"
+    openSearchEndpoint = "http://oscars-01.vgt.vito.be:8080",
+    openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+    openSearchLinkTitles = singletonList("SCENECLASSIFICATION_20M"),
+    rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+    maxSpatialResolution = CellSize(10, 10)
   )
 
-  def s2_scl(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent) = sceneClassificationV200PyramidFactory.layer(ProjectedExtent(defaultExtent,LatLng),ZonedDateTime.parse(from_date),ZonedDateTime.parse(to_date),12)(SparkContext.getOrCreate())
+  def s2_scl(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent) = sceneClassificationV200PyramidFactory.layer(ProjectedExtent(defaultExtent,LatLng),ZonedDateTime.parse(from_date),ZonedDateTime.parse(to_date),12, correlationId = "")(SparkContext.getOrCreate())
 }

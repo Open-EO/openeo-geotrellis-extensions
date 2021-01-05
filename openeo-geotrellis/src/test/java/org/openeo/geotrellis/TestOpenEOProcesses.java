@@ -25,7 +25,6 @@ import java.util.Map;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
-
 public class TestOpenEOProcesses {
 
     @BeforeClass
@@ -110,7 +109,7 @@ public class TestOpenEOProcesses {
         maskTile.set(0,2,1);
 
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> maskRDD = tileToSpaceTimeDataCube(maskTile);
-        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> masked = new OpenEOProcesses().rasterMask(tileLayerRDD, maskRDD, 10.0);
+        RDD<Tuple2<SpaceTimeKey, MultibandTile>> masked = new OpenEOProcesses().rasterMask(tileLayerRDD, maskRDD, 10.0);
 
         JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(masked.toJavaRDD());
         assertFalse(result.isEmpty());
@@ -122,8 +121,6 @@ public class TestOpenEOProcesses {
             assertEquals(IntConstantNoDataCellType.noDataValue(),tile.get(0,1));
             assertEquals(10,tile.get(0,2));
         }
-
-
     }
 
 
@@ -136,7 +133,7 @@ public class TestOpenEOProcesses {
         new OpenEOProcesses().write_geotiffs(datacube,"tmpcatalog",14);
     }
 
-    static ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> tileToSpaceTimeDataCube(Tile zeroTile) {
+    public static ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> tileToSpaceTimeDataCube(Tile zeroTile) {
 
         MutableArrayTile emptyTile = ArrayTile$.MODULE$.empty(zeroTile.cellType(), ((Integer) zeroTile.cols()), ((Integer) zeroTile.rows()));
 
@@ -162,8 +159,5 @@ public class TestOpenEOProcesses {
 
         return (ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>>) new ContextRDD(spacetimeDataCube.rdd(), metadata);
     }
-
-
-
 
 }

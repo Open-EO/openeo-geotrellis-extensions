@@ -5,18 +5,12 @@
     <parent>
         <artifactId>openeo-geotrellis-extensions</artifactId>
         <groupId>org.openeo</groupId>
-        <version>1.3.0-SNAPSHOT</version>
+        <version>2.0.0-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>openeo-geotrellis</artifactId>
     <dependencies>
-        <dependency>
-            <artifactId>ExtractTimeSeries</artifactId>
-            <groupId>be.vito.eodata</groupId>
-            <version>${geotrellistimeseries.version}</version>
-            <scope>provided</scope>
-        </dependency>
         <dependency>
             <groupId>com.github.wendykierp</groupId>
             <artifactId>JTransforms</artifactId>
@@ -25,15 +19,19 @@
         </dependency>
         <dependency>
             <groupId>org.openeo</groupId>
-            <artifactId>geotrellis-sentinelhub</artifactId>
-            <version>1.3.0-SNAPSHOT</version>
+            <artifactId>geotrellis-accumulo-extensions</artifactId>
+            <version>${parent.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.openeo</groupId>
-            <artifactId>geotrellis-accumulo-extensions</artifactId>
-            <version>1.3.0-SNAPSHOT</version>
+            <groupId>org.geotools</groupId>
+            <artifactId>gt-shapefile</artifactId>
+            <version>${gt-version}</version>
         </dependency>
-
+        <dependency>
+            <groupId>org.locationtech.geotrellis</groupId>
+            <artifactId>geotrellis-s3_${scala.binary.version}</artifactId>
+            <version>${geotrellis.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
             <artifactId>geotrellis-spark_${scala.binary.version}</artifactId>
@@ -51,6 +49,11 @@
                     <artifactId>jets3t</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>ar.com.hjg</groupId>
+            <artifactId>pngj</artifactId>
+            <version>2.0.1</version>
         </dependency>
         <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
@@ -71,6 +74,18 @@
             <version>5.3.2</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.locationtech.geotrellis</groupId>
+            <artifactId>geotrellis-shapefile_${scala.binary.version}</artifactId>
+            <version>${geotrellis.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.locationtech.geotrellis</groupId>
+            <artifactId>geotrellis-gdal_${scala.binary.version}</artifactId>
+            <version>${geotrellis.version}</version>
+            <scope>compile</scope>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
@@ -90,6 +105,13 @@
                 </executions>
                 <configuration>
                     <scalaCompatVersion>${scala.binary.version}</scalaCompatVersion>
+                    <compilerPlugins>
+                        <compilerPlugin>
+                            <groupId>org.typelevel</groupId>
+                            <artifactId>kind-projector_${scala.binary.version}</artifactId>
+                            <version>0.10.3</version>
+                        </compilerPlugin>
+                    </compilerPlugins>
                 </configuration>
             </plugin>
             <plugin>

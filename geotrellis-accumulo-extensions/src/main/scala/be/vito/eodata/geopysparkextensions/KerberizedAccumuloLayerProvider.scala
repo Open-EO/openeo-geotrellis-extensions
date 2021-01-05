@@ -17,7 +17,7 @@ import org.apache.spark.SparkContext
   * Attributes table name is optional, not provided default value will be used.
   * Layers table name is required to instantiate a [[geotrellis.spark.store.LayerWriter]]
   */
-class KerberizedAccumuloLayerProvider extends AttributeStoreProvider
+class µKerberizedAccumuloLayerProvider extends AttributeStoreProvider
   with LayerReaderProvider with LayerWriterProvider with ValueReaderProvider with CollectionLayerReaderProvider {
 
   println(s"!!! instantiated a ${getClass.getName}")

@@ -1,0 +1,1831 @@
+{
+  "@context": "http://schemas.opengis.net/os-geojson/1.0/os-geojson.jsonld",
+  "type": "FeatureCollection",
+  "id": "https://oscars-dev.vgt.vito.be/collections",
+  "totalResults": 8,
+  "startIndex": 1,
+  "itemsPerPage": 8,
+  "queries": {
+    "request": [
+      {}
+    ]
+  },
+  "properties": {
+    "title": "Product Search result",
+    "subtitle": "Number of results: 8",
+    "creator": "VITO OpenSearch Service",
+    "authors": [
+      {
+        "type": "Agent",
+        "name": "VITO"
+      }
+    ],
+    "updated": "2020-03-04T07:53:03Z",
+    "lang": "en",
+    "links": {
+      "search": [
+        {
+          "href": "https://oscars-dev.vgt.vito.be/description.geojson",
+          "type": "application/geo+json",
+          "title": "search"
+        }
+      ],
+      "profiles": [
+        {
+          "href": "http://www.opengis.net/spec/owc-geojson/1.0/req/core"
+        },
+        {
+          "href": "http://www.opengis.net/spec/os-geojson/1.0/req/core"
+        }
+      ]
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "id": "urn:eop:VITO:CGS_S2_FAPAR",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -179.999,
+              -84
+            ],
+            [
+              179.999,
+              -84
+            ],
+            [
+              179.999,
+              84
+            ],
+            [
+              -179.999,
+              84
+            ],
+            [
+              -179.999,
+              -84
+            ]
+          ]
+        ]
+      },
+      "bbox": [
+        -179.999,
+        -84,
+        179.999,
+        84
+      ],
+      "properties": {
+        "title": "SENTINEL-2 Fraction Absorbed Photosynthetically Radiation (tiles)",
+        "identifier": "urn:eop:VITO:CGS_S2_FAPAR",
+        "rights": "Products can be downloaded after fast registration / Licence: https://www.vito-eodata.be/PDF/image/TermsOfUse.pdf",
+        "abstract": "FAPAR corresponds to the fraction of photosynthetically active radiation absorbed by the canopy.The FAPAR value results directly from the radiative transfer model in the canopy which is computed instantaneously. It depends on canopy structure, vegetation element optical properties and illumination conditions. FAPAR is very useful as input to a number of primary productivity models which run at the daily time step. Consequently, the product definition should correspond to the daily integrated FAPAR value that can be approached by computation of the clear sky daily integrated FAPAR values as well as the FAPAR value computed for diffuse conditions. The SENTINEL 2 FAPAR product corresponds to the instantaneous black-sky around 10:15 which is a close approximation of the daily integrated black-sky FAPAR value. The FAPAR refers only to the green parts of the canopy. The SENTINEL 2 FAPAR product can be also useful for all applications related to the environment monitoring.",
+        "date": "2017-06-15T00:00:00Z/",
+        "updated": "2019-11-14T15:23:57Z",
+        "lang": "eng",
+        "categories": [
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/4599",
+            "label": "land"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/4612",
+            "label": "land cover"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/1391",
+            "label": "chlorophyll"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/5496",
+            "label": "natural disaster"
+          },
+          {
+            "term": "http://gcmdservices.gsfc.nasa.gov/kms/concept/e5815f58-8232-4c7f-b50d-ea71d73891a9",
+            "label": "EARTH SCIENCE > LAND SURFACE > LAND USE/LAND COVER"
+          },
+          {
+            "term": "http://gcmdservices.gsfc.nasa.gov/kms/concept/ec0e2762-f57a-4fdc-b395-c8d7d5590d18",
+            "label": "EARTH SCIENCE > HUMAN DIMENSIONS > NATURAL HAZARDS"
+          },
+          {
+            "term": "https://earth.esa.int/concept/sentinel-2",
+            "label": "Sentinel-2"
+          },
+          {
+            "term": "https://earth.esa.int/concept/s2-msi",
+            "label": "MSI"
+          }
+        ],
+        "keyword": [
+          "FAPAR",
+          "VITO",
+          "Orthoimagery",
+          "plant resource",
+          "TOC",
+          "msi",
+          "radiometry",
+          "sentinel",
+          "VITO",
+          "Level-3"
+        ],
+        "publisher": "VITO",
+        "authors": [
+          {
+            "type": "Organization",
+            "email": "helpdeskticket@vgt.vito.be",
+            "name": "VITO"
+          }
+        ],
+        "contactPoint": [
+          {
+            "type": "Organization",
+            "email": "remotesensing@vito.be",
+            "name": "VITO",
+            "uri": "https://remotesensing.vito.be/",
+            "hasAddress": {
+              "country-name": "Belgium",
+              "postal-code": "BE-2400",
+              "locality": "Mol",
+              "street-address": "Boeretang, 200"
+            }
+          }
+        ],
+        "acquisitionInformation": [
+          {
+            "acquisitionParameters": {
+              "beginningDateTime": "2015-06-23T00:00:00Z"
+            },
+            "platform": {
+              "platformShortName": "SENTINEL-2",
+              "platformSerialIdentifier": "S2A"
+            },
+            "instrument": {
+              "sensorType": "OPTICAL",
+              "instrumentShortName": "MSI"
+            }
+          },
+          {
+            "acquisitionParameters": {
+              "beginningDateTime": "2017-03-07T01:49:00Z"
+            },
+            "platform": {
+              "platformShortName": "SENTINEL-2",
+              "platformSerialIdentifier": "S2B"
+            },
+            "instrument": {
+              "sensorType": "OPTICAL",
+              "instrumentShortName": "MSI"
+            }
+          }
+        ],
+        "distribution": {
+          "type": "Distribution",
+          "license": [
+            {
+              "type": "LicenseDocument",
+              "label": "https://www.vito-eodata.be/PDF/image/TermsOfUse.pdf"
+            }
+          ],
+          "accessRights": [
+            {
+              "type": "RightsStatement",
+              "label": "Free to download.Products can be downloaded after fast registration"
+            }
+          ]
+        },
+        "bands": [
+          {
+            "description": "Fraction Absorbed Photosynthetically Radiation 10M",
+            "type": "FAPAR-10M",
+            "title": "FAPAR-10M",
+            "resolution": 10,
+            "maxValue": 200,
+            "minValue": 0,
+            "bitPerValue": 16,
+            "scaleFactor": 0.005,
+            "offset": 0
+          },
+          {
+            "description": "Fraction Absorbed Photosynthetically Radiation 20M",
+            "type": "FAPAR-20M",
+            "title": "FAPAR-20M",
+            "resolution": 20,
+            "maxValue": 200,
+            "minValue": 0,
+            "bitPerValue": 16,
+            "scaleFactor": 0.005,
+            "offset": 0
+          }
+        ],
+        "links": {
+          "describedby": [
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:eop:VITO:CGS_S2_FAPAR",
+              "type": "text/html",
+              "title": "Collection Catalogue Entry"
+            }
+          ],
+          "previews": [
+            {
+              "href": "https://www.vito-eodata.be/PDF/image/defaultimages/Sentinel_2_Belgium.jpg",
+              "type": "image/jpeg",
+              "title": "Illustration image"
+            }
+          ],
+          "via": [
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/xml_iso19139?uuid=urn:eop:VITO:urn:eop:VITO:CGS_S2_FAPAR",
+              "type": "application/vnd.iso.19139+xml",
+              "title": "INSPIRE Collection Metadata File "
+            }
+          ],
+          "search": [
+            {
+              "href": "https://oscars-dev.vgt.vito.be/description.geojson?collection=urn:eop:VITO:CGS_S2_FAPAR",
+              "type": "application/geo+json",
+              "title": "OpenSearch entry point"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "urn:eop:VITO:CGS_S2_RAD_L2",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -179.999,
+              -84
+            ],
+            [
+              -179.999,
+              84
+            ],
+            [
+              179.999,
+              84
+            ],
+            [
+              179.999,
+              -84
+            ],
+            [
+              -179.999,
+              -84
+            ]
+          ]
+        ]
+      },
+      "bbox": [
+        -179.999,
+        -84,
+        179.999,
+        84
+      ],
+      "properties": {
+        "lang": "eng",
+        "publisher": "VITO",
+        "updated": "2019-02-14T15:23:57Z",
+        "links": {
+          "via": [
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/xml_iso19139?uuid=urn:eop:VITO:CGS_S2_RAD_L2",
+              "type": "application/vnd.iso.19139+xml",
+              "title": "INSPIRE collection metadata file"
+            }
+          ],
+          "describedby": [
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:eop:VITO:CGS_S2_RAD_L2",
+              "type": "text/html",
+              "title": "Collection Catalogue Entry"
+            }
+          ],
+          "previews": [
+            {
+              "href": "http://www.vito-eodata.be/collections/images/quicklooks/SENTINEL2_TOC_V100_QL.JPG",
+              "type": "image/jpeg",
+              "title": "Illustration image"
+            }
+          ],
+          "search": [
+            {
+              "href": "https://oscars-dev.vgt.vito.be/description.geojson?collection=urn:eop:VITO:CGS_S2_RAD_L2",
+              "type": "application/geo+json",
+              "title": "OpenSearch entry point"
+            }
+          ]
+        },
+        "keyword": [
+          "VITO",
+          "Orthoimagery",
+          "plant resource",
+          "TOC",
+          "msi",
+          "radiometry",
+          "sentinel",
+          "VITO",
+          "Level-2A"
+        ],
+        "rights": "Free to download products can be downloaded after fast registration. Licence: https://www.vito-eodata.be/PDF/image/TermsOfUse.pdf",
+        "contactPoint": [
+          {
+            "hasAddress": {
+              "postal-code": "BE-2400",
+              "street-address": "Boeretang, 200",
+              "country-name": "Belgium",
+              "locality": "Mol"
+            },
+            "type": "Organization",
+            "email": "remotesensing@vito.be",
+            "name": "VITO",
+            "uri": "https://remotesensing.vito.be/"
+          }
+        ],
+        "bands": [
+          {
+            "description": "Band 1 - Coastal aerosol (60m)",
+            "title": "B01-60M",
+            "resolution": 60,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 2 - Blue (10m)",
+            "title": "B02-10M",
+            "resolution": 10,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 3 - Green (10m)",
+            "title": "B03-10M",
+            "resolution": 10,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 4 - Red (10m)",
+            "title": "B04-10M",
+            "resolution": 10,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 5 - Vegetation red edge (20m)",
+            "title": "B05-20M",
+            "resolution": 20,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 6 - Vegetation red edge (20m)",
+            "title": "B06-20M",
+            "resolution": 20,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 7 - Vegetation red edge (20m)",
+            "title": "B07-20M",
+            "resolution": 20,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 8 - NIR (10m)",
+            "title": "B08-10M",
+            "resolution": 10,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 11 - SWIR (20m)",
+            "title": "B11-20M",
+            "resolution": 20,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 12 - SWIR (20m)",
+            "title": "B12-20M",
+            "resolution": 20,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 8A - Narrow NIR (20m)",
+            "title": "B8A-20M",
+            "resolution": 20,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "aerosol optical thickness 60M",
+            "title": "AOT-60M",
+            "resolution": 60,
+            "bitPerValue": 16,
+            "maxValue": 250,
+            "minValue": 0,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          }
+        ],
+        "abstract": "L2A Sentinel Data processed by VITO Remote Sensing using iCor atmospheric processor. The SENTINEL L2 product can be useful as an input for the processing of vegetation parameters used within all applications related to the environment monitoring.",
+        "title": "SENTINEL-2 Level-2A Products (tiles)",
+        "acquisitionInformation": [
+          {
+            "acquisitionParameters": {
+              "beginningDateTime": "2015-06-23T00:00:00Z"
+            },
+            "platform": {
+              "platformShortName": "SENTINEL-2",
+              "platformSerialIdentifier": "S2A"
+            },
+            "instrument": {
+              "sensorType": "OPTICAL",
+              "instrumentShortName": "MSI"
+            }
+          },
+          {
+            "acquisitionParameters": {
+              "beginningDateTime": "2017-03-07T01:49:00Z"
+            },
+            "platform": {
+              "platformShortName": "SENTINEL-2",
+              "platformSerialIdentifier": "S2B"
+            },
+            "instrument": {
+              "sensorType": "OPTICAL",
+              "instrumentShortName": "MSI"
+            }
+          }
+        ],
+        "authors": [
+          {
+            "type": "Organization",
+            "email": "helpdeskticket@vgt.vito.be",
+            "name": "VITO"
+          }
+        ],
+        "date": "2015-06-23T00:00:00Z",
+        "distribution": {
+          "type": "Distribution",
+          "license": [
+            {
+              "type": "LicenseDocument",
+              "label": "https://www.vito-eodata.be/PDF/image/TermsOfUse.pdf"
+            }
+          ],
+          "accessRights": [
+            {
+              "type": "RightsStatement",
+              "label": "Free to download.Products can be downloaded after fast registration"
+            }
+          ]
+        },
+        "identifier": "urn:eop:VITO:CGS_S2_RAD_L2",
+        "additionalAttributes": {
+          "useLimitation": "https://spacedata.copernicus.eu/web/cscda/data-offer/terms-and-conditions",
+          "accessConstraint": "license"
+        },
+        "categories": [
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/4599",
+            "label": "land"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/4612",
+            "label": "land cover"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/1391",
+            "label": "chlorophyll"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/5496",
+            "label": "natural disaster"
+          },
+          {
+            "term": "http://gcmdservices.gsfc.nasa.gov/kms/concept/e5815f58-8232-4c7f-b50d-ea71d73891a9",
+            "label": "EARTH SCIENCE > LAND SURFACE > LAND USE/LAND COVER"
+          },
+          {
+            "term": "http://gcmdservices.gsfc.nasa.gov/kms/concept/ec0e2762-f57a-4fdc-b395-c8d7d5590d18",
+            "label": "EARTH SCIENCE > HUMAN DIMENSIONS > NATURAL HAZARDS"
+          },
+          {
+            "term": "https://earth.esa.int/concept/sentinel-2",
+            "label": "Sentinel-2"
+          },
+          {
+            "term": "https://earth.esa.int/concept/s2-msi",
+            "label": "MSI"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "urn:ogc:def:EOP:VITO:PROBAV_L2A_1KM_V001",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -180,
+              -56
+            ],
+            [
+              180,
+              -56
+            ],
+            [
+              180,
+              75
+            ],
+            [
+              -180,
+              75
+            ],
+            [
+              -180,
+              -56
+            ]
+          ]
+        ]
+      },
+      "bbox": [
+        -180,
+        -56,
+        180,
+        75
+      ],
+      "properties": {
+        "lang": "eng",
+        "publisher": "VITO",
+        "updated": "2019-08-27T15:23:57Z",
+        "links": {
+          "via": [
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:ogc:def:EOP:VITO:PROBAV_L2A_1KM_V001",
+              "type": "application/vnd.iso.19139+xml",
+              "title": "Collection Catalogue Entry"
+            }
+          ],
+          "describedby": [
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:ogc:def:EOP:VITO:PROBAV_L2A_1KM_V001",
+              "type": "text/html"
+            }
+          ],
+          "previews": [
+            {
+              "href": "http://www.vito-eodata.be/collections/images/quicklooks/PROBAV_L2A_1KM_V101_small.jpg",
+              "type": "image/jpeg",
+              "title": "Illustration image"
+            }
+          ],
+          "search": [
+            {
+              "href": "https://oscars-dev.vgt.vito.be/description.geojson?collection=urn:ogc:def:EOP:VITO:PROBAV_L2A_1KM_V001",
+              "type": "application/geo+json",
+              "title": "OpenSearch entry point"
+            }
+          ]
+        },
+        "keyword": [
+          "VITO",
+          "biophysical",
+          "Orthoimagery",
+          "plant resource",
+          "Optical",
+          "PROBA-V",
+          "radiometry",
+          "Copernicus Global Land Services",
+          "Level-2A"
+        ],
+        "rights": "Products can be downloaded after fast registration / Licence: https://www.vito-eodata.be/PDF/image/TermsOfUse.pdf",
+        "abstract": "The product original source is the PROBA-V mission and has been produced by VITO. This product has been originally provided in the context of the Copernicus Space Component. Further details on the Copernicus Space Component, and in particular the Data Access System, are available at https://spacedata.copernicus.eu. A Level2A product contains the projected Level1C (P-product) data, i.e. radiometrically and geometrically corrected TOA reflectance values projected on a uniform grid, given per band/camera. The applied coordinate reference system is the Geographic Lat/Lon (EPSG:4326) projection with a spatial resolution of 1 km.",
+        "title": "PROBA-V L2A: 1KM projected segment data",
+        "acquisitionInformation": [
+          {
+            "acquisitionParameters": {
+              "endingDateTime": "2020-12-31T23:59:00Z",
+              "beginningDateTime": "2013-10-16T00:00:00Z"
+            },
+            "platform": {
+              "platformShortName": "PROBA-V"
+            },
+            "instrument": {
+              "instrumentShortName": "VGT"
+            }
+          }
+        ],
+        "authors": [
+          {
+            "type": "Organization",
+            "email": "helpdeskticket@vgt.vito.be",
+            "name": "VITO"
+          }
+        ],
+        "date": "2013-10-16T00:00:00Z",
+        "distribution": {
+          "type": "Distribution",
+          "license": [
+            {
+              "type": "LicenseDocument",
+              "label": "https://www.vito-eodata.be/PDF/image/TermsOfUse.pdf"
+            }
+          ],
+          "accessRights": [
+            {
+              "type": "RightsStatement",
+              "label": "Free to download.Products can be downloaded after fast registration"
+            }
+          ]
+        },
+        "identifier": "urn:ogc:def:EOP:VITO:PROBAV_L2A_1KM_V001",
+        "contactPoint": [
+          {
+            "hasAddress": {
+              "postal-code": "BE-2400",
+              "street-address": "Boeretang, 200",
+              "country-name": "Belgium",
+              "locality": "Mol"
+            },
+            "type": "Organization",
+            "uri": "https://remotesensing.vito.be/",
+            "name": "VITO",
+            "email": "remotesensing@vito.be"
+          }
+        ],
+        "categories": [
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/4599",
+            "label": "land"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/4612",
+            "label": "land cover"
+          },
+          {
+            "term": "http://gcmdservices.gsfc.nasa.gov/kms/concept/e5815f58-8232-4c7f-b50d-ea71d73891a9",
+            "label": "EARTH SCIENCE > LAND SURFACE > LAND USE/LAND COVER"
+          },
+          {
+            "term": "http://gcmdservices.gsfc.nasa.gov/kms/concept/ec0e2762-f57a-4fdc-b395-c8d7d5590d18",
+            "label": "EARTH SCIENCE > HUMAN DIMENSIONS > NATURAL HAZARDS"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "urn:ogc:def:EOP:VITO:PROBAV_S1-TOC_333M_V001",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -179.999,
+              -56
+            ],
+            [
+              179.999,
+              -56
+            ],
+            [
+              179.999,
+              75
+            ],
+            [
+              -179.999,
+              75
+            ],
+            [
+              -179.999,
+              -56
+            ]
+          ]
+        ]
+      },
+      "bbox": [
+        -179.999,
+        -56,
+        179.999,
+        75
+      ],
+      "properties": {
+        "lang": "eng",
+        "publisher": "VITO",
+        "updated": "2019-05-14T15:23:57Z",
+        "links": {
+          "via": [
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:ogc:def:EOP:VITO:PROBAV_S1-TOC_333M_V001",
+              "type": "application/vnd.iso.19139+xml",
+              "title": "Collection Catalogue Entry"
+            }
+          ],
+          "describedby": [
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:ogc:def:EOP:VITO:PROBAV_S1-TOC_333M_V001",
+              "type": "text/html"
+            }
+          ],
+          "previews": [
+            {
+              "href": "http://www.vito-eodata.be/collections/images/quicklooks/Proba-V_S1.jpg",
+              "type": "image/jpeg",
+              "title": "Illustration image"
+            }
+          ],
+          "search": [
+            {
+              "href": "https://oscars-dev.vgt.vito.be/description.geojson?collection=urn:ogc:def:EOP:VITO:PROBAV_S1-TOC_333M_V001",
+              "type": "application/geo+json",
+              "title": "OpenSearch entry point"
+            }
+          ]
+        },
+        "keyword": [
+          "VITO",
+          "biophysical",
+          "Orthoimagery",
+          "plant resource",
+          "TOC",
+          "PROBA-V",
+          "radiometry",
+          "Copernicus Global Land Services",
+          "Level-3"
+        ],
+        "rights": "Products can be downloaded after fast registration / Licence: https://www.vito-eodata.be/PDF/image/TermsOfUse.pdf",
+        "abstract": "Level 3 data products are variables mapped on uniform space-time grid scales and are the result of combining multiple scenes (e.g. S1/S10) to cover the user’s region of interest.",
+        "title": "PROBA-V S1 TOC 300 m: Data corrected for atmospheric effects with the SMAC (Simplified Method for Atmosheric Corrections) algorithm",
+        "acquisitionInformation": [
+          {
+            "acquisitionParameters": {
+              "endingDateTime": "2020-12-31T23:59:00Z",
+              "beginningDateTime": "2013-10-16T00:00:00Z"
+            },
+            "platform": {
+              "platformShortName": "PROBA-V"
+            },
+            "instrument": {
+              "instrumentShortName": "VGT"
+            }
+          }
+        ],
+        "authors": [
+          {
+            "type": "Organization",
+            "email": "helpdeskticket@vgt.vito.be",
+            "name": "VITO"
+          }
+        ],
+        "date": "2013-10-16T00:00:00Z/",
+        "distribution": {
+          "type": "Distribution",
+          "license": [
+            {
+              "type": "LicenseDocument",
+              "label": "https://www.vito-eodata.be/PDF/image/TermsOfUse.pdf"
+            }
+          ],
+          "accessRights": [
+            {
+              "type": "RightsStatement",
+              "label": "Free to download.Products can be downloaded after fast registration"
+            }
+          ]
+        },
+        "identifier": "urn:ogc:def:EOP:VITO:PROBAV_S1-TOC_333M_V001",
+        "contactPoint": [
+          {
+            "hasAddress": {
+              "postal-code": "BE-2400",
+              "street-address": "Boeretang, 200",
+              "country-name": "Belgium",
+              "locality": "Mol"
+            },
+            "type": "Organization",
+            "uri": "https://remotesensing.vito.be/",
+            "name": "VITO",
+            "email": "remotesensing@vito.be"
+          }
+        ],
+        "categories": [
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/4599",
+            "label": "land"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/4612",
+            "label": "land cover"
+          },
+          {
+            "term": "http://gcmdservices.gsfc.nasa.gov/kms/concept/e5815f58-8232-4c7f-b50d-ea71d73891a9",
+            "label": "EARTH SCIENCE > LAND SURFACE > LAND USE/LAND COVER"
+          },
+          {
+            "term": "http://gcmdservices.gsfc.nasa.gov/kms/concept/ec0e2762-f57a-4fdc-b395-c8d7d5590d18",
+            "label": "EARTH SCIENCE > HUMAN DIMENSIONS > NATURAL HAZARDS"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "urn:eop:VITO:CGS_S2_RAD_L2_V200",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -179.999,
+              -84
+            ],
+            [
+              -179.999,
+              84
+            ],
+            [
+              179.999,
+              84
+            ],
+            [
+              179.999,
+              -84
+            ],
+            [
+              -179.999,
+              -84
+            ]
+          ]
+        ]
+      },
+      "bbox": [
+        -179.999,
+        -84,
+        179.999,
+        84
+      ],
+      "properties": {
+        "lang": "eng",
+        "publisher": "VITO",
+        "updated": "2019-02-14T15:23:57Z",
+        "links": {
+          "via": [
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/xml_iso19139?uuid=urn:eop:VITO:CGS_S2_RAD_L2",
+              "type": "application/vnd.iso.19139+xml",
+              "title": "INSPIRE collection metadata file"
+            }
+          ],
+          "describedby": [
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:eop:VITO:CGS_S2_RAD_L2",
+              "type": "text/html",
+              "title": "Collection Catalogue Entry"
+            }
+          ],
+          "previews": [
+            {
+              "href": "http://www.vito-eodata.be/collections/images/quicklooks/SENTINEL2_TOC_V100_QL.JPG",
+              "type": "image/jpeg",
+              "title": "Illustration image"
+            }
+          ],
+          "search": [
+            {
+              "href": "https://oscars-dev.vgt.vito.be/description.geojson?collection=urn:eop:VITO:CGS_S2_RAD_L2_V200",
+              "type": "application/geo+json",
+              "title": "OpenSearch entry point"
+            }
+          ]
+        },
+        "keyword": [
+          "VITO",
+          "Orthoimagery",
+          "plant resource",
+          "TOC",
+          "msi",
+          "radiometry",
+          "sentinel",
+          "VITO",
+          "Level-2A"
+        ],
+        "rights": "Free to download products can be downloaded after fast registration. Licence: https://www.vito-eodata.be/PDF/image/TermsOfUse.pdf",
+        "contactPoint": [
+          {
+            "hasAddress": {
+              "postal-code": "BE-2400",
+              "street-address": "Boeretang, 200",
+              "country-name": "Belgium",
+              "locality": "Mol"
+            },
+            "type": "Organization",
+            "email": "remotesensing@vito.be",
+            "name": "VITO",
+            "uri": "https://remotesensing.vito.be/"
+          }
+        ],
+        "bands": [
+          {
+            "description": "Band 1 - Coastal aerosol (60m)",
+            "title": "B01-60M",
+            "resolution": 60,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 2 - Blue (10m)",
+            "title": "B02-10M",
+            "resolution": 10,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 3 - Green (10m)",
+            "title": "B03-10M",
+            "resolution": 10,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 4 - Red (10m)",
+            "title": "B04-10M",
+            "resolution": 10,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 5 - Vegetation red edge (20m)",
+            "title": "B05-20M",
+            "resolution": 20,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 6 - Vegetation red edge (20m)",
+            "title": "B06-20M",
+            "resolution": 20,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 7 - Vegetation red edge (20m)",
+            "title": "B07-20M",
+            "resolution": 20,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 8 - NIR (10m)",
+            "title": "B08-10M",
+            "resolution": 10,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 11 - SWIR (20m)",
+            "title": "B11-20M",
+            "resolution": 20,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 12 - SWIR (20m)",
+            "title": "B12-20M",
+            "resolution": 20,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "Band 8A - Narrow NIR (20m)",
+            "title": "B8A-20M",
+            "resolution": 20,
+            "bitPerValue": 16,
+            "maxValue": 10000,
+            "minValue": -10000,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          },
+          {
+            "description": "aerosol optical thickness 60M",
+            "title": "AOT-60M",
+            "resolution": 60,
+            "bitPerValue": 16,
+            "maxValue": 250,
+            "minValue": 0,
+            "offset": 0,
+            "scaleFactor": 0.0001
+          }
+        ],
+        "abstract": "L2A Sentinel Data processed by VITO Remote Sensing using iCor atmospheric processor. The SENTINEL L2 product can be useful as an input for the processing of vegetation parameters used within all applications related to the environment monitoring.",
+        "title": "SENTINEL-2 Level-2A Products (tiles)",
+        "acquisitionInformation": [
+          {
+            "acquisitionParameters": {
+              "beginningDateTime": "2015-06-23T00:00:00Z"
+            },
+            "platform": {
+              "platformShortName": "SENTINEL-2",
+              "platformSerialIdentifier": "S2A"
+            },
+            "instrument": {
+              "sensorType": "OPTICAL",
+              "instrumentShortName": "MSI"
+            }
+          },
+          {
+            "acquisitionParameters": {
+              "beginningDateTime": "2017-03-07T01:49:00Z"
+            },
+            "platform": {
+              "platformShortName": "SENTINEL-2",
+              "platformSerialIdentifier": "S2B"
+            },
+            "instrument": {
+              "sensorType": "OPTICAL",
+              "instrumentShortName": "MSI"
+            }
+          }
+        ],
+        "authors": [
+          {
+            "type": "Organization",
+            "email": "helpdeskticket@vgt.vito.be",
+            "name": "VITO"
+          }
+        ],
+        "date": "2015-06-23T00:00:00Z",
+        "distribution": {
+          "type": "Distribution",
+          "license": [
+            {
+              "type": "LicenseDocument",
+              "label": "https://www.vito-eodata.be/PDF/image/TermsOfUse.pdf"
+            }
+          ],
+          "accessRights": [
+            {
+              "type": "RightsStatement",
+              "label": "Free to download.Products can be downloaded after fast registration"
+            }
+          ]
+        },
+        "identifier": "urn:eop:VITO:CGS_S2_RAD_L2",
+        "additionalAttributes": {
+          "useLimitation": "https://spacedata.copernicus.eu/web/cscda/data-offer/terms-and-conditions",
+          "accessConstraint": "license"
+        },
+        "categories": [
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/4599",
+            "label": "land"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/4612",
+            "label": "land cover"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/1391",
+            "label": "chlorophyll"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/5496",
+            "label": "natural disaster"
+          },
+          {
+            "term": "http://gcmdservices.gsfc.nasa.gov/kms/concept/e5815f58-8232-4c7f-b50d-ea71d73891a9",
+            "label": "EARTH SCIENCE > LAND SURFACE > LAND USE/LAND COVER"
+          },
+          {
+            "term": "http://gcmdservices.gsfc.nasa.gov/kms/concept/ec0e2762-f57a-4fdc-b395-c8d7d5590d18",
+            "label": "EARTH SCIENCE > HUMAN DIMENSIONS > NATURAL HAZARDS"
+          },
+          {
+            "term": "https://earth.esa.int/concept/sentinel-2",
+            "label": "Sentinel-2"
+          },
+          {
+            "term": "https://earth.esa.int/concept/s2-msi",
+            "label": "MSI"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "urn:eop:VITO:CGS_S1_GRD_L1",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -180,
+              -84
+            ],
+            [
+              180,
+              -84
+            ],
+            [
+              180,
+              84
+            ],
+            [
+              -180,
+              84
+            ],
+            [
+              -180,
+              -84
+            ]
+          ]
+        ]
+      },
+      "bbox": [
+        -180,
+        -84,
+        180,
+        84
+      ],
+      "properties": {
+        "title": "SENTINEL-1 Level-1 Ground Range Detected (GRD) products",
+        "identifier": "urn:eop:VITO:CGS_S1_GRD_L1",
+        "rights": "Products can be downloaded after fast registration / Licence: https://www.vito-eodata.be/PDF/image/TermsOfUse.pdf",
+        "abstract": "Level-1 Ground Range Detected (GRD) products consist of focused SAR data that has been detected, multi-looked and projected to ground range using an Earth ellipsoid model such as WGS84. The ellipsoid projection of the GRD products is corrected using the terrain height specified in the product general annotation. The terrain height used varies in azimuth but is constant in range. Ground range coordinates are the slant range coordinates projected onto the ellipsoid of the Earth. Pixel values represent detected amplitude. Phase information is lost. The resulting product has approximately square resolution pixels and square pixel spacing with reduced speckle at a cost of reduced spatial resolution. The Interferometric Wide (IW) swath mode is the main acquisition mode over land and satisfies the majority of service requirements. For the IW GRD products, multi-looking is performed on each burst individually. All bursts in all sub-swaths are then seamlessly merged to form a single, contiguous, ground range, detected image per polarisation.",
+        "date": "2017-06-15T00:00:00Z/",
+        "updated": "2020-02-18T15:23:57Z",
+        "lang": "eng",
+        "categories": [
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/4599",
+            "label": "land"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/4612",
+            "label": "land cover"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/1391",
+            "label": "chlorophyll"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/5496",
+            "label": "natural disaster"
+          },
+          {
+            "term": "http://gcmdservices.gsfc.nasa.gov/kms/concept/e5815f58-8232-4c7f-b50d-ea71d73891a9",
+            "label": "EARTH SCIENCE > LAND SURFACE > LAND USE/LAND COVER"
+          },
+          {
+            "term": "http://gcmdservices.gsfc.nasa.gov/kms/concept/ec0e2762-f57a-4fdc-b395-c8d7d5590d18",
+            "label": "EARTH SCIENCE > HUMAN DIMENSIONS > NATURAL HAZARDS"
+          },
+          {
+            "term": "https://earth.esa.int/concept/sentinel-1",
+            "label": "Sentinel-1"
+          },
+          {
+            "term": "https://earth.esa.int/concept/s1-sar",
+            "label": "SAR"
+          }
+        ],
+        "keyword": [
+          "VITO",
+          "C-SAR",
+          "Orthoimagery",
+          "SENTINEL-1A",
+          "SENTINEL-1",
+          "SENTINEL-1B",
+          "RADAR BACKSCATTER",
+          "RADAR"
+        ],
+        "publisher": "VITO",
+        "authors": [
+          {
+            "type": "Organization",
+            "email": "helpdeskticket@vgt.vito.be",
+            "name": "VITO"
+          }
+        ],
+        "contactPoint": [
+          {
+            "type": "Organization",
+            "email": "remotesensing@vito.be",
+            "name": "VITO",
+            "uri": "https://remotesensing.vito.be/",
+            "hasAddress": {
+              "country-name": "Belgium",
+              "postal-code": "BE-2400",
+              "locality": "Mol",
+              "street-address": "Boeretang, 200"
+            }
+          }
+        ],
+        "acquisitionInformation": [
+          {
+            "platform": {
+              "platformShortName": "SENTINEL-1"
+            },
+            "instrument": {
+              "instrumentShortName": "C-SAR",
+              "type": "SAR"
+            },
+            "acquisitionParameters": {
+              "beginningDateTime": "2014-10-23T00:00:00Z",
+              "endingDateTime": "2029-10-03T23:59:00Z"
+            },
+            "instrumentParameters": {
+              "resolution": 10
+            }
+          }
+        ],
+        "distribution": {
+          "type": "Distribution",
+          "license": [
+            {
+              "type": "LicenseDocument",
+              "label": "https://www.vito-eodata.be/PDF/image/TermsOfUse.pdf"
+            }
+          ],
+          "accessRights": [
+            {
+              "type": "RightsStatement",
+              "label": "Free to download.Products can be downloaded after fast registration"
+            }
+          ]
+        },
+        "additionalAttributes": {
+          "useLimitation": "https://spacedata.copernicus.eu/web/cscda/data-offer/terms-and-conditions",
+          "accessConstraint": "license"
+        },
+        "bands": [
+          {
+            "description": "IncidenceAngle 10M",
+            "type": "Angle",
+            "title": "Angle",
+            "resolution": 10,
+            "maxValue": 46,
+            "minValue": 29.1,
+            "bitPerValue": 16,
+            "scaleFactor": 0.0005,
+            "offset": 29
+          },
+          {
+            "description": "Calibrated radar backscattering coefficient (unitless), describing the returned radar signal strength in the cross-polarized channel (V transmit, H receive). Values are stored as floats.",
+            "type": "VH",
+            "title": "VH",
+            "resolution": 10,
+            "maxValue": 46,
+            "minValue": 29.1,
+            "bitPerValue": 16,
+            "scaleFactor": 0.0005,
+            "offset": 29
+          },
+          {
+            "description": "Calibrated radar backscattering coefficient (unitless), describing the returned radar signal strength in the co- polarized channel (V transmit, V receive). Values are stored as floats.",
+            "type": "VV",
+            "title": "VV",
+            "resolution": 10,
+            "maxValue": 46,
+            "minValue": 29.1,
+            "bitPerValue": 16,
+            "scaleFactor": 0.0005,
+            "offset": 29
+          }
+        ],
+        "links": {
+          "describedby": [
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:eop:VITO:CGS_S1_GRD_L1",
+              "type": "text/html",
+              "title": "Collection Catalogue Entry"
+            }
+          ],
+          "previews": [
+            {
+              "href": "https://www.vito-eodata.be/PDF/image/defaultimages/Sentinel_1_Belgium.jpg",
+              "type": "image/jpeg",
+              "title": "Illustration image"
+            }
+          ],
+          "via": [
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/xml_iso19139?uuid=urn:eop:VITO:CGS_S1_GRD_L1",
+              "type": "application/vnd.iso.19139+xml",
+              "title": "INSPIRE Collection Catalogue metadata file"
+            }
+          ],
+          "search": [
+            {
+              "href": "https://oscars-dev.vgt.vito.be/description.geojson?collection=urn:eop:VITO:CGS_S1_GRD_L1",
+              "type": "application/geo+json",
+              "title": "OpenSearch entry point"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -1.05893,
+              47.66031
+            ],
+            [
+              11.6781,
+              47.66031
+            ],
+            [
+              11.6781,
+              53.67487
+            ],
+            [
+              -1.05893,
+              53.67487
+            ],
+            [
+              -1.05893,
+              47.66031
+            ]
+          ]
+        ]
+      },
+      "bbox": [
+        -1.05893,
+        47.66031,
+        11.6781,
+        53.67487
+      ],
+      "properties": {
+        "title": "SENTINEL-1 Level-1 Ground Range Detected (GRD) SIGMA0 products",
+        "identifier": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+        "rights": "Products can be downloaded after fast registration / Licence: https://www.vito-eodata.be/PDF/image/TermsOfUse.pdf",
+        "abstract": "The Sigma0 product describes how much of the radar signal that was sent out by Sentinel-1 is reflected back to the sensor, and depends on the characteristics of the surface. This product is derived from the L1-GRD product. Typical SAR data processing, which produces level 1 images such as L1-GRD product, does not include radiometric corrections and significant radiometric bias remains. Therefore, it is necessary to apply the radiometric correction to SAR images so that the pixel values of the SAR images truly represent the radar backscatter of the reflecting surface. The radiometric correction is also necessary for the comparison of SAR images acquired with different sensors, or acquired from the same sensor but at different times, in different modes, or processed by different processors. For this Sigma0 product, radiometric calibration was performed using a specific Look Up Table (LUT) that is provided with each original GRD product. This LUT applies a range-dependent gain including the absolute calibration constant, in addition to a constant offset. Next to calibration, also orbit correction, border noise removal, thermal noise removal, and range doppler terrain correction steps were applied during production of Sigma0. The terrain correction step is intended to compensate for distortions due to topographical variations of the scene and the tilt of the satellite sensor, so that the geometric representation of the image will be as close as possible to the real world. The Level1 GRD product can be useful for Land monitoring and Emergency management.",
+        "date": "2017-06-15T00:00:00Z/",
+        "updated": "2012-02-18T15:23:57Z",
+        "lang": "eng",
+        "categories": [
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/4599",
+            "label": "land"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/4612",
+            "label": "land cover"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/1391",
+            "label": "chlorophyll"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/5496",
+            "label": "natural disaster"
+          },
+          {
+            "term": "http://gcmdservices.gsfc.nasa.gov/kms/concept/e5815f58-8232-4c7f-b50d-ea71d73891a9",
+            "label": "EARTH SCIENCE > LAND SURFACE > LAND USE/LAND COVER"
+          },
+          {
+            "term": "http://gcmdservices.gsfc.nasa.gov/kms/concept/ec0e2762-f57a-4fdc-b395-c8d7d5590d18",
+            "label": "EARTH SCIENCE > HUMAN DIMENSIONS > NATURAL HAZARDS"
+          },
+          {
+            "term": "https://earth.esa.int/concept/sentinel-1",
+            "label": "Sentinel-1"
+          },
+          {
+            "term": "https://earth.esa.int/concept/s1-sar",
+            "label": "SAR"
+          }
+        ],
+        "keyword": [
+          "VITO",
+          "C-SAR",
+          "Orthoimagery",
+          "SENTINEL-1A",
+          "SENTINEL-1",
+          "SENTINEL-1B",
+          "RADAR BACKSCATTER",
+          "RADAR"
+        ],
+        "publisher": "VITO",
+        "authors": [
+          {
+            "type": "Organization",
+            "email": "helpdeskticket@vgt.vito.be",
+            "name": "VITO"
+          }
+        ],
+        "contactPoint": [
+          {
+            "type": "Organization",
+            "email": "remotesensing@vito.be",
+            "name": "VITO",
+            "uri": "https://remotesensing.vito.be/",
+            "hasAddress": {
+              "country-name": "Belgium",
+              "postal-code": "BE-2400",
+              "locality": "Mol",
+              "street-address": "Boeretang, 200"
+            }
+          }
+        ],
+        "acquisitionInformation": [
+          {
+            "platform": {
+              "platformShortName": "SENTINEL-1"
+            },
+            "instrument": {
+              "instrumentShortName": "C-SAR",
+              "type": "SAR"
+            },
+            "acquisitionParameters": {
+              "beginningDateTime": "2014-10-23T00:00:00Z",
+              "endingDateTime": "2029-10-03T23:59:00Z"
+            },
+            "instrumentParameters": {
+              "resolution": 10
+            }
+          }
+        ],
+        "distribution": {
+          "type": "Distribution",
+          "license": [
+            {
+              "type": "LicenseDocument",
+              "label": "https://www.vito-eodata.be/PDF/image/TermsOfUse.pdf"
+            }
+          ],
+          "accessRights": [
+            {
+              "type": "RightsStatement",
+              "label": "Free to download.Products can be downloaded after fast registration"
+            }
+          ]
+        },
+        "additionalAttributes": {
+          "useLimitation": "https://spacedata.copernicus.eu/web/cscda/data-offer/terms-and-conditions",
+          "accessConstraint": "license"
+        },
+        "bands": [
+          {
+            "description": "IncidenceAngle 10M",
+            "type": "Angle",
+            "title": "Angle",
+            "resolution": 10,
+            "maxValue": 46,
+            "minValue": 29.1,
+            "bitPerValue": 16,
+            "scaleFactor": 0.0005,
+            "offset": 29
+          },
+          {
+            "description": "Calibrated radar backscattering coefficient (unitless), describing the returned radar signal strength in the cross-polarized channel (V transmit, H receive). Values are stored as floats.",
+            "type": "VH",
+            "title": "VH",
+            "resolution": 10,
+            "maxValue": 46,
+            "minValue": 29.1,
+            "bitPerValue": 16,
+            "scaleFactor": 0.0005,
+            "offset": 29
+          },
+          {
+            "description": "Calibrated radar backscattering coefficient (unitless), describing the returned radar signal strength in the co- polarized channel (V transmit, V receive). Values are stored as floats.",
+            "type": "VV",
+            "title": "VV",
+            "resolution": 10,
+            "maxValue": 46,
+            "minValue": 29.1,
+            "bitPerValue": 16,
+            "scaleFactor": 0.0005,
+            "offset": 29
+          }
+        ],
+        "links": {
+          "describedby": [
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+              "type": "text/html",
+              "title": "Collection Catalogue Entry"
+            }
+          ],
+          "previews": [
+            {
+              "href": "https://www.vito-eodata.be/PDF/image/defaultimages/Sentinel_1_Belgium.jpg",
+              "type": "image/jpeg",
+              "title": "Illustration image"
+            }
+          ],
+          "via": [
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/xml_iso19139?uuid=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+              "type": "application/vnd.iso.19139+xml",
+              "title": "INSPIRE Collection Catalogue metadata file"
+            }
+          ],
+          "search": [
+            {
+              "href": "https://oscars-dev.vgt.vito.be/description.geojson?collection=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+              "type": "application/geo+json",
+              "title": "OpenSearch entry point"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "urn:eop:VITO:CGS_S1_SLC_L1",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -180,
+              -84
+            ],
+            [
+              180,
+              -84
+            ],
+            [
+              180,
+              84
+            ],
+            [
+              -180,
+              84
+            ],
+            [
+              -180,
+              -84
+            ]
+          ]
+        ]
+      },
+      "bbox": [
+        -180,
+        -84,
+        180,
+        84
+      ],
+      "properties": {
+        "title": "SENTINEL-1 Level-1 Single Look Complex (SLC) products.",
+        "identifier": "urn:eop:VITO:CGS_S1_SLC_L1",
+        "rights": "Products can be downloaded after fast registration / Licence: https://www.vito-eodata.be/PDF/image/TermsOfUse.pdf",
+        "abstract": "Level-1 Single Look Complex (SLC) products consist of focused SAR data, geo-referenced using orbit and attitude data from the satellite, and provided in slant-range geometry. Slant range is the natural radar range observation coordinate, defined as the line-of-sight from the radar to each reflecting object. The products are in zero-Doppler orientation where each row of pixels represents points along a line perpendicular to the sub-satellite track. The products include a single look in each dimension using the full available signal bandwidth and complex samples (real and imaginary) preserving the phase information. The Interferometric Wide (IW) swath mode is the main acquisition mode over land and satisfies the majority of service requirements. It acquires data with a 250 km swath at 5 m by 20 m spatial resolution (single look). IW mode captures three sub-swaths using Terrain Observation with Progressive Scans SAR (TOPSAR). IW SLC products contain one image per sub-swath and one per polarisation channel, for a total of three (single polarisation) or six (dual polarisation) images in an IW product. Each sub-swath image consists of a series of bursts, where each burst has been processed as a separate SLC image. The individually focused complex burst images are included, in azimuth-time order, into a single sub-swath image with black-fill demarcation in between. There is sufficient overlap between adjacent bursts and between sub-swaths to ensure continuous coverage of the ground as provided in GRD products. The images for all bursts in all sub-swaths are resampled to a common pixel spacing grid in range and azimuth while preserving the phase information.",
+        "date": "2017-06-15T00:00:00Z/",
+        "updated": "2012-02-18T15:23:57Z",
+        "lang": "eng",
+        "categories": [
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/4599",
+            "label": "land"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/4612",
+            "label": "land cover"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/1391",
+            "label": "chlorophyll"
+          },
+          {
+            "term": "http://www.eionet.europa.eu/gemet/concept/5496",
+            "label": "natural disaster"
+          },
+          {
+            "term": "http://gcmdservices.gsfc.nasa.gov/kms/concept/e5815f58-8232-4c7f-b50d-ea71d73891a9",
+            "label": "EARTH SCIENCE > LAND SURFACE > LAND USE/LAND COVER"
+          },
+          {
+            "term": "http://gcmdservices.gsfc.nasa.gov/kms/concept/ec0e2762-f57a-4fdc-b395-c8d7d5590d18",
+            "label": "EARTH SCIENCE > HUMAN DIMENSIONS > NATURAL HAZARDS"
+          },
+          {
+            "term": "https://earth.esa.int/concept/sentinel-1",
+            "label": "Sentinel-1"
+          },
+          {
+            "term": "https://earth.esa.int/concept/s1-sar",
+            "label": "SAR"
+          }
+        ],
+        "keyword": [
+          "VITO",
+          "C-SAR",
+          "Orthoimagery",
+          "SENTINEL-1A",
+          "SENTINEL-1",
+          "SENTINEL-1B",
+          "RADAR BACKSCATTER",
+          "RADAR"
+        ],
+        "publisher": "VITO",
+        "authors": [
+          {
+            "type": "Organization",
+            "email": "helpdeskticket@vgt.vito.be",
+            "name": "VITO"
+          }
+        ],
+        "contactPoint": [
+          {
+            "type": "Organization",
+            "email": "remotesensing@vito.be",
+            "name": "VITO",
+            "uri": "https://remotesensing.vito.be/",
+            "hasAddress": {
+              "country-name": "Belgium",
+              "postal-code": "BE-2400",
+              "locality": "Mol",
+              "street-address": "Boeretang, 200"
+            }
+          }
+        ],
+        "acquisitionInformation": [
+          {
+            "platform": {
+              "platformShortName": "SENTINEL-1"
+            },
+            "instrument": {
+              "instrumentShortName": "SAR"
+            },
+            "acquisitionParameters": {
+              "beginningDateTime": "2014-10-23T00:00:00Z",
+              "endingDateTime": "2029-10-03T23:59:00Z"
+            },
+            "instrumentParameters": {
+              "resolution": 10
+            }
+          }
+        ],
+        "distribution": {
+          "type": "Distribution",
+          "license": [
+            {
+              "type": "LicenseDocument",
+              "label": "https://www.vito-eodata.be/PDF/image/TermsOfUse.pdf"
+            }
+          ],
+          "accessRights": [
+            {
+              "type": "RightsStatement",
+              "label": "Free to download.Products can be downloaded after fast registration"
+            }
+          ]
+        },
+        "additionalAttributes": {
+          "useLimitation": "https://spacedata.copernicus.eu/web/cscda/data-offer/terms-and-conditions",
+          "accessConstraint": "license"
+        },
+        "bands": [
+          {
+            "description": "IncidenceAngle 10M",
+            "type": "Angle",
+            "title": "Angle",
+            "resolution": 10,
+            "maxValue": 46,
+            "minValue": 29.1,
+            "bitPerValue": 16,
+            "scaleFactor": 0.0005,
+            "offset": 29
+          },
+          {
+            "description": "Calibrated radar backscattering coefficient (unitless), describing the returned radar signal strength in the cross-polarized channel (V transmit, H receive). Values are stored as floats.",
+            "type": "VH",
+            "title": "VH",
+            "resolution": 10,
+            "maxValue": 46,
+            "minValue": 29.1,
+            "bitPerValue": 16,
+            "scaleFactor": 0.0005,
+            "offset": 29
+          },
+          {
+            "description": "Calibrated radar backscattering coefficient (unitless), describing the returned radar signal strength in the co- polarized channel (V transmit, V receive). Values are stored as floats.",
+            "type": "VV",
+            "title": "VV",
+            "resolution": 10,
+            "maxValue": 46,
+            "minValue": 29.1,
+            "bitPerValue": 16,
+            "scaleFactor": 0.0005,
+            "offset": 29
+          }
+        ],
+        "links": {
+          "describedby": [
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:eop:VITO:CGS_S1_SLC_L1",
+              "type": "text/html",
+              "title": "Collection Catalogue Entry"
+            }
+          ],
+          "previews": [
+            {
+              "href": "https://www.vito-eodata.be/PDF/image/defaultimages/Sentinel_1_Belgium.jpg",
+              "type": "image/jpeg",
+              "title": "Illustration image"
+            }
+          ],
+          "via": [
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/xml_iso19139?uuid=urn:eop:VITO:CGS_S1_SLC_L1",
+              "type": "application/vnd.iso.19139+xml",
+              "title": "INSPIRE Collection Catalogue metadata file"
+            }
+          ],
+          "search": [
+            {
+              "href": "https://oscars-dev.vgt.vito.be/description.geojson?collection=urn:eop:VITO:CGS_S1_SLC_L1",
+              "type": "application/geo+json",
+              "title": "OpenSearch entry point"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

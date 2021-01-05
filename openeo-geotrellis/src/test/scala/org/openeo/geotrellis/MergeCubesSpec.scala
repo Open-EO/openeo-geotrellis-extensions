@@ -9,7 +9,7 @@ import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
-import org.junit.{BeforeClass, Test}
+import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.LayerFixtures._
 
 
@@ -26,6 +26,9 @@ object MergeCubesSpec{
       SparkContext.getOrCreate(conf)
     }
   }
+
+  @AfterClass
+  def tearDownSpark() = sc.stop()
 }
 
 class MergeCubesSpec {
@@ -137,6 +140,24 @@ class MergeCubesSpec {
           assertEquals(8, item._2.band(1).get(0, 0))
         }
       }
+    }
+  }
+
+  @Test def testMergeCubeDifference_SpatialSpatial(): Unit = {
+    val band1: ByteArrayTile = ByteArrayTile.fill(2.toByte, 256, 256)
+    val band2: ByteArrayTile = ByteArrayTile.fill(3.toByte, 256, 256)
+    val band3: ByteArrayTile = ByteArrayTile.fill(5.toByte, 256, 256)
+    val band4: ByteArrayTile = ByteArrayTile.fill(8.toByte, 256, 256)
+    val cube1: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(MergeCubesSpec.sc,MultibandTile(band1,band2),TileLayout(4,4,256,256))
+    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(MergeCubesSpec.sc,MultibandTile(band3,band4),cube1.metadata.tileLayout)
+    val processes = new OpenEOProcesses()
+    val merged: MultibandTileLayerRDD[SpatialKey] = processes.mergeSpatialCubes(cube1, cube2, "subtract")
+
+    import scala.collection.JavaConversions._
+    for (item <- merged.toJavaRDD.collect) {
+      assertEquals(2, item._2.bandCount)
+      assertEquals(-3, item._2.band(0).get(0, 0))
+      assertEquals(-5, item._2.band(1).get(0, 0))
     }
   }
 

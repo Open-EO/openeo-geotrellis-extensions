@@ -20,8 +20,9 @@ import scala.collection.mutable.ArrayBuffer
 
 class ProbaVPyramidFactoryTest {
 
-  private val pyramidFactoryS5 = new ProbaVPyramidFactory("/data/MTDA/TIFFDERIVED/PROBAV_L3_S5_TOC_100M")
-  private val pyramidFactoryS10 =  new ProbaVPyramidFactory("/data/MTDA/TIFFDERIVED/PROBAV_L3_S10_TOC_333M")
+  private val openSearchEndpoint = "http://oscars-01.vgt.vito.be:8080"
+  private val pyramidFactoryS5 = new ProbaVPyramidFactory(openSearchEndpoint, "urn:ogc:def:EOP:VITO:PROBAV_S5-TOC_100M_V001", "/data/MTDA/TIFFDERIVED/PROBAV_L3_S5_TOC_100M")
+  private val pyramidFactoryS10 =  new ProbaVPyramidFactory(openSearchEndpoint, "urn:ogc:def:EOP:VITO:PROBAV_S10-TOC_333M_V001", "/data/MTDA/TIFFDERIVED/PROBAV_L3_S10_TOC_333M")
 
   @Ignore
   @Test
@@ -77,8 +78,8 @@ class ProbaVPyramidFactoryTest {
   @Ignore
   @Test
   def writeS10GeoTiffs(): Unit = {
-    val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
-    val from = ZonedDateTime.of(LocalDate.of(2020, 1, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+    val boundingBox = ProjectedExtent(Extent(xmin = 2.5, ymin = 49.5, xmax = 2.55, ymax = 49.55), LatLng)
+    val from = ZonedDateTime.of(LocalDate.of(2019, 8, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC)
     val to = from plusDays 2
 
     val sparkConf = new SparkConf()
@@ -89,7 +90,7 @@ class ProbaVPyramidFactoryTest {
 
     try {
       val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
-      val bandIndices = ArrayBuffer(NDVI, SWIR, NIR).map(_.id).asJava
+      val bandIndices = ArrayBuffer(NDVI, SWIR, NIR, SAA, SZA, SM).map(_.id).asJava
 
       val pyramid = pyramidFactoryS10.pyramid_seq(boundingBox.extent, srs,
         DateTimeFormatter.ISO_OFFSET_DATE_TIME format from, DateTimeFormatter.ISO_OFFSET_DATE_TIME format to,

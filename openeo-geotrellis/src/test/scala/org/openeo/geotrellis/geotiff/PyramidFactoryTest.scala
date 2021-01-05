@@ -15,12 +15,11 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
 import geotrellis.store.s3.util.S3RangeReader
-import geotrellis.vector.{Extent, ProjectedExtent}
-import org.apache.spark.rdd.RDD
+import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Ignore, Test}
-import org.openeo.geotrellis.OpenEOProcesses
+import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
@@ -101,9 +100,8 @@ class PyramidFactoryTest {
     for (timestamp <- timestamps) {
       val Raster(multibandTile, extent) = layer
         .toSpatial(timestamp)
-        // note: the geotiff seems to move around for lower zoom levels (< 9) because of this crop operation :/
-        .crop(boundingBox.reproject(layer.metadata.crs))
         .stitch()
+        .crop(boundingBox.reproject(layer.metadata.crs))
 
       MultibandGeoTiff(multibandTile, extent, layer.metadata.crs)
         .write(s"/tmp/stitched_${ISO_LOCAL_DATE format timestamp}_$zoom.tif")
@@ -139,6 +137,37 @@ class PyramidFactoryTest {
     assertEquals(14, maxZoom)
 
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = 10)
+  }
+
+  @Test
+  def sentinelHubBatchProcessApiGeoTiffFromS3ForMultipleDates(): Unit = {
+    assertNotNull("AWS_ACCESS_KEY_ID is not set", System.getenv("AWS_ACCESS_KEY_ID"))
+    assertNotNull("AWS_SECRET_ACCESS_KEY is not set", System.getenv("AWS_SECRET_ACCESS_KEY"))
+    System.setProperty("aws.region", "eu-central-1")
+
+    val boundingBox = ProjectedExtent(Extent(2.59003, 51.069, 2.8949, 51.2206), CRS.fromEpsgCode(4326))
+
+    val batchProcessId = "7f3d98f2-4a9a-4fbe-adac-973f1cff5699"
+
+    // the results for this batch process obviously only contain the dates that were requested in the first place so
+    // no additional key filtering is necessary here
+    val pyramidFactory = PyramidFactory.from_s3(
+      s3_uri = s"s3://openeo-sentinelhub/$batchProcessId/",
+      key_regex = raw".*\.tif",
+      date_regex = raw".*_(\d{4})(\d{2})(\d{2}).tif",
+      recursive = true,
+      interpret_as_cell_type = "float32ud0"
+    )
+
+    val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
+    val pyramid = pyramidFactory.datacube_seq(ProjectedPolygons(Array(boundingBox.extent.toPolygon()), srs),
+      from_date = null, to_date = null)
+
+    val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
+    assertEquals(0, maxZoom)
+
+    // FIXME: obvious artifacts in the geotiff, needs something like MosaicRasterSource
+    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
   }
 
   @Test

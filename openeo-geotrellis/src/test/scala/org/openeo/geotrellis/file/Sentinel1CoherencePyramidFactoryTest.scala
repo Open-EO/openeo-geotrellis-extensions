@@ -7,6 +7,7 @@ import java.time.{LocalDate, ZonedDateTime}
 import java.util.Arrays.asList
 
 import geotrellis.proj4.LatLng
+import geotrellis.raster.CellSize
 import geotrellis.raster.summary.polygonal.PolygonalSummaryResult
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.types.MeanValue
@@ -14,11 +15,9 @@ import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
-import org.apache.spark.SparkContext
+import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertArrayEquals, assertEquals, assertTrue}
-import org.junit.{AfterClass, BeforeClass}
-import org.apache.spark.SparkConf
-import org.junit.Test
+import org.junit.{AfterClass, BeforeClass, Test}
 
 object Sentinel1CoherencePyramidFactoryTest {
   private var sc: SparkContext = _
@@ -49,7 +48,7 @@ class Sentinel1CoherencePyramidFactoryTest {
     val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format date
     val to_date = from_date
 
-    val (_, baseLayer) = sentinel1CoherencePyramidFactory.pyramid_seq(bbox.extent, bbox_srs, from_date, to_date)
+    val (_, baseLayer) = sentinel1CoherencePyramidFactory.pyramid_seq(bbox.extent, bbox_srs, from_date, to_date, correlationId = "")
       .maxBy { case (zoom, _) => zoom }
 
     val spatialLayer = baseLayer
@@ -65,12 +64,15 @@ class Sentinel1CoherencePyramidFactoryTest {
     assertTrue(summary.toOption.isDefined)
     val meanList = summary.toOption.get
     assertEquals(2, meanList.length)
-    assertArrayEquals(qgisZonalStatisticsPluginResult, meanList.map(_.mean), 0.1)
+    assertArrayEquals(qgisZonalStatisticsPluginResult, meanList.map(_.mean), 0.2)
+    println(meanList.map(_.count))
   }
 
-  private def sentinel1CoherencePyramidFactory = new Sentinel1CoherencePyramidFactory(
-    oscarsCollectionId = "urn:eop:VITO:TERRASCOPE_S1_SLC_COHERENCE_V1",
-    oscarsLinkTitles = asList("VH", "VV"),
-    rootPath = "/data/MTDA/TERRASCOPE_Sentinel1/SLC_COHERENCE"
+  private def sentinel1CoherencePyramidFactory = new Sentinel2PyramidFactory(
+    openSearchEndpoint = "http://oscars-01.vgt.vito.be:8080",
+    openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S1_SLC_COHERENCE_V1",
+    openSearchLinkTitles = asList("VH", "VV"),
+    rootPath = "/data/MTDA/TERRASCOPE_Sentinel1/SLC_COHERENCE",
+    maxSpatialResolution = CellSize(10, 10)
   )
 }
