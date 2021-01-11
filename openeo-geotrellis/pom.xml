@@ -132,6 +132,10 @@
                     <additionalClasspathElements>
                         <additionalClasspathElement>/etc/hadoop/conf</additionalClasspathElement>
                     </additionalClasspathElements>
+                    <environmentVariables>
+                        <LD_LIBRARY_PATH>/tmp_epod/gdal</LD_LIBRARY_PATH>
+                        <PROJ_LIB>/tmp_epod/gdal/data</PROJ_LIB>
+                    </environmentVariables>
                 </configuration>
             </plugin>
         </plugins>
