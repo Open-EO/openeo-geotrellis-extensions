@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.layers
 
-import java.net.URL
+import java.net.URI
 import java.time.ZonedDateTime
 
 import _root_.io.circe.parser.decode
@@ -11,10 +11,10 @@ import io.circe.{Decoder, HCursor, Json}
 import geotrellis.vector._
 
 object OpenSearchResponses {
-  implicit val decodeUrl: Decoder[URL] = Decoder.decodeString.map(new URL(_))
+  implicit val decodeUrl: Decoder[URI] = Decoder.decodeString.map(URI.create(_))
   implicit val decodeDate: Decoder[ZonedDateTime] = Decoder.decodeString.map{s:CharSequence => ZonedDateTime.parse(  s.toString().split('/')(0))}
 
-  case class Link(href: URL, title: Option[String])
+  case class Link(href: URI, title: Option[String])
   case class Feature(id: String, bbox: Extent, nominalDate: ZonedDateTime, links: Array[Link], resolution: Option[Int])
   case class FeatureCollection(itemsPerPage: Int, features: Array[Feature])
 
@@ -43,7 +43,7 @@ object OpenSearchResponses {
   }
 
   object STACFeatureCollection {
-    def parse(json: String): FeatureCollection = {
+    def parse(json: String, toS3URL:Boolean=true): FeatureCollection = {
       implicit val decodeFeature: Decoder[Feature] = new Decoder[Feature] {
         override def apply(c: HCursor): Decoder.Result[Feature] = {
           for {
@@ -56,7 +56,16 @@ object OpenSearchResponses {
             val Array(xMin, yMin, xMax, yMax) = bbox
             val extent = Extent(xMin, yMin, xMax, yMax)
 
-            val harmonizedLinks = links.map { t => Link(t._2.href, Some(t._1)) }
+            val harmonizedLinks = links.map { t =>
+              val href = t._2.href
+              if(toS3URL){
+                val bucket = href.getHost.split('.')(0)
+                val s3href = URI.create("s3://" + bucket +href.getPath)
+                Link(s3href, Some(t._1))
+              }
+              else{
+                Link(href, Some(t._1)) }
+              }
             Feature(id, extent, nominalDate, harmonizedLinks.toArray, resolution)
           }
         }
