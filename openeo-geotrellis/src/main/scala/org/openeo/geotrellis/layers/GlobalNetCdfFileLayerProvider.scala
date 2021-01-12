@@ -55,6 +55,11 @@ object GlobalNetCdfFileLayerProvider {
 class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRegex: Regex) extends LayerProvider {
   import GlobalNetCdfFileLayerProvider._
 
+  lazy val maxZoom: Int = {
+    val (_, newestRasterSource) = queryAll().last
+    layoutScheme.levelFor(newestRasterSource.extent, newestRasterSource.cellSize).zoom
+  }
+
   override def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent = null,
                                       zoom: Int = Int.MaxValue, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     val rasterSources = query(from, to)
@@ -66,7 +71,6 @@ class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRege
     val date = dateRegex
     val keyExtractor = TemporalKeyExtractor.fromPath { case GDALPath(value) => deriveDate(value, date) }
 
-    val maxZoom = layoutScheme.levelFor(rasterSources.head.extent, rasterSources.head.cellSize).zoom
     val layout = layoutScheme.levelForZoom(zoom min maxZoom).layout
 
     implicit val _sc: SparkContext = sc // TODO: clean up
@@ -142,7 +146,6 @@ class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRege
     val (minDate, _) = datedRasterSources.head
     val (maxDate, newestRasterSource) = datedRasterSources.last
 
-    val maxZoom = layoutScheme.levelFor(newestRasterSource.extent, newestRasterSource.cellSize).zoom
     val layout = layoutScheme.levelForZoom(zoom min maxZoom).layout
 
     TileLayerMetadata(
