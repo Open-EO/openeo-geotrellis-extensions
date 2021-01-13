@@ -9,11 +9,12 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpatialPartitioner
 import geotrellis.store.hadoop.util.HdfsUtils
 import geotrellis.util._
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{Partitioner, SparkContext}
+import org.openeo.geotrellis.ProjectedPolygons
 
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.concurrent.TimeUnit.HOURS
@@ -62,6 +63,13 @@ class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRege
 
   override def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent = null,
                                       zoom: Int = Int.MaxValue, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val projectedPolygons = ProjectedPolygons(Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs)
+    readMultibandTileLayer(from, to, projectedPolygons, zoom, sc)
+  }
+
+  def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, projectedPolygons: ProjectedPolygons, zoom: Int,
+                             sc: SparkContext)
+  : MultibandTileLayerRDD[SpaceTimeKey] = {
     val rasterSources = query(from, to)
 
     if (rasterSources.isEmpty) throw new IllegalArgumentException("no fitting raster sources found")
@@ -72,6 +80,7 @@ class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRege
     val keyExtractor = TemporalKeyExtractor.fromPath { case GDALPath(value) => deriveDate(value, date) }
 
     val layout = layoutScheme.levelForZoom(zoom min maxZoom).layout
+    val reprojectedPolygonExtents = projectedPolygons.polygons.map(_.extent.reproject(projectedPolygons.crs, crs))
 
     implicit val _sc: SparkContext = sc // TODO: clean up
 
@@ -79,7 +88,7 @@ class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRege
       sources,
       layout,
       keyExtractor,
-      boundingBox.reproject(crs)
+      reprojectedPolygonExtents
     )
   }
 
@@ -97,7 +106,7 @@ class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRege
    sources: RDD[RasterSource],
    layout: LayoutDefinition,
    keyExtractor: KeyExtractor.Aux[K, M],
-   boundingBox: Extent,
+   extents: Seq[Extent],
    rasterSummary: Option[RasterSummary[M]] = None,
    partitioner: Option[Partitioner] = None
  )(implicit sc: SparkContext): MultibandTileLayerRDD[K] = {
@@ -115,7 +124,10 @@ class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRege
       tiledLayoutSourceRDD.flatMap { tiledLayoutSource =>
         tiledLayoutSource
           .keyedRasterRegions()
-          .filter { case (key, _) => key.getComponent[SpatialKey].extent(layout) intersects boundingBox }
+          .filter { case (key, _) =>
+            val keyExtent = key.getComponent[SpatialKey].extent(layout)
+            extents.exists(polygonExtent => keyExtent intersects polygonExtent)
+          }
       }
 
     // The number of partitions estimated by RasterSummary can sometimes be much

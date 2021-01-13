@@ -2,6 +2,7 @@ package org.openeo.geotrellis.file
 
 import com.azavea.gdal.GDALWarp
 import geotrellis.proj4.LatLng
+import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.spark._
@@ -122,5 +123,53 @@ class CglsPyramidFactoryTest {
     val physicalMean = mean.mean * netCdfScalingFactor + netCdfOffset
 
     assertEquals(0.21796850248444263, physicalMean, 0.001) // from QGIS with the corresponding geotiff
+  }
+
+  @Test
+  def datacube_seqSparse(): Unit = {
+    val ndvi300PyramidFactory = new CglsPyramidFactory(
+      dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2018/201806*/*/*.nc",
+      bandName = "NDVI",
+      dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+"
+    )
+
+    val date = LocalDate.of(2018, 6, 21).atStartOfDay(ZoneId.of("UTC"))
+
+    val from_date = date format ISO_OFFSET_DATE_TIME
+    val to_date = from_date
+
+    val bbox1 = Extent(124.07958984375001, -23.96115620034201, 125.408935546875, -22.715390019335942)
+    val bbox2 = Extent(126.5130615234375, -26.416470240877764, 128.0291748046875, -25.11544539706194)
+    val bboxCrs = LatLng
+
+    val multiPolygons = Array(bbox1, bbox2)
+      .map(extent => MultiPolygon(extent.toPolygon()))
+
+    val projectedPolygons = ProjectedPolygons(multiPolygons, bboxCrs)
+
+    val Seq((_, baseLayer)) = ndvi300PyramidFactory.datacube_seq(projectedPolygons, from_date, to_date)
+
+    val spatialLayer = baseLayer
+      .toSpatial(date)
+      .cache()
+
+    assert(spatialLayer.metadata.crs == bboxCrs)
+
+    /*val Some(stitchedRaster) = spatialLayer.sparseStitch(bbox1 combine bbox2) // sparseStitch!
+    MultibandGeoTiff(stitchedRaster, bboxCrs).write("/tmp/ndvi300_sparse.tif")*/
+
+    def physicalMean(polygon: Polygon): Double = {
+      val Summary(Array(mean)) = spatialLayer
+        .polygonalSummaryValue(polygon, MeanVisitor)
+
+      val netCdfScalingFactor = 0.00400000018998981
+      val netCdfOffset = -0.0799999982118607
+
+      mean.mean * netCdfScalingFactor + netCdfOffset
+    }
+
+    // from QGIS with the corresponding geotiff
+    assertEquals(0.23275508226336977, physicalMean(bbox1.extent.toPolygon()), 0.001)
+    assertEquals(0.21305455611940785, physicalMean(bbox2.extent.toPolygon()), 0.001)
   }
 }
