@@ -9,11 +9,12 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpatialPartitioner
 import geotrellis.store.hadoop.util.HdfsUtils
 import geotrellis.util._
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{Partitioner, SparkContext}
+import org.openeo.geotrellis.ProjectedPolygons
 
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.concurrent.TimeUnit.HOURS
@@ -55,8 +56,20 @@ object GlobalNetCdfFileLayerProvider {
 class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRegex: Regex) extends LayerProvider {
   import GlobalNetCdfFileLayerProvider._
 
+  lazy val maxZoom: Int = {
+    val (_, newestRasterSource) = queryAll().last
+    layoutScheme.levelFor(newestRasterSource.extent, newestRasterSource.cellSize).zoom
+  }
+
   override def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent = null,
                                       zoom: Int = Int.MaxValue, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val projectedPolygons = ProjectedPolygons(Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs)
+    readMultibandTileLayer(from, to, projectedPolygons, zoom, sc)
+  }
+
+  def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, projectedPolygons: ProjectedPolygons, zoom: Int,
+                             sc: SparkContext)
+  : MultibandTileLayerRDD[SpaceTimeKey] = {
     val rasterSources = query(from, to)
 
     if (rasterSources.isEmpty) throw new IllegalArgumentException("no fitting raster sources found")
@@ -66,8 +79,8 @@ class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRege
     val date = dateRegex
     val keyExtractor = TemporalKeyExtractor.fromPath { case GDALPath(value) => deriveDate(value, date) }
 
-    val maxZoom = layoutScheme.levelFor(rasterSources.head.extent, rasterSources.head.cellSize).zoom
     val layout = layoutScheme.levelForZoom(zoom min maxZoom).layout
+    val reprojectedPolygons = projectedPolygons.polygons.map(_.reproject(projectedPolygons.crs, crs))
 
     implicit val _sc: SparkContext = sc // TODO: clean up
 
@@ -75,7 +88,7 @@ class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRege
       sources,
       layout,
       keyExtractor,
-      boundingBox.reproject(crs)
+      reprojectedPolygons
     )
   }
 
@@ -93,7 +106,7 @@ class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRege
    sources: RDD[RasterSource],
    layout: LayoutDefinition,
    keyExtractor: KeyExtractor.Aux[K, M],
-   boundingBox: Extent,
+   polygons: Seq[MultiPolygon],
    rasterSummary: Option[RasterSummary[M]] = None,
    partitioner: Option[Partitioner] = None
  )(implicit sc: SparkContext): MultibandTileLayerRDD[K] = {
@@ -107,21 +120,34 @@ class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRege
         rs.tileToLayout(layout, tileKeyTransform)
       }
 
+    val polygonsExtent = polygons.extent // TODO: can be done on Spark too
+    val requiredKeys = sc.parallelize(polygons).clipToGrid(layout).groupByKey()
+
     val rasterRegionRDD: RDD[(K, RasterRegion)] =
       tiledLayoutSourceRDD.flatMap { tiledLayoutSource =>
         tiledLayoutSource
           .keyedRasterRegions()
-          .filter { case (key, _) => key.getComponent[SpatialKey].extent(layout) intersects boundingBox }
+          .filter { case (key, _) =>
+            val keyExtent = key.getComponent[SpatialKey].extent(layout)
+            keyExtent intersects polygonsExtent
+          }
       }
+
+    val spatiallyKeyedRasterRegionRDD: RDD[(SpatialKey, (K, RasterRegion))] = rasterRegionRDD
+      .map { case keyedRasterRegion @ (key, _) => (key.getComponent[SpatialKey], keyedRasterRegion) }
+
+    val filteredRdd = spatiallyKeyedRasterRegionRDD.join(requiredKeys)
+      .mapValues { case (keyedRasterRegion, _) => keyedRasterRegion }
+      .values
 
     // The number of partitions estimated by RasterSummary can sometimes be much
     // lower than what the user set. Therefore, we assume that the larger value
     // is the optimal number of partitions to use.
     val partitionCount =
-    math.max(rasterRegionRDD.getNumPartitions, summary.estimatePartitionsNumber)
+    math.max(filteredRdd.getNumPartitions, summary.estimatePartitionsNumber)
 
     val tiledRDD: RDD[(K, MultibandTile)] =
-      rasterRegionRDD
+      filteredRdd
         .groupByKey(partitioner.getOrElse(SpatialPartitioner[K](partitionCount)))
         .mapValues { iter =>
           MultibandTile( // TODO: use our version? (see org.openeo.geotrellis.geotiff.PyramidFactory.tiledLayerRDD)
@@ -142,7 +168,6 @@ class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRege
     val (minDate, _) = datedRasterSources.head
     val (maxDate, newestRasterSource) = datedRasterSources.last
 
-    val maxZoom = layoutScheme.levelFor(newestRasterSource.extent, newestRasterSource.cellSize).zoom
     val layout = layoutScheme.levelForZoom(zoom min maxZoom).layout
 
     TileLayerMetadata(
