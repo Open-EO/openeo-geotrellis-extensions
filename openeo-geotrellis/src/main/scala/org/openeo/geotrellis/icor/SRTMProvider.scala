@@ -31,11 +31,11 @@ object SRTMProvider{
   
 }
 
-class SRTMProvider(basePath:String = "TODO:FIXME") {
+class SRTMProvider(basePath:String = "/eodata/auxdata/SRTMGL1/dem") extends ElevationProvider {
 
   import SRTMProvider._
 
-  def computeSRTM(key:SpaceTimeKey, targetCRS:CRS,layoutDefinition:LayoutDefinition): Tile = {
+  def compute(key:SpaceTimeKey, targetCRS:CRS,layoutDefinition:LayoutDefinition): Tile = {
 
     // find the files that overlap with extent of the key
     val targetExtent= layoutDefinition.mapTransform.apply(key)

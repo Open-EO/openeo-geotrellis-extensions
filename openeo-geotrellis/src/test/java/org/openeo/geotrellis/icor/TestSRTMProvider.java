@@ -63,13 +63,13 @@ public class TestSRTMProvider {
     	
     	// single source 
         SpaceTimeKey key = SpaceTimeKey.apply(0, 0, date);
-    	Tile tile=provider.computeSRTM(key, projectedPolygons.crs(), level.layout());
+    	Tile tile=provider.compute(key, projectedPolygons.crs(), level.layout());
     	Tile reftile=GeoTiffRasterSource.apply(Paths.get(srtmDir.toString(),"test_srtm_tile_0_0.tif").toString()).read().get().tile().band(0);
     	assertArrayEquals(tile.toArrayDouble(),reftile.toArrayDouble(),1.e-6);
 
     	// on the edge of two SRTM tiles 
         key = SpaceTimeKey.apply(7, 0, date);
-    	tile=provider.computeSRTM(key, projectedPolygons.crs(), level.layout());
+    	tile=provider.compute(key, projectedPolygons.crs(), level.layout());
     	reftile=GeoTiffRasterSource.apply(Paths.get(srtmDir.toString(),"test_srtm_tile_7_0.tif").toString()).read().get().tile().band(0);
     	assertArrayEquals(tile.toArrayDouble(),reftile.toArrayDouble(),1.e-6);
     }

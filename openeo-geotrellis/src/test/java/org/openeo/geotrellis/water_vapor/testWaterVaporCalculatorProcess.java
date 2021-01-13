@@ -91,7 +91,7 @@ public class testWaterVaporCalculatorProcess {
 
     
     @Test
-    public void testAtmosphericCorrectionOverrideAngles() {
+    public void testWaterVaporCalculatorOverrideAngles() {
 
         Tile wvTile = new IntConstantTile((int)cwv,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
         Tile r0Tile = new IntConstantTile((int)r0,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
@@ -126,7 +126,7 @@ public class testWaterVaporCalculatorProcess {
     }
 
     @Test
-    public void testAtmosphericCorrectionAnglesFromTiles() {
+    public void testWaterVaporCalculatorAnglesFromTiles() {
 
         Tile wvTile = new DoubleConstantTile(cwv,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
         Tile r0Tile = new DoubleConstantTile(r0,256,256,(DoubleCells)CellType$.MODULE$.fromName("float64raw").withDefaultNoData()).mutable();
@@ -166,7 +166,7 @@ public class testWaterVaporCalculatorProcess {
     }
     
     @Test
-    public void testAtmosphericCorrectionBlockCalculator() {
+    public void testWaterVaporCalculatorBlockCalculator() {
 
     	double vals[]=new double[]{
     		 0, 1, 2,   3, 4, 5,   6, 7, 8,   9,
@@ -221,7 +221,7 @@ public class testWaterVaporCalculatorProcess {
 
     
     @Test
-    public void testAtmosphericCorrectionAverage() {
+    public void testWaterVaporCalculatorAverage() {
 
     	double vals[]=new double[]{
     		Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN,Double.NaN,Double.NaN,   Double.NaN, 
@@ -262,19 +262,4 @@ public class testWaterVaporCalculatorProcess {
 
     }
     
-    
-//    @Test
-//    public void testAtmosphericCorrection2() {
-//
-//        Tile tile0 = new IntConstantTile(256,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
-//        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube = org.openeo.geotrellis.TestOpenEOProcesses.tileToSpaceTimeDataCube(tile0);
-//        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),datacube,"lut_s2a");
-//        System.out.println(resultRDD.getClass().toString());
-//
-//        JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(resultRDD.toJavaRDD());
-//        assertFalse(result.isEmpty());
-//        Map<SpaceTimeKey, MultibandTile> tiles = result.collectAsMap();
-//        
-//    }
-
 }
