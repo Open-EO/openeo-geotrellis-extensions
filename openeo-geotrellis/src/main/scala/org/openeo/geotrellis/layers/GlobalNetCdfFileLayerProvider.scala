@@ -80,7 +80,7 @@ class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRege
     val keyExtractor = TemporalKeyExtractor.fromPath { case GDALPath(value) => deriveDate(value, date) }
 
     val layout = layoutScheme.levelForZoom(zoom min maxZoom).layout
-    val reprojectedPolygonExtents = projectedPolygons.polygons.map(_.extent.reproject(projectedPolygons.crs, crs))
+    val reprojectedPolygons = projectedPolygons.polygons.map(_.reproject(projectedPolygons.crs, crs))
 
     implicit val _sc: SparkContext = sc // TODO: clean up
 
@@ -88,7 +88,7 @@ class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRege
       sources,
       layout,
       keyExtractor,
-      reprojectedPolygonExtents
+      reprojectedPolygons
     )
   }
 
@@ -106,7 +106,7 @@ class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRege
    sources: RDD[RasterSource],
    layout: LayoutDefinition,
    keyExtractor: KeyExtractor.Aux[K, M],
-   extents: Seq[Extent],
+   polygons: Seq[MultiPolygon],
    rasterSummary: Option[RasterSummary[M]] = None,
    partitioner: Option[Partitioner] = None
  )(implicit sc: SparkContext): MultibandTileLayerRDD[K] = {
@@ -120,24 +120,34 @@ class GlobalNetCdfFileLayerProvider(dataGlob: String, bandName: String, dateRege
         rs.tileToLayout(layout, tileKeyTransform)
       }
 
+    val polygonsExtent = polygons.extent // TODO: can be done on Spark too
+    val requiredKeys = sc.parallelize(polygons).clipToGrid(layout).groupByKey()
+
     val rasterRegionRDD: RDD[(K, RasterRegion)] =
       tiledLayoutSourceRDD.flatMap { tiledLayoutSource =>
         tiledLayoutSource
           .keyedRasterRegions()
           .filter { case (key, _) =>
             val keyExtent = key.getComponent[SpatialKey].extent(layout)
-            extents.exists(polygonExtent => keyExtent intersects polygonExtent)
+            keyExtent intersects polygonsExtent
           }
       }
+
+    val spatiallyKeyedRasterRegionRDD: RDD[(SpatialKey, (K, RasterRegion))] = rasterRegionRDD
+      .map { case keyedRasterRegion @ (key, _) => (key.getComponent[SpatialKey], keyedRasterRegion) }
+
+    val filteredRdd = spatiallyKeyedRasterRegionRDD.join(requiredKeys)
+      .mapValues { case (keyedRasterRegion, _) => keyedRasterRegion }
+      .values
 
     // The number of partitions estimated by RasterSummary can sometimes be much
     // lower than what the user set. Therefore, we assume that the larger value
     // is the optimal number of partitions to use.
     val partitionCount =
-    math.max(rasterRegionRDD.getNumPartitions, summary.estimatePartitionsNumber)
+    math.max(filteredRdd.getNumPartitions, summary.estimatePartitionsNumber)
 
     val tiledRDD: RDD[(K, MultibandTile)] =
-      rasterRegionRDD
+      filteredRdd
         .groupByKey(partitioner.getOrElse(SpatialPartitioner[K](partitionCount)))
         .mapValues { iter =>
           MultibandTile( // TODO: use our version? (see org.openeo.geotrellis.geotiff.PyramidFactory.tiledLayerRDD)
