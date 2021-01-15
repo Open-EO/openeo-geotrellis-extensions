@@ -15,7 +15,7 @@ import scala.collection.Map
  *  {'collections': ['sentinel-s2-l1c'], 'query': {'eo:cloud_cover': {'lte': '10'}, 'data_coverage': {'gt': '80'}}}
  * @param endpoint
  */
-class STACOpenSearch(endpoint: URL=new URL("https://earth-search.aws.element84.com/v0")) extends OpenSearch {
+class STACOpenSearch(endpoint: URL=new URL("https://earth-search.aws.element84.com/v0"), s3URLS: Boolean = true) extends OpenSearch {
   override def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
                            processingLevel: String, attributeValues: Map[String, Any], correlationId: String): Seq[Feature] = {
     def from(startIndex: Int): Seq[Feature] = {
@@ -32,15 +32,18 @@ class STACOpenSearch(endpoint: URL=new URL("https://earth-search.aws.element84.c
     val Extent(xMin, yMin, xMax, yMax) = bbox.reproject(LatLng)
 
     val getProducts = http(s"$endpoint/search")
-      .param("datetime",start.format(ISO_DATE_TIME)+"/"+end.format(ISO_DATE_TIME))
-      .param("collections","[\""+collectionId+"\"]")
-      .param("limit","200")
-      .param("bbox", "["+(Array(xMin, yMin, xMax, yMax) mkString ",") + "]")
-      .param("page",startIndex.toString)
+      .param("datetime", start.format(ISO_DATE_TIME) + "/" + end.format(ISO_DATE_TIME))
+      .param("collections", "[\"" + collectionId + "\"]")
+      .param("limit", "100")
+      .param("bbox", "[" + (Array(xMin, yMin, xMax, yMax) mkString ",") + "]")
+      .param("page", startIndex.toString)
 
 
-    val json = withRetries { execute(getProducts) }
-    STACFeatureCollection.parse(json)
+    val json = withRetries {
+      execute(getProducts)
+    }
+
+    STACFeatureCollection.parse(json,toS3URL = s3URLS)
   }
 
   override def getCollections(correlationId: String = ""): Seq[Feature] = {

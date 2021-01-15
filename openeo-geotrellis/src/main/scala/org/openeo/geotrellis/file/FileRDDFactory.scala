@@ -1,5 +1,9 @@
 package org.openeo.geotrellis.file
 
+import java.net.URL
+import java.time.ZonedDateTime
+import java.util
+
 import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType}
 import geotrellis.spark._
@@ -14,9 +18,6 @@ import org.openeo.geotrellis.layers.OpenSearch
 import org.openeo.geotrellis.layers.OpenSearchResponses.{Feature, Link}
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
-import java.net.URL
-import java.time.ZonedDateTime
-import java.util
 import scala.collection.JavaConverters._
 
 /**
@@ -131,8 +132,7 @@ object FileRDDFactory {
     s"""{"xmin": ${e.xmin}, "ymin": ${e.ymin}, "xmax": ${e.xmax}, "ymax": ${e.ymax}}"""
 
   def toJson(l: Link): String =
-    // TODO: href.toString fails with NullPointerException ???
-    s"""{"href": {"file": ${toJson(l.href.getFile)}}, "title": ${toJson(l.title)}}"""
+    s"""{"href": {"file": ${toJson(l.href.toString)}}, "title": ${toJson(l.title)}}"""
 
   def toJson(a: Array[Link]): String =
     "[" + a.map(toJson).mkString(",") + "]"
