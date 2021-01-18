@@ -29,7 +29,7 @@ class ComputeWaterVapor {
 
   import ComputeWaterVapor._
     
-  def correct(
+  def computeStandaloneCWV(
         jsc: JavaSparkContext, 
         datacube: MultibandTileLayerRDD[SpaceTimeKey], 
         tableId: String, 
@@ -68,14 +68,6 @@ class ComputeWaterVapor {
               multibandtile._1,
               //          multibandtile._2.mapBands((b, tile) => tile.map(i => 23 ))
               {
-                val wvBandId="B09"
-                val r0BandId="B8A"
-                val r1BandId="B11"
-                
-                val cd = new CorrectionDescriptorSentinel2()
-                val bp = new BlockProcessor()
-                val wvCalc = new AbdaWaterVaporCalculator()
-                wvCalc.prepare(bcLUT.value,cd,wvBandId,r0BandId,r1BandId)
 
                 def angleTile(index: Int, fallback: Double): Tile = {
                   if (index > 0) multibandtile._2.band(index).convert(FloatConstantNoDataCellType) else FloatConstantTile(fallback.toFloat, multibandtile._2.cols, multibandtile._2.rows)
@@ -85,82 +77,23 @@ class ComputeWaterVapor {
                 val saaIdx = bandIds.indexOf("sunAzimuthAngles")
                 val vzaIdx = bandIds.indexOf("viewZenithMean")
                 val vaaIdx = bandIds.indexOf("viewAzimuthMean")
-
+                
                 val szaTile = angleTile(szaIdx, defParams.get(0))
                 val saaTile = angleTile(saaIdx, defParams.get(1))// 130.0) // TODO: why is the fallback hardcoded to this value?
                 val vzaTile = angleTile(vzaIdx, defParams.get(2))
                 val vaaTile = angleTile(vaaIdx, defParams.get(3))// 0.0)   // TODO: why is the fallback hardcoded to this value?
-
+                
                 val raaTileDiff = saaTile - vaaTile
                 val raaTile=raaTileDiff.mapDouble(v =>
                   ( if (v < -180.0) v+360.0 else if ( v > 180.0) v-360.0 else v ).abs  
                 )
-
-                val startMillis = System.currentTimeMillis();
-// AOT overriden                val aotTile = aotProvider.computeAOT(multibandtile._1, crs, layoutDefinition)
-                val aot=defParams.get(4)
-                val ozone=defParams.get(5)
-                val demTile = demProvider.compute(multibandtile._1, crs, layoutDefinition)
-                val afterAuxData = System.currentTimeMillis()
                 
-                // TODO: use reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert)
-                val wvTile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,wvBandId)).convert(FloatConstantNoDataCellType)*prePostMult.get(0)
-                val r0Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r0BandId)).convert(FloatConstantNoDataCellType)*prePostMult.get(0)
-                val r1Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r1BandId)).convert(FloatConstantNoDataCellType)*prePostMult.get(0)
-                                
-                auxDataAccum.add(afterAuxData-startMillis)
-
-                // try to get at least 1 valid value on 60m resolution
-                val mbtresult : MultibandTile = try { 
-                  val wvRawResultTile=bp.computeDoubleBlocks(
-                    MultibandTile(
-                      szaTile, 
-                      vzaTile, 
-                      raaTile,
-                      demTile.convert(FloatConstantNoDataCellType), 
-// AOT overriden                      aotTile.convert(FloatConstantNoDataCellType), 
-                      wvTile.convert(FloatConstantNoDataCellType), 
-                      r0Tile.convert(FloatConstantNoDataCellType), 
-                      r1Tile.convert(FloatConstantNoDataCellType)
-                    ),
-                    6, // on 10m base resolution looking for a value on 60m resolution
-                    aot,
-                    ozone,
-                    doubleNODATA,
-                    bcLUT.value,
-                    wvCalc
-                  )*prePostMult.get(1)
-                  MultibandTile(bp.replaceNoDataWithAverage(wvRawResultTile,doubleNODATA))
-                } catch {
-                  case e: IllegalArgumentException => MultibandTile(wvTile)
-                }
+                compute(
+                  szaTile,
+                  vzaTile,
+                  raaTile
                 
-/*                
-                val mbtresult : MultibandTile = try {
-                  val result : Tile = MultibandTile(
-                      szaTile, 
-                      vzaTile, 
-                      raaTile,
-                      demTile.convert(FloatConstantNoDataCellType), 
-// AOT overriden                      aotTile.convert(FloatConstantNoDataCellType), 
-                      wvTile.convert(FloatConstantNoDataCellType), 
-                      r0Tile.convert(FloatConstantNoDataCellType), 
-                      r1Tile.convert(FloatConstantNoDataCellType)
-                      ).combineDouble(0, 1, 2, 3, 4, 5, 6 /*AOT overriden , 7*/) { 
-                        (sza, vza, raa, dem, /*AOT overriden aot,*/ wv, r0, r1) => 
-                          if ( (wv != doubleNODATA) && (r0 != doubleNODATA) && (r1 != doubleNODATA)) (prePostMult.get(1) * 
-                              wvCalc.computePixel(bcLUT.value, sza, vza, raa, dem, aot, wv*prePostMult.get(0), r0*prePostMult.get(0), r1*prePostMult.get(0), ozone, doubleNODATA)
-                          ) 
-                          else doubleNODATA 
-                      }
-//                  result.convert(wvTile.cellType)
-                  MultibandTile(result)
-                } catch {
-                  case e: IllegalArgumentException => MultibandTile(wvTile)
-                }
-*/
-                correctionAccum.add(System.currentTimeMillis() - afterAuxData)
-                mbtresult.convert(FloatConstantNoDataCellType)
+                )
               }
             )
         }
@@ -171,6 +104,67 @@ class ComputeWaterVapor {
 
   }
  
+  def compute(
+    szaTile: Tile, 
+    vzaTile: Tile, 
+    raaTile: Tile
+  ) : Tile = {
+
+    val wvBandId="B09"
+    val r0BandId="B8A"
+    val r1BandId="B11"
+    
+    val cd = new CorrectionDescriptorSentinel2()
+    val bp = new BlockProcessor()
+    val wvCalc = new AbdaWaterVaporCalculator()
+    
+    wvCalc.prepare(bcLUT.value,cd,wvBandId,r0BandId,r1BandId)
+        
+    val startMillis = System.currentTimeMillis();
+    // AOT overriden                val aotTile = aotProvider.computeAOT(multibandtile._1, crs, layoutDefinition)
+    val aot=defParams.get(4)
+    val ozone=defParams.get(5)
+    val demTile = demProvider.compute(multibandtile._1, crs, layoutDefinition)
+    val afterAuxData = System.currentTimeMillis()
+    
+    // TODO: use reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert)
+    val wvTile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,wvBandId)).convert(FloatConstantNoDataCellType)*prePostMult.get(0)
+    val r0Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r0BandId)).convert(FloatConstantNoDataCellType)*prePostMult.get(0)
+    val r1Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r1BandId)).convert(FloatConstantNoDataCellType)*prePostMult.get(0)
+                    
+    auxDataAccum.add(afterAuxData-startMillis)
+    
+    // try to get at least 1 valid value on 60m resolution
+    val mbtresult : MultibandTile = try { 
+      val wvRawResultTile=bp.computeDoubleBlocks(
+        MultibandTile(
+          szaTile, 
+          vzaTile, 
+          raaTile,
+          demTile.convert(FloatConstantNoDataCellType), 
+    // AOT overriden                      aotTile.convert(FloatConstantNoDataCellType), 
+          wvTile.convert(FloatConstantNoDataCellType), 
+          r0Tile.convert(FloatConstantNoDataCellType), 
+          r1Tile.convert(FloatConstantNoDataCellType)
+        ),
+        6, // on 10m base resolution looking for a value on 60m resolution
+        aot,
+        ozone,
+        doubleNODATA,
+        bcLUT.value,
+        wvCalc
+      )*prePostMult.get(1)
+      MultibandTile(bp.replaceNoDataWithAverage(wvRawResultTile,doubleNODATA))
+    } catch {
+      case e: IllegalArgumentException => MultibandTile(wvTile)
+    }
+    
+    correctionAccum.add(System.currentTimeMillis() - afterAuxData)
+    mbtresult.convert(FloatConstantNoDataCellType)
+   
+ }
+  
+  
 }
 
 
