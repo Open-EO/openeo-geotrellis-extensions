@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.layers
 
-import java.net.URL
+import java.net.{URI, URL}
 import java.nio.file.{Path, Paths}
 import java.time.temporal.ChronoUnit
 import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
@@ -11,7 +11,7 @@ import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.ResampleMethods.NearestNeighbor
-import geotrellis.raster.geotiff.{GeoTiffRasterSource, GeoTiffResampleRasterSource}
+import geotrellis.raster.geotiff.GeoTiffResampleRasterSource
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.spark._
@@ -40,11 +40,12 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
   override def bandCount: Int = sources.size
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    val singleBandRasters = reprojectedSources
+    val selectedSources = bands.toVector.map(sources.toList)
+    val singleBandRasters = selectedSources.map { _.reproject(crs) }
       .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
       .collect { case Some(raster) => raster }
 
-    if (singleBandRasters.size == reprojectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile)), singleBandRasters.head.extent))
+    if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile)), singleBandRasters.head.extent))
     else None
   }
 
@@ -248,7 +249,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
   }
 
   def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val overlappingRasterSources: Seq[RasterSource] = loadRasterSourceRDD(boundingBox, from, to, zoom,sc)
+    val overlappingRasterSources: Seq[RasterSource] = loadRasterSourceRDD(boundingBox, from, to, zoom)
     val commonCellType = overlappingRasterSources.head.cellType
     val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType, layoutScheme, maxSpatialResolution)
 
@@ -275,7 +276,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
   }
 
 
-  private def deriveFilePath(href: URL): String = href.getProtocol match {
+  private def deriveFilePath(href: URI): String = href.getScheme match {
     // as oscars requests now use accessedFrom=MEP, we will normally always get file paths
     case "file" => // e.g. file:/data/MTDA_DEV/CGS_S2_DEV/FAPAR_V2/2020/03/19/S2A_20200319T032531_48SXD_FAPAR_V200/10M/S2A_20200319T032531_48SXD_FAPAR_10M_V200.tif
       href.getPath.replaceFirst("CGS_S2_DEV", "CGS_S2") // temporary workaround?
@@ -298,7 +299,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
         GeoTiffResampleRasterSource(path, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None)
         //GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType)
       }else {
-        GeoTiffRasterSource(path, targetCellType)
+        GeoTiffResampleRasterSource(path, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None)
       }
     }
 
@@ -310,7 +311,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
     } yield (rasterSource(path,targetCellType, targetExtent), bands)
   }
 
-  private def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, sc:SparkContext): Seq[RasterSource] = {
+  def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int): Seq[RasterSource] = {
     require(zoom >= 0) // TODO: remove zoom and sc parameters
 
     val overlappingFeatures = openSearch.getProducts(
@@ -349,7 +350,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
     }
     val sources = sc.parallelize(rasterSources,rasterSources.size)
 
-    val noResampling = metadata.layout.cellSize==maxSpatialResolution && experimental
+    val noResampling = metadata.layout.cellSize==maxSpatialResolution
     sc.setJobDescription("Load tiles: "+openSearchCollectionId + " rs: " + noResampling)
     val tiledLayoutSourceRDD =
       sources.map { rs =>
