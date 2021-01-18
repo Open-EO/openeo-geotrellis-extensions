@@ -40,7 +40,7 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
     NonEmptyList.fromListUnsafe(openSearchLinkTitles.asScala.toList),
     rootPath,
     maxSpatialResolution,
-    new SplitYearMonthDayPathDateExtractor,
+    SplitYearMonthDayPathDateExtractor,
     metadataProperties,
     layoutScheme,
     correlationId = correlationId,

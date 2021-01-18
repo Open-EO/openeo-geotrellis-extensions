@@ -65,6 +65,6 @@ class PngTest {
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
       maxSpatialResolution = CellSize(10, 10),
-      pathDateExtractor = new SplitYearMonthDayPathDateExtractor
+      pathDateExtractor = SplitYearMonthDayPathDateExtractor
     )
 }
