@@ -123,6 +123,9 @@ object FileLayerProvider {
   private[geotrellis] val crs = WebMercator
   private[geotrellis] val layoutScheme = ZoomedLayoutScheme(crs, 256)
 
+  private case class CacheKey(openSearch: OpenSearch, openSearchCollectionId: String, rootPath: Path,
+                              pathDateExtractor: PathDateExtractor)
+
   private def extractDate(filename: String, date: Regex): ZonedDateTime = filename match {
     case date(year, month, day) =>
       ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), LocalTime.MIDNIGHT, ZoneId.of("UTC"))
@@ -204,12 +207,10 @@ object FileLayerProvider {
   private val metadataCache =
     Caffeine.newBuilder()
       .refreshAfterWrite(15, TimeUnit.MINUTES)
-      .build(new CacheLoader[(OpenSearch, String, Path, PathDateExtractor), Option[(ProjectedExtent, Array[ZonedDateTime])]] {
-        override def load(key: (OpenSearch, String, Path, PathDateExtractor)): Option[(ProjectedExtent, Array[ZonedDateTime])] = {
-          val (openSearch, collectionId, start, pathDateExtractor) = key
-
-          val bbox = fetchExtentFromOpenSearch(openSearch, collectionId)
-          val dates = pathDateExtractor.extractDates(start)
+      .build(new CacheLoader[CacheKey, Option[(ProjectedExtent, Array[ZonedDateTime])]] {
+        override def load(key: CacheKey): Option[(ProjectedExtent, Array[ZonedDateTime])] = {
+          val bbox = fetchExtentFromOpenSearch(key.openSearch, key.openSearchCollectionId)
+          val dates = key.pathDateExtractor.extractDates(key.rootPath)
 
           Some(bbox, dates)
         }
@@ -400,7 +401,7 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
 
 
   override def loadMetadata(sc: SparkContext): Option[(ProjectedExtent, Array[ZonedDateTime])] =
-    metadataCache.get((openSearch, openSearchCollectionId, _rootPath, pathDateExtractor))
+    metadataCache.get(CacheKey(openSearch, openSearchCollectionId, _rootPath, pathDateExtractor))
 
   override def readTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, zoom: Int = maxZoom, sc: SparkContext): TileLayerRDD[SpaceTimeKey] =
     readMultibandTileLayer(from, to, boundingBox, zoom, sc).withContext { singleBandTiles =>
