@@ -30,7 +30,7 @@ class PathDateExtractorTest {
 
   @Test
   def testSentinel2(): Unit = {
-    val pathDateExtractor = new SplitYearMonthDayPathDateExtractor
+    val pathDateExtractor = SplitYearMonthDayPathDateExtractor
 
     val dates = pathDateExtractor.extractDates(Paths.get("/data/MTDA/TERRASCOPE_Sentinel2/NDVI_V2"))
     val expected = LocalDate.of(2020, 4, 24).atStartOfDay(ZoneId.of("UTC"))
@@ -40,7 +40,7 @@ class PathDateExtractorTest {
 
   @Test
   def testProbaV(): Unit = {
-    val pathDateExtractor = new ProbaVPathDateExtractor
+    val pathDateExtractor = ProbaVPathDateExtractor
 
     val dates = pathDateExtractor.extractDates(Paths.get("/data/MTDA/TIFFDERIVED/PROBAV_L3_S10_TOC_333M"))
     val expected = LocalDate.of(2014, 4, 11).atStartOfDay(ZoneId.of("UTC"))
@@ -50,7 +50,7 @@ class PathDateExtractorTest {
 
   @Test
   def testSigma0(): Unit = {
-    val pathDateExtractor = new SplitYearMonthDayPathDateExtractor
+    val pathDateExtractor = SplitYearMonthDayPathDateExtractor
 
     val dates = pathDateExtractor.extractDates(Paths.get("/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1"))
     val expected = LocalDate.of(2018, 4, 24).atStartOfDay(ZoneId.of("UTC"))
@@ -60,7 +60,7 @@ class PathDateExtractorTest {
 
   @Test
   def testCoherence(): Unit = {
-    val pathDateExtractor = new SplitYearMonthDayPathDateExtractor
+    val pathDateExtractor = SplitYearMonthDayPathDateExtractor
 
     val dates = pathDateExtractor.extractDates(Paths.get("/data/MTDA/TERRASCOPE_Sentinel1/SLC_COHERENCE/"))
     val expected = LocalDate.of(2017, 4, 24).atStartOfDay(ZoneId.of("UTC"))

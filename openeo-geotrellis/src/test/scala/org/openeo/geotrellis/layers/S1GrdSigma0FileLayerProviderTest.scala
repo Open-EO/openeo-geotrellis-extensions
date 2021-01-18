@@ -60,6 +60,6 @@ class S1GrdSigma0FileLayerProviderTest {
     openSearchLinkTitles = NonEmptyList.of("VH", "VV", "angle"),
     rootPath = "/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1",
     maxSpatialResolution = CellSize(10, 10),
-    pathDateExtractor = new SplitYearMonthDayPathDateExtractor
+    pathDateExtractor = SplitYearMonthDayPathDateExtractor
   )
 }

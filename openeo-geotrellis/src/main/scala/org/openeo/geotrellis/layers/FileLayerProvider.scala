@@ -206,10 +206,10 @@ object FileLayerProvider {
       .refreshAfterWrite(15, TimeUnit.MINUTES)
       .build(new CacheLoader[(OpenSearch, String, Path, PathDateExtractor), Option[(ProjectedExtent, Array[ZonedDateTime])]] {
         override def load(key: (OpenSearch, String, Path, PathDateExtractor)): Option[(ProjectedExtent, Array[ZonedDateTime])] = {
-          val (openSearch, collectionId, start, x) = key
+          val (openSearch, collectionId, start, pathDateExtractor) = key
 
           val bbox = fetchExtentFromOpenSearch(openSearch, collectionId)
-          val dates = x.extractDates(start)
+          val dates = pathDateExtractor.extractDates(start)
 
           Some(bbox, dates)
         }
