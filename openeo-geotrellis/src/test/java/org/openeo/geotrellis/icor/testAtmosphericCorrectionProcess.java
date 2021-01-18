@@ -14,9 +14,11 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Map;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
 public class testAtmosphericCorrectionProcess {
@@ -74,6 +76,29 @@ public class testAtmosphericCorrectionProcess {
         assertFalse(result.isEmpty());
         Map<SpaceTimeKey, MultibandTile> tiles = result.collectAsMap();
         
+    }
+
+    @Test
+    public void testSMAC() {
+        URL resource = SMACCorrection.class.getResource("../smac/Coef_S2A_CONT_B2.dat");
+        SMACCorrection.Coeff coeff = new SMACCorrection.Coeff(resource.getPath());
+
+        int theta_s=45; //solar zenith angle
+        int phi_s=200;  //solar azimuth angle
+        int theta_v=5;  //viewing zenith angle
+        int phi_v=-160;    //viewing azimuth
+        double pressure = 1013;//SMACCorrection.PdeZ(1300);
+
+        double AOT550=0.1 ;// AOT at 550 nm
+        double UO3=0.3    ;// Ozone content (cm)  0.3 cm= 300 Dobson Units
+        double UH2O=0.3     ;// Water vapour (g/cm2)
+
+        //compute the atmospheric correction
+        double r_surf = SMACCorrection.smac_inv(0.2f, theta_s, phi_s, theta_v, phi_v,(float) pressure,(float) AOT550, (float)UO3, (float)UH2O, coeff);
+        System.out.println("r_surf = " + r_surf);
+        //use reference python version to generate ref value: http://tully.ups-tlse.fr/olivier/smac-python
+        assertEquals(0.16214342470440238,r_surf,0.00001);
+
     }
 
 //    @Test
