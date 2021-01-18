@@ -26,7 +26,8 @@ class AtmosphericCorrection {
         tableId: String, 
         bandIds:java.util.List[String],
         prePostMult:java.util.List[Double],
-        defParams:java.util.List[Double]
+        defParams:java.util.List[Double],
+        elevationSource: String
       ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]  = {
 
     val sc = JavaSparkContext.toSparkContext(jsc)
@@ -47,11 +48,16 @@ class AtmosphericCorrection {
 
     val auxDataAccum = sc.longAccumulator("Icor aux data loading")
     val correctionAccum = sc.longAccumulator("Icor correction")
-
+    
     new ContextRDD(
       datacube.mapPartitions(partition => {
         val aotProvider = new AOTProvider()
-        val demProvider = new DEMProvider(layoutDefinition, crs)
+
+        val elevationProvider: ElevationProvider = elevationSource.toUpperCase() match {
+          case "DEM"  => new DEMProvider(layoutDefinition, crs)
+          case "SRTM" => new SRTMProvider()
+        }
+
         partition.map {
           multibandtile =>
             (
@@ -82,7 +88,7 @@ class AtmosphericCorrection {
 
                 val startMillis = System.currentTimeMillis();
                 val aotTile = aotProvider.computeAOT(multibandtile._1, crs, layoutDefinition)
-                val demTile = demProvider.computeDEM(multibandtile._1, crs, layoutDefinition)
+                val demTile = elevationProvider.compute(multibandtile._1, crs, layoutDefinition)
                 val afterAuxData = System.currentTimeMillis()
                 auxDataAccum.add(afterAuxData-startMillis)
 

@@ -65,7 +65,8 @@ public class testAtmosphericCorrectionProcess {
         	"test_lut",
         	bandIds,
         	scales,
-        	params
+        	params,
+        	"DEM"
         );
         System.out.println(resultRDD.getClass().toString());
 

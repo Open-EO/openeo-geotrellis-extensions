@@ -100,7 +100,7 @@ class ComputeWaterVapor {
 // AOT overriden                val aotTile = aotProvider.computeAOT(multibandtile._1, crs, layoutDefinition)
                 val aot=defParams.get(4)
                 val ozone=defParams.get(5)
-                val demTile = demProvider.computeDEM(multibandtile._1, crs, layoutDefinition)
+                val demTile = demProvider.compute(multibandtile._1, crs, layoutDefinition)
                 val afterAuxData = System.currentTimeMillis()
                 
                 // TODO: use reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert)
