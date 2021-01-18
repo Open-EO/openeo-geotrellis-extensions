@@ -81,6 +81,14 @@ class AtmosphericCorrection {
                 val vaaTile = angleTile(vaaIdx, 0.0)
                 val saaTile = angleTile(saaIdx, 130.0)
                 
+// TODO: incorporate choice of vaa/saa angle defaults
+/*
+    val szaTile = angleTile(szaIdx, defParams.get(0))
+    val saaTile = angleTile(saaIdx, defParams.get(1))// 130.0) // TODO: why is the fallback hardcoded to this value?
+    val vzaTile = angleTile(vzaIdx, defParams.get(2))
+    val vaaTile = angleTile(vaaIdx, defParams.get(3))// 0.0)   // TODO: why is the fallback hardcoded to this value?
+*/
+                
                 val raaTileDiff = saaTile - vaaTile
                 val raaTile=raaTileDiff.mapDouble(v =>
                   ( if (v < -180.0) v+360.0 else if ( v > 180.0) v-360.0 else v ).abs  
