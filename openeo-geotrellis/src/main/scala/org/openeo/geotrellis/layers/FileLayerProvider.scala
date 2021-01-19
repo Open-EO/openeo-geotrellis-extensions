@@ -123,6 +123,7 @@ object FileLayerProvider {
   private[geotrellis] val crs = WebMercator
   private[geotrellis] val layoutScheme = ZoomedLayoutScheme(crs, 256)
 
+  // important: make sure to implement object equality for CacheKey's members
   private case class CacheKey(openSearch: OpenSearch, openSearchCollectionId: String, rootPath: Path,
                               pathDateExtractor: PathDateExtractor)
 
