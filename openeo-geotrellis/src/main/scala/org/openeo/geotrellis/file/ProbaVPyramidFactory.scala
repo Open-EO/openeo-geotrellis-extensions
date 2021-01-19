@@ -59,7 +59,7 @@ class ProbaVPyramidFactory(openSearchEndpoint: String, openSearchCollectionId: S
       NonEmptyList.fromListUnsafe(openSearchLinkTitlesWithBandIds.map(_._1)),
       rootPath,
       maxSpatialResolution = CellSize(10, 10),
-      pathDateExtractor = new ProbaVPathDateExtractor,
+      pathDateExtractor = ProbaVPathDateExtractor,
       bandIds = openSearchLinkTitlesWithBandIds.map(_._2),
       correlationId = correlationId
     )

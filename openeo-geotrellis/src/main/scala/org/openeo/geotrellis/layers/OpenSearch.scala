@@ -20,15 +20,11 @@ object OpenSearch {
   private val logger = LoggerFactory.getLogger(classOf[OpenSearch])
   private val requestCounter = new AtomicLong
 
-
-  def oscars(endpoint: URL) = new OscarsOpenSearch(endpoint)
-  def creo() = new CreoOpenSearch
-
   def apply(endpoint:URL):OpenSearch = {
     endpoint.toString match {
-      case s if(s.contains("creo")) => creo()
-      case s if(s.contains("aws")) => new STACOpenSearch(endpoint)
-      case _ => oscars(endpoint)
+      case s if s.contains("creo") => CreoOpenSearch
+      case s if s.contains("aws") => new STACOpenSearch(endpoint)
+      case _ => new OscarsOpenSearch(endpoint)
     }
 
   }

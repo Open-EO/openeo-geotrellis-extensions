@@ -41,6 +41,8 @@ package object png {
   def saveStitched(srdd: SRDD, path: String): Unit = saveStitched(srdd, path, cropBounds = null)
 
   private def toScanLines(horizontalTiles: Iterable[(SpatialKey, MultibandTile)]): Iterable[ImageLineInt] = {
+    // TODO: doesn't support missing SpatialKeys (think sparse polygons), use
+    //  geotrellis.layer.stitch.SpatialTileLayoutCollectionStitchMethods.sparseStitch instead
     val stitched = horizontalTiles
       .toSeq
       .stitch()

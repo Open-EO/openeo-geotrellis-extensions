@@ -15,7 +15,8 @@ import scala.collection.Map
  *  {'collections': ['sentinel-s2-l1c'], 'query': {'eo:cloud_cover': {'lte': '10'}, 'data_coverage': {'gt': '80'}}}
  * @param endpoint
  */
-class STACOpenSearch(endpoint: URL=new URL("https://earth-search.aws.element84.com/v0"), s3URLS: Boolean = true) extends OpenSearch {
+class STACOpenSearch(private val endpoint: URL=new URL("https://earth-search.aws.element84.com/v0"),
+                     private val s3URLS: Boolean = true) extends OpenSearch {
   override def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
                            processingLevel: String, attributeValues: Map[String, Any], correlationId: String): Seq[Feature] = {
     def from(startIndex: Int): Seq[Feature] = {
@@ -53,5 +54,15 @@ class STACOpenSearch(endpoint: URL=new URL("https://earth-search.aws.element84.c
 
     val json = withRetries { execute(getCollections) }
     STACFeatureCollection.parse(json).features
+  }
+
+  override def equals(other: Any): Boolean = other match {
+    case that: STACOpenSearch => this.endpoint == that.endpoint && this.s3URLS == that.s3URLS
+    case _ => false
+  }
+
+  override def hashCode(): Int = {
+    val state = Seq(endpoint, s3URLS)
+    state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
   }
 }

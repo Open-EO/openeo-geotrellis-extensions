@@ -86,6 +86,12 @@
             <version>${geotrellis.version}</version>
             <scope>compile</scope>
         </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-scala_${scala.binary.version}</artifactId>
+            <version>1.16.15</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
