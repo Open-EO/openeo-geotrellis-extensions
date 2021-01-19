@@ -1,7 +1,6 @@
 package org.openeo.geotrellisaccumulo;
 
 import be.vito.eodata.geopysparkextensions.AccumuloDelegationTokenProvider;
-import static be.vito.eodata.extracttimeseries.geotrellis.ComputeStatsGeotrellis.parseGeometry;
 import geotrellis.layer.SpaceTimeKey;
 import geotrellis.proj4.CRS;
 import geotrellis.proj4.LatLng$;
@@ -73,8 +72,8 @@ public class PyramidFactoryTest {
 
     @Test
     public void createPyramidFromPolygons() throws Exception {
-        Polygon polygon1 = (Polygon) parseGeometry("{\"type\":\"Polygon\",\"coordinates\":[[[5.0761587693484875,51.21222494794898],[5.166854684377381,51.21222494794898],[5.166854684377381,51.268936260927404],[5.0761587693484875,51.268936260927404],[5.0761587693484875,51.21222494794898]]]}")._2();
-        Polygon polygon2 = (Polygon) parseGeometry("{\"type\":\"Polygon\",\"coordinates\":[[[3.043212890625,51.17934297928927],[3.087158203125,51.17934297928927],[3.087158203125,51.210324789481355],[3.043212890625,51.210324789481355],[3.043212890625,51.17934297928927]]]}")._2();
+        Polygon polygon1 = (Polygon) package$.MODULE$.parseGeometry("{\"type\":\"Polygon\",\"coordinates\":[[[5.0761587693484875,51.21222494794898],[5.166854684377381,51.21222494794898],[5.166854684377381,51.268936260927404],[5.0761587693484875,51.268936260927404],[5.0761587693484875,51.21222494794898]]]}")._2();
+        Polygon polygon2 = (Polygon) package$.MODULE$.parseGeometry("{\"type\":\"Polygon\",\"coordinates\":[[[3.043212890625,51.17934297928927],[3.087158203125,51.17934297928927],[3.087158203125,51.210324789481355],[3.043212890625,51.210324789481355],[3.043212890625,51.17934297928927]]]}")._2();
 
         MultiPolygon[] multiPolygons = new MultiPolygon[] {
                 new MultiPolygon(new Polygon[]{polygon1}, new GeometryFactory()),

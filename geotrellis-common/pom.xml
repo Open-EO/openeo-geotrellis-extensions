@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <parent>
+    <artifactId>openeo-geotrellis-extensions</artifactId>
+    <groupId>org.openeo</groupId>
+    <version>2.1.0-SNAPSHOT</version>
+  </parent>
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.openeo</groupId>
+  <artifactId>geotrellis-common</artifactId>
+  <version>2.1.0-SNAPSHOT</version>
+
+  <name>geotrellis-common</name>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.locationtech.geotrellis</groupId>
+      <artifactId>geotrellis-spark_${scala.binary.version}</artifactId>
+      <version>${geotrellis.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.locationtech.sfcurve</groupId>
+      <artifactId>sfcurve-zorder_${scala.binary.version}</artifactId>
+      <version>0.2.2</version>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-api</artifactId>
+      <version>5.3.2</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.vintage</groupId>
+      <artifactId>junit-vintage-engine</artifactId>
+      <version>5.3.2</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>net.alchim31.maven</groupId>
+        <artifactId>scala-maven-plugin</artifactId>
+        <version>3.2.2</version>
+        <executions>
+          <execution>
+            <id>scala-compile-first</id>
+            <phase>process-resources</phase>
+            <goals>
+              <goal>compile</goal>
+              <goal>testCompile</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <scalaCompatVersion>${scala.binary.version}</scalaCompatVersion>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -4,54 +4,70 @@ import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 
+import geotrellis.layer.SpaceTimeKey
+import geotrellis.proj4.util.UTM
 import geotrellis.proj4.LatLng
-import geotrellis.raster.Raster
+import geotrellis.raster.{HasNoData, Raster}
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector._
 import org.apache.spark.SparkConf
-import org.junit.{Ignore, Test}
-import org.openeo.geotrellissentinelhub.bands.Landsat8Bands.{B10, B11}
-import org.openeo.geotrellissentinelhub.bands.Sentinel1Bands.{IW_VH, IW_VV}
-import org.openeo.geotrellissentinelhub.bands.{Band, Sentinel2L1CBands, Sentinel2L2ABands}
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.openeo.geotrellissentinelhub.SampleType.FLOAT32
 
 import scala.collection.JavaConverters._
 
 class PyramidFactoryTest {
 
-  private val clientId = Utils.getRequiredSystemProperty("SENTINELHUB_CLIENT_ID")
-  private val clientSecret = Utils.getRequiredSystemProperty("SENTINELHUB_CLIENT_SECRET")
+  private val clientId = Utils.clientId
+  private val clientSecret = Utils.clientSecret
 
-  @Ignore
   @Test
   def testGamma0(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 10, 10), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new S1PyramidFactory(clientId, clientSecret), "gamma0", date, Seq(IW_VV, IW_VH))
+
+    def testCellType(baseLayer: MultibandTileLayerRDD[SpaceTimeKey]): Unit = baseLayer.metadata.cellType match {
+      case cellType: HasNoData[Double] => assertTrue(cellType.isFloatingPoint && cellType.noDataValue == 0.0)
+    }
+
+    testLayer(new PyramidFactory("S1GRD", clientId, clientSecret, sampleType = FLOAT32), "gamma0", date,
+      Seq("VV", "VH"), testCellType)
   }
 
-  @Ignore
   @Test
   def testSentinel2L1C(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new S2L1CPyramidFactory(clientId, clientSecret), "sentinel2-L1C", date, Seq(Sentinel2L1CBands.B04, Sentinel2L1CBands.B03, Sentinel2L1CBands.B02))
+
+    def testCellType(baseLayer: MultibandTileLayerRDD[SpaceTimeKey]): Unit = baseLayer.metadata.cellType match {
+      case cellType: HasNoData[Double] => assertTrue(!cellType.isFloatingPoint && cellType.noDataValue == 0)
+    }
+
+    testLayer(new PyramidFactory("S2L1C", clientId, clientSecret), "sentinel2-L1C", date, Seq("B04", "B03", "B02"),
+      testCellType)
   }
 
-  @Ignore
   @Test
   def testSentinel2L2A(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new S2L2APyramidFactory(clientId, clientSecret), "sentinel2-L2A", date, Seq(Sentinel2L2ABands.B08, Sentinel2L2ABands.B04, Sentinel2L2ABands.B03))
+    testLayer(new PyramidFactory("S2L2A", clientId, clientSecret), "sentinel2-L2A", date, Seq("B08", "B04", "B03"))
   }
 
-  @Ignore
   @Test
   def testLandsat8(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new L8PyramidFactory(clientId, clientSecret), "landsat8", date, Seq(B10, B11))
+    testLayer(new PyramidFactory("L8L1C", clientId, clientSecret), "landsat8", date, Seq("B10", "B11"))
+  }
+
+  @Test
+  def testDigitalNumbersOutput(): Unit = { // TODO: check output values programmatically
+    val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+    testLayer(new PyramidFactory("S2L2A", clientId, clientSecret), "sentinel2-L2A_mix", date, Seq("B04", "sunAzimuthAngles", "SCL"))
   }
   
-  def testLayer[B <: Band](pyramidFactory: PyramidFactory[B], layer: String, date: ZonedDateTime, bands: Seq[B]): Unit = {
+  private def testLayer(pyramidFactory: PyramidFactory, layer: String, date: ZonedDateTime, bandNames: Seq[String],
+                        test: MultibandTileLayerRDD[SpaceTimeKey] => Unit = _ => ()): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
 
     val sparkConf = new SparkConf()
@@ -63,36 +79,62 @@ class PyramidFactoryTest {
     try {
       val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
 
-      val bandIndices = bands.map(pyramidFactory.allBands.indexOf(_)).asJava
-
       val isoDate = ISO_OFFSET_DATE_TIME format date
-      val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs, isoDate, isoDate, bandIndices)
+      val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs, isoDate, isoDate, bandNames.asJava)
 
-      val zoom = 14
+      val (zoom, baseLayer) = pyramid
+        .maxBy { case (zoom, _) => zoom }
 
-      val baseLayer = pyramid
-        .find { case (index, _) => index == zoom }
-        .map { case (_, layer) => layer }
-        .get.cache()
+      baseLayer.cache()
 
       println(s"got ${baseLayer.count()} tiles")
 
-      val timestamps = baseLayer.keys
-        .map(_.time)
-        .distinct()
-        .collect()
-        .sortWith(_ isBefore _)
+      test(baseLayer)
 
-      for (timestamp <- timestamps) {
-        val Raster(multibandTile, extent) = baseLayer
-          .toSpatial(timestamp)
-          .stitch()
+      val Raster(multibandTile, extent) = baseLayer
+        .toSpatial()
+        .crop(boundingBox.reproject(baseLayer.metadata.crs).extent)
+        .stitch()
 
-        val tif = MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs)
-        tif.write(s"/home/niels/pyramidFactory/$layer/${zoom}_${DateTimeFormatter.ISO_LOCAL_DATE format timestamp}.tif")
-      }
+      val tif = MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs)
+      tif.write(s"/tmp/${layer}_${zoom}_${DateTimeFormatter.ISO_LOCAL_DATE format date}.tif")
     } finally {
       sc.stop()
     }
+  }
+
+  @Test
+  def testUtm(): Unit = {
+    val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
+      val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+      val utmBoundingBox = {
+        val center = boundingBox.extent.center
+        val utmCrs = UTM.getZoneCrs(lon = center.getX, lat = center.getY)
+        ProjectedExtent(boundingBox.reproject(utmCrs), utmCrs)
+      }
+
+      val pyramidFactory = new PyramidFactory("S2L2A", clientId, clientSecret)
+
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
+        from_date = ISO_OFFSET_DATE_TIME format date,
+        to_date = ISO_OFFSET_DATE_TIME format date,
+        band_names = Seq("B08", "B04", "B03").asJava
+      )
+
+      val spatialLayer = layer
+        .toSpatial()
+        .crop(utmBoundingBox.extent)
+        .cache()
+
+      val Raster(multibandTile, extent) = spatialLayer.stitch()
+
+      val tif = MultibandGeoTiff(multibandTile, extent, layer.metadata.crs)
+      tif.write(s"/tmp/utm.tif")
+    } finally sc.stop()
   }
 }

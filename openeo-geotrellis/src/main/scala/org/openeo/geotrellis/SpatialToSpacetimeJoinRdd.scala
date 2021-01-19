@@ -7,6 +7,7 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.store.index.zcurve.Z3
 import org.apache.spark._
 import org.apache.spark.rdd.{RDD, ShuffledRDD}
+import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
 import scala.reflect._
 

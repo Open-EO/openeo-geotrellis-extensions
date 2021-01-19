@@ -1,6 +1,5 @@
 package org.openeo.geotrellisaccumulo
 
-import java.time.format.DateTimeFormatter
 import java.util
 
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata}
@@ -17,6 +16,7 @@ import org.apache.avro.Schema
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{Partition, SparkContext, TaskContext}
 import org.openeo.geotrellisaccumulo
+import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable

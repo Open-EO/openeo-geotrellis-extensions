@@ -537,6 +537,116 @@ public class TestOpenEOProcessScriptBuilder {
         });
     }
 
+    @DisplayName("Test if process")
+    @Test
+    public void testIf() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = dummyMap("accept","reject");
+        builder.expressionStart("if", arguments);
+
+        builder.argumentStart("value");
+        buildArrayElementProcess(builder, 1);
+        builder.argumentEnd();
+        builder.argumentStart("accept");
+        builder.argumentEnd();
+
+        builder.expressionEnd("if",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        byte nodataVal = ByteConstantNoDataArrayTile.empty(1, 1).array()[0];
+
+        ByteArrayTile value = ByteConstantNoDataArrayTile.fill((byte) 1, 4, 4);
+        value.set(0, 0, 0);
+        value.set(1, 0, 0);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, value)));
+        Tile res = result.apply(0);
+        tile0.set(0,0,nodataVal);
+        tile0.set(1,0,nodataVal);
+        assertTileEquals(tile0, res);
+    }
+
+    @DisplayName("Test if process with a reject")
+    @Test
+    public void testIfWithReject() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = dummyMap("accept","reject");
+        builder.expressionStart("if", arguments);
+
+        builder.argumentStart("value");
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("y", 7.0);
+        args.put("x", Collections.singletonMap("from_parameter","x"));
+        builder.expressionStart("gt", args);
+        builder.constantArgument("y", 7.0);
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.expressionEnd("gt", args);
+        builder.argumentEnd();
+        builder.argumentStart("accept");
+        builder.fromParameter("x");
+        builder.argumentEnd();
+        builder.constantArgument("reject",1.5f);
+
+        builder.expressionEnd("if",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        FloatArrayTile tile0 = FloatArrayTile.fill( 10.5f, 4, 4);
+
+        tile0.setDouble(2, 0, Float.NaN);
+        tile0.setDouble(1, 0, 5.5);
+        tile0.setDouble(1, 1, 5.5);
+
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0)));
+        Tile res = result.apply(0);
+        tile0.setDouble(2,0,1.5);
+        tile0.setDouble(1,0,1.5);
+        tile0.setDouble(1,1,1.5);
+        assertDoubleTileEquals(tile0,res);
+    }
+
+
+    @DisplayName("Test if process with a reject")
+    @Test
+    public void testIfWithRejectCube() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = dummyMap("accept","reject");
+        builder.expressionStart("if", arguments);
+
+        builder.argumentStart("value");
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("y", 7.0);
+        args.put("x", Collections.singletonMap("from_parameter","x"));
+        builder.expressionStart("gt", args);
+        builder.constantArgument("y", 7.0);
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.expressionEnd("gt", args);
+        builder.argumentEnd();
+        builder.argumentStart("reject");
+        builder.fromParameter("x");
+        builder.argumentEnd();
+        builder.constantArgument("accept",1.5f);
+
+        builder.expressionEnd("if",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        FloatArrayTile tile0 = FloatArrayTile.fill( 10.5f, 4, 4);
+
+        tile0.setDouble(2, 0, Float.NaN);
+        tile0.setDouble(1, 0, 5.5);
+        tile0.setDouble(1, 1, 5.5);
+
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0,tile0)));
+        FloatArrayTile expected = FloatArrayTile.fill( 1.5f, 4, 4);
+        expected.setDouble(2,0,Float.NaN);
+        expected.setDouble(1,0,5.5);
+        expected.setDouble(1,1,5.5);
+        assertDoubleTileEquals(expected,result.apply(0));
+    }
+
     @DisplayName("Test array_element process")
     @Test
     public void testArrayElement() {
@@ -642,6 +752,6 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(expected.cols(), actual.cols());
         assertEquals(expected.rows(), actual.rows());
         assertEquals(expected.cellType(), actual.cellType());
-        assertArrayEquals(expected.toArray(), actual.toArray());
+        assertArrayEquals(expected.toArrayDouble(), actual.toArrayDouble());
     }
 }

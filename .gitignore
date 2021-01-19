@@ -29,3 +29,13 @@ target/
 dependency-reduced-pom.xml
 
 tmp*
+
+# Eclipse/Pydev/scala-ide project files
+.project
+.pydevproject
+.classpath
+*scala-ide*.prefs
+*m2e*.prefs
+*eclipse*.prefs
+.cache-main
+.cache-tests

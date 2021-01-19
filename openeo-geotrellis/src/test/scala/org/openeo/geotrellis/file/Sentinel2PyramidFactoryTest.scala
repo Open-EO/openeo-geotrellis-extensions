@@ -5,15 +5,13 @@ import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZonedDateTime}
 import java.util.Collections.singletonList
-import java.util.zip.Deflater.BEST_COMPRESSION
+import java.util.Collections.emptyMap
 
 import geotrellis.layer.{Metadata, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
-import geotrellis.raster.io.geotiff.compression.DeflateCompression
-import geotrellis.raster.io.geotiff.{GeoTiffOptions, MultibandGeoTiff, Tags}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
-import geotrellis.raster.{MultibandTile, Raster}
+import geotrellis.raster.{CellSize, MultibandTile}
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
@@ -22,6 +20,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
+// import org.openeo.geotrellis.TestImplicits._
 
 object Sentinel2PyramidFactoryTest {
     private var sc: SparkContext = _
@@ -47,7 +46,7 @@ class Sentinel2PyramidFactoryTest {
         val localDate = LocalDate.of(2019, 10, 11)
         val spatialLayer = createLayerForDate(bbox, localDate)
 
-        checkStatsResult(bbox, spatialLayer)
+        checkStatsResult("testStatsFromPyramid", bbox, spatialLayer)
     }
 
     @Test
@@ -56,22 +55,11 @@ class Sentinel2PyramidFactoryTest {
         val localDate = LocalDate.of(2019, 10, 11)
         val spatialLayer = createLayerForDate(bbox, localDate,pyramid = false)
 
-        checkStatsResult(bbox, spatialLayer)
+        checkStatsResult("testStatsFromNativeUTM", bbox, spatialLayer)
     }
 
-    private def checkStatsResult(bbox: ProjectedExtent, spatialLayer: RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]]) = {
-        def writeGeoTiff(path: String): Unit = {
-            val Raster(tile, extent) = spatialLayer
-              .crop(bbox.reproject(spatialLayer.metadata.crs))
-              .stitch()
-
-            val options = GeoTiffOptions(DeflateCompression(BEST_COMPRESSION))
-
-            MultibandGeoTiff(tile, extent, spatialLayer.metadata.crs, Tags.empty, options)
-              .write(path)
-        }
-
-        //writeGeoTiff("/tmp/Sentinel2PyramidFactory_cropped_openeo.tif")
+    private def checkStatsResult(context: String, bbox: ProjectedExtent, spatialLayer: RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]]) = {
+        // spatialLayer.writeGeoTiff(s"/tmp/Sentinel2PyramidFactory_cropped_openeo_$context.tif", bbox)
 
         val polygon = bbox.reproject(spatialLayer.metadata.crs).toPolygon()
 
@@ -93,10 +81,12 @@ class Sentinel2PyramidFactoryTest {
 
         val baseLayer =
             if(pyramid) {
-                sceneClassificationV200PyramidFactory.pyramid_seq(bbox.extent, bbox_srs, from_date, to_date)
+                sceneClassificationV200PyramidFactory.pyramid_seq(bbox.extent, bbox_srs, from_date, to_date,
+                    metadata_properties = emptyMap[String, Any]())
                   .maxBy { case (zoom, _) => zoom }._2
             }else{
-                sceneClassificationV200PyramidFactory.datacube(Array(MultiPolygon(bbox.extent.toPolygon())), bbox.crs, from_date, to_date)
+                sceneClassificationV200PyramidFactory.datacube(Array(MultiPolygon(bbox.extent.toPolygon())), bbox.crs,
+                    from_date, to_date, correlationId = "")
             }
 
         val spatialLayer = baseLayer
@@ -106,8 +96,10 @@ class Sentinel2PyramidFactoryTest {
     }
 
     private def sceneClassificationV200PyramidFactory = new Sentinel2PyramidFactory(
-        oscarsCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
-        oscarsLinkTitles = singletonList("SCENECLASSIFICATION_20M"),
-        rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2"
+        openSearchEndpoint = "http://oscars-01.vgt.vito.be:8080",
+        openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+        openSearchLinkTitles = singletonList("SCENECLASSIFICATION_20M"),
+        rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+        maxSpatialResolution = CellSize(10, 10)
     )
 }

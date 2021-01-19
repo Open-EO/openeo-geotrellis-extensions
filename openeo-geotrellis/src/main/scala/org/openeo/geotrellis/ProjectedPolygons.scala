@@ -36,9 +36,10 @@ object ProjectedPolygons {
     }
   }
 
+  // FIXME: make this an instance method
   def reproject(projectedPolygons: ProjectedPolygons,epsg_code:Int): ProjectedPolygons = {
     val targetCRS = CRS.fromEpsgCode(epsg_code)
-    new ProjectedPolygons(projectedPolygons.polygons.map{_.reproject(projectedPolygons.crs,targetCRS)},targetCRS)
+    ProjectedPolygons(projectedPolygons.polygons.map{_.reproject(projectedPolygons.crs,targetCRS)},targetCRS)
   }
 
   def fromExtent(extent:Extent,crs:String): ProjectedPolygons = {

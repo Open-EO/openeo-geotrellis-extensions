@@ -1,16 +1,52 @@
 package org.openeo.geotrellis
 
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{DoubleConstantTile, IntConstantTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, isNoData}
-import org.openeo.geotrellis.mapalgebra.AddIgnoreNodata
+import geotrellis.raster.{ArrayTile, DoubleConstantTile, FloatConstantTile, IntConstantTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, isNoData}
+import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase}
+import org.slf4j.LoggerFactory
 
 import scala.Double.NaN
+import scala.collection.JavaConversions.mapAsScalaMap
 import scala.collection.mutable
 
+object OpenEOProcessScriptBuilder{
+
+  private val logger = LoggerFactory.getLogger(classOf[OpenEOProcessScriptBuilder])
+
+  type OpenEOProcess =  Map[String,Any] => (Seq[Tile]  => Seq[Tile] )
+
+  private def wrapSimpleProcess(operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
+    def wrapper(context:Map[String,Any])(tiles: Seq[Tile]): Seq[Tile] = operator(tiles)
+    return wrapper
+  }
+
+  private def wrapProcessWithDefaultContext(process: OpenEOProcess): Seq[Tile] => Seq[Tile]  ={
+    (tiles:Seq[Tile]) => process(Map("x"->tiles, "data"-> tiles ))(tiles)
+  }
+
+  /**
+   * Do f(g(x))
+   * @param f
+   * @param g
+   * @return
+   */
+  private def composeFunctions(f: Seq[Tile] => Seq[Tile], g: Option[OpenEOProcess]): OpenEOProcess = {
+    if (g.isDefined && g.get != null) {
+      def composed(context: Map[String, Any])(tiles: Seq[Tile]): Seq[Tile] = {
+        f(g.get(context)(tiles))
+      }
+
+      composed
+    } else
+      wrapSimpleProcess(f)
+  }
+}
 /**
   * Builder to help converting an OpenEO process graph into a transformation of Geotrellis tiles.
   */
 class OpenEOProcessScriptBuilder {
+
+  import OpenEOProcessScriptBuilder._
 
   object MinIgnoreNoData extends LocalTileBinaryOp {
     def combine(z1:Int,z2:Int) =
@@ -40,38 +76,115 @@ class OpenEOProcessScriptBuilder {
       else math.max(z1, z2)
   }
 
+
   val processStack: mutable.Stack[String] = new mutable.Stack[String]()
   val arrayElementStack: mutable.Stack[Integer] = new mutable.Stack[Integer]()
   val argNames: mutable.Stack[String] = new mutable.Stack[String]()
-  val contextStack: mutable.Stack[mutable.Map[String,Seq[Tile] => Seq[Tile]]] = new mutable.Stack[mutable.Map[String, Seq[Tile] => Seq[Tile]]]()
+  val contextStack: mutable.Stack[mutable.Map[String,OpenEOProcess]] = new mutable.Stack[mutable.Map[String, OpenEOProcess]]()
   var arrayCounter : Int =  0
-  var inputFunction: Seq[Tile] => Seq[Tile] = null
+  var inputFunction:  OpenEOProcess = null
 
-  def generateFunction(): Seq[Tile] => Seq[Tile] = inputFunction
-
-  private def unaryFunction(argName: String, operator: Seq[Tile] => Seq[Tile]): Seq[Tile] => Seq[Tile] = {
-    val storedArgs = contextStack.head
-    val inputFunction = storedArgs.get(argName)
-
-    if(inputFunction.isDefined && inputFunction.get != null)
-      operator compose inputFunction.get
-    else
-      operator
+  def generateFunction(context: Map[String,Any] = Map.empty): Seq[Tile] => Seq[Tile] = {
+    inputFunction(context)
   }
 
-  private def mapFunction(argName: String, operator: Tile => Tile): Seq[Tile] => Seq[Tile] = {
+  def generateFunction(): Seq[Tile] => Seq[Tile] = {
+    wrapProcessWithDefaultContext(inputFunction)
+  }
+
+  private def unaryFunction(argName: String, operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val inputFunction: Option[OpenEOProcess] = storedArgs.get(argName)
+    composeFunctions(operator,inputFunction)
+  }
+
+  private def mapFunction(argName: String, operator: Tile => Tile): OpenEOProcess = {
     unaryFunction(argName, (tiles: Seq[Tile]) => tiles.map(operator))
   }
 
-  private def reduceFunction(argName: String, operator: (Tile, Tile) => Tile): Seq[Tile] => Seq[Tile] = {
+  private def reduceFunction(argName: String, operator: (Tile, Tile) => Tile): OpenEOProcess = {
     unaryFunction(argName, (tiles: Seq[Tile]) => Seq(tiles.reduce(operator)))
   }
 
-  private def reduceListFunction(argName: String, operator: Seq[Tile] => Tile): Seq[Tile] => Seq[Tile] = {
+  private def reduceListFunction(argName: String, operator: Seq[Tile] => Tile): OpenEOProcess = {
     unaryFunction(argName, (tiles: Seq[Tile]) => Seq(operator(tiles)))
   }
 
-  private def xyFunction(operator:(Tile,Tile) => Tile,xArgName:String = "x",yArgName:String = "y" ) = {
+  private def ifProcess(arguments:java.util.Map[String,Object]): OpenEOProcess ={
+    val storedArgs = contextStack.head
+    val value = storedArgs.get("value").get
+    val accept = storedArgs.get("accept").get
+    val reject: OpenEOProcess = storedArgs.get("reject").getOrElse(null)
+    val ifElseProcess = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
+      val value_input: Seq[Tile] =
+        if (value != null) {
+          value.apply(context)(tiles)
+        } else {
+          tiles
+        }
+
+      def makeSameLength(tiles: Seq[Tile]): Seq[Tile] ={
+        if(tiles.size == 1 && value_input.length >1) {
+          Seq.fill(value_input.length)(tiles(0))
+        }else{
+          tiles
+        }
+      }
+
+      val accept_input: Seq[Tile] =
+        if (accept != null) {
+          makeSameLength(accept.apply(context)(tiles))
+        } else {
+          makeSameLength(tiles)
+        }
+
+
+      val reject_input: Seq[Tile] =
+        if (reject != null) {
+          reject.apply(context)(tiles)
+        } else {
+          logger.debug("If process without reject clause.")
+          Seq.fill(accept_input.length)(null)
+        }
+
+      def ifElse(value:Tile, acceptTile:Tile, rejectTile: Tile): Tile = {
+        val outputCellType = if(rejectTile==null) acceptTile.cellType else acceptTile.cellType.union(rejectTile.cellType)
+        val resultTile = ArrayTile.empty(outputCellType,acceptTile.cols,acceptTile.rows)
+
+        def setResult(col:Int,row:Int,fromTile:Tile): Unit ={
+          if(fromTile==null) {
+            if(outputCellType.isFloatingPoint) resultTile.setDouble(col,row,Double.NaN) else resultTile.set(col,row,NODATA)
+          }else{
+            if(outputCellType.isFloatingPoint) resultTile.setDouble(col,row,fromTile.getDouble(col,row)) else resultTile.set(col,row,fromTile.get(col,row))
+          }
+        }
+        value.foreach{ (col,row,value) => {
+          if(value==0){
+            //reject
+            setResult(col,row,rejectTile)
+          }else{
+            //accept
+            setResult(col,row,acceptTile)
+          }
+        }}
+        resultTile
+      }
+
+
+      if (value_input.size == accept_input.size) {
+        value_input.zip(accept_input).zip(reject_input).map { t => ifElse(t._1._1, t._1._2, t._2) }
+      } else if (value_input.size == 1) {
+        accept_input.zip(reject_input).map { t => ifElse(value_input.head, t._1, t._2) }
+      }
+      else {
+        throw new IllegalArgumentException("Incompatible numbers of tiles in this if process.")
+      }
+
+    }
+    ifElseProcess
+  }
+
+  private def xyFunction(operator:(Tile,Tile) => Tile,xArgName:String = "x",yArgName:String = "y" ): OpenEOProcess = {
     val storedArgs = contextStack.head
     val processString = processStack.reverse.mkString("->")
     if (!storedArgs.contains(xArgName)) {
@@ -80,18 +193,18 @@ class OpenEOProcessScriptBuilder {
     if (!storedArgs.contains(yArgName)) {
       throw new IllegalArgumentException("This function expects an '" + yArgName + "' argument, function tree: " + processString + ". These arguments were found: " + storedArgs.keys.mkString(", "))
     }
-    val x_function = storedArgs.get(xArgName).get
-    val y_function = storedArgs.get(yArgName).get
-    val bandFunction = (tiles: Seq[Tile]) => {
+    val x_function: OpenEOProcess = storedArgs.get(xArgName).get
+    val y_function: OpenEOProcess = storedArgs.get(yArgName).get
+    val bandFunction = (context: Map[String,Any]) => (tiles: Seq[Tile]) => {
       val x_input: Seq[Tile] =
         if (x_function != null) {
-          x_function.apply(tiles)
+          x_function.apply(context)(tiles)
         } else {
           tiles
         }
       val y_input: Seq[Tile] =
         if (y_function != null) {
-          y_function.apply(tiles)
+          y_function.apply(context)(tiles)
         } else {
           tiles
         }
@@ -111,11 +224,26 @@ class OpenEOProcessScriptBuilder {
 
   def constantArgument(name:String,value:Number): Unit = {
     var scope = contextStack.head
-    scope.put(name,createConstantTileFunction(value))
+    scope.put(name,wrapSimpleProcess(createConstantTileFunction(value)))
+  }
+
+  def constantArgument(name:String,value:Boolean): Unit = {
+    //can be skipped, will simply be available when executing function
   }
 
   def argumentStart(name:String): Unit = {
     argNames.push(name)
+  }
+
+  def fromParameter(parameterName:String): Unit = {
+    inputFunction = (context:Map[String,Any]) => (tiles: Seq[Tile]) => {
+      if(context.contains(parameterName)) {
+        context.getOrElse(parameterName,tiles).asInstanceOf[Seq[Tile]]
+      }else{
+        logger.debug("Parameter with name: " + parameterName  + "not found. Available parameters: " + context.keys.mkString(","))
+        tiles
+      }
+    }
   }
 
   def argumentEnd(): Unit = {
@@ -134,7 +262,7 @@ class OpenEOProcessScriptBuilder {
     //save current arrayCounter
     arrayElementStack.push(arrayCounter)
     argNames.push(name)
-    contextStack.push(mutable.Map[String,Seq[Tile] => Seq[Tile]]())
+    contextStack.push(mutable.Map[String,OpenEOProcess]())
     processStack.push("array")
     arrayCounter = 0
   }
@@ -157,6 +285,7 @@ class OpenEOProcessScriptBuilder {
           case x: java.lang.Byte => Seq(UByteConstantTile(value.byteValue(),cols,rows))
           case x: java.lang.Short => Seq(ShortConstantTile(value.byteValue(),cols,rows))
           case x: Integer => Seq(IntConstantTile(value.intValue(),cols,rows))
+          case x: java.lang.Float => Seq(FloatConstantTile(value.floatValue(),cols,rows))
           case _ => Seq(DoubleConstantTile(value.doubleValue(),cols,rows))
         }
       }
@@ -166,7 +295,7 @@ class OpenEOProcessScriptBuilder {
   }
 
   def constantArrayElement(value: Number):Unit = {
-    val constantTileFunction:Seq[Tile] => Seq[Tile] = createConstantTileFunction(value)
+    val constantTileFunction:OpenEOProcess = wrapSimpleProcess(createConstantTileFunction(value))
     val scope = contextStack.head
     scope.put(arrayCounter.toString,constantTileFunction)
     arrayCounter += 1
@@ -178,11 +307,11 @@ class OpenEOProcessScriptBuilder {
     processStack.pop()
 
     val nbElements = arrayCounter
-    inputFunction = (tiles:Seq[Tile]) => {
+    inputFunction = (context:Map[String,Any]) => (tiles:Seq[Tile]) => {
       var results = Seq[Tile]()
       for( i <- 0 until nbElements) {
         val tileFunction = scope.get(i.toString).get
-        results = results ++ tileFunction(tiles)
+        results = results ++ tileFunction(context)(tiles)
       }
       results
     }
@@ -195,12 +324,12 @@ class OpenEOProcessScriptBuilder {
 
   def expressionStart(operator:String,arguments:java.util.Map[String,Object]): Unit = {
     processStack.push(operator)
-    contextStack.push(mutable.Map[String,Seq[Tile] => Seq[Tile]]())
+    contextStack.push(mutable.Map[String,OpenEOProcess]())
   }
 
   def expressionEnd(operator:String,arguments:java.util.Map[String,Object]): Unit = {
     // TODO: this is not only about expressions anymore. Rename it to e.g. "leaveProcess" to be more in line with graph visitor in Python?
-
+    logger.debug(operator + " process with arguments: " + contextStack.head.mkString(",") + " direct args: " + arguments.mkString(","))
     // Bit of argument sniffing to support multiple versions/variants of processes
     val hasXY = arguments.containsKey("x") && arguments.containsKey("y")
     val hasX = arguments.containsKey("x")
@@ -209,7 +338,8 @@ class OpenEOProcessScriptBuilder {
     val hasData = arguments.containsKey("data")
     val ignoreNoData = !(arguments.getOrDefault("ignore_nodata",Boolean.box(true).asInstanceOf[Object]) == Boolean.box(false) || arguments.getOrDefault("ignore_nodata",None) == "false" )
 
-    val operation: Seq[Tile] => Seq[Tile] = operator match {
+    val operation: OpenEOProcess = operator match {
+      case "if" => ifProcess(arguments)
       // Comparison operators
       case "gt" if hasXY => xyFunction(Greater.apply)
       case "lt" if hasXY => xyFunction(Less.apply)
@@ -250,10 +380,10 @@ class OpenEOProcessScriptBuilder {
       // Unary math
       case "abs" if hasX => mapFunction("x", Abs.apply)
       case "absolute" if hasX => mapFunction("x", Abs.apply)
-      //TODO "log"
       //TODO: "int" integer part of a number
       //TODO "arccos" -> Acosh.apply,
       //TODO: arctan 2 is not unary! "arctan2" -> Atan2.apply,
+      case "log" => xyFunction(LogBase.apply,xArgName = "x",yArgName = "base")
       case "ln" if hasX => mapFunction( "x", Log.apply)
       case "sqrt" if hasX => mapFunction("x", Sqrt.apply)
       case "ceil" if hasX => mapFunction("x", Ceil.apply)
@@ -280,7 +410,7 @@ class OpenEOProcessScriptBuilder {
   }
 
 
-  private def arrayElementFunction(arguments:java.util.Map[String,Object]) = {
+  private def arrayElementFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
     val storedArgs = contextStack.head
     val inputFunction = storedArgs.get("data").get
     val index = arguments.getOrDefault("index",null)
@@ -290,10 +420,10 @@ class OpenEOProcessScriptBuilder {
     if(!index.isInstanceOf[Integer]){
       throw new IllegalArgumentException("The 'index argument should be an integer, but got: " + index)
     }
-    val bandFunction = (tiles:Seq[Tile]) =>{
+    val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
       val input: Seq[Tile] =
         if(inputFunction!=null) {
-          inputFunction.apply(tiles)
+          inputFunction.apply(context)(tiles)
         }else{
           tiles
         }
