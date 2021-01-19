@@ -12,7 +12,7 @@ class OpenSearchTest {
 
   @Test
   def testOscars(): Unit = {
-    val openSearch = OpenSearch.oscars(new URL("http://oscars-01.vgt.vito.be:8080"))
+    val openSearch = new OscarsOpenSearch(new URL("http://oscars-01.vgt.vito.be:8080"))
 
     val features = openSearch.getProducts(
       collectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
@@ -29,7 +29,7 @@ class OpenSearchTest {
 
   @Test
   def testCreo(): Unit = {
-    val openSearch = OpenSearch.creo()
+    val openSearch = CreoOpenSearch
 
     val features = openSearch.getProducts(
       collectionId = "Sentinel2",

@@ -101,7 +101,7 @@ class Sentinel1CoherenceFileLayerProviderTest {
       openSearchLinkTitles = NonEmptyList.of("VH", "VV"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel1/SLC_COHERENCE/",
       maxSpatialResolution = CellSize(10, 10),
-      pathDateExtractor = new SplitYearMonthDayPathDateExtractor,
+      pathDateExtractor = SplitYearMonthDayPathDateExtractor,
       attributeValues
     )
 }
