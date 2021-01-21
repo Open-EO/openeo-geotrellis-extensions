@@ -123,6 +123,10 @@ object FileLayerProvider {
   private[geotrellis] val crs = WebMercator
   private[geotrellis] val layoutScheme = ZoomedLayoutScheme(crs, 256)
 
+  // important: make sure to implement object equality for CacheKey's members
+  private case class CacheKey(openSearch: OpenSearch, openSearchCollectionId: String, rootPath: Path,
+                              pathDateExtractor: PathDateExtractor)
+
   private def extractDate(filename: String, date: Regex): ZonedDateTime = filename match {
     case date(year, month, day) =>
       ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), LocalTime.MIDNIGHT, ZoneId.of("UTC"))
@@ -189,6 +193,66 @@ object FileLayerProvider {
     worldLayout
   }
 
+  def rasterSourceRDD(rasterSources: Seq[RasterSource], metadata: TileLayerMetadata[SpaceTimeKey], maxSpatialResolution: CellSize, collection: String)(implicit sc: SparkContext): RDD[LayoutTileSource[SpaceTimeKey]] = {
+
+    val keyExtractor = new TemporalKeyExtractor {
+      def getMetadata(rs: RasterMetadata): ZonedDateTime = ZonedDateTime.parse(rs.attributes("date")).truncatedTo(ChronoUnit.DAYS)
+    }
+    val sources = sc.parallelize(rasterSources,rasterSources.size)
+
+    val noResampling = metadata.layout.cellSize == maxSpatialResolution
+    sc.setJobDescription("Load tiles: " + collection + ", rs: " + noResampling)
+    val tiledLayoutSourceRDD =
+      sources.map { rs =>
+        val m = keyExtractor.getMetadata(rs)
+        val tileKeyTransform: SpatialKey => SpaceTimeKey = { sk => keyExtractor.getKey(m, sk) }
+        //The first form 'rs.tileToLayout' will check if rastersources are aligned, requiring reading of metadata, which has a serious performance impact!
+        if(noResampling)
+          LayoutTileSource(rs,metadata.layout,tileKeyTransform)
+        else
+          rs.tileToLayout(metadata.layout, tileKeyTransform)
+      }
+
+    tiledLayoutSourceRDD
+  }
+
+  def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon],polygons_crs: CRS, sc: SparkContext) = {
+    val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map{_.reproject(polygons_crs,metadata.crs)}.clipToGrid(metadata.layout).groupByKey()
+
+    val rasterRegionRDD = rasterSources.flatMap { tiledLayoutSource =>
+      tiledLayoutSource.keyedRasterRegions()
+        .filter({case(key, rasterRegion) => metadata.extent.intersects(key.spatialKey.extent(metadata.layout)) } )
+        .map { case (key, rasterRegion) =>
+          (key, (rasterRegion, tiledLayoutSource.source.name))
+        }
+    }.map{tuple => (tuple._1.spatialKey,tuple)}
+    // TODO: doesn't this equal an inner join?
+    val filteredRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = rasterRegionRDD.rightOuterJoin(requiredKeys).flatMap { t => t._2._1.toList}
+
+    rasterRegionsToTiles(filteredRDD, metadata)
+  }
+
+  private def rasterRegionsToTiles(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))], metadata: TileLayerMetadata[SpaceTimeKey]) = {
+    val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] =
+      rasterRegionRDD
+        .groupByKey(SpacePartitioner(metadata.bounds))
+        .mapValues { namedRasterRegions =>
+          namedRasterRegions.toSeq
+            .flatMap { case (rasterRegion, sourcePath: SourcePath) =>
+              rasterRegion.raster.map(r => (r.tile, sourcePath))
+            }
+            .sortWith { case ((leftMultibandTile, leftSourcePath), (rightMultibandTile, rightSourcePath)) =>
+              if (leftMultibandTile.band(0).isInstanceOf[PaddedTile] && !rightMultibandTile.band(0).isInstanceOf[PaddedTile]) true
+              else if (!leftMultibandTile.band(0).isInstanceOf[PaddedTile] && rightMultibandTile.band(0).isInstanceOf[PaddedTile]) false
+              else leftSourcePath.value < rightSourcePath.value
+            }
+            .map { case (multibandTile, _) => multibandTile }
+            .reduce(_ merge _)
+        }
+
+    ContextRDD(tiledRDD, metadata)
+  }
+
   private def tileLayerMetadata(layout: LayoutDefinition, projectedExtent: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, cellType: CellType): TileLayerMetadata[SpaceTimeKey] = {
     val gridBounds = layout.mapTransform.extentToBounds(projectedExtent.extent)
 
@@ -204,12 +268,10 @@ object FileLayerProvider {
   private val metadataCache =
     Caffeine.newBuilder()
       .refreshAfterWrite(15, TimeUnit.MINUTES)
-      .build(new CacheLoader[(OpenSearch, String, Path, PathDateExtractor), Option[(ProjectedExtent, Array[ZonedDateTime])]] {
-        override def load(key: (OpenSearch, String, Path, PathDateExtractor)): Option[(ProjectedExtent, Array[ZonedDateTime])] = {
-          val (openSearch, collectionId, start, x) = key
-
-          val bbox = fetchExtentFromOpenSearch(openSearch, collectionId)
-          val dates = x.extractDates(start)
+      .build(new CacheLoader[CacheKey, Option[(ProjectedExtent, Array[ZonedDateTime])]] {
+        override def load(key: CacheKey): Option[(ProjectedExtent, Array[ZonedDateTime])] = {
+          val bbox = fetchExtentFromOpenSearch(key.openSearch, key.openSearchCollectionId)
+          val dates = key.pathDateExtractor.extractDates(key.rootPath)
 
           Some(bbox, dates)
         }
@@ -253,21 +315,9 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
     val commonCellType = overlappingRasterSources.head.cellType
     val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType, layoutScheme, maxSpatialResolution)
 
-    val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map{_.reproject(polygons_crs,metadata.crs)}.clipToGrid(metadata.layout).groupByKey()
+    val rasterSources = rasterSourceRDD(overlappingRasterSources, metadata, maxSpatialResolution, openSearchCollectionId)(sc)
 
-    val rasterSources: RDD[LayoutTileSource[SpaceTimeKey]] = this.rasterSourceRDD(overlappingRasterSources, metadata)(sc)
-
-    val rasterRegionRDD = rasterSources.flatMap { tiledLayoutSource =>
-      tiledLayoutSource.keyedRasterRegions()
-        .filter({case(key,rasterRegion) => metadata.extent.intersects(key.spatialKey.extent(metadata.layout)) } )
-        .map { case (key, rasterRegion) =>
-        (key, (rasterRegion, tiledLayoutSource.source.name))
-      }
-    }.map{tuple => (tuple._1.spatialKey,tuple)}
-    // TODO: doesn't this equal an inner join?
-    val filteredRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = rasterRegionRDD.rightOuterJoin(requiredKeys).flatMap { t=> t._2._1.toList}
-
-    rasterRegionsToTiles(filteredRDD,metadata)
+    FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc)
   }
 
   override def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, zoom: Int = maxZoom, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
@@ -341,31 +391,6 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
 
   }
 
-  private def rasterSourceRDD(rasterSources: Seq[RasterSource], metadata: TileLayerMetadata[SpaceTimeKey])(implicit sc: SparkContext): RDD[LayoutTileSource[SpaceTimeKey]] = {
-
-    //assert(rasterSources.map(_.crs).toSet == Set(metadata.crs))
-
-    val keyExtractor = new TemporalKeyExtractor {
-      def getMetadata(rs: RasterMetadata): ZonedDateTime = ZonedDateTime.parse(rs.attributes("date")).truncatedTo(ChronoUnit.DAYS)
-    }
-    val sources = sc.parallelize(rasterSources,rasterSources.size)
-
-    val noResampling = metadata.layout.cellSize==maxSpatialResolution
-    sc.setJobDescription("Load tiles: "+openSearchCollectionId + " rs: " + noResampling)
-    val tiledLayoutSourceRDD =
-      sources.map { rs =>
-        val m = keyExtractor.getMetadata(rs)
-        val tileKeyTransform: SpatialKey => SpaceTimeKey = { sk => keyExtractor.getKey(m, sk) }
-        //The first form 'rs.tileToLayout' will check if rastersources are aligned, requiring reading of metadata, which has a serious performance impact!
-        if(noResampling)
-          LayoutTileSource(rs,metadata.layout,tileKeyTransform)
-        else
-          rs.tileToLayout(metadata.layout, tileKeyTransform)
-      }
-
-    tiledLayoutSourceRDD
-  }
-
   private def rasterSourcesToTiles(tiledLayoutSourceRDD: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey]) = {
     val rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = tiledLayoutSourceRDD.flatMap { tiledLayoutSource =>
       tiledLayoutSource.keyedRasterRegions() map { case (key, rasterRegion) =>
@@ -376,31 +401,8 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
     rasterRegionsToTiles(rasterRegionRDD, metadata)
   }
 
-  private def rasterRegionsToTiles(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))], metadata: TileLayerMetadata[SpaceTimeKey]) = {
-    val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] =
-      rasterRegionRDD
-        .groupByKey(SpacePartitioner(metadata.bounds))
-        .mapValues { namedRasterRegions =>
-          namedRasterRegions.toSeq
-            .flatMap { case (rasterRegion, sourcePath: SourcePath) =>
-              rasterRegion.raster.map(r => (r.tile, sourcePath))
-            }
-            .sortWith { case ((leftMultibandTile, leftSourcePath), (rightMultibandTile, rightSourcePath)) =>
-              if (leftMultibandTile.band(0).isInstanceOf[PaddedTile] && !rightMultibandTile.band(0).isInstanceOf[PaddedTile]) true
-              else if (!leftMultibandTile.band(0).isInstanceOf[PaddedTile] && rightMultibandTile.band(0).isInstanceOf[PaddedTile]) false
-              else leftSourcePath.value < rightSourcePath.value
-            }
-            .map { case (multibandTile, _) => multibandTile }
-            .reduce(_ merge _)
-        }
-
-      ContextRDD(tiledRDD, metadata)
-  }
-
-
-
   override def loadMetadata(sc: SparkContext): Option[(ProjectedExtent, Array[ZonedDateTime])] =
-    metadataCache.get((openSearch, openSearchCollectionId, _rootPath, pathDateExtractor))
+    metadataCache.get(CacheKey(openSearch, openSearchCollectionId, _rootPath, pathDateExtractor))
 
   override def readTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, zoom: Int = maxZoom, sc: SparkContext): TileLayerRDD[SpaceTimeKey] =
     readMultibandTileLayer(from, to, boundingBox, zoom, sc).withContext { singleBandTiles =>

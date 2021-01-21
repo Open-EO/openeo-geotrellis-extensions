@@ -10,7 +10,7 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.ISO_INSTANT
 import scala.collection.Map
 
-class OscarsOpenSearch(endpoint: URL) extends OpenSearch {
+class OscarsOpenSearch(private val endpoint: URL) extends OpenSearch {
   override def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
                            processingLevel: String, attributeValues: Map[String, Any], correlationId: String): Seq[Feature] = {
     def from(startIndex: Int): Seq[Feature] = {
@@ -49,4 +49,11 @@ class OscarsOpenSearch(endpoint: URL) extends OpenSearch {
     val json = withRetries { execute(getCollections) }
     FeatureCollection.parse(json).features
   }
+
+  override def equals(other: Any): Boolean = other match {
+    case that: OscarsOpenSearch => this.endpoint == that.endpoint
+    case _ => false
+  }
+
+  override def hashCode(): Int = endpoint.hashCode()
 }

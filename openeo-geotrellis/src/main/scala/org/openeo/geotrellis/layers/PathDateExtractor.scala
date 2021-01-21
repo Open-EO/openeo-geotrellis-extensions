@@ -33,7 +33,7 @@ trait PathDateExtractor {
   }
 }
 
-class SplitYearMonthDayPathDateExtractor extends PathDateExtractor {
+object SplitYearMonthDayPathDateExtractor extends PathDateExtractor {
   override protected val maxDepth = 3
 
   override def extractDate(rootPath: Path, child: Path): ZonedDateTime = {
@@ -43,7 +43,7 @@ class SplitYearMonthDayPathDateExtractor extends PathDateExtractor {
   }
 }
 
-class ProbaVPathDateExtractor extends PathDateExtractor {
+object ProbaVPathDateExtractor extends PathDateExtractor {
   override protected val maxDepth = 2
 
   override def extractDate(rootPath: Path, child: Path): ZonedDateTime = {
@@ -68,4 +68,11 @@ class Sentinel5PPathDateExtractor(override protected val maxDepth: Int) extends 
       case date(year, month, day) => LocalDate.of(year.toInt, month.toInt, day.toInt).atStartOfDay(ZoneId.of("UTC"))
     }
   }
+
+  override def equals(other: Any): Boolean = other match {
+    case that: Sentinel5PPathDateExtractor => this.maxDepth == that.maxDepth
+    case _ => false
+  }
+
+  override def hashCode(): Int = maxDepth.hashCode()
 }

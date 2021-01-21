@@ -27,7 +27,7 @@ object Sentinel2FileLayerProviderTest {
   private var sc: SparkContext = _
   private val openSearchEndpoint = new URL("http://oscars-01.vgt.vito.be:8080")
   private val maxSpatialResolution = CellSize(10, 10)
-  private val pathDateExtractor = new SplitYearMonthDayPathDateExtractor
+  private val pathDateExtractor = SplitYearMonthDayPathDateExtractor
 
   @BeforeClass
   def setupSpark(): Unit = sc = SparkUtils.createLocalSparkContext("local[*]",

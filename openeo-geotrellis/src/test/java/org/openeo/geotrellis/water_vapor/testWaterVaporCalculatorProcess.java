@@ -101,7 +101,7 @@ public class testWaterVaporCalculatorProcess {
         Extent newExtent = new Extent(3.5, 50, 4.0, 51);
         TileLayerMetadata<SpaceTimeKey> updatedMetadata = m.copy(m.cellType(),new LayoutDefinition(newExtent,m.layout().tileLayout()), newExtent,m.crs(),m.bounds());
         
-        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new ComputeWaterVapor().correct(
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new ComputeWaterVapor().computeStandaloneCWV(
         	JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
         	new ContextRDD<>(datacube.rdd(),updatedMetadata),
         	lutPath,
@@ -141,7 +141,7 @@ public class testWaterVaporCalculatorProcess {
         Extent newExtent = new Extent(3.5, 50, 4.0, 51);
         TileLayerMetadata<SpaceTimeKey> updatedMetadata = m.copy(m.cellType(),new LayoutDefinition(newExtent,m.layout().tileLayout()), newExtent,m.crs(),m.bounds());
         
-        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new ComputeWaterVapor().correct(
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new ComputeWaterVapor().computeStandaloneCWV(
         	JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
         	new ContextRDD<>(datacube.rdd(),updatedMetadata),
         	lutPath,

@@ -3,7 +3,6 @@ package org.openeo.geotrellis.file
 import java.net.URL
 import java.time.ZonedDateTime
 import java.util
-
 import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType}
 import geotrellis.spark._
@@ -14,7 +13,7 @@ import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.FileLayerProvider.layerMetadata
-import org.openeo.geotrellis.layers.OpenSearch
+import org.openeo.geotrellis.layers.{CreoOpenSearch, OpenSearch, OscarsOpenSearch}
 import org.openeo.geotrellis.layers.OpenSearchResponses.{Feature, Link}
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
@@ -105,12 +104,12 @@ class FileRDDFactory(openSearch: OpenSearch, openSearchCollectionId: String, ope
 object FileRDDFactory {
 
   def oscars(openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = ""): FileRDDFactory = {
-    val openSearch: OpenSearch = OpenSearch.oscars(new URL("http://oscars-01.vgt.vito.be:8080"))
+    val openSearch: OpenSearch = new OscarsOpenSearch(new URL("http://oscars-01.vgt.vito.be:8080"))
     new FileRDDFactory(openSearch, openSearchCollectionId, openSearchLinkTitles, attributeValues, correlationId = correlationId)
   }
 
   def creo(openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = ""): FileRDDFactory = {
-    val openSearch: OpenSearch = OpenSearch.creo()
+    val openSearch: OpenSearch = CreoOpenSearch
     new FileRDDFactory(openSearch, openSearchCollectionId, openSearchLinkTitles, attributeValues, correlationId = correlationId)
   }
 

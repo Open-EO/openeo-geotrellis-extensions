@@ -9,13 +9,9 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.ISO_INSTANT
 import scala.collection.Map
 
-object CreoOpenSearch {
-  val collections = "https://finder.creodias.eu/resto/collections.json"
-  def collection(collectionId: String) = s"https://finder.creodias.eu/resto/api/collections/$collectionId/search.json"
-}
-
-class CreoOpenSearch extends OpenSearch {
-  import CreoOpenSearch._
+object CreoOpenSearch extends OpenSearch {
+  private val collections = "https://finder.creodias.eu/resto/collections.json"
+  private def collection(collectionId: String) = s"https://finder.creodias.eu/resto/api/collections/$collectionId/search.json"
 
   override def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent,
                            processingLevel: String, attributeValues: Map[String, Any],
