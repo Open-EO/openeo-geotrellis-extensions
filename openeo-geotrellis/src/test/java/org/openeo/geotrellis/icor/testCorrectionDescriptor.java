@@ -63,6 +63,7 @@ public class testCorrectionDescriptor {
 			//expected earth sun= 1.01751709288327
 			new CorrectionInput(1,1267,41.708855, 1.0/1000.0,0.0001*1029.0,163,57.8566,69,2, 0.83,"2017-03-07T10:50:00Z")};//expected icor:574 sen2cor:598 AOT icor:0.078
 //'sunAzimuthAngles','sunZenithAngles','viewAzimuthMean','viewZenithMean'
+	
 	@Test
 	public void testCorrectionDescriptorCorrect() {
 		Sentinel2Descriptor cd=new Sentinel2Descriptor();
@@ -73,9 +74,10 @@ public class testCorrectionDescriptor {
 		assertArrayEquals(new double[]{cv}, new double[]{1.4536087548063417}, 1.e-6);
 	}
 
-	Sentinel2Descriptor cd = new Sentinel2Descriptor();
+	
 	@Test
 	public void testCorrectionDescriptor() {
+		Sentinel2Descriptor cd = new Sentinel2Descriptor();
 		for (int i = 0; i < inputs.length; i++) {
 			CorrectionInput input = inputs[i];
 			double cv = cd.correct(lut, input.band, input.time, input.value/10000.0, input.sza, input.vza, input.raa, input.gnd, input.aot, input.cwv, input.ozone, input.watermask);

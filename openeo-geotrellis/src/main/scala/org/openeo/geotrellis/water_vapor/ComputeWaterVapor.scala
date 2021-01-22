@@ -16,6 +16,7 @@ import geotrellis.raster.TileLayout
 import geotrellis.raster.DoubleRawArrayTile
 import geotrellis.raster.resample.NearestNeighbor
 import org.openeo.geotrellis.icor.Sentinel2Descriptor
+import org.openeo.geotrellis.icor.CorrectionDescriptor
 
 
 
@@ -70,9 +71,9 @@ class ComputeWaterVapor {
               //          multibandtile._2.mapBands((b, tile) => tile.map(i => 23 ))
               {
 
+                val cd=new Sentinel2Descriptor()
+                
                 val startMillis = System.currentTimeMillis();
-
-                val cd = new Sentinel2Descriptor()
 
                 def angleTile(index: Int, fallback: Double): Tile = {
                   if (index > 0) multibandtile._2.band(index).convert(FloatConstantNoDataCellType) else FloatConstantTile(fallback.toFloat, multibandtile._2.cols, multibandtile._2.rows)
