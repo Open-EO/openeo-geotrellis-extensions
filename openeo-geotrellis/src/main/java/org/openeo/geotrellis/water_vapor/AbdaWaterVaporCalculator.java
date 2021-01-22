@@ -2,23 +2,26 @@ package org.openeo.geotrellis.water_vapor;
 
 import java.util.List;
 
-import org.openeo.geotrellis.icor.CorrectionDescriptorSentinel2;
+import org.openeo.geotrellis.icor.CorrectionDescriptor;
 import org.openeo.geotrellis.icor.LookupTable;
 
 // the inputs should be top of the atmosphere radiances
 
 public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 
-	public void prepare(LookupTable lut, CorrectionDescriptorSentinel2 cdS2, String wv_Band, String ref0_Band, String ref1_Band) throws Exception {
+	public void prepare(LookupTable lut, CorrectionDescriptor cd, String wv_Band, String ref0_Band, String ref1_Band) throws Exception {
 
+		// correction descriptor
+		this.cd=cd;
+		
 		// get band ids
-		wvBand=cdS2.getBandFromName(wv_Band);
-		r0Band=cdS2.getBandFromName(ref0_Band);
-		r1Band=cdS2.getBandFromName(ref1_Band);
+		wvBand=cd.getBandFromName(wv_Band);
+		r0Band=cd.getBandFromName(ref0_Band);
+		r1Band=cd.getBandFromName(ref1_Band);
 
 		// weights of the reference bands
-	    refWeights[0]=(cdS2.getCentralWavelength(r1Band) - cdS2.getCentralWavelength(wvBand)) / (cdS2.getCentralWavelength(r0Band) + cdS2.getCentralWavelength(r1Band));
-	    refWeights[1]=(cdS2.getCentralWavelength(wvBand) - cdS2.getCentralWavelength(r0Band)) / (cdS2.getCentralWavelength(r0Band) + cdS2.getCentralWavelength(r1Band));
+	    refWeights[0]=(cd.getCentralWavelength(r1Band) - cd.getCentralWavelength(wvBand)) / (cd.getCentralWavelength(r0Band) + cd.getCentralWavelength(r1Band));
+	    refWeights[1]=(cd.getCentralWavelength(wvBand) - cd.getCentralWavelength(r0Band)) / (cd.getCentralWavelength(r0Band) + cd.getCentralWavelength(r1Band));
 	    
 	    // initialize helper buffers
 	    // to avoid always reallocating in a tight loop
@@ -48,12 +51,12 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 		if ((r0<0.0)||(r0==invalid_value)||(Double.isNaN(r0))) return invalid_value; 
 		if ((r1<0.0)||(r1==invalid_value)||(Double.isNaN(r1))) return invalid_value; 
 
-		// L1C comes earth-sun distance corrected to earth-sun distance, therefore 
+		// L1C comes earth-sun distance corrected, therefore 
 		// reflectance-radiance conversion is: cos(sza_radians)*solarirradiance[band]/3.14
 		// TODO: in this form this works for L1C but refl-radiance conversion has to be a step in front of the watervapor calculation
-		cwv=CorrectionDescriptorSentinel2.reflToRad(cwv, sza, null, wvBand);
-		r0=CorrectionDescriptorSentinel2.reflToRad(r0, sza, null, r0Band);
-		r1=CorrectionDescriptorSentinel2.reflToRad(r1, sza, null, r1Band);
+		cwv=cd.reflToRad(cwv, sza, null, wvBand);
+		r0=cd.reflToRad(r0, sza, null, r0Band);
+		r1=cd.reflToRad(r1, sza, null, r1Band);
 		
 		double v0=intialValue;
 /*
@@ -190,6 +193,9 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 
     /// FIELDS ///////////////////////////////////////////////////////////////////////////////////
 
+	// correction descriptor
+	CorrectionDescriptor cd;
+	
 	// constants
 	final double intialValue=2.0;
 	final int maxiter=100;

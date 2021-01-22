@@ -2,7 +2,7 @@ package org.openeo.geotrellis.water_vapor
 
 import geotrellis.raster.{FloatConstantNoDataCellType, FloatConstantTile, MultibandTile, doubleNODATA, Tile}
 import geotrellis.layer.SpaceTimeKey
-import org.openeo.geotrellis.icor.CorrectionDescriptorSentinel2
+import org.openeo.geotrellis.icor.CorrectionDescriptor
 import org.apache.spark.broadcast.Broadcast
 import geotrellis.raster.FloatConstantNoDataCellType
 import org.openeo.geotrellis.icor.LookupTable
@@ -20,14 +20,14 @@ class CWVProvider {
     preMult: Double,
     postMult: Double,
     bcLUT: Broadcast[LookupTable],
-    bandIds:java.util.List[String]
+    bandIds:java.util.List[String],
+    cd: CorrectionDescriptor
   ) : Tile = {
 
     val wvBandId="B09"
     val r0BandId="B8A"
     val r1BandId="B11"
     
-    val cd = new CorrectionDescriptorSentinel2()
     val bp = new BlockProcessor()
     val wvCalc = new AbdaWaterVaporCalculator()
     

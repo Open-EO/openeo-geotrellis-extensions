@@ -11,6 +11,7 @@ import java.time.format.DateTimeFormatter;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
+// TODO: this only tests Sentinel-2 descriptor only, extend to landsat8
 public class testCorrectionDescriptor {
 
 	private static LookupTable lut;
@@ -64,7 +65,7 @@ public class testCorrectionDescriptor {
 //'sunAzimuthAngles','sunZenithAngles','viewAzimuthMean','viewZenithMean'
 	@Test
 	public void testCorrectionDescriptorCorrect() {
-		CorrectionDescriptorSentinel2 cd=new CorrectionDescriptorSentinel2();
+		Sentinel2Descriptor cd=new Sentinel2Descriptor();
 		double tbc=1.;
 		double cv=cd.correct(lut, 1, ZonedDateTime.ofInstant(
 				Instant.ofEpochMilli(1577836800000L), ZoneId.systemDefault()), tbc, 29.0, 5.0, 130.0, 0.0, 0.28, 2.64, 0.33, 0);
@@ -72,7 +73,7 @@ public class testCorrectionDescriptor {
 		assertArrayEquals(new double[]{cv}, new double[]{1.4536087548063417}, 1.e-6);
 	}
 
-	CorrectionDescriptorSentinel2 cd = new CorrectionDescriptorSentinel2();
+	Sentinel2Descriptor cd = new Sentinel2Descriptor();
 	@Test
 	public void testCorrectionDescriptor() {
 		for (int i = 0; i < inputs.length; i++) {
@@ -85,7 +86,7 @@ public class testCorrectionDescriptor {
 //	@Test
 //	public void testCorrectionDescriptorCorrectProfile() throws IOException {
 //		LookupTable lut2=LookupTableIO.readLUT("lut_s2a");
-//		CorrectionDescriptorSentinel2 cd=new CorrectionDescriptorSentinel2();
+//		Sentinel2Descriptor cd=new Sentinel2Descriptor();
 //		for (double tbc: Arrays.asList(
 //				0.,
 //				0.0001,
