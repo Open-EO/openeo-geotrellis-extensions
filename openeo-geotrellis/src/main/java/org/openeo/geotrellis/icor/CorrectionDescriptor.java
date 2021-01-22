@@ -42,7 +42,7 @@ public abstract class CorrectionDescriptor{
      * @param waterMask
      * @return
      */
-    // Loops over each pixel in the raster and calculates the atmospheric correction
+    // calculates the atmospheric correction for pixel
     public double correct(
     	LookupTable lut,
 		int band,
@@ -107,7 +107,7 @@ public abstract class CorrectionDescriptor{
      * @return earth-sun distance in AU
      */
     // Get distance from earth to sun in Astronomical Units based on time in millis()
-    public static double earthSunDistance(ZonedDateTime time){
+    public double earthSunDistance(ZonedDateTime time){
         
         // JD0 = number of days from 01/01/1950
 
