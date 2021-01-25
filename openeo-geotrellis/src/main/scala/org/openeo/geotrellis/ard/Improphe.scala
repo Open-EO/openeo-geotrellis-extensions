@@ -24,6 +24,24 @@ object Improphe {
     return normweight
   }
 
+  def distance_kernel(nk:Int): FloatArrayTile ={
+
+    val kernel = FloatArrayTile.ofDim(nk,nk)
+    val h = (nk-1)/2
+    // pre-compute kernel distance
+    var ki: Int = -1
+    cfor(-h)(_ <= h, _ + 1)(ii => {
+      ki += 1
+      var kj: Int = -1
+      cfor(-h)(_ <= h, _ + 1)(jj => {
+        kj += 1
+        kernel.setDouble(ki,kj,FastMath.sqrt(ii*ii+jj*jj))
+
+      })
+    })
+    return kernel
+  }
+
   /**
    *
    * Predict Sentinel-2 10m bands (ImproPhe method)
@@ -36,17 +54,15 @@ object Improphe {
    *
    * @param QAI     Quality Assurance Information
    * @param toa     TOA reflectance
-   * @param KDIST   kernel distance
-   * @param h       prediction radius
-   * @param nb_m    number of bands in MR data
-   * @param nb_c    number of bands in CR data
    * @param bands_m MR bands to use
    * @param bands_c CR bands to predict
    * @param nk      number of kernel pixels, and
    * @param mink    minimum number of pixels for good prediction
    */
-  def improphe(QAI: Tile, toa: MultibandTile, KDIST: FloatArrayTile, h: Int, nb_m: Int, nb_c: Int, bands_m: Array[Int], bands_c: Array[Int], nk: Int, mink: Int): MultibandTile = {
+  def improphe(QAI: Tile, toa: MultibandTile, bands_m: Array[Int], bands_c: Array[Int], mink: Int,kSize:Int=5): MultibandTile = {
 
+    val h = (kSize - 1) / 2
+    val KDIST = distance_kernel(kSize)
     val nx = toa.cols
     val ny = toa.rows
     val ns = 5
