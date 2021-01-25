@@ -107,7 +107,8 @@ public class testWaterVaporCalculatorProcess {
         	lutPath,
         	Arrays.asList(new String[] {"B09","B8A","B11"}),
         	Arrays.asList(new Double[] {1.e-4,1.}),
-        	Arrays.asList(new Double[] {sza,saa,vza,vaa,aot,ozone})
+        	Arrays.asList(new Double[] {sza,saa,vza,vaa,aot,ozone}),
+        	"SENTINEL2"
         );
         //System.out.println(resultRDD.getClass().toString());
 
@@ -147,7 +148,8 @@ public class testWaterVaporCalculatorProcess {
         	lutPath,
         	Arrays.asList(new String[] {"B09","B8A","B11","sunZenithAngles","viewZenithMean","viewAzimuthMean","sunAzimuthAngles"}),
         	Arrays.asList(new Double[] {1.e-4,1.}),
-        	Arrays.asList(new Double[] {Double.NaN,Double.NaN,Double.NaN,Double.NaN,aot,ozone})
+        	Arrays.asList(new Double[] {Double.NaN,Double.NaN,Double.NaN,Double.NaN,aot,ozone}),
+        	"SENTINEL2"
         );
         //System.out.println(resultRDD.getClass().toString());
         

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.openeo.geotrellis.icor.Sentinel2Descriptor;
+import org.openeo.geotrellis.icor.CorrectionDescriptor;
 import org.openeo.geotrellis.icor.LookupTable;
 import org.openeo.geotrellis.icor.LookupTableIO;
 
@@ -17,7 +18,7 @@ import geotrellis.raster.Tile;
 public class testWaterVaporCalculator {
 
 	private static LookupTable lut;
-	private static Sentinel2Descriptor cdS2=new Sentinel2Descriptor();
+	private static 		CorrectionDescriptor cd=new Sentinel2Descriptor();
 	private static AbdaWaterVaporCalculator wvc=new AbdaWaterVaporCalculator();
 
 	static final double sza=43.5725342155;
@@ -32,7 +33,7 @@ public class testWaterVaporCalculator {
 	static final double invalid_value=Double.NaN;
 	
 	static double rad2refl(double value, int band) {
-		return value*Math.PI/(Math.cos(sza*Math.PI/180.)*cdS2.getIrradiance(band));
+		return value*Math.PI/(Math.cos(sza*Math.PI/180.)*cd.getIrradiance(band));
 	}
 	
 	@BeforeClass
@@ -73,7 +74,7 @@ public class testWaterVaporCalculator {
 
 	@Test
 	public void testPrepare() throws Exception {
-		wvc.prepare(lut, cdS2, "B09", "B8A", "B11");
+		wvc.prepare(lut, cd, "B09", "B8A", "B11");
 		assertEquals(wvc.wvBand,9);
 		assertEquals(wvc.r0Band,8);
 		assertEquals(wvc.r1Band,11);
@@ -84,7 +85,7 @@ public class testWaterVaporCalculator {
 	@Test
 	public void testComputePixelInRange() throws Exception {
 
-    	wvc.prepare(lut, cdS2, "B09", "B8A", "B11");
+    	wvc.prepare(lut, cd, "B09", "B8A", "B11");
 		double r=wvc.computePixel(lut, 
 			sza,
 			vza,
@@ -146,7 +147,7 @@ public class testWaterVaporCalculator {
 	@Test
 	public void testComputePixelOutOfRange() throws Exception {
 
-    	wvc.prepare(lut, cdS2, "B09", "B8A", "B11");
+    	wvc.prepare(lut, cd, "B09", "B8A", "B11");
 		double r=wvc.computePixel(lut, 
 			sza,
 			vza,

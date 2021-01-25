@@ -19,9 +19,7 @@ public abstract class CorrectionDescriptor{
 	
     public abstract int getBandFromName(String name) throws Exception;
 	public abstract double getIrradiance(int iband);
-	//public abstract double getIrradiance(String iband) throws Exception;
 	public abstract double getCentralWavelength(int iband);
-	//public abstract double getCentralWavelength(String iband) throws Exception;
 	
 	// common corrector code
 	// -------------------------------------------
@@ -35,7 +33,7 @@ public abstract class CorrectionDescriptor{
      * @param sza degree
      * @param vza degree
      * @param raa degree
-     * @param gnd ?UNIT?
+     * @param gnd km
      * @param aot
      * @param cwv 
      * @param ozone
