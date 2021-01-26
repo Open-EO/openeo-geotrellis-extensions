@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.openeo.geotrellis.icor.CorrectionDescriptorSentinel2;
+import org.openeo.geotrellis.icor.Sentinel2Descriptor;
 import org.openeo.geotrellis.icor.LookupTable;
 import org.openeo.geotrellis.icor.LookupTableIO;
 
@@ -17,7 +17,7 @@ import geotrellis.raster.Tile;
 public class testWaterVaporCalculator {
 
 	private static LookupTable lut;
-	private static CorrectionDescriptorSentinel2 cdS2=new CorrectionDescriptorSentinel2();
+	private static Sentinel2Descriptor cdS2=new Sentinel2Descriptor();
 	private static AbdaWaterVaporCalculator wvc=new AbdaWaterVaporCalculator();
 
 	static final double sza=43.5725342155;

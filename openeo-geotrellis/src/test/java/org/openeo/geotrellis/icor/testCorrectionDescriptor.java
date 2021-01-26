@@ -11,6 +11,7 @@ import java.time.format.DateTimeFormatter;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
+// TODO: this only tests Sentinel-2 descriptor only, extend to landsat8
 public class testCorrectionDescriptor {
 
 	private static LookupTable lut;
@@ -23,19 +24,20 @@ public class testCorrectionDescriptor {
 	private static class CorrectionInput {
 
 		int band;
-		long value;
+		double value;
 		ZonedDateTime time =  ZonedDateTime.now();
 		double sza = 29.0;
 		double vza = 5.0;
 		double raa = 130.0;
-		double expectedRadiance=-1.0;
+		double expectedRadiance=-1.0; // after reflectance to radiance
+		double expectedBOA=-1.0; // corrected value to bottom of atmosphere
 		double gnd = 17;
 		double aot = 0.28;
 		double cwv = 2.64;
 		double ozone = 0.33;
 		int watermask = 0;
 
-		public CorrectionInput(int band, long value, double gnd,double aot) {
+		public CorrectionInput(int band, double value, double gnd,double aot) {
 
 			this.band = band;
 			this.value = value;//reflectance, between 0 and 1
@@ -43,11 +45,12 @@ public class testCorrectionDescriptor {
 			this.aot = aot;
 		}
 
-		public CorrectionInput(int band, long value,double expectedRadiance, double gnd,double aot,double saa,double sza,double vaa,double vza,double cwv, String date) {
+		public CorrectionInput(int band, double value,double expectedRadiance, double expectedBOA, double gnd,double aot,double saa,double sza,double vaa,double vza,double cwv, String date) {
 
 			this.band = band;
 			this.value = value;//reflectance, between 0 and 1
 			this.expectedRadiance = expectedRadiance;
+			this.expectedBOA = expectedBOA;
 			this.gnd = gnd;//elevation in meters
 			this.aot = aot;
 			this.raa = saa-vaa;
@@ -60,48 +63,47 @@ public class testCorrectionDescriptor {
 	private CorrectionInput[] inputs = {
 			//new CorrectionInput(2,342L, 320.0,0.0001*1348.0),
 			//expected earth sun= 1.01751709288327
-			new CorrectionInput(1,1267,41.708855, 1.0/1000.0,0.0001*1029.0,163,57.8566,69,2, 0.83,"2017-03-07T10:50:00Z")};//expected icor:574 sen2cor:598 AOT icor:0.078
+			new CorrectionInput(1,0.1267,41.708855,         0.059894135283652894,0.001,0.0001*1029.0,163,   57.8566,   69,2,     0.83, "2017-03-07T10:50:00Z"),//expected icor:574 sen2cor:598 AOT icor:0.078
+			new CorrectionInput(3,0.0509,17.925613561979805,0.03484200980752023, 0.001,        0.082,129.13,    43.,  -1.,11.57, 0.357,"2019-04-11T10:50:29Z")//expected icor:353 sen2cor:336
+	};
 //'sunAzimuthAngles','sunZenithAngles','viewAzimuthMean','viewZenithMean'
-	@Test
-	public void testCorrectionDescriptorCorrect() {
-		CorrectionDescriptorSentinel2 cd=new CorrectionDescriptorSentinel2();
-		double tbc=1.;
-		double cv=cd.correct(lut, 1, ZonedDateTime.ofInstant(
-				Instant.ofEpochMilli(1577836800000L), ZoneId.systemDefault()), tbc, 29.0, 5.0, 130.0, 0.0, 0.28, 2.64, 0.33, 0);
-		System.out.println(Double.toString(tbc)+" -> "+Double.toString(cv));
-		assertArrayEquals(new double[]{cv}, new double[]{1.4536087548063417}, 1.e-6);
-	}
-
-	CorrectionDescriptorSentinel2 cd = new CorrectionDescriptorSentinel2();
+	
 	@Test
 	public void testCorrectionDescriptor() {
+		Sentinel2Descriptor cd = new Sentinel2Descriptor();
 		for (int i = 0; i < inputs.length; i++) {
 			CorrectionInput input = inputs[i];
-			double cv = cd.correct(lut, input.band, input.time, input.value/10000.0, input.sza, input.vza, input.raa, input.gnd, input.aot, input.cwv, input.ozone, input.watermask);
+			double cv = cd.correct(lut, input.band, input.time, input.value, input.sza, input.vza, input.raa, input.gnd, input.aot, input.cwv, input.ozone, input.watermask);
 			System.out.println("cv = " + cv);
+			assertArrayEquals(new double[]{cv}, new double[]{input.expectedBOA}, 1.e-6);
 		}
 	}
 
-//	@Test
-//	public void testCorrectionDescriptorCorrectProfile() throws IOException {
-//		LookupTable lut2=LookupTableIO.readLUT("lut_s2a");
-//		CorrectionDescriptorSentinel2 cd=new CorrectionDescriptorSentinel2();
-//		for (double tbc: Arrays.asList(
-//				0.,
-//				0.0001,
-//				0.001,
-//				0.01,
-//				0.1,
-//				1.,
-//				10.,
-//				100.,
-//				1000.,
-//				10000.
-//		)) {
-//			double cv=cd.correct(lut2, 1, 1577836800000L, tbc, 29.0, 5.0, 130.0, 0.0, 0.28, 2.64, 0.33, 0);
-//			System.out.println(Double.toString(tbc)+" -> "+Double.toString(cv));
-//		}
-//	}
+	@Test
+	public void testCorrectRadiance() {
+		Sentinel2Descriptor cd=new Sentinel2Descriptor();
+		double cv=cd.correctRadiance(lut,3,17.925,43.,11.57,129.13,0.,0.082,0.357,0.33,0);
+		System.out.println("CORR="+Double.toString(cv));
+		assertArrayEquals(new double[]{cv}, new double[]{0.03434362557030921}, 1.e-6);
+	}
+
+	@Test
+	public void testReflectanceToRadiance() {
+		Sentinel2Descriptor cd=new Sentinel2Descriptor();
+	    double rad=cd.reflToRad(10., 60., null, 1);
+		System.out.println("REFL 2 RAD: "+Double.toString(rad));
+		assertArrayEquals(new double[]{rad}, new double[]{3090.2001293264057}, 1.e-6);
+	}
+	
+	@Test
+	public void testSunEarthDistance() {
+		Sentinel2Descriptor cd=new Sentinel2Descriptor();
+		double distance_au=cd.earthSunDistance(ZonedDateTime.ofInstant(Instant.ofEpochMilli(1577836800000L), ZoneId.systemDefault()));
+		System.out.println("sun-earth distance: "+Double.toString(distance_au));
+		assertArrayEquals(new double[]{distance_au}, new double[]{0.9833099149733568}, 1.e-6);
+	}
+	
+	
 
 }
 

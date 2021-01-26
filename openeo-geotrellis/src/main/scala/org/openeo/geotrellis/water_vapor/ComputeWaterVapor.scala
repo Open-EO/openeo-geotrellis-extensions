@@ -12,10 +12,11 @@ import org.slf4j.LoggerFactory
 import org.openeo.geotrellis.icor.LookupTable
 import org.openeo.geotrellis.icor.LookupTableIO
 import org.openeo.geotrellis.icor.DEMProvider
-import org.openeo.geotrellis.icor.CorrectionDescriptorSentinel2
 import geotrellis.raster.TileLayout
 import geotrellis.raster.DoubleRawArrayTile
 import geotrellis.raster.resample.NearestNeighbor
+import org.openeo.geotrellis.icor.Sentinel2Descriptor
+import org.openeo.geotrellis.icor.CorrectionDescriptor
 
 
 
@@ -70,8 +71,10 @@ class ComputeWaterVapor {
               //          multibandtile._2.mapBands((b, tile) => tile.map(i => 23 ))
               {
 
-                val startMillis = System.currentTimeMillis();
+                val cd=new Sentinel2Descriptor()
                 
+                val startMillis = System.currentTimeMillis();
+
                 def angleTile(index: Int, fallback: Double): Tile = {
                   if (index > 0) multibandtile._2.band(index).convert(FloatConstantNoDataCellType) else FloatConstantTile(fallback.toFloat, multibandtile._2.cols, multibandtile._2.rows)
                 }
@@ -111,7 +114,8 @@ class ComputeWaterVapor {
                   prePostMult.get(0),
                   prePostMult.get(1),
                   bcLUT,
-                  bandIds
+                  bandIds,
+                  cd
                 ))
                 
                 correctionAccum.add(System.currentTimeMillis() - afterAuxData)

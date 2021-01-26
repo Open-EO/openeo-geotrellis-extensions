@@ -68,7 +68,7 @@ class AtmosphericCorrection {
               //          multibandtile._2.mapBands((b, tile) => tile.map(i => 23 ))
               {
 
-                val cd = new CorrectionDescriptorSentinel2()
+                val cd = new Sentinel2Descriptor()
 
                 def angleTile(index: Int, fallback: Double): Tile = {
                   if (index > 0) multibandtile._2.band(index).convert(FloatConstantNoDataCellType) else FloatConstantTile(fallback.toFloat, multibandtile._2.cols, multibandtile._2.rows)
@@ -100,7 +100,7 @@ class AtmosphericCorrection {
                 val startMillis = System.currentTimeMillis();
                 val aotTile = aotProvider.computeAOT(multibandtile._1, crs, layoutDefinition)
                 val demTile = elevationProvider.compute(multibandtile._1, crs, layoutDefinition)
-                val cwvTile = cwvProvider.compute(multibandtile, szaTile, vzaTile, raaTile, demTile, 0.1, 0.33, 1.0e-4, 1.0, bcLUT, bandIds)
+                val cwvTile = cwvProvider.compute(multibandtile, szaTile, vzaTile, raaTile, demTile, 0.1, 0.33, 1.0e-4, 1.0, bcLUT, bandIds,cd)
            
                 val afterAuxData = System.currentTimeMillis()
                 auxDataAccum.add(afterAuxData-startMillis)
