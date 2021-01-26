@@ -3,6 +3,11 @@ package org.openeo.geotrellis.icor;
 // Applies MODTRAN atmospheric correction based on preset values in a lookup table.
 public class Landsat8Descriptor extends CorrectionDescriptor{
 
+	@Override
+	public String getLookupTableURL() {
+		return "L8_big_disort"; 
+	}
+
     @Override
     public int getBandFromName(String name) throws Exception {
 		switch(name.toUpperCase()) {

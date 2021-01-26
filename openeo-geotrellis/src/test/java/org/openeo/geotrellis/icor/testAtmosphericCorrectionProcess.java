@@ -107,7 +107,6 @@ public class testAtmosphericCorrectionProcess {
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(
         	JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
         	new ContextRDD<>(datacube.rdd(),updatedMetadata),
-        	"https://artifactory.vgt.vito.be/auxdata-public/lut/S2A_all.bin",//"test_lut",
         	bandIds,
         	scales,
         	params,

@@ -18,7 +18,7 @@ import geotrellis.raster.Tile;
 public class testWaterVaporCalculator {
 
 	private static LookupTable lut;
-	private static 		CorrectionDescriptor cd=new Sentinel2Descriptor();
+	private static CorrectionDescriptor cd=new Sentinel2Descriptor();
 	private static AbdaWaterVaporCalculator wvc=new AbdaWaterVaporCalculator();
 
 	static final double sza=43.5725342155;
@@ -38,7 +38,7 @@ public class testWaterVaporCalculator {
 	
 	@BeforeClass
     public static void setup_fields() throws Exception {
-		lut=LookupTableIO.readLUT("https://artifactory.vgt.vito.be/auxdata-public/lut/S2A_all.bin");
+		lut=LookupTableIO.readLUT(cd.getLookupTableURL());
     }
 
 	@Test

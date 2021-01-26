@@ -24,7 +24,6 @@ class AtmosphericCorrection {
   def correct(
         jsc: JavaSparkContext, 
         datacube: MultibandTileLayerRDD[SpaceTimeKey], 
-        tableId: String, 
         bandIds:java.util.List[String],
         prePostMult:java.util.List[Double],
         defParams:java.util.List[Double], // sza, vza, N/A, N/A, N/A, cwv, ozone
@@ -34,16 +33,19 @@ class AtmosphericCorrection {
 
     val sc = JavaSparkContext.toSparkContext(jsc)
 
-    val lutLoader = new Callable[Broadcast[LookupTable]]() {
+    val sensorDescriptor: CorrectionDescriptor = sensorId.toUpperCase() match {
+      case "SENTINEL2"  => new Sentinel2Descriptor()
+      case "LANDSAT8"   => new Landsat8Descriptor()
+    }
 
+    val lutLoader = new Callable[Broadcast[LookupTable]]() {
       override def call(): Broadcast[LookupTable] = {
         org.openeo.geotrellis.logTiming("Loading icor LUT")({
-          sc.broadcast(LookupTableIO.readLUT(tableId))
+          sc.broadcast(LookupTableIO.readLUT(sensorDescriptor.getLookupTableURL()))
         })
       }
     }
-
-    val bcLUT = lutCache.get(tableId, lutLoader)
+    val bcLUT = lutCache.get(sensorDescriptor.getLookupTableURL(), lutLoader)
 
     val crs = datacube.metadata.crs
     val layoutDefinition = datacube.metadata.layout
@@ -60,11 +62,6 @@ class AtmosphericCorrection {
           case "SRTM" => new SRTMProvider()
         }
         
-        val sensorDescriptor: CorrectionDescriptor = sensorId.toUpperCase() match {
-          case "SENTINEL2"  => new Sentinel2Descriptor()
-          case "LANDSAT8"   => new Landsat8Descriptor()
-        }
-
         val cwvProvider = new CWVProvider() 
 
         partition.map {

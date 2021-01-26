@@ -34,7 +34,6 @@ class ComputeWaterVapor {
   def computeStandaloneCWV(
         jsc: JavaSparkContext, 
         datacube: MultibandTileLayerRDD[SpaceTimeKey], 
-        tableId: String, 
         bandIds:java.util.List[String], // 
         prePostMult:java.util.List[Double], // [1.e-4,1.]
         defParams:java.util.List[Double], // [ sza, saa, vza, vaa, aot (fixed override)=0.1, ozone (fixed override)=0.33 ]
@@ -43,16 +42,19 @@ class ComputeWaterVapor {
 
     val sc = JavaSparkContext.toSparkContext(jsc)
 
-    val lutLoader = new Callable[Broadcast[LookupTable]]() {
+    val sensorDescriptor: CorrectionDescriptor = sensorId.toUpperCase() match {
+      case "SENTINEL2"  => new Sentinel2Descriptor()
+      case "LANDSAT8"   => new Landsat8Descriptor()
+    }
 
+    val lutLoader = new Callable[Broadcast[LookupTable]]() {
       override def call(): Broadcast[LookupTable] = {
         org.openeo.geotrellis.logTiming("Loading icor LUT")({
-          sc.broadcast(LookupTableIO.readLUT(tableId))
+          sc.broadcast(LookupTableIO.readLUT(sensorDescriptor.getLookupTableURL()))
         })
       }
     }
-
-    val bcLUT = lutCache.get(tableId, lutLoader)
+    val bcLUT = lutCache.get(sensorDescriptor.getLookupTableURL(), lutLoader)
 
     val crs = datacube.metadata.crs
     val layoutDefinition = datacube.metadata.layout
@@ -65,11 +67,6 @@ class ComputeWaterVapor {
 // AOT overriden        val aotProvider = new AOTProvider()
         val demProvider = new DEMProvider(layoutDefinition, crs)
         val cwvProvider = new CWVProvider()
-
-        val sensorDescriptor: CorrectionDescriptor = sensorId.toUpperCase() match {
-          case "SENTINEL2"  => new Sentinel2Descriptor()
-          case "LANDSAT8"   => new Landsat8Descriptor()
-        }
         
         partition.map {
           multibandtile =>

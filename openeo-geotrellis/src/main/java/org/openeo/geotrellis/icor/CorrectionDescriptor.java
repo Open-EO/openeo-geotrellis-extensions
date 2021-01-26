@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.icor;
 
+import java.io.Serializable;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -12,7 +13,7 @@ import java.time.ZonedDateTime;
  */
 
 // Applies MODTRAN atmospheric correction based on preset values in a lookup table.
-public abstract class CorrectionDescriptor{
+public abstract class CorrectionDescriptor implements Serializable{
 
 	// parts to reimplement in specialization
 	// -------------------------------------------
@@ -20,6 +21,7 @@ public abstract class CorrectionDescriptor{
     public abstract int getBandFromName(String name) throws Exception;
 	public abstract double getIrradiance(int iband);
 	public abstract double getCentralWavelength(int iband);
+	public abstract String getLookupTableURL();
 	
 	// common corrector code
 	// -------------------------------------------
