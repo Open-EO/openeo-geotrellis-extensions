@@ -341,7 +341,10 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
   }
 
   private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent): List[(RasterSource, Seq[Int])] = {
-    val re = RasterExtent(targetExtent.extent, maxSpatialResolution).alignTargetPixels
+    def expandToCellSize(extent: Extent, cellSize: CellSize): Extent =
+      extent.expandBy(deltaX = (cellSize.width - extent.width) / 2, deltaY = (cellSize.height - extent.height) / 2)
+
+    val re = RasterExtent(expandToCellSize(targetExtent.extent, maxSpatialResolution), maxSpatialResolution).alignTargetPixels
     val alignment = TargetAlignment(re)
 
     def rasterSource(path:String,targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent ) = {
