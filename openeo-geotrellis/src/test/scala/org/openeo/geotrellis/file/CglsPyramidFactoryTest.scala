@@ -7,30 +7,18 @@ import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
-import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
-import org.apache.spark.SparkContext
 import org.junit.Assert.assertEquals
-import org.junit.{AfterClass, BeforeClass, Test}
-import org.openeo.geotrellis.ProjectedPolygons
+import org.junit.{AfterClass, Test}
+import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
 import org.openeo.geotrellis.TestImplicits._
 
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, ZoneId}
 
-object CglsPyramidFactoryTest {
-  private implicit var sc: SparkContext = _
-
-  @BeforeClass
-  def setupSpark(): Unit = {
-    sc = SparkUtils.createLocalSparkContext("local[*]", appName = classOf[CglsPyramidFactoryTest].getName)
-  }
-
+object CglsPyramidFactoryTest extends LocalSparkContext {
   @AfterClass
-  def tearDown(): Unit = {
-    sc.stop()
-    GDALWarp.deinit()
-  }
+  def tearDown(): Unit = GDALWarp.deinit()
 }
 
 class CglsPyramidFactoryTest {
