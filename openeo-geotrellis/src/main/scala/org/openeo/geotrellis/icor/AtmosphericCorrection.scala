@@ -10,6 +10,7 @@ import org.apache.spark.api.java.JavaSparkContext
 import org.apache.spark.broadcast.Broadcast
 import org.slf4j.LoggerFactory
 import org.openeo.geotrellis.water_vapor.CWVProvider
+import org.openeo.geotrellis.water_vapor.ZeroCWVProvider
 
 object AtmosphericCorrection{
   implicit val logger = LoggerFactory.getLogger(classOf[AtmosphericCorrection])
@@ -25,7 +26,6 @@ class AtmosphericCorrection {
         jsc: JavaSparkContext, 
         datacube: MultibandTileLayerRDD[SpaceTimeKey], 
         bandIds:java.util.List[String],
-        prePostMult:java.util.List[Double],
         defParams:java.util.List[Double], // sza, vza, N/A, N/A, N/A, cwv, ozone
         elevationSource: String,
         sensorId: String // SENTINEL2 and LANDSAT8 for now but in the future SENTINEL2A,SENTINEL2B,... granulation will be needed
@@ -61,8 +61,12 @@ class AtmosphericCorrection {
           case "DEM"  => new DEMProvider(layoutDefinition, crs)
           case "SRTM" => new SRTMProvider()
         }
-        
-        val cwvProvider = new CWVProvider() 
+
+        // TODO: this is temporary, until water vapor calculator is refactored, remove zeroprovider when not needed any more
+        val cwvProvider = sensorId.toUpperCase() match {
+          case "SENTINEL2"  => new CWVProvider()
+          case "LANDSAT8"   => new ZeroCWVProvider()
+        }
 
         partition.map {
           multibandtile =>
@@ -118,7 +122,7 @@ class AtmosphericCorrection {
                       vzaTile, 
                       raaTile,
                       cwvTile
-                    ).combineDouble(0, 1, 2, 3, 4, 5, 6) { (refl, aot, dem, sza, vza, raa, cwv) => if (refl != NODATA) (prePostMult.get(1) * sensorDescriptor.correct(bcLUT.value, iband, multibandtile._1.time, refl.toDouble * prePostMult.get(0), sza, vza, raa, dem, aot, cwv, defParams.get(6), 0)).toInt else NODATA }
+                    ).combineDouble(0, 1, 2, 3, 4, 5, 6) { (refl, aot, dem, sza, vza, raa, cwv) => if (refl != NODATA) (sensorDescriptor.correct(bcLUT.value, iband, multibandtile._1.time, refl.toDouble, sza, vza, raa, dem, aot, cwv, defParams.get(6), 0)).toInt else NODATA }
                     resultTile.convert(tile.cellType)
                   } catch {
                     case e: IllegalArgumentException => tile
