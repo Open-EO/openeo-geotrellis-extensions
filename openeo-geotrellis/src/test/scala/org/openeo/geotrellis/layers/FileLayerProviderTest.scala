@@ -14,10 +14,10 @@ class FileLayerProviderTest {
 
   @Test
   def cache(): Unit = {
-    val rootPath = Paths.get("/data/MTDA_DEV/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1")
+    val rootPath = Paths.get("/data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1")
 
     def fileLayerProvider = new FileLayerProvider( // important: multiple instances like in openeo-geopyspark-driver
-      openSearchEndpoint = new URL("http://oscars-dev.vgt.vito.be"),
+      openSearchEndpoint = new URL("http://oscars-01.vgt.vito.be:8080"),
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1",
       NonEmptyList.one("NO2"),
       rootPath.toString,
