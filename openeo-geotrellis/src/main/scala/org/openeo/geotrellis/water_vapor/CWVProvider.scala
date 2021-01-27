@@ -30,7 +30,6 @@ class CWVProvider {
     
     val bp = new BlockProcessor()
     val wvCalc = new AbdaWaterVaporCalculator()
-    
     wvCalc.prepare(bcLUT.value,cd,wvBandId,r0BandId,r1BandId)
             
     // TODO: use reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert)

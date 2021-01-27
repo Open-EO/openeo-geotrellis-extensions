@@ -15,9 +15,9 @@ import org.openeo.geotrellis.icor.DEMProvider
 import geotrellis.raster.TileLayout
 import geotrellis.raster.DoubleRawArrayTile
 import geotrellis.raster.resample.NearestNeighbor
-import org.openeo.geotrellis.icor.Sentinel2Descriptor
 import org.openeo.geotrellis.icor.CorrectionDescriptor
 import org.openeo.geotrellis.icor.Landsat8Descriptor
+import org.openeo.geotrellis.icor.Sentinel2Descriptor
 
 
 
@@ -46,7 +46,7 @@ class ComputeWaterVapor {
       case "SENTINEL2"  => new Sentinel2Descriptor()
       case "LANDSAT8"   => new Landsat8Descriptor()
     }
-
+    
     val lutLoader = new Callable[Broadcast[LookupTable]]() {
       override def call(): Broadcast[LookupTable] = {
         org.openeo.geotrellis.logTiming("Loading icor LUT")({

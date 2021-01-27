@@ -58,6 +58,24 @@ public class LookupTable implements Serializable{
 				+ Arrays.deepToString(values) + "]";
 	}
 
+	public String summarize() {
+		String v="numberOfValues=" + numberOfValues + "\n"
+	           + "dimensions=" + dimensions + "\n"
+	           + "bandids[" + Integer.toString(bandids.length) + "]= " + Arrays.toString(bandids) + "\n" 
+	           + "sza    [" + Integer.toString(sza.length) + "]= " + Arrays.toString(sza) + "\n"
+	           + "vza    [" + Integer.toString(vza.length) + "]= " + Arrays.toString(vza) + "\n"
+	           + "raa    [" + Integer.toString(raa.length) + "]= " + Arrays.toString(raa) + "\n"
+	           + "gnd    [" + Integer.toString(gnd.length) + "]= " + Arrays.toString(gnd) + "\n"
+	           + "aot    [" + Integer.toString(aot.length) + "]= " + Arrays.toString(aot) + "\n"
+	           + "cwv    [" + Integer.toString(cwv.length) + "]= " + Arrays.toString(cwv) + "\n"
+	           + "ozone  [" + Integer.toString(ozone.length) + "]= " + Arrays.toString(ozone) + "\n"
+	           + "values(showing sample only)=" + values.length +"\n";
+		for(int i=0; i<10; ++i) v+= Integer.toString(i) + " -> " + Integer.toString(values[i].length) + Arrays.toString(values[i]) + "\n";
+		v+="  ...\n";
+		for(int i=values.length-10; i<values.length; ++i) v+= Integer.toString(i) + " -> " + Arrays.toString(values[i]) + "\n";
+		return v;
+	}
+
 	@Override
 	public boolean equals(Object obj) {
 		if (this == obj)

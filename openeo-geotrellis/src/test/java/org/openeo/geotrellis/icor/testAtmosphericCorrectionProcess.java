@@ -84,9 +84,6 @@ public class testAtmosphericCorrectionProcess {
     	bandIds.add(new String("TOC-B09_60M"));
     	bandIds.add(new String("TOC-B8A_20M"));
     	bandIds.add(new String("TOC-B11_20M"));
-    	ArrayList<Object> scales=new ArrayList<Object>();
-    	scales.add(new Double(1.));
-    	scales.add(new Double(1.));
     	ArrayList<Object> params=new ArrayList<Object>();
     	params.add(new Double(0.));
     	params.add(new Double(0.));
@@ -108,11 +105,10 @@ public class testAtmosphericCorrectionProcess {
         	JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
         	new ContextRDD<>(datacube.rdd(),updatedMetadata),
         	bandIds,
-        	scales,
         	params,
         	"DEM",
         	"SENTINEL2"
-        );
+        );      
         System.out.println(resultRDD.getClass().toString());
 
         JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(resultRDD.toJavaRDD());

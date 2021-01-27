@@ -64,13 +64,13 @@ public class testCorrectionDescriptor {
 	private CorrectionInput[] inputs = {
 			//new CorrectionInput(2,342L, 320.0,0.0001*1348.0),
 			//expected earth sun= 1.01751709288327
-			new CorrectionInput(1,0.1267,41.708855,         0.059894135283652894,0.001,0.0001*1029.0,163,   57.8566,   69,2,     0.83, "2017-03-07T10:50:00Z"),//expected icor:574 sen2cor:598 AOT icor:0.078
-			new CorrectionInput(3,0.0509,17.925613561979805,0.03484200980752023, 0.001,        0.082,129.13,    43.,  -1.,11.57, 0.357,"2019-04-11T10:50:29Z")//expected icor:353 sen2cor:336
+			new CorrectionInput(1,1267.,41.708855,         598.94135283652894,0.001,0.0001*1029.0,163,   57.8566,   69,2,     0.83, "2017-03-07T10:50:00Z"),//expected icor:574 sen2cor:598 AOT icor:0.078
+			new CorrectionInput(3, 509.,17.925613561979805,348.4200980752023, 0.001,        0.082,129.13,    43.,  -1.,11.57, 0.357,"2019-04-11T10:50:29Z")//expected icor:353 sen2cor:336
 	};
 //'sunAzimuthAngles','sunZenithAngles','viewAzimuthMean','viewZenithMean'
 	
 	@Test
-	public void testCorrectionDescriptor() {
+	public void testCorrectFunction() {
 		for (int i = 0; i < inputs.length; i++) {
 			CorrectionInput input = inputs[i];
 			double cv = cd.correct(lut, input.band, input.time, input.value, input.sza, input.vza, input.raa, input.gnd, input.aot, input.cwv, input.ozone, input.watermask);

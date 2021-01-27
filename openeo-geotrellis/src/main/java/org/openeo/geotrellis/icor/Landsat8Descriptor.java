@@ -1,5 +1,7 @@
 package org.openeo.geotrellis.icor;
 
+import java.time.ZonedDateTime;
+
 // Applies MODTRAN atmospheric correction based on preset values in a lookup table.
 public class Landsat8Descriptor extends CorrectionDescriptor{
 
@@ -25,14 +27,14 @@ public class Landsat8Descriptor extends CorrectionDescriptor{
 			default: throw new IllegalArgumentException("Unsupported band provided");
 		}
 	}
-	
+    
     // source:
     // official: http://www.gisagmaps.com/landsat-8-sentinel-2-bands/
     // B08 (from Thuillier spectrum): https://bleutner.github.io/RStoolbox/r/2016/01/26/estimating-landsat-8-esun-values
     // TODO: B10 and B11 has no values. Should be excluded from correction or extrap from Thuillier?
     // TODO: propagate referring by band name instead of index
     // TODO: to be checked if L1C is already corrected to earth-sun distance or not
-    static double[] irradiances = {
+    final static double[] irradiances = {
 	    1857,00, // B01
 	    2067.00, // B02
 	    1893.00, // B03
@@ -46,12 +48,10 @@ public class Landsat8Descriptor extends CorrectionDescriptor{
 	 Double.NaN  // B11
     };
 
-	        
-    
     // source:
     // http://www.gisagmaps.com/landsat-8-sentinel-2-bands/
     // 
-    static double[] central_wavelengths = {
+    final static double[] central_wavelengths = {
          442.96, // B01
          482.04, // B02
          561.41, // B03
@@ -65,6 +65,32 @@ public class Landsat8Descriptor extends CorrectionDescriptor{
        12005.00  // B11
     };
 
+    // TODO: digital number to radiance scaling slighlty varies product-to product and should be taken from metadata
+    // TODO: I am suspicious that this variation is due to the earth-sun distance correction -> to be checked 
+    final static double[] RADIANCE_ADD_BAND = {
+       -62.86466,
+       -64.10541,
+       -58.69893,
+       -49.71440,
+       -30.16725,
+        -7.60064,
+        -2.47247,
+       -56.00013,
+       -12.39698
+    };
+
+    final static double[] RADIANCE_MULT_BAND = {
+        1.2573E-02,
+        1.2821E-02,
+        1.1740E-02,
+        9.9429E-03,
+        6.0335E-03,
+        1.5201E-03,
+        4.9449E-04,
+        1.1200E-02,
+        2.4794E-03
+    };
+    
     @Override
 	public double getIrradiance(int iband) {
 		return irradiances[iband];
@@ -74,5 +100,32 @@ public class Landsat8Descriptor extends CorrectionDescriptor{
 	public double getCentralWavelength(int iband) {
 		return central_wavelengths[iband];
 	}
-    
+
+	@Override
+	/**
+     * @param src: digital number of the top of the atmosphere TOA radiance (as it is stored in the L1T/OLI/... tifs) 
+	 */
+    public double correct(
+        	LookupTable lut,
+    		int band,
+    		ZonedDateTime time,
+    		double src, 
+    		double sza, 
+    		double vza, 
+    		double raa, 
+    		double gnd, 
+    		double aot, 
+    		double cwv, 
+    		double ozone,
+    		int waterMask)
+    {
+		// lut only has 8 bands instead of 9
+		//if (band>8) return src;
+		if (band>7) return src;
+		final double TOAradiance=src*RADIANCE_MULT_BAND[band]+RADIANCE_ADD_BAND[band];
+        final double corrected = correctRadiance(lut, band, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
+		//final double corrected=TOAradiance;
+        return corrected*10000.;
+    }
+		
 }

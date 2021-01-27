@@ -15,6 +15,13 @@ public class testLookupTable {
 		assertEquals(lut.toString(),ref);
 	}
 
+//	@Test
+//	public void testAnalyzeLookupTable() throws Exception{
+//		LookupTable lut=LookupTableIO.readLUT("L8_big_disort");
+//		System.out.println(lut.summarize());
+//	}
+	
+	
 	// TODO: test binary reader methods in LookupTableIO
 	
 //	@Test
