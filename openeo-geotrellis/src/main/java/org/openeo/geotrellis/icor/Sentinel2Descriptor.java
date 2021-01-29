@@ -1,5 +1,7 @@
 package org.openeo.geotrellis.icor;
 
+import java.time.ZonedDateTime;
+
 /**
  *
  * @author Sven Jochems
@@ -8,6 +10,11 @@ package org.openeo.geotrellis.icor;
 // Applies MODTRAN atmospheric correction based on preset values in a lookup table.
 public class Sentinel2Descriptor extends CorrectionDescriptor{
 
+	@Override
+	public String getLookupTableURL() {
+		return "https://artifactory.vgt.vito.be/auxdata-public/lut/S2A_all.bin"; 
+	}
+   
     @Override
     public int getBandFromName(String name) throws Exception {
     	// TODO: turn it into a map
@@ -151,16 +158,63 @@ public class Sentinel2Descriptor extends CorrectionDescriptor{
 	public double getIrradiance(int iband) {
 		return irradiances[iband];
 	}
-//	public double getIrradiance(String iband) throws Exception {
-//		return irradiances[getBandFromName(iband)];
-//	}
 
     @Override
 	public double getCentralWavelength(int iband) {
 		return central_wavelengths[iband];
 	}
-//	public double getCentralWavelength(String iband) throws Exception {
-//		return central_wavelengths[getBandFromName(iband)];
-//	}
+
+    /**
+     * @param src: digital number of the top of the atmosphere earth-sun distance corrected reflectance (as naturally delivered in the Sentinel2 L1C jp2-s) 
+     */
+    // calculates the atmospheric correction for pixel
+    @Override
+    public double correct(
+    	LookupTable lut,
+		int band,
+		ZonedDateTime time,
+		double src, 
+		double sza, 
+		double vza, 
+		double raa, 
+		double gnd, 
+		double aot, 
+		double cwv, 
+		double ozone,
+		int waterMask)
+    {
+    	// Get interpolated array from lookuptable
+
+        // Apply atmoshperic correction on pixel based on an array of parameters from MODTRAN
+        final double TOAradiance=reflToRad(src*0.0001, sza, time, band);
+        final double corrected = correctRadiance(lut, band, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
+		//final double corrected=TOAradiance;
+        return corrected*10000.;
+    }
+
+    /**
+     * @param src:              Band in reflectance range(0.,1.)
+     * @param szaCoverage:      SZA in degrees 
+     * @param time:             Time in millis from epoch
+     * @param bandToConvert     Bandnumber
+     * @return                  Band in radiance
+     * @throws Exception 
+     */
+    // this is highly sub-optimal many things can be calculated beforehand once for all pixels!
+    @Override
+    public double reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert) {
+
+        // SZA to SZA in rad + apply scale factor
+        double szaInRadCoverage = 2.*sza*Math.PI/360.;
+
+        // cos of SZA
+        double cosSzaCoverage = Math.cos(szaInRadCoverage);
+
+        double solarIrradiance = getIrradiance(bandToConvert);
+
+        double radiance = src* (cosSzaCoverage * solarIrradiance) / (Math.PI);
+        return radiance;
+    }
+    
     
 }

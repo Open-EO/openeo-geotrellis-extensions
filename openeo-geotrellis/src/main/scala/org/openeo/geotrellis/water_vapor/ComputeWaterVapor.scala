@@ -15,8 +15,9 @@ import org.openeo.geotrellis.icor.DEMProvider
 import geotrellis.raster.TileLayout
 import geotrellis.raster.DoubleRawArrayTile
 import geotrellis.raster.resample.NearestNeighbor
-import org.openeo.geotrellis.icor.Sentinel2Descriptor
 import org.openeo.geotrellis.icor.CorrectionDescriptor
+import org.openeo.geotrellis.icor.Landsat8Descriptor
+import org.openeo.geotrellis.icor.Sentinel2Descriptor
 
 
 
@@ -33,24 +34,27 @@ class ComputeWaterVapor {
   def computeStandaloneCWV(
         jsc: JavaSparkContext, 
         datacube: MultibandTileLayerRDD[SpaceTimeKey], 
-        tableId: String, 
         bandIds:java.util.List[String], // 
         prePostMult:java.util.List[Double], // [1.e-4,1.]
-        defParams:java.util.List[Double] // [ sza, saa, vza, vaa, aot (fixed override)=0.1, ozone (fixed override)=0.33 ]
+        defParams:java.util.List[Double], // [ sza, saa, vza, vaa, aot (fixed override)=0.1, ozone (fixed override)=0.33 ]
+        sensorId: String // SENTINEL2 and LANDSAT8 for now but in the future SENTINEL2A,SENTINEL2B,... granulation will be needed
       ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]  = {
 
     val sc = JavaSparkContext.toSparkContext(jsc)
 
+    val sensorDescriptor: CorrectionDescriptor = sensorId.toUpperCase() match {
+      case "SENTINEL2"  => new Sentinel2Descriptor()
+      case "LANDSAT8"   => new Landsat8Descriptor()
+    }
+    
     val lutLoader = new Callable[Broadcast[LookupTable]]() {
-
       override def call(): Broadcast[LookupTable] = {
         org.openeo.geotrellis.logTiming("Loading icor LUT")({
-          sc.broadcast(LookupTableIO.readLUT(tableId))
+          sc.broadcast(LookupTableIO.readLUT(sensorDescriptor.getLookupTableURL()))
         })
       }
     }
-
-    val bcLUT = lutCache.get(tableId, lutLoader)
+    val bcLUT = lutCache.get(sensorDescriptor.getLookupTableURL(), lutLoader)
 
     val crs = datacube.metadata.crs
     val layoutDefinition = datacube.metadata.layout
@@ -71,8 +75,6 @@ class ComputeWaterVapor {
               //          multibandtile._2.mapBands((b, tile) => tile.map(i => 23 ))
               {
 
-                val cd=new Sentinel2Descriptor()
-                
                 val startMillis = System.currentTimeMillis();
 
                 def angleTile(index: Int, fallback: Double): Tile = {
@@ -115,7 +117,7 @@ class ComputeWaterVapor {
                   prePostMult.get(1),
                   bcLUT,
                   bandIds,
-                  cd
+                  sensorDescriptor
                 ))
                 
                 correctionAccum.add(System.currentTimeMillis() - afterAuxData)

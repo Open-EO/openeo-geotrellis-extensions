@@ -10,6 +10,7 @@ import org.apache.spark.api.java.JavaSparkContext
 import org.apache.spark.broadcast.Broadcast
 import org.slf4j.LoggerFactory
 import org.openeo.geotrellis.water_vapor.CWVProvider
+import org.openeo.geotrellis.water_vapor.ZeroCWVProvider
 
 object AtmosphericCorrection{
   implicit val logger = LoggerFactory.getLogger(classOf[AtmosphericCorrection])
@@ -24,25 +25,27 @@ class AtmosphericCorrection {
   def correct(
         jsc: JavaSparkContext, 
         datacube: MultibandTileLayerRDD[SpaceTimeKey], 
-        tableId: String, 
         bandIds:java.util.List[String],
-        prePostMult:java.util.List[Double],
         defParams:java.util.List[Double], // sza, vza, N/A, N/A, N/A, cwv, ozone
-        elevationSource: String
+        elevationSource: String,
+        sensorId: String // SENTINEL2 and LANDSAT8 for now but in the future SENTINEL2A,SENTINEL2B,... granulation will be needed
       ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]  = {
 
     val sc = JavaSparkContext.toSparkContext(jsc)
 
-    val lutLoader = new Callable[Broadcast[LookupTable]]() {
+    val sensorDescriptor: CorrectionDescriptor = sensorId.toUpperCase() match {
+      case "SENTINEL2"  => new Sentinel2Descriptor()
+      case "LANDSAT8"   => new Landsat8Descriptor()
+    }
 
+    val lutLoader = new Callable[Broadcast[LookupTable]]() {
       override def call(): Broadcast[LookupTable] = {
         org.openeo.geotrellis.logTiming("Loading icor LUT")({
-          sc.broadcast(LookupTableIO.readLUT(tableId))
+          sc.broadcast(LookupTableIO.readLUT(sensorDescriptor.getLookupTableURL()))
         })
       }
     }
-
-    val bcLUT = lutCache.get(tableId, lutLoader)
+    val bcLUT = lutCache.get(sensorDescriptor.getLookupTableURL(), lutLoader)
 
     val crs = datacube.metadata.crs
     val layoutDefinition = datacube.metadata.layout
@@ -58,8 +61,12 @@ class AtmosphericCorrection {
           case "DEM"  => new DEMProvider(layoutDefinition, crs)
           case "SRTM" => new SRTMProvider()
         }
-        
-        val cwvProvider = new CWVProvider() 
+
+        // TODO: this is temporary, until water vapor calculator is refactored, remove zeroprovider when not needed any more
+        val cwvProvider = sensorId.toUpperCase() match {
+          case "SENTINEL2"  => new CWVProvider()
+          case "LANDSAT8"   => new ZeroCWVProvider()
+        }
 
         partition.map {
           multibandtile =>
@@ -67,8 +74,6 @@ class AtmosphericCorrection {
               multibandtile._1,
               //          multibandtile._2.mapBands((b, tile) => tile.map(i => 23 ))
               {
-
-                val cd = new Sentinel2Descriptor()
 
                 def angleTile(index: Int, fallback: Double): Tile = {
                   if (index > 0) multibandtile._2.band(index).convert(FloatConstantNoDataCellType) else FloatConstantTile(fallback.toFloat, multibandtile._2.cols, multibandtile._2.rows)
@@ -100,7 +105,7 @@ class AtmosphericCorrection {
                 val startMillis = System.currentTimeMillis();
                 val aotTile = aotProvider.computeAOT(multibandtile._1, crs, layoutDefinition)
                 val demTile = elevationProvider.compute(multibandtile._1, crs, layoutDefinition)
-                val cwvTile = cwvProvider.compute(multibandtile, szaTile, vzaTile, raaTile, demTile, 0.1, 0.33, 1.0e-4, 1.0, bcLUT, bandIds,cd)
+                val cwvTile = cwvProvider.compute(multibandtile, szaTile, vzaTile, raaTile, demTile, 0.1, 0.33, 1.0e-4, 1.0, bcLUT, bandIds,sensorDescriptor)
            
                 val afterAuxData = System.currentTimeMillis()
                 auxDataAccum.add(afterAuxData-startMillis)
@@ -108,7 +113,7 @@ class AtmosphericCorrection {
                 val result = multibandtile._2.mapBands((b, tile) => {
                   val bandName = bandIds.get(b)
                   try {
-                    val iband: Int = cd.getBandFromName(bandName)
+                    val iband: Int = sensorDescriptor.getBandFromName(bandName)
                     val resultTile: Tile = MultibandTile(
                       tile.convert(FloatConstantNoDataCellType), 
                       aotTile.convert(FloatConstantNoDataCellType), 
@@ -117,7 +122,7 @@ class AtmosphericCorrection {
                       vzaTile, 
                       raaTile,
                       cwvTile
-                    ).combineDouble(0, 1, 2, 3, 4, 5, 6) { (refl, aot, dem, sza, vza, raa, cwv) => if (refl != NODATA) (prePostMult.get(1) * cd.correct(bcLUT.value, iband, multibandtile._1.time, refl.toDouble * prePostMult.get(0), sza, vza, raa, dem, aot, cwv, defParams.get(6), 0)).toInt else NODATA }
+                    ).combineDouble(0, 1, 2, 3, 4, 5, 6) { (refl, aot, dem, sza, vza, raa, cwv) => if (refl != NODATA) (sensorDescriptor.correct(bcLUT.value, iband, multibandtile._1.time, refl.toDouble, sza, vza, raa, dem, aot, cwv, defParams.get(6), 0)).toInt else NODATA }
                     resultTile.convert(tile.cellType)
                   } catch {
                     case e: IllegalArgumentException => tile

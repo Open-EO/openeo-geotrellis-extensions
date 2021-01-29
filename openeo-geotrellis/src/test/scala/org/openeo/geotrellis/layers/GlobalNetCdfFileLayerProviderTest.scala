@@ -8,34 +8,23 @@ import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
-import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.apache.spark.SparkContext
 import org.junit.Assert.{assertEquals, assertTrue}
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.{AfterClass, Test}
+import org.openeo.geotrellis.LocalSparkContext
 import org.openeo.geotrellis.TestImplicits._
 
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 
-object GlobalNetCdfFileLayerProviderTest {
-  private implicit var sc: SparkContext = _
-
-  @BeforeClass
-  def setupSpark(): Unit = {
-    sc = SparkUtils.createLocalSparkContext("local[*]", appName = classOf[GlobalNetCdfFileLayerProviderTest].getName)
-  }
-
+object GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
   @AfterClass
-  def tearDown(): Unit = {
-    sc.stop()
-    GDALWarp.deinit()
-  }
+  def tearDown(): Unit = GDALWarp.deinit()
 }
 
 class GlobalNetCdfFileLayerProviderTest {
   import GlobalNetCdfFileLayerProviderTest._
 
-  private val layerProvider = new GlobalNetCdfFileLayerProvider(
+  private def layerProvider = new GlobalNetCdfFileLayerProvider(
     dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/*/*/*/*.nc",
     bandName = "LAI",
     dateRegex = raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored

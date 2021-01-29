@@ -32,8 +32,6 @@ import scala.collection.Seq;
 
 public class testWaterVaporCalculatorProcess {
 
-	static String lutPath="https://artifactory.vgt.vito.be/auxdata-public/lut/S2A_all.bin";
-
 	static final double sza=43.5725342155;
 	static final double vza=6.95880821756;
 	static final double saa=116.584011516;
@@ -104,10 +102,10 @@ public class testWaterVaporCalculatorProcess {
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new ComputeWaterVapor().computeStandaloneCWV(
         	JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
         	new ContextRDD<>(datacube.rdd(),updatedMetadata),
-        	lutPath,
         	Arrays.asList(new String[] {"B09","B8A","B11"}),
         	Arrays.asList(new Double[] {1.e-4,1.}),
-        	Arrays.asList(new Double[] {sza,saa,vza,vaa,aot,ozone})
+        	Arrays.asList(new Double[] {sza,saa,vza,vaa,aot,ozone}),
+        	"SENTINEL2"
         );
         //System.out.println(resultRDD.getClass().toString());
 
@@ -144,10 +142,10 @@ public class testWaterVaporCalculatorProcess {
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new ComputeWaterVapor().computeStandaloneCWV(
         	JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
         	new ContextRDD<>(datacube.rdd(),updatedMetadata),
-        	lutPath,
         	Arrays.asList(new String[] {"B09","B8A","B11","sunZenithAngles","viewZenithMean","viewAzimuthMean","sunAzimuthAngles"}),
         	Arrays.asList(new Double[] {1.e-4,1.}),
-        	Arrays.asList(new Double[] {Double.NaN,Double.NaN,Double.NaN,Double.NaN,aot,ozone})
+        	Arrays.asList(new Double[] {Double.NaN,Double.NaN,Double.NaN,Double.NaN,aot,ozone}),
+        	"SENTINEL2"
         );
         //System.out.println(resultRDD.getClass().toString());
         
