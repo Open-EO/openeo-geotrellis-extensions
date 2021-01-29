@@ -68,18 +68,17 @@ package object geotiff {
 
     val bandSegmentCount = totalCols * totalRows
 
-    println("Saving geotiff with Celltype: " + rdd.metadata.cellType)
-
     val totalBandCount = rdd.sparkContext.longAccumulator("TotalBandCount")
+    val typeAccumulator = rdd.sparkContext.collectionAccumulator[raster.CellType]("Celltype")
     val tiffs: collection.Map[Int, Array[Byte]] = preprocessedRdd.flatMap { case (key: SpatialKey, multibandTile: MultibandTile) => {
       var bandIndex = -1
       if(multibandTile.bandCount>0) {
         totalBandCount.add(multibandTile.bandCount)
       }
+      typeAccumulator.add(multibandTile.cellType)
       //Warning: for deflate compression, the segmentcount and index is not really used, making it stateless.
       //Not sure how this works out for other types of compression!!!
       val theCompressor = compression.createCompressor( multibandTile.bandCount)
-
       multibandTile.bands.map {
         tile => {
           bandIndex += 1
@@ -97,11 +96,19 @@ package object geotiff {
     }
     }.collectAsMap()
 
+    val cellType = {
+      if(typeAccumulator.value.isEmpty) {
+        rdd.metadata.cellType
+      }else{
+        typeAccumulator.value.get(0)
+      }
+    }
+    println("Saving geotiff with Celltype: " + cellType)
     val detectedBandCount =  if(totalBandCount.avg >0) totalBandCount.avg else 1
     val segmentCount = (bandSegmentCount*detectedBandCount).toInt
     val compressor = compression.createCompressor(segmentCount)
     lazy val emptySegment =
-      ArrayTile.empty(rdd.metadata.cellType, tileLayout.tileCols, tileLayout.tileRows).toBytes
+      ArrayTile.empty(cellType, tileLayout.tileCols, tileLayout.tileRows).toBytes
 
     val segments: Array[Array[Byte]] = Array.ofDim(segmentCount)
     val emptySegmentCompressed = compressor.compress(emptySegment, 0)
@@ -120,7 +127,7 @@ package object geotiff {
       segmentLayout,
       compression,
       detectedBandCount.toInt,
-      preprocessedRdd.metadata.cellType)
+      cellType)
     val thegeotiff = MultibandGeoTiff(tiffTile, croppedExtent, preprocessedRdd.metadata.crs)
 
     GeoTiffWriter.write(thegeotiff, path)
