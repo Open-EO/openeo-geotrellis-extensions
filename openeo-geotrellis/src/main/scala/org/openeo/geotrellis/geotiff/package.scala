@@ -12,11 +12,23 @@ import geotrellis.raster.{ArrayTile, MultibandTile, Raster, RasterExtent}
 import geotrellis.spark._
 import geotrellis.vector.Extent
 import org.apache.spark.rdd.RDD
+import org.apache.spark.util.AccumulatorV2
 import spire.syntax.cfor.cfor
 
 import scala.collection.JavaConverters._
 
 package object geotiff {
+
+  class SetAccumulator[T](var value: Set[T]) extends AccumulatorV2[T, Set[T]] {
+    def this() = this(Set.empty[T])
+    override def isZero: Boolean = value.isEmpty
+    override def copy(): AccumulatorV2[T, Set[T]] = new SetAccumulator[T](value)
+    override def reset(): Unit = value = Set.empty[T]
+    override def add(v: T): Unit = value = value + v
+    override def merge(other: AccumulatorV2[T, Set[T]]): Unit = value = value ++ other.value
+  }
+
+
   type SRDD = RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]]
 
   private def toExtent(extent: Map[String, Double]) = Extent(
@@ -69,7 +81,8 @@ package object geotiff {
     val bandSegmentCount = totalCols * totalRows
 
     val totalBandCount = rdd.sparkContext.longAccumulator("TotalBandCount")
-    val typeAccumulator = rdd.sparkContext.collectionAccumulator[raster.CellType]("Celltype")
+    val typeAccumulator = new SetAccumulator[raster.CellType]()
+    rdd.sparkContext.register(typeAccumulator,"CellType")
     val tiffs: collection.Map[Int, Array[Byte]] = preprocessedRdd.flatMap { case (key: SpatialKey, multibandTile: MultibandTile) => {
       var bandIndex = -1
       if(multibandTile.bandCount>0) {
@@ -100,7 +113,7 @@ package object geotiff {
       if(typeAccumulator.value.isEmpty) {
         rdd.metadata.cellType
       }else{
-        typeAccumulator.value.get(0)
+        typeAccumulator.value.head
       }
     }
     println("Saving geotiff with Celltype: " + cellType)
