@@ -45,6 +45,25 @@ class OpenSearchTest {
     assertTrue(features.nonEmpty)
   }
 
+
+  @Test
+  def testCreoSentinel1(): Unit = {
+    val openSearch = CreoOpenSearch
+
+    val features = openSearch.getProducts(
+      collectionId = "Sentinel1",
+
+      from = LocalDate.of(2020, 10, 1),
+      to = LocalDate.of(2020, 10, 5),
+      bbox = ProjectedExtent(Extent(2.688081576665092, 50.71625006623287, 5.838282906674661, 51.42339628212806),
+        LatLng),
+      correlationId = "hello"
+    )
+
+    println(s"got ${features.size} features")
+    assertTrue(features.nonEmpty)
+  }
+
   @Test
   def testSTAC(): Unit = {
     val openSearch = new STACOpenSearch()

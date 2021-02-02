@@ -1,12 +1,13 @@
 package org.openeo.geotrellis.layers
 
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter.ISO_INSTANT
+
 import geotrellis.proj4.LatLng
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.openeo.geotrellis.layers.OpenSearchResponses._
 import scalaj.http.HttpOptions
 
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter.ISO_INSTANT
 import scala.collection.Map
 
 object CreoOpenSearch extends OpenSearch {
@@ -29,7 +30,7 @@ object CreoOpenSearch extends OpenSearch {
                                      correlationId: String): FeatureCollection = {
     val Extent(xMin, yMin, xMax, yMax) = bbox.reproject(LatLng)
 
-    val getProducts = http(collection(collectionId))
+    var getProducts = http(collection(collectionId))
       .param("processingLevel", processingLevel)
       .param("startDate", start format ISO_INSTANT)
       .param("completionDate", end format ISO_INSTANT)
@@ -41,6 +42,10 @@ object CreoOpenSearch extends OpenSearch {
       .param("status", "all")
       .param("dataset", "ESA-DATASET")
       .params(attributeValues.mapValues(_.toString).toSeq)
+
+    if( "Sentinel1".equals(collectionId)) {
+      getProducts = getProducts.param("timeliness","Fast-24h").param("productType","GRD")
+    }
 
     val json = withRetries { execute(getProducts) }
     CreoFeatureCollection.parse(json)
