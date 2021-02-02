@@ -1,12 +1,14 @@
 package org.openeo.geotrellis.layers
 
 import java.net.URL
-import java.time.LocalDate
+import java.time.{LocalDate, ZonedDateTime}
 
 import geotrellis.proj4.LatLng
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.Assert._
 import org.junit.Test
+
+import scala.collection.mutable
 
 class OpenSearchTest {
 
@@ -61,7 +63,14 @@ class OpenSearchTest {
     )
 
     println(s"got ${features.size} features")
+    val unique: mutable.Set[(Extent,ZonedDateTime)] = mutable.Set()
     assertTrue(features.nonEmpty)
+    features.foreach(f => {
+      assertTrue(f.id.contains("GRD"))
+      val extent_timestamp = (f.bbox,f.nominalDate)
+      unique add extent_timestamp
+    })
+    assertEquals(features.size,unique.size)
   }
 
   @Test
