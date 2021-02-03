@@ -26,9 +26,11 @@ class AtmosphericCorrection {
         jsc: JavaSparkContext, 
         datacube: MultibandTileLayerRDD[SpaceTimeKey], 
         bandIds:java.util.List[String],
-        defParams:java.util.List[Double], // sza, vza, N/A, N/A, N/A, cwv, ozone
+        overrideParams:java.util.List[Double], // sza,vza,raa,gnd,aot,cwv,ozone <- if other than NaN, it will use the value as constant tile
         elevationSource: String,
-        sensorId: String // SENTINEL2 and LANDSAT8 for now but in the future SENTINEL2A,SENTINEL2B,... granulation will be needed
+        sensorId: String, // SENTINEL2 and LANDSAT8 for now 
+        // TODO: in the future SENTINEL2A,SENTINEL2B,... granulation will be needed
+        extraDebugLayers: Boolean
       ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]  = {
 
     val sc = JavaSparkContext.toSparkContext(jsc)
@@ -79,23 +81,21 @@ class AtmosphericCorrection {
                   if (index > 0) multibandtile._2.band(index).convert(FloatConstantNoDataCellType) else FloatConstantTile(fallback.toFloat, multibandtile._2.cols, multibandtile._2.rows)
                 }
 
-                val saaIdx = bandIds.indexOf("sunAzimuthAngles")
-                val szaIdx = bandIds.indexOf("sunZenithAngles")
-                val vaaIdx = bandIds.indexOf("viewAzimuthMean")
-                val vzaIdx = bandIds.indexOf("viewZenithMean")
+                // Angles assignment priority order:
+                // 1. overrideParam as constant tile if overrideParams not nan
+                // 2. from band 
+                // 3. fallback value
+                // TODO: extra check when not all angles come from bands
+                val szaIdx = if (overrideParams.get(0).isNaN) bandIds.indexOf("sunZenithAngles")  else -1
+                val vzaIdx = if (overrideParams.get(1).isNaN) bandIds.indexOf("viewZenithMean")   else -1
+                val saaIdx = if (overrideParams.get(2).isNaN) bandIds.indexOf("sunAzimuthAngles") else -1
+                val vaaIdx = if (overrideParams.get(2).isNaN) bandIds.indexOf("viewAzimuthMean")  else -1
 
-                val szaTile = angleTile(szaIdx, defParams.get(0))
-                val vzaTile = angleTile(vzaIdx, defParams.get(1))
-                val vaaTile = angleTile(vaaIdx, 0.0)
-                val saaTile = angleTile(saaIdx, 130.0)
-                
-// TODO: incorporate choice of vaa/saa angle defaults
-/*
-    val szaTile = angleTile(szaIdx, defParams.get(0))
-    val saaTile = angleTile(saaIdx, defParams.get(1))// 130.0) // TODO: why is the fallback hardcoded to this value?
-    val vzaTile = angleTile(vzaIdx, defParams.get(2))
-    val vaaTile = angleTile(vaaIdx, defParams.get(3))// 0.0)   // TODO: why is the fallback hardcoded to this value?
-*/
+                // TODO: why these default fallbacks?
+                val szaTile = angleTile(szaIdx, if (overrideParams.get(0).isNaN) 29.0  else overrideParams.get(0))
+                val vzaTile = angleTile(vzaIdx, if (overrideParams.get(1).isNaN) 5.0   else overrideParams.get(1))
+                val saaTile = angleTile(saaIdx, if (overrideParams.get(2).isNaN) 130.0 else overrideParams.get(2))
+                val vaaTile = angleTile(vaaIdx, 0.0) // because override provides raa == saa-vaa
                 
                 val raaTileDiff = saaTile - vaaTile
                 val raaTile=raaTileDiff.mapDouble(v =>
@@ -122,7 +122,7 @@ class AtmosphericCorrection {
                       vzaTile, 
                       raaTile,
                       cwvTile
-                    ).combineDouble(0, 1, 2, 3, 4, 5, 6) { (refl, aot, dem, sza, vza, raa, cwv) => if (refl != NODATA) (sensorDescriptor.correct(bcLUT.value, iband, multibandtile._1.time, refl.toDouble, sza, vza, raa, dem, aot, cwv, defParams.get(6), 0)).toInt else NODATA }
+                    ).combineDouble(0, 1, 2, 3, 4, 5, 6) { (refl, aot, dem, sza, vza, raa, cwv) => if (refl != NODATA) (sensorDescriptor.correct(bcLUT.value, iband, multibandtile._1.time, refl.toDouble, sza, vza, raa, dem, aot, cwv, overrideParams.get(6), 0)).toInt else NODATA }
                     resultTile.convert(tile.cellType)
                   } catch {
                     case e: IllegalArgumentException => tile
