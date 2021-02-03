@@ -10,7 +10,7 @@ import org.apache.spark.api.java.JavaSparkContext
 import org.apache.spark.broadcast.Broadcast
 import org.slf4j.LoggerFactory
 import org.openeo.geotrellis.water_vapor.CWVProvider
-import org.openeo.geotrellis.water_vapor.ZeroCWVProvider
+import org.openeo.geotrellis.water_vapor.ConstantCWVProvider
 
 object AtmosphericCorrection{
   implicit val logger = LoggerFactory.getLogger(classOf[AtmosphericCorrection])
@@ -30,7 +30,7 @@ class AtmosphericCorrection {
         elevationSource: String,
         sensorId: String, // SENTINEL2 and LANDSAT8 for now 
         // TODO: in the future SENTINEL2A,SENTINEL2B,... granulation will be needed
-        extraDebugLayers: Boolean
+        includeDebugBands: Boolean // this will add sza,vza,raa,gnd,aot,cwv to the multiband tile result
       ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]  = {
 
     val sc = JavaSparkContext.toSparkContext(jsc)
@@ -57,6 +57,7 @@ class AtmosphericCorrection {
     
     new ContextRDD(
       datacube.mapPartitions(partition => {
+
         val aotProvider = new AOTProvider()
 
         val elevationProvider: ElevationProvider = elevationSource.toUpperCase() match {
@@ -64,10 +65,10 @@ class AtmosphericCorrection {
           case "SRTM" => new SRTMProvider()
         }
 
-        // TODO: this is temporary, until water vapor calculator is refactored, remove zeroprovider when not needed any more
+        // TODO: this is temporary, until water vapor calculator is refactored, remove  constant provider when not needed any more
         val cwvProvider = sensorId.toUpperCase() match {
           case "SENTINEL2"  => new CWVProvider()
-          case "LANDSAT8"   => new ZeroCWVProvider()
+          case "LANDSAT8"   => new ConstantCWVProvider(0.0)
         }
 
         partition.map {
@@ -103,9 +104,13 @@ class AtmosphericCorrection {
                 )
 
                 val startMillis = System.currentTimeMillis();
-                val aotTile = aotProvider.computeAOT(multibandtile._1, crs, layoutDefinition)
-                val demTile = elevationProvider.compute(multibandtile._1, crs, layoutDefinition)
-                val cwvTile = cwvProvider.compute(multibandtile, szaTile, vzaTile, raaTile, demTile, 0.1, 0.33, 1.0e-4, 1.0, bcLUT, bandIds,sensorDescriptor)
+
+                val demTile = if (overrideParams.get(3).isNaN) elevationProvider.compute(multibandtile._1, crs, layoutDefinition)
+                              else FloatConstantTile(overrideParams.get(3).toFloat, multibandtile._2.cols, multibandtile._2.rows)
+                val aotTile = if (overrideParams.get(4).isNaN) aotProvider.computeAOT(multibandtile._1, crs, layoutDefinition) 
+                              else FloatConstantTile(overrideParams.get(4).toFloat, multibandtile._2.cols, multibandtile._2.rows)
+                val cwvTile = if (overrideParams.get(5).isNaN) cwvProvider.compute(multibandtile, szaTile, vzaTile, raaTile, demTile, 0.1, 0.33, 1.0e-4, 1.0, bcLUT, bandIds,sensorDescriptor)
+                              else FloatConstantTile(overrideParams.get(5).toFloat, multibandtile._2.cols, multibandtile._2.rows)
            
                 val afterAuxData = System.currentTimeMillis()
                 auxDataAccum.add(afterAuxData-startMillis)
@@ -130,6 +135,8 @@ class AtmosphericCorrection {
 
                 })
                 correctionAccum.add(System.currentTimeMillis() - afterAuxData)
+                
+                
                 result
               }
             )

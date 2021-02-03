@@ -9,7 +9,7 @@ import org.openeo.geotrellis.icor.LookupTable
 import geotrellis.raster.DoubleConstantTile
 
 // TODO: this class is a temporary solution, remove when water vapor calculator is refactored
-class ZeroCWVProvider extends CWVProvider {
+class ConstantCWVProvider(constValue: Double) extends CWVProvider {
 
   override def compute(
     multibandtile: (SpaceTimeKey, MultibandTile),
@@ -25,10 +25,7 @@ class ZeroCWVProvider extends CWVProvider {
     bandIds:java.util.List[String],
     cd: CorrectionDescriptor
   ) : Tile = {
-
-    val mbtresult: Tile = new DoubleConstantTile(0.0, multibandtile._2.band(0).cols, multibandtile._2.band(0).cols) 
-    mbtresult.convert(FloatConstantNoDataCellType)
-   
+    new FloatConstantNoDataCellType(constValue, multibandtile._2.band(0).cols, multibandtile._2.band(0).cols) 
  }
   
   
