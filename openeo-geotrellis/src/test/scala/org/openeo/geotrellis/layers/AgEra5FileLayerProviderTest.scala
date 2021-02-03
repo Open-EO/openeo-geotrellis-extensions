@@ -1,13 +1,13 @@
 package org.openeo.geotrellis.layers
 
+import java.time.{LocalDate, ZoneId}
+
 import geotrellis.proj4.LatLng
 import geotrellis.spark._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.Test
-import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
 import org.openeo.geotrellis.TestImplicits._
-
-import java.time.{LocalDate, ZoneId}
+import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
 
 object AgEra5FileLayerProviderTest extends LocalSparkContext
 
@@ -17,7 +17,7 @@ class AgEra5FileLayerProviderTest {
   @Test
   def agEra5FileLayerProvider(): Unit = {
     val fileLayerProvider = new AgEra5FileLayerProvider(
-      dewPointTemperatureGlob = "/data/worldcereal/data/AgERA5/years/2020/20200424/AgERA5_dewpoint-temperature_*.tif",
+      dewPointTemperatureGlob = "/data/MTDA/AgERA5/2020/20200424/AgERA5_dewpoint-temperature_*.tif",
       bandFileMarkers = Seq("dewpoint-temperature", "precipitation-flux", "solar-radiation-flux"),
       dateRegex = raw".+_(\d{4})(\d{2})(\d{2})\.tif".r
     )
