@@ -12,7 +12,7 @@ public class Sentinel2Descriptor extends CorrectionDescriptor{
 
 	@Override
 	public String getLookupTableURL() {
-		return "https://artifactory.vgt.vito.be/auxdata-public/lut/S2A_all.bin"; 
+		return "https://artifactory.vgt.vito.be/auxdata-public/lut/S2B_all.bin"; 
 	}
    
     @Override
