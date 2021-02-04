@@ -1,5 +1,8 @@
 package org.openeo.geotrellis.layers
 
+import java.net.URL
+import java.time.{LocalDate, ZoneId}
+
 import cats.data.NonEmptyList
 import geotrellis.layer.ZoomedLayoutScheme
 import geotrellis.proj4.LatLng
@@ -13,9 +16,6 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.junit.Assert.{assertEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.{AfterClass, BeforeClass, Test}
-
-import java.net.URL
-import java.time.{LocalDate, ZoneId}
 
 object FileLayerProviderTest {
   private var sc: SparkContext = _
@@ -32,7 +32,7 @@ class FileLayerProviderTest {
   import FileLayerProviderTest._
 
   private def sentinel5PFileLayerProvider = new FileLayerProvider(
-    openSearchEndpoint = new URL("http://oscars-01.vgt.vito.be:8080"),
+    openSearch = OpenSearch(new URL("http://oscars-01.vgt.vito.be:8080")),
     openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1",
     NonEmptyList.one("NO2"),
     rootPath = "/data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1",

@@ -1,6 +1,9 @@
 package org.openeo.geotrellis.layers
 
+import java.io.FileInputStream
+import java.lang.System.getenv
 import java.net.URI
+import java.nio.file.Paths
 import java.time.ZonedDateTime
 
 import _root_.io.circe.parser.decode
@@ -9,6 +12,9 @@ import cats.syntax.show._
 import io.circe.generic.auto._
 import io.circe.{Decoder, HCursor, Json}
 import geotrellis.vector._
+import javax.net.ssl.HttpsURLConnection
+
+import scala.xml.{Node, XML}
 
 object OpenSearchResponses {
   implicit val decodeUrl: Decoder[URI] = Decoder.decodeString.map(URI.create(_))
@@ -88,6 +94,48 @@ object OpenSearchResponses {
   }
 
   object CreoFeatureCollection {
+
+
+    private def getAwsDirect() = {
+      "TRUE".equals(getenv("AWS_DIRECT"))
+    }
+
+    private def getFilePathsFromManifest(path: String) = {
+      var gdalPrefix = ""
+
+      val inputStream = if (path.startsWith("https://")) {
+        gdalPrefix = "/vsicurl"
+
+        val uri = new URI(path)
+        uri.resolve(s"${uri.getPath}/manifest.safe").toURL
+          .openConnection.asInstanceOf[HttpsURLConnection]
+          .getInputStream
+      } else {
+        gdalPrefix = if (getAwsDirect()) "/vsis3" else ""
+
+        if(path.startsWith("/eodata")) {
+          //reading from /eodata is extremely slow
+          val url = path.replace("/eodata","https://finder.creodias.eu/files")
+          val uri = new URI(url)
+          uri.resolve(s"${uri.getPath}/manifest.safe").toURL
+            .openConnection.asInstanceOf[HttpsURLConnection]
+            .getInputStream
+        }else{
+          new FileInputStream(Paths.get(path, "manifest.safe").toFile)
+        }
+      }
+
+      val xml = XML.load(inputStream)
+
+
+      (xml \\ "dataObject" )
+        .map((dataObject: Node) =>{
+          val title = dataObject \\ "@ID"
+          val fileLocation = dataObject \\ "fileLocation" \\ "@href"
+          Link(URI.create(s"$gdalPrefix${if (path.startsWith("/")) "" else "/"}$path" + s"/${Paths.get(fileLocation.toString).normalize().toString}"),Some(title.toString))
+        })
+    }
+
     def parse(json: String): FeatureCollection = {
       implicit val decodeFeature: Decoder[Feature] = new Decoder[Feature] {
         override def apply(c: HCursor): Decoder.Result[Feature] = {
@@ -100,7 +148,13 @@ object OpenSearchResponses {
           } yield {
             val extent = geometry.toString().parseGeoJson[Geometry].extent
 
-            Feature(id, extent, nominalDate, links, resolution)
+            if(id.endsWith(".SAFE")){
+              val all_links = getFilePathsFromManifest(id)
+              Feature(id, extent, nominalDate, all_links.toArray, resolution)
+            }else{
+              Feature(id, extent, nominalDate, links, resolution)
+            }
+
           }
         }
       }
