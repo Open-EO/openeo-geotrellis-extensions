@@ -1,7 +1,6 @@
 package org.openeo
 
 import java.io.InputStream
-import java.io.StringWriter
 import java.lang.Math.pow
 import java.lang.Math.random
 import java.net.SocketTimeoutException
@@ -17,7 +16,6 @@ import geotrellis.vector.ProjectedExtent
 import org.apache.commons.io.IOUtils
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpStatusException}
-import com.fasterxml.jackson.core.JsonFactory
 import com.fasterxml.jackson.core.`type`.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.common.cache.{CacheBuilder, CacheLoader}

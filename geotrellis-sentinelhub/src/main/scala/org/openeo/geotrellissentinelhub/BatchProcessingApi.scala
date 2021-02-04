@@ -1,16 +1,18 @@
 package org.openeo.geotrellissentinelhub
 
 import cats.syntax.either._
+import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.vector.{Extent, ProjectedExtent}
-import io.circe.Json
 import io.circe.generic.auto._
 import io.circe.parser.decode
+import io.circe.syntax._
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpOptions, HttpRequest}
 
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.{BASIC_ISO_DATE, ISO_INSTANT}
+import java.util
 
 object BatchProcessingApi {
   private val logger = LoggerFactory.getLogger(classOf[BatchProcessingApi])
@@ -30,7 +32,8 @@ class BatchProcessingApi {
       .headers("Authorization" -> s"Bearer $accessToken")
 
   def createBatchProcess(datasetId: String, boundingBox: ProjectedExtent, dateTimes: Seq[ZonedDateTime],
-                         bandNames: Seq[String], sampleType: SampleType, bucketName: String, description: String,
+                         bandNames: Seq[String], sampleType: SampleType, processingOptions: util.Map[String, Any],
+                         bucketName: String, description: String,
                          accessToken: String)
   : CreateBatchProcessResponse = {
     val ProjectedExtent(Extent(xmin, ymin, xmax, ymax), crs) = boundingBox
@@ -49,6 +52,7 @@ class BatchProcessingApi {
     val responses = this.responses(identifiers)
     val evalScript = this.evalScript(bandNames, identifiers, sampleType)
 
+    // TODO: figure out how to work with heterogeneous types like Map[String, Any] in Circe
     val requestBody =
       s"""|{
           |    "processRequest": {
@@ -68,14 +72,15 @@ class BatchProcessingApi {
           |                            "to": "${ISO_INSTANT format to}"
           |                        },
           |                        "mosaickingOrder": "leastRecent"
-          |                    }
+          |                    },
+          |                    "processing": ${new ObjectMapper().writeValueAsString(processingOptions)}
           |                }
           |            ]
           |        },
           |        "output": {
           |            "responses": [${responses mkString ","}]
           |        },
-          |        "evalscript": ${Json.fromString(evalScript)}
+          |        "evalscript": ${evalScript.asJson}
           |    },
           |    "tilingGrid": {
           |        "id": 1,
