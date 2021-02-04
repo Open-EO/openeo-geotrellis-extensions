@@ -1,5 +1,9 @@
 package org.openeo.geotrellis.geotiff
 
+import java.time.LocalTime.MIDNIGHT
+import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
+import java.time.{LocalDate, ZoneId, ZonedDateTime}
+
 import cats.data.NonEmptyList
 import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme}
 import geotrellis.proj4.LatLng
@@ -14,16 +18,13 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.junit.Assert.assertEquals
 import org.junit.{Ignore, Test}
-import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.file.AgEra5PyramidFactory
 import org.openeo.geotrellis.layers.BandCompositeRasterSource
+import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
 
-import java.time.LocalTime.MIDNIGHT
-import java.time.{LocalDate, ZoneId, ZonedDateTime}
-import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-import scala.util.matching.Regex
 import scala.collection.JavaConverters._
+import scala.util.matching.Regex
 
 object AgEra5PyramidFactoryTest extends LocalSparkContext {
   private def deriveDate(filename: String, date: Regex): ZonedDateTime = {
@@ -58,7 +59,7 @@ class AgEra5PyramidFactoryTest {
   @Test
   def agEra5(): Unit = {
     // note: reprojecting to e.g. WebMercator fails its extent is beyond LatLng's worldExtent
-    val someDewPointTemperatureFile = "/data/worldcereal/data/AgERA5/years/2020/20200424/AgERA5_dewpoint-temperature_20200424.tif"
+    val someDewPointTemperatureFile = "/data/MTDA/AgERA5/2020/20200424/AgERA5_dewpoint-temperature_20200424.tif"
     val date = raw".+_(\d{4})(\d{2})(\d{2})\.tif".r
 
     val bandRasterSources: Seq[RasterSource] =
@@ -89,7 +90,7 @@ class AgEra5PyramidFactoryTest {
   @Test
   def sparsePolygons(): Unit = {
     val pyramidFactory = new AgEra5PyramidFactory(
-      dataGlob = "/data/worldcereal/data/AgERA5/years/2020/202004*/AgERA5_dewpoint-temperature_*.tif",
+      dataGlob = "/data/MTDA/AgERA5/2020/202004*/AgERA5_dewpoint-temperature_*.tif",
       bandFileMarkers = Seq("dewpoint-temperature", "precipitation-flux", "solar-radiation-flux").asJava,
       dateRegex = raw".+_(\d{4})(\d{2})(\d{2})\.tif"
     )
