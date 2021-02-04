@@ -64,8 +64,8 @@ public class testCorrectionDescriptor {
 	private CorrectionInput[] inputs = {
 			//new CorrectionInput(2,342L, 320.0,0.0001*1348.0),
 			//expected earth sun= 1.01751709288327
-			new CorrectionInput(1,1267.,41.708855,         598.94135283652894,0.001,0.0001*1029.0,163,   57.8566,   69,2,     0.83, "2017-03-07T10:50:00Z"),//expected icor:574 sen2cor:598 AOT icor:0.078
-			new CorrectionInput(3, 509.,17.925613561979805,348.4200980752023, 0.001,        0.082,129.13,    43.,  -1.,11.57, 0.357,"2019-04-11T10:50:29Z")//expected icor:353 sen2cor:336
+			new CorrectionInput(1,1267.,41.708855,         595.8484428506723, 0.001,0.0001*1029.0,163,   57.8566,   69,2,     0.83, "2017-03-07T10:50:00Z"),//expected icor:574 sen2cor:598 AOT icor:0.078
+			new CorrectionInput(3, 509.,17.925613561979805,347.7272319876718, 0.001,        0.082,129.13,    43.,  -1.,11.57, 0.357,"2019-04-11T10:50:29Z")//expected icor:353 sen2cor:336
 	};
 //'sunAzimuthAngles','sunZenithAngles','viewAzimuthMean','viewZenithMean'
 	
@@ -83,9 +83,11 @@ public class testCorrectionDescriptor {
 	public void testCorrectRadiance() {
 		double cv=cd.correctRadiance(lut,3,17.925,43.,11.57,129.13,0.,0.082,0.357,0.33,0);
 		System.out.println("CORR="+Double.toString(cv));
-		assertArrayEquals(new double[]{cv}, new double[]{0.03434362557030921}, 1.e-6);
+		assertArrayEquals(new double[]{cv}, new double[]{0.034311233929002344}, 1.e-6);
 	}
 
+
+	
 	@Test
 	public void testReflectanceToRadiance() {
 	    double rad=cd.reflToRad(10., 60., null, 1);

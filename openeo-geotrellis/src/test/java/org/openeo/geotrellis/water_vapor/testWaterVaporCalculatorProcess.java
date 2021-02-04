@@ -116,11 +116,11 @@ public class testWaterVaporCalculatorProcess {
 
         double resultAt00=tiles.values().iterator().next().band(0).getDouble(0, 0);
         System.out.println(Double.toString(resultAt00));
-		assertEquals(resultAt00,0.53937,1.e-3); // elevated tolerance because input wv,r0,r1 is converted to int
+		assertEquals(resultAt00,0.4321802854537964,1.e-3); // elevated tolerance because input wv,r0,r1 is converted to int
 
         double resultAtNN=tiles.values().iterator().next().band(0).getDouble(255, 255);
         System.out.println(Double.toString(resultAtNN));
-		assertEquals(resultAtNN,0.55865,1.e-3); // elevated tolerance because input wv,r0,r1 is converted to int
+		assertEquals(resultAtNN,0.45203205943107605,1.e-3); // elevated tolerance because input wv,r0,r1 is converted to int
     }
 
     @Test
@@ -155,11 +155,11 @@ public class testWaterVaporCalculatorProcess {
 
         double resultAt00=tiles.values().iterator().next().band(0).getDouble(0, 0);
         System.out.println(Double.toString(resultAt00));
-		assertEquals(resultAt00,0.5393735910926492,1.e-6);
+		assertEquals(resultAt00,0.4324473440647125,1.e-6);
 
         double resultAtNN=tiles.values().iterator().next().band(0).getDouble(255, 255);
         System.out.println(Double.toString(resultAtNN));
-		assertEquals(resultAtNN,0.5586568894116127,1.e-6);
+		assertEquals(resultAtNN,0.4522989094257355,1.e-6);
 		
     }
     

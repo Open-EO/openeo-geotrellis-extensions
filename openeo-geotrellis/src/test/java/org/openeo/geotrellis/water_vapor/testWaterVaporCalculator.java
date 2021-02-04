@@ -98,7 +98,7 @@ public class testWaterVaporCalculator {
 			ozone,
 			invalid_value
 		);
-		assertEquals(r,0.5393735910926492,1.e-6);
+		assertEquals(r,0.43244719821880784,1.e-6);
 
 		r=wvc.computePixel(lut, 
 			sza,
