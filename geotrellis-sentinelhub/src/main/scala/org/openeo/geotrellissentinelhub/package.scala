@@ -62,8 +62,9 @@ package object geotrellissentinelhub {
   }
 
   def retrieveTileFromSentinelHub(datasetId: String, projectedExtent: ProjectedExtent, date: ZonedDateTime, width: Int,
-                                  height: Int, bandNames: Seq[String], sampleType: SampleType, clientId: String,
-                                  clientSecret: String): MultibandTile = {
+                                  height: Int, bandNames: Seq[String], sampleType: SampleType,
+                                  processingOptions: util.Map[String, Any],
+                                  clientId: String, clientSecret: String): MultibandTile = {
     val ProjectedExtent(extent, crs) = projectedExtent
     val epsgCode = crs.epsgCode.getOrElse(s"unsupported crs $crs")
 
@@ -85,12 +86,8 @@ package object geotrellissentinelhub {
         return [${bandNames.map(bandName => s"sample.$bandName") mkString ", "}];
       }
     """
-    val jsonFactory = new JsonFactory();
-    val stringWriter = new StringWriter();
-    val json = jsonFactory.createGenerator(stringWriter);
-    json.writeString(evalscript);
-    json.flush
-    val evalscriptJson = stringWriter.toString()
+
+    val objectMapper = new ObjectMapper
 
     val jsonData = s"""{
       "input": {
@@ -108,7 +105,8 @@ package object geotrellissentinelhub {
                 "from": "${date.format(ISO_INSTANT)}",
                 "to": "${date.plusDays(1).format(ISO_INSTANT)}"
               }
-            }
+            },
+            "processing": ${objectMapper.writeValueAsString(processingOptions)}
           }
         ]
       },
@@ -124,7 +122,7 @@ package object geotrellissentinelhub {
           }
         ]
       },
-      "evalscript": ${evalscriptJson}
+      "evalscript": ${objectMapper.writeValueAsString(evalscript)}
     }"""
     logger.info(s"JSON data for Sentinel Hub Process API: ${jsonData}")
 
