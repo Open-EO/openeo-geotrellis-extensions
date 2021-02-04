@@ -1,5 +1,12 @@
 package org.openeo.geotrelliss3
 
+import java.io.FileInputStream
+import java.lang.System.getenv
+import java.net.URI
+import java.nio.file.Paths
+import java.time._
+import java.util
+
 import cats.data.NonEmptyList
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, WebMercator}
@@ -8,6 +15,7 @@ import geotrellis.raster.{CellSize, MultibandTile}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector._
+import javax.net.ssl.HttpsURLConnection
 import org.apache.spark.SparkContext
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.file.AbstractPyramidFactory
@@ -15,13 +23,6 @@ import org.openeo.geotrellis.layers.FileLayerProvider
 import org.openeo.geotrellis.layers.FileLayerProvider.{bestCRS, layerMetadata}
 import org.slf4j.LoggerFactory
 
-import java.io.FileInputStream
-import java.lang.System.getenv
-import java.net.URI
-import java.nio.file.Paths
-import java.time._
-import java.util
-import javax.net.ssl.HttpsURLConnection
 import scala.collection.JavaConverters._
 import scala.xml.XML
 
@@ -107,7 +108,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
   }
 
   private def loadRasterSources(crs: CRS) = {
-    val productKeys = productPaths.map(listProducts)
+    val productKeys = productPaths.par.map(listProducts)
 
     if (productKeys.flatten.isEmpty) throw new IllegalArgumentException("no files found for given product paths")
 
@@ -121,7 +122,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
     }
 
     productKeys.map(_.filter(p => bands.exists(b => p.contains(b))))
-      .map(paths => new BandCompositeRasterSource(NonEmptyList.fromListUnsafe(paths.map(path => GDALRasterSource(path)).toList), crs, Predef.Map("date" -> extractDate(paths.toIterator.next()).toString)))
+      .map(paths => new BandCompositeRasterSource(NonEmptyList.fromListUnsafe(paths.map(path => GDALRasterSource(path)).toList), crs, Predef.Map("date" -> extractDate(paths.toIterator.next()).toString))).seq
 
   }
 
