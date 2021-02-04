@@ -30,7 +30,7 @@ class AtmosphericCorrection {
         elevationSource: String,
         sensorId: String, // SENTINEL2 and LANDSAT8 for now 
         // TODO: in the future SENTINEL2A,SENTINEL2B,... granulation will be needed
-        includeDebugBands: Boolean // this will add sza,vza,raa,gnd,aot,cwv to the multiband tile result
+        appendDebugBands: Boolean // this will add sza,vza,raa,gnd,aot,cwv to the multiband tile result
       ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]  = {
 
     val sc = JavaSparkContext.toSparkContext(jsc)
@@ -109,6 +109,8 @@ class AtmosphericCorrection {
                               else FloatConstantTile(overrideParams.get(3).toFloat, multibandtile._2.cols, multibandtile._2.rows)
                 val aotTile = if (overrideParams.get(4).isNaN) aotProvider.computeAOT(multibandtile._1, crs, layoutDefinition) 
                               else FloatConstantTile(overrideParams.get(4).toFloat, multibandtile._2.cols, multibandtile._2.rows)
+                              
+                // keep cwv last because depends on the others a lot                              
                 val cwvTile = if (overrideParams.get(5).isNaN) cwvProvider.compute(multibandtile, szaTile, vzaTile, raaTile, demTile, 0.1, 0.33, 1.0e-4, 1.0, bcLUT, bandIds,sensorDescriptor)
                               else FloatConstantTile(overrideParams.get(5).toFloat, multibandtile._2.cols, multibandtile._2.rows)
            
@@ -136,8 +138,18 @@ class AtmosphericCorrection {
                 })
                 correctionAccum.add(System.currentTimeMillis() - afterAuxData)
                 
+                if (appendDebugBands)
+                  MultibandTile(result.bands ++ Vector(
+                      (szaTile*100).convert(multibandtile._2.cellType),
+                      (vzaTile*100).convert(multibandtile._2.cellType),
+                      (raaTile*100).convert(multibandtile._2.cellType),
+                      (demTile*100).convert(multibandtile._2.cellType),
+                      (aotTile*100).convert(multibandtile._2.cellType),
+                      (cwvTile*100).convert(multibandtile._2.cellType)
+                  ))
+                else 
+                  result
                 
-                result
               }
             )
         }
