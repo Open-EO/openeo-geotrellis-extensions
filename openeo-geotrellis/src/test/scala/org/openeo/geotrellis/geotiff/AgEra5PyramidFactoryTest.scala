@@ -90,7 +90,7 @@ class AgEra5PyramidFactoryTest {
   @Test
   def sparsePolygons(): Unit = {
     val pyramidFactory = new AgEra5PyramidFactory(
-      dataGlob = "/data/MTDA/AgERA5/2020/202004*/AgERA5_dewpoint-temperature_*.tif",
+      dataGlob = "/data/MEP/ECMWF/AgERA5/2020/202004*/AgERA5_dewpoint-temperature_*.tif",
       bandFileMarkers = Seq("dewpoint-temperature", "precipitation-flux", "solar-radiation-flux").asJava,
       dateRegex = raw".+_(\d{4})(\d{2})(\d{2})\.tif"
     )
