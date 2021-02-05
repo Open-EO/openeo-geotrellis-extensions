@@ -25,7 +25,7 @@ import org.openeo.geotrellis.TestImplicits._
 
 object Sentinel2FileLayerProviderTest {
   private var sc: SparkContext = _
-  private val openSearchEndpoint = new URL("http://oscars-01.vgt.vito.be:8080")
+  private val openSearchEndpoint = OpenSearch(new URL("http://oscars-01.vgt.vito.be:8080"))
   private val maxSpatialResolution = CellSize(10, 10)
   private val pathDateExtractor = SplitYearMonthDayPathDateExtractor
 
@@ -238,7 +238,7 @@ class Sentinel2FileLayerProviderTest {
     new FileLayerProvider(
       openSearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
-      openSearchLinkTitle = "FAPAR_10M",
+      openSearchLinkTitles = NonEmptyList.of("FAPAR_10M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2",
       maxSpatialResolution,
       pathDateExtractor,

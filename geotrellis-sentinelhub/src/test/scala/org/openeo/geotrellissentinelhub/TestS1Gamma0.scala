@@ -1,10 +1,11 @@
 package org.openeo.geotrellissentinelhub
 
 import java.time.{LocalDate, ZoneId}
+import java.util
 
 import geotrellis.proj4.WebMercator
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.junit.{Ignore, Test}
+import org.junit.Test
 
 class TestS1Gamma0 {
 
@@ -19,7 +20,7 @@ class TestS1Gamma0 {
 
     val datasetId = "S1GRD"
     retrieveTileFromSentinelHub(datasetId, bbox, date, width = 256, height = 256, Seq("VV", "VH", "HV", "HH"),
-      SampleType.FLOAT32, clientId, clientSecret)
+      SampleType.FLOAT32, processingOptions = util.Collections.emptyMap[String, Any], clientId, clientSecret)
   }
 
 }

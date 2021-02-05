@@ -107,7 +107,8 @@ public class testAtmosphericCorrectionProcess {
         	bandIds,
         	params,
         	"DEM",
-        	"SENTINEL2"
+        	"SENTINEL2",
+        	false
         );      
         System.out.println(resultRDD.getClass().toString());
 
