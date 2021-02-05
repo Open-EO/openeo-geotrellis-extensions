@@ -60,8 +60,8 @@ object AbstractPyramidFactory {
 
   private[file] type FilePathTemplate = String => String
 }
-class DataCubeParameters(var tileSize:Int = 256) {
-
+class DataCubeParameters() {
+  var tileSize:Int = 256
 }
 
 abstract class AbstractPyramidFactory[B] extends Serializable {
