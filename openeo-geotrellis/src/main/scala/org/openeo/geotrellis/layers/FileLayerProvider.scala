@@ -11,6 +11,7 @@ import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.ResampleMethods.NearestNeighbor
+import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.GeoTiffResampleRasterSource
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType}
@@ -278,7 +279,7 @@ object FileLayerProvider {
       })
 }
 
-class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
+class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
                         maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
                         bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "", experimental: Boolean=false) extends LayerProvider {
 
@@ -289,15 +290,15 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
   }
 
   private val _rootPath = if(rootPath != null) Paths.get(rootPath) else null
-  private val openSearch: OpenSearch = OpenSearch(openSearchEndpoint)
+  //private val openSearch: OpenSearch = OpenSearch(openSearchEndpoint)
 
   val openSearchLinkTitlesWithBandIds: Seq[(String, Seq[Int])] = openSearchLinkTitles.toList.zipAll(bandIds, "", Seq(0))
 
-  def this(openSearchEndpoint: URL, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, metadataProperties: Map[String, Any]) =
-    this(openSearchEndpoint, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, maxSpatialResolution, pathDateExtractor, metadataProperties)
+  def this(openSearch: OpenSearch, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, metadataProperties: Map[String, Any]) =
+    this(openSearch, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, maxSpatialResolution, pathDateExtractor, metadataProperties)
 
-  def this(openSearchEndpoint: URL, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor) =
-    this(openSearchEndpoint, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, maxSpatialResolution, pathDateExtractor)
+  def this(openSearch: OpenSearch, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor) =
+    this(openSearch, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, maxSpatialResolution, pathDateExtractor)
 
   val maxZoom: Int = layoutScheme match {
     case z: ZoomedLayoutScheme => z.zoom(0, 0, maxSpatialResolution)
@@ -348,10 +349,10 @@ class FileLayerProvider(openSearchEndpoint: URL, openSearchCollectionId: String,
     val alignment = TargetAlignment(re)
 
     def rasterSource(path:String,targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent ) = {
-      if (experimental){
-        GeoTiffResampleRasterSource(path, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None)
-        //GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType)
-      }else {
+      if(path.endsWith(".jp2")) {
+        GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType)
+      }
+      else {
         GeoTiffResampleRasterSource(path, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None)
       }
     }

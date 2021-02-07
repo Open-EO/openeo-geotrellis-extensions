@@ -45,6 +45,9 @@ class OpenSearchTest {
 
     println(s"got ${features.size} features")
     assertTrue(features.nonEmpty)
+    val aFeature = features(0)
+    val band02 = aFeature.links.filter(_.title.get.contains("B02_10m"))
+    assertTrue(band02.nonEmpty)
   }
 
 

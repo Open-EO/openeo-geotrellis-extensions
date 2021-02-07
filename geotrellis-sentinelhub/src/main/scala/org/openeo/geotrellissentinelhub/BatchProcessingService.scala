@@ -33,7 +33,8 @@ class BatchProcessingService(bucketName: String, clientId: String, clientSecret:
   private def accessToken: String = accessTokenCache.get((clientId, clientSecret))
 
   def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
-                          to_date: String, band_names: util.List[String], sampleType: SampleType): String = try {
+                          to_date: String, band_names: util.List[String], sampleType: SampleType,
+                          processing_options: util.Map[String, Any]): String = try {
     // TODO: implement retries
     val boundingBox = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
     val from = ZonedDateTime.parse(from_date)
@@ -53,6 +54,7 @@ class BatchProcessingService(bucketName: String, clientId: String, clientSecret:
       dateTimes,
       band_names.asScala,
       sampleType,
+      processing_options,
       bucketName,
       description = s"$dataset_id $bbox $bbox_srs $from_date $to_date $band_names",
       accessToken

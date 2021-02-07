@@ -21,7 +21,8 @@ class BatchProcessingServiceTest {
       from_date = "2019-10-10T00:00:00+00:00",
       to_date = "2019-10-10T00:00:00+00:00",
       band_names = util.Arrays.asList("VH", "VV"),
-      SampleType.FLOAT32
+      SampleType.FLOAT32,
+      processing_options = util.Collections.emptyMap[String, Any]
     )
 
     println(batchRequestId)

@@ -8,6 +8,7 @@ import scalaj.http.HttpStatusException
 
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
+import scala.collection.JavaConverters._
 
 class BatchProcessingApiTest {
   private val batchProcessingApi = new BatchProcessingApi
@@ -27,6 +28,10 @@ class BatchProcessingApiTest {
         dateTimes,
         bandNames = Seq("VV", "VH"),
         SampleType.FLOAT32,
+        processingOptions = Map(
+          "backCoeff" -> "GAMMA0_ELLIPSOID",
+          "orthorectify" -> false
+        ).asJava,
         bucketName = "openeo-sentinelhub",
         description = "BatchProcessingApiTest.createBatchProcess",
         accessToken

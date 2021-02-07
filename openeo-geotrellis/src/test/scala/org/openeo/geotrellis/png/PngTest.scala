@@ -11,10 +11,10 @@ import geotrellis.raster.CellSize
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.apache.spark.storage.StorageLevel.DISK_ONLY
 import org.apache.spark.SparkContext
+import org.apache.spark.storage.StorageLevel.DISK_ONLY
 import org.junit.{AfterClass, BeforeClass, Test}
-import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
+import org.openeo.geotrellis.layers.{FileLayerProvider, OpenSearch, SplitYearMonthDayPathDateExtractor}
 
 object PngTest {
   private var sc: SparkContext = _
@@ -60,7 +60,7 @@ class PngTest {
 
   private def rgbLayerProvider =
     new FileLayerProvider(
-      openSearchEndpoint = new URL("http://oscars-01.vgt.vito.be:8080"),
+      openSearch = OpenSearch(new URL("http://oscars-01.vgt.vito.be:8080")),
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",

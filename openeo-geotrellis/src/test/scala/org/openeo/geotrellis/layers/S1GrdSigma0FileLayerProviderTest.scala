@@ -55,7 +55,7 @@ class S1GrdSigma0FileLayerProviderTest {
   }
 
   private def sigma0LayerProvider = new FileLayerProvider(
-    openSearchEndpoint = new URL("http://oscars-01.vgt.vito.be:8080"),
+    openSearch = OpenSearch(new URL("http://oscars-01.vgt.vito.be:8080")),
     openSearchCollectionId = "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
     openSearchLinkTitles = NonEmptyList.of("VH", "VV", "angle"),
     rootPath = "/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1",
