@@ -105,7 +105,7 @@ class OpenEOProcesses extends Serializable {
     return datacube.withContext(new org.apache.spark.rdd.PairRDDFunctions[K,MultibandTile](_).mapValues(tile => {
       val resultTiles = function(tile.bands)
       MultibandTile(resultTiles)
-    }))
+    }).filter(_._2.bands.exists(!_.isNoDataTile)))
   }
 
   /**
