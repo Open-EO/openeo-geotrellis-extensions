@@ -8,8 +8,9 @@ import geotrellis.raster.resample.NearestNeighbor
 import geotrellis.raster.Tile
 import org.geotools.feature.visitor.AverageVisitor.AverageResult
 import geotrellis.raster.resample.Average
+import geotrellis.raster.resample.Bilinear
 
-class BlockProcessor {
+class FirstInBlockProcessor {
   
     def computeDoubleBlocks(mbt: MultibandTile, blockSize: Int, aot: Double, ozone: Double, nodata: Double, lut: LookupTable, f: WaterVaporCalculator): Tile = {
       val ncols=(mbt.band(0).cols.doubleValue()/blockSize.doubleValue()).ceil.intValue()

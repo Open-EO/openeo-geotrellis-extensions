@@ -28,7 +28,8 @@ class CWVProvider {
     val r0BandId="B8A"
     val r1BandId="B11"
     
-    val bp = new BlockProcessor()
+    //val bp = new FirstInBlockProcessor()
+    val bp = new DoubleDownsampledBlockProcessor()
     val wvCalc = new AbdaWaterVaporCalculator()
     wvCalc.prepare(bcLUT.value,cd,wvBandId,r0BandId,r1BandId)
             

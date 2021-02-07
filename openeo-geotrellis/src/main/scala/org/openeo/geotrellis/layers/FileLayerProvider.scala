@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.layers
 
-import java.net.{URI, URL}
+import java.net.URI
 import java.nio.file.{Path, Paths}
 import java.time.temporal.ChronoUnit
 import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
@@ -353,7 +353,11 @@ class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, 
         GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType)
       }
       else {
-        GeoTiffResampleRasterSource(path, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None)
+        if(experimental) {
+          GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType)
+        }else{
+          GeoTiffResampleRasterSource(path, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None)
+        }
       }
     }
 
