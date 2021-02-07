@@ -249,7 +249,7 @@ object FileLayerProvider {
             }
             .map { case (multibandTile, _) => multibandTile }
             .reduce(_ merge _)
-        }
+        }.filter(_._2.bands.exists(!_.isNoDataTile))
 
     ContextRDD(tiledRDD, metadata)
   }
