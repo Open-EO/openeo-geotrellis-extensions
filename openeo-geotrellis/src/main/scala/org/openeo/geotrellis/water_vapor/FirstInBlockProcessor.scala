@@ -13,8 +13,8 @@ import geotrellis.raster.resample.Bilinear
 class FirstInBlockProcessor {
   
     def computeDoubleBlocks(mbt: MultibandTile, blockSize: Int, aot: Double, ozone: Double, nodata: Double, lut: LookupTable, f: WaterVaporCalculator): Tile = {
-      val ncols=(mbt.band(0).cols.doubleValue()/(2*blockSize.doubleValue())).ceil.intValue()
-      val nrows=(mbt.band(0).rows.doubleValue()/(2*blockSize.doubleValue())).ceil.intValue()
+      val ncols=(mbt.band(0).cols.doubleValue()/blockSize.doubleValue()).ceil.intValue()
+      val nrows=(mbt.band(0).rows.doubleValue()/blockSize.doubleValue()).ceil.intValue()
       
       val tileLayout= new TileLayout(ncols,nrows,blockSize,blockSize)
       val smbt=mbt.split(tileLayout)
@@ -41,7 +41,7 @@ class FirstInBlockProcessor {
       }).toArray
 
       DoubleRawArrayTile(result_array,ncols,nrows)
-        .resample(blockSize*ncols, blockSize*nrows, Bilinear)
+        .resample(blockSize*ncols, blockSize*nrows, NearestNeighbor)
         .crop(mbt.band(0).cols, mbt.band(0).rows)
         .withNoData(Option(nodata))
 

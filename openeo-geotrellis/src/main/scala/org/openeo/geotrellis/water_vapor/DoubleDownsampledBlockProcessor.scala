@@ -10,7 +10,7 @@ import org.geotools.feature.visitor.AverageVisitor.AverageResult
 import geotrellis.raster.resample.Average
 import geotrellis.raster.resample.Bilinear
 
-class BlockNearest2PowerDownsampledProcessor {
+class DoubleDownsampledBlockProcessor {
   
     def computeDoubleBlocks(mbt: MultibandTile, blockSize: Int, aot: Double, ozone: Double, nodata: Double, lut: LookupTable, f: WaterVaporCalculator): Tile = {
       // because blocks are mostly power of 2 squares, finding the nearest scale down which is still higher 
@@ -41,7 +41,7 @@ class BlockNearest2PowerDownsampledProcessor {
       
       // taking 2*6 blocks (6->10m to 60m reduce)
       result_tile
-        .resample((mbt.band(0).cols/12).intValue(), (mbt.band(0).rows/12).intValue(), Average)
+        .resample((mbt.band(0).cols/(2.0*blockSize)).intValue(), (mbt.band(0).rows/(2.0*blockSize)).intValue(), Average)
         .resample(mbt.band(0).cols, mbt.band(0).rows, NearestNeighbor)
         .crop(mbt.band(0).cols, mbt.band(0).rows)
         .withNoData(Option(nodata))
