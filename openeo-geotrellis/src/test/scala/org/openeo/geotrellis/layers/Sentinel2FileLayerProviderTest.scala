@@ -174,7 +174,7 @@ class Sentinel2FileLayerProviderTest {
    */
   @Test
   def testPatchExtract(): Unit = {
-    val start = ZonedDateTime.of(LocalDate.of(2020, 4, 4), MIDNIGHT, UTC)
+    val start = ZonedDateTime.of(LocalDate.of(2020, 3, 1), MIDNIGHT, UTC)
     val end = ZonedDateTime.of(LocalDate.of(2020, 5, 5), MIDNIGHT, UTC)
     val bbox = ProjectedExtent(Extent(687640, 5671180, 688280, 5671820), CRS.fromEpsgCode(32631))
     //'(687640, 5671180, 688280, 5671820)'
@@ -184,10 +184,10 @@ class Sentinel2FileLayerProviderTest {
     val localData = layer.collect()
     println(SizeEstimator.estimate(localData))
     println((System.currentTimeMillis()-time)/1000)
-    assertEquals(13,localData.length)
+    assertEquals(22,localData.length)
     assertEquals(4,localData(0)._2.bandCount)
     assertFalse(localData(0)._2.band(0).isNoDataTile)
-    assertEquals(ShortUserDefinedNoDataCellType(32767),localData(0)._2.band(0).cellType)
+    assertEquals(ShortUserDefinedNoDataCellType(32767),localData(0)._2.band(1).cellType)
   }
 
   @Ignore("TODO: verify output")
@@ -263,7 +263,8 @@ class Sentinel2FileLayerProviderTest {
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
       maxSpatialResolution,
       pathDateExtractor,
-      layoutScheme = FloatingLayoutScheme(256)
+      layoutScheme = FloatingLayoutScheme(256),
+      experimental = true
     )
 
   private def sceneclassificationLayerProviderUTM =
