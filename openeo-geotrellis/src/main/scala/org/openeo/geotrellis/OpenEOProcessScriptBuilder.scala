@@ -185,8 +185,8 @@ class OpenEOProcessScriptBuilder {
 
   private def ifProcess(arguments:java.util.Map[String,Object]): OpenEOProcess ={
     val storedArgs = contextStack.head
-    val value = storedArgs.get("value").get
-    val accept = storedArgs.get("accept").get
+    val value = storedArgs.get("value").getOrElse(throw new IllegalArgumentException("If process expects a value argument. These arguments were found: " + arguments.keys.mkString(", ")))
+    val accept = storedArgs.get("accept").getOrElse(throw new IllegalArgumentException("If process expects an accept argument. These arguments were found: " + arguments.keys.mkString(", ")))
     val reject: OpenEOProcess = storedArgs.get("reject").getOrElse(null)
     ifElseProcess(value, accept, reject)
   }
