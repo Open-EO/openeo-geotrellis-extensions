@@ -27,10 +27,12 @@ case class MeanResult(sum: Double, valid: Long, total: Long, scale: Option[Doubl
 
 object MeanResult {
 
+  val MEAN0 = MeanResult(0.0, 0L, 0L, None, None)
+
   def apply(sum: Double, valid: Long, total: Long) = new MeanResult(sum,valid,total,Option.empty,Option.empty)
   def apply(scale: Double, offset: Double): MeanResult = MeanResult(0.0, 0L, 0L, Some(scale), Some(offset))
 
-  def apply(): MeanResult = MeanResult(0.0, 0L, 0L, None, None)
+  def apply(): MeanResult = MEAN0
 
   def fromFullTile(tile: Tile) = {
     var s = 0L
