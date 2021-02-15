@@ -13,7 +13,7 @@ import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.SparkConf
-import org.junit.Assert.assertTrue
+import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
 import org.junit.Test
 import org.openeo.geotrellissentinelhub.SampleType.FLOAT32
 
@@ -29,11 +29,13 @@ class PyramidFactoryTest {
     val date = ZonedDateTime.of(LocalDate.of(2019, 10, 10), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     def testCellType(baseLayer: MultibandTileLayerRDD[SpaceTimeKey]): Unit = baseLayer.metadata.cellType match {
-      case cellType: HasNoData[Double] => assertTrue(cellType.isFloatingPoint && cellType.noDataValue == 0.0)
+      case cellType: HasNoData[Double @unchecked] =>
+        assertTrue(cellType.isFloatingPoint)
+        assertEquals(0.0, cellType.noDataValue, 0)
     }
 
     testLayer(new PyramidFactory("S1GRD", clientId, clientSecret, sampleType = FLOAT32), "gamma0", date,
-      Seq("VV", "VH"), testCellType)
+      Seq("VV", "VH", "dataMask"), testCellType)
   }
 
   @Test
@@ -41,7 +43,9 @@ class PyramidFactoryTest {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     def testCellType(baseLayer: MultibandTileLayerRDD[SpaceTimeKey]): Unit = baseLayer.metadata.cellType match {
-      case cellType: HasNoData[Double] => assertTrue(!cellType.isFloatingPoint && cellType.noDataValue == 0)
+      case cellType: HasNoData[Int @unchecked] =>
+        assertFalse(cellType.isFloatingPoint)
+        assertEquals(0, cellType.noDataValue)
     }
 
     testLayer(new PyramidFactory("S2L1C", clientId, clientSecret), "sentinel2-L1C", date, Seq("B04", "B03", "B02"),

@@ -19,8 +19,8 @@ class TestS1Gamma0 {
     val date = LocalDate.of(2019, 6, 1).atStartOfDay(ZoneId.systemDefault())
 
     val datasetId = "S1GRD"
-    retrieveTileFromSentinelHub(datasetId, bbox, date, width = 256, height = 256, Seq("VV", "VH", "HV", "HH"),
-      SampleType.FLOAT32, processingOptions = util.Collections.emptyMap[String, Any], clientId, clientSecret)
+    retrieveTileFromSentinelHub(datasetId, bbox, date, width = 256, height = 256, Seq("VV", "VH", "HV", "HH", "localIncidenceAngle"),
+      SampleType.FLOAT32, processingOptions = util.Collections.singletonMap("orthorectify", true), clientId, clientSecret)
   }
 
 }
