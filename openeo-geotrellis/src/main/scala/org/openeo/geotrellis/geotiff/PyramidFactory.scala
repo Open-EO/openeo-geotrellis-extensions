@@ -6,8 +6,8 @@ import java.time.{LocalDate, ZonedDateTime}
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
-import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource}
-import geotrellis.raster.{CellType, InterpretAsTargetCellType, MultibandTile, RasterRegion, RasterSource}
+import geotrellis.raster.geotiff.GeoTiffRasterSource
+import geotrellis.raster.{CellType, InterpretAsTargetCellType, MultibandTile, RasterRegion, RasterSource, SourcePath}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
@@ -149,7 +149,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
     bounds: => KeyBounds[SpaceTimeKey]
   )(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     val date = this.date
-    val keyExtractor = TemporalKeyExtractor.fromPath { case GeoTiffPath(value) => deriveDate(value, date) }
+    val keyExtractor = TemporalKeyExtractor.fromPath { case sourcePath: SourcePath => deriveDate(sourcePath.value, date) }
 
     val sources = sc.parallelize(rasterSources).cache()
     val summary = RasterSummary.fromRDD(sources, keyExtractor.getMetadata)
