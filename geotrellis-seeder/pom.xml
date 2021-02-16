@@ -38,7 +38,7 @@
                 </exclusion>
                 <exclusion>
                     <groupId>org.geotools</groupId>
-                    <artifactId>gt-wms</artifactId>
+                    <artifactId>*</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
