@@ -36,6 +36,10 @@
                     <groupId>org.eclipse.jetty</groupId>
                     <artifactId>*</artifactId>
                 </exclusion>
+                <exclusion>
+                    <groupId>org.geotools</groupId>
+                    <artifactId>gt-wms</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
         <dependency>
