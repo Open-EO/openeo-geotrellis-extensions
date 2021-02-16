@@ -1,5 +1,7 @@
 package org.openeo.geotrellis.icor
 
+import java.time.ZonedDateTime
+
 import spire.implicits._
 
 import scala.io.Source
@@ -13,13 +15,10 @@ import scala.io.Source
  * Rahman, H., & Dedieu, G. (1994). SMAC: a simplified method for the atmospheric correction of satellite measurements in the solar spectrum. REMOTE SENSING, 15(1), 123-143.
  * 
  */
-object SMACCorrection {
+object SMACCorrection extends CorrectionDescriptor{
 
 
   class Coeff(smac_filename:String) {
-
-
-
 
     val lines: Array[String]={
       val bufferedSource = Source.fromFile(smac_filename)
@@ -115,11 +114,23 @@ object SMACCorrection {
     (1013.25 * math.pow( 1 - 0.0065 * Z / 288.15 , 5.31 )).floatValue()
   }
 
-  def smac_inv( r_toa:Float, tetas:Float, phis:Float, tetav:Float, phiv:Float,pressure:Float,taup550:Float, uo3:Float, uh2o:Float, coef:Coeff): Double = {
-    /**
-     * r_surf=smac_inv( r_toa, tetas, phis, tetav, phiv,pressure,taup550, uo3, uh2o, coef)
-     * Corrections atmosphériques
-     * */
+
+  /**
+   *
+   *
+   * @param r_toa top of atmosphere reflectance
+   * @param tetas solar zenith angle degree
+   * @param tetav viewing zenith angle degree
+   * @param raa relative azimuth degrees
+   * @param pressure
+   * @param taup550 AOT at 550 nm
+   * @param uo3 Ozone content (cm)  0.3 cm= 300 Dobson Units
+   * @param uh2o Water vapour (g/cm2)
+   * @param coef
+   * @return reflectance
+   */
+  def smac_inv( r_toa:Double, tetas:Double, tetav:Double, raa:Double,pressure:Float,taup550:Float, uo3:Float, uh2o:Float, coef:Coeff): Double = {
+
     val ah2o:Float = coef.ah2o
     val nh2o:Float = coef.nh2o
     val ao3:Float = coef.ao3
@@ -218,7 +229,7 @@ object SMACCorrection {
     val s = (a0s) * Peq + (a3s) + (a1s) * taup550 + (a2s) * math.pow(taup550, 2.0)
 
     /*------:  7) scattering angle cosine                            :--------*/
-    var cksi = -((us * uv) + (math.sqrt(1.0 - us * us) * math.sqrt(1.0 - uv * uv) * math.cos((phis - phiv) * cdr)))
+    var cksi = -((us * uv) + (math.sqrt(1.0 - us * us) * math.sqrt(1.0 - uv * uv) * math.cos((raa) * cdr)))
     if (cksi < -1) {
       //TODO is this the correct translation of python =- ??
       cksi = cksi - 1.0
@@ -285,4 +296,38 @@ object SMACCorrection {
 
     return r_surf
   }
+
+  /**
+   * This function performs the pixel-wise correction: src is a pixel value belonging to band (as from getBandFromName).
+   * If band is out of range, the function should return src (since any errors of mis-using bands should be caught upstream, before the pixel-wise loop).
+   *
+   * @param band band id
+   * @param src  to be converted: this may be digital number, reflectance, radiance, ... depending on the specific correction, and it should clearly be documented there!
+   * @param sza  degree
+   * @param vza  degree
+   * @param raa  degree
+   * @param gnd  km
+   * @param aot
+   * @param cwv
+   * @param ozone
+   * @param waterMask
+   * @return BOA reflectance * 10000 (i.e. in digital number)
+   */
+  override def correct(band: Int, time: ZonedDateTime, src: Double, sza: Double, vza: Double, raa: Double, gnd: Double, aot: Double, cwv: Double, ozone: Double, waterMask: Int): Double = {
+    val resource = SMACCorrection.getClass.getResource("../smac/Coef_S2A_CONT_B2.dat")
+    val coeff = new SMACCorrection.Coeff(resource.getPath)
+
+    //TODO lookup pressure, ozone, water vapour in ECMWF cams
+    val pressure = 1013 //SMACCorrection.PdeZ(1300);
+    val UH2O = 0.3 // Water vapour (g/cm2)
+    val r_surf = SMACCorrection.smac_inv(src, sza, vza, raa, pressure.toFloat, aot.toFloat, ozone.toFloat, UH2O.toFloat, coeff)
+    return r_surf
+  }
+
+  override def getBandFromName(name: String): Int = ???
+
+  override def getIrradiance(iband: Int): Double = ???
+
+  override def getCentralWavelength(iband: Int): Double = ???
+
 }

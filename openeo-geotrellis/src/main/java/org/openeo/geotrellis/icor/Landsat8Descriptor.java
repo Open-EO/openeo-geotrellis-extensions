@@ -3,9 +3,9 @@ package org.openeo.geotrellis.icor;
 import java.time.ZonedDateTime;
 
 // Applies MODTRAN atmospheric correction based on preset values in a lookup table.
-public class Landsat8Descriptor extends CorrectionDescriptor{
+public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 
-	@Override
+
 	public String getLookupTableURL() {
 		return "L8_big_disort"; 
 	}
@@ -101,12 +101,11 @@ public class Landsat8Descriptor extends CorrectionDescriptor{
 		return central_wavelengths[iband];
 	}
 
-	@Override
 	/**
      * @param src: digital number of the top of the atmosphere TOA radiance (as it is stored in the L1T/OLI/... tifs) 
 	 */
+	@Override
     public double correct(
-        	LookupTable lut,
     		int band,
     		ZonedDateTime time,
     		double src, 
@@ -123,7 +122,7 @@ public class Landsat8Descriptor extends CorrectionDescriptor{
 		//if (band>8) return src;
 		if (band>7) return src;
 		final double TOAradiance=src*RADIANCE_MULT_BAND[band]+RADIANCE_ADD_BAND[band];
-        final double corrected = correctRadiance(lut, band, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
+        final double corrected = correctRadiance( band, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
 		//final double corrected=TOAradiance;
         return corrected*10000.;
     }

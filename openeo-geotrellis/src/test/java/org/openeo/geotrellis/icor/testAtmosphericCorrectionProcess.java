@@ -1,18 +1,10 @@
 package org.openeo.geotrellis.icor;
 
-import geotrellis.layer.Bounds;
-import geotrellis.layer.KeyBounds;
-import geotrellis.layer.LayoutDefinition;
-import geotrellis.layer.SpaceTimeKey;
-import geotrellis.layer.SpatialKey;
-import geotrellis.layer.TemporalKey;
-import geotrellis.layer.TileLayerMetadata;
+import geotrellis.layer.*;
 import geotrellis.raster.*;
 import geotrellis.spark.ContextRDD;
 import geotrellis.spark.testkit.TileLayerRDDBuilders$;
 import geotrellis.vector.Extent;
-import scala.Tuple2;
-
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
@@ -21,6 +13,7 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import scala.Tuple2;
 
 import java.net.URL;
 import java.time.ZonedDateTime;
@@ -134,7 +127,7 @@ public class testAtmosphericCorrectionProcess {
         double UH2O=0.3     ;// Water vapour (g/cm2)
 
         //compute the atmospheric correction
-        double r_surf = SMACCorrection.smac_inv(0.2f, theta_s, phi_s, theta_v, phi_v,(float) pressure,(float) AOT550, (float)UO3, (float)UH2O, coeff);
+        double r_surf = SMACCorrection.smac_inv(0.2f, theta_s, theta_v,phi_s - phi_v,(float) pressure,(float) AOT550, (float)UO3, (float)UH2O, coeff);
         System.out.println("r_surf = " + r_surf);
         //use reference python version to generate ref value: http://tully.ups-tlse.fr/olivier/smac-python
         assertEquals(0.16214342470440238,r_surf,0.00001);

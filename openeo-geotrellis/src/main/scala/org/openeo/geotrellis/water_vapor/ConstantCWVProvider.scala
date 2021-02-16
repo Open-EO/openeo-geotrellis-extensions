@@ -1,16 +1,11 @@
 package org.openeo.geotrellis.water_vapor
 
-import geotrellis.raster.MultibandTile
-import geotrellis.raster.Tile
 import geotrellis.layer.SpaceTimeKey
-import org.apache.spark.broadcast.Broadcast
-import org.openeo.geotrellis.icor.CorrectionDescriptor
-import org.openeo.geotrellis.icor.LookupTable
-import geotrellis.raster.FloatConstantTile
+import geotrellis.raster.{FloatConstantTile, MultibandTile, Tile}
 
 
 // TODO: this class is a temporary solution, remove when water vapor calculator is refactored
-class ConstantCWVProvider(constValue: Double) extends CWVProvider {
+class ConstantCWVProvider(constValue: Double) extends CWVProvider(null) {
 
   override def compute(
     multibandtile: (SpaceTimeKey, MultibandTile),
@@ -22,9 +17,7 @@ class ConstantCWVProvider(constValue: Double) extends CWVProvider {
     ozone: Double,
     preMult: Double,
     postMult: Double,
-    bcLUT: Broadcast[LookupTable],
-    bandIds:java.util.List[String],
-    cd: CorrectionDescriptor
+    bandIds:java.util.List[String]
   ) : Tile = {
     new FloatConstantTile(constValue.toFloat, multibandtile._2.band(0).cols, multibandtile._2.band(0).rows) 
  }

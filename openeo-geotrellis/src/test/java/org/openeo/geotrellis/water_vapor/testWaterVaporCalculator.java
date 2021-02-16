@@ -1,24 +1,19 @@
 package org.openeo.geotrellis.water_vapor;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.openeo.geotrellis.icor.Sentinel2Descriptor;
-import org.openeo.geotrellis.icor.CorrectionDescriptor;
+import org.openeo.geotrellis.icor.ICorCorrectionDescriptor;
 import org.openeo.geotrellis.icor.LookupTable;
 import org.openeo.geotrellis.icor.LookupTableIO;
+import org.openeo.geotrellis.icor.Sentinel2Descriptor;
 
-import geotrellis.raster.CellType$;
-import geotrellis.raster.DoubleCells;
-import geotrellis.raster.DoubleConstantTile;
-import geotrellis.raster.Tile;
+import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
 public class testWaterVaporCalculator {
 
 	private static LookupTable lut;
-	private static CorrectionDescriptor cd=new Sentinel2Descriptor();
+	private static ICorCorrectionDescriptor cd=new Sentinel2Descriptor();
 	private static AbdaWaterVaporCalculator wvc=new AbdaWaterVaporCalculator();
 
 	static final double sza=43.5725342155;

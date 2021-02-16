@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.icor
 
-import java.util.concurrent.Callable
+import java.util
 
 import com.google.common.cache.{Cache, CacheBuilder}
 import geotrellis.layer._
@@ -8,27 +8,24 @@ import geotrellis.raster.{FloatConstantNoDataCellType, FloatConstantTile, Multib
 import geotrellis.spark._
 import org.apache.spark.api.java.JavaSparkContext
 import org.apache.spark.broadcast.Broadcast
+import org.openeo.geotrellis.water_vapor.{CWVProvider, ConstantCWVProvider}
 import org.slf4j.LoggerFactory
-import org.openeo.geotrellis.water_vapor.CWVProvider
-import org.openeo.geotrellis.water_vapor.ConstantCWVProvider
 
 object AtmosphericCorrection{
   implicit val logger = LoggerFactory.getLogger(classOf[AtmosphericCorrection])
-  val lutCache: Cache[String, Broadcast[LookupTable]] = CacheBuilder.newBuilder().softValues().build()
+  val iCorLookupTableCache: Cache[String, Broadcast[LookupTable]] = CacheBuilder.newBuilder().softValues().build()
 }
 
 
 class AtmosphericCorrection {
 
-  import AtmosphericCorrection._
-
   def correct(
-        jsc: JavaSparkContext, 
-        datacube: MultibandTileLayerRDD[SpaceTimeKey], 
+        jsc: JavaSparkContext,
+        datacube: MultibandTileLayerRDD[SpaceTimeKey],
         bandIds:java.util.List[String],
         overrideParams:java.util.List[Double], // sza,vza,raa,gnd,aot,cwv,ozone <- if other than NaN, it will use the value as constant tile
         elevationSource: String,
-        sensorId: String, // SENTINEL2 and LANDSAT8 for now 
+        sensorId: String, // SENTINEL2 and LANDSAT8 for now
         // TODO: in the future SENTINEL2A,SENTINEL2B,... granulation will be needed
         appendDebugBands: Boolean // this will add sza,vza,raa,gnd,aot,cwv to the multiband tile result
       ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]  = {
@@ -40,14 +37,7 @@ class AtmosphericCorrection {
       case "LANDSAT8"   => new Landsat8Descriptor()
     }
 
-    val lutLoader = new Callable[Broadcast[LookupTable]]() {
-      override def call(): Broadcast[LookupTable] = {
-        org.openeo.geotrellis.logTiming("Loading icor LUT")({
-          sc.broadcast(LookupTableIO.readLUT(sensorDescriptor.getLookupTableURL()))
-        })
-      }
-    }
-    val bcLUT = lutCache.get(sensorDescriptor.getLookupTableURL(), lutLoader)
+
 
     val crs = datacube.metadata.crs
     val layoutDefinition = datacube.metadata.layout
@@ -67,7 +57,7 @@ class AtmosphericCorrection {
 
         // TODO: this is temporary, until water vapor calculator is refactored, remove  constant provider when not needed any more
         val cwvProvider = sensorId.toUpperCase() match {
-          case "SENTINEL2"  => new CWVProvider()
+          case "SENTINEL2"  => new CWVProvider(sensorDescriptor.asInstanceOf[ICorCorrectionDescriptor])
           case "LANDSAT8"   => new ConstantCWVProvider(0.0)
         }
 
@@ -109,33 +99,12 @@ class AtmosphericCorrection {
                               else FloatConstantTile(overrideParams.get(3).toFloat, multibandtile._2.cols, multibandtile._2.rows)
                 val aotTile = if (overrideParams.get(4).isNaN) aotProvider.computeAOT(multibandtile._1, crs, layoutDefinition) 
                               else FloatConstantTile(overrideParams.get(4).toFloat, multibandtile._2.cols, multibandtile._2.rows)
-                              
-                // keep cwv last because depends on the others a lot                              
-                val cwvTile = if (overrideParams.get(5).isNaN) cwvProvider.compute(multibandtile, szaTile, vzaTile, raaTile, demTile, 0.1, 0.33, 1.0e-4, 1.0, bcLUT, bandIds,sensorDescriptor)
-                              else FloatConstantTile(overrideParams.get(5).toFloat, multibandtile._2.cols, multibandtile._2.rows)
-           
+
+
                 val afterAuxData = System.currentTimeMillis()
                 auxDataAccum.add(afterAuxData-startMillis)
 
-                val result = multibandtile._2.mapBands((b, tile) => {
-                  val bandName = bandIds.get(b)
-                  try {
-                    val iband: Int = sensorDescriptor.getBandFromName(bandName)
-                    val resultTile: Tile = MultibandTile(
-                      tile.convert(FloatConstantNoDataCellType), 
-                      aotTile.convert(FloatConstantNoDataCellType), 
-                      demTile.convert(FloatConstantNoDataCellType), 
-                      szaTile, 
-                      vzaTile, 
-                      raaTile,
-                      cwvTile
-                    ).combineDouble(0, 1, 2, 3, 4, 5, 6) { (refl, aot, dem, sza, vza, raa, cwv) => if (refl != NODATA) (sensorDescriptor.correct(bcLUT.value, iband, multibandtile._1.time, refl.toDouble, sza, vza, raa, dem, aot, cwv, overrideParams.get(6), 0)).toInt else NODATA }
-                    resultTile.convert(tile.cellType)
-                  } catch {
-                    case e: IllegalArgumentException => tile
-                  }
-
-                })
+                val (cwvTile: Tile, result: MultibandTile) = correctTile(multibandtile, bandIds, szaTile, vzaTile, raaTile,aotTile, demTile, overrideParams, sensorDescriptor, cwvProvider)
                 correctionAccum.add(System.currentTimeMillis() - afterAuxData)
                 
                 if (appendDebugBands)
@@ -159,7 +128,31 @@ class AtmosphericCorrection {
     )
 
   }
- 
+
+  private def correctTile(multibandtile: (SpaceTimeKey, MultibandTile), bandIds: util.List[String], szaTile: Tile, vzaTile: Tile, raaTile: Tile, aotTile: Tile, demTile: Tile, overrideParams: util.List[Double], sensorDescriptor: CorrectionDescriptor, cwvProvider: CWVProvider) = {
+    // keep cwv last because depends on the others a lot
+    val cwvTile = if (overrideParams.get(5).isNaN) cwvProvider.compute(multibandtile, szaTile, vzaTile, raaTile, demTile, 0.1, 0.33, 1.0e-4, 1.0, bandIds)
+    else FloatConstantTile(overrideParams.get(5).toFloat, multibandtile._2.cols, multibandtile._2.rows)
+
+    val result = multibandtile._2.mapBands((b, tile) => {
+      val bandName = bandIds.get(b)
+      try {
+        val iband: Int = sensorDescriptor.getBandFromName(bandName)
+        val resultTile: Tile = MultibandTile(
+          tile.convert(FloatConstantNoDataCellType),
+          aotTile.convert(FloatConstantNoDataCellType),
+          demTile.convert(FloatConstantNoDataCellType),
+          szaTile,
+          vzaTile,
+          raaTile,
+          cwvTile
+        ).combineDouble(0, 1, 2, 3, 4, 5, 6) { (refl, aot, dem, sza, vza, raa, cwv) => if (refl != NODATA) (sensorDescriptor.correct( iband, multibandtile._1.time, refl.toDouble, sza, vza, raa, dem, aot, cwv, overrideParams.get(6), 0)).toInt else NODATA }
+        resultTile.convert(tile.cellType)
+      } catch {
+        case e: IllegalArgumentException => tile
+      }
+
+    })
+    (cwvTile, result)
+  }
 }
-
-

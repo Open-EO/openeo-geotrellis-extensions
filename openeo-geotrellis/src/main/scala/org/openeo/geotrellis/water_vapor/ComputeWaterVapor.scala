@@ -4,20 +4,12 @@ import java.util.concurrent.Callable
 
 import com.google.common.cache.{Cache, CacheBuilder}
 import geotrellis.layer._
-import geotrellis.raster.{FloatConstantNoDataCellType, FloatConstantTile, MultibandTile, doubleNODATA, Tile}
+import geotrellis.raster.{FloatConstantNoDataCellType, FloatConstantTile, MultibandTile, Tile}
 import geotrellis.spark._
 import org.apache.spark.api.java.JavaSparkContext
 import org.apache.spark.broadcast.Broadcast
+import org.openeo.geotrellis.icor._
 import org.slf4j.LoggerFactory
-import org.openeo.geotrellis.icor.LookupTable
-import org.openeo.geotrellis.icor.LookupTableIO
-import org.openeo.geotrellis.icor.DEMProvider
-import geotrellis.raster.TileLayout
-import geotrellis.raster.DoubleRawArrayTile
-import geotrellis.raster.resample.NearestNeighbor
-import org.openeo.geotrellis.icor.CorrectionDescriptor
-import org.openeo.geotrellis.icor.Landsat8Descriptor
-import org.openeo.geotrellis.icor.Sentinel2Descriptor
 
 
 
@@ -42,7 +34,7 @@ class ComputeWaterVapor {
 
     val sc = JavaSparkContext.toSparkContext(jsc)
 
-    val sensorDescriptor: CorrectionDescriptor = sensorId.toUpperCase() match {
+    val sensorDescriptor: ICorCorrectionDescriptor = sensorId.toUpperCase() match {
       case "SENTINEL2"  => new Sentinel2Descriptor()
       case "LANDSAT8"   => new Landsat8Descriptor()
     }
@@ -66,7 +58,7 @@ class ComputeWaterVapor {
       datacube.mapPartitions(partition => {
 // AOT overriden        val aotProvider = new AOTProvider()
         val demProvider = new DEMProvider(layoutDefinition, crs)
-        val cwvProvider = new CWVProvider()
+        val cwvProvider = new CWVProvider(sensorDescriptor)
         
         partition.map {
           multibandtile =>
@@ -115,9 +107,7 @@ class ComputeWaterVapor {
                   ozone,
                   prePostMult.get(0),
                   prePostMult.get(1),
-                  bcLUT,
-                  bandIds,
-                  sensorDescriptor
+                  bandIds
                 ))
                 
                 correctionAccum.add(System.currentTimeMillis() - afterAuxData)

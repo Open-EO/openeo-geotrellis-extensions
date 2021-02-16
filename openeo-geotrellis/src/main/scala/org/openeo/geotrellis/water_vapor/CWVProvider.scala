@@ -1,13 +1,29 @@
 package org.openeo.geotrellis.water_vapor
 
-import geotrellis.raster.{FloatConstantNoDataCellType, FloatConstantTile, MultibandTile, doubleNODATA, Tile}
-import geotrellis.layer.SpaceTimeKey
-import org.openeo.geotrellis.icor.CorrectionDescriptor
-import org.apache.spark.broadcast.Broadcast
-import geotrellis.raster.FloatConstantNoDataCellType
-import org.openeo.geotrellis.icor.LookupTable
+import java.util.concurrent.Callable
 
-class CWVProvider {
+import geotrellis.layer.SpaceTimeKey
+import geotrellis.raster.{FloatConstantNoDataCellType, MultibandTile, Tile, doubleNODATA}
+import org.apache.spark.SparkContext
+import org.apache.spark.broadcast.Broadcast
+import org.openeo.geotrellis.icor.{AtmosphericCorrection, ICorCorrectionDescriptor, LookupTable, LookupTableIO}
+
+class CWVProvider(correctionDescriptor: ICorCorrectionDescriptor) {
+
+  private val lutLoader = new Callable[Broadcast[LookupTable]]() {
+    override def call(): Broadcast[LookupTable] = {
+      SparkContext.getOrCreate().broadcast(LookupTableIO.readLUT(correctionDescriptor.getLookupTableURL()))
+    }
+  }
+
+  private val bcLUT: Broadcast[LookupTable] = {
+    if( correctionDescriptor!=null) {
+      AtmosphericCorrection.iCorLookupTableCache.get(correctionDescriptor.getLookupTableURL(), lutLoader)
+    }else{
+      null
+    }
+  }
+
 
   def compute(
     multibandtile: (SpaceTimeKey, MultibandTile), // where is wv/r0/r1
@@ -19,9 +35,7 @@ class CWVProvider {
     ozone: Double,
     preMult: Double,
     postMult: Double,
-    bcLUT: Broadcast[LookupTable],
-    bandIds:java.util.List[String],
-    cd: CorrectionDescriptor
+    bandIds:java.util.List[String]
   ) : Tile = {
 
     val wvBandId="B09"
@@ -31,7 +45,7 @@ class CWVProvider {
     //val bp = new FirstInBlockProcessor()
     val bp = new DoubleDownsampledBlockProcessor()
     val wvCalc = new AbdaWaterVaporCalculator()
-    wvCalc.prepare(bcLUT.value,cd,wvBandId,r0BandId,r1BandId)
+    wvCalc.prepare(bcLUT.value,correctionDescriptor,wvBandId,r0BandId,r1BandId)
             
     // TODO: use reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert)
     val wvTile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,wvBandId)).convert(FloatConstantNoDataCellType)*preMult

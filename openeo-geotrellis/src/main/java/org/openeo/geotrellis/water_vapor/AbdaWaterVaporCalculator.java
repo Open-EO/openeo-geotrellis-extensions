@@ -1,15 +1,16 @@
 package org.openeo.geotrellis.water_vapor;
 
-import java.util.List;
-
 import org.openeo.geotrellis.icor.CorrectionDescriptor;
+import org.openeo.geotrellis.icor.ICorCorrectionDescriptor;
 import org.openeo.geotrellis.icor.LookupTable;
+
+import java.util.List;
 
 // the inputs should be top of the atmosphere radiances
 
 public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 
-	public void prepare(LookupTable lut, CorrectionDescriptor cd, String wv_Band, String ref0_Band, String ref1_Band) throws Exception {
+	public void prepare(LookupTable lut, ICorCorrectionDescriptor cd, String wv_Band, String ref0_Band, String ref1_Band) throws Exception {
 
 		// correction descriptor
 		this.cd=cd;

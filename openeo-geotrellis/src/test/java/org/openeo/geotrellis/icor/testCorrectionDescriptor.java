@@ -9,13 +9,12 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 
 import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
 
 // TODO: this only tests Sentinel-2 descriptor only, extend to landsat8
 public class testCorrectionDescriptor {
 
 	private static LookupTable lut;
-	private static CorrectionDescriptor cd = new Sentinel2Descriptor();
+	private static Sentinel2Descriptor cd = new Sentinel2Descriptor();
 
 	@BeforeClass
     public static void LUT() throws Exception {
@@ -73,7 +72,7 @@ public class testCorrectionDescriptor {
 	public void testCorrectFunction() {
 		for (int i = 0; i < inputs.length; i++) {
 			CorrectionInput input = inputs[i];
-			double cv = cd.correct(lut, input.band, input.time, input.value, input.sza, input.vza, input.raa, input.gnd, input.aot, input.cwv, input.ozone, input.watermask);
+			double cv = cd.correct(input.band, input.time, input.value, input.sza, input.vza, input.raa, input.gnd, input.aot, input.cwv, input.ozone, input.watermask);
 			System.out.println("cv = " + cv);
 			assertArrayEquals(new double[]{cv}, new double[]{input.expectedBOA}, 1.e-6);
 		}
@@ -81,7 +80,7 @@ public class testCorrectionDescriptor {
 
 	@Test
 	public void testCorrectRadiance() {
-		double cv=cd.correctRadiance(lut,3,17.925,43.,11.57,129.13,0.,0.082,0.357,0.33,0);
+		double cv=cd.correctRadiance(3,17.925,43.,11.57,129.13,0.,0.082,0.357,0.33,0);
 		System.out.println("CORR="+Double.toString(cv));
 		assertArrayEquals(new double[]{cv}, new double[]{0.034311233929002344}, 1.e-6);
 	}
