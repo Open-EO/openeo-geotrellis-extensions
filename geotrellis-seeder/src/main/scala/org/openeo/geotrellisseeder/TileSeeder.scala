@@ -5,9 +5,9 @@ import java.nio.file.Paths
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ofPattern
-
 import be.vito.eodata.biopar.EOProduct
 import be.vito.eodata.catalog.CatalogClient
+import be.vito.eodata.gwcgeotrellis.colormap
 import com.beust.jcommander.JCommander
 import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.layer.{KeyBounds, LayoutDefinition, Metadata, SpatialKey, TileLayerMetadata, _}
@@ -20,6 +20,7 @@ import geotrellis.spark._
 import geotrellis.store.hadoop.util.HdfsUtils
 import geotrellis.vector._
 import geotrellis.vector.io.wkt.WKT
+
 import javax.ws.rs.client.ClientBuilder
 import org.apache.hadoop.fs.Path
 import org.apache.spark.rdd.RDD
@@ -86,7 +87,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     def getPartitions = partitions.getOrElse(max(1, round(pow(2, zoomLevel) / 20).toInt))
 
     if (colorMap.isDefined) {
-      val map = ColorMapParser.parse(colorMap.get)
+      val map = colormap.ColorMapParser.parse(colorMap.get)
       getSinglebandRDD(sourcePathsWithBandId.head, date, spatialKey)
         .repartition(getPartitions)
         .foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel))
@@ -180,7 +181,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       case (key, regions) =>
         logger.logKey(key)
 
-        val tile = (regionsToTile _).tupled(regions).convert(UByteUserDefinedNoDataCellType(-1))
+        val tile = (regionsToTile _).tupled(regions)
         if (!tile.isNoDataTile) {
           val tilePath = pathForTile(path, dateStr, key, zoom)
 

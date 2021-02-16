@@ -158,7 +158,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
         .openConnection.asInstanceOf[HttpsURLConnection]
         .getInputStream
     } else {
-      gdalPrefix = if (getAwsDirect()) "/vsis3" else ""
+      gdalPrefix = if (getAwsDirect) "/vsis3" else ""
 
       new FileInputStream(Paths.get(path, "manifest.safe").toFile)
     }
@@ -181,7 +181,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
     }
   }
 
-  private def getAwsDirect() = {
+  private def getAwsDirect = {
     "TRUE".equals(getenv("AWS_DIRECT"))
   }
 }
