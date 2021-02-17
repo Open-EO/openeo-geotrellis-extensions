@@ -13,10 +13,9 @@ import scala.io.Source
  *
  * Scientific reference:
  * Rahman, H., & Dedieu, G. (1994). SMAC: a simplified method for the atmospheric correction of satellite measurements in the solar spectrum. REMOTE SENSING, 15(1), 123-143.
- * 
+ *
  */
-object SMACCorrection extends CorrectionDescriptor{
-
+object SMACCorrection{
 
   class Coeff(smac_filename:String) {
 
@@ -64,7 +63,7 @@ object SMACCorrection extends CorrectionDescriptor{
 
     //rayleigh and aerosol scattering
 
-      temp=lines(7).trim().split("\\s+")
+    temp=lines(7).trim().split("\\s+")
     val a0s=(temp(0)).toFloat
     val a1s=(temp(1)).toFloat
     val a2s=(temp(2)).toFloat
@@ -113,7 +112,6 @@ object SMACCorrection extends CorrectionDescriptor{
     //PdeZ : Atmospheric pressure (in hpa) as a function of altitude (in meters)
     (1013.25 * math.pow( 1 - 0.0065 * Z / 288.15 , 5.31 )).floatValue()
   }
-
 
   /**
    *
@@ -296,6 +294,12 @@ object SMACCorrection extends CorrectionDescriptor{
 
     return r_surf
   }
+}
+
+
+class SMACCorrection extends CorrectionDescriptor{
+
+
 
   /**
    * This function performs the pixel-wise correction: src is a pixel value belonging to band (as from getBandFromName).

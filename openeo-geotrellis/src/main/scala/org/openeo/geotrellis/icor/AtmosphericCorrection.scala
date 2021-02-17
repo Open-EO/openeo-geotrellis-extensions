@@ -46,9 +46,13 @@ class AtmosphericCorrection {
                ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]  = {
     val sc = JavaSparkContext.toSparkContext(jsc)
 
-    val sensorDescriptor: CorrectionDescriptor = sensorId.toUpperCase() match {
-      case "SENTINEL2"  => new Sentinel2Descriptor()
-      case "LANDSAT8"   => new Landsat8Descriptor()
+    val sensorDescriptor: CorrectionDescriptor = if(method.toUpperCase().equals("SMAC")){
+      new SMACCorrection()
+    }else{
+      sensorId.toUpperCase() match {
+        case "SENTINEL2"  => new Sentinel2Descriptor()
+        case "LANDSAT8"   => new Landsat8Descriptor()
+      }
     }
 
 
@@ -70,9 +74,13 @@ class AtmosphericCorrection {
         }
 
         // TODO: this is temporary, until water vapor calculator is refactored, remove  constant provider when not needed any more
-        val cwvProvider = sensorId.toUpperCase() match {
-          case "SENTINEL2"  => new CWVProvider(sensorDescriptor.asInstanceOf[ICorCorrectionDescriptor])
-          case "LANDSAT8"   => new ConstantCWVProvider(0.0)
+        val cwvProvider = if(method.toUpperCase().equals("SMAC")){
+          new ConstantCWVProvider(0.0)
+        }else{
+          sensorId.toUpperCase() match {
+            case "SENTINEL2"  => new CWVProvider(sensorDescriptor.asInstanceOf[ICorCorrectionDescriptor])
+            case "LANDSAT8"   => new ConstantCWVProvider(0.0)
+          }
         }
 
         partition.map {
