@@ -8,15 +8,15 @@ import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
 import org.openeo.geotrellis.icor.{AtmosphericCorrection, ICorCorrectionDescriptor, LookupTable, LookupTableIO}
 
-class CWVProvider(correctionDescriptor: ICorCorrectionDescriptor) {
-
-  private val lutLoader = new Callable[Broadcast[LookupTable]]() {
-    override def call(): Broadcast[LookupTable] = {
-      SparkContext.getOrCreate().broadcast(LookupTableIO.readLUT(correctionDescriptor.getLookupTableURL()))
-    }
-  }
+class CWVProvider(correctionDescriptor: ICorCorrectionDescriptor) extends Serializable {
 
   private val bcLUT: Broadcast[LookupTable] = {
+    val lutLoader = new Callable[Broadcast[LookupTable]]() {
+      override def call(): Broadcast[LookupTable] = {
+        SparkContext.getOrCreate().broadcast(LookupTableIO.readLUT(correctionDescriptor.getLookupTableURL()))
+      }
+    }
+
     if( correctionDescriptor!=null) {
       AtmosphericCorrection.iCorLookupTableCache.get(correctionDescriptor.getLookupTableURL(), lutLoader)
     }else{

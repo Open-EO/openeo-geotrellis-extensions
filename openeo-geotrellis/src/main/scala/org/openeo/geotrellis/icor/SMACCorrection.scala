@@ -2,6 +2,7 @@ package org.openeo.geotrellis.icor
 
 import java.time.ZonedDateTime
 
+import org.apache.commons.math3.util.FastMath
 import spire.implicits._
 
 import scala.io.Source
@@ -17,7 +18,7 @@ import scala.io.Source
  */
 object SMACCorrection{
 
-  class Coeff(smac_filename:String) {
+  class Coeff(smac_filename:String) extends Serializable {
 
     val lines: Array[String]={
       val bufferedSource = Source.fromFile(smac_filename)
@@ -234,7 +235,7 @@ object SMACCorrection{
     }
 
     /*------:  8) scattering angle in degree 			 :--------*/
-    val ksiD = crd * math.acos(cksi)
+    val ksiD = crd * FastMath.acos(cksi)
 
     /*------:  9) rayleigh atmospheric reflectance 			 :--------*/
     val ray_phase = 0.7190443 * (1.0 + (cksi * cksi)) + 0.0412742
@@ -299,7 +300,8 @@ object SMACCorrection{
 
 class SMACCorrection extends CorrectionDescriptor{
 
-
+  val resource = SMACCorrection.getClass.getResource("../smac/Coef_S2A_CONT_B2.dat")
+  val coeff = new SMACCorrection.Coeff(resource.getPath)
 
   /**
    * This function performs the pixel-wise correction: src is a pixel value belonging to band (as from getBandFromName).
@@ -318,9 +320,6 @@ class SMACCorrection extends CorrectionDescriptor{
    * @return BOA reflectance * 10000 (i.e. in digital number)
    */
   override def correct(band: Int, time: ZonedDateTime, src: Double, sza: Double, vza: Double, raa: Double, gnd: Double, aot: Double, cwv: Double, ozone: Double, waterMask: Int): Double = {
-    val resource = SMACCorrection.getClass.getResource("../smac/Coef_S2A_CONT_B2.dat")
-    val coeff = new SMACCorrection.Coeff(resource.getPath)
-
     //TODO lookup pressure, ozone, water vapour in ECMWF cams
     val pressure = 1013 //SMACCorrection.PdeZ(1300);
     val UH2O = 0.3 // Water vapour (g/cm2)
@@ -328,7 +327,7 @@ class SMACCorrection extends CorrectionDescriptor{
     return r_surf
   }
 
-  override def getBandFromName(name: String): Int = ???
+  override def getBandFromName(name: String): Int = 0
 
   override def getIrradiance(iband: Int): Double = ???
 

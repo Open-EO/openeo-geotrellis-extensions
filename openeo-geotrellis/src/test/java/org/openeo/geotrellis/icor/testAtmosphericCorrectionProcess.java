@@ -26,11 +26,31 @@ import static org.junit.Assert.assertFalse;
 
 public class testAtmosphericCorrectionProcess {
 
+    private final ArrayList<String> bandIds=new ArrayList<String>();
+    {
+        bandIds.add(new String("TOC-B02_10M"));
+        bandIds.add(new String("TOC-B09_60M"));
+        bandIds.add(new String("TOC-B8A_20M"));
+        bandIds.add(new String("TOC-B11_20M"));
+    }
+
+    private final ArrayList<Object> params=new ArrayList<Object>();
+    {
+
+        params.add(new Double(0.));
+        params.add(new Double(0.));
+        params.add(new Double(0.));
+        params.add(new Double(0.));
+        params.add(new Double(0.));
+        params.add(new Double(0.));
+        params.add(new Double(0.));
+    }
+
     @BeforeClass
     public static void sparkContext() {
         SparkConf conf = new SparkConf();
         conf.setAppName("OpenEOTest");
-        conf.setMaster("local[2]");
+        conf.setMaster("local[1]");
         //conf.set("spark.driver.bindAddress", "127.0.0.1");
         conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
         SparkContext.getOrCreate(conf);
@@ -72,31 +92,10 @@ public class testAtmosphericCorrectionProcess {
     @Test
     public void testAtmosphericCorrection() {
 
-    	ArrayList<String> bandIds=new ArrayList<String>();
-    	bandIds.add(new String("TOC-B02_10M"));
-    	bandIds.add(new String("TOC-B09_60M"));
-    	bandIds.add(new String("TOC-B8A_20M"));
-    	bandIds.add(new String("TOC-B11_20M"));
-    	ArrayList<Object> params=new ArrayList<Object>();
-    	params.add(new Double(0.));
-    	params.add(new Double(0.));
-    	params.add(new Double(0.));
-    	params.add(new Double(0.));
-    	params.add(new Double(0.));
-    	params.add(new Double(0.));
-    	params.add(new Double(0.));
-    	
-        Tile tileB2 = new IntConstantTile(1000,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
-        Tile wvTile = new IntConstantTile(2000,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
-        Tile r0Tile = new IntConstantTile(5000,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
-        Tile r1Tile = new IntConstantTile( 500,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
-        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube = acTilesToSpaceTimeDataCube(tileB2,wvTile,r0Tile,r1Tile);
-        TileLayerMetadata<SpaceTimeKey> m = datacube.metadata();
-        Extent newExtent = new Extent(3.5, 50, 4.0, 51);
-        TileLayerMetadata<SpaceTimeKey> updatedMetadata = m.copy(m.cellType(),new LayoutDefinition(newExtent,m.layout().tileLayout()), newExtent,m.crs(),m.bounds());
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> inputCube = createInputCube();
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(
         	JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
-        	new ContextRDD<>(datacube.rdd(),updatedMetadata),
+                inputCube,
         	bandIds,
         	params,
         	"DEM",
@@ -109,6 +108,42 @@ public class testAtmosphericCorrectionProcess {
         assertFalse(result.isEmpty());
         Map<SpaceTimeKey, MultibandTile> tiles = result.collectAsMap();
         
+    }
+
+
+    private ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> createInputCube() {
+        Tile tileB2 = new IntConstantTile(1000,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
+        Tile wvTile = new IntConstantTile(2000,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
+        Tile r0Tile = new IntConstantTile(5000,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
+        Tile r1Tile = new IntConstantTile( 500,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube = acTilesToSpaceTimeDataCube(tileB2,wvTile,r0Tile,r1Tile);
+        TileLayerMetadata<SpaceTimeKey> m = datacube.metadata();
+        Extent newExtent = new Extent(3.5, 50, 4.0, 51);
+        TileLayerMetadata<SpaceTimeKey> updatedMetadata = m.copy(m.cellType(),new LayoutDefinition(newExtent,m.layout().tileLayout()), newExtent,m.crs(),m.bounds());
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> inputCube = new ContextRDD<>(datacube.rdd(), updatedMetadata);
+        return inputCube;
+    }
+
+    @Test
+    public void testSMACCorrectionOnCube() {
+
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> inputCube = createInputCube();
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(
+                "smac",
+                JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
+                inputCube,
+                bandIds,
+                params,
+                "DEM",
+                "SENTINEL2",
+                false
+        );
+        System.out.println(resultRDD.getClass().toString());
+
+        JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(resultRDD.toJavaRDD());
+        assertFalse(result.isEmpty());
+        Map<SpaceTimeKey, MultibandTile> tiles = result.collectAsMap();
+
     }
 
     @Test

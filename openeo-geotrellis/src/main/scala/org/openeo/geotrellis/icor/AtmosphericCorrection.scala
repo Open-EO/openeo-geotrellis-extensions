@@ -17,7 +17,7 @@ object AtmosphericCorrection{
 }
 
 
-class AtmosphericCorrection {
+class AtmosphericCorrection extends Serializable {
 
   def correct(
         jsc: JavaSparkContext,
@@ -29,12 +29,11 @@ class AtmosphericCorrection {
         // TODO: in the future SENTINEL2A,SENTINEL2B,... granulation will be needed
         appendDebugBands: Boolean // this will add sza,vza,raa,gnd,aot,cwv to the multiband tile result
       ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]  = {
-    this.correct("icor",null,jsc, datacube, bandIds, overrideParams, elevationSource, sensorId, appendDebugBands)
+    this.correct("icor",jsc, datacube, bandIds, overrideParams, elevationSource, sensorId, appendDebugBands)
   }
 
     def correct(
                  method:String,
-                 elevationModel:String,
                  jsc: JavaSparkContext,
                  datacube: MultibandTileLayerRDD[SpaceTimeKey],
                  bandIds:java.util.List[String],
@@ -62,6 +61,16 @@ class AtmosphericCorrection {
 
     val auxDataAccum = sc.longAccumulator("Icor aux data loading")
     val correctionAccum = sc.longAccumulator("Icor correction")
+
+    // TODO: this is temporary, until water vapor calculator is refactored, remove  constant provider when not needed any more
+    val cwvProvider = if(method.toUpperCase().equals("SMAC")){
+      new ConstantCWVProvider(0.3)
+    }else{
+      sensorId.toUpperCase() match {
+        case "SENTINEL2"  => new CWVProvider(sensorDescriptor.asInstanceOf[ICorCorrectionDescriptor])
+        case "LANDSAT8"   => new ConstantCWVProvider(0.3)
+      }
+    }
     
     new ContextRDD(
       datacube.mapPartitions(partition => {
@@ -71,16 +80,6 @@ class AtmosphericCorrection {
         val elevationProvider: ElevationProvider = elevationSource.toUpperCase() match {
           case "DEM"  => new DEMProvider(layoutDefinition, crs)
           case "SRTM" => new SRTMProvider()
-        }
-
-        // TODO: this is temporary, until water vapor calculator is refactored, remove  constant provider when not needed any more
-        val cwvProvider = if(method.toUpperCase().equals("SMAC")){
-          new ConstantCWVProvider(0.0)
-        }else{
-          sensorId.toUpperCase() match {
-            case "SENTINEL2"  => new CWVProvider(sensorDescriptor.asInstanceOf[ICorCorrectionDescriptor])
-            case "LANDSAT8"   => new ConstantCWVProvider(0.0)
-          }
         }
 
         partition.map {
