@@ -29,7 +29,21 @@ class AtmosphericCorrection {
         // TODO: in the future SENTINEL2A,SENTINEL2B,... granulation will be needed
         appendDebugBands: Boolean // this will add sza,vza,raa,gnd,aot,cwv to the multiband tile result
       ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]  = {
+    this.correct("icor",null,jsc, datacube, bandIds, overrideParams, elevationSource, sensorId, appendDebugBands)
+  }
 
+    def correct(
+                 method:String,
+                 elevationModel:String,
+                 jsc: JavaSparkContext,
+                 datacube: MultibandTileLayerRDD[SpaceTimeKey],
+                 bandIds:java.util.List[String],
+                 overrideParams:java.util.List[Double], // sza,vza,raa,gnd,aot,cwv,ozone <- if other than NaN, it will use the value as constant tile
+                 elevationSource: String,
+                 sensorId: String, // SENTINEL2 and LANDSAT8 for now
+                 // TODO: in the future SENTINEL2A,SENTINEL2B,... granulation will be needed
+                 appendDebugBands: Boolean // this will add sza,vza,raa,gnd,aot,cwv to the multiband tile result
+               ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]  = {
     val sc = JavaSparkContext.toSparkContext(jsc)
 
     val sensorDescriptor: CorrectionDescriptor = sensorId.toUpperCase() match {
