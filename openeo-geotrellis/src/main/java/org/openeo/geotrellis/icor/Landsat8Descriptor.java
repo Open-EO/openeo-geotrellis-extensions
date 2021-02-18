@@ -11,7 +11,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 	}
 
     @Override
-    public int getBandFromName(String name) throws Exception {
+    public int getBandFromName(String name) throws IllegalArgumentException {
 		switch(name.toUpperCase()) {
 			case "B01":         return 0;
 			case "B02":         return 1;
@@ -106,7 +106,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 	 */
 	@Override
     public double correct(
-    		int band,
+    		String bandName,
     		ZonedDateTime time,
     		double src, 
     		double sza, 
@@ -120,6 +120,12 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
     {
 		// lut only has 8 bands instead of 9
 		//if (band>8) return src;
+		int band = 0;
+		try {
+			band = getBandFromName(bandName);
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		}
 		if (band>7) return src;
 		final double TOAradiance=src*RADIANCE_MULT_BAND[band]+RADIANCE_ADD_BAND[band];
         final double corrected = correctRadiance( band, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);

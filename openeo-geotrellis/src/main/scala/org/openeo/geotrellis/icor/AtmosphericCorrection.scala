@@ -158,7 +158,6 @@ class AtmosphericCorrection extends Serializable {
     val result = multibandtile._2.mapBands((b, tile) => {
       val bandName = bandIds.get(b)
       try {
-        val iband: Int = sensorDescriptor.getBandFromName(bandName)
         val resultTile: Tile = MultibandTile(
           tile.convert(FloatConstantNoDataCellType),
           aotTile.convert(FloatConstantNoDataCellType),
@@ -167,7 +166,7 @@ class AtmosphericCorrection extends Serializable {
           vzaTile,
           raaTile,
           cwvTile
-        ).combineDouble(0, 1, 2, 3, 4, 5, 6) { (refl, aot, dem, sza, vza, raa, cwv) => if (refl != NODATA) (sensorDescriptor.correct( iband, multibandtile._1.time, refl.toDouble, sza, vza, raa, dem, aot, cwv, overrideParams.get(6), 0)).toInt else NODATA }
+        ).combineDouble(0, 1, 2, 3, 4, 5, 6) { (refl, aot, dem, sza, vza, raa, cwv) => if (refl != NODATA) (sensorDescriptor.correct( bandName, multibandtile._1.time, refl.toDouble, sza, vza, raa, dem, aot, cwv, overrideParams.get(6), 0)).toInt else NODATA }
         resultTile.convert(tile.cellType)
       } catch {
         case e: IllegalArgumentException => tile

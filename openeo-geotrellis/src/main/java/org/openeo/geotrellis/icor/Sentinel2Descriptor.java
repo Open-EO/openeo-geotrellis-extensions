@@ -31,7 +31,7 @@ public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
 	}
    
     @Override
-    public int getBandFromName(String name) throws Exception {
+    public int getBandFromName(String name) throws IllegalArgumentException {
     	// TODO: turn it into a map
 		switch(name.toUpperCase()) {
 			case "TOC-B01_60M": return 0;
@@ -185,8 +185,7 @@ public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
     // calculates the atmospheric correction for pixel
     @Override
     public double correct(
-
-		int band,
+		String bandName,
 		ZonedDateTime time,
 		double src, 
 		double sza, 
@@ -199,7 +198,7 @@ public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
 		int waterMask)
     {
     	// Get interpolated array from lookuptable
-
+		int band = getBandFromName(bandName);
         // Apply atmoshperic correction on pixel based on an array of parameters from MODTRAN
         final double TOAradiance=reflToRad(src*0.0001, sza, time, band);
         final double corrected = correctRadiance( band, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);

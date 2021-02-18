@@ -319,8 +319,9 @@ class SMACCorrection extends CorrectionDescriptor{
    * @param waterMask
    * @return BOA reflectance * 10000 (i.e. in digital number)
    */
-  override def correct(band: Int, time: ZonedDateTime, src: Double, sza: Double, vza: Double, raa: Double, gnd: Double, aot: Double, cwv: Double, ozone: Double, waterMask: Int): Double = {
+  override def correct(bandName: String, time: ZonedDateTime, src: Double, sza: Double, vza: Double, raa: Double, gnd: Double, aot: Double, cwv: Double, ozone: Double, waterMask: Int): Double = {
     //TODO lookup pressure, ozone, water vapour in ECMWF cams
+    //TODO lookup coefficient based on bandname
     val pressure = 1013 //SMACCorrection.PdeZ(1300);
     val UH2O = 0.3 // Water vapour (g/cm2)
     val r_surf = SMACCorrection.smac_inv(src, sza, vza, raa, pressure.toFloat, aot.toFloat, ozone.toFloat, UH2O.toFloat, coeff)
