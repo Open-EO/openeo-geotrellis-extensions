@@ -3,8 +3,10 @@ package org.openeo.geotrellis.icor
 import java.time.ZonedDateTime
 
 import org.apache.commons.math3.util.FastMath
+import org.openeo.geotrellis.icor.SMACCorrection.Coeff
 import spire.implicits._
 
+import scala.collection.mutable
 import scala.io.Source
 
 
@@ -298,16 +300,15 @@ object SMACCorrection{
 }
 
 
-class SMACCorrection extends CorrectionDescriptor{
+class SMACCorrection extends CorrectionDescriptor(){
 
-  val resource = SMACCorrection.getClass.getResource("../smac/Coef_S2A_CONT_B2.dat")
-  val coeff = new SMACCorrection.Coeff(resource.getPath)
+  val coeffMap = mutable.Map[String,Coeff]()
 
   /**
    * This function performs the pixel-wise correction: src is a pixel value belonging to band (as from getBandFromName).
    * If band is out of range, the function should return src (since any errors of mis-using bands should be caught upstream, before the pixel-wise loop).
    *
-   * @param band band id
+   * @param bandName band id
    * @param src  to be converted: this may be digital number, reflectance, radiance, ... depending on the specific correction, and it should clearly be documented there!
    * @param sza  degree
    * @param vza  degree
@@ -321,10 +322,23 @@ class SMACCorrection extends CorrectionDescriptor{
    */
   override def correct(bandName: String, time: ZonedDateTime, src: Double, sza: Double, vza: Double, raa: Double, gnd: Double, aot: Double, cwv: Double, ozone: Double, waterMask: Int): Double = {
     //TODO lookup pressure, ozone, water vapour in ECMWF cams
-    //TODO lookup coefficient based on bandname
+    var maybeCoeff = coeffMap.get(bandName)
+    if(maybeCoeff.isEmpty) {
+      val bandPattern = "(B[0-9]2)".r
+      val coefficients = {
+        bandName match {
+          case bandPattern(pattern) => "Coef_S2A_CONT_" + pattern + ".dat"
+          case _ => throw new IllegalArgumentException("Could not match band name: " + bandName)
+        }
+      }
+      val coeffForBand = new Coeff(SMACCorrection.getClass.getResource("../smac/" + coefficients).getPath)
+      coeffMap(bandName) = coeffForBand
+      maybeCoeff = Some(coeffForBand)
+    }
+
     val pressure = 1013 //SMACCorrection.PdeZ(1300);
     val UH2O = 0.3 // Water vapour (g/cm2)
-    val r_surf = SMACCorrection.smac_inv(src, sza, vza, raa, pressure.toFloat, aot.toFloat, ozone.toFloat, UH2O.toFloat, coeff)
+    val r_surf = SMACCorrection.smac_inv(src, sza, vza, raa, pressure.toFloat, aot.toFloat, ozone.toFloat, UH2O.toFloat, maybeCoeff.get)
     return r_surf
   }
 
