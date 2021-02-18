@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.layers
 
-import java.net.URI
+import java.net.{URI, URL}
 import java.nio.file.{Path, Paths}
 import java.time.temporal.ChronoUnit
 import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
@@ -359,6 +359,9 @@ class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, 
     def rasterSource(path:String,targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent ) = {
       if(path.endsWith(".jp2")) {
         GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType)
+      }else if(path.endsWith("MTD_TL.xml")) {
+        //TODO EP-3611 parse angles
+        new SentinelXMLMetadataRasterSource(new URL(path.replace("/vsicurl/","")))
       }
       else {
         if(experimental) {
