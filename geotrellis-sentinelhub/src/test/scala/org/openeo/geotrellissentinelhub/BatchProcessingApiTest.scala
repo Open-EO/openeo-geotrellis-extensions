@@ -33,7 +33,7 @@ class BatchProcessingApiTest {
           "backCoeff" -> "GAMMA0_ELLIPSOID",
           "orthorectify" -> false
         ).asJava,
-        bucketName = "openeo-sentinelhub-vito-test",
+        bucketName = "openeo-sentinelhub",
         description = "BatchProcessingApiTest.createBatchProcess",
         accessToken
       )
@@ -103,7 +103,7 @@ class BatchProcessingApiTest {
       bandNames = Seq("VH", "VV"),
       dataTakeId = "044CD7",
       card4lId,
-      bucketName = "openeo-sentinelhub-vito-test", subFolder = card4lId, // FIXME: replace with "openeo-sentinelhub"
+      bucketName = "openeo-sentinelhub", subFolder = card4lId,
       accessToken
     )
 

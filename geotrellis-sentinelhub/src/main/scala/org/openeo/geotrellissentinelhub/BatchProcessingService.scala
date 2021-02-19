@@ -27,7 +27,7 @@ object BatchProcessingService {
     })
 }
 
-class BatchProcessingService(bucketName: String, clientId: String, clientSecret: String) {
+class BatchProcessingService(val bucketName: String, clientId: String, clientSecret: String) {
   import BatchProcessingService._
 
   private def accessToken: String = accessTokenCache.get((clientId, clientSecret))

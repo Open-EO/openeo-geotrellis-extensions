@@ -8,7 +8,7 @@ import java.util
 import java.util.UUID
 
 class BatchProcessingServiceTest {
-  private val batchProcessingService = new BatchProcessingService(bucketName = "openeo-sentinelhub-vito-test", // FIXME: restore to "openeo-sentinelhub"
+  private val batchProcessingService = new BatchProcessingService(bucketName = "openeo-sentinelhub",
     Utils.clientId, Utils.clientSecret)
 
   @Ignore
@@ -53,6 +53,6 @@ class BatchProcessingServiceTest {
       requestGroupId
     )
 
-    println(s"batch process(es) $batchRequestIds will write to folder $requestGroupId")
+    println(s"batch process(es) $batchRequestIds will write to ${batchProcessingService.bucketName}/$requestGroupId")
   }
 }
