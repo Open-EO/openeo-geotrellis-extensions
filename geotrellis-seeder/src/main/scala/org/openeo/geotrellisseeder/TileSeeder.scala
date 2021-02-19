@@ -1,13 +1,10 @@
 package org.openeo.geotrellisseeder
 
-import java.io.File
-import java.nio.file.Paths
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.time.format.DateTimeFormatter.ofPattern
 import be.vito.eodata.biopar.EOProduct
 import be.vito.eodata.catalog.CatalogClient
 import be.vito.eodata.gwcgeotrellis.colormap
+import be.vito.eodata.gwcgeotrellis.geotrellis.Oscars
+import be.vito.eodata.gwcgeotrellis.s3.S3ClientConfigurator
 import com.beust.jcommander.JCommander
 import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.layer.{KeyBounds, LayoutDefinition, Metadata, SpatialKey, TileLayerMetadata, _}
@@ -18,15 +15,23 @@ import geotrellis.raster.render.ColorMap
 import geotrellis.raster.{RasterRegion, RasterSource, _}
 import geotrellis.spark._
 import geotrellis.store.hadoop.util.HdfsUtils
+import geotrellis.store.s3.{AmazonS3URI, S3ClientProducer}
 import geotrellis.vector._
 import geotrellis.vector.io.wkt.WKT
-
-import javax.ws.rs.client.ClientBuilder
 import org.apache.hadoop.fs.Path
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.openeo.geotrellisseeder.TileSeeder.CLOUD_MILKINESS
+import software.amazon.awssdk.core.sync.RequestBody
+import software.amazon.awssdk.services.s3.model.PutObjectRequest
 
+import java.io.File
+import java.net.URL
+import java.nio.file.Paths
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatter.ofPattern
+import javax.ws.rs.client.ClientBuilder
 import scala.collection.JavaConverters.{asScalaIteratorConverter, collectionAsScalaIterableConverter}
 import scala.collection.mutable.ListBuffer
 import scala.math._
@@ -44,14 +49,31 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
   def renderPng(path: String, productType: String, dateStr: String, colorMap: Option[String] = None, bands: Option[Array[Band]] = None,
                 productGlob: Option[String] = None, maskValues: Array[Int] = Array(), permissions: Option[String] = None,
-                spatialKey: Option[SpatialKey] = None, tooCloudyFile: Option[String] = None, datePattern: Option[String] = None)
+                spatialKey: Option[SpatialKey] = None, tooCloudyFile: Option[String] = None, datePattern: Option[String] = None,
+                oscarsEndpoint: Option[String] = None, oscarsCollection: Option[String] = None)
                (implicit sc: SparkContext): Unit = {
 
     val date = LocalDate.parse(dateStr.substring(0, 10))
 
     var sourcePathsWithBandId: Seq[(Seq[String], Int)] = Seq()
 
-    if (productGlob.isEmpty) {
+    if (oscarsEndpoint.isDefined && oscarsCollection.isDefined) {
+      val attributeValues = Map("productType" -> productType)
+      val products = new Oscars(new URL(oscarsEndpoint.get)).getProducts(oscarsCollection.get, date, date, ProjectedExtent(LatLng.worldExtent, LatLng), attributeValues = attributeValues)
+
+      val paths = products.flatMap(_.links.filter(_.title.contains(productType)).map(_.href.toString))
+
+      val productRegex = """/HRVPP/CLMS/VI_V100/(\d{4})/(\d{2})/(.*)""".r.unanchored
+
+      val s3Paths = paths.flatMap {
+        case productRegex(year, month, key) => Some(s"s3://hr-vpp-products-vi-$year$month/$key")
+        case _ => None
+      }
+
+      sourcePathsWithBandId = Seq((s3Paths, 0))
+
+      S3ClientConfigurator.configure()
+    } else if (productGlob.isEmpty) {
       val catalog = new CatalogClient()
       val products = catalog.getProducts(productType, date, date, "GEOTIFF").asScala
 
@@ -185,9 +207,17 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
         if (!tile.isNoDataTile) {
           val tilePath = pathForTile(path, dateStr, key, zoom)
 
-          deleteSymLink(tilePath)
+          if (tilePath.startsWith("/")) deleteSymLink(tilePath)
 
-          tile.toArrayTile().renderPng(colorMap).write(tilePath)
+          val png = tile.toArrayTile().renderPng(colorMap)
+
+          if (tilePath.startsWith("s3:")) {
+            val s3 = S3ClientProducer.get()
+            val uri = new AmazonS3URI(tilePath)
+            s3.putObject(PutObjectRequest.builder.bucket(uri.getBucket).key(uri.getKey).build, RequestBody.fromBytes(png))
+          } else {
+            png.write(tilePath)
+          }
 
           logger.logTile(key, tilePath)
         } else {
@@ -503,9 +533,13 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       val y1 = y.substring(3, 6)
       val y0 = y.substring(6)
 
-      val dir = Paths.get(path, grid, dateStr, z, x2, x1, x0, y2, y1)
-      dir.toFile.mkdirs()
-      dir.resolve(y0 + ".png").toString
+      if (path.startsWith("s3")) {
+        path + Paths.get("/", grid, dateStr, z, x2, x1, x0, y2, y1, y0 + ".png")
+      } else {
+        val dir = Paths.get(path, grid, dateStr, z, x2, x1, x0, y2, y1)
+        dir.toFile.mkdirs()
+        dir.resolve(y0 + ".png").toString
+      }
     }
   }
 }
@@ -534,6 +568,8 @@ object TileSeeder {
       val maskValues = jCommanderArgs.maskValues
       val permissions = jCommanderArgs.setPermissions
       val tooCloudyFile = jCommanderArgs.tooCloudyFile
+      val oscarsEndpoint = jCommanderArgs.oscarsEndpoint
+      val oscarsCollection = jCommanderArgs.oscarsCollection
       val verbose = jCommanderArgs.verbose
 
       val seeder = new TileSeeder(zoomLevel, verbose)
@@ -545,7 +581,7 @@ object TileSeeder {
             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
             .set("spark.kryoserializer.buffer.max", "1024m"))
 
-      seeder.renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, tooCloudyFile = tooCloudyFile)
+      seeder.renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, tooCloudyFile = tooCloudyFile, oscarsEndpoint = oscarsEndpoint, oscarsCollection = oscarsCollection)
 
       sc.stop()
     }

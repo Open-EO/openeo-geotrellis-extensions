@@ -9,6 +9,10 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
+    <properties>
+        <geotrellis.version>3.5.2</geotrellis.version>
+    </properties>
+
     <artifactId>geotrellis-seeder</artifactId>
     <dependencies>
         <dependency>
@@ -17,34 +21,14 @@
             <version>0.10.0-SNAPSHOT</version>
             <exclusions>
                 <exclusion>
-                    <groupId>org.locationtech.geotrellis</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.scala-lang</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.azavea.geotrellis</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.fasterxml.jackson.core</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.eclipse.jetty</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.geotools</groupId>
+                    <groupId>*</groupId>
                     <artifactId>*</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
         <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
-            <artifactId>geotrellis-spark_${scala.binary.version}</artifactId>
+            <artifactId>geotrellis-s3-spark_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>
             <exclusions>
                 <exclusion>
