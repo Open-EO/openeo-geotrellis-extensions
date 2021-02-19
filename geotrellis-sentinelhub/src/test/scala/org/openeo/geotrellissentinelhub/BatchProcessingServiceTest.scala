@@ -53,6 +53,6 @@ class BatchProcessingServiceTest {
       requestGroupId
     )
 
-    println(s"batch process(es) ${batchRequestIds.mkString("[", ", ", "]")} will write to folder $requestGroupId")
+    println(s"batch process(es) $batchRequestIds will write to folder $requestGroupId")
   }
 }

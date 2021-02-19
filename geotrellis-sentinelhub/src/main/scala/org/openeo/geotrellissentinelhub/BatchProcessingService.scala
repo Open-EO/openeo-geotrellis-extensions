@@ -71,7 +71,7 @@ class BatchProcessingService(bucketName: String, clientId: String, clientSecret:
 
   def start_card4l_batch_processes(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
                                    from_date: String, to_date: String, band_names: util.List[String], subfolder: String,
-                                   request_group_id: String): Iterable[String] = {
+                                   request_group_id: String): util.List[String] = {
     require(collection_id == "sentinel-1-grd", """only collection "sentinel-1-grd" is supported""")
     require(dataset_id == "S1GRD", """only data set "S1GRD" is supported""")
 
@@ -111,7 +111,7 @@ class BatchProcessingService(bucketName: String, clientId: String, clientSecret:
       batchProcessingApi.startBatchProcess(batchRequestId, accessToken)
     }
 
-    batchRequestIds
+    batchRequestIds.toIndexedSeq.asJava
   }
 
   private def dataTakeId(featureId: String): String = {
