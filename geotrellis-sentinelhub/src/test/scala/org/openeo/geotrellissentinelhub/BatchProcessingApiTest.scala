@@ -1,13 +1,14 @@
 package org.openeo.geotrellissentinelhub
 
 import geotrellis.proj4.CRS
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector._
 import org.junit.Assert.{assertEquals, fail}
 import org.junit.{Ignore, Test}
 import scalaj.http.HttpStatusException
 
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
+import java.util.UUID
 import scala.collection.JavaConverters._
 
 class BatchProcessingApiTest {
@@ -32,7 +33,7 @@ class BatchProcessingApiTest {
           "backCoeff" -> "GAMMA0_ELLIPSOID",
           "orthorectify" -> false
         ).asJava,
-        bucketName = "openeo-sentinelhub",
+        bucketName = "openeo-sentinelhub-vito-test",
         description = "BatchProcessingApiTest.createBatchProcess",
         accessToken
       )
@@ -54,5 +55,58 @@ class BatchProcessingApiTest {
   @Test
   def startBatchProcess(): Unit = {
     batchProcessingApi.startBatchProcess("479cca6e-53d5-4477-ac5b-2c0ba8d3beba", accessToken)
+  }
+
+  @Ignore
+  @Test
+  def createCard4LBatchProcess(): Unit = {
+    val bounds = // the intersection of a feature with the initial bounding box
+      """{
+        |  "type":"Polygon",
+        |  "coordinates":[
+        |    [
+        |      [
+        |        35.715368104951445,
+        |        -6.075694
+        |      ],
+        |      [
+        |        35.7316723233983,
+        |        -6.1452107540348715
+        |      ],
+        |      [
+        |        35.75107377067866,
+        |        -6.23476
+        |      ],
+        |      [
+        |        35.861576,
+        |        -6.23476
+        |      ],
+        |      [
+        |        35.861576,
+        |        -6.075694
+        |      ],
+        |      [
+        |        35.715368104951445,
+        |        -6.075694
+        |      ]
+        |    ]
+        |  ]
+        |}
+        |""".stripMargin.parseGeoJson[Polygon]()
+
+    val card4lId = UUID.randomUUID().toString
+
+    val batchProcess = batchProcessingApi.createCard4LBatchProcess(
+      datasetId = "S1GRD",
+      bounds,
+      dateTime = ZonedDateTime.parse("2021-02-15T15:54:57Z", ISO_OFFSET_DATE_TIME),
+      bandNames = Seq("VH", "VV"),
+      dataTakeId = "044CD7",
+      card4lId,
+      bucketName = "openeo-sentinelhub-vito-test", subFolder = card4lId, // FIXME: replace with "openeo-sentinelhub"
+      accessToken
+    )
+
+    println(s"batch process ${batchProcess.id} will write to folder $card4lId")
   }
 }

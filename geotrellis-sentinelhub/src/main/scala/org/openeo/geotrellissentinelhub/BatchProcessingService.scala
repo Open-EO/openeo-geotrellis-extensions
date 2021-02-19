@@ -1,8 +1,8 @@
 package org.openeo.geotrellissentinelhub
 
 import com.google.common.cache.{CacheBuilder, CacheLoader}
-import geotrellis.proj4.CRS
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.vector.{Extent, Feature, ProjectedExtent}
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
 import org.slf4j.LoggerFactory
 import scalaj.http.HttpStatusException
@@ -37,12 +37,9 @@ class BatchProcessingService(bucketName: String, clientId: String, clientSecret:
                           processing_options: util.Map[String, Any]): String = try {
     // TODO: implement retries
     val boundingBox = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
-    val from = ZonedDateTime.parse(from_date)
-    val to = {
-      // workaround for bug where upper bound is considered inclusive in OpenEO
-      val endOfDay = OffsetTime.of(LocalTime.MAX, UTC)
-      ZonedDateTime.parse(to_date).toLocalDate.atTime(endOfDay).toZonedDateTime
-    }
+
+    // workaround for bug where upper bound is considered inclusive in OpenEO
+    val (from, to) = includeEndDay(from_date, to_date)
 
     val catalogApi = new CatalogApi
     val dateTimes = catalogApi.dateTimes(collection_id, boundingBox, from, to, accessToken)
@@ -71,4 +68,65 @@ class BatchProcessingService(bucketName: String, clientId: String, clientSecret:
 
   def get_batch_process_status(batchRequestId: String): String =
     new BatchProcessingApi().getBatchProcess(batchRequestId, accessToken).status
+
+  def start_card4l_batch_processes(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
+                                   from_date: String, to_date: String, band_names: util.List[String], subfolder: String,
+                                   request_group_id: String): Iterable[String] = {
+    require(collection_id == "sentinel-1-grd", """only collection "sentinel-1-grd" is supported""")
+    require(dataset_id == "S1GRD", """only data set "S1GRD" is supported""")
+
+    val boundingBox = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
+    val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(LatLng), LatLng)
+
+    val (from, to) = includeEndDay(from_date, to_date)
+
+    // original features that overlap in space and time
+    val catalogApi = new CatalogApi
+    val features = catalogApi.searchCard4L(collection_id, reprojectedBoundingBox, from, to, accessToken)
+
+    // their intersections with bounding box (all should be in LatLng)
+    val intersectionFeatures = features.mapValues(feature =>
+      feature.mapGeom(geom => geom intersection reprojectedBoundingBox.extent)
+    )
+
+    val batchProcessingApi = new BatchProcessingApi
+
+    // TODO: the web tool creates one batch process, analyses it, polls until ANALYSIS_DONE, then creates the remaining
+    //  processes and starts them all
+    val batchRequestIds =
+      for ((id, Feature(intersection, datetime)) <- intersectionFeatures)
+        yield batchProcessingApi.createCard4LBatchProcess(
+          dataset_id,
+          bounds = intersection,
+          dateTime = datetime,
+          band_names.asScala,
+          dataTakeId(id),
+          card4lId = request_group_id,
+          bucketName,
+          subfolder,
+          accessToken
+        ).id
+
+    for (batchRequestId <- batchRequestIds) {
+      batchProcessingApi.startBatchProcess(batchRequestId, accessToken)
+    }
+
+    batchRequestIds
+  }
+
+  private def dataTakeId(featureId: String): String = {
+    val penultimatePart = featureId.split("_").reverse(1) // from source at https://apps.sentinel-hub.com/s1-card4l/
+    penultimatePart
+  }
+
+  private def includeEndDay(from_date: String, to_date: String): (ZonedDateTime, ZonedDateTime) = {
+    val from = ZonedDateTime.parse(from_date)
+    val to = {
+      // workaround for bug where upper bound is considered inclusive in OpenEO
+      val endOfDay = OffsetTime.of(LocalTime.MAX, UTC)
+      ZonedDateTime.parse(to_date).toLocalDate.atTime(endOfDay).toZonedDateTime
+    }
+
+    (from, to)
+  }
 }
