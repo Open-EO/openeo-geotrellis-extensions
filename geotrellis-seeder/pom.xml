@@ -39,6 +39,10 @@
                     <groupId>org.scala-lang</groupId>
                     <artifactId>scala-compiler</artifactId>
                 </exclusion>
+                <exclusion>
+                    <groupId>org.apache.httpcomponents</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
         <dependency>
@@ -108,7 +112,7 @@
                 </exclusion>
                 <exclusion>
                     <groupId>org.apache.httpcomponents</groupId>
-                    <artifactId>httpmime</artifactId>
+                    <artifactId>*</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
