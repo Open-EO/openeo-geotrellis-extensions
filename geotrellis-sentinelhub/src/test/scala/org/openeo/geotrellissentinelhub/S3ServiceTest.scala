@@ -27,7 +27,7 @@ class S3ServiceTest {
 
     s3Service.download_stac_metadata(
       bucket_name = "openeo-sentinelhub",
-      batch_job_id = "e89517fe-390d-4109-b3cc-4e4d514ebe2b",
+      request_group_id = "e89517fe-390d-4109-b3cc-4e4d514ebe2b",
       target_dir = tempDir.getAbsolutePath
     )
 
