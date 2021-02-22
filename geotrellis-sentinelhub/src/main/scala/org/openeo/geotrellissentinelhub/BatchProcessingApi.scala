@@ -180,6 +180,8 @@ class BatchProcessingApi {
   def createCard4LBatchProcess(datasetId: String, bounds: Geometry, dateTime: ZonedDateTime, bandNames: Seq[String],
                                dataTakeId: String, card4lId: String, bucketName: String, subFolder: String,
                                accessToken: String): CreateBatchProcessResponse = {
+    require(datasetId == "S1GRD", """only data set "S1GRD" is supported""")
+
     val (from, to) = (dateTime, dateTime plusSeconds 1)
 
     val (year, month, day) = (dateTime.getYear, dateTime.getMonthValue, dateTime.getDayOfMonth)

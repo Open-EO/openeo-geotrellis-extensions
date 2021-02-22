@@ -55,8 +55,9 @@ class CatalogApi {
 
   def searchCard4L(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
                    accessToken: String): Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
+    require(collectionId == "sentinel-1-grd", """only collection "sentinel-1-grd" is supported""")
+
     // TODO: reduce code duplication with dateTimes()
-    // TODO: from should be start of day, to should be end of day (23:59:59)
     val Extent(xmin, ymin, xmax, ymax) = boundingBox.reproject(LatLng)
     val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
     val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
