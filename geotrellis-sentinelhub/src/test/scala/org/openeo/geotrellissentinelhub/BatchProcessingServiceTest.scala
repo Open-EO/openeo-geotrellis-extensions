@@ -39,7 +39,7 @@ class BatchProcessingServiceTest {
   @Ignore
   @Test
   def startCard4LBatchProcesses(): Unit = {
-    val requestGroupId = UUID.randomUUID().toString // OpenEO batch job ID is probably a good candidate
+    val requestGroupId = UUID.randomUUID().toString
 
     val batchRequestIds = batchProcessingService.start_card4l_batch_processes(
       collection_id = "sentinel-1-grd",

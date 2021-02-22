@@ -23,13 +23,13 @@ class S3Service {
     s3Client.deleteObjects(deleteObjectsRequest)
   }
 
-  // FIXME: note the discrepancy: previously batch processes wrote to s3://<bucket_name>/<batch_request_id> while
-  //  the new ones write to s3://<bucket_name>/<batch_job_id> because they comprise multiple batch requests
-  def download_stac_metadata(bucket_name: String, batch_job_id: String, target_dir: String): Unit = {
+  // previously batch processes wrote to s3://<bucket_name>/<batch_request_id> while the new ones write to
+  // s3://<bucket_name>/<request_group_id> because they comprise multiple batch process requests
+  def download_stac_metadata(bucket_name: String, request_group_id: String, target_dir: String): Unit = {
     val s3Client = S3Client.builder()
       .build()
 
-    val stacMetadataKeys = listObjectIdentifiers(s3Client, bucket_name, batch_job_id)
+    val stacMetadataKeys = listObjectIdentifiers(s3Client, bucket_name, request_group_id)
       .asScala
       .map(_.key())
       .filter(_.endsWith("_metadata.json"))
