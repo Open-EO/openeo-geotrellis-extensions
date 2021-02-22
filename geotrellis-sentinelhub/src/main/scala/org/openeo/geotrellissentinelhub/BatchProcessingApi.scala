@@ -2,10 +2,10 @@ package org.openeo.geotrellissentinelhub
 
 import cats.syntax.either._
 import com.fasterxml.jackson.databind.ObjectMapper
-import geotrellis.vector.{Extent, ProjectedExtent}
 import io.circe.generic.auto._
 import io.circe.parser.decode
 import io.circe.syntax._
+import geotrellis.vector._
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpOptions, HttpRequest}
@@ -175,5 +175,128 @@ class BatchProcessingApi {
       .postData("")
       .asString
       .throwError
+  }
+
+  def createCard4LBatchProcess(datasetId: String, bounds: Geometry, dateTime: ZonedDateTime, bandNames: Seq[String],
+                               dataTakeId: String, card4lId: String, bucketName: String, subFolder: String,
+                               accessToken: String): CreateBatchProcessResponse = {
+    require(datasetId == "S1GRD", """only data set "S1GRD" is supported""")
+
+    // TODO: assert current fixed values:
+    //  orthorectify: true
+    //  elevation_model: empty or COPERNICUS_30
+    //  rtc: true
+    //  mask: false,
+    //  contributing_area: false,
+    //  local_incidence_angle: false,
+    //  ellipsoid_incidence_angle: false,
+    //  noise_removal: true
+
+    val (from, to) = (dateTime, dateTime plusSeconds 1)
+
+    val (year, month, day) = (dateTime.getYear, dateTime.getMonthValue, dateTime.getDayOfMonth)
+    val tilePath = f"s3://$bucketName/$subFolder/s1_rtc/<tileName>/$year/$month%02d/$day%02d/$dataTakeId/s1_rtc_${dataTakeId}_<tileName>_${year}_$month%02d_$day%02d_<outputId>.<format>"
+
+    val evalScript = {
+      val quotedBandNames = bandNames.map(bandName => s""""$bandName"""")
+      val bandValues = bandNames.map(bandName => s"samples.$bandName")
+
+      // TODO: specify nodataValue?
+      // TODO: incorporate sampleType?
+      s"""|//VERSION=3
+          |function setup() {
+          |  return {
+          |    input: [{bands:[${quotedBandNames mkString ", "}], metadata: ["bounds"]}],
+          |    output: [
+          |      {
+          |      id: "MULTIBAND",
+          |      bands: ${quotedBandNames.size},
+          |      sampleType: "FLOAT32",
+          |      nodataValue: NaN
+          |      }
+          |    ]
+          |  };
+          |}
+          |
+          |function evaluatePixel(samples) {
+          |  return {
+          |    MULTIBAND: [${bandValues mkString ", "}]
+          |  };
+          |}
+          |
+          |function updateOutputMetadata(scenes, inputMetadata, outputMetadata) {
+          |  outputMetadata.userData = {"tiles": scenes.tiles};
+          |}""".stripMargin
+    }
+
+    // FIXME: replace tiling grid
+    val requestBody =
+      s"""|{
+          |    "processRequest": {
+          |        "input": {
+          |            "bounds": {
+          |                "geometry": ${bounds.toGeoJson()}
+          |            },
+          |            "data": [
+          |                {
+          |                    "type":"$datasetId",
+          |                    "dataFilter": {
+          |                        "timeRange": {
+          |                            "from": "${ISO_INSTANT format from}",
+          |                            "to": "${ISO_INSTANT format to}"
+          |                        },
+          |                        "acquisitionMode":"IW",
+          |                        "polarization":"DV",
+          |                        "resolution":"HIGH"
+          |                    },
+          |                    "processing": {
+          |                        "backCoeff":"GAMMA0_TERRAIN",
+          |                        "orthorectify":true,
+          |                        "demInstance":"COPERNICUS_30",
+          |                        "downsampling":"BILINEAR",
+          |                        "upsampling":"BILINEAR"
+          |                    }
+          |                }
+          |            ]
+          |        },
+          |        "output": {
+          |            "responses": [
+          |                {
+          |                    "identifier": "MULTIBAND",
+          |                    "format": {
+          |                        "type": "image/tiff"
+          |                    }
+          |                },
+          |                {
+          |                    "identifier": "userdata",
+          |                    "format": {
+          |                        "type": "application/json"
+          |                    }
+          |                }
+          |            ]
+          |        },
+          |        "evalscript": ${evalScript.asJson}
+          |    },
+          |    "tilingGrid": {
+          |        "id": 3,
+          |        "resolution": 0.0002
+          |    },
+          |    "output": {
+          |        "defaultTilePath": "$tilePath",
+          |        "cogOutput": true
+          |    },
+          |    "description": "card4lId: $card4lId"
+          |}""".stripMargin
+
+    logger.debug(requestBody)
+
+    val response = http(s"$endpoint/process", accessToken)
+      .headers("Content-Type" -> "application/json")
+      .postData(requestBody)
+      .asString
+      .throwError
+
+    decode[CreateBatchProcessResponse](response.body)
+      .valueOr(throw _)
   }
 }
