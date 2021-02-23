@@ -9,7 +9,7 @@ import java.util.concurrent.ExecutionException;
 
 public abstract class ICorCorrectionDescriptor extends CorrectionDescriptor {
 
-    private Callable lutLoader = (Callable<Broadcast<LookupTable>>) () -> {
+    private volatile Callable lutLoader = (Callable<Broadcast<LookupTable>>) () -> {
 
         LookupTable lut = LookupTableIO.readLUT(ICorCorrectionDescriptor.this.getLookupTableURL());
         try {
