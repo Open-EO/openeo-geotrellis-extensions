@@ -32,7 +32,17 @@ class S3ServiceTest {
     )
 
     val outputFiles = tempDir.list()
-    assertEquals(outputFiles.toString, 3, outputFiles.size)
+    assertEquals(outputFiles mkString ", ", 3, outputFiles.size)
     assertTrue(outputFiles.forall(_.endsWith("_metadata.json")))
+  }
+
+  @Test(timeout = 60 * 1000)
+  def downloadStacMetadataBailsIfTakesTooLong(): Unit = {
+    s3Service.download_stac_metadata(
+      bucket_name = "openeo-sentinelhub",
+      request_group_id = "a6b90672-495a-4e6c-8729-fcbd8e6ff82f",
+      target_dir = "/does/not/matter",
+      max_delay_secs = 30
+    )
   }
 }
