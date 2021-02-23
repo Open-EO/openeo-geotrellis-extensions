@@ -153,14 +153,43 @@ class PyramidFactoryTest {
     // no additional key filtering is necessary here
     val pyramidFactory = PyramidFactory.from_s3(
       s3_uri = s"s3://openeo-sentinelhub/$batchProcessId/",
-      key_regex = raw".*\.tif",
-      date_regex = raw".*_(\d{4})(\d{2})(\d{2}).tif",
+      key_regex = raw".+\.tif",
+      date_regex = raw".+_(\d{4})_?(\d{2})_?(\d{2}).*\.tif",
       recursive = true,
       interpret_as_cell_type = "float32ud0"
     )
 
     val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
     val pyramid = pyramidFactory.datacube_seq(ProjectedPolygons(Array(boundingBox.extent.toPolygon()), srs),
+      from_date = null, to_date = null)
+
+    val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
+    assertEquals(0, maxZoom)
+
+    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
+  }
+
+
+  @Test
+  def sentinelHubCard4LBatchProcessApiGeoTiffFromS3ForMultipleDates(): Unit = {
+    assertNotNull("AWS_ACCESS_KEY_ID is not set", System.getenv("AWS_ACCESS_KEY_ID"))
+    assertNotNull("AWS_SECRET_ACCESS_KEY is not set", System.getenv("AWS_SECRET_ACCESS_KEY"))
+    System.setProperty("aws.region", "eu-central-1")
+
+    val boundingBox = ProjectedExtent(Extent(35.666439, -6.23476, 35.861576, -6.075694), CRS.fromEpsgCode(4326))
+
+    val requestGroupId = "a894cae5-7193-48ed-80ad-901769483a46"
+
+    val pyramidFactory = PyramidFactory.from_s3(
+      s3_uri = s"s3://openeo-sentinelhub/$requestGroupId/",
+      key_regex = raw".+\.tif",
+      date_regex = raw".+_(\d{4})_?(\d{2})_?(\d{2}).*\.tif",
+      recursive = true,
+      interpret_as_cell_type = "float32"
+    )
+
+    val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
+    val pyramid = pyramidFactory.datacube_seq(ProjectedPolygons.fromExtent(boundingBox.extent, srs),
       from_date = null, to_date = null)
 
     val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
