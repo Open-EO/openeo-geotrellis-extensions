@@ -1,5 +1,6 @@
 package org.openeo.geotrellissentinelhub
 
+import org.slf4j.LoggerFactory
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model._
 
@@ -10,11 +11,13 @@ import scala.collection.JavaConverters._
 import scala.compat.java8.FunctionConverters._
 
 class S3Service {
-  def delete_batch_process_results(bucket_name: String, batch_requestId: String): Unit = {
+  private val logger = LoggerFactory.getLogger(getClass)
+
+  def delete_batch_process_results(bucket_name: String, batch_request_id: String): Unit = {
     val s3Client = S3Client.builder()
       .build()
 
-    val objectIdentifiers = listObjectIdentifiers(s3Client, bucket_name, batch_requestId)
+    val objectIdentifiers = listObjectIdentifiers(s3Client, bucket_name, prefix = batch_request_id)
 
     val deleteObjectsRequest = DeleteObjectsRequest.builder()
       .bucket(bucket_name)
@@ -34,7 +37,7 @@ class S3Service {
       .build()
 
     while (System.currentTimeMillis() < endMillis) {
-      val keys = listObjectIdentifiers(s3Client, bucket_name, request_group_id)
+      val keys = listObjectIdentifiers(s3Client, bucket_name, prefix = request_group_id)
         .asScala
         .map(_.key())
 
@@ -64,6 +67,9 @@ class S3Service {
 
       TimeUnit.SECONDS.sleep(poll_interval_secs)
     }
+
+    logger.warn(
+      s"could not find STAC metadata to download from s3://$bucket_name/$request_group_id after ${max_delay_secs}s")
   }
 
   private def listObjectIdentifiers(s3Client: S3Client, bucketName: String,

@@ -2,7 +2,7 @@ package org.openeo.geotrellissentinelhub
 
 import org.junit.Assert.{assertEquals, assertNotNull, assertTrue}
 import org.junit.rules.TemporaryFolder
-import org.junit.{BeforeClass, Rule, Test}
+import org.junit.{BeforeClass, Ignore, Rule, Test}
 
 import scala.annotation.meta.getter
 
@@ -17,16 +17,17 @@ object S3ServiceTest {
 
 class S3ServiceTest {
   private val s3Service = new S3Service
+  private val bucketName = "openeo-sentinelhub"
 
   @(Rule @getter)
   val temporaryFolder = new TemporaryFolder
 
   @Test
-  def downloadStacMetadata(): Unit = {
+  def download_stac_metadata(): Unit = {
     val tempDir = temporaryFolder.getRoot
 
     s3Service.download_stac_metadata(
-      bucket_name = "openeo-sentinelhub",
+      bucketName,
       request_group_id = "e89517fe-390d-4109-b3cc-4e4d514ebe2b",
       target_dir = tempDir.getAbsolutePath
     )
@@ -37,12 +38,18 @@ class S3ServiceTest {
   }
 
   @Test(timeout = 60 * 1000)
-  def downloadStacMetadataBailsIfTakesTooLong(): Unit = {
+  def download_stac_metadataBailsIfTakesTooLong(): Unit = {
     s3Service.download_stac_metadata(
-      bucket_name = "openeo-sentinelhub",
+      bucketName,
       request_group_id = "a6b90672-495a-4e6c-8729-fcbd8e6ff82f",
       target_dir = "/does/not/matter",
       max_delay_secs = 30
     )
+  }
+
+  @Ignore
+  @Test
+  def delete_batch_process_results(): Unit = {
+    s3Service.delete_batch_process_results(bucketName, batch_request_id = "d4737bbc-77b2-4ecb-8a5c-e1919b7eb23c")
   }
 }

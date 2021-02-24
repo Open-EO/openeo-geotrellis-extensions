@@ -72,6 +72,7 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
   def start_card4l_batch_processes(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
                                    from_date: String, to_date: String, band_names: util.List[String], subfolder: String,
                                    request_group_id: String): util.List[String] = {
+    // TODO: add error handling
     val boundingBox = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
     val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(LatLng), LatLng)
 
