@@ -1,10 +1,11 @@
 package org.openeo.geotrellis.layers
 
+import java.time.ZonedDateTime
+
 import cats.data.NonEmptyList
 import geotrellis.raster.RasterSource
-import geotrellis.raster.geotiff.GeoTiffRasterSource
+import geotrellis.raster.gdal.GDALRasterSource
 
-import java.time.ZonedDateTime
 import scala.util.matching.Regex
 
 class AgEra5FileLayerProvider(dewPointTemperatureGlob: String, bandFileMarkers: Seq[String],
@@ -19,7 +20,7 @@ class AgEra5FileLayerProvider(dewPointTemperatureGlob: String, bandFileMarkers: 
       .toArray
       .sortWith { case ((d1, _), (d2, _)) => d1 isBefore d2 }
       .map { case (date, path) =>
-        val bandRasterSources: Seq[RasterSource] = getBandFiles(path).map(GeoTiffRasterSource(_))
+        val bandRasterSources: Seq[RasterSource] = getBandFiles(path).map(GDALRasterSource(_))
         date -> new BandCompositeRasterSource(NonEmptyList.of(bandRasterSources.head, bandRasterSources.tail: _*), crs)
       }
   }
