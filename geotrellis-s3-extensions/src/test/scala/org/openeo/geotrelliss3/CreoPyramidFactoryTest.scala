@@ -64,7 +64,8 @@ class CreoPyramidFactoryTest {
       Seq(OpenSearchResponses.Feature(id="bla",bbox.extent,start, Array(
         Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/IMG_DATA/R10m/T37SBT_20190101T082331_B02_10m.jp2"), Some("IMG_DATA_Band_B02_10m_Tile1_Data")),
         Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/IMG_DATA/R10m/T37SBT_20190101T082331_B03_10m.jp2"), Some("IMG_DATA_Band_B03_10m_Tile1_Data")),
-        Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/IMG_DATA/R10m/T37SBT_20190101T082331_B04_10m.jp2"), Some("IMG_DATA_Band_B04_10m_Tile1_Data"))
+        Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/IMG_DATA/R10m/T37SBT_20190101T082331_B04_10m.jp2"), Some("IMG_DATA_Band_B04_10m_Tile1_Data")),
+        Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/MTD_TL.xml"), Some("S2_Level-2A_Tile1_Metadata"))
       ),Some(10)))
     }
 
@@ -160,7 +161,7 @@ class CreoPyramidFactoryTest {
   @Test
   def testCreoPyramidDatacube(): Unit = {
 
-    val pyramidFactory = new Sentinel2PyramidFactory(openSearchEndpoint="https://finder.creodias.eu/resto/api/collections/" ,openSearchCollectionId = "Sentinel2",openSearchLinkTitles = util.Collections.singletonList("IMG_DATA_Band_B02_10m_Tile1_Data"),rootPath = "/eodata",
+    val pyramidFactory = new Sentinel2PyramidFactory(openSearchEndpoint="https://finder.creodias.eu/resto/api/collections/" ,openSearchCollectionId = "Sentinel2",openSearchLinkTitles = util.Arrays.asList("IMG_DATA_Band_B02_10m_Tile1_Data","S2_Level-2A_Tile1_Metadata"),rootPath = "/eodata",
       maxSpatialResolution = CellSize(10,10)){
       override def createOpenSearch: OpenSearch = new MockOpenSearch
     }

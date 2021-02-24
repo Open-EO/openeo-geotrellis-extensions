@@ -25,6 +25,7 @@ import org.openeo.geotrellis.layers.OpenSearchResponses.Feature
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.slf4j.LoggerFactory
 
+import scala.collection.immutable
 import scala.util.matching.Regex
 
 class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], override val crs: CRS, var theAttributes:Map[String,String]=Map.empty)
@@ -356,28 +357,30 @@ class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, 
     val re = RasterExtent(expandToCellSize(targetExtent.extent, maxSpatialResolution), maxSpatialResolution).alignTargetPixels
     val alignment = TargetAlignment(re)
 
-    def rasterSource(path:String,targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent ) = {
+    def rasterSource(path:String,targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent ): Seq[RasterSource] = {
       if(path.endsWith(".jp2")) {
-        GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType)
+        Seq(GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
       }else if(path.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
-        new SentinelXMLMetadataRasterSource(new URL(path.replace("/vsicurl/","")))
+        SentinelXMLMetadataRasterSource(new URL(path.replace("/vsicurl/","")))
       }
       else {
         if(experimental) {
-          GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType)
+          Seq(GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
         }else{
-          GeoTiffResampleRasterSource(path, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None)
+          Seq(GeoTiffResampleRasterSource(path, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None))
         }
       }
     }
 
-    for {
+    val rasterSources: immutable.Seq[(Seq[RasterSource], Seq[Int])] = for {
       (title, bands) <- openSearchLinkTitlesWithBandIds.toList
       link <- feature.links.find(_.title contains title)
       path = deriveFilePath(link.href)
       targetCellType = if (link.title contains "SCENECLASSIFICATION_20M") Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0))) else None
     } yield (rasterSource(path,targetCellType, targetExtent), bands)
+
+    rasterSources.flatMap(rs_b => rs_b._1.map(rs => (rs,rs_b._2))).toList
   }
 
   def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int): Seq[RasterSource] = {
