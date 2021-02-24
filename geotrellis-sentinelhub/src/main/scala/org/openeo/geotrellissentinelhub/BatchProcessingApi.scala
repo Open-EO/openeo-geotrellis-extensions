@@ -201,8 +201,6 @@ class BatchProcessingApi {
       val quotedBandNames = bandNames.map(bandName => s""""$bandName"""")
       val bandValues = bandNames.map(bandName => s"samples.$bandName")
 
-      // TODO: specify nodataValue?
-      // TODO: incorporate sampleType?
       s"""|//VERSION=3
           |function setup() {
           |  return {
@@ -211,8 +209,7 @@ class BatchProcessingApi {
           |      {
           |      id: "MULTIBAND",
           |      bands: ${quotedBandNames.size},
-          |      sampleType: "FLOAT32",
-          |      nodataValue: NaN
+          |      sampleType: "FLOAT32"
           |      }
           |    ]
           |  };
@@ -229,7 +226,6 @@ class BatchProcessingApi {
           |}""".stripMargin
     }
 
-    // FIXME: replace tiling grid
     val requestBody =
       s"""|{
           |    "processRequest": {

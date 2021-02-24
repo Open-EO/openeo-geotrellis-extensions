@@ -16,10 +16,10 @@ import java.util.concurrent.ExecutionException;
 // Applies MODTRAN atmospheric correction based on preset values in a lookup table.
 public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
 
-	private Callable lutLoader = (Callable<Broadcast<LookupTable>>) () -> JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()).broadcast(LookupTableIO.readLUT(Sentinel2Descriptor.this.getLookupTableURL()));
 	private Broadcast<LookupTable> bcLUT;
 	{
 		try {
+			Callable lutLoader = (Callable<Broadcast<LookupTable>>) () -> JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()).broadcast(LookupTableIO.readLUT(Sentinel2Descriptor.this.getLookupTableURL()));
 			bcLUT = AtmosphericCorrection.iCorLookupTableCache().get(this.getLookupTableURL(), lutLoader);
 		} catch (ExecutionException e) {
 			throw new RuntimeException(e);
