@@ -129,6 +129,6 @@ class AgEra5PyramidFactoryTest {
     }
 
     assertEquals(275.93, physicalMean(bbox1.extent.toPolygon(), from, bandIndex = 0), 0.03)
-    assertEquals(0.16, physicalMean(bbox2.extent.toPolygon(), to, bandIndex = 1), 0.03)
+    assertEquals(0.19, physicalMean(bbox2.extent.toPolygon(), to, bandIndex = 1), 0.03)
   }
 }
