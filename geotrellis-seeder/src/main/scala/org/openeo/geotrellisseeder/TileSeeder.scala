@@ -115,7 +115,10 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       val map = colormap.ColorMapParser.parse(colorMap.get)
       getSinglebandRDD(sourcePathsWithBandId.head, date, spatialKey)
         .repartition(getPartitions)
-        .foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel))
+        .foreachPartition { items =>
+          S3ClientConfigurator.configure()
+          items.foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel))
+        }
     } else if (bands.isDefined) {
       getMultibandRDD(sourcePathsWithBandId, date, bands.get.map(_.name), spatialKey)
         .fullOuterJoin(getTooCloudyRdd(date, maskValues, tooCloudyFile))
@@ -422,29 +425,35 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
   private def rasterRegionRDDFromSources(sourcesWithBandId: (Seq[RasterSource], Int), spatialKey: Option[SpatialKey])
                                         (implicit sc: SparkContext, layout: LayoutDefinition): RDD[(SpatialKey, (Iterable[RasterRegion], Int))] = {
 
-    val rdd = sc.parallelize(sourcesWithBandId._1).flatMap { source =>
-      try {
-        val tileSource = source.tileToLayout(layout)
-        val keys = spatialKey match {
-          case Some(k) => tileSource.keys.filter(_ == k)
-          case None => tileSource.keys
-        }
-        keys.flatMap { key =>
-          try {
-            val region = tileSource.rasterRegionForKey(key).get
+    sc.parallelize(sourcesWithBandId._1)
+      .mapPartitions { sources =>
+        S3ClientConfigurator.configure()
 
-            Some(key, region)
+        sources.flatMap { source =>
+          try {
+            val tileSource = source.tileToLayout(layout)
+            val keys = spatialKey match {
+              case Some(k) => tileSource.keys.filter(_ == k)
+              case None => tileSource.keys
+            }
+            keys.flatMap { key =>
+              try {
+                val region = tileSource.rasterRegionForKey(key).get
+
+                Some(key, region)
+              } catch {
+                case _: IllegalArgumentException => None
+              }
+            }
           } catch {
-            case _: IllegalArgumentException => None
+            case _: SAXParseException =>
+              logger.logParseException(source.toString)
+              None
           }
         }
-      } catch {
-        case _: SAXParseException =>
-          logger.logParseException(source.toString)
-          None
       }
-    }
-    rdd.groupByKey().mapValues((_, sourcesWithBandId._2))
+      .groupByKey()
+      .mapValues((_, sourcesWithBandId._2))
   }
 
   private def regionsToTile(regions: Iterable[RasterRegion], band: Int): Tile = {
