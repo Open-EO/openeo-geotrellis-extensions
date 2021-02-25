@@ -21,6 +21,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
+import org.openeo.geotrellis.file.DataCubeParameters
 import org.openeo.geotrellis.layers.OpenSearchResponses.Feature
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.slf4j.LoggerFactory
@@ -315,24 +316,25 @@ class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, 
       else new MultibandCompositeRasterSource(sources, crs, attributes)
   }
 
-  def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
+  def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): MultibandTileLayerRDD[SpaceTimeKey] = {
     val overlappingRasterSources: Seq[RasterSource] = loadRasterSourceRDD(boundingBox, from, to, zoom)
     val commonCellType = overlappingRasterSources.head.cellType
     val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType, layoutScheme, maxSpatialResolution)
 
     val rasterSources = rasterSourceRDD(overlappingRasterSources, metadata, maxSpatialResolution, openSearchCollectionId)(sc)
-    if(experimental) {
+    val maskStrategy =
+    if(datacubeParams.isDefined) {
       val maybeIndex = openSearchLinkTitles.zipWithIndex.find(p => p._1.contains("SCENECLASSIFICATION") || p._1.contains("SCL"))
-
-      FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc,maybeIndex.map( i => new SCLConvolutionFilterStrategy(i._2)))
+      maybeIndex.map(i => new SCLConvolutionFilterStrategy(i._2))
     }else{
-      FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc)
+      Option.empty[CloudFilterStrategy]
     }
+    FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc,maskStrategy)
   }
 
   override def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, zoom: Int = maxZoom, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
 
-    this.readMultibandTileLayer(from,to,boundingBox,Array(MultiPolygon(boundingBox.extent.toPolygon())),boundingBox.crs,zoom,sc)
+    this.readMultibandTileLayer(from,to,boundingBox,Array(MultiPolygon(boundingBox.extent.toPolygon())),boundingBox.crs,zoom,sc,datacubeParams = Option.empty)
   }
 
 

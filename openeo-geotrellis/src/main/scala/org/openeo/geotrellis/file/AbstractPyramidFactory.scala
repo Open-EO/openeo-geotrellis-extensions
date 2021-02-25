@@ -62,6 +62,7 @@ object AbstractPyramidFactory {
 }
 class DataCubeParameters() {
   var tileSize:Int = 256
+  var maskingStrategyParameters: java.util.Map[String,Object] = null
 }
 
 abstract class AbstractPyramidFactory[B] extends Serializable {
