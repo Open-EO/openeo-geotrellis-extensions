@@ -4,7 +4,7 @@ import java.time.ZonedDateTime
 
 import cats.data.NonEmptyList
 import geotrellis.raster.RasterSource
-import geotrellis.raster.gdal.GDALRasterSource
+import geotrellis.raster.geotiff.GeoTiffRasterSource
 
 import scala.util.matching.Regex
 
@@ -20,7 +20,7 @@ class AgEra5FileLayerProvider(dewPointTemperatureGlob: String, bandFileMarkers: 
       .toArray
       .sortWith { case ((d1, _), (d2, _)) => d1 isBefore d2 }
       .map { case (date, path) =>
-        val bandRasterSources: Seq[RasterSource] = getBandFiles(path).map(GDALRasterSource(_))
+        val bandRasterSources: Seq[RasterSource] = getBandFiles(path).map(GeoTiffRasterSource(_))
         date -> new BandCompositeRasterSource(NonEmptyList.of(bandRasterSources.head, bandRasterSources.tail: _*), crs)
       }
   }
