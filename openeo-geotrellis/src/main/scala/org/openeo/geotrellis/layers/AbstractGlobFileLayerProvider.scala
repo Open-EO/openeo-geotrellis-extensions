@@ -1,24 +1,23 @@
 package org.openeo.geotrellis.layers
 
+import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util.concurrent.TimeUnit.HOURS
+
 import com.google.common.cache.{CacheBuilder, CacheLoader}
-import geotrellis.layer.{Boundable, KeyBounds, KeyExtractor, LayoutDefinition, SpaceTimeKey, SpatialComponent, SpatialKey, TemporalKeyExtractor, TileLayerMetadata, ZoomedLayoutScheme}
+import geotrellis.layer.{Boundable, KeyBounds, KeyExtractor, LayoutDefinition, SpaceTimeKey, SpatialKey, TemporalKeyExtractor, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.layer._
 import geotrellis.raster.{MultibandTile, RasterRegion, RasterSource, SourceName, SourcePath}
 import geotrellis.spark._
-import geotrellis.spark.partition.SpatialPartitioner
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.store.hadoop.util.HdfsUtils
 import geotrellis.util._
 import geotrellis.vector._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
-import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.rdd.RDD
+import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.ProjectedPolygons
 
-import java.time.{LocalDate, ZoneId, ZonedDateTime}
-import java.util.concurrent.TimeUnit.HOURS
-import scala.reflect.ClassTag
 import scala.util.matching.Regex
 
 object AbstractGlobFileLayerProvider {
@@ -82,7 +81,9 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
       sources,
       layout,
       keyExtractor,
-      reprojectedPolygons
+      reprojectedPolygons,
+      from,
+      to
     )
   }
 
@@ -95,28 +96,42 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
 
   protected def paths: List[Path] = pathsCache.get(dataGlob)
 
-  private def tiledLayerRDD[K: SpatialComponent: Boundable: ClassTag, M: Boundable](
+  private def tiledLayerRDD[ M: Boundable](
                                                                                      sources: RDD[RasterSource],
                                                                                      layout: LayoutDefinition,
-                                                                                     keyExtractor: KeyExtractor.Aux[K, M],
+                                                                                     keyExtractor: KeyExtractor.Aux[SpaceTimeKey, M],
                                                                                      polygons: Seq[MultiPolygon],
+                                                                                     from:ZonedDateTime,
+                                                                                     to:ZonedDateTime,
                                                                                      rasterSummary: Option[RasterSummary[M]] = None,
                                                                                      partitioner: Option[Partitioner] = None
-                                                                                   )(implicit sc: SparkContext): MultibandTileLayerRDD[K] = {
-    val summary = rasterSummary.getOrElse(RasterSummary.fromRDD(sources, keyExtractor.getMetadata))
-    val layerMetadata = summary.toTileLayerMetadata(layout, keyExtractor.getKey)
+                                                                                   )(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
+
+    val polygonsExtent = polygons.extent // TODO: can be done on Spark too
+
+    val gridBounds = layout.mapTransform.extentToBounds(polygonsExtent)
+    val cellType = sources.take(1).head.cellType
+    val layerMetadata = TileLayerMetadata(
+      cellType,
+      layout,
+      polygonsExtent,
+      crs,
+      KeyBounds(SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from), SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to))
+    )
+
+
 
     val tiledLayoutSourceRDD =
       sources.map { rs =>
         val m = keyExtractor.getMetadata(rs)
-        val tileKeyTransform: SpatialKey => K = { sk => keyExtractor.getKey(m, sk) }
+        val tileKeyTransform: SpatialKey => SpaceTimeKey = { sk => keyExtractor.getKey(m, sk) }
         rs.tileToLayout(layout, tileKeyTransform)
       }
 
-    val polygonsExtent = polygons.extent // TODO: can be done on Spark too
+
     val requiredKeys = sc.parallelize(polygons).clipToGrid(layout).groupByKey()
 
-    val rasterRegionRDD: RDD[(K, RasterRegion)] =
+    val rasterRegionRDD: RDD[(SpaceTimeKey, RasterRegion)] =
       tiledLayoutSourceRDD.flatMap { tiledLayoutSource =>
         tiledLayoutSource
           .keyedRasterRegions()
@@ -126,22 +141,17 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
           }
       }
 
-    val spatiallyKeyedRasterRegionRDD: RDD[(SpatialKey, (K, RasterRegion))] = rasterRegionRDD
-      .map { case keyedRasterRegion @ (key, _) => (key.getComponent[SpatialKey], keyedRasterRegion) }
+    val spatiallyKeyedRasterRegionRDD: RDD[(SpatialKey, (SpaceTimeKey, RasterRegion))] = rasterRegionRDD
+      .map { case keyedRasterRegion @ (key, _) => (key.getComponent[SpatialKey], keyedRasterRegion ) }
 
     val filteredRdd = spatiallyKeyedRasterRegionRDD.join(requiredKeys)
       .mapValues { case (keyedRasterRegion, _) => keyedRasterRegion }
       .values
 
-    // The number of partitions estimated by RasterSummary can sometimes be much
-    // lower than what the user set. Therefore, we assume that the larger value
-    // is the optimal number of partitions to use.
-    val partitionCount =
-    math.max(filteredRdd.getNumPartitions, summary.estimatePartitionsNumber)
 
-    val tiledRDD: RDD[(K, MultibandTile)] =
+    val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] =
       filteredRdd
-        .groupByKey(partitioner.getOrElse(SpatialPartitioner[K](partitionCount)))
+        .groupByKey(partitioner.getOrElse(SpacePartitioner(layerMetadata.bounds)))
         .mapValues { iter =>
           MultibandTile( // TODO: use our version? (see org.openeo.geotrellis.geotiff.PyramidFactory.tiledLayerRDD)
             iter.flatMap { _.raster.toSeq.flatMap { _.tile.bands } }
