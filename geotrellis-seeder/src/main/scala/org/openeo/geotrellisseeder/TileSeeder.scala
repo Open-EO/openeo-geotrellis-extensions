@@ -19,6 +19,7 @@ import geotrellis.store.s3.{AmazonS3URI, S3ClientProducer}
 import geotrellis.vector._
 import geotrellis.vector.io.wkt.WKT
 import org.apache.hadoop.fs.Path
+import org.apache.log4j.{Level, Logger}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.openeo.geotrellisseeder.TileSeeder.CLOUD_MILKINESS
@@ -58,6 +59,8 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     var sourcePathsWithBandId: Seq[(Seq[String], Int)] = Seq()
 
     if (oscarsEndpoint.isDefined && oscarsCollection.isDefined) {
+      Logger.getRootLogger.setLevel(Level.DEBUG)
+
       val attributeValues = Map("productType" -> productType)
       val products = new Oscars(new URL(oscarsEndpoint.get)).getProducts(oscarsCollection.get, date, date, ProjectedExtent(LatLng.worldExtent, LatLng), attributeValues = attributeValues)
 
