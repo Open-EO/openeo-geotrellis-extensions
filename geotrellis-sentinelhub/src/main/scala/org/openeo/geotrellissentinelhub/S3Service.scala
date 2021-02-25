@@ -13,11 +13,11 @@ import scala.compat.java8.FunctionConverters._
 class S3Service {
   private val logger = LoggerFactory.getLogger(getClass)
 
-  def delete_batch_process_results(bucket_name: String, batch_request_id: String): Unit = {
+  def delete_batch_process_results(bucket_name: String, subfolder: String): Unit = {
     val s3Client = S3Client.builder()
       .build()
 
-    val objectIdentifiers = listObjectIdentifiers(s3Client, bucket_name, prefix = batch_request_id)
+    val objectIdentifiers = listObjectIdentifiers(s3Client, bucket_name, prefix = subfolder)
 
     if (!objectIdentifiers.isEmpty) {
       val deleteObjectsRequest = DeleteObjectsRequest.builder()

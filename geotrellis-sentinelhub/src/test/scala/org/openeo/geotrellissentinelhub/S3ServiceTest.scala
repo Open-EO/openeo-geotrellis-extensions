@@ -50,11 +50,11 @@ class S3ServiceTest {
   @Ignore
   @Test
   def delete_batch_process_results(): Unit = {
-    s3Service.delete_batch_process_results(bucketName, batch_request_id = "d4737bbc-77b2-4ecb-8a5c-e1919b7eb23c")
+    s3Service.delete_batch_process_results(bucketName, subfolder = "d4737bbc-77b2-4ecb-8a5c-e1919b7eb23c")
   }
 
   @Test
-  def delete_batch_process_resultsSucceedsForUnknownBatchRequestId(): Unit = {
-    s3Service.delete_batch_process_results(bucketName, batch_request_id = "retteketet")
+  def delete_batch_process_resultsSucceedsForUnknownSubfolder(): Unit = {
+    s3Service.delete_batch_process_results(bucketName, subfolder = "retteketet")
   }
 }
