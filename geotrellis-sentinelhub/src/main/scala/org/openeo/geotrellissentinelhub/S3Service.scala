@@ -13,18 +13,20 @@ import scala.compat.java8.FunctionConverters._
 class S3Service {
   private val logger = LoggerFactory.getLogger(getClass)
 
-  def delete_batch_process_results(bucket_name: String, batch_request_id: String): Unit = {
+  def delete_batch_process_results(bucket_name: String, subfolder: String): Unit = {
     val s3Client = S3Client.builder()
       .build()
 
-    val objectIdentifiers = listObjectIdentifiers(s3Client, bucket_name, prefix = batch_request_id)
+    val objectIdentifiers = listObjectIdentifiers(s3Client, bucket_name, prefix = subfolder)
 
-    val deleteObjectsRequest = DeleteObjectsRequest.builder()
-      .bucket(bucket_name)
-      .delete(Delete.builder().objects(objectIdentifiers).build())
-      .build()
+    if (!objectIdentifiers.isEmpty) {
+      val deleteObjectsRequest = DeleteObjectsRequest.builder()
+        .bucket(bucket_name)
+        .delete(Delete.builder().objects(objectIdentifiers).build())
+        .build()
 
-    s3Client.deleteObjects(deleteObjectsRequest)
+      s3Client.deleteObjects(deleteObjectsRequest)
+    }
   }
 
   // previously batch processes wrote to s3://<bucket_name>/<batch_request_id> while the new ones write to
