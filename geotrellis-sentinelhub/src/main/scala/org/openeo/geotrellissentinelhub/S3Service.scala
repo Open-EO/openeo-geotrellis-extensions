@@ -19,12 +19,14 @@ class S3Service {
 
     val objectIdentifiers = listObjectIdentifiers(s3Client, bucket_name, prefix = batch_request_id)
 
-    val deleteObjectsRequest = DeleteObjectsRequest.builder()
-      .bucket(bucket_name)
-      .delete(Delete.builder().objects(objectIdentifiers).build())
-      .build()
+    if (!objectIdentifiers.isEmpty) {
+      val deleteObjectsRequest = DeleteObjectsRequest.builder()
+        .bucket(bucket_name)
+        .delete(Delete.builder().objects(objectIdentifiers).build())
+        .build()
 
-    s3Client.deleteObjects(deleteObjectsRequest)
+      s3Client.deleteObjects(deleteObjectsRequest)
+    }
   }
 
   // previously batch processes wrote to s3://<bucket_name>/<batch_request_id> while the new ones write to
