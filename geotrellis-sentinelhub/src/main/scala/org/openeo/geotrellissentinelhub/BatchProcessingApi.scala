@@ -182,16 +182,6 @@ class BatchProcessingApi {
                                accessToken: String): CreateBatchProcessResponse = {
     require(datasetId == "S1GRD", """only data set "S1GRD" is supported""")
 
-    // TODO: assert current fixed values:
-    //  orthorectify: true
-    //  elevation_model: empty or COPERNICUS_30
-    //  rtc: true
-    //  mask: false,
-    //  contributing_area: false,
-    //  local_incidence_angle: false,
-    //  ellipsoid_incidence_angle: false,
-    //  noise_removal: true
-
     val (from, to) = (dateTime, dateTime plusSeconds 1)
 
     val (year, month, day) = (dateTime.getYear, dateTime.getMonthValue, dateTime.getDayOfMonth)
