@@ -172,7 +172,7 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
     val (minDate, _) = datedRasterSources.head
     val (maxDate, newestRasterSource) = datedRasterSources.last
 
-    FileLayerProvider.layerMetadata(ProjectedExtent(newestRasterSource.extent,newestRasterSource.crs),minDate,maxDate,zoom,newestRasterSource.cellType,layoutScheme,newestRasterSource.cellSize)
+    FileLayerProvider.layerMetadata(ProjectedExtent(newestRasterSource.extent,newestRasterSource.crs),minDate,maxDate,zoom min maxZoom,newestRasterSource.cellType,layoutScheme,newestRasterSource.cellSize)
 
   }
 
