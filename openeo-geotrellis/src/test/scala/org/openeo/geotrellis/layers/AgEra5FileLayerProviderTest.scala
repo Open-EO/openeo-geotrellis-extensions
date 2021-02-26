@@ -28,7 +28,7 @@ class AgEra5FileLayerProviderTest {
     val from = LocalDate.of(2020, 4, 24).atStartOfDay(ZoneId.of("UTC"))
     val to = from
 
-    val layer = fileLayerProvider.readMultibandTileLayer(from, to, projectedPolygons, fileLayerProvider.maxZoom, sc)
+    val layer = fileLayerProvider.readMultibandTileLayer(from, to, projectedPolygons, fileLayerProvider.maxZoom, sc,None)
 
     val spatialLayer = layer
       .toSpatial(from)

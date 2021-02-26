@@ -4,7 +4,7 @@ import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.concurrent.TimeUnit.HOURS
 
 import com.google.common.cache.{CacheBuilder, CacheLoader}
-import geotrellis.layer.{Boundable, KeyBounds, KeyExtractor, LayoutDefinition, SpaceTimeKey, SpatialKey, TemporalKeyExtractor, TileLayerMetadata, ZoomedLayoutScheme, _}
+import geotrellis.layer.{Boundable, KeyExtractor, SpaceTimeKey, SpatialKey, TemporalKeyExtractor, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{MultibandTile, RasterRegion, RasterSource, SourceName, SourcePath}
 import geotrellis.spark._
@@ -17,6 +17,7 @@ import org.apache.hadoop.fs.Path
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrellis.file.DataCubeParameters
 
 import scala.util.matching.Regex
 
@@ -55,11 +56,11 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
   override def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent = null,
                                       zoom: Int = Int.MaxValue, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     val projectedPolygons = ProjectedPolygons(Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs)
-    readMultibandTileLayer(from, to, projectedPolygons, zoom, sc)
+    readMultibandTileLayer(from, to, projectedPolygons, zoom, sc,Option.empty[DataCubeParameters])
   }
 
   def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, projectedPolygons: ProjectedPolygons, zoom: Int,
-                             sc: SparkContext)
+                             sc: SparkContext, datacubeParams : Option[DataCubeParameters])
   : MultibandTileLayerRDD[SpaceTimeKey] = {
     val rasterSources = query(from, to)
 
@@ -72,18 +73,18 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
       sourceName => AbstractGlobFileLayerProvider.deriveDate(sourceName.asInstanceOf[SourcePath].value, dateRegex)
     val keyExtractor = TemporalKeyExtractor.fromPath(parseTime)
 
-    val layout = layoutScheme.levelForZoom(zoom min maxZoom).layout
     val reprojectedPolygons = projectedPolygons.polygons.map(_.reproject(projectedPolygons.crs, crs))
 
     implicit val _sc: SparkContext = sc // TODO: clean up
 
     tiledLayerRDD(
       sources,
-      layout,
       keyExtractor,
       reprojectedPolygons,
       from,
-      to
+      to,
+      zoom,
+      datacubeParams
     )
   }
 
@@ -97,46 +98,46 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
   protected def paths: List[Path] = pathsCache.get(dataGlob)
 
   private def tiledLayerRDD[ M: Boundable](
-                                                                                     sources: RDD[RasterSource],
-                                                                                     layout: LayoutDefinition,
-                                                                                     keyExtractor: KeyExtractor.Aux[SpaceTimeKey, M],
-                                                                                     polygons: Seq[MultiPolygon],
-                                                                                     from:ZonedDateTime,
-                                                                                     to:ZonedDateTime,
-                                                                                     rasterSummary: Option[RasterSummary[M]] = None,
-                                                                                     partitioner: Option[Partitioner] = None
-                                                                                   )(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
+                                           sources: RDD[RasterSource],
+                                           keyExtractor: KeyExtractor.Aux[SpaceTimeKey, M],
+                                           polygons: Seq[MultiPolygon],
+                                           from:ZonedDateTime,
+                                           to:ZonedDateTime,
+                                           zoom: Int,
+                                           datacubeParams : Option[DataCubeParameters],
+                                           partitioner: Option[Partitioner] = None
+                                         )(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
 
     val polygonsExtent = polygons.extent // TODO: can be done on Spark too
 
-    val gridBounds = layout.mapTransform.extentToBounds(polygonsExtent)
-    val cellType = sources.take(1).head.cellType
-    val layerMetadata = TileLayerMetadata(
-      cellType,
-      layout,
-      polygonsExtent,
-      crs,
-      KeyBounds(SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from), SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to))
-    )
+    val aSource = sources.take(1).head
+    val cellType = aSource.cellType
+    val resolution = aSource.cellSize
+    val theLayoutScheme =
+      if(datacubeParams.isDefined) {
+        if(datacubeParams.get.layoutScheme == "FloatingLayoutScheme") FloatingLayoutScheme(datacubeParams.get.tileSize) else layoutScheme
+      } else{
+        layoutScheme
+      }
 
-
+    val layerMetadata = FileLayerProvider.layerMetadata(ProjectedExtent(polygonsExtent,crs),from,to,zoom min maxZoom,cellType,theLayoutScheme,resolution)
 
     val tiledLayoutSourceRDD =
       sources.map { rs =>
         val m = keyExtractor.getMetadata(rs)
         val tileKeyTransform: SpatialKey => SpaceTimeKey = { sk => keyExtractor.getKey(m, sk) }
-        rs.tileToLayout(layout, tileKeyTransform)
+        rs.tileToLayout(layerMetadata, tileKeyTransform)
       }
 
 
-    val requiredKeys = sc.parallelize(polygons).clipToGrid(layout).groupByKey()
+    val requiredKeys = sc.parallelize(polygons).clipToGrid(layerMetadata).groupByKey()
 
     val rasterRegionRDD: RDD[(SpaceTimeKey, RasterRegion)] =
       tiledLayoutSourceRDD.flatMap { tiledLayoutSource =>
         tiledLayoutSource
           .keyedRasterRegions()
           .filter { case (key, _) =>
-            val keyExtent = key.getComponent[SpatialKey].extent(layout)
+            val keyExtent = key.getComponent[SpatialKey].extent(layerMetadata)
             keyExtent intersects polygonsExtent
           }
       }
@@ -171,18 +172,8 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
     val (minDate, _) = datedRasterSources.head
     val (maxDate, newestRasterSource) = datedRasterSources.last
 
-    val layout = layoutScheme.levelForZoom(zoom min maxZoom).layout
+    FileLayerProvider.layerMetadata(ProjectedExtent(newestRasterSource.extent,newestRasterSource.crs),minDate,maxDate,zoom,newestRasterSource.cellType,layoutScheme,newestRasterSource.cellSize)
 
-    TileLayerMetadata(
-      cellType = newestRasterSource.cellType, // intentional: 2014 has empty NetCDFs
-      layout,
-      extent = newestRasterSource.extent,
-      crs = newestRasterSource.crs,
-      bounds = KeyBounds(
-        SpaceTimeKey(0, 0, minDate),
-        SpaceTimeKey(layout.layoutCols - 1, layout.layoutRows - 1, maxDate)
-      )
-    )
   }
 
   override def collectMetadata(sc: SparkContext): (ProjectedExtent, Array[ZonedDateTime]) = loadMetadata(sc).get
