@@ -31,7 +31,7 @@ class SCLConvolutionFilterStrategy(val sclBandIndex:Int=0) extends CloudFilterSt
     val gbRegion = rasterRegion.asInstanceOf[GridBoundsRasterRegion]
     val cloudSource = gbRegion.source.asInstanceOf[BandCompositeRasterSource].sources.toList(sclBandIndex)
 
-    val cloudRaster = new GridBoundsRasterRegion(cloudSource,gbRegion.bounds.buffer(100)).raster
+    val cloudRaster = new GridBoundsRasterRegion(cloudSource,gbRegion.bounds.buffer(100,100,clamp=false)).raster
 
     if(cloudRaster.isDefined) {
       val maskTile = cloudRaster.get.tile.band(0)
