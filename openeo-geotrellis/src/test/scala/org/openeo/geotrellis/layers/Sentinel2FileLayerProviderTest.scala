@@ -26,7 +26,7 @@ import org.openeo.geotrellis.file.DataCubeParameters
 
 object Sentinel2FileLayerProviderTest {
   private var sc: SparkContext = _
-  private val openSearchEndpoint = OpenSearch(new URL("http://oscars-01.vgt.vito.be:8080"))
+  private val openSearchEndpoint = OpenSearch(new URL("https://services.terrascope.be/catalogue"))
   private val maxSpatialResolution = CellSize(10, 10)
   private val pathDateExtractor = SplitYearMonthDayPathDateExtractor
 
@@ -189,7 +189,7 @@ class Sentinel2FileLayerProviderTest {
     println(SizeEstimator.estimate(localData))
     println((System.currentTimeMillis()-time)/1000)
     println(localData.map(_._1.time).mkString(";"))
-    assertEquals(14,localData.length)
+    assertEquals(18,localData.length)
     assertEquals(4,localData(0)._2.bandCount)
     assertFalse(localData(0)._2.band(0).isNoDataTile)
     assertEquals(ShortUserDefinedNoDataCellType(32767),localData(0)._2.band(1).cellType)

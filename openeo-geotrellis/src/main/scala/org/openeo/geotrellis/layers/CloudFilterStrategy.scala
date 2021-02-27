@@ -2,7 +2,7 @@ package org.openeo.geotrellis.layers
 
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.mapalgebra.focal.Kernel
-import geotrellis.raster.{MultibandTile, NODATA, Raster, RasterRegion, UByteUserDefinedNoDataCellType}
+import geotrellis.raster.{DoubleConstantNoDataCellType, MultibandTile, NODATA, Raster, RasterRegion, UByteUserDefinedNoDataCellType}
 import org.openeo.geotrellis.FFTConvolve
 
 abstract  class CloudFilterStrategy() extends Serializable {
@@ -18,6 +18,14 @@ abstract  class CloudFilterStrategy() extends Serializable {
  */
 class SCLConvolutionFilterStrategy(val sclBandIndex:Int=0) extends CloudFilterStrategy {
 
+  val amplitude = 10000.0
+
+  def kernel(windowSize:Int) = {
+    val k = Kernel.gaussian(windowSize,windowSize/6.0,amplitude)
+    k.tile.convert(DoubleConstantNoDataCellType).localDivide(k.tile.toArray().sum)
+  }
+  val kernel1 = kernel(17)
+  val kernel2 = kernel(201)
 
   override def loadMasked(rasterRegion: RasterRegion): Option[MultibandTile] = {
     val gbRegion = rasterRegion.asInstanceOf[GridBoundsRasterRegion]
@@ -55,13 +63,11 @@ class SCLConvolutionFilterStrategy(val sclBandIndex:Int=0) extends CloudFilterSt
 
         //maskTile.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("mask.png")
         //binaryMask.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("bmask1.png")
-        val amplitude = 10000.0
-        val kernel1 = Kernel.gaussian(17,17.0/3.0,amplitude).copy()
         val convolved = FFTConvolve(binaryMask, kernel1)
         //first dilate, with a small kernel around everything that is not valid
         allMasked = true
         val convolution1 = convolved.crop(binaryMask.cols-(256+100),binaryMask.rows-(256+100),binaryMask.cols-101,binaryMask.rows-101).localIf({ d: Double => {
-          val res = d > amplitude* 0.057
+          val res = d > 0.057
           if(!res) {
             allMasked=false
           }
@@ -81,12 +87,10 @@ class SCLConvolutionFilterStrategy(val sclBandIndex:Int=0) extends CloudFilterSt
           })
 
           //binaryMask2.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("bmask2.png")
-          val kernel2 = Kernel.gaussian(201,201.0/3.0,amplitude)
           val convolution2 = FFTConvolve(binaryMask2, kernel2).crop(binaryMask2.cols-(256+100),binaryMask2.rows-(256+100),binaryMask2.cols-101,binaryMask2.rows-101)
-            .localIf({ d: Double => d > amplitude* 0.025 }, 1.0, 0.0)
-
+          val mask2 = convolution2.localIf({ d: Double => d > 0.025 }, 1.0, 0.0)
           //convolution2.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("conv2.png")
-          val fullMask = convolution1.localOr(convolution2).convert(UByteUserDefinedNoDataCellType(127.byteValue()))
+          val fullMask = convolution1.localOr(mask2).convert(UByteUserDefinedNoDataCellType(127.byteValue()))
 
           allMasked = !fullMask.toArray().exists(_ == 0)
           if (allMasked) {
