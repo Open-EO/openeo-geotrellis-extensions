@@ -116,6 +116,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       getSinglebandRDD(sourcePathsWithBandId.head, date, spatialKey)
         .repartition(getPartitions)
         .foreachPartition { items =>
+          Logger.getRootLogger.setLevel(Level.DEBUG)
           S3ClientConfigurator.configure()
           items.foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel))
         }

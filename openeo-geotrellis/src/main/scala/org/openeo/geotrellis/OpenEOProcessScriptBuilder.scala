@@ -356,7 +356,7 @@ class OpenEOProcessScriptBuilder {
       case "or" if hasExpressions => reduceFunction("expressions", Or.apply) // legacy 0.4 style
       case "xor" if hasXY => xyFunction(Xor.apply)
       case "xor" if hasExpressions => reduceFunction("expressions", Xor.apply) // legacy 0.4 style
-      // Mathematical operators
+      // Mathematical operations
       case "sum" if hasData && !ignoreNoData => reduceFunction("data", Add.apply)
       case "sum" if hasData && ignoreNoData => reduceFunction("data", AddIgnoreNodata.apply)
       case "add" if hasXY => xyFunction(Add.apply)
@@ -368,7 +368,8 @@ class OpenEOProcessScriptBuilder {
       case "divide" if hasXY => xyFunction(Divide.apply)
       case "divide" if hasData => reduceFunction("data", Divide.apply) // legacy 0.4 style
       case "power" => xyFunction(Pow.apply,xArgName = "base",yArgName = "p")
-        //statistics
+      case "normalized_difference" if hasXY => xyFunction((x, y) => Divide(Subtract(x, y), Add(x, y)))
+      // Statistics
       case "max" if hasData && !ignoreNoData => reduceFunction("data", Max.apply)
       case "max" if hasData && ignoreNoData => reduceFunction("data", MaxIgnoreNoData.apply)
       case "min" if hasData && !ignoreNoData => reduceFunction("data", Min.apply)
