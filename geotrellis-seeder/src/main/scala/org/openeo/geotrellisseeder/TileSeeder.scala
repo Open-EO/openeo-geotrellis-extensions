@@ -59,7 +59,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     var sourcePathsWithBandId: Seq[(Seq[String], Int)] = Seq()
 
     if (oscarsEndpoint.isDefined && oscarsCollection.isDefined) {
-      Logger.getRootLogger.setLevel(Level.DEBUG)
+      configureDebugLogging()
 
       val attributeValues = Map("productType" -> productType)
       val products = new Oscars(new URL(oscarsEndpoint.get)).getProducts(oscarsCollection.get, date, date, ProjectedExtent(LatLng.worldExtent, LatLng), attributeValues = attributeValues)
@@ -116,7 +116,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       getSinglebandRDD(sourcePathsWithBandId.head, date, spatialKey)
         .repartition(getPartitions)
         .foreachPartition { items =>
-          Logger.getRootLogger.setLevel(Level.DEBUG)
+          configureDebugLogging()
           S3ClientConfigurator.configure()
           items.foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel))
         }
@@ -553,6 +553,12 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
         dir.toFile.mkdirs()
         dir.resolve(y0 + ".png").toString
       }
+    }
+  }
+
+  private def configureDebugLogging(): Unit = {
+    if (System.getProperty("logger.debug") != null) {
+      Logger.getRootLogger.setLevel(Level.DEBUG)
     }
   }
 }
