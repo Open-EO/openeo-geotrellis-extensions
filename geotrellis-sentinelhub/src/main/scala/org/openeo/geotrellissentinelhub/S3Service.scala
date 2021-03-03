@@ -13,6 +13,7 @@ import scala.compat.java8.FunctionConverters._
 
 object S3Service {
   class StacMetadataUnavailableException extends IllegalStateException
+  class UnknownFolderException extends IllegalArgumentException
 }
 
 class S3Service {
@@ -24,16 +25,15 @@ class S3Service {
 
     val objectIdentifiers = listObjectIdentifiers(s3Client, bucket_name, prefix = subfolder)
 
-    if (!objectIdentifiers.isEmpty) {
-      val deleteObjectsRequest = DeleteObjectsRequest.builder()
-        .bucket(bucket_name)
-        .delete(Delete.builder().objects(objectIdentifiers).build())
-        .build()
+    if (objectIdentifiers.isEmpty)
+      throw new UnknownFolderException
 
-      s3Client.deleteObjects(deleteObjectsRequest)
-    }
+    val deleteObjectsRequest = DeleteObjectsRequest.builder()
+      .bucket(bucket_name)
+      .delete(Delete.builder().objects(objectIdentifiers).build())
+      .build()
 
-    // TODO: throw an exception and catch it in Python instead?
+    s3Client.deleteObjects(deleteObjectsRequest)
   }
 
   // previously batch processes wrote to s3://<bucket_name>/<batch_request_id> while the new ones write to

@@ -3,7 +3,7 @@ package org.openeo.geotrellissentinelhub
 import org.junit.Assert.{assertEquals, assertNotNull}
 import org.junit.rules.TemporaryFolder
 import org.junit.{BeforeClass, Ignore, Rule, Test}
-import org.openeo.geotrellissentinelhub.S3Service.StacMetadataUnavailableException
+import org.openeo.geotrellissentinelhub.S3Service.{StacMetadataUnavailableException, UnknownFolderException}
 
 import scala.annotation.meta.getter
 
@@ -77,8 +77,8 @@ class S3ServiceTest {
     s3Service.delete_batch_process_results(bucketName, subfolder = "d4737bbc-77b2-4ecb-8a5c-e1919b7eb23c")
   }
 
-  @Test
-  def delete_batch_process_resultsSucceedsForUnknownSubfolder(): Unit = {
+  @Test(expected = classOf[UnknownFolderException])
+  def delete_batch_process_resultsThrowsForUnknownSubfolder(): Unit = {
     s3Service.delete_batch_process_results(bucketName, subfolder = "retteketet")
   }
 }
