@@ -1,8 +1,9 @@
 package org.openeo.geotrellissentinelhub
 
-import org.junit.Assert.{assertEquals, assertNotNull, assertTrue}
+import org.junit.Assert.{assertEquals, assertNotNull}
 import org.junit.rules.TemporaryFolder
 import org.junit.{BeforeClass, Ignore, Rule, Test}
+import org.openeo.geotrellissentinelhub.S3Service.StacMetadataUnavailableException
 
 import scala.annotation.meta.getter
 
@@ -23,28 +24,51 @@ class S3ServiceTest {
   val temporaryFolder = new TemporaryFolder
 
   @Test
-  def download_stac_metadata(): Unit = {
+  def download_stac_data(): Unit = {
     val tempDir = temporaryFolder.getRoot
 
-    s3Service.download_stac_metadata(
+    s3Service.download_stac_data(
       bucketName,
       request_group_id = "e89517fe-390d-4109-b3cc-4e4d514ebe2b",
       target_dir = tempDir.getAbsolutePath
     )
 
     val outputFiles = tempDir.list()
-    assertEquals(outputFiles mkString ", ", 3, outputFiles.size)
-    assertTrue(outputFiles.forall(_.endsWith("_metadata.json")))
+    assertEquals(outputFiles mkString ", ", 6, outputFiles.size)
+
+    assertEquals(3, outputFiles.count(_.endsWith(".tif")))
+    assertEquals(3, outputFiles.count(_.endsWith("_metadata.json")))
   }
 
-  @Test(timeout = 60 * 1000)
-  def download_stac_metadataBailsIfTakesTooLong(): Unit = {
-    s3Service.download_stac_metadata(
+  @Test(expected = classOf[StacMetadataUnavailableException], timeout = 60 * 1000)
+  def download_stac_dataThrowsIfMetadataTakesTooLong(): Unit = {
+    val tempDir = temporaryFolder.getRoot
+
+    s3Service.download_stac_data(
       bucketName,
       request_group_id = "a6b90672-495a-4e6c-8729-fcbd8e6ff82f",
-      target_dir = "/does/not/matter",
-      max_delay_secs = 30
+      target_dir = tempDir.getAbsolutePath,
+      max_metadata_delay_secs = 30
     )
+  }
+
+  @Test
+  def download_stac_dataCanHandleBatchJobRetries(): Unit = {
+    val tempDir = temporaryFolder.getRoot
+
+    def download(): Unit = {
+      s3Service.download_stac_data(
+        bucketName,
+        request_group_id = "e89517fe-390d-4109-b3cc-4e4d514ebe2b",
+        target_dir = tempDir.getAbsolutePath
+      )
+    }
+
+    download()
+    download()
+
+    val outputFiles = tempDir.list()
+    assertEquals(outputFiles mkString ", ", 6, outputFiles.size)
   }
 
   @Ignore
