@@ -1,10 +1,11 @@
 package org.openeo.geotrellis.layers
 
+import java.time.ZonedDateTime
+
 import cats.data.NonEmptyList
 import geotrellis.raster.RasterSource
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 
-import java.time.ZonedDateTime
 import scala.util.matching.Regex
 
 class AgEra5FileLayerProvider(dewPointTemperatureGlob: String, bandFileMarkers: Seq[String],

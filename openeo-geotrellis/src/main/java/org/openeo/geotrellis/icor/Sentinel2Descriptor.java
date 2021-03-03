@@ -1,6 +1,12 @@
 package org.openeo.geotrellis.icor;
 
+import org.apache.spark.SparkContext;
+import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.broadcast.Broadcast;
+
 import java.time.ZonedDateTime;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 
 /**
  *
@@ -8,15 +14,24 @@ import java.time.ZonedDateTime;
  */
 
 // Applies MODTRAN atmospheric correction based on preset values in a lookup table.
-public class Sentinel2Descriptor extends CorrectionDescriptor{
+public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
 
-	@Override
+	private Broadcast<LookupTable> bcLUT;
+	{
+		try {
+			Callable lutLoader = (Callable<Broadcast<LookupTable>>) () -> JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()).broadcast(LookupTableIO.readLUT(Sentinel2Descriptor.this.getLookupTableURL()));
+			bcLUT = AtmosphericCorrection.iCorLookupTableCache().get(this.getLookupTableURL(), lutLoader);
+		} catch (ExecutionException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
 	public String getLookupTableURL() {
 		return "https://artifactory.vgt.vito.be/auxdata-public/lut/S2B_all.bin"; 
 	}
    
     @Override
-    public int getBandFromName(String name) throws Exception {
+    public int getBandFromName(String name) throws IllegalArgumentException {
     	// TODO: turn it into a map
 		switch(name.toUpperCase()) {
 			case "TOC-B01_60M": return 0;
@@ -170,8 +185,7 @@ public class Sentinel2Descriptor extends CorrectionDescriptor{
     // calculates the atmospheric correction for pixel
     @Override
     public double correct(
-    	LookupTable lut,
-		int band,
+		String bandName,
 		ZonedDateTime time,
 		double src, 
 		double sza, 
@@ -184,17 +198,17 @@ public class Sentinel2Descriptor extends CorrectionDescriptor{
 		int waterMask)
     {
     	// Get interpolated array from lookuptable
-
+		int band = getBandFromName(bandName);
         // Apply atmoshperic correction on pixel based on an array of parameters from MODTRAN
         final double TOAradiance=reflToRad(src*0.0001, sza, time, band);
-        final double corrected = correctRadiance(lut, band, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
+        final double corrected = correctRadiance( band, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
 		//final double corrected=TOAradiance;
         return corrected*10000.;
     }
 
     /**
      * @param src:              Band in reflectance range(0.,1.)
-     * @param szaCoverage:      SZA in degrees 
+     * @param sza:      SZA in degrees
      * @param time:             Time in millis from epoch
      * @param bandToConvert     Bandnumber
      * @return                  Band in radiance

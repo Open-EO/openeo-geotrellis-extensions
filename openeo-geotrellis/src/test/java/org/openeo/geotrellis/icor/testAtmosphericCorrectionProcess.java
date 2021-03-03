@@ -1,18 +1,10 @@
 package org.openeo.geotrellis.icor;
 
-import geotrellis.layer.Bounds;
-import geotrellis.layer.KeyBounds;
-import geotrellis.layer.LayoutDefinition;
-import geotrellis.layer.SpaceTimeKey;
-import geotrellis.layer.SpatialKey;
-import geotrellis.layer.TemporalKey;
-import geotrellis.layer.TileLayerMetadata;
+import geotrellis.layer.*;
 import geotrellis.raster.*;
 import geotrellis.spark.ContextRDD;
 import geotrellis.spark.testkit.TileLayerRDDBuilders$;
 import geotrellis.vector.Extent;
-import scala.Tuple2;
-
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
@@ -21,6 +13,7 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import scala.Tuple2;
 
 import java.net.URL;
 import java.time.ZonedDateTime;
@@ -33,11 +26,31 @@ import static org.junit.Assert.assertFalse;
 
 public class testAtmosphericCorrectionProcess {
 
+    private final ArrayList<String> bandIds=new ArrayList<String>();
+    {
+        bandIds.add(new String("TOC-B02_10M"));
+        bandIds.add(new String("TOC-B09_60M"));
+        bandIds.add(new String("TOC-B8A_20M"));
+        bandIds.add(new String("TOC-B11_20M"));
+    }
+
+    private final ArrayList<Object> params=new ArrayList<Object>();
+    {
+
+        params.add(new Double(0.));
+        params.add(new Double(0.));
+        params.add(new Double(0.));
+        params.add(new Double(0.));
+        params.add(new Double(0.));
+        params.add(new Double(0.));
+        params.add(new Double(0.));
+    }
+
     @BeforeClass
     public static void sparkContext() {
         SparkConf conf = new SparkConf();
         conf.setAppName("OpenEOTest");
-        conf.setMaster("local[2]");
+        conf.setMaster("local[1]");
         //conf.set("spark.driver.bindAddress", "127.0.0.1");
         conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
         SparkContext.getOrCreate(conf);
@@ -79,31 +92,10 @@ public class testAtmosphericCorrectionProcess {
     @Test
     public void testAtmosphericCorrection() {
 
-    	ArrayList<String> bandIds=new ArrayList<String>();
-    	bandIds.add(new String("TOC-B02_10M"));
-    	bandIds.add(new String("TOC-B09_60M"));
-    	bandIds.add(new String("TOC-B8A_20M"));
-    	bandIds.add(new String("TOC-B11_20M"));
-    	ArrayList<Object> params=new ArrayList<Object>();
-    	params.add(new Double(0.));
-    	params.add(new Double(0.));
-    	params.add(new Double(0.));
-    	params.add(new Double(0.));
-    	params.add(new Double(0.));
-    	params.add(new Double(0.));
-    	params.add(new Double(0.));
-    	
-        Tile tileB2 = new IntConstantTile(1000,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
-        Tile wvTile = new IntConstantTile(2000,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
-        Tile r0Tile = new IntConstantTile(5000,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
-        Tile r1Tile = new IntConstantTile( 500,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
-        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube = acTilesToSpaceTimeDataCube(tileB2,wvTile,r0Tile,r1Tile);
-        TileLayerMetadata<SpaceTimeKey> m = datacube.metadata();
-        Extent newExtent = new Extent(3.5, 50, 4.0, 51);
-        TileLayerMetadata<SpaceTimeKey> updatedMetadata = m.copy(m.cellType(),new LayoutDefinition(newExtent,m.layout().tileLayout()), newExtent,m.crs(),m.bounds());
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> inputCube = createInputCube();
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(
         	JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
-        	new ContextRDD<>(datacube.rdd(),updatedMetadata),
+                inputCube,
         	bandIds,
         	params,
         	"DEM",
@@ -116,6 +108,42 @@ public class testAtmosphericCorrectionProcess {
         assertFalse(result.isEmpty());
         Map<SpaceTimeKey, MultibandTile> tiles = result.collectAsMap();
         
+    }
+
+
+    private ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> createInputCube() {
+        Tile tileB2 = new IntConstantTile(1000,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
+        Tile wvTile = new IntConstantTile(2000,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
+        Tile r0Tile = new IntConstantTile(5000,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
+        Tile r1Tile = new IntConstantTile( 500,256,256,(IntCells)CellType$.MODULE$.fromName("int32raw").withDefaultNoData()).mutable();
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube = acTilesToSpaceTimeDataCube(tileB2,wvTile,r0Tile,r1Tile);
+        TileLayerMetadata<SpaceTimeKey> m = datacube.metadata();
+        Extent newExtent = new Extent(3.5, 50, 4.0, 51);
+        TileLayerMetadata<SpaceTimeKey> updatedMetadata = m.copy(m.cellType(),new LayoutDefinition(newExtent,m.layout().tileLayout()), newExtent,m.crs(),m.bounds());
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> inputCube = new ContextRDD<>(datacube.rdd(), updatedMetadata);
+        return inputCube;
+    }
+
+    @Test
+    public void testSMACCorrectionOnCube() {
+
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> inputCube = createInputCube();
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(
+                "smac",
+                JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
+                inputCube,
+                bandIds,
+                params,
+                "DEM",
+                "SENTINEL2",
+                false
+        );
+        System.out.println(resultRDD.getClass().toString());
+
+        JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(resultRDD.toJavaRDD());
+        assertFalse(result.isEmpty());
+        Map<SpaceTimeKey, MultibandTile> tiles = result.collectAsMap();
+
     }
 
     @Test
@@ -134,7 +162,7 @@ public class testAtmosphericCorrectionProcess {
         double UH2O=0.3     ;// Water vapour (g/cm2)
 
         //compute the atmospheric correction
-        double r_surf = SMACCorrection.smac_inv(0.2f, theta_s, phi_s, theta_v, phi_v,(float) pressure,(float) AOT550, (float)UO3, (float)UH2O, coeff);
+        double r_surf = SMACCorrection.smac_inv(0.2f, theta_s, theta_v,phi_s - phi_v,(float) pressure,(float) AOT550, (float)UO3, (float)UH2O, coeff);
         System.out.println("r_surf = " + r_surf);
         //use reference python version to generate ref value: http://tully.ups-tlse.fr/olivier/smac-python
         assertEquals(0.16214342470440238,r_surf,0.00001);

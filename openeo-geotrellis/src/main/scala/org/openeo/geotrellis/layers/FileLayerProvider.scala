@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.layers
 
-import java.net.URI
+import java.net.{URI, URL}
 import java.nio.file.{Path, Paths}
 import java.time.temporal.ChronoUnit
 import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
@@ -21,10 +21,12 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
+import org.openeo.geotrellis.file.DataCubeParameters
 import org.openeo.geotrellis.layers.OpenSearchResponses.Feature
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.slf4j.LoggerFactory
 
+import scala.collection.immutable
 import scala.util.matching.Regex
 
 class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], override val crs: CRS, var theAttributes:Map[String,String]=Map.empty)
@@ -42,20 +44,19 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val selectedSources = bands.toVector.map(sources.toList)
-    val singleBandRasters = selectedSources.map { _.reproject(crs) }
+    val singleBandRasters = selectedSources.par.map { _.reproject(crs) }
       .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
       .collect { case Some(raster) => raster }
 
-    if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile)), singleBandRasters.head.extent))
+    if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile).seq), singleBandRasters.head.extent))
     else None
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    val singleBandRasters = reprojectedSources
-      .map { _.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
+    val singleBandRasters = reprojectedSources.toList.par.map { _.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
       .collect { case Some(raster) => raster }
 
-    if (singleBandRasters.size == reprojectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType))), singleBandRasters.head.extent))
+    if (singleBandRasters.size == reprojectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType)).seq), singleBandRasters.head.extent))
     else None
   }
 
@@ -175,7 +176,7 @@ object FileLayerProvider {
       case scheme: ZoomedLayoutScheme => scheme.levelForZoom(zoom)
       case scheme: FloatingLayoutScheme => {
         //Giving the layout a deterministic extent simplifies merging of data with spatial partitioner
-        val layoutExtent =
+        val layoutExtent: Extent = {
           if (boundingBox.crs.proj4jCrs.getProjection.getName == "utm") {
             //for utm, we return an extent that goes beyound the utm zone bounds, to avoid negative spatial keys
             if (boundingBox.crs.proj4jCrs.getProjection.asInstanceOf[TransverseMercatorProjection].getSouthernHemisphere)
@@ -186,8 +187,15 @@ object FileLayerProvider {
               Extent(0.0, -1000000.0000, 833970.0 + 100000.0, 9329000.0 + 100000.0)
             }
           } else {
-            boundingBox.extent
+            val extent = boundingBox.extent
+            if(extent.width < maxSpatialResolution.width || extent.height < maxSpatialResolution.height) {
+              Extent(extent.xmin,extent.ymin,Math.max(extent.xmax,extent.xmin + maxSpatialResolution.width),Math.max(extent.ymax,extent.ymin + maxSpatialResolution.height))
+            }else{
+              extent
+            }
           }
+        }
+
         scheme.levelFor(layoutExtent, maxSpatialResolution)
       }
     }
@@ -315,24 +323,25 @@ class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, 
       else new MultibandCompositeRasterSource(sources, crs, attributes)
   }
 
-  def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
+  def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): MultibandTileLayerRDD[SpaceTimeKey] = {
     val overlappingRasterSources: Seq[RasterSource] = loadRasterSourceRDD(boundingBox, from, to, zoom)
     val commonCellType = overlappingRasterSources.head.cellType
     val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType, layoutScheme, maxSpatialResolution)
 
     val rasterSources = rasterSourceRDD(overlappingRasterSources, metadata, maxSpatialResolution, openSearchCollectionId)(sc)
-    if(experimental) {
+    val maskStrategy =
+    if(datacubeParams.isDefined) {
       val maybeIndex = openSearchLinkTitles.zipWithIndex.find(p => p._1.contains("SCENECLASSIFICATION") || p._1.contains("SCL"))
-
-      FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc,maybeIndex.map( i => new SCLConvolutionFilterStrategy(i._2)))
+      maybeIndex.map(i => new SCLConvolutionFilterStrategy(i._2))
     }else{
-      FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc)
+      Option.empty[CloudFilterStrategy]
     }
+    FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc,maskStrategy)
   }
 
   override def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, zoom: Int = maxZoom, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
 
-    this.readMultibandTileLayer(from,to,boundingBox,Array(MultiPolygon(boundingBox.extent.toPolygon())),boundingBox.crs,zoom,sc)
+    this.readMultibandTileLayer(from,to,boundingBox,Array(MultiPolygon(boundingBox.extent.toPolygon())),boundingBox.crs,zoom,sc,datacubeParams = Option.empty)
   }
 
 
@@ -357,25 +366,30 @@ class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, 
     val re = RasterExtent(expandToCellSize(targetExtent.extent, maxSpatialResolution), maxSpatialResolution).alignTargetPixels
     val alignment = TargetAlignment(re)
 
-    def rasterSource(path:String,targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent ) = {
+    def rasterSource(path:String,targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent ): Seq[RasterSource] = {
       if(path.endsWith(".jp2")) {
-        GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType)
+        Seq(GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
+      }else if(path.endsWith("MTD_TL.xml")) {
+        //TODO EP-3611 parse angles
+        SentinelXMLMetadataRasterSource(new URL(path.replace("/vsicurl/","")))
       }
       else {
         if(experimental) {
-          GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType)
+          Seq(GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
         }else{
-          GeoTiffResampleRasterSource(path, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None)
+          Seq(GeoTiffResampleRasterSource(path, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None))
         }
       }
     }
 
-    for {
+    val rasterSources: immutable.Seq[(Seq[RasterSource], Seq[Int])] = for {
       (title, bands) <- openSearchLinkTitlesWithBandIds.toList
       link <- feature.links.find(_.title contains title)
       path = deriveFilePath(link.href)
       targetCellType = if (link.title contains "SCENECLASSIFICATION_20M") Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0))) else None
     } yield (rasterSource(path,targetCellType, targetExtent), bands)
+
+    rasterSources.flatMap(rs_b => rs_b._1.map(rs => (rs,rs_b._2))).toList
   }
 
   def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int): Seq[RasterSource] = {

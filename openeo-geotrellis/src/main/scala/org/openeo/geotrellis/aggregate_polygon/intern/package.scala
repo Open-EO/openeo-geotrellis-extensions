@@ -83,13 +83,11 @@ package object intern {
     if (polygons.length > 1 && maskedRdd.getStorageLevel == StorageLevel.NONE) {
       maskedRdd.cache()
     }
-
     val reprojected = polygons.map(_.reproject(crs, maskedRdd.metadata.crs))
     reprojected.map { polygon =>
-      val mean0 = (i: Int) => MeanResult(0d, 0L, 0L, Option.empty, Option.empty)
       maskedRdd.polygonalSummaryByKey(
         polygon,
-        Array(mean0.apply(0), mean0.apply(1), mean0.apply(2)),
+        Array.empty[MeanResult],
         MultibandMeanSummary,
         (k: SpaceTimeKey) => k.temporalKey
       )
@@ -501,6 +499,8 @@ package object intern {
   }
 
   object MultibandMeanSummary extends MultibandTilePolygonalSummaryHandler[Array[MeanResult]] {
+    val MEAN0 = MeanResult()
+
     override def handlePartialMultibandTile(raster: Raster[MultibandTile], polygon: Polygon): Array[MeanResult] = {
       val Raster(multibandTile, _) = raster
       val rasterExtent = raster.rasterExtent
@@ -541,13 +541,20 @@ package object intern {
       }
 
     override def combineResults(rs: Seq[Array[MeanResult]]): Array[MeanResult] = {
-      val mean0 = MeanResult(0.0, 0L, 0L, None, None)
+
       val bandCount = rs.map(_.length).max
-      rs.foldLeft(Array.fill(bandCount)(mean0))((a1, a2) => a1.zip(a2).map{ case (mr1:MeanResult,mr2:MeanResult)=> mr1+mr2 })
+      rs.foldLeft(Array.fill(bandCount)(MEAN0))((a1, a2) => a1.zip(a2).map{ case (mr1:MeanResult,mr2:MeanResult)=> mr1+mr2 })
     }
 
-    override def combineOp(v1: Array[MeanResult], v2: Array[MeanResult]): Array[MeanResult] =
-      combineResults(Seq(v1, v2))
+    override def combineOp(v1: Array[MeanResult], v2: Array[MeanResult]): Array[MeanResult] = {
+      if(v1.isEmpty) {
+        combineResults(Seq(Array.fill(v2.length)(MEAN0), v2))
+      }else if(v2.isEmpty) {
+        combineResults(Seq(v1,Array.fill(v1.length)(MEAN0)))
+      }else{
+        combineResults(Seq(v1, v2))
+      }
+    }
   }
 
 

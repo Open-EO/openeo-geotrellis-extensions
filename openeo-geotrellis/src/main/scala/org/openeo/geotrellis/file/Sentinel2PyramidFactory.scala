@@ -85,7 +85,7 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
     val layerProvider = sentinel2FileLayerProvider(metadata_properties.asScala.toMap, correlationId)
 
     for (zoom <- layerProvider.maxZoom to 0 by -1)
-      yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, zoom, sc)
+      yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, zoom, sc,Option.empty)
   }
 
   def pyramid_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
@@ -146,7 +146,7 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
     val intersectsPolygons = AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
 
     val layerProvider = sentinel2FileLayerProvider(metadata_properties.asScala.toMap, correlationId, FloatingLayoutScheme(dataCubeParameters.tileSize))
-    layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, 0, sc)
+    layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, 0, sc,Some(dataCubeParameters))
   }
 
 

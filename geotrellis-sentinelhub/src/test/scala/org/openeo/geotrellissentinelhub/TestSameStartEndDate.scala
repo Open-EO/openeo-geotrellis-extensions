@@ -32,13 +32,13 @@ class TestSameStartEndDate {
 
     val pyramid = new PyramidFactory("S1GRD", clientId, clientSecret).pyramid_seq(extent, bbox_srs, from, to, bandNames)
 
-    val topLevelRdd = pyramid.filter(r => r._1 == 14).head._2
+    val (_, topLevelRdd) = pyramid.filter { case (zoom, _) => zoom == 14 }.head
     
     val results = topLevelRdd.collect()
 
     for {
-      r <- results
-      b <- r._2.bands
-    } assert(b.isNoDataTile)
+      (_, multibandTile) <- results
+      tile <- multibandTile.bands
+    } assert(tile.isNoDataTile)
   }
 }

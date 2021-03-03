@@ -203,8 +203,12 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val from_date = "2017-01-01T00:00:00Z"
     val to_date = "2017-03-10T00:00:00Z"
 
+    val datacube = buildCubeRdd(ZonedDateTime.parse(from_date), ZonedDateTime.parse(to_date)).withContext{
+      _.mapValues(t => MultibandTile(Array(t.bands(0),t.bands(1),t.bands(0),t.bands(0),t.bands(0))))
+    }
+
     val stats = computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
-      buildCubeRdd(ZonedDateTime.parse(from_date), ZonedDateTime.parse(to_date)),
+      datacube,
       polygons=ProjectedPolygons(Seq(polygon1, polygon2),  "EPSG:4326"),
       from_date,
       to_date,
@@ -214,7 +218,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
 
     val keys = Seq("2017-01-01T00:00:00Z", "2017-01-15T00:00:00Z", "2017-02-01T00:00:00Z")
     keys.foreach(k => assertEqualTimeseriesStats(
-      Seq(Seq(10.0, Double.NaN), Seq(10.0, Double.NaN)),
+      Seq(Seq(10.0, Double.NaN,10.0,10.0,10.0), Seq(10.0, Double.NaN,10.0,10.0,10.0)),
       stats.get(k)
     ))
   }

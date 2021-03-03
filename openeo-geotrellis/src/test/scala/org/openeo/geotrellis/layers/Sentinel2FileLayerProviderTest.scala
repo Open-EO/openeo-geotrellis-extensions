@@ -22,10 +22,11 @@ import org.apache.spark.util.SizeEstimator
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Ignore, Test}
 import org.openeo.geotrellis.TestImplicits._
+import org.openeo.geotrellis.file.DataCubeParameters
 
 object Sentinel2FileLayerProviderTest {
   private var sc: SparkContext = _
-  private val openSearchEndpoint = OpenSearch(new URL("http://oscars-01.vgt.vito.be:8080"))
+  private val openSearchEndpoint = OpenSearch(new URL("https://services.terrascope.be/catalogue"))
   private val maxSpatialResolution = CellSize(10, 10)
   private val pathDateExtractor = SplitYearMonthDayPathDateExtractor
 
@@ -49,7 +50,7 @@ class Sentinel2FileLayerProviderTest {
     val polygonArray = polygons.toArray
 
     //use lower zoom level to make test go faster
-    val layer = faparLayerProvider().readMultibandTileLayer( date, date.plusDays(1), bbox, polygons = polygonArray,polygons_crs = LatLng,zoom = 8, sc = sc)
+    val layer = faparLayerProvider().readMultibandTileLayer( date, date.plusDays(1), bbox, polygons = polygonArray,polygons_crs = LatLng,zoom = 8, sc = sc,datacubeParams = Option.empty)
 
     val spatialLayer = layer
       .toSpatial(date)
@@ -179,12 +180,16 @@ class Sentinel2FileLayerProviderTest {
     val bbox = ProjectedExtent(Extent(687640, 5671180, 688280, 5671820), CRS.fromEpsgCode(32631))
     //'(687640, 5671180, 688280, 5671820)'
     val time = System.currentTimeMillis()
-    val layer = tocLayerProviderUTM.readMultibandTileLayer(from = start, to = end, bbox, sc = sc)
+    val parameters = new DataCubeParameters
+    parameters.maskingStrategyParameters = new java.util.HashMap()
+    parameters.maskingStrategyParameters.put("method","mask_scl_dilation")
+    val layer = tocLayerProviderUTM.readMultibandTileLayer(from = start, to = end,bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs,zoom = 1, sc = sc, datacubeParams = Some(parameters))
 
     val localData = layer.collect()
     println(SizeEstimator.estimate(localData))
     println((System.currentTimeMillis()-time)/1000)
-    assertEquals(22,localData.length)
+    println(localData.map(_._1.time).mkString(";"))
+    assertEquals(18,localData.length)
     assertEquals(4,localData(0)._2.bandCount)
     assertFalse(localData(0)._2.band(0).isNoDataTile)
     assertEquals(ShortUserDefinedNoDataCellType(32767),localData(0)._2.band(1).cellType)

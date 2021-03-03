@@ -60,8 +60,14 @@ object AbstractPyramidFactory {
 
   private[file] type FilePathTemplate = String => String
 }
+
 class DataCubeParameters() {
   var tileSize:Int = 256
+  var maskingStrategyParameters: java.util.Map[String,Object] = null
+  var layoutScheme:String = "ZoomedLayoutScheme"
+
+
+  override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme)"
 }
 
 abstract class AbstractPyramidFactory[B] extends Serializable {

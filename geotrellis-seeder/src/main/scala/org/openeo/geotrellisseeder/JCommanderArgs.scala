@@ -53,8 +53,14 @@ class JCommanderArgs {
   @Parameter(names = Array("--setPermissions"), required = false, description = "set permissions", converter = classOf[StringOptionConverter])
   var setPermissions: Option[String] = None
 
-  @Parameter(names = Array("--tooCloudyFile"), required = false, description= "file with too cloudy products", converter = classOf[StringOptionConverter])
+  @Parameter(names = Array("--tooCloudyFile"), required = false, description = "file with too cloudy products", converter = classOf[StringOptionConverter])
   var tooCloudyFile: Option[String] = None
+
+  @Parameter(names = Array("--oscarsEndpoint"), required = false, description = "oscars endpoint", converter = classOf[StringOptionConverter])
+  var oscarsEndpoint: Option[String] = None
+
+  @Parameter(names = Array("--oscarsCollection"), required = false, description = "oscars collection", converter = classOf[StringOptionConverter])
+  var oscarsCollection: Option[String] = None
 
   @Parameter(names = Array("--verbose", "-v"), required = false, description = "print debug logs")
   var verbose: Boolean = false

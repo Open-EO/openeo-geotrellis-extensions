@@ -23,16 +23,15 @@ public abstract class CorrectionDescriptor implements Serializable{
 	// parts to reimplement in specialization
 	// -------------------------------------------
 	
-    public abstract int getBandFromName(String name) throws Exception;
+    public abstract int getBandFromName(String name) throws IllegalArgumentException;
 	public abstract double getIrradiance(int iband);
 	public abstract double getCentralWavelength(int iband);
-	public abstract String getLookupTableURL();
+
 
     /**
      * This function performs the pixel-wise correction: src is a pixel value belonging to band (as from getBandFromName).
      * If band is out of range, the function should return src (since any errors of mis-using bands should be caught upstream, before the pixel-wise loop).
-     * @param lut lookuptables
-     * @param band band id
+     * @param bandName band id
      * @param src to be converted: this may be digital number, reflectance, radiance, ... depending on the specific correction, and it should clearly be documented there!
      * @param sza degree
      * @param vza degree
@@ -46,8 +45,7 @@ public abstract class CorrectionDescriptor implements Serializable{
      */
     // calculates the atmospheric correction for pixel
     public abstract double correct(
-    	LookupTable lut,
-		int band,
+		String bandName,
 		ZonedDateTime time,
 		double src, 
 		double sza, 
@@ -63,20 +61,7 @@ public abstract class CorrectionDescriptor implements Serializable{
 	
 	// common corrector code
 	// -------------------------------------------
-    
-    /*
-     * General correction function using the lookup table to convert TOA radiance to BOA reflectance
-     */
-    double correctRadiance(LookupTable lut, int band, double TOAradiance,  double sza, double vza, double raa, double gnd, double aot, double cwv, double ozone, int waterMask) {
-        final double bgRad= TOAradiance;
-        final double[] params = lut.getInterpolated(band, sza, vza, raa, gnd, aot, cwv, ozone);
-        double corrected = (-1. * params[0] + params[1] * TOAradiance + params[2] * bgRad) / (params[3] + params[4] * bgRad);
-        if ( waterMask != 0/*==LAND*/ ){
-            if (waterMask == 1/*==FRESH_WATER*/) { corrected -= params[5]; }
-            else                                 { corrected -= params[6]; }
-        }
-        return corrected;
-    }
+
 
     /**
      * @param time millisec from epoch
@@ -84,7 +69,7 @@ public abstract class CorrectionDescriptor implements Serializable{
      */
     // Get distance from earth to sun in Astronomical Units based on time in millis()
     // This is not used anywhere currently, but might come handy later
-    public double earthSunDistance(ZonedDateTime time){
+    public static double earthSunDistance(ZonedDateTime time){
         
         // JD0 = number of days from 01/01/1950
         final ZonedDateTime D19500101 = LocalDate.of(1950, 1, 1).atStartOfDay(ZoneId.of("UTC"));
@@ -106,3 +91,4 @@ public abstract class CorrectionDescriptor implements Serializable{
     
     
 }
+

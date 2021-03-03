@@ -474,6 +474,24 @@ public class TestOpenEOProcessScriptBuilder {
         testMathXY("divide", 3, 2, 1, 0, 0, 0);
     }
 
+    @DisplayName("Test math 'normalized_difference(x,y)'")
+    @Test
+    public void testNormalizedDifferenceXY() {
+        String operator = "normalized_difference";
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart(operator, dummyMap("x", "y"));
+        buildBandXYArguments(builder, 0, 1);
+        builder.expressionEnd(operator, dummyMap("x", "y"));
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        DoubleArrayTile tile1 = fillDoubleArrayTile(4, 2, 3, 10, 6, 3, 9, 15, 0, Double.NaN);
+        DoubleArrayTile tile2 = fillDoubleArrayTile(4, 2, 0, 6, 10, 9, 7, 17, 0, Double.NaN);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1, tile2)));
+        assertEquals(1, result.length());
+        Tile ndvi = result.apply(0);
+        assertDoubleTileEquals(fillDoubleArrayTile(4, 2, 1.0, 0.25, -0.25, -0.5, 0.125, -0.0625, Double.NaN, Double.NaN), ndvi);
+    }
+
 
     private void testMathData(String operator, int... expectedValues) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
