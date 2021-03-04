@@ -19,6 +19,7 @@ object AtmosphericCorrection{
 
 class AtmosphericCorrection extends Serializable {
 
+  // TODO: the method defaulting is moved upstairs, this signature can be removed when the calls in the unittests are adapted
   def correct(
         jsc: JavaSparkContext,
         datacube: MultibandTileLayerRDD[SpaceTimeKey],
@@ -41,7 +42,7 @@ class AtmosphericCorrection extends Serializable {
                  elevationSource: String,
                  sensorId: String, // SENTINEL2 and LANDSAT8 for now
                  // TODO: in the future SENTINEL2A,SENTINEL2B,... granulation will be needed
-                 appendDebugBands: Boolean // this will add sza,vza,raa,gnd,aot,cwv to the multiband tile result
+                 appendDebugBands: Boolean // this will add sza,vza,raa,gnd,aot,cwv to the multiband tile result (multiplied by 100 for meaningful approximate values in uint16)
                ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]  = {
     val sc = JavaSparkContext.toSparkContext(jsc)
 
