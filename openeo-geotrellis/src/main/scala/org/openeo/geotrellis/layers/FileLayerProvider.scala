@@ -176,7 +176,7 @@ object FileLayerProvider {
       case scheme: ZoomedLayoutScheme => scheme.levelForZoom(zoom)
       case scheme: FloatingLayoutScheme => {
         //Giving the layout a deterministic extent simplifies merging of data with spatial partitioner
-        val layoutExtent =
+        val layoutExtent: Extent = {
           if (boundingBox.crs.proj4jCrs.getProjection.getName == "utm") {
             //for utm, we return an extent that goes beyound the utm zone bounds, to avoid negative spatial keys
             if (boundingBox.crs.proj4jCrs.getProjection.asInstanceOf[TransverseMercatorProjection].getSouthernHemisphere)
@@ -187,8 +187,15 @@ object FileLayerProvider {
               Extent(0.0, -1000000.0000, 833970.0 + 100000.0, 9329000.0 + 100000.0)
             }
           } else {
-            boundingBox.extent
+            val extent = boundingBox.extent
+            if(extent.width < maxSpatialResolution.width || extent.height < maxSpatialResolution.height) {
+              Extent(extent.xmin,extent.ymin,Math.max(extent.xmax,extent.xmin + maxSpatialResolution.width),Math.max(extent.ymax,extent.ymin + maxSpatialResolution.height))
+            }else{
+              extent
+            }
           }
+        }
+
         scheme.levelFor(layoutExtent, maxSpatialResolution)
       }
     }

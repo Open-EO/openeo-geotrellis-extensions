@@ -63,7 +63,7 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
                              sc: SparkContext, datacubeParams : Option[DataCubeParameters])
   : MultibandTileLayerRDD[SpaceTimeKey] = {
     val rasterSources = query(from, to)
-
+    println("Creating datacube: " + datacubeParams)
     if (rasterSources.isEmpty) throw new IllegalArgumentException("no fitting raster sources found")
 
     val sources = sc.parallelize(rasterSources)
