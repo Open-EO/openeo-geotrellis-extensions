@@ -1,13 +1,12 @@
-package org.openeo.geotrellis.icor
+package org.openeo.geotrellis.smac
 
 import java.time.ZonedDateTime
-
 import org.apache.commons.math3.util.FastMath
-import org.openeo.geotrellis.icor.SMACCorrection.Coeff
+import org.openeo.geotrellis.smac.SMACCorrection.Coeff
 import spire.implicits._
-
 import scala.collection.mutable
 import scala.io.Source
+import org.openeo.geotrellis.icor.CorrectionDescriptor
 
 
 /**
@@ -20,10 +19,13 @@ import scala.io.Source
  */
 object SMACCorrection{
 
-  class Coeff(smac_filename:String) extends Serializable {
+  class Coeff(smaccoeffStream:java.io.InputStream) extends Serializable {
 
     val lines: Array[String]={
-      val bufferedSource = Source.fromFile(smac_filename)
+      
+//      val bufferedSource = Source.fromFile(smac_filename)
+      val bufferedSource = Source.fromInputStream(smaccoeffStream)
+      
       try{
         bufferedSource.getLines().toArray
       } finally {
@@ -331,7 +333,7 @@ class SMACCorrection extends CorrectionDescriptor(){
           case _ => throw new IllegalArgumentException("Could not match band name: " + bandName)
         }
       }
-      val coeffForBand = new Coeff(SMACCorrection.getClass.getResource("../smac/" + coefficients).getPath)
+      val coeffForBand = new Coeff(SMACCorrection.getClass.getResourceAsStream(coefficients))
       coeffMap(bandName) = coeffForBand
       maybeCoeff = Some(coeffForBand)
     }
