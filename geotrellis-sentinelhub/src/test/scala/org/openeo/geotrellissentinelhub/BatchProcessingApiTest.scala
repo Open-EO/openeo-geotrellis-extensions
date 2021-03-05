@@ -103,6 +103,7 @@ class BatchProcessingApiTest {
       bandNames = Seq("VH", "VV"),
       dataTakeId = "044CD7",
       card4lId,
+      demInstance = null,
       bucketName = "openeo-sentinelhub", subFolder = card4lId,
       accessToken
     )
