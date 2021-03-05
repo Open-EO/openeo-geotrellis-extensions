@@ -330,7 +330,7 @@ class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, 
 
     val rasterSources = rasterSourceRDD(overlappingRasterSources, metadata, maxSpatialResolution, openSearchCollectionId)(sc)
     val maskStrategy =
-    if(datacubeParams.isDefined) {
+    if(datacubeParams.isDefined && datacubeParams.get.maskingStrategyParameters != null && "mask_scl_dilation".equals(datacubeParams.get.maskingStrategyParameters.get("method"))) {
       val maybeIndex = openSearchLinkTitles.zipWithIndex.find(p => p._1.contains("SCENECLASSIFICATION") || p._1.contains("SCL"))
       maybeIndex.map(i => new SCLConvolutionFilterStrategy(i._2))
     }else{
