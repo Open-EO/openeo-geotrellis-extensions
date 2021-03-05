@@ -10,14 +10,16 @@ import org.apache.spark.api.java.JavaSparkContext
 import org.apache.spark.broadcast.Broadcast
 import org.openeo.geotrellis.water_vapor.{CWVProvider, ConstantCWVProvider}
 import org.slf4j.LoggerFactory
+import org.openeo.geotrellis.smac.SMACCorrection
 
 object AtmosphericCorrection{
-  implicit val logger = LoggerFactory.getLogger(classOf[AtmosphericCorrection])
   val iCorLookupTableCache: Cache[String, Broadcast[LookupTable]] = CacheBuilder.newBuilder().softValues().build()
 }
 
 
 class AtmosphericCorrection extends Serializable {
+  
+  val logger = LoggerFactory.getLogger(classOf[AtmosphericCorrection])
 
   // TODO: the method defaulting is moved upstairs, this signature can be removed when the calls in the unittests are adapted
   def correct(
@@ -47,8 +49,10 @@ class AtmosphericCorrection extends Serializable {
     val sc = JavaSparkContext.toSparkContext(jsc)
 
     val sensorDescriptor: CorrectionDescriptor = if(method.toUpperCase().equals("SMAC")){
+      logger.info("Using SMAC")
       new SMACCorrection()
     }else{
+      logger.info("Using ICOR")
       sensorId.toUpperCase() match {
         case "SENTINEL2"  => new Sentinel2Descriptor()
         case "LANDSAT8"   => new Landsat8Descriptor()
