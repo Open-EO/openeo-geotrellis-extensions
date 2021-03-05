@@ -326,7 +326,7 @@ class SMACCorrection extends CorrectionDescriptor(){
     //TODO lookup pressure, ozone, water vapour in ECMWF cams
     var maybeCoeff = coeffMap.get(bandName)
     if(maybeCoeff.isEmpty) {
-      val bandPattern = "(B[018][0-9A])".r
+      val bandPattern = ".*(B[018][0-9A]).*".r
       val coefficients = {
         bandName match {
           case bandPattern(pattern) => "Coef_S2A_CONT_" + pattern + ".dat"
@@ -340,7 +340,7 @@ class SMACCorrection extends CorrectionDescriptor(){
 
     val pressure = 1013 //SMACCorrection.PdeZ(1300);
     val UH2O = 0.3 // Water vapour (g/cm2)
-    val r_surf = SMACCorrection.smac_inv(src, sza, vza, raa, pressure.toFloat, aot.toFloat, ozone.toFloat, UH2O.toFloat, maybeCoeff.get)
+    val r_surf = SMACCorrection.smac_inv(src.doubleValue()/10000.0, sza, vza, raa, pressure.toFloat, aot.toFloat, ozone.toFloat, UH2O.toFloat, maybeCoeff.get)*10000.0
     r_surf
   }
 

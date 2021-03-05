@@ -63,7 +63,7 @@ public class testAtmosphericCorrectionProcess {
     	for (int icol=0; icol<(Integer)t0.cols(); ++icol)
         	for (int irow=0; irow<(Integer)t0.rows(); ++irow) {
         		int d=Math.abs(t0.get(icol,irow)-t1.get(icol,irow));
-        		res.merge((d%resolution)*resolution>sumabove?sumabove:(d%resolution)*resolution, 1, (a, b) -> a + b);
+        		res.merge((d/resolution)*resolution>sumabove?sumabove:(d/resolution)*resolution, 1, (a, b) -> a + b);
         	}
     	return res;
     }
@@ -164,7 +164,7 @@ public class testAtmosphericCorrectionProcess {
 	    return (new Stitcher$MultibandTileStitcher$()).stitch(pieces, stitchedcols, stitchedrows);
     }
 
-    
+
 	///////////////////////////////////////
 	// ICOR testing
 	///////////////////////////////////////
@@ -174,7 +174,7 @@ public class testAtmosphericCorrectionProcess {
     {
     	icorAllBandIds.add(new String("TOC-B02_10M"));
     	icorAllBandIds.add(new String("TOC-B03_10M"));
-    	icorAllBandIds.add(new String("TOC-B04_10M"));
+    	icorAllBandIds.add(new String("B04"));
     	icorAllBandIds.add(new String("TOC-B08_10M"));
     	icorAllBandIds.add(new String("TOC-B8A_20M"));
     	icorAllBandIds.add(new String("TOC-B09_60M"));
@@ -350,22 +350,19 @@ public class testAtmosphericCorrectionProcess {
         double UH2O=0.3     ;// Water vapour (g/cm2)
 
         //compute the atmospheric correction
-        double r_surf = SMACCorrection.smac_inv(0.2f, theta_s, theta_v,phi_s - phi_v,(float) pressure,(float) AOT550, (float)UO3, (float)UH2O, coeff);
+        double r_surf = SMACCorrection.smac_inv(0.2, theta_s, theta_v,phi_s - phi_v,(float) pressure,(float) AOT550, (float)UO3, (float)UH2O, coeff);
         System.out.println("r_surf = " + r_surf);
         //use reference python version to generate ref value: http://tully.ups-tlse.fr/olivier/smac-python
         assertEquals(0.16214342470440238,r_surf,0.00001);
 
     }
 
- 
-
-/*    
     final ArrayList<String> smacAllBandIds=new ArrayList<String>();
     {
-    	smacAllBandIds.add(new String("B02"));
-    	smacAllBandIds.add(new String("B03"));
-    	smacAllBandIds.add(new String("B04"));
-    	smacAllBandIds.add(new String("B08"));
+    	smacAllBandIds.add(new String(   "B02"   ));
+    	smacAllBandIds.add(new String("blaB03"   ));
+    	smacAllBandIds.add(new String(   "B04"   ));
+    	smacAllBandIds.add(new String(   "B08bla"));
     }
     final ArrayList<Object> smacOnlyOzoneParams=new ArrayList<Object>();
     {
@@ -425,20 +422,20 @@ public class testAtmosphericCorrectionProcess {
 	
 		MultibandTile resulttiles = acGetAndStitchTiles(resultRDD, new Integer[]{0,1,2,3}, (Integer)inputtiles[0].cols(), (Integer)inputtiles[0].rows());
 
-		System.out.println("***** REFDIFF ***************************");
-	    final int limit=2000;
+		
+	    final int limit=100;
 	    for(int i=0; i<resulttiles.bandCount(); ++i) {
-	    	Map<Integer,Integer> histo=differentialHistogram(resulttiles.band(i), reftiles[i], limit,100);
+	    	Map<Integer,Integer> histo=differentialHistogram(resulttiles.band(i), reftiles[i], limit,10);
 	        printHistogram("bnd "+Integer.toString(i)+" -------------------------", histo);
 	        double sum=histo.values().stream().reduce(0, Integer::sum).doubleValue();
 	        double outliers=histo.getOrDefault(limit,0);
-	//        assertTrue(outliers/sum<=0.01);
+	        // TODO: breaks because of B08 - to be investigated
+            //assertTrue(outliers/sum<=0.01);
 	    }
 
-		System.out.println("***** INPDIFF ***************************");
-	    final int slimit=10;
+	    final int slimit=100; // make this not equal test to guard against returning input
 	    for(int i=0; i<resulttiles.bandCount(); ++i) {
-	    	Map<Integer,Integer> histo=differentialHistogram(resulttiles.band(i), inputtiles[i], slimit,1);
+	    	Map<Integer,Integer> histo=differentialHistogram(resulttiles.band(i), inputtiles[i], slimit,10);
 	        printHistogram("bnd "+Integer.toString(i)+" -------------------------", histo);
 	        double sum=histo.values().stream().reduce(0, Integer::sum).doubleValue();
 	        double outliers=histo.getOrDefault(limit,0);
@@ -454,6 +451,6 @@ public class testAtmosphericCorrectionProcess {
 	    System.out.println("DONE");
 	
 	}
-*/
+
 
 }

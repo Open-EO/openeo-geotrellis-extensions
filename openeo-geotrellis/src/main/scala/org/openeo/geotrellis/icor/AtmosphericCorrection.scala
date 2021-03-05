@@ -185,6 +185,7 @@ println(result.band(3).getDouble(128, 128))
         } ).toInt else NODATA }
         resultTile.convert(tile.cellType)
       } catch {
+        // TODO: this is dangerous because this swallows the error on the angles but also swallows typos like B02 vs. B2 and silently returns the uncorrected tile -> put a more clever guarding mechanism in place
         case e: IllegalArgumentException => tile
 //        case e: Exception => { 
 //          // println(e)
