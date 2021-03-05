@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.io.InputStream;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Paths;
@@ -20,6 +21,7 @@ import org.apache.spark.rdd.RDD;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.openeo.geotrellis.smac.SMACCorrection;
 
 import geotrellis.layer.*;
 import geotrellis.proj4.*;
@@ -54,14 +56,14 @@ public class testAtmosphericCorrectionProcess {
 	// Support functions
 	///////////////////////////////////////
 	
-    public static Map<Integer,Integer> differentialHistogram(Tile t0, Tile t1, int sumabove){
+    public static Map<Integer,Integer> differentialHistogram(Tile t0, Tile t1, int sumabove, int resolution){
     	Map<Integer,Integer> res=new HashMap<>();
     	assertEquals((Integer)t0.cols(),(Integer)t1.cols());
     	assertEquals((Integer)t0.rows(),(Integer)t1.rows());
     	for (int icol=0; icol<(Integer)t0.cols(); ++icol)
         	for (int irow=0; irow<(Integer)t0.rows(); ++irow) {
         		int d=Math.abs(t0.get(icol,irow)-t1.get(icol,irow));
-        		res.merge(d>sumabove?sumabove:d, 1, (a, b) -> a + b);
+        		res.merge((d%resolution)*resolution>sumabove?sumabove:(d%resolution)*resolution, 1, (a, b) -> a + b);
         	}
     	return res;
     }
@@ -166,7 +168,7 @@ public class testAtmosphericCorrectionProcess {
 	///////////////////////////////////////
 	// ICOR testing
 	///////////////////////////////////////
-	
+
 
     final ArrayList<String> icorAllBandIds=new ArrayList<String>();
     {
@@ -250,31 +252,10 @@ public class testAtmosphericCorrectionProcess {
 		int tilerows=256;//((Integer) collected.get(0)._2.band(0).rows());
 
 		MultibandTile resulttiles = acGetAndStitchTiles(resultRDD, new Integer[]{0,1,2,3,11,12,13,14,15,16}, (Integer)inputtiles[0].cols(), (Integer)inputtiles[0].rows());
-
-//		scala.collection.immutable.List pieces=scala.collection.immutable.Nil$.MODULE$;
-//	    for(Tuple2<SpaceTimeKey, MultibandTile> i: collected)
-//	    	pieces=pieces.$colon$colon(
-//	    		new Tuple2<MultibandTile,Tuple2<Object,Object>>(
-//	    			new ArrayMultibandTile(new Tile[] {
-//	    			    i._2.band(0),
-//	    			    i._2.band(1),
-//	    			    i._2.band(2),
-//	    			    i._2.band(3),
-//	    			    i._2.band(11),
-//	    			    i._2.band(12),
-//	    			    i._2.band(13),
-//	    			    i._2.band(14),
-//	    			    i._2.band(15),
-//	    			    i._2.band(16)
-//	    			}), 
-//	    			new Tuple2<Object,Object>(i._1.col()*tilecols,i._1.row()*tilerows)
-//	    		)
-//	    	);
-//	    MultibandTile tiles=(new Stitcher$MultibandTileStitcher$()).stitch(pieces, (Integer)b02inptile.cols(), (Integer)b02inptile.rows());
-        
+       
         final int limit=10;
-        for(int i=0; i<10; ++i) {
-        	Map<Integer,Integer> histo=differentialHistogram(resulttiles.band(i), reftiles[i], limit);
+        for(int i=0; i<resulttiles.bandCount(); ++i) {
+        	Map<Integer,Integer> histo=differentialHistogram(resulttiles.band(i), reftiles[i], limit,1);
             printHistogram("bnd "+Integer.toString(i)+" -------------------------", histo);
             double sum=histo.values().stream().reduce(0, Integer::sum).doubleValue();
             double outliers=histo.getOrDefault(limit,0);
@@ -282,17 +263,16 @@ public class testAtmosphericCorrectionProcess {
         }
 
         // to generate new reference data or to exact match it
-        /*
-        geotrellis.raster.io.geotiff.MultibandGeoTiff$.MODULE$.apply(
-        	tiles, 
-        	newExtent, 
-        	crs
-        ).write("unittest_data.tif",false);
-        */
+        //geotrellis.raster.io.geotiff.MultibandGeoTiff$.MODULE$.apply(
+        //	tiles, 
+        //	newExtent, 
+        //	crs
+        //).write("unittest_data.tif",false);
+        
         System.out.println("DONE");
 
     }
-    
+
 	///////////////////////////////////////
 	// SMAC testing
 	///////////////////////////////////////
@@ -300,10 +280,10 @@ public class testAtmosphericCorrectionProcess {
 
     private final ArrayList<String> bandIds=new ArrayList<String>();
     {
-        bandIds.add(new String("TOC-B02_10M"));
-        bandIds.add(new String("TOC-B09_60M"));
-        bandIds.add(new String("TOC-B8A_20M"));
-        bandIds.add(new String("TOC-B11_20M"));
+        bandIds.add(new String("B02"));
+        bandIds.add(new String("B09"));
+        bandIds.add(new String("B8A"));
+        bandIds.add(new String("B11"));
     }
 
     private final ArrayList<Object> params=new ArrayList<Object>();
@@ -356,8 +336,8 @@ public class testAtmosphericCorrectionProcess {
 
     @Test
     public void testSMAC() {
-        URL resource = SMACCorrection.class.getResource("../smac/Coef_S2A_CONT_B02.dat");
-        SMACCorrection.Coeff coeff = new SMACCorrection.Coeff(resource.getPath());
+        InputStream resource = SMACCorrection.class.getResourceAsStream("../smac/Coef_S2A_CONT_B02.dat");
+        SMACCorrection.Coeff coeff = new SMACCorrection.Coeff(resource);
 
         int theta_s=45; //solar zenith angle
         int phi_s=200;  //solar azimuth angle
@@ -377,5 +357,103 @@ public class testAtmosphericCorrectionProcess {
 
     }
 
-   
+ 
+
+/*    
+    final ArrayList<String> smacAllBandIds=new ArrayList<String>();
+    {
+    	smacAllBandIds.add(new String("B02"));
+    	smacAllBandIds.add(new String("B03"));
+    	smacAllBandIds.add(new String("B04"));
+    	smacAllBandIds.add(new String("B08"));
+    }
+    final ArrayList<Object> smacOnlyOzoneParams=new ArrayList<Object>();
+    {
+    	smacOnlyOzoneParams.add(Double.NaN);
+    	smacOnlyOzoneParams.add(Double.NaN);
+    	smacOnlyOzoneParams.add(Double.NaN);
+    	smacOnlyOzoneParams.add(Double.NaN);
+    	smacOnlyOzoneParams.add(Double.NaN);
+    	smacOnlyOzoneParams.add(Double.NaN);
+    	smacOnlyOzoneParams.add(new Double(0.33));
+    }
+    
+    
+	@Test
+	public void testSMACOnCube() throws URISyntaxException {
+		String atmocorrDir = Paths.get(testAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
+	
+		Tile[] inputtiles=new Tile[] {
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B02.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B03.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B04.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B08.tif").toString()).read().get().tile().band(0)
+		};
+		
+		Tile[] reftiles=new Tile[] {
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_B02.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_B03.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_B04.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_B08.tif").toString()).read().get().tile().band(0)
+		};
+	
+	    Extent extent = new Extent(655360,5676040,660480,5686280);
+	    CRS crs=geotrellis.proj4.CRS$.MODULE$.fromEpsgCode(32631);
+	    ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube = acTilesToSpaceTimeDataCube(inputtiles,"2019-04-11T10:50:29Z",crs,extent,256);
+	    TileLayerMetadata<SpaceTimeKey> m = datacube.metadata();
+	    TileLayerMetadata<SpaceTimeKey> updatedMetadata = m.copy(m.cellType(),new LayoutDefinition(extent,m.layout().tileLayout()), extent,crs,m.bounds());
+	    ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> inputCube = new ContextRDD<>(datacube.rdd(), updatedMetadata);
+	     
+	    ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(
+	    	"SMAC",
+	    	JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
+	    	inputCube,
+	        smacAllBandIds,
+	        smacOnlyOzoneParams,
+	        "DEM",
+	    	"SENTINEL2",
+	    	true
+	    );      
+	    System.out.println(resultRDD.getClass().toString());
+	
+	    JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(resultRDD.toJavaRDD());
+	    assertFalse(result.isEmpty());
+	    List<Tuple2<SpaceTimeKey, MultibandTile>> collected = result.collect();
+		
+	    int tilecols=256;//((Integer) collected.get(0)._2.band(0).cols());
+		int tilerows=256;//((Integer) collected.get(0)._2.band(0).rows());
+	
+		MultibandTile resulttiles = acGetAndStitchTiles(resultRDD, new Integer[]{0,1,2,3}, (Integer)inputtiles[0].cols(), (Integer)inputtiles[0].rows());
+
+		System.out.println("***** REFDIFF ***************************");
+	    final int limit=2000;
+	    for(int i=0; i<resulttiles.bandCount(); ++i) {
+	    	Map<Integer,Integer> histo=differentialHistogram(resulttiles.band(i), reftiles[i], limit,100);
+	        printHistogram("bnd "+Integer.toString(i)+" -------------------------", histo);
+	        double sum=histo.values().stream().reduce(0, Integer::sum).doubleValue();
+	        double outliers=histo.getOrDefault(limit,0);
+	//        assertTrue(outliers/sum<=0.01);
+	    }
+
+		System.out.println("***** INPDIFF ***************************");
+	    final int slimit=10;
+	    for(int i=0; i<resulttiles.bandCount(); ++i) {
+	    	Map<Integer,Integer> histo=differentialHistogram(resulttiles.band(i), inputtiles[i], slimit,1);
+	        printHistogram("bnd "+Integer.toString(i)+" -------------------------", histo);
+	        double sum=histo.values().stream().reduce(0, Integer::sum).doubleValue();
+	        double outliers=histo.getOrDefault(limit,0);
+	//        assertTrue(outliers/sum<=0.01);
+	    }
+	    
+	    // to generate new reference data or to exact match it
+	    //geotrellis.raster.io.geotiff.MultibandGeoTiff$.MODULE$.apply(
+	    //	tiles, 
+	    //	newExtent, 
+	    //	crs
+	    //).write("unittest_data.tif",false);
+	    System.out.println("DONE");
+	
+	}
+*/
+
 }
