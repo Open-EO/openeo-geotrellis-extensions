@@ -115,7 +115,7 @@ class BatchProcessingApi {
     }
 
     val evaluatePixelReturnProperties = identifiers.zipWithIndex map { case (identifier, i) =>
-      s"$identifier: bandValues(samples, scenes, $i)"
+      s"$identifier: bandValues(samples, $i)"
     }
 
     val quotedBandNames = bandNames.map(bandName => s""""$bandName"""")
@@ -132,19 +132,14 @@ class BatchProcessingApi {
         |    };
         |}
         |
-        |function evaluatePixel(samples, scenes) {
+        |function evaluatePixel(samples) {
         |    return {
         |        ${evaluatePixelReturnProperties mkString ",\n"}
         |    };
         |}
         |
-        |function bandValues(samples, scenes, sceneIdx) {
-        |    function indexOf(sceneIdx) {
-        |        return scenes.findIndex(scene => scene.idx === sceneIdx)
-        |    }
-        |
-        |    let sampleIndex = indexOf(sceneIdx)
-        |    return sampleIndex >= 0 ? [${bandValues mkString ","}] : [${noDataValues mkString ","}]
+        |function bandValues(samples, sampleIndex) {
+        |    return sampleIndex < samples.length ? [${bandValues mkString ","}] : [${noDataValues mkString ","}]
         |}
         |""".stripMargin
   }
