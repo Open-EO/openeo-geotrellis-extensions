@@ -70,7 +70,8 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
     new BatchProcessingApi().getBatchProcess(batchRequestId, accessToken).status
 
   def start_card4l_batch_processes(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
-                                   from_date: String, to_date: String, band_names: util.List[String], subfolder: String,
+                                   from_date: String, to_date: String, band_names: util.List[String],
+                                   dem_instance: String, subfolder: String,
                                    request_group_id: String): util.List[String] = {
     // TODO: add error handling
     val boundingBox = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
@@ -101,6 +102,7 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
           band_names.asScala,
           dataTakeId(id),
           card4lId = request_group_id,
+          dem_instance,
           bucketName,
           subfolder,
           accessToken

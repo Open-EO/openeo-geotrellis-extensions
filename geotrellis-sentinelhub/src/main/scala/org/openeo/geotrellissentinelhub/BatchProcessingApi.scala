@@ -173,14 +173,27 @@ class BatchProcessingApi {
   }
 
   def createCard4LBatchProcess(datasetId: String, bounds: Geometry, dateTime: ZonedDateTime, bandNames: Seq[String],
-                               dataTakeId: String, card4lId: String, bucketName: String, subFolder: String,
-                               accessToken: String): CreateBatchProcessResponse = {
+                               dataTakeId: String, card4lId: String, demInstance: String, bucketName: String,
+                               subFolder: String, accessToken: String): CreateBatchProcessResponse = {
     require(datasetId == "S1GRD", """only data set "S1GRD" is supported""")
 
     val (from, to) = (dateTime, dateTime plusSeconds 1)
 
     val (year, month, day) = (dateTime.getYear, dateTime.getMonthValue, dateTime.getDayOfMonth)
     val tilePath = f"s3://$bucketName/$subFolder/s1_rtc/<tileName>/$year/$month%02d/$day%02d/$dataTakeId/s1_rtc_${dataTakeId}_<tileName>_${year}_$month%02d_$day%02d_<outputId>.<format>"
+
+    val processingOptions = {
+      val requiredOptions = Map(
+        "backCoeff" -> "GAMMA0_TERRAIN".asJson,
+        "orthorectify" -> true.asJson,
+        "downsampling" -> "BILINEAR".asJson,
+        "upsampling" -> "BILINEAR".asJson
+      )
+
+      Option(demInstance).foldLeft(requiredOptions) { case (options, demInstance) =>
+        options + ("demInstance" -> demInstance.asJson)
+      }
+    }
 
     val evalScript = {
       val quotedBandNames = bandNames.map(bandName => s""""$bandName"""")
@@ -230,13 +243,7 @@ class BatchProcessingApi {
           |                        "polarization":"DV",
           |                        "resolution":"HIGH"
           |                    },
-          |                    "processing": {
-          |                        "backCoeff":"GAMMA0_TERRAIN",
-          |                        "orthorectify":true,
-          |                        "demInstance":"COPERNICUS_30",
-          |                        "downsampling":"BILINEAR",
-          |                        "upsampling":"BILINEAR"
-          |                    }
+          |                    "processing": ${processingOptions.asJson}
           |                }
           |            ]
           |        },

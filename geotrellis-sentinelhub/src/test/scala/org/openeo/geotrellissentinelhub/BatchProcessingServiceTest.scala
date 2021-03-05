@@ -48,7 +48,8 @@ class BatchProcessingServiceTest {
       bbox_srs = "EPSG:4326",
       from_date = "2021-02-01T00:00:00+00:00",
       to_date = "2021-02-17T00:00:00+00:00",
-      band_names = util.Arrays.asList("VH", "VV"),
+      band_names = util.Arrays.asList("VH", "VV", "dataMask", "localIncidenceAngle"),
+      dem_instance = null,
       subfolder = requestGroupId,
       requestGroupId
     )
