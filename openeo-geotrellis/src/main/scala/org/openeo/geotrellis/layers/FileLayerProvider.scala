@@ -371,7 +371,7 @@ class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, 
         Seq(GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
       }else if(path.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
-        SentinelXMLMetadataRasterSource(new URL(path.replace("/vsicurl/","")))
+        SentinelXMLMetadataRasterSource(new URL(path.replace("/vsicurl/","").replace("/vsis3/eodata","https://finder.creodias.eu/files")))
       }
       else {
         if(experimental) {
