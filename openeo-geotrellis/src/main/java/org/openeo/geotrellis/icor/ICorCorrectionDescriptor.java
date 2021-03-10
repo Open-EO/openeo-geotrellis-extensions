@@ -8,35 +8,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 
 public abstract class ICorCorrectionDescriptor extends CorrectionDescriptor {
-/*
-    private transient Callable lutLoader = (Callable<Broadcast<LookupTable>>) () -> {
 
-        LookupTable lut = LookupTableIO.readLUT(ICorCorrectionDescriptor.this.getLookupTableURL());
-        try {
-            SparkContext theContext = SparkContext.getOrCreate();
-            return JavaSparkContext.fromSparkContext(theContext).broadcast(lut);
-        } catch (Exception e) {
-            //there is no context active, shortcut
-            return new Broadcast<LookupTable>(1L, scala.reflect.ClassTag$.MODULE$.apply(LookupTable.class)) {
-                @Override
-                public void doDestroy(boolean blocking) {
-
-                }
-
-                @Override
-                public void doUnpersist(boolean blocking) {
-
-                }
-
-                @Override
-                public LookupTable getValue() {
-                    return lut;
-                }
-            };
-        }
-
-    };
-*/    
     private Broadcast<LookupTable> bcLUT;
 
     {

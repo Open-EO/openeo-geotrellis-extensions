@@ -35,7 +35,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
     // TODO: propagate referring by band name instead of index
     // TODO: to be checked if L1C is already corrected to earth-sun distance or not
     final static double[] irradiances = {
-	    1857,00, // B01
+	    1857.00, // B01
 	    2067.00, // B02
 	    1893.00, // B03
 	    1603.00, // B04
@@ -119,7 +119,6 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
     		int waterMask)
     {
 		// lut only has 8 bands instead of 9
-		//if (band>8) return src;
 		int band = 0;
 		try {
 			band = getBandFromName(bandName);
@@ -127,10 +126,46 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 			throw new RuntimeException(e);
 		}
 		if (band>7) return src;
+/*
 		final double TOAradiance=src*RADIANCE_MULT_BAND[band]+RADIANCE_ADD_BAND[band];
         final double corrected = correctRadiance( band, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
 		//final double corrected=TOAradiance;
         return corrected*10000.;
+*/
+        // Apply atmoshperic correction on pixel based on an array of parameters from MODTRAN
+        final double TOAradiance=reflToRad(src*0.0001, sza, time, band);
+        final double corrected = correctRadiance( band, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
+		//final double corrected=TOAradiance;
+        return corrected*10000.;    
     }
-		
+
+    /**
+     * @param src:              Band in reflectance range(0.,1.)
+     * @param sza:      		sun zenith angle in degrees
+     * @param time:             Time in millis from epoch
+     * @param bandToConvert     Bandnumber
+     * @return                  Band in radiance
+     * @throws Exception 
+     */
+    // this is highly sub-optimal many things can be calculated beforehand once for all pixels!
+	// TODO: remove refltorad from L8 when refactored
+    @Override
+    public double reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert) {
+
+        // SZA to SZA in rad + apply scale factor
+        double szaInRadCoverage = 2.*sza*Math.PI/360.;
+
+        // cos of SZA
+        double cosSzaCoverage = Math.cos(szaInRadCoverage);
+
+        double solarIrradiance = getIrradiance(bandToConvert);
+
+        // TODO: ask Sinergise for the Sentinelhub layer what do they do with L1C, because it differs from stock L8 level1 data
+        double earthsunAU = earthSunDistance(time);
+        
+        double radiance = src* (cosSzaCoverage * solarIrradiance) / (Math.PI * earthsunAU * earthsunAU);
+        return radiance;
+    }
+	
+	
 }

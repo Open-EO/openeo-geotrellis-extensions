@@ -208,7 +208,7 @@ public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
 
     /**
      * @param src:              Band in reflectance range(0.,1.)
-     * @param sza:      SZA in degrees
+     * @param sza:      		sun zenith angle in degrees
      * @param time:             Time in millis from epoch
      * @param bandToConvert     Bandnumber
      * @return                  Band in radiance
