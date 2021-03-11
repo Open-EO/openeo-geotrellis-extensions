@@ -304,7 +304,27 @@ class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, 
   private val _rootPath = if(rootPath != null) Paths.get(rootPath) else null
   //private val openSearch: OpenSearch = OpenSearch(openSearchEndpoint)
 
-  val openSearchLinkTitlesWithBandIds: Seq[(String, Seq[Int])] = openSearchLinkTitles.toList.zipAll(bandIds, "", Seq(0))
+  val openSearchLinkTitlesWithBandIds: Seq[(String, Seq[Int])] = {
+
+    val splitted = openSearchLinkTitles.map(title => {
+      val split = title.split("##")
+      if (split.length == 1) {
+        (split(0), 0)
+      }else{
+        (split(0),split(1).toInt)
+      }
+    })//.toList.groupBy(_._1).mapValues(_.map(t=>t._2).toSeq).toSeq
+    var previous = ""
+    splitted.foldLeft(List[Tuple2[String,Seq[Int]]]()){
+      case (head :: res, (linkTitle, bands)) if (linkTitle == previous) => {
+        (head._1,(bands +: head._2)) :: res
+      }
+      case (theList, notMatchingElement) => {
+        previous = notMatchingElement._1
+        (notMatchingElement._1,Seq(notMatchingElement._2)) :: theList
+      }
+    }.reverse
+  }
 
   def this(openSearch: OpenSearch, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, metadataProperties: Map[String, Any]) =
     this(openSearch, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, maxSpatialResolution, pathDateExtractor, metadataProperties)
@@ -366,12 +386,12 @@ class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, 
     val re = RasterExtent(expandToCellSize(targetExtent.extent, maxSpatialResolution), maxSpatialResolution).alignTargetPixels
     val alignment = TargetAlignment(re)
 
-    def rasterSource(path:String,targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent ): Seq[RasterSource] = {
+    def rasterSource(path:String,targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
       if(path.endsWith(".jp2")) {
         Seq(GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
       }else if(path.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
-        SentinelXMLMetadataRasterSource(new URL(path.replace("/vsicurl/","").replace("/vsis3/eodata","https://finder.creodias.eu/files")))
+        SentinelXMLMetadataRasterSource(new URL(path.replace("/vsicurl/","").replace("/vsis3/eodata","https://finder.creodias.eu/files")),bands)
       }
       else {
         if(experimental) {
@@ -387,7 +407,7 @@ class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, 
       link <- feature.links.find(_.title contains title)
       path = deriveFilePath(link.href)
       targetCellType = if (link.title contains "SCENECLASSIFICATION_20M") Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0))) else None
-    } yield (rasterSource(path,targetCellType, targetExtent), bands)
+    } yield (rasterSource(path,targetCellType, targetExtent,bands), bands)
 
     rasterSources.flatMap(rs_b => rs_b._1.map(rs => (rs,rs_b._2))).toList
   }

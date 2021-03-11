@@ -161,7 +161,7 @@ class CreoPyramidFactoryTest {
   @Test
   def testCreoPyramidDatacube(): Unit = {
 
-    val pyramidFactory = new Sentinel2PyramidFactory(openSearchEndpoint="https://finder.creodias.eu/resto/api/collections/" ,openSearchCollectionId = "Sentinel2",openSearchLinkTitles = util.Arrays.asList("IMG_DATA_Band_B02_10m_Tile1_Data","S2_Level-2A_Tile1_Metadata"),rootPath = "/eodata",
+    val pyramidFactory = new Sentinel2PyramidFactory(openSearchEndpoint="https://finder.creodias.eu/resto/api/collections/" ,openSearchCollectionId = "Sentinel2",openSearchLinkTitles = util.Arrays.asList("IMG_DATA_Band_B02_10m_Tile1_Data","S2_Level-2A_Tile1_Metadata##3","S2_Level-2A_Tile1_Metadata##1"),rootPath = "/eodata",
       maxSpatialResolution = CellSize(10,10)){
       override def createOpenSearch: OpenSearch = new MockOpenSearch
     }
@@ -184,8 +184,14 @@ class CreoPyramidFactoryTest {
       .collect()
       .sortWith(_ isBefore _)
 
+    assertFalse(timestamps.isEmpty)
+
     for (timestamp <- timestamps) {
-      saveRDD(rdd.toSpatial(timestamp),-1,s"${DateTimeFormatter.ISO_LOCAL_DATE format timestamp}.tif")
+      val output = s"${DateTimeFormatter.ISO_LOCAL_DATE format timestamp}.tif"
+      println(output)
+      saveRDD(rdd.toSpatial(timestamp),-1,output)
+      val tiff = GeoTiff.readMultiband(output)
+      assertEquals(3,tiff.tile.bandCount)
     }
   }
 
