@@ -9,7 +9,7 @@ import java.util
 
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.{GeoTiff, MultibandGeoTiff}
-import geotrellis.raster.{ArrayTile, CellSize, MultibandTile, Raster, Tile}
+import geotrellis.raster.{ArrayTile, CellSize, MultibandTile, Raster, Tile, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.vector.{Extent, Polygon, ProjectedExtent}
 import org.apache.commons.io.FileUtils
@@ -177,6 +177,7 @@ class CreoPyramidFactoryTest {
     assertEquals(1, pyramid.size)
 
     val rdd = pyramid.head._2.cache
+    assertEquals(UShortConstantNoDataCellType,rdd.metadata.cellType)
 
     val timestamps = rdd.keys
       .map(_.time)
