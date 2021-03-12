@@ -17,6 +17,7 @@ import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
 import org.junit.Test
 import org.openeo.geotrellissentinelhub.SampleType.FLOAT32
 
+import java.util.Collections
 import scala.collection.JavaConverters._
 
 class PyramidFactoryTest {
@@ -84,7 +85,8 @@ class PyramidFactoryTest {
       val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
 
       val isoDate = ISO_OFFSET_DATE_TIME format date
-      val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs, isoDate, isoDate, bandNames.asJava)
+      val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs, isoDate, isoDate, bandNames.asJava,
+        metadata_properties = Collections.emptyMap[String, Any]) // https://github.com/scala/bug/issues/8911
 
       val (zoom, baseLayer) = pyramid
         .maxBy { case (zoom, _) => zoom }
@@ -127,7 +129,8 @@ class PyramidFactoryTest {
         Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
         from_date = ISO_OFFSET_DATE_TIME format date,
         to_date = ISO_OFFSET_DATE_TIME format date,
-        band_names = Seq("B08", "B04", "B03").asJava
+        band_names = Seq("B08", "B04", "B03").asJava,
+        metadata_properties = Collections.emptyMap[String, Any]
       )
 
       val spatialLayer = layer
