@@ -10,7 +10,7 @@ import java.util.List;
 
 public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 
-	public void prepare(LookupTable lut, ICorCorrectionDescriptor cd, String wv_Band, String ref0_Band, String ref1_Band) throws Exception {
+	public void prepare(ICorCorrectionDescriptor cd, String wv_Band, String ref0_Band, String ref1_Band) throws Exception {
 
 		// correction descriptor
 		this.cd=cd;
@@ -26,7 +26,7 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 	    
 	    // initialize helper buffers
 	    // to avoid always reallocating in a tight loop
-	    wv=lut.getCwv();
+	    wv=cd.bcLUT.getCwv();
 	    wvluparams=new double[wv.length];
 	    r0luparams=new double[wv.length];
 	    r1luparams=new double[wv.length];
@@ -35,7 +35,8 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 	}
 
 	@Override
-	public double computePixel(LookupTable lut,
+	public double computePixel(
+		LookupTable lut,
 		double sza,   // sun zenith angle [deg]
 		double vza,   // sensor zenith angle [deg]
 		double raa,   // relative azimuth angle [deg]

@@ -6,6 +6,10 @@ import java.time.ZonedDateTime;
 public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 
 
+	public Landsat8Descriptor() throws Exception {
+		super();
+	}
+
 	public String getLookupTableURL() {
 		return "L8_big_disort"; 
 	}

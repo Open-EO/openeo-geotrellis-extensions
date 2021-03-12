@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory
 
 object ComputeWaterVapor{
   implicit val logger = LoggerFactory.getLogger(classOf[ComputeWaterVapor])
-  val lutCache: Cache[String, Broadcast[LookupTable]] = CacheBuilder.newBuilder().softValues().build()
+//  val lutCache: Cache[String, Broadcast[LookupTable]] = CacheBuilder.newBuilder().softValues().build()
 }
 
 
@@ -34,19 +34,22 @@ class ComputeWaterVapor {
 
     val sc = JavaSparkContext.toSparkContext(jsc)
 
-    val sensorDescriptor: ICorCorrectionDescriptor = sensorId.toUpperCase() match {
-      case "SENTINEL2"  => new Sentinel2Descriptor()
-      case "LANDSAT8"   => new Landsat8Descriptor()
-    }
-    
-    val lutLoader = new Callable[Broadcast[LookupTable]]() {
-      override def call(): Broadcast[LookupTable] = {
-        org.openeo.geotrellis.logTiming("Loading icor LUT")({
-          sc.broadcast(LookupTableIO.readLUT(sensorDescriptor.getLookupTableURL()))
-        })
+    // no more changes in sensordescriptor beyond broadcast, because it won't be synched to the workers
+    val sensorDescriptorBC=sc.broadcast(
+      sensorId.toUpperCase() match {
+        case "SENTINEL2"  => new Sentinel2Descriptor()
+        case "LANDSAT8"   => new Landsat8Descriptor()
       }
-    }
-    val bcLUT = lutCache.get(sensorDescriptor.getLookupTableURL(), lutLoader)
+    )
+    
+//    val lutLoader = new Callable[Broadcast[LookupTable]]() {
+//      override def call(): Broadcast[LookupTable] = {
+//        org.openeo.geotrellis.logTiming("Loading icor LUT")({
+//          sc.broadcast(LookupTableIO.readLUT(sensorDescriptor.getLookupTableURL()))
+//        })
+//      }
+//    }
+//    val bcLUT = lutCache.get(sensorDescriptor.getLookupTableURL(), lutLoader)
 
     val crs = datacube.metadata.crs
     val layoutDefinition = datacube.metadata.layout
@@ -58,7 +61,7 @@ class ComputeWaterVapor {
       datacube.mapPartitions(partition => {
 // AOT overriden        val aotProvider = new AOTProvider()
         val demProvider = new DEMProvider(layoutDefinition, crs)
-        val cwvProvider = new CWVProvider(sensorDescriptor)
+        val cwvProvider = new CWVProvider()
         
         partition.map {
           multibandtile =>
@@ -107,7 +110,8 @@ class ComputeWaterVapor {
                   ozone,
                   prePostMult.get(0),
                   prePostMult.get(1),
-                  bandIds
+                  bandIds,
+                  sensorDescriptorBC.value
                 ))
                 
                 correctionAccum.add(System.currentTimeMillis() - afterAuxData)

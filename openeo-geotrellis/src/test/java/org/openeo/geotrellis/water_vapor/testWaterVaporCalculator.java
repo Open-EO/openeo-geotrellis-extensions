@@ -13,7 +13,14 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 public class testWaterVaporCalculator {
 
 	private static LookupTable lut;
-	private static ICorCorrectionDescriptor cd=new Sentinel2Descriptor();
+	private static ICorCorrectionDescriptor cd;
+	static { 
+		try {
+			cd=new Sentinel2Descriptor();
+		} catch (Exception e) {
+			e.printStackTrace();
+		} 
+	}
 	private static AbdaWaterVaporCalculator wvc=new AbdaWaterVaporCalculator();
 
 	static final double sza=43.5725342155;
@@ -69,7 +76,7 @@ public class testWaterVaporCalculator {
 
 	@Test
 	public void testPrepare() throws Exception {
-		wvc.prepare(lut, cd, "B09", "B8A", "B11");
+		wvc.prepare(cd, "B09", "B8A", "B11");
 		assertEquals(wvc.wvBand,9);
 		assertEquals(wvc.r0Band,8);
 		assertEquals(wvc.r1Band,11);
@@ -80,7 +87,7 @@ public class testWaterVaporCalculator {
 	@Test
 	public void testComputePixelInRange() throws Exception {
 
-    	wvc.prepare(lut, cd, "B09", "B8A", "B11");
+    	wvc.prepare(cd, "B09", "B8A", "B11");
 		double r=wvc.computePixel(lut, 
 			sza,
 			vza,
@@ -142,7 +149,7 @@ public class testWaterVaporCalculator {
 	@Test
 	public void testComputePixelOutOfRange() throws Exception {
 
-    	wvc.prepare(lut, cd, "B09", "B8A", "B11");
+    	wvc.prepare(cd, "B09", "B8A", "B11");
 		double r=wvc.computePixel(lut, 
 			sza,
 			vza,

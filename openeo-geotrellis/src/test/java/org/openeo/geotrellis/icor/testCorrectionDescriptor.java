@@ -12,7 +12,14 @@ import static org.junit.Assert.assertArrayEquals;
 // TODO: this only tests Sentinel-2 descriptor only, extend to landsat8
 public class testCorrectionDescriptor {
 
-	private static Sentinel2Descriptor cd = new Sentinel2Descriptor();
+	private static Sentinel2Descriptor cd;
+	static { 
+		try {
+			cd=new Sentinel2Descriptor();
+		} catch (Exception e) {
+			e.printStackTrace();
+		} 
+	}
 
 	private static class CorrectionInput {
 

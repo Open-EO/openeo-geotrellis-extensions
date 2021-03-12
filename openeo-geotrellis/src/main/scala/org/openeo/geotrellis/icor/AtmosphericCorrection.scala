@@ -12,9 +12,9 @@ import org.openeo.geotrellis.water_vapor.{CWVProvider, ConstantCWVProvider}
 import org.slf4j.LoggerFactory
 import org.openeo.geotrellis.smac.SMACCorrection
 
-object AtmosphericCorrection{
-  val iCorLookupTableCache: Cache[String, Broadcast[LookupTable]] = CacheBuilder.newBuilder().softValues().build()
-}
+//object AtmosphericCorrection{
+//  val iCorLookupTableCache: Cache[String, Broadcast[LookupTable]] = CacheBuilder.newBuilder().softValues().build()
+//}
 
 
 class AtmosphericCorrection extends Serializable {
@@ -48,16 +48,19 @@ class AtmosphericCorrection extends Serializable {
                ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]  = {
     val sc = JavaSparkContext.toSparkContext(jsc)
 
-    val sensorDescriptor: CorrectionDescriptor = if(method.toUpperCase().equals("SMAC")){
-      logger.info("Using SMAC")
-      new SMACCorrection()
-    }else{
-      logger.info("Using ICOR")
-      sensorId.toUpperCase() match {
-        case "SENTINEL2"  => new Sentinel2Descriptor()
-        case "LANDSAT8"   => new Landsat8Descriptor()
+    // no more changes in sensordescriptor beyond broadcast, because it won't be synched to the workers
+    val sensorDescriptorBC=sc.broadcast(
+      if(method.toUpperCase().equals("SMAC")){
+        logger.info("Using SMAC")
+        new SMACCorrection()
+      }else{
+        logger.info("Using ICOR")
+        sensorId.toUpperCase() match {
+          case "SENTINEL2"  => new Sentinel2Descriptor()
+          case "LANDSAT8"   => new Landsat8Descriptor()
+        }
       }
-    }
+    )
 
     val crs = datacube.metadata.crs
     val layoutDefinition = datacube.metadata.layout
@@ -70,7 +73,7 @@ class AtmosphericCorrection extends Serializable {
       new ConstantCWVProvider(0.3)
     }else{
       sensorId.toUpperCase() match {
-        case "SENTINEL2"  => new CWVProvider(sensorDescriptor.asInstanceOf[ICorCorrectionDescriptor])
+        case "SENTINEL2"  => new CWVProvider()
         case "LANDSAT8"   => new ConstantCWVProvider(0.3)
       }
     }
@@ -128,7 +131,7 @@ class AtmosphericCorrection extends Serializable {
                 val afterAuxData = System.currentTimeMillis()
                 auxDataAccum.add(afterAuxData-startMillis)
 
-                val (cwvTile: Tile, result: MultibandTile) = correctTile(multibandtile, bandIds, szaTile, vzaTile, raaTile,aotTile, demTile, overrideParams, sensorDescriptor, cwvProvider)
+                val (cwvTile: Tile, result: MultibandTile) = correctTile(multibandtile, bandIds, szaTile, vzaTile, raaTile,aotTile, demTile, overrideParams, sensorDescriptorBC.value, cwvProvider)
                 correctionAccum.add(System.currentTimeMillis() - afterAuxData)
 /*
 println(multibandtile)    
@@ -166,7 +169,7 @@ println(result.band(3).getDouble(128, 128))
 
   private def correctTile(multibandtile: (SpaceTimeKey, MultibandTile), bandIds: util.List[String], szaTile: Tile, vzaTile: Tile, raaTile: Tile, aotTile: Tile, demTile: Tile, overrideParams: util.List[Double], sensorDescriptor: CorrectionDescriptor, cwvProvider: CWVProvider) = {
     // keep cwv last because depends on the others a lot
-    val cwvTile = if (overrideParams.get(5).isNaN) cwvProvider.compute(multibandtile, szaTile, vzaTile, raaTile, demTile, 0.1, 0.33, 1.0e-4, 1.0, bandIds)
+    val cwvTile = if (overrideParams.get(5).isNaN) cwvProvider.compute(multibandtile, szaTile, vzaTile, raaTile, demTile, 0.1, 0.33, 1.0e-4, 1.0, bandIds, sensorDescriptor)
     else FloatConstantTile(overrideParams.get(5).toFloat, multibandtile._2.cols, multibandtile._2.rows)
 
     val result = multibandtile._2.mapBands((b, tile) => {
