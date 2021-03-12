@@ -235,6 +235,7 @@ public class testAtmosphericCorrectionProcess {
         long start=System.nanoTime();
         
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(
+        	"ICOR",
         	JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
         	inputCube,
             icorAllBandIds,
@@ -477,6 +478,7 @@ public class testAtmosphericCorrectionProcess {
         long start=System.nanoTime();
         
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(
+        	"ICOR",
         	JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
         	inputCube,
             icorL8AllBandIds,

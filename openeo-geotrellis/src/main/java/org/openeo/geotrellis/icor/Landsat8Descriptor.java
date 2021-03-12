@@ -28,7 +28,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 			case "B09":         return 8;
 			case "B10":         return 9;
 			case "B11":         return 10;
-			default: throw new IllegalArgumentException("Unsupported band provided");
+			default: throw new IllegalArgumentException("Unsupported band: "+name);
 		}
 	}
     
@@ -111,6 +111,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 	@Override
     public double correct(
     		String bandName,
+    		int bandIdx,
     		ZonedDateTime time,
     		double src, 
     		double sza, 
@@ -123,13 +124,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
     		int waterMask)
     {
 		// lut only has 8 bands instead of 9
-		int band = 0;
-		try {
-			band = getBandFromName(bandName);
-		} catch (Exception e) {
-			throw new RuntimeException(e);
-		}
-		if (band>7) return src;
+		if (bandIdx>7) return src;
 /*
 		final double TOAradiance=src*RADIANCE_MULT_BAND[band]+RADIANCE_ADD_BAND[band];
         final double corrected = correctRadiance( band, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
@@ -137,8 +132,8 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
         return corrected*10000.;
 */
         // Apply atmoshperic correction on pixel based on an array of parameters from MODTRAN
-        final double TOAradiance=reflToRad(src*0.0001, sza, time, band);
-        final double corrected = correctRadiance( band, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
+        final double TOAradiance=reflToRad(src*0.0001, sza, time, bandIdx);
+        final double corrected = correctRadiance( bandIdx, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
 		//final double corrected=TOAradiance;
         return corrected*10000.;    
     }

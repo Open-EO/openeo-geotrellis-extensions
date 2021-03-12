@@ -26,46 +26,21 @@ public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
    
     @Override
     public int getBandFromName(String name) throws IllegalArgumentException {
-    	// TODO: turn it into a map
 		switch(name.toUpperCase()) {
-			case "TOC-B01_60M": return 0;
 			case "B01":         return 0;
-			case "TOC-B02_10M": return 1;
 			case "B02":         return 1;
-			case "TOC-B03_10M": return 2;
 			case "B03":         return 2;
-			case "TOC-B04_10M": return 3;
 			case "B04":         return 3;
-			case "TOC-B05_20M": return 4;
 			case "B05":         return 4;
-			case "TOC-B06_20M": return 5;
 			case "B06":         return 5;
-			case "TOC-B07_20M": return 6;
 			case "B07":         return 6;
-			case "TOC-B08_10M": return 7;
 			case "B08":         return 7;
-			case "TOC-B8A_20M": return 8;
 			case "B8A":         return 8;
-			case "TOC-B09_60M": return 9;
 			case "B09":         return 9;
-			case "TOC-B10_60M": return 10;
 			case "B10":         return 10;
-			case "TOC-B11_20M": return 11;
 			case "B11":         return 11;
-			case "TOC-B12_20M": return 12;
 			case "B12":         return 12;
-			/*
-			case "TOC-B02_10M": return 1; // blue
-            case "B02": return 1; // blue
-            case "TOC-B03_10M": return 2; // green
-            case "B03": return 2; // green
-			case "TOC-B04_10M": return 3; // red
-            case "B04": return 3; // red
-			case "TOC-B08_10M": return 7; // nir
-            case "B08": return 7; // nir
-			case "TOC-B11_20M": return 10; // swir <- BUG: 11
-			*/
-			default: throw new IllegalArgumentException("Unsupported band provided");
+			default: throw new IllegalArgumentException("Unsupported band: "+name);
 		}
 	}
 	
@@ -180,6 +155,7 @@ public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
     @Override
     public double correct(
 		String bandName,
+		int bandIdx,
 		ZonedDateTime time,
 		double src, 
 		double sza, 
@@ -191,11 +167,9 @@ public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
 		double ozone,
 		int waterMask)
     {
-    	// Get interpolated array from lookuptable
-		int band = getBandFromName(bandName);
         // Apply atmoshperic correction on pixel based on an array of parameters from MODTRAN
-        final double TOAradiance=reflToRad(src*0.0001, sza, time, band);
-        final double corrected = correctRadiance( band, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
+        final double TOAradiance=reflToRad(src*0.0001, sza, time, bandIdx);
+        final double corrected = correctRadiance( bandIdx, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
 		//final double corrected=TOAradiance;
         return corrected*10000.;
     }

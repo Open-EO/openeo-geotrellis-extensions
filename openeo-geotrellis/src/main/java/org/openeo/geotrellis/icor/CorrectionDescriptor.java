@@ -32,6 +32,7 @@ public abstract class CorrectionDescriptor implements Serializable{
      * This function performs the pixel-wise correction: src is a pixel value belonging to band (as from getBandFromName).
      * If band is out of range, the function should return src (since any errors of mis-using bands should be caught upstream, before the pixel-wise loop).
      * @param bandName band id
+     * @param bandIdx band index as returned by getBandFromName
      * @param src to be converted: this may be digital number, reflectance, radiance, ... depending on the specific correction, and it should clearly be documented there!
      * @param sza degree
      * @param vza degree
@@ -46,6 +47,7 @@ public abstract class CorrectionDescriptor implements Serializable{
     // calculates the atmospheric correction for pixel
     public abstract double correct(
 		String bandName,
+		int bandIdx,
 		ZonedDateTime time,
 		double src, 
 		double sza, 
@@ -55,7 +57,8 @@ public abstract class CorrectionDescriptor implements Serializable{
 		double aot, 
 		double cwv, 
 		double ozone,
-		int waterMask);
+		int waterMask
+	);
 	
 	
 	

@@ -13,27 +13,12 @@ import org.slf4j.LoggerFactory
 import org.openeo.geotrellis.smac.SMACCorrection
 
 //object AtmosphericCorrection{
-//  val iCorLookupTableCache: Cache[String, Broadcast[LookupTable]] = CacheBuilder.newBuilder().softValues().build()
 //}
 
 
 class AtmosphericCorrection extends Serializable {
   
   val logger = LoggerFactory.getLogger(classOf[AtmosphericCorrection])
-
-  // TODO: the method defaulting is moved upstairs, this signature can be removed when the calls in the unittests are adapted
-  def correct(
-        jsc: JavaSparkContext,
-        datacube: MultibandTileLayerRDD[SpaceTimeKey],
-        bandIds:java.util.List[String],
-        overrideParams:java.util.List[Double], // sza,vza,raa,gnd,aot,cwv,ozone <- if other than NaN, it will use the value as constant tile
-        elevationSource: String,
-        sensorId: String, // SENTINEL2 and LANDSAT8 for now
-        // TODO: in the future SENTINEL2A,SENTINEL2B,... granulation will be needed
-        appendDebugBands: Boolean // this will add sza,vza,raa,gnd,aot,cwv to the multiband tile result
-      ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]  = {
-    this.correct("icor",jsc, datacube, bandIds, overrideParams, elevationSource, sensorId, appendDebugBands)
-  }
 
     def correct(
                  method:String,
@@ -133,18 +118,7 @@ class AtmosphericCorrection extends Serializable {
 
                 val (cwvTile: Tile, result: MultibandTile) = correctTile(multibandtile, bandIds, szaTile, vzaTile, raaTile,aotTile, demTile, overrideParams, sensorDescriptorBC.value, cwvProvider)
                 correctionAccum.add(System.currentTimeMillis() - afterAuxData)
-/*
-println(multibandtile)    
-println(multibandtile._2.band(0).getDouble(128, 128))    
-println(multibandtile._2.band(1).getDouble(128, 128))    
-println(multibandtile._2.band(2).getDouble(128, 128))    
-println(multibandtile._2.band(3).getDouble(128, 128))    
-println(result)    
-println(result.band(0).getDouble(128, 128))    
-println(result.band(1).getDouble(128, 128))    
-println(result.band(2).getDouble(128, 128))    
-println(result.band(3).getDouble(128, 128))    
-*/
+
                 if (appendDebugBands)
                   MultibandTile(result.bands ++ Vector(
                       (szaTile*100).convert(multibandtile._2.cellType),
@@ -173,27 +147,28 @@ println(result.band(3).getDouble(128, 128))
     else FloatConstantTile(overrideParams.get(5).toFloat, multibandtile._2.cols, multibandtile._2.rows)
 
     val result = multibandtile._2.mapBands((b, tile) => {
+      // the idea is that bands containing B01-B19 and B8A are sent for correction, the rest (angles,... etc) returned as-is
+      // note that the correct method can return the same value for bands that is B**, if those don't need correction 
       val bandName = bandIds.get(b)
-      try {
-        val resultTile: Tile = MultibandTile(
-          tile.convert(FloatConstantNoDataCellType),
-          aotTile.convert(FloatConstantNoDataCellType),
-          demTile.convert(FloatConstantNoDataCellType),
-          szaTile,
-          vzaTile,
-          raaTile,
-          cwvTile
-        ).combineDouble(0, 1, 2, 3, 4, 5, 6) { (refl, aot, dem, sza, vza, raa, cwv) => if (refl != NODATA) ( {
-            sensorDescriptor.correct( bandName, multibandtile._1.time, refl.toDouble, sza, vza, raa, dem, aot, cwv, overrideParams.get(6), 0)
-        } ).toInt else NODATA }
-        resultTile.convert(tile.cellType)
-      } catch {
-        // TODO: this is dangerous because this swallows the error on the angles but also swallows typos like B02 vs. B2 and silently returns the uncorrected tile -> put a more clever guarding mechanism in place
-        case e: IllegalArgumentException => tile
-//        case e: Exception => { 
-//          // println(e)
-//          throw e // TODO: catching to throw, make it smarter 
-//        }
+      val bandPattern = ".*(B[018][0-9A]).*".r
+      bandName match {
+        case bandPattern(pattern) => {
+          // TODO: refactor such that sensordescriptor.correct gets the index intead of pattern (avoid pixelwise lookup)
+          val bandIdx=sensorDescriptor.getBandFromName(pattern)
+          val resultTile: Tile = MultibandTile(
+            tile.convert(FloatConstantNoDataCellType),
+            aotTile.convert(FloatConstantNoDataCellType),
+            demTile.convert(FloatConstantNoDataCellType),
+            szaTile,
+            vzaTile,
+            raaTile,
+            cwvTile
+          ).combineDouble(0, 1, 2, 3, 4, 5, 6) { (refl, aot, dem, sza, vza, raa, cwv) => if (refl != NODATA) ( {
+              sensorDescriptor.correct( pattern, bandIdx, multibandtile._1.time, refl.toDouble, sza, vza, raa, dem, aot, cwv, overrideParams.get(6), 0)
+          } ).toInt else NODATA }
+          resultTile.convert(tile.cellType)
+        }
+        case _ => tile 
       }
     })
     

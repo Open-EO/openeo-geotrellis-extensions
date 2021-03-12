@@ -311,6 +311,7 @@ class SMACCorrection extends CorrectionDescriptor(){
    * If band is out of range, the function should return src (since any errors of mis-using bands should be caught upstream, before the pixel-wise loop).
    *
    * @param bandName band id
+   * @param bandIdx band index as returned by getBandFromName
    * @param src  to be converted: this may be digital number, reflectance, radiance, ... depending on the specific correction, and it should clearly be documented there!
    * @param sza  degree
    * @param vza  degree
@@ -322,9 +323,10 @@ class SMACCorrection extends CorrectionDescriptor(){
    * @param waterMask
    * @return BOA reflectance * 10000 (i.e. in digital number)
    */
-  override def correct(bandName: String, time: ZonedDateTime, src: Double, sza: Double, vza: Double, raa: Double, gnd: Double, aot: Double, cwv: Double, ozone: Double, waterMask: Int): Double = {
+  override def correct(bandName: String, bandIdx: Int, time: ZonedDateTime, src: Double, sza: Double, vza: Double, raa: Double, gnd: Double, aot: Double, cwv: Double, ozone: Double, waterMask: Int): Double = {
     //TODO lookup pressure, ozone, water vapour in ECMWF cams
     var maybeCoeff = coeffMap.get(bandName)
+    // TODO: checking band name if coefficient file is already loaded is a performance hit -> to be optimized
     if(maybeCoeff.isEmpty) {
       val bandPattern = ".*(B[018][0-9A]).*".r
       val coefficients = {
@@ -344,8 +346,23 @@ class SMACCorrection extends CorrectionDescriptor(){
     r_surf
   }
 
-  override def getBandFromName(name: String): Int = 0
-
+  override def getBandFromName(name: String): Int = name match {
+  			case "B01" =>  0
+  			case "B02" =>  1
+  			case "B03" =>  2
+  			case "B04" =>  3
+  			case "B05" =>  4
+  			case "B06" =>  5
+  			case "B07" =>  6
+  			case "B08" =>  7
+  			case "B8A" =>  8
+  			case "B09" =>  9
+  			case "B10" =>  10
+  			case "B11" =>  11
+  			case "B12" =>  12
+        case _  => throw new IllegalArgumentException("Unsupported band: "+name)
+    }
+ 
   override def getIrradiance(iband: Int): Double = ???
 
   override def getCentralWavelength(iband: Int): Double = ???
