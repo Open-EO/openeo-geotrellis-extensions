@@ -363,8 +363,4 @@ class SMACCorrection extends CorrectionDescriptor(){
         case _  => throw new IllegalArgumentException("Unsupported band: "+name)
     }
  
-  override def getIrradiance(iband: Int): Double = ???
-
-  override def getCentralWavelength(iband: Int): Double = ???
-
 }

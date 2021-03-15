@@ -5,6 +5,7 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.broadcast.Broadcast;
 
 import java.io.IOException;
+import java.time.ZonedDateTime;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 
@@ -17,7 +18,15 @@ public abstract class ICorCorrectionDescriptor extends CorrectionDescriptor {
 	}
 	
     public abstract String getLookupTableURL();
+	public abstract double getIrradiance(int iband);
+	public abstract double getCentralWavelength(int iband);
 
+	// TODO: remove this when water vapor calculator is refactored
+    public double reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert) {
+        throw new IllegalArgumentException("Function 'reflToRad' is a leftover function in the CorrectionDescriptor interface temporarily needed for Sentinel-2's water vapor calculator, other usage are not permitted.");
+    }
+    
+    
     /*
      * General correction function using the lookup table to convert TOA radiance to BOA reflectance
      */

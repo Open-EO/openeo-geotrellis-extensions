@@ -1,6 +1,5 @@
 package org.openeo.geotrellis.water_vapor;
 
-import org.openeo.geotrellis.icor.CorrectionDescriptor;
 import org.openeo.geotrellis.icor.ICorCorrectionDescriptor;
 import org.openeo.geotrellis.icor.LookupTable;
 
@@ -196,7 +195,7 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
     /// FIELDS ///////////////////////////////////////////////////////////////////////////////////
 
 	// correction descriptor
-	CorrectionDescriptor cd;
+	ICorCorrectionDescriptor cd;
 	
 	// constants
 	final double intialValue=2.0;

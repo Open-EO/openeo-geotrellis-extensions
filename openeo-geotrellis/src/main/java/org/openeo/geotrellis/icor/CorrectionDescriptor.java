@@ -15,17 +15,10 @@ import java.time.ZonedDateTime;
 // Applies MODTRAN atmospheric correction based on preset values in a lookup table.
 public abstract class CorrectionDescriptor implements Serializable{
 
-	// TODO: remove this when water vapor calculator is refactored
-    public double reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert) {
-        throw new IllegalArgumentException("Function 'reflToRad' is a leftover function in the CorrectionDescriptor interface temporarily needed for Sentinel-2's water vapor calculator, other usage are not permitted.");
-    }
-	
 	// parts to reimplement in specialization
 	// -------------------------------------------
 	
     public abstract int getBandFromName(String name) throws IllegalArgumentException;
-	public abstract double getIrradiance(int iband);
-	public abstract double getCentralWavelength(int iband);
 
 
     /**

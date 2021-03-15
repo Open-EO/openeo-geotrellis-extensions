@@ -36,7 +36,6 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
     // official: http://www.gisagmaps.com/landsat-8-sentinel-2-bands/
     // B08 (from Thuillier spectrum): https://bleutner.github.io/RStoolbox/r/2016/01/26/estimating-landsat-8-esun-values
     // TODO: B10 and B11 has no values. Should be excluded from correction or extrap from Thuillier?
-    // TODO: propagate referring by band name instead of index
     // TODO: to be checked if L1C is already corrected to earth-sun distance or not
     final static double[] irradiances = {
 	    1857.00, // B01
