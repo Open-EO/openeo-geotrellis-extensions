@@ -30,7 +30,7 @@ import org.apache.spark.api.java.JavaPairRDD$;
 import scala.Tuple2;
 import scala.collection.Seq;
 
-public class testWaterVaporCalculatorProcess {
+public class TestWaterVaporCalculatorProcess {
 
 	static final double sza=43.5725342155;
 	static final double vza=6.95880821756;

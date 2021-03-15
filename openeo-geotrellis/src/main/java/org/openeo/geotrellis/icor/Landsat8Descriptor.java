@@ -35,7 +35,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
     // TODO: propagate referring by band name instead of index
     // TODO: to be checked if L1C is already corrected to earth-sun distance or not
     final static double[] irradiances = {
-	    1857,00, // B01
+	    1857.00, // B01
 	    2067.00, // B02
 	    1893.00, // B03
 	    1603.00, // B04
