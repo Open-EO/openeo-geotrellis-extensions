@@ -4,7 +4,7 @@ import static org.junit.Assert.assertEquals;
 
 import org.junit.Test;
 
-public class testLookupTable {
+public class TestLookupTable {
 
 	@Test
 	public void testLookupTableReadText() throws Exception{

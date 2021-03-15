@@ -35,7 +35,7 @@ import geotrellis.vector.Extent;
 import scala.Tuple2;
 
 
-public class testAtmosphericCorrectionProcess {
+public class TestAtmosphericCorrectionProcess {
 
     @BeforeClass
     public static void sparkContext() {
@@ -196,7 +196,7 @@ public class testAtmosphericCorrectionProcess {
 
     @Test
     public void testICOROnCube() throws URISyntaxException {
-    	String atmocorrDir = Paths.get(testAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
+    	String atmocorrDir = Paths.get(TestAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
 
     	Tile[] inputtiles=new Tile[] {
 	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B02.tif").toString()).read().get().tile().band(0),
@@ -327,7 +327,7 @@ public class testAtmosphericCorrectionProcess {
     
 	@Test
 	public void testSMACOnCube() throws URISyntaxException {
-		String atmocorrDir = Paths.get(testAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
+		String atmocorrDir = Paths.get(TestAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
 	
 		Tile[] inputtiles=new Tile[] {
 		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B02.tif").toString()).read().get().tile().band(0),

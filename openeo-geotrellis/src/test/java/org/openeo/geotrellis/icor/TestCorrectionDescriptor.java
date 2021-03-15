@@ -10,7 +10,7 @@ import java.time.format.DateTimeFormatter;
 import static org.junit.Assert.assertArrayEquals;
 
 // TODO: this only tests Sentinel-2 descriptor only, extend to landsat8
-public class testCorrectionDescriptor {
+public class TestCorrectionDescriptor {
 
 	private static Sentinel2Descriptor cd = new Sentinel2Descriptor();
 
