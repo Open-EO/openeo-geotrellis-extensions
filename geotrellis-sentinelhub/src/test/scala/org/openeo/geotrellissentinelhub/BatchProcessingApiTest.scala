@@ -29,6 +29,7 @@ class BatchProcessingApiTest {
         dateTimes,
         bandNames = Seq("VV", "VH"),
         SampleType.FLOAT32,
+        additionalDataFilters = Map("orbitDirection" -> "DESCENDING".asInstanceOf[Any]).asJava,
         processingOptions = Map(
           "backCoeff" -> "GAMMA0_ELLIPSOID",
           "orthorectify" -> false

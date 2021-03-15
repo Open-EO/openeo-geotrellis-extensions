@@ -4,7 +4,7 @@ import geotrellis.vector.Extent
 import org.junit.Assert.assertEquals
 import org.junit.{Ignore, Test}
 
-import java.util
+import java.util.{Arrays, Collections}
 import java.util.UUID
 
 class BatchProcessingServiceTest {
@@ -21,9 +21,10 @@ class BatchProcessingServiceTest {
       bbox_srs = "EPSG:4326",
       from_date = "2019-10-10T00:00:00+00:00",
       to_date = "2019-10-10T00:00:00+00:00",
-      band_names = util.Arrays.asList("VH", "VV"),
+      band_names = Arrays.asList("VH", "VV"),
       SampleType.FLOAT32,
-      processing_options = util.Collections.emptyMap[String, Any]
+      metadata_properties = Collections.emptyMap[String, Any],
+      processing_options = Collections.emptyMap[String, Any]
     )
 
     println(batchRequestId)
@@ -48,7 +49,7 @@ class BatchProcessingServiceTest {
       bbox_srs = "EPSG:4326",
       from_date = "2021-02-01T00:00:00+00:00",
       to_date = "2021-02-17T00:00:00+00:00",
-      band_names = util.Arrays.asList("VH", "VV", "dataMask", "localIncidenceAngle"),
+      band_names = Arrays.asList("VH", "VV", "dataMask", "localIncidenceAngle"),
       dem_instance = null,
       subfolder = requestGroupId,
       requestGroupId

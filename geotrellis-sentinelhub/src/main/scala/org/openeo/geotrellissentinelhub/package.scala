@@ -76,7 +76,8 @@ package object geotrellissentinelhub {
 
       additionalDataFilters.asScala
         .foldLeft(Map("timeRange" -> timeRangeFilter.asJava): Map[String, Any]) {_ + _}
-    }.asJava
+        .asJava
+    }
 
     val evalscript = s"""//VERSION=3
       function setup() {

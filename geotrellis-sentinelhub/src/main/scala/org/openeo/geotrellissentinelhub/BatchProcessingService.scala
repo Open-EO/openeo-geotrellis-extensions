@@ -34,7 +34,8 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
 
   def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
                           to_date: String, band_names: util.List[String], sampleType: SampleType,
-                          processing_options: util.Map[String, Any]): String = try {
+                          metadata_properties: util.Map[String, Any], processing_options: util.Map[String, Any])
+  : String = try {
     // TODO: implement retries
     val boundingBox = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
 
@@ -51,6 +52,7 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
       dateTimes,
       band_names.asScala,
       sampleType,
+      additionalDataFilters = metadata_properties,
       processing_options,
       bucketName,
       description = s"$dataset_id $bbox $bbox_srs $from_date $to_date $band_names",
