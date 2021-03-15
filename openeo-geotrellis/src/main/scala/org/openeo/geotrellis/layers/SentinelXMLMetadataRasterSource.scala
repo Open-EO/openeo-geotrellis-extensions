@@ -11,7 +11,13 @@ import scala.xml.XML
 
 object SentinelXMLMetadataRasterSource {
 
-  def apply(path:URL): Seq[SentinelXMLMetadataRasterSource] = {
+  /**
+   * Returns SAA,SZA,VAA,VZA selected by the bands argument.
+   * @param path
+   * @param bands
+   * @return
+   */
+  def apply(path:URL, bands:Seq[Int]=Seq(0,1,2,3)): Seq[SentinelXMLMetadataRasterSource] = {
     val xmlDoc = XML.load(path)
     val angles = xmlDoc \\ "Tile_Angles"
     val meanSun = angles \ "Mean_Sun_Angle"
@@ -28,7 +34,8 @@ object SentinelXMLMetadataRasterSource {
     val uly = (position \ "ULY").text.toDouble
     val extent = Extent(ulx-(10*10980),uly-(10*10980),ulx,uly)
     val gridExtent = GridExtent[Long](extent,CellSize(10,10))
-    Seq(new SentinelXMLMetadataRasterSource(mSAA,crs,gridExtent),new SentinelXMLMetadataRasterSource(mSZA,crs,gridExtent),new SentinelXMLMetadataRasterSource(mVAA,crs,gridExtent),new SentinelXMLMetadataRasterSource(mVZA,crs,gridExtent))
+    val allBands = Seq(mSAA,mSZA,mVAA,mVZA)
+    bands.map(b => allBands(b)).map(new SentinelXMLMetadataRasterSource(_,crs,gridExtent))
 
   }
 }

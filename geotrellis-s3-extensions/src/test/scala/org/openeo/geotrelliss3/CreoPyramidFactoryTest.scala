@@ -9,7 +9,7 @@ import java.util
 
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.{GeoTiff, MultibandGeoTiff}
-import geotrellis.raster.{ArrayTile, CellSize, MultibandTile, Raster, Tile}
+import geotrellis.raster.{ArrayTile, CellSize, MultibandTile, Raster, Tile, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.vector.{Extent, Polygon, ProjectedExtent}
 import org.apache.commons.io.FileUtils
@@ -161,7 +161,7 @@ class CreoPyramidFactoryTest {
   @Test
   def testCreoPyramidDatacube(): Unit = {
 
-    val pyramidFactory = new Sentinel2PyramidFactory(openSearchEndpoint="https://finder.creodias.eu/resto/api/collections/" ,openSearchCollectionId = "Sentinel2",openSearchLinkTitles = util.Arrays.asList("IMG_DATA_Band_B02_10m_Tile1_Data","S2_Level-2A_Tile1_Metadata"),rootPath = "/eodata",
+    val pyramidFactory = new Sentinel2PyramidFactory(openSearchEndpoint="https://finder.creodias.eu/resto/api/collections/" ,openSearchCollectionId = "Sentinel2",openSearchLinkTitles = util.Arrays.asList("IMG_DATA_Band_B02_10m_Tile1_Data","S2_Level-2A_Tile1_Metadata##3","S2_Level-2A_Tile1_Metadata##1"),rootPath = "/eodata",
       maxSpatialResolution = CellSize(10,10)){
       override def createOpenSearch: OpenSearch = new MockOpenSearch
     }
@@ -177,6 +177,7 @@ class CreoPyramidFactoryTest {
     assertEquals(1, pyramid.size)
 
     val rdd = pyramid.head._2.cache
+    assertEquals(UShortConstantNoDataCellType,rdd.metadata.cellType)
 
     val timestamps = rdd.keys
       .map(_.time)
@@ -184,8 +185,14 @@ class CreoPyramidFactoryTest {
       .collect()
       .sortWith(_ isBefore _)
 
+    assertFalse(timestamps.isEmpty)
+
     for (timestamp <- timestamps) {
-      saveRDD(rdd.toSpatial(timestamp),-1,s"${DateTimeFormatter.ISO_LOCAL_DATE format timestamp}.tif")
+      val output = s"${DateTimeFormatter.ISO_LOCAL_DATE format timestamp}.tif"
+      println(output)
+      saveRDD(rdd.toSpatial(timestamp),-1,output)
+      val tiff = GeoTiff.readMultiband(output)
+      assertEquals(3,tiff.tile.bandCount)
     }
   }
 
