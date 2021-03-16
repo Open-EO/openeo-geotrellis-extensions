@@ -2,6 +2,7 @@ package org.openeo.geotrellissentinelhub
 
 import java.time.ZonedDateTime
 import java.util
+import java.util.Collections
 
 import geotrellis.layer.{KeyBounds, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, WebMercator}
@@ -75,6 +76,11 @@ class PyramidFactory(datasetId: String, clientId: String, clientSecret: String,
 
     Pyramid(layers.toMap)
   }
+
+  @deprecated("remove when openeo-geopyspark-driver is adapted")
+  def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String,
+                  band_names: util.List[String]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] =
+    pyramid_seq(bbox, bbox_srs, from_date, to_date, band_names, metadata_properties = Collections.emptyMap[String, Any])
   
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String, band_names: util.List[String],
                   metadata_properties: util.Map[String, Any]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
@@ -88,6 +94,12 @@ class PyramidFactory(datasetId: String, clientId: String, clientSecret: String,
       .sortBy { case (zoom, _) => zoom }
       .reverse
   }
+
+  @deprecated("remove when openeo-geopyspark-driver is adapted")
+  def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
+                   band_names: util.List[String]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] =
+    datacube_seq(polygons, polygons_crs, from_date, to_date, band_names,
+      metadata_properties = Collections.emptyMap[String, Any])
 
   def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
                    band_names: util.List[String], metadata_properties: util.Map[String, Any]):

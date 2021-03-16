@@ -8,7 +8,7 @@ import scalaj.http.HttpStatusException
 
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-import java.util.UUID
+import java.util.{Collections, UUID}
 import scala.collection.JavaConverters._
 
 class BatchProcessingApiTest {
@@ -105,6 +105,7 @@ class BatchProcessingApiTest {
       dataTakeId = "044CD7",
       card4lId,
       demInstance = null,
+      additionalDataFilters = Collections.emptyMap[String, Any],
       bucketName = "openeo-sentinelhub", subFolder = card4lId,
       accessToken
     )

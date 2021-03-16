@@ -184,7 +184,8 @@ class BatchProcessingApi {
   }
 
   def createCard4LBatchProcess(datasetId: String, bounds: Geometry, dateTime: ZonedDateTime, bandNames: Seq[String],
-                               dataTakeId: String, card4lId: String, demInstance: String, bucketName: String,
+                               dataTakeId: String, card4lId: String, demInstance: String,
+                               additionalDataFilters: util.Map[String, Any], bucketName: String,
                                subFolder: String, accessToken: String): CreateBatchProcessResponse = {
     require(datasetId == "S1GRD", """only data set "S1GRD" is supported""")
 
@@ -204,6 +205,22 @@ class BatchProcessingApi {
       Option(demInstance).foldLeft(requiredOptions) { case (options, demInstance) =>
         options + ("demInstance" -> demInstance.asJson)
       }
+    }
+
+    val dataFilter: util.Map[String, Any] = {
+      val baseDataFilters: Map[String, Any] = Map(
+        "timeRange" -> Map(
+          "from" -> ISO_INSTANT.format(from),
+          "to" -> ISO_INSTANT.format(to)
+        ).asJava,
+        "acquisitionMode" -> "IW",
+        "polarization" -> "DV",
+        "resolution" -> "HIGH"
+      )
+
+      additionalDataFilters.asScala
+        .foldLeft(baseDataFilters) {_ + _}
+        .asJava
     }
 
     val evalScript = {
@@ -245,15 +262,7 @@ class BatchProcessingApi {
           |            "data": [
           |                {
           |                    "type":"$datasetId",
-          |                    "dataFilter": {
-          |                        "timeRange": {
-          |                            "from": "${ISO_INSTANT format from}",
-          |                            "to": "${ISO_INSTANT format to}"
-          |                        },
-          |                        "acquisitionMode":"IW",
-          |                        "polarization":"DV",
-          |                        "resolution":"HIGH"
-          |                    },
+          |                    "dataFilter": ${new ObjectMapper().writeValueAsString(dataFilter)},
           |                    "processing": ${processingOptions.asJson}
           |                }
           |            ]

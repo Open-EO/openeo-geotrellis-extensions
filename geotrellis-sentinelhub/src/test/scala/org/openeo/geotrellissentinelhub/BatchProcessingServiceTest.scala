@@ -51,6 +51,7 @@ class BatchProcessingServiceTest {
       to_date = "2021-02-17T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV", "dataMask", "localIncidenceAngle"),
       dem_instance = null,
+      metadata_properties = Collections.emptyMap[String, Any],
       subfolder = requestGroupId,
       requestGroupId
     )
