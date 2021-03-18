@@ -24,6 +24,7 @@ class PyramidFactory(datasetId: String, clientId: String, clientSecret: String,
                      sampleType: SampleType = UINT16) extends Serializable {
   private val maxZoom = 14
 
+  // TODO: replace with a call to CatalogApi to limit the number of requests esp. wrt/ orbit direction?
   private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
   
   def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom,

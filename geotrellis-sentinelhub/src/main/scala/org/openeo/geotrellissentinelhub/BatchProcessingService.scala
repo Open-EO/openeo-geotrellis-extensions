@@ -50,8 +50,13 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
     // workaround for bug where upper bound is considered inclusive in OpenEO
     val (from, to) = includeEndDay(from_date, to_date)
 
-    val catalogApi = new CatalogApi
-    val dateTimes = catalogApi.dateTimes(collection_id, boundingBox, from, to, accessToken)
+    val queryProperties = metadata_properties.asScala
+      .map {
+        case ("orbitDirection", value: String) => "sat:orbit_state" -> value
+        case (property, _) => throw new IllegalArgumentException(s"unsupported metadata property $property")
+      }
+
+    val dateTimes = new CatalogApi().dateTimes(collection_id, boundingBox, from, to, accessToken, queryProperties)
 
     val batchProcessingApi = new BatchProcessingApi
     val batchRequestId = batchProcessingApi.createBatchProcess(

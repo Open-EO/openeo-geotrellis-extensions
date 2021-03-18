@@ -4,8 +4,9 @@ import geotrellis.vector.Extent
 import org.junit.Assert.assertEquals
 import org.junit.{Ignore, Test}
 
-import java.util.{Arrays, Collections}
-import java.util.UUID
+import java.util.{Arrays, Collections, UUID}
+import java.time.LocalTime
+import scala.collection.JavaConverters._
 
 class BatchProcessingServiceTest {
   private val batchProcessingService = new BatchProcessingService(bucketName = "openeo-sentinelhub",
@@ -27,7 +28,25 @@ class BatchProcessingServiceTest {
       processing_options = Collections.emptyMap[String, Any]
     )
 
-    println(batchRequestId)
+    println(awaitDone(Seq(batchRequestId)))
+  }
+
+  @Test
+  def startBatchProcessForOrbitDirection(): Unit = {
+    val batchRequestId = batchProcessingService.start_batch_process(
+      collection_id = "sentinel-1-grd",
+      dataset_id = "S1GRD",
+      bbox = Extent(2.59003, 51.069, 2.8949, 51.2206),
+      bbox_srs = "EPSG:4326",
+      from_date = "2019-10-08T00:00:00+00:00",
+      to_date = "2019-10-12T00:00:00+00:00",
+      band_names = Arrays.asList("VH", "VV"),
+      SampleType.FLOAT32,
+      metadata_properties = Collections.singletonMap("orbitDirection", "ASCENDING"),
+      processing_options = Collections.emptyMap[String, Any]
+    )
+
+    println(awaitDone(Seq(batchRequestId)))
   }
 
   @Test
@@ -57,5 +76,31 @@ class BatchProcessingServiceTest {
     )
 
     println(s"batch process(es) $batchRequestIds will write to ${batchProcessingService.bucketName}/$requestGroupId")
+
+    println(awaitDone(batchRequestIds.asScala))
+
+    new S3Service().download_stac_data(
+      batchProcessingService.bucketName,
+      requestGroupId,
+      target_dir = "/tmp/saved_stac"
+    )
+  }
+
+  private def awaitDone(batchRequestIds: Iterable[String]): Map[String, String] = {
+    import java.util.concurrent.TimeUnit._
+
+    while (true) {
+      SECONDS.sleep(10)
+      val statuses = batchRequestIds.map(id => id -> batchProcessingService.get_batch_process_status(id)).toMap
+      println(s"[${LocalTime.now()}] intermediary statuses: $statuses")
+
+      val uniqueStatuses = statuses.values.toSet
+
+      if (uniqueStatuses == Set("DONE") || uniqueStatuses.contains("FAILED")) {
+        return statuses
+      }
+    }
+
+    throw new AssertionError
   }
 }

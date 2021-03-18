@@ -23,19 +23,24 @@ class CatalogApi {
 
   private val endpoint = "https://services.sentinel-hub.com/api/v1/catalog"
 
+  // TODO: search distinct dates (https://docs.sentinel-hub.com/api/latest/api/catalog/examples/#search-with-distinct)?
   def dateTimes(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
-                accessToken: String):
-  Seq[ZonedDateTime] = {
+                accessToken: String, queryProperties: collection.Map[String, String] = Map()): Seq[ZonedDateTime] = {
     val Extent(xmin, ymin, xmax, ymax) = boundingBox.reproject(LatLng)
     val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
     val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
+
+    val query = queryProperties
+      .map { case (key, value) => s""""$key": {"eq": "$value"}"""}
+      .mkString("{", ", ", "}")
 
     val requestBody =
       s"""
          |{
          |    "bbox": [$xmin, $ymin, $xmax, $ymax],
          |    "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
-         |    "collections": ["$collectionId"]
+         |    "collections": ["$collectionId"],
+         |    "query": $query
          |}""".stripMargin
 
     val response = http(s"$endpoint/search", accessToken)
