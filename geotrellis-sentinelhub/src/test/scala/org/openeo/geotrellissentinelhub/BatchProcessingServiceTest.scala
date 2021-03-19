@@ -31,6 +31,7 @@ class BatchProcessingServiceTest {
     println(awaitDone(Seq(batchRequestId)))
   }
 
+  @Ignore
   @Test
   def startBatchProcessForOrbitDirection(): Unit = {
     val batchRequestId = batchProcessingService.start_batch_process(
