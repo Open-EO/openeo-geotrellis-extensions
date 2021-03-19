@@ -11,6 +11,7 @@ import scalaj.http.{Http, HttpOptions, HttpRequest}
 
 import java.time.format.DateTimeFormatter.{ISO_INSTANT, ISO_OFFSET_DATE_TIME}
 import java.time.{ZoneId, ZonedDateTime}
+import scala.collection.immutable.HashMap
 
 object CatalogApi {
   // TODO: remove in favor of existing JsonFeatureCollection
@@ -30,9 +31,7 @@ class CatalogApi {
     val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
     val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
 
-    val query = queryProperties
-      .map { case (key, value) => s""""$key": {"eq": "$value"}"""}
-      .mkString("{", ", ", "}")
+    val query = this.query(queryProperties)
 
     val requestBody =
       s"""
@@ -59,7 +58,8 @@ class CatalogApi {
   }
 
   def searchCard4L(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
-                   accessToken: String): Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
+                   accessToken: String, queryProperties: collection.Map[String, String] = Map()):
+  Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
     require(collectionId == "sentinel-1-grd", """only collection "sentinel-1-grd" is supported""")
 
     // TODO: reduce code duplication with dateTimes()
@@ -67,22 +67,29 @@ class CatalogApi {
     val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
     val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
 
+    val query = {
+      val requiredProperties = HashMap(
+        "sar:instrument_mode" -> "IW",
+        "resolution" -> "HIGH",
+        "polarization" -> "DV"
+      )
+
+      val allProperties = requiredProperties.merged(HashMap(queryProperties.toSeq: _*)) {
+        case (requiredProperty @ (property, requiredValue), (_, overriddenValue)) =>
+          if (overriddenValue == requiredValue) requiredProperty
+          else throw new IllegalArgumentException(
+            s"cannot override property $property value $requiredValue with $overriddenValue")
+      }
+
+      this.query(allProperties)
+    }
+
     val requestBody =
       s"""
          |{
          |  "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
          |  "collections": ["$collectionId"],
-         |  "query": {
-         |    "sar:instrument_mode": {
-         |      "eq": "IW"
-         |    },
-         |    "resolution": {
-         |      "eq": "HIGH"
-         |    },
-         |    "polarization": {
-         |      "eq": "DV"
-         |    }
-         |  },
+         |  "query": $query,
          |  "bbox": [$xmin, $ymin, $xmax, $ymax]
          |}""".stripMargin
 
@@ -113,4 +120,9 @@ class CatalogApi {
     Http(url)
       .option(HttpOptions.followRedirects(true))
       .headers("Authorization" -> s"Bearer $accessToken")
+
+  private def query(queryProperties: collection.Map[String, String]): String =
+    queryProperties
+      .map { case (key, value) => s""""$key": {"eq": "$value"}"""}
+      .mkString("{", ", ", "}")
 }

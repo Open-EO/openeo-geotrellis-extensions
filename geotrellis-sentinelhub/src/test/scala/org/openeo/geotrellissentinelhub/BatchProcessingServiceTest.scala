@@ -87,6 +87,36 @@ class BatchProcessingServiceTest {
     )
   }
 
+  @Ignore
+  @Test
+  def startCard4LBatchProcessesForOrbitDirection(): Unit = {
+    val requestGroupId = UUID.randomUUID().toString
+
+    val batchRequestIds = batchProcessingService.start_card4l_batch_processes(
+      collection_id = "sentinel-1-grd",
+      dataset_id = "S1GRD",
+      bbox = Extent(35.666439, -6.23476, 35.861576, -6.075694),
+      bbox_srs = "EPSG:4326",
+      from_date = "2021-01-25T00:00:00+00:00",
+      to_date = "2021-02-17T00:00:00+00:00",
+      band_names = Arrays.asList("VH", "VV", "dataMask", "localIncidenceAngle"),
+      dem_instance = null,
+      metadata_properties = Collections.singletonMap("orbitDirection", "DESCENDING"),
+      subfolder = requestGroupId,
+      requestGroupId
+    )
+
+    println(s"batch process(es) $batchRequestIds will write to ${batchProcessingService.bucketName}/$requestGroupId")
+
+    println(awaitDone(batchRequestIds.asScala))
+
+    new S3Service().download_stac_data(
+      batchProcessingService.bucketName,
+      requestGroupId,
+      target_dir = "/tmp/saved_stac"
+    )
+  }
+
   private def awaitDone(batchRequestIds: Iterable[String]): Map[String, String] = {
     import java.util.concurrent.TimeUnit._
 

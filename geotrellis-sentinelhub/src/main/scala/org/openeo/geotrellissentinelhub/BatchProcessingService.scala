@@ -50,13 +50,8 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
     // workaround for bug where upper bound is considered inclusive in OpenEO
     val (from, to) = includeEndDay(from_date, to_date)
 
-    val queryProperties = metadata_properties.asScala
-      .map {
-        case ("orbitDirection", value: String) => "sat:orbit_state" -> value
-        case (property, _) => throw new IllegalArgumentException(s"unsupported metadata property $property")
-      }
-
-    val dateTimes = new CatalogApi().dateTimes(collection_id, boundingBox, from, to, accessToken, queryProperties)
+    val dateTimes = new CatalogApi().dateTimes(collection_id, boundingBox, from, to, accessToken,
+      queryProperties = mapDataFilters(metadata_properties))
 
     val batchProcessingApi = new BatchProcessingApi
     val batchRequestId = batchProcessingApi.createBatchProcess(
@@ -104,8 +99,8 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
     val (from, to) = includeEndDay(from_date, to_date)
 
     // original features that overlap in space and time
-    val catalogApi = new CatalogApi
-    val features = catalogApi.searchCard4L(collection_id, reprojectedBoundingBox, from, to, accessToken)
+    val features = new CatalogApi().searchCard4L(collection_id, reprojectedBoundingBox, from, to, accessToken,
+      queryProperties = mapDataFilters(metadata_properties))
 
     // their intersections with bounding box (all should be in LatLng)
     val intersectionFeatures = features.mapValues(feature =>
@@ -153,4 +148,11 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
 
     (from, to)
   }
+
+  private def mapDataFilters(metadataProperties: util.Map[String, Any]): collection.Map[String, String] =
+    metadataProperties.asScala
+      .map {
+        case ("orbitDirection", value: String) => "sat:orbit_state" -> value
+        case (property, _) => throw new IllegalArgumentException(s"unsupported metadata property $property")
+      }
 }
