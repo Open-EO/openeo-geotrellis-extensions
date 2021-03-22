@@ -62,7 +62,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       configureDebugLogging()
 
       val attributeValues = Map("productType" -> productType)
-      val products = new Oscars(new URL(oscarsEndpoint.get)).getProducts(oscarsCollection.get, date, date, ProjectedExtent(LatLng.worldExtent, LatLng), attributeValues = attributeValues)
+      val products = new Oscars(new URL(oscarsEndpoint.get)).getProducts(oscarsCollection.get, Some(date), Some(date), ProjectedExtent(LatLng.worldExtent, LatLng), attributeValues = attributeValues)
 
       val paths = products.flatMap(_.links.filter(_.title.contains(productType)).map(_.href.toString))
 
