@@ -41,7 +41,7 @@ package object geotrellissentinelhub {
 
   // TODO: use AuthApi
   private def retrieveAuthToken(endpoint: String, clientId: String, clientSecret: String): String = {
-    val getAuthToken = Http(URI.create(endpoint).resolve("oauth/token").toString)
+    val getAuthToken = Http(URI.create(endpoint).resolve("/oauth/token").toString)
       .postForm(Seq(
         "grant_type" -> "client_credentials",
         "client_id" -> clientId,
@@ -131,7 +131,7 @@ package object geotrellissentinelhub {
     }"""
     logger.info(s"JSON data for Sentinel Hub Process API: ${jsonData}")
 
-    val url = URI.create(endpoint).resolve("api/v1/process").toString
+    val url = URI.create(endpoint).resolve("/api/v1/process").toString
     val request = Http(url)
       .header("Content-Type", "application/json")
       .header("Authorization", s"Bearer ${authTokenCache.get((endpoint, clientId, clientSecret))}")

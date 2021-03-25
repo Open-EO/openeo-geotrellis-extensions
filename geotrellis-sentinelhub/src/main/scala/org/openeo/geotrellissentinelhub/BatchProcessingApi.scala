@@ -26,7 +26,7 @@ object BatchProcessingApi {
 class BatchProcessingApi(endpoint: String) {
   import BatchProcessingApi._
 
-  private val batchEndpoint = URI.create(endpoint).resolve("api/v1/batch")
+  private val batchEndpoint = URI.create(endpoint).resolve("/api/v1/batch")
 
   private def http(url: String, accessToken: String): HttpRequest =
     Http(url)
@@ -107,7 +107,7 @@ class BatchProcessingApi(endpoint: String) {
 
     logger.debug(requestBody)
 
-    val response = http(batchEndpoint.resolve("process").toString, accessToken)
+    val response = http(batchEndpoint.resolve("/process").toString, accessToken)
       .headers("Content-Type" -> "application/json")
       .postData(requestBody)
       .asString
@@ -167,7 +167,7 @@ class BatchProcessingApi(endpoint: String) {
   }
 
   def getBatchProcess(batchRequestId: String, accessToken: String): GetBatchProcessResponse = {
-    val response = http(batchEndpoint.resolve(s"process/$batchRequestId").toString, accessToken)
+    val response = http(batchEndpoint.resolve(s"/process/$batchRequestId").toString, accessToken)
       .headers("Authorization" -> s"Bearer $accessToken")
       .asString
       .throwError
@@ -177,7 +177,7 @@ class BatchProcessingApi(endpoint: String) {
   }
 
   def startBatchProcess(batchRequestId: String, accessToken: String): Unit = {
-    http(batchEndpoint.resolve(s"process/$batchRequestId/start").toString, accessToken)
+    http(batchEndpoint.resolve(s"/process/$batchRequestId/start").toString, accessToken)
       .headers("Authorization" -> s"Bearer $accessToken")
       .postData("")
       .asString
@@ -299,7 +299,7 @@ class BatchProcessingApi(endpoint: String) {
 
     logger.debug(requestBody)
 
-    val response = http(batchEndpoint.resolve("process").toString, accessToken)
+    val response = http(batchEndpoint.resolve("/process").toString, accessToken)
       .headers("Content-Type" -> "application/json")
       .postData(requestBody)
       .asString

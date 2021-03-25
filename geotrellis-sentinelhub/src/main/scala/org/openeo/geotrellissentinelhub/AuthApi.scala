@@ -18,7 +18,7 @@ class AuthApi(endpoint: String) {
   import AuthApi._
 
   def authenticate(clientId: String, clientSecret: String): AuthResponse = {
-    val getAuthToken = http(URI.create(endpoint).resolve("oauth/token").toString)
+    val getAuthToken = http(URI.create(endpoint).resolve("/oauth/token").toString)
       .postForm(Seq(
         "grant_type" -> "client_credentials",
         "client_id" -> clientId,
