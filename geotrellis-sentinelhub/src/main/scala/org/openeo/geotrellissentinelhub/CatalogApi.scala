@@ -9,6 +9,7 @@ import geotrellis.vector._
 import geotrellis.vector.io.json.JsonFeatureCollectionMap
 import scalaj.http.{Http, HttpOptions, HttpRequest}
 
+import java.net.URI
 import java.time.format.DateTimeFormatter.{ISO_INSTANT, ISO_OFFSET_DATE_TIME}
 import java.time.{ZoneId, ZonedDateTime}
 import scala.collection.immutable.HashMap
@@ -19,10 +20,10 @@ object CatalogApi {
   private case class FeatureCollection(features: Array[Feature])
 }
 
-class CatalogApi {
+class CatalogApi(endpoint: String) {
   import CatalogApi._
 
-  private val endpoint = "https://services.sentinel-hub.com/api/v1/catalog"
+  private val catalogEndpoint = URI.create(endpoint).resolve("api/v1/catalog")
 
   // TODO: search distinct dates (https://docs.sentinel-hub.com/api/latest/api/catalog/examples/#search-with-distinct)?
   def dateTimes(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
@@ -42,7 +43,7 @@ class CatalogApi {
          |    "query": $query
          |}""".stripMargin
 
-    val response = http(s"$endpoint/search", accessToken)
+    val response = http(catalogEndpoint.resolve("search").toString, accessToken)
       .headers("Content-Type" -> "application/json")
       .postData(requestBody)
       .asString
@@ -93,7 +94,7 @@ class CatalogApi {
          |  "bbox": [$xmin, $ymin, $xmax, $ymax]
          |}""".stripMargin
 
-    val response = http(s"$endpoint/search", accessToken)
+    val response = http(catalogEndpoint.resolve("search").toString, accessToken)
       .headers("Content-Type" -> "application/json")
       .postData(requestBody)
       .asString

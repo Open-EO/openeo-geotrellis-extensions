@@ -7,7 +7,8 @@ import org.openeo.geotrellissentinelhub.AuthApi.AuthResponse
 import java.time.Duration
 
 class AuthApiTest {
-  private val authApi = new AuthApi
+  private val endpoint = "https://services.sentinel-hub.com"
+  private val authApi = new AuthApi(endpoint)
 
   private val clientId = Utils.clientId
   private val clientSecret = Utils.clientSecret

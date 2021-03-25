@@ -10,6 +10,7 @@ import org.openeo.geotrellissentinelhub.SampleType.SampleType
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpOptions, HttpRequest}
 
+import java.net.URI
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.{BASIC_ISO_DATE, ISO_INSTANT}
 import java.util
@@ -22,10 +23,10 @@ object BatchProcessingApi {
   private[geotrellissentinelhub] case class GetBatchProcessResponse(status: String)
 }
 
-class BatchProcessingApi {
+class BatchProcessingApi(endpoint: String) {
   import BatchProcessingApi._
 
-  private val endpoint = "https://services.sentinel-hub.com/api/v1/batch"
+  private val batchEndpoint = URI.create(endpoint).resolve("api/v1/batch")
 
   private def http(url: String, accessToken: String): HttpRequest =
     Http(url)
@@ -106,7 +107,7 @@ class BatchProcessingApi {
 
     logger.debug(requestBody)
 
-    val response = http(s"$endpoint/process", accessToken)
+    val response = http(batchEndpoint.resolve("process").toString, accessToken)
       .headers("Content-Type" -> "application/json")
       .postData(requestBody)
       .asString
@@ -166,7 +167,7 @@ class BatchProcessingApi {
   }
 
   def getBatchProcess(batchRequestId: String, accessToken: String): GetBatchProcessResponse = {
-    val response = http(s"$endpoint/process/$batchRequestId", accessToken)
+    val response = http(batchEndpoint.resolve(s"process/$batchRequestId").toString, accessToken)
       .headers("Authorization" -> s"Bearer $accessToken")
       .asString
       .throwError
@@ -176,7 +177,7 @@ class BatchProcessingApi {
   }
 
   def startBatchProcess(batchRequestId: String, accessToken: String): Unit = {
-    http(s"$endpoint/process/$batchRequestId/start", accessToken)
+    http(batchEndpoint.resolve(s"process/$batchRequestId/start").toString, accessToken)
       .headers("Authorization" -> s"Bearer $accessToken")
       .postData("")
       .asString
@@ -298,7 +299,7 @@ class BatchProcessingApi {
 
     logger.debug(requestBody)
 
-    val response = http(s"$endpoint/process", accessToken)
+    val response = http(batchEndpoint.resolve("process").toString, accessToken)
       .headers("Content-Type" -> "application/json")
       .postData(requestBody)
       .asString

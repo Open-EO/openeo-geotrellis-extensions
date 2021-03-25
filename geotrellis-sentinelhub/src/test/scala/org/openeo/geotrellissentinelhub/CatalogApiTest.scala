@@ -8,10 +8,11 @@ import org.junit.Test
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 
 class CatalogApiTest {
-  private val catalogApi = new CatalogApi
+  private val endpoint = "https://services.sentinel-hub.com"
+  private val catalogApi = new CatalogApi(endpoint)
   private val utc = ZoneId.of("UTC")
 
-  private def accessToken: String = new AuthApi().authenticate(Utils.clientId, Utils.clientSecret).access_token
+  private def accessToken: String = new AuthApi(endpoint).authenticate(Utils.clientId, Utils.clientSecret).access_token
 
   @Test
   def dateTimes(): Unit = {

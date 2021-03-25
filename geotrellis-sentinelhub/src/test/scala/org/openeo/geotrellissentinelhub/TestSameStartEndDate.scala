@@ -15,15 +15,15 @@ class TestSameStartEndDate {
   @Test
   def testSameStartEndDate(): Unit = {
     val extent = Extent(-55.8071, -6.7014, -55.7933, -6.6703)
-    
+
     val bbox_srs = "EPSG:4326"
-    
+
     val from = "2019-06-01T00:00:00Z"
-    
+
     val to = "2019-06-01T00:00:00Z"
-    
+
     val bandNames = Seq("VV", "VH", "HV", "HH").asJava
-    
+
     implicit val sc = SparkContext.getOrCreate(
       new SparkConf()
         .setMaster("local[1]")
@@ -31,11 +31,12 @@ class TestSameStartEndDate {
         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
         .set("spark.kryoserializer.buffer.max", "1024m"))
 
-    val pyramid = new PyramidFactory("S1GRD", clientId, clientSecret).pyramid_seq(extent, bbox_srs, from, to,
+    val endpoint = "https://services.sentinel-hub.com"
+    val pyramid = new PyramidFactory(endpoint, "S1GRD", clientId, clientSecret).pyramid_seq(extent, bbox_srs, from, to,
       bandNames, metadata_properties = Collections.emptyMap[String, Any])
 
     val (_, topLevelRdd) = pyramid.filter { case (zoom, _) => zoom == 14 }.head
-    
+
     val results = topLevelRdd.collect()
 
     for {

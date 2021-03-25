@@ -6,6 +6,7 @@ import io.circe.generic.auto._
 import io.circe.parser.decode
 import scalaj.http.{Http, HttpOptions, HttpRequest}
 
+import java.net.URI
 import java.time.Duration
 
 object AuthApi {
@@ -13,11 +14,11 @@ object AuthApi {
   private[geotrellissentinelhub] case class AuthResponse(access_token: String, expires_in: Duration)
 }
 
-class AuthApi {
+class AuthApi(endpoint: String) {
   import AuthApi._
 
   def authenticate(clientId: String, clientSecret: String): AuthResponse = {
-    val getAuthToken = http("https://services.sentinel-hub.com/oauth/token")
+    val getAuthToken = http(URI.create(endpoint).resolve("oauth/token").toString)
       .postForm(Seq(
         "grant_type" -> "client_credentials",
         "client_id" -> clientId,
