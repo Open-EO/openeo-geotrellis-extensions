@@ -2,7 +2,7 @@ package org.openeo.geotrellis.geotiff
 
 import java.awt.image.DataBufferByte
 
-import geotrellis.layer.{CRSWorldExtent, SpatialKey, ZoomedLayoutScheme}
+import geotrellis.layer.{CRSWorldExtent, KeyBounds, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.{ByteArrayTile, ByteConstantTile, MultibandTile, Raster, Tile, TileLayout}
@@ -179,20 +179,28 @@ class WriteRDDToGeotiffTest {
 
   }
 
+  private def createLayerWithGaps(layoutCols:Int,layoutRows:Int) = {
+
+    val intImage = createTextImage(layoutCols * 256, layoutRows * 256)
+    val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
+
+    val secondBand = imageTile.map { x => if (x >= 5) 10 else 100 }
+    val thirdBand = imageTile.map { x => if (x >= 5) 50 else 200 }
+
+    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc, MultibandTile(imageTile, secondBand, thirdBand), TileLayout(layoutCols, layoutRows, 256, 256), LatLng)
+    print(tileLayerRDD.keys.collect())
+    val filtered: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = tileLayerRDD.withContext {
+      _.filter { case (key, tile) => (key.col > 0 && (key.col != 1 || key.row != 1)) }
+    }
+    (imageTile, filtered)
+  }
+
   @Test
   def testWriteMultibandRDDWithGaps(): Unit ={
     val layoutCols = 8
     val layoutRows = 4
+    val ( imageTile:ByteArrayTile, filtered:MultibandTileLayerRDD[SpatialKey]) = createLayerWithGaps(layoutCols,layoutRows)
 
-    val intImage = createTextImage( layoutCols*256, layoutRows*256)
-    val imageTile = ByteArrayTile(intImage,layoutCols*256, layoutRows*256)
-
-    val secondBand = imageTile.map{x => if(x >= 5 ) 10 else 100 }
-    val thirdBand = imageTile.map{x => if(x >= 5 ) 50 else 200 }
-
-    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile,secondBand,thirdBand),TileLayout(layoutCols,layoutRows,256,256),LatLng)
-    print(tileLayerRDD.keys.collect())
-    val filtered = tileLayerRDD.withContext{_.filter{ case (key, tile) => (key.col>0 && (key.col != 1 || key.row != 1))}}
     val filename = "outFiltered.tif"
     saveRDD(filtered.withContext{_.repartition(layoutCols*layoutRows)},3,filename)
     val result = GeoTiff.readMultiband(filename).raster.tile
@@ -203,4 +211,31 @@ class WriteRDDToGeotiffTest {
     val croppedOutput = result.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256)
     assertArrayEquals(croppedReference.toArray(),croppedOutput.toArray())
   }
+
+  @Test
+  def testWriteMultibandTemporalRDDWithGaps(): Unit ={
+    val layoutCols = 8
+    val layoutRows = 4
+    val ( imageTile:ByteArrayTile, filtered:MultibandTileLayerRDD[SpatialKey]) = createLayerWithGaps(layoutCols,layoutRows)
+    val temporal: RDD[(SpaceTimeKey, MultibandTile)] = filtered.flatMap(tuple=>{
+      Seq((SpaceTimeKey(tuple._1,new TemporalKey(110000L)),tuple._2),(SpaceTimeKey(tuple._1,new TemporalKey(10000*110000L)),tuple._2))
+    }).repartition(layoutCols*layoutRows)
+
+    val spatialM = filtered.metadata
+    val newBounds = KeyBounds[SpaceTimeKey](SpaceTimeKey(spatialM.bounds.get._1,TemporalKey(0L)),SpaceTimeKey(spatialM.bounds.get._2,TemporalKey(0L)))
+    val temporalMetadata = new TileLayerMetadata[SpaceTimeKey](spatialM.cellType,spatialM.layout,spatialM.extent,spatialM.crs,newBounds)
+    saveRDDTemporal(ContextRDD(temporal,temporalMetadata),"./")
+    val result = GeoTiff.readMultiband("./openEO_1970-01-01Z.tif").raster.tile
+
+    //crop away the area where data was removed, and check if rest of geotiff is still fine
+    val croppedReference = imageTile.crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArrayTile()
+
+    val croppedOutput = result.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256)
+    assertArrayEquals(croppedReference.toArray(),croppedOutput.toArray())
+    val result2 = GeoTiff.readMultiband("./openEO_1970-01-13Z.tif").raster.tile
+    assertArrayEquals(croppedReference.toArray(),result2.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArray())
+
+  }
+
+
 }

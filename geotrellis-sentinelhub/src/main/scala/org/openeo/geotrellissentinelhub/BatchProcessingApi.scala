@@ -13,6 +13,7 @@ import scalaj.http.{Http, HttpOptions, HttpRequest}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.{BASIC_ISO_DATE, ISO_INSTANT}
 import java.util
+import scala.collection.JavaConverters._
 
 object BatchProcessingApi {
   private val logger = LoggerFactory.getLogger(classOf[BatchProcessingApi])
@@ -32,8 +33,8 @@ class BatchProcessingApi {
       .headers("Authorization" -> s"Bearer $accessToken")
 
   def createBatchProcess(datasetId: String, boundingBox: ProjectedExtent, dateTimes: Seq[ZonedDateTime],
-                         bandNames: Seq[String], sampleType: SampleType, processingOptions: util.Map[String, Any],
-                         bucketName: String, description: String,
+                         bandNames: Seq[String], sampleType: SampleType, additionalDataFilters: util.Map[String, Any],
+                         processingOptions: util.Map[String, Any], bucketName: String, description: String,
                          accessToken: String)
   : CreateBatchProcessResponse = {
     val ProjectedExtent(Extent(xmin, ymin, xmax, ymax), crs) = boundingBox
@@ -52,6 +53,22 @@ class BatchProcessingApi {
     val responses = this.responses(identifiers)
     val evalScript = this.evalScript(bandNames, identifiers, sampleType)
 
+    val dataFilter: util.Map[String, Any] = {
+      val baseDataFilters: Map[String, Any] = Map(
+        "timeRange" -> Map(
+          "from" -> ISO_INSTANT.format(from),
+          "to" -> ISO_INSTANT.format(to)
+        ).asJava,
+        "mosaickingOrder" -> "leastRecent"
+      )
+
+      additionalDataFilters.asScala
+        .foldLeft(baseDataFilters) {_ + _}
+        .asJava
+    }
+
+    val objectMapper = new ObjectMapper()
+
     // TODO: figure out how to work with heterogeneous types like Map[String, Any] in Circe
     val requestBody =
       s"""|{
@@ -66,14 +83,8 @@ class BatchProcessingApi {
           |            "data": [
           |                {
           |                    "type": "$datasetId",
-          |                    "dataFilter": {
-          |                        "timeRange": {
-          |                            "from": "${ISO_INSTANT format from}",
-          |                            "to": "${ISO_INSTANT format to}"
-          |                        },
-          |                        "mosaickingOrder": "leastRecent"
-          |                    },
-          |                    "processing": ${new ObjectMapper().writeValueAsString(processingOptions)}
+          |                    "dataFilter": ${objectMapper.writeValueAsString(dataFilter)},
+          |                    "processing": ${objectMapper.writeValueAsString(processingOptions)}
           |                }
           |            ]
           |        },
@@ -173,7 +184,8 @@ class BatchProcessingApi {
   }
 
   def createCard4LBatchProcess(datasetId: String, bounds: Geometry, dateTime: ZonedDateTime, bandNames: Seq[String],
-                               dataTakeId: String, card4lId: String, demInstance: String, bucketName: String,
+                               dataTakeId: String, card4lId: String, demInstance: String,
+                               additionalDataFilters: util.Map[String, Any], bucketName: String,
                                subFolder: String, accessToken: String): CreateBatchProcessResponse = {
     require(datasetId == "S1GRD", """only data set "S1GRD" is supported""")
 
@@ -193,6 +205,22 @@ class BatchProcessingApi {
       Option(demInstance).foldLeft(requiredOptions) { case (options, demInstance) =>
         options + ("demInstance" -> demInstance.asJson)
       }
+    }
+
+    val dataFilter: util.Map[String, Any] = {
+      val baseDataFilters: Map[String, Any] = Map(
+        "timeRange" -> Map(
+          "from" -> ISO_INSTANT.format(from),
+          "to" -> ISO_INSTANT.format(to)
+        ).asJava,
+        "acquisitionMode" -> "IW",
+        "polarization" -> "DV",
+        "resolution" -> "HIGH"
+      )
+
+      additionalDataFilters.asScala
+        .foldLeft(baseDataFilters) {_ + _}
+        .asJava
     }
 
     val evalScript = {
@@ -234,15 +262,7 @@ class BatchProcessingApi {
           |            "data": [
           |                {
           |                    "type":"$datasetId",
-          |                    "dataFilter": {
-          |                        "timeRange": {
-          |                            "from": "${ISO_INSTANT format from}",
-          |                            "to": "${ISO_INSTANT format to}"
-          |                        },
-          |                        "acquisitionMode":"IW",
-          |                        "polarization":"DV",
-          |                        "resolution":"HIGH"
-          |                    },
+          |                    "dataFilter": ${new ObjectMapper().writeValueAsString(dataFilter)},
           |                    "processing": ${processingOptions.asJson}
           |                }
           |            ]

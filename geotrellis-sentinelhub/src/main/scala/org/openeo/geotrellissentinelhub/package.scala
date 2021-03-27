@@ -10,6 +10,7 @@ import java.util
 import java.util.concurrent.TimeUnit.SECONDS
 
 import scala.io.Source
+import scala.collection.JavaConverters._
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
 import geotrellis.raster.MultibandTile
 import geotrellis.vector.ProjectedExtent
@@ -61,10 +62,22 @@ package object geotrellissentinelhub {
 
   def retrieveTileFromSentinelHub(datasetId: String, projectedExtent: ProjectedExtent, date: ZonedDateTime, width: Int,
                                   height: Int, bandNames: Seq[String], sampleType: SampleType,
+                                  additionalDataFilters: util.Map[String, Any],
                                   processingOptions: util.Map[String, Any],
                                   clientId: String, clientSecret: String): MultibandTile = {
     val ProjectedExtent(extent, crs) = projectedExtent
     val epsgCode = crs.epsgCode.getOrElse(s"unsupported crs $crs")
+
+    val dataFilter = {
+      val timeRangeFilter = Map(
+        "from" -> date.format(ISO_INSTANT),
+        "to" -> date.plusDays(1).format(ISO_INSTANT)
+      )
+
+      additionalDataFilters.asScala
+        .foldLeft(Map("timeRange" -> timeRangeFilter.asJava): Map[String, Any]) {_ + _}
+        .asJava
+    }
 
     val evalscript = s"""//VERSION=3
       function setup() {
@@ -97,13 +110,8 @@ package object geotrellissentinelhub {
         },
         "data": [
           {
-            "type": "${datasetId}",
-            "dataFilter": {
-              "timeRange": {
-                "from": "${date.format(ISO_INSTANT)}",
-                "to": "${date.plusDays(1).format(ISO_INSTANT)}"
-              }
-            },
+            "type": "$datasetId",
+            "dataFilter": ${objectMapper.writeValueAsString(dataFilter)},
             "processing": ${objectMapper.writeValueAsString(processingOptions)}
           }
         ]

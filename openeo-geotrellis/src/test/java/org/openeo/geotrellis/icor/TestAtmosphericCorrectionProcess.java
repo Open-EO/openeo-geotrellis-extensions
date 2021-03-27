@@ -28,7 +28,7 @@ import geotrellis.proj4.*;
 import geotrellis.proj4.CRS.*;
 import geotrellis.raster.*;
 import geotrellis.raster.geotiff.GeoTiffRasterSource;
-import geotrellis.raster.stitch.*;
+import geotrellis.raster.stitch.Stitcher.MultibandTileStitcher$;
 import geotrellis.spark.ContextRDD;
 import geotrellis.spark.testkit.TileLayerRDDBuilders$;
 import geotrellis.vector.Extent;
@@ -161,7 +161,7 @@ public class TestAtmosphericCorrectionProcess {
 	    		)
 	    	);
 	    }
-	    return (new Stitcher$MultibandTileStitcher$()).stitch(pieces, stitchedcols, stitchedrows);
+	    return MultibandTileStitcher$.MODULE$.stitch(pieces, stitchedcols, stitchedrows);
     }
 
 
