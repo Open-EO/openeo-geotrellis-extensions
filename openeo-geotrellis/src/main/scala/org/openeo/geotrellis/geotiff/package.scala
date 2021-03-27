@@ -1,5 +1,6 @@
 package org.openeo.geotrellis
 
+import java.nio.file.Paths
 import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Map}
 
@@ -116,7 +117,7 @@ package object geotiff {
       val tiffs: Predef.Map[Int, Array[Byte]] = segments.map(tuple => (tuple._1,tuple._2._2)).toMap
 
       val segmentCount = (bandSegmentCount*detectedBandCount)
-      writeTiff( tuple._1,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, tileLayout, compression, cellTypes.head, detectedBandCount, segmentCount)
+      writeTiff( Paths.get(path).resolve(tuple._1).toString  ,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, tileLayout, compression, cellTypes.head, detectedBandCount, segmentCount)
     })
 
   }
