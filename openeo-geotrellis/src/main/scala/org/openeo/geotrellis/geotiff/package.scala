@@ -16,12 +16,15 @@ import geotrellis.util._
 import geotrellis.vector.Extent
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.AccumulatorV2
+import org.slf4j.LoggerFactory
 import spire.syntax.cfor.cfor
 
 import scala.collection.JavaConverters._
 import scala.reflect._
 
 package object geotiff {
+
+  private val logger = LoggerFactory.getLogger(classOf[OpenEOProcesses])
 
   class SetAccumulator[T](var value: Set[T]) extends AccumulatorV2[T, Set[T]] {
     def this() = this(Set.empty[T])
@@ -82,15 +85,8 @@ package object geotiff {
     val compression = Deflate(zLevel)
     val bandSegmentCount = totalCols * totalRows
 
-    val totalBandCount = rdd.sparkContext.longAccumulator("TotalBandCount")
-    val typeAccumulator = new SetAccumulator[CellType]()
-    rdd.sparkContext.register(typeAccumulator,"CellType")
     preprocessedRdd.map { case (key: SpaceTimeKey, multibandTile: MultibandTile) => {
       var bandIndex = -1
-      if(multibandTile.bandCount>0) {
-        totalBandCount.add(multibandTile.bandCount)
-      }
-      typeAccumulator.add(multibandTile.cellType)
       //Warning: for deflate compression, the segmentcount and index is not really used, making it stateless.
       //Not sure how this works out for other types of compression!!!
 
@@ -209,6 +205,7 @@ package object geotiff {
   }
 
   private def writeTiff( path: String, tiffs:collection.Map[Int, Array[Byte]] , gridBounds: GridBounds[Int], croppedExtent: Extent,crs:CRS, tileLayout: TileLayout, compression: DeflateCompression, cellType: CellType, detectedBandCount: Double, segmentCount: Int) = {
+    logger.info(s"Writing geotiff to $path")
     val compressor = compression.createCompressor(segmentCount)
     lazy val emptySegment =
       ArrayTile.empty(cellType, tileLayout.tileCols, tileLayout.tileRows).toBytes
