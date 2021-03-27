@@ -205,7 +205,7 @@ package object geotiff {
   }
 
   private def writeTiff( path: String, tiffs:collection.Map[Int, Array[Byte]] , gridBounds: GridBounds[Int], croppedExtent: Extent,crs:CRS, tileLayout: TileLayout, compression: DeflateCompression, cellType: CellType, detectedBandCount: Double, segmentCount: Int) = {
-    logger.info(s"Writing geotiff to $path")
+    logger.info(s"Writing geotiff to $path with type ${cellType.toString()} and bands $detectedBandCount")
     val compressor = compression.createCompressor(segmentCount)
     lazy val emptySegment =
       ArrayTile.empty(cellType, tileLayout.tileCols, tileLayout.tileRows).toBytes
