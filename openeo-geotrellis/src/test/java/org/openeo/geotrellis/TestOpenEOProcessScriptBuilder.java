@@ -687,6 +687,35 @@ public class TestOpenEOProcessScriptBuilder {
         assertTileEquals(tile1, res);
     }
 
+    @DisplayName("Test array_modify process: insert")
+    @Test
+    public void testArrayModifyInsert() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.singletonMap("index",1);
+        builder.expressionStart("array_modify", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.argumentStart("values");
+        buildArrayElementProcess(builder,0);
+        builder.argumentEnd();
+        builder.argumentStart("index");
+        builder.constantArrayElement(1);
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_modify",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
+        assertEquals(3,result.size());
+        Tile res = result.apply(0);
+        assertTileEquals(tile0, res);
+        assertTileEquals(tile0, result.apply(1));
+        assertTileEquals(tile1, result.apply(2));
+    }
+
 
     private static void buildArrayElementProcess(OpenEOProcessScriptBuilder builder, Integer index) {
         Map<String, Object> args = Collections.singletonMap("index", index);

@@ -409,6 +409,7 @@ class OpenEOProcessScriptBuilder {
       case "tanh" if hasX => mapFunction("x", Tanh.apply)
       // Other
       case "array_element" => arrayElementFunction(arguments)
+      case "array_modify" => arrayModifyFunction(arguments)
       case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
     }
 
@@ -416,6 +417,45 @@ class OpenEOProcessScriptBuilder {
     assert(expectedOperator.equals(operator))
     contextStack.pop()
     inputFunction = operation
+  }
+
+  private def arrayModifyFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val inputFunction = storedArgs.get("data").get
+    val valuesFunction = storedArgs.get("values").get
+    val index = arguments.getOrDefault("index",null)
+    val length = arguments.getOrDefault("length",null)
+    if(index == null) {
+      throw new IllegalArgumentException("Missing 'index' argument in array_element.")
+    }
+    if(length!=null) {
+      throw new UnsupportedOperationException("Geotrellis backend only supports inserting in array-modify")
+    }
+    if(!index.isInstanceOf[Integer]){
+      throw new IllegalArgumentException("The 'index' argument should be an integer, but got: " + index)
+    }
+    val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
+      val data: Seq[Tile] =
+        if(inputFunction!=null) {
+          inputFunction.apply(context)(tiles)
+        }else{
+          tiles
+        }
+      val values: Seq[Tile] =
+        if(valuesFunction!=null) {
+          valuesFunction.apply(context)(tiles)
+        }else{
+          tiles
+        }
+      if(length == null) {
+        //in this case, we need to insert
+        data.take(index.asInstanceOf[Integer]) ++ values ++ data.drop(index.asInstanceOf[Integer])
+      }else{
+        throw new UnsupportedOperationException("Geotrellis backend only supports inserting in array-modify")
+      }
+
+    }
+    bandFunction
   }
 
 
@@ -427,7 +467,7 @@ class OpenEOProcessScriptBuilder {
       throw new IllegalArgumentException("Missing 'index' argument in array_element.")
     }
     if(!index.isInstanceOf[Integer]){
-      throw new IllegalArgumentException("The 'index argument should be an integer, but got: " + index)
+      throw new IllegalArgumentException("The 'index' argument should be an integer, but got: " + index)
     }
     val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
       val input: Seq[Tile] =

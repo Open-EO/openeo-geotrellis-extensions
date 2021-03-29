@@ -1,7 +1,7 @@
 package org.openeo.geotrellissentinelhub
 
 import java.time.{LocalDate, ZoneId}
-import java.util
+import java.util.Collections
 
 import geotrellis.proj4.WebMercator
 import geotrellis.vector.{Extent, ProjectedExtent}
@@ -20,7 +20,8 @@ class TestS1Gamma0 {
 
     val datasetId = "S1GRD"
     retrieveTileFromSentinelHub(datasetId, bbox, date, width = 256, height = 256, Seq("VV", "VH", "HV", "HH", "localIncidenceAngle"),
-      SampleType.FLOAT32, processingOptions = util.Collections.singletonMap("orthorectify", true), clientId, clientSecret)
+      SampleType.FLOAT32, additionalDataFilters = Collections.singletonMap("orbitDirection", "DESCENDING"),
+      processingOptions = Collections.singletonMap("orthorectify", true), clientId, clientSecret)
   }
 
 }

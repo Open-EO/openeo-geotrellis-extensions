@@ -8,7 +8,7 @@ import scalaj.http.HttpStatusException
 
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-import java.util.UUID
+import java.util.{Collections, UUID}
 import scala.collection.JavaConverters._
 
 class BatchProcessingApiTest {
@@ -29,6 +29,7 @@ class BatchProcessingApiTest {
         dateTimes,
         bandNames = Seq("VV", "VH"),
         SampleType.FLOAT32,
+        additionalDataFilters = Map("orbitDirection" -> "DESCENDING".asInstanceOf[Any]).asJava,
         processingOptions = Map(
           "backCoeff" -> "GAMMA0_ELLIPSOID",
           "orthorectify" -> false
@@ -103,6 +104,8 @@ class BatchProcessingApiTest {
       bandNames = Seq("VH", "VV"),
       dataTakeId = "044CD7",
       card4lId,
+      demInstance = null,
+      additionalDataFilters = Collections.emptyMap[String, Any],
       bucketName = "openeo-sentinelhub", subFolder = card4lId,
       accessToken
     )

@@ -10,7 +10,7 @@ import org.openeo.geotrellis.icor.Sentinel2Descriptor;
 import static org.junit.Assert.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
-public class testWaterVaporCalculator {
+public class TestWaterVaporCalculator {
 
 	private static LookupTable lut;
 	private static ICorCorrectionDescriptor cd=new Sentinel2Descriptor();

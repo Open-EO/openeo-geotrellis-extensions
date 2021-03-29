@@ -10,14 +10,16 @@ import org.apache.spark.api.java.JavaSparkContext
 import org.apache.spark.broadcast.Broadcast
 import org.openeo.geotrellis.water_vapor.{CWVProvider, ConstantCWVProvider}
 import org.slf4j.LoggerFactory
+import org.openeo.geotrellis.smac.SMACCorrection
 
 object AtmosphericCorrection{
-  implicit val logger = LoggerFactory.getLogger(classOf[AtmosphericCorrection])
   val iCorLookupTableCache: Cache[String, Broadcast[LookupTable]] = CacheBuilder.newBuilder().softValues().build()
 }
 
 
 class AtmosphericCorrection extends Serializable {
+  
+  val logger = LoggerFactory.getLogger(classOf[AtmosphericCorrection])
 
   // TODO: the method defaulting is moved upstairs, this signature can be removed when the calls in the unittests are adapted
   def correct(
@@ -47,15 +49,15 @@ class AtmosphericCorrection extends Serializable {
     val sc = JavaSparkContext.toSparkContext(jsc)
 
     val sensorDescriptor: CorrectionDescriptor = if(method.toUpperCase().equals("SMAC")){
+      logger.info("Using SMAC")
       new SMACCorrection()
     }else{
+      logger.info("Using ICOR")
       sensorId.toUpperCase() match {
         case "SENTINEL2"  => new Sentinel2Descriptor()
         case "LANDSAT8"   => new Landsat8Descriptor()
       }
     }
-
-
 
     val crs = datacube.metadata.crs
     val layoutDefinition = datacube.metadata.layout
@@ -128,7 +130,18 @@ class AtmosphericCorrection extends Serializable {
 
                 val (cwvTile: Tile, result: MultibandTile) = correctTile(multibandtile, bandIds, szaTile, vzaTile, raaTile,aotTile, demTile, overrideParams, sensorDescriptor, cwvProvider)
                 correctionAccum.add(System.currentTimeMillis() - afterAuxData)
-                
+/*
+println(multibandtile)    
+println(multibandtile._2.band(0).getDouble(128, 128))    
+println(multibandtile._2.band(1).getDouble(128, 128))    
+println(multibandtile._2.band(2).getDouble(128, 128))    
+println(multibandtile._2.band(3).getDouble(128, 128))    
+println(result)    
+println(result.band(0).getDouble(128, 128))    
+println(result.band(1).getDouble(128, 128))    
+println(result.band(2).getDouble(128, 128))    
+println(result.band(3).getDouble(128, 128))    
+*/
                 if (appendDebugBands)
                   MultibandTile(result.bands ++ Vector(
                       (szaTile*100).convert(multibandtile._2.cellType),
@@ -167,13 +180,20 @@ class AtmosphericCorrection extends Serializable {
           vzaTile,
           raaTile,
           cwvTile
-        ).combineDouble(0, 1, 2, 3, 4, 5, 6) { (refl, aot, dem, sza, vza, raa, cwv) => if (refl != NODATA) (sensorDescriptor.correct( bandName, multibandtile._1.time, refl.toDouble, sza, vza, raa, dem, aot, cwv, overrideParams.get(6), 0)).toInt else NODATA }
+        ).combineDouble(0, 1, 2, 3, 4, 5, 6) { (refl, aot, dem, sza, vza, raa, cwv) => if (refl != NODATA) ( {
+            sensorDescriptor.correct( bandName, multibandtile._1.time, refl.toDouble, sza, vza, raa, dem, aot, cwv, overrideParams.get(6), 0)
+        } ).toInt else NODATA }
         resultTile.convert(tile.cellType)
       } catch {
+        // TODO: this is dangerous because this swallows the error on the angles but also swallows typos like B02 vs. B2 and silently returns the uncorrected tile -> put a more clever guarding mechanism in place
         case e: IllegalArgumentException => tile
+//        case e: Exception => { 
+//          // println(e)
+//          throw e // TODO: catching to throw, make it smarter 
+//        }
       }
-
     })
+    
     (cwvTile, result)
   }
 }

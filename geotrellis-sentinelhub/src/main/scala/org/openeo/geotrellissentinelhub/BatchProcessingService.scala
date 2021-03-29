@@ -10,6 +10,7 @@ import scalaj.http.HttpStatusException
 import java.time.ZoneOffset.UTC
 import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
+import java.util.Collections
 import java.util.concurrent.TimeUnit.MINUTES
 import scala.collection.JavaConverters._
 
@@ -32,17 +33,25 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
 
   private def accessToken: String = accessTokenCache.get((clientId, clientSecret))
 
+  @deprecated("remove when openeo-geopyspark-driver is adapted")
   def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
                           to_date: String, band_names: util.List[String], sampleType: SampleType,
-                          processing_options: util.Map[String, Any]): String = try {
+                          processing_options: util.Map[String, Any]): String =
+    start_batch_process(collection_id, dataset_id, bbox, bbox_srs, from_date, to_date, band_names, sampleType,
+      metadata_properties = Collections.emptyMap[String, Any], processing_options)
+
+  def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
+                          to_date: String, band_names: util.List[String], sampleType: SampleType,
+                          metadata_properties: util.Map[String, Any], processing_options: util.Map[String, Any])
+  : String = try {
     // TODO: implement retries
     val boundingBox = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
 
     // workaround for bug where upper bound is considered inclusive in OpenEO
     val (from, to) = includeEndDay(from_date, to_date)
 
-    val catalogApi = new CatalogApi
-    val dateTimes = catalogApi.dateTimes(collection_id, boundingBox, from, to, accessToken)
+    val dateTimes = new CatalogApi().dateTimes(collection_id, boundingBox, from, to, accessToken,
+      queryProperties = mapDataFilters(metadata_properties))
 
     val batchProcessingApi = new BatchProcessingApi
     val batchRequestId = batchProcessingApi.createBatchProcess(
@@ -51,6 +60,7 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
       dateTimes,
       band_names.asScala,
       sampleType,
+      additionalDataFilters = metadata_properties,
       processing_options,
       bucketName,
       description = s"$dataset_id $bbox $bbox_srs $from_date $to_date $band_names",
@@ -69,8 +79,17 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
   def get_batch_process_status(batchRequestId: String): String =
     new BatchProcessingApi().getBatchProcess(batchRequestId, accessToken).status
 
+  @deprecated("remove when openeo-geopyspark-driver is adapted")
   def start_card4l_batch_processes(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
-                                   from_date: String, to_date: String, band_names: util.List[String], subfolder: String,
+                                   from_date: String, to_date: String, band_names: util.List[String],
+                                   dem_instance: String, subfolder: String,
+                                   request_group_id: String): util.List[String] =
+    start_card4l_batch_processes(collection_id, dataset_id, bbox, bbox_srs, from_date, to_date, band_names,
+      dem_instance, metadata_properties = Collections.emptyMap[String, Any], subfolder, request_group_id)
+
+  def start_card4l_batch_processes(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
+                                   from_date: String, to_date: String, band_names: util.List[String],
+                                   dem_instance: String, metadata_properties: util.Map[String, Any], subfolder: String,
                                    request_group_id: String): util.List[String] = {
     // TODO: add error handling
     val boundingBox = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
@@ -80,8 +99,8 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
     val (from, to) = includeEndDay(from_date, to_date)
 
     // original features that overlap in space and time
-    val catalogApi = new CatalogApi
-    val features = catalogApi.searchCard4L(collection_id, reprojectedBoundingBox, from, to, accessToken)
+    val features = new CatalogApi().searchCard4L(collection_id, reprojectedBoundingBox, from, to, accessToken,
+      queryProperties = mapDataFilters(metadata_properties))
 
     // their intersections with bounding box (all should be in LatLng)
     val intersectionFeatures = features.mapValues(feature =>
@@ -101,6 +120,8 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
           band_names.asScala,
           dataTakeId(id),
           card4lId = request_group_id,
+          dem_instance,
+          additionalDataFilters = metadata_properties,
           bucketName,
           subfolder,
           accessToken
@@ -127,4 +148,11 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
 
     (from, to)
   }
+
+  private def mapDataFilters(metadataProperties: util.Map[String, Any]): collection.Map[String, String] =
+    metadataProperties.asScala
+      .map {
+        case ("orbitDirection", value: String) => "sat:orbit_state" -> value
+        case (property, _) => throw new IllegalArgumentException(s"unsupported metadata property $property")
+      }
 }

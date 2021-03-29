@@ -62,14 +62,18 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       configureDebugLogging()
 
       val attributeValues = Map("productType" -> productType)
-      val products = new Oscars(new URL(oscarsEndpoint.get)).getProducts(oscarsCollection.get, date, date, ProjectedExtent(LatLng.worldExtent, LatLng), attributeValues = attributeValues)
+      val products = new Oscars(new URL(oscarsEndpoint.get)).getProducts(oscarsCollection.get, Some(date), Some(date), ProjectedExtent(LatLng.worldExtent, LatLng), attributeValues = attributeValues)
 
       val paths = products.flatMap(_.links.filter(_.title.contains(productType)).map(_.href.toString))
 
-      val productRegex = """/HRVPP/CLMS/VI_V100/(\d{4})/(\d{2})/(.*)""".r.unanchored
+      val hrVppProductsVi = """/HRVPP/CLMS/VI_V100/(\d{4})/(\d{2})/(.*)""".r.unanchored
+      val hrVppProductsVpp = """/HRVPP/CLMS/VPP_V090/(\d{4})/(.*)""".r.unanchored
+      val hrVppProductsSt = """/HRVPP/CLMS/ST_V090/(\d{4})/(.*)""".r.unanchored
 
       val s3Paths = paths.flatMap {
-        case productRegex(year, month, key) => Some(s"s3://hr-vpp-products-vi-$year$month/$key")
+        case hrVppProductsVi(year, month, key) => Some(s"s3://hr-vpp-products-vi-$year$month/$key")
+        case hrVppProductsVpp(year, key) => Some(s"s3://hr-vpp-products-vpp-$year/$key")
+        case hrVppProductsSt(year, key) => Some(s"s3://hr-vpp-products-st-$year/$key")
         case _ => None
       }
 
