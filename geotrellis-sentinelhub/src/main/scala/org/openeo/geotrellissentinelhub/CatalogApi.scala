@@ -23,7 +23,7 @@ object CatalogApi {
 class CatalogApi(endpoint: String) {
   import CatalogApi._
 
-  private val catalogEndpoint = URI.create(endpoint).resolve("/api/v1/catalog/")
+  private val catalogEndpoint = URI.create(endpoint).resolve("/api/v1/catalog")
 
   // TODO: search distinct dates (https://docs.sentinel-hub.com/api/latest/api/catalog/examples/#search-with-distinct)?
   def dateTimes(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
