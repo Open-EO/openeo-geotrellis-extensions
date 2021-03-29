@@ -144,9 +144,8 @@ class PyramidFactory(datasetId: String, clientId: String, clientSecret: String,
         val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = sc.parallelize(overlappingKeys)
           .map(key => (key,retrieveTileFromSentinelHub(datasetId, ProjectedExtent(key.spatialKey.extent(layout), boundingBox.crs),
             key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, band_names.asScala, sampleType,
-            metadata_properties, processingOptions, clientId, clientSecret)
-          if !tile.bands.forall(_.isNoDataTile)
-        } yield (key, tile)
+            metadata_properties, processingOptions, clientId, clientSecret)))
+          .filter{case (key:SpaceTimeKey,tile:MultibandTile)=> !tile.bands.forall(_.isNoDataTile) }
 
         val partitioner = SpacePartitioner(metadata.bounds)
         assert(partitioner.index == SpaceTimeByMonthPartitioner)
