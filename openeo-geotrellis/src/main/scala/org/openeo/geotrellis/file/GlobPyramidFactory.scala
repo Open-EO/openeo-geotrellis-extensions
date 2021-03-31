@@ -2,7 +2,6 @@ package org.openeo.geotrellis.file
 
 import java.time.ZonedDateTime
 import java.util
-
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.CRS
 import geotrellis.spark.MultibandTileLayerRDD
@@ -10,6 +9,7 @@ import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.AbstractGlobFileLayerProvider
+import org.openeo.geotrelliscommon.DataCubeParameters
 
 class GlobPyramidFactory(layerProvider: AbstractGlobFileLayerProvider) {
   def datacube_seq(projectedPolygons: ProjectedPolygons, from_date: String, to_date: String):

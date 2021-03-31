@@ -33,13 +33,6 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
 
   private def accessToken: String = accessTokenCache.get((clientId, clientSecret))
 
-  @deprecated("remove when openeo-geopyspark-driver is adapted")
-  def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
-                          to_date: String, band_names: util.List[String], sampleType: SampleType,
-                          processing_options: util.Map[String, Any]): String =
-    start_batch_process(collection_id, dataset_id, bbox, bbox_srs, from_date, to_date, band_names, sampleType,
-      metadata_properties = Collections.emptyMap[String, Any], processing_options)
-
   def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
                           to_date: String, band_names: util.List[String], sampleType: SampleType,
                           metadata_properties: util.Map[String, Any], processing_options: util.Map[String, Any])
@@ -78,14 +71,6 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
 
   def get_batch_process_status(batchRequestId: String): String =
     new BatchProcessingApi().getBatchProcess(batchRequestId, accessToken).status
-
-  @deprecated("remove when openeo-geopyspark-driver is adapted")
-  def start_card4l_batch_processes(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
-                                   from_date: String, to_date: String, band_names: util.List[String],
-                                   dem_instance: String, subfolder: String,
-                                   request_group_id: String): util.List[String] =
-    start_card4l_batch_processes(collection_id, dataset_id, bbox, bbox_srs, from_date, to_date, band_names,
-      dem_instance, metadata_properties = Collections.emptyMap[String, Any], subfolder, request_group_id)
 
   def start_card4l_batch_processes(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
                                    from_date: String, to_date: String, band_names: util.List[String],

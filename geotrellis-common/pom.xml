@@ -38,6 +38,18 @@
       <version>5.3.2</version>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.locationtech.geotrellis</groupId>
+      <artifactId>geotrellis-raster-testkit_${scala.binary.version}</artifactId>
+      <version>${geotrellis.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.github.wendykierp</groupId>
+      <artifactId>JTransforms</artifactId>
+      <version>3.1</version>
+      <classifier>with-dependencies</classifier>
+    </dependency>
   </dependencies>
 
   <build>
