@@ -72,7 +72,7 @@ public class TestCorrectionDescriptor {
 	public void testCorrectFunction() {
 		for (int i = 0; i < inputs.length; i++) {
 			CorrectionInput input = inputs[i];
-			double cv = cd.correct(input.band, input.time, input.value, input.sza, input.vza, input.raa, input.gnd, input.aot, input.cwv, input.ozone, input.watermask);
+			double cv = cd.correct(input.band, cd.getBandFromName(input.band), input.time, input.value, input.sza, input.vza, input.raa, input.gnd, input.aot, input.cwv, input.ozone, input.watermask);
 			System.out.println("cv = " + cv);
 			assertArrayEquals(new double[]{cv}, new double[]{input.expectedBOA}, 1.e-6);
 		}
