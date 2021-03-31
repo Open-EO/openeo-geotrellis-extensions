@@ -3,7 +3,6 @@ package org.openeo.geotrellissentinelhub
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
-
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.util.UTM
 import geotrellis.proj4.LatLng

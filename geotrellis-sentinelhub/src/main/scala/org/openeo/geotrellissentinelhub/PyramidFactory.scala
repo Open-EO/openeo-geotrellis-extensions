@@ -2,11 +2,9 @@ package org.openeo.geotrellissentinelhub
 
 import java.time.ZonedDateTime
 import java.util
-import java.util.Collections
-
 import geotrellis.layer.{KeyBounds, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, WebMercator}
-import geotrellis.raster.{CellSize, MultibandTile}
+import geotrellis.raster.{CellSize, MultibandTile, Raster}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
@@ -14,7 +12,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
-import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
+import org.openeo.geotrelliscommon.{DataCubeParameters, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 
 import scala.collection.JavaConverters._
@@ -78,11 +76,6 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
     Pyramid(layers.toMap)
   }
 
-  @deprecated("remove when openeo-geopyspark-driver is adapted")
-  def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String,
-                  band_names: util.List[String]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] =
-    pyramid_seq(bbox, bbox_srs, from_date, to_date, band_names, metadata_properties = Collections.emptyMap[String, Any])
-
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String, band_names: util.List[String],
                   metadata_properties: util.Map[String, Any]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
@@ -96,14 +89,14 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
       .reverse
   }
 
-  @deprecated("remove when openeo-geopyspark-driver is adapted")
-  def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
-                   band_names: util.List[String]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] =
-    datacube_seq(polygons, polygons_crs, from_date, to_date, band_names,
-      metadata_properties = Collections.emptyMap[String, Any])
-
   def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
                    band_names: util.List[String], metadata_properties: util.Map[String, Any]):
+  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = datacube_seq(polygons, polygons_crs, from_date, to_date,
+    band_names, metadata_properties, new DataCubeParameters)
+
+  def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
+                   band_names: util.List[String], metadata_properties: util.Map[String, Any],
+                   dataCubeParameters: DataCubeParameters):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     // TODO: use ProjectedPolygons type
     // TODO: reduce code duplication with pyramid_seq()
@@ -141,11 +134,46 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
           spatialKey <- layout.mapTransform.keysForGeometry(GeometryCollection(polygons))
         } yield SpaceTimeKey(spatialKey, date)
 
+        val maskClouds = dataCubeParameters.maskingStrategyParameters.get("method") == "mask_scl_dilation" // TODO: what's up with this warning
+
+        def loadMasked(key: SpaceTimeKey): Option[MultibandTile] = {
+          def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile =
+            retrieveTileFromSentinelHub(endpoint, datasetId, projectedExtent, key.temporalKey, width, height, bandNames,
+              sampleType, metadata_properties, processingOptions, clientId, clientSecret)
+
+          val keyExtent = key.spatialKey.extent(layout)
+
+          def dataTile: MultibandTile = getTile(band_names.asScala, ProjectedExtent(keyExtent, boundingBox.crs),
+            width = layout.tileLayout.tileCols, height = layout.tileLayout.tileRows)
+
+          if (maskClouds) {
+            val cloudFilterStrategy = {
+              val sclBandIndex = band_names.asScala.indexWhere { bandName =>
+                bandName.contains("SCENECLASSIFICATION") || bandName.contains("SCL")
+              }
+
+              if (sclBandIndex >= 0) new SCLConvolutionFilterStrategy(sclBandIndex)
+              else NoCloudFilterStrategy
+            }
+
+            cloudFilterStrategy.loadMasked(new MaskTileLoader {
+              override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = Some {
+                val bufferedWidth = layout.tileLayout.tileCols + 2 * bufferInPixels
+                val bufferedHeight = layout.tileLayout.tileRows + 2 * bufferInPixels
+                val bufferedExtent = keyExtent.expandBy(bufferInPixels * layout.cellwidth, bufferInPixels * layout.cellheight)
+
+                val maskTile = getTile(Seq(band_names.get(sclBandIndex)), ProjectedExtent(bufferedExtent, boundingBox.crs), bufferedWidth, bufferedHeight)
+                Raster(maskTile, bufferedExtent)
+              }
+
+              override def loadData: Option[MultibandTile] = Some(dataTile)
+            })
+          } else Some(dataTile)
+        }
+
         val tilesRdd = for {
           key <- sc.parallelize(overlappingKeys)
-          tile = retrieveTileFromSentinelHub(endpoint, datasetId, ProjectedExtent(key.spatialKey.extent(layout), boundingBox.crs),
-            key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, band_names.asScala, sampleType,
-            metadata_properties, processingOptions, clientId, clientSecret)
+          tile <- loadMasked(key)
           if !tile.bands.forall(_.isNoDataTile)
         } yield (key, tile)
 

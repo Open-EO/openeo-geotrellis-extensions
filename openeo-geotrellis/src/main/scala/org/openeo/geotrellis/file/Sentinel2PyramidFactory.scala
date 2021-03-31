@@ -3,7 +3,6 @@ package org.openeo.geotrellis.file
 import java.net.URL
 import java.time.ZonedDateTime
 import java.util
-
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutScheme, SpaceTimeKey, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, WebMercator}
@@ -13,6 +12,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.{FileLayerProvider, OpenSearch, SplitYearMonthDayPathDateExtractor}
+import org.openeo.geotrelliscommon.DataCubeParameters
 
 import scala.collection.JavaConverters._
 

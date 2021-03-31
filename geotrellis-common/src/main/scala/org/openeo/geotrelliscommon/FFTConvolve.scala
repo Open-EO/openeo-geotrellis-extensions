@@ -1,4 +1,4 @@
-package org.openeo.geotrellis
+package org.openeo.geotrelliscommon
 
 import geotrellis.raster.mapalgebra.focal.Kernel
 import geotrellis.raster.{DoubleArrayTile, PaddedTile, Tile}
@@ -19,10 +19,10 @@ object FFTConvolve {
   }
 
   private def tempToTile(tempArr: Array[Double], rows: Int, cols: Int): Tile = {
-    val tempRet = DoubleArrayTile.ofDim(cols,rows)
+    val tempRet = DoubleArrayTile.ofDim(cols, rows)
     for (r <- 0 until rows; c <- 0 until cols) {
       val ind = r * 2 * cols + 2 * c
-      tempRet.setDouble(c,r,tempArr(ind))
+      tempRet.setDouble(c, r, tempArr(ind))
     }
     tempRet
   }
@@ -32,7 +32,7 @@ object FFTConvolve {
     val tempRet = new Array[Double](tempDM.rows * tempCols * 2)
     for (r <- 0 until tempDM.rows; c <- 0 until tempDM.cols) {
       val d = tempDM.getDouble(c, r)
-      if(d.isNaN)
+      if (d.isNaN)
         tempRet(r * 2 * tempCols + 2 * c) = 0.0
       else
         tempRet(r * 2 * tempCols + 2 * c) = d
@@ -40,7 +40,7 @@ object FFTConvolve {
     tempRet
   }
 
-  def fftConvolve(tile: Tile,tile2:Tile): Tile = {
+  def fftConvolve(tile: Tile, tile2: Tile): Tile = {
     //reformat for input
     val tempMat1: Array[Double] = denseMatrixDToTemp(tile)
     val tempMat2: Array[Double] = denseMatrixDToTemp(tile2)
@@ -56,29 +56,29 @@ object FFTConvolve {
         val c1 = tempMat1(r * 2 * tile.cols + 2 * c + 1)
         val r2 = tempMat2(r * 2 * tile.cols + 2 * c)
         val c2 = tempMat2(r * 2 * tile.cols + 2 * c + 1)
-        val realPart = r1*r2 - c1*c2
-        val complexPart = r1*c2 + c1*r2
-        tempMat1(r * 2 * tile.cols + 2 * c)=realPart
-        tempMat1(r * 2 * tile.cols + 2 * c + 1 )=complexPart
+        val realPart = r1 * r2 - c1 * c2
+        val complexPart = r1 * c2 + c1 * r2
+        tempMat1(r * 2 * tile.cols + 2 * c) = realPart
+        tempMat1(r * 2 * tile.cols + 2 * c + 1) = complexPart
       }
     }
-    fft_instance.complexInverse(tempMat1,true)
-    return tempToTile(tempMat1,tile.rows,tile.cols)
+    fft_instance.complexInverse(tempMat1, true)
+    return tempToTile(tempMat1, tile.rows, tile.cols)
 
 
   }
 
-  def apply(tile:Tile,kernel:Kernel):Tile ={
+  def apply(tile: Tile, kernel: Kernel): Tile = {
 
     val paddedCols = tile.cols + kernel.tile.cols - 1
     val paddedRows = tile.rows + kernel.tile.rows - 1
     val paddedKernel = PaddedTile(kernel.tile, 0, 0, paddedCols, paddedRows)
     val paddedInput = PaddedTile(tile, 0, 0, paddedCols, paddedRows)
 
-    val paddedOutput = fftConvolve(paddedInput,paddedKernel)
+    val paddedOutput = fftConvolve(paddedInput, paddedKernel)
 
-    val colOffset = (paddedCols-tile.cols) / 2
-    val rowOffset = (paddedRows-tile.rows) / 2
-    return paddedOutput.crop(colOffset,rowOffset,colOffset+tile.cols-1,rowOffset+tile.rows-1)
+    val colOffset = (paddedCols - tile.cols) / 2
+    val rowOffset = (paddedRows - tile.rows) / 2
+    return paddedOutput.crop(colOffset, rowOffset, colOffset + tile.cols - 1, rowOffset + tile.rows - 1)
   }
 }

@@ -17,7 +17,7 @@ import org.apache.hadoop.fs.Path
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.ProjectedPolygons
-import org.openeo.geotrellis.file.DataCubeParameters
+import org.openeo.geotrelliscommon.DataCubeParameters
 
 import scala.util.matching.Regex
 

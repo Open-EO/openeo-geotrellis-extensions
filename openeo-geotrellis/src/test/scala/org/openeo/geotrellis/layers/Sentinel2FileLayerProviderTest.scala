@@ -22,7 +22,7 @@ import org.apache.spark.util.SizeEstimator
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Ignore, Test}
 import org.openeo.geotrellis.TestImplicits._
-import org.openeo.geotrellis.file.DataCubeParameters
+import org.openeo.geotrelliscommon.DataCubeParameters
 
 object Sentinel2FileLayerProviderTest {
   private var sc: SparkContext = _

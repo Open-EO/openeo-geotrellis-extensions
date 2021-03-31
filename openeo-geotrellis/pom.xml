@@ -12,12 +12,6 @@
     <artifactId>openeo-geotrellis</artifactId>
     <dependencies>
         <dependency>
-            <groupId>com.github.wendykierp</groupId>
-            <artifactId>JTransforms</artifactId>
-            <version>3.1</version>
-            <classifier>with-dependencies</classifier>
-        </dependency>
-        <dependency>
             <groupId>org.openeo</groupId>
             <artifactId>geotrellis-accumulo-extensions</artifactId>
             <version>${parent.version}</version>
