@@ -18,8 +18,9 @@ class TestS1Gamma0 {
 
     val date = LocalDate.of(2019, 6, 1).atStartOfDay(ZoneId.systemDefault())
 
+    val endpoint = "https://services.sentinel-hub.com"
     val datasetId = "S1GRD"
-    retrieveTileFromSentinelHub(datasetId, bbox, date, width = 256, height = 256, Seq("VV", "VH", "HV", "HH", "localIncidenceAngle"),
+    retrieveTileFromSentinelHub(endpoint, datasetId, bbox, date, width = 256, height = 256, Seq("VV", "VH", "HV", "HH", "localIncidenceAngle"),
       SampleType.FLOAT32, additionalDataFilters = Collections.singletonMap("orbitDirection", "DESCENDING"),
       processingOptions = Collections.singletonMap("orthorectify", true), clientId, clientSecret)
   }

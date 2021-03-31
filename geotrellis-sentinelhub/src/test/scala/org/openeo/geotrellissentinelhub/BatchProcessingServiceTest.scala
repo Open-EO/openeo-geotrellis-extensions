@@ -9,7 +9,8 @@ import java.time.LocalTime
 import scala.collection.JavaConverters._
 
 class BatchProcessingServiceTest {
-  private val batchProcessingService = new BatchProcessingService(bucketName = "openeo-sentinelhub",
+  val endpoint = "https://services.sentinel-hub.com"
+  private val batchProcessingService = new BatchProcessingService(endpoint, bucketName = "openeo-sentinelhub",
     Utils.clientId, Utils.clientSecret)
 
   @Ignore

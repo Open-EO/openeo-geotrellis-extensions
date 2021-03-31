@@ -5,11 +5,11 @@ import java.nio.file.{Path, Paths}
 import java.time.temporal.ChronoUnit
 import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
 import java.util.concurrent.TimeUnit
-
 import cats.data.NonEmptyList
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
+import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
 import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.GeoTiffResampleRasterSource
@@ -21,9 +21,8 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
-import org.openeo.geotrellis.file.DataCubeParameters
+import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.geotrellis.layers.OpenSearchResponses.Feature
-import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import org.slf4j.LoggerFactory
 
 import scala.collection.immutable
@@ -33,18 +32,18 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
   extends MosaicRasterSource { // FIXME: don't inherit?
 
   override val sources: NonEmptyList[RasterSource] = sourcesList
-  def reprojectedSources: NonEmptyList[RasterSource] = sourcesList map { _.reproject(crs) }
+  protected def reprojectedSources: NonEmptyList[RasterSource] = sourcesList map { _.reproject(crs) }
 
   override def gridExtent: GridExtent[Long] = sources.head.gridExtent
-  override def cellType: CellType = sources.head.cellType
+  override def cellType: CellType = sources.map(_.cellType).reduceLeft(_ union _)
 
   override def attributes: Map[String, String] = theAttributes // TODO: use override val attributes instead
   override def name: SourceName = sources.head.name
   override def bandCount: Int = sources.size
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    val selectedSources = bands.toVector.map(sources.toList)
-    val singleBandRasters = selectedSources.par.map { _.reproject(crs) }
+    val selectedSources = bands.map(reprojectedSources.toList)
+    val singleBandRasters = selectedSources.par
       .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
       .collect { case Some(raster) => raster }
 
@@ -53,10 +52,12 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    val singleBandRasters = reprojectedSources.toList.par.map { _.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
+    val selectedSources = bands.map(reprojectedSources.toList)
+    val singleBandRasters = selectedSources.par
+      .map { _.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
       .collect { case Some(raster) => raster }
 
-    if (singleBandRasters.size == reprojectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType)).seq), singleBandRasters.head.extent))
+    if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType)).seq), singleBandRasters.head.extent))
     else None
   }
 
@@ -225,7 +226,7 @@ object FileLayerProvider {
     tiledLayoutSourceRDD
   }
 
-  def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon],polygons_crs: CRS, sc: SparkContext, cloudFilterStrategy:Option[CloudFilterStrategy] = Option.empty) = {
+  def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon],polygons_crs: CRS, sc: SparkContext, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy) = {
     val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map{_.reproject(polygons_crs,metadata.crs)}.clipToGrid(metadata.layout).groupByKey()
 
     val rasterRegionRDD = rasterSources.flatMap { tiledLayoutSource =>
@@ -238,21 +239,24 @@ object FileLayerProvider {
     // TODO: doesn't this equal an inner join?
     val filteredRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = rasterRegionRDD.rightOuterJoin(requiredKeys).flatMap { t => t._2._1.toList}
 
-    rasterRegionsToTiles(filteredRDD, metadata,cloudFilterStrategy)
+    rasterRegionsToTiles(filteredRDD, metadata, cloudFilterStrategy)
   }
 
-  private def rasterRegionsToTiles(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))], metadata: TileLayerMetadata[SpaceTimeKey], cloudFilterStrategy:Option[CloudFilterStrategy] = Option.empty) = {
+  private def rasterRegionsToTiles(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))], metadata: TileLayerMetadata[SpaceTimeKey], cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy) = {
     val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] =
       rasterRegionRDD
         .groupByKey(SpacePartitioner(metadata.bounds))
         .flatMapValues { namedRasterRegions =>
           namedRasterRegions.toSeq
             .flatMap { case (rasterRegion, sourcePath: SourcePath) =>
-              if(cloudFilterStrategy.isDefined) {
-                cloudFilterStrategy.get.loadMasked(rasterRegion).map((_,sourcePath))
-              }else{
-                rasterRegion.raster.map(r => (r.tile, sourcePath))
-              }
+              cloudFilterStrategy.loadMasked(new MaskTileLoader {
+                override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = {
+                  val gridBoundsRasterRegion = rasterRegion.asInstanceOf[GridBoundsRasterRegion]
+                  gridBoundsRasterRegion.source.read(gridBoundsRasterRegion.bounds.buffer(bufferInPixels, bufferInPixels, clamp = false), Seq(sclBandIndex))
+                }
+
+                override def loadData: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
+              }).map((_, sourcePath))
             }
             .sortWith { case ((leftMultibandTile, leftSourcePath), (rightMultibandTile, rightSourcePath)) =>
               if (leftMultibandTile.band(0).isInstanceOf[PaddedTile] && !rightMultibandTile.band(0).isInstanceOf[PaddedTile]) true
@@ -261,7 +265,7 @@ object FileLayerProvider {
             }
             .map { case (multibandTile, _) => multibandTile }
             .reduceOption(_ merge _)
-        }.filter(_._2.bands.exists(!_.isNoDataTile))
+        }.filter { case (_, tile) => !tile.bands.forall(_.isNoDataTile) }
 
     ContextRDD(tiledRDD, metadata)
   }
@@ -349,14 +353,13 @@ class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, 
     val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType, layoutScheme, maxSpatialResolution)
 
     val rasterSources = rasterSourceRDD(overlappingRasterSources, metadata, maxSpatialResolution, openSearchCollectionId)(sc)
-    val maskStrategy =
-    if(datacubeParams.isDefined && datacubeParams.get.maskingStrategyParameters != null && "mask_scl_dilation".equals(datacubeParams.get.maskingStrategyParameters.get("method"))) {
-      val maybeIndex = openSearchLinkTitles.zipWithIndex.find(p => p._1.contains("SCENECLASSIFICATION") || p._1.contains("SCL"))
-      maybeIndex.map(i => new SCLConvolutionFilterStrategy(i._2))
-    }else{
-      Option.empty[CloudFilterStrategy]
-    }
-    FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc,maskStrategy)
+
+    val maskStrategy = for {
+      params <- datacubeParams if params.maskingStrategyParameters != null && params.maskingStrategyParameters.get("method") == "mask_scl_dilation"
+      (_, sclBandIndex) <- openSearchLinkTitles.zipWithIndex.find { case (linkTitle, _) => linkTitle.contains("SCENECLASSIFICATION") || linkTitle.contains("SCL") }
+    } yield new SCLConvolutionFilterStrategy(sclBandIndex)
+
+    FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc, maskStrategy.getOrElse(NoCloudFilterStrategy))
   }
 
   override def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, zoom: Int = maxZoom, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {

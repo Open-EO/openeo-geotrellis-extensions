@@ -3,7 +3,6 @@ package org.openeo.geotrellissentinelhub
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
-
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.util.UTM
 import geotrellis.proj4.LatLng
@@ -27,6 +26,7 @@ class PyramidFactoryTest {
 
   @Test
   def testGamma0(): Unit = {
+    val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 10, 10), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     def testCellType(baseLayer: MultibandTileLayerRDD[SpaceTimeKey]): Unit = baseLayer.metadata.cellType match {
@@ -35,12 +35,13 @@ class PyramidFactoryTest {
         assertEquals(0.0, cellType.noDataValue, 0)
     }
 
-    testLayer(new PyramidFactory("S1GRD", clientId, clientSecret, sampleType = FLOAT32), "gamma0", date,
+    testLayer(new PyramidFactory(endpoint,"S1GRD", clientId, clientSecret, sampleType = FLOAT32), "gamma0", date,
       Seq("VV", "VH", "dataMask"), testCellType)
   }
 
   @Test
   def testSentinel2L1C(): Unit = {
+    val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     def testCellType(baseLayer: MultibandTileLayerRDD[SpaceTimeKey]): Unit = baseLayer.metadata.cellType match {
@@ -49,28 +50,31 @@ class PyramidFactoryTest {
         assertEquals(0, cellType.noDataValue)
     }
 
-    testLayer(new PyramidFactory("S2L1C", clientId, clientSecret), "sentinel2-L1C", date, Seq("B04", "B03", "B02"),
+    testLayer(new PyramidFactory(endpoint,"S2L1C", clientId, clientSecret), "sentinel2-L1C", date, Seq("B04", "B03", "B02"),
       testCellType)
   }
 
   @Test
   def testSentinel2L2A(): Unit = {
+    val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new PyramidFactory("S2L2A", clientId, clientSecret), "sentinel2-L2A", date, Seq("B08", "B04", "B03"))
+    testLayer(new PyramidFactory(endpoint,"S2L2A", clientId, clientSecret), "sentinel2-L2A", date, Seq("B08", "B04", "B03"))
   }
 
   @Test
   def testLandsat8(): Unit = {
+    val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new PyramidFactory("L8L1C", clientId, clientSecret), "landsat8", date, Seq("B10", "B11"))
+    testLayer(new PyramidFactory(endpoint,"L8L1C", clientId, clientSecret), "landsat8", date, Seq("B10", "B11"))
   }
 
   @Test
   def testDigitalNumbersOutput(): Unit = { // TODO: check output values programmatically
+    val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new PyramidFactory("S2L2A", clientId, clientSecret), "sentinel2-L2A_mix", date, Seq("B04", "sunAzimuthAngles", "SCL"))
+    testLayer(new PyramidFactory(endpoint,"S2L2A", clientId, clientSecret), "sentinel2-L2A_mix", date, Seq("B04", "sunAzimuthAngles", "SCL"))
   }
-  
+
   private def testLayer(pyramidFactory: PyramidFactory, layer: String, date: ZonedDateTime, bandNames: Seq[String],
                         test: MultibandTileLayerRDD[SpaceTimeKey] => Unit = _ => ()): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
@@ -123,7 +127,8 @@ class PyramidFactoryTest {
         ProjectedExtent(boundingBox.reproject(utmCrs), utmCrs)
       }
 
-      val pyramidFactory = new PyramidFactory("S2L2A", clientId, clientSecret)
+      val endpoint = "https://services.sentinel-hub.com"
+      val pyramidFactory = new PyramidFactory(endpoint, "S2L2A", clientId, clientSecret)
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,

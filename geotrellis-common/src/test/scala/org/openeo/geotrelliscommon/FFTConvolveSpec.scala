@@ -1,4 +1,4 @@
-package org.openeo.geotrellis
+package org.openeo.geotrelliscommon
 
 import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.raster.{IntArrayTile, RasterExtent}
