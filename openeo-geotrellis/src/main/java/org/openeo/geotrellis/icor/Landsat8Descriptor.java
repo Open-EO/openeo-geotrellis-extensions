@@ -105,7 +105,19 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 	}
 
 	/**
-     * @param src: digital number of the top of the atmosphere TOA radiance (as it is stored in the L1T/OLI/... tifs) 
+     * @param src: digital number of the top of the atmosphere TOA radiance 
+     * @return TOA reflectance  (float 0..1)
+	 */
+	@Override
+	public double preScale(double src, double sza, ZonedDateTime time, int bandIdx) {
+		// lut only has 8 bands instead of 9
+		if (bandIdx>7) return src;
+		return reflToRad_with_earthsundistance(src*0.0001, sza, time, bandIdx);
+	}
+    
+	/**
+     * @param src: TOA radiance
+     * @return: BOA reflectance in digital number
 	 */
 	@Override
     public double correct(
@@ -131,8 +143,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
         return corrected*10000.;
 */
         // Apply atmoshperic correction on pixel based on an array of parameters from MODTRAN
-        final double TOAradiance=reflToRad(src*0.0001, sza, time, bandIdx);
-        final double corrected = correctRadiance( bandIdx, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
+        final double corrected = correctRadiance( bandIdx, src, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
 		//final double corrected=TOAradiance;
         return corrected*10000.;    
     }
@@ -147,8 +158,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
      */
     // this is highly sub-optimal many things can be calculated beforehand once for all pixels!
 	// TODO: remove refltorad from L8 when refactored
-    @Override
-    public double reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert) {
+    public double reflToRad_with_earthsundistance(double src, double sza, ZonedDateTime time, int bandToConvert) {
 
         // SZA to SZA in rad + apply scale factor
         double szaInRadCoverage = 2.*sza*Math.PI/360.;

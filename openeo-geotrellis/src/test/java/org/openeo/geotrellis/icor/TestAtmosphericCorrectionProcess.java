@@ -252,9 +252,6 @@ public class TestAtmosphericCorrectionProcess {
 	    assertFalse(result.isEmpty());
 	    List<Tuple2<SpaceTimeKey, MultibandTile>> collected = result.collect();
 		
-	    int tilecols=256;//((Integer) collected.get(0)._2.band(0).cols());
-		int tilerows=256;//((Integer) collected.get(0)._2.band(0).rows());
-
 		MultibandTile resulttiles = acGetAndStitchTiles(resultRDD, new Integer[]{0,1,2,3,11,12,13,14,15,16}, (Integer)inputtiles[0].cols(), (Integer)inputtiles[0].rows());
        
         final int limit=10;
@@ -267,11 +264,11 @@ public class TestAtmosphericCorrectionProcess {
         }
         
         // to generate new reference data or to exact match it
-        //geotrellis.raster.io.geotiff.MultibandGeoTiff$.MODULE$.apply(
-        //	tiles, 
-        //	newExtent, 
-        //	crs
-        //).write("unittest_data.tif",false);
+        geotrellis.raster.io.geotiff.MultibandGeoTiff$.MODULE$.apply(
+        	resulttiles, 
+        	extent, 
+        	crs
+        ).write("unittest_data_S2_ICOR.tif",false);
         
         System.out.println("DONE ICOR+SENTINEL2, time="+Double.toString((double)(end-start)*1.0e-9));
 
@@ -379,9 +376,6 @@ public class TestAtmosphericCorrectionProcess {
 	    assertFalse(result.isEmpty());
 	    List<Tuple2<SpaceTimeKey, MultibandTile>> collected = result.collect();
 		
-	    int tilecols=256;//((Integer) collected.get(0)._2.band(0).cols());
-		int tilerows=256;//((Integer) collected.get(0)._2.band(0).rows());
-	
 		MultibandTile resulttiles = acGetAndStitchTiles(resultRDD, new Integer[]{0,1,2,3}, (Integer)inputtiles[0].cols(), (Integer)inputtiles[0].rows());
 
 		
@@ -408,7 +402,7 @@ public class TestAtmosphericCorrectionProcess {
 	    	resulttiles, 
 	    	extent, 
 	    	crs
-	    ).write("unittest_data.tif",false);
+	    ).write("unittest_data_S2_SMAC.tif",false);
 
         System.out.println("DONE SMAC+SENTINEL2, time="+Double.toString((double)(end-start)*1.0e-9));
 	
@@ -506,7 +500,7 @@ public class TestAtmosphericCorrectionProcess {
             printHistogram("bnd "+Integer.toString(i)+" -------------------------", histo);
             double sum=histo.values().stream().reduce(0, Integer::sum).doubleValue();
             double outliers=histo.getOrDefault(limit,0);
-//            assertTrue(outliers/sum<=0.01);
+            assertTrue(outliers/sum<=0.01);
         }
         
         // to generate new reference data or to exact match it
@@ -514,7 +508,7 @@ public class TestAtmosphericCorrectionProcess {
         	resulttiles, 
         	extent, 
         	crs
-        ).write("unittest_landsat_data.tif",false);
+        ).write("unittest_data_L8_ICOR.tif",false);
         
         System.out.println("DONE ICOR+LANDSAT8, time="+Double.toString((double)(end-start)*1.0e-9));
 

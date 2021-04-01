@@ -19,6 +19,17 @@ public abstract class CorrectionDescriptor implements Serializable{
 	// -------------------------------------------
 	
     public abstract int getBandFromName(String name) throws IllegalArgumentException;
+    
+    /**
+     * This function converts the input digital number to usually top of the atmosphere (TOA) reflectance/radiance (see the documentation of the implementations)
+     * If band is out of range, the function should return src (since any errors of mis-using bands should be caught upstream, before the pixel-wise loop).
+     * @param src to be converted: this may be digital number, reflectance, radiance, ... depending on the specific correction, and it should clearly be documented in the implementation!
+     * @param sza degree
+     * @param time is usually needed for computing earth-sun distance
+     * @param bandIdx band index as returned by getBandFromName
+     * @return TOA reflectance/radiance as floating point (see the correct() function)
+     */
+    public abstract double preScale(double src, double sza, ZonedDateTime time, int bandIdx);
 
 
     /**
@@ -26,7 +37,7 @@ public abstract class CorrectionDescriptor implements Serializable{
      * If band is out of range, the function should return src (since any errors of mis-using bands should be caught upstream, before the pixel-wise loop).
      * @param bandName band id
      * @param bandIdx band index as returned by getBandFromName
-     * @param src to be converted: this may be digital number, reflectance, radiance, ... depending on the specific correction, and it should clearly be documented there!
+     * @param src to be converted: the value from pre-scale, the implementation should document the value
      * @param sza degree
      * @param vza degree
      * @param raa degree

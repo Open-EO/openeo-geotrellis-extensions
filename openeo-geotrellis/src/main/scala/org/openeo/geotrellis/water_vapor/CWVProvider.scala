@@ -50,9 +50,9 @@ class CWVProvider() extends Serializable {
           raaTile,
           elevationTile.convert(FloatConstantNoDataCellType), 
     // AOT overriden                      aotTile.convert(FloatConstantNoDataCellType), 
-          wvTile.convert(FloatConstantNoDataCellType), 
-          r0Tile.convert(FloatConstantNoDataCellType), 
-          r1Tile.convert(FloatConstantNoDataCellType)
+          wvTile, 
+          r0Tile, 
+          r1Tile
         ),
         6, // on 10m base resolution looking for a value on 60m resolution
         aot,

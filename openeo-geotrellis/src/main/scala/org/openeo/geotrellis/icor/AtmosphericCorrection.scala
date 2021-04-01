@@ -142,18 +142,36 @@ class AtmosphericCorrection extends Serializable {
   }
 
   private def correctTile(multibandtile: (SpaceTimeKey, MultibandTile), bandIds: util.List[String], szaTile: Tile, vzaTile: Tile, raaTile: Tile, aotTile: Tile, demTile: Tile, overrideParams: util.List[Double], sensorDescriptor: CorrectionDescriptor, cwvProvider: CWVProvider) = {
-    // keep cwv last because depends on the others a lot
-    val cwvTile = if (overrideParams.get(5).isNaN) cwvProvider.compute(multibandtile, szaTile, vzaTile, raaTile, demTile, 0.1, 0.33, 1.0e-4, 1.0, bandIds, sensorDescriptor)
-    else FloatConstantTile(overrideParams.get(5).toFloat, multibandtile._2.cols, multibandtile._2.rows)
 
-    val result = multibandtile._2.mapBands((b, tile) => {
+    val bandPattern = ".*(B[018][0-9A]).*".r
+
+    // pre-scale
+    val prescaled = multibandtile._2.mapBands((b, tile) => {
       // the idea is that bands containing B01-B19 and B8A are sent for correction, the rest (angles,... etc) returned as-is
-      // note that the correct method can return the same value for bands that is B**, if those don't need correction 
+      // note that the descriptor's correct() method can still return the same value for bands that is B**, if those don't need correction 
       val bandName = bandIds.get(b)
-      val bandPattern = ".*(B[018][0-9A]).*".r
       bandName match {
         case bandPattern(pattern) => {
-          // TODO: refactor such that sensordescriptor.correct gets the index intead of pattern (avoid pixelwise lookup)
+          val bandIdx=sensorDescriptor.getBandFromName(pattern)
+          tile.convert(FloatConstantNoDataCellType).combineDouble(szaTile){
+            (src,sza) => sensorDescriptor.preScale(src, sza, multibandtile._1.time, bandIdx)
+          }
+        }
+        case _ => tile.convert(FloatConstantNoDataCellType)
+      }
+    })
+    
+    // keep cwv last because depends on the others a lot
+    val cwvTile = if (overrideParams.get(5).isNaN) cwvProvider.compute((multibandtile._1,prescaled), szaTile, vzaTile, raaTile, demTile, 0.1, 0.33, /*1.0e-4*/1.0, 1.0, bandIds, sensorDescriptor)
+    else FloatConstantTile(overrideParams.get(5).toFloat, multibandtile._2.cols, multibandtile._2.rows)
+
+//    val result = multibandtile._2.mapBands((b, tile) => {
+    val result = prescaled.mapBands((b, tile) => {
+      // the idea is that bands containing B01-B19 and B8A are sent for correction, the rest (angles,... etc) returned as-is
+      // note that the descriptor's correct() method can still return the same value for bands that is B**, if those don't need correction 
+      val bandName = bandIds.get(b)
+      bandName match {
+        case bandPattern(pattern) => {
           val bandIdx=sensorDescriptor.getBandFromName(pattern)
           val resultTile: Tile = MultibandTile(
             tile.convert(FloatConstantNoDataCellType),
@@ -166,9 +184,9 @@ class AtmosphericCorrection extends Serializable {
           ).combineDouble(0, 1, 2, 3, 4, 5, 6) { (refl, aot, dem, sza, vza, raa, cwv) => if (refl != NODATA) ( {
               sensorDescriptor.correct( pattern, bandIdx, multibandtile._1.time, refl.toDouble, sza, vza, raa, dem, aot, cwv, overrideParams.get(6), 0)
           } ).toInt else NODATA }
-          resultTile.convert(tile.cellType)
+          resultTile.convert(multibandtile._2.cellType)
         }
-        case _ => tile 
+        case _ => tile.convert(multibandtile._2.cellType) 
       }
     })
     

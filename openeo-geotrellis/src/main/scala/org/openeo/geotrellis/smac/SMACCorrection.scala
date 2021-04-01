@@ -302,10 +302,17 @@ object SMACCorrection{
 }
 
 
+
 class SMACCorrection extends CorrectionDescriptor(){
 
   val coeffMap = mutable.Map[String,Coeff]()
 
+  // TODO: this works with sentinelhub, where they provide toa reflectances in harmony with s2 L1C
+  override def preScale(src: Double, sza: Double, time: ZonedDateTime, bandToConvert: Int): Double = {
+    src.doubleValue()/10000.0
+  }
+  
+  
   /**
    * This function performs the pixel-wise correction: src is a pixel value belonging to band (as from getBandFromName).
    * If band is out of range, the function should return src (since any errors of mis-using bands should be caught upstream, before the pixel-wise loop).
@@ -342,7 +349,7 @@ class SMACCorrection extends CorrectionDescriptor(){
 
     val pressure = 1013 //SMACCorrection.PdeZ(1300);
     val UH2O = 0.3 // Water vapour (g/cm2)
-    val r_surf = SMACCorrection.smac_inv(src.doubleValue()/10000.0, sza, vza, raa, pressure.toFloat, aot.toFloat, ozone.toFloat, UH2O.toFloat, maybeCoeff.get)*10000.0
+    val r_surf = SMACCorrection.smac_inv(src.doubleValue(), sza, vza, raa, pressure.toFloat, aot.toFloat, ozone.toFloat, UH2O.toFloat, maybeCoeff.get)*10000.0
     r_surf
   }
 

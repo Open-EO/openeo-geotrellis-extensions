@@ -1,15 +1,20 @@
 package org.openeo.geotrellis.icor;
 
-import org.apache.spark.SparkContext;
-import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.broadcast.Broadcast;
+//import org.apache.spark.SparkContext;
+//import org.apache.spark.api.java.JavaSparkContext;
+//import org.apache.spark.broadcast.Broadcast;
+//import java.io.IOException;
+//import java.util.concurrent.Callable;
+//import java.util.concurrent.ExecutionException;
 
-import java.io.IOException;
 import java.time.ZonedDateTime;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 
 public abstract class ICorCorrectionDescriptor extends CorrectionDescriptor {
+	/**
+	 * This is the base class for the ICOR-based atmospheric correction.
+	 * correct converts TOA radiance to BOA reflectance -> preScale function should convert digital number to TOA radiance
+	 * 
+	 */
 	
 	public LookupTable bcLUT;
 	
@@ -17,17 +22,36 @@ public abstract class ICorCorrectionDescriptor extends CorrectionDescriptor {
 		bcLUT=LookupTableIO.readLUT(ICorCorrectionDescriptor.this.getLookupTableURL());
 	}
 	
+	// extra interface functions specific to ICOR
     public abstract String getLookupTableURL();
 	public abstract double getIrradiance(int iband);
 	public abstract double getCentralWavelength(int iband);
 
-	// TODO: remove this when water vapor calculator is refactored
+    /**
+     * @param src:              Band in reflectance range(0.,1.)
+     * @param sza:      		sun zenith angle in degrees
+     * @param time:             Time in millis from epoch
+     * @param bandToConvert     Bandnumber
+     * @return                  Band in radiance
+     * @throws Exception 
+     */
+    // this is highly sub-optimal many things can be calculated beforehand once for all pixels!
     public double reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert) {
-        throw new IllegalArgumentException("Function 'reflToRad' is a leftover function in the CorrectionDescriptor interface temporarily needed for Sentinel-2's water vapor calculator, other usage are not permitted.");
+
+        // SZA to SZA in rad + apply scale factor
+        double szaInRadCoverage = 2.*sza*Math.PI/360.;
+
+        // cos of SZA
+        double cosSzaCoverage = Math.cos(szaInRadCoverage);
+
+        double solarIrradiance = getIrradiance(bandToConvert);
+
+        double radiance = src* (cosSzaCoverage * solarIrradiance) / (Math.PI);
+        return radiance;
     }
     
     
-    /*
+    /**
      * General correction function using the lookup table to convert TOA radiance to BOA reflectance
      */
     double correctRadiance(int band, double TOAradiance, double sza, double vza, double raa, double gnd, double aot, double cwv, double ozone, int waterMask) {

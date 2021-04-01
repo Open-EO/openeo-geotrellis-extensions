@@ -55,9 +55,9 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 		// L1C comes earth-sun distance corrected, therefore 
 		// reflectance-radiance conversion is: cos(sza_radians)*solarirradiance[band]/3.14
 		// TODO: in this form this works for L1C but refl-radiance conversion has to be a step in front of the watervapor calculation
-		cwv=cd.reflToRad(cwv, sza, null, wvBand);
-		r0=cd.reflToRad(r0, sza, null, r0Band);
-		r1=cd.reflToRad(r1, sza, null, r1Band);
+//		cwv=cd.reflToRad(cwv, sza, null, wvBand);
+//		r0=cd.reflToRad(r0, sza, null, r0Band);
+//		r1=cd.reflToRad(r1, sza, null, r1Band);
 		
 		double v0=intialValue;
 /*
