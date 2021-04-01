@@ -9,7 +9,12 @@ import java.time.format.DateTimeFormatter;
 
 import static org.junit.Assert.assertArrayEquals;
 
-// TODO: this only tests Sentinel-2 descriptor only, extend to landsat8
+
+// this test only tests one correctiondescriptor implementation  (sentinel2), because the intention here is to test:
+// * possble bugs in changing the interface
+// * the static support functions
+// see TestAtmosphericCorrectionProcess for testing the correctness of all implementation variants
+
 public class TestCorrectionDescriptor {
 
 	private static Sentinel2Descriptor cd;
@@ -25,48 +30,38 @@ public class TestCorrectionDescriptor {
 
 		String band;
 		double value;
-		ZonedDateTime time =  ZonedDateTime.now();
-		double sza = 29.0;
-		double vza = 5.0;
-		double raa = 130.0;
-		double expectedRadiance=-1.0; // after DN to radiance
-		double expectedBOA=-1.0; // corrected value to bottom of atmosphere
-		double gnd = 17;
-		double aot = 0.28;
-		double cwv = 2.64;
+		ZonedDateTime time;
+		double sza;
+		double vza;
+		double raa;
+		double expectedRadiance;
+		double expectedBOA;
+		double gnd;
+		double aot;
+		double cwv;
 		double ozone = 0.33;
 		int watermask = 0;
-
-		public CorrectionInput(String band, double value, double gnd,double aot) {
-
-			this.band = band;
-			this.value = value;//reflectance, between 0 and 1
-			this.gnd = gnd;//elevation in meters
-			this.aot = aot;
-		}
 
 		public CorrectionInput(String band, double value,double expectedRadiance, double expectedBOA, double gnd,double aot,double saa,double sza,double vaa,double vza,double cwv, String date) {
 
 			this.band = band;
-			this.value = value;//reflectance, between 0 and 1
-			this.expectedRadiance = expectedRadiance;
-			this.expectedBOA = expectedBOA;
-			this.gnd = gnd;//elevation in meters
+			this.value = value;// input DN
+			this.expectedRadiance = expectedRadiance; // TOA radiance
+			this.expectedBOA = expectedBOA; // BOA reflectance
+			this.gnd = gnd;//elevation in km
 			this.aot = aot;
 			this.raa = saa-vaa;
 			this.sza = sza;
 			this.vza = vza;
+			this.cwv = cwv;
 			this.time = DateTimeFormatter.ISO_DATE_TIME.parse(date,ZonedDateTime::from);
 		}
 	}
 
 	private CorrectionInput[] inputs = {
-			//new CorrectionInput(2,342L, 320.0,0.0001*1348.0),
-			//expected earth sun= 1.01751709288327
-			new CorrectionInput("B02",1267.,41.66175709089134, 595.8484428506723, 0.001,0.0001*1029.0,163,   57.8566,   69,2,     0.83, "2017-03-07T10:50:00Z"),//expected icor:574 sen2cor:598 AOT icor:0.078
-			new CorrectionInput("B04", 509.,17.925613561979805,347.7272319876718, 0.001,        0.082,129.13,    43.,  -1.,11.57, 0.357,"2019-04-11T10:50:29Z")//expected icor:353 sen2cor:336
+			new CorrectionInput("B02",1267.,41.66175709089134, 593.1824366356715, 0.001,0.0001*1029.0,163,   57.8566,   69,2,     0.83, "2017-03-07T10:50:00Z"),//expected icor:574 sen2cor:598 AOT icor:0.078
+			new CorrectionInput("B04", 509.,17.925613561979805,343.3460169261466, 0.001,        0.082,129.13,    43.,  -1.,11.57, 0.357,"2019-04-11T10:50:29Z")//expected icor:353 sen2cor:336
 	};
-//'sunAzimuthAngles','sunZenithAngles','viewAzimuthMean','viewZenithMean'
 
 	@Test
 	public void testPreScaleFunction() {
@@ -77,7 +72,6 @@ public class TestCorrectionDescriptor {
 			assertArrayEquals(new double[]{ps}, new double[]{input.expectedRadiance}, 1.e-6);
 		}
 	}
-	
 	
 	@Test
 	public void testCorrectFunction() {
@@ -96,8 +90,6 @@ public class TestCorrectionDescriptor {
 		assertArrayEquals(new double[]{cv}, new double[]{0.034311233929002344}, 1.e-6);
 	}
 
-
-	
 	@Test
 	public void testReflectanceToRadiance() {
 	    double rad=CorrectionDescriptor.reflToRad(10., 60., cd.getIrradiance(1));
