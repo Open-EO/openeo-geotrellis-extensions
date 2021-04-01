@@ -153,7 +153,7 @@ public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
      */
  	@Override
 	public double preScale(double src, double sza, ZonedDateTime time, int bandIdx) {
-        return reflToRad(src*0.0001, sza, time, bandIdx);
+        return reflToRad(src*0.0001, sza, getIrradiance(bandIdx));
 	}
 
     

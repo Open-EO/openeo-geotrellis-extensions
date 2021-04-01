@@ -12,7 +12,6 @@ import java.time.ZonedDateTime;
  * @author Sven Jochems
  */
 
-// Applies MODTRAN atmospheric correction based on preset values in a lookup table.
 public abstract class CorrectionDescriptor implements Serializable{
 
 	// parts to reimplement in specialization
@@ -71,10 +70,10 @@ public abstract class CorrectionDescriptor implements Serializable{
 
 
     /**
+     * Get distance from earth to sun in Astronomical Units based on time in millis().
      * @param time millisec from epoch
      * @return earth-sun distance in AU
      */
-    // Get distance from earth to sun in Astronomical Units based on time in millis()
     // This is not used anywhere currently, but might come handy later
     public static double earthSunDistance(ZonedDateTime time){
         
@@ -95,7 +94,53 @@ public abstract class CorrectionDescriptor implements Serializable{
         
         return DUA;
     }
-    
+
+    /**
+     * Computes reflectance to radiance correction without considering earth-sun distance (this is how Sentinel-2 L1C is provided).
+     * @param src:              Band in reflectance range0...1
+     * @param sza:      		sun zenith angle in degrees
+     * @param time:             Time in millis from epoch
+     * @param bandToConvert     Bandnumber
+     * @return                  Band in radiance
+     * @throws Exception 
+     */
+    // this is highly sub-optimal many things can be calculated beforehand once for all pixels!
+    public static double reflToRad(double src, double sza, double solarIrradiance) {
+
+        // SZA to SZA in rad + apply scale factor
+        double szaInRadCoverage = 2.*sza*Math.PI/360.;
+
+        // cos of SZA
+        double cosSzaCoverage = Math.cos(szaInRadCoverage);
+
+        double radiance = src* (cosSzaCoverage * solarIrradiance) / (Math.PI);
+        return radiance;
+    }
+
+    /**
+     * Computes reflectance to radiance correction with considering earth-sun distance.
+     * @param src:              Band in reflectance range 0...1
+     * @param sza:      		sun zenith angle in degrees
+     * @param time:             Time in millis from epoch
+     * @param bandToConvert     Bandnumber
+     * @return                  Band in radiance
+     * @throws Exception 
+     */
+    // this is highly sub-optimal many things can be calculated beforehand once for all pixels!
+    public static double reflToRad_with_earthsundistance(double src, double sza, ZonedDateTime time, double solarIrradiance) {
+
+        // SZA to SZA in rad + apply scale factor
+        double szaInRadCoverage = 2.*sza*Math.PI/360.;
+
+        // cos of SZA
+        double cosSzaCoverage = Math.cos(szaInRadCoverage);
+
+        // TODO: ask Sinergise for the Sentinelhub layer what do they do with L1C, because it differs from stock L8 level1 data
+        double earthsunAU = earthSunDistance(time);
+        
+        double radiance = src* (cosSzaCoverage * solarIrradiance) / (Math.PI * earthsunAU * earthsunAU);
+        return radiance;
+    }
     
 }
 

@@ -28,30 +28,6 @@ public abstract class ICorCorrectionDescriptor extends CorrectionDescriptor {
 	public abstract double getCentralWavelength(int iband);
 
     /**
-     * @param src:              Band in reflectance range(0.,1.)
-     * @param sza:      		sun zenith angle in degrees
-     * @param time:             Time in millis from epoch
-     * @param bandToConvert     Bandnumber
-     * @return                  Band in radiance
-     * @throws Exception 
-     */
-    // this is highly sub-optimal many things can be calculated beforehand once for all pixels!
-    public double reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert) {
-
-        // SZA to SZA in rad + apply scale factor
-        double szaInRadCoverage = 2.*sza*Math.PI/360.;
-
-        // cos of SZA
-        double cosSzaCoverage = Math.cos(szaInRadCoverage);
-
-        double solarIrradiance = getIrradiance(bandToConvert);
-
-        double radiance = src* (cosSzaCoverage * solarIrradiance) / (Math.PI);
-        return radiance;
-    }
-    
-    
-    /**
      * General correction function using the lookup table to convert TOA radiance to BOA reflectance
      */
     double correctRadiance(int band, double TOAradiance, double sza, double vza, double raa, double gnd, double aot, double cwv, double ozone, int waterMask) {

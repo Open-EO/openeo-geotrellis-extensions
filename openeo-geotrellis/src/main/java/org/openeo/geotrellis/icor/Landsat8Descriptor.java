@@ -112,7 +112,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 	public double preScale(double src, double sza, ZonedDateTime time, int bandIdx) {
 		// lut only has 8 bands instead of 9
 		if (bandIdx>7) return src;
-		return reflToRad_with_earthsundistance(src*0.0001, sza, time, bandIdx);
+		return reflToRad_with_earthsundistance(src*0.0001, sza, time, getIrradiance(bandIdx));
 	}
     
 	/**
@@ -148,32 +148,6 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
         return corrected*10000.;    
     }
 
-    /**
-     * @param src:              Band in reflectance range(0.,1.)
-     * @param sza:      		sun zenith angle in degrees
-     * @param time:             Time in millis from epoch
-     * @param bandToConvert     Bandnumber
-     * @return                  Band in radiance
-     * @throws Exception 
-     */
-    // this is highly sub-optimal many things can be calculated beforehand once for all pixels!
-	// TODO: remove refltorad from L8 when refactored
-    public double reflToRad_with_earthsundistance(double src, double sza, ZonedDateTime time, int bandToConvert) {
-
-        // SZA to SZA in rad + apply scale factor
-        double szaInRadCoverage = 2.*sza*Math.PI/360.;
-
-        // cos of SZA
-        double cosSzaCoverage = Math.cos(szaInRadCoverage);
-
-        double solarIrradiance = getIrradiance(bandToConvert);
-
-        // TODO: ask Sinergise for the Sentinelhub layer what do they do with L1C, because it differs from stock L8 level1 data
-        double earthsunAU = earthSunDistance(time);
-        
-        double radiance = src* (cosSzaCoverage * solarIrradiance) / (Math.PI * earthsunAU * earthsunAU);
-        return radiance;
-    }
 	
 	
 }

@@ -29,7 +29,7 @@ public class TestCorrectionDescriptor {
 		double sza = 29.0;
 		double vza = 5.0;
 		double raa = 130.0;
-		double expectedRadiance=-1.0; // after reflectance to radiance
+		double expectedRadiance=-1.0; // after DN to radiance
 		double expectedBOA=-1.0; // corrected value to bottom of atmosphere
 		double gnd = 17;
 		double aot = 0.28;
@@ -63,16 +63,27 @@ public class TestCorrectionDescriptor {
 	private CorrectionInput[] inputs = {
 			//new CorrectionInput(2,342L, 320.0,0.0001*1348.0),
 			//expected earth sun= 1.01751709288327
-			new CorrectionInput("B02",1267.,41.708855,         595.8484428506723, 0.001,0.0001*1029.0,163,   57.8566,   69,2,     0.83, "2017-03-07T10:50:00Z"),//expected icor:574 sen2cor:598 AOT icor:0.078
+			new CorrectionInput("B02",1267.,41.66175709089134, 595.8484428506723, 0.001,0.0001*1029.0,163,   57.8566,   69,2,     0.83, "2017-03-07T10:50:00Z"),//expected icor:574 sen2cor:598 AOT icor:0.078
 			new CorrectionInput("B04", 509.,17.925613561979805,347.7272319876718, 0.001,        0.082,129.13,    43.,  -1.,11.57, 0.357,"2019-04-11T10:50:29Z")//expected icor:353 sen2cor:336
 	};
 //'sunAzimuthAngles','sunZenithAngles','viewAzimuthMean','viewZenithMean'
+
+	@Test
+	public void testPreScaleFunction() {
+		for (int i = 0; i < inputs.length; i++) {
+			CorrectionInput input = inputs[i];
+			double ps = cd.preScale(input.value, input.sza, input.time, cd.getBandFromName(input.band));
+			System.out.println("prescale = " + ps);
+			assertArrayEquals(new double[]{ps}, new double[]{input.expectedRadiance}, 1.e-6);
+		}
+	}
+	
 	
 	@Test
 	public void testCorrectFunction() {
 		for (int i = 0; i < inputs.length; i++) {
 			CorrectionInput input = inputs[i];
-			double cv = cd.correct(input.band, cd.getBandFromName(input.band), input.time, input.value, input.sza, input.vza, input.raa, input.gnd, input.aot, input.cwv, input.ozone, input.watermask);
+			double cv = cd.correct(input.band, cd.getBandFromName(input.band), input.time, input.expectedRadiance, input.sza, input.vza, input.raa, input.gnd, input.aot, input.cwv, input.ozone, input.watermask);
 			System.out.println("cv = " + cv);
 			assertArrayEquals(new double[]{cv}, new double[]{input.expectedBOA}, 1.e-6);
 		}
@@ -89,14 +100,21 @@ public class TestCorrectionDescriptor {
 	
 	@Test
 	public void testReflectanceToRadiance() {
-	    double rad=cd.reflToRad(10., 60., null, 1);
+	    double rad=CorrectionDescriptor.reflToRad(10., 60., cd.getIrradiance(1));
 		System.out.println("REFL 2 RAD: "+Double.toString(rad));
 		assertArrayEquals(new double[]{rad}, new double[]{3090.2001293264057}, 1.e-6);
 	}
-	
+
+	@Test
+	public void testReflectanceToRadianceWithEarthSundistance() {
+	    double rad=CorrectionDescriptor.reflToRad_with_earthsundistance(10., 60., DateTimeFormatter.ISO_DATE_TIME.parse("2020-01-01T00:00:00Z",ZonedDateTime::from), cd.getIrradiance(1));
+		System.out.println("REFL 2 RAD: "+Double.toString(rad));
+		assertArrayEquals(new double[]{rad}, new double[]{3195.992634645}, 1.e-6);
+	}
+
 	@Test
 	public void testSunEarthDistance() {
-		double distance_au=cd.earthSunDistance(ZonedDateTime.ofInstant(Instant.ofEpochMilli(1577836800000L), ZoneId.systemDefault()));
+		double distance_au=CorrectionDescriptor.earthSunDistance(ZonedDateTime.ofInstant(Instant.ofEpochMilli(1577836800000L), ZoneId.systemDefault()));
 		System.out.println("sun-earth distance: "+Double.toString(distance_au));
 		assertArrayEquals(new double[]{distance_au}, new double[]{0.9833099149733568}, 1.e-6);
 	}

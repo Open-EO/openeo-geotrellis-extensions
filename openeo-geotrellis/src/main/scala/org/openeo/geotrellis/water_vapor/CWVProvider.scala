@@ -36,7 +36,6 @@ class CWVProvider() extends Serializable {
     val wvCalc = new AbdaWaterVaporCalculator()
     wvCalc.prepare(cd,wvBandId,r0BandId,r1BandId)
             
-    // TODO: use reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert)
     val wvTile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,wvBandId)).convert(FloatConstantNoDataCellType)*preMult
     val r0Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r0BandId)).convert(FloatConstantNoDataCellType)*preMult
     val r1Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r1BandId)).convert(FloatConstantNoDataCellType)*preMult

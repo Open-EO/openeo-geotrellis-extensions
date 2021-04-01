@@ -6,7 +6,6 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.InputStream;
 import java.net.URISyntaxException;
-import java.net.URL;
 import java.nio.file.Paths;
 import java.time.ZonedDateTime;
 import java.util.*;
@@ -25,7 +24,6 @@ import org.openeo.geotrellis.smac.SMACCorrection;
 
 import geotrellis.layer.*;
 import geotrellis.proj4.*;
-import geotrellis.proj4.CRS.*;
 import geotrellis.raster.*;
 import geotrellis.raster.geotiff.GeoTiffRasterSource;
 import geotrellis.raster.stitch.Stitcher.MultibandTileStitcher$;
@@ -244,13 +242,11 @@ public class TestAtmosphericCorrectionProcess {
         	"SENTINEL2",
         	true
         );      
-        System.out.println(resultRDD.getClass().toString());
 
         long end=System.nanoTime();
         
 	    JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(resultRDD.toJavaRDD());
 	    assertFalse(result.isEmpty());
-	    List<Tuple2<SpaceTimeKey, MultibandTile>> collected = result.collect();
 		
 		MultibandTile resulttiles = acGetAndStitchTiles(resultRDD, new Integer[]{0,1,2,3,11,12,13,14,15,16}, (Integer)inputtiles[0].cols(), (Integer)inputtiles[0].rows());
        
@@ -368,13 +364,11 @@ public class TestAtmosphericCorrectionProcess {
 	    	"SENTINEL2",
 	    	true
 	    );      
-	    System.out.println(resultRDD.getClass().toString());
 
         long end=System.nanoTime();
 	    
 	    JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(resultRDD.toJavaRDD());
 	    assertFalse(result.isEmpty());
-	    List<Tuple2<SpaceTimeKey, MultibandTile>> collected = result.collect();
 		
 		MultibandTile resulttiles = acGetAndStitchTiles(resultRDD, new Integer[]{0,1,2,3}, (Integer)inputtiles[0].cols(), (Integer)inputtiles[0].rows());
 
@@ -481,17 +475,12 @@ public class TestAtmosphericCorrectionProcess {
         	"LANDSAT8",
         	false
         );      
-        System.out.println(resultRDD.getClass().toString());
 
         long end=System.nanoTime();
         
 	    JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(resultRDD.toJavaRDD());
 	    assertFalse(result.isEmpty());
-	    List<Tuple2<SpaceTimeKey, MultibandTile>> collected = result.collect();
 		
-	    int tilecols=256;//((Integer) collected.get(0)._2.band(0).cols());
-		int tilerows=256;//((Integer) collected.get(0)._2.band(0).rows());
-
 		MultibandTile resulttiles = acGetAndStitchTiles(resultRDD, new Integer[]{0,1,2}, (Integer)inputtiles[0].cols(), (Integer)inputtiles[0].rows());
        
         final int limit=250;
