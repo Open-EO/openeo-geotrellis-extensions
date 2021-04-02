@@ -14,11 +14,11 @@ object AuthApi {
   private[geotrellissentinelhub] case class AuthResponse(access_token: String, expires_in: Duration)
 }
 
-class AuthApi(endpoint: String) {
+class AuthApi {
   import AuthApi._
 
   def authenticate(clientId: String, clientSecret: String): AuthResponse = {
-    val getAuthToken = http(URI.create(endpoint).resolve("/oauth/token").toString)
+    val getAuthToken = http("https://services.sentinel-hub.com/oauth/token")
       .postForm(Seq(
         "grant_type" -> "client_credentials",
         "client_id" -> clientId,
