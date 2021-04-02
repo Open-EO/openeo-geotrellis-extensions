@@ -135,7 +135,6 @@ public abstract class CorrectionDescriptor implements Serializable{
         // cos of SZA
         double cosSzaCoverage = Math.cos(szaInRadCoverage);
 
-        // TODO: ask Sinergise for the Sentinelhub layer what do they do with L1C, because it differs from stock L8 level1 data
         double earthsunAU = earthSunDistance(time);
         
         double radiance = src* (cosSzaCoverage * solarIrradiance) / (Math.PI * earthsunAU * earthsunAU);

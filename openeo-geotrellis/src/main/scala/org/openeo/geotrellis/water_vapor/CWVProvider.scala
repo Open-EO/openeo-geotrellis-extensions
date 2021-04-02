@@ -10,6 +10,17 @@ import org.openeo.geotrellis.icor.{AtmosphericCorrection, CorrectionDescriptor, 
 
 class CWVProvider() extends Serializable {
 
+	def findIndexOf(where: java.util.List[String], what: String) : Int = {
+		var idx : Int = -1
+		for( i:Int <- 0 until where.size()) {
+			if (where.get(i).toLowerCase().contains(what.toLowerCase())) {
+				idx=i
+			}
+		}
+		return idx
+	}
+  
+  
   def compute(
     multibandtile: (SpaceTimeKey, MultibandTile), // where is wv/r0/r1
     szaTile: Tile, 
@@ -18,8 +29,6 @@ class CWVProvider() extends Serializable {
     elevationTile: Tile,
     aot: Double,
     ozone: Double,
-    preMult: Double,
-    postMult: Double,
     bandIds:java.util.List[String],
     correctionDescriptor: CorrectionDescriptor
   ) : Tile = {
@@ -36,9 +45,9 @@ class CWVProvider() extends Serializable {
     val wvCalc = new AbdaWaterVaporCalculator()
     wvCalc.prepare(cd,wvBandId,r0BandId,r1BandId)
             
-    val wvTile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,wvBandId)).convert(FloatConstantNoDataCellType)*preMult
-    val r0Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r0BandId)).convert(FloatConstantNoDataCellType)*preMult
-    val r1Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r1BandId)).convert(FloatConstantNoDataCellType)*preMult
+    val wvTile= multibandtile._2.band(findIndexOf(bandIds,wvBandId)).convert(FloatConstantNoDataCellType)
+    val r0Tile= multibandtile._2.band(findIndexOf(bandIds,r0BandId)).convert(FloatConstantNoDataCellType)
+    val r1Tile= multibandtile._2.band(findIndexOf(bandIds,r1BandId)).convert(FloatConstantNoDataCellType)
                         
     // try to get at least 1 valid value on 60m resolution
     val mbtresult : Tile = try { 
@@ -59,7 +68,7 @@ class CWVProvider() extends Serializable {
         doubleNODATA,
         cd.bcLUT,
         wvCalc
-      )*postMult
+      )
       bp.replaceNoDataWithAverage(wvRawResultTile,doubleNODATA)
     } catch {
       case e: IllegalArgumentException => wvTile

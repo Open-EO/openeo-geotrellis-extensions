@@ -1,12 +1,6 @@
 package org.openeo.geotrellis.icor;
 
-import org.apache.spark.SparkContext;
-import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.broadcast.Broadcast;
-
 import java.time.ZonedDateTime;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 
 /**
  *

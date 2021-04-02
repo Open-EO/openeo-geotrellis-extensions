@@ -112,6 +112,8 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 	public double preScale(double src, double sza, ZonedDateTime time, int bandIdx) {
 		// lut only has 8 bands instead of 9
 		if (bandIdx>7) return src;
+        // TODO: ask Sinergise for the Sentinelhub layer what do they do with L1C, because it differs from stock L8 level1 data
+//		return reflToRad(src*0.0001, sza, getIrradiance(bandIdx));
 		return reflToRad_with_earthsundistance(src*0.0001, sza, time, getIrradiance(bandIdx));
 	}
     

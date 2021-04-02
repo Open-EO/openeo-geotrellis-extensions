@@ -3,8 +3,6 @@ package org.openeo.geotrellis.water_vapor;
 import org.openeo.geotrellis.icor.ICorCorrectionDescriptor;
 import org.openeo.geotrellis.icor.LookupTable;
 
-import java.util.List;
-
 // the inputs should be top of the atmosphere radiances
 
 public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
@@ -125,17 +123,6 @@ public class AbdaWaterVaporCalculator implements WaterVaporCalculator{
 		return v0;
 	}
 
-	// TODO: move this into scala
-	public int findIndexOf(List<String> where, String what) {
-		int idx=-1;
-		for(int i=0; i<where.size(); ++i) {
-			if (where.get(i).toLowerCase().contains(what.toLowerCase())) {
-				idx=i;
-				break;
-			}
-		}
-		return idx;
-	}
 	
     double get_toa_radiance(double reflectance,int water_land, double[] params)
     {

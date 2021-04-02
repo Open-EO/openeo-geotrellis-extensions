@@ -46,15 +46,6 @@ class SRTMProvider(basePath:String = "/eodata/auxdata/SRTMGL1/dem") extends Elev
       GDALRasterSource(_).reprojectToRegion(targetCRS,layoutDefinition.toRasterExtent()).read(targetExtent)
     ).filter(i => i.nonEmpty).map(_.get)
 
-//    // prepare a base tile
-//    val baseTile=IntArrayTile(Array.fill(layoutDefinition.tileLayout.tileCols*layoutDefinition.tileLayout.tileRows){NODATA},layoutDefinition.tileLayout.tileCols,layoutDefinition.tileLayout.tileRows)
-//    val baseRaster=Raster(MultibandTile(baseTile),targetExtent)
-//
-//    // merge portions coming from the different files
-//    val mergedRasters=rasters.foldLeft(baseRaster)(
-//        (br,i) => br.merge(i)
-//    )
-
     // merge portions coming from the different files
     val mergedRasters=rasters.reduceLeft(
         (a,b) => a.merge(b)

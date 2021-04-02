@@ -1,14 +1,5 @@
 package org.openeo.geotrellis.icor;
 
-//import org.apache.spark.SparkContext;
-//import org.apache.spark.api.java.JavaSparkContext;
-//import org.apache.spark.broadcast.Broadcast;
-//import java.io.IOException;
-//import java.util.concurrent.Callable;
-//import java.util.concurrent.ExecutionException;
-
-import java.time.ZonedDateTime;
-
 public abstract class ICorCorrectionDescriptor extends CorrectionDescriptor {
 	/**
 	 * This is the base class for the ICOR-based atmospheric correction.

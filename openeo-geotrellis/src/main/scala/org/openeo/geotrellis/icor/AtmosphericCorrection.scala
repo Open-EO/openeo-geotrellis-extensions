@@ -12,10 +12,6 @@ import org.openeo.geotrellis.water_vapor.{CWVProvider, ConstantCWVProvider}
 import org.slf4j.LoggerFactory
 import org.openeo.geotrellis.smac.SMACCorrection
 
-//object AtmosphericCorrection{
-//}
-
-
 class AtmosphericCorrection extends Serializable {
   
   val logger = LoggerFactory.getLogger(classOf[AtmosphericCorrection])
@@ -162,7 +158,7 @@ class AtmosphericCorrection extends Serializable {
     })
     
     // keep cwv last because depends on the others a lot
-    val cwvTile = if (overrideParams.get(5).isNaN) cwvProvider.compute((multibandtile._1,prescaled), szaTile, vzaTile, raaTile, demTile, 0.1, 0.33, /*1.0e-4*/1.0, 1.0, bandIds, sensorDescriptor)
+    val cwvTile = if (overrideParams.get(5).isNaN) cwvProvider.compute((multibandtile._1,prescaled), szaTile, vzaTile, raaTile, demTile, 0.1, 0.33, bandIds, sensorDescriptor)
     else FloatConstantTile(overrideParams.get(5).toFloat, multibandtile._2.cols, multibandtile._2.rows)
 
 //    val result = multibandtile._2.mapBands((b, tile) => {
