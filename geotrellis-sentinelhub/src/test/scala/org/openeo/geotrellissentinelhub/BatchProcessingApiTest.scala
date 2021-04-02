@@ -15,7 +15,7 @@ class BatchProcessingApiTest {
   private val endpoint = "https://services.sentinel-hub.com"
   private val batchProcessingApi = new BatchProcessingApi(endpoint)
 
-  private def accessToken: String = new AuthApi(endpoint).authenticate(Utils.clientId, Utils.clientSecret).access_token
+  private def accessToken: String = new AuthApi().authenticate(Utils.clientId, Utils.clientSecret).access_token
 
   @Ignore
   @Test

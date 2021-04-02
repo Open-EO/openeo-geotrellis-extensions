@@ -12,7 +12,7 @@ class CatalogApiTest {
   private val catalogApi = new CatalogApi(endpoint)
   private val utc = ZoneId.of("UTC")
 
-  private def accessToken: String = new AuthApi(endpoint).authenticate(Utils.clientId, Utils.clientSecret).access_token
+  private def accessToken: String = new AuthApi().authenticate(Utils.clientId, Utils.clientSecret).access_token
 
   @Test
   def dateTimes(): Unit = {

@@ -21,9 +21,9 @@ object BatchProcessingService {
   private val accessTokenCache = CacheBuilder
     .newBuilder()
     .expireAfterWrite(30, MINUTES) // TODO: depend on expires_in in response
-    .build(new CacheLoader[(String, String, String), String] {
-      override def load(credentials: (String, String, String)): String = credentials match {
-        case (endpoint, clientId, clientSecret) => new AuthApi(endpoint).authenticate(clientId, clientSecret).access_token
+    .build(new CacheLoader[(String, String), String] {
+      override def load(credentials: (String, String)): String = credentials match {
+        case (clientId, clientSecret) => new AuthApi().authenticate(clientId, clientSecret).access_token
       }
     })
 }
@@ -31,7 +31,7 @@ object BatchProcessingService {
 class BatchProcessingService(endpoint: String, val bucketName: String, clientId: String, clientSecret: String) {
   import BatchProcessingService._
 
-  private def accessToken: String = accessTokenCache.get((endpoint, clientId, clientSecret))
+  private def accessToken: String = accessTokenCache.get((clientId, clientSecret))
 
   def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
                           to_date: String, band_names: util.List[String], sampleType: SampleType,

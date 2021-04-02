@@ -33,15 +33,15 @@ package object geotrellissentinelhub {
   private val authTokenCache = CacheBuilder
     .newBuilder()
     .expireAfterWrite(1800L, SECONDS)
-    .build(new CacheLoader[(String, String, String), String] {
-      override def load(credentials: (String, String, String)): String = credentials match {
-        case (endpoint, clientId, clientSecret) => retry(5, clientId) { retrieveAuthToken(endpoint, clientId, clientSecret) }
+    .build(new CacheLoader[(String, String), String] {
+      override def load(credentials: (String, String)): String = credentials match {
+        case (clientId, clientSecret) => retry(5, clientId) { retrieveAuthToken(clientId, clientSecret) }
       }
     })
 
   // TODO: use AuthApi
-  private def retrieveAuthToken(endpoint: String, clientId: String, clientSecret: String): String = {
-    val getAuthToken = Http(URI.create(endpoint).resolve("/oauth/token").toString)
+  private def retrieveAuthToken(clientId: String, clientSecret: String): String = {
+    val getAuthToken = Http("https://services.sentinel-hub.com/oauth/token")
       .postForm(Seq(
         "grant_type" -> "client_credentials",
         "client_id" -> clientId,
@@ -134,7 +134,7 @@ package object geotrellissentinelhub {
     val url = URI.create(endpoint).resolve("/api/v1/process").toString
     val request = Http(url)
       .header("Content-Type", "application/json")
-      .header("Authorization", s"Bearer ${authTokenCache.get((endpoint, clientId, clientSecret))}")
+      .header("Authorization", s"Bearer ${authTokenCache.get((clientId, clientSecret))}")
       .header("Accept", "*/*")
       .postData(jsonData)
 
