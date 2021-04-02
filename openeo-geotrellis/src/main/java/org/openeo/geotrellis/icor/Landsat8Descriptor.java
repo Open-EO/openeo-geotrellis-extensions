@@ -36,7 +36,6 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
     // official: http://www.gisagmaps.com/landsat-8-sentinel-2-bands/
     // B08 (from Thuillier spectrum): https://bleutner.github.io/RStoolbox/r/2016/01/26/estimating-landsat-8-esun-values
     // TODO: B10 and B11 has no values. Should be excluded from correction or extrap from Thuillier?
-    // TODO: to be checked if L1C is already corrected to earth-sun distance or not
     final static double[] irradiances = {
 	    1857.00, // B01
 	    2067.00, // B02
@@ -67,7 +66,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
        10895.00, // B10
        12005.00  // B11
     };
-
+/*
     // TODO: digital number to radiance scaling slighlty varies product-to product and should be taken from metadata
     // TODO: I am suspicious that this variation is due to the earth-sun distance correction -> to be checked 
     final static double[] RADIANCE_ADD_BAND = {
@@ -93,7 +92,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
         1.1200E-02,
         2.4794E-03
     };
-    
+    */
     @Override
 	public double getIrradiance(int iband) {
 		return irradiances[iband];
