@@ -11,6 +11,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.openeo.geotrellis.water_vapor.{CWVProvider, ConstantCWVProvider}
 import org.slf4j.LoggerFactory
 import org.openeo.geotrellis.smac.SMACCorrection
+import geotrellis.raster.resample.Average
 
 class AtmosphericCorrection extends Serializable {
   
@@ -77,24 +78,30 @@ class AtmosphericCorrection extends Serializable {
               {
 
                 def angleTile(index: Int, fallback: Double): Tile = {
-                  if (index > 0) multibandtile._2.band(index).convert(FloatConstantNoDataCellType) else FloatConstantTile(fallback.toFloat, multibandtile._2.cols, multibandtile._2.rows)
+                  if (index >= 0) multibandtile._2.band(index).convert(FloatConstantNoDataCellType) 
+                  else {
+                    if (fallback.isNaN) throw new IllegalArgumentException("Missing angle data.")
+                    else FloatConstantTile(fallback.toFloat, multibandtile._2.cols, multibandtile._2.rows)
+                  }
                 }
 
                 // Angles assignment priority order:
                 // 1. overrideParam as constant tile if overrideParams not nan
                 // 2. from band 
                 // 3. fallback value
-                // TODO: extra check when not all angles come from bands
-                val szaIdx = if (overrideParams.get(0).isNaN) bandIds.indexOf("sunZenithAngles")  else -1
-                val vzaIdx = if (overrideParams.get(1).isNaN) bandIds.indexOf("viewZenithMean")   else -1
-                val saaIdx = if (overrideParams.get(2).isNaN) bandIds.indexOf("sunAzimuthAngles") else -1
-                val vaaIdx = if (overrideParams.get(2).isNaN) bandIds.indexOf("viewAzimuthMean")  else -1
+                val szaIdx = if (overrideParams.get(0).isNaN) findCaseInsensitive(bandIds,List("sza","sunZenithAngles"))  else -1
+                val vzaIdx = if (overrideParams.get(1).isNaN) findCaseInsensitive(bandIds,List("vza","viewZenithMean"))   else -1
+                val saaIdx = if (overrideParams.get(2).isNaN) findCaseInsensitive(bandIds,List("saa","sunAzimuthAngles")) else -1
+                val vaaIdx = if (overrideParams.get(2).isNaN) findCaseInsensitive(bandIds,List("vaa","viewAzimuthMean"))  else -1
 
-                // TODO: why these default fallbacks?
-                val szaTile = angleTile(szaIdx, if (overrideParams.get(0).isNaN) 29.0  else overrideParams.get(0))
-                val vzaTile = angleTile(vzaIdx, if (overrideParams.get(1).isNaN) 5.0   else overrideParams.get(1))
-                val saaTile = angleTile(saaIdx, if (overrideParams.get(2).isNaN) 130.0 else overrideParams.get(2))
-                val vaaTile = angleTile(vaaIdx, 0.0) // because override provides raa == saa-vaa
+                //val szaTile = angleTile(szaIdx, if (overrideParams.get(0).isNaN) 29.0  else overrideParams.get(0))
+                //val vzaTile = angleTile(vzaIdx, if (overrideParams.get(1).isNaN) 5.0   else overrideParams.get(1))
+                //val saaTile = angleTile(saaIdx, if (overrideParams.get(2).isNaN) 130.0 else overrideParams.get(2))
+                //val vaaTile = angleTile(vaaIdx, 0.0) // because override provides raa == saa-vaa
+                val szaTile = angleTile(szaIdx, if (overrideParams.get(0).isNaN) Double.NaN else overrideParams.get(0))
+                val vzaTile = angleTile(vzaIdx, if (overrideParams.get(1).isNaN) Double.NaN else overrideParams.get(1))
+                val saaTile = angleTile(saaIdx, if (overrideParams.get(2).isNaN) Double.NaN else overrideParams.get(2))
+                val vaaTile = angleTile(vaaIdx, if (overrideParams.get(2).isNaN) Double.NaN else 0.0) // because override provides raa == saa-vaa
                 
                 val raaTileDiff = saaTile - vaaTile
                 val raaTile=raaTileDiff.mapDouble(v =>
@@ -117,12 +124,12 @@ class AtmosphericCorrection extends Serializable {
 
                 if (appendDebugBands)
                   MultibandTile(result.bands ++ Vector(
-                      (szaTile*100).convert(multibandtile._2.cellType),
-                      (vzaTile*100).convert(multibandtile._2.cellType),
-                      (raaTile*100).convert(multibandtile._2.cellType),
-                      (demTile*100).convert(multibandtile._2.cellType),
-                      (aotTile*100).convert(multibandtile._2.cellType),
-                      (cwvTile*100).convert(multibandtile._2.cellType)
+                      (szaTile*100).convert(multibandtile._2.cellType).toArrayTile,
+                      (vzaTile*100).convert(multibandtile._2.cellType).toArrayTile,
+                      (raaTile*100).convert(multibandtile._2.cellType).toArrayTile,
+                      (demTile*100).convert(multibandtile._2.cellType).toArrayTile,
+                      (aotTile*100).convert(multibandtile._2.cellType).toArrayTile,
+                      (cwvTile*100).convert(multibandtile._2.cellType).toArrayTile
                   ))
                 else 
                   result
@@ -182,10 +189,34 @@ class AtmosphericCorrection extends Serializable {
           } ).toInt else NODATA }
           resultTile.convert(multibandtile._2.cellType)
         }
-        case _ => tile.convert(multibandtile._2.cellType) 
+        case _ => tile.convert(multibandtile._2.cellType)
       }
     })
     
+    // this is for debug, turn it off in production!
+    if (false) {
+      val inputt=multibandtile._2.bands ++ Vector( szaTile,vzaTile,raaTile,aotTile,demTile,cwvTile )
+      val inputn=scala.collection.JavaConversions.asScalaBuffer(bandIds).toVector ++ Vector( "sza","vza","raa","aot","dem","cwv"  )
+      val resultt=result.bands
+      val resultn=scala.collection.JavaConversions.asScalaBuffer(bandIds).toVector
+      println("--- CHECKING PART ---: "+multibandtile._1.toString)
+      for (i <- inputt.indices)  println("IN_("+i.toString+") "+inputn(i)+ ": "+inputt(i).convert(FloatConstantNoDataCellType).resample(1, 1, Average).getDouble(0,0).toString)
+      for (i <- resultt.indices) println("OUT("+i.toString+") "+resultn(i)+": "+resultt(i).convert(FloatConstantNoDataCellType).resample(1, 1, Average).getDouble(0,0).toString)
+    }
+    
     (cwvTile, result)
   }
+  
+	def findCaseInsensitive(where: java.util.List[String], what: List[String]) : Int = {
+		var idx : Int = -1
+		for( i:Int <- 0 until where.size()) {
+  		for( j:String <- what) {
+	  		if (where.get(i).toLowerCase().equals(j.toLowerCase())) {
+		 		   idx=i
+	  		}
+			}
+		}
+		return idx
+	}  
+  
 }
