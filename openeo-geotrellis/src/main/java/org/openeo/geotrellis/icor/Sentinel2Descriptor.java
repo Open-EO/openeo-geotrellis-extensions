@@ -45,7 +45,6 @@ public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
     // sola irradiance is in mW/m2/nm
     // TODO: central wavelengths differ for S2A & S2B -> https://en.wikipedia.org/wiki/Sentinel-2
     // TODO: do a proper interpolation to central bandwidth, now just taken the nearest integer wavelength on the average of S2A & S2B mission specs
-    // TODO: propagate referring by band name instead of index
     // Solar irradiance and earth sun distance (U) are part of L1C metadata, and not constant:
     /**
      * From MTD_MSIL1C.xml, top level of L1C product zip
