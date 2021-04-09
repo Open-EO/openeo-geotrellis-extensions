@@ -27,6 +27,10 @@ import scala.util.matching.Regex
 
 object PyramidFactory {
   def from_disk(glob_pattern: String, date_regex: String): PyramidFactory =
+    from_disk(glob_pattern, date_regex, interpret_as_cell_type = null, lat_lon = false)
+
+  def from_disk(glob_pattern: String, date_regex: String, interpret_as_cell_type: String,
+                lat_lon: Boolean): PyramidFactory =
     new PyramidFactory({
       val path = { // default to file: scheme
         val path = new Path(glob_pattern)
@@ -39,11 +43,16 @@ object PyramidFactory {
       }
 
       HdfsUtils.listFiles(path, new Configuration)
-        .map(path => (GeoTiffRasterSource(path.toString), deriveDate(path.toString, date_regex.r)))
-    }, date_regex.r)
+        .map(path => (GeoTiffRasterSource(path.toString, parseTargetCellType(interpret_as_cell_type)),
+          deriveDate(path.toString, date_regex.r)))
+    }, date_regex.r, lat_lon)
+
+  def from_s3(s3_uri: String, key_regex: String, date_regex: String, recursive: Boolean,
+              interpret_as_cell_type: String): PyramidFactory =
+    from_s3(s3_uri, key_regex, date_regex, recursive, interpret_as_cell_type, lat_lon = false)
 
   def from_s3(s3_uri: String, key_regex: String = ".*", date_regex: String, recursive: Boolean = false,
-              interpret_as_cell_type: String = null): PyramidFactory =
+              interpret_as_cell_type: String = null, lat_lon: Boolean): PyramidFactory =
     new PyramidFactory({
       // adapted from geotrellis.spark.io.s3.geotiff.S3GeoTiffInput.list
       val s3Uri = new AmazonS3URI(s3_uri)
@@ -68,7 +77,7 @@ object PyramidFactory {
           (GeoTiffRasterSource(uri.toString, parseTargetCellType(interpret_as_cell_type)),
             deriveDate(uri.getKey, date_regex.r))
         ).toSeq
-    }, date_regex.r)
+    }, date_regex.r, lat_lon)
 
   private def deriveDate(filename: String, date: Regex): ZonedDateTime = {
     filename match {
@@ -82,10 +91,10 @@ object PyramidFactory {
       .map(InterpretAsTargetCellType.apply)
 }
 
-class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime)], date: Regex) {
+class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime)], date: Regex, latLng: Boolean) {
   import PyramidFactory._
 
-  private val targetCrs = WebMercator
+  private val targetCrs = if (latLng) LatLng else WebMercator
 
   private lazy val reprojectedRasterSources =
     rasterSources.map { case (rasterSource, date) => (rasterSource.reproject(targetCrs), date) }
@@ -188,7 +197,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
         .groupByKey(partitioner)
         .mapValues { overlappingRasterRegions =>
           overlappingRasterRegions
-            .flatMap(_.raster.map(_.tile))
+            .flatMap(rasterRegion => rasterRegion.raster.map(_.tile.interpretAs(rasterRegion.cellType)))
             .reduce(_ merge _)
         }
 
