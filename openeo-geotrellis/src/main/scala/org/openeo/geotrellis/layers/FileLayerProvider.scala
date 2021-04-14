@@ -14,7 +14,7 @@ import geotrellis.raster.ResampleMethods.NearestNeighbor
 import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.GeoTiffResampleRasterSource
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
@@ -252,7 +252,31 @@ object FileLayerProvider {
               cloudFilterStrategy.loadMasked(new MaskTileLoader {
                 override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = {
                   val gridBoundsRasterRegion = rasterRegion.asInstanceOf[GridBoundsRasterRegion]
-                  gridBoundsRasterRegion.source.read(gridBoundsRasterRegion.bounds.buffer(bufferInPixels, bufferInPixels, clamp = false), Seq(sclBandIndex))
+                  val bufferedGridBounds = gridBoundsRasterRegion.bounds.buffer(bufferInPixels, bufferInPixels, clamp = false)
+
+                  val maskOption = gridBoundsRasterRegion.source.read(bufferedGridBounds, Seq(sclBandIndex))
+
+                  maskOption.map { mask =>
+                    val expectedTileSize = 456
+
+                    if (mask.cols == expectedTileSize && mask.rows == expectedTileSize) mask // an optimization really
+                    else { // raster can be smaller than requested extent
+                      val emptyBufferedRaster: Raster[MultibandTile] = {
+                        val bufferedExtent = gridBoundsRasterRegion.source.gridExtent.extentFor(bufferedGridBounds, clamp = false)
+
+                        // warning: convoluted way of creating a NODATA tile
+                        val arbitraryNoDataCellType = FloatConstantNoDataCellType
+                        val emptyBufferedTile =
+                          FloatConstantTile(arbitraryNoDataCellType.noDataValue, cols = expectedTileSize, rows = expectedTileSize, arbitraryNoDataCellType)
+                            .toArrayTile() // TODO: not materializing messes up the NODATA value
+                            .convert(mask.cellType)
+
+                        Raster(MultibandTile(emptyBufferedTile), bufferedExtent)
+                      }
+
+                      emptyBufferedRaster merge mask
+                    }
+                  }
                 }
 
                 override def loadData: Option[MultibandTile] = rasterRegion.raster.map(_.tile)

@@ -4,10 +4,11 @@ import java.net.URL
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time._
-
+import java.util.Collections
 import cats.data.NonEmptyList
 import geotrellis.layer.FloatingLayoutScheme
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
+import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
@@ -237,6 +238,37 @@ class Sentinel2FileLayerProviderTest {
     val spatialLayer = layer.toSpatial(date)
 
     spatialLayer.writeGeoTiff("/tmp/testBlackStreak_left_GeoTiffRasterSource_ND0_notcropped_test.tif", bufferedBoundingBox)
+  }
+
+  @Test
+  def testMaskSclDilationOnS2TileEdge(): Unit = {
+    val date = LocalDate.of(2019, 3, 7).atStartOfDay(UTC)
+
+    val crs = CRS.fromEpsgCode(32631)
+    val boundingBox = ProjectedExtent(Extent(640860, 5676170, 666460, 5701770), crs)
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.maskingStrategyParameters = Collections.singletonMap("method", "mask_scl_dilation")
+
+    val layer = tocLayerProviderUTM.readMultibandTileLayer(
+      from = date,
+      to = date,
+      boundingBox,
+      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
+      polygons_crs = crs,
+      zoom = 0,
+      sc,
+      Some(dataCubeParameters)
+    )
+
+    val spatialLayer = layer.toSpatial(date)
+
+    val reprojectedBoundingBox = boundingBox.reproject(spatialLayer.metadata.crs)
+
+    spatialLayer.sparseStitch(reprojectedBoundingBox) match {
+      case Some(stitched) => MultibandGeoTiff(stitched.crop(reprojectedBoundingBox), spatialLayer.metadata.crs).write("/tmp/masked.tif")
+      case _ => throw new IllegalStateException("nothing to sparse-stitch")
+    }
   }
 
   private def faparLayerProvider(attributeValues: Map[String, Any] = Map()) =
