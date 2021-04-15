@@ -60,7 +60,7 @@ class PngTest {
 
   private def rgbLayerProvider =
     new FileLayerProvider(
-      openSearch = OpenSearch(new URL("http://oscars-01.vgt.vito.be:8080")),
+      openSearch = OpenSearch(new URL("https://services.terrascope.be/catalogue")),
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",

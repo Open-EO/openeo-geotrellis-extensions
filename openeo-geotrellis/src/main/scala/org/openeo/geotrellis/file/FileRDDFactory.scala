@@ -104,7 +104,7 @@ class FileRDDFactory(openSearch: OpenSearch, openSearchCollectionId: String, ope
 object FileRDDFactory {
 
   def oscars(openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = ""): FileRDDFactory = {
-    val openSearch: OpenSearch = new OscarsOpenSearch(new URL("http://oscars-01.vgt.vito.be:8080"))
+    val openSearch: OpenSearch = new OscarsOpenSearch(new URL("https://services.terrascope.be/catalogue"))
     new FileRDDFactory(openSearch, openSearchCollectionId, openSearchLinkTitles, attributeValues, correlationId = correlationId)
   }
 

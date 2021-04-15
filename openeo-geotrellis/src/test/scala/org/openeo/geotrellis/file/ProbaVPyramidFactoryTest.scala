@@ -20,7 +20,7 @@ import scala.collection.mutable.ArrayBuffer
 
 class ProbaVPyramidFactoryTest {
 
-  private val openSearchEndpoint = "http://oscars-01.vgt.vito.be:8080"
+  private val openSearchEndpoint = "https://services.terrascope.be/catalogue"
   private val pyramidFactoryS5 = new ProbaVPyramidFactory(openSearchEndpoint, "urn:ogc:def:EOP:VITO:PROBAV_S5-TOC_100M_V001", "/data/MTDA/TIFFDERIVED/PROBAV_L3_S5_TOC_100M")
   private val pyramidFactoryS10 =  new ProbaVPyramidFactory(openSearchEndpoint, "urn:ogc:def:EOP:VITO:PROBAV_S10-TOC_333M_V001", "/data/MTDA/TIFFDERIVED/PROBAV_L3_S10_TOC_333M")
 

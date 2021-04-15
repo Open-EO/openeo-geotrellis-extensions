@@ -69,7 +69,7 @@ class Sentinel1CoherencePyramidFactoryTest {
   }
 
   private def sentinel1CoherencePyramidFactory = new Sentinel2PyramidFactory(
-    openSearchEndpoint = "http://oscars-01.vgt.vito.be:8080",
+    openSearchEndpoint = "https://services.terrascope.be/catalogue",
     openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S1_SLC_COHERENCE_V1",
     openSearchLinkTitles = asList("VH", "VV"),
     rootPath = "/data/MTDA/TERRASCOPE_Sentinel1/SLC_COHERENCE",

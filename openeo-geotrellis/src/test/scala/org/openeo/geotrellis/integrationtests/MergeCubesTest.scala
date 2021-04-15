@@ -18,7 +18,7 @@ import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 
 object MergeCubesTest {
   private var sc: SparkContext = _
-  private val openSearchEndpoint = "http://oscars-01.vgt.vito.be:8080"
+  private val openSearchEndpoint = "https://services.terrascope.be/catalogue"
 
   @BeforeClass
   def setupSpark(): Unit = sc = SparkUtils.createLocalSparkContext("local[*]", classOf[MergeCubesTest].getName)
