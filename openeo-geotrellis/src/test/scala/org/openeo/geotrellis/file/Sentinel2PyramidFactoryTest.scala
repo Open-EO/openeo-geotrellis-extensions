@@ -4,8 +4,8 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZonedDateTime}
-import java.util.Collections.singletonList
-import java.util.Collections.emptyMap
+import java.util.Collections.{emptyMap, singletonList}
+
 import geotrellis.layer.{Metadata, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
 import geotrellis.raster.summary.polygonal.Summary
@@ -47,7 +47,7 @@ class Sentinel2PyramidFactoryTest {
         val ZonedFromDate = ZonedDateTime.of(localFromDate, MIDNIGHT, UTC)
         val zonedToDate = ZonedDateTime.of(localToDate, MIDNIGHT, UTC)
 
-        val extent = Extent(4.0,52.0,4.1,53)
+        val extent = Extent(4.0,52.0,4.1,53.0)
         val srs = "EPSG:4326"
         val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, srs)
         val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format ZonedFromDate
@@ -59,7 +59,7 @@ class Sentinel2PyramidFactoryTest {
             openSearchCollectionId = "urn:eop:VITO:COP_DEM_GLO_30M_COG",
             openSearchLinkTitles = singletonList("Copernicus_DSM_COG_10"),
             rootPath = "/data/MTDA/DEM/COP_DEM_30M_COG",
-            maxSpatialResolution = CellSize(10, 10)
+            maxSpatialResolution = CellSize(0.002777777777777778, 0.002777777777777778)
         )
 
         val metadata_properties = emptyMap[String, Any]()
