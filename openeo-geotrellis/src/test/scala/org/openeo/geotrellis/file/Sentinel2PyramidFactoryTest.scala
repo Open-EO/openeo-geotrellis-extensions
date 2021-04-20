@@ -6,7 +6,6 @@ import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZonedDateTime}
 import java.util.Collections.singletonList
 import java.util.Collections.emptyMap
-
 import geotrellis.layer.{Metadata, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
 import geotrellis.raster.summary.polygonal.Summary
@@ -20,7 +19,8 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
-// import org.openeo.geotrellis.TestImplicits._
+import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
+import org.openeo.geotrelliscommon.DataCubeParameters
 
 object Sentinel2PyramidFactoryTest {
     private var sc: SparkContext = _
@@ -39,6 +39,40 @@ object Sentinel2PyramidFactoryTest {
 }
 
 class Sentinel2PyramidFactoryTest {
+
+    @Test
+    def createLayerForDem(): Unit = {
+        val localFromDate = LocalDate.of(2010, 1, 1)
+        val localToDate = LocalDate.of(2012, 1, 1)
+        val ZonedFromDate = ZonedDateTime.of(localFromDate, MIDNIGHT, UTC)
+        val zonedToDate = ZonedDateTime.of(localToDate, MIDNIGHT, UTC)
+
+        val extent = Extent(4.0,52.0,4.1,53)
+        val srs = "EPSG:4326"
+        val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, srs)
+        val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format ZonedFromDate
+        val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format zonedToDate
+        val correlation_id = ""
+
+        val factory = new Sentinel2PyramidFactory(
+            openSearchEndpoint = "http://oscars-dev.vgt.vito.be/",
+            openSearchCollectionId = "urn:eop:VITO:COP_DEM_GLO_30M_COG",
+            openSearchLinkTitles = singletonList("Copernicus_DSM_COG_10"),
+            rootPath = "/data/MTDA/DEM/COP_DEM_30M_COG",
+            maxSpatialResolution = CellSize(10, 10)
+        )
+
+        val metadata_properties = emptyMap[String, Any]()
+        val datacubeParams = new DataCubeParameters()
+        datacubeParams.tileSize = 256
+        datacubeParams.layoutScheme = "FloatingLayoutScheme"
+        val baseLayer = factory.datacube_seq(
+            projected_polygons_native_crs,
+            from_date, to_date, metadata_properties, correlation_id, datacubeParams
+        ).maxBy { case (zoom, _) => zoom }._2
+
+        new OpenEOProcesses().write_geotiffs(baseLayer.toSpatial(),"/tmp/catalog",14)
+    }
 
     @Test
     def testStatsFromPyramid(): Unit = {
