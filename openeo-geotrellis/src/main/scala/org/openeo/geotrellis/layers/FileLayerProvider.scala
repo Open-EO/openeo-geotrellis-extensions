@@ -211,7 +211,7 @@ object FileLayerProvider {
     }
     val sources = sc.parallelize(rasterSources,rasterSources.size)
 
-    val noResampling = metadata.layout.cellSize == maxSpatialResolution
+    val noResampling = math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
     sc.setJobDescription("Load tiles: " + collection + ", rs: " + noResampling)
     val tiledLayoutSourceRDD =
       sources.map { rs =>
