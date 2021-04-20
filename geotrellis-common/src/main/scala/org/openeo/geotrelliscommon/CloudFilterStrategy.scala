@@ -41,6 +41,10 @@ class SCLConvolutionFilterStrategy(val sclBandIndex: Int = 0) extends CloudFilte
 
     if (cloudRaster.isDefined) {
       val maskTile = cloudRaster.get.tile.band(0)
+
+      // TODO: make this more flexible
+      require(maskTile.cols == 456 && maskTile.rows == 456)
+
       var allMasked = true
       val binaryMask = maskTile.map(value => {
         if (value == 2 || value == 4 || value == 5 || value == 6 || value == 7) {
