@@ -20,7 +20,7 @@ import scala.collection.mutable.ArrayBuffer
 
 class ProbaVPyramidFactoryTest {
 
-  private val openSearchEndpoint = "http://oscars-01.vgt.vito.be:8080"
+  private val openSearchEndpoint = "https://services.terrascope.be/catalogue"
   private val pyramidFactoryS5 = new ProbaVPyramidFactory(openSearchEndpoint, "urn:ogc:def:EOP:VITO:PROBAV_S5-TOC_100M_V001", "/data/MTDA/TIFFDERIVED/PROBAV_L3_S5_TOC_100M")
   private val pyramidFactoryS10 =  new ProbaVPyramidFactory(openSearchEndpoint, "urn:ogc:def:EOP:VITO:PROBAV_S10-TOC_333M_V001", "/data/MTDA/TIFFDERIVED/PROBAV_L3_S10_TOC_333M")
 
@@ -75,7 +75,6 @@ class ProbaVPyramidFactoryTest {
     }
   }
 
-  @Ignore
   @Test
   def writeS10GeoTiffs(): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.5, ymin = 49.5, xmax = 2.55, ymax = 49.55), LatLng)
@@ -86,7 +85,7 @@ class ProbaVPyramidFactoryTest {
       .set("spark.kryoserializer.buffer.max", "512m")
       .set("spark.rdd.compress", "true")
 
-    val sc = SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName, sparkConf)
+    val sc = SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, sparkConf)
 
     try {
       val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"

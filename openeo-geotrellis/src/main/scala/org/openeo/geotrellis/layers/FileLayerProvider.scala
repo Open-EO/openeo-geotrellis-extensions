@@ -5,6 +5,7 @@ import java.nio.file.{Path, Paths}
 import java.time.temporal.ChronoUnit
 import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
 import java.util.concurrent.TimeUnit
+
 import cats.data.NonEmptyList
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
@@ -21,8 +22,8 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
-import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.geotrellis.layers.OpenSearchResponses.Feature
+import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.slf4j.LoggerFactory
 
 import scala.collection.immutable
@@ -309,25 +310,31 @@ class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, 
   //private val openSearch: OpenSearch = OpenSearch(openSearchEndpoint)
 
   val openSearchLinkTitlesWithBandIds: Seq[(String, Seq[Int])] = {
+    if(bandIds.size>0) {
+      //case 1: PROBA-V, files containing multiple bands, bandids parameter is used to indicate which bands to load
+      openSearchLinkTitles.toList.zipAll(bandIds, "", Seq(0))
+    }else{
+      //case 2: Sentinel-2 angle metadata: band number is encoded in the oscars link title directly, maybe proba could use this system as well...
+      val splitted = openSearchLinkTitles.map(title => {
+        val split = title.split("##")
+        if (split.length == 1) {
+          (split(0), 0)
+        }else{
+          (split(0),split(1).toInt)
+        }
+      })//.toList.groupBy(_._1).mapValues(_.map(t=>t._2).toSeq).toSeq
+      var previous = ""
+      splitted.foldLeft(List[Tuple2[String,Seq[Int]]]()){
+        case (head :: res, (linkTitle, bands)) if (linkTitle == previous) => {
+          (head._1,(bands +: head._2)) :: res
+        }
+        case (theList, notMatchingElement) => {
+          previous = notMatchingElement._1
+          (notMatchingElement._1,Seq(notMatchingElement._2)) :: theList
+        }
+      }.reverse
 
-    val splitted = openSearchLinkTitles.map(title => {
-      val split = title.split("##")
-      if (split.length == 1) {
-        (split(0), 0)
-      }else{
-        (split(0),split(1).toInt)
-      }
-    })//.toList.groupBy(_._1).mapValues(_.map(t=>t._2).toSeq).toSeq
-    var previous = ""
-    splitted.foldLeft(List[Tuple2[String,Seq[Int]]]()){
-      case (head :: res, (linkTitle, bands)) if (linkTitle == previous) => {
-        (head._1,(bands +: head._2)) :: res
-      }
-      case (theList, notMatchingElement) => {
-        previous = notMatchingElement._1
-        (notMatchingElement._1,Seq(notMatchingElement._2)) :: theList
-      }
-    }.reverse
+    }
   }
 
   def this(openSearch: OpenSearch, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, metadataProperties: Map[String, Any]) =
