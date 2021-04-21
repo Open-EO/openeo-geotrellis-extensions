@@ -448,6 +448,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
                 Some(key, region)
               } catch {
                 case _: IllegalArgumentException => None
+                case _: NoSuchElementException => None
               }
             }
           } catch {

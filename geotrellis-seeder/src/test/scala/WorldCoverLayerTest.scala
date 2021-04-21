@@ -26,13 +26,12 @@ object WorldCoverLayerTest {
 class WorldCoverLayerTest {
 
   import WorldCoverLayerTest._
-
   @Test
   def testWorldCover(): Unit = {
 
-    new TileSeeder(7, false, Option.empty)
+    new TileSeeder(5, false, Option.empty)
       .renderPng("/tmp/tiles/WorldCover", "", "1970-01-01", Some("worldcover.txt"), Option.empty,
-        Some("/data/worldcover/runs/tenpercent/10percent_expert/v3/latlon/belgium/*.tif"),
+        Some("/data/worldcover/runs/tenpercent/10percent_expert/v3/latlon/mexico/ESA_WorldCover_10m_2019_v100_N21W091_Map.tif"),
         datePattern = Some("yyyy/yyyyMMdd"))
   }
 }
