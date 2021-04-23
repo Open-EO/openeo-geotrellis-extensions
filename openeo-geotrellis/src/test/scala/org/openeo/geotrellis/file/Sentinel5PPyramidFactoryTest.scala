@@ -55,7 +55,7 @@ class Sentinel5PPyramidFactoryTest {
     val projectedPolygons = ProjectedPolygons.fromExtent(bbox.extent, srs)
 
     val dailyCOPyramidFactory = new Sentinel5PPyramidFactory(
-      openSearchEndpoint = "http://oscars-01.vgt.vito.be:8080",
+      openSearchEndpoint = "https://services.terrascope.be/catalogue",
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_CO_TD_V1",
       openSearchLinkTitles = singletonList("CO"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel5P/L3_CO_TD_V1"

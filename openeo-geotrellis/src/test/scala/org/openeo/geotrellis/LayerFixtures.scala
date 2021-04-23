@@ -21,7 +21,7 @@ object LayerFixtures {
 
   def ClearNDVILayerForSingleDate()(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] ={
     val factory = new Sentinel2PyramidFactory(
-      openSearchEndpoint = "http://oscars-01.vgt.vito.be:8080",
+      openSearchEndpoint = "https://services.terrascope.be/catalogue",
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_NDVI_V2",
       openSearchLinkTitles = singletonList("NDVI_10M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/NDVI_V2",
@@ -79,7 +79,7 @@ object LayerFixtures {
   def s2_fapar(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent)=accumuloDataCube("S2_FAPAR_PYRAMID_20200408", from_date, to_date, bbox, "EPSG:4326")
 
   def sceneClassificationV200PyramidFactory = new Sentinel2PyramidFactory(
-    openSearchEndpoint = "http://oscars-01.vgt.vito.be:8080",
+    openSearchEndpoint = "https://services.terrascope.be/catalogue",
     openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
     openSearchLinkTitles = singletonList("SCENECLASSIFICATION_20M"),
     rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
