@@ -6,7 +6,7 @@ import io.circe.Json
 import io.circe.generic.auto._
 import io.circe.parser.decode
 import geotrellis.vector._
-import geotrellis.vector.io.json.JsonFeatureCollectionMap
+import geotrellis.vector.io.json.{JsonFeatureCollection, JsonFeatureCollectionMap}
 import scalaj.http.{Http, HttpOptions, HttpRequest}
 
 import java.net.URI
@@ -15,9 +15,11 @@ import java.time.{ZoneId, ZonedDateTime}
 import scala.collection.immutable.HashMap
 
 object CatalogApi {
-  // TODO: remove in favor of existing JsonFeatureCollection
-  private case class Feature(properties: Map[String, Json])
-  private case class FeatureCollection(features: Array[Feature])
+  private case class PagingContext(limit: Int, returned: Int, next: Option[Int])
+  private case class PagedFeatureCollection(features: List[Json], context: PagingContext)
+    extends JsonFeatureCollection(features)
+  private case class PagedJsonFeatureCollectionMap(features: List[Json], context: PagingContext)
+    extends JsonFeatureCollectionMap(features)
 }
 
 class CatalogApi(endpoint: String) {
@@ -34,28 +36,43 @@ class CatalogApi(endpoint: String) {
 
     val query = this.query(queryProperties)
 
-    val requestBody =
-      s"""
-         |{
-         |    "bbox": [$xmin, $ymin, $xmax, $ymax],
-         |    "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
-         |    "collections": ["$collectionId"],
-         |    "query": $query
-         |}""".stripMargin
+    def getFeatureCollectionPage(nextToken: Option[Int]): PagedFeatureCollection = {
+      val requestBody =
+        s"""
+           |{
+           |    "bbox": [$xmin, $ymin, $xmax, $ymax],
+           |    "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
+           |    "collections": ["$collectionId"],
+           |    "query": $query,
+           |    "next": ${nextToken.orNull}
+           |}""".stripMargin
 
-    val response = http(s"$catalogEndpoint/search", accessToken)
-      .headers("Content-Type" -> "application/json")
-      .postData(requestBody)
-      .asString
-      .throwError
+      val response = http(s"$catalogEndpoint/search", accessToken)
+        .headers("Content-Type" -> "application/json")
+        .postData(requestBody)
+        .asString
+        .throwError
 
-    val featureCollection = decode[FeatureCollection](response.body)
-      .valueOr(throw _)
+      decode[PagedFeatureCollection](response.body)
+        .valueOr(throw _)
+    }
 
-    for {
-      feature <- featureCollection.features
-      datetime <- feature.properties("datetime").asString
-    } yield ZonedDateTime.parse(datetime, ISO_OFFSET_DATE_TIME)
+    def getDateTimes(nextToken: Option[Int]): Seq[ZonedDateTime] = {
+      val page = getFeatureCollectionPage(nextToken)
+
+      val dateTimes = for {
+        feature <- page.features.flatMap(_.asObject)
+        properties <- feature("properties").flatMap(_.asObject)
+        datetime <- properties("datetime").flatMap(_.asString)
+      } yield ZonedDateTime.parse(datetime, ISO_OFFSET_DATE_TIME)
+
+      page.context.next match {
+        case None => dateTimes
+        case nextToken => dateTimes ++ getDateTimes(nextToken)
+      }
+    }
+
+    getDateTimes(nextToken = None)
   }
 
   def searchCard4L(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
@@ -85,36 +102,50 @@ class CatalogApi(endpoint: String) {
       this.query(allProperties)
     }
 
-    val requestBody =
-      s"""
-         |{
-         |  "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
-         |  "collections": ["$collectionId"],
-         |  "query": $query,
-         |  "bbox": [$xmin, $ymin, $xmax, $ymax]
-         |}""".stripMargin
+    def getFeatureCollectionPage(nextToken: Option[Int]): PagedJsonFeatureCollectionMap = {
+      val requestBody =
+        s"""
+           |{
+           |  "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
+           |  "collections": ["$collectionId"],
+           |  "query": $query,
+           |  "bbox": [$xmin, $ymin, $xmax, $ymax],
+           |  "next": ${nextToken.orNull}
+           |}""".stripMargin
 
-    val response = http(s"$catalogEndpoint/search", accessToken)
-      .headers("Content-Type" -> "application/json")
-      .postData(requestBody)
-      .asString
-      .throwError
+      val response = http(s"$catalogEndpoint/search", accessToken)
+        .headers("Content-Type" -> "application/json")
+        .postData(requestBody)
+        .asString
+        .throwError
 
-    val featureCollection = decode[JsonFeatureCollectionMap](response.body)
-      .valueOr(throw _)
+      decode[PagedJsonFeatureCollectionMap](response.body)
+        .valueOr(throw _)
+    }
 
-    // it is assumed the returned geometries are in LatLng
-    featureCollection.getAllMultiPolygonFeatures[Json]
-      .mapValues(feature =>
-        feature.mapData { properties =>
-          val Some(datetime) = for {
-            properties <- properties.asObject
-            json <- properties("datetime")
-            datetime <- json.asString
-          } yield ZonedDateTime.parse(datetime, ISO_OFFSET_DATE_TIME)
+    def getFeatures(nextToken: Option[Int]): Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
+      val page = getFeatureCollectionPage(nextToken)
 
-          datetime
-        })
+      // it is assumed the returned geometries are in LatLng
+      val features = page.getAllMultiPolygonFeatures[Json]
+        .mapValues(feature =>
+          feature.mapData { properties =>
+            val Some(datetime) = for {
+              properties <- properties.asObject
+              json <- properties("datetime")
+              datetime <- json.asString
+            } yield ZonedDateTime.parse(datetime, ISO_OFFSET_DATE_TIME)
+
+            datetime
+          })
+
+      page.context.next match {
+        case None => features
+        case nextToken => features ++ getFeatures(nextToken)
+      }
+    }
+
+    getFeatures(nextToken = None)
   }
 
   private def http(url: String, accessToken: String): HttpRequest =
