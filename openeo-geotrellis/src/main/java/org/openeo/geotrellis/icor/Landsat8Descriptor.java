@@ -68,8 +68,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
        12005.00  // B11
     };
 /*
-    // TODO: digital number to radiance scaling slighlty varies product-to product and should be taken from metadata
-    // TODO: I am suspicious that this variation is due to the earth-sun distance correction -> to be checked 
+	// it is easier to use reflectance and call refl2rad because refl scaling is constant
     final static double[] RADIANCE_ADD_BAND = {
        -62.86466,
        -64.10541,
@@ -112,7 +111,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 	public double preScale(double src, double sza, ZonedDateTime time, int bandIdx) {
 		// lut only has 8 bands instead of 9
 		if (bandIdx>7) return src;
-        // TODO: ask Sinergise for the Sentinelhub layer what do they do with L1C, because it differs from stock L8 level1 data
+        // TODO: this works with sentinelhub's landsat8 layer only because they changed scaling and also divide by cos(sza) compared to stock landsat8. For CreoDias they provide L8 without processing
 //		return reflToRad(src*0.0001, sza, getIrradiance(bandIdx));
 		return reflToRad_with_earthsundistance(src*0.0001, sza, time, getIrradiance(bandIdx));
 	}
