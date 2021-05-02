@@ -1,11 +1,7 @@
 package org.openeo.geotrellis.layers
 
-import java.net.{URI, URL}
-import java.nio.file.{Path, Paths}
-import java.time.temporal.ChronoUnit
-import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
-import java.util.concurrent.TimeUnit
-
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Feature
 import cats.data.NonEmptyList
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
@@ -22,10 +18,14 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
-import org.openeo.geotrellis.layers.OpenSearchResponses.Feature
 import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.slf4j.LoggerFactory
 
+import java.net.{URI, URL}
+import java.nio.file.{Path, Paths}
+import java.time.temporal.ChronoUnit
+import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
+import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.util.matching.Regex
 
@@ -128,7 +128,7 @@ object FileLayerProvider {
   private[geotrellis] val layoutScheme = ZoomedLayoutScheme(crs, 256)
 
   // important: make sure to implement object equality for CacheKey's members
-  private case class CacheKey(openSearch: OpenSearch, openSearchCollectionId: String, rootPath: Path,
+  private case class CacheKey(openSearch: OpenSearchClient, openSearchCollectionId: String, rootPath: Path,
                               pathDateExtractor: PathDateExtractor)
 
   private def extractDate(filename: String, date: Regex): ZonedDateTime = filename match {
@@ -136,7 +136,7 @@ object FileLayerProvider {
       ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), LocalTime.MIDNIGHT, ZoneId.of("UTC"))
   }
 
-  private def fetchExtentFromOpenSearch(openSearch: OpenSearch, collectionId: String): ProjectedExtent = {
+  private def fetchExtentFromOpenSearch(openSearch: OpenSearchClient, collectionId: String): ProjectedExtent = {
     val collection = openSearch.getCollections()
       .find(_.id == collectionId)
       .getOrElse(throw new IllegalArgumentException(s"unknown OpenSearch collection $collectionId"))
@@ -320,7 +320,7 @@ object FileLayerProvider {
       })
 }
 
-class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
+class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
                         maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
                         bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "", experimental: Boolean=false) extends LayerProvider {
 
@@ -361,10 +361,10 @@ class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, 
     }
   }
 
-  def this(openSearch: OpenSearch, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, metadataProperties: Map[String, Any]) =
+  def this(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, metadataProperties: Map[String, Any]) =
     this(openSearch, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, maxSpatialResolution, pathDateExtractor, metadataProperties)
 
-  def this(openSearch: OpenSearch, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor) =
+  def this(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor) =
     this(openSearch, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, maxSpatialResolution, pathDateExtractor)
 
   val maxZoom: Int = layoutScheme match {
@@ -459,11 +459,8 @@ class FileLayerProvider(openSearch: OpenSearch, openSearchCollectionId: String, 
 
     val overlappingFeatures = openSearch.getProducts(
       collectionId = openSearchCollectionId,
-      from.toLocalDate,
-      to.toLocalDate,
-      boundingBox,
-      attributeValues = attributeValues,
-      correlationId = correlationId
+      (from.toLocalDate, to.toLocalDate), boundingBox,
+      attributeValues, correlationId, ""
     )
 
 
