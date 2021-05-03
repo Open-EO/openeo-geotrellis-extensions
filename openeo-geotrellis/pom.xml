@@ -86,6 +86,11 @@
             <version>1.16.15</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>mil.nga.geopackage</groupId>
+            <artifactId>geopackage</artifactId>
+            <version>5.0.0</version>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
