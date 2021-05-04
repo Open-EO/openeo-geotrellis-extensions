@@ -53,7 +53,8 @@ class BatchProcessingServiceTest {
 
   @Test
   def getBatchProcessStatus(): Unit = {
-    val status = batchProcessingService.get_batch_process_status(batchRequestId = "7f3d98f2-4a9a-4fbe-adac-973f1cff5699")
+    val status =
+      batchProcessingService.get_batch_process_status(batch_request_id = "7f3d98f2-4a9a-4fbe-adac-973f1cff5699")
 
     assertEquals("DONE", status)
   }

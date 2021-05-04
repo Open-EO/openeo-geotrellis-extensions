@@ -69,8 +69,11 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
       throw e
   }
 
-  def get_batch_process_status(batchRequestId: String): String =
-    new BatchProcessingApi(endpoint).getBatchProcess(batchRequestId, accessToken).status
+  def get_batch_process_status(batch_request_id: String): String =
+    new BatchProcessingApi(endpoint).getBatchProcess(batch_request_id, accessToken).status
+
+  def restart_partially_failed_batch_process(batch_request_id: String): Unit =
+    new BatchProcessingApi(endpoint).restartPartiallyFailedBatchProcess(batch_request_id, accessToken)
 
   def start_card4l_batch_processes(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
                                    from_date: String, to_date: String, band_names: util.List[String],
