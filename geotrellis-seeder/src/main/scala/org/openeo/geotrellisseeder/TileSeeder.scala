@@ -3,7 +3,7 @@ package org.openeo.geotrellisseeder
 import be.vito.eodata.biopar.EOProduct
 import be.vito.eodata.catalog.CatalogClient
 import be.vito.eodata.gwcgeotrellis.colormap
-import be.vito.eodata.gwcgeotrellis.geotrellis.Oscars
+import be.vito.eodata.gwcgeotrellis.opensearch.backends.OscarsClient
 import be.vito.eodata.gwcgeotrellis.s3.S3ClientConfigurator
 import com.beust.jcommander.JCommander
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -61,8 +61,9 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     if (oscarsEndpoint.isDefined && oscarsCollection.isDefined) {
       configureDebugLogging()
 
-      val attributeValues = Map("productType" -> productType)
-      val products = new Oscars(new URL(oscarsEndpoint.get)).getProducts(oscarsCollection.get, Some(date), Some(date), ProjectedExtent(LatLng.worldExtent, LatLng), attributeValues = attributeValues)
+      val attributeValues: Map[String, Any] = Map("productType" -> productType)
+      val products = new OscarsClient(new URL(oscarsEndpoint.get)).getProducts(oscarsCollection.get, (date, date), ProjectedExtent(LatLng.worldExtent, LatLng), attributeValues = attributeValues,
+        correlationId = "", processingLevel = "")
 
       val paths = products.flatMap(_.links.filter(_.title.contains(productType)).map(_.href.toString))
 
