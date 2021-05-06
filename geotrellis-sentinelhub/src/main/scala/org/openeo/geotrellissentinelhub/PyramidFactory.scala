@@ -2,6 +2,7 @@ package org.openeo.geotrellissentinelhub
 
 import java.time.ZonedDateTime
 import java.util
+
 import geotrellis.layer.{KeyBounds, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.{CellSize, MultibandTile, Raster}
@@ -173,7 +174,8 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
 
         val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = sc.parallelize(overlappingKeys)
           .map(key => (key,loadMasked(key)))
-          .filter{case (key:SpaceTimeKey,tile:MultibandTile)=> !tile.bands.forall(_.isNoDataTile) }
+          .filter{case (key:SpaceTimeKey,tile:Option[MultibandTile])=> tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
+          .mapValues(t => t.get)
 
         val partitioner = SpacePartitioner(metadata.bounds)
         assert(partitioner.index == SpaceTimeByMonthPartitioner)
