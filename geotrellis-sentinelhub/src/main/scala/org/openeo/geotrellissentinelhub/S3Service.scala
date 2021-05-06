@@ -28,12 +28,24 @@ class S3Service {
     if (objectIdentifiers.isEmpty)
       throw new UnknownFolderException
 
-    val deleteObjectsRequest = DeleteObjectsRequest.builder()
-      .bucket(bucket_name)
-      .delete(Delete.builder().objects(objectIdentifiers).build())
-      .build()
+    def deleteBatches(offset: Int): Unit = {
+      val maxBatchSize = 1000
 
-    s3Client.deleteObjects(deleteObjectsRequest)
+      if (offset < objectIdentifiers.size()) {
+        val batch = objectIdentifiers.subList(offset, (offset + maxBatchSize) min objectIdentifiers.size())
+
+        val deleteObjectsRequest = DeleteObjectsRequest.builder()
+          .bucket(bucket_name)
+          .delete(Delete.builder().objects(batch).build())
+          .build()
+
+        s3Client.deleteObjects(deleteObjectsRequest)
+
+        deleteBatches(offset + maxBatchSize)
+      }
+    }
+
+    deleteBatches(offset = 0)
   }
 
   // previously batch processes wrote to s3://<bucket_name>/<batch_request_id> while the new ones write to
