@@ -12,27 +12,31 @@ import java.time.ZonedDateTime;
  * @author Sven Jochems
  */
 
-// Applies MODTRAN atmospheric correction based on preset values in a lookup table.
 public abstract class CorrectionDescriptor implements Serializable{
 
-	// TODO: remove this when water vapor calculator is refactored
-    public double reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert) {
-        throw new IllegalArgumentException("Function 'reflToRad' is a leftover function in the CorrectionDescriptor interface temporarily needed for Sentinel-2's water vapor calculator, other usage are not permitted.");
-    }
-	
 	// parts to reimplement in specialization
 	// -------------------------------------------
 	
     public abstract int getBandFromName(String name) throws IllegalArgumentException;
-	public abstract double getIrradiance(int iband);
-	public abstract double getCentralWavelength(int iband);
+    
+    /**
+     * This function converts the input digital number to usually top of the atmosphere (TOA) reflectance/radiance (see the documentation of the implementations)
+     * If band is out of range, the function should return src (since any errors of mis-using bands should be caught upstream, before the pixel-wise loop).
+     * @param src to be converted: this may be digital number, reflectance, radiance, ... depending on the specific correction, and it should clearly be documented in the implementation!
+     * @param sza degree
+     * @param time is usually needed for computing earth-sun distance
+     * @param bandIdx band index as returned by getBandFromName
+     * @return TOA reflectance/radiance as floating point (see the correct() function)
+     */
+    public abstract double preScale(double src, double sza, ZonedDateTime time, int bandIdx);
 
 
     /**
      * This function performs the pixel-wise correction: src is a pixel value belonging to band (as from getBandFromName).
      * If band is out of range, the function should return src (since any errors of mis-using bands should be caught upstream, before the pixel-wise loop).
      * @param bandName band id
-     * @param src to be converted: this may be digital number, reflectance, radiance, ... depending on the specific correction, and it should clearly be documented there!
+     * @param bandIdx band index as returned by getBandFromName
+     * @param src to be converted: the value from pre-scale, the implementation should document the value
      * @param sza degree
      * @param vza degree
      * @param raa degree
@@ -46,6 +50,7 @@ public abstract class CorrectionDescriptor implements Serializable{
     // calculates the atmospheric correction for pixel
     public abstract double correct(
 		String bandName,
+		int bandIdx,
 		ZonedDateTime time,
 		double src, 
 		double sza, 
@@ -55,7 +60,8 @@ public abstract class CorrectionDescriptor implements Serializable{
 		double aot, 
 		double cwv, 
 		double ozone,
-		int waterMask);
+		int waterMask
+	);
 	
 	
 	
@@ -64,10 +70,10 @@ public abstract class CorrectionDescriptor implements Serializable{
 
 
     /**
+     * Get distance from earth to sun in Astronomical Units based on time in millis().
      * @param time millisec from epoch
      * @return earth-sun distance in AU
      */
-    // Get distance from earth to sun in Astronomical Units based on time in millis()
     // This is not used anywhere currently, but might come handy later
     public static double earthSunDistance(ZonedDateTime time){
         
@@ -88,7 +94,52 @@ public abstract class CorrectionDescriptor implements Serializable{
         
         return DUA;
     }
-    
+
+    /**
+     * Computes reflectance to radiance correction without considering earth-sun distance (this is how Sentinel-2 L1C is provided).
+     * @param src:              Band in reflectance range0...1
+     * @param sza:      		sun zenith angle in degrees
+     * @param time:             Time in millis from epoch
+     * @param bandToConvert     Bandnumber
+     * @return                  Band in radiance
+     * @throws Exception 
+     */
+    // this is highly sub-optimal many things can be calculated beforehand once for all pixels!
+    public static double reflToRad(double src, double sza, double solarIrradiance) {
+
+        // SZA to SZA in rad + apply scale factor
+        double szaInRadCoverage = 2.*sza*Math.PI/360.;
+
+        // cos of SZA
+        double cosSzaCoverage = Math.cos(szaInRadCoverage);
+
+        double radiance = src* (cosSzaCoverage * solarIrradiance) / (Math.PI);
+        return radiance;
+    }
+
+    /**
+     * Computes reflectance to radiance correction with considering earth-sun distance.
+     * @param src:              Band in reflectance range 0...1
+     * @param sza:      		sun zenith angle in degrees
+     * @param time:             Time in millis from epoch
+     * @param bandToConvert     Bandnumber
+     * @return                  Band in radiance
+     * @throws Exception 
+     */
+    // this is highly sub-optimal many things can be calculated beforehand once for all pixels!
+    public static double reflToRad_with_earthsundistance(double src, double sza, ZonedDateTime time, double solarIrradiance) {
+
+        // SZA to SZA in rad + apply scale factor
+        double szaInRadCoverage = 2.*sza*Math.PI/360.;
+
+        // cos of SZA
+        double cosSzaCoverage = Math.cos(szaInRadCoverage);
+
+        double earthsunAU = earthSunDistance(time);
+        
+        double radiance = src* (cosSzaCoverage * solarIrradiance) / (Math.PI * earthsunAU * earthsunAU);
+        return radiance;
+    }
     
 }
 

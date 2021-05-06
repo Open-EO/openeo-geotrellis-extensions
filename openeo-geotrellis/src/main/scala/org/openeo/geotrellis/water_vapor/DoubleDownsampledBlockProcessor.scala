@@ -22,6 +22,7 @@ class DoubleDownsampledBlockProcessor {
       //val downsampledmbt=mbt.resample(ncols, nrows, Average).withNoData(Double)
       val downsampledmbt=mbt
 
+      // TODO: check if turning this around (first downsample and then compute water vapor once per 120m blocks) would still give good results
       val result_tile=downsampledmbt.combineDouble(0, 1, 2, 3, 4, 5, 6) { 
         (sza, vza, raa, dem, cwv, r0, r1) => 
           f.computePixel(

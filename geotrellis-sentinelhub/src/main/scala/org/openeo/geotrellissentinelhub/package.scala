@@ -3,12 +3,11 @@ package org.openeo
 import java.io.InputStream
 import java.lang.Math.pow
 import java.lang.Math.random
-import java.net.SocketTimeoutException
+import java.net.{SocketTimeoutException, URI}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.ISO_INSTANT
 import java.util
 import java.util.concurrent.TimeUnit.SECONDS
-
 import scala.io.Source
 import scala.collection.JavaConverters._
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
@@ -27,7 +26,7 @@ import scala.annotation.tailrec
 package object geotrellissentinelhub {
   // TODO: encapsulate this
   // TODO: clean up JSON construction/parsing
-  
+
   private val logger = LoggerFactory.getLogger(getClass)
 
   // TODO: invalidate key on 401 Unauthorized
@@ -60,7 +59,7 @@ package object geotrellissentinelhub {
     token
   }
 
-  def retrieveTileFromSentinelHub(datasetId: String, projectedExtent: ProjectedExtent, date: ZonedDateTime, width: Int,
+  def retrieveTileFromSentinelHub(endpoint: String, datasetId: String, projectedExtent: ProjectedExtent, date: ZonedDateTime, width: Int,
                                   height: Int, bandNames: Seq[String], sampleType: SampleType,
                                   additionalDataFilters: util.Map[String, Any],
                                   processingOptions: util.Map[String, Any],
@@ -132,7 +131,7 @@ package object geotrellissentinelhub {
     }"""
     logger.info(s"JSON data for Sentinel Hub Process API: ${jsonData}")
 
-    val url = "https://services.sentinel-hub.com/api/v1/process"
+    val url = URI.create(endpoint).resolve("/api/v1/process").toString
     val request = Http(url)
       .header("Content-Type", "application/json")
       .header("Authorization", s"Bearer ${authTokenCache.get((clientId, clientSecret))}")
@@ -140,7 +139,7 @@ package object geotrellissentinelhub {
       .postData(jsonData)
 
     logger.info(s"Executing request: ${request.urlBuilder(request)}")
-    
+
     val response = retry(5, s"$date + $extent") {
       request.exec(parser = (code: Int, header: Map[String, IndexedSeq[String]], in: InputStream) =>
         if (code == 200)

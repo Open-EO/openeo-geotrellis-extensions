@@ -12,7 +12,8 @@ import java.util.{Collections, UUID}
 import scala.collection.JavaConverters._
 
 class BatchProcessingApiTest {
-  private val batchProcessingApi = new BatchProcessingApi
+  private val endpoint = "https://services.sentinel-hub.com"
+  private val batchProcessingApi = new BatchProcessingApi(endpoint)
 
   private def accessToken: String = new AuthApi().authenticate(Utils.clientId, Utils.clientSecret).access_token
 

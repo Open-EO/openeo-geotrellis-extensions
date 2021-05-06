@@ -1,7 +1,7 @@
 {
   "@context": "http://schemas.opengis.net/os-geojson/1.0/os-geojson.jsonld",
   "type": "FeatureCollection",
-  "id": "http://oscars-01.vgt.vito.be:8080/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_FAPAR_V2&start=2019-10-03T00%3A00%3A00Z&end=2020-01-02T23%3A59%3A59.999999999Z&bbox=2.688081576665092%2C50.71625006623287%2C5.838282906674661%2C51.42339628212806&sortKeys=title&startIndex=405&accessedFrom=MEP",
+  "id": "https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_FAPAR_V2&start=2019-10-03T00%3A00%3A00Z&end=2020-01-02T23%3A59%3A59.999999999Z&bbox=2.688081576665092%2C50.71625006623287%2C5.838282906674661%2C51.42339628212806&sortKeys=title&startIndex=405&accessedFrom=MEP",
   "totalResults": 404,
   "startIndex": 405,
   "itemsPerPage": 0,
@@ -31,28 +31,28 @@
     "links": {
       "previous": [
         {
-          "href": "http://oscars-01.vgt.vito.be:8080/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_FAPAR_V2&start=2019-10-03T00%3A00%3A00Z&end=2020-01-02T23%3A59%3A59.999999999Z&bbox=2.688081576665092%2C50.71625006623287%2C5.838282906674661%2C51.42339628212806&sortKeys=title&accessedFrom=MEP&startIndex=305",
+          "href": "https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_FAPAR_V2&start=2019-10-03T00%3A00%3A00Z&end=2020-01-02T23%3A59%3A59.999999999Z&bbox=2.688081576665092%2C50.71625006623287%2C5.838282906674661%2C51.42339628212806&sortKeys=title&accessedFrom=MEP&startIndex=305",
           "type": "application/geo+json",
           "title": "previous"
         }
       ],
       "last": [
         {
-          "href": "http://oscars-01.vgt.vito.be:8080/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_FAPAR_V2&start=2019-10-03T00%3A00%3A00Z&end=2020-01-02T23%3A59%3A59.999999999Z&bbox=2.688081576665092%2C50.71625006623287%2C5.838282906674661%2C51.42339628212806&sortKeys=title&accessedFrom=MEP&startIndex=304",
+          "href": "https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_FAPAR_V2&start=2019-10-03T00%3A00%3A00Z&end=2020-01-02T23%3A59%3A59.999999999Z&bbox=2.688081576665092%2C50.71625006623287%2C5.838282906674661%2C51.42339628212806&sortKeys=title&accessedFrom=MEP&startIndex=304",
           "type": "application/geo+json",
           "title": "last"
         }
       ],
       "first": [
         {
-          "href": "http://oscars-01.vgt.vito.be:8080/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_FAPAR_V2&start=2019-10-03T00%3A00%3A00Z&end=2020-01-02T23%3A59%3A59.999999999Z&bbox=2.688081576665092%2C50.71625006623287%2C5.838282906674661%2C51.42339628212806&sortKeys=title&accessedFrom=MEP&startIndex=1",
+          "href": "https://services.terrascope.be/catalogue/products?collection=urn%3Aeop%3AVITO%3ATERRASCOPE_S2_FAPAR_V2&start=2019-10-03T00%3A00%3A00Z&end=2020-01-02T23%3A59%3A59.999999999Z&bbox=2.688081576665092%2C50.71625006623287%2C5.838282906674661%2C51.42339628212806&sortKeys=title&accessedFrom=MEP&startIndex=1",
           "type": "application/geo+json",
           "title": "first"
         }
       ],
       "search": [
         {
-          "href": "http://oscars-01.vgt.vito.be:8080/description.geojson?collection=urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2&accessedFrom=MEP",
+          "href": "https://services.terrascope.be/catalogue/description.geojson?collection=urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2&accessedFrom=MEP",
           "type": "application/geo+json",
           "title": "search"
         }

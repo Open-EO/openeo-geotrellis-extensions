@@ -9,7 +9,8 @@ import java.time.LocalTime
 import scala.collection.JavaConverters._
 
 class BatchProcessingServiceTest {
-  private val batchProcessingService = new BatchProcessingService(bucketName = "openeo-sentinelhub",
+  val endpoint = "https://services.sentinel-hub.com"
+  private val batchProcessingService = new BatchProcessingService(endpoint, bucketName = "openeo-sentinelhub",
     Utils.clientId, Utils.clientSecret)
 
   @Ignore
@@ -52,7 +53,8 @@ class BatchProcessingServiceTest {
 
   @Test
   def getBatchProcessStatus(): Unit = {
-    val status = batchProcessingService.get_batch_process_status(batchRequestId = "7f3d98f2-4a9a-4fbe-adac-973f1cff5699")
+    val status =
+      batchProcessingService.get_batch_process_status(batch_request_id = "7f3d98f2-4a9a-4fbe-adac-973f1cff5699")
 
     assertEquals("DONE", status)
   }

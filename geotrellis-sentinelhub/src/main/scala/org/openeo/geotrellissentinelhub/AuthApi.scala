@@ -6,6 +6,7 @@ import io.circe.generic.auto._
 import io.circe.parser.decode
 import scalaj.http.{Http, HttpOptions, HttpRequest}
 
+import java.net.URI
 import java.time.Duration
 
 object AuthApi {

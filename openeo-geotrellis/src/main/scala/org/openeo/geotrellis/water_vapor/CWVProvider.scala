@@ -6,25 +6,21 @@ import geotrellis.layer.SpaceTimeKey
 import geotrellis.raster.{FloatConstantNoDataCellType, MultibandTile, Tile, doubleNODATA}
 import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
-import org.openeo.geotrellis.icor.{AtmosphericCorrection, ICorCorrectionDescriptor, LookupTable, LookupTableIO}
+import org.openeo.geotrellis.icor.{AtmosphericCorrection, CorrectionDescriptor, ICorCorrectionDescriptor, LookupTable, LookupTableIO}
 
-class CWVProvider(correctionDescriptor: ICorCorrectionDescriptor) extends Serializable {
+class CWVProvider() extends Serializable {
 
-  private val bcLUT: Broadcast[LookupTable] = {
-    val lutLoader = new Callable[Broadcast[LookupTable]]() {
-      override def call(): Broadcast[LookupTable] = {
-        SparkContext.getOrCreate().broadcast(LookupTableIO.readLUT(correctionDescriptor.getLookupTableURL()))
-      }
-    }
-
-    if( correctionDescriptor!=null) {
-      AtmosphericCorrection.iCorLookupTableCache.get(correctionDescriptor.getLookupTableURL(), lutLoader)
-    }else{
-      null
-    }
-  }
-
-
+	def findIndexOf(where: java.util.List[String], what: String) : Int = {
+		var idx : Int = -1
+		for( i:Int <- 0 until where.size()) {
+			if (where.get(i).toLowerCase().contains(what.toLowerCase())) {
+				idx=i
+			}
+		}
+		return idx
+	}
+  
+  
   def compute(
     multibandtile: (SpaceTimeKey, MultibandTile), // where is wv/r0/r1
     szaTile: Tile, 
@@ -33,11 +29,13 @@ class CWVProvider(correctionDescriptor: ICorCorrectionDescriptor) extends Serial
     elevationTile: Tile,
     aot: Double,
     ozone: Double,
-    preMult: Double,
-    postMult: Double,
-    bandIds:java.util.List[String]
+    bandIds:java.util.List[String],
+    correctionDescriptor: CorrectionDescriptor
   ) : Tile = {
 
+    // water vapor can only be called from icor correction, because it uses lookup table -> this cast is safe
+    val cd=correctionDescriptor.asInstanceOf[ICorCorrectionDescriptor]
+    
     val wvBandId="B09"
     val r0BandId="B8A"
     val r1BandId="B11"
@@ -45,12 +43,11 @@ class CWVProvider(correctionDescriptor: ICorCorrectionDescriptor) extends Serial
     //val bp = new FirstInBlockProcessor()
     val bp = new DoubleDownsampledBlockProcessor()
     val wvCalc = new AbdaWaterVaporCalculator()
-    wvCalc.prepare(bcLUT.value,correctionDescriptor,wvBandId,r0BandId,r1BandId)
+    wvCalc.prepare(cd,wvBandId,r0BandId,r1BandId)
             
-    // TODO: use reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert)
-    val wvTile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,wvBandId)).convert(FloatConstantNoDataCellType)*preMult
-    val r0Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r0BandId)).convert(FloatConstantNoDataCellType)*preMult
-    val r1Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r1BandId)).convert(FloatConstantNoDataCellType)*preMult
+    val wvTile= multibandtile._2.band(findIndexOf(bandIds,wvBandId)).convert(FloatConstantNoDataCellType)
+    val r0Tile= multibandtile._2.band(findIndexOf(bandIds,r0BandId)).convert(FloatConstantNoDataCellType)
+    val r1Tile= multibandtile._2.band(findIndexOf(bandIds,r1BandId)).convert(FloatConstantNoDataCellType)
                         
     // try to get at least 1 valid value on 60m resolution
     val mbtresult : Tile = try { 
@@ -61,17 +58,17 @@ class CWVProvider(correctionDescriptor: ICorCorrectionDescriptor) extends Serial
           raaTile,
           elevationTile.convert(FloatConstantNoDataCellType), 
     // AOT overriden                      aotTile.convert(FloatConstantNoDataCellType), 
-          wvTile.convert(FloatConstantNoDataCellType), 
-          r0Tile.convert(FloatConstantNoDataCellType), 
-          r1Tile.convert(FloatConstantNoDataCellType)
+          wvTile, 
+          r0Tile, 
+          r1Tile
         ),
         6, // on 10m base resolution looking for a value on 60m resolution
         aot,
         ozone,
         doubleNODATA,
-        bcLUT.value,
+        cd.bcLUT,
         wvCalc
-      )*postMult
+      )
       bp.replaceNoDataWithAverage(wvRawResultTile,doubleNODATA)
     } catch {
       case e: IllegalArgumentException => wvTile

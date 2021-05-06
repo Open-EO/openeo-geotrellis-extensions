@@ -28,17 +28,10 @@ object BatchProcessingService {
     })
 }
 
-class BatchProcessingService(val bucketName: String, clientId: String, clientSecret: String) {
+class BatchProcessingService(endpoint: String, val bucketName: String, clientId: String, clientSecret: String) {
   import BatchProcessingService._
 
   private def accessToken: String = accessTokenCache.get((clientId, clientSecret))
-
-  @deprecated("remove when openeo-geopyspark-driver is adapted")
-  def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
-                          to_date: String, band_names: util.List[String], sampleType: SampleType,
-                          processing_options: util.Map[String, Any]): String =
-    start_batch_process(collection_id, dataset_id, bbox, bbox_srs, from_date, to_date, band_names, sampleType,
-      metadata_properties = Collections.emptyMap[String, Any], processing_options)
 
   def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
                           to_date: String, band_names: util.List[String], sampleType: SampleType,
@@ -50,10 +43,10 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
     // workaround for bug where upper bound is considered inclusive in OpenEO
     val (from, to) = includeEndDay(from_date, to_date)
 
-    val dateTimes = new CatalogApi().dateTimes(collection_id, boundingBox, from, to, accessToken,
+    val dateTimes = new CatalogApi(endpoint).dateTimes(collection_id, boundingBox, from, to, accessToken,
       queryProperties = mapDataFilters(metadata_properties))
 
-    val batchProcessingApi = new BatchProcessingApi
+    val batchProcessingApi = new BatchProcessingApi(endpoint)
     val batchRequestId = batchProcessingApi.createBatchProcess(
       dataset_id,
       boundingBox,
@@ -76,16 +69,11 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
       throw e
   }
 
-  def get_batch_process_status(batchRequestId: String): String =
-    new BatchProcessingApi().getBatchProcess(batchRequestId, accessToken).status
+  def get_batch_process_status(batch_request_id: String): String =
+    new BatchProcessingApi(endpoint).getBatchProcess(batch_request_id, accessToken).status
 
-  @deprecated("remove when openeo-geopyspark-driver is adapted")
-  def start_card4l_batch_processes(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
-                                   from_date: String, to_date: String, band_names: util.List[String],
-                                   dem_instance: String, subfolder: String,
-                                   request_group_id: String): util.List[String] =
-    start_card4l_batch_processes(collection_id, dataset_id, bbox, bbox_srs, from_date, to_date, band_names,
-      dem_instance, metadata_properties = Collections.emptyMap[String, Any], subfolder, request_group_id)
+  def restart_partially_failed_batch_process(batch_request_id: String): Unit =
+    new BatchProcessingApi(endpoint).restartPartiallyFailedBatchProcess(batch_request_id, accessToken)
 
   def start_card4l_batch_processes(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
                                    from_date: String, to_date: String, band_names: util.List[String],
@@ -99,7 +87,7 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
     val (from, to) = includeEndDay(from_date, to_date)
 
     // original features that overlap in space and time
-    val features = new CatalogApi().searchCard4L(collection_id, reprojectedBoundingBox, from, to, accessToken,
+    val features = new CatalogApi(endpoint).searchCard4L(collection_id, reprojectedBoundingBox, from, to, accessToken,
       queryProperties = mapDataFilters(metadata_properties))
 
     // their intersections with bounding box (all should be in LatLng)
@@ -107,7 +95,7 @@ class BatchProcessingService(val bucketName: String, clientId: String, clientSec
       feature.mapGeom(geom => geom intersection reprojectedBoundingBox.extent)
     )
 
-    val batchProcessingApi = new BatchProcessingApi
+    val batchProcessingApi = new BatchProcessingApi(endpoint)
 
     // TODO: the web tool creates one batch process, analyses it, polls until ANALYSIS_DONE, then creates the remaining
     //  processes and starts them all

@@ -88,7 +88,7 @@ class OpenSearchResponsesTest {
 
     try OpenSearchResponses.FeatureCollection.parse(incompleteResponse)
     catch {
-      case e =>
+      case e: IllegalArgumentException =>
         assertTrue(e.getMessage, e.getMessage contains """"type": "FeatureCollection"""")
 
         val stackTrace = this.stackTrace(e)
@@ -103,7 +103,7 @@ class OpenSearchResponsesTest {
 
     try OpenSearchResponses.FeatureCollection.parse(faultyResponse)
     catch {
-      case e =>
+      case e: IllegalArgumentException =>
         assertTrue(e.getMessage, e.getMessage contains """"type": "FeatureCollection"""")
 
         val stackTrace = this.stackTrace(e)

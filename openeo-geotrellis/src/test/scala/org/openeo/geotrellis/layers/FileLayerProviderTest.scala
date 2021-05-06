@@ -32,7 +32,7 @@ class FileLayerProviderTest {
   import FileLayerProviderTest._
 
   private def sentinel5PFileLayerProvider = new FileLayerProvider(
-    openSearch = OpenSearch(new URL("http://oscars-01.vgt.vito.be:8080")),
+    openSearch = OpenSearch(new URL("https://services.terrascope.be/catalogue")),
     openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1",
     NonEmptyList.one("NO2"),
     rootPath = "/data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1",

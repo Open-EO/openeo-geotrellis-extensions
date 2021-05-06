@@ -252,7 +252,6 @@ public class LookupTable implements Serializable{
         position += cwv * this.ozone.length;
         position += ozone;
         
-        // TODO: accessing on the linear array while values is declared as 2D double[][], this is potentially dangerous
         return values[position];
     }
 

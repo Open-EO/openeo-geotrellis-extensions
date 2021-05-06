@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Provoke empty responses from oscars-01.vgt.vito.be; run on an epod for great justice.
+# Provoke empty responses from https://services.terrascope.be/catalogue; run on an epod for great justice.
 
 set -eo pipefail
 
@@ -15,7 +15,7 @@ function do_request() {
   local client_id=$1
   local output_file=products.json
 
-  wget -qO- --output-document "${output_file}" --content-on-error "http://oscars-01.vgt.vito.be:8080/products?collection=urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2&start=2017-08-04T00:00:00&end=2017-12-29T23:59:59&bbox=5.07036,51.207300000000004,5.0903599999999996,51.2273&clientId=${client_id}"
+  wget -qO- --output-document "${output_file}" --content-on-error "https://services.terrascope.be/catalogue/products?collection=urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2&start=2017-08-04T00:00:00&end=2017-12-29T23:59:59&bbox=5.07036,51.207300000000004,5.0903599999999996,51.2273&clientId=${client_id}"
   json_type=$(jq -r 'type' "${output_file}" | sed -e 's/^\s*//' | sed -e 's/\s*$//')
 
   if [ "$json_type" = "object" ]; then

@@ -1,12 +1,10 @@
 package org.openeo.geotrellis.icor;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.io.InputStream;
 import java.net.URISyntaxException;
-import java.net.URL;
 import java.nio.file.Paths;
 import java.time.ZonedDateTime;
 import java.util.*;
@@ -25,13 +23,13 @@ import org.openeo.geotrellis.smac.SMACCorrection;
 
 import geotrellis.layer.*;
 import geotrellis.proj4.*;
-import geotrellis.proj4.CRS.*;
 import geotrellis.raster.*;
 import geotrellis.raster.geotiff.GeoTiffRasterSource;
 import geotrellis.raster.stitch.Stitcher.MultibandTileStitcher$;
 import geotrellis.spark.ContextRDD;
 import geotrellis.spark.testkit.TileLayerRDDBuilders$;
 import geotrellis.vector.Extent;
+import scala.Option;
 import scala.Tuple2;
 
 
@@ -132,7 +130,6 @@ public class TestAtmosphericCorrectionProcess {
             return (ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>>) new ContextRDD(spacetimeDataCube.rdd(), metadata);
         }
 
-    // TODO: if needed, this could return a map of temporal multiband tiles and internally groupBy with time
     public static MultibandTile acGetAndStitchTiles(
     		RDD<Tuple2<SpaceTimeKey, MultibandTile>> resultRDD,
     		Integer[] indices,
@@ -140,7 +137,6 @@ public class TestAtmosphericCorrectionProcess {
     		int stitchedrows	
     ) {
 	    JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(resultRDD.toJavaRDD());
-	    assertFalse(result.isEmpty());
 	    List<Tuple2<SpaceTimeKey, MultibandTile>> collected = result.collect();
 		
 	    int tilecols=((Integer) collected.get(0)._2.band(0).cols());
@@ -166,63 +162,63 @@ public class TestAtmosphericCorrectionProcess {
 
 
 	///////////////////////////////////////
-	// ICOR testing
+	// ICOR/S2 testing
 	///////////////////////////////////////
 
-    final ArrayList<String> icorAllBandIds=new ArrayList<String>();
+    final ArrayList<String> icorS2BandIds=new ArrayList<String>();
     {
-    	icorAllBandIds.add(new String("TOC-B02_10M"));
-    	icorAllBandIds.add(new String("TOC-B03_10M"));
-    	icorAllBandIds.add(new String("B04"));
-    	icorAllBandIds.add(new String("TOC-B08_10M"));
-    	icorAllBandIds.add(new String("TOC-B8A_20M"));
-    	icorAllBandIds.add(new String("TOC-B09_60M"));
-    	icorAllBandIds.add(new String("TOC-B11_20M"));
-    	icorAllBandIds.add(new String("sunAzimuthAngles"));
-    	icorAllBandIds.add(new String("sunZenithAngles"));
-    	icorAllBandIds.add(new String("viewAzimuthMean"));
-    	icorAllBandIds.add(new String("viewZenithMean"));
+    	icorS2BandIds.add(new String("TOC-B02_10M"));
+    	icorS2BandIds.add(new String("TOC-B03_10M"));
+    	icorS2BandIds.add(new String("B04"));
+    	icorS2BandIds.add(new String("TOC-B08_10M"));
+    	icorS2BandIds.add(new String("TOC-B8A_20M"));
+    	icorS2BandIds.add(new String("TOC-B09_60M"));
+    	icorS2BandIds.add(new String("TOC-B11_20M"));
+    	icorS2BandIds.add(new String("sunAzimuthAngles"));
+    	icorS2BandIds.add(new String("sunZenithAngles"));
+    	icorS2BandIds.add(new String("viewAzimuthMean"));
+    	icorS2BandIds.add(new String("viewZenithMean"));
     }
-    final ArrayList<Object> icorOnlyOzoneParams=new ArrayList<Object>();
+    final ArrayList<Object> icorS2Params=new ArrayList<Object>();
     {
-    	icorOnlyOzoneParams.add(Double.NaN);
-    	icorOnlyOzoneParams.add(Double.NaN);
-    	icorOnlyOzoneParams.add(Double.NaN);
-    	icorOnlyOzoneParams.add(Double.NaN);
-    	icorOnlyOzoneParams.add(Double.NaN);
-    	icorOnlyOzoneParams.add(Double.NaN);
-    	icorOnlyOzoneParams.add(new Double(0.33));
+    	icorS2Params.add(Double.NaN);
+    	icorS2Params.add(Double.NaN);
+    	icorS2Params.add(Double.NaN);
+    	icorS2Params.add(Double.NaN);
+    	icorS2Params.add(Double.NaN);
+    	icorS2Params.add(Double.NaN);
+    	icorS2Params.add(new Double(0.33));
     }
 
     @Test
-    public void testICOROnCube() throws URISyntaxException {
+    public void testICORWithSentinel2() throws URISyntaxException {
     	String atmocorrDir = Paths.get(TestAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
 
     	Tile[] inputtiles=new Tile[] {
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B02.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B03.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B04.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B08.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B8A.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B09.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B11.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_sunAzimuthAngles.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_sunZenithAngles.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_viewAzimuthMean.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_viewZenithMean.tif").toString()).read().get().tile().band(0)
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_B02.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_B03.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_B04.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_B08.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_B8A.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_B09.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_B11.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_sunAzimuthAngles.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_sunZenithAngles.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_viewAzimuthMean.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_viewZenithMean.tif").toString()).read().get().tile().band(0)
     	};
     	
     	Tile[] reftiles=new Tile[] {
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_B02.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_B03.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_B04.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_B08.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_SZA.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_VZA.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_RAA.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_DEM.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_AOT.tif").toString()).read().get().tile().band(0),
-	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_CWV.tif").toString()).read().get().tile().band(0)
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_S2_B02.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_S2_B03.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_S2_B04.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_S2_B08.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_S2_SZA.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_S2_VZA.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_S2_RAA.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_S2_DEM.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_S2_AOT.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_S2_CWV.tif").toString()).read().get().tile().band(0)
     	};
 
         Extent extent = new Extent(655360,5676040,660480,5686280);
@@ -231,25 +227,24 @@ public class TestAtmosphericCorrectionProcess {
         TileLayerMetadata<SpaceTimeKey> m = datacube.metadata();
         TileLayerMetadata<SpaceTimeKey> updatedMetadata = m.copy(m.cellType(),new LayoutDefinition(extent,m.layout().tileLayout()), extent,crs,m.bounds());
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> inputCube = new ContextRDD<>(datacube.rdd(), updatedMetadata);
-         
+
+        long start=System.nanoTime();
+        
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(
+        	"ICOR",
         	JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
         	inputCube,
-            icorAllBandIds,
-            icorOnlyOzoneParams,
+            icorS2BandIds,
+            icorS2Params,
             "DEM",
         	"SENTINEL2",
         	true
         );      
-        System.out.println(resultRDD.getClass().toString());
 
+        long end=System.nanoTime();
+        
 	    JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(resultRDD.toJavaRDD());
-	    assertFalse(result.isEmpty());
-	    List<Tuple2<SpaceTimeKey, MultibandTile>> collected = result.collect();
 		
-	    int tilecols=256;//((Integer) collected.get(0)._2.band(0).cols());
-		int tilerows=256;//((Integer) collected.get(0)._2.band(0).rows());
-
 		MultibandTile resulttiles = acGetAndStitchTiles(resultRDD, new Integer[]{0,1,2,3,11,12,13,14,15,16}, (Integer)inputtiles[0].cols(), (Integer)inputtiles[0].rows());
        
         final int limit=10;
@@ -263,17 +258,18 @@ public class TestAtmosphericCorrectionProcess {
         
         // to generate new reference data or to exact match it
         //geotrellis.raster.io.geotiff.MultibandGeoTiff$.MODULE$.apply(
-        //	tiles, 
-        //	newExtent, 
+        //	resulttiles, 
+        //	extent, 
         //	crs
-        //).write("unittest_data.tif",false);
+        //).write("unittest_data_S2_ICOR.tif",false);
         
-        System.out.println("DONE");
+        System.out.println("DONE ICOR+SENTINEL2, time="+Double.toString((double)(end-start)*1.0e-9));
 
     }
 
+
 	///////////////////////////////////////
-	// SMAC testing
+	// SMAC/S2 testing
 	///////////////////////////////////////
       
     @Test
@@ -299,84 +295,87 @@ public class TestAtmosphericCorrectionProcess {
 
     }
 
-    final ArrayList<String> smacAllBandIds=new ArrayList<String>();
+    final ArrayList<String> smacS2BandIds=new ArrayList<String>();
     {
-    	smacAllBandIds.add(new String(   "B02"   ));
-    	smacAllBandIds.add(new String("blaB03"   ));
-    	smacAllBandIds.add(new String(   "B04"   ));
-    	smacAllBandIds.add(new String(   "B08bla"));
-    	smacAllBandIds.add(new String("sunAzimuthAngles"));
-    	smacAllBandIds.add(new String("sunZenithAngles"));
-    	smacAllBandIds.add(new String("viewAzimuthMean"));
-    	smacAllBandIds.add(new String("viewZenithMean"));
-    
-    
+    	smacS2BandIds.add(new String(   "B02"   ));
+    	smacS2BandIds.add(new String("blaB03"   ));
+    	smacS2BandIds.add(new String(   "B04bla"));
+    	smacS2BandIds.add(new String(   "B08"   ));
+    	smacS2BandIds.add(new String("SAA"));
+    	smacS2BandIds.add(new String("sza"));
+    	smacS2BandIds.add(new String("vaa"));
+    	smacS2BandIds.add(new String("vza"));
     }
-    final ArrayList<Object> smacOnlyOzoneParams=new ArrayList<Object>();
+    final ArrayList<Object> smacS2Params=new ArrayList<Object>();
     {
     	//sza,vza,raa,gnd,aot,cwv,ozone
-    	smacOnlyOzoneParams.add(Double.NaN);
-    	smacOnlyOzoneParams.add(Double.NaN);
-    	smacOnlyOzoneParams.add(Double.NaN);
-    	smacOnlyOzoneParams.add(Double.NaN);
-    	smacOnlyOzoneParams.add(Double.NaN);
-    	smacOnlyOzoneParams.add(Double.NaN);
-    	smacOnlyOzoneParams.add(new Double(0.33));
+    	smacS2Params.add(Double.NaN);
+    	smacS2Params.add(Double.NaN);
+    	smacS2Params.add(Double.NaN);
+    	smacS2Params.add(Double.NaN);
+    	smacS2Params.add(Double.NaN);
+    	smacS2Params.add(Double.NaN);
+    	smacS2Params.add(new Double(0.33));
     }
     
     
 	@Test
-	public void testSMACOnCube() throws URISyntaxException {
+	public void testSMACWithSentinel2() throws URISyntaxException {
 		String atmocorrDir = Paths.get(TestAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
 	
 		Tile[] inputtiles=new Tile[] {
-		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B02.tif").toString()).read().get().tile().band(0),
-		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B03.tif").toString()).read().get().tile().band(0),
-		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B04.tif").toString()).read().get().tile().band(0),
-		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_B08.tif").toString()).read().get().tile().band(0),
-		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_sunAzimuthAngles.tif").toString()).read().get().tile().band(0),
-		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_sunZenithAngles.tif").toString()).read().get().tile().band(0),
-		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_viewAzimuthMean.tif").toString()).read().get().tile().band(0),
-		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_viewZenithMean.tif").toString()).read().get().tile().band(0)
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_B02.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_B03.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_B04.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_B08.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_sunAzimuthAngles.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_sunZenithAngles.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_viewAzimuthMean.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_S2_viewZenithMean.tif").toString()).read().get().tile().band(0)
 		};
 		
 		Tile[] reftiles=new Tile[] {
-		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_smac_B02.tif").toString()).read().get().tile().band(0),
-		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_smac_B03.tif").toString()).read().get().tile().band(0),
-		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_smac_B04.tif").toString()).read().get().tile().band(0),
-		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_smac_B08.tif").toString()).read().get().tile().band(0)
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_smac_S2_B02.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_smac_S2_B03.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_smac_S2_B04.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_smac_S2_B08.tif").toString()).read().get().tile().band(0),
 		};
-	
+
+		Tile[] icortiles=new Tile[] {
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_S2_B02.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_S2_B03.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_S2_B04.tif").toString()).read().get().tile().band(0),
+		    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_S2_B08.tif").toString()).read().get().tile().band(0),
+		};
+
 	    Extent extent = new Extent(655360,5676040,660480,5686280);
 	    CRS crs=geotrellis.proj4.CRS$.MODULE$.fromEpsgCode(32631);
 	    ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube = acTilesToSpaceTimeDataCube(inputtiles,"2019-04-11T10:50:29Z",crs,extent,256);
 	    TileLayerMetadata<SpaceTimeKey> m = datacube.metadata();
 	    TileLayerMetadata<SpaceTimeKey> updatedMetadata = m.copy(m.cellType(),new LayoutDefinition(extent,m.layout().tileLayout()), extent,crs,m.bounds());
 	    ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> inputCube = new ContextRDD<>(datacube.rdd(), updatedMetadata);
-	     
+
+        long start=System.nanoTime();
+	    
 	    ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(
 	    	"SMAC",
 	    	JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
 	    	inputCube,
-	        smacAllBandIds,
-	        smacOnlyOzoneParams,
+	        smacS2BandIds,
+	        smacS2Params,
 	        "DEM",
 	    	"SENTINEL2",
 	    	true
 	    );      
-	    System.out.println(resultRDD.getClass().toString());
-	
+
+        long end=System.nanoTime();
+	    
 	    JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(resultRDD.toJavaRDD());
-	    assertFalse(result.isEmpty());
-	    List<Tuple2<SpaceTimeKey, MultibandTile>> collected = result.collect();
 		
-	    int tilecols=256;//((Integer) collected.get(0)._2.band(0).cols());
-		int tilerows=256;//((Integer) collected.get(0)._2.band(0).rows());
-	
 		MultibandTile resulttiles = acGetAndStitchTiles(resultRDD, new Integer[]{0,1,2,3}, (Integer)inputtiles[0].cols(), (Integer)inputtiles[0].rows());
 
 		
-	    final int limit=25;
+	    int limit=25;
 	    for(int i=0; i<resulttiles.bandCount(); ++i) {
 	    	Map<Integer,Integer> histo=differentialHistogram(resulttiles.band(i), reftiles[i], limit,1);
 	        printHistogram("bnd "+Integer.toString(i)+" -------------------------", histo);
@@ -385,24 +384,250 @@ public class TestAtmosphericCorrectionProcess {
             assertTrue(outliers/sum<=0.01);
 	    }
 
-//	    final int slimit=100; // make this not equal test to guard against returning input
-//	    for(int i=0; i<resulttiles.bandCount(); ++i) {
-//	    	Map<Integer,Integer> histo=differentialHistogram(resulttiles.band(i), inputtiles[i], slimit,10);
-//	        printHistogram("bnd "+Integer.toString(i)+" -------------------------", histo);
-//	        double sum=histo.values().stream().reduce(0, Integer::sum).doubleValue();
-//	        double outliers=histo.getOrDefault(limit,0);
-//	//        assertTrue(outliers/sum<=0.01);
-//	    }
+	    // also check smac and icor do not deviate too much
+	    limit=100;
+	    for(int i=0; i<resulttiles.bandCount(); ++i) {
+	    	Map<Integer,Integer> histo=differentialHistogram(resulttiles.band(i), icortiles[i], limit,20);
+	        printHistogram("bnd "+Integer.toString(i)+" -------------------------", histo);
+	        double sum=histo.values().stream().reduce(0, Integer::sum).doubleValue();
+	        double outliers=histo.getOrDefault(limit,0);
+            assertTrue(outliers/sum<=0.05);
+	    }
 	    
 	    // to generate new reference data or to exact match it
-	    geotrellis.raster.io.geotiff.MultibandGeoTiff$.MODULE$.apply(
-	    	resulttiles, 
-	    	extent, 
-	    	crs
-	    ).write("unittest_data.tif",false);
-	    System.out.println("DONE");
+	    //geotrellis.raster.io.geotiff.MultibandGeoTiff$.MODULE$.apply(
+	    //	resulttiles, 
+	    //	extent, 
+	    //	crs
+	    //).write("unittest_data_S2_SMAC.tif",false);
+
+        System.out.println("DONE SMAC+SENTINEL2, time="+Double.toString((double)(end-start)*1.0e-9));
 	
 	}
 
+
+	///////////////////////////////////////
+	// ICOR/Landsat8 testing
+	///////////////////////////////////////
+    
+   
+    final ArrayList<String> icorL8BandIds=new ArrayList<String>();
+    {
+    	icorL8BandIds.add(new String("B02"));
+    	icorL8BandIds.add(new String("B03"));
+    	icorL8BandIds.add(new String("B04"));
+    	icorL8BandIds.add(new String("SAA"));
+    	icorL8BandIds.add(new String("sza"));
+    	icorL8BandIds.add(new String("vaA"));
+    	icorL8BandIds.add(new String("vza"));
+    }
+    final ArrayList<Object> icorL8Params=new ArrayList<Object>();
+    {
+    	//sza,vza,raa,gnd,aot,cwv,ozone
+    	icorL8Params.add(Double.NaN);
+    	icorL8Params.add(Double.NaN);
+    	icorL8Params.add(Double.NaN);
+    	icorL8Params.add(Double.NaN);
+    	icorL8Params.add(Double.NaN);
+    	icorL8Params.add(Double.NaN);
+    	icorL8Params.add(new Double(0.33));
+    }
+
+    @Test
+    public void testICORWithLandsat8() throws URISyntaxException {
+    	String atmocorrDir = Paths.get(TestAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
+
+    	Tile[] inputtiles=new Tile[] {
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_L8_B02.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_L8_B03.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_L8_B04.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_L8_SAA.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_L8_SZA.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_L8_VAA.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_L8_VZA.tif").toString()).read().get().tile().band(0)
+    	};
+    	// this is a nasty fix that VAA band is 0., but can't change nodata for that band alone
+    	// since there is no cloud masking involved testing atmo corr, this is ok for B02-B04
+    	for (int i=0; i<inputtiles.length; ++i) {
+    		inputtiles[i]=inputtiles[i].convert(inputtiles[0].cellType()).withNoData(Option.apply(65535.));
+    	}
+    	
+    	Tile[] reftiles=new Tile[] {
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_L8_B02.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_L8_B03.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_L8_B04.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_L8_SZA.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_L8_VZA.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_L8_RAA.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_L8_DEM.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_L8_AOT.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_L8_CWV.tif").toString()).read().get().tile().band(0)
+    	};
+
+        Extent extent = new Extent(655360,5676040,660480,5686280);
+        CRS crs=geotrellis.proj4.CRS$.MODULE$.fromEpsgCode(32631);
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube = acTilesToSpaceTimeDataCube(inputtiles,"2020-06-13T10:50:29Z",crs,extent,256);
+        TileLayerMetadata<SpaceTimeKey> m = datacube.metadata();
+        TileLayerMetadata<SpaceTimeKey> updatedMetadata = m.copy(m.cellType(),new LayoutDefinition(extent,m.layout().tileLayout()), extent,crs,m.bounds());
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> inputCube = new ContextRDD<>(datacube.rdd(), updatedMetadata);
+         
+        long start=System.nanoTime();
+        
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(
+        	"ICOR",
+        	JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
+        	inputCube,
+            icorL8BandIds,
+            icorL8Params,
+            "DEM",
+        	"LANDSAT8",
+        	true
+        );      
+
+        long end=System.nanoTime();
+        
+	    JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(resultRDD.toJavaRDD());
+		
+		MultibandTile resulttiles = acGetAndStitchTiles(resultRDD, new Integer[]{0,1,2,7,8,9,10,11,12}, (Integer)inputtiles[0].cols(), (Integer)inputtiles[0].rows());
+       
+        final int limit=10;
+        for(int i=0; i<resulttiles.bandCount(); ++i) {
+        	Map<Integer,Integer> histo=differentialHistogram(resulttiles.band(i), reftiles[i], limit,1);
+            printHistogram("bnd "+Integer.toString(i)+" -------------------------", histo);
+            double sum=histo.values().stream().reduce(0, Integer::sum).doubleValue();
+            double outliers=histo.getOrDefault(limit,0);
+            assertTrue(outliers/sum<=0.01);
+        }
+        
+        // to generate new reference data or to exact match it
+        //geotrellis.raster.io.geotiff.MultibandGeoTiff$.MODULE$.apply(
+        //	resulttiles, 
+        //	extent, 
+        //	crs
+        //).write("unittest_data_L8_ICOR.tif",false);
+
+        System.out.println("DONE ICOR+LANDSAT8, time="+Double.toString((double)(end-start)*1.0e-9));
+
+    }
+
+	///////////////////////////////////////
+	// SMAC/Landsat8 testing
+	///////////////////////////////////////
+      
+    final ArrayList<String> smacL8BandIds=new ArrayList<String>();
+    {
+    	smacL8BandIds.add(new String("B02"));
+    	smacL8BandIds.add(new String("B03"));
+    	smacL8BandIds.add(new String("B04"));
+    	smacL8BandIds.add(new String("SAA"));
+    	smacL8BandIds.add(new String("sza"));
+    	smacL8BandIds.add(new String("vaA"));
+    	smacL8BandIds.add(new String("vza"));
+    }
+    final ArrayList<Object> smacL8Params=new ArrayList<Object>();
+    {
+    	//sza,vza,raa,gnd,aot,cwv,ozone
+    	smacL8Params.add(Double.NaN);
+    	smacL8Params.add(Double.NaN);
+    	smacL8Params.add(Double.NaN);
+    	smacL8Params.add(Double.NaN);
+    	smacL8Params.add(Double.NaN);
+    	smacL8Params.add(Double.NaN);
+    	smacL8Params.add(new Double(0.33));
+    }
+    
+	@Test
+	public void testSMACWithLandsat8() throws URISyntaxException {
+		String atmocorrDir = Paths.get(TestAtmosphericCorrectionProcess.class.getResource("atmocorr").toURI()).toAbsolutePath().toString();
+	
+    	Tile[] inputtiles=new Tile[] {
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_L8_B02.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_L8_B03.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_L8_B04.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_L8_SAA.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_L8_SZA.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_L8_VAA.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_input_L8_VZA.tif").toString()).read().get().tile().band(0)
+    	};
+    	// this is a nasty fix that VAA band is 0., but can't change nodata for that band alone
+    	// since there is no cloud masking involved testing atmo corr, this is ok for B02-B04
+    	for (int i=0; i<inputtiles.length; ++i) {
+    		inputtiles[i]=inputtiles[i].convert(inputtiles[0].cellType()).withNoData(Option.apply(65535.));
+    	}
+    	
+    	Tile[] reftiles=new Tile[] {
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_L8_B02.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_L8_B03.tif").toString()).read().get().tile().band(0),
+	    	GeoTiffRasterSource.apply(Paths.get(atmocorrDir.toString(),"ref_check_icor_L8_B04.tif").toString()).read().get().tile().band(0),
+    	};
+
+	    Extent extent = new Extent(655360,5676040,660480,5686280);
+	    CRS crs=geotrellis.proj4.CRS$.MODULE$.fromEpsgCode(32631);
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube = acTilesToSpaceTimeDataCube(inputtiles,"2020-06-13T10:50:29Z",crs,extent,256);
+	    TileLayerMetadata<SpaceTimeKey> m = datacube.metadata();
+	    TileLayerMetadata<SpaceTimeKey> updatedMetadata = m.copy(m.cellType(),new LayoutDefinition(extent,m.layout().tileLayout()), extent,crs,m.bounds());
+	    ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> inputCube = new ContextRDD<>(datacube.rdd(), updatedMetadata);
+
+        long start=System.nanoTime();
+	    
+	    ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> resultRDD=new AtmosphericCorrection().correct(
+	    	"SMAC",
+	    	JavaSparkContext.fromSparkContext(SparkContext.getOrCreate()),
+	    	inputCube,
+	        smacL8BandIds,
+	        smacL8Params,
+	        "DEM",
+	    	"SENTINEL2",
+	    	true
+	    );      
+
+        long end=System.nanoTime();
+	    
+	    JavaPairRDD<SpaceTimeKey, MultibandTile> result = JavaPairRDD.fromJavaRDD(resultRDD.toJavaRDD());
+		
+		MultibandTile resulttiles = acGetAndStitchTiles(resultRDD, new Integer[]{0,1,2}, (Integer)inputtiles[0].cols(), (Integer)inputtiles[0].rows());
+		
+	    // results are compared to icor results, how close they are
+	    int limit=130;
+	    for(int i=0; i<resulttiles.bandCount(); ++i) {
+	    	Map<Integer,Integer> histo=differentialHistogram(resulttiles.band(i), reftiles[i], limit,10);
+	        printHistogram("bnd "+Integer.toString(i)+" -------------------------", histo);
+	        double sum=histo.values().stream().reduce(0, Integer::sum).doubleValue();
+	        double outliers=histo.getOrDefault(limit,0);
+            assertTrue(outliers/sum<=0.05);
+	    }
+	   
+	    // to generate new reference data or to exact match it
+	    //geotrellis.raster.io.geotiff.MultibandGeoTiff$.MODULE$.apply(
+	    //	resulttiles, 
+	    //	extent, 
+	    //	crs
+	    //).write("unittest_data_L8_SMAC.tif",false);
+
+
+//        for(int ib=0; ib<inputtiles.length; ++ib) {
+//        	Tile it=inputtiles[ib];
+//        	double a=0.;
+//        	for(int i=0; i<(Integer)it.cols(); ++i)
+//            	for(int j=0; j<(Integer)it.rows(); ++j)
+//            		a+=it.getDouble(i, j);
+//        	a/=(double)((Integer)it.cols()*(Integer)it.rows());
+//        	System.out.println("Input band "+smacL8BandIds.get(ib)+": "+Double.toString(a));
+//        }
+//		resulttiles = acGetAndStitchTiles(resultRDD, new Integer[]{0,1,2,7,8,9,10,11,12}, (Integer)inputtiles[0].cols(), (Integer)inputtiles[0].rows());
+//	    for(int ib=0; ib<resulttiles.bandCount(); ++ib) {
+//        	Tile it=resulttiles.band(ib);
+//        	double a=0.;
+//        	for(int i=0; i<(Integer)it.cols(); ++i)
+//            	for(int j=0; j<(Integer)it.rows(); ++j)
+//            		a+=it.getDouble(i, j);
+//        	a/=(double)((Integer)it.cols()*(Integer)it.rows());
+//        	System.out.println("Result band "+Integer.toString(ib)+": "+Double.toString(a));
+//        }
+	    
+	    
+        System.out.println("DONE SMAC+LANDSAT8, time="+Double.toString((double)(end-start)*1.0e-9));
+	
+	}
 
 }

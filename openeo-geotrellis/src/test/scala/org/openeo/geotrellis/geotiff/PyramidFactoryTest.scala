@@ -15,7 +15,7 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
 import geotrellis.store.s3.util.S3RangeReader
-import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
+import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Ignore, Test}
@@ -126,7 +126,8 @@ class PyramidFactoryTest {
     val pyramidFactory = PyramidFactory.from_s3(
       s3_uri = "s3://openeo-vito-test/cogs/",
       key_regex = raw".*_20180428T.*\.tiff",
-      date_regex = raw".*_(\d{4})(\d{2})(\d{2})T\d{6}\.tiff"
+      date_regex = raw".*_(\d{4})(\d{2})(\d{2})T\d{6}\.tiff",
+      lat_lon = false
     )
 
     val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
@@ -185,8 +186,31 @@ class PyramidFactoryTest {
       key_regex = raw".+\.tif",
       date_regex = raw".+_(\d{4})_?(\d{2})_?(\d{2}).*\.tif",
       recursive = true,
-      interpret_as_cell_type = "float32"
+      interpret_as_cell_type = "float32", // TODO: is float32ud0 in the Python code
+      lat_lon = true
     )
+
+    val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
+    val pyramid = pyramidFactory.datacube_seq(ProjectedPolygons.fromExtent(boundingBox.extent, srs),
+      from_date = null, to_date = null)
+
+    val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
+    assertEquals(0, maxZoom)
+
+    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
+  }
+
+  @Ignore("added for debugging purposes")
+  @Test
+  def adjacentSentinelHubCard4LBatchProcessApiGeotiffs(): Unit = {
+    val pyramidFactory = PyramidFactory.from_disk(
+      glob_pattern = "/tmp/prod_ard/s1_rtc_*_2021_03_09_MULTIBAND.tif",
+      date_regex = raw".+_(\d{4})_?(\d{2})_?(\d{2}).*\.tif",
+      interpret_as_cell_type = "float32",
+      lat_lon = true
+    )
+
+    val boundingBox = ProjectedExtent(Extent(12.03762, 41.908324, 12.511386, 42.133792), CRS.fromEpsgCode(4326))
 
     val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
     val pyramid = pyramidFactory.datacube_seq(ProjectedPolygons.fromExtent(boundingBox.extent, srs),

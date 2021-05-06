@@ -4,7 +4,6 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
 import java.time.{Instant, ZonedDateTime}
-
 import geotrellis.layer.SpatialKey._
 import geotrellis.layer._
 import geotrellis.raster._
@@ -21,7 +20,7 @@ import geotrellis.vector.io.json.JsonFeatureCollection
 import geotrellis.vector.{Extent, PolygonFeature}
 import org.apache.spark.rdd._
 import org.openeo.geotrellis.focal._
-import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
+import org.openeo.geotrelliscommon.{FFTConvolve, SpaceTimeByMonthPartitioner}
 
 import scala.collection.JavaConverters
 import scala.collection.JavaConverters._

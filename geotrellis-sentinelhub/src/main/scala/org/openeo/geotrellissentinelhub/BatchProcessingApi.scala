@@ -10,6 +10,7 @@ import org.openeo.geotrellissentinelhub.SampleType.SampleType
 import org.slf4j.LoggerFactory
 import scalaj.http.{Http, HttpOptions, HttpRequest}
 
+import java.net.URI
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.{BASIC_ISO_DATE, ISO_INSTANT}
 import java.util
@@ -22,10 +23,10 @@ object BatchProcessingApi {
   private[geotrellissentinelhub] case class GetBatchProcessResponse(status: String)
 }
 
-class BatchProcessingApi {
+class BatchProcessingApi(endpoint: String) {
   import BatchProcessingApi._
 
-  private val endpoint = "https://services.sentinel-hub.com/api/v1/batch"
+  private val batchEndpoint = URI.create(endpoint).resolve("/api/v1/batch")
 
   private def http(url: String, accessToken: String): HttpRequest =
     Http(url)
@@ -106,7 +107,7 @@ class BatchProcessingApi {
 
     logger.debug(requestBody)
 
-    val response = http(s"$endpoint/process", accessToken)
+    val response = http(s"$batchEndpoint/process", accessToken)
       .headers("Content-Type" -> "application/json")
       .postData(requestBody)
       .asString
@@ -166,8 +167,7 @@ class BatchProcessingApi {
   }
 
   def getBatchProcess(batchRequestId: String, accessToken: String): GetBatchProcessResponse = {
-    val response = http(s"$endpoint/process/$batchRequestId", accessToken)
-      .headers("Authorization" -> s"Bearer $accessToken")
+    val response = http(s"$batchEndpoint/process/$batchRequestId", accessToken)
       .asString
       .throwError
 
@@ -175,13 +175,17 @@ class BatchProcessingApi {
       .valueOr(throw _)
   }
 
-  def startBatchProcess(batchRequestId: String, accessToken: String): Unit = {
-    http(s"$endpoint/process/$batchRequestId/start", accessToken)
-      .headers("Authorization" -> s"Bearer $accessToken")
+  def startBatchProcess(batchRequestId: String, accessToken: String): Unit =
+    http(s"$batchEndpoint/process/$batchRequestId/start", accessToken)
       .postData("")
-      .asString
+      .execute()
       .throwError
-  }
+
+  def restartPartiallyFailedBatchProcess(batchRequestId: String, accessToken: String): Unit =
+    http(s"$batchEndpoint/process/$batchRequestId/restartpartial", accessToken)
+      .postData("")
+      .execute()
+      .throwError
 
   def createCard4LBatchProcess(datasetId: String, bounds: Geometry, dateTime: ZonedDateTime, bandNames: Seq[String],
                                dataTakeId: String, card4lId: String, demInstance: String,
@@ -298,7 +302,7 @@ class BatchProcessingApi {
 
     logger.debug(requestBody)
 
-    val response = http(s"$endpoint/process", accessToken)
+    val response = http(s"$batchEndpoint/process", accessToken)
       .headers("Content-Type" -> "application/json")
       .postData(requestBody)
       .asString

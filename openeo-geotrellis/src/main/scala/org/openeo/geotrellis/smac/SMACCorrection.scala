@@ -302,15 +302,23 @@ object SMACCorrection{
 }
 
 
+
 class SMACCorrection extends CorrectionDescriptor(){
 
   val coeffMap = mutable.Map[String,Coeff]()
 
+  // TODO: this currently  works with sentinelhub, where they provide toa reflectances for L8 in harmony with s2 L1C
+  override def preScale(src: Double, sza: Double, time: ZonedDateTime, bandToConvert: Int): Double = {
+    src.doubleValue()/10000.0
+  }
+  
+  
   /**
    * This function performs the pixel-wise correction: src is a pixel value belonging to band (as from getBandFromName).
    * If band is out of range, the function should return src (since any errors of mis-using bands should be caught upstream, before the pixel-wise loop).
    *
    * @param bandName band id
+   * @param bandIdx band index as returned by getBandFromName
    * @param src  to be converted: this may be digital number, reflectance, radiance, ... depending on the specific correction, and it should clearly be documented there!
    * @param sza  degree
    * @param vza  degree
@@ -322,9 +330,10 @@ class SMACCorrection extends CorrectionDescriptor(){
    * @param waterMask
    * @return BOA reflectance * 10000 (i.e. in digital number)
    */
-  override def correct(bandName: String, time: ZonedDateTime, src: Double, sza: Double, vza: Double, raa: Double, gnd: Double, aot: Double, cwv: Double, ozone: Double, waterMask: Int): Double = {
+  override def correct(bandName: String, bandIdx: Int, time: ZonedDateTime, src: Double, sza: Double, vza: Double, raa: Double, gnd: Double, aot: Double, cwv: Double, ozone: Double, waterMask: Int): Double = {
     //TODO lookup pressure, ozone, water vapour in ECMWF cams
     var maybeCoeff = coeffMap.get(bandName)
+    // TODO: checking band name if coefficient file is already loaded is a performance hit -> to be optimized
     if(maybeCoeff.isEmpty) {
       val bandPattern = ".*(B[018][0-9A]).*".r
       val coefficients = {
@@ -340,14 +349,25 @@ class SMACCorrection extends CorrectionDescriptor(){
 
     val pressure = 1013 //SMACCorrection.PdeZ(1300);
     val UH2O = 0.3 // Water vapour (g/cm2)
-    val r_surf = SMACCorrection.smac_inv(src.doubleValue()/10000.0, sza, vza, raa, pressure.toFloat, aot.toFloat, ozone.toFloat, UH2O.toFloat, maybeCoeff.get)*10000.0
+    val r_surf = SMACCorrection.smac_inv(src.doubleValue(), sza, vza, raa, pressure.toFloat, aot.toFloat, ozone.toFloat, UH2O.toFloat, maybeCoeff.get)*10000.0
     r_surf
   }
 
-  override def getBandFromName(name: String): Int = 0
-
-  override def getIrradiance(iband: Int): Double = ???
-
-  override def getCentralWavelength(iband: Int): Double = ???
-
+  override def getBandFromName(name: String): Int = name match {
+  			case "B01" =>  0
+  			case "B02" =>  1
+  			case "B03" =>  2
+  			case "B04" =>  3
+  			case "B05" =>  4
+  			case "B06" =>  5
+  			case "B07" =>  6
+  			case "B08" =>  7
+  			case "B8A" =>  8
+  			case "B09" =>  9
+  			case "B10" =>  10
+  			case "B11" =>  11
+  			case "B12" =>  12
+        case _  => throw new IllegalArgumentException("Unsupported band: "+name)
+    }
+ 
 }

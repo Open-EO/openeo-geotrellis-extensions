@@ -6,8 +6,13 @@ import java.time.ZonedDateTime;
 public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 
 
+	public Landsat8Descriptor() throws Exception {
+		super();
+	}
+
 	public String getLookupTableURL() {
-		return "L8_big_disort"; 
+		return "https://artifactory.vgt.vito.be/auxdata-public/lut/L8_big_disort.bin"; 
+				//"L8_big_disort"; 
 	}
 
     @Override
@@ -24,7 +29,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 			case "B09":         return 8;
 			case "B10":         return 9;
 			case "B11":         return 10;
-			default: throw new IllegalArgumentException("Unsupported band provided");
+			default: throw new IllegalArgumentException("Unsupported band: "+name);
 		}
 	}
     
@@ -32,8 +37,6 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
     // official: http://www.gisagmaps.com/landsat-8-sentinel-2-bands/
     // B08 (from Thuillier spectrum): https://bleutner.github.io/RStoolbox/r/2016/01/26/estimating-landsat-8-esun-values
     // TODO: B10 and B11 has no values. Should be excluded from correction or extrap from Thuillier?
-    // TODO: propagate referring by band name instead of index
-    // TODO: to be checked if L1C is already corrected to earth-sun distance or not
     final static double[] irradiances = {
 	    1857.00, // B01
 	    2067.00, // B02
@@ -64,9 +67,8 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
        10895.00, // B10
        12005.00  // B11
     };
-
-    // TODO: digital number to radiance scaling slighlty varies product-to product and should be taken from metadata
-    // TODO: I am suspicious that this variation is due to the earth-sun distance correction -> to be checked 
+/*
+	// it is easier to use reflectance and call refl2rad because refl scaling is constant
     final static double[] RADIANCE_ADD_BAND = {
        -62.86466,
        -64.10541,
@@ -90,7 +92,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
         1.1200E-02,
         2.4794E-03
     };
-    
+    */
     @Override
 	public double getIrradiance(int iband) {
 		return irradiances[iband];
@@ -102,11 +104,26 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 	}
 
 	/**
-     * @param src: digital number of the top of the atmosphere TOA radiance (as it is stored in the L1T/OLI/... tifs) 
+     * @param src: digital number of the top of the atmosphere TOA radiance 
+     * @return TOA reflectance  (float 0..1)
+	 */
+	@Override
+	public double preScale(double src, double sza, ZonedDateTime time, int bandIdx) {
+		// lut only has 8 bands instead of 9
+		if (bandIdx>7) return src;
+        // TODO: this works with sentinelhub's landsat8 layer only because they changed scaling and also divide by cos(sza) compared to stock landsat8. For CreoDias they provide L8 without processing
+//		return reflToRad(src*0.0001, sza, getIrradiance(bandIdx));
+		return reflToRad_with_earthsundistance(src*0.0001, sza, time, getIrradiance(bandIdx));
+	}
+    
+	/**
+     * @param src: TOA radiance
+     * @return: BOA reflectance in digital number
 	 */
 	@Override
     public double correct(
     		String bandName,
+    		int bandIdx,
     		ZonedDateTime time,
     		double src, 
     		double sza, 
@@ -119,18 +136,19 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
     		int waterMask)
     {
 		// lut only has 8 bands instead of 9
-		//if (band>8) return src;
-		int band = 0;
-		try {
-			band = getBandFromName(bandName);
-		} catch (Exception e) {
-			throw new RuntimeException(e);
-		}
-		if (band>7) return src;
+		if (bandIdx>7) return src;
+/*
 		final double TOAradiance=src*RADIANCE_MULT_BAND[band]+RADIANCE_ADD_BAND[band];
         final double corrected = correctRadiance( band, TOAradiance, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
 		//final double corrected=TOAradiance;
         return corrected*10000.;
+*/
+        // Apply atmoshperic correction on pixel based on an array of parameters from MODTRAN
+        final double corrected = correctRadiance( bandIdx, src, sza, vza, raa, gnd, aot, cwv, ozone, waterMask);
+		//final double corrected=TOAradiance;
+        return corrected*10000.;    
     }
-		
+
+	
+	
 }
