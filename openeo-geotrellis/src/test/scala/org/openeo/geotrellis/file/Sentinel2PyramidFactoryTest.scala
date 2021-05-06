@@ -1,11 +1,5 @@
 package org.openeo.geotrellis.file
 
-import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
-import java.time.format.DateTimeFormatter
-import java.time.{LocalDate, ZonedDateTime}
-import java.util.Collections.{emptyMap, singletonList}
-
 import geotrellis.layer.{Metadata, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
 import geotrellis.raster.summary.polygonal.Summary
@@ -21,6 +15,12 @@ import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
+
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
+import java.time.format.DateTimeFormatter
+import java.time.{LocalDate, ZonedDateTime}
+import java.util.Collections.{emptyMap, singletonList}
 
 object Sentinel2PyramidFactoryTest {
     private var sc: SparkContext = _
@@ -57,7 +57,7 @@ class Sentinel2PyramidFactoryTest {
         val factory = new Sentinel2PyramidFactory(
             openSearchEndpoint = "http://oscars-dev.vgt.vito.be/",
             openSearchCollectionId = "urn:eop:VITO:COP_DEM_GLO_30M_COG",
-            openSearchLinkTitles = singletonList("Copernicus_DSM_COG_10"),
+            openSearchLinkTitles = singletonList("DEM"),
             rootPath = "/data/MTDA/DEM/COP_DEM_30M_COG",
             maxSpatialResolution = CellSize(0.002777777777777778, 0.002777777777777778)
         )
