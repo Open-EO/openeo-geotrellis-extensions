@@ -29,7 +29,7 @@ class S3Service {
       throw new UnknownFolderException
 
     def deleteBatches(offset: Int): Unit = {
-      val maxBatchSize = 1000
+      val maxBatchSize = 1000 // as specified in the docs
 
       if (offset < objectIdentifiers.size()) {
         val batch = objectIdentifiers.subList(offset, (offset + maxBatchSize) min objectIdentifiers.size())
