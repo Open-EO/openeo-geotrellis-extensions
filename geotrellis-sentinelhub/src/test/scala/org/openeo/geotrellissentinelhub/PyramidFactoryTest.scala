@@ -3,6 +3,8 @@ package org.openeo.geotrellissentinelhub
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
+import java.util.Collections
+
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.LatLng
 import geotrellis.proj4.util.UTM
@@ -16,7 +18,6 @@ import org.junit.Assert._
 import org.junit.Test
 import org.openeo.geotrellissentinelhub.SampleType.FLOAT32
 
-import java.util.Collections
 import scala.collection.JavaConverters._
 
 class PyramidFactoryTest {
@@ -63,7 +64,7 @@ class PyramidFactoryTest {
   def testLandsat8(): Unit = {
     val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new PyramidFactory(endpoint,"L8L1C", clientId, clientSecret), "landsat8", date, Seq("B10", "B11"))
+    testLayer(new PyramidFactory(endpoint,"LOTL2", clientId, clientSecret), "landsat8", date, Seq("B10", "B04"))
   }
 
   @Test
