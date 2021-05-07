@@ -7,7 +7,7 @@ import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource}
-import geotrellis.raster.{CellType, InterpretAsTargetCellType, MultibandTile, RasterRegion, RasterSource}
+import geotrellis.raster.{CellSize, CellType, InterpretAsTargetCellType, MultibandTile, RasterRegion, RasterSource}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
@@ -18,6 +18,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.rdd.RDD
+import org.locationtech.proj4j.proj.TransverseMercatorProjection
 import org.openeo.geotrellis.ProjectedPolygons
 import software.amazon.awssdk.services.s3.model.ListObjectsRequest
 
@@ -107,7 +108,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
 
-    val projectedExtent = if (bbox != null) ProjectedExtent(bbox, CRS.fromName(bbox_srs)) else ProjectedExtent(LatLng.worldExtent, LatLng)
+    val projectedExtent = if (bbox != null) ProjectedExtent(bbox, CRS.fromName(bbox_srs)) else ProjectedExtent(targetCrs.worldExtent, targetCrs)
     val from = if (from_date != null) ZonedDateTime.parse(from_date) else null
     val to = if (to_date != null) ZonedDateTime.parse(to_date) else null
 
@@ -123,12 +124,16 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
 
   def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(targetCrs), targetCrs)
+    val layout = ZoomedLayoutScheme(targetCrs).levelForZoom(zoom).layout
+    layer(reprojectedRasterSources, reprojectedBoundingBox, from, to, layout)
+  }
 
-    val overlappingRasterSources = reprojectedRasterSources
+  private def layer(rasterSources: Seq[(RasterSource, ZonedDateTime)], boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, layout: LayoutDefinition)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val overlappingRasterSources = rasterSources
       .filter { case (rasterSource, date) =>
         // FIXME: this means the driver will (partially) read the geotiff instead of the executor - on the other hand, e.g. an AccumuloRDDReader will interpret a LayerQuery both in the driver (to determine Accumulo ranges) and the executors
         // FIXME: what's the advantage of an AttributeStore.query over comparing extents?
-        val overlaps = rasterSource.extent intersects reprojectedBoundingBox.extent
+        val overlaps = rasterSource.extent intersects boundingBox.extent
 
         // FIXME: this is also done in the driver while a RasterSource carries a URI so an executor can do it himself
         val withinDateRange =
@@ -140,16 +145,13 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
         overlaps && withinDateRange
       }
 
-    val layout = ZoomedLayoutScheme(targetCrs).levelForZoom(zoom).layout
-
     lazy val bounds = {
-      val spatialBounds = layout.mapTransform.extentToBounds(reprojectedBoundingBox.extent)
+      val spatialBounds = layout.mapTransform.extentToBounds(boundingBox.extent)
       val KeyBounds(SpatialKey(minCol, minRow), SpatialKey(maxCol, maxRow)) = KeyBounds(spatialBounds)
       KeyBounds(SpaceTimeKey(minCol, minRow, from), SpaceTimeKey(maxCol, maxRow, to))
     }
 
-    val (rasterSources, _) = overlappingRasterSources.unzip
-    rasterSourceRDD(rasterSources, layout, bounds)
+    rasterSourceRDD(overlappingRasterSources.map { case (rasterSource, _) => rasterSource }, layout, bounds)
   }
 
   private def rasterSourceRDD(
@@ -206,13 +208,38 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
 
   def datacube_seq(polygons: ProjectedPolygons, from_date: String, to_date: String):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
-    // TODO: optimize
     implicit val sc: SparkContext = SparkContext.getOrCreate()
 
     val boundingBox = ProjectedExtent(polygons.polygons.toTraversable.extent, polygons.crs)
     val from = if (from_date != null) ZonedDateTime.parse(from_date) else null
     val to = if (to_date != null) ZonedDateTime.parse(to_date) else null
 
-    Seq(0 -> layer(boundingBox, from, to))
+    if (latLng) // TODO: drop the workaround for what look like negative SpatialKeys?
+      Seq(0 -> layer(boundingBox, from, to))
+    else {
+      val layout = this.layout(FloatingLayoutScheme(256), boundingBox)
+      Seq(0 -> layer(rasterSources, boundingBox, from, to, layout))
+    }
+  }
+
+  private val maxSpatialResolution: CellSize = CellSize(10, 10)
+
+  private def layout(layoutScheme: FloatingLayoutScheme, boundingBox: ProjectedExtent): LayoutDefinition = {
+    //Giving the layout a deterministic extent simplifies merging of data with spatial partitioner
+    val layoutExtent =
+      if (boundingBox.crs.proj4jCrs.getProjection.getName == "utm") {
+        //for utm, we return an extent that goes beyound the utm zone bounds, to avoid negative spatial keys
+        if (boundingBox.crs.proj4jCrs.getProjection.asInstanceOf[TransverseMercatorProjection].getSouthernHemisphere)
+        //official extent: Extent(166021.4431, 1116915.0440, 833978.5569, 10000000.0000) -> round to 10m + extend
+          Extent(0.0, 1000000.0, 833970.0 + 100000.0, 10000000.0000 + 100000.0)
+        else {
+          //official extent: Extent(166021.4431, 0.0000, 833978.5569, 9329005.1825) -> round to 10m + extend
+          Extent(0.0, -1000000.0000, 833970.0 + 100000.0, 9329000.0 + 100000.0)
+        }
+      } else {
+        boundingBox.extent
+      }
+
+    layoutScheme.levelFor(layoutExtent, maxSpatialResolution).layout
   }
 }
