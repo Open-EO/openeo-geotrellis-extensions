@@ -35,7 +35,7 @@ class PyramidFactoryTest {
       case _ => fail()
     }
 
-    testLayer(new PyramidFactory(endpoint,"S1GRD", clientId, clientSecret, sampleType = FLOAT32), "gamma0", date,
+    testLayer(new PyramidFactory(endpoint, "S1GRD", clientId, clientSecret, sampleType = FLOAT32), "gamma0", date,
       Seq("VV", "VH", "dataMask"), testCellType)
   }
 
@@ -49,7 +49,7 @@ class PyramidFactoryTest {
       case _ => fail()
     }
 
-    testLayer(new PyramidFactory(endpoint,"S2L1C", clientId, clientSecret), "sentinel2-L1C", date, Seq("B04", "B03", "B02"),
+    testLayer(new PyramidFactory(endpoint, "S2L1C", clientId, clientSecret), "sentinel2-L1C", date, Seq("B04", "B03", "B02"),
       testCellType)
   }
 
@@ -57,21 +57,22 @@ class PyramidFactoryTest {
   def testSentinel2L2A(): Unit = {
     val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new PyramidFactory(endpoint,"S2L2A", clientId, clientSecret), "sentinel2-L2A", date, Seq("B08", "B04", "B03"))
+    testLayer(new PyramidFactory(endpoint, "S2L2A", clientId, clientSecret), "sentinel2-L2A", date, Seq("B08", "B04", "B03"))
   }
 
   @Test
   def testLandsat8(): Unit = {
     val endpoint = "https://services-uswest2.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new PyramidFactory(endpoint,"LOTL2", clientId, clientSecret), "landsat8", date, Seq("B10", "B04"))
+
+    testLayer(new PyramidFactory(endpoint, "LOTL1", clientId, clientSecret), "landsat8", date, Seq("B10", "B11"))
   }
 
   @Test
   def testDigitalNumbersOutput(): Unit = { // TODO: check output values programmatically
     val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new PyramidFactory(endpoint,"S2L2A", clientId, clientSecret), "sentinel2-L2A_mix", date, Seq("B04", "sunAzimuthAngles", "SCL"))
+    testLayer(new PyramidFactory(endpoint, "S2L2A", clientId, clientSecret), "sentinel2-L2A_mix", date, Seq("B04", "sunAzimuthAngles", "SCL"))
   }
 
   private def testLayer(pyramidFactory: PyramidFactory, layer: String, date: ZonedDateTime, bandNames: Seq[String],
@@ -80,7 +81,7 @@ class PyramidFactoryTest {
 
     val sparkConf = new SparkConf()
       .set("spark.kryoserializer.buffer.max", "512m")
-      .set("spark.rdd.compress","true")
+      .set("spark.rdd.compress", "true")
 
     val sc = SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName, sparkConf)
 
