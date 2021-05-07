@@ -17,8 +17,8 @@ class MemoryLogger(name: String) {
     val stream = new PrintStream(new FileOutputStream(System.getProperty("user.home") + "/memory.txt", false))
     try {
       stream.println(s"$name-cpuTime: ${processTree.getCumulativeCpuTime()}")
-      stream.println(s"$name-rssMem: ${processTree.getCumulativeRssmem()}")
-      stream.println(s"$name-vMem: ${processTree.getCumulativeVmem()}")
+      stream.println(s"$name-rssMem: ${processTree.getRssMemorySize()}")
+      stream.println(s"$name-vMem: ${processTree.getVirtualMemorySize()}")
     } finally {
       stream.close()
     }
