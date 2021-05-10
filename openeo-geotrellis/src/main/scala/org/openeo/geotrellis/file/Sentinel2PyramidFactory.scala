@@ -1,8 +1,6 @@
 package org.openeo.geotrellis.file
 
-import java.net.URL
-import java.time.ZonedDateTime
-import java.util
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutScheme, SpaceTimeKey, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, WebMercator}
@@ -11,9 +9,12 @@ import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.openeo.geotrellis.ProjectedPolygons
-import org.openeo.geotrellis.layers.{FileLayerProvider, OpenSearch, SplitYearMonthDayPathDateExtractor}
+import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrelliscommon.DataCubeParameters
 
+import java.net.URL
+import java.time.ZonedDateTime
+import java.util
 import scala.collection.JavaConverters._
 
 
@@ -48,7 +49,7 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
   )
 
   def createOpenSearch = {
-    OpenSearch(openSearchEndpointUrl)
+    OpenSearchClient(openSearchEndpointUrl)
   }
 
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String,

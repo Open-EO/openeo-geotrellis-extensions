@@ -1,10 +1,6 @@
 package org.openeo.geotrellis.layers
 
-import java.net.URL
-import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
-import java.time._
-import java.util.Collections
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer.FloatingLayoutScheme
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
@@ -25,9 +21,15 @@ import org.junit.{AfterClass, BeforeClass, Ignore, Test}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrelliscommon.DataCubeParameters
 
+import java.net.URL
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
+import java.time._
+import java.util.Collections
+
 object Sentinel2FileLayerProviderTest {
   private var sc: SparkContext = _
-  private val openSearchEndpoint = OpenSearch(new URL("https://services.terrascope.be/catalogue"))
+  private val openSearchEndpoint = OpenSearchClient(new URL("https://services.terrascope.be/catalogue"))
   private val maxSpatialResolution = CellSize(10, 10)
   private val pathDateExtractor = SplitYearMonthDayPathDateExtractor
 
