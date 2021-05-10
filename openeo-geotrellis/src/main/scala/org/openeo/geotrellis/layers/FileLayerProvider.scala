@@ -122,10 +122,7 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 }
 
 object FileLayerProvider {
-
   private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
-  private[geotrellis] val crs = WebMercator
-  private[geotrellis] val layoutScheme = ZoomedLayoutScheme(crs, 256)
 
   // important: make sure to implement object equality for CacheKey's members
   private case class CacheKey(openSearch: OpenSearchClient, openSearchCollectionId: String, rootPath: Path,

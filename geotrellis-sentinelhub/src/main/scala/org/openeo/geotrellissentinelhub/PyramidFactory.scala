@@ -189,7 +189,7 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
     Seq(0 -> cube)
   }
 
-  private def maxSpatialResolution: CellSize = CellSize(10, 10)
+  private val maxSpatialResolution: CellSize = CellSize(10, 10)
 
   private def layout(layoutScheme: FloatingLayoutScheme, boundingBox: ProjectedExtent): LayoutDefinition = {
     //Giving the layout a deterministic extent simplifies merging of data with spatial partitioner

@@ -168,7 +168,6 @@ class BatchProcessingApi(endpoint: String) {
 
   def getBatchProcess(batchRequestId: String, accessToken: String): GetBatchProcessResponse = {
     val response = http(s"$batchEndpoint/process/$batchRequestId", accessToken)
-      .headers("Authorization" -> s"Bearer $accessToken")
       .asString
       .throwError
 
@@ -176,13 +175,17 @@ class BatchProcessingApi(endpoint: String) {
       .valueOr(throw _)
   }
 
-  def startBatchProcess(batchRequestId: String, accessToken: String): Unit = {
+  def startBatchProcess(batchRequestId: String, accessToken: String): Unit =
     http(s"$batchEndpoint/process/$batchRequestId/start", accessToken)
-      .headers("Authorization" -> s"Bearer $accessToken")
       .postData("")
-      .asString
+      .execute()
       .throwError
-  }
+
+  def restartPartiallyFailedBatchProcess(batchRequestId: String, accessToken: String): Unit =
+    http(s"$batchEndpoint/process/$batchRequestId/restartpartial", accessToken)
+      .postData("")
+      .execute()
+      .throwError
 
   def createCard4LBatchProcess(datasetId: String, bounds: Geometry, dateTime: ZonedDateTime, bandNames: Seq[String],
                                dataTakeId: String, card4lId: String, demInstance: String,

@@ -50,7 +50,6 @@ class AtmosphericCorrection extends Serializable {
     val auxDataAccum = sc.longAccumulator("Icor aux data loading")
     val correctionAccum = sc.longAccumulator("Icor correction")
 
-    // TODO: this is temporary, until water vapor calculator is refactored, remove  constant provider when not needed any more
     val cwvProvider = if(method.toUpperCase().equals("SMAC")){
       new ConstantCWVProvider(0.3)
     }else{
