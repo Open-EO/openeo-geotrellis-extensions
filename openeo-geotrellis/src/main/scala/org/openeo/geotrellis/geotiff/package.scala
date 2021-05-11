@@ -12,6 +12,7 @@ import geotrellis.raster.{ArrayTile, CellType, GridBounds, MultibandTile, Raster
 import geotrellis.spark._
 import geotrellis.util._
 import geotrellis.vector.Extent
+import mil.nga.geopackage.tiles.TileGrid
 import mil.nga.geopackage.{GeoPackage, GeoPackageManager}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.AccumulatorV2
@@ -135,6 +136,10 @@ package object geotiff {
     saveRDDGeneric(rdd,bandCount, path, zLevel, cropBounds)
   }
 
+  def saveRDDTileGrid(rdd:MultibandTileLayerRDD[SpatialKey], bandCount:Int, path:String, tileGrid: String, zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]) = {
+    saveRDDGenericTileGrid(rdd,bandCount, path, tileGrid, zLevel, cropBounds)
+  }
+
   def preProcess[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K],cropBounds:Option[Extent]): (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = {
     val re = rdd.metadata.toRasterExtent()
     var gridBounds = re.gridBoundsFor(cropBounds.getOrElse(rdd.metadata.extent), clamp = true)
@@ -214,6 +219,95 @@ package object geotiff {
 
   }
 
+  def saveRDDGenericTileGrid[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K], bandCount:Int, path:String, tileGrid: String, zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]) = {
+    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
+    val croppedExtent: Extent = preProcessResult._2
+    val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3
+
+    val tileLayout = preprocessedRdd.metadata.tileLayout
+
+    val compression = Deflate(zLevel)
+
+    val features = getOverlappingFeaturesFromTileGrid(tileGrid, preprocessedRdd)
+
+    def newFilePath(path: String, tileId: String) = {
+      val index = path.lastIndexOf(".")
+      s"${path.substring(0, index)}-$tileId${path.substring(index)}"
+    }
+
+    val totalBandCount = rdd.sparkContext.longAccumulator("TotalBandCount")
+    val typeAccumulator = new SetAccumulator[CellType]()
+    rdd.sparkContext.register(typeAccumulator,"CellType")
+    preprocessedRdd
+      .flatMap {
+        case (key, tile) => features.map { case (name, extent) =>
+          val tileBounds = preprocessedRdd.metadata.layout.mapTransform(extent)
+
+          (name, extent, tileBounds)
+        }.filter { case (_, _, tileBounds) =>
+          if (KeyBounds(tileBounds).includes(key.getComponent[SpatialKey]())) true else false
+        }.map { case (name, extent, _) =>
+          val re = preprocessedRdd.metadata.toRasterExtent()
+          val gridBounds = re.gridBoundsFor(extent, clamp = true)
+          val croppedExtent = re.extentFor(gridBounds, clamp = true)
+          ((name, croppedExtent, gridBounds), (key, tile))
+        }
+      }.groupByKey()
+      .map { case ((name, extent, tileBounds), tiles) =>
+        val keyBounds = KeyBounds(tileBounds)
+        val maxKey = keyBounds.get.maxKey.getComponent[SpatialKey]
+        val minKey = keyBounds.get.minKey.getComponent[SpatialKey]
+
+        val totalCols = maxKey.col - minKey.col +1
+        val totalRows = maxKey.row - minKey.row + 1
+
+        val bandSegmentCount = totalCols * totalRows
+
+        val tiffs = tiles.flatMap { case (key: K, multibandTile: MultibandTile) => {
+          var bandIndex = -1
+          if (multibandTile.bandCount > 0) {
+            totalBandCount.add(multibandTile.bandCount)
+          }
+          typeAccumulator.add(multibandTile.cellType)
+          //Warning: for deflate compression, the segmentcount and index is not really used, making it stateless.
+          //Not sure how this works out for other types of compression!!!
+
+          val theCompressor = compression.createCompressor(multibandTile.bandCount)
+          multibandTile.bands.map {
+            tile => {
+              bandIndex += 1
+              val layoutCol = key.getComponent[SpatialKey]._1 - minKey._1
+              val layoutRow = key.getComponent[SpatialKey]._2 - minKey._2
+              val bandSegmentOffset = bandSegmentCount * bandIndex
+              val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
+              //tiff format seems to require that we provide 'full' tiles
+              val bytes = raster.CroppedTile(tile, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
+              val compressedBytes = theCompressor.compress(bytes, 0)
+              (index, compressedBytes)
+            }
+          }
+        }
+        }.toMap
+
+        val cellType = {
+          if(typeAccumulator.value.isEmpty) {
+            rdd.metadata.cellType
+          }else{
+            typeAccumulator.value.head
+          }
+        }
+
+        println("Saving geotiff with Celltype: " + cellType)
+        val detectedBandCount =  if(totalBandCount.avg >0) totalBandCount.avg else 1
+        val segmentCount = (bandSegmentCount*detectedBandCount).toInt
+        val newPath = newFilePath(path, name)
+        writeTiff(newPath, tiffs, tileBounds, extent.intersection(croppedExtent).get, preprocessedRdd.metadata.crs, tileLayout, compression, cellType, detectedBandCount, segmentCount)
+
+        newPath
+      }.collect()
+      .toList
+  }
+
   private def writeTiff( path: String, tiffs:collection.Map[Int, Array[Byte]] , gridBounds: GridBounds[Int], croppedExtent: Extent,crs:CRS, tileLayout: TileLayout, compression: DeflateCompression, cellType: CellType, detectedBandCount: Double, segmentCount: Int) = {
     logger.info(s"Writing geotiff to $path with type ${cellType.toString()} and bands $detectedBandCount")
     val compressor = compression.createCompressor(segmentCount)
@@ -246,7 +340,7 @@ package object geotiff {
       compression,
       detectedBandCount.toInt,
       cellType)
-    val thegeotiff = MultibandGeoTiff(tiffTile, croppedExtent, crs)
+    val thegeotiff = MultibandGeoTiff(tiffTile, croppedExtent, crs).withOverviews(NearestNeighbor, List(4, 8, 16))
 
     GeoTiffWriter.write(thegeotiff, path)
   }
@@ -280,7 +374,9 @@ package object geotiff {
       resampled
     }
 
-    MultibandGeoTiff(adjusted, contextRDD.metadata.crs, GeoTiffOptions(compression)).write(path)
+    MultibandGeoTiff(adjusted, contextRDD.metadata.crs, GeoTiffOptions(compression))
+      .withOverviews(NearestNeighbor, List(4, 8, 16))
+      .write(path)
   }
 
   def saveStitchedTileGrid(
@@ -291,26 +387,7 @@ package object geotiff {
                             cropDimensions: Option[ArrayList[Int]],
                             compression: Compression)
   : List[String] = {
-    val geoPackage = getGeoPackage(tileGrid)
-
-    val features = ListBuffer[(String, Extent)]()
-
-    try {
-      val extent = rdd.metadata.extent.reproject(rdd.metadata.crs, LatLng)
-
-      val resultSet = geoPackage.getFeatureDao(geoPackage.getFeatureTables.get(0))
-        .query(s"ST_MaxX(geom)>=${extent.xmin} AND ST_MinX(geom)<=${extent.xmax} AND ST_MaxY(geom)>=${extent.ymin} AND ST_MinY(geom)<=${extent.ymax}")
-
-      try while (resultSet.moveToNext) {
-        val row = resultSet.getRow()
-        val name = row.getValue("name").toString
-        val envelope = row.getGeometryEnvelope
-        val extent = Extent(envelope.getMinX, envelope.getMinY, envelope.getMaxX, envelope.getMaxY)
-        val reprojectedExtent = extent.reproject(LatLng, rdd.metadata.crs)
-        features.append((name, reprojectedExtent))
-      }
-      finally resultSet.close()
-    } finally geoPackage.close()
+    val features = getOverlappingFeaturesFromTileGrid(tileGrid, rdd)
 
     def newFilePath(path: String, tileId: String) = {
       val index = path.lastIndexOf(".")
@@ -372,6 +449,31 @@ package object geotiff {
         s"$basePath/10km.gpkg"
 
     GeoPackageManager.open(new File(path))
+  }
+
+  private def getOverlappingFeaturesFromTileGrid[K](tileGrid: String, rdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = {
+    val geoPackage = getGeoPackage(tileGrid)
+
+    val features = ListBuffer[(String, Extent)]()
+
+    try {
+      val extent = rdd.metadata.extent.reproject(rdd.metadata.crs, LatLng)
+
+      val resultSet = geoPackage.getFeatureDao(geoPackage.getFeatureTables.get(0))
+        .query(s"ST_MaxX(geom)>=${extent.xmin} AND ST_MinX(geom)<=${extent.xmax} AND ST_MaxY(geom)>=${extent.ymin} AND ST_MinY(geom)<=${extent.ymax}")
+
+      try while (resultSet.moveToNext) {
+        val row = resultSet.getRow()
+        val name = row.getValue("name").toString
+        val envelope = row.getGeometryEnvelope
+        val extent = Extent(envelope.getMinX, envelope.getMinY, envelope.getMaxX, envelope.getMaxY)
+        val reprojectedExtent = extent.reproject(LatLng, rdd.metadata.crs)
+        features.append((name, reprojectedExtent))
+      }
+      finally resultSet.close()
+    } finally geoPackage.close()
+
+    features.toList
   }
 
   case class ContextSeq[K, V, M](tiles: Iterable[(K, V)], metadata: M) extends Seq[(K, V)] with Metadata[M] {

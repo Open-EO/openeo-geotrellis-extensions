@@ -2,13 +2,16 @@ package org.openeo.geotrellis.geotiff
 
 import cats.data.NonEmptyList
 import geotrellis.proj4.LatLng
-import geotrellis.raster.CellSize
+import geotrellis.raster.io.geotiff.GeoTiff
+import geotrellis.raster.{ByteArrayTile, CellSize, MultibandTile, TileLayout}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.spark._
+import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.storage.StorageLevel.DISK_ONLY
+import org.junit.Assert.assertArrayEquals
 import org.junit.{AfterClass, Assert, BeforeClass, Test}
 import org.openeo.geotrellis.geotiff
 import org.openeo.geotrellis.layers.{FileLayerProvider, OpenSearch, SplitYearMonthDayPathDateExtractor}
@@ -70,6 +73,23 @@ class TileGridTest {
     val expectedCroppedPaths = List("/tmp/testSaveStitched_cropped-31UDS_3_4.tiff", "/tmp/testSaveStitched_cropped-31UDS_2_4.tiff", "/tmp/testSaveStitched_cropped-31UDS_3_5.tiff", "/tmp/testSaveStitched_cropped-31UDS_2_5.tiff")
 
     Assert.assertEquals(croppedPaths.groupBy(identity), expectedCroppedPaths.groupBy(identity))
+  }
+
+  @Test
+  def testWriteRDDTileGrid(): Unit ={
+    val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
+    val bbox = ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng)
+
+    val layer = rgbLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+
+    val spatialLayer = layer
+      .toSpatial()
+      .persist(DISK_ONLY)
+
+    val paths = saveRDDTileGrid(spatialLayer, 3, "/tmp/testSaveRdd.tiff", "10km")
+    val expectedPaths = List("/tmp/testSaveRdd-31UDS_3_4.tiff", "/tmp/testSaveRdd-31UDS_2_4.tiff", "/tmp/testSaveRdd-31UDS_3_5.tiff", "/tmp/testSaveRdd-31UDS_2_5.tiff")
+
+    Assert.assertEquals(paths.groupBy(identity), expectedPaths.groupBy(identity))
   }
 
   private def rgbLayerProvider =
