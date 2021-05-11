@@ -1,11 +1,7 @@
 package org.openeo.geotrellis.layers
 
 // import org.openeo.geotrellis.TestImplicits._
-import java.net.URL
-import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
-import java.time.{LocalDate, ZonedDateTime}
-
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer.SpatialKey
 import geotrellis.proj4.CRS
@@ -19,6 +15,11 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.junit.Assert.assertEquals
 import org.junit.{AfterClass, BeforeClass, Test}
+
+import java.net.URL
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
+import java.time.{LocalDate, ZonedDateTime}
 
 object S1GrdSigma0FileLayerProviderTest {
   private var sc: SparkContext = _
@@ -55,11 +56,11 @@ class S1GrdSigma0FileLayerProviderTest {
   }
 
   private def sigma0LayerProvider = new FileLayerProvider(
-    openSearch = OpenSearch(new URL("http://oscars-01.vgt.vito.be:8080")),
+    openSearch = OpenSearchClient(new URL("https://services.terrascope.be/catalogue")),
     openSearchCollectionId = "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
     openSearchLinkTitles = NonEmptyList.of("VH", "VV", "angle"),
     rootPath = "/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1",
     maxSpatialResolution = CellSize(10, 10),
     pathDateExtractor = SplitYearMonthDayPathDateExtractor
-  )
+    )
 }

@@ -1,0 +1,17 @@
+ 10,0,100,0,255,Trees covered area
+ 11,88,72,31,255,Trees needle-leaved evergreen
+ 12,112,102,62,255,Trees needle-leaved deciduous
+ 13,0,153,0,255,Trees broadleaved evergreen
+ 14,0,204,0,255,Trees broadleaved deciduous
+ 20,255,187,34,255,Shrub covered area
+ 30,255,255,76,255,Grassland
+ 40,240,150,255,255,Cropland
+ 50,250,0,0,255,Built-up
+ 60,180,180,180,255,Bare areas
+ 70,240,240,240,255,Snow and/or ice cover
+ 80,0,100,200,255,Open water
+ 81,0,0,221,255,Permanent water
+ 82,153,217,234,255,Seasonal water
+ 90,0,150,160,255,Herbaceous wetland
+ 95,0,207,117,255,Mangroves
+ 100,250,230,160,255,Lichens and mosses

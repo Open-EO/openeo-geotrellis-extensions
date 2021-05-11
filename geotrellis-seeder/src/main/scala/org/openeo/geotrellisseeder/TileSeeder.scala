@@ -3,7 +3,7 @@ package org.openeo.geotrellisseeder
 import be.vito.eodata.biopar.EOProduct
 import be.vito.eodata.catalog.CatalogClient
 import be.vito.eodata.gwcgeotrellis.colormap
-import be.vito.eodata.gwcgeotrellis.geotrellis.Oscars
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import be.vito.eodata.gwcgeotrellis.s3.S3ClientConfigurator
 import com.beust.jcommander.JCommander
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -62,7 +62,10 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       configureDebugLogging()
 
       val attributeValues = Map("productType" -> productType)
-      val products = new Oscars(new URL(oscarsEndpoint.get)).getProducts(oscarsCollection.get, Some(date), Some(date), ProjectedExtent(LatLng.worldExtent, LatLng), attributeValues = attributeValues)
+      val products = OpenSearchClient(new URL(oscarsEndpoint.get)).getProducts(oscarsCollection.get, (date, date),
+                                                                               ProjectedExtent(LatLng.worldExtent,
+                                                                                               LatLng),
+                                                                               attributeValues, "", "")
 
       val paths = products.flatMap(_.links.filter(_.title.contains(productType)).map(_.href.toString))
 
@@ -448,6 +451,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
                 Some(key, region)
               } catch {
                 case _: IllegalArgumentException => None
+                case _: NoSuchElementException => None
               }
             }
           } catch {

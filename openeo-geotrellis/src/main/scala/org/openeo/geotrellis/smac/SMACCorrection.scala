@@ -307,7 +307,7 @@ class SMACCorrection extends CorrectionDescriptor(){
 
   val coeffMap = mutable.Map[String,Coeff]()
 
-  // TODO: this works with sentinelhub, where they provide toa reflectances in harmony with s2 L1C
+  // TODO: this currently  works with sentinelhub, where they provide toa reflectances for L8 in harmony with s2 L1C
   override def preScale(src: Double, sza: Double, time: ZonedDateTime, bandToConvert: Int): Double = {
     src.doubleValue()/10000.0
   }

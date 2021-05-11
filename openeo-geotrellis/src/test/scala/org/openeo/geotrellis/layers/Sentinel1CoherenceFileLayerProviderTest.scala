@@ -1,10 +1,6 @@
 package org.openeo.geotrellis.layers
 
-import java.net.URL
-import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
-import java.time.{LocalDate, ZonedDateTime}
-
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.proj4.LatLng
 import geotrellis.raster.CellSize
@@ -18,6 +14,11 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
+
+import java.net.URL
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
+import java.time.{LocalDate, ZonedDateTime}
 
 object Sentinel1CoherenceFileLayerProviderTest {
   private var sc: SparkContext = _
@@ -96,12 +97,12 @@ class Sentinel1CoherenceFileLayerProviderTest {
 
   private def coherenceLayerProvider(attributeValues: Map[String, Any] = Map()) =
     new FileLayerProvider(
-      openSearch = OpenSearch(new URL("http://oscars-01.vgt.vito.be:8080")),
+      openSearch = OpenSearchClient(new URL("https://services.terrascope.be/catalogue")),
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S1_SLC_COHERENCE_V1",
       openSearchLinkTitles = NonEmptyList.of("VH", "VV"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel1/SLC_COHERENCE/",
       maxSpatialResolution = CellSize(10, 10),
       pathDateExtractor = SplitYearMonthDayPathDateExtractor,
       attributeValues
-    )
+      )
 }

@@ -2,7 +2,7 @@ package org.openeo.geotrellissentinelhub;
 
 import geotrellis.proj4.LatLng
 import geotrellis.vector.{Extent, Feature, ProjectedExtent}
-import org.junit.Assert.assertEquals
+import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.Test
 
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
@@ -62,5 +62,20 @@ class CatalogApiTest {
     //  geometry == intersection(bbox, feature.geometry)
     //  timeRange == [feature.properties.datetime, feature.properties.datetime + 1s]
     //  description: "card4lId: xyz"
+  }
+
+  @Test
+  def searchCard4LPaged(): Unit = {
+    val bbox = ProjectedExtent(Extent(6.611, 45.665, 13.509, 51.253), LatLng)
+
+    val features = catalogApi.searchCard4L(
+      collectionId = "sentinel-1-grd",
+      bbox,
+      from = LocalDate.of(2021, 1, 6).atStartOfDay(utc),
+      to = LocalDate.of(2021, 1, 25).atTime(23, 59, 59).atZone(utc),
+      accessToken
+    )
+
+    assertTrue(s"number of features ${features.size} should exceed default page size 10", features.size > 10)
   }
 }

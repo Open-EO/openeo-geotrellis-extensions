@@ -15,7 +15,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
-import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
 
 import java.time.LocalTime.MIDNIGHT
@@ -74,18 +74,15 @@ class Sentinel2PyramidFactoryTest {
             from_date, to_date, metadata_properties, correlation_id, datacubeParams
         ).maxBy { case (zoom, _) => zoom }._2
 
-        // Compare actual with reference tiles.
+        // Compare actual with reference tile.
         val actualTiffs = baseLayer.toSpatial().toGeoTiffs(Tags.empty,GeoTiffOptions(DeflateCompression)).collect().toList.map(t => t._2)
+        assert(actualTiffs.length == 1)
+        //actualTiffs.head.write("/tmp/tile0_0.tiff", true)
 
-        val resources = List("/org/openeo/geotrellis/file/test_dem_Layer/tile0_0.tiff",
-                             "/org/openeo/geotrellis/file/test_dem_Layer/tile0_1.tiff")
-        val refTiffs = ListBuffer[MultibandGeoTiff]()
-        for (resource <- resources) {
-            val refFile = Thread.currentThread().getContextClassLoader.getResource(resource)
-            refTiffs.append(GeoTiff.readMultiband(refFile.getPath))
-        }
-
-        refTiffs.zip(actualTiffs).foreach(t => assertArrayEquals(t._1.toByteArray, t._2.toByteArray))
+        val resourcePath = "org/openeo/geotrellis/file/testDemLayer/tile0_0.tiff"
+        val refFile = Thread.currentThread().getContextClassLoader.getResource(resourcePath)
+        val refTiff = GeoTiff.readMultiband(refFile.getPath)
+        assertArrayEquals(refTiff.toByteArray, actualTiffs.head.toByteArray)
     }
 
     @Test
@@ -144,7 +141,7 @@ class Sentinel2PyramidFactoryTest {
     }
 
     private def sceneClassificationV200PyramidFactory = new Sentinel2PyramidFactory(
-        openSearchEndpoint = "http://oscars-01.vgt.vito.be:8080",
+        openSearchEndpoint = "https://services.terrascope.be/catalogue",
         openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
         openSearchLinkTitles = singletonList("SCENECLASSIFICATION_20M"),
         rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",

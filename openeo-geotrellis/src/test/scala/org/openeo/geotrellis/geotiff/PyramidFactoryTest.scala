@@ -5,9 +5,8 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter.{ISO_LOCAL_DATE, ISO_OFFSET_DATE_TIME}
 import java.time.{LocalDate, ZonedDateTime}
-
 import geotrellis.layer._
-import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster._
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.{GeoTiff, MultibandGeoTiff}
@@ -146,7 +145,9 @@ class PyramidFactoryTest {
     assertNotNull("AWS_SECRET_ACCESS_KEY is not set", System.getenv("AWS_SECRET_ACCESS_KEY"))
     System.setProperty("aws.region", "eu-central-1")
 
-    val boundingBox = ProjectedExtent(Extent(2.59003, 51.069, 2.8949, 51.2206), CRS.fromEpsgCode(4326))
+    val boundingBox = ProjectedExtent(Extent(2.59003, 51.069, 2.8949, 51.2206), LatLng)
+    val crs = CRS.fromEpsgCode(32631)
+    val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(crs), crs)
 
     val batchProcessId = "7f3d98f2-4a9a-4fbe-adac-973f1cff5699"
 
@@ -160,16 +161,16 @@ class PyramidFactoryTest {
       interpret_as_cell_type = "float32ud0"
     )
 
-    val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
-    val pyramid = pyramidFactory.datacube_seq(ProjectedPolygons(Array(boundingBox.extent.toPolygon()), srs),
+    val srs = s"EPSG:${reprojectedBoundingBox.crs.epsgCode.get}"
+    val pyramid = pyramidFactory.datacube_seq(ProjectedPolygons(Array(reprojectedBoundingBox.extent.toPolygon()), srs),
       from_date = null, to_date = null)
 
-    val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
+    val (maxZoom, baseLayer) = pyramid.maxBy { case (zoom, _) => zoom }
     assertEquals(0, maxZoom)
+    assertEquals(crs, baseLayer.metadata.crs)
 
-    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
+    saveLayerAsGeoTiff(pyramid, reprojectedBoundingBox, zoom = maxZoom)
   }
-
 
   @Test
   def sentinelHubCard4LBatchProcessApiGeoTiffFromS3ForMultipleDates(): Unit = {
@@ -177,7 +178,7 @@ class PyramidFactoryTest {
     assertNotNull("AWS_SECRET_ACCESS_KEY is not set", System.getenv("AWS_SECRET_ACCESS_KEY"))
     System.setProperty("aws.region", "eu-central-1")
 
-    val boundingBox = ProjectedExtent(Extent(35.666439, -6.23476, 35.861576, -6.075694), CRS.fromEpsgCode(4326))
+    val boundingBox = ProjectedExtent(Extent(35.666439, -6.23476, 35.861576, -6.075694), LatLng)
 
     val requestGroupId = "a894cae5-7193-48ed-80ad-901769483a46"
 
@@ -194,8 +195,9 @@ class PyramidFactoryTest {
     val pyramid = pyramidFactory.datacube_seq(ProjectedPolygons.fromExtent(boundingBox.extent, srs),
       from_date = null, to_date = null)
 
-    val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
+    val (maxZoom, baseLayer) = pyramid.maxBy { case (zoom, _) => zoom }
     assertEquals(0, maxZoom)
+    assertEquals(LatLng, baseLayer.metadata.crs)
 
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
   }
@@ -210,7 +212,7 @@ class PyramidFactoryTest {
       lat_lon = true
     )
 
-    val boundingBox = ProjectedExtent(Extent(12.03762, 41.908324, 12.511386, 42.133792), CRS.fromEpsgCode(4326))
+    val boundingBox = ProjectedExtent(Extent(12.03762, 41.908324, 12.511386, 42.133792), LatLng)
 
     val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
     val pyramid = pyramidFactory.datacube_seq(ProjectedPolygons.fromExtent(boundingBox.extent, srs),
@@ -218,6 +220,37 @@ class PyramidFactoryTest {
 
     val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
     assertEquals(0, maxZoom)
+
+    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
+  }
+
+  @Test
+  def sentinelHubBatchProcessApiGeoTiffFromS3ForMultipleDates_pyramid_seq(): Unit = {
+    assertNotNull("AWS_ACCESS_KEY_ID is not set", System.getenv("AWS_ACCESS_KEY_ID"))
+    assertNotNull("AWS_SECRET_ACCESS_KEY is not set", System.getenv("AWS_SECRET_ACCESS_KEY"))
+    System.setProperty("aws.region", "eu-central-1")
+
+    val boundingBox = ProjectedExtent(Extent(2.59003, 51.069, 2.8949, 51.2206), LatLng)
+
+    val batchProcessId = "7f3d98f2-4a9a-4fbe-adac-973f1cff5699"
+
+    // the results for this batch process obviously only contain the dates that were requested in the first place so
+    // no additional key filtering is necessary here
+    val pyramidFactory = PyramidFactory.from_s3(
+      s3_uri = s"s3://openeo-sentinelhub/$batchProcessId/",
+      key_regex = raw".+\.tif",
+      date_regex = raw".+_(\d{4})_?(\d{2})_?(\d{2}).*\.tif",
+      recursive = true,
+      interpret_as_cell_type = "float32ud0"
+    )
+
+    val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
+    val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs,
+      from_date = null, to_date = null)
+
+    val (maxZoom, baseLayer) = pyramid.maxBy { case (zoom, _) => zoom }
+    assertEquals(14, maxZoom)
+    assertEquals(WebMercator, baseLayer.metadata.crs)
 
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
   }
