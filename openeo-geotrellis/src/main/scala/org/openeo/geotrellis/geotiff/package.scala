@@ -246,14 +246,14 @@ package object geotiff {
           (name, extent, tileBounds)
         }.filter { case (_, _, tileBounds) =>
           if (KeyBounds(tileBounds).includes(key.getComponent[SpatialKey]())) true else false
-        }.map { case (name, extent, _) =>
+        }.map { case (name, extent, tileBounds) =>
           val re = preprocessedRdd.metadata.toRasterExtent()
           val gridBounds = re.gridBoundsFor(extent, clamp = true)
           val croppedExtent = re.extentFor(gridBounds, clamp = true)
-          ((name, croppedExtent, gridBounds), (key, tile))
+          ((name, croppedExtent, tileBounds, gridBounds), (key, tile))
         }
       }.groupByKey()
-      .map { case ((name, extent, tileBounds), tiles) =>
+      .map { case ((name, extent, tileBounds, gridBounds), tiles) =>
         val keyBounds = KeyBounds(tileBounds)
         val maxKey = keyBounds.get.maxKey.getComponent[SpatialKey]
         val minKey = keyBounds.get.minKey.getComponent[SpatialKey]
@@ -301,7 +301,7 @@ package object geotiff {
         val detectedBandCount =  if(totalBandCount.avg >0) totalBandCount.avg else 1
         val segmentCount = (bandSegmentCount*detectedBandCount).toInt
         val newPath = newFilePath(path, name)
-        writeTiff(newPath, tiffs, tileBounds, extent.intersection(croppedExtent).get, preprocessedRdd.metadata.crs, tileLayout, compression, cellType, detectedBandCount, segmentCount)
+        writeTiff(newPath, tiffs, gridBounds, extent.intersection(croppedExtent).get, preprocessedRdd.metadata.crs, tileLayout, compression, cellType, detectedBandCount, segmentCount)
 
         newPath
       }.collect()
@@ -340,7 +340,7 @@ package object geotiff {
       compression,
       detectedBandCount.toInt,
       cellType)
-    val thegeotiff = MultibandGeoTiff(tiffTile, croppedExtent, crs).withOverviews(NearestNeighbor, List(4, 8, 16))
+    val thegeotiff = MultibandGeoTiff(tiffTile, croppedExtent, crs)//.withOverviews(NearestNeighbor, List(4, 8, 16))
 
     GeoTiffWriter.write(thegeotiff, path)
   }
