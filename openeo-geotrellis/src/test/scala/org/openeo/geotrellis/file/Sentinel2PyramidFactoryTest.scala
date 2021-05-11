@@ -2,6 +2,8 @@ package org.openeo.geotrellis.file
 
 import geotrellis.layer.{Metadata, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
+import geotrellis.raster.io.geotiff.compression.DeflateCompression
+import geotrellis.raster.io.geotiff.{GeoTiff, GeoTiffOptions, MultibandGeoTiff, Tags}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.{CellSize, MultibandTile}
@@ -13,7 +15,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
-import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
+import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrelliscommon.DataCubeParameters
 
 import java.time.LocalTime.MIDNIGHT
@@ -21,6 +23,7 @@ import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZonedDateTime}
 import java.util.Collections.{emptyMap, singletonList}
+import scala.collection.mutable.ListBuffer
 
 object Sentinel2PyramidFactoryTest {
     private var sc: SparkContext = _
@@ -41,13 +44,13 @@ object Sentinel2PyramidFactoryTest {
 class Sentinel2PyramidFactoryTest {
 
     @Test
-    def createLayerForDem(): Unit = {
+    def testDemLayer(): Unit = {
         val localFromDate = LocalDate.of(2010, 1, 1)
         val localToDate = LocalDate.of(2012, 1, 1)
         val ZonedFromDate = ZonedDateTime.of(localFromDate, MIDNIGHT, UTC)
         val zonedToDate = ZonedDateTime.of(localToDate, MIDNIGHT, UTC)
 
-        val extent = Extent(4.0,52.0,4.1,53.0)
+        val extent = Extent(4.0,51.0,4.5,51.5)
         val srs = "EPSG:4326"
         val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, srs)
         val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format ZonedFromDate
@@ -71,7 +74,18 @@ class Sentinel2PyramidFactoryTest {
             from_date, to_date, metadata_properties, correlation_id, datacubeParams
         ).maxBy { case (zoom, _) => zoom }._2
 
-        new OpenEOProcesses().write_geotiffs(baseLayer.toSpatial(),"/tmp/catalog",14)
+        // Compare actual with reference tiles.
+        val actualTiffs = baseLayer.toSpatial().toGeoTiffs(Tags.empty,GeoTiffOptions(DeflateCompression)).collect().toList.map(t => t._2)
+
+        val resources = List("/org/openeo/geotrellis/file/test_dem_Layer/tile0_0.tiff",
+                             "/org/openeo/geotrellis/file/test_dem_Layer/tile0_1.tiff")
+        val refTiffs = ListBuffer[MultibandGeoTiff]()
+        for (resource <- resources) {
+            val refFile = Thread.currentThread().getContextClassLoader.getResource(resource)
+            refTiffs.append(GeoTiff.readMultiband(refFile.getPath))
+        }
+
+        refTiffs.zip(actualTiffs).foreach(t => assertArrayEquals(t._1.toByteArray, t._2.toByteArray))
     }
 
     @Test
