@@ -208,7 +208,7 @@ object FileLayerProvider {
     }
     val sources = sc.parallelize(rasterSources,rasterSources.size)
 
-    val noResampling = metadata.layout.cellSize == maxSpatialResolution
+    val noResampling = metadata.crs.proj4jCrs.getProjection.getName == "utm" && math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
     sc.setJobDescription("Load tiles: " + collection + ", rs: " + noResampling)
     val tiledLayoutSourceRDD =
       sources.map { rs =>
@@ -227,7 +227,8 @@ object FileLayerProvider {
   def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon],polygons_crs: CRS, sc: SparkContext, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy) = {
     val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map{_.reproject(polygons_crs,metadata.crs)}.clipToGrid(metadata.layout).groupByKey()
 
-    val rasterRegionRDD = rasterSources.flatMap { tiledLayoutSource =>
+    val rasterRegionRDD = rasterSources.filter{tiledLayoutSource => tiledLayoutSource.source.extent.interiorIntersects(tiledLayoutSource.layout.extent) }
+      .flatMap { tiledLayoutSource =>
       tiledLayoutSource.keyedRasterRegions()
         .filter({case(key, rasterRegion) => metadata.extent.intersects(key.spatialKey.extent(metadata.layout)) } )
         .map { case (key, rasterRegion) =>
