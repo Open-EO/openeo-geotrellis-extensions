@@ -2,7 +2,7 @@ package org.openeo.geotrellis.layers
 
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
-import geotrellis.layer.{LayoutTileSource, SpaceTimeKey, SpatialKey, ZoomedLayoutScheme}
+import geotrellis.layer.{LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
@@ -20,7 +20,7 @@ import org.openeo.geotrellis.layers.FileLayerProvider.{layerMetadata, rasterSour
 import org.openeo.geotrelliscommon.{NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 
 import java.net.URL
-import java.time.{LocalDate, ZoneId}
+import java.time.{LocalDate, ZoneId, ZonedDateTime}
 
 object FileLayerProviderTest {
   private var sc: SparkContext = _
@@ -36,14 +36,17 @@ object FileLayerProviderTest {
 class FileLayerProviderTest {
   import FileLayerProviderTest._
 
+  private def sentinel5PMaxSpatialResolution = CellSize(0.05, 0.05)
+  private def sentinel5PLayoutScheme = ZoomedLayoutScheme(LatLng)
+  private def sentinel5PCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1"
   private def sentinel5PFileLayerProvider = new FileLayerProvider(
     openSearch = OpenSearchClient(new URL("https://services.terrascope.be/catalogue")),
-    openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1",
+    openSearchCollectionId = sentinel5PCollectionId,
     NonEmptyList.one("NO2"),
     rootPath = "/data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1",
-    maxSpatialResolution = CellSize(0.05, 0.05),
+    maxSpatialResolution = sentinel5PMaxSpatialResolution,
     new Sentinel5PPathDateExtractor(maxDepth = 3),
-    layoutScheme = ZoomedLayoutScheme(LatLng)
+    layoutScheme = sentinel5PLayoutScheme
   )
 
   @Test
@@ -79,44 +82,36 @@ class FileLayerProviderTest {
     assertEquals(25, physicalMean)
   }
 
+
+  private def _getSentinel5PRasterSources(bbox: ProjectedExtent, date: ZonedDateTime, zoom: Int): (RDD[LayoutTileSource[SpaceTimeKey]], TileLayerMetadata[SpaceTimeKey]) = {
+    val fileLayerProvider = sentinel5PFileLayerProvider
+
+    val overlappingRasterSources: Seq[RasterSource] = fileLayerProvider.loadRasterSourceRDD(bbox, date, date, zoom)
+    val commonCellType = overlappingRasterSources.head.cellType
+    val metadata = layerMetadata(bbox, date, date, zoom min zoom, commonCellType, sentinel5PLayoutScheme, sentinel5PMaxSpatialResolution)
+
+    val rasterSources = rasterSourceRDD(overlappingRasterSources, metadata, sentinel5PMaxSpatialResolution, sentinel5PCollectionId)(sc)
+    (rasterSources, metadata)
+  }
+
   @Test
   def sparsePartitionerTest(): Unit = {
-    val layoutScheme = ZoomedLayoutScheme(LatLng)
-    val maxSpatialResolution = CellSize(0.05, 0.05)
-    val openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1"
-    val fileLayerProvider = new FileLayerProvider(
-      openSearch = OpenSearchClient(new URL("https://services.terrascope.be/catalogue")),
-      openSearchCollectionId = openSearchCollectionId,
-      NonEmptyList.one("NO2"),
-      rootPath = "/data/MTDA/TERRASCOPE_Sentinel5P/L3_NO2_TD_V1",
-      maxSpatialResolution = maxSpatialResolution,
-      new Sentinel5PPathDateExtractor(maxDepth = 3),
-      layoutScheme = layoutScheme
-      )
-
     val bbox1 = ProjectedExtent(Extent(xmin = 0.0, ymin = 0.0, xmax = 30.0, ymax = 10.0), LatLng)
     val bbox2 = ProjectedExtent(Extent(xmin = 50.0, ymin = 20.0, xmax = 60.0, ymax = 40.0), LatLng)
     val fullBbox = ProjectedExtent(bbox1.extent.combine(bbox2.extent), LatLng)
-
     val date = LocalDate.of(2020, 1, 1).atStartOfDay(ZoneId.of("UTC"))
 
-    val zoom = 10
-
-    val overlappingRasterSources: Seq[RasterSource] = fileLayerProvider.loadRasterSourceRDD(fullBbox, date, date, zoom)
-    val commonCellType = overlappingRasterSources.head.cellType
-    val metadata = layerMetadata(fullBbox, date, date, zoom min zoom, commonCellType, layoutScheme, maxSpatialResolution)
-
-    val rasterSources = rasterSourceRDD(overlappingRasterSources, metadata, maxSpatialResolution, openSearchCollectionId)(sc)
+    val (rasterSources, metadata) = _getSentinel5PRasterSources(fullBbox, date, 10)
     val polygons = Array(MultiPolygon(bbox1.extent.toPolygon(), bbox2.extent.toPolygon()))
     val polygons_crs = fullBbox.crs
 
-    // Sparse Partitioner
+    // Create the sparse Partitioner.
     val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc, NoCloudFilterStrategy, useSparsePartitioner=true)
     val sparsePartitioner: SpacePartitioner[SpaceTimeKey] = sparseBaseLayer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]]
     assert(sparsePartitioner.index.getClass == classOf[SparseSpaceTimePartitioner])
     val sparsePartitionerIndex = sparsePartitioner.index.asInstanceOf[SparseSpaceTimePartitioner]
 
-    // Default Space Partitioner
+    // Create the default Space Partitioner.
     val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc, NoCloudFilterStrategy, useSparsePartitioner=false)
     val defaultPartitioner: SpacePartitioner[SpaceTimeKey] = defaultBaseLayer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]]
     assert(defaultPartitioner.index == SpaceTimeByMonthPartitioner)
@@ -135,7 +130,7 @@ class FileLayerProviderTest {
       tuple => (tuple.spatialKey, tuple)
     }.rightOuterJoin(requiredKeys).flatMap(_._2._1.toList)
 
-    // Ensure that the sparsePartitioner only created partitions for the required spacetime regions.
+    // Ensure that the sparsePartitioner only creates partitions for the required spacetime regions.
     val requiredRegions = requiredSpacetimeKeys.map(k => sparsePartitionerIndex.toIndex(k))
     assert(requiredRegions.distinct.collect().sorted sameElements sparsePartitioner.regions.sorted)
 
@@ -153,14 +148,33 @@ class FileLayerProviderTest {
 
     // Ensure that the regions in sparsePartitioner are a subset of the default Partitioner.
     sparsePartitioner.regions.toSet.subsetOf(defaultPartitioner.regions.toSet)
+  }
 
-    // Merge test
-    val mergeBbox = ProjectedExtent(Extent(xmin = 55.0, ymin = 20.0, xmax = 65.0, ymax = 40.0), LatLng)
-    val mergePolygons = MultiPolygon(mergeBbox.extent.toPolygon())
+  @Test
+  def sparsePartitionerMergeTest(): Unit = {
+    val zoom = 6
+    // Create the first RDD.
+    val bbox1 = ProjectedExtent(Extent(xmin = 55.0, ymin = 20.0, xmax = 60.0, ymax = 25.0), LatLng)
+    val date = LocalDate.of(2020, 1, 1).atStartOfDay(ZoneId.of("UTC"))
+    val polygons1 = MultiPolygon(bbox1.extent.toPolygon())
+    val (rasterSources1, metadata1) = _getSentinel5PRasterSources(bbox1, date, zoom)
+    val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
+                                                                   bbox1.crs, sc, NoCloudFilterStrategy)
+    val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
+                                                                    bbox1.crs, sc, NoCloudFilterStrategy,
+                                                                    useSparsePartitioner = false)
 
-    val sparseBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(mergePolygons), polygons_crs, sc, NoCloudFilterStrategy, useSparsePartitioner=true)
-    val defaultBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(mergePolygons), polygons_crs, sc, NoCloudFilterStrategy, useSparsePartitioner=false)
+    // Create the second RDD.
+    val bbox2 = ProjectedExtent(Extent(xmin = 58.0, ymin = 20.0, xmax = 62.0, ymax = 25.0), LatLng)
+    val polygons2 = MultiPolygon(bbox2.extent.toPolygon())
+    val (rasterSources2, metadata2) = _getSentinel5PRasterSources(bbox1, date, zoom)
+    val sparseBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources2, metadata2, Array(polygons2),
+                                                                    bbox2.crs, sc, NoCloudFilterStrategy)
+    val defaultBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources2, metadata2, Array(polygons2),
+                                                                     bbox2.crs, sc, NoCloudFilterStrategy,
+                                                                     useSparsePartitioner = false)
 
+    // Merge both RDDs.
     val defaultMergedLayer = defaultBaseLayer.merge(defaultBaseLayer2)
     val defaultMergedLayerKeys = defaultMergedLayer.keys.collect().toSet
     val sparseMergedLayer = sparseBaseLayer.merge(sparseBaseLayer2)
@@ -168,14 +182,30 @@ class FileLayerProviderTest {
 
     assert(defaultMergedLayerKeys.nonEmpty)
     assertEquals(defaultMergedLayerKeys, sparseMergedLayerKeys)
+  }
 
-    // Mask test
-    val maskBbox = ProjectedExtent(Extent(xmin = 60.0, ymin = 20.0, xmax = 62.0, ymax = 40.0), LatLng)
+  @Test
+  def sparsePartitionerMaskTest(): Unit = {
+    // Create the base layers.
+    val bbox = ProjectedExtent(Extent(xmin = 55.0, ymin = 30.0, xmax = 60.0, ymax = 35.0), LatLng)
+    val date = LocalDate.of(2020, 1, 1).atStartOfDay(ZoneId.of("UTC"))
+    val polygons = MultiPolygon(bbox.extent.toPolygon())
+    val (rasterSources, metadata) = _getSentinel5PRasterSources(bbox, date, 8)
+    val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(polygons),
+                                                                   bbox.crs, sc, NoCloudFilterStrategy)
+    val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(polygons),
+                                                                    bbox.crs, sc, NoCloudFilterStrategy,
+                                                                    useSparsePartitioner = false)
+
+    // Create the masked layers.
+    val maskBbox = ProjectedExtent(Extent(xmin = 57.0, ymin = 30.0, xmax = 58.0, ymax = 35.0), LatLng)
     val maskPolygons = MultiPolygon(maskBbox.extent.toPolygon())
-    val defaultMaskedLayer = defaultBaseLayer2.mask(maskPolygons)
+    val defaultMaskedLayer = defaultBaseLayer.mask(maskPolygons)
+    val sparseMaskedLayer = sparseBaseLayer.mask(maskPolygons)
+
     val defaultMaskedLayerKeys = defaultMaskedLayer.keys.collect().toSet
-    val sparseMaskedLayer = sparseBaseLayer2.mask(maskPolygons)
     val sparseMaskedLayerKeys = sparseMaskedLayer.keys.collect().toSet
+
     assert(defaultMaskedLayerKeys.nonEmpty)
     assertEquals(defaultMaskedLayerKeys, sparseMaskedLayerKeys)
   }
