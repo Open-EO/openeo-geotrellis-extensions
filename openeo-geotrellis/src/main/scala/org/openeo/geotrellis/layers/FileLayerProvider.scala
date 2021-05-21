@@ -226,37 +226,48 @@ object FileLayerProvider {
   }
 
   def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon], polygons_crs: CRS, sc: SparkContext, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true) = {
-    val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map {
+    // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
+    val requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map {
       _.reproject(polygons_crs, metadata.crs)
     }.clipToGrid(metadata.layout).groupByKey()
 
-    val requiredSpacetimeKeys: RDD[SpaceTimeKey] = rasterSources.flatMap(_.keys).map {
+    // Remove all source files that do not intersect with the 'interior' of the requested extent.
+    // Note: A normal intersect would also include sources that exactly border the requested extent.
+    val filteredSources: RDD[LayoutTileSource[SpaceTimeKey]] = rasterSources.filter({ tiledLayoutSource =>
+      tiledLayoutSource.source.extent.interiorIntersects(tiledLayoutSource.layout.extent)
+    })
+
+    // The requested sources already contain the requested dates for every tile (if they exist).
+    // We can join these dates with the requested spatial keys.
+    val requiredSpacetimeKeys: RDD[SpaceTimeKey] = filteredSources.flatMap(_.keys).map {
       tuple => (tuple.spatialKey, tuple)
-    }.rightOuterJoin(requiredKeys).flatMap(_._2._1.toList)
+    }.rightOuterJoin(requiredSpatialKeys).flatMap(_._2._1.toList)
 
     val partitioner = useSparsePartitioner match {
       case true => {
+        // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
         val partitionerIndex: PartitionerIndex[SpaceTimeKey] = new SparseSpaceTimePartitioner(requiredSpacetimeKeys)
-        Some(SpacePartitioner[SpaceTimeKey](metadata.bounds)(SpaceTimeKey.Boundable,
-                                                             ClassTag(classOf[SpaceTimeKey]), partitionerIndex))
+        Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,
+                                               ClassTag(classOf[SpaceTimeKey]), partitionerIndex))
       }
       case false => Option.empty
     }
 
-    val rasterRegionRDD = rasterSources.filter
-    { tiledLayoutSource => tiledLayoutSource.source.extent.interiorIntersects(tiledLayoutSource.layout.extent) }
-      .flatMap { tiledLayoutSource =>
-        tiledLayoutSource.keyedRasterRegions()
-          .filter({ case (key, rasterRegion) => metadata.extent.intersects(key.spatialKey.extent(metadata.layout)) })
-          .map { case (key, rasterRegion) =>
-            (key, (rasterRegion, tiledLayoutSource.source.name))
-          }
-      }.map { tuple => (tuple._1.spatialKey, tuple) }
-    // TODO: doesn't this equal an inner join?
-    val filteredRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = rasterRegionRDD.rightOuterJoin(
-      requiredKeys).flatMap { t => t._2._1.toList }
+    // Convert RasterSources to RasterRegions.
+    val rasterRegions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] =
+      filteredSources
+        .flatMap { tiledLayoutSource =>
+          tiledLayoutSource.keyedRasterRegions()
+            .map { case (key, rasterRegion) => (key, (rasterRegion, tiledLayoutSource.source.name)) }
+        }
 
-    rasterRegionsToTiles(filteredRDD, metadata, cloudFilterStrategy, partitioner)
+    // Only use the regions that correspond with a requested spatial key.
+    val requestedRasterRegions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))]  =
+      rasterRegions
+        .map { tuple => (tuple._1.spatialKey, tuple) }
+        .rightOuterJoin(requiredSpatialKeys).flatMap { t => t._2._1.toList }
+
+    rasterRegionsToTiles(requestedRasterRegions, metadata, cloudFilterStrategy, partitioner)
   }
 
   private def rasterRegionsToTiles(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))], metadata: TileLayerMetadata[SpaceTimeKey], cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, partitionerOption: Option[SpacePartitioner[SpaceTimeKey]] = Option.empty) = {
