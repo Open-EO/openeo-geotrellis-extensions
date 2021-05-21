@@ -2,7 +2,7 @@ package org.openeo.geotrellis.layers
 
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
-import geotrellis.layer.{SpaceTimeKey, SpatialKey, ZoomedLayoutScheme}
+import geotrellis.layer.{LayoutTileSource, SpaceTimeKey, SpatialKey, ZoomedLayoutScheme}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
@@ -127,7 +127,11 @@ class FileLayerProviderTest {
       _.reproject(polygons_crs, metadata.crs)
     }.clipToGrid(metadata.layout).groupByKey()
 
-    val requiredSpacetimeKeys: RDD[SpaceTimeKey] = rasterSources.flatMap(_.keys).map {
+    val filteredSources: RDD[LayoutTileSource[SpaceTimeKey]] = rasterSources.filter({ tiledLayoutSource =>
+      tiledLayoutSource.source.extent.interiorIntersects(tiledLayoutSource.layout.extent)
+    })
+
+    val requiredSpacetimeKeys: RDD[SpaceTimeKey] = filteredSources.flatMap(_.keys).map {
       tuple => (tuple.spatialKey, tuple)
     }.rightOuterJoin(requiredKeys).flatMap(_._2._1.toList)
 
@@ -137,11 +141,42 @@ class FileLayerProviderTest {
 
     // Even though both RDDs have a different number of partitions, the keys for both RDDs are the same.
     // This means that the default partitioner has many empty partitions that have no source.
-    assert(sparseBaseLayer.keys.collect().sorted sameElements defaultBaseLayer.keys.collect().sorted)
-    //assert(sparseBaseLayer.keys.collect().sorted sameElements requiredSpacetimeKeys.collect().sorted) // TODO: Sometimes requiredKeys > layerKeys
-    //assert(defaultBaseLayer.keys.collect().sorted sameElements requiredSpacetimeKeys.collect().sorted)
+    val sparseKeys = sparseBaseLayer.keys.collect().sorted
+    val defaultKeys = defaultBaseLayer.keys.collect().sorted
+    assert(sparseKeys sameElements defaultKeys)
+
+    // Keys corresponding with NoDataTiles are removed from the final RDD.
+    // Which means those few partitions will still be empty.
+    val partitionKeys = requiredSpacetimeKeys.collect().sorted.toSet
+    assert(sparseKeys.toSet.subsetOf(partitionKeys))
+    assert(defaultKeys.toSet.subsetOf(partitionKeys))
 
     // Ensure that the regions in sparsePartitioner are a subset of the default Partitioner.
     sparsePartitioner.regions.toSet.subsetOf(defaultPartitioner.regions.toSet)
+
+    // Merge test
+    val mergeBbox = ProjectedExtent(Extent(xmin = 55.0, ymin = 20.0, xmax = 65.0, ymax = 40.0), LatLng)
+    val mergePolygons = MultiPolygon(mergeBbox.extent.toPolygon())
+
+    val sparseBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(mergePolygons), polygons_crs, sc, NoCloudFilterStrategy, useSparsePartitioner=true)
+    val defaultBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(mergePolygons), polygons_crs, sc, NoCloudFilterStrategy, useSparsePartitioner=false)
+
+    val defaultMergedLayer = defaultBaseLayer.merge(defaultBaseLayer2)
+    val defaultMergedLayerKeys = defaultMergedLayer.keys.collect().toSet
+    val sparseMergedLayer = sparseBaseLayer.merge(sparseBaseLayer2)
+    val sparseMergedLayerKeys = sparseMergedLayer.keys.collect().toSet
+
+    assert(defaultMergedLayerKeys.nonEmpty)
+    assertEquals(defaultMergedLayerKeys, sparseMergedLayerKeys)
+
+    // Mask test
+    val maskBbox = ProjectedExtent(Extent(xmin = 60.0, ymin = 20.0, xmax = 62.0, ymax = 40.0), LatLng)
+    val maskPolygons = MultiPolygon(maskBbox.extent.toPolygon())
+    val defaultMaskedLayer = defaultBaseLayer2.mask(maskPolygons)
+    val defaultMaskedLayerKeys = defaultMaskedLayer.keys.collect().toSet
+    val sparseMaskedLayer = sparseBaseLayer2.mask(maskPolygons)
+    val sparseMaskedLayerKeys = sparseMaskedLayer.keys.collect().toSet
+    assert(defaultMaskedLayerKeys.nonEmpty)
+    assertEquals(defaultMaskedLayerKeys, sparseMaskedLayerKeys)
   }
 }
