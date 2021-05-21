@@ -246,7 +246,8 @@ object FileLayerProvider {
     val partitioner = useSparsePartitioner match {
       case true => {
         // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
-        val partitionerIndex: PartitionerIndex[SpaceTimeKey] = new SparseSpaceTimePartitioner(requiredSpacetimeKeys)
+        val indices = requiredSpacetimeKeys.map(SparseSpaceTimePartitioner.toIndex(_)).distinct().collect().sorted
+        val partitionerIndex: PartitionerIndex[SpaceTimeKey] = new SparseSpaceTimePartitioner(indices)
         Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,
                                                ClassTag(classOf[SpaceTimeKey]), partitionerIndex))
       }
