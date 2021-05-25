@@ -585,6 +585,7 @@ object TileSeeder {
       jCommander.usage()
     } else {
       val date = jCommanderArgs.date
+      val datePattern = jCommanderArgs.datePattern
       val productType = jCommanderArgs.productType
       val layer = jCommanderArgs.layer
       val rootPath = jCommanderArgs.rootPath
@@ -608,7 +609,7 @@ object TileSeeder {
             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
             .set("spark.kryoserializer.buffer.max", "1024m"))
 
-      seeder.renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, tooCloudyFile = tooCloudyFile, oscarsEndpoint = oscarsEndpoint, oscarsCollection = oscarsCollection)
+      seeder.renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, tooCloudyFile = tooCloudyFile, oscarsEndpoint = oscarsEndpoint, oscarsCollection = oscarsCollection, datePattern=datePattern)
 
       sc.stop()
     }
