@@ -219,6 +219,7 @@ package object geotiff {
 
   }
 
+  // This implementation does not properly work, output tiffs are not properly aligned and colors are also incorrect
   def saveRDDGenericTileGrid[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K], bandCount:Int, path:String, tileGrid: String, zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]) = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
     val croppedExtent: Extent = preProcessResult._2
