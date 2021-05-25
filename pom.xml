@@ -10,7 +10,7 @@
         <gt-version>21.2</gt-version>
         <hadoop.version>3.1.1</hadoop.version>
         <avro.version>1.7.7</avro.version>
-        <spark.version>2.4.7</spark.version>
+        <spark.version>3.1.1</spark.version>
         <scala.binary.version>2.12</scala.binary.version>
         <scala.version>2.12.12</scala.version>
         <geotrellis.version>3.5.0</geotrellis.version>
