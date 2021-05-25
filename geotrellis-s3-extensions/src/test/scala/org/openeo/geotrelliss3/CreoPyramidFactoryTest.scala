@@ -1,12 +1,7 @@
 package org.openeo.geotrelliss3
 
-import java.net.URI
-import java.nio.file.{Files, Path, Paths}
-import java.time.format.DateTimeFormatter
-import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
-import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
-import java.util
-
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.{FeatureCollection, Link}
+import be.vito.eodata.gwcgeotrellis.opensearch.{OpenSearchClient, OpenSearchResponses}
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.{GeoTiff, MultibandGeoTiff}
 import geotrellis.raster.{ArrayTile, CellSize, MultibandTile, Raster, Tile, UShortConstantNoDataCellType}
@@ -19,11 +14,14 @@ import org.junit.{AfterClass, BeforeClass, Ignore, Test, _}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.file.Sentinel2PyramidFactory
 import org.openeo.geotrellis.geotiff.saveRDD
-import org.openeo.geotrellis.layers.OpenSearchResponses.{FeatureCollection, Link}
-import org.openeo.geotrellis.layers.{OpenSearch, OpenSearchResponses}
 
+import java.net.URI
+import java.nio.file.{Files, Path, Paths}
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
+import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
+import java.util
 import scala.collection.mutable.ListBuffer
-
 
 object CreoPyramidFactoryTest {
 
@@ -59,8 +57,9 @@ class CreoPyramidFactoryTest {
     FileUtils.deleteDirectory(tmpDir.toFile)
   }
 
-  class MockOpenSearch extends OpenSearch {
-    override def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, processingLevel: String, attributeValues: collection.Map[String, Any], correlationId: String): Seq[OpenSearchResponses.Feature] = {
+  class MockOpenSearch extends OpenSearchClient {
+    override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
+      val start = dateRange.get._1
       Seq(OpenSearchResponses.Feature(id="bla",bbox.extent,start, Array(
         Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/IMG_DATA/R10m/T37SBT_20190101T082331_B02_10m.jp2"), Some("IMG_DATA_Band_B02_10m_Tile1_Data")),
         Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/IMG_DATA/R10m/T37SBT_20190101T082331_B03_10m.jp2"), Some("IMG_DATA_Band_B03_10m_Tile1_Data")),
@@ -69,9 +68,10 @@ class CreoPyramidFactoryTest {
       ),Some(10)))
     }
 
-    override protected def getProducts(collectionId: String, start: ZonedDateTime, end: ZonedDateTime, bbox: ProjectedExtent, processingLevel: String, attributeValues: collection.Map[String, Any], startIndex: Int, correlationId: String): OpenSearchResponses.FeatureCollection = {
+    override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = {
+      val start = dateRange.get._1
       FeatureCollection(1,
-      Seq(OpenSearchResponses.Feature(id="bla",bbox.extent,start, Array(
+      Seq(OpenSearchResponses.Feature(id="bla",bbox.extent, start, Array(
         Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/IMG_DATA/R10m/T37SBT_20190101T082331_B02_10m.jp2"), Some("IMG_DATA_Band_B02_10m_Tile1_Data")),
         Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/IMG_DATA/R10m/T37SBT_20190101T082331_B03_10m.jp2"), Some("IMG_DATA_Band_B03_10m_Tile1_Data")),
         Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/IMG_DATA/R10m/T37SBT_20190101T082331_B04_10m.jp2"), Some("IMG_DATA_Band_B04_10m_Tile1_Data"))
@@ -163,7 +163,7 @@ class CreoPyramidFactoryTest {
 
     val pyramidFactory = new Sentinel2PyramidFactory(openSearchEndpoint="https://finder.creodias.eu/resto/api/collections/" ,openSearchCollectionId = "Sentinel2",openSearchLinkTitles = util.Arrays.asList("IMG_DATA_Band_B02_10m_Tile1_Data","S2_Level-2A_Tile1_Metadata##3","S2_Level-2A_Tile1_Metadata##1"),rootPath = "/eodata",
       maxSpatialResolution = CellSize(10,10)){
-      override def createOpenSearch: OpenSearch = new MockOpenSearch
+      override def createOpenSearch: OpenSearchClient = new MockOpenSearch
     }
 
     val date = "2019-01-01T00:00:00+00:00"
@@ -200,7 +200,7 @@ class CreoPyramidFactoryTest {
   def testCreoPyramidDatacubePolygons(): Unit = {
     val pyramidFactory = new Sentinel2PyramidFactory(openSearchEndpoint="https://finder.creodias.eu/resto/api/collections/" ,openSearchCollectionId = "Sentinel2",openSearchLinkTitles = util.Arrays.asList("IMG_DATA_Band_B02_10m_Tile1_Data","IMG_DATA_Band_B03_10m_Tile1_Data","IMG_DATA_Band_B04_10m_Tile1_Data"),rootPath = "/eodata",
       maxSpatialResolution = CellSize(10,10)){
-      override def createOpenSearch: OpenSearch = new MockOpenSearch
+      override def createOpenSearch: OpenSearchClient = new MockOpenSearch
     }
 
 
