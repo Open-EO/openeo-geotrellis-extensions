@@ -23,6 +23,7 @@ object PyramidFactory {
   private val logger = LoggerFactory.getLogger(classOf[PyramidFactory])
 
   // convenience method for Python client
+  // TODO: change name? A 429 response makes it rate-limited anyway.
   def rateLimited(endpoint: String, datasetId: String, clientId: String, clientSecret: String,
                   processingOptions: util.Map[String, Any], sampleType: SampleType): PyramidFactory =
     new PyramidFactory(endpoint, datasetId, clientId, clientSecret, processingOptions, sampleType, RlGuardAdapter)
@@ -71,10 +72,18 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
     assert(partitioner.index == SpaceTimeByMonthPartitioner)
 
     val tilesRdd = sc.parallelize(overlappingKeys)
-      .map(key => (key,
-        retrieveTileFromSentinelHub(endpoint, datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs),
-          key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, bandNames, sampleType,
-          metadataProperties, processingOptions, clientId, clientSecret)))
+      .map { key =>
+        val width = layout.tileLayout.tileCols
+        val height = layout.tileLayout.tileRows
+
+        awaitRateLimitingGuardDelay(bandNames, width, height)
+
+        val tile = retrieveTileFromSentinelHub(endpoint, datasetId, ProjectedExtent(key.spatialKey.extent(layout),
+          targetCrs), key.temporalKey, width, height, bandNames, sampleType, metadataProperties, processingOptions,
+          clientId, clientSecret)
+
+        (key, tile)
+      }
       .filter(_._2.bands.exists(b => !b.isNoDataTile))
       .partitionBy(partitioner)
 
@@ -152,17 +161,7 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
 
         def loadMasked(key: SpaceTimeKey): Option[MultibandTile] = {
           def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile = {
-            val delay = rateLimitingGuard.delay(
-              batchProcessing = false,
-              width, height,
-              bandNames.count(_ != "dataMask"),
-              outputFormat = "tiff32",
-              nDataSamples = bandNames.size,
-              s1Orthorectification = false
-            )
-
-            logger.debug(s"$rateLimitingGuard says to wait $delay")
-            TimeUnit.MILLISECONDS.sleep(delay.toMillis)
+            awaitRateLimitingGuardDelay(bandNames, width, height)
 
             retrieveTileFromSentinelHub(endpoint, datasetId, projectedExtent, key.temporalKey, width, height, bandNames,
               sampleType, metadata_properties, processingOptions, clientId, clientSecret)
@@ -214,6 +213,20 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
     }
 
     Seq(0 -> cube)
+  }
+
+  private def awaitRateLimitingGuardDelay(bandNames: Seq[String], width: Int, height: Int): Unit = {
+    val delay = rateLimitingGuard.delay(
+      batchProcessing = false,
+      width, height,
+      bandNames.count(_ != "dataMask"),
+      outputFormat = "tiff32",
+      nDataSamples = bandNames.size,
+      s1Orthorectification = false
+    )
+
+    logger.debug(s"$rateLimitingGuard says to wait $delay")
+    TimeUnit.MILLISECONDS.sleep(delay.toMillis)
   }
 
   private val maxSpatialResolution: CellSize = CellSize(10, 10)
