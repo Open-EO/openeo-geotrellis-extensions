@@ -26,7 +26,7 @@ object PyramidFactory {
   // TODO: change name? A 429 response makes it rate-limited anyway.
   def rateLimited(endpoint: String, datasetId: String, clientId: String, clientSecret: String,
                   processingOptions: util.Map[String, Any], sampleType: SampleType): PyramidFactory =
-    new PyramidFactory(endpoint, datasetId, clientId, clientSecret, processingOptions, sampleType, RlGuardAdapter)
+    new PyramidFactory(endpoint, datasetId, clientId, clientSecret, processingOptions, sampleType, new RlGuardAdapter)
 }
 
 class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clientSecret: String,

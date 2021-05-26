@@ -128,7 +128,7 @@ class PyramidFactoryTest {
       }
 
       val endpoint = "https://services.sentinel-hub.com"
-      val pyramidFactory = new PyramidFactory(endpoint, "S2L2A", clientId, clientSecret)
+      val pyramidFactory = new PyramidFactory(endpoint, "S2L2A", clientId, clientSecret, rateLimitingGuard = new RlGuardAdapter)
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
