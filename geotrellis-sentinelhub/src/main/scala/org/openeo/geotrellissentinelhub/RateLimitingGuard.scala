@@ -20,6 +20,8 @@ object NoRateLimitingGuard extends RateLimitingGuard with Serializable {
 }
 
 class RlGuardAdapter extends RateLimitingGuard with Serializable {
+  private val newline = System.lineSeparator()
+
   override def delay(batchProcessing: Boolean, width: Int, height: Int, nInputBandsWithoutDatamask: Int,
                      outputFormat: String, nDataSamples: Int, s1Orthorectification: Boolean): Duration = {
     val requestParams = Map(
@@ -44,7 +46,7 @@ class RlGuardAdapter extends RateLimitingGuard with Serializable {
 
     try {
       val rlGuardAdapterOutput = rlGuardAdapterInvocation
-        .!!(ProcessLogger(fout = _ => (), ferr = s => stdErrBuffer.append(s)))
+        .!!(ProcessLogger(fout = _ => (), ferr = s => stdErrBuffer.append(s).append(newline)))
 
       val delayInSeconds = decode[Map[String, Double]](rlGuardAdapterOutput.trim)
         .map(result => result("delay_s"))
@@ -54,7 +56,8 @@ class RlGuardAdapter extends RateLimitingGuard with Serializable {
     } catch {
       case e: RuntimeException if e.getMessage startsWith "Nonzero exit value: " => // actual exception is undocumented
         // propagate to driver with more context
-        val message = s"""Failed to invoke rate-limiting guard process "$rlGuardAdapterInvocation":\n$stdErrBuffer"""
+        val stderr = stdErrBuffer.result().trim
+        val message = s"""Failed to invoke rate-limiting guard process "$rlGuardAdapterInvocation":$newline$stderr"""
         throw new IOException(message, e)
     }
   }
