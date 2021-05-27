@@ -23,8 +23,8 @@ class MaskArrayConverter extends IStringConverter[Array[Int]] {
 }
 
 class JCommanderArgs {
-  @Parameter(names = Array("--date", "-d"), required = true, description = "a date (yyyy-MM-ddThh:mm:ss.sssZ)")
-  var date: String = _
+  @Parameter(names = Array("--date", "-d"), required = false, description = "a date (yyyy-MM-ddThh:mm:ss.sssZ)")
+  var date: String = ""
 
   @Parameter(names = Array("--datePattern"), required = false, description = "date pattern to use in product glob", converter = classOf[StringOptionConverter])
   var datePattern: Option[String] = None
