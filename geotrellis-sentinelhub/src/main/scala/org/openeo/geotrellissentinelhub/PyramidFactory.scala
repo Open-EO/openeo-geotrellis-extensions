@@ -15,12 +15,27 @@ import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
 import org.openeo.geotrelliscommon.{DataCubeParameters, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
+import org.slf4j.LoggerFactory
 
+import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
+
+object PyramidFactory {
+  private val logger = LoggerFactory.getLogger(classOf[PyramidFactory])
+
+  // convenience method for Python client
+  // TODO: change name? A 429 response makes it rate-limited anyway.
+  def rateLimited(endpoint: String, datasetId: String, clientId: String, clientSecret: String,
+                  processingOptions: util.Map[String, Any], sampleType: SampleType): PyramidFactory =
+    new PyramidFactory(endpoint, datasetId, clientId, clientSecret, processingOptions, sampleType, new RlGuardAdapter)
+}
 
 class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clientSecret: String,
                      processingOptions: util.Map[String, Any] = util.Collections.emptyMap[String, Any],
-                     sampleType: SampleType = UINT16) extends Serializable {
+                     sampleType: SampleType = UINT16,
+                     rateLimitingGuard: RateLimitingGuard = NoRateLimitingGuard) extends Serializable {
+  import PyramidFactory._
+
   private val maxZoom = 14
 
   // TODO: replace with a call to CatalogApi to limit the number of requests esp. wrt/ orbit direction?
@@ -58,10 +73,18 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
     assert(partitioner.index == SpaceTimeByMonthPartitioner)
 
     val tilesRdd = sc.parallelize(overlappingKeys)
-      .map(key => (key,
-        retrieveTileFromSentinelHub(endpoint, datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs),
-          key.temporalKey, layout.tileLayout.tileCols, layout.tileLayout.tileRows, bandNames, sampleType,
-          metadataProperties, processingOptions, clientId, clientSecret)))
+      .map { key =>
+        val width = layout.tileLayout.tileCols
+        val height = layout.tileLayout.tileRows
+
+        awaitRateLimitingGuardDelay(bandNames, width, height)
+
+        val tile = retrieveTileFromSentinelHub(endpoint, datasetId, ProjectedExtent(key.spatialKey.extent(layout),
+          targetCrs), key.temporalKey, width, height, bandNames, sampleType, metadataProperties, processingOptions,
+          clientId, clientSecret)
+
+        (key, tile)
+      }
       .filter(_._2.bands.exists(b => !b.isNoDataTile))
       .partitionBy(partitioner)
 
@@ -135,12 +158,15 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
           spatialKey <- layout.mapTransform.keysForGeometry(GeometryCollection(polygons))
         } yield SpaceTimeKey(spatialKey, date)
 
-        val maskClouds = dataCubeParameters.maskingStrategyParameters.get("method") == "mask_scl_dilation" // TODO: what's up with this warning
+        val maskClouds = dataCubeParameters.maskingStrategyParameters.get("method") == "mask_scl_dilation" // TODO: what's up with this warning in Idea?
 
         def loadMasked(key: SpaceTimeKey): Option[MultibandTile] = {
-          def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile =
+          def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile = {
+            awaitRateLimitingGuardDelay(bandNames, width, height)
+
             retrieveTileFromSentinelHub(endpoint, datasetId, projectedExtent, key.temporalKey, width, height, bandNames,
               sampleType, metadata_properties, processingOptions, clientId, clientSecret)
+          }
 
           val keyExtent = key.spatialKey.extent(layout)
 
@@ -187,6 +213,20 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
     }
 
     Seq(0 -> cube)
+  }
+
+  private def awaitRateLimitingGuardDelay(bandNames: Seq[String], width: Int, height: Int): Unit = {
+    val delay = rateLimitingGuard.delay(
+      batchProcessing = false,
+      width, height,
+      bandNames.count(_ != "dataMask"),
+      outputFormat = "tiff32",
+      nDataSamples = bandNames.size,
+      s1Orthorectification = false
+    )
+
+    logger.debug(s"$rateLimitingGuard says to wait $delay")
+    TimeUnit.MILLISECONDS.sleep(delay.toMillis)
   }
 
   private val maxSpatialResolution: CellSize = CellSize(10, 10)
