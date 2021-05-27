@@ -24,7 +24,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
-import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.slf4j.LoggerFactory
 
 import scala.collection.immutable
@@ -247,8 +247,16 @@ object FileLayerProvider {
     val partitioner = useSparsePartitioner match {
       case true => {
         // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
-        val indices = requiredSpacetimeKeys.map(SparseSpaceTimePartitioner.toIndex(_)).distinct().collect().sorted
-        val partitionerIndex: PartitionerIndex[SpaceTimeKey] = new SparseSpaceTimePartitioner(indices)
+        val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(8)
+        val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
+          if(datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution!= "ByDay") {
+            val indices = requiredSpacetimeKeys.map(SparseSpaceOnlyPartitioner.toIndex(_,indexReduction = reduction)).distinct().collect().sorted
+            new SparseSpaceOnlyPartitioner(indices,reduction)
+          }else{
+            val indices = requiredSpacetimeKeys.map(SparseSpaceTimePartitioner.toIndex(_,indexReduction = reduction)).distinct().collect().sorted
+            new SparseSpaceTimePartitioner(indices,reduction)
+          }
+        }
         Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,
                                                ClassTag(classOf[SpaceTimeKey]), partitionerIndex))
       }

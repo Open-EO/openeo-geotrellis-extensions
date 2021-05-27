@@ -2,9 +2,16 @@ package org.openeo
 
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.spark.partition.PartitionerIndex
+import org.locationtech.sfcurve.zorder.Z2
 import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 
 package object geotrelliscommon {
+
+  object SparseSpaceOnlyPartitioner {
+    // Shift by 8 removes the last 8 bytes: 256 tiles max in one partition.
+    def toIndex(key: SpaceTimeKey, indexReduction:Int = 8): BigInt = Z2(key.col,key.row).z >> indexReduction
+  }
+
   object SparseSpaceTimePartitioner {
     val keyIndex = SfCurveZSpaceTimeKeyIndex.byDay(null)
 
@@ -15,6 +22,15 @@ package object geotrelliscommon {
   class SparseSpaceTimePartitioner (val indices: Array[BigInt], val indexReduction:Int = 8) extends PartitionerIndex[SpaceTimeKey] {
 
     def toIndex(key: SpaceTimeKey): BigInt = SparseSpaceTimePartitioner.toIndex(key, indexReduction)
+
+    def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
+      indices.map(i => (i,i))
+    }
+  }
+
+  class SparseSpaceOnlyPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8) extends PartitionerIndex[SpaceTimeKey] {
+
+    def toIndex(key: SpaceTimeKey): BigInt = SparseSpaceOnlyPartitioner.toIndex(key, indexReduction)
 
     def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
       indices.map(i => (i,i))
