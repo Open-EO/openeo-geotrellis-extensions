@@ -1,5 +1,12 @@
 package org.openeo.geotrelliss3
 
+import java.net.URI
+import java.nio.file.{Files, Path, Paths}
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
+import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
+import java.util
+
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.{FeatureCollection, Link}
 import be.vito.eodata.gwcgeotrellis.opensearch.{OpenSearchClient, OpenSearchResponses}
 import geotrellis.proj4.CRS
@@ -15,12 +22,6 @@ import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.file.Sentinel2PyramidFactory
 import org.openeo.geotrellis.geotiff.saveRDD
 
-import java.net.URI
-import java.nio.file.{Files, Path, Paths}
-import java.time.format.DateTimeFormatter
-import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
-import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
-import java.util
 import scala.collection.mutable.ListBuffer
 
 object CreoPyramidFactoryTest {
@@ -223,6 +224,8 @@ class CreoPyramidFactoryTest {
       .distinct()
       .collect()
       .sortWith(_ isBefore _)
+
+    assertFalse(timestamps.isEmpty)
 
     for (timestamp <- timestamps) {
       val Raster(multibandTile, extent) = rdd
