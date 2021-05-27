@@ -3,8 +3,8 @@ package org.openeo.geotrellissentinelhub
 import cats.syntax.either._
 import io.circe.parser.decode
 import io.circe.syntax._
-import org.slf4j.LoggerFactory
 
+import java.io.IOException
 import java.time.Duration
 import scala.sys.process._
 
@@ -19,13 +19,7 @@ object NoRateLimitingGuard extends RateLimitingGuard with Serializable {
                      s1Orthorectification: Boolean): Duration = Duration.ZERO
 }
 
-object RlGuardAdapter {
-  private val logger = LoggerFactory.getLogger(classOf[RlGuardAdapter])
-}
-
 class RlGuardAdapter extends RateLimitingGuard with Serializable {
-  import RlGuardAdapter._
-
   override def delay(batchProcessing: Boolean, width: Int, height: Int, nInputBandsWithoutDatamask: Int,
                      outputFormat: String, nDataSamples: Int, s1Orthorectification: Boolean): Duration = {
     val requestParams = Map(
@@ -38,22 +32,30 @@ class RlGuardAdapter extends RateLimitingGuard with Serializable {
       "s1_orthorectification" -> s1Orthorectification.asJson
     )
 
-    if (logger.isDebugEnabled()) {
-      val python = System.getenv("PYSPARK_PYTHON")
-      logger.debug(if (python != null) s"$python: ${Seq(python, "-V").!!}" else "PYSPARK_PYTHON is not set")
-    }
+    val python = System.getenv("PYSPARK_PYTHON")
 
-    val rlGuardAdapterInvocation = Seq("python", "-m", "openeogeotrellis.sentinel_hub.rlguard_adapter",
+    if (python == null)
+      throw new IllegalStateException("Cannot invoke rate-limiting guard process because PYSPARK_PYTHON is not set")
+
+    val rlGuardAdapterInvocation = Seq(python, "-m", "openeogeotrellis.sentinel_hub.rlguard_adapter",
       requestParams.asJson.noSpaces)
 
-    val rlGuardAdapterOutput = rlGuardAdapterInvocation
-      .!!(ProcessLogger(fout = _ => (), ferr = logger.error))
-      .trim
+    val stdErrBuffer = new StringBuilder
 
-    val delayInSeconds = decode[Map[String, Double]](rlGuardAdapterOutput)
-      .map(result => result("delay_s"))
-      .valueOr(throw _)
+    try {
+      val rlGuardAdapterOutput = rlGuardAdapterInvocation
+        .!!(ProcessLogger(fout = _ => (), ferr = s => stdErrBuffer.append(s)))
 
-    Duration.ofMillis((delayInSeconds * 1000).toLong)
+      val delayInSeconds = decode[Map[String, Double]](rlGuardAdapterOutput.trim)
+        .map(result => result("delay_s"))
+        .valueOr(throw _)
+
+      Duration.ofMillis((delayInSeconds * 1000).toLong)
+    } catch {
+      case e: RuntimeException if e.getMessage startsWith "Nonzero exit value: " => // actual exception is undocumented
+        // propagate to driver with more context
+        val message = s"""Failed to invoke rate-limiting guard process "$rlGuardAdapterInvocation":\n$stdErrBuffer"""
+        throw new IOException(message, e)
+    }
   }
 }
