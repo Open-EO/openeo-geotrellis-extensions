@@ -9,12 +9,12 @@ package object geotrelliscommon {
     val keyIndex = SfCurveZSpaceTimeKeyIndex.byDay(null)
 
     // Shift by 8 removes the last 8 bytes: 256 tiles max in one partition.
-    def toIndex(key: SpaceTimeKey): BigInt = keyIndex.toIndex(key) >> 8
+    def toIndex(key: SpaceTimeKey, indexReduction:Int = 8): BigInt = keyIndex.toIndex(key) >> indexReduction
   }
 
-  class SparseSpaceTimePartitioner (val indices: Array[BigInt]) extends PartitionerIndex[SpaceTimeKey] {
+  class SparseSpaceTimePartitioner (val indices: Array[BigInt], val indexReduction:Int = 8) extends PartitionerIndex[SpaceTimeKey] {
 
-    def toIndex(key: SpaceTimeKey): BigInt = SparseSpaceTimePartitioner.toIndex(key)
+    def toIndex(key: SpaceTimeKey): BigInt = SparseSpaceTimePartitioner.toIndex(key, indexReduction)
 
     def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
       indices.map(i => (i,i))

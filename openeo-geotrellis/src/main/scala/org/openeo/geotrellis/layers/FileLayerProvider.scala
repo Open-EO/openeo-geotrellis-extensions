@@ -1,5 +1,11 @@
 package org.openeo.geotrellis.layers
 
+import java.net.{URI, URL}
+import java.nio.file.{Path, Paths}
+import java.time.temporal.ChronoUnit
+import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
+import java.util.concurrent.TimeUnit
+
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Feature
 import cats.data.NonEmptyList
@@ -21,11 +27,6 @@ import org.locationtech.proj4j.proj.TransverseMercatorProjection
 import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 import org.slf4j.LoggerFactory
 
-import java.net.{URI, URL}
-import java.nio.file.{Path, Paths}
-import java.time.temporal.ChronoUnit
-import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
-import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
@@ -225,7 +226,7 @@ object FileLayerProvider {
     tiledLayoutSourceRDD
   }
 
-  def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon], polygons_crs: CRS, sc: SparkContext, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true) = {
+  def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon], polygons_crs: CRS, sc: SparkContext, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = Option.empty) = {
     // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
     val requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map {
       _.reproject(polygons_crs, metadata.crs)
@@ -422,7 +423,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       (_, sclBandIndex) <- openSearchLinkTitles.zipWithIndex.find { case (linkTitle, _) => linkTitle.contains("SCENECLASSIFICATION") || linkTitle.contains("SCL") }
     } yield new SCLConvolutionFilterStrategy(sclBandIndex)
 
-    FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc, maskStrategy.getOrElse(NoCloudFilterStrategy), true)
+    FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc, maskStrategy.getOrElse(NoCloudFilterStrategy), datacubeParams=datacubeParams)
   }
 
   override def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, zoom: Int = maxZoom, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {

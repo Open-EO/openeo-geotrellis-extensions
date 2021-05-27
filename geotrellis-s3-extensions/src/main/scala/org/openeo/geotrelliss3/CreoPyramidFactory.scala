@@ -37,6 +37,12 @@ object CreoPyramidFactory {
   }
 }
 
+/**
+ * DEPRECATED: on Creo, we are now able to use the regular Sentinel-2 pyramidfactory
+ * @param productPaths
+ * @param bands
+ */
+@Deprecated
 class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends Serializable {
 
   import CreoPyramidFactory._
