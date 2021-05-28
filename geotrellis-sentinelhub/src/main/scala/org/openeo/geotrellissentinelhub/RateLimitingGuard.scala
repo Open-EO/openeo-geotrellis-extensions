@@ -1,8 +1,10 @@
 package org.openeo.geotrellissentinelhub
 
 import cats.syntax.either._
+import io.circe.Json
 import io.circe.parser.decode
 import io.circe.syntax._
+import org.slf4j.LoggerFactory
 
 import java.io.IOException
 import java.time.Duration
@@ -19,7 +21,13 @@ object NoRateLimitingGuard extends RateLimitingGuard with Serializable {
                      s1Orthorectification: Boolean): Duration = Duration.ZERO
 }
 
+object RlGuardAdapter {
+  private val logger = LoggerFactory.getLogger(classOf[RlGuardAdapter])
+}
+
 class RlGuardAdapter extends RateLimitingGuard with Serializable {
+  import RlGuardAdapter._
+
   private val newline = System.lineSeparator()
 
   override def delay(batchProcessing: Boolean, width: Int, height: Int, nInputBandsWithoutDatamask: Int,
@@ -48,8 +56,15 @@ class RlGuardAdapter extends RateLimitingGuard with Serializable {
       val rlGuardAdapterOutput = rlGuardAdapterInvocation
         .!!(ProcessLogger(fout = _ => (), ferr = s => stdErrBuffer.append(s).append(newline)))
 
-      val delayInSeconds = decode[Map[String, Double]](rlGuardAdapterOutput.trim)
-        .map(result => result("delay_s"))
+      val delayInSeconds = decode[Map[String, Json]](rlGuardAdapterOutput.trim)
+        .map { result =>
+          val error = result.get("error").flatMap(_.asString)
+
+          error match {
+            case Some(message) => logger.error(message); 0.0 // retry with exponential backoff
+            case _ => result("delay_s").asNumber.map(_.toDouble).get
+          }
+        }
         .valueOr(throw _)
 
       Duration.ofMillis((delayInSeconds * 1000).toLong)
