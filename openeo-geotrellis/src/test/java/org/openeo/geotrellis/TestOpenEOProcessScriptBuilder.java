@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -714,6 +715,36 @@ public class TestOpenEOProcessScriptBuilder {
         assertTileEquals(tile0, res);
         assertTileEquals(tile0, result.apply(1));
         assertTileEquals(tile1, result.apply(2));
+    }
+
+    @DisplayName("Test array_interpolate_linear process")
+    @Test
+    public void testArrayInterpolateLinear() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.emptyMap();
+        builder.expressionStart("array_interpolate_linear", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_interpolate_linear",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        ByteArrayTile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
+        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile,nodataTile,tile0, nodataTile,tile1, nodataTile,nodataTile,tile0,nodataTile).stream().map(byteArrayTile -> byteArrayTile.copy()).collect(Collectors.toList())));
+        assertEquals(9,result.size());
+        assertTrue(result.apply(0).isNoDataTile());
+        assertTrue(result.apply(1).isNoDataTile());
+        assertEquals(10,result.apply(2).get(0,0));
+        assertEquals(8,result.apply(3).get(0,0));
+        assertEquals(5,result.apply(4).get(0,0));
+        assertEquals(6,result.apply(5).get(0,0));
+        assertEquals(8,result.apply(6).get(0,0));
+        assertEquals(10,result.apply(7).get(0,0));
+        assertTrue(result.apply(8).isNoDataTile());
+
     }
 
 
