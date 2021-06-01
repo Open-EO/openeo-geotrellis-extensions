@@ -90,7 +90,7 @@ class OpenEOProcesses extends Serializable {
       val firstTile = tiles._2.head._2
       val labels = tiles._2.map(_._1)
       val resultMap: mutable.Map[SpaceTimeKey,mutable.ListBuffer[Tile]] = mutable.Map()
-      for( b <- 0 to firstTile.bandCount){
+      for( b <- 0 until firstTile.bandCount){
         val temporalTile = MultibandTile(tiles._2.map(_._2.band(b)))
         val resultTiles = function(temporalTile.bands)
         var resultLabels: Iterable[(SpaceTimeKey,Tile)] = labels.zip(resultTiles)
