@@ -720,14 +720,7 @@ public class TestOpenEOProcessScriptBuilder {
     @DisplayName("Test array_interpolate_linear process")
     @Test
     public void testArrayInterpolateLinear() {
-        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
-        Map<String, Object> arguments = Collections.emptyMap();
-        builder.expressionStart("array_interpolate_linear", arguments);
-
-        builder.argumentStart("data");
-        builder.argumentEnd();
-
-        builder.expressionEnd("array_interpolate_linear",arguments);
+        OpenEOProcessScriptBuilder builder = createArrayInterpolateLinear();
 
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
         ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
@@ -745,6 +738,19 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(10,result.apply(7).get(0,0));
         assertTrue(result.apply(8).isNoDataTile());
 
+    }
+
+
+    static OpenEOProcessScriptBuilder createArrayInterpolateLinear() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.emptyMap();
+        builder.expressionStart("array_interpolate_linear", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_interpolate_linear",arguments);
+        return builder;
     }
 
 
