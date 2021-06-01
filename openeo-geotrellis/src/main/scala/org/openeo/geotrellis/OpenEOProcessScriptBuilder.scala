@@ -43,6 +43,7 @@ object OpenEOProcessScriptBuilder{
   }
 
 
+
   private def ifElseProcess(value: OpenEOProcess, accept: OpenEOProcess, reject: OpenEOProcess) = {
     val ifElseProcess = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
       val value_input: Seq[Tile] =
@@ -115,18 +116,18 @@ object OpenEOProcessScriptBuilder{
     ifElseProcess
   }
 
-  private def multibandMap(tile: MultibandTile ,f: Array[Int] => Array[Int]): Seq[Tile] = {
+  private def multibandMap(tile: MultibandTile ,f: Array[Double] => Array[Double]): Seq[Tile] = {
     val mutableResult: immutable.Seq[MutableArrayTile] = tile.bands.map(_.mutable)
     var i = 0
     cfor(0)(_ < tile.cols, _ + 1) { col =>
       cfor(0)(_ < tile.rows, _ + 1) { row =>
-        val bandValues = Array.ofDim[Int](tile.bandCount)
+        val bandValues = Array.ofDim[Double](tile.bandCount)
         cfor(0)(_ < tile.bandCount, _ + 1) { band =>
-          bandValues(band) = mutableResult(band).get(col, row)
+          bandValues(band) = mutableResult(band).getDouble(col, row)
         }
         val resultValues = f(bandValues)
         cfor(0)(_ < tile.bandCount, _ + 1) { band =>
-          mutableResult(band).set(col, row,resultValues(band))
+          mutableResult(band).setDouble(col, row,resultValues(band))
         }
         i += 1
       }

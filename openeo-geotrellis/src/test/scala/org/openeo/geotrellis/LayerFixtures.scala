@@ -6,11 +6,12 @@ import java.time.{LocalDate, ZonedDateTime}
 import java.util
 import java.util.Collections.singletonList
 
+import scala.collection.JavaConverters
 import geotrellis.layer.{Bounds, KeyBounds, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.{ArrayMultibandTile, ArrayTile, CellSize, MultibandTile, Tile, TileLayout}
 import geotrellis.spark.testkit.TileLayerRDDBuilders
-import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
+import geotrellis.spark._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -45,6 +46,16 @@ object LayerFixtures {
     val maxKey: SpaceTimeKey = SpaceTimeKey.apply(bounds.get.maxKey, TemporalKey(times.last))
     val metadata: TileLayerMetadata[SpaceTimeKey] = new TileLayerMetadata[SpaceTimeKey](md.cellType, md.layout, md.extent, md.crs, new KeyBounds[SpaceTimeKey](minKey, maxKey))
     new ContextRDD(cubeXYTB, metadata)
+  }
+
+  def buildSingleBandSpatioTemporalDataCube(tiles: util.List[Tile], dates: Seq[String]): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+
+    implicit val sc = SparkContext.getOrCreate
+    val times: Seq[ZonedDateTime] = dates.map(ZonedDateTime.parse(_))
+    val layout = new TileLayout(1, 1, tiles.get(0).cols.asInstanceOf[Integer], tiles.get(0).rows.asInstanceOf[Integer])
+    val cubeXYB: TileLayerRDD[SpaceTimeKey] = TileLayerRDDBuilders.createSpaceTimeTileLayerRDD(JavaConverters.collectionAsScalaIterableConverter(tiles).asScala.zip(times),layout)
+
+    cubeXYB.withContext{_.mapValues(MultibandTile(_))}
   }
 
   private[geotrellis] def tileToSpaceTimeDataCube(zeroTile: Tile): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
