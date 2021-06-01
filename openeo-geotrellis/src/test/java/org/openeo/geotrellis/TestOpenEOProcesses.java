@@ -22,6 +22,9 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+
+import scala.collection.JavaConversions;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -170,8 +173,14 @@ public class TestOpenEOProcesses {
 
     @Test
     public void testApplyTimeDimension() {
-        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 = createSpacetimeLayer();
+        ByteArrayTile band1 = ByteArrayTile.fill((byte) -10, 256, 256);
+        ByteArrayTile band2 = ByteArrayTile.fill((byte) 4, 256, 256);
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 =LayerFixtures.buildSingleBandSpatioTemporalDataCube(Arrays.asList(band1,ByteArrayTile.empty(256,256), band2), JavaConversions.asScalaBuffer(Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z","2020-02-03T00:00:00Z")));
         OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createArrayInterpolateLinear();
-        new OpenEOProcesses().applyTimeDimension(datacube1, processBuilder, new HashMap<>());
+        RDD<Tuple2<SpaceTimeKey, MultibandTile>> result = new OpenEOProcesses().applyTimeDimension(datacube1, processBuilder, new HashMap<>());
+        List<Tuple2<String,MultibandTile>> results = JavaPairRDD.fromJavaRDD(result.toJavaRDD()).map(spaceTimeKeyMultibandTileTuple2 -> new Tuple2<String,MultibandTile>(spaceTimeKeyMultibandTileTuple2._1.time().toString(),spaceTimeKeyMultibandTileTuple2._2)).collect();
+        MultibandTile interpolatedTile = results.stream().filter(tuple2 -> tuple2._1.equals("2020-02-02T00:00Z")).collect(Collectors.toList()).get(0)._2;
+        assertEquals(-3, interpolatedTile.band(0).get(0,0));
+
     }
 }
