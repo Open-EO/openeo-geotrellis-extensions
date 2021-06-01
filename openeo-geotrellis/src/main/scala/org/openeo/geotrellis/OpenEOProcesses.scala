@@ -84,12 +84,12 @@ class OpenEOProcesses extends Serializable {
    * @param context
    * @return
    */
-  def applyTimeDimension(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: Map[String,Any]):MultibandTileLayerRDD[SpaceTimeKey] = {
+  def applyTimeDimension(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpaceTimeKey] = {
+    val function = scriptBuilder.generateFunction(context.asScala.toMap)
     datacube.withContext(_.groupBy(_._1.spatialKey).flatMap{ tiles => {
       val firstTile = tiles._2.head._2
       val labels = tiles._2.map(_._1)
       val resultMap: mutable.Map[SpaceTimeKey,mutable.ListBuffer[Tile]] = mutable.Map()
-      val function = scriptBuilder.generateFunction(context)
       for( b <- 0 to firstTile.bandCount){
         val temporalTile = MultibandTile(tiles._2.map(_._2.band(b)))
         val resultTiles = function(temporalTile.bands)
