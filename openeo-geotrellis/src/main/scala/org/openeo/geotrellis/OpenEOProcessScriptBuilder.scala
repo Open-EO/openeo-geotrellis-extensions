@@ -1,13 +1,14 @@
 package org.openeo.geotrellis
 
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{ArrayTile, DoubleConstantTile, FloatConstantTile, IntConstantTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, isNoData}
+import geotrellis.raster.{ArrayTile, DoubleConstantTile, FloatConstantTile, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, isNoData}
 import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase}
 import org.slf4j.LoggerFactory
+import spire.syntax.cfor.cfor
 
 import scala.Double.NaN
 import scala.collection.JavaConversions.mapAsScalaMap
-import scala.collection.mutable
+import scala.collection.{immutable, mutable}
 
 object OpenEOProcessScriptBuilder{
 
@@ -113,6 +114,62 @@ object OpenEOProcessScriptBuilder{
     }
     ifElseProcess
   }
+
+  private def multibandMap(tile: MultibandTile ,f: Array[Int] => Array[Int]): Seq[Tile] = {
+    val mutableResult: immutable.Seq[MutableArrayTile] = tile.bands.map(_.mutable)
+    var i = 0
+    cfor(0)(_ < tile.cols, _ + 1) { col =>
+      cfor(0)(_ < tile.rows, _ + 1) { row =>
+        val bandValues = Array.ofDim[Int](tile.bandCount)
+        cfor(0)(_ < tile.bandCount, _ + 1) { band =>
+          bandValues(band) = mutableResult(band).get(col, row)
+        }
+        val resultValues = f(bandValues)
+        cfor(0)(_ < tile.bandCount, _ + 1) { band =>
+          mutableResult(band).set(col, row,resultValues(band))
+        }
+        i += 1
+      }
+    }
+    return mutableResult
+  }
+
+  private def linearInterpolation(tiles:Seq[Tile]) : Seq[Tile] = {
+
+    multibandMap(MultibandTile(tiles),ts => {
+      var previousValid = -1
+      var nextValid = -1
+      var current = 0
+      while(current < ts.length) {
+
+        if(isNoData(ts(current))){
+          if(previousValid>=0){
+            nextValid = current+1
+            while(nextValid< ts.length && isNoData(ts(nextValid))) {
+              nextValid +=1
+            }
+            if(nextValid < ts.length){
+              val y0 = ts(previousValid)
+              //found a valid point
+              //var y = Math.fma( (current-previousValid), (ts(nextValid)-y0)/(nextValid-previousValid), y0.floatValue())
+              var y = y0 + (current-previousValid)*(ts(nextValid)-y0)/(nextValid-previousValid)
+              ts(current)=y
+              previousValid = current
+              nextValid = -1
+            }
+          }
+          current +=1
+
+        }else{
+          previousValid = current
+          nextValid = -1
+          current +=1
+        }
+      }
+      ts
+    })
+
+  }
 }
 /**
   * Builder to help converting an OpenEO process graph into a transformation of Geotrellis tiles.
@@ -177,6 +234,10 @@ class OpenEOProcessScriptBuilder {
 
   private def reduceFunction(argName: String, operator: (Tile, Tile) => Tile): OpenEOProcess = {
     unaryFunction(argName, (tiles: Seq[Tile]) => Seq(tiles.reduce(operator)))
+  }
+
+  private def applyListFunction(argName: String, operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
+    unaryFunction(argName, (tiles: Seq[Tile]) => operator(tiles))
   }
 
   private def reduceListFunction(argName: String, operator: Seq[Tile] => Tile): OpenEOProcess = {
@@ -410,6 +471,7 @@ class OpenEOProcessScriptBuilder {
       // Other
       case "array_element" => arrayElementFunction(arguments)
       case "array_modify" => arrayModifyFunction(arguments)
+      case "array_interpolate_linear" => applyListFunction("data",linearInterpolation)
       case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
     }
 

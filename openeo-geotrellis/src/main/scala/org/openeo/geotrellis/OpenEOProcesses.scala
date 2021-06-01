@@ -4,6 +4,7 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
 import java.time.{Instant, ZonedDateTime}
+
 import geotrellis.layer.SpatialKey._
 import geotrellis.layer._
 import geotrellis.raster._
@@ -22,8 +23,8 @@ import org.apache.spark.rdd._
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrelliscommon.{FFTConvolve, SpaceTimeByMonthPartitioner}
 
-import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
+import scala.collection.{JavaConverters, mutable}
 import scala.reflect._
 
 class OpenEOProcesses extends Serializable {
@@ -73,6 +74,32 @@ class OpenEOProcesses extends Serializable {
       )),
       datacube.metadata
     )
+  }
+
+
+  /**
+   * apply_dimension, over time dimension
+   * @param datacube
+   * @param scriptBuilder
+   * @param context
+   * @return
+   */
+  def applyTimeDimension(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: Map[String,Any]):MultibandTileLayerRDD[SpaceTimeKey] = {
+    datacube.withContext(_.groupBy(_._1.spatialKey).flatMap{ tiles => {
+      val firstTile = tiles._2.head._2
+      val labels = tiles._2.map(_._1)
+      val resultMap: mutable.Map[SpaceTimeKey,mutable.ListBuffer[Tile]] = mutable.Map()
+      val function = scriptBuilder.generateFunction(context)
+      for( b <- 0 to firstTile.bandCount){
+        val temporalTile = MultibandTile(tiles._2.map(_._2.band(b)))
+        val resultTiles = function(temporalTile.bands)
+        var resultLabels: Iterable[(SpaceTimeKey,Tile)] = labels.zip(resultTiles)
+        resultLabels.foreach(result => resultMap.getOrElseUpdate(result._1, mutable.ListBuffer()).append(result._2))
+
+      }
+      resultMap.map(tuple => (tuple._1,MultibandTile(tuple._2)))
+
+    }})
   }
 
   def mapInstantToInterval(datacube:MultibandTileLayerRDD[SpaceTimeKey], intervals:java.lang.Iterable[String],labels:java.lang.Iterable[String]) :MultibandTileLayerRDD[SpaceTimeKey] = {
