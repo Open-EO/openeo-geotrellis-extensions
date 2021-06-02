@@ -740,6 +740,56 @@ public class TestOpenEOProcessScriptBuilder {
 
     }
 
+    @DisplayName("Test linear_scale_range process")
+    @Test
+    public void testLinearScaleRange() {
+        OpenEOProcessScriptBuilder builder = createLinearScaleRange(0,2,0,240);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        Tile tile0 = FloatConstantNoDataArrayTile.fill(1, 4, 4);
+        Tile tile1 = FloatConstantNoDataArrayTile.fill(3, 4, 4);
+        Tile tile2 = FloatConstantNoDataArrayTile.fill(-1, 4, 4);
+        Tile tile3 = FloatConstantNoDataArrayTile.fill(1.9f, 4, 4);
+        Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
+
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile,tile0,tile1,tile2,tile3)));
+
+        assertTrue(result.apply(0).isNoDataTile());
+
+        assertEquals(120,result.apply(1).get(0,0));
+        assertEquals(240,result.apply(2).get(0,0));
+        assertEquals(0,result.apply(3).get(0,0));
+        assertEquals(228,result.apply(4).get(0,0));
+        assertEquals(UByteUserDefinedNoDataCellType.apply((byte)255),result.apply(1).cellType());
+
+
+    }
+
+    @DisplayName("Test linear_scale_range process with conversion to short")
+    @Test
+    public void testLinearScaleRangeToShort() {
+        OpenEOProcessScriptBuilder builder = createLinearScaleRange(0,10,0,1000);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        Tile tile0 = FloatConstantNoDataArrayTile.fill(1, 4, 4);
+        Tile tile1 = FloatConstantNoDataArrayTile.fill(3, 4, 4);
+        Tile tile2 = FloatConstantNoDataArrayTile.fill(-10, 4, 4);
+        Tile tile3 = FloatConstantNoDataArrayTile.fill(19f, 4, 4);
+        Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
+
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile,tile0,tile1,tile2,tile3)));
+
+        assertTrue(result.apply(0).isNoDataTile());
+        assertEquals(UShortUserDefinedNoDataCellType.apply((short)65535),result.apply(1).cellType());
+
+        assertEquals(100,result.apply(1).get(0,0));
+        assertEquals(300,result.apply(2).get(0,0));
+        assertEquals(0,result.apply(3).get(0,0));
+        assertEquals(1000,result.apply(4).get(0,0));
+
+
+    }
+
 
     static OpenEOProcessScriptBuilder createArrayInterpolateLinear() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
@@ -750,6 +800,29 @@ public class TestOpenEOProcessScriptBuilder {
         builder.argumentEnd();
 
         builder.expressionEnd("array_interpolate_linear",arguments);
+        return builder;
+    }
+
+    static OpenEOProcessScriptBuilder createLinearScaleRange(Number inputMin, Number inputMax,Number outputMin, Number outputMax) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = new HashMap<>();
+        arguments.put("inputMin", inputMin);
+        arguments.put("inputMax", inputMax);
+        if (outputMin != null) {
+            arguments.put("outputMin", outputMin);
+        }
+        if (outputMax != null) {
+            arguments.put("outputMax", outputMax);
+        }
+        builder.expressionStart("linear_scale_range", arguments);
+
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.constantArguments(arguments);
+
+
+
+        builder.expressionEnd("linear_scale_range",arguments);
         return builder;
     }
 
