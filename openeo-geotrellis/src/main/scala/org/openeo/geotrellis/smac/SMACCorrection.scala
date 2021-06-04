@@ -1,12 +1,14 @@
 package org.openeo.geotrellis.smac
 
 import java.time.ZonedDateTime
+
 import org.apache.commons.math3.util.FastMath
+import org.openeo.geotrellis.icor.CorrectionDescriptor
 import org.openeo.geotrellis.smac.SMACCorrection.Coeff
 import spire.implicits._
+
 import scala.collection.mutable
 import scala.io.Source
-import org.openeo.geotrellis.icor.CorrectionDescriptor
 
 
 /**
@@ -350,7 +352,11 @@ class SMACCorrection extends CorrectionDescriptor(){
     val pressure = 1013 //SMACCorrection.PdeZ(1300);
     val UH2O = 0.3 // Water vapour (g/cm2)
     val r_surf = SMACCorrection.smac_inv(src.doubleValue(), sza, vza, raa, pressure.toFloat, aot.toFloat, ozone.toFloat, UH2O.toFloat, maybeCoeff.get)*10000.0
-    r_surf
+    if(r_surf < 0) {
+      0.0
+    }else{
+      r_surf
+    }
   }
 
   override def getBandFromName(name: String): Int = name match {
