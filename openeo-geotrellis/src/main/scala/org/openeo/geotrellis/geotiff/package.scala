@@ -1,5 +1,10 @@
 package org.openeo.geotrellis
 
+import java.io.File
+import java.nio.file.Paths
+import java.time.format.DateTimeFormatter
+import java.util.{ArrayList, Map}
+
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster
@@ -12,17 +17,12 @@ import geotrellis.raster.{ArrayTile, CellType, GridBounds, MultibandTile, Raster
 import geotrellis.spark._
 import geotrellis.util._
 import geotrellis.vector.Extent
-import mil.nga.geopackage.tiles.TileGrid
 import mil.nga.geopackage.{GeoPackage, GeoPackageManager}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.AccumulatorV2
 import org.slf4j.LoggerFactory
 import spire.syntax.cfor.cfor
 
-import java.io.File
-import java.nio.file.Paths
-import java.time.format.DateTimeFormatter
-import java.util.{ArrayList, Map}
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
 import scala.reflect._
@@ -236,9 +236,6 @@ package object geotiff {
       s"${path.substring(0, index)}-$tileId${path.substring(index)}"
     }
 
-    val totalBandCount = rdd.sparkContext.longAccumulator("TotalBandCount")
-    val typeAccumulator = new SetAccumulator[CellType]()
-    rdd.sparkContext.register(typeAccumulator,"CellType")
     preprocessedRdd
       .flatMap {
         case (key, tile) => features.map { case (name, extent) =>
@@ -255,6 +252,8 @@ package object geotiff {
         }
       }.groupByKey()
       .map { case ((name, extent, tileBounds, gridBounds), tiles) =>
+        //The part below is probably wrong: each tile in a fixed tilegrid, will have it's own 'tilelayout', while here
+        //we use the global tilelayout of the RDD.
         val keyBounds = KeyBounds(tileBounds)
         val maxKey = keyBounds.get.maxKey.getComponent[SpatialKey]
         val minKey = keyBounds.get.minKey.getComponent[SpatialKey]
@@ -263,13 +262,13 @@ package object geotiff {
         val totalRows = maxKey.row - minKey.row + 1
 
         val bandSegmentCount = totalCols * totalRows
+        val someTile = tiles.head._2
+        val detectedBandCount = someTile.bandCount
+        val cellType = someTile.cellType
 
         val tiffs = tiles.flatMap { case (key: K, multibandTile: MultibandTile) => {
           var bandIndex = -1
-          if (multibandTile.bandCount > 0) {
-            totalBandCount.add(multibandTile.bandCount)
-          }
-          typeAccumulator.add(multibandTile.cellType)
+
           //Warning: for deflate compression, the segmentcount and index is not really used, making it stateless.
           //Not sure how this works out for other types of compression!!!
 
@@ -290,16 +289,8 @@ package object geotiff {
         }
         }.toMap
 
-        val cellType = {
-          if(typeAccumulator.value.isEmpty) {
-            rdd.metadata.cellType
-          }else{
-            typeAccumulator.value.head
-          }
-        }
-
         println("Saving geotiff with Celltype: " + cellType)
-        val detectedBandCount =  if(totalBandCount.avg >0) totalBandCount.avg else 1
+
         val segmentCount = (bandSegmentCount*detectedBandCount).toInt
         val newPath = newFilePath(path, name)
         writeTiff(newPath, tiffs, gridBounds, extent.intersection(croppedExtent).get, preprocessedRdd.metadata.crs, tileLayout, compression, cellType, detectedBandCount, segmentCount)
@@ -438,6 +429,7 @@ package object geotiff {
   }
 
   private def getGeoPackage(tileGrid: String): GeoPackage = {
+    //TODO: can we move to artifactory?
     val basePath = "/data/users/Public/nielsh/tiling-grid"
     val path =
       if (tileGrid.contains("degree"))
