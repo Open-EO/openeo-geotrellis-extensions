@@ -2,16 +2,14 @@ package org.openeo.geotrellis.icor
 
 import java.util
 
-import com.google.common.cache.{Cache, CacheBuilder}
 import geotrellis.layer._
+import geotrellis.raster.resample.Average
 import geotrellis.raster.{FloatConstantNoDataCellType, FloatConstantTile, MultibandTile, NODATA, Tile}
 import geotrellis.spark._
 import org.apache.spark.api.java.JavaSparkContext
-import org.apache.spark.broadcast.Broadcast
+import org.openeo.geotrellis.smac.SMACCorrection
 import org.openeo.geotrellis.water_vapor.{CWVProvider, ConstantCWVProvider}
 import org.slf4j.LoggerFactory
-import org.openeo.geotrellis.smac.SMACCorrection
-import geotrellis.raster.resample.Average
 
 class AtmosphericCorrection extends Serializable {
   
@@ -184,7 +182,13 @@ class AtmosphericCorrection extends Serializable {
             raaTile,
             cwvTile
           ).combineDouble(0, 1, 2, 3, 4, 5, 6) { (refl, aot, dem, sza, vza, raa, cwv) => if (refl != NODATA) ( {
-              sensorDescriptor.correct( pattern, bandIdx, multibandtile._1.time, refl.toDouble, sza, vza, raa, dem, aot, cwv, overrideParams.get(6), 0)
+            val digitalNumberAsDouble = sensorDescriptor.correct(pattern, bandIdx, multibandtile._1.time, refl.toDouble, sza, vza, raa, dem, aot, cwv, overrideParams.get(6), 0)
+            if(digitalNumberAsDouble<0.0) {
+              //For very low TOA reflectances, some algorithms (SMAC, iCor) can return negative values, clip at 0
+              0.0
+            }else{
+              digitalNumberAsDouble
+            }
           } ).toInt else NODATA }
           resultTile.convert(multibandtile._2.cellType)
         }

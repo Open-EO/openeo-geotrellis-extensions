@@ -240,12 +240,12 @@ object FileLayerProvider {
 
     // The requested sources already contain the requested dates for every tile (if they exist).
     // We can join these dates with the requested spatial keys.
-    val requiredSpacetimeKeys: RDD[SpaceTimeKey] = filteredSources.flatMap(_.keys).map {
-      tuple => (tuple.spatialKey, tuple)
-    }.rightOuterJoin(requiredSpatialKeys).flatMap(_._2._1.toList)
 
     val partitioner = useSparsePartitioner match {
       case true => {
+        val requiredSpacetimeKeys: RDD[SpaceTimeKey] = filteredSources.flatMap(_.keys).map {
+          tuple => (tuple.spatialKey, tuple)
+        }.rightOuterJoin(requiredSpatialKeys).flatMap(_._2._1.toList)
         // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
         val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(8)
         val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
@@ -268,6 +268,8 @@ object FileLayerProvider {
       filteredSources
         .flatMap { tiledLayoutSource =>
           tiledLayoutSource.keyedRasterRegions()
+            //this filter step reduces the 'Shuffle Write' size of this stage, so it already
+            .filter({case(key, rasterRegion) => metadata.extent.intersects(key.spatialKey.extent(metadata.layout)) } )
             .map { case (key, rasterRegion) => (key, (rasterRegion, tiledLayoutSource.source.name)) }
         }
 
@@ -275,6 +277,7 @@ object FileLayerProvider {
     val requestedRasterRegions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))]  =
       rasterRegions
         .map { tuple => (tuple._1.spatialKey, tuple) }
+        //stage boundary, first stage of data loading ends here!
         .rightOuterJoin(requiredSpatialKeys).flatMap { t => t._2._1.toList }
 
     rasterRegionsToTiles(requestedRasterRegions, metadata, cloudFilterStrategy, partitioner)

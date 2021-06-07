@@ -1,9 +1,10 @@
 package org.openeo.geotrellis
 
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{ArrayTile, DoubleConstantTile, FloatConstantTile, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, isNoData}
+import geotrellis.raster.{ArrayTile, CellType, DoubleConstantTile, FloatConstantTile, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isNoData}
 import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase}
 import org.slf4j.LoggerFactory
+import spire.math.UShort
 import spire.syntax.cfor.cfor
 
 import scala.Double.NaN
@@ -133,6 +134,31 @@ object OpenEOProcessScriptBuilder{
       }
     }
     return mutableResult
+  }
+
+  private def multibandReduce(tile: MultibandTile ,f: Array[Double] => Double): Seq[Tile] = {
+    val mutableResult:MutableArrayTile = tile.bands(0).mutable
+    var i = 0
+    cfor(0)(_ < tile.cols, _ + 1) { col =>
+      cfor(0)(_ < tile.rows, _ + 1) { row =>
+        val bandValues = Array.ofDim[Double](tile.bandCount)
+        cfor(0)(_ < tile.bandCount, _ + 1) { band =>
+          bandValues(band) = tile.bands(band).getDouble(col, row)
+        }
+        val resultValues = f(bandValues)
+        mutableResult.setDouble(col, row,resultValues)
+        i += 1
+      }
+    }
+    return Seq(mutableResult)
+  }
+
+  private def median(tiles:Seq[Tile]) : Seq[Tile] = {
+    multibandReduce(MultibandTile(tiles),ts => {ts.sortWith(_ < _).drop(ts.length/2).head})
+  }
+
+  private def medianWithNodata(tiles:Seq[Tile]) : Seq[Tile] = {
+    multibandReduce(MultibandTile(tiles),ts => {if(ts.exists(_.isNaN)) Double.NaN else ts.sortWith(_ < _).drop(ts.length/2).head})
   }
 
   private def linearInterpolation(tiles:Seq[Tile]) : Seq[Tile] = {
@@ -297,6 +323,16 @@ class OpenEOProcessScriptBuilder {
     scope.put(name,wrapSimpleProcess(createConstantTileFunction(value)))
   }
 
+  def constantArguments(args: java.util.Map[String,Object]): Unit = {
+    for (elem <- mapAsScalaMap(args)) {
+      if(elem._2.isInstanceOf[Number]){
+        constantArgument(elem._1,elem._2.asInstanceOf[Number])
+      }else if(elem._2.isInstanceOf[Boolean]){
+        constantArgument(elem._1,elem._2.asInstanceOf[Boolean])
+      }
+    }
+  }
+
   def constantArgument(name:String,value:Boolean): Unit = {
     //can be skipped, will simply be available when executing function
   }
@@ -448,6 +484,8 @@ class OpenEOProcessScriptBuilder {
       case "mean" if hasData => reduceListFunction("data", Mean.apply)
       case "variance" if hasData => reduceListFunction("data", Variance.apply)
       case "sd" if hasData => reduceListFunction("data", Sqrt.apply _ compose Variance.apply)
+      case "median" if ignoreNoData => applyListFunction("data",median)
+      case "median" => applyListFunction("data",medianWithNodata)
       // Unary math
       case "abs" if hasX => mapFunction("x", Abs.apply)
       case "absolute" if hasX => mapFunction("x", Abs.apply)
@@ -473,6 +511,7 @@ class OpenEOProcessScriptBuilder {
       case "array_element" => arrayElementFunction(arguments)
       case "array_modify" => arrayModifyFunction(arguments)
       case "array_interpolate_linear" => applyListFunction("data",linearInterpolation)
+      case "linear_scale_range" => linearScaleRangeFunction(arguments)
       case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
     }
 
@@ -480,6 +519,56 @@ class OpenEOProcessScriptBuilder {
     assert(expectedOperator.equals(operator))
     contextStack.pop()
     inputFunction = operation
+  }
+
+  private def linearScaleRangeFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
+    val storedArgs: mutable.Map[String, OpenEOProcess] = contextStack.head
+    val inMin = arguments.get("inputMin").asInstanceOf[Number].doubleValue()
+    val inMax = arguments.get("inputMax").asInstanceOf[Number].doubleValue()
+    val outMinRaw = arguments.getOrDefault("outputMin", 0.0.asInstanceOf[Object])
+    val outMin: Double = outMinRaw.asInstanceOf[Number].doubleValue()
+    val outMaxRaw = arguments.getOrDefault("outputMax", 1.0.asInstanceOf[Object])
+    val outMax:Double = outMaxRaw.asInstanceOf[Number].doubleValue()
+    val inputFunction = storedArgs.get("x").get
+    val output_range = outMax - outMin
+    val doTypeCast = output_range > 1 && (!outMinRaw.isInstanceOf[Double] && !outMinRaw.isInstanceOf[Float]) && (!outMaxRaw.isInstanceOf[Double] && !outMaxRaw.isInstanceOf[Float])
+    val targetType: Option[CellType] =
+    if(doTypeCast){
+      if(output_range < 254 && outMin >= 0) {
+        Some(UByteUserDefinedNoDataCellType(255.byteValue()))
+      }else if(output_range < 65535 && outMin >= 0){
+        Some(UShortUserDefinedNoDataCellType(UShort.MaxValue.toShort))
+      }else{
+        Option.empty
+      }
+    }else{
+      Option.empty
+    }
+
+    val scaleFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
+      val input: Seq[Tile] =
+        if(inputFunction!=null) {
+          inputFunction.apply(context)(tiles)
+        }else{
+          tiles
+        }
+      val normalizedTiles = input.map(_.normalize(inMin,inMax,outMin,outMax).mapIfSetDouble(p=> {
+        if(p<outMin) {
+          outMin
+        }else if(p>outMax) {
+          outMax
+        }else{
+          p
+        }
+      }))
+      if(targetType.isDefined) {
+        normalizedTiles.map(_.convert(targetType.get))
+      }else{
+        normalizedTiles
+      }
+    }
+    scaleFunction
+
   }
 
   private def arrayModifyFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
