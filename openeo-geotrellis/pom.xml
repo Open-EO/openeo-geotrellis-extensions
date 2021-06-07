@@ -87,6 +87,11 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>mil.nga.geopackage</groupId>
+            <artifactId>geopackage</artifactId>
+            <version>5.0.0</version>
+        </dependency>
+        <dependency>
             <groupId>be.vito.eodata.gwc-geotrellis</groupId>
             <artifactId>gwc-geotrellis-core</artifactId>
             <version>0.11.0-SNAPSHOT</version>
