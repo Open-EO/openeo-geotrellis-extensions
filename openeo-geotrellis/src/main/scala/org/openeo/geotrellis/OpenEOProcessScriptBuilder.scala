@@ -62,6 +62,31 @@ object OpenEOProcessScriptBuilder{
     return mutableResult
   }
 
+  private def multibandReduce(tile: MultibandTile ,f: Array[Double] => Double): Seq[Tile] = {
+    val mutableResult:MutableArrayTile = tile.bands(0).mutable
+    var i = 0
+    cfor(0)(_ < tile.cols, _ + 1) { col =>
+      cfor(0)(_ < tile.rows, _ + 1) { row =>
+        val bandValues = Array.ofDim[Double](tile.bandCount)
+        cfor(0)(_ < tile.bandCount, _ + 1) { band =>
+          bandValues(band) = tile.bands(band).getDouble(col, row)
+        }
+        val resultValues = f(bandValues)
+        mutableResult.setDouble(col, row,resultValues)
+        i += 1
+      }
+    }
+    return Seq(mutableResult)
+  }
+
+  private def median(tiles:Seq[Tile]) : Seq[Tile] = {
+    multibandReduce(MultibandTile(tiles),ts => {ts.sortWith(_ < _).drop(ts.length/2).head})
+  }
+
+  private def medianWithNodata(tiles:Seq[Tile]) : Seq[Tile] = {
+    multibandReduce(MultibandTile(tiles),ts => {if(ts.exists(_.isNaN)) Double.NaN else ts.sortWith(_ < _).drop(ts.length/2).head})
+  }
+
   private def linearInterpolation(tiles:Seq[Tile]) : Seq[Tile] = {
 
     multibandMap(MultibandTile(tiles),ts => {
@@ -450,6 +475,8 @@ class OpenEOProcessScriptBuilder {
       case "mean" if hasData => reduceListFunction("data", Mean.apply)
       case "variance" if hasData => reduceListFunction("data", Variance.apply)
       case "sd" if hasData => reduceListFunction("data", Sqrt.apply _ compose Variance.apply)
+      case "median" if ignoreNoData => applyListFunction("data",median)
+      case "median" => applyListFunction("data",medianWithNodata)
       // Unary math
       case "abs" if hasX => mapFunction("x", Abs.apply)
       case "absolute" if hasX => mapFunction("x", Abs.apply)
