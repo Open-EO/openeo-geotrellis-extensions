@@ -15,16 +15,12 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
 import scala.Tuple2;
+import scala.collection.JavaConversions;
 import scala.reflect.ClassTag;
 
 import java.time.ZonedDateTime;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
-
-import scala.collection.JavaConversions;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -87,6 +83,27 @@ public class TestOpenEOProcesses {
         System.out.println("map = " + map);
         assertEquals(2, map.stream().filter(tuple -> tuple._1().time().equals(ZonedDateTime.parse("2017-01-01T00:00:00Z"))).count());
         assertEquals(1, map.stream().filter(tuple -> tuple._1().time().equals(ZonedDateTime.parse("2017-01-15T00:00:00Z"))).count());
+    }
+
+    @Test
+    public void testAggregateTemporal() {
+
+        ByteArrayTile band1 = ByteArrayTile.fill((byte) -10, 256, 256);
+        ByteArrayTile band2 = ByteArrayTile.fill((byte) 4, 256, 256);
+        ByteArrayTile band3 = ByteArrayTile.fill((byte) 5, 256, 256);
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 =LayerFixtures.buildSingleBandSpatioTemporalDataCube(Arrays.asList(band1,ByteArrayTile.empty(256,256), band2,band3), JavaConversions.asScalaBuffer(Arrays.asList("2017-01-01T00:00:00Z", "2017-01-30T00:00:00Z","2017-01-30T00:00:00Z", "2017-03-30T00:00:00Z")));
+        OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createMedian(true);
+
+        RDD<Tuple2<SpaceTimeKey, MultibandTile>> mappedRDD = new OpenEOProcesses().aggregateTemporal(datacube1, Arrays.asList("2017-01-01T00:00:00Z", "2017-01-30T00:00:00Z","2017-01-30T00:00:00Z", "2017-03-30T00:00:00Z"), Arrays.asList("2017-01-01T00:00:00Z","2017-01-15T00:00:00Z"),processBuilder, Collections.EMPTY_MAP);
+        Map<SpaceTimeKey, MultibandTile> map = JavaPairRDD$.MODULE$.fromJavaRDD(mappedRDD.toJavaRDD()).collectAsMap();
+        //map.forEach(spaceTimeKey -> System.out.println("spaceTimeKey = " + spaceTimeKey._1.time()));
+        System.out.println("map = " + map);
+        assertEquals(1, map.entrySet().stream().filter(tuple -> tuple.getKey().time().equals(ZonedDateTime.parse("2017-01-01T00:00:00Z"))).count());
+        assertEquals(1, map.entrySet().stream().filter(tuple -> tuple.getKey().time().equals(ZonedDateTime.parse("2017-01-15T00:00:00Z"))).count());
+
+        assertEquals(-10, map.entrySet().stream().filter(tuple -> tuple.getKey().time().equals(ZonedDateTime.parse("2017-01-01T00:00:00Z"))).findFirst().get().getValue().band(0).get(0,0));
+        assertEquals(4, map.entrySet().stream().filter(tuple -> tuple.getKey().time().equals(ZonedDateTime.parse("2017-01-15T00:00:00Z"))).findFirst().get().getValue().band(0).get(0,0));
+
     }
 
 
