@@ -430,7 +430,7 @@ package object geotiff {
 
   private def getGeoPackage(tileGrid: String): GeoPackage = {
     //TODO: can we move to artifactory?
-    val basePath = "/data/users/Public/nielsh/tiling-grid"
+    val basePath = "/data/MEP/tilegrids"
     val path =
       if (tileGrid.contains("degree"))
         s"$basePath/wgs84-1degree.gpkg"
