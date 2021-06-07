@@ -1,22 +1,27 @@
 package org.openeo.geotrellis
 
+import java.net.URL
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
 import java.util
 import java.util.Collections.singletonList
 
-import scala.collection.JavaConverters
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
+import cats.data.NonEmptyList
 import geotrellis.layer.{Bounds, KeyBounds, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.{ArrayMultibandTile, ArrayTile, CellSize, MultibandTile, Tile, TileLayout}
-import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark._
+import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.file.Sentinel2PyramidFactory
+import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellisaccumulo.PyramidFactory
+
+import scala.collection.JavaConverters
 
 object LayerFixtures {
 
@@ -98,4 +103,15 @@ object LayerFixtures {
   )
 
   def s2_scl(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent) = sceneClassificationV200PyramidFactory.layer(ProjectedExtent(defaultExtent,LatLng),ZonedDateTime.parse(from_date),ZonedDateTime.parse(to_date),12, correlationId = "")(SparkContext.getOrCreate())
+
+
+  def rgbLayerProvider =
+    new FileLayerProvider(
+      openSearch = OpenSearchClient(new URL("https://services.terrascope.be/catalogue")),
+      openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+      openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M"),
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+      maxSpatialResolution = CellSize(10, 10),
+      pathDateExtractor = SplitYearMonthDayPathDateExtractor
+    )
 }

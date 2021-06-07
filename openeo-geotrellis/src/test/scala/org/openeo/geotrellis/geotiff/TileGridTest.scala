@@ -1,26 +1,21 @@
 package org.openeo.geotrellis.geotiff
 
-import cats.data.NonEmptyList
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
+import java.time.{LocalDate, ZonedDateTime}
+
 import geotrellis.proj4.LatLng
-import geotrellis.raster.io.geotiff.GeoTiff
-import geotrellis.raster.{ByteArrayTile, CellSize, MultibandTile, TileLayout}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.spark._
-import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.storage.StorageLevel.DISK_ONLY
-import org.junit.Assert.assertArrayEquals
 import org.junit.{AfterClass, Assert, BeforeClass, Test}
-import org.openeo.geotrellis.geotiff
-import org.openeo.geotrellis.layers.{FileLayerProvider, OpenSearch, SplitYearMonthDayPathDateExtractor}
+import org.openeo.geotrellis.LayerFixtures.rgbLayerProvider
 import org.openeo.geotrellis.png.PngTest
+import org.openeo.geotrellis.{LayerFixtures, geotiff}
 
-import java.net.URL
-import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
-import java.time.{LocalDate, ZonedDateTime}
 import scala.collection.JavaConversions._
 
 object TileGridTest {
@@ -80,7 +75,7 @@ class TileGridTest {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
     val bbox = ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng)
 
-    val layer = rgbLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+    val layer = LayerFixtures.rgbLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
 
     val spatialLayer = layer
       .toSpatial()
@@ -92,13 +87,4 @@ class TileGridTest {
     Assert.assertEquals(paths.groupBy(identity), expectedPaths.groupBy(identity))
   }
 
-  private def rgbLayerProvider =
-    new FileLayerProvider(
-      openSearch = OpenSearch(new URL("https://services.terrascope.be/catalogue")),
-      openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
-      openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M"),
-      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
-      maxSpatialResolution = CellSize(10, 10),
-      pathDateExtractor = SplitYearMonthDayPathDateExtractor
-    )
 }
