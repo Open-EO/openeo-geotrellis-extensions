@@ -122,6 +122,39 @@ class OpenEOProcesses extends Serializable {
 
   }
 
+  def aggregateTemporal(datacube:MultibandTileLayerRDD[SpaceTimeKey], intervals:java.lang.Iterable[String],labels:java.lang.Iterable[String], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]) :MultibandTileLayerRDD[SpaceTimeKey] = {
+    val timePeriods: Seq[Iterable[Instant]] = JavaConverters.iterableAsScalaIterableConverter(intervals).asScala.map(s => Instant.parse(s)).grouped(2).toList
+
+    val periodsToLabels: Seq[(Iterable[Instant], String)] = timePeriods.zip(labels.asScala)
+    val function = scriptBuilder.generateFunction(context.asScala.toMap)
+    val tilesByInterval: RDD[(SpaceTimeKey, MultibandTile)] = datacube.flatMap(tuple => {
+      val instant = tuple._1.time.toInstant
+      val spatialKey = tuple._1.spatialKey
+      val labelsForKey = periodsToLabels.filter(p => {
+        val interval = p._1
+        val iterator = interval.toIterator
+        val leftBound = iterator.next()
+        val rightBound = iterator.next()
+        (leftBound.isBefore(instant) && rightBound.isAfter(instant)) || leftBound.equals(instant)
+      }).map(t => t._2).map(ZonedDateTime.parse(_))
+
+      labelsForKey.map(l => (SpaceTimeKey(spatialKey,TemporalKey(l)),tuple._2))
+    }).groupByKey().mapValues( tiles => {
+      val firstTile = tiles.head
+
+      val resultTiles: mutable.ArrayBuffer[Tile] = mutable.ArrayBuffer[Tile]()
+      for( b <- 0 until firstTile.bandCount){
+        val temporalTile = MultibandTile(tiles.map(_.band(b)))
+        val aggregatedTiles: Seq[Tile] = function(temporalTile.bands)
+        resultTiles += aggregatedTiles.head
+
+      }
+      MultibandTile(resultTiles)
+    })
+    return ContextRDD(tilesByInterval, datacube.metadata)
+
+  }
+
   def mapBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]= {
     mapBandsGeneric(datacube,scriptBuilder)
   }
