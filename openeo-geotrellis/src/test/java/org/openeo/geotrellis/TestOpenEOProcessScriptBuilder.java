@@ -790,7 +790,7 @@ public class TestOpenEOProcessScriptBuilder {
 
     }
 
-    @DisplayName("Test linear_scale_range process with conversion to short")
+    @DisplayName("Test median process")
     @Test
     public void testMedian() {
 
@@ -800,15 +800,15 @@ public class TestOpenEOProcessScriptBuilder {
         Tile tile3 = ByteConstantNoDataArrayTile.fill((byte)19, 4, 4);
         Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
 
-        Seq<Tile> result = createMedian(null).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1,tile1,tile1,tile2,nodataTile,tile3,tile0)));
+        Seq<Tile> result = createMedian(null).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
         assertEquals(ByteConstantNoDataCellType.withDefaultNoData(),result.apply(0).cellType());
 
         assertEquals(3,result.apply(0).get(0,0));
 
-        Seq<Tile> result_nodata = createMedian(false).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1,tile1,tile1,tile2,nodataTile,tile3,tile0)));
+        Seq<Tile> result_nodata = createMedian(false).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)));
         assertTrue(result_nodata.apply(0).isNoDataTile());
 
-        Seq<Tile> single_input = createMedian(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2)));
+        Seq<Tile> single_input = createMedian(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy())));
         assertEquals(-10,single_input.apply(0).get(0,0));
     }
 
