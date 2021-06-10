@@ -86,11 +86,18 @@ object OpenEOProcessScriptBuilder{
   }
 
   private def median(tiles:Seq[Tile]) : Seq[Tile] = {
-    multibandReduce(MultibandTile(tiles),ts => {ts.sortWith(_ < _).drop(ts.length/2).head},true)
+    multibandReduce(MultibandTile(tiles),ts => {
+      medianOfDoubles(ts)
+    },true)
+  }
+
+  private def medianOfDoubles(ts: Seq[Double]) = {
+    val (lower, upper) = ts.sortWith(_ < _).splitAt(ts.size / 2)
+    if (ts.size % 2 == 0) (lower.last + upper.head) / 2.0 else upper.head
   }
 
   private def medianWithNodata(tiles:Seq[Tile]) : Seq[Tile] = {
-    multibandReduce(MultibandTile(tiles),ts => {if(ts.exists(_.isNaN)) Double.NaN else ts.sortWith(_ < _).drop(ts.length/2).head},false)
+    multibandReduce(MultibandTile(tiles),ts => {if(ts.exists(_.isNaN)) Double.NaN else medianOfDoubles(ts)},false)
   }
 
   private def linearInterpolation(tiles:Seq[Tile]) : Seq[Tile] = {

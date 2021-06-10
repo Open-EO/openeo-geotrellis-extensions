@@ -810,6 +810,9 @@ public class TestOpenEOProcessScriptBuilder {
 
         Seq<Tile> single_input = createMedian(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy())));
         assertEquals(-10,single_input.apply(0).get(0,0));
+
+        Seq<Tile> even_input = createMedian(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(),tile1)));
+        assertEquals(-3.0,even_input.apply(0).get(0,0));
     }
 
     static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
