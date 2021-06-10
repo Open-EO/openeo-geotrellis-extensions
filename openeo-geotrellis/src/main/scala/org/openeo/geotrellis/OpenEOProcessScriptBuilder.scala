@@ -9,6 +9,7 @@ import spire.syntax.cfor.cfor
 
 import scala.Double.NaN
 import scala.collection.JavaConversions.mapAsScalaMap
+import scala.collection.mutable.ArrayBuffer
 import scala.collection.{immutable, mutable}
 
 object OpenEOProcessScriptBuilder{
@@ -62,14 +63,17 @@ object OpenEOProcessScriptBuilder{
     return mutableResult
   }
 
-  private def multibandReduce(tile: MultibandTile ,f: Array[Double] => Double): Seq[Tile] = {
+  private def multibandReduce(tile: MultibandTile ,f: Seq[Double] => Double, ignoreNoData: Boolean = true): Seq[Tile] = {
     val mutableResult:MutableArrayTile = tile.bands(0).mutable
     var i = 0
     cfor(0)(_ < tile.cols, _ + 1) { col =>
       cfor(0)(_ < tile.rows, _ + 1) { row =>
-        val bandValues = Array.ofDim[Double](tile.bandCount)
+        val bandValues = new ArrayBuffer[Double](tile.bandCount)
         cfor(0)(_ < tile.bandCount, _ + 1) { band =>
-          bandValues(band) = tile.bands(band).getDouble(col, row)
+          val d = tile.bands(band).getDouble(col, row)
+          if(!ignoreNoData || !d.isNaN){
+            bandValues.append(d)
+          }
         }
         if(!bandValues.isEmpty) {
           val resultValues = f(bandValues)
@@ -82,11 +86,11 @@ object OpenEOProcessScriptBuilder{
   }
 
   private def median(tiles:Seq[Tile]) : Seq[Tile] = {
-    multibandReduce(MultibandTile(tiles),ts => {ts.sortWith(_ < _).drop(ts.length/2).head})
+    multibandReduce(MultibandTile(tiles),ts => {ts.sortWith(_ < _).drop(ts.length/2).head},true)
   }
 
   private def medianWithNodata(tiles:Seq[Tile]) : Seq[Tile] = {
-    multibandReduce(MultibandTile(tiles),ts => {if(ts.exists(_.isNaN)) Double.NaN else ts.sortWith(_ < _).drop(ts.length/2).head})
+    multibandReduce(MultibandTile(tiles),ts => {if(ts.exists(_.isNaN)) Double.NaN else ts.sortWith(_ < _).drop(ts.length/2).head},false)
   }
 
   private def linearInterpolation(tiles:Seq[Tile]) : Seq[Tile] = {
