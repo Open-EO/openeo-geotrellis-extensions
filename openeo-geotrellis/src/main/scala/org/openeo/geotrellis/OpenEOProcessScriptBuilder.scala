@@ -71,8 +71,10 @@ object OpenEOProcessScriptBuilder{
         cfor(0)(_ < tile.bandCount, _ + 1) { band =>
           bandValues(band) = tile.bands(band).getDouble(col, row)
         }
-        val resultValues = f(bandValues)
-        mutableResult.setDouble(col, row,resultValues)
+        if(!bandValues.isEmpty) {
+          val resultValues = f(bandValues)
+          mutableResult.setDouble(col, row,resultValues)
+        }
         i += 1
       }
     }
