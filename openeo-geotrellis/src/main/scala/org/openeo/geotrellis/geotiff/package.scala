@@ -16,10 +16,13 @@ import geotrellis.raster.resample.NearestNeighbor
 import geotrellis.raster.{ArrayTile, CellType, GridBounds, MultibandTile, Raster, RasterExtent, TileLayout}
 import geotrellis.spark._
 import geotrellis.util._
-import geotrellis.vector.Extent
+import geotrellis.vector.{ProjectedExtent, _}
 import mil.nga.geopackage.{GeoPackage, GeoPackageManager}
+import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.AccumulatorV2
+import org.locationtech.jts.geom.Envelope
+import org.openeo.geotrellis
 import org.slf4j.LoggerFactory
 import spire.syntax.cfor.cfor
 
@@ -229,7 +232,7 @@ package object geotiff {
 
     val compression = Deflate(zLevel)
 
-    val features = getOverlappingFeaturesFromTileGrid(tileGrid, preprocessedRdd)
+    val features = getOverlappingFeaturesFromTileGrid(tileGrid, ProjectedExtent(preprocessedRdd.metadata.extent,preprocessedRdd.metadata.crs))
 
     def newFilePath(path: String, tileId: String) = {
       val index = path.lastIndexOf(".")
@@ -379,7 +382,7 @@ package object geotiff {
                             cropDimensions: Option[ArrayList[Int]],
                             compression: Compression)
   : List[String] = {
-    val features = getOverlappingFeaturesFromTileGrid(tileGrid, rdd)
+    val features = getOverlappingFeaturesFromTileGrid(tileGrid, ProjectedExtent(rdd.metadata.extent,rdd.metadata.crs))
 
     def newFilePath(path: String, tileId: String) = {
       val index = path.lastIndexOf(".")
@@ -438,6 +441,11 @@ package object geotiff {
       .write(filePath)
   }
 
+  def saveStitchedTileGridTemporal( rdd:MultibandTileLayerRDD[SpaceTimeKey],
+                                    path:String,
+                                    tileGrid: String,
+                                    compression: Compression) : List[String] = geotrellis.geotiff.saveStitchedTileGridTemporal(rdd,path,tileGrid, Option.empty, Option.empty, compression)
+
   def saveStitchedTileGridTemporal(
                                     rdd:MultibandTileLayerRDD[SpaceTimeKey],
                                     path:String,
@@ -446,19 +454,14 @@ package object geotiff {
                             cropDimensions: Option[ArrayList[Int]],
                             compression: Compression)
   : List[String] = {
-    val features = getOverlappingFeaturesFromTileGrid(tileGrid, rdd)
-
-    def newFilePath(path: String, tileId: String) = {
-      val index = path.lastIndexOf(".")
-      s"${path.substring(0, index)}-$tileId${path.substring(index)}"
-    }
+    val features = SparkContext.getOrCreate().broadcast(getOverlappingFeaturesFromTileGrid(tileGrid, ProjectedExtent(rdd.metadata.extent,rdd.metadata.crs)))
 
     val croppedExtent = cropBounds.map(toExtent)
 
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
     rdd.flatMap {
-      case (key, tile) => features.filter { case (_, extent) =>
+      case (key, tile) => features.value.filter { case (_, extent) =>
         val tileBounds = layout.mapTransform(extent)
 
         if (KeyBounds(tileBounds).includes(key.spatialKey)) true else false
@@ -493,24 +496,30 @@ package object geotiff {
     GeoPackageManager.open(new File(path))
   }
 
-  private def getOverlappingFeaturesFromTileGrid[K](tileGrid: String, rdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = {
+  def getOverlappingFeaturesFromTileGrid[K](tileGrid: String, extent: ProjectedExtent) = {
     val geoPackage = getGeoPackage(tileGrid)
 
     val features = ListBuffer[(String, Extent)]()
 
     try {
-      val extent = rdd.metadata.extent.reproject(rdd.metadata.crs, LatLng)
+      val extentLatLng = extent.reproject(LatLng)
 
       val resultSet = geoPackage.getFeatureDao(geoPackage.getFeatureTables.get(0))
-        .query(s"ST_MaxX(geom)>=${extent.xmin} AND ST_MinX(geom)<=${extent.xmax} AND ST_MaxY(geom)>=${extent.ymin} AND ST_MinY(geom)<=${extent.ymax}")
+        .query(s"ST_MaxX(geom)>=${extentLatLng.xmin} AND ST_MinX(geom)<=${extentLatLng.xmax} AND ST_MaxY(geom)>=${extentLatLng.ymin} AND ST_MinY(geom)<=${extentLatLng.ymax}")
 
       try while (resultSet.moveToNext) {
         val row = resultSet.getRow()
         val name = row.getValue("name").toString
-        val envelope = row.getGeometryEnvelope
-        val extent = Extent(envelope.getMinX, envelope.getMinY, envelope.getMaxX, envelope.getMaxY)
-        val reprojectedExtent = extent.reproject(LatLng, rdd.metadata.crs)
-        features.append((name, reprojectedExtent))
+
+        val points = row.getGeometry.getGeometry.asInstanceOf[mil.nga.sf.Polygon].getExteriorRing.getPoints
+        val bbox = new Envelope()
+        for (p <- points.asScala) {
+          val reprojected = Point(p.getX(), p.getY).reproject(LatLng, extent.crs)
+          bbox.expandToInclude(reprojected.getX,reprojected.getY)
+
+        }
+        val tileExtent = Extent(bbox)
+        features.append((name, tileExtent))
       }
       finally resultSet.close()
     } finally geoPackage.close()
