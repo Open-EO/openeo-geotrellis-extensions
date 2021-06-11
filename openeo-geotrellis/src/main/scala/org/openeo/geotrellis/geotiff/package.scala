@@ -414,7 +414,11 @@ package object geotiff {
 
   private def stitchAndWriteToTiff(tiles: Iterable[(SpatialKey, MultibandTile)], filePath: String, layout: LayoutDefinition, crs: CRS, extent: Extent, croppedExtent: Option[Extent], cropDimensions: Option[java.util.ArrayList[Int]], compression: Compression) = {
     val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).stitch()
-    val stitched: Raster[MultibandTile] = raster.crop(extent)
+
+    val re = raster.rasterExtent
+    val alignedExtent = re.createAlignedGridExtent(extent).extent
+
+    val stitched: Raster[MultibandTile] = raster.crop(alignedExtent)
 
     //TODO this additional cropping + resampling might not be needed, as a tile grid already defines a clear cropping
     val adjusted = {
