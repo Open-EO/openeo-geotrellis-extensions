@@ -19,6 +19,7 @@ import geotrellis.util._
 import geotrellis.vector.{ProjectedExtent, _}
 import mil.nga.geopackage.{GeoPackage, GeoPackageManager}
 import org.apache.spark.SparkContext
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.AccumulatorV2
 import org.locationtech.jts.geom.Envelope
@@ -445,6 +446,16 @@ package object geotiff {
       .write(filePath)
   }
 
+  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                                   path: String,
+                  polygons:ProjectedPolygons,
+                  sampleNames: List[String],
+                                   compression: Compression): List[String] = {
+    val features = sampleNames.zip(polygons.polygons.map(_.extent))
+    groupByFeatureAndWriteToTiff(rdd, Option.empty, features,path, Option.empty,compression)
+
+}
+
   def saveStitchedTileGridTemporal( rdd:MultibandTileLayerRDD[SpaceTimeKey],
                                     path:String,
                                     tileGrid: String,
@@ -458,19 +469,25 @@ package object geotiff {
                             cropDimensions: Option[ArrayList[Int]],
                             compression: Compression)
   : List[String] = {
-    val features = SparkContext.getOrCreate().broadcast(getOverlappingFeaturesFromTileGrid(tileGrid, ProjectedExtent(rdd.metadata.extent,rdd.metadata.crs)))
+    val features = getOverlappingFeaturesFromTileGrid(tileGrid, ProjectedExtent(rdd.metadata.extent, rdd.metadata.crs))
+    groupByFeatureAndWriteToTiff(rdd, cropBounds, features,path,cropDimensions, compression)
+  }
+
+  private def groupByFeatureAndWriteToTiff(rdd: MultibandTileLayerRDD[SpaceTimeKey], cropBounds: Option[java.util.Map[String, Double]], features: List[(String, Extent)],path:String,cropDimensions: Option[ArrayList[Int]],
+                                           compression: Compression) = {
+    val featuresBC: Broadcast[List[(String, Extent)]] = SparkContext.getOrCreate().broadcast(features)
 
     val croppedExtent = cropBounds.map(toExtent)
 
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
     rdd.flatMap {
-      case (key, tile) => features.value.filter { case (_, extent) =>
+      case (key, tile) => featuresBC.value.filter { case (_, extent) =>
         val tileBounds = layout.mapTransform(extent)
 
         if (KeyBounds(tileBounds).includes(key.spatialKey)) true else false
       }.map { case (name, extent) =>
-        ((name,TemporalProjectedExtent(extent,crs,key.time)), (key.spatialKey, tile))
+        ((name, TemporalProjectedExtent(extent, crs, key.time)), (key.spatialKey, tile))
       }
     }.groupByKey()
       .map { case ((name, extent), tiles) =>
