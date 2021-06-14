@@ -336,9 +336,9 @@ package object geotiff {
       compression,
       detectedBandCount.toInt,
       cellType)
-    val thegeotiff = MultibandGeoTiff(tiffTile, croppedExtent, crs)//.withOverviews(NearestNeighbor, List(4, 8, 16))
+    val thegeotiff = MultibandGeoTiff(tiffTile, croppedExtent, crs).withOverviews(NearestNeighbor, List(4, 8, 16))
 
-    GeoTiffWriter.write(thegeotiff, path)
+    GeoTiffWriter.write(thegeotiff, path,true)
   }
 
   def saveStitched(
@@ -443,15 +443,15 @@ package object geotiff {
 
     MultibandGeoTiff(adjusted, crs, GeoTiffOptions(compression))
       .withOverviews(NearestNeighbor, List(4, 8, 16))
-      .write(filePath)
+      .write(filePath,optimizedOrder = true)
   }
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                                    path: String,
                   polygons:ProjectedPolygons,
-                  sampleNames: List[String],
+                  sampleNames: ArrayList[String],
                                    compression: Compression): List[String] = {
-    val features = sampleNames.zip(polygons.polygons.map(_.extent))
+    val features = sampleNames.asScala.toList.zip(polygons.polygons.map(_.extent))
     groupByFeatureAndWriteToTiff(rdd, Option.empty, features,path, Option.empty,compression)
 
 }
