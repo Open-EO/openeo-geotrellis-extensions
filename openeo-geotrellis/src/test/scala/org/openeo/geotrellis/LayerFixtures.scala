@@ -9,7 +9,7 @@ import java.util.Collections.singletonList
 
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
-import geotrellis.layer.{Bounds, KeyBounds, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
+import geotrellis.layer.{Bounds, FloatingLayoutScheme, KeyBounds, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.{ArrayMultibandTile, ArrayTile, CellSize, MultibandTile, Tile, TileLayout}
 import geotrellis.spark._
@@ -26,8 +26,9 @@ import scala.collection.JavaConverters
 object LayerFixtures {
 
   def ClearNDVILayerForSingleDate()(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] ={
+
     val factory = new Sentinel2PyramidFactory(
-      openSearchEndpoint = "https://services.terrascope.be/catalogue",
+      openSearchEndpoint = opensearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_NDVI_V2",
       openSearchLinkTitles = singletonList("NDVI_10M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/NDVI_V2",
@@ -82,6 +83,11 @@ object LayerFixtures {
     datacube
   }
 
+  private val maxSpatialResolution = CellSize(10, 10)
+  private val pathDateExtractor = SplitYearMonthDayPathDateExtractor
+  val opensearchEndpoint = "https://services.terrascope.be/catalogue"
+  val client: OpenSearchClient = OpenSearchClient(new URL("https://services.terrascope.be/catalogue"))
+
   def defaultExtent = Extent(xmin = 3.248235121238894, ymin = 50.9753557675801, xmax = 3.256396825072918, ymax = 50.98003212949561)
 
   def probav_ndvi(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent) = accumuloDataCube(
@@ -95,7 +101,7 @@ object LayerFixtures {
   def s2_fapar(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent)=accumuloDataCube("S2_FAPAR_PYRAMID_20200408", from_date, to_date, bbox, "EPSG:4326")
 
   def sceneClassificationV200PyramidFactory = new Sentinel2PyramidFactory(
-    openSearchEndpoint = "https://services.terrascope.be/catalogue",
+    openSearchEndpoint = opensearchEndpoint,
     openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
     openSearchLinkTitles = singletonList("SCENECLASSIFICATION_20M"),
     rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
@@ -104,10 +110,23 @@ object LayerFixtures {
 
   def s2_scl(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent) = sceneClassificationV200PyramidFactory.layer(ProjectedExtent(defaultExtent,LatLng),ZonedDateTime.parse(from_date),ZonedDateTime.parse(to_date),12, correlationId = "")(SparkContext.getOrCreate())
 
+  def sentinel2TocLayerProviderUTM =
+    new FileLayerProvider(
+      client,
+      "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+      openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"),
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+      maxSpatialResolution,
+      pathDateExtractor,
+      layoutScheme = FloatingLayoutScheme(256),
+      experimental = true
+    )
+
+
 
   def rgbLayerProvider =
     new FileLayerProvider(
-      openSearch = OpenSearchClient(new URL("https://services.terrascope.be/catalogue")),
+      openSearch = client,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
