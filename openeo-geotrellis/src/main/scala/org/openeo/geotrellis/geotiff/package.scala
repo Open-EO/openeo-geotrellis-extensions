@@ -449,9 +449,9 @@ package object geotiff {
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                                    path: String,
                   polygons:ProjectedPolygons,
-                  sampleNames: List[String],
+                  sampleNames: ArrayList[String],
                                    compression: Compression): List[String] = {
-    val features = sampleNames.zip(polygons.polygons.map(_.extent))
+    val features = sampleNames.asScala.toList.zip(polygons.polygons.map(_.extent))
     groupByFeatureAndWriteToTiff(rdd, Option.empty, features,path, Option.empty,compression)
 
 }
