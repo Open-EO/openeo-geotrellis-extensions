@@ -338,7 +338,7 @@ package object geotiff {
       compression,
       detectedBandCount.toInt,
       cellType)
-    val thegeotiff = MultibandGeoTiff(tiffTile, croppedExtent, crs).withOverviews(NearestNeighbor, List(4, 8, 16))
+    val thegeotiff = MultibandGeoTiff(tiffTile, croppedExtent, crs)//.withOverviews(NearestNeighbor, List(4, 8, 16))
 
     GeoTiffWriter.write(thegeotiff, path,true)
   }
