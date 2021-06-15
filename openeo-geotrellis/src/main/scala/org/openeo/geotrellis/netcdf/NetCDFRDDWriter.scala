@@ -2,10 +2,12 @@ package org.openeo.geotrellis.netcdf
 
 //import ucar.ma2.Array
 import java.nio.file.Paths
+import java.time.format.DateTimeFormatter
 import java.time.{Duration, ZonedDateTime}
 import java.util.ArrayList
 
 import geotrellis.layer._
+import geotrellis.proj4.CRS
 import geotrellis.raster._
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.vector._
@@ -26,6 +28,7 @@ object NetCDFRDDWriter {
   val X = "x"
   val Y = "y"
   val TIME = "t"
+  val cfDatePattern = DateTimeFormatter.ofPattern("YYYY-MM-dd")
 
   case class ContextSeq[K, V, M](tiles: Iterable[(K, V)], metadata: LayoutDefinition) extends Seq[(K, V)] with Metadata[LayoutDefinition] {
     override def length: Int = tiles.size
@@ -75,61 +78,68 @@ object NetCDFRDDWriter {
         }
 
         val sorted = allRasters.toSeq.sortBy(_._1.toEpochSecond)
-        writeToDisk(sorted.map(_._2),sorted.map(_._1),filePath,bandNames)
+        writeToDisk(sorted.map(_._2),sorted.map(_._1),filePath,bandNames,crs)
 
         filePath
       }.collect()
       .toList.asJava
   }
 
-  def writeToDisk(rasters: Seq[Raster[MultibandTile]],dates:Seq[ZonedDateTime], path:String,bandNames: ArrayList[String]) = {
+  def writeToDisk(rasters: Seq[Raster[MultibandTile]],dates:Seq[ZonedDateTime], path:String,bandNames: ArrayList[String],crs:CRS) = {
     val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(path, false)
-
-    val aRaster = rasters.head
-    import java.util
-    val timeDimension = netcdfFile.addDimension(TIME, rasters.length)
-    val yDimension = netcdfFile.addDimension(Y, aRaster.rows)
-    val xDimension = netcdfFile.addDimension(X, aRaster.cols)
-
-    val timeDimensions = new util.ArrayList[Dimension]
-    timeDimensions.add(timeDimension)
-    addNetcdfVariable(netcdfFile, timeDimensions, TIME, DataType.DOUBLE, TIME, TIME, "s", "T")
-
-    val xDimensions = new util.ArrayList[Dimension]
-    xDimensions.add(xDimension)
-    addNetcdfVariable(netcdfFile, xDimensions, X, DataType.DOUBLE, "projection_x_coordinate", "x coordinate according to CH1903", "degrees_east", "X")
-
-    val yDimensions = new util.ArrayList[Dimension]
-    yDimensions.add(yDimension)
-    addNetcdfVariable(netcdfFile, yDimensions, Y, DataType.DOUBLE, "projection_y_coordinate", "y coordinate according to CH1903", "degrees_north", "Y")
-
-    /*val latLonDimensions = new util.ArrayList[Dimension]
-    latLonDimensions.add(yDimension)
-    latLonDimensions.add(xDimension)
-    addNetcdfVariable(netcdfFile, latLonDimensions, LAT, DataType.DOUBLE, "latitude", "latitude", "degrees_north", "Y")
-    addNetcdfVariable(netcdfFile, latLonDimensions, LON, DataType.DOUBLE, "longitude", "longitude", "degrees_north", "Y")
-    */
-    val bandDimension = new util.ArrayList[Dimension]
-    bandDimension.add(timeDimension)
-    bandDimension.add(yDimension)
-    bandDimension.add(xDimension)
-
-    for (bandName <- bandNames.asScala) {
-      addNetcdfVariable(netcdfFile, bandDimension, bandName, DataType.FLOAT, null, bandName, "hPa", null, -999, "y x")
-    }
-
-    //First define all variable and dimensions, then create the netcdf, after creation values can be written to variables
-    netcdfFile.create()
-
-    val xValues =  for( x <- 0 until aRaster.rasterExtent.cols) yield aRaster.rasterExtent.extent.xmin + x * aRaster.rasterExtent.cellwidth + aRaster.rasterExtent.cellwidth/2.0
-    val yValues =  for( y <- 0 until aRaster.rasterExtent.rows) yield aRaster.rasterExtent.extent.ymin + y * aRaster.rasterExtent.cellheight + aRaster.rasterExtent.cellheight/2.0
 
     //danger: dates map to rasters, so sorting can break that order
     val sortedDates = dates.sortBy(_.toEpochSecond)
     val firstDate = sortedDates.head
     val daysSince = dates.map(Duration.between(firstDate,_).toDays)
 
+    val aRaster = rasters.head
+    import java.util
 
+    netcdfFile.addGlobalAttribute("Conventions","CF-1.8" )
+    val timeDimension = netcdfFile.addDimension(TIME, rasters.length)
+    val yDimension = netcdfFile.addDimension(Y, aRaster.rows)
+    val xDimension = netcdfFile.addDimension(X, aRaster.cols)
+
+    val timeDimensions = new util.ArrayList[Dimension]
+    timeDimensions.add(timeDimension)
+
+    val timeUnits = "days since " + cfDatePattern.format(firstDate)
+    addNetcdfVariable(netcdfFile, timeDimensions, TIME, DataType.DOUBLE, TIME, TIME, timeUnits , "T")
+
+    val xDimensions = new util.ArrayList[Dimension]
+    xDimensions.add(xDimension)
+    addNetcdfVariable(netcdfFile, xDimensions, X, DataType.DOUBLE, "projection_x_coordinate", "x coordinate", "degrees_east", "X")
+
+
+    val yDimensions = new util.ArrayList[Dimension]
+    yDimensions.add(yDimension)
+    addNetcdfVariable(netcdfFile, yDimensions, Y, DataType.DOUBLE, "projection_y_coordinate", "y coordinate", "degrees_north", "Y")
+
+
+    netcdfFile.addVariable("crs",DataType.CHAR,"")
+    netcdfFile.addVariableAttribute("crs","crs_wkt",crs.toWKT().get)
+    netcdfFile.addVariableAttribute("crs","spatial_ref",crs.toWKT().get)//this one is especially for gdal...
+    //netcdfFile.addVariableAttribute("crs","grid_mapping_name","transverse_mercator")
+    //netcdfFile.addVariableAttribute("crs","false_easting",crs.proj4jCrs.getProjection.getFalseEasting)
+    //netcdfFile.addVariableAttribute("crs","false_northing",crs.proj4jCrs.getProjection.getFalseNorthing)
+    //netcdfFile.addVariableAttribute("crs","earth_radius",crs.proj4jCrs.getProjection.getEquatorRadius)
+
+    val bandDimension = new util.ArrayList[Dimension]
+    bandDimension.add(timeDimension)
+    bandDimension.add(yDimension)
+    bandDimension.add(xDimension)
+
+    for (bandName <- bandNames.asScala) {
+      addNetcdfVariable(netcdfFile, bandDimension, bandName, DataType.FLOAT, null, bandName, "", null, -999, "y x")
+      netcdfFile.addVariableAttribute(bandName,"grid_mapping","crs")
+    }
+
+    //First define all variable and dimensions, then create the netcdf, after creation values can be written to variables
+    netcdfFile.create()
+
+    val xValues =  for( x <- 0 until aRaster.rasterExtent.cols) yield aRaster.rasterExtent.extent.xmin + x * aRaster.rasterExtent.cellwidth + aRaster.rasterExtent.cellwidth/2.0
+    val yValues =  for( y <- 0 until aRaster.rasterExtent.rows) yield aRaster.rasterExtent.extent.ymax - y * aRaster.rasterExtent.cellheight - aRaster.rasterExtent.cellheight/2.0
 
     write1DValues(netcdfFile, xValues, X)
 
@@ -142,10 +152,7 @@ object NetCDFRDDWriter {
     for (bandIndex <- bandNames.asScala.indices) {
       writeBand(bandNames.get(bandIndex),bandIndex, netcdfFile, rasters)
     }
-    /*
-    write2DValues(netcdfFile, latitudeValues, LAT)
-    write2DValues(netcdfFile, longitudeValues, LON)
-    */
+
   }
 
   import java.io.IOException
