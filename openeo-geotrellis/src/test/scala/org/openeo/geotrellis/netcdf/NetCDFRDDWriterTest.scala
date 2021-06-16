@@ -69,4 +69,24 @@ class NetCDFRDDWriterTest {
 
     Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
   }
+
+  @Test
+  def testWriteSingleNetCDF(): Unit = {
+    val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
+    val utm31 = CRS.fromEpsgCode(32631)
+
+
+    val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31),utm31)
+
+    val dcParams = new DataCubeParameters()
+    dcParams.layoutScheme = "FloatingLayoutScheme"
+
+    val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(date,date.plusDays(10),bbox,Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs,13,sc,datacubeParams = Some(dcParams))
+
+
+    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSingleNetCDF(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M")),null,null)
+    val expectedPaths = List("/tmp/stitched.nc")
+
+    Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
+  }
 }
