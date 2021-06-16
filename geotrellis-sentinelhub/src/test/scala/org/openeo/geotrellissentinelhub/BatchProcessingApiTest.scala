@@ -113,4 +113,9 @@ class BatchProcessingApiTest {
 
     println(s"batch process ${batchProcess.id} will write to folder $card4lId")
   }
+
+  @Test(expected = classOf[SentinelHubException])
+  def getBatchProcessThrowsSentinelHubException(): Unit = {
+    batchProcessingApi.getBatchProcess("479cca6e-53d5-4477-ac5b-2c0ba8d3bebe", accessToken)
+  }
 }

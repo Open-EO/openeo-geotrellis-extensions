@@ -7,7 +7,7 @@ import io.circe.generic.auto._
 import io.circe.parser.decode
 import geotrellis.vector._
 import geotrellis.vector.io.json.{JsonFeatureCollection, JsonFeatureCollectionMap}
-import scalaj.http.{Http, HttpOptions, HttpRequest, HttpStatusException}
+import scalaj.http.{Http, HttpOptions, HttpRequest}
 
 import java.net.URI
 import java.time.format.DateTimeFormatter.{ISO_INSTANT, ISO_OFFSET_DATE_TIME}
