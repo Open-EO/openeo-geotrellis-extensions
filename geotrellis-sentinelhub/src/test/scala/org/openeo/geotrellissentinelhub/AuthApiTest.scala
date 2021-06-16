@@ -21,7 +21,5 @@ class AuthApiTest {
   }
 
   @Test(expected = classOf[SentinelHubException])
-  def authThrowsSentinelHubException(): Unit = {
-    authApi.authenticate(clientId = "???", clientSecret = "!!!")
-  }
+  def authWithWrongClientSecret(): Unit = authApi.authenticate(clientId, clientSecret = "!!!")
 }

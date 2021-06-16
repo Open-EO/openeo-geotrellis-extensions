@@ -80,7 +80,7 @@ class CatalogApiTest {
   }
 
   @Test
-  def dateTimesThrowsSentinelHubException(): Unit = {
+  def dateTimesForUnknownCollection(): Unit =
     try {
       catalogApi.dateTimes(
         collectionId = "some-unknown-collection",
@@ -92,10 +92,9 @@ class CatalogApiTest {
     } catch {
       case e: SentinelHubException => assertTrue(e.getMessage, e.getMessage contains "Collection not found")
     }
-  }
 
   @Test(expected = classOf[SentinelHubException])
-  def searchCard4LThrowsSentinelHubException(): Unit = {
+  def searchCard4LWithUnknownQueryProperty(): Unit =
       catalogApi.searchCard4L(
         collectionId = "sentinel-1-grd",
         ProjectedExtent(Extent(6.611, 45.665, 13.509, 51.253), LatLng),
@@ -104,5 +103,4 @@ class CatalogApiTest {
         accessToken,
         queryProperties = Map("someUnknownProperty" -> "???")
       )
-  }
 }
