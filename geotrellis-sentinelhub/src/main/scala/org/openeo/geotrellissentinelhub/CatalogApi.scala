@@ -7,7 +7,7 @@ import io.circe.generic.auto._
 import io.circe.parser.decode
 import geotrellis.vector._
 import geotrellis.vector.io.json.{JsonFeatureCollection, JsonFeatureCollectionMap}
-import scalaj.http.{Http, HttpOptions, HttpRequest}
+import scalaj.http.{Http, HttpOptions, HttpRequest, HttpStatusException}
 
 import java.net.URI
 import java.time.format.DateTimeFormatter.{ISO_INSTANT, ISO_OFFSET_DATE_TIME}
@@ -47,11 +47,13 @@ class CatalogApi(endpoint: String) {
            |    "next": ${nextToken.orNull}
            |}""".stripMargin
 
-      val response = http(s"$catalogEndpoint/search", accessToken)
+      val request = http(s"$catalogEndpoint/search", accessToken)
         .headers("Content-Type" -> "application/json")
         .postData(requestBody)
-        .asString
-        .throwError
+
+      val response = request.asString
+
+      if (response.isError) throw SentinelHubException(request, requestBody, response)
 
       decode[PagedFeatureCollection](response.body)
         .valueOr(throw _)
@@ -113,11 +115,13 @@ class CatalogApi(endpoint: String) {
            |  "next": ${nextToken.orNull}
            |}""".stripMargin
 
-      val response = http(s"$catalogEndpoint/search", accessToken)
+      val request = http(s"$catalogEndpoint/search", accessToken)
         .headers("Content-Type" -> "application/json")
         .postData(requestBody)
-        .asString
-        .throwError
+
+      val response = request.asString
+
+      if (response.isError) throw SentinelHubException(request, requestBody, response)
 
       decode[PagedJsonFeatureCollectionMap](response.body)
         .valueOr(throw _)
