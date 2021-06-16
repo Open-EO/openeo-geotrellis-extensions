@@ -47,11 +47,13 @@ class CatalogApi(endpoint: String) {
            |    "next": ${nextToken.orNull}
            |}""".stripMargin
 
-      val response = http(s"$catalogEndpoint/search", accessToken)
+      val request = http(s"$catalogEndpoint/search", accessToken)
         .headers("Content-Type" -> "application/json")
         .postData(requestBody)
-        .asString
-        .throwError
+
+      val response = request.asString
+
+      if (response.isError) throw SentinelHubException(request, requestBody, response)
 
       decode[PagedFeatureCollection](response.body)
         .valueOr(throw _)
@@ -113,11 +115,13 @@ class CatalogApi(endpoint: String) {
            |  "next": ${nextToken.orNull}
            |}""".stripMargin
 
-      val response = http(s"$catalogEndpoint/search", accessToken)
+      val request = http(s"$catalogEndpoint/search", accessToken)
         .headers("Content-Type" -> "application/json")
         .postData(requestBody)
-        .asString
-        .throwError
+
+      val response = request.asString
+
+      if (response.isError) throw SentinelHubException(request, requestBody, response)
 
       decode[PagedJsonFeatureCollectionMap](response.body)
         .valueOr(throw _)

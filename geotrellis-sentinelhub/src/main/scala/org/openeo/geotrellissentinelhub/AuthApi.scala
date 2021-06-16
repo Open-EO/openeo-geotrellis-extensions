@@ -18,18 +18,23 @@ class AuthApi {
   import AuthApi._
 
   def authenticate(clientId: String, clientSecret: String): AuthResponse = {
+    val params = Seq(
+      "grant_type" -> "client_credentials",
+      "client_id" -> clientId,
+      "client_secret" -> clientSecret
+    )
+
     val getAuthToken = http("https://services.sentinel-hub.com/oauth/token")
-      .postForm(Seq(
-        "grant_type" -> "client_credentials",
-        "client_id" -> clientId,
-        "client_secret" -> clientSecret
-      ))
+      .postForm(params)
+
+    val response = getAuthToken
       .asString
-      .throwError
+
+    if (response.isError) throw SentinelHubException(getAuthToken, params.toString(), response)
 
     implicit val decodeDuration: Decoder[Duration] = Decoder.decodeLong.map(Duration.ofSeconds)
 
-    decode[AuthResponse](getAuthToken.body)
+    decode[AuthResponse](response.body)
       .valueOr(throw _)
   }
 
