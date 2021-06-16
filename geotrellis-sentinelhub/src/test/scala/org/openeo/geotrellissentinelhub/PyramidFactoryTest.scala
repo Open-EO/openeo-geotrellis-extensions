@@ -11,7 +11,7 @@ import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
-import org.apache.spark.SparkConf
+import org.apache.spark.{SparkConf, SparkException}
 import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
 import org.junit.Test
 import org.openeo.geotrellissentinelhub.SampleType.FLOAT32
@@ -19,7 +19,14 @@ import org.openeo.geotrellissentinelhub.SampleType.FLOAT32
 import java.util.Collections
 import scala.collection.JavaConverters._
 
+object PyramidFactoryTest {
+  implicit class WithRootCause(e: Throwable) {
+    def getRootCause: Throwable = if (e.getCause == null) e else e.getCause.getRootCause
+  }
+}
+
 class PyramidFactoryTest {
+  import PyramidFactoryTest._
 
   private val clientId = Utils.clientId
   private val clientSecret = Utils.clientSecret
@@ -73,6 +80,30 @@ class PyramidFactoryTest {
     val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
     testLayer(new PyramidFactory(endpoint, "S2L2A", clientId, clientSecret), "sentinel2-L2A_mix", date, Seq("B04", "sunAzimuthAngles", "SCL"))
+  }
+
+  @Test
+  def testUnknownBand(): Unit = {
+    val endpoint = "https://services-uswest2.sentinel-hub.com"
+    val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+    try
+      testLayer(new PyramidFactory(endpoint, datasetId = "LOTL1", clientId, clientSecret), "unknown", date, Seq("UNKNOWN"))
+    catch {
+      case e: SparkException => assertTrue(e.getRootCause.getClass.toString, e.getRootCause.isInstanceOf[SentinelHubException])
+    }
+  }
+
+  @Test
+  def testInvalidClientSecret(): Unit = {
+    val endpoint = "https://services-uswest2.sentinel-hub.com"
+    val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+    try
+      testLayer(new PyramidFactory(endpoint, datasetId = "LOTL1", clientId, clientSecret = "???"), "unknown", date, Seq("B10", "B11"))
+    catch {
+      case e: SparkException => assertTrue(e.getRootCause.getClass.toString, e.getRootCause.isInstanceOf[SentinelHubException])
+    }
   }
 
   private def testLayer(pyramidFactory: PyramidFactory, layer: String, date: ZonedDateTime, bandNames: Seq[String],
