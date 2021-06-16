@@ -19,4 +19,9 @@ class AuthApiTest {
     assertTrue(duration.compareTo(Duration.ofMinutes(30)) > 0)
     assertTrue(duration.compareTo(Duration.ofMinutes(60)) <= 0)
   }
+
+  @Test(expected = classOf[SentinelHubException])
+  def authThrowsSentinelHubException(): Unit = {
+    authApi.authenticate(clientId = "???", clientSecret = "!!!")
+  }
 }
