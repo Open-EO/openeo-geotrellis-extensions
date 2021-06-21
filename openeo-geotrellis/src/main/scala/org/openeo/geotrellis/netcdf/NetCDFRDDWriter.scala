@@ -105,8 +105,11 @@ object NetCDFRDDWriter {
 
         val origin: Array[Int] = Array(daysSince.toInt, gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
         netcdfFile.write(bandNames.get(bandIndex),origin, bandArray)
+        netcdfFile.flush()
       }
     }
+
+    netcdfFile.close()
     cached.unpersist(blocking = false)
     return Collections.singletonList(path)
   }
@@ -169,6 +172,7 @@ object NetCDFRDDWriter {
     for (bandIndex <- bandNames.asScala.indices) {
       writeBand(bandNames.get(bandIndex),bandIndex, netcdfFile, rasters)
     }
+    netcdfFile.close()
 
   }
 
