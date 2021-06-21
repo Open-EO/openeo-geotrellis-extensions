@@ -118,7 +118,8 @@ object NetCDFRDDWriter {
                   sampleNames: ArrayList[String],
                   bandNames: ArrayList[String]
                   ): java.util.List[String] = {
-    val features = sampleNames.asScala.toList.zip(polygons.polygons.map(_.extent))
+    val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
+    val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
     groupByFeatureAndWriteToTiff(rdd,  features,path,bandNames)
 
   }

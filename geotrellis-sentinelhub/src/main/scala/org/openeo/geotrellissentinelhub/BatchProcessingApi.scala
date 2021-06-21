@@ -107,11 +107,13 @@ class BatchProcessingApi(endpoint: String) {
 
     logger.debug(requestBody)
 
-    val response = http(s"$batchEndpoint/process", accessToken)
+    val request = http(s"$batchEndpoint/process", accessToken)
       .headers("Content-Type" -> "application/json")
       .postData(requestBody)
-      .asString
-      .throwError
+
+    val response = request.asString
+
+    if (response.isError) throw SentinelHubException(request, requestBody, response)
 
     decode[CreateBatchProcessResponse](response.body)
       .valueOr(throw _)
@@ -167,25 +169,36 @@ class BatchProcessingApi(endpoint: String) {
   }
 
   def getBatchProcess(batchRequestId: String, accessToken: String): GetBatchProcessResponse = {
-    val response = http(s"$batchEndpoint/process/$batchRequestId", accessToken)
-      .asString
-      .throwError
+    val request = http(s"$batchEndpoint/process/$batchRequestId", accessToken)
+    val response = request.asString
+
+    if (response.isError) throw SentinelHubException(request, "", response)
 
     decode[GetBatchProcessResponse](response.body)
       .valueOr(throw _)
   }
 
-  def startBatchProcess(batchRequestId: String, accessToken: String): Unit =
-    http(s"$batchEndpoint/process/$batchRequestId/start", accessToken)
-      .postData("")
-      .execute()
-      .throwError
+  def startBatchProcess(batchRequestId: String, accessToken: String): Unit = {
+    val requestBody = ""
 
-  def restartPartiallyFailedBatchProcess(batchRequestId: String, accessToken: String): Unit =
-    http(s"$batchEndpoint/process/$batchRequestId/restartpartial", accessToken)
-      .postData("")
-      .execute()
-      .throwError
+    val request = http(s"$batchEndpoint/process/$batchRequestId/start", accessToken)
+      .postData(requestBody)
+
+    val response = request.execute()
+
+    if (response.isError) throw SentinelHubException(request, requestBody, response)
+  }
+
+  def restartPartiallyFailedBatchProcess(batchRequestId: String, accessToken: String): Unit = {
+    val requestBody = ""
+
+    val request = http(s"$batchEndpoint/process/$batchRequestId/restartpartial", accessToken)
+      .postData(requestBody)
+
+    val response = request.execute()
+
+    if (response.isError) throw SentinelHubException(request, requestBody, response)
+  }
 
   def createCard4LBatchProcess(datasetId: String, bounds: Geometry, dateTime: ZonedDateTime, bandNames: Seq[String],
                                dataTakeId: String, card4lId: String, demInstance: String,
@@ -302,11 +315,13 @@ class BatchProcessingApi(endpoint: String) {
 
     logger.debug(requestBody)
 
-    val response = http(s"$batchEndpoint/process", accessToken)
+    val request = http(s"$batchEndpoint/process", accessToken)
       .headers("Content-Type" -> "application/json")
       .postData(requestBody)
-      .asString
-      .throwError
+
+    val response = request.asString
+
+    if (response.isError) throw SentinelHubException(request, requestBody, response)
 
     decode[CreateBatchProcessResponse](response.body)
       .valueOr(throw _)

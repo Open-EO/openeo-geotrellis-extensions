@@ -15,8 +15,7 @@ import geotrellis.raster.MultibandTile
 import geotrellis.vector.ProjectedExtent
 import org.apache.commons.io.IOUtils
 import org.slf4j.LoggerFactory
-import scalaj.http.{Http, HttpStatusException}
-import com.fasterxml.jackson.core.`type`.TypeReference
+import scalaj.http.Http
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.common.cache.{CacheBuilder, CacheLoader}
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
@@ -35,29 +34,10 @@ package object geotrellissentinelhub {
     .expireAfterWrite(1800L, SECONDS)
     .build(new CacheLoader[(String, String), String] {
       override def load(credentials: (String, String)): String = credentials match {
-        case (clientId, clientSecret) => retry(5, clientId) { retrieveAuthToken(clientId, clientSecret) }
+        case (clientId, clientSecret) =>
+          retry(5, clientId) { new AuthApi().authenticate(clientId, clientSecret).access_token }
       }
     })
-
-  // TODO: use AuthApi
-  private def retrieveAuthToken(clientId: String, clientSecret: String): String = {
-    val getAuthToken = Http("https://services.sentinel-hub.com/oauth/token")
-      .postForm(Seq(
-        "grant_type" -> "client_credentials",
-        "client_id" -> clientId,
-        "client_secret" -> clientSecret
-      ))
-      .asString
-      .throwError
-
-    val response = new ObjectMapper()
-      .readValue[util.Map[String, Object]](getAuthToken.body, new TypeReference[util.Map[String, Object]](){})
-
-    val token = response.get("access_token").asInstanceOf[String]
-    logger.debug("received a new access token")
-
-    token
-  }
 
   def retrieveTileFromSentinelHub(endpoint: String, datasetId: String, projectedExtent: ProjectedExtent, date: ZonedDateTime, width: Int,
                                   height: Int, bandNames: Seq[String], sampleType: SampleType,
@@ -146,7 +126,8 @@ package object geotrellissentinelhub {
           GeoTiffReader.readMultiband(IOUtils.toByteArray(in))
         else {
           val textBody = Source.fromInputStream(in, "utf-8").mkString
-          throw HttpStatusException(code, header.get("Status").flatMap(_.headOption).getOrElse("UNKNOWN"), textBody)
+          throw SentinelHubException(request, jsonData, code,
+            statusLine = header.get("Status").flatMap(_.headOption).getOrElse("UNKNOWN"), textBody)
         }
       )
     }
@@ -161,15 +142,10 @@ package object geotrellissentinelhub {
   @tailrec
   private def retry[T](nb: Int, context: String, i: Int = 1)(fn: => T): T = {
     def retryable(e: Exception): Boolean = {
-      val errorMessage = e match {
-        case h: HttpStatusException => s"${h.getMessage}: ${h.body}"
-        case _ => e.getMessage
-      }
-
-      logger.warn(s"Attempt $i failed: $context -> $errorMessage")
+      logger.warn(s"Attempt $i failed: $context -> ${e.getMessage}")
 
       i < nb && (e match {
-        case h: HttpStatusException if h.code == 429 || h.code >= 500 => true
+        case s: SentinelHubException if s.statusCode == 429 || s.statusCode >= 500 => true
         case _: SocketTimeoutException => true
         case _ => false
       })

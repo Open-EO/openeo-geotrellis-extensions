@@ -4,19 +4,14 @@ import com.google.common.cache.{CacheBuilder, CacheLoader}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.vector.{Extent, Feature, ProjectedExtent}
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
-import org.slf4j.LoggerFactory
-import scalaj.http.HttpStatusException
 
 import java.time.ZoneOffset.UTC
 import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
-import java.util.Collections
 import java.util.concurrent.TimeUnit.MINUTES
 import scala.collection.JavaConverters._
 
 object BatchProcessingService {
-  private val logger = LoggerFactory.getLogger(classOf[BatchProcessingService])
-
   // TODO: invalidate key on 401 Unauthorized
   private val accessTokenCache = CacheBuilder
     .newBuilder()
@@ -36,7 +31,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
   def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
                           to_date: String, band_names: util.List[String], sampleType: SampleType,
                           metadata_properties: util.Map[String, Any], processing_options: util.Map[String, Any])
-  : String = try {
+  : String = {
     // TODO: implement retries
     val boundingBox = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
 
@@ -63,10 +58,6 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     batchProcessingApi.startBatchProcess(batchRequestId, accessToken)
 
     batchRequestId
-  } catch {
-    case e: HttpStatusException =>
-      logger.error(e.body, e) // TODO: include context (request details), move this to the Apis instead
-      throw e
   }
 
   def get_batch_process_status(batch_request_id: String): String =

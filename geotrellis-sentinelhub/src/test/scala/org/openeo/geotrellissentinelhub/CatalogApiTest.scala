@@ -1,11 +1,11 @@
-package org.openeo.geotrellissentinelhub;
+package org.openeo.geotrellissentinelhub
 
 import geotrellis.proj4.LatLng
-import geotrellis.vector.{Extent, Feature, ProjectedExtent}
+import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.Test
 
-import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.time.{LocalDate, ZoneId}
 
 class CatalogApiTest {
   private val endpoint = "https://services.sentinel-hub.com"
@@ -78,4 +78,29 @@ class CatalogApiTest {
 
     assertTrue(s"number of features ${features.size} should exceed default page size 10", features.size > 10)
   }
+
+  @Test
+  def dateTimesForUnknownCollection(): Unit =
+    try {
+      catalogApi.dateTimes(
+        collectionId = "some-unknown-collection",
+        ProjectedExtent(Extent(16.162995875210488, 48.305237663134704, 16.198050293067634, 48.328618668560985), LatLng),
+        from = LocalDate.of(2020, 11, 5).atStartOfDay(utc),
+        to = LocalDate.of(2020, 11, 7).atStartOfDay(utc),
+        accessToken
+      )
+    } catch {
+      case e: SentinelHubException => assertTrue(e.getMessage, e.getMessage contains "Collection not found")
+    }
+
+  @Test(expected = classOf[SentinelHubException])
+  def searchCard4LWithUnknownQueryProperty(): Unit =
+      catalogApi.searchCard4L(
+        collectionId = "sentinel-1-grd",
+        ProjectedExtent(Extent(6.611, 45.665, 13.509, 51.253), LatLng),
+        from = LocalDate.of(2021, 1, 6).atStartOfDay(utc),
+        to = LocalDate.of(2021, 1, 25).atTime(23, 59, 59).atZone(utc),
+        accessToken,
+        queryProperties = Map("someUnknownProperty" -> "???")
+      )
 }
