@@ -64,13 +64,7 @@ object NetCDFRDDWriter {
 
       val cellType = tuple._2.cellType
       if(netcdfFile == null){
-        val ncDataType =
-        if(cellType.isFloatingPoint){
-          DataType.FLOAT
-        }else{
-          DataType.INT
-        }
-        netcdfFile = setupNetCDF(path, rasterExtent, dates, bandNames, rdd.metadata.crs, ncDataType)
+        netcdfFile = setupNetCDF(path, rasterExtent, dates, bandNames, rdd.metadata.crs, cellType)
       }
       val multibandTile = tuple._2
       val daysSince = sortedDates.indexOf(tuple._1.time)
@@ -80,30 +74,25 @@ object NetCDFRDDWriter {
         val cols = tile.cols
         val rows = tile.rows
 
-        val bandArray = {
-          if(cellType.isFloatingPoint){
-            val array = new ArrayFloat.D3(1, rows, cols)
-            for (j <- 0 until cols) {
-              for (k <- 0 until rows) {
-                array.set( 0, k, j, tile.getDouble(j,k).toFloat)
-              }
-            }
-            array
-          }else{
-            val array = new ArrayInt.D3(1, rows, cols,false)
-            for (j <- 0 until cols) {
-              for (k <- 0 until rows) {
-                array.set( 0, k, j, tile.get(j,k))
-              }
-            }
-            array
-          }
+        val geotrellisArrayTile = tile.toArrayTile()
+
+        val shape = scala.Array[Int](1, rows, cols)
+        val bandArray=
+        geotrellisArrayTile match {
+          case t: BitArrayTile => ucar.ma2.Array.factory(DataType.BOOLEAN, shape,t.array)
+          case t: ByteArrayTile => ucar.ma2.Array.factory(DataType.BYTE, shape,t.array)
+          case t: UByteArrayTile => ucar.ma2.Array.factory(DataType.UBYTE, shape,t.array)
+          case t: ShortArrayTile => ucar.ma2.Array.factory(DataType.SHORT, shape,t.array)
+          case t: UShortArrayTile => ucar.ma2.Array.factory(DataType.USHORT, shape,t.array)
+          case t: IntArrayTile => ucar.ma2.Array.factory(DataType.INT, shape,t.array)
+          case t: FloatArrayTile => ucar.ma2.Array.factory(DataType.FLOAT, shape,t.array)
+          case t: DoubleArrayTile => ucar.ma2.Array.factory(DataType.DOUBLE, shape,t.array)
         }
 
 
         val gridExtent = rasterExtent.gridBoundsFor(tuple._1.spatialKey.extent(rdd.metadata))
 
-        val origin: Array[Int] = Array(daysSince.toInt, gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
+        val origin: scala.Array[Int] = scala.Array(daysSince.toInt, gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
         netcdfFile.write(bandNames.get(bandIndex),origin, bandArray)
         netcdfFile.flush()
       }
@@ -167,7 +156,7 @@ object NetCDFRDDWriter {
     val aRaster = rasters.head
     val rasterExtent = aRaster.rasterExtent
 
-    val netcdfFile: NetcdfFileWriter = setupNetCDF(path, rasterExtent, dates, bandNames, crs, DataType.FLOAT)
+    val netcdfFile: NetcdfFileWriter = setupNetCDF(path, rasterExtent, dates, bandNames, crs, aRaster.cellType)
 
     for (bandIndex <- bandNames.asScala.indices) {
       writeBand(bandNames.get(bandIndex),bandIndex, netcdfFile, rasters)
@@ -176,7 +165,7 @@ object NetCDFRDDWriter {
 
   }
 
-  private def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime], bandNames: util.ArrayList[String], crs: CRS, bandDataType: DataType) = {
+  private def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime], bandNames: util.ArrayList[String], crs: CRS, cellType: CellType) = {
 
     val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4,path, Nc4ChunkingStrategy.factory(Nc4Chunking.Strategy.standard, 9, true))
 
@@ -228,8 +217,35 @@ object NetCDFRDDWriter {
     bandDimension.add(yDimension)
     bandDimension.add(xDimension)
 
+    val (netcdfType:DataType,nodata:Option[Number]) = cellType match {
+      case BitCellType => (DataType.BOOLEAN,None)
+      case ByteCellType => (DataType.BYTE,None)
+      case UByteCellType => (DataType.UBYTE,None)
+      case ShortCellType => (DataType.SHORT,None)
+      case UShortCellType => (DataType.USHORT,None)
+      case IntCellType => (DataType.INT,None)
+      case FloatCellType => (DataType.FLOAT,None)
+      case DoubleCellType => (DataType.DOUBLE,None)
+      case ByteConstantNoDataCellType => (DataType.BYTE,Some(byteNODATA))
+      case UByteConstantNoDataCellType => (DataType.UBYTE,Some(ubyteNODATA))
+      case ShortConstantNoDataCellType => (DataType.SHORT,Some(shortNODATA))
+      case UShortConstantNoDataCellType => (DataType.USHORT,Some(ushortNODATA))
+      case IntConstantNoDataCellType => (DataType.INT,Some(NODATA))
+      case FloatConstantNoDataCellType => (DataType.FLOAT,floatNODATA)
+      case DoubleConstantNoDataCellType => (DataType.DOUBLE,doubleNODATA)
+      case ct: ByteUserDefinedNoDataCellType => (DataType.BYTE,Some(ct.noDataValue))
+      case ct: UByteUserDefinedNoDataCellType => (DataType.UBYTE,Some(ct.widenedNoData.asInt))
+      case ct: ShortUserDefinedNoDataCellType => (DataType.SHORT,Some(ct.noDataValue))
+      case ct: UShortUserDefinedNoDataCellType => (DataType.USHORT,Some(ct.widenedNoData.asInt))
+      case ct: IntUserDefinedNoDataCellType => (DataType.INT,Some(ct.widenedNoData.asInt))
+      case ct: FloatUserDefinedNoDataCellType => (DataType.DOUBLE,Some(ct.noDataValue))
+      case ct: DoubleUserDefinedNoDataCellType => (DataType.DOUBLE,Some(ct.noDataValue))
+    }
+
+
+
     for (bandName <- bandNames.asScala) {
-      addNetcdfVariable(netcdfFile, bandDimension, bandName, bandDataType, null, bandName, "", null, -999, "y x")
+      addNetcdfVariable(netcdfFile, bandDimension, bandName, netcdfType, null, bandName, "", null, nodata.get, "y x")
       netcdfFile.addVariableAttribute(bandName, "grid_mapping", "crs")
     }
 
@@ -281,7 +297,7 @@ object NetCDFRDDWriter {
 
   import java.util
 
-  private def addNetcdfVariable(netcdfFile: NetcdfFileWriter, dimensions: util.ArrayList[Dimension], variableName: String, dataType: DataType, standardName: String, longName: String, units: String, axis: String, fillValue: Int, coordinates: String): Unit = {
+  private def addNetcdfVariable(netcdfFile: NetcdfFileWriter, dimensions: util.ArrayList[Dimension], variableName: String, dataType: DataType, standardName: String, longName: String, units: String, axis: String, fillValue: Number, coordinates: String): Unit = {
     netcdfFile.addVariable(variableName, dataType, dimensions)
     if (standardName != null) netcdfFile.addVariableAttribute(variableName, "standard_name", standardName)
     if (longName != null) netcdfFile.addVariableAttribute(variableName, "long_name", longName)
