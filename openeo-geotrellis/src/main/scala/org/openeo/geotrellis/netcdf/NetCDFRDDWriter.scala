@@ -17,7 +17,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.storage.StorageLevel
 import org.openeo.geotrellis.ProjectedPolygons
-import ucar.ma2.{ArrayDouble, ArrayFloat, ArrayInt, DataType}
+import ucar.ma2.{ArrayDouble, ArrayInt, DataType}
 import ucar.nc2.write.{Nc4Chunking, Nc4ChunkingStrategy}
 import ucar.nc2.{Dimension, NetcdfFileWriter}
 
@@ -64,37 +64,18 @@ object NetCDFRDDWriter {
 
       val cellType = tuple._2.cellType
       if(netcdfFile == null){
-        netcdfFile = setupNetCDF(path, rasterExtent, dates, bandNames, rdd.metadata.crs, cellType)
+        netcdfFile = setupNetCDF(path, rasterExtent, dates, bandNames, rdd.metadata.crs, cellType,dimensionNames,attributes)
       }
       val multibandTile = tuple._2
       val daysSince = sortedDates.indexOf(tuple._1.time)
       for (bandIndex <- bandNames.asScala.indices) {
 
-        val tile = multibandTile.band(bandIndex)
-        val cols = tile.cols
-        val rows = tile.rows
-
-        val geotrellisArrayTile = tile.toArrayTile()
-
-        val shape = scala.Array[Int](1, rows, cols)
-        val bandArray=
-        geotrellisArrayTile match {
-          case t: BitArrayTile => ucar.ma2.Array.factory(DataType.BOOLEAN, shape,t.array)
-          case t: ByteArrayTile => ucar.ma2.Array.factory(DataType.BYTE, shape,t.array)
-          case t: UByteArrayTile => ucar.ma2.Array.factory(DataType.UBYTE, shape,t.array)
-          case t: ShortArrayTile => ucar.ma2.Array.factory(DataType.SHORT, shape,t.array)
-          case t: UShortArrayTile => ucar.ma2.Array.factory(DataType.USHORT, shape,t.array)
-          case t: IntArrayTile => ucar.ma2.Array.factory(DataType.INT, shape,t.array)
-          case t: FloatArrayTile => ucar.ma2.Array.factory(DataType.FLOAT, shape,t.array)
-          case t: DoubleArrayTile => ucar.ma2.Array.factory(DataType.DOUBLE, shape,t.array)
-        }
-
-
         val gridExtent = rasterExtent.gridBoundsFor(tuple._1.spatialKey.extent(rdd.metadata))
+        val origin: Array[Int] = scala.Array(daysSince.toInt, gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
+        val variable = bandNames.get(bandIndex)
 
-        val origin: scala.Array[Int] = scala.Array(daysSince.toInt, gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
-        netcdfFile.write(bandNames.get(bandIndex),origin, bandArray)
-        netcdfFile.flush()
+        val tile = multibandTile.band(bandIndex)
+        writeTile(variable, origin, tile, netcdfFile)
       }
     }
 
@@ -104,6 +85,29 @@ object NetCDFRDDWriter {
   }
 
 
+  private def writeTile(variable: String, origin: Array[Int], tile: Tile, netcdfFile: NetcdfFileWriter) = {
+    val cols = tile.cols
+    val rows = tile.rows
+
+    val geotrellisArrayTile = tile.toArrayTile()
+
+    val shape = scala.Array[Int](1, rows, cols)
+    val bandArray =
+      geotrellisArrayTile match {
+        case t: BitArrayTile => ucar.ma2.Array.factory(DataType.BOOLEAN, shape, t.array)
+        case t: ByteArrayTile => ucar.ma2.Array.factory(DataType.BYTE, shape, t.array)
+        case t: UByteArrayTile => ucar.ma2.Array.factory(DataType.UBYTE, shape, t.array)
+        case t: ShortArrayTile => ucar.ma2.Array.factory(DataType.SHORT, shape, t.array)
+        case t: UShortArrayTile => ucar.ma2.Array.factory(DataType.USHORT, shape, t.array)
+        case t: IntArrayTile => ucar.ma2.Array.factory(DataType.INT, shape, t.array)
+        case t: FloatArrayTile => ucar.ma2.Array.factory(DataType.FLOAT, shape, t.array)
+        case t: DoubleArrayTile => ucar.ma2.Array.factory(DataType.DOUBLE, shape, t.array)
+      }
+
+
+    netcdfFile.write(variable, origin, bandArray)
+  }
+
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                   path: String,
                   polygons:ProjectedPolygons,
@@ -112,11 +116,28 @@ object NetCDFRDDWriter {
                   ): java.util.List[String] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
-    groupByFeatureAndWriteToTiff(rdd,  features,path,bandNames)
+    groupByFeatureAndWriteToTiff(rdd,  features,path,bandNames,null,null)
 
   }
 
-  private def groupByFeatureAndWriteToTiff(rdd: MultibandTileLayerRDD[SpaceTimeKey], features: List[(String, Extent)],path:String,bandNames: ArrayList[String]) = {
+  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                  path: String,
+                  polygons:ProjectedPolygons,
+                  sampleNames: ArrayList[String],
+                  bandNames: ArrayList[String],
+                  dimensionNames: java.util.Map[String,String],
+                  attributes: java.util.Map[String,String]
+                 ): java.util.List[String] = {
+    val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
+    val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
+    groupByFeatureAndWriteToTiff(rdd,  features,path,bandNames,dimensionNames,attributes)
+
+  }
+
+  private def groupByFeatureAndWriteToTiff(rdd: MultibandTileLayerRDD[SpaceTimeKey], features: List[(String, Extent)],
+                                           path:String,bandNames: ArrayList[String],
+                                           dimensionNames: java.util.Map[String,String],
+                                           attributes: java.util.Map[String,String]) = {
     val featuresBC: Broadcast[List[(String, Extent)]] = SparkContext.getOrCreate().broadcast(features)
 
 
@@ -145,27 +166,37 @@ object NetCDFRDDWriter {
         }
 
         val sorted = allRasters.toSeq.sortBy(_._1.toEpochSecond)
-        writeToDisk(sorted.map(_._2),sorted.map(_._1),filePath,bandNames,crs)
+
+
+        writeToDisk(sorted.map(_._2),sorted.map(_._1),filePath,bandNames,crs,dimensionNames,attributes)
 
         filePath
       }.collect()
       .toList.asJava
   }
 
-  def writeToDisk(rasters: Seq[Raster[MultibandTile]],dates:Seq[ZonedDateTime], path:String,bandNames: ArrayList[String],crs:CRS) = {
+  def writeToDisk(rasters: Seq[Raster[MultibandTile]],dates:Seq[ZonedDateTime], path:String,
+                  bandNames: ArrayList[String],
+                  crs:CRS,dimensionNames: java.util.Map[String,String],
+                  attributes: java.util.Map[String,String]) = {
     val aRaster = rasters.head
     val rasterExtent = aRaster.rasterExtent
 
-    val netcdfFile: NetcdfFileWriter = setupNetCDF(path, rasterExtent, dates, bandNames, crs, aRaster.cellType)
+    val netcdfFile: NetcdfFileWriter = setupNetCDF(path, rasterExtent, dates, bandNames, crs, aRaster.cellType,dimensionNames, attributes)
 
     for (bandIndex <- bandNames.asScala.indices) {
-      writeBand(bandNames.get(bandIndex),bandIndex, netcdfFile, rasters)
+      for (i <- rasters.indices) {
+        writeTile(bandNames.get(bandIndex),  scala.Array(i, 0, 0), rasters(i).tile.band(bandIndex), netcdfFile)
+      }
     }
     netcdfFile.close()
 
   }
 
-  private def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime], bandNames: util.ArrayList[String], crs: CRS, cellType: CellType) = {
+  private def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime],
+                          bandNames: util.ArrayList[String], crs: CRS, cellType: CellType,
+                          dimensionNames: java.util.Map[String,String],
+                          attributes: java.util.Map[String,String]) = {
 
     val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4,path, Nc4ChunkingStrategy.factory(Nc4Chunking.Strategy.standard, 9, true))
 
@@ -174,15 +205,21 @@ object NetCDFRDDWriter {
 
     val sortedDates = dates.sortBy(_.toEpochSecond)
     val firstDate = sortedDates.head
-    val daysSince = dates.map(Duration.between(firstDate, _).toDays)
+    val daysSince = dates.map(Duration.between(firstDate, _).toDays.toInt)
 
 
     import java.util
 
     netcdfFile.addGlobalAttribute("Conventions", "CF-1.8")
     netcdfFile.addGlobalAttribute("institution", "openEO platform")
+    if(attributes != null) {
+      for(attr <- attributes.asScala) {
+        netcdfFile.addGlobalAttribute(attr._1, attr._2)
+      }
+    }
+    val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
 
-    val timeDimension = netcdfFile.addDimension(TIME, dates.length)
+    val timeDimension = netcdfFile.addDimension(timeDimName, dates.length)
     val yDimension = netcdfFile.addDimension(Y, rasterExtent.rows)
     val xDimension = netcdfFile.addDimension(X, rasterExtent.cols)
 
@@ -190,7 +227,7 @@ object NetCDFRDDWriter {
     timeDimensions.add(timeDimension)
 
     val timeUnits = "days since " + cfDatePattern.format(firstDate)
-    addNetcdfVariable(netcdfFile, timeDimensions, TIME, DataType.INT, TIME, TIME, timeUnits, "T")
+    addNetcdfVariable(netcdfFile, timeDimensions, timeDimName, DataType.INT, TIME, TIME, timeUnits, "T")
 
     val xDimensions = new util.ArrayList[Dimension]
     xDimensions.add(xDimension)
@@ -260,7 +297,7 @@ object NetCDFRDDWriter {
 
     //Write values to variable
 
-    writeTime(netcdfFile, daysSince)
+    writeTime(timeDimName, netcdfFile, daysSince)
     write1DValues(netcdfFile, xValues, X)
     write1DValues(netcdfFile, yValues, Y)
     netcdfFile
@@ -268,24 +305,6 @@ object NetCDFRDDWriter {
 
   import java.io.IOException
   import java.util
-
-  import org.opengis.coverage.grid.InvalidRangeException
-
-  @throws[IOException]
-  @throws[InvalidRangeException]
-  private def writeBand(bandName:String,bandIndex:Int, netcdfFile: NetcdfFileWriter, floatValues: Seq[Raster[MultibandTile]]): Unit = {
-    val cols = floatValues.head.cols
-    val rows = floatValues.head.rows
-    val airPressureArray = new ArrayFloat.D3(floatValues.length, rows, cols)
-    for (i <- floatValues.indices) {
-      for (j <- 0 until cols) {
-        for (k <- 0 until rows) {
-          airPressureArray.set(i, k, j, floatValues(i).tile.band(bandIndex).getDouble(j,k).toFloat)
-        }
-      }
-    }
-    netcdfFile.write(bandName, airPressureArray)
-  }
 
   private def addNetcdfVariable(netcdfFile: NetcdfFileWriter, dimensions: util.ArrayList[Dimension], variableName: String, dataType: DataType, standardName: String, longName: String, units: String, axis: String): Unit = {
     netcdfFile.addVariable(variableName, dataType, dimensions)
@@ -307,18 +326,16 @@ object NetCDFRDDWriter {
     if (coordinates != null) netcdfFile.addVariableAttribute(variableName, "coordinates", coordinates)
   }
 
-  import java.io.IOException
-
   import org.opengis.coverage.grid.InvalidRangeException
 
   @throws[IOException]
   @throws[InvalidRangeException]
-  private def writeTime(netcdfFile: NetcdfFileWriter, convertedTimeArray: Seq[Long]): Unit = {
+  private def writeTime(dimName:String, netcdfFile: NetcdfFileWriter, convertedTimeArray: Seq[Int]): Unit = {
     val timeArray = new ArrayInt.D1(convertedTimeArray.length,false)
     for (i <- convertedTimeArray.indices) {
-      timeArray.set(i, convertedTimeArray(i).toInt)
+      timeArray.set(i, convertedTimeArray(i))
     }
-    netcdfFile.write(TIME, timeArray)
+    netcdfFile.write(dimName, timeArray)
   }
 
 
