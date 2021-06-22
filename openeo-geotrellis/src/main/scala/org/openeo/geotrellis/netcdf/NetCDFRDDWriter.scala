@@ -46,7 +46,8 @@ object NetCDFRDDWriter {
                   path: String,
                   bandNames: ArrayList[String],
                        dimensionNames: java.util.Map[String,String],
-                       attributes: java.util.Map[String,String]
+                       attributes: java.util.Map[String,String],
+                       zLevel:Int
                  ): java.util.List[String] = {
 
     val cached = rdd.persist(StorageLevel.MEMORY_AND_DISK_SER)
@@ -64,7 +65,7 @@ object NetCDFRDDWriter {
 
       val cellType = tuple._2.cellType
       if(netcdfFile == null){
-        netcdfFile = setupNetCDF(path, rasterExtent, dates, bandNames, rdd.metadata.crs, cellType,dimensionNames,attributes)
+        netcdfFile = setupNetCDF(path, rasterExtent, dates, bandNames, rdd.metadata.crs, cellType,dimensionNames,attributes,zLevel)
       }
       val multibandTile = tuple._2
       val daysSince = sortedDates.indexOf(tuple._1.time)
@@ -196,9 +197,9 @@ object NetCDFRDDWriter {
   private[netcdf] def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime],
                           bandNames: util.ArrayList[String], crs: CRS, cellType: CellType,
                           dimensionNames: java.util.Map[String,String],
-                          attributes: java.util.Map[String,String]) = {
+                          attributes: java.util.Map[String,String],zLevel:Int =6) = {
 
-    val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4,path, Nc4ChunkingStrategy.factory(Nc4Chunking.Strategy.standard, 9, true))
+    val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4,path, Nc4ChunkingStrategy.factory(Nc4Chunking.Strategy.standard, zLevel, true))
 
 
     //danger: dates map to rasters, so sorting can break that order
