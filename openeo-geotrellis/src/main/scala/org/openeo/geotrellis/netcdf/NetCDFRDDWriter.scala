@@ -193,7 +193,7 @@ object NetCDFRDDWriter {
 
   }
 
-  private def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime],
+  private[netcdf] def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime],
                           bandNames: util.ArrayList[String], crs: CRS, cellType: CellType,
                           dimensionNames: java.util.Map[String,String],
                           attributes: java.util.Map[String,String]) = {

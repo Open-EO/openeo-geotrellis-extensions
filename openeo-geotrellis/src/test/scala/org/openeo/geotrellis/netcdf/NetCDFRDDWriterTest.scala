@@ -6,6 +6,7 @@ import java.time.{LocalDate, ZonedDateTime}
 import java.util
 
 import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.raster.{CellType, FloatConstantNoDataCellType, IntUserDefinedNoDataCellType, RasterExtent, UByteUserDefinedNoDataCellType, UShortCellType}
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{ProjectedExtent, _}
 import org.apache.spark.SparkContext
@@ -23,7 +24,7 @@ object NetCDFRDDWriterTest {
   def setupSpark(): Unit = {
     // originally geotrellis.spark.util.SparkUtils.createLocalSparkContext
     val conf = SparkUtils.createSparkConf
-      .setMaster("local[2]")
+      .setMaster("local[1]")
       .setAppName(NetCDFRDDWriterTest.getClass.getName)
       .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       // .set("spark.kryo.registrationRequired", "true") // this requires e.g. RasterSource to be registered too
@@ -88,5 +89,28 @@ class NetCDFRDDWriterTest {
     val expectedPaths = List("/tmp/stitched.nc")
 
     Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
+  }
+
+  @Test
+  def testSetupNetCDF(): Unit = {
+    def setup(cellType:CellType) = {
+
+      val dimMapping = new util.HashMap[String, String]()
+      dimMapping.put("t","myTimeDim")
+      val attributes = new util.HashMap[String, String]()
+      attributes.put("title","my netcdf file")
+      val file = NetCDFRDDWriter.setupNetCDF("test.nc", RasterExtent(Extent(0, 0, 10, 10), 512, 512),Seq(ZonedDateTime.parse("2021-05-01T00:00:00Z"),ZonedDateTime.parse("2021-05-10T00:00:00Z")),new util.ArrayList(util.Arrays.asList("b1","b2")),LatLng,cellType,dimMapping,attributes)
+      Assert.assertEquals("my netcdf file",file.findGlobalAttribute("title").getStringValue())
+      Assert.assertNotNull(file.findVariable("myTimeDim"))
+      Assert.assertNotNull(file.findVariable("crs"))
+      file.close()
+    }
+    setup(UByteUserDefinedNoDataCellType(5))
+    setup(FloatConstantNoDataCellType)
+
+    //boolean not supported by library
+    //setup(BitCellType)
+    setup(UShortCellType)
+    setup(IntUserDefinedNoDataCellType(255))
   }
 }
