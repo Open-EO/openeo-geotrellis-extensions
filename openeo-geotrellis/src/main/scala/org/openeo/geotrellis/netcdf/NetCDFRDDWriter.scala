@@ -19,7 +19,7 @@ import org.apache.spark.storage.StorageLevel
 import org.openeo.geotrellis.ProjectedPolygons
 import ucar.ma2.{ArrayDouble, ArrayInt, DataType}
 import ucar.nc2.write.{Nc4Chunking, Nc4ChunkingStrategy}
-import ucar.nc2.{Dimension, NetcdfFileWriter}
+import ucar.nc2.{Attribute, Dimension, NetcdfFileWriter}
 
 import scala.collection.JavaConverters._
 
@@ -284,6 +284,12 @@ object NetCDFRDDWriter {
     for (bandName <- bandNames.asScala) {
       addNetcdfVariable(netcdfFile, bandDimension, bandName, netcdfType, null, bandName, "", null, nodata.getOrElse(0), "y x")
       netcdfFile.addVariableAttribute(bandName, "grid_mapping", "crs")
+      val chunking = new ArrayInt.D1(3,false)
+      chunking.set(0,1)
+      chunking.set(1,256)
+      chunking.set(2,256)
+      netcdfFile.addVariableAttribute(bandName, new Attribute("_ChunkSizes", chunking))
+
     }
 
     //First define all variable and dimensions, then create the netcdf, after creation values can be written to variables
