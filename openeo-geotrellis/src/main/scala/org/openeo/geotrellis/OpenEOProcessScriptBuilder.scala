@@ -210,13 +210,6 @@ object OpenEOProcessScriptBuilder{
     })
 
   }
-}
-/**
-  * Builder to help converting an OpenEO process graph into a transformation of Geotrellis tiles.
-  */
-class OpenEOProcessScriptBuilder {
-
-  import OpenEOProcessScriptBuilder._
 
   object MinIgnoreNoData extends LocalTileBinaryOp {
     def combine(z1:Int,z2:Int) =
@@ -245,6 +238,13 @@ class OpenEOProcessScriptBuilder {
       else if( isNoData(z2) ) z1
       else math.max(z1, z2)
   }
+}
+/**
+  * Builder to help converting an OpenEO process graph into a transformation of Geotrellis tiles.
+  */
+class OpenEOProcessScriptBuilder {
+
+  import OpenEOProcessScriptBuilder._
 
 
   val processStack: mutable.Stack[String] = new mutable.Stack[String]()
