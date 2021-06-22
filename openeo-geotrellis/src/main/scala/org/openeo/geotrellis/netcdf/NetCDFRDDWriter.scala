@@ -106,7 +106,6 @@ object NetCDFRDDWriter {
 
 
     netcdfFile.write(variable, origin, bandArray)
-    netcdfFile.flush()
   }
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
