@@ -64,7 +64,7 @@ object NetCDFRDDWriter {
 
       val cellType = tuple._2.cellType
       if(netcdfFile == null){
-        netcdfFile = setupNetCDF(path, rasterExtent, dates, bandNames, rdd.metadata.crs, cellType)
+        netcdfFile = setupNetCDF(path, rasterExtent, dates, bandNames, rdd.metadata.crs, cellType,dimensionNames,attributes)
       }
       val multibandTile = tuple._2
       val daysSince = sortedDates.indexOf(tuple._1.time)
@@ -117,11 +117,28 @@ object NetCDFRDDWriter {
                   ): java.util.List[String] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
-    groupByFeatureAndWriteToTiff(rdd,  features,path,bandNames)
+    groupByFeatureAndWriteToTiff(rdd,  features,path,bandNames,null,null)
 
   }
 
-  private def groupByFeatureAndWriteToTiff(rdd: MultibandTileLayerRDD[SpaceTimeKey], features: List[(String, Extent)],path:String,bandNames: ArrayList[String]) = {
+  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                  path: String,
+                  polygons:ProjectedPolygons,
+                  sampleNames: ArrayList[String],
+                  bandNames: ArrayList[String],
+                  dimensionNames: java.util.Map[String,String],
+                  attributes: java.util.Map[String,String]
+                 ): java.util.List[String] = {
+    val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
+    val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
+    groupByFeatureAndWriteToTiff(rdd,  features,path,bandNames,dimensionNames,attributes)
+
+  }
+
+  private def groupByFeatureAndWriteToTiff(rdd: MultibandTileLayerRDD[SpaceTimeKey], features: List[(String, Extent)],
+                                           path:String,bandNames: ArrayList[String],
+                                           dimensionNames: java.util.Map[String,String],
+                                           attributes: java.util.Map[String,String]) = {
     val featuresBC: Broadcast[List[(String, Extent)]] = SparkContext.getOrCreate().broadcast(features)
 
 
@@ -150,18 +167,23 @@ object NetCDFRDDWriter {
         }
 
         val sorted = allRasters.toSeq.sortBy(_._1.toEpochSecond)
-        writeToDisk(sorted.map(_._2),sorted.map(_._1),filePath,bandNames,crs)
+
+
+        writeToDisk(sorted.map(_._2),sorted.map(_._1),filePath,bandNames,crs,dimensionNames,attributes)
 
         filePath
       }.collect()
       .toList.asJava
   }
 
-  def writeToDisk(rasters: Seq[Raster[MultibandTile]],dates:Seq[ZonedDateTime], path:String,bandNames: ArrayList[String],crs:CRS) = {
+  def writeToDisk(rasters: Seq[Raster[MultibandTile]],dates:Seq[ZonedDateTime], path:String,
+                  bandNames: ArrayList[String],
+                  crs:CRS,dimensionNames: java.util.Map[String,String],
+                  attributes: java.util.Map[String,String]) = {
     val aRaster = rasters.head
     val rasterExtent = aRaster.rasterExtent
 
-    val netcdfFile: NetcdfFileWriter = setupNetCDF(path, rasterExtent, dates, bandNames, crs, aRaster.cellType)
+    val netcdfFile: NetcdfFileWriter = setupNetCDF(path, rasterExtent, dates, bandNames, crs, aRaster.cellType,dimensionNames, attributes)
 
     for (bandIndex <- bandNames.asScala.indices) {
       for (i <- rasters.indices) {
@@ -172,7 +194,10 @@ object NetCDFRDDWriter {
 
   }
 
-  private def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime], bandNames: util.ArrayList[String], crs: CRS, cellType: CellType) = {
+  private def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime],
+                          bandNames: util.ArrayList[String], crs: CRS, cellType: CellType,
+                          dimensionNames: java.util.Map[String,String],
+                          attributes: java.util.Map[String,String]) = {
 
     val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4,path, Nc4ChunkingStrategy.factory(Nc4Chunking.Strategy.standard, 9, true))
 
@@ -181,15 +206,21 @@ object NetCDFRDDWriter {
 
     val sortedDates = dates.sortBy(_.toEpochSecond)
     val firstDate = sortedDates.head
-    val daysSince = dates.map(Duration.between(firstDate, _).toDays)
+    val daysSince = dates.map(Duration.between(firstDate, _).toDays.toInt)
 
 
     import java.util
 
     netcdfFile.addGlobalAttribute("Conventions", "CF-1.8")
     netcdfFile.addGlobalAttribute("institution", "openEO platform")
+    if(attributes != null) {
+      for(attr <- attributes.asScala) {
+        netcdfFile.addGlobalAttribute(attr._1, attr._2)
+      }
+    }
+    val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
 
-    val timeDimension = netcdfFile.addDimension(TIME, dates.length)
+    val timeDimension = netcdfFile.addDimension(timeDimName, dates.length)
     val yDimension = netcdfFile.addDimension(Y, rasterExtent.rows)
     val xDimension = netcdfFile.addDimension(X, rasterExtent.cols)
 
@@ -197,7 +228,7 @@ object NetCDFRDDWriter {
     timeDimensions.add(timeDimension)
 
     val timeUnits = "days since " + cfDatePattern.format(firstDate)
-    addNetcdfVariable(netcdfFile, timeDimensions, TIME, DataType.INT, TIME, TIME, timeUnits, "T")
+    addNetcdfVariable(netcdfFile, timeDimensions, timeDimName, DataType.INT, TIME, TIME, timeUnits, "T")
 
     val xDimensions = new util.ArrayList[Dimension]
     xDimensions.add(xDimension)
@@ -267,7 +298,7 @@ object NetCDFRDDWriter {
 
     //Write values to variable
 
-    writeTime(netcdfFile, daysSince)
+    writeTime(timeDimName, netcdfFile, daysSince)
     write1DValues(netcdfFile, xValues, X)
     write1DValues(netcdfFile, yValues, Y)
     netcdfFile
@@ -300,12 +331,12 @@ object NetCDFRDDWriter {
 
   @throws[IOException]
   @throws[InvalidRangeException]
-  private def writeTime(netcdfFile: NetcdfFileWriter, convertedTimeArray: Seq[Long]): Unit = {
+  private def writeTime(dimName:String, netcdfFile: NetcdfFileWriter, convertedTimeArray: Seq[Int]): Unit = {
     val timeArray = new ArrayInt.D1(convertedTimeArray.length,false)
     for (i <- convertedTimeArray.indices) {
-      timeArray.set(i, convertedTimeArray(i).toInt)
+      timeArray.set(i, convertedTimeArray(i))
     }
-    netcdfFile.write(TIME, timeArray)
+    netcdfFile.write(dimName, timeArray)
   }
 
 
