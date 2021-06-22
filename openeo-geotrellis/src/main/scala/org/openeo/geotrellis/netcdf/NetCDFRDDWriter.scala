@@ -268,8 +268,8 @@ object NetCDFRDDWriter {
       case ShortConstantNoDataCellType => (DataType.SHORT,Some(shortNODATA))
       case UShortConstantNoDataCellType => (DataType.USHORT,Some(ushortNODATA))
       case IntConstantNoDataCellType => (DataType.INT,Some(NODATA))
-      case FloatConstantNoDataCellType => (DataType.FLOAT,floatNODATA)
-      case DoubleConstantNoDataCellType => (DataType.DOUBLE,doubleNODATA)
+      case FloatConstantNoDataCellType => (DataType.FLOAT,Some(floatNODATA.toFloat))
+      case DoubleConstantNoDataCellType => (DataType.DOUBLE,Some(doubleNODATA.toDouble))
       case ct: ByteUserDefinedNoDataCellType => (DataType.BYTE,Some(ct.noDataValue))
       case ct: UByteUserDefinedNoDataCellType => (DataType.UBYTE,Some(ct.widenedNoData.asInt))
       case ct: ShortUserDefinedNoDataCellType => (DataType.SHORT,Some(ct.noDataValue))
@@ -282,7 +282,7 @@ object NetCDFRDDWriter {
 
 
     for (bandName <- bandNames.asScala) {
-      addNetcdfVariable(netcdfFile, bandDimension, bandName, netcdfType, null, bandName, "", null, nodata.get, "y x")
+      addNetcdfVariable(netcdfFile, bandDimension, bandName, netcdfType, null, bandName, "", null, nodata.getOrElse(0), "y x")
       netcdfFile.addVariableAttribute(bandName, "grid_mapping", "crs")
     }
 
