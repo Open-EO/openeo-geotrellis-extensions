@@ -18,8 +18,8 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.storage.StorageLevel
 import org.openeo.geotrellis.ProjectedPolygons
 import ucar.ma2.{ArrayDouble, ArrayInt, DataType}
-import ucar.nc2.write.{Nc4Chunking, Nc4ChunkingStrategy}
-import ucar.nc2.{Attribute, Dimension, NetcdfFileWriter}
+import ucar.nc2.write.Nc4ChunkingDefault
+import ucar.nc2.{Attribute, Dimension, NetcdfFileWriter, Variable}
 
 import scala.collection.JavaConverters._
 
@@ -33,6 +33,11 @@ object NetCDFRDDWriter {
   val Y = "y"
   val TIME = "t"
   val cfDatePattern = DateTimeFormatter.ofPattern("YYYY-MM-dd")
+
+  class OpenEOChunking(deflateLevel:Int) extends Nc4ChunkingDefault(deflateLevel,false) {
+
+    override def computeChunking(v: Variable): Array[Long] = super.convertToLong(super.computeChunkingFromAttribute(v))
+  }
 
   case class ContextSeq[K, V, M](tiles: Iterable[(K, V)], metadata: LayoutDefinition) extends Seq[(K, V)] with Metadata[LayoutDefinition] {
     override def length: Int = tiles.size
@@ -199,7 +204,7 @@ object NetCDFRDDWriter {
                           dimensionNames: java.util.Map[String,String],
                           attributes: java.util.Map[String,String],zLevel:Int =6) = {
 
-    val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4,path, Nc4ChunkingStrategy.factory(Nc4Chunking.Strategy.standard, zLevel, true))
+    val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4,path, new OpenEOChunking(zLevel))
 
 
     //danger: dates map to rasters, so sorting can break that order
