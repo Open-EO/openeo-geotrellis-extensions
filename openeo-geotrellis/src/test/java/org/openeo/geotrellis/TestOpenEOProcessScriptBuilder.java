@@ -717,6 +717,86 @@ public class TestOpenEOProcessScriptBuilder {
         assertTileEquals(tile1, result.apply(2));
     }
 
+    @DisplayName("Test array_concat")
+    @Test
+    public void testArrayConcat() {
+        /* Builder setup based on:
+         python openeogeotrellis/geotrellis_tile_processgraph_visitor.py '{
+                "band0": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 0}},
+                "band1": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 1}},
+                "band2": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 2}},
+                "band3": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 3}},
+                "band4": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 4}},
+                "arrayconcat": {
+                    "process_id": "array_concat",
+                    "arguments": {
+                        "array1": [{"from_node": "band4"}, {"from_node": "band2"}, {"from_node": "band0"}],
+                        "array2": [{"from_node": "band1"}, {"from_node": "band3"}]
+                    },
+                    "result": true
+                }
+            }'
+         */
+
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart("array_concat", dummyMap("array1", "array2"));
+        builder.arrayStart("array1");
+        builder.expressionStart("array_element", Collections.singletonMap("index", 4));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 4);
+        builder.expressionEnd("array_element", Collections.singletonMap("index", 4));
+        builder.arrayElementDone();
+        builder.expressionStart("array_element", Collections.singletonMap("index", 2));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 2);
+        builder.expressionEnd("array_element", Collections.singletonMap("index", 2));
+        builder.arrayElementDone();
+        builder.expressionStart("array_element", Collections.singletonMap("index", 0));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 0);
+        builder.expressionEnd("array_element", Collections.singletonMap("index", 0));
+        builder.arrayElementDone();
+        builder.arrayEnd();
+        builder.arrayStart("array2");
+        builder.expressionStart("array_element", Collections.singletonMap("index", 1));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 1);
+        builder.expressionEnd("array_element", Collections.singletonMap("index", 1));
+        builder.arrayElementDone();
+        builder.expressionStart("array_element", Collections.singletonMap("index", 3));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 3);
+        builder.expressionEnd("array_element", Collections.singletonMap("index", 3));
+        builder.arrayElementDone();
+        builder.arrayEnd();
+        builder.expressionEnd("array_concat", dummyMap("array1", "array2"));
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile t0 = ByteConstantNoDataArrayTile.fill((byte) 0, 4, 4);
+        ByteArrayTile t1 = ByteConstantNoDataArrayTile.fill((byte) 1, 4, 4);
+        ByteArrayTile t2 = ByteConstantNoDataArrayTile.fill((byte) 2, 4, 4);
+        ByteArrayTile t3 = ByteConstantNoDataArrayTile.fill((byte) 3, 4, 4);
+        ByteArrayTile t4 = ByteConstantNoDataArrayTile.fill((byte) 4, 4, 4);
+        ByteArrayTile t5 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(t0, t1, t2, t3, t4, t5)));
+        assertEquals(5, result.size());
+        assertTileEquals(t4, result.apply(0));
+        assertTileEquals(t2, result.apply(1));
+        assertTileEquals(t0, result.apply(2));
+        assertTileEquals(t1, result.apply(3));
+        assertTileEquals(t3, result.apply(4));
+    }
+
     @DisplayName("Test array_interpolate_linear process")
     @Test
     public void testArrayInterpolateLinear() {
