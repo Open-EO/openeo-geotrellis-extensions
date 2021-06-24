@@ -1,7 +1,8 @@
 package org.openeo.geotrellis.netcdf
 
 //import ucar.ma2.Array
-import java.nio.file.Paths
+import java.io.IOException
+import java.nio.file.{Files, Paths}
 import java.time.format.DateTimeFormatter
 import java.time.{Duration, ZonedDateTime}
 import java.util
@@ -17,6 +18,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.storage.StorageLevel
 import org.openeo.geotrellis.ProjectedPolygons
+import org.slf4j.LoggerFactory
 import ucar.ma2.{ArrayDouble, ArrayInt, DataType}
 import ucar.nc2.write.Nc4ChunkingDefault
 import ucar.nc2.{Attribute, Dimension, NetcdfFileWriter, Variable}
@@ -25,6 +27,8 @@ import scala.collection.JavaConverters._
 
 
 object NetCDFRDDWriter {
+
+  val logger = LoggerFactory.getLogger(NetCDFRDDWriter.getClass)
 
 
   val LON = "lon"
@@ -169,7 +173,8 @@ object NetCDFRDDWriter {
       .map { case ((name, extent), tiles) =>
 
         val filename = s"openEO_${name}.nc"
-        val filePath = Paths.get(path).resolve(filename).toString
+        val outputAsPath = Paths.get(path).resolve(filename)
+        val filePath = outputAsPath.toString
 
         val grouped = tiles.groupBy(_._1.time)
         val allRasters = for(key_tile <- grouped) yield {
@@ -180,9 +185,19 @@ object NetCDFRDDWriter {
         }
 
         val sorted = allRasters.toSeq.sortBy(_._1.toEpochSecond)
-
-
-        writeToDisk(sorted.map(_._2),sorted.map(_._1),filePath,bandNames,crs,dimensionNames,attributes)
+        try{
+          writeToDisk(sorted.map(_._2),sorted.map(_._1),filePath,bandNames,crs,dimensionNames,attributes)
+        }catch {
+          case _: IOException => {
+            logger.error("Failed to write sample: " + name, _)
+            val theFile = outputAsPath.toFile
+            if (theFile.exists()) {
+              val failedPath = outputAsPath.resolveSibling(outputAsPath.getFileName().toString + "_FAILED")
+              Files.move(outputAsPath, failedPath)
+              return failedPath
+            }
+          }
+        }
 
         filePath
       }.collect()
@@ -197,13 +212,16 @@ object NetCDFRDDWriter {
     val rasterExtent = aRaster.rasterExtent
 
     val netcdfFile: NetcdfFileWriter = setupNetCDF(path, rasterExtent, dates, bandNames, crs, aRaster.cellType,dimensionNames, attributes)
+    try{
 
-    for (bandIndex <- bandNames.asScala.indices) {
-      for (i <- rasters.indices) {
-        writeTile(bandNames.get(bandIndex),  scala.Array(i, 0, 0), rasters(i).tile.band(bandIndex), netcdfFile)
+      for (bandIndex <- bandNames.asScala.indices) {
+        for (i <- rasters.indices) {
+          writeTile(bandNames.get(bandIndex),  scala.Array(i, 0, 0), rasters(i).tile.band(bandIndex), netcdfFile)
+        }
       }
+    }finally {
+      netcdfFile.close()
     }
-    netcdfFile.close()
 
   }
 
