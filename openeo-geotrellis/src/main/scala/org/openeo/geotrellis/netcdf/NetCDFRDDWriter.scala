@@ -36,7 +36,15 @@ object NetCDFRDDWriter {
 
   class OpenEOChunking(deflateLevel:Int) extends Nc4ChunkingDefault(deflateLevel,false) {
 
-    override def computeChunking(v: Variable): Array[Long] = super.convertToLong(super.computeChunkingFromAttribute(v))
+    override def computeChunking(v: Variable): Array[Long] = {
+      val attributeBasedChunking = super.computeChunkingFromAttribute(v)
+      if(attributeBasedChunking!=null)
+        super.convertToLong(attributeBasedChunking)
+        else{
+        super.computeChunking(v)
+      }
+
+    }
   }
 
   case class ContextSeq[K, V, M](tiles: Iterable[(K, V)], metadata: LayoutDefinition) extends Seq[(K, V)] with Metadata[LayoutDefinition] {
