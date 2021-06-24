@@ -187,19 +187,23 @@ object NetCDFRDDWriter {
         val sorted = allRasters.toSeq.sortBy(_._1.toEpochSecond)
         try{
           writeToDisk(sorted.map(_._2),sorted.map(_._1),filePath,bandNames,crs,dimensionNames,attributes)
+          filePath
         }catch {
-          case _: IOException => {
-            logger.error("Failed to write sample: " + name, _)
+          case t: IOException => {
+            logger.error("Failed to write sample: " + name, t)
             val theFile = outputAsPath.toFile
             if (theFile.exists()) {
               val failedPath = outputAsPath.resolveSibling(outputAsPath.getFileName().toString + "_FAILED")
               Files.move(outputAsPath, failedPath)
-              return failedPath
+              failedPath.toString
+            }else{
+              filePath
             }
           }
+          case t: Throwable =>  throw t
         }
 
-        filePath
+
       }.collect()
       .toList.asJava
   }
