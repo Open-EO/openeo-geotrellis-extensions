@@ -741,42 +741,42 @@ public class TestOpenEOProcessScriptBuilder {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         builder.expressionStart("array_concat", dummyMap("array1", "array2"));
         builder.arrayStart("array1");
-        builder.expressionStart("array_element", Collections.singletonMap("index", 4));
+        builder.expressionStart("array_element", map2("data","dummy", "index", 4));
         builder.argumentStart("data");
         builder.fromParameter("data");
         builder.argumentEnd();
         builder.constantArgument("index", 4);
-        builder.expressionEnd("array_element", Collections.singletonMap("index", 4));
+        builder.expressionEnd("array_element", map2("data","dummy","index", 4));
         builder.arrayElementDone();
-        builder.expressionStart("array_element", Collections.singletonMap("index", 2));
+        builder.expressionStart("array_element", map2("data","dummy","index", 2));
         builder.argumentStart("data");
         builder.fromParameter("data");
         builder.argumentEnd();
         builder.constantArgument("index", 2);
-        builder.expressionEnd("array_element", Collections.singletonMap("index", 2));
+        builder.expressionEnd("array_element", map2("data","dummy","index", 2));
         builder.arrayElementDone();
-        builder.expressionStart("array_element", Collections.singletonMap("index", 0));
+        builder.expressionStart("array_element", map2("data","dummy","index", 0));
         builder.argumentStart("data");
         builder.fromParameter("data");
         builder.argumentEnd();
         builder.constantArgument("index", 0);
-        builder.expressionEnd("array_element", Collections.singletonMap("index", 0));
+        builder.expressionEnd("array_element", map2("data","dummy","index", 0));
         builder.arrayElementDone();
         builder.arrayEnd();
         builder.arrayStart("array2");
-        builder.expressionStart("array_element", Collections.singletonMap("index", 1));
+        builder.expressionStart("array_element", map2("data","dummy","index", 1));
         builder.argumentStart("data");
         builder.fromParameter("data");
         builder.argumentEnd();
         builder.constantArgument("index", 1);
-        builder.expressionEnd("array_element", Collections.singletonMap("index", 1));
+        builder.expressionEnd("array_element", map2("data","dummy","index", 1));
         builder.arrayElementDone();
-        builder.expressionStart("array_element", Collections.singletonMap("index", 3));
+        builder.expressionStart("array_element", map2("data","dummy","index", 3));
         builder.argumentStart("data");
         builder.fromParameter("data");
         builder.argumentEnd();
         builder.constantArgument("index", 3);
-        builder.expressionEnd("array_element", Collections.singletonMap("index", 3));
+        builder.expressionEnd("array_element", map2("data","dummy","index", 3));
         builder.arrayElementDone();
         builder.arrayEnd();
         builder.expressionEnd("array_concat", dummyMap("array1", "array2"));
@@ -795,6 +795,65 @@ public class TestOpenEOProcessScriptBuilder {
         assertTileEquals(t0, result.apply(2));
         assertTileEquals(t1, result.apply(3));
         assertTileEquals(t3, result.apply(4));
+    }
+
+    @DisplayName("Test array_create")
+    @Test
+    public void testArrayCreate() {
+        /* Builder setup based on:
+         python openeogeotrellis/geotrellis_tile_processgraph_visitor.py '{
+                "band0": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 0}},
+                "band1": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 1}},
+                "arrayconcat": {
+                    "process_id": "array_create",
+                    "arguments": {
+                        "data": [{"from_node": "band1"}, {"from_node": "band0"}, {"from_node": "band1"}],
+                        "repeat": 2
+                    },
+                    "result": true
+                }
+            }'
+         */
+
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart("array_create", map2("data", "dummy", "repeat", 2));
+        builder.arrayStart("data");
+        builder.expressionStart("array_element", map2("data","dummy", "index", 1));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 1);
+        builder.expressionEnd("array_element", map2("data","dummy", "index", 1));
+        builder.arrayElementDone();
+        builder.expressionStart("array_element", map2("data","dummy", "index", 0));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 0);
+        builder.expressionEnd("array_element", map2("data","dummy", "index", 0));
+        builder.arrayElementDone();
+        builder.expressionStart("array_element", map2("data","dummy", "index", 1));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 1);
+        builder.expressionEnd("array_element", map2("data","dummy", "index", 1));
+        builder.arrayElementDone();
+        builder.arrayEnd();
+        builder.constantArgument("repeat", 2);
+        builder.expressionEnd("array_create", map2("data", "dummy", "repeat", 2));
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile t0 = ByteConstantNoDataArrayTile.fill((byte) 0, 4, 4);
+        ByteArrayTile t1 = ByteConstantNoDataArrayTile.fill((byte) 1, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(t0, t1)));
+        assertEquals(6, result.size());
+        assertTileEquals(t1, result.apply(0));
+        assertTileEquals(t0, result.apply(1));
+        assertTileEquals(t1, result.apply(2));
+        assertTileEquals(t1, result.apply(3));
+        assertTileEquals(t0, result.apply(4));
+        assertTileEquals(t1, result.apply(5));
     }
 
     @DisplayName("Test array_interpolate_linear process")
@@ -1013,6 +1072,36 @@ public class TestOpenEOProcessScriptBuilder {
         for (String key : keys) {
             m.put(key, "dummy");
         }
+        return m;
+    }
+
+    /**
+     * Build 1-item Map<String, Object>
+     */
+    private static Map<String, Object> map1(String k, Object v) {
+        Map<String, Object> m = new HashMap<String, Object>(1);
+        m.put(k, v);
+        return m;
+    }
+
+    /**
+     * Build 2-item Map<String, Object>
+     */
+    private static Map<String, Object> map2(String k1, Object v1, String k2, Object v2) {
+        Map<String, Object> m = new HashMap<String, Object>(2);
+        m.put(k1, v1);
+        m.put(k2, v2);
+        return m;
+    }
+
+    /**
+     * Build 3-item Map<String, Object>
+     */
+    private static Map<String, Object> map3(String k1, Object v1, String k2, Object v2, String k3, Object v3) {
+        Map<String, Object> m = new HashMap<String, Object>(3);
+        m.put(k1, v1);
+        m.put(k2, v2);
+        m.put(k3, v3);
         return m;
     }
 

@@ -506,6 +506,7 @@ class OpenEOProcessScriptBuilder {
       case "array_interpolate_linear" => applyListFunction("data",linearInterpolation)
       case "linear_scale_range" => linearScaleRangeFunction(arguments)
       case "array_concat" => arrayConcatFunction(arguments)
+      case "array_create" => arrayCreateFunction(arguments)
       case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
     }
 
@@ -599,6 +600,19 @@ class OpenEOProcessScriptBuilder {
       val array1 = evaluateToTiles(array1Function, context, tiles)
       val array2 = evaluateToTiles(array2Function, context, tiles)
       array1 ++ array2
+    }
+    bandFunction
+  }
+
+
+  private def arrayCreateFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val dataFunction:OpenEOProcess = storedArgs("data")
+    val repeat: Int = arguments.getOrDefault("repeat", 1.asInstanceOf[Object]).asInstanceOf[Int]
+
+    val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
+      val data = evaluateToTiles(dataFunction, context, tiles)
+      Seq.fill(repeat)(data).flatten
     }
     bandFunction
   }
