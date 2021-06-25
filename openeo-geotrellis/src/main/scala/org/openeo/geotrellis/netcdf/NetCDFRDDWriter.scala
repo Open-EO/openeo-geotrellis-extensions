@@ -16,7 +16,6 @@ import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
-import org.apache.spark.storage.StorageLevel
 import org.openeo.geotrellis.ProjectedPolygons
 import org.slf4j.LoggerFactory
 import ucar.ma2.{ArrayDouble, ArrayInt, DataType}
@@ -24,13 +23,14 @@ import ucar.nc2.write.Nc4ChunkingDefault
 import ucar.nc2.{Attribute, Dimension, NetcdfFileWriter, Variable}
 
 import scala.collection.JavaConverters._
+import scala.collection.immutable.ListSet
 
 
 object NetCDFRDDWriter {
 
   val logger = LoggerFactory.getLogger(NetCDFRDDWriter.getClass)
 
-
+  val fixedTimeOffset = ZonedDateTime.parse("1990-01-01T00:00:00Z")
   val LON = "lon"
   val LAT = "lat"
   val X = "x"
@@ -67,29 +67,25 @@ object NetCDFRDDWriter {
                        zLevel:Int
                  ): java.util.List[String] = {
 
-    val cached = rdd.persist(StorageLevel.MEMORY_AND_DISK_SER)
-    val dates = cached.keys.map(_.time).distinct().collect()
+    var dates = new ListSet[ZonedDateTime]()
     val extent = rdd.metadata.apply(rdd.metadata.tileBounds)
 
-
-
     val rasterExtent = RasterExtent(extent = extent, cellSize = rdd.metadata.cellSize)
-    val sortedDates = dates.sortBy(_.toEpochSecond)
-
 
     var netcdfFile: NetcdfFileWriter = null
-    for(tuple <- cached.toLocalIterator){
+    for(tuple <- rdd.toLocalIterator){
 
       val cellType = tuple._2.cellType
+      dates = dates + tuple._1.time
       if(netcdfFile == null){
-        netcdfFile = setupNetCDF(path, rasterExtent, dates, bandNames, rdd.metadata.crs, cellType,dimensionNames,attributes,zLevel)
+        netcdfFile = setupNetCDF(path, rasterExtent, null, bandNames, rdd.metadata.crs, cellType,dimensionNames,attributes,zLevel)
       }
       val multibandTile = tuple._2
-      val daysSince = sortedDates.indexOf(tuple._1.time)
+      val timeDimIndex = dates.toIndexedSeq.indexOf(tuple._1.time)
       for (bandIndex <- bandNames.asScala.indices) {
 
         val gridExtent = rasterExtent.gridBoundsFor(tuple._1.spatialKey.extent(rdd.metadata))
-        val origin: Array[Int] = scala.Array(daysSince.toInt, gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
+        val origin: Array[Int] = scala.Array(timeDimIndex.toInt, gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
         val variable = bandNames.get(bandIndex)
 
         val tile = multibandTile.band(bandIndex)
@@ -97,8 +93,11 @@ object NetCDFRDDWriter {
       }
     }
 
+    val daysSince = dates.map(Duration.between(fixedTimeOffset, _).toDays.toInt).toSeq
+    val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
+    writeTime(timeDimName, netcdfFile, daysSince)
+
     netcdfFile.close()
-    cached.unpersist(blocking = false)
     return Collections.singletonList(path)
   }
 
@@ -234,15 +233,8 @@ object NetCDFRDDWriter {
                           dimensionNames: java.util.Map[String,String],
                           attributes: java.util.Map[String,String],zLevel:Int =6) = {
 
-    val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4_classic,path, new OpenEOChunking(zLevel))
-
-
-    //danger: dates map to rasters, so sorting can break that order
-
-    val sortedDates = dates.sortBy(_.toEpochSecond)
-    val firstDate = sortedDates.head
-    val daysSince = dates.map(Duration.between(firstDate, _).toDays.toInt)
-
+    val theChunking = new OpenEOChunking(zLevel)
+    val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4_classic,path, theChunking)
 
     import java.util
 
@@ -255,15 +247,15 @@ object NetCDFRDDWriter {
     }
     val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
 
-    val timeDimension = netcdfFile.addDimension(timeDimName, dates.length)
+    val timeDimension = netcdfFile.addUnlimitedDimension(timeDimName)
     val yDimension = netcdfFile.addDimension(Y, rasterExtent.rows)
     val xDimension = netcdfFile.addDimension(X, rasterExtent.cols)
 
     val timeDimensions = new util.ArrayList[Dimension]
     timeDimensions.add(timeDimension)
 
-    val timeUnits = "days since " + cfDatePattern.format(firstDate)
-    addNetcdfVariable(netcdfFile, timeDimensions, timeDimName, DataType.INT, TIME, TIME, timeUnits, "T")
+    addTimeVariable(netcdfFile, dates, timeDimName, timeDimensions)
+
 
     val xDimensions = new util.ArrayList[Dimension]
     xDimensions.add(xDimension)
@@ -320,11 +312,13 @@ object NetCDFRDDWriter {
     for (bandName <- bandNames.asScala) {
       addNetcdfVariable(netcdfFile, bandDimension, bandName, netcdfType, null, bandName, "", null, nodata.getOrElse(0), "y x")
       netcdfFile.addVariableAttribute(bandName, "grid_mapping", "crs")
-      val chunking = new ArrayInt.D1(3,false)
-      chunking.set(0,1)
-      chunking.set(1,256)
-      chunking.set(2,256)
-      netcdfFile.addVariableAttribute(bandName, new Attribute("_ChunkSizes", chunking))
+      if(rasterExtent.cols>256 && rasterExtent.rows>256){
+        val chunking = new ArrayInt.D1(3,false)
+        chunking.set(0,1)
+        chunking.set(1,256)
+        chunking.set(2,256)
+        netcdfFile.addVariableAttribute(bandName, new Attribute("_ChunkSizes", chunking))
+      }
 
     }
 
@@ -339,10 +333,17 @@ object NetCDFRDDWriter {
 
     //Write values to variable
 
-    writeTime(timeDimName, netcdfFile, daysSince)
+    if(dates!=null){
+      val daysSince = dates.map(Duration.between(fixedTimeOffset, _).toDays.toInt)
+      writeTime(timeDimName, netcdfFile, daysSince)
+    }
     write1DValues(netcdfFile, xValues, X)
     write1DValues(netcdfFile, yValues, Y)
     netcdfFile
+  }
+
+  private def addTimeVariable(netcdfFile: NetcdfFileWriter, dates: Seq[ZonedDateTime], timeDimName: String, timeDimensions: util.ArrayList[Dimension]) = {
+    addNetcdfVariable(netcdfFile, timeDimensions, timeDimName, DataType.INT, TIME, TIME, "days since " + cfDatePattern.format(fixedTimeOffset), "T")
   }
 
   import java.io.IOException
