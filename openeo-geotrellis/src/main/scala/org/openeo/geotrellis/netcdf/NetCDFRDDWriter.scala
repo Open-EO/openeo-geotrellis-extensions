@@ -234,7 +234,7 @@ object NetCDFRDDWriter {
                           dimensionNames: java.util.Map[String,String],
                           attributes: java.util.Map[String,String],zLevel:Int =6) = {
 
-    val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4,path, new OpenEOChunking(zLevel))
+    val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4_classic,path, new OpenEOChunking(zLevel))
 
 
     //danger: dates map to rasters, so sorting can break that order
