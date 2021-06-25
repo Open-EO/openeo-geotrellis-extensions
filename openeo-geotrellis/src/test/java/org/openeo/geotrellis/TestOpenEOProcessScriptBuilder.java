@@ -2,8 +2,8 @@ package org.openeo.geotrellis;
 
 
 import geotrellis.raster.*;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.Test;
+import org.junit.jupiter.api.DisplayName;
 import scala.Function1;
 import scala.collection.JavaConversions;
 import scala.collection.Seq;
@@ -870,7 +870,7 @@ public class TestOpenEOProcessScriptBuilder {
         assertTrue(result.apply(0).isNoDataTile());
         assertTrue(result.apply(1).isNoDataTile());
         assertEquals(10,result.apply(2).get(0,0));
-        assertEquals(8,result.apply(3).get(0,0));
+        assertEquals(7,result.apply(3).get(0,0));
         assertEquals(5,result.apply(4).get(0,0));
         assertEquals(6,result.apply(5).get(0,0));
         assertEquals(8,result.apply(6).get(0,0));
