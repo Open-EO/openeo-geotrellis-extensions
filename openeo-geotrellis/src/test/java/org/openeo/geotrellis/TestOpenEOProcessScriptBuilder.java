@@ -3,7 +3,7 @@ package org.openeo.geotrellis;
 
 import geotrellis.raster.*;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import org.junit.Test;
 import scala.Function1;
 import scala.collection.JavaConversions;
 import scala.collection.Seq;
