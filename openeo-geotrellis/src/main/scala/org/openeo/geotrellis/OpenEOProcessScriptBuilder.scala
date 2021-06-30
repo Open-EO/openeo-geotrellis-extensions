@@ -339,7 +339,8 @@ class OpenEOProcessScriptBuilder {
       if(context.contains(parameterName)) {
         context.getOrElse(parameterName,tiles).asInstanceOf[Seq[Tile]]
       }else{
-        throw new IllegalArgumentException("Not found: from_parameter '" + parameterName + "'. Available parameters: " + context.keys.mkString(", "))
+        logger.debug("Parameter with name: " + parameterName  + "not found. Available parameters: " + context.keys.mkString(","))
+        tiles
       }
     }
   }
