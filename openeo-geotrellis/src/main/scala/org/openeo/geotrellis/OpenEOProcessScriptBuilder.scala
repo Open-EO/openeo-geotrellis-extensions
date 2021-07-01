@@ -48,12 +48,7 @@ object OpenEOProcessScriptBuilder{
 
   private def ifElseProcess(value: OpenEOProcess, accept: OpenEOProcess, reject: OpenEOProcess) = {
     val ifElseProcess = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
-      val value_input: Seq[Tile] =
-        if (value != null) {
-          value.apply(context)(tiles)
-        } else {
-          tiles
-        }
+      val value_input: Seq[Tile] = evaluateToTiles(value, context, tiles)
 
       def makeSameLength(tiles: Seq[Tile]): Seq[Tile] = {
         if (tiles.size == 1 && value_input.length > 1) {
@@ -63,13 +58,7 @@ object OpenEOProcessScriptBuilder{
         }
       }
 
-      val accept_input: Seq[Tile] =
-        if (accept != null) {
-          makeSameLength(accept.apply(context)(tiles))
-        } else {
-          makeSameLength(tiles)
-        }
-
+      val accept_input: Seq[Tile] = makeSameLength(evaluateToTiles(accept, context, tiles))
 
       val reject_input: Seq[Tile] =
         if (reject != null) {
@@ -158,6 +147,16 @@ object OpenEOProcessScriptBuilder{
     }
     return Seq(mutableResult)
   }
+
+  // Get `Seq[Tile]` by evaluating given `OpenEOProcess` (if any) on given `Seq[Tile]`
+  private def evaluateToTiles(function: OpenEOProcess, context: Map[String, Any], tiles: Seq[Tile]): Seq[Tile] = {
+    if (function != null) {
+      function.apply(context)(tiles)
+    } else {
+      tiles
+    }
+  }
+
 
   private def median(tiles:Seq[Tile]) : Seq[Tile] = {
     multibandReduce(MultibandTile(tiles),ts => {
@@ -305,18 +304,8 @@ class OpenEOProcessScriptBuilder {
     val x_function: OpenEOProcess = storedArgs.get(xArgName).get
     val y_function: OpenEOProcess = storedArgs.get(yArgName).get
     val bandFunction = (context: Map[String,Any]) => (tiles: Seq[Tile]) => {
-      val x_input: Seq[Tile] =
-        if (x_function != null) {
-          x_function.apply(context)(tiles)
-        } else {
-          tiles
-        }
-      val y_input: Seq[Tile] =
-        if (y_function != null) {
-          y_function.apply(context)(tiles)
-        } else {
-          tiles
-        }
+      val x_input: Seq[Tile] = evaluateToTiles(x_function, context, tiles)
+      val y_input: Seq[Tile] = evaluateToTiles(y_function, context, tiles)
       if(x_input.size == y_input.size) {
         x_input.zip(y_input).map(t=>operator(t._1,t._2))
       }else if(x_input.size == 1) {
@@ -525,6 +514,8 @@ class OpenEOProcessScriptBuilder {
       case "array_modify" => arrayModifyFunction(arguments)
       case "array_interpolate_linear" => applyListFunction("data",linearInterpolation)
       case "linear_scale_range" => linearScaleRangeFunction(arguments)
+      case "array_concat" => arrayConcatFunction(arguments)
+      case "array_create" => arrayCreateFunction(arguments)
       case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
     }
 
@@ -559,12 +550,7 @@ class OpenEOProcessScriptBuilder {
     }
 
     val scaleFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
-      val input: Seq[Tile] =
-        if(inputFunction!=null) {
-          inputFunction.apply(context)(tiles)
-        }else{
-          tiles
-        }
+      val input: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
       val normalizedTiles = input.map(_.normalize(inMin,inMax,outMin,outMax).mapIfSetDouble(p=> {
         if(p<outMin) {
           outMin
@@ -600,18 +586,8 @@ class OpenEOProcessScriptBuilder {
       throw new IllegalArgumentException("The 'index' argument should be an integer, but got: " + index)
     }
     val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
-      val data: Seq[Tile] =
-        if(inputFunction!=null) {
-          inputFunction.apply(context)(tiles)
-        }else{
-          tiles
-        }
-      val values: Seq[Tile] =
-        if(valuesFunction!=null) {
-          valuesFunction.apply(context)(tiles)
-        }else{
-          tiles
-        }
+      val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
+      val values: Seq[Tile] = evaluateToTiles(valuesFunction, context, tiles)
       if(length == null) {
         //in this case, we need to insert
         data.take(index.asInstanceOf[Integer]) ++ values ++ data.drop(index.asInstanceOf[Integer])
@@ -619,6 +595,33 @@ class OpenEOProcessScriptBuilder {
         throw new UnsupportedOperationException("Geotrellis backend only supports inserting in array-modify")
       }
 
+    }
+    bandFunction
+  }
+
+
+  private def arrayConcatFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val array1Function = storedArgs("array1")
+    val array2Function = storedArgs("array2")
+
+    val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
+      val array1 = evaluateToTiles(array1Function, context, tiles)
+      val array2 = evaluateToTiles(array2Function, context, tiles)
+      array1 ++ array2
+    }
+    bandFunction
+  }
+
+
+  private def arrayCreateFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val dataFunction:OpenEOProcess = storedArgs("data")
+    val repeat: Int = arguments.getOrDefault("repeat", 1.asInstanceOf[Object]).asInstanceOf[Int]
+
+    val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
+      val data = evaluateToTiles(dataFunction, context, tiles)
+      Seq.fill(repeat)(data).flatten
     }
     bandFunction
   }
@@ -635,14 +638,9 @@ class OpenEOProcessScriptBuilder {
       throw new IllegalArgumentException("The 'index' argument should be an integer, but got: " + index)
     }
     val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
-      val input: Seq[Tile] =
-        if(inputFunction!=null) {
-          inputFunction.apply(context)(tiles)
-        }else{
-          tiles
-        }
+      val input: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
       if(input.size <= index.asInstanceOf[Integer]) {
-        throw new IllegalArgumentException("Invalid band index, only " + input.size + " bands available.")
+        throw new IllegalArgumentException("Invalid band index " + index + ", only " + input.size + " bands available.")
       }
       Seq(input(index.asInstanceOf[Integer]))
     }

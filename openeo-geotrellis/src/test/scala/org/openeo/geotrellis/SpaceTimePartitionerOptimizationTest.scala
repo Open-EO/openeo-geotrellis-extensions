@@ -1,3 +1,5 @@
+package org.openeo.geotrellis
+
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 
 import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, SpaceTimeKey}

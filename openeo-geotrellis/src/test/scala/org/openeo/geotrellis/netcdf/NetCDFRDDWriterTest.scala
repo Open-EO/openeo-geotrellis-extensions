@@ -6,12 +6,14 @@ import java.time.{LocalDate, ZonedDateTime}
 import java.util
 
 import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.raster.{CellType, FloatConstantNoDataCellType, IntUserDefinedNoDataCellType, RasterExtent, UByteUserDefinedNoDataCellType, UShortCellType}
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{ProjectedExtent, _}
 import org.apache.spark.SparkContext
-import org.junit.{Assert, BeforeClass, Test}
+import org.junit.{Assert, BeforeClass, Ignore, Test}
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
+import ucar.nc2.dataset.NetcdfDataset
 
 import scala.collection.JavaConverters.asScalaBufferConverter
 
@@ -23,7 +25,7 @@ object NetCDFRDDWriterTest {
   def setupSpark(): Unit = {
     // originally geotrellis.spark.util.SparkUtils.createLocalSparkContext
     val conf = SparkUtils.createSparkConf
-      .setMaster("local[2]")
+      .setMaster("local[1]")
       .setAppName(NetCDFRDDWriterTest.getClass.getName)
       .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       // .set("spark.kryo.registrationRequired", "true") // this requires e.g. RasterSource to be registered too
@@ -70,6 +72,7 @@ class NetCDFRDDWriterTest {
     Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
   }
 
+  @Ignore
   @Test
   def testWriteSingleNetCDF(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
@@ -84,9 +87,57 @@ class NetCDFRDDWriterTest {
     val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(date,date.plusDays(10),bbox,Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs,13,sc,datacubeParams = Some(dcParams))
 
 
-    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSingleNetCDF(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M")),null,null)
+    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSingleNetCDF(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M")),null,null,6)
     val expectedPaths = List("/tmp/stitched.nc")
 
     Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
+  }
+
+  @Test
+  def testWriteSingleNetCDFLarge(): Unit = {
+
+    val dcParams = new DataCubeParameters()
+    dcParams.layoutScheme = "FloatingLayoutScheme"
+
+    val (layer,refTile) = LayerFixtures.aSpacetimeTileLayerRdd(20,20)
+
+
+    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSingleNetCDF(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")),null,null,6)
+    val expectedPaths = List("/tmp/stitched.nc")
+
+    Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
+    val ds = NetcdfDataset.openDataset("/tmp/stitched.nc",true,null)
+    val b04 = ds.findVariable("TOC-B04_10M")
+
+    val chunking = b04.findAttributeIgnoreCase("_ChunkSizes")
+    Assert.assertEquals(256,chunking.getValue(1))
+    Assert.assertEquals(256,chunking.getValue(2))
+    Assert.assertEquals("t",b04.getDimension(0).getShortName)
+    Assert.assertEquals("y",b04.getDimension(1).getShortName)
+    Assert.assertEquals("x",b04.getDimension(2).getShortName)
+
+  }
+
+  @Test
+  def testSetupNetCDF(): Unit = {
+    def setup(cellType:CellType) = {
+
+      val dimMapping = new util.HashMap[String, String]()
+      dimMapping.put("t","myTimeDim")
+      val attributes = new util.HashMap[String, String]()
+      attributes.put("title","my netcdf file")
+      val file = NetCDFRDDWriter.setupNetCDF("test.nc", RasterExtent(Extent(0, 0, 10, 10), 512, 512),Seq(ZonedDateTime.parse("2021-05-01T00:00:00Z"),ZonedDateTime.parse("2021-05-10T00:00:00Z")),new util.ArrayList(util.Arrays.asList("b1","b2")),LatLng,cellType,dimMapping,attributes)
+      Assert.assertEquals("my netcdf file",file.findGlobalAttribute("title").getStringValue())
+      Assert.assertNotNull(file.findVariable("myTimeDim"))
+      Assert.assertNotNull(file.findVariable("crs"))
+      file.close()
+    }
+    setup(UByteUserDefinedNoDataCellType(5))
+    setup(FloatConstantNoDataCellType)
+
+    //boolean not supported by library
+    //setup(BitCellType)
+    setup(UShortCellType)
+    setup(IntUserDefinedNoDataCellType(255))
   }
 }

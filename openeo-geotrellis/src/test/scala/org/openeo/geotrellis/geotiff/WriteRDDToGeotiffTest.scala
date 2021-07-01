@@ -1,18 +1,16 @@
 package org.openeo.geotrellis.geotiff
 
-import java.awt.image.DataBufferByte
-
-import geotrellis.layer.{CRSWorldExtent, KeyBounds, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata, ZoomedLayoutScheme}
+import geotrellis.layer.{CRSWorldExtent, SpatialKey, ZoomedLayoutScheme}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.{ByteArrayTile, ByteConstantTile, MultibandTile, Raster, Tile, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector.Extent
-import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit._
+import org.openeo.geotrellis.LayerFixtures
 
 
 
@@ -36,27 +34,7 @@ object WriteRDDToGeotiffTest{
 
 class WriteRDDToGeotiffTest {
 
-  def createTextImage(width:Int,height:Int, fontSize:Int = 500) = {
-    import java.awt.Font
-    import java.awt.image.BufferedImage
 
-    val font = new Font("Arial", Font.PLAIN, fontSize)
-    val text = "openEO"
-
-    val img = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY)
-    val g2d = img.createGraphics
-
-    g2d.setFont(font)
-    val fm = g2d.getFontMetrics
-    g2d.setColor(java.awt.Color.WHITE)
-    g2d.translate(20,400)
-    g2d.drawString(text, 0, fm.getAscent)
-    g2d.dispose()
-
-    img.getData().getDataBuffer().asInstanceOf[DataBufferByte].getData()
-
-
-  }
 
 
   @Test
@@ -64,7 +42,7 @@ class WriteRDDToGeotiffTest {
     val layoutCols = 8
     val layoutRows = 4
 
-    val intImage = createTextImage( layoutCols*256, layoutRows*256)
+    val intImage = LayerFixtures.createTextImage( layoutCols*256, layoutRows*256)
     val imageTile = ByteArrayTile(intImage,layoutCols*256, layoutRows*256)
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile),TileLayout(layoutCols,layoutRows,256,256),LatLng)
@@ -80,7 +58,7 @@ class WriteRDDToGeotiffTest {
     val layoutCols = 8
     val layoutRows = 4
 
-    val intImage = createTextImage( layoutCols*256, layoutRows*256)
+    val intImage = LayerFixtures.createTextImage( layoutCols*256, layoutRows*256)
     val imageTile = ByteArrayTile(intImage,layoutCols*256, layoutRows*256)
 
     val secondBand = imageTile.map{x => if(x >= 5 ) 10 else 100 }
@@ -101,7 +79,7 @@ class WriteRDDToGeotiffTest {
     val layoutCols = 8
     val layoutRows = 4
 
-    val intImage = createTextImage( layoutCols*256, layoutRows*256)
+    val intImage = LayerFixtures.createTextImage( layoutCols*256, layoutRows*256)
     val imageTile = ByteArrayTile(intImage,layoutCols*256, layoutRows*256)
 
     val secondBand = imageTile.map{x => if(x >= 5 ) 10 else 100 }
@@ -130,7 +108,7 @@ class WriteRDDToGeotiffTest {
     val layoutCols = 8
     val layoutRows = 8
 
-    val intImage = createTextImage( layoutCols*256, layoutRows*256,500)
+    val intImage = LayerFixtures.createTextImage( layoutCols*256, layoutRows*256,500)
     val imageTile = ByteArrayTile(intImage,layoutCols*256, layoutRows*256)
     val secondBand = imageTile.map{x => if(x >= 5 ) 10 else 100 }
     val thirdBand = imageTile.map{x => if(x >= 5 ) 50 else 200 }
@@ -161,7 +139,7 @@ class WriteRDDToGeotiffTest {
     val layoutCols = 8
     val layoutRows = 4
 
-    val intImage = createTextImage( layoutCols*256, layoutRows*256)
+    val intImage = LayerFixtures.createTextImage( layoutCols*256, layoutRows*256)
     val imageTile = ByteArrayTile(intImage,layoutCols*256, layoutRows*256,256.toByte)
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile),TileLayout(layoutCols,layoutRows,256,256),LatLng)
@@ -179,27 +157,13 @@ class WriteRDDToGeotiffTest {
 
   }
 
-  private def createLayerWithGaps(layoutCols:Int,layoutRows:Int) = {
 
-    val intImage = createTextImage(layoutCols * 256, layoutRows * 256)
-    val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
-
-    val secondBand = imageTile.map { x => if (x >= 5) 10 else 100 }
-    val thirdBand = imageTile.map { x => if (x >= 5) 50 else 200 }
-
-    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc, MultibandTile(imageTile, secondBand, thirdBand), TileLayout(layoutCols, layoutRows, 256, 256), LatLng)
-    print(tileLayerRDD.keys.collect())
-    val filtered: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = tileLayerRDD.withContext {
-      _.filter { case (key, tile) => (key.col > 0 && (key.col != 1 || key.row != 1)) }
-    }
-    (imageTile, filtered)
-  }
 
   @Test
   def testWriteMultibandRDDWithGaps(): Unit ={
     val layoutCols = 8
     val layoutRows = 4
-    val ( imageTile:ByteArrayTile, filtered:MultibandTileLayerRDD[SpatialKey]) = createLayerWithGaps(layoutCols,layoutRows)
+    val ( imageTile:ByteArrayTile, filtered:MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(layoutCols,layoutRows)
 
     val filename = "outFiltered.tif"
     saveRDD(filtered.withContext{_.repartition(layoutCols*layoutRows)},3,filename)
@@ -216,15 +180,10 @@ class WriteRDDToGeotiffTest {
   def testWriteMultibandTemporalRDDWithGaps(): Unit ={
     val layoutCols = 8
     val layoutRows = 4
-    val ( imageTile:ByteArrayTile, filtered:MultibandTileLayerRDD[SpatialKey]) = createLayerWithGaps(layoutCols,layoutRows)
-    val temporal: RDD[(SpaceTimeKey, MultibandTile)] = filtered.flatMap(tuple=>{
-      Seq((SpaceTimeKey(tuple._1,new TemporalKey(110000L)),tuple._2),(SpaceTimeKey(tuple._1,new TemporalKey(10000*110000L)),tuple._2))
-    }).repartition(layoutCols*layoutRows)
+    val (layer,imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
 
-    val spatialM = filtered.metadata
-    val newBounds = KeyBounds[SpaceTimeKey](SpaceTimeKey(spatialM.bounds.get._1,TemporalKey(0L)),SpaceTimeKey(spatialM.bounds.get._2,TemporalKey(0L)))
-    val temporalMetadata = new TileLayerMetadata[SpaceTimeKey](spatialM.cellType,spatialM.layout,spatialM.extent,spatialM.crs,newBounds)
-    saveRDDTemporal(ContextRDD(temporal,temporalMetadata),"./")
+
+    saveRDDTemporal(layer,"./")
     val result = GeoTiff.readMultiband("./openEO_1970-01-01Z.tif").raster.tile
 
     //crop away the area where data was removed, and check if rest of geotiff is still fine
@@ -236,6 +195,7 @@ class WriteRDDToGeotiffTest {
     assertArrayEquals(croppedReference.toArray(),result2.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArray())
 
   }
+
 
 
 }

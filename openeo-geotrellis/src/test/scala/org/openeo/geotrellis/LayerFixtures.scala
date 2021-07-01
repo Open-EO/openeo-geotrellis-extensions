@@ -1,5 +1,6 @@
 package org.openeo.geotrellis
 
+import java.awt.image.DataBufferByte
 import java.net.URL
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
@@ -11,7 +12,7 @@ import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer.{Bounds, FloatingLayoutScheme, KeyBounds, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.proj4.LatLng
-import geotrellis.raster.{ArrayMultibandTile, ArrayTile, CellSize, MultibandTile, Tile, TileLayout}
+import geotrellis.raster.{ArrayMultibandTile, ArrayTile, ByteArrayTile, CellSize, MultibandTile, Tile, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector.{Extent, ProjectedExtent}
@@ -133,4 +134,54 @@ object LayerFixtures {
       maxSpatialResolution = CellSize(10, 10),
       pathDateExtractor = SplitYearMonthDayPathDateExtractor
     )
+
+  def createLayerWithGaps(layoutCols:Int,layoutRows:Int) = {
+
+    val intImage = createTextImage(layoutCols * 256, layoutRows * 256)
+    val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
+
+    val secondBand = imageTile.map { x => if (x >= 5) 10 else 100 }
+    val thirdBand = imageTile.map { x => if (x >= 5) 50 else 200 }
+
+    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, MultibandTile(imageTile, secondBand, thirdBand), TileLayout(layoutCols, layoutRows, 256, 256), LatLng)
+    print(tileLayerRDD.keys.collect())
+    val filtered: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = tileLayerRDD.withContext {
+      _.filter { case (key, tile) => (key.col > 0 && (key.col != 1 || key.row != 1)) }
+    }
+    (imageTile, filtered)
+  }
+
+  def aSpacetimeTileLayerRdd(layoutCols: Int, layoutRows: Int) = {
+    val (imageTile: ByteArrayTile, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(layoutCols, layoutRows)
+    val temporal: RDD[(SpaceTimeKey, MultibandTile)] = filtered.flatMap(tuple => {
+      Seq((SpaceTimeKey(tuple._1, new TemporalKey(110000L)), tuple._2), (SpaceTimeKey(tuple._1, new TemporalKey(10000 * 110000L)), tuple._2))
+    }).repartition(layoutCols * layoutRows)
+    val spatialM = filtered.metadata
+    val newBounds = KeyBounds[SpaceTimeKey](SpaceTimeKey(spatialM.bounds.get._1,TemporalKey(0L)),SpaceTimeKey(spatialM.bounds.get._2,TemporalKey(0L)))
+    val temporalMetadata = new TileLayerMetadata[SpaceTimeKey](spatialM.cellType,spatialM.layout,spatialM.extent,spatialM.crs,newBounds)
+    (ContextRDD(temporal,temporalMetadata),imageTile)
+  }
+
+  def createTextImage(width:Int,height:Int, fontSize:Int = 500) = {
+    import java.awt.Font
+    import java.awt.image.BufferedImage
+
+    val font = new Font("Arial", Font.PLAIN, fontSize)
+    val text = "openEO"
+
+    val img = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY)
+    val g2d = img.createGraphics
+
+    g2d.setFont(font)
+    val fm = g2d.getFontMetrics
+    g2d.setColor(java.awt.Color.WHITE)
+    g2d.translate(20,400)
+    g2d.drawString(text, 0, fm.getAscent)
+    g2d.dispose()
+
+    img.getData().getDataBuffer().asInstanceOf[DataBufferByte].getData()
+
+
+  }
+
 }
