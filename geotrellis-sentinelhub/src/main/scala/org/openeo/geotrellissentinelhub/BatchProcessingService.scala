@@ -38,7 +38,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     // workaround for bug where upper bound is considered inclusive in OpenEO
     val (from, to) = includeEndDay(from_date, to_date)
 
-    val dateTimes = new CatalogApi(endpoint).dateTimes(collection_id, boundingBox, from, to, accessToken,
+    val dateTimes = new DefaultCatalogApi(endpoint).dateTimes(collection_id, boundingBox, from, to, accessToken,
       queryProperties = mapDataFilters(metadata_properties))
 
     val batchProcessingApi = new BatchProcessingApi(endpoint)
@@ -78,7 +78,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     val (from, to) = includeEndDay(from_date, to_date)
 
     // original features that overlap in space and time
-    val features = new CatalogApi(endpoint).searchCard4L(collection_id, reprojectedBoundingBox, from, to, accessToken,
+    val features = new DefaultCatalogApi(endpoint).searchCard4L(collection_id, reprojectedBoundingBox, from, to, accessToken,
       queryProperties = mapDataFilters(metadata_properties))
 
     // their intersections with bounding box (all should be in LatLng)
@@ -127,11 +127,4 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
 
     (from, to)
   }
-
-  private def mapDataFilters(metadataProperties: util.Map[String, Any]): collection.Map[String, String] =
-    metadataProperties.asScala
-      .map {
-        case ("orbitDirection", value: String) => "sat:orbit_state" -> value
-        case (property, _) => throw new IllegalArgumentException(s"unsupported metadata property $property")
-      }
 }

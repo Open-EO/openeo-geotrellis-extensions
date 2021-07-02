@@ -7,9 +7,9 @@ import org.junit.Test
 
 import java.time.{LocalDate, ZoneId}
 
-class CatalogApiTest {
+class DefaultCatalogApiTest {
   private val endpoint = "https://services.sentinel-hub.com"
-  private val catalogApi = new CatalogApi(endpoint)
+  private val catalogApi = new DefaultCatalogApi(endpoint)
   private val utc = ZoneId.of("UTC")
 
   private def accessToken: String = new AuthApi().authenticate(Utils.clientId, Utils.clientSecret).access_token

@@ -1,166 +1,47 @@
 package org.openeo
 
-import java.io.InputStream
-import java.lang.Math.pow
-import java.lang.Math.random
-import java.net.{SocketTimeoutException, URI}
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter.ISO_INSTANT
-import java.util
-import java.util.concurrent.TimeUnit.SECONDS
-import scala.io.Source
-import scala.collection.JavaConverters._
-import geotrellis.raster.io.geotiff.reader.GeoTiffReader
-import geotrellis.raster.MultibandTile
-import geotrellis.vector.ProjectedExtent
-import org.apache.commons.io.IOUtils
-import org.slf4j.LoggerFactory
-import scalaj.http.Http
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.google.common.cache.{CacheBuilder, CacheLoader}
-import org.openeo.geotrellissentinelhub.SampleType.SampleType
+import org.slf4j.Logger
 
+import java.lang.Math.{pow, random}
+import java.net.SocketTimeoutException
+import java.util
 import scala.annotation.tailrec
+import scala.collection.JavaConverters._
 
 package object geotrellissentinelhub {
-  // TODO: encapsulate this
-  // TODO: clean up JSON construction/parsing
+  def withRetries[T](attempts: Int, context: String)(fn: => T)(implicit logger: Logger): T = {
+    @tailrec
+    def attempt(i: Int): T = {
+      def retryable(e: Exception): Boolean = {
+        logger.warn(s"Attempt $i failed: $context -> ${e.getMessage}")
 
-  private val logger = LoggerFactory.getLogger(getClass)
-
-  // TODO: invalidate key on 401 Unauthorized
-  private val authTokenCache = CacheBuilder
-    .newBuilder()
-    .expireAfterWrite(1800L, SECONDS)
-    .build(new CacheLoader[(String, String), String] {
-      override def load(credentials: (String, String)): String = credentials match {
-        case (clientId, clientSecret) =>
-          retry(5, clientId) { new AuthApi().authenticate(clientId, clientSecret).access_token }
+        i < attempts && (e match {
+          case s: SentinelHubException if s.statusCode == 429 || s.statusCode >= 500 => true
+          case _: SocketTimeoutException => true
+          case _ => false
+        })
       }
-    })
 
-  def retrieveTileFromSentinelHub(endpoint: String, datasetId: String, projectedExtent: ProjectedExtent, date: ZonedDateTime, width: Int,
-                                  height: Int, bandNames: Seq[String], sampleType: SampleType,
-                                  additionalDataFilters: util.Map[String, Any],
-                                  processingOptions: util.Map[String, Any],
-                                  clientId: String, clientSecret: String): MultibandTile = {
-    val ProjectedExtent(extent, crs) = projectedExtent
-    val epsgCode = crs.epsgCode.getOrElse(s"unsupported crs $crs")
+      try
+        return fn
+      catch {
+        case e: Exception if retryable(e) => () // won't recognize tail-recursive calls in a catch block as such
+      }
 
-    val dataFilter = {
-      val timeRangeFilter = Map(
-        "from" -> date.format(ISO_INSTANT),
-        "to" -> date.plusDays(1).format(ISO_INSTANT)
-      )
-
-      additionalDataFilters.asScala
-        .foldLeft(Map("timeRange" -> timeRangeFilter.asJava): Map[String, Any]) {_ + _}
-        .asJava
+      val exponentialRetryAfter = 1000 * pow(2, i - 1)
+      val retryAfterWithJitter = (exponentialRetryAfter * (0.5 + random)).toInt
+      Thread.sleep(retryAfterWithJitter)
+      logger.debug(s"Retry $i after ${retryAfterWithJitter}ms: $context")
+      attempt(i + 1)
     }
 
-    val evalscript = s"""//VERSION=3
-      function setup() {
-        return {
-          input: [{
-            "bands": [${bandNames.map(bandName => s""""$bandName"""") mkString ", "}],
-            "units": "DN"
-          }],
-          output: {
-            bands: ${bandNames.size},
-            sampleType: "$sampleType",
-          }
-        };
-      }
-
-      function evaluatePixel(sample) {
-        return [${bandNames.map(bandName => s"sample.$bandName") mkString ", "}];
-      }
-    """
-
-    val objectMapper = new ObjectMapper
-
-    val jsonData = s"""{
-      "input": {
-        "bounds": {
-          "bbox": [${extent.xmin}, ${extent.ymin}, ${extent.xmax}, ${extent.ymax}],
-          "properties": {
-            "crs": "http://www.opengis.net/def/crs/EPSG/0/$epsgCode"
-          }
-        },
-        "data": [
-          {
-            "type": "$datasetId",
-            "dataFilter": ${objectMapper.writeValueAsString(dataFilter)},
-            "processing": ${objectMapper.writeValueAsString(processingOptions)}
-          }
-        ]
-      },
-      "output": {
-        "width": ${width.toString},
-        "height": ${height.toString},
-        "responses": [
-          {
-            "identifier": "default",
-            "format": {
-              "type": "image/tiff"
-            }
-          }
-        ]
-      },
-      "evalscript": ${objectMapper.writeValueAsString(evalscript)}
-    }"""
-    logger.info(s"JSON data for Sentinel Hub Process API: ${jsonData}")
-
-    val url = URI.create(endpoint).resolve("/api/v1/process").toString
-    val request = Http(url)
-      .header("Content-Type", "application/json")
-      .header("Authorization", s"Bearer ${authTokenCache.get((clientId, clientSecret))}")
-      .header("Accept", "*/*")
-      .postData(jsonData)
-
-    logger.info(s"Executing request: ${request.urlBuilder(request)}")
-
-    val response = retry(5, s"$date + $extent") {
-      request.exec(parser = (code: Int, header: Map[String, IndexedSeq[String]], in: InputStream) =>
-        if (code == 200)
-          GeoTiffReader.readMultiband(IOUtils.toByteArray(in))
-        else {
-          val textBody = Source.fromInputStream(in, "utf-8").mkString
-          throw SentinelHubException(request, jsonData, code,
-            statusLine = header.get("Status").flatMap(_.headOption).getOrElse("UNKNOWN"), textBody)
-        }
-      )
-    }
-
-    response.body.tile
-      .toArrayTile()
-      // unless handled differently, NODATA pîxels are 0 according to
-      // https://docs.sentinel-hub.com/api/latest/user-guides/datamask/#datamask---handling-of-pixels-with-no-data
-      .mapBands { case (_, tile) => tile.withNoData(Some(0)) }
+    attempt(i = 1)
   }
 
-  @tailrec
-  private def retry[T](nb: Int, context: String, i: Int = 1)(fn: => T): T = {
-    def retryable(e: Exception): Boolean = {
-      logger.warn(s"Attempt $i failed: $context -> ${e.getMessage}")
-
-      i < nb && (e match {
-        case s: SentinelHubException if s.statusCode == 429 || s.statusCode >= 500 => true
-        case _: SocketTimeoutException => true
-        case _ => false
-      })
-    }
-
-    try
-      return fn
-    catch {
-      case e: Exception if retryable(e) => Unit // won't recognize tail-recursive calls in a catch block as such
-    }
-
-    val exponentialRetryAfter = 1000 * pow(2, i - 1)
-    val retryAfterWithJitter = (exponentialRetryAfter * (0.5 + random)).toInt
-    Thread.sleep(retryAfterWithJitter)
-    logger.info(s"Retry $i after ${retryAfterWithJitter}ms: $context")
-    retry(nb, context, i + 1)(fn)
-  }
+  private[geotrellissentinelhub] def mapDataFilters(metadataProperties: util.Map[String, Any]): collection.Map[String, String] =
+    metadataProperties.asScala
+      .map {
+        case ("orbitDirection", value: String) => "sat:orbit_state" -> value
+        case (property, _) => throw new IllegalArgumentException(s"unsupported metadata property $property")
+      }
 }

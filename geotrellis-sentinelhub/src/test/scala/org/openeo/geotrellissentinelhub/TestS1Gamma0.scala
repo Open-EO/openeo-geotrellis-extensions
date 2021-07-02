@@ -8,9 +8,7 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.Test
 
 class TestS1Gamma0 {
-
-  private val clientId = Utils.clientId
-  private val clientSecret = Utils.clientSecret
+  private def accessToken: String = new AuthApi().authenticate(Utils.clientId, Utils.clientSecret).access_token
 
   @Test
   def testGamma0(): Unit = {
@@ -20,9 +18,10 @@ class TestS1Gamma0 {
 
     val endpoint = "https://services.sentinel-hub.com"
     val datasetId = "S1GRD"
-    retrieveTileFromSentinelHub(endpoint, datasetId, bbox, date, width = 256, height = 256, Seq("VV", "VH", "HV", "HH", "localIncidenceAngle"),
+
+    new DefaultProcessApi(endpoint).getTile(datasetId, bbox, date, width = 256, height = 256, Seq("VV", "VH", "HV", "HH", "localIncidenceAngle"),
       SampleType.FLOAT32, additionalDataFilters = Collections.singletonMap("orbitDirection", "DESCENDING"),
-      processingOptions = Collections.singletonMap("orthorectify", true), clientId, clientSecret)
+      processingOptions = Collections.singletonMap("orthorectify", true), accessToken)
   }
 
 }

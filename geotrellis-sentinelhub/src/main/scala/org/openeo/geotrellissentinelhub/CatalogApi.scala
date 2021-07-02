@@ -14,7 +14,16 @@ import java.time.format.DateTimeFormatter.{ISO_INSTANT, ISO_OFFSET_DATE_TIME}
 import java.time.{ZoneId, ZonedDateTime}
 import scala.collection.immutable.HashMap
 
-object CatalogApi {
+trait CatalogApi {
+  def dateTimes(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
+                accessToken: String, queryProperties: collection.Map[String, String] = Map()): Seq[ZonedDateTime]
+
+  def searchCard4L(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
+                   accessToken: String, queryProperties: collection.Map[String, String] = Map()):
+  Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]]
+}
+
+object DefaultCatalogApi {
   private case class PagingContext(limit: Int, returned: Int, next: Option[Int])
   private case class PagedFeatureCollection(features: List[Json], context: PagingContext)
     extends JsonFeatureCollection(features)
@@ -22,8 +31,8 @@ object CatalogApi {
     extends JsonFeatureCollectionMap(features)
 }
 
-class CatalogApi(endpoint: String) {
-  import CatalogApi._
+class DefaultCatalogApi(endpoint: String) extends CatalogApi {
+  import DefaultCatalogApi._
 
   private val catalogEndpoint = URI.create(endpoint).resolve("/api/v1/catalog")
 
