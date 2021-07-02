@@ -151,10 +151,11 @@ object LayerFixtures {
     (imageTile, filtered)
   }
 
-  def aSpacetimeTileLayerRdd(layoutCols: Int, layoutRows: Int) = {
+  def aSpacetimeTileLayerRdd(layoutCols: Int, layoutRows: Int, nbDates:Int = 2) = {
     val (imageTile: ByteArrayTile, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(layoutCols, layoutRows)
+    val startDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
     val temporal: RDD[(SpaceTimeKey, MultibandTile)] = filtered.flatMap(tuple => {
-      Seq((SpaceTimeKey(tuple._1, new TemporalKey(110000L)), tuple._2), (SpaceTimeKey(tuple._1, new TemporalKey(10000 * 110000L)), tuple._2))
+      (1 to nbDates).map(index => (SpaceTimeKey(tuple._1, TemporalKey( startDate.plusDays(index) )), tuple._2))
     }).repartition(layoutCols * layoutRows)
     val spatialM = filtered.metadata
     val newBounds = KeyBounds[SpaceTimeKey](SpaceTimeKey(spatialM.bounds.get._1,TemporalKey(0L)),SpaceTimeKey(spatialM.bounds.get._2,TemporalKey(0L)))

@@ -23,7 +23,7 @@ import ucar.nc2.write.Nc4ChunkingDefault
 import ucar.nc2.{Attribute, Dimension, NetcdfFileWriter, Variable}
 
 import scala.collection.JavaConverters._
-import scala.collection.immutable.ListSet
+import scala.collection.mutable.ListBuffer
 
 
 object NetCDFRDDWriter {
@@ -67,7 +67,7 @@ object NetCDFRDDWriter {
                        zLevel:Int
                  ): java.util.List[String] = {
 
-    var dates = new ListSet[ZonedDateTime]()
+    var dates = new ListBuffer[Int]()
     val extent = rdd.metadata.apply(rdd.metadata.tileBounds)
 
     val rasterExtent = RasterExtent(extent = extent, cellSize = rdd.metadata.cellSize)
@@ -76,12 +76,17 @@ object NetCDFRDDWriter {
     for(tuple <- rdd.toLocalIterator){
 
       val cellType = tuple._2.cellType
-      dates = dates + tuple._1.time
+      val timeOffset = Duration.between(fixedTimeOffset, tuple._1.time).toDays.toInt
+      var timeDimIndex = dates.indexOf(timeOffset)
+      if(timeDimIndex<0) {
+        dates.append( timeOffset )
+        timeDimIndex = dates.length-1
+      }
       if(netcdfFile == null){
         netcdfFile = setupNetCDF(path, rasterExtent, null, bandNames, rdd.metadata.crs, cellType,dimensionNames,attributes,zLevel)
       }
       val multibandTile = tuple._2
-      val timeDimIndex = dates.toIndexedSeq.indexOf(tuple._1.time)
+
       for (bandIndex <- bandNames.asScala.indices) {
 
         val gridExtent = rasterExtent.gridBoundsFor(tuple._1.spatialKey.extent(rdd.metadata))
@@ -93,9 +98,8 @@ object NetCDFRDDWriter {
       }
     }
 
-    val daysSince = dates.map(Duration.between(fixedTimeOffset, _).toDays.toInt).toSeq
     val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
-    writeTime(timeDimName, netcdfFile, daysSince)
+    writeTime(timeDimName, netcdfFile, dates)
 
     netcdfFile.close()
     return Collections.singletonList(path)
