@@ -505,6 +505,7 @@ class OpenEOProcessScriptBuilder {
       case "array_modify" => arrayModifyFunction(arguments)
       case "array_interpolate_linear" => applyListFunction("data",linearInterpolation)
       case "linear_scale_range" => linearScaleRangeFunction(arguments)
+      case "quantiles" => quantilesFunction(arguments)
       case "array_concat" => arrayConcatFunction(arguments)
       case "array_create" => arrayCreateFunction(arguments)
       case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
@@ -559,6 +560,23 @@ class OpenEOProcessScriptBuilder {
     }
     scaleFunction
 
+  }
+
+  private def quantilesFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val inputFunction = storedArgs.get("data").get
+
+    val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
+      val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
+      //TODO implement
+
+      multibandMap(MultibandTile(data.map(_.toArrayTile().copy)),ts => {
+        //new org.apache.spark.sql.catalyst.util.QuantileSummaries()
+        Array(1.0,2.0,3.0,4.0)
+      })
+
+    }
+    bandFunction
   }
 
   private def arrayModifyFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {

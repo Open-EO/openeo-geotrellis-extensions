@@ -200,4 +200,19 @@ public class TestOpenEOProcesses {
         assertEquals(-3, interpolatedTile.band(0).get(0,0));
 
     }
+
+    @Test
+    public void testApplyTimeDimensionToBands() {
+        ByteArrayTile band1 = ByteArrayTile.fill((byte) -10, 256, 256);
+        ByteArrayTile band2 = ByteArrayTile.fill((byte) 4, 256, 256);
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 =LayerFixtures.buildSingleBandSpatioTemporalDataCube(Arrays.asList(band1,ByteArrayTile.empty(256,256), band2), JavaConversions.asScalaBuffer(Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z","2020-02-03T00:00:00Z")));
+        OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createFeatureEngineering();
+        RDD<Tuple2<SpatialKey, MultibandTile>> result = new OpenEOProcesses().applyTimeDimensionTargetBands(datacube1, processBuilder, new HashMap<>());
+        List<Tuple2<String,MultibandTile>> results = JavaPairRDD.fromJavaRDD(result.toJavaRDD()).map(spaceTimeKeyMultibandTileTuple2 -> new Tuple2<String,MultibandTile>(spaceTimeKeyMultibandTileTuple2._1.toString(),spaceTimeKeyMultibandTileTuple2._2)).collect();
+        MultibandTile interpolatedTile = results.stream().collect(Collectors.toList()).get(0)._2;
+        assertEquals(5,interpolatedTile.bandCount());
+        assertEquals(-3, interpolatedTile.band(4).get(0,0));
+        //TODO fix quantiles and do more checks
+
+    }
 }

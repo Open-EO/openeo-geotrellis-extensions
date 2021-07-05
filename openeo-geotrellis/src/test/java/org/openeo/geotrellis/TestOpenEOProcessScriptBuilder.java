@@ -971,6 +971,41 @@ public class TestOpenEOProcessScriptBuilder {
         return builder;
     }
 
+    static OpenEOProcessScriptBuilder createFeatureEngineering() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart("array_concat",Collections.emptyMap());
+        builder.argumentStart("array1");
+        double[] percentiles = {0.25, 0.5, 0.75};
+        builder.expressionStart("quantiles", map1("probabilities", percentiles));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.arrayStart("probabilities");
+        builder.constantArrayElement(0.25);
+        builder.constantArrayElement(0.5);
+        builder.constantArrayElement(0.75);
+        builder.arrayEnd();
+        builder.expressionEnd("quantiles", map1( "probabilities", percentiles));
+        builder.argumentEnd();
+        builder.arrayStart("array2");
+        builder.expressionStart("sd", map1("data","dummy"));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.expressionEnd("sd", map1("data","dummy"));
+        builder.arrayElementDone();
+        builder.expressionStart("mean", Collections.emptyMap());
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.expressionEnd("mean",map1("data","dummy"));
+        builder.arrayElementDone();
+        builder.arrayEnd();
+        builder.expressionEnd("array_concat", map1("data","dummy"));
+        return builder;
+
+    }
+
 
     static OpenEOProcessScriptBuilder createArrayInterpolateLinear() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();

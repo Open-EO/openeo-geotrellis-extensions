@@ -91,6 +91,7 @@ class OpenEOProcesses extends Serializable {
       val labels = tiles._2.map(_._1)
       val resultMap: mutable.Map[SpaceTimeKey,mutable.ListBuffer[Tile]] = mutable.Map()
       for( b <- 0 until firstTile.bandCount){
+        //TODO sort by date??
         val temporalTile = MultibandTile(tiles._2.map(_._2.band(b)))
         val resultTiles = function(temporalTile.bands)
         var resultLabels: Iterable[(SpaceTimeKey,Tile)] = labels.zip(resultTiles)
@@ -100,6 +101,28 @@ class OpenEOProcesses extends Serializable {
       resultMap.map(tuple => (tuple._1,MultibandTile(tuple._2)))
 
     }})
+  }
+
+  /**
+   * apply_dimension, over time dimension
+   * @param datacube
+   * @param scriptBuilder
+   * @param context
+   * @return
+   */
+  def applyTimeDimensionTargetBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpatialKey] = {
+    val function = scriptBuilder.generateFunction(context.asScala.toMap)
+    val resultRDD = datacube.groupBy(_._1.spatialKey).mapValues{ tiles => {
+      val firstTile = tiles.head._2
+      val resultTile = mutable.ListBuffer[Tile]()
+      for( b <- 0 until firstTile.bandCount){
+        val temporalTile = MultibandTile(tiles.map(_._2.band(b)))
+        resultTile.appendAll(function(temporalTile.bands))
+      }
+      MultibandTile(resultTile)
+
+    }}
+      ContextRDD(resultRDD,datacube.metadata.copy(bounds = datacube.metadata.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]].toSpatial))
   }
 
   def mapInstantToInterval(datacube:MultibandTileLayerRDD[SpaceTimeKey], intervals:java.lang.Iterable[String],labels:java.lang.Iterable[String]) :MultibandTileLayerRDD[SpaceTimeKey] = {
