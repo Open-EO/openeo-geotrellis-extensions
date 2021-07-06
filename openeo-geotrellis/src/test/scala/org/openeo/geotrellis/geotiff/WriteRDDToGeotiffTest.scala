@@ -184,14 +184,14 @@ class WriteRDDToGeotiffTest {
 
 
     saveRDDTemporal(layer,"./")
-    val result = GeoTiff.readMultiband("./openEO_1970-01-01Z.tif").raster.tile
+    val result = GeoTiff.readMultiband("./openEO_2017-01-02Z.tif").raster.tile
 
     //crop away the area where data was removed, and check if rest of geotiff is still fine
     val croppedReference = imageTile.crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArrayTile()
 
     val croppedOutput = result.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256)
     assertArrayEquals(croppedReference.toArray(),croppedOutput.toArray())
-    val result2 = GeoTiff.readMultiband("./openEO_1970-01-13Z.tif").raster.tile
+    val result2 = GeoTiff.readMultiband("./openEO_2017-01-03Z.tif").raster.tile
     assertArrayEquals(croppedReference.toArray(),result2.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArray())
 
   }

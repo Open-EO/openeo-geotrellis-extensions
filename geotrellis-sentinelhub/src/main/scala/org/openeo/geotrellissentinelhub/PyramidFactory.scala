@@ -1,6 +1,8 @@
 package org.openeo.geotrellissentinelhub
 
-import java.time.ZonedDateTime
+import com.google.common.cache.{CacheBuilder, CacheLoader}
+
+import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
 
 import geotrellis.layer.{KeyBounds, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
@@ -15,22 +17,47 @@ import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
 import org.openeo.geotrelliscommon.{DataCubeParameters, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
-import org.slf4j.LoggerFactory
+import org.slf4j.{Logger, LoggerFactory}
 
+import java.time.ZoneOffset.UTC
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeUnit.SECONDS
 import scala.collection.JavaConverters._
 
 object PyramidFactory {
-  private val logger = LoggerFactory.getLogger(classOf[PyramidFactory])
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[PyramidFactory])
+
+  // TODO: invalidate key on 401 Unauthorized
+  private val authTokenCache = CacheBuilder
+    .newBuilder()
+    .expireAfterWrite(1800L, SECONDS)
+    .build(new CacheLoader[(String, String), String] {
+      override def load(credentials: (String, String)): String = credentials match {
+        case (clientId, clientSecret) =>
+          withRetries(5, clientId) { new AuthApi().authenticate(clientId, clientSecret).access_token }
+      }
+    })
+
+  // TODO: put this in a central place
+  private implicit object ZonedDateTimeOrdering extends Ordering[ZonedDateTime] {
+    override def compare(x: ZonedDateTime, y: ZonedDateTime): Int = x compareTo y
+  }
 
   // convenience method for Python client
   // TODO: change name? A 429 response makes it rate-limited anyway.
+  def rateLimited(endpoint: String, collectionId: String, datasetId: String, clientId: String, clientSecret: String,
+                  processingOptions: util.Map[String, Any], sampleType: SampleType): PyramidFactory =
+    new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
+      clientId, clientSecret, processingOptions, sampleType, new RlGuardAdapter)
+
+  @deprecated("include a collectionId")
   def rateLimited(endpoint: String, datasetId: String, clientId: String, clientSecret: String,
                   processingOptions: util.Map[String, Any], sampleType: SampleType): PyramidFactory =
-    new PyramidFactory(endpoint, datasetId, clientId, clientSecret, processingOptions, sampleType, new RlGuardAdapter)
+    rateLimited(endpoint, collectionId = null, datasetId, clientId, clientSecret, processingOptions, sampleType)
 }
 
-class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clientSecret: String,
+class PyramidFactory(collectionId: String, datasetId: String, @transient catalogApi: CatalogApi, processApi: ProcessApi,
+                     clientId: String, clientSecret: String,
                      processingOptions: util.Map[String, Any] = util.Collections.emptyMap[String, Any],
                      sampleType: SampleType = UINT16,
                      rateLimitingGuard: RateLimitingGuard = NoRateLimitingGuard) extends Serializable {
@@ -38,11 +65,11 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
 
   private val maxZoom = 14
 
-  // TODO: replace with a call to CatalogApi to limit the number of requests esp. wrt/ orbit direction?
-  private def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
+  private def accessToken: String = authTokenCache.get((clientId, clientSecret))
 
-  def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom,
-            bandNames: Seq[String], metadataProperties: util.Map[String, Any])(implicit sc: SparkContext):
+  private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom,
+                    bandNames: Seq[String], metadataProperties: util.Map[String, Any],
+                    dates: Seq[ZonedDateTime])(implicit sc: SparkContext):
   MultibandTileLayerRDD[SpaceTimeKey] = {
     require(zoom >= 0)
     require(zoom <= maxZoom)
@@ -52,10 +79,10 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
 
     val layout = ZoomedLayoutScheme(targetCrs).levelForZoom(targetCrs.worldExtent, zoom).layout
 
-    val dates = sequentialDates(from)
-      .takeWhile(date => !(date isAfter to))
-
-    val overlappingKeys = dates.flatMap(date =>layout.mapTransform.keysForGeometry(reprojectedBoundingBox.toPolygon()).map(key => SpaceTimeKey(key, date)))
+    val overlappingKeys = for {
+      date <- dates
+      spatialKey <- layout.mapTransform.keysForGeometry(reprojectedBoundingBox.toPolygon())
+    } yield SpaceTimeKey(spatialKey, date)
 
     val metadata: TileLayerMetadata[SpaceTimeKey] = {
       val gridBounds = layout.mapTransform.extentToBounds(reprojectedBoundingBox)
@@ -65,7 +92,10 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
         layout = layout,
         extent = reprojectedBoundingBox,
         crs = targetCrs,
-        KeyBounds(SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from), SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to))
+        KeyBounds(
+          SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from),
+          SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to)
+        )
       )
     }
 
@@ -79,9 +109,8 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
 
         awaitRateLimitingGuardDelay(bandNames, width, height)
 
-        val tile = retrieveTileFromSentinelHub(endpoint, datasetId, ProjectedExtent(key.spatialKey.extent(layout),
-          targetCrs), key.temporalKey, width, height, bandNames, sampleType, metadataProperties, processingOptions,
-          clientId, clientSecret)
+        val tile = processApi.getTile(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs),
+          key.temporalKey, width, height, bandNames, sampleType, metadataProperties, processingOptions, accessToken)
 
         (key, tile)
       }
@@ -91,11 +120,33 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
     ContextRDD(tilesRdd, metadata)
   }
 
+  private def dates(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
+                    metadataProperties: util.Map[String, Any]): Seq[ZonedDateTime] = {
+    def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
+
+    def atEndOfDay(to: ZonedDateTime): ZonedDateTime = {
+      val endOfDay = OffsetTime.of(LocalTime.MAX, UTC)
+      to.toLocalDate.atTime(endOfDay).toZonedDateTime
+    }
+
+    if (collectionId == null)
+      sequentialDates(from)
+        .takeWhile(date => !(date isAfter to))
+    else
+      catalogApi
+        .dateTimes(collectionId, boundingBox, from, atEndOfDay(to), accessToken, mapDataFilters(metadataProperties))
+        .map(_.toLocalDate.atStartOfDay(UTC))
+        .distinct // ProcessApi::getTile takes care of [day, day + 1] interval and mosaicking therein
+        .sorted
+  }
+
   def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, bandNames: Seq[String],
               metadataProperties: util.Map[String, Any])(implicit sc: SparkContext):
   Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    val dates = this.dates(boundingBox, from, to, metadataProperties)
+
     val layers = for (zoom <- maxZoom to 0 by -1)
-      yield zoom -> layer(boundingBox, from, to, zoom, bandNames, metadataProperties)
+      yield zoom -> layer(boundingBox, from, to, zoom, bandNames, metadataProperties, dates)
 
     Pyramid(layers.toMap)
   }
@@ -150,11 +201,8 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
       }
 
       val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = {
-        val dates = sequentialDates(from)
-          .takeWhile(date => !(date isAfter to))
-
         val overlappingKeys = for {
-          date <- dates
+          date <- dates(boundingBox, from, to, metadata_properties)
           spatialKey <- layout.mapTransform.keysForGeometry(GeometryCollection(polygons))
         } yield SpaceTimeKey(spatialKey, date)
 
@@ -164,8 +212,8 @@ class PyramidFactory(endpoint: String, datasetId: String, clientId: String, clie
           def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile = {
             awaitRateLimitingGuardDelay(bandNames, width, height)
 
-            retrieveTileFromSentinelHub(endpoint, datasetId, projectedExtent, key.temporalKey, width, height, bandNames,
-              sampleType, metadata_properties, processingOptions, clientId, clientSecret)
+            processApi.getTile(datasetId, projectedExtent, key.temporalKey, width, height, bandNames,
+              sampleType, metadata_properties, processingOptions, accessToken)
           }
 
           val keyExtent = key.spatialKey.extent(layout)

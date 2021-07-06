@@ -99,8 +99,7 @@ class NetCDFRDDWriterTest {
     val dcParams = new DataCubeParameters()
     dcParams.layoutScheme = "FloatingLayoutScheme"
 
-    val (layer,refTile) = LayerFixtures.aSpacetimeTileLayerRdd(20,20)
-
+    val (layer,refTile) = LayerFixtures.aSpacetimeTileLayerRdd(20,20,nbDates = 10)
 
     val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSingleNetCDF(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")),null,null,6)
     val expectedPaths = List("/tmp/stitched.nc")
@@ -108,6 +107,8 @@ class NetCDFRDDWriterTest {
     Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
     val ds = NetcdfDataset.openDataset("/tmp/stitched.nc",true,null)
     val b04 = ds.findVariable("TOC-B04_10M")
+
+    Assert.assertEquals(10, ds.findDimension("t").getLength)
 
     val chunking = b04.findAttributeIgnoreCase("_ChunkSizes")
     Assert.assertEquals(256,chunking.getValue(1))
