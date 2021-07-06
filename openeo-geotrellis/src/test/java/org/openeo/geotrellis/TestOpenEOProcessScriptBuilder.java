@@ -954,6 +954,34 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(-3.0,even_input.apply(0).get(0,0));
     }
 
+    @DisplayName("Test quantiles process")
+    @Test
+    public void testQuantiles() {
+
+        Tile tile0 = ByteConstantNoDataArrayTile.fill((byte)1, 4, 4);
+        Tile tile1 = ByteConstantNoDataArrayTile.fill((byte)3, 4, 4);
+        Tile tile2 = ByteConstantNoDataArrayTile.fill((byte)-10, 4, 4);
+        Tile tile3 = ByteConstantNoDataArrayTile.fill((byte)19, 4, 4);
+        Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
+
+        Seq<Tile> result = createQuantiles(null,2).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
+        assertEquals(ByteConstantNoDataCellType.withDefaultNoData(),result.apply(0).cellType());
+
+        assertEquals(3,result.apply(0).get(0,0));
+
+        //Seq<Tile> result_nodata = createQuantiles(false,2).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)));
+        //assertTrue(result_nodata.apply(0).isNoDataTile());
+
+        Seq<Tile> single_input = createQuantiles(true,2).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy())));
+        assertEquals(-10,single_input.apply(0).get(0,0));
+
+        Seq<Tile> even_input = createQuantiles(true,2).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(),tile1)));
+        assertEquals(-10.0,even_input.apply(0).get(0,0));
+
+        //Seq<Tile> quartiles = createQuantiles(null,4).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
+        //assertEquals(3,quartiles.apply(0).get(0,0));
+    }
+
     static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Map<String, Object> arguments = ignoreNoData!=null? Collections.singletonMap("ignore_nodata",ignoreNoData.booleanValue()) : Collections.emptyMap();
@@ -968,6 +996,24 @@ public class TestOpenEOProcessScriptBuilder {
 
 
         builder.expressionEnd("median",arguments);
+        return builder;
+    }
+
+    static OpenEOProcessScriptBuilder createQuantiles(Boolean ignoreNoData, int qValue) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = ignoreNoData!=null? map2("ignore_nodata",ignoreNoData.booleanValue(),"q",qValue) : map1("q",qValue);
+        builder.expressionStart("quantiles", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.constantArgument("q",2);
+
+        if (ignoreNoData != null) {
+            builder.constantArgument("ignore_nodata",ignoreNoData.booleanValue());
+        }
+
+
+        builder.expressionEnd("quantiles",arguments);
         return builder;
     }
 
