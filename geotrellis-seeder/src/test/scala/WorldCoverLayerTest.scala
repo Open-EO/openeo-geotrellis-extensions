@@ -30,8 +30,13 @@ class WorldCoverLayerTest {
   def testWorldCover(): Unit = {
 
     new TileSeeder(5, false, Option.empty)
-      .renderPng("/tmp/tiles/WorldCover", "", "1970-01-01", Some("worldcover.txt"), Option.empty,
-        Some("/data/worldcover/runs/tenpercent/10percent_expert/v3/latlon/mexico/ESA_WorldCover_10m_2019_v100_N21W091_Map.tif"),
-        datePattern = Some("yyyy/yyyyMMdd"))
+      .renderPng(
+        path = "/tmp/tiles/WorldCover",
+        productType = "Map",
+        dateStr = "",
+        colorMap = Some("worldcover.txt"),
+        oscarsEndpoint = Some("https://oscars-dev.vgt.vito.be"),
+        oscarsCollection = Some("urn:eop:VITO:ESA_WorldCover_10m_2020_V1")
+      )
   }
 }
