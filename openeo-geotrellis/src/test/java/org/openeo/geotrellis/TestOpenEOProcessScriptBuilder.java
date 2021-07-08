@@ -980,7 +980,7 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(-10.0,even_input.apply(0).get(0,0));
 
         Seq<Tile> quartiles = createQuantiles(null,4).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile,tile1,nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
-        Object[] elements = JavaConverters.asJavaCollection(quartiles.toIterator().map(v1 -> v1.get(0, 0)).toSeq()).toArray();
+        Object[] elements = JavaConverters.seqAsJavaListConverter(quartiles).asJava().stream().map(v1 -> v1.get(0, 0)).toArray();
         //nd,3,nd,3,3,-10,nd,19,nd
         // -10,1 ,3 3 3 19 nd nd nd nd
 
