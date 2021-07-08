@@ -2,6 +2,7 @@ package org.openeo.geotrellis
 
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.{ArrayTile, CellType, DoubleConstantTile, FloatConstantTile, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isNoData}
+import org.apache.spark.sql.catalyst.util.QuantileSummaries
 import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase}
 import org.slf4j.LoggerFactory
 import spire.math.UShort
@@ -9,7 +10,7 @@ import spire.syntax.cfor.cfor
 
 import scala.Double.NaN
 import scala.collection.JavaConversions.mapAsScalaMap
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.collection.{immutable, mutable}
 
 object OpenEOProcessScriptBuilder{
@@ -44,7 +45,7 @@ object OpenEOProcessScriptBuilder{
       wrapSimpleProcess(f)
   }
 
-  private def multibandMap(tile: MultibandTile ,f: Array[Double] => Array[Double]): Seq[Tile] = {
+  private def multibandMap(tile: MultibandTile ,f: Array[Double] => Seq[Double]): Seq[Tile] = {
     val mutableResult: immutable.Seq[MutableArrayTile] = tile.bands.map(_.mutable)
     var i = 0
     cfor(0)(_ < tile.cols, _ + 1) { col =>
@@ -55,6 +56,30 @@ object OpenEOProcessScriptBuilder{
         }
         val resultValues = f(bandValues)
         cfor(0)(_ < tile.bandCount, _ + 1) { band =>
+          mutableResult(band).setDouble(col, row,resultValues(band))
+        }
+        i += 1
+      }
+    }
+    return mutableResult
+  }
+
+  private def multibandMapToNewTiles(tile: MultibandTile ,f: Array[Double] => Seq[Double]): Seq[Tile] = {
+    val mutableResult: ListBuffer[MutableArrayTile] = ListBuffer[MutableArrayTile]()
+    var i = 0
+    cfor(0)(_ < tile.cols, _ + 1) { col =>
+      cfor(0)(_ < tile.rows, _ + 1) { row =>
+        val bandValues = Array.ofDim[Double](tile.bandCount)
+        cfor(0)(_ < tile.bandCount, _ + 1) { band =>
+          bandValues(band) = tile.band(band).getDouble(col, row)
+        }
+        val resultValues = f(bandValues)
+
+        if(mutableResult.size == 0) {
+          mutableResult.appendAll( (0 until resultValues.size).map( d => ArrayTile.empty(tile.cellType,tile.cols,tile.rows)))
+        }
+
+        cfor(0)(_ < resultValues.length, _ + 1) { band =>
           mutableResult(band).setDouble(col, row,resultValues(band))
         }
         i += 1
@@ -505,7 +530,7 @@ class OpenEOProcessScriptBuilder {
       case "array_modify" => arrayModifyFunction(arguments)
       case "array_interpolate_linear" => applyListFunction("data",linearInterpolation)
       case "linear_scale_range" => linearScaleRangeFunction(arguments)
-      case "quantiles" => quantilesFunction(arguments)
+      case "quantiles" => quantilesFunction(arguments,ignoreNoData)
       case "array_concat" => arrayConcatFunction(arguments)
       case "array_create" => arrayCreateFunction(arguments)
       case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
@@ -562,17 +587,40 @@ class OpenEOProcessScriptBuilder {
 
   }
 
-  private def quantilesFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
+  private def quantilesFunction(arguments:java.util.Map[String,Object], ignoreNoData:Boolean = true): OpenEOProcess = {
     val storedArgs = contextStack.head
     val inputFunction = storedArgs.get("data").get
+    val qRaw = arguments.get("q")
+    val probabilities: Seq[Double] =
+      if(qRaw==null) {
+        arguments.get("probabilities").asInstanceOf[Array[Double]]
+      }else{
+        val q = qRaw.asInstanceOf[Int].toDouble
+
+        (1 to (q.intValue() - 1)).map(d => d.doubleValue() / q)
+      }
+
 
     val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
       val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
-      //TODO implement
 
-      multibandMap(MultibandTile(data.map(_.toArrayTile().copy)),ts => {
-        //new org.apache.spark.sql.catalyst.util.QuantileSummaries()
-        Array(1.0,2.0,3.0,4.0)
+      multibandMapToNewTiles(MultibandTile(data),ts => {
+        val summaries = new org.apache.spark.sql.catalyst.util.QuantileSummaries(QuantileSummaries.defaultCompressThreshold, QuantileSummaries.defaultRelativeError)
+        var nodata = false
+        for (value <- ts) {
+
+          if(value.isNaN){
+            nodata = true
+          }else{
+            summaries.insert(value)
+          }
+        }
+        if(nodata && !ignoreNoData) {
+          probabilities.map(d => Double.NaN)
+        }else{
+          val compressed = summaries.compress()
+          probabilities.map(compressed.query(_).getOrElse(Double.NaN))
+        }
       })
 
     }
@@ -617,7 +665,15 @@ class OpenEOProcessScriptBuilder {
     val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
       val array1 = evaluateToTiles(array1Function, context, tiles)
       val array2 = evaluateToTiles(array2Function, context, tiles)
-      array1 ++ array2
+
+      val combined = array1 ++ array2
+      if(combined.size>0) {
+        val unionCelltype = combined.map(_.cellType).reduce(_.union(_))
+        combined.map(_.convert(unionCelltype))
+      }else{
+        combined
+      }
+
     }
     bandFunction
   }
