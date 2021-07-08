@@ -6,6 +6,7 @@ import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
 import scala.Function1;
 import scala.collection.JavaConversions;
+import scala.collection.JavaConverters;
 import scala.collection.Seq;
 
 import java.util.Arrays;
@@ -972,14 +973,18 @@ public class TestOpenEOProcessScriptBuilder {
         //Seq<Tile> result_nodata = createQuantiles(false,2).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)));
         //assertTrue(result_nodata.apply(0).isNoDataTile());
 
-        Seq<Tile> single_input = createQuantiles(true,2).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy())));
+        Seq<Tile> single_input = createQuantiles(true,2).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2)));
         assertEquals(-10,single_input.apply(0).get(0,0));
 
-        Seq<Tile> even_input = createQuantiles(true,2).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(),tile1)));
+        Seq<Tile> even_input = createQuantiles(true,2).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2,tile1)));
         assertEquals(-10.0,even_input.apply(0).get(0,0));
 
-        //Seq<Tile> quartiles = createQuantiles(null,4).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
-        //assertEquals(3,quartiles.apply(0).get(0,0));
+        Seq<Tile> quartiles = createQuantiles(null,4).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile,tile1,nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
+        Object[] elements = JavaConverters.seqAsJavaListConverter(quartiles).asJava().stream().map(v1 -> v1.get(0, 0)).toArray();
+        //nd,3,nd,3,3,-10,nd,19,nd
+        // -10,1 ,3 3 3 19 nd nd nd nd
+
+        assertArrayEquals(elements, new Object[]{1,3,3});
     }
 
     static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
