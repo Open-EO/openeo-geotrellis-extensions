@@ -13,7 +13,7 @@
         <spark.version>2.3.1</spark.version>
         <scala.binary.version>2.11</scala.binary.version>
         <scala.version>2.11.8</scala.version>
-        <geotrellis.version>3.5.2</geotrellis.version>
+        <geotrellis.version>3.5.1</geotrellis.version>
         <commons-compress-version>1.10</commons-compress-version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
