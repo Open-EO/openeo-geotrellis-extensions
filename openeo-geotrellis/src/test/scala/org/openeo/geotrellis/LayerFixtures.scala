@@ -10,8 +10,9 @@ import java.util.Collections.singletonList
 
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
-import geotrellis.layer.{Bounds, FloatingLayoutScheme, KeyBounds, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
+import geotrellis.layer.{Bounds, FloatingLayoutScheme, KeyBounds, LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.proj4.LatLng
+import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.{ArrayMultibandTile, ArrayTile, ByteArrayTile, CellSize, MultibandTile, Tile, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
@@ -123,7 +124,27 @@ object LayerFixtures {
       experimental = true
     )
 
+  lazy val b04RasterSource =GeoTiffRasterSource("https://artifactory.vgt.vito.be/testdata-public/S2_B04_timeseries.tiff")
 
+  lazy val b04Raster = {
+    b04RasterSource.read().get
+  }
+
+  def sentinel2B04Layer = {
+    val tiles = b04Raster.tile.bands
+    val timesteps = Array(0, 25, 35, 37, 55, 60, 67, 70, 80, 82, 85, 87, 90, 110, 112, 117, 122, 137, 140, 147, 152, 157, 160, 165, 167, 177, 180, 185, 190, 195, 210, 212, 215, 217, 222, 230, 232, 237, 240, 242, 265, 275, 280, 292, 302, 305, 312, 317, 325, 342, 350, 357, 360, 362, 367, 370, 372, 380, 382, 422, 425, 427, 430, 432, 435, 440, 442, 445, 447, 450, 452, 455, 457, 460, 462, 470, 472, 480, 482, 485, 490, 492, 495, 497, 515, 517, 520, 522, 532, 545, 547, 550, 552, 555, 557, 562, 565, 570, 572, 575, 587, 590, 600, 602, 605, 607, 610, 617, 637, 652, 667, 670, 697)
+    val startDate = ZonedDateTime.parse("2019-01-21T00:00:00Z")
+    val dates = timesteps.map(startDate.plusDays(_))
+
+    val timeseries = dates.zip(tiles).map({ date_tile => {
+      (SpaceTimeKey(0, 0, date_tile._1), MultibandTile(date_tile._2.withNoData(Some(32767))))
+    }
+    })
+
+    val rdd = SparkContext.getOrCreate().parallelize(timeseries)
+    val layer = ContextRDD(rdd, TileLayerMetadata(tiles.head.cellType, LayoutDefinition(b04Raster.rasterExtent, tiles.head.size), b04Raster.extent, b04RasterSource.crs, KeyBounds[SpaceTimeKey](timeseries.head._1, timeseries.last._1)))
+    new ContextRDD(layer,layer.metadata)
+  }
 
   def rgbLayerProvider =
     new FileLayerProvider(
