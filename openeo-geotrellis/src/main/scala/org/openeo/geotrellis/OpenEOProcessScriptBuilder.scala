@@ -45,6 +45,69 @@ object OpenEOProcessScriptBuilder{
       wrapSimpleProcess(f)
   }
 
+
+
+  private def ifElseProcess(value: OpenEOProcess, accept: OpenEOProcess, reject: OpenEOProcess) = {
+    val ifElseProcess = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
+      val value_input: Seq[Tile] = evaluateToTiles(value, context, tiles)
+
+      def makeSameLength(tiles: Seq[Tile]): Seq[Tile] = {
+        if (tiles.size == 1 && value_input.length > 1) {
+          Seq.fill(value_input.length)(tiles(0))
+        } else {
+          tiles
+        }
+      }
+
+      val accept_input: Seq[Tile] = makeSameLength(evaluateToTiles(accept, context, tiles))
+
+      val reject_input: Seq[Tile] =
+        if (reject != null) {
+          reject.apply(context)(tiles)
+        } else {
+          logger.debug("If process without reject clause.")
+          Seq.fill(accept_input.length)(null)
+        }
+
+      def ifElse(value: Tile, acceptTile: Tile, rejectTile: Tile): Tile = {
+        val outputCellType = if (rejectTile == null) acceptTile.cellType else acceptTile.cellType.union(rejectTile.cellType)
+        val resultTile = ArrayTile.empty(outputCellType, acceptTile.cols, acceptTile.rows)
+
+        def setResult(col: Int, row: Int, fromTile: Tile): Unit = {
+          if (fromTile == null) {
+            if (outputCellType.isFloatingPoint) resultTile.setDouble(col, row, Double.NaN) else resultTile.set(col, row, NODATA)
+          } else {
+            if (outputCellType.isFloatingPoint) resultTile.setDouble(col, row, fromTile.getDouble(col, row)) else resultTile.set(col, row, fromTile.get(col, row))
+          }
+        }
+
+        value.foreach { (col, row, value) => {
+          if (value == 0) {
+            //reject
+            setResult(col, row, rejectTile)
+          } else {
+            //accept
+            setResult(col, row, acceptTile)
+          }
+        }
+        }
+        resultTile
+      }
+
+
+      if (value_input.size == accept_input.size) {
+        value_input.zip(accept_input).zip(reject_input).map { t => ifElse(t._1._1, t._1._2, t._2) }
+      } else if (value_input.size == 1) {
+        accept_input.zip(reject_input).map { t => ifElse(value_input.head, t._1, t._2) }
+      }
+      else {
+        throw new IllegalArgumentException("Incompatible numbers of tiles in this if process.")
+      }
+
+    }
+    ifElseProcess
+  }
+
   private def multibandMap(tile: MultibandTile ,f: Array[Double] => Seq[Double]): Seq[Tile] = {
     val mutableResult: immutable.Seq[MutableArrayTile] = tile.bands.map(_.mutable)
     var i = 0
@@ -250,65 +313,11 @@ class OpenEOProcessScriptBuilder {
     val value = storedArgs.get("value").getOrElse(throw new IllegalArgumentException("If process expects a value argument. These arguments were found: " + arguments.keys.mkString(", ")))
     val accept = storedArgs.get("accept").getOrElse(throw new IllegalArgumentException("If process expects an accept argument. These arguments were found: " + arguments.keys.mkString(", ")))
     val reject: OpenEOProcess = storedArgs.get("reject").getOrElse(null)
-    val ifElseProcess = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
-      val value_input: Seq[Tile] = evaluateToTiles(value, context, tiles)
-
-      def makeSameLength(tiles: Seq[Tile]): Seq[Tile] ={
-        if(tiles.size == 1 && value_input.length >1) {
-          Seq.fill(value_input.length)(tiles(0))
-        }else{
-          tiles
-        }
-      }
-
-      val accept_input: Seq[Tile] = makeSameLength(evaluateToTiles(accept, context, tiles))
-
-      val reject_input: Seq[Tile] =
-        if (reject != null) {
-          reject.apply(context)(tiles)
-        } else {
-          logger.debug("If process without reject clause.")
-          Seq.fill(accept_input.length)(null)
-        }
-
-      def ifElse(value:Tile, acceptTile:Tile, rejectTile: Tile): Tile = {
-        val outputCellType = if(rejectTile==null) acceptTile.cellType else acceptTile.cellType.union(rejectTile.cellType)
-        val resultTile = ArrayTile.empty(outputCellType,acceptTile.cols,acceptTile.rows)
-
-        def setResult(col:Int,row:Int,fromTile:Tile): Unit ={
-          if(fromTile==null) {
-            if(outputCellType.isFloatingPoint) resultTile.setDouble(col,row,Double.NaN) else resultTile.set(col,row,NODATA)
-          }else{
-            if(outputCellType.isFloatingPoint) resultTile.setDouble(col,row,fromTile.getDouble(col,row)) else resultTile.set(col,row,fromTile.get(col,row))
-          }
-        }
-        value.foreach{ (col,row,value) => {
-          if(value==0){
-            //reject
-            setResult(col,row,rejectTile)
-          }else{
-            //accept
-            setResult(col,row,acceptTile)
-          }
-        }}
-        resultTile
-      }
-
-
-      if (value_input.size == accept_input.size) {
-        value_input.zip(accept_input).zip(reject_input).map { t => ifElse(t._1._1, t._1._2, t._2) }
-      } else if (value_input.size == 1) {
-        accept_input.zip(reject_input).map { t => ifElse(value_input.head, t._1, t._2) }
-      }
-      else {
-        throw new IllegalArgumentException("Incompatible numbers of tiles in this if process.")
-      }
-
-    }
-    ifElseProcess
+    ifElseProcess(value, accept, reject)
   }
 
-  private def xyFunction(operator:(Tile,Tile) => Tile,xArgName:String = "x",yArgName:String = "y" ): OpenEOProcess = {
+
+  private def xyFunction(operator:(Tile,Tile) => Tile, xArgName:String = "x", yArgName:String = "y" ): OpenEOProcess = {
     val storedArgs = contextStack.head
     val processString = processStack.reverse.mkString("->")
     if (!storedArgs.contains(xArgName)) {
