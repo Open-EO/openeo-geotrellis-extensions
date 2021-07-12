@@ -1,5 +1,7 @@
 package org.openeo.geotrellis
 
+import java.util
+
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.{ArrayTile, CellType, DoubleConstantTile, FloatConstantTile, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isNoData}
 import org.apache.commons.math3.exception.NotANumberException
@@ -12,6 +14,7 @@ import spire.syntax.cfor.cfor
 
 import scala.Double.NaN
 import scala.collection.JavaConversions.mapAsScalaMap
+import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.collection.{immutable, mutable}
 
@@ -607,7 +610,13 @@ class OpenEOProcessScriptBuilder {
     val qRaw = arguments.get("q")
     val probabilities: Seq[Double] =
       if(qRaw==null) {
-        arguments.get("probabilities").asInstanceOf[Array[Double]]
+        arguments.get("probabilities") match {
+          case doubles: util.ArrayList[Double] =>
+            doubles.asScala.toSeq
+          case doubles: Array[Double] =>
+            doubles.asInstanceOf[Array[Double]].toSeq
+          case any => throw new IllegalArgumentException(s"Unsupported probabilities parameter in quantiles: ${any} " )
+        }
       }else{
         val q = qRaw.asInstanceOf[Int].toDouble
 

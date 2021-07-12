@@ -9,10 +9,7 @@ import scala.collection.JavaConversions;
 import scala.collection.JavaConverters;
 import scala.collection.Seq;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -1026,7 +1023,7 @@ public class TestOpenEOProcessScriptBuilder {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         builder.expressionStart("array_concat",Collections.emptyMap());
         builder.argumentStart("array1");
-        double[] percentiles = {0.25, 0.5, 0.75};
+        List<Double> percentiles = Arrays.asList(0.25, 0.5, 0.75);
         builder.expressionStart("quantiles", map1("probabilities", percentiles));
         builder.argumentStart("data");
         builder.fromParameter("data");
