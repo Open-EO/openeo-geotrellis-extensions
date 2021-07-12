@@ -389,7 +389,9 @@ package object geotiff {
 
     def newFilePath(path: String, tileId: String) = {
       val index = path.lastIndexOf(".")
-      s"${path.substring(0, index)}-$tileId${path.substring(index)}"
+      val extension = if(index>=0) path.substring(index) else ".tiff"
+      val prefix = if(index>=0 ) path.substring(0, index) else "openEO"
+      s"$prefix-$tileId$extension"
     }
 
     val croppedExtent = cropBounds.map(toExtent)
