@@ -9,10 +9,7 @@ import scala.collection.JavaConversions;
 import scala.collection.JavaConverters;
 import scala.collection.Seq;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -977,14 +974,14 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(-10,single_input.apply(0).get(0,0));
 
         Seq<Tile> even_input = createQuantiles(true,2).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2,tile1)));
-        assertEquals(-10.0,even_input.apply(0).get(0,0));
+        assertEquals(-3.0,even_input.apply(0).get(0,0));
 
         Seq<Tile> quartiles = createQuantiles(null,4).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile,tile1,nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
         Object[] elements = JavaConverters.seqAsJavaListConverter(quartiles).asJava().stream().map(v1 -> v1.get(0, 0)).toArray();
         //nd,3,nd,3,3,-10,nd,19,nd
         // -10,1 ,3 3 3 19 nd nd nd nd
 
-        assertArrayEquals(elements, new Object[]{1,3,3});
+        assertArrayEquals(new Object[]{-1,3,7}, elements);
     }
 
     static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
@@ -1026,7 +1023,7 @@ public class TestOpenEOProcessScriptBuilder {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         builder.expressionStart("array_concat",Collections.emptyMap());
         builder.argumentStart("array1");
-        double[] percentiles = {0.25, 0.5, 0.75};
+        List<Double> percentiles = Arrays.asList(0.25, 0.5, 0.75);
         builder.expressionStart("quantiles", map1("probabilities", percentiles));
         builder.argumentStart("data");
         builder.fromParameter("data");

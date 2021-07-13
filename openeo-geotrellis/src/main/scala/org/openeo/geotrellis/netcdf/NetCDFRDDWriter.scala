@@ -59,6 +59,46 @@ object NetCDFRDDWriter {
     override def iterator: Iterator[(K, V)] = tiles.iterator
   }
 
+  def saveSingleNetCDFSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
+                       path: String,
+                       bandNames: ArrayList[String],
+                       dimensionNames: java.util.Map[String,String],
+                       attributes: java.util.Map[String,String],
+                       zLevel:Int
+                      ): java.util.List[String] = {
+
+    var dates = new ListBuffer[Int]()
+    val extent = rdd.metadata.apply(rdd.metadata.tileBounds)
+
+    val rasterExtent = RasterExtent(extent = extent, cellSize = rdd.metadata.cellSize)
+
+    var netcdfFile: NetcdfFileWriter = null
+    for(tuple <- rdd.toLocalIterator){
+
+      val cellType = tuple._2.cellType
+
+      if(netcdfFile == null){
+        netcdfFile = setupNetCDF(path, rasterExtent, null, bandNames, rdd.metadata.crs, cellType,dimensionNames,attributes,zLevel,writeTimeDimension = false)
+      }
+      val multibandTile = tuple._2
+
+      for (bandIndex <- bandNames.asScala.indices) {
+
+        val gridExtent = rasterExtent.gridBoundsFor(tuple._1.extent(rdd.metadata))
+        val origin: Array[Int] = scala.Array(gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
+        val variable = bandNames.get(bandIndex)
+
+        val tile = multibandTile.band(bandIndex)
+        writeTile(variable, origin, tile, netcdfFile)
+      }
+    }
+
+
+
+    netcdfFile.close()
+    return Collections.singletonList(path)
+  }
+
   def saveSingleNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                   path: String,
                   bandNames: ArrayList[String],
@@ -112,7 +152,7 @@ object NetCDFRDDWriter {
 
     val geotrellisArrayTile = tile.toArrayTile()
 
-    val shape = scala.Array[Int](1, rows, cols)
+    val shape = if(origin.length==3) scala.Array[Int](1, rows, cols) else scala.Array[Int]( rows, cols)
     val bandArray =
       geotrellisArrayTile match {
         case t: BitArrayTile => ucar.ma2.Array.factory(DataType.BOOLEAN, shape, t.array)
@@ -235,7 +275,7 @@ object NetCDFRDDWriter {
   private[netcdf] def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime],
                           bandNames: util.ArrayList[String], crs: CRS, cellType: CellType,
                           dimensionNames: java.util.Map[String,String],
-                          attributes: java.util.Map[String,String],zLevel:Int =6) = {
+                          attributes: java.util.Map[String,String],zLevel:Int =6, writeTimeDimension:Boolean = true) = {
 
     val theChunking = new OpenEOChunking(zLevel)
     val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4_classic,path, theChunking)
@@ -251,14 +291,16 @@ object NetCDFRDDWriter {
     }
     val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
 
-    val timeDimension = netcdfFile.addUnlimitedDimension(timeDimName)
+
+    val timeDimension = if(writeTimeDimension) netcdfFile.addUnlimitedDimension(timeDimName) else null
     val yDimension = netcdfFile.addDimension(Y, rasterExtent.rows)
     val xDimension = netcdfFile.addDimension(X, rasterExtent.cols)
 
     val timeDimensions = new util.ArrayList[Dimension]
     timeDimensions.add(timeDimension)
-
-    addTimeVariable(netcdfFile, dates, timeDimName, timeDimensions)
+    if(writeTimeDimension) {
+      addTimeVariable(netcdfFile, dates, timeDimName, timeDimensions)
+    }
 
 
     val xDimensions = new util.ArrayList[Dimension]
@@ -282,7 +324,9 @@ object NetCDFRDDWriter {
     //netcdfFile.addVariableAttribute("crs","longitude_of_projection_origin",crs.proj4jCrs.getProjection.getProjectionLongitudeDegrees)
 
     val bandDimension = new util.ArrayList[Dimension]
-    bandDimension.add(timeDimension)
+    if(writeTimeDimension) {
+      bandDimension.add(timeDimension)
+    }
     bandDimension.add(yDimension)
     bandDimension.add(xDimension)
 
@@ -314,13 +358,19 @@ object NetCDFRDDWriter {
 
 
     for (bandName <- bandNames.asScala) {
+
       addNetcdfVariable(netcdfFile, bandDimension, bandName, netcdfType, null, bandName, "", null, nodata.getOrElse(0), "y x")
       netcdfFile.addVariableAttribute(bandName, "grid_mapping", "crs")
       if(rasterExtent.cols>256 && rasterExtent.rows>256){
-        val chunking = new ArrayInt.D1(3,false)
-        chunking.set(0,1)
-        chunking.set(1,256)
-        chunking.set(2,256)
+        val chunking = new ArrayInt.D1(if(writeTimeDimension) 3 else 2,false)
+        if(writeTimeDimension){
+          chunking.set(0,1)
+          chunking.set(1,256)
+          chunking.set(2,256)
+        }else{
+          chunking.set(0,256)
+          chunking.set(1,256)
+        }
         netcdfFile.addVariableAttribute(bandName, new Attribute("_ChunkSizes", chunking))
       }
 

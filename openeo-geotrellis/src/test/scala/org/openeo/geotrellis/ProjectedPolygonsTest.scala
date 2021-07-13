@@ -1,6 +1,6 @@
 package org.openeo.geotrellis
 
-import geotrellis.proj4.CRS
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.vector._
 import org.junit.Assert._
 import org.junit.Test
@@ -27,4 +27,13 @@ class ProjectedPolygonsTest() {
     assertEquals(CRS.fromEpsgCode(4326), pp.crs)
   }
 
+  @Test
+  def areaInSquareMeters(): Unit = {
+    val pp = ProjectedPolygons.fromExtent(Extent(xmin = 4.0, ymin = 51.0, xmax = 5.0, ymax = 52.0), "EPSG:4326")
+
+    val expectedArea = 7725459381.443416
+    val delta = expectedArea * 0.01
+
+    assertEquals(expectedArea, pp.areaInSquareMeters, delta) // https://github.com/locationtech/geotrellis/issues/3289
+  }
 }

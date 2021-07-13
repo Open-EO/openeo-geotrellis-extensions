@@ -120,6 +120,29 @@ class NetCDFRDDWriterTest {
   }
 
   @Test
+  def testWriteSingleNetCDFSpatial(): Unit = {
+
+    val dcParams = new DataCubeParameters()
+    dcParams.layoutScheme = "FloatingLayoutScheme"
+
+    val (image,layer) = LayerFixtures.createLayerWithGaps(5,5)
+
+    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSingleNetCDFSpatial(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")),null,null,6)
+    val expectedPaths = List("/tmp/stitched.nc")
+
+    Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
+    val ds = NetcdfDataset.openDataset("/tmp/stitched.nc",true,null)
+    val b04 = ds.findVariable("TOC-B04_10M")
+
+    val chunking = b04.findAttributeIgnoreCase("_ChunkSizes")
+    Assert.assertEquals(256,chunking.getValue(0))
+    Assert.assertEquals(256,chunking.getValue(1))
+    Assert.assertEquals("y",b04.getDimension(0).getShortName)
+    Assert.assertEquals("x",b04.getDimension(1).getShortName)
+
+  }
+
+  @Test
   def testSetupNetCDF(): Unit = {
     def setup(cellType:CellType) = {
 

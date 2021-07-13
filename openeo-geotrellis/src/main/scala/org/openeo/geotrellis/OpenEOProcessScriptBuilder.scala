@@ -1,8 +1,12 @@
 package org.openeo.geotrellis
 
+import java.util
+
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.{ArrayTile, CellType, DoubleConstantTile, FloatConstantTile, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isNoData}
-import org.apache.spark.sql.catalyst.util.QuantileSummaries
+import org.apache.commons.math3.exception.NotANumberException
+import org.apache.commons.math3.stat.descriptive.rank.Percentile
+import org.apache.commons.math3.stat.ranking.NaNStrategy
 import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase}
 import org.slf4j.LoggerFactory
 import spire.math.UShort
@@ -10,6 +14,7 @@ import spire.syntax.cfor.cfor
 
 import scala.Double.NaN
 import scala.collection.JavaConversions.mapAsScalaMap
+import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.collection.{immutable, mutable}
 
@@ -127,14 +132,17 @@ object OpenEOProcessScriptBuilder{
     return mutableResult
   }
 
-  private def multibandMapToNewTiles(tile: MultibandTile ,f: Array[Double] => Seq[Double]): Seq[Tile] = {
+  private def multibandMapToNewTiles(tile: MultibandTile ,f: Seq[Double] => Seq[Double], ignoreNoData: Boolean = true): Seq[Tile] = {
     val mutableResult: ListBuffer[MutableArrayTile] = ListBuffer[MutableArrayTile]()
     var i = 0
     cfor(0)(_ < tile.cols, _ + 1) { col =>
       cfor(0)(_ < tile.rows, _ + 1) { row =>
-        val bandValues = Array.ofDim[Double](tile.bandCount)
+        val bandValues = new ArrayBuffer[Double](tile.bandCount)
         cfor(0)(_ < tile.bandCount, _ + 1) { band =>
-          bandValues(band) = tile.band(band).getDouble(col, row)
+          val d = tile.bands(band).getDouble(col, row)
+          if(!ignoreNoData || !d.isNaN){
+            bandValues.append(d)
+          }
         }
         val resultValues = f(bandValues)
 
@@ -602,7 +610,13 @@ class OpenEOProcessScriptBuilder {
     val qRaw = arguments.get("q")
     val probabilities: Seq[Double] =
       if(qRaw==null) {
-        arguments.get("probabilities").asInstanceOf[Array[Double]]
+        arguments.get("probabilities") match {
+          case doubles: util.List[Double] =>
+            doubles.asScala.toArray.toSeq
+          case doubles: Array[Double] =>
+            doubles.asInstanceOf[Array[Double]].toSeq
+          case any => throw new IllegalArgumentException(s"Unsupported probabilities parameter in quantiles: ${any} " )
+        }
       }else{
         val q = qRaw.asInstanceOf[Int].toDouble
 
@@ -614,23 +628,22 @@ class OpenEOProcessScriptBuilder {
       val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
 
       multibandMapToNewTiles(MultibandTile(data),ts => {
-        val summaries = new org.apache.spark.sql.catalyst.util.QuantileSummaries(QuantileSummaries.defaultCompressThreshold, QuantileSummaries.defaultRelativeError)
-        var nodata = false
-        for (value <- ts) {
 
-          if(value.isNaN){
-            nodata = true
-          }else{
-            summaries.insert(value)
-          }
-        }
-        if(nodata && !ignoreNoData) {
-          probabilities.map(d => Double.NaN)
+        val p = if(ignoreNoData){
+          new Percentile()
         }else{
-          val compressed = summaries.compress()
-          probabilities.map(compressed.query(_).getOrElse(Double.NaN))
+          new Percentile().withNaNStrategy(NaNStrategy.FAILED)
         }
-      })
+        p.setData(ts.toArray)
+
+        try{
+          probabilities.map(quantile => p.evaluate(quantile*100.0))
+        }catch {
+          case e: NotANumberException => probabilities.map(d => Double.NaN)
+          case t: Exception => throw t
+        }
+
+      }, ignoreNoData)
 
     }
     bandFunction

@@ -5,7 +5,6 @@ import java.time.format.DateTimeFormatter
 
 import geotrellis.layer._
 import geotrellis.raster.buffer.BufferedTile
-import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff._
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.testkit.RasterMatchers
@@ -144,20 +143,9 @@ class OpenEOProcessesSpec extends RasterMatchers {
   @Test
   def medianComposite():Unit = {
 
-    val rs = GeoTiffRasterSource("https://artifactory.vgt.vito.be/testdata-public/S2_B04_timeseries.tiff")
-    val raster = rs.read().get
-    val tiles = raster.tile.bands
-    val timesteps = Array(0,25,35,37,55,60,67,70,80,82,85,87,90,110,112,117,122,137,140,147,152,157,160,165,167,177,180,185,190,195,210,212,215,217,222,230,232,237,240,242,265,275,280,292,302,305,312,317,325,342,350,357,360,362,367,370,372,380,382,422,425,427,430,432,435,440,442,445,447,450,452,455,457,460,462,470,472,480,482,485,490,492,495,497,515,517,520,522,532,545,547,550,552,555,557,562,565,570,572,575,587,590,600,602,605,607,610,617,637,652,667,670,697)
+    val layer:MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.sentinel2B04Layer
+
     val startDate = ZonedDateTime.parse("2019-01-21T00:00:00Z")
-    val dates = timesteps.map(startDate.plusDays(_))
-
-    val timeseries = dates.zip(tiles).map({date_tile=>{
-      (SpaceTimeKey(0,0,date_tile._1),MultibandTile(date_tile._2.withNoData(Some(32767))))
-    }})
-
-    val rdd = SparkContext.getOrCreate().parallelize(timeseries)
-    val layer = ContextRDD(rdd,TileLayerMetadata(tiles.head.cellType,LayoutDefinition(raster.rasterExtent,tiles.head.size),raster.extent,rs.crs,KeyBounds[SpaceTimeKey](timeseries.head._1,timeseries.last._1)))
-
     val intervals = Range(0,20).flatMap{r => Seq(startDate.plusDays(10L*r),startDate.plusDays(10L*(r+1)))}.map(DateTimeFormatter.ISO_INSTANT.format(_))
     val labels = Range(0,20).map{r => DateTimeFormatter.ISO_INSTANT.format(startDate.plusDays(10L*r))}
 
@@ -165,8 +153,9 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val validTile = resultTiles.find(_ !=null).get
     val emptyTile = ArrayMultibandTile.empty(validTile.cellType,validTile.bandCount,validTile.cols,validTile.rows)
     val filledResult = resultTiles.map{t => if(t != null) t.band(0) else emptyTile.band(0)}
-    GeoTiff(Raster(MultibandTile(filledResult),raster.extent),rs.crs).write("result.tiff",true)
+    GeoTiff(Raster(MultibandTile(filledResult),layer.metadata.extent),layer.metadata.crs).write("result.tiff",true)
 
 
   }
+
 }

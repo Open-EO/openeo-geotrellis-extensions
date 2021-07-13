@@ -13,7 +13,9 @@ import org.geotools.data.simple.SimpleFeatureIterator
 import scala.collection.JavaConverters._
 import scala.io.Source
 
-case class ProjectedPolygons(polygons: Array[MultiPolygon], crs: CRS)
+case class ProjectedPolygons(polygons: Array[MultiPolygon], crs: CRS) {
+  def areaInSquareMeters: Double = ProjectedPolygons.areaInSquareMeters(GeometryCollection(polygons), crs)
+}
 
 object ProjectedPolygons {
   private type JList[T] = java.util.List[T]
@@ -58,6 +60,7 @@ object ProjectedPolygons {
     } catch {
       case _: MalformedURLException => new URL(s"file://$vector_file")
     }
+
 
     val filename = vectorUrl.getPath.split("/").last
 
@@ -145,4 +148,11 @@ object ProjectedPolygons {
     ProjectedPolygons(multiPolygons, LatLng)
   }
 
+  private def areaInSquareMeters(geometry: Geometry, crs: CRS): Double = {
+    val bounds = geometry.extent
+    val targetCrs = CRS.fromString(s"+proj=aea +lat_0=0 +lon_0=0 +lat_1=${bounds.ymin} +lat_2=${bounds.ymax} +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs")
+
+    val reprojectedGeometry = geometry.reproject(crs, targetCrs)
+    reprojectedGeometry.getArea
+  }
 }

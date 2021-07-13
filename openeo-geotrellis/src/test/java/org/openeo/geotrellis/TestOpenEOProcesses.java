@@ -5,6 +5,8 @@ import geotrellis.layer.*;
 import geotrellis.raster.*;
 import geotrellis.spark.ContextRDD;
 import geotrellis.spark.testkit.TileLayerRDDBuilders$;
+import org.apache.commons.math3.stat.descriptive.moment.StandardDeviation;
+import org.apache.commons.math3.stat.descriptive.rank.Percentile;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
@@ -16,14 +18,15 @@ import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
 import scala.Tuple2;
 import scala.collection.JavaConversions;
+import scala.collection.JavaConverters;
 import scala.reflect.ClassTag;
 
 import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.DoubleStream;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.*;
 
 public class TestOpenEOProcesses {
 
@@ -202,17 +205,36 @@ public class TestOpenEOProcesses {
     }
 
     @Test
-    public void testApplyTimeDimensionToBands() {
-        ByteArrayTile band1 = ByteArrayTile.fill((byte) -10, 256, 256);
-        ByteArrayTile band2 = ByteArrayTile.fill((byte) 4, 256, 256);
-        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 =LayerFixtures.buildSpatioTemporalDataCube(Arrays.asList(band1,ByteArrayTile.empty(256,256), band2), JavaConversions.asScalaBuffer(Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z","2020-02-03T00:00:00Z")));
+    public void testApplyTimeDimensionToBandB04() {
+
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 = LayerFixtures.sentinel2B04Layer();
+
+
         OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createFeatureEngineering();
         RDD<Tuple2<SpatialKey, MultibandTile>> result = new OpenEOProcesses().applyTimeDimensionTargetBands(datacube1, processBuilder, new HashMap<>());
         List<Tuple2<String,MultibandTile>> results = JavaPairRDD.fromJavaRDD(result.toJavaRDD()).map(spaceTimeKeyMultibandTileTuple2 -> new Tuple2<String,MultibandTile>(spaceTimeKeyMultibandTileTuple2._1.toString(),spaceTimeKeyMultibandTileTuple2._2)).collect();
         MultibandTile interpolatedTile = results.stream().collect(Collectors.toList()).get(0)._2;
-        assertEquals(15,interpolatedTile.bandCount());
-        assertEquals(-10, interpolatedTile.band(4).get(0,0));
-        //TODO fix quantiles and do more checks
+        assertEquals(5,interpolatedTile.bandCount());
+        List<Integer> bandValues = getPixel(interpolatedTile);
+        System.out.println("bandValues = " + bandValues);
 
+        List<Integer> inputTS = getPixel(LayerFixtures.b04Raster()._1());
+        DoubleStream doubleValues = inputTS
+                .stream()
+                .filter(a -> a != 32767)
+                .mapToDouble(a -> a);
+
+        double[] inputTSAsArray = doubleValues.toArray();
+        double sd = new StandardDeviation().evaluate(inputTSAsArray);
+        double p25 = new Percentile().evaluate(inputTSAsArray,25);
+        double p50 = new Percentile().evaluate(inputTSAsArray,50);
+        double p75 = new Percentile().evaluate(inputTSAsArray,75);
+
+        assertArrayEquals(new Object[]{(int)p25, (int)p50, (int)p75, (int)sd, (int) Arrays.stream(inputTSAsArray).average().getAsDouble()}, bandValues.toArray());
+
+    }
+
+    private List<Integer> getPixel(MultibandTile interpolatedTile) {
+        return JavaConverters.seqAsJavaListConverter(interpolatedTile.bands()).asJava().stream().map(tile -> tile.get(0, 0)).collect(Collectors.toList());
     }
 }
