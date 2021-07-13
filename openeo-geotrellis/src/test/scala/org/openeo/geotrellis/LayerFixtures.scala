@@ -136,13 +136,13 @@ object LayerFixtures {
     val startDate = ZonedDateTime.parse("2019-01-21T00:00:00Z")
     val dates = timesteps.map(startDate.plusDays(_))
 
-    val timeseries = dates.zip(tiles).map({ date_tile => {
+    val timeseries: Array[(SpaceTimeKey, MultibandTile)] = dates.zip(tiles).map({ date_tile => {
       (SpaceTimeKey(0, 0, date_tile._1), MultibandTile(date_tile._2.withNoData(Some(32767))))
     }
     })
 
     val rdd = SparkContext.getOrCreate().parallelize(timeseries)
-    val layer = ContextRDD(rdd, TileLayerMetadata(tiles.head.cellType, LayoutDefinition(b04Raster.rasterExtent, tiles.head.size), b04Raster.extent, b04RasterSource.crs, KeyBounds[SpaceTimeKey](timeseries.head._1, timeseries.last._1)))
+    val layer = ContextRDD(rdd, TileLayerMetadata(timeseries(0)._2.cellType, LayoutDefinition(b04Raster.rasterExtent, tiles.head.cols,tiles.head.rows), b04Raster.extent, b04RasterSource.crs, KeyBounds[SpaceTimeKey](timeseries.head._1, timeseries.last._1)))
     new ContextRDD(layer,layer.metadata)
   }
 
