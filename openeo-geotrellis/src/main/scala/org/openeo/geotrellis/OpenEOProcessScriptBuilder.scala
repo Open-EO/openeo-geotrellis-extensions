@@ -611,8 +611,8 @@ class OpenEOProcessScriptBuilder {
     val probabilities: Seq[Double] =
       if(qRaw==null) {
         arguments.get("probabilities") match {
-          case doubles: util.ArrayList[Double] =>
-            doubles.asScala.toSeq
+          case doubles: util.List[Double] =>
+            doubles.asScala.toArray.toSeq
           case doubles: Array[Double] =>
             doubles.asInstanceOf[Array[Double]].toSeq
           case any => throw new IllegalArgumentException(s"Unsupported probabilities parameter in quantiles: ${any} " )
