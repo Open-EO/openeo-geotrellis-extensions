@@ -1,13 +1,16 @@
 package org.openeo.geotrellis
 
-import geotrellis.raster.{ArrayMultibandTile, BitCells, BitConstantTile, ByteCells, ByteConstantTile, CellType, DoubleCells, DoubleConstantTile, FloatCells, FloatConstantTile, HasNoData, IntCells, IntConstantTile, MacroMultibandCombiners, MultibandTile, NODATA, ShortCells, ShortConstantTile, ShortUserDefinedNoDataCellType, Tile, UByteCells, UByteConstantTile, UShortCells, UShortConstantTile}
+import geotrellis.raster.{ArrayMultibandTile, BitCells, BitConstantTile, ByteCells, ByteConstantTile, ByteUserDefinedNoDataCellType, CellType, DoubleCells, DoubleConstantTile, DoubleUserDefinedNoDataCellType, FloatCells, FloatConstantTile, FloatUserDefinedNoDataCellType, HasNoData, IntCells, IntConstantTile, IntUserDefinedNoDataCellType, MacroMultibandCombiners, MultibandTile, NODATA, ShortCells, ShortConstantTile, ShortUserDefinedNoDataCellType, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortConstantTile, UShortUserDefinedNoDataCellType}
 
 object EmptyMultibandTile{
 
-  def empty(t: CellType, cols: Int, rows: Int): Tile =
+  def empty(t: CellType, cols: Int, rows: Int): Tile = {
+
     t match {
       case _: BitCells => BitConstantTile(false, cols, rows)
+      case ct: ByteUserDefinedNoDataCellType => ByteConstantTile(ct.noDataValue ,cols, rows, ct)
       case ct: ByteCells => ByteConstantTile(t.asInstanceOf[HasNoData[Byte]].noDataValue ,cols, rows, ct)
+      case ct: UByteUserDefinedNoDataCellType => UByteConstantTile(ct.noDataValue ,cols, rows, ct)
       case ct: UByteCells => UByteConstantTile(t.asInstanceOf[HasNoData[Byte]].noDataValue ,cols, rows, ct)
       case ct: ShortUserDefinedNoDataCellType => {
         val theNoData: Short = ct.noDataValue
@@ -17,11 +20,16 @@ object EmptyMultibandTile{
         val theNoData: Short = t.asInstanceOf[HasNoData[Short]].noDataValue
         ShortConstantTile(theNoData ,cols, rows, ct)
       }
+      case ct: UShortUserDefinedNoDataCellType => UShortConstantTile(ct.noDataValue ,cols, rows, ct)
       case ct: UShortCells => UShortConstantTile(t.asInstanceOf[HasNoData[Short]].noDataValue ,cols, rows, ct)
+      case ct: IntUserDefinedNoDataCellType => IntConstantTile(ct.noDataValue ,cols, rows, ct)
       case ct: IntCells => IntConstantTile(t.asInstanceOf[HasNoData[Int]].noDataValue ,cols, rows, ct)
+      case ct: FloatUserDefinedNoDataCellType => FloatConstantTile(ct.noDataValue ,cols, rows, ct)
       case ct: FloatCells => FloatConstantTile(t.asInstanceOf[HasNoData[Float]].noDataValue ,cols, rows, ct)
+      case ct: DoubleUserDefinedNoDataCellType => DoubleConstantTile(ct.noDataValue ,cols, rows, ct)
       case ct: DoubleCells => DoubleConstantTile(t.asInstanceOf[HasNoData[Double]].noDataValue ,cols, rows, ct)
     }
+  }
 
 }
 
