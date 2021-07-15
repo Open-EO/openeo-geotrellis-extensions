@@ -8,10 +8,12 @@ import java.util.Collections
 import cats.data.NonEmptyList
 import geotrellis.layer.FloatingLayoutScheme
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
+import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
+import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.raster.{CellSize, ShortUserDefinedNoDataCellType}
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.spark._
@@ -40,7 +42,7 @@ object Sentinel2FileLayerProviderTest {
   def tearDownSpark(): Unit = sc.stop()
 }
 
-class Sentinel2FileLayerProviderTest {
+class Sentinel2FileLayerProviderTest extends RasterMatchers {
   import Sentinel2FileLayerProviderTest._
 
   @Test
@@ -270,6 +272,10 @@ class Sentinel2FileLayerProviderTest {
       case Some(stitched) => MultibandGeoTiff(stitched.crop(reprojectedBoundingBox), spatialLayer.metadata.crs).write("/tmp/masked.tif")
       case _ => throw new IllegalStateException("nothing to sparse-stitch")
     }
+
+    val referenceTile = GeoTiffRasterSource("https://artifactory.vgt.vito.be/testdata-public/dilation_masked.tif").read().get
+    val actualTile = GeoTiffRasterSource("/tmp/masked.tif").read().get
+    assertRastersEqual(referenceTile,actualTile)
   }
 
   private def faparLayerProvider(attributeValues: Map[String, Any] = Map()) =
