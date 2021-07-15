@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.layers
 
+import java.io.IOException
 import java.net.{URI, URL}
 import java.nio.file.{Path, Paths}
 import java.time.temporal.ChronoUnit
@@ -37,7 +38,14 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
   override val sources: NonEmptyList[RasterSource] = sourcesList
   protected def reprojectedSources: NonEmptyList[RasterSource] = sourcesList map { _.reproject(crs) }
 
-  override def gridExtent: GridExtent[Long] = sources.head.gridExtent
+  override def gridExtent: GridExtent[Long] = {
+    try {
+      sources.head.gridExtent
+    }  catch {
+      case e: Throwable => throw new IOException(s"Error while reading extent of: ${sources.head.name.toString}",e)
+    }
+
+  }
   override def cellType: CellType = sources.map(_.cellType).reduceLeft(_ union _)
 
   override def attributes: Map[String, String] = theAttributes // TODO: use override val attributes instead
