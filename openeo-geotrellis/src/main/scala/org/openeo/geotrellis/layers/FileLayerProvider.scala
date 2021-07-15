@@ -288,8 +288,23 @@ object FileLayerProvider {
     val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] =
       rasterRegionRDD
         .groupByKey(partitioner)
-        .flatMapValues { namedRasterRegions =>
-          namedRasterRegions.toSeq
+        .flatMapValues { namedRasterRegions => {
+          val allRegions = namedRasterRegions.toSeq
+          val filteredRegions =
+          if(allRegions.size<2 || cloudFilterStrategy == NoCloudFilterStrategy) {
+            allRegions
+          }else{
+            val regionsWithDistance = allRegions.map(r=>{
+              val bounds = r._1.asInstanceOf[GridBoundsRasterRegion].bounds
+              val rasterBounds = r._1.asInstanceOf[GridBoundsRasterRegion].source.gridExtent
+              val minDistanceToTheEdge: Long = Seq(bounds.colMin.abs,bounds.rowMin.abs,Math.abs(rasterBounds.cols - bounds.colMax),Math.abs(rasterBounds.rows - bounds.rowMax)).min
+              (minDistanceToTheEdge,r)
+            })
+            val largestDistanceToTheEdgeOfTheRaster = regionsWithDistance.map(_._1).max
+            regionsWithDistance.filter(_._1 == largestDistanceToTheEdgeOfTheRaster).map(_._2)
+          }
+
+          filteredRegions
             .flatMap { case (rasterRegion, sourcePath: SourcePath) =>
               cloudFilterStrategy.loadMasked(new MaskTileLoader {
                 override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = {
@@ -331,6 +346,7 @@ object FileLayerProvider {
             }
             .map { case (multibandTile, _) => multibandTile }
             .reduceOption(_ merge _)
+        }
         }.filter { case (_, tile) => !tile.bands.forall(_.isNoDataTile) }
 
     ContextRDD(tiledRDD, metadata)
