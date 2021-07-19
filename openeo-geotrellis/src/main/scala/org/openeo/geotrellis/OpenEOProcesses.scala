@@ -28,7 +28,18 @@ import scala.collection.JavaConverters._
 import scala.collection.{JavaConverters, immutable, mutable}
 import scala.reflect._
 
+
+object OpenEOProcesses{
+  private def timeseriesForBand(b: Int, values: Iterable[(SpaceTimeKey, MultibandTile)]) = {
+    MultibandTile(values.toList.sortBy(_._1.instant).map(_._2.band(b)))
+  }
+}
+
+
 class OpenEOProcesses extends Serializable {
+
+  import OpenEOProcesses._
+
   val unaryProcesses: Map[String, Tile => Tile] = Map(
     "absolute" -> Abs.apply,
     //TODO "exp"
@@ -88,12 +99,13 @@ class OpenEOProcesses extends Serializable {
   def applyTimeDimension(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpaceTimeKey] = {
     val function = scriptBuilder.generateFunction(context.asScala.toMap)
     datacube.withContext(_.groupBy(_._1.spatialKey).flatMap{ tiles => {
-      val aTile = firstTile(tiles._2.map(_._2))
-      val labels = tiles._2.map(_._1).toList.sortBy(_.instant)
+      val values = tiles._2
+      val aTile = firstTile(values.map(_._2))
+      val labels = values.map(_._1).toList.sortBy(_.instant)
       val resultMap: mutable.Map[SpaceTimeKey,mutable.ListBuffer[Tile]] = mutable.Map()
       for( b <- 0 until aTile.bandCount){
 
-        val temporalTile = MultibandTile(tiles._2.toList.sortBy(_._1.instant).map(_._2.band(b)))
+        val temporalTile = timeseriesForBand(b, values)
         val resultTiles = function(temporalTile.bands)
         var resultLabels: Iterable[(SpaceTimeKey,Tile)] = labels.zip(resultTiles)
         resultLabels.foreach(result => resultMap.getOrElseUpdate(result._1, mutable.ListBuffer()).append(result._2))
@@ -104,8 +116,11 @@ class OpenEOProcesses extends Serializable {
     }})
   }
 
+
+
   /**
    * apply_dimension, over time dimension
+   *
    * @param datacube
    * @param scriptBuilder
    * @param context
@@ -117,8 +132,7 @@ class OpenEOProcesses extends Serializable {
       val aTile = firstTile(tiles.map(_._2))
       val resultTile = mutable.ListBuffer[Tile]()
       for( b <- 0 until aTile.bandCount){
-        val resultBands = tiles.map(_._2.band(b))
-        val temporalTile = MultibandTile(resultBands)
+        val temporalTile = timeseriesForBand(b, tiles)
         resultTile.appendAll(function(temporalTile.bands))
       }
       if(resultTile.size>0) {
