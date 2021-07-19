@@ -1054,6 +1054,34 @@ public class TestOpenEOProcessScriptBuilder {
 
     }
 
+    static OpenEOProcessScriptBuilder createMonthSelection() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart("array_concat",Collections.emptyMap());
+        builder.arrayStart("array1");
+
+        builder.expressionStart("array_element", map1("index", 3));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.expressionEnd("array_element", map1( "index", 3));
+
+        builder.arrayElementDone();
+        builder.arrayEnd();
+        builder.arrayStart("array2");
+
+        builder.expressionStart("array_element", map1("index", 8));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.expressionEnd("array_element", map1( "index", 8));
+
+        builder.arrayElementDone();
+        builder.arrayEnd();
+        builder.expressionEnd("array_concat", map1("data","dummy"));
+        return builder;
+
+    }
+
 
     static OpenEOProcessScriptBuilder createArrayInterpolateLinear() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
