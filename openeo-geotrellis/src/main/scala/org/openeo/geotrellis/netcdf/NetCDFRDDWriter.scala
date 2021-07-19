@@ -325,7 +325,7 @@ object NetCDFRDDWriter {
     val aRaster = rasters.head
     val rasterExtent = aRaster.rasterExtent
 
-    val netcdfFile: NetcdfFileWriter = setupNetCDF(path, rasterExtent, dates, bandNames, crs, aRaster.cellType,dimensionNames, attributes)
+    val netcdfFile: NetcdfFileWriter = setupNetCDF(path, rasterExtent, dates, bandNames, crs, aRaster.cellType,dimensionNames, attributes, writeTimeDimension= dates!=null)
     try{
 
       for (bandIndex <- bandNames.asScala.indices) {
