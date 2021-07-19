@@ -224,8 +224,12 @@ class OpenEOProcesses extends Serializable {
   def mapBandsGeneric[K:ClassTag](datacube:MultibandTileLayerRDD[K], scriptBuilder:OpenEOProcessScriptBuilder): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
     val function = scriptBuilder.generateFunction()
     return datacube.withContext(new org.apache.spark.rdd.PairRDDFunctions[K,MultibandTile](_).mapValues(tile => {
-      val resultTiles = function(tile.bands)
-      MultibandTile(resultTiles)
+      if (!tile.isInstanceOf[EmptyMultibandTile]) {
+        val resultTiles = function(tile.bands)
+        MultibandTile(resultTiles)
+      }else{
+        tile
+      }
     }).filter(_._2.bands.exists(!_.isNoDataTile)))
   }
 
