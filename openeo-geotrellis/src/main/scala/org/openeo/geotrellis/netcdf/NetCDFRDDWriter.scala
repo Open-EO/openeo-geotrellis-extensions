@@ -197,6 +197,20 @@ object NetCDFRDDWriter {
 
   }
 
+  def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
+                  path: String,
+                  polygons:ProjectedPolygons,
+                  sampleNames: ArrayList[String],
+                  bandNames: ArrayList[String],
+                  dimensionNames: java.util.Map[String,String],
+                  attributes: java.util.Map[String,String]
+                 ): java.util.List[String] = {
+    val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
+    val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
+    groupByFeatureAndWriteToNetCDFSpatial(rdd,  features,path,bandNames,dimensionNames,attributes)
+
+  }
+
   private def groupByFeatureAndWriteToTiff(rdd: MultibandTileLayerRDD[SpaceTimeKey], features: List[(String, Extent)],
                                            path:String,bandNames: ArrayList[String],
                                            dimensionNames: java.util.Map[String,String],
