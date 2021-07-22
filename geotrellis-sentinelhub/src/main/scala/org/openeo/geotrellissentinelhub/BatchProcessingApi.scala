@@ -2,6 +2,7 @@ package org.openeo.geotrellissentinelhub
 
 import cats.syntax.either._
 import com.fasterxml.jackson.databind.ObjectMapper
+import geotrellis.proj4.CRS
 import io.circe.generic.auto._
 import io.circe.parser.decode
 import io.circe.syntax._
@@ -36,10 +37,19 @@ class BatchProcessingApi(endpoint: String) {
   def createBatchProcess(datasetId: String, boundingBox: ProjectedExtent, dateTimes: Seq[ZonedDateTime],
                          bandNames: Seq[String], sampleType: SampleType, additionalDataFilters: util.Map[String, Any],
                          processingOptions: util.Map[String, Any], bucketName: String, description: String,
-                         accessToken: String)
-  : CreateBatchProcessResponse = {
-    val ProjectedExtent(Extent(xmin, ymin, xmax, ymax), crs) = boundingBox
-    val epsgCode = crs.epsgCode.getOrElse(s"unsupported crs $crs")
+                         accessToken: String) : CreateBatchProcessResponse = {
+    val multiPolygon = MultiPolygon(boundingBox.extent.toPolygon())
+    val multiPolygonCrs = boundingBox.crs
+
+    createBatchProcess(datasetId, multiPolygon, multiPolygonCrs, dateTimes, bandNames, sampleType,
+      additionalDataFilters, processingOptions, bucketName, description, accessToken)
+  }
+
+  def createBatchProcess(datasetId: String, multiPolygon: MultiPolygon, multiPolygonCrs: CRS, dateTimes: Seq[ZonedDateTime],
+                         bandNames: Seq[String], sampleType: SampleType, additionalDataFilters: util.Map[String, Any],
+                         processingOptions: util.Map[String, Any], bucketName: String, description: String,
+                         accessToken: String) : CreateBatchProcessResponse = {
+    val epsgCode = multiPolygonCrs.epsgCode.getOrElse(s"unsupported crs $multiPolygonCrs")
 
     val ascendingDateTimes = dateTimes
       .sortWith(_ isBefore _)
@@ -76,7 +86,7 @@ class BatchProcessingApi(endpoint: String) {
           |    "processRequest": {
           |        "input": {
           |            "bounds": {
-          |                "bbox": [$xmin, $ymin, $xmax, $ymax],
+          |                "geometry": ${multiPolygon.toGeoJson()},
           |                "properties": {
           |                    "crs": "http://www.opengis.net/def/crs/EPSG/0/$epsgCode"
           |                }

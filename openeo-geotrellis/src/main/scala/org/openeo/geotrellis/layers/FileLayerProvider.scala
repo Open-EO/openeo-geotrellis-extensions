@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.layers
 
+import java.io.IOException
 import java.net.{URI, URL}
 import java.nio.file.{Path, Paths}
 import java.time.temporal.ChronoUnit
@@ -37,7 +38,14 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
   override val sources: NonEmptyList[RasterSource] = sourcesList
   protected def reprojectedSources: NonEmptyList[RasterSource] = sourcesList map { _.reproject(crs) }
 
-  override def gridExtent: GridExtent[Long] = sources.head.gridExtent
+  override def gridExtent: GridExtent[Long] = {
+    try {
+      sources.head.gridExtent
+    }  catch {
+      case e: Throwable => throw new IOException(s"Error while reading extent of: ${sources.head.name.toString}",e)
+    }
+
+  }
   override def cellType: CellType = sources.map(_.cellType).reduceLeft(_ union _)
 
   override def attributes: Map[String, String] = theAttributes // TODO: use override val attributes instead
@@ -288,8 +296,23 @@ object FileLayerProvider {
     val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] =
       rasterRegionRDD
         .groupByKey(partitioner)
-        .flatMapValues { namedRasterRegions =>
-          namedRasterRegions.toSeq
+        .flatMapValues { namedRasterRegions => {
+          val allRegions = namedRasterRegions.toSeq
+          val filteredRegions =
+          if(allRegions.size<2 || cloudFilterStrategy == NoCloudFilterStrategy) {
+            allRegions
+          }else{
+            val regionsWithDistance = allRegions.map(r=>{
+              val bounds = r._1.asInstanceOf[GridBoundsRasterRegion].bounds
+              val rasterBounds = r._1.asInstanceOf[GridBoundsRasterRegion].source.gridExtent
+              val minDistanceToTheEdge: Long = Seq(bounds.colMin.abs,bounds.rowMin.abs,Math.abs(rasterBounds.cols - bounds.colMax),Math.abs(rasterBounds.rows - bounds.rowMax)).min
+              (minDistanceToTheEdge,r)
+            })
+            val largestDistanceToTheEdgeOfTheRaster = regionsWithDistance.map(_._1).max
+            regionsWithDistance.filter(_._1 == largestDistanceToTheEdgeOfTheRaster).map(_._2)
+          }
+
+          filteredRegions
             .flatMap { case (rasterRegion, sourcePath: SourcePath) =>
               cloudFilterStrategy.loadMasked(new MaskTileLoader {
                 override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = {
@@ -331,6 +354,7 @@ object FileLayerProvider {
             }
             .map { case (multibandTile, _) => multibandTile }
             .reduceOption(_ merge _)
+        }
         }.filter { case (_, tile) => !tile.bands.forall(_.isNoDataTile) }
 
     ContextRDD(tiledRDD, metadata)

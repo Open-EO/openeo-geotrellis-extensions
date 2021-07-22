@@ -2,7 +2,7 @@ package org.openeo.geotrellissentinelhub
 
 import com.google.common.cache.{CacheBuilder, CacheLoader}
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.vector.{Extent, Feature, ProjectedExtent}
+import geotrellis.vector._
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
 
 import java.time.ZoneOffset.UTC
@@ -30,28 +30,46 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
 
   def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
                           to_date: String, band_names: util.List[String], sampleType: SampleType,
-                          metadata_properties: util.Map[String, Any], processing_options: util.Map[String, Any])
-  : String = {
+                          metadata_properties: util.Map[String, Any],
+                          processing_options: util.Map[String, Any]): String = {
+    val polygons = Array(MultiPolygon(bbox.toPolygon()))
+    val polygonsCrs = CRS.fromName(bbox_srs)
+
+    start_batch_process(collection_id, dataset_id, polygons, polygonsCrs, from_date, to_date, band_names, sampleType,
+      metadata_properties, processing_options)
+  }
+
+  def start_batch_process(collection_id: String, dataset_id: String, polygons: Array[MultiPolygon],
+                          crs: CRS, from_date: String, to_date: String, band_names: util.List[String],
+                          sampleType: SampleType, metadata_properties: util.Map[String, Any],
+                          processing_options: util.Map[String, Any]): String = {
     // TODO: implement retries
-    val boundingBox = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
+    val polygonExteriors = for {
+      multiPolygon <- polygons
+      polygon <- multiPolygon.polygons
+    } yield Polygon(polygon.getExteriorRing)
 
     // workaround for bug where upper bound is considered inclusive in OpenEO
     val (from, to) = includeEndDay(from_date, to_date)
 
-    val dateTimes = new DefaultCatalogApi(endpoint).dateTimes(collection_id, boundingBox, from, to, accessToken,
-      queryProperties = mapDataFilters(metadata_properties))
+    val multiPolygon = MultiPolygon(polygonExteriors)
+    val multiPolygonCrs = crs
+
+    val dateTimes = new DefaultCatalogApi(endpoint).dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
+      accessToken, queryProperties = mapDataFilters(metadata_properties))
 
     val batchProcessingApi = new BatchProcessingApi(endpoint)
     val batchRequestId = batchProcessingApi.createBatchProcess(
       dataset_id,
-      boundingBox,
+      multiPolygon,
+      multiPolygonCrs,
       dateTimes,
       band_names.asScala,
       sampleType,
       additionalDataFilters = metadata_properties,
       processing_options,
       bucketName,
-      description = s"$dataset_id $bbox $bbox_srs $from_date $to_date $band_names",
+      description = s"$dataset_id ${polygons.size} $from_date $to_date $band_names",
       accessToken
     ).id
 

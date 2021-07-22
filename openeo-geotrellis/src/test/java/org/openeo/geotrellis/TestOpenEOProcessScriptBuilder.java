@@ -455,6 +455,36 @@ public class TestOpenEOProcessScriptBuilder {
         testMathXY("add", 4, 6, 9, 14, 23, 28);
     }
 
+    @DisplayName("Test math 'add(x,y)' bit cells")
+    @Test
+    public void testAddWithBitCells() {
+        testMathWithBitCells("add",1,2,1,0);
+    }
+
+    @DisplayName("Test math 'subtract(x,y)' bit cells")
+    @Test
+    public void testSubtractWithBitCells() {
+        testMathWithBitCells("subtract",-1,0,1,0);
+    }
+
+    public void testMathWithBitCells(String operator, int... expectedValues) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart(operator, dummyMap("x", "y"));
+        buildBandXYArguments(builder, 0, 1);
+        builder.expressionEnd(operator, dummyMap("x", "y"));
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        Tile tile0 = fillBitArrayTile(3, 2, 0,1,1,0);
+        Tile tile1 = fillBitArrayTile(3, 2, 1,1,0,0);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
+        assertEquals(1, result.length());
+        Tile res = result.apply(0);
+        ArrayTile expectedTile = fillByteArrayTile(3, 2, expectedValues).convert(new ByteUserDefinedNoDataCellType(((Integer)127).byteValue()));
+        assertTileEquals(expectedTile, res);
+
+
+    }
+
     @DisplayName("Test math 'subtract(x,y)'")
     @Test
     public void testMathSubtractXY() {
@@ -1047,6 +1077,34 @@ public class TestOpenEOProcessScriptBuilder {
         builder.fromParameter("data");
         builder.argumentEnd();
         builder.expressionEnd("mean",map1("data","dummy"));
+        builder.arrayElementDone();
+        builder.arrayEnd();
+        builder.expressionEnd("array_concat", map1("data","dummy"));
+        return builder;
+
+    }
+
+    static OpenEOProcessScriptBuilder createMonthSelection() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart("array_concat",Collections.emptyMap());
+        builder.arrayStart("array1");
+
+        builder.expressionStart("array_element", map1("index", 3));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.expressionEnd("array_element", map1( "index", 3));
+
+        builder.arrayElementDone();
+        builder.arrayEnd();
+        builder.arrayStart("array2");
+
+        builder.expressionStart("array_element", map1("index", 8));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.expressionEnd("array_element", map1( "index", 8));
+
         builder.arrayElementDone();
         builder.arrayEnd();
         builder.expressionEnd("array_concat", map1("data","dummy"));

@@ -1,11 +1,11 @@
 package org.openeo.geotrellissentinelhub
 
-import geotrellis.proj4.CRS
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.vector._
 import org.junit.Assert.assertEquals
 import org.junit.{Ignore, Test}
 
-import java.time.ZonedDateTime
+import java.time.{LocalDate, LocalTime, OffsetTime, ZoneOffset, ZonedDateTime}
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.util.{Collections, UUID}
 import scala.collection.JavaConverters._
@@ -112,4 +112,36 @@ class BatchProcessingApiTest {
   @Test(expected = classOf[SentinelHubException])
   def getUnknownBatchProcess(): Unit =
     batchProcessingApi.getBatchProcess("479cca6e-53d5-4477-ac5b-2c0ba8d3bebe", accessToken)
+
+  @Ignore
+  @Test
+  def createBatchProcessForSparsePolygons(): Unit = {
+    val bboxLeft = Extent(3.7614440917968746, 50.737052666897405, 3.7634181976318355, 50.738139065342224)
+    val bboxRight = Extent(4.3924713134765625, 50.741235162650355, 4.3979644775390625, 50.74297323282792)
+
+    val polygons = Seq(bboxLeft, bboxRight)
+      .map(extent => extent.toPolygon())
+
+    val multiPolygon = MultiPolygon(polygons)
+
+    val date = LocalDate.of(2020, 11, 5)
+    val startOfDay = date.atStartOfDay(ZoneOffset.UTC)
+    val endOfDay = date.atTime(OffsetTime.of(LocalTime.MAX, ZoneOffset.UTC)).toZonedDateTime
+
+    val batchProcess = batchProcessingApi.createBatchProcess(
+      datasetId = "S1GRD",
+      multiPolygon,
+      multiPolygonCrs = LatLng,
+      dateTimes = Seq(startOfDay, endOfDay),
+      bandNames = Seq("VV", "VH"),
+      SampleType.FLOAT32,
+      additionalDataFilters = Collections.emptyMap[String, Any],
+      processingOptions = Collections.emptyMap[String, Any],
+      bucketName = "openeo-sentinelhub",
+      description = "BatchProcessingApiTest.createBatchProcessForSparsePolygons",
+      accessToken
+    )
+
+    println(batchProcess.id)
+  }
 }

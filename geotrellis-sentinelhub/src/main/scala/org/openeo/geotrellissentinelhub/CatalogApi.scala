@@ -1,7 +1,7 @@
 package org.openeo.geotrellissentinelhub
 
 import cats.syntax.either._
-import geotrellis.proj4.LatLng
+import geotrellis.proj4.{CRS, LatLng}
 import io.circe.Json
 import io.circe.generic.auto._
 import io.circe.parser.decode
@@ -36,10 +36,17 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
 
   private val catalogEndpoint = URI.create(endpoint).resolve("/api/v1/catalog")
 
-  // TODO: search distinct dates (https://docs.sentinel-hub.com/api/latest/api/catalog/examples/#search-with-distinct)?
   def dateTimes(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
                 accessToken: String, queryProperties: collection.Map[String, String] = Map()): Seq[ZonedDateTime] = {
-    val Extent(xmin, ymin, xmax, ymax) = boundingBox.reproject(LatLng)
+    val geometry = boundingBox.extent.toPolygon()
+    val geometryCrs = boundingBox.crs
+
+    dateTimes(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
+  }
+
+  // TODO: search distinct dates (https://docs.sentinel-hub.com/api/latest/api/catalog/examples/#search-with-distinct)?
+  def dateTimes(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
+                accessToken: String, queryProperties: collection.Map[String, String]): Seq[ZonedDateTime] = {
     val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
     val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
 
@@ -49,7 +56,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
       val requestBody =
         s"""
            |{
-           |    "bbox": [$xmin, $ymin, $xmax, $ymax],
+           |    "intersects": ${geometry.reproject(geometryCrs, LatLng).toGeoJson()},
            |    "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
            |    "collections": ["$collectionId"],
            |    "query": $query,

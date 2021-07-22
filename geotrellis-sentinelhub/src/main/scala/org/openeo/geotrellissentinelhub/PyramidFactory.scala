@@ -27,6 +27,8 @@ import scala.collection.JavaConverters._
 object PyramidFactory {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[PyramidFactory])
 
+  private val maxKeysPerPartition = 20
+
   // TODO: invalidate key on 401 Unauthorized
   private val authTokenCache = CacheBuilder
     .newBuilder()
@@ -102,7 +104,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @transient catalog
     val partitioner = SpacePartitioner(metadata.bounds)
     assert(partitioner.index == SpaceTimeByMonthPartitioner)
 
-    val tilesRdd = sc.parallelize(overlappingKeys)
+    val tilesRdd = sc.parallelize(overlappingKeys, numSlices = (overlappingKeys.size / maxKeysPerPartition) max 1)
       .map { key =>
         val width = layout.tileLayout.tileCols
         val height = layout.tileLayout.tileRows
@@ -246,7 +248,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @transient catalog
           } else Some(dataTile)
         }
 
-        val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = sc.parallelize(overlappingKeys)
+        val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = sc.parallelize(overlappingKeys, numSlices = (overlappingKeys.size / maxKeysPerPartition) max 1)
           .map(key => (key,loadMasked(key)))
           .filter{case (key:SpaceTimeKey,tile:Option[MultibandTile])=> tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
           .mapValues(t => t.get)

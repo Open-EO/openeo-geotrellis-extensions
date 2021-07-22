@@ -19,6 +19,7 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
+import org.openeo.geotrellis.geotiff.ContextSeq
 import org.openeo.geotrellisaccumulo.PyramidFactory
 
 import scala.collection.JavaConverters._
@@ -43,6 +44,13 @@ object OpenEOProcessesSpec{
   @AfterClass
   def tearDownSpark(): Unit = {
     sc.stop()
+  }
+
+  def getPixel(layer:MultibandTileLayerRDD[SpaceTimeKey]): Array[Int] = {
+    new OpenEOProcesses().filterEmptyTile(layer).groupBy(_._1).mapValues(values => {
+      val raster: Raster[MultibandTile] = ContextSeq(values.map(v => (v._1.spatialKey, v._2)).seq, layer.metadata).stitch()
+      raster.tile.band(0).get(0,0)
+    }).collect().sortBy(_._1.instant).map(_._2)
   }
 
 }

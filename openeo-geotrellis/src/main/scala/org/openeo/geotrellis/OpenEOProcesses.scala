@@ -19,15 +19,27 @@ import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
 import geotrellis.vector.io.json.JsonFeatureCollection
 import geotrellis.vector.{Extent, PolygonFeature}
+import org.apache.spark.SparkContext
 import org.apache.spark.rdd._
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrelliscommon.{FFTConvolve, SpaceTimeByMonthPartitioner}
 
 import scala.collection.JavaConverters._
-import scala.collection.{JavaConverters, mutable}
+import scala.collection.{JavaConverters, immutable, mutable}
 import scala.reflect._
 
+
+object OpenEOProcesses{
+  private def timeseriesForBand(b: Int, values: Iterable[(SpaceTimeKey, MultibandTile)]) = {
+    MultibandTile(values.toList.sortBy(_._1.instant).map(_._2.band(b)))
+  }
+}
+
+
 class OpenEOProcesses extends Serializable {
+
+  import OpenEOProcesses._
+
   val unaryProcesses: Map[String, Tile => Tile] = Map(
     "absolute" -> Abs.apply,
     //TODO "exp"
@@ -87,12 +99,13 @@ class OpenEOProcesses extends Serializable {
   def applyTimeDimension(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpaceTimeKey] = {
     val function = scriptBuilder.generateFunction(context.asScala.toMap)
     datacube.withContext(_.groupBy(_._1.spatialKey).flatMap{ tiles => {
-      val firstTile = tiles._2.head._2
-      val labels = tiles._2.map(_._1)
+      val values = tiles._2
+      val aTile = firstTile(values.map(_._2))
+      val labels = values.map(_._1).toList.sortBy(_.instant)
       val resultMap: mutable.Map[SpaceTimeKey,mutable.ListBuffer[Tile]] = mutable.Map()
-      for( b <- 0 until firstTile.bandCount){
-        //TODO sort by date??
-        val temporalTile = MultibandTile(tiles._2.map(_._2.band(b)))
+      for( b <- 0 until aTile.bandCount){
+
+        val temporalTile = timeseriesForBand(b, values)
         val resultTiles = function(temporalTile.bands)
         var resultLabels: Iterable[(SpaceTimeKey,Tile)] = labels.zip(resultTiles)
         resultLabels.foreach(result => resultMap.getOrElseUpdate(result._1, mutable.ListBuffer()).append(result._2))
@@ -103,8 +116,11 @@ class OpenEOProcesses extends Serializable {
     }})
   }
 
+
+
   /**
    * apply_dimension, over time dimension
+   *
    * @param datacube
    * @param scriptBuilder
    * @param context
@@ -113,19 +129,27 @@ class OpenEOProcesses extends Serializable {
   def applyTimeDimensionTargetBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpatialKey] = {
     val function = scriptBuilder.generateFunction(context.asScala.toMap)
     val resultRDD = datacube.groupBy(_._1.spatialKey).mapValues{ tiles => {
-      val firstTile = tiles.head._2
+      val aTile = firstTile(tiles.map(_._2))
       val resultTile = mutable.ListBuffer[Tile]()
-      for( b <- 0 until firstTile.bandCount){
-        val temporalTile = MultibandTile(tiles.map(_._2.band(b)))
+      for( b <- 0 until aTile.bandCount){
+        val temporalTile = timeseriesForBand(b, tiles)
         resultTile.appendAll(function(temporalTile.bands))
       }
-      MultibandTile(resultTile)
+      if(resultTile.size>0) {
+        MultibandTile(resultTile)
+      }else{
+        new EmptyMultibandTile(aTile.cols,aTile.rows,aTile.cellType)
+      }
 
     }}
       ContextRDD(resultRDD,datacube.metadata.copy(bounds = datacube.metadata.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]].toSpatial))
   }
 
-  def mapInstantToInterval(datacube:MultibandTileLayerRDD[SpaceTimeKey], intervals:java.lang.Iterable[String],labels:java.lang.Iterable[String]) :MultibandTileLayerRDD[SpaceTimeKey] = {
+  private def firstTile(tiles: Iterable[MultibandTile]) = {
+    tiles.filterNot(_.isInstanceOf[EmptyMultibandTile]).headOption.getOrElse(tiles.head)
+  }
+
+  def mapInstantToInterval(datacube:MultibandTileLayerRDD[SpaceTimeKey], intervals:java.lang.Iterable[String], labels:java.lang.Iterable[String]) :MultibandTileLayerRDD[SpaceTimeKey] = {
     val timePeriods: Seq[Iterable[Instant]] = JavaConverters.iterableAsScalaIterableConverter(intervals).asScala.map(s => Instant.parse(s)).grouped(2).toList
     val periodsToLabels: Seq[(Iterable[Instant], String)] = timePeriods.zip(labels.asScala)
     val tilesByInterval: RDD[(SpaceTimeKey, MultibandTile)] = datacube.flatMap(tuple => {
@@ -147,9 +171,17 @@ class OpenEOProcesses extends Serializable {
 
   def aggregateTemporal(datacube:MultibandTileLayerRDD[SpaceTimeKey], intervals:java.lang.Iterable[String],labels:java.lang.Iterable[String], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]) :MultibandTileLayerRDD[SpaceTimeKey] = {
     val timePeriods: Seq[Iterable[Instant]] = JavaConverters.iterableAsScalaIterableConverter(intervals).asScala.map(s => Instant.parse(s)).grouped(2).toList
-
+    val labelsDates = labels.asScala.map(ZonedDateTime.parse(_))
     val periodsToLabels: Seq[(Iterable[Instant], String)] = timePeriods.zip(labels.asScala)
     val function = scriptBuilder.generateFunction(context.asScala.toMap)
+
+    val allPossibleKeys: immutable.Seq[SpatialKey] = datacube.metadata.tileBounds
+      .coordsIter
+      .map { case (x, y) => SpatialKey(x, y) }
+      .toList
+    val allPossibleSpacetime =  allPossibleKeys.flatMap(x => labelsDates.map(y => (SpaceTimeKey(x, TemporalKey(y)),null)))
+
+    val allKeysRDD: RDD[(SpaceTimeKey, Null)] = SparkContext.getOrCreate().parallelize(allPossibleSpacetime)
     val tilesByInterval: RDD[(SpaceTimeKey, MultibandTile)] = datacube.flatMap(tuple => {
       val instant = tuple._1.time.toInstant
       val spatialKey = tuple._1.spatialKey
@@ -163,10 +195,10 @@ class OpenEOProcesses extends Serializable {
 
       labelsForKey.map(l => (SpaceTimeKey(spatialKey,TemporalKey(l)),tuple._2))
     }).groupByKey().mapValues( tiles => {
-      val firstTile = tiles.head
+      val aTile = firstTile(tiles)
 
       val resultTiles: mutable.ArrayBuffer[Tile] = mutable.ArrayBuffer[Tile]()
-      for( b <- 0 until firstTile.bandCount){
+      for( b <- 0 until aTile.bandCount){
         val temporalTile = MultibandTile(tiles.map(_.band(b)))
         val aggregatedTiles: Seq[Tile] = function(temporalTile.bands)
         resultTiles += aggregatedTiles.head
@@ -174,7 +206,14 @@ class OpenEOProcesses extends Serializable {
       }
       MultibandTile(resultTiles)
     })
-    return ContextRDD(tilesByInterval, datacube.metadata)
+
+    val cols = datacube.metadata.tileLayout.tileCols
+    val rows = datacube.metadata.tileLayout.tileRows
+    val cellType = datacube.metadata.cellType
+
+    //ArrayMultibandTile.empty(datacube.metadata.cellType,1,0,0)
+    val filledRDD: RDD[(SpaceTimeKey, MultibandTile)] = tilesByInterval.rightOuterJoin(allKeysRDD).mapValues(_._1.getOrElse(new EmptyMultibandTile(cols,rows,cellType)))
+    return ContextRDD(filledRDD, datacube.metadata)
 
   }
 
@@ -185,9 +224,17 @@ class OpenEOProcesses extends Serializable {
   def mapBandsGeneric[K:ClassTag](datacube:MultibandTileLayerRDD[K], scriptBuilder:OpenEOProcessScriptBuilder): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
     val function = scriptBuilder.generateFunction()
     return datacube.withContext(new org.apache.spark.rdd.PairRDDFunctions[K,MultibandTile](_).mapValues(tile => {
-      val resultTiles = function(tile.bands)
-      MultibandTile(resultTiles)
+      if (!tile.isInstanceOf[EmptyMultibandTile]) {
+        val resultTiles = function(tile.bands)
+        MultibandTile(resultTiles)
+      }else{
+        tile
+      }
     }).filter(_._2.bands.exists(!_.isNoDataTile)))
+  }
+
+  def filterEmptyTile[K:ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
+    return datacube.withContext(_.filter(!_._2.isInstanceOf[EmptyMultibandTile]))
   }
 
   /**
