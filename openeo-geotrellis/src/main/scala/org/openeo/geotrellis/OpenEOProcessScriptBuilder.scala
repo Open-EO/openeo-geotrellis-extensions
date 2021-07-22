@@ -3,7 +3,7 @@ package org.openeo.geotrellis
 import java.util
 
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{ArrayTile, ByteUserDefinedNoDataCellType, CellType, DoubleConstantTile, FloatConstantTile, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isNoData}
+import geotrellis.raster.{ArrayTile, ByteUserDefinedNoDataCellType, CellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isNoData}
 import org.apache.commons.math3.exception.NotANumberException
 import org.apache.commons.math3.stat.descriptive.rank.Percentile
 import org.apache.commons.math3.stat.ranking.NaNStrategy
@@ -285,6 +285,7 @@ class OpenEOProcessScriptBuilder {
   val contextStack: mutable.Stack[mutable.Map[String,OpenEOProcess]] = new mutable.Stack[mutable.Map[String, OpenEOProcess]]()
   var arrayCounter : Int =  0
   var inputFunction:  OpenEOProcess = null
+  var resultingDataType: CellType = FloatConstantNoDataCellType
 
   def generateFunction(context: Map[String,Any] = Map.empty): Seq[Tile] => Seq[Tile] = {
     inputFunction(context)
@@ -292,6 +293,14 @@ class OpenEOProcessScriptBuilder {
 
   def generateFunction(): Seq[Tile] => Seq[Tile] = {
     wrapProcessWithDefaultContext(inputFunction)
+  }
+
+  /**
+   * Return the expected cell type of the output
+   * @return
+   */
+  def getOutputCellType(): CellType = {
+    return resultingDataType
   }
 
   private def unaryFunction(argName: String, operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
@@ -561,6 +570,11 @@ class OpenEOProcessScriptBuilder {
       case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
     }
 
+    if(operator != "linear_scale_range") {
+      //TODO: generalize to other operations that result in a specific datatype?
+      resultingDataType = FloatConstantNoDataCellType
+    }
+
     val expectedOperator = processStack.pop()
     assert(expectedOperator.equals(operator))
     contextStack.pop()
@@ -590,6 +604,14 @@ class OpenEOProcessScriptBuilder {
     }else{
       Option.empty
     }
+
+    resultingDataType =
+      if(targetType.isDefined) {
+        targetType.get
+      }else{
+        FloatConstantNoDataCellType
+      }
+
 
     val scaleFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
       val input: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
