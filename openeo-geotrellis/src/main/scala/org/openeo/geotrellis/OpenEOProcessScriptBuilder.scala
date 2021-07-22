@@ -3,7 +3,7 @@ package org.openeo.geotrellis
 import java.util
 
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{ArrayTile, CellType, DoubleConstantTile, FloatConstantTile, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isNoData}
+import geotrellis.raster.{ArrayTile, ByteUserDefinedNoDataCellType, CellType, DoubleConstantTile, FloatConstantTile, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isNoData}
 import org.apache.commons.math3.exception.NotANumberException
 import org.apache.commons.math3.stat.descriptive.rank.Percentile
 import org.apache.commons.math3.stat.ranking.NaNStrategy
@@ -325,7 +325,7 @@ class OpenEOProcessScriptBuilder {
   }
 
 
-  private def xyFunction(operator:(Tile,Tile) => Tile, xArgName:String = "x", yArgName:String = "y" ): OpenEOProcess = {
+  private def xyFunction(operator:(Tile,Tile) => Tile, xArgName:String = "x", yArgName:String = "y" ,convertBitCells: Boolean = true): OpenEOProcess = {
     val storedArgs = contextStack.head
     val processString = processStack.reverse.mkString("->")
     if (!storedArgs.contains(xArgName)) {
@@ -337,8 +337,16 @@ class OpenEOProcessScriptBuilder {
     val x_function: OpenEOProcess = storedArgs.get(xArgName).get
     val y_function: OpenEOProcess = storedArgs.get(yArgName).get
     val bandFunction = (context: Map[String,Any]) => (tiles: Seq[Tile]) => {
-      val x_input: Seq[Tile] = evaluateToTiles(x_function, context, tiles)
-      val y_input: Seq[Tile] = evaluateToTiles(y_function, context, tiles)
+
+      def convertBitCellsOp(aTile: Tile):Tile ={
+        if(convertBitCells && aTile.cellType.bits == 1) {
+          aTile.convert(ByteUserDefinedNoDataCellType(127.byteValue()))
+        }else{
+          aTile
+        }
+      }
+      val x_input: Seq[Tile] = evaluateToTiles(x_function, context, tiles).map(convertBitCellsOp)
+      val y_input: Seq[Tile] = evaluateToTiles(y_function, context, tiles).map(convertBitCellsOp)
       if(x_input.size == y_input.size) {
         x_input.zip(y_input).map(t=>operator(t._1,t._2))
       }else if(x_input.size == 1) {
@@ -482,20 +490,20 @@ class OpenEOProcessScriptBuilder {
     val operation: OpenEOProcess = operator match {
       case "if" => ifProcess(arguments)
       // Comparison operators
-      case "gt" if hasXY => xyFunction(Greater.apply)
-      case "lt" if hasXY => xyFunction(Less.apply)
-      case "gte" if hasXY => xyFunction(GreaterOrEqual.apply)
-      case "lte" if hasXY => xyFunction(LessOrEqual.apply)
-      case "eq" if hasXY => xyFunction(Equal.apply)
-      case "neq" if hasXY => xyFunction(Unequal.apply)
+      case "gt" if hasXY => xyFunction(Greater.apply,convertBitCells = false)
+      case "lt" if hasXY => xyFunction(Less.apply,convertBitCells = false)
+      case "gte" if hasXY => xyFunction(GreaterOrEqual.apply,convertBitCells = false)
+      case "lte" if hasXY => xyFunction(LessOrEqual.apply,convertBitCells = false)
+      case "eq" if hasXY => xyFunction(Equal.apply,convertBitCells = false)
+      case "neq" if hasXY => xyFunction(Unequal.apply,convertBitCells = false)
       // Boolean operators
       case "not" if hasX => mapFunction("x", Not.apply)
       case "not" if hasExpression => mapFunction("expression", Not.apply) // legacy 0.4 style
-      case "and" if hasXY => xyFunction(And.apply)
+      case "and" if hasXY => xyFunction(And.apply,convertBitCells = false)
       case "and" if hasExpressions => reduceFunction("expressions", And.apply) // legacy 0.4 style
-      case "or" if hasXY => xyFunction(Or.apply)
+      case "or" if hasXY => xyFunction(Or.apply,convertBitCells = false)
       case "or" if hasExpressions => reduceFunction("expressions", Or.apply) // legacy 0.4 style
-      case "xor" if hasXY => xyFunction(Xor.apply)
+      case "xor" if hasXY => xyFunction(Xor.apply,convertBitCells = false)
       case "xor" if hasExpressions => reduceFunction("expressions", Xor.apply) // legacy 0.4 style
       // Mathematical operations
       case "sum" if hasData && !ignoreNoData => reduceFunction("data", Add.apply)
