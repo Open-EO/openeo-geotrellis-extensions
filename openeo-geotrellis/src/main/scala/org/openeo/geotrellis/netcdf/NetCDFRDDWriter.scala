@@ -69,7 +69,7 @@ object NetCDFRDDWriter {
                        zLevel:Int
                       ): java.util.List[String] = {
 
-    var dates = new ListBuffer[Int]()
+
     val extent = rdd.metadata.apply(rdd.metadata.tileBounds)
 
     val rasterExtent = RasterExtent(extent = extent, cellSize = rdd.metadata.cellSize)
@@ -418,7 +418,7 @@ object NetCDFRDDWriter {
       case ct: ShortUserDefinedNoDataCellType => (DataType.SHORT,Some(ct.noDataValue))
       case ct: UShortUserDefinedNoDataCellType => (DataType.USHORT,Some(ct.widenedNoData.asInt))
       case ct: IntUserDefinedNoDataCellType => (DataType.INT,Some(ct.widenedNoData.asInt))
-      case ct: FloatUserDefinedNoDataCellType => (DataType.DOUBLE,Some(ct.noDataValue))
+      case ct: FloatUserDefinedNoDataCellType => (DataType.FLOAT,Some(ct.noDataValue))
       case ct: DoubleUserDefinedNoDataCellType => (DataType.DOUBLE,Some(ct.noDataValue))
     }
 
