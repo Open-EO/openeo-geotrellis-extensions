@@ -6,7 +6,6 @@ import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import jep.{DirectNDArray, SharedInterpreter}
 
 import java.nio.ByteBuffer
-import java.util
 
 object Udf {
 
@@ -41,10 +40,10 @@ object Udf {
         |yrange = ymax - ymin
         |yinc = yrange / layoutRows
         |extent = SpatialExtent(
-        |    top=ex.ymax - yinc * spatialKey.row,
-        |    bottom=ex.ymax - yinc * (keyRow + 1),
-        |    right=ex.xmin + xinc * (keyCol + 1),
-        |    left=ex.xmin + xinc * keyCol,
+        |    top=ymax - yinc * keyRow,
+        |    bottom=ymax - yinc * (keyRow + 1),
+        |    right=xmin + xinc * (keyCol + 1),
+        |    left=xmin + xinc * keyCol,
         |    height=tileCols,
         |    width=tileRows
         |)
@@ -61,6 +60,8 @@ object Udf {
     interp.set("band_names", band_names)
 
     // Initialize coordinates and dimensions for the final xarray datacube.
+    // TODO: Add message to OpenEOApiException:
+    // \"\"\"In run_udf, the data has {b} bands, while the 'bands' dimension has {len_dim} labels. These labels were set on the dimension: {labels}. Please investigate if dimensions and labels are correct.\"\"\".format(b=band_count, len_dim = len(band_names), labels=str(band_names))
     interp.exec(
       """
         |coords = {}
@@ -77,10 +78,7 @@ object Udf {
         |    coords['bands'] = band_names
         |    band_count = tile_shape[dims.index('bands')]
         |    if band_count != len(band_names):
-        |        raise OpenEOApiException(status_code=400,message=
-        |        \"\"\"In run_udf, the data has {b} bands, while the 'bands' dimension has {len_dim} labels.
-        |        These labels were set on the dimension: {labels}. Please investigate if dimensions and labels are correct.\"\"\"
-        |                                 .format(b=band_count, len_dim = len(band_names), labels=str(band_names)))
+        |        raise OpenEOApiException(status_code=400,message='')
         |
         |if extent is not None:
         |    gridx=(extent.right-extent.left)/extent.width
@@ -99,7 +97,7 @@ object Udf {
     interp.set("npCube", directTile)
     interp.exec(
       """
-        |from openeo_udf.api.datacube import DataCube"
+        |from openeo_udf.api.datacube import DataCube
         |the_array = xr.DataArray(npCube, coords=coords, dims=dims, name="openEODataChunk")
         |datacube = DataCube(the_array)
         |""".stripMargin)
@@ -107,7 +105,7 @@ object Udf {
 
   def runUserCode(code: String, layer: MultibandTileLayerRDD[SpatialKey],
                   layoutDefinition: LayoutDefinition, bandNames: Array[String],
-                  context: util.Map[String, Any]): MultibandTileLayerRDD[SpatialKey] = {
+                  context: Map[String, Any]): MultibandTileLayerRDD[SpatialKey] = {
     // Map a python function to every tile of the RDD.
     // Map will serialize + send partitions to worker nodes
     // Worker nodes will receive partitions in JVM
@@ -134,6 +132,7 @@ object Udf {
           val directTile = new DirectNDArray(buffer, tileShape: _*)
 
           // Setup the xarray datacube
+          interp.exec(defaultImports)
           _createExtent(interp, layoutDefinition, tuple._1)
           _tileToDatacube(interp, tileShape, directTile, bandNames, Array())
 
