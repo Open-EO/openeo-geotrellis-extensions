@@ -136,7 +136,7 @@ class OpenEOProcesses extends Serializable {
       Partitioner.defaultPartitioner(datacube)
     }
 
-    val resultRDD = datacube.groupBy[SpatialKey](t => t._1.spatialKey,partitioner).mapValues{ tiles => {
+    val resultRDD = datacube.groupBy[SpatialKey]((t: (SpaceTimeKey, MultibandTile)) => t._1.spatialKey,partitioner).mapValues{ tiles => {
       val aTile = firstTile(tiles.map(_._2))
       val resultTile = mutable.ListBuffer[Tile]()
       for( b <- 0 until aTile.bandCount){
