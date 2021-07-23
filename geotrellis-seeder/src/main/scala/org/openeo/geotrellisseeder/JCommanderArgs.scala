@@ -16,6 +16,18 @@ class BandArrayConverter extends IStringConverter[Option[Array[Band]]] {
   }
 }
 
+class OscarsSearchFilterArrayConverter extends IStringConverter[Option[Map[String, String]]] {
+  override def convert(s: String): Option[Map[String, String]] = {
+    Some(s.split(":")
+      .map { s =>
+        val split = s.split(",")
+        (split(0), split(1))
+      }
+      .toMap
+    )
+  }
+}
+
 class MaskArrayConverter extends IStringConverter[Array[Int]] {
   override def convert(s: String): Array[Int] = {
     s.split(",").map(_.toInt)
@@ -64,6 +76,9 @@ class JCommanderArgs {
 
   @Parameter(names = Array("--oscarsCollection"), required = false, description = "oscars collection", converter = classOf[StringOptionConverter])
   var oscarsCollection: Option[String] = None
+
+  @Parameter(names = Array("--oscarsSearchFilters"), required = false, description = "oscars search filters", converter = classOf[OscarsSearchFilterArrayConverter])
+  val oscarsSearchFilters: Option[Map[String, String]]
 
   @Parameter(names = Array("--verbose", "-v"), required = false, description = "print debug logs")
   var verbose: Boolean = false

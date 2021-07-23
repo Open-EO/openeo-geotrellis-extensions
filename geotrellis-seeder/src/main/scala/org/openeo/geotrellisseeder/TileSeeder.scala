@@ -51,7 +51,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
   def renderPng(path: String, productType: String, dateStr: String, colorMap: Option[String] = None, bands: Option[Array[Band]] = None,
                 productGlob: Option[String] = None, maskValues: Array[Int] = Array(), permissions: Option[String] = None,
                 spatialKey: Option[SpatialKey] = None, tooCloudyFile: Option[String] = None, datePattern: Option[String] = None,
-                oscarsEndpoint: Option[String] = None, oscarsCollection: Option[String] = None)
+                oscarsEndpoint: Option[String] = None, oscarsCollection: Option[String] = None, oscarsSearchFilters: Option[Map[String, String]] = None)
                (implicit sc: SparkContext): Unit = {
 
     val date = dateStr match {
@@ -66,7 +66,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
       val openSearchClient = OpenSearchClient(new URL(oscarsEndpoint.get))
       val products = if (date.isDefined) {
-        val attributeValues = Map("productType" -> productType)
+        val attributeValues = Map(Seq(("productType", productType), ("accessedFrom", "S3")) ++ oscarsSearchFilters.getOrElse(Map()).toSeq: _*)
         openSearchClient.getProducts(oscarsCollection.get, date.map(d => (d, d)).get, ProjectedExtent(LatLng.worldExtent, LatLng), attributeValues, "", "")
       } else {
         //Divide world extent to get less then 10000 products per request
@@ -80,14 +80,10 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
       val paths = products.flatMap(_.links.filter(_.title.contains(productType)).map(_.href.toString))
 
-      val hrVppProductsVi = """/HRVPP/CLMS/VI_V\d{3}/(\d{4})/(\d{2})/(.*)""".r.unanchored
-      val hrVppProductsVpp = """/HRVPP/CLMS/VPP_V\d{3}/(\d{4})/(.*)""".r.unanchored
-      val hrVppProductsSt = """/HRVPP/CLMS/ST_V\d{3}/(\d{4})/(.*)""".r.unanchored
+      val s3Path = """(s3://)(.*:)(.*)""".r.unanchored
 
       val s3Paths = paths.flatMap {
-        case hrVppProductsVi(year, month, key) => Some(s"s3://hr-vpp-products-vi-$year$month/$key")
-        case hrVppProductsVpp(year, key) => Some(s"s3://hr-vpp-products-vpp-$year/$key")
-        case hrVppProductsSt(year, key) => Some(s"s3://hr-vpp-products-st-$year/$key")
+        case s3Path(prefix, _, key) => Some(s"$prefix$key")
         case _ => None
       }
 
@@ -614,6 +610,7 @@ object TileSeeder {
       val tooCloudyFile = jCommanderArgs.tooCloudyFile
       val oscarsEndpoint = jCommanderArgs.oscarsEndpoint
       val oscarsCollection = jCommanderArgs.oscarsCollection
+      val oscarsSearchFilters = jCommanderArgs.oscarsSearchFilters
       val verbose = jCommanderArgs.verbose
 
       val seeder = new TileSeeder(zoomLevel, verbose)
@@ -625,7 +622,7 @@ object TileSeeder {
             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
             .set("spark.kryoserializer.buffer.max", "1024m"))
 
-      seeder.renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, tooCloudyFile = tooCloudyFile, oscarsEndpoint = oscarsEndpoint, oscarsCollection = oscarsCollection, datePattern=datePattern)
+      seeder.renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, tooCloudyFile = tooCloudyFile, oscarsEndpoint = oscarsEndpoint, oscarsCollection = oscarsCollection, oscarsSearchFilters = oscarsSearchFilters, datePattern=datePattern)
 
       sc.stop()
     }
