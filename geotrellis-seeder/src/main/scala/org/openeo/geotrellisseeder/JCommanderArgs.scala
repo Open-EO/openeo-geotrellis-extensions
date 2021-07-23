@@ -78,7 +78,7 @@ class JCommanderArgs {
   var oscarsCollection: Option[String] = None
 
   @Parameter(names = Array("--oscarsSearchFilters"), required = false, description = "oscars search filters", converter = classOf[OscarsSearchFilterArrayConverter])
-  val oscarsSearchFilters: Option[Map[String, String]]
+  val oscarsSearchFilters: Option[Map[String, String]] = None
 
   @Parameter(names = Array("--verbose", "-v"), required = false, description = "print debug logs")
   var verbose: Boolean = false
