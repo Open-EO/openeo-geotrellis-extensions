@@ -343,7 +343,7 @@ def generateUpperTile(toTileIndex, endpoint_url, region, bucket, collection, zoo
         if compress and zoomTo == topZoom:
             toImage.convert('P', palette=Image.ADAPTIVE, colors=256)
 
-        put_s3_object(toImage, bucket, toKey)
+        put_s3_object(toImage, endpoint_url, region, bucket, toKey)
         toImage.close()
 
         def convertRGBToPNG8(tile: Image, key: str):
@@ -351,7 +351,7 @@ def generateUpperTile(toTileIndex, endpoint_url, region, bucket, collection, zoo
             info.add_text("generated_by", "generatePyramid")
 
             tile = tile.convert('P', palette=Image.ADAPTIVE, colors=256)
-            put_s3_object(tile, bucket, key)
+            put_s3_object(tile, endpoint_url, region, bucket, key)
 
         # now also convert the "from" tiles to PNG8
         if compress:
@@ -387,7 +387,7 @@ def main():
         bucket = args.bucket
         prefix = os.path.join(args.collection, "g", args.date)
 
-        minX, minY, maxX, maxY = toMinMax(bucket, prefix, args.bottomZoom)
+        minX, minY, maxX, maxY = toMinMax(s3_bucket(endpoint_url, region, bucket), prefix, args.bottomZoom)
 
         for zoomFrom in reversed(range(args.topZoom + 1, args.bottomZoom + 1)):
             # from zoom level zoomFrom, generate upper level (zoom - 1)
@@ -419,19 +419,19 @@ def s3_bucket(endpoint_url, region, bucket):
     return s3(endpoint_url, region).Bucket(bucket)
 
 
-def put_s3_object(image, bucket, key):
+def put_s3_object(image, endpoint_url, region, bucket, key):
     from io import BytesIO
     buffer = BytesIO()
     image.save(buffer, format='PNG', quality=95)
     buffer.seek(0)
 
-    s3().Object(bucket, key).put(Body=buffer)
+    s3(endpoint_url, region).Object(bucket, key).put(Body=buffer)
 
 
-def toMinMax(bucket, prefix, bottomZoom):
+def toMinMax(s3_bucket, prefix, bottomZoom):
     import re
 
-    bucket_files = [x.key for x in s3_bucket(bucket).objects.filter(Prefix=os.path.join(prefix, str(bottomZoom).zfill(2)))]
+    bucket_files = [x.key for x in s3_bucket.objects.filter(Prefix=os.path.join(prefix, str(bottomZoom).zfill(2)))]
 
     def dirToXY(dir):
         matches = re.search(r".*(.{3}\/.{3}\/.{3})\/(.{3}\/.{3}\/.{3})\.png", dir)
