@@ -47,7 +47,7 @@ public class TileSeederRunner {
                             .set("spark.kryoserializer.buffer.max", "1024m"));
 
             new TileSeeder(5, false, Option.empty())
-                    .renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, Option.empty(), Option.empty(), Option.empty(), Option.empty(), Option.empty(), sc);
+                    .renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, Option.empty(), Option.empty(), Option.empty(), Option.empty(), Option.empty(), Option.empty(), sc);
         }
 
         ml.logMem();
