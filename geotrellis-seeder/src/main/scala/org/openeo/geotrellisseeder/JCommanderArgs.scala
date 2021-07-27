@@ -18,13 +18,17 @@ class BandArrayConverter extends IStringConverter[Option[Array[Band]]] {
 
 class OscarsSearchFilterArrayConverter extends IStringConverter[Option[Map[String, String]]] {
   override def convert(s: String): Option[Map[String, String]] = {
-    Some(s.split(":")
-      .map { s =>
-        val split = s.split(",")
-        (split(0), split(1))
-      }
-      .toMap
-    )
+    if (s.nonEmpty) {
+      Some(s.split(":")
+        .map { s =>
+          val split = s.split(",")
+          (split(0), split(1))
+        }
+        .toMap
+      )
+    } else {
+      None
+    }
   }
 }
 
