@@ -611,9 +611,10 @@ object TileSeeder {
       val oscarsEndpoint = jCommanderArgs.oscarsEndpoint
       val oscarsCollection = jCommanderArgs.oscarsCollection
       val oscarsSearchFilters = jCommanderArgs.oscarsSearchFilters
+      val partitions = jCommanderArgs.partitions
       val verbose = jCommanderArgs.verbose
 
-      val seeder = new TileSeeder(zoomLevel, verbose)
+      val seeder = new TileSeeder(zoomLevel, verbose, partitions)
 
       implicit val sc: SparkContext =
         SparkContext.getOrCreate(

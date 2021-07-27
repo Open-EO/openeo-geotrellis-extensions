@@ -10,6 +10,10 @@ class StringOptionConverter extends IStringConverter[Option[String]] {
   override def convert(s: String): Option[String] = Some(s)
 }
 
+class IntOptionConverter extends IStringConverter[Option[Int]] {
+  override def convert(s: String): Option[Int] = Some(s.toInt)
+}
+
 class BandArrayConverter extends IStringConverter[Option[Array[Band]]] {
   override def convert(s: String): Option[Array[Band]] = {
     Some(s.split(":").map(Band(_)))
@@ -83,6 +87,9 @@ class JCommanderArgs {
 
   @Parameter(names = Array("--oscarsSearchFilters"), required = false, description = "oscars search filters", converter = classOf[OscarsSearchFilterArrayConverter])
   var oscarsSearchFilters: Option[Map[String, String]] = None
+
+  @Parameter(names = Array("--partitions"), required = false, description = "number of spark partitions", converter = classOf[IntOptionConverter])
+  var partitions: Option[Int] = None
 
   @Parameter(names = Array("--verbose", "-v"), required = false, description = "print debug logs")
   var verbose: Boolean = false
