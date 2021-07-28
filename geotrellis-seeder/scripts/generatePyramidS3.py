@@ -439,7 +439,7 @@ def toMinMax(s3_bucket, prefix, bottomZoom):
         y = int(matches.group(2).replace("/", ""))
         return x, y
 
-    coordinates = list(map(dirToXY, bucket_files))
+    coordinates = list(map(dirToXY, filter(lambda f: ".png" in f, bucket_files)))
 
     print(coordinates)
 
