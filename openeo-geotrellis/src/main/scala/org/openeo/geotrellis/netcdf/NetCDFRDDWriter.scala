@@ -425,9 +425,9 @@ object NetCDFRDDWriter {
 
 
     for (bandName <- bandNames.asScala) {
-
-      addNetcdfVariable(netcdfFile, bandDimension, bandName, netcdfType, null, bandName, "", null, nodata.getOrElse(0), "y x")
-      netcdfFile.addVariableAttribute(bandName, "grid_mapping", "crs")
+      val varName = bandName.replace("/","_")
+      addNetcdfVariable(netcdfFile, bandDimension, varName, netcdfType, null, varName, "", null, nodata.getOrElse(0), "y x")
+      netcdfFile.addVariableAttribute(varName, "grid_mapping", "crs")
       if(rasterExtent.cols>256 && rasterExtent.rows>256){
         val chunking = new ArrayInt.D1(if(writeTimeDimension) 3 else 2,false)
         if(writeTimeDimension){
@@ -438,7 +438,7 @@ object NetCDFRDDWriter {
           chunking.set(0,256)
           chunking.set(1,256)
         }
-        netcdfFile.addVariableAttribute(bandName, new Attribute("_ChunkSizes", chunking))
+        netcdfFile.addVariableAttribute(varName, new Attribute("_ChunkSizes", chunking))
       }
 
     }
