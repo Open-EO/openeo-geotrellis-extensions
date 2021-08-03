@@ -7,7 +7,7 @@ import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.{AfterClass, BeforeClass}
 
 import java.util
 import scala.io.Source
@@ -41,7 +41,7 @@ If you use the virtual environment venv (with JEP and Numpy installed):
 */
 class UdfTest {
 
-  @Test
+  //@Test
   def testSimpleDatacubeOperations(): Unit = {
     val filename = "/org/openeo/geotrellis/udf/simple_datacube_operations.py"
     val code = Source.fromURL(getClass.getResource(filename)).getLines.mkString("\n")
