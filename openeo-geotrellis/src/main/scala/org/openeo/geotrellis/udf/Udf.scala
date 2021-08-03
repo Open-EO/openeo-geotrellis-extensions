@@ -6,6 +6,7 @@ import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import jep.{DirectNDArray, SharedInterpreter}
 
 import java.nio.ByteBuffer
+import java.util
 
 object Udf {
 
@@ -53,7 +54,7 @@ object Udf {
   }
 
   private def _tileToDatacube(interp: SharedInterpreter, tile_shape: Array[Int], directTile: DirectNDArray[ByteBuffer],
-                        band_names: Array[String], start_times: Array[String] = Array()): Unit = {
+                        band_names: util.ArrayList[String], start_times: Array[String] = Array()): Unit = {
     // Note: This method is a scala implementation of geopysparkdatacube._tile_to_datacube.
     interp.set("tile_shape", tile_shape)
     interp.set("start_times", start_times)
@@ -104,8 +105,8 @@ object Udf {
   }
 
   def runUserCode(code: String, layer: MultibandTileLayerRDD[SpatialKey],
-                  layoutDefinition: LayoutDefinition, bandNames: Array[String],
-                  context: Map[String, Any]): MultibandTileLayerRDD[SpatialKey] = {
+                  bandNames: util.ArrayList[String], context: util.HashMap[String, Any]): MultibandTileLayerRDD[SpatialKey] = {
+
     // Map a python function to every tile of the RDD.
     // Map will serialize + send partitions to worker nodes
     // Worker nodes will receive partitions in JVM
@@ -133,7 +134,7 @@ object Udf {
 
           // Setup the xarray datacube
           interp.exec(defaultImports)
-          _createExtent(interp, layoutDefinition, tuple._1)
+          _createExtent(interp, layer.metadata.layout, tuple._1)
           _tileToDatacube(interp, tileShape, directTile, bandNames, Array())
 
           interp.set("context", context)

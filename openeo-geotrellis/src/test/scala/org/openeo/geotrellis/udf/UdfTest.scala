@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.udf
 
-import geotrellis.layer.{LayoutDefinition, SpatialKey, TileLayerMetadata}
+import geotrellis.layer.{SpatialKey, TileLayerMetadata}
 import geotrellis.raster.{ArrayMultibandTile, ByteArrayTile, MultibandTile, MutableArrayTile, Tile, TileLayout}
 import geotrellis.spark.ContextRDD
 import geotrellis.spark.testkit.TileLayerRDDBuilders
@@ -9,6 +9,7 @@ import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.{AfterClass, BeforeClass, Test}
 
+import java.util
 import scala.io.Source
 
 object UdfTest {
@@ -49,12 +50,11 @@ class UdfTest {
     val multibandTile: MultibandTile = new ArrayMultibandTile(Array(zeroTile).asInstanceOf[Array[Tile]])
     val extent: Extent = new Extent(0,0,10,10)
     val tileLayout = new TileLayout(1, 1, zeroTile.cols.asInstanceOf[Integer], zeroTile.rows.asInstanceOf[Integer])
-    val layoutDefinition = LayoutDefinition(extent, tileLayout)
 
     val tileLayerRDD: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, multibandTile, tileLayout).asInstanceOf[ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]]]
 
     tileLayerRDD.values.first().bands(0).foreach(e => assert(e == 0))
-    val resultRDD = Udf.runUserCode(code, tileLayerRDD, layoutDefinition, Array(), Map[String, Any]())
+    val resultRDD = Udf.runUserCode(code, tileLayerRDD, new util.ArrayList[String](), new util.HashMap[String, Any]())
     resultRDD.values.first().bands(0).foreach(e => assert(e == 60))
   }
 }
