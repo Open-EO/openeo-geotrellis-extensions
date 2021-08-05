@@ -12,14 +12,12 @@ object Udf {
 
   private val defaultImports =
     """
+      |import collections
       |import numpy as np
       |import xarray as xr
       |import openeo.metadata
-      |try:
-      |    from openeo_udf.api.base import UdfData, SpatialExtent
-      |except ImportError as e:
-      |    from openeo_udf.api.udf_data import UdfData
-      |    from openeo_udf.api.spatial_extent import SpatialExtent
+      |from openeo.udf import UdfData
+      |from openeo.udf.xarraydatacube import XarrayDataCube
       |""".stripMargin
 
   private def _createExtent(interp: SharedInterpreter, layoutDefinition: LayoutDefinition, key: SpatialKey): Unit = {
@@ -36,6 +34,7 @@ object Udf {
 
     val code =
       """
+        |SpatialExtent = collections.namedtuple("SpatialExtent", ["top", "bottom", "right", "left", "height", "width"])
         |x_range = xmax - xmin
         |xinc = x_range / layoutCols
         |yrange = ymax - ymin
@@ -98,9 +97,8 @@ object Udf {
     interp.set("npCube", directTile)
     interp.exec(
       """
-        |from openeo_udf.api.datacube import DataCube
         |the_array = xr.DataArray(npCube, coords=coords, dims=dims, name="openEODataChunk")
-        |datacube = DataCube(the_array)
+        |datacube = XarrayDataCube(the_array)
         |""".stripMargin)
   }
 
@@ -138,8 +136,7 @@ object Udf {
           _tileToDatacube(interp, tileShape, directTile, bandNames, Array())
 
           interp.set("context", context)
-          interp.exec("data = UdfData({\"EPSG\": 900913}, [datacube])")
-          interp.exec("data.user_context = context")
+          interp.exec("data = UdfData(proj={\"EPSG\": 900913}, datacube_list=[datacube], user_context=context)")
           interp.exec(code)
           interp.exec("result_cube = apply_datacube(data.get_datacube_list()[0], data.user_context)")
 
