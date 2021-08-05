@@ -21,31 +21,25 @@ object Udf {
       |""".stripMargin
 
   private def _createExtent(interp: SharedInterpreter, layoutDefinition: LayoutDefinition, key: SpatialKey): Unit = {
-    interp.set("xmax", layoutDefinition.extent.xmax)
-    interp.set("xmin", layoutDefinition.extent.xmin)
-    interp.set("ymax", layoutDefinition.extent.ymax)
-    interp.set("ymin", layoutDefinition.extent.ymin)
-    interp.set("layoutCols", layoutDefinition.tileLayout.layoutCols)
-    interp.set("layoutRows", layoutDefinition.tileLayout.layoutRows)
-    interp.set("tileCols", layoutDefinition.tileLayout.tileCols)
-    interp.set("tileRows", layoutDefinition.tileLayout.tileRows)
-    interp.set("keyRow", key.row)
+    interp.set("ex", layoutDefinition.extent)
+    interp.set("tileLayout", layoutDefinition.tileLayout)
     interp.set("keyCol", key.col)
+    interp.set("keyRow", key.row)
 
     val code =
       """
         |SpatialExtent = collections.namedtuple("SpatialExtent", ["top", "bottom", "right", "left", "height", "width"])
-        |x_range = xmax - xmin
-        |xinc = x_range / layoutCols
-        |yrange = ymax - ymin
-        |yinc = yrange / layoutRows
+        |x_range = ex.xmax() - ex.xmin()
+        |xinc = x_range / tileLayout.layoutCols()
+        |yrange = ex.ymax() - ex.ymin()
+        |yinc = yrange / tileLayout.layoutRows()
         |extent = SpatialExtent(
-        |    top=ymax - yinc * keyRow,
-        |    bottom=ymax - yinc * (keyRow + 1),
-        |    right=xmin + xinc * (keyCol + 1),
-        |    left=xmin + xinc * keyCol,
-        |    height=tileCols,
-        |    width=tileRows
+        |    top=ex.ymax() - yinc * keyRow,
+        |    bottom=ex.ymax() - yinc * (keyRow + 1),
+        |    right=ex.xmin() + xinc * (keyCol + 1),
+        |    left=ex.xmin() + xinc * keyCol,
+        |    height=tileLayout.tileCols(),
+        |    width=tileLayout.tileRows()
         |)
         |""".stripMargin
 
