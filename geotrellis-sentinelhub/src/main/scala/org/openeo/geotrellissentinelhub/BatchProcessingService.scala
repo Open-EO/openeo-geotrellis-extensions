@@ -1,7 +1,7 @@
 package org.openeo.geotrellissentinelhub
 
 import com.google.common.cache.{CacheBuilder, CacheLoader}
-import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.vector._
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
 
@@ -10,6 +10,7 @@ import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
 import java.util.concurrent.TimeUnit.MINUTES
 import scala.collection.JavaConverters._
+import scala.collection.mutable.ArrayBuffer
 
 object BatchProcessingService {
   // TODO: invalidate key on 401 Unauthorized
@@ -44,16 +45,11 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
                           sampleType: SampleType, metadata_properties: util.Map[String, Any],
                           processing_options: util.Map[String, Any]): String = {
     // TODO: implement retries
-    val polygonExteriors = for {
-      multiPolygon <- polygons
-      polygon <- multiPolygon.polygons
-    } yield Polygon(polygon.getExteriorRing)
-
     // workaround for bug where upper bound is considered inclusive in OpenEO
     val (from, to) = includeEndDay(from_date, to_date)
 
-    val multiPolygon = MultiPolygon(polygonExteriors)
-    val multiPolygonCrs = crs
+    val polygonsSimplification = new LocalGridSparseMultiPolygonSimplification(gridCrs = CRS.fromEpsgCode(32631), gridTileSize = 10000 * 0.95)
+    val (multiPolygon, multiPolygonCrs) = polygonsSimplification.simplify(polygons, crs)
 
     val dateTimes = new DefaultCatalogApi(endpoint).dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
       accessToken, queryProperties = mapDataFilters(metadata_properties))
