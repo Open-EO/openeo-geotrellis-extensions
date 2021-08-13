@@ -123,34 +123,36 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       }
     }
 
-    val globalLayout = GlobalLayout(256, zoomLevel, 0.1)
+    if (sourcePathsWithBandId.map(_._1.length).sum > 0) {
+      val globalLayout = GlobalLayout(256, zoomLevel, 0.1)
 
-    implicit val layout: LayoutDefinition =
-      globalLayout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10, 10))._1
+      implicit val layout: LayoutDefinition =
+        globalLayout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10, 10))._1
 
-    def getPartitions = partitions.getOrElse(max(1, round(pow(2, zoomLevel) / 20).toInt))
+      def getPartitions = partitions.getOrElse(max(1, round(pow(2, zoomLevel) / 20).toInt))
 
-    if (colorMap.isDefined) {
-      val map = colormap.ColorMapParser.parse(colorMap.get)
-      getSinglebandRDD(sourcePathsWithBandId.head, spatialKey)
-        .repartition(getPartitions)
-        .foreachPartition { items =>
-          configureDebugLogging()
-          S3ClientConfigurator.configure()
-          items.foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel))
-        }
-    } else if (bands.isDefined) {
-      getMultibandRDD(sourcePathsWithBandId, spatialKey)
-        .fullOuterJoin(getTooCloudyRdd(date.get, maskValues, tooCloudyFile))
-        .repartition(getPartitions)
-        .foreach(renderMultibandRDD(path, dateStr, bands.get, zoomLevel, maskValues))
-    } else {
-      getS1MultibandRDD(sourcePathsWithBandId, spatialKey)
-        .repartition(getPartitions)
-        .foreach(renderMultibandRDD(path, dateStr, zoomLevel))
+      if (colorMap.isDefined) {
+        val map = colormap.ColorMapParser.parse(colorMap.get)
+        getSinglebandRDD(sourcePathsWithBandId.head, spatialKey)
+          .repartition(getPartitions)
+          .foreachPartition { items =>
+            configureDebugLogging()
+            S3ClientConfigurator.configure()
+            items.foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel))
+          }
+      } else if (bands.isDefined) {
+        getMultibandRDD(sourcePathsWithBandId, spatialKey)
+          .fullOuterJoin(getTooCloudyRdd(date.get, maskValues, tooCloudyFile))
+          .repartition(getPartitions)
+          .foreach(renderMultibandRDD(path, dateStr, bands.get, zoomLevel, maskValues))
+      } else {
+        getS1MultibandRDD(sourcePathsWithBandId, spatialKey)
+          .repartition(getPartitions)
+          .foreach(renderMultibandRDD(path, dateStr, zoomLevel))
+      }
+
+      permissions.foreach(setFilePermissions(path, dateStr, _))
     }
-
-    permissions.foreach(setFilePermissions(path, dateStr, _))
   }
 
   private def getTooCloudyRdd(date: LocalDate, maskValues: Array[Int], tooCloudyFile: Option[String] = None)(implicit sc: SparkContext, layout: LayoutDefinition) = {
