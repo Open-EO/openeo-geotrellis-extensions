@@ -24,7 +24,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.openeo.geotrellisseeder.TileSeeder.CLOUD_MILKINESS
 import software.amazon.awssdk.core.sync.RequestBody
-import software.amazon.awssdk.services.s3.model.PutObjectRequest
+import software.amazon.awssdk.services.s3.model.{NoSuchKeyException, PutObjectRequest}
 
 import java.io.File
 import java.net.URL
@@ -410,6 +410,9 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
         Some(s.cellType)
       } catch {
         case _: SAXParseException => None
+        case e: NoSuchKeyException =>
+          logger.logNoSuchKeyException(s.metadata.name.toString)
+          throw e
       }
     }).toSet
     require(

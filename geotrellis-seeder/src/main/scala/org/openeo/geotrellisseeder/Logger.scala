@@ -22,6 +22,9 @@ trait Logger[T] extends Serializable {
   def logParseException(filePath: String): Unit = {
     logger.error(s"Invalid characters in metadata of $filePath")
   }
+  def logNoSuchKeyException(path: String): Unit = {
+    logger.error(s"No such key: $path")
+  }
 }
 
 case class StandardLogger[T](cls: Class[T]) extends Logger[T]
