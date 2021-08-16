@@ -44,15 +44,10 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
                           sampleType: SampleType, metadata_properties: util.Map[String, Any],
                           processing_options: util.Map[String, Any]): String = {
     // TODO: implement retries
-    val polygonExteriors = for {
-      multiPolygon <- polygons
-      polygon <- multiPolygon.polygons
-    } yield Polygon(polygon.getExteriorRing)
-
     // workaround for bug where upper bound is considered inclusive in OpenEO
     val (from, to) = includeEndDay(from_date, to_date)
 
-    val multiPolygon = MultiPolygon(polygonExteriors)
+    val multiPolygon = multiPolygonFromPolygonExteriors(polygons)
     val multiPolygonCrs = crs
 
     val dateTimes = new DefaultCatalogApi(endpoint).dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
@@ -78,6 +73,17 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     batchRequestId
   }
 
+  // flattens n MultiPolygons into 1 by taking their polygon exteriors
+  // drawback: can result in big GeoJSON to send over the wire
+  private def multiPolygonFromPolygonExteriors(multiPolygons: Array[MultiPolygon]): MultiPolygon =  {
+    val polygonExteriors = for {
+      multiPolygon <- multiPolygons
+      polygon <- multiPolygon.polygons
+    } yield Polygon(polygon.getExteriorRing)
+
+    MultiPolygon(polygonExteriors)
+  }
+
   def get_batch_process_status(batch_request_id: String): String =
     new BatchProcessingApi(endpoint).getBatchProcess(batch_request_id, accessToken).status
 
@@ -88,20 +94,31 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
                                    from_date: String, to_date: String, band_names: util.List[String],
                                    dem_instance: String, metadata_properties: util.Map[String, Any], subfolder: String,
                                    request_group_id: String): util.List[String] = {
+    val polygons = Array(MultiPolygon(bbox.toPolygon()))
+    val polygonsCrs = CRS.fromName(bbox_srs)
+
+    start_card4l_batch_processes(collection_id, dataset_id, polygons, polygonsCrs, from_date, to_date, band_names,
+      dem_instance, metadata_properties, subfolder, request_group_id)
+  }
+
+  def start_card4l_batch_processes(collection_id: String, dataset_id: String, polygons: Array[MultiPolygon],
+                                   crs: CRS, from_date: String, to_date: String, band_names: util.List[String],
+                                   dem_instance: String, metadata_properties: util.Map[String, Any], subfolder: String,
+                                   request_group_id: String): util.List[String] = {
     // TODO: add error handling
-    val boundingBox = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
-    val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(LatLng), LatLng)
+    val multiPolygon = multiPolygonFromPolygonExteriors(polygons).reproject(crs, LatLng)
+    val multiPolygonCrs = LatLng
 
     // from should be start of day, to should be end of day (23:59:59)
     val (from, to) = includeEndDay(from_date, to_date)
 
     // original features that overlap in space and time
-    val features = new DefaultCatalogApi(endpoint).searchCard4L(collection_id, reprojectedBoundingBox, from, to, accessToken,
-      queryProperties = mapDataFilters(metadata_properties))
+    val features = new DefaultCatalogApi(endpoint).searchCard4L(collection_id, multiPolygon, multiPolygonCrs, from, to,
+      accessToken, queryProperties = mapDataFilters(metadata_properties))
 
-    // their intersections with bounding box (all should be in LatLng)
+    // their intersections with input polygons (all should be in LatLng)
     val intersectionFeatures = features.mapValues(feature =>
-      feature.mapGeom(geom => geom intersection reprojectedBoundingBox.extent)
+      feature.mapGeom(geom => geom intersection multiPolygon)
     )
 
     val batchProcessingApi = new BatchProcessingApi(endpoint)
