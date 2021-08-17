@@ -411,7 +411,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       } catch {
         case _: SAXParseException => None
         case e: NoSuchKeyException =>
-          logger.logNoSuchKeyException(s.metadata.name.toString)
+          logger.logNoSuchKeyException(s.name.toString)
           throw e
       }
     }).toSet
