@@ -50,6 +50,19 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     val multiPolygon = multiPolygonFromPolygonExteriors(polygons)
     val multiPolygonCrs = crs
 
+    // TODO: determine which tiles are expected (for collection_id, geometry, date_range, bands, ...) = R
+    //  meaning, each tile in R:
+    //   * is part of $collection_id
+    //   * overlaps with $geometry (compare against tiling grid?)
+    //   * lies within $date_range
+    //   * contains one of $bands
+    // TODO: check which of these tiles R are already in the cache: C (collection_id limits query, date_range and bands as well)
+    // TODO: copy C into new unique subfolder f (à la CARD4L)
+    // TODO: batch request missing tiles P = R - C into f (how to do this efficiently across space/time/band dimensions?)
+    // TODO: if P available: add P to the cache (after polling so not in this "thread"), splitting bands
+    // result: f now contains R = C + P for load_collection
+    // TODO: subfolder is no longer equal to batch request ID
+
     val dateTimes = new DefaultCatalogApi(endpoint).dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
       accessToken, queryProperties = mapDataFilters(metadata_properties))
 
