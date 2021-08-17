@@ -450,7 +450,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
   private def rasterRegionRDDFromSources(sourcesWithBandId: (Seq[RasterSource], Int), spatialKey: Option[SpatialKey])
                                         (implicit sc: SparkContext, layout: LayoutDefinition): RDD[(SpatialKey, (Iterable[RasterRegion], Int))] = {
 
-    sc.parallelize(sourcesWithBandId._1)
+    sc.parallelize(sourcesWithBandId._1, partitions.getOrElse(sc.defaultParallelism))
       .mapPartitions { sources =>
         S3ClientConfigurator.configure()
 
