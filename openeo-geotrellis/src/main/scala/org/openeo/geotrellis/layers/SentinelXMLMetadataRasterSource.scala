@@ -1,12 +1,11 @@
 package org.openeo.geotrellis.layers
 
-import java.net.URL
-
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType}
 import geotrellis.vector.Extent
 
+import java.net.URL
 import scala.xml.XML
 
 object SentinelXMLMetadataRasterSource {
@@ -32,6 +31,8 @@ object SentinelXMLMetadataRasterSource {
     val position = geoCoding \ "Geoposition"  filter (va=>(va \ "@resolution" toString) == "10")
     val ulx = (position \ "ULX").text.toDouble
     val uly = (position \ "ULY").text.toDouble
+    // TODO: Looking at the cloud locations in the accompanying cloud mask file
+    // TODO: It appears that the extent should be: (ulx, uly-(10*10980), ulx+(10*10980), uly)
     val extent = Extent(ulx-(10*10980),uly-(10*10980),ulx,uly)
     val gridExtent = GridExtent[Long](extent,CellSize(10,10))
     val allBands = Seq(mSAA,mSZA,mVAA,mVZA)

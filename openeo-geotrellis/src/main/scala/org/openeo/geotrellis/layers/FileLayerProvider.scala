@@ -1,12 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import java.io.IOException
-import java.net.{URI, URL}
-import java.nio.file.{Path, Paths}
-import java.time.temporal.ChronoUnit
-import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
-import java.util.concurrent.TimeUnit
-
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Feature
 import cats.data.NonEmptyList
@@ -28,6 +21,12 @@ import org.locationtech.proj4j.proj.TransverseMercatorProjection
 import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.slf4j.LoggerFactory
 
+import java.io.IOException
+import java.net.{URI, URL}
+import java.nio.file.{Path, Paths}
+import java.time.temporal.ChronoUnit
+import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
+import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
@@ -447,17 +446,46 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     logger.info(s"Loading ${openSearchCollectionId} with params ${datacubeParams.getOrElse(new DataCubeParameters)} and bands ${openSearchLinkTitles.toList.mkString(";")}")
 
-    val overlappingRasterSources: Seq[RasterSource] = loadRasterSourceRDD(boundingBox, from, to, zoom)
+    var overlappingRasterSources: Seq[RasterSource] = loadRasterSourceRDD(boundingBox, from, to, zoom)
     val commonCellType = overlappingRasterSources.head.cellType
     val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType, layoutScheme, maxSpatialResolution)
 
-    val rasterSources = rasterSourceRDD(overlappingRasterSources, metadata, maxSpatialResolution, openSearchCollectionId)(sc)
+    // Handle maskingStrategyParameters.
+    var maskStrategy : Option[CloudFilterStrategy] = None
+    val maskParams = datacubeParams.get.maskingStrategyParameters
+    if (datacubeParams.isDefined && maskParams != null) {
+      val maskMethod = maskParams.getOrDefault("method", "").toString
+      if (maskMethod == "mask_scl_dilation") {
+        maskStrategy = for {
+          (_, sclBandIndex) <- openSearchLinkTitles.zipWithIndex.find {
+            case (linkTitle, _) => linkTitle.contains("SCENECLASSIFICATION") || linkTitle.contains("SCL")
+          }
+        } yield new SCLConvolutionFilterStrategy(sclBandIndex)
+      }
+      else if (maskMethod == "mask_l1c") {
+        // TODO: Find out best default dilation distance.
+        val dilationDistance =  maskParams.getOrDefault("dilation_distance", "250").toString.toInt
+        // Filter out the entire BandCompositeRasterSource if it is fully clouded.
+        overlappingRasterSources = overlappingRasterSources.filter(compositeSource => {
+          val rasterSource = compositeSource.asInstanceOf[BandCompositeRasterSource].sources.head
+          rasterSource match {
+            case rs: GDALCloudRasterSource =>
+              val polygons: Seq[Polygon] = rs.readCloudFile()
+              // Dilate and merge polygons.
+              val bufferedPolygons = polygons.map(_.buffer(dilationDistance).asInstanceOf[Polygon])
+              val cloudPolygon: Polygon = bufferedPolygons.reduce(
+                (p1,p2) => if (p1 intersects(p2)) p1.union(p2).asInstanceOf[Polygon] else p1
+              )
+              // Filter out rasterSources that are fully clouded.
+              !cloudPolygon.covers(rs.readExtent())
+            case _ => true // Keep raster sources that have no cloud data.
+          }
+        })
+        if (overlappingRasterSources.isEmpty) throw new IllegalArgumentException("No non-clouded raster sources found")
+      }
+    }
 
-    val maskStrategy = for {
-      params <- datacubeParams if params.maskingStrategyParameters != null && params.maskingStrategyParameters.get("method") == "mask_scl_dilation"
-      (_, sclBandIndex) <- openSearchLinkTitles.zipWithIndex.find { case (linkTitle, _) => linkTitle.contains("SCENECLASSIFICATION") || linkTitle.contains("SCL") }
-    } yield new SCLConvolutionFilterStrategy(sclBandIndex)
-
+    val rasterSources: RDD[LayoutTileSource[SpaceTimeKey]] = rasterSourceRDD(overlappingRasterSources, metadata, maxSpatialResolution, openSearchCollectionId)(sc)
     FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc, maskStrategy.getOrElse(NoCloudFilterStrategy), datacubeParams=datacubeParams)
   }
 
@@ -487,18 +515,23 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     val re = RasterExtent(expandToCellSize(targetExtent.extent, maxSpatialResolution), maxSpatialResolution).alignTargetPixels
     val alignment = TargetAlignment(re)
 
-    def rasterSource(path:String,targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
-      if(path.endsWith(".jp2")) {
-        Seq(GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
-      }else if(path.endsWith("MTD_TL.xml")) {
+    def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
+      if(dataPath.endsWith(".jp2")) {
+        val warpOptions = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution))
+        if (cloudPath.isDefined) {
+          Seq(GDALCloudRasterSource(new URL(cloudPath.get._1), new URL(cloudPath.get._2), dataPath, options = warpOptions, targetCellType = targetCellType))
+        }else{
+          Seq(GDALRasterSource(dataPath, options = warpOptions, targetCellType = targetCellType))
+        }
+      }else if(dataPath.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
-        SentinelXMLMetadataRasterSource(new URL(path.replace("/vsicurl/","").replace("/vsis3/eodata","https://finder.creodias.eu/files")),bands)
+        SentinelXMLMetadataRasterSource(new URL(dataPath.replace("/vsicurl/","").replace("/vsis3/eodata","https://finder.creodias.eu/files")),bands)
       }
       else {
         if(experimental) {
-          Seq(GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
+          Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
         }else{
-          Seq(GeoTiffResampleRasterSource(path, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None))
+          Seq(GeoTiffResampleRasterSource(dataPath, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None))
         }
       }
     }
@@ -507,13 +540,19 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       (title, bands) <- openSearchLinkTitlesWithBandIds.toList
       link <- feature.links.find(_.title contains title)
       path = deriveFilePath(link.href)
+      cloudPathOptions = (
+        feature.links.find(_.title contains "FineCloudMask_Tile1_Data").map(_.href.toString),
+        feature.links.find(_.title contains "S2_Level-1C_Tile1_Metadata").map(_.href.toString)
+      )
+      cloudPath = for(x <- cloudPathOptions._1; y <- cloudPathOptions._2) yield (x,y)
+
       //special case handling for data that does not declare nodata properly
       targetCellType = link.title match {
         case x if x.get.contains("SCENECLASSIFICATION_20M") =>  Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
         case x if x.get.startsWith("IMG_DATA_Band_") =>  Some(ConvertTargetCellType(UShortConstantNoDataCellType))
         case _ => None
       }
-    } yield (rasterSource(path,targetCellType, targetExtent,bands), bands)
+    } yield (rasterSource(path, cloudPath, targetCellType, targetExtent, bands), bands)
 
     rasterSources.flatMap(rs_b => rs_b._1.map(rs => (rs,rs_b._2))).toList
   }
