@@ -30,6 +30,29 @@ object BatchProcessingApiCacheTest {
     sequentialDays0(from)
       .takeWhile(date => !(date isAfter to))
   }
+
+  private trait Cache {
+    def query(collectionId: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
+              bandNames: Set[String]): Iterable[CacheKey]
+  }
+
+  private class FixedCache(entries: Iterable[CacheKey]) extends Cache {
+    override def query(collectionId: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
+                       bandNames: Set[String]): Iterable[CacheKey] = entries
+  }
+
+  private class ElasticsearchCache extends Cache {
+    override def query(collectionId: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
+                       bandNames: Set[String]): Iterable[CacheKey] = {
+      // TODO: query cache (Elasticsearch) for entries:
+      //  - with matching collectionId
+      //  - overlapping with geometry
+      //  - between from and to
+      //  - having one of bandNames
+
+      ???
+    }
+  }
 }
 
 class BatchProcessingApiCacheTest {
@@ -104,30 +127,8 @@ class BatchProcessingApiCacheTest {
     searchResponse.hits.hits.map(_._id)
   }
 
-  private def queryCache(collectionId: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
-                 bandNames: Set[String]): Iterable[CacheKey] = {
-    // TODO: query cache (Elasticsearch) for entries:
-    //  - with matching collectionId
-    //  - overlapping with geometry
-    //  - between from and to
-    //  - having one of bandNames
-
-    List() // nothing cached
-    List(CacheKey("31UFS_1_0", LocalDate.of(2021, 8, 10).atStartOfDay(ZoneId.of("UTC")), "B04")) // 1 tile cached but for another date
-    List(CacheKey("31UFS_9_9", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04")) // 1 tile cached but not in the geometry
-    List(CacheKey("31UFS_1_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04")) // 1 tile cached
-    List(CacheKey("31UFS_1_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B03")) // 1 tile cached but the wrong band
-  }
-
-  @Test
-  def determineExpectedTiles(): Unit = {
-    // 0) client wants SHub batch process API to give him data for: collectionId, geometry, dateRange, bands
-    val collectionId = "S2L2A"
-    val geometry: Geometry =
-      MultiPolygon(Extent(4.3670654296875, 51.37863823622004, 5.134735107421875, 51.5189980614127).toPolygon())
-    val from = LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC"))
-    val to = from
-    val bandNames = Set("B04")
+  private def doRequest(collectionId: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
+                        bandNames: Set[String], cache: Cache): Unit = {
 
     // 1) instead of passing this straight on to SHub, we examine the request and determine the expected tiles
     val expectedCacheKeys = for {
@@ -137,12 +138,15 @@ class BatchProcessingApiCacheTest {
     } yield CacheKey(tileId = gridTileId, date, bandName)
 
     // 2) which ones are already in the cache?
-    val cachedCacheKeys = queryCache(collectionId, geometry, from, to, bandNames)
+    val cachedCacheKeys = cache.query(collectionId, geometry, from, to, bandNames)
 
     // 3) send SHub a request for the missing cache keys
     val missingCacheKeys = expectedCacheKeys.toSet diff cachedCacheKeys.toSet
 
-    if (missingCacheKeys.isEmpty) return
+    if (missingCacheKeys.isEmpty) {
+      println("everything's cached, no need for additional requests")
+      return
+    }
 
     val missingMultibandTiles = missingCacheKeys
       .groupBy(cacheKey => (cacheKey.tileId, cacheKey.date))
@@ -174,6 +178,250 @@ class BatchProcessingApiCacheTest {
       .map { case (_, missingBands) => missingBands }
       .reduce {_ union _}
 
-    println(s"> submit a batch request for ${incompleteTiles.size} tiles, for [$lower, $upper] and $missingBands")
+    println(
+      s"""submit a batch request for:
+         | - $collectionId
+         | - ${incompleteTiles.size} positions
+         | - [$lower, $upper]
+         | - $missingBands""".stripMargin)
+  }
+
+  @Test
+  def emptyCache(): Unit = {
+    // 0) client wants SHub batch process API to give him data for: collectionId, geometry, dateRange, bands
+    val collectionId = "S2L2A"
+    val geometry: Geometry =
+      MultiPolygon(Extent(4.3670654296875, 51.37863823622004, 5.134735107421875, 51.5189980614127).toPolygon())
+    val from = LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC"))
+    val to = from
+    val bandNames = Set("B04")
+
+    val cache = new FixedCache(List())
+
+    doRequest(collectionId, geometry, from, to, bandNames, cache)
+  }
+
+  @Test
+  def wrongDateCached(): Unit = {
+    // 0) client wants SHub batch process API to give him data for: collectionId, geometry, dateRange, bands
+    val collectionId = "S2L2A"
+    val geometry: Geometry =
+      MultiPolygon(Extent(4.3670654296875, 51.37863823622004, 5.134735107421875, 51.5189980614127).toPolygon())
+    val from = LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC"))
+    val to = from
+    val bandNames = Set("B04")
+
+    // 1 tile cached but for another date
+    val cache = new FixedCache(List(
+      CacheKey("31UFS_1_0", LocalDate.of(2021, 8, 10).atStartOfDay(ZoneId.of("UTC")), "B04")
+    ))
+
+    doRequest(collectionId, geometry, from, to, bandNames, cache)
+  }
+
+  @Test
+  def wrongPositionCached(): Unit = {
+    // 0) client wants SHub batch process API to give him data for: collectionId, geometry, dateRange, bands
+    val collectionId = "S2L2A"
+    val geometry: Geometry =
+      MultiPolygon(Extent(4.3670654296875, 51.37863823622004, 5.134735107421875, 51.5189980614127).toPolygon())
+    val from = LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC"))
+    val to = from
+    val bandNames = Set("B04")
+
+    // 1 tile cached but not in the geometry
+    val cache = new FixedCache(List(
+      CacheKey("31UFS_9_9", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04")
+    ))
+
+    doRequest(collectionId, geometry, from, to, bandNames, cache)
+  }
+
+  @Test
+  def wrongBandCached(): Unit = {
+    // 0) client wants SHub batch process API to give him data for: collectionId, geometry, dateRange, bands
+    val collectionId = "S2L2A"
+    val geometry: Geometry =
+      MultiPolygon(Extent(4.3670654296875, 51.37863823622004, 5.134735107421875, 51.5189980614127).toPolygon())
+    val from = LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC"))
+    val to = from
+    val bandNames = Set("B04")
+
+    // 1 tile cached but the wrong band
+    val cache = new FixedCache(List(
+      CacheKey("31UFS_1_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B03")
+    ))
+
+    doRequest(collectionId, geometry, from, to, bandNames, cache)
+  }
+
+  @Test
+  def oneTileCached(): Unit = {
+    // 0) client wants SHub batch process API to give him data for: collectionId, geometry, dateRange, bands
+    val collectionId = "S2L2A"
+    val geometry: Geometry =
+      MultiPolygon(Extent(4.3670654296875, 51.37863823622004, 5.134735107421875, 51.5189980614127).toPolygon())
+    val from = LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC"))
+    val to = from
+    val bandNames = Set("B04")
+
+    // 1 tile cached
+    val cache = new FixedCache(List(
+      CacheKey("31UFS_1_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04")
+    ))
+
+    doRequest(collectionId, geometry, from, to, bandNames, cache)
+  }
+
+  @Test
+  def test1(): Unit = {
+    val collectionId = "S2L2A"
+    val geometry: Geometry =
+      MultiPolygon(Extent(4.5049056649529309, 51.2778631700642364, 4.9462099707168559, 51.3966497916229912).toPolygon())
+    val from = LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC"))
+    val to = from plusDays 1
+    val bandNames = Set("B04")
+
+    val cache = new FixedCache(List(
+      CacheKey("31UFS_0_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_1_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_0_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_1_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+
+      CacheKey("31UFS_2_0", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_3_0", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_2_1", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_3_1", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04")
+    ))
+
+    doRequest(collectionId, geometry, from, to, bandNames, cache)
+  }
+
+  @Test
+  def test2(): Unit = {
+    val collectionId = "S2L2A"
+    val geometry: Geometry =
+      MultiPolygon(
+        Extent(4.466034003575176, 51.27379477302177, 4.652641953920658, 51.41225921706625).toPolygon(),
+        Extent(4.903579509277572, 51.265666231556011, 4.962355741802364, 51.409347158480443).toPolygon()
+      )
+    val from = LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC"))
+    val to = from plusDays 1
+    val bandNames = Set("B04")
+
+    val cache = new FixedCache(List(
+      CacheKey("31UFS_0_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_1_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_0_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_1_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+
+      CacheKey("31UFS_3_0", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_3_1", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04")
+    ))
+
+    doRequest(collectionId, geometry, from, to, bandNames, cache)
+  }
+
+  @Test
+  def test3(): Unit = {
+    val collectionId = "S2L2A"
+    val geometry: Geometry =
+      MultiPolygon(Extent(4.5049056649529309, 51.2778631700642364, 4.9462099707168559, 51.3966497916229912).toPolygon())
+    val from = LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC"))
+    val to = from plusDays 1
+    val bandNames = Set("B04")
+
+    val cache = new FixedCache(List(
+      CacheKey("31UFS_0_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_1_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_2_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_0_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_1_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_2_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+
+      CacheKey("31UFS_1_0", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_2_0", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_3_0", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_1_1", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_2_1", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_3_1", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04")
+    ))
+
+    doRequest(collectionId, geometry, from, to, bandNames, cache)
+  }
+
+  @Test
+  def test4(): Unit = {
+    val collectionId = "S2L2A"
+    val geometry: Geometry =
+      MultiPolygon(Extent(4.5049056649529309, 51.2778631700642364, 4.9462099707168559, 51.3966497916229912).toPolygon())
+    val from = LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC"))
+    val to = from plusDays 1
+    val bandNames = Set("B0", "B1")
+
+    val cache = new FixedCache(List(
+      CacheKey("31UFS_0_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B0"),
+
+      CacheKey("31UFS_1_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B0"),
+      CacheKey("31UFS_1_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B1"),
+
+      CacheKey("31UFS_2_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B0"),
+      CacheKey("31UFS_2_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B1"),
+
+      CacheKey("31UFS_3_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B1"),
+
+      CacheKey("31UFS_0_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B1"),
+
+      CacheKey("31UFS_1_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B0"),
+      CacheKey("31UFS_1_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B1"),
+
+      CacheKey("31UFS_2_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B0"),
+      CacheKey("31UFS_2_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B1"),
+
+      CacheKey("31UFS_3_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B1"),
+
+      CacheKey("31UFS_1_0", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B0"),
+
+      CacheKey("31UFS_2_0", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B1"),
+
+      CacheKey("31UFS_1_1", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B0"),
+      CacheKey("31UFS_1_1", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B1"),
+
+      CacheKey("31UFS_2_1", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B1")
+    ))
+
+    doRequest(collectionId, geometry, from, to, bandNames, cache)
+  }
+
+  @Test
+  def allCached(): Unit = {
+    val collectionId = "S2L2A"
+    val geometry: Geometry =
+      MultiPolygon(Extent(4.5049056649529309, 51.2778631700642364, 4.9462099707168559, 51.3966497916229912).toPolygon())
+    val from = LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC"))
+    val to = from plusDays 1
+    val bandNames = Set("B04")
+
+    val cache = new FixedCache(List(
+      CacheKey("31UFS_0_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_1_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_2_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_3_0", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_0_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_1_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_2_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_3_1", LocalDate.of(2021, 8, 17).atStartOfDay(ZoneId.of("UTC")), "B04"),
+
+      CacheKey("31UFS_0_0", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_1_0", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_2_0", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_3_0", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_0_1", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_1_1", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_2_1", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04"),
+      CacheKey("31UFS_3_1", LocalDate.of(2021, 8, 18).atStartOfDay(ZoneId.of("UTC")), "B04")
+    ))
+
+    doRequest(collectionId, geometry, from, to, bandNames, cache)
   }
 }
