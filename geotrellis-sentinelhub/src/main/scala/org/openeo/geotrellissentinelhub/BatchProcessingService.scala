@@ -61,7 +61,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     // TODO: batch request missing tiles P = R - C into f (how to do this efficiently across space/time/band dimensions?)
     // TODO: if P available: add P to the cache (after polling so not in this "thread"), splitting bands
     // result: f now contains R = C + P for load_collection
-    // TODO: subfolder is no longer equal to batch request ID
+    // FIXME: subfolder is no longer equal to batch request ID
 
     val dateTimes = new DefaultCatalogApi(endpoint).dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
       accessToken, queryProperties = mapDataFilters(metadata_properties))
