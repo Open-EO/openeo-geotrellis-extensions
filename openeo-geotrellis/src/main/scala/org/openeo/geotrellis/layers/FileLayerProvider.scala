@@ -27,6 +27,7 @@ import java.nio.file.{Path, Paths}
 import java.time.temporal.ChronoUnit
 import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
 import java.util.concurrent.TimeUnit
+import scala.collection.JavaConverters._
 import scala.collection.immutable
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
@@ -271,10 +272,20 @@ object FileLayerProvider {
     }
 
     // Convert RasterSources to RasterRegions.
+    val maskParams = datacubeParams match {
+      case Some(x) => x.maskingStrategyParameters.asScala.toMap
+      case None => Map[String, Object]()
+    }
     val rasterRegions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] =
       filteredSources
         .flatMap { tiledLayoutSource =>
-          tiledLayoutSource.keyedRasterRegions()
+          var rasterRegions = tiledLayoutSource.keyedRasterRegions()
+          if (maskParams.getOrElse("method", "").toString == "mask_l1c") {
+            val source = tiledLayoutSource.source.asInstanceOf[BandCompositeRasterSource].sources.head
+            rasterRegions = GDALCloudRasterSource.filterRasterRegions(rasterRegions, source, metadata.crs,
+                                                                      metadata.layout, maskParams)
+          }
+          rasterRegions
             //this filter step reduces the 'Shuffle Write' size of this stage, so it already
             .filter({case(key, rasterRegion) => metadata.extent.intersects(key.spatialKey.extent(metadata.layout)) } )
             .map { case (key, rasterRegion) => (key, (rasterRegion, tiledLayoutSource.source.name)) }
@@ -452,8 +463,8 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     // Handle maskingStrategyParameters.
     var maskStrategy : Option[CloudFilterStrategy] = None
-    val maskParams = datacubeParams.get.maskingStrategyParameters
-    if (datacubeParams.isDefined && maskParams != null) {
+    if (datacubeParams.isDefined && datacubeParams.get.maskingStrategyParameters != null) {
+      val maskParams = datacubeParams.get.maskingStrategyParameters
       val maskMethod = maskParams.getOrDefault("method", "").toString
       if (maskMethod == "mask_scl_dilation") {
         maskStrategy = for {
@@ -462,27 +473,8 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
           }
         } yield new SCLConvolutionFilterStrategy(sclBandIndex)
       }
-      else if (maskMethod == "mask_l1c") {
-        // TODO: Find out best default dilation distance.
-        val dilationDistance =  maskParams.getOrDefault("dilation_distance", "250").toString.toInt
-        // Filter out the entire BandCompositeRasterSource if it is fully clouded.
-        overlappingRasterSources = overlappingRasterSources.filter(compositeSource => {
-          val rasterSource = compositeSource.asInstanceOf[BandCompositeRasterSource].sources.head
-          rasterSource match {
-            case rs: GDALCloudRasterSource =>
-              val polygons: Seq[Polygon] = rs.readCloudFile()
-              // Dilate and merge polygons.
-              val bufferedPolygons = polygons.map(_.buffer(dilationDistance).asInstanceOf[Polygon])
-              val cloudPolygon: Polygon = bufferedPolygons.reduce(
-                (p1,p2) => if (p1 intersects(p2)) p1.union(p2).asInstanceOf[Polygon] else p1
-              )
-              // Filter out rasterSources that are fully clouded.
-              !cloudPolygon.covers(rs.readExtent())
-            case _ => true // Keep raster sources that have no cloud data.
-          }
-        })
-        if (overlappingRasterSources.isEmpty) throw new IllegalArgumentException("No non-clouded raster sources found")
-      }
+      else if (maskMethod == "mask_l1c")
+        overlappingRasterSources = GDALCloudRasterSource.filterRasterSources(overlappingRasterSources, maskParams)
     }
 
     val rasterSources: RDD[LayoutTileSource[SpaceTimeKey]] = rasterSourceRDD(overlappingRasterSources, metadata, maxSpatialResolution, openSearchCollectionId)(sc)
