@@ -5,7 +5,8 @@ import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model._
 
 import java.io.FileOutputStream
-import java.nio.file.Paths
+import java.time.{LocalDate, ZonedDateTime, ZoneId}
+import java.nio.file.{Files, Path, Paths}
 import java.util
 import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
@@ -14,6 +15,10 @@ import scala.compat.java8.FunctionConverters._
 object S3Service {
   class StacMetadataUnavailableException extends IllegalStateException
   class UnknownFolderException extends IllegalArgumentException
+
+  private implicit class RichPath(path: Path) {
+    def /(other: String): Path = path.resolve(other)
+  }
 }
 
 class S3Service {
@@ -60,18 +65,10 @@ class S3Service {
       .map(_.key())
 
     def download(key: String): Unit = {
-      val getObjectRequest = GetObjectRequest.builder()
-        .bucket(bucket_name)
-        .key(key)
-        .build()
-
       val fileName = key.split("/").last
       val outputFile = Paths.get(target_dir, fileName)
 
-      val out = new FileOutputStream(outputFile.toFile)
-
-      try s3Client.getObject(getObjectRequest, ResponseTransformer.toOutputStream[GetObjectResponse](out))
-      finally out.close()
+      this.download(s3Client, bucket_name, key, outputFile)
     }
 
     val tiffKeys = keys
@@ -113,5 +110,47 @@ class S3Service {
     listObjectsResponse.contents().stream()
       .map[ObjectIdentifier](toObjectIdentifier.asJava)
       .collect(util.stream.Collectors.toList[ObjectIdentifier])
+  }
+
+  def downloadBatchProcessResults(bucketName: String, subfolder: String, targetDir: Path, bandNames: Seq[String],
+                                  onDownloaded: (String, ZonedDateTime, String) => Unit): Unit = {
+    import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
+
+    // FIXME: write bands to separate files (avoid intermediary/temp geotiffs?)
+    // TODO: move details elsewhere?
+    require(bandNames.size == 1, "currently only single band is implemented")
+
+    val s3Client = S3Client.builder()
+      .build()
+
+    val tiffKeys = listObjectIdentifiers(s3Client, bucketName, prefix = subfolder)
+      .asScala
+      .map(_.key())
+      .filter(_.endsWith(".tif"))
+
+    tiffKeys foreach { key =>
+      val Array(_, tileId, fileName) = key.split("/")
+      val date = fileName.split(raw"\.").head.drop(1)
+      val bandName = bandNames.head
+
+      val outputFile = targetDir / date / tileId / (bandName + ".tif")
+
+      Files.createDirectories(outputFile.getParent)
+      download(s3Client, bucketName, key, outputFile)
+
+      onDownloaded(tileId, LocalDate.parse(date, BASIC_ISO_DATE).atStartOfDay(ZoneId.of("UTC")), bandName)
+    }
+  }
+
+  private def download(s3Client: S3Client, bucketName: String, key: String, outputFile: Path): Unit = {
+    val getObjectRequest = GetObjectRequest.builder()
+      .bucket(bucketName)
+      .key(key)
+      .build()
+
+    val out = new FileOutputStream(outputFile.toFile)
+
+    try s3Client.getObject(getObjectRequest, ResponseTransformer.toOutputStream[GetObjectResponse](out))
+    finally out.close()
   }
 }

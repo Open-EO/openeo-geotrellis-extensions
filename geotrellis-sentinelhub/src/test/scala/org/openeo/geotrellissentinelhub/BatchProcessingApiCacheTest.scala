@@ -7,8 +7,10 @@ import cats.syntax.either._
 import com.sksamuel.elastic4s.http.JavaClient
 import com.sksamuel.elastic4s.{ElasticClient, ElasticProperties, RequestSuccess, TimestampElasticDate}
 import com.sksamuel.elastic4s.ElasticDsl._
+import com.sksamuel.elastic4s.requests.get.GetResponse
 import geotrellis.vector.io.json.GeoJson
 
+import java.nio.file.Paths
 import java.time.LocalTime
 /*import com.sksamuel.elastic4s.requests.searches.GeoPoint
 import com.sksamuel.elastic4s.requests.searches.queries.geo.ShapeRelation.INTERSECTS
@@ -39,7 +41,7 @@ object BatchProcessingApiCacheTest {
   private val clientSecret = Utils.clientSecret
 
   private case class CacheEntry(tileId: String, date: ZonedDateTime, bandName: String, location: Geometry = null) {
-    def filePath: String = s"/tmp/cache/$tileId-${BASIC_ISO_DATE format date.toLocalDate}-$bandName.tif"
+    def filePath: String = s"/tmp/cache/${BASIC_ISO_DATE format date.toLocalDate}/$tileId/$bandName.tif"
   }
 
   private case class Hit(_id: String, _source: Json)
@@ -57,6 +59,8 @@ object BatchProcessingApiCacheTest {
       .takeWhile(date => !(date isAfter to))
   }
 
+  private def elasticClient: ElasticClient = ElasticClient(JavaClient(ElasticProperties("http://localhost:9200")))
+
   private trait Cache {
     def query(datasetId: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime, // FIXME: accept more geometries
               bandNames: Set[String]): Iterable[CacheEntry]
@@ -73,8 +77,6 @@ object BatchProcessingApiCacheTest {
 
   private class ElasticsearchCache extends Cache {
     private val cacheIndex = "cache" // dataset ID "S2L2A"
-
-    private def elasticClient: ElasticClient = ElasticClient(JavaClient(ElasticProperties("http://localhost:9200")))
 
     override def query(datasetId: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
                        bandNames: Set[String]): Iterable[CacheEntry] = {
@@ -107,6 +109,7 @@ object BatchProcessingApiCacheTest {
                   .lte(TimestampElasticDate(to.toInstant.toEpochMilli)),
                 termsQuery("bandName", bandNames)
               ))
+            .size(10000)
         }.await
 
         resp match {
@@ -122,16 +125,20 @@ object BatchProcessingApiCacheTest {
     }
 
     override def add(datasetId: String, entry: CacheEntry): Unit = {
+      val tileId = entry.tileId
+      val date = ISO_OFFSET_DATE_TIME format entry.date
+      val bandName = entry.bandName
+
       val client = elasticClient
 
       try {
         client.execute {
-          indexInto(cacheIndex).doc(
+          indexInto(cacheIndex).id(s"${tileId}_${date}_${bandName}").doc(
             s"""
                |{
-               |  "tileId": "${entry.tileId}",
-               |  "date": "${ISO_OFFSET_DATE_TIME format entry.date}",
-               |  "bandName": "${entry.bandName}",
+               |  "tileId": "${tileId}",
+               |  "date": "${date}",
+               |  "bandName": "${bandName}",
                |  "location": ${entry.location.toGeoJson()},
                |  "filePath": "${entry.filePath}"
                |}""".stripMargin)
@@ -221,6 +228,30 @@ class BatchProcessingApiCacheTest {
     }
   }
 
+  private def getGeometry(tileId: String): Geometry = {
+    // TODO: improve this JSON parsing (and everywhere else)
+    val client = elasticClient
+
+    try {
+      val resp = client.execute {
+        get(tileId).from(featureIndex)
+      }.await
+
+      val geometry = resp match {
+        case result: RequestSuccess[GetResponse] =>
+          val source = decode[Json](result.result.sourceAsString)
+            .valueOr(throw _)
+
+          for {
+            o <- source.asObject
+            location <- o("location")
+          } yield GeoJson.parse[MultiPolygon](location.noSpaces)
+      }
+
+      geometry.get
+    } finally client.close()
+  }
+
   private def getNarrowerRequest(datasetId: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
                                  bandNames: Set[String], cache: Cache): Option[(Seq[(String, Geometry)], ZonedDateTime, ZonedDateTime, Set[String])] = {
 
@@ -238,7 +269,7 @@ class BatchProcessingApiCacheTest {
     // TODO: optimize?
     val missingTiles = expectedTiles
       .filterNot { case (tileId, _, date, bandName) =>
-        cacheEntries.exists(cachedTile => cachedTile.tileId == tileId && cachedTile.date == date && cachedTile.bandName == bandName)
+        cacheEntries.exists(cachedTile => cachedTile.tileId == tileId && cachedTile.date.isEqual(date) && cachedTile.bandName == bandName)
       }
       .toSet
 
@@ -589,6 +620,7 @@ class BatchProcessingApiCacheTest {
     return*/
 
     val geometry = bbox.extent.toPolygon()
+    val cache: Cache = new ElasticsearchCache
 
     val narrowerRequest = getNarrowerRequest(
       datasetId,
@@ -596,11 +628,10 @@ class BatchProcessingApiCacheTest {
       from.atStartOfDay(utc),
       to.atStartOfDay(utc),
       bandNames.toSet, // FIXME: should probably be a Seq to maintain band order
-      new ElasticsearchCache
+      cache
     )
 
     narrowerRequest foreach { case (incompleteTiles, lower, upper, missingBands) =>
-      // TODO: send SHub this request
       val batchProcessingService = new BatchProcessingService(
         endpoint,
         bucketName = "openeo-sentinelhub",
@@ -630,6 +661,23 @@ class BatchProcessingApiCacheTest {
       )
 
       awaitDone(batchProcessingService, Seq(batchRequestId))
+
+      // val batchRequestId = "3db6d7ff-094f-4150-b418-8e8375cfa4da"
+
+      def cacheTile(tileId: String, date: ZonedDateTime, bandName: String): Unit = {
+        val location = getGeometry(tileId)
+        val entry = CacheEntry(tileId, date, bandName, location)
+        cache.add(datasetId, entry)
+        println(s"cached $entry")
+      }
+
+      new S3Service().downloadBatchProcessResults(
+        batchProcessingService.bucketName,
+        subfolder = batchRequestId,
+        targetDir = Paths.get("/tmp/cache"),
+        bandNames,
+        cacheTile
+      )
     }
   }
 

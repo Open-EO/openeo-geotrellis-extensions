@@ -66,6 +66,8 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     val dateTimes = new DefaultCatalogApi(endpoint).dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
       accessToken, queryProperties = mapDataFilters(metadata_properties))
 
+    // TODO: handle empty dateTimes = catalog reports no data for these constraints
+
     val batchProcessingApi = new BatchProcessingApi(endpoint)
     val batchRequestId = batchProcessingApi.createBatchProcess(
       dataset_id,
