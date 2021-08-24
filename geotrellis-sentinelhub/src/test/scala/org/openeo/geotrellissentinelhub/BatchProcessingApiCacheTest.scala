@@ -650,7 +650,7 @@ class BatchProcessingApiCacheTest {
 
       val multiPolygonsCrs = LatLng
 
-      val Some(batchRequestId) = batchProcessingService.start_batch_process(
+      val batchRequestId = batchProcessingService.start_batch_process(
         collectionId,
         datasetId,
         multiPolygons,
@@ -663,24 +663,29 @@ class BatchProcessingApiCacheTest {
         processing_options = Collections.emptyMap[String, Any]
       )
 
-      awaitDone(batchProcessingService, Seq(batchRequestId))
+      // val batchRequestId = Some("3db6d7ff-094f-4150-b418-8e8375cfa4da")
 
-      // val batchRequestId = "3db6d7ff-094f-4150-b418-8e8375cfa4da"
+      batchRequestId match {
+        case Some(id) =>
+          awaitDone(batchProcessingService, Seq(id))
 
-      def cacheTile(tileId: String, date: ZonedDateTime, bandName: String): Unit = {
-        val location = getGeometry(tileId)
-        val entry = CacheEntry(tileId, date, bandName, location)
-        cache.add(datasetId, entry)
-        println(s"cached $entry")
+          def cacheTile(tileId: String, date: ZonedDateTime, bandName: String): Unit = {
+            val location = getGeometry(tileId)
+            val entry = CacheEntry(tileId, date, bandName, location)
+            cache.add(datasetId, entry)
+            println(s"cached $entry")
+          }
+
+          new S3Service().downloadBatchProcessResults(
+            batchProcessingService.bucketName,
+            subfolder = id,
+            targetDir = Paths.get("/tmp/cache"),
+            bandNames,
+            cacheTile
+          )
+
+        case _ => println("no data for narrower request so no batch process")
       }
-
-      new S3Service().downloadBatchProcessResults(
-        batchProcessingService.bucketName,
-        subfolder = batchRequestId,
-        targetDir = Paths.get("/tmp/cache"),
-        bandNames,
-        cacheTile
-      )
     }
   }
 

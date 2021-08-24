@@ -66,7 +66,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     val dateTimes = new DefaultCatalogApi(endpoint).dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
       accessToken, queryProperties = mapDataFilters(metadata_properties))
 
-    if (dateTimes.isEmpty) return None
+    if (dateTimes.isEmpty) return None // TODO: maybe an exception with details as to why we're not starting a batch process is a better option
 
     val batchProcessingApi = new BatchProcessingApi(endpoint)
     val batchRequestId = batchProcessingApi.createBatchProcess(
