@@ -17,7 +17,7 @@ class BatchProcessingServiceTest {
   @Ignore
   @Test
   def startBatchProcess(): Unit = {
-    val batchRequestId = batchProcessingService.start_batch_process(
+    val Some(batchRequestId) = batchProcessingService.start_batch_process(
       collection_id = "sentinel-1-grd",
       dataset_id = "S1GRD",
       bbox = Extent(2.59003, 51.069, 2.8949, 51.2206),
@@ -36,7 +36,7 @@ class BatchProcessingServiceTest {
   @Ignore
   @Test
   def startBatchProcessForOrbitDirection(): Unit = {
-    val batchRequestId = batchProcessingService.start_batch_process(
+    val Some(batchRequestId) = batchProcessingService.start_batch_process(
       collection_id = "sentinel-1-grd",
       dataset_id = "S1GRD",
       bbox = Extent(2.59003, 51.069, 2.8949, 51.2206),
@@ -131,7 +131,7 @@ class BatchProcessingServiceTest {
 
     val crs = LatLng
 
-    val batchRequestId = batchProcessingService.start_batch_process(
+    val Some(batchRequestId) = batchProcessingService.start_batch_process(
       collection_id = "sentinel-1-grd",
       dataset_id = "S1GRD",
       polygons,

@@ -31,7 +31,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
   def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
                           to_date: String, band_names: util.List[String], sampleType: SampleType,
                           metadata_properties: util.Map[String, Any],
-                          processing_options: util.Map[String, Any]): String = {
+                          processing_options: util.Map[String, Any]): Option[String] = {
     val polygons = Array(MultiPolygon(bbox.toPolygon()))
     val polygonsCrs = CRS.fromName(bbox_srs)
 
@@ -42,7 +42,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
   def start_batch_process(collection_id: String, dataset_id: String, polygons: Array[MultiPolygon],
                           crs: CRS, from_date: String, to_date: String, band_names: util.List[String],
                           sampleType: SampleType, metadata_properties: util.Map[String, Any],
-                          processing_options: util.Map[String, Any]): String = {
+                          processing_options: util.Map[String, Any]): Option[String] = {
     // TODO: implement retries
     // workaround for bug where upper bound is considered inclusive in OpenEO
     val (from, to) = includeEndDay(from_date, to_date)
@@ -66,7 +66,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     val dateTimes = new DefaultCatalogApi(endpoint).dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
       accessToken, queryProperties = mapDataFilters(metadata_properties))
 
-    // TODO: handle empty dateTimes = catalog reports no data for these constraints
+    if (dateTimes.isEmpty) return None
 
     val batchProcessingApi = new BatchProcessingApi(endpoint)
     val batchRequestId = batchProcessingApi.createBatchProcess(
@@ -85,7 +85,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
 
     batchProcessingApi.startBatchProcess(batchRequestId, accessToken)
 
-    batchRequestId
+    Some(batchRequestId)
   }
 
   // flattens n MultiPolygons into 1 by taking their polygon exteriors

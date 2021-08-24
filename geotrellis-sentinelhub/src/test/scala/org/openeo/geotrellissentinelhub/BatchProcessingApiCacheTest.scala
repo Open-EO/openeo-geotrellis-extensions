@@ -120,6 +120,7 @@ object BatchProcessingApiCacheTest {
               date = ZonedDateTime parse hit.sourceField("date").asInstanceOf[String],
               bandName = hit.sourceField("bandName").asInstanceOf[String]
             ))
+            // FIXME: handle failures
         }
       } finally client.close()
     }
@@ -246,6 +247,8 @@ class BatchProcessingApiCacheTest {
             o <- source.asObject
             location <- o("location")
           } yield GeoJson.parse[MultiPolygon](location.noSpaces)
+
+          // FIXME: handle failures
       }
 
       geometry.get
@@ -647,7 +650,7 @@ class BatchProcessingApiCacheTest {
 
       val multiPolygonsCrs = LatLng
 
-      val batchRequestId = batchProcessingService.start_batch_process(
+      val Some(batchRequestId) = batchProcessingService.start_batch_process(
         collectionId,
         datasetId,
         multiPolygons,
