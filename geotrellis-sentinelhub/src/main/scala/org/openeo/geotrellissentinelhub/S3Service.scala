@@ -15,10 +15,6 @@ import scala.compat.java8.FunctionConverters._
 object S3Service {
   class StacMetadataUnavailableException extends IllegalStateException
   class UnknownFolderException extends IllegalArgumentException
-
-  private implicit class RichPath(path: Path) {
-    def /(other: String): Path = path.resolve(other)
-  }
 }
 
 class S3Service {
@@ -133,9 +129,9 @@ class S3Service {
       val date = fileName.split(raw"\.").head.drop(1)
       val bandName = bandNames.head
 
-      val outputFile = targetDir / date / tileId / (bandName + ".tif")
+      val outputFile = targetDir.resolve(s"${tileId}_${date}_${bandName}.tif")
 
-      Files.createDirectories(outputFile.getParent)
+      Files.createDirectories(outputFile.getParent) // TODO: this happens for every key
       download(s3Client, bucketName, key, outputFile)
 
       onDownloaded(tileId, LocalDate.parse(date, BASIC_ISO_DATE).atStartOfDay(ZoneId.of("UTC")), bandName)

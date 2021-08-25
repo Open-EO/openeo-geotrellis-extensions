@@ -10,8 +10,9 @@ import com.sksamuel.elastic4s.ElasticDsl._
 import com.sksamuel.elastic4s.requests.get.GetResponse
 import geotrellis.vector.io.json.GeoJson
 
-import java.nio.file.Paths
+import java.nio.file.{Files, Path, Paths}
 import java.time.LocalTime
+import java.util.UUID
 /*import com.sksamuel.elastic4s.requests.searches.GeoPoint
 import com.sksamuel.elastic4s.requests.searches.queries.geo.ShapeRelation.INTERSECTS
 import com.sksamuel.elastic4s.requests.searches.queries.geo.{InlineShape, PointShape}*/
@@ -40,8 +41,10 @@ object BatchProcessingApiCacheTest {
   private val clientId = Utils.clientId
   private val clientSecret = Utils.clientSecret
 
-  private case class CacheEntry(tileId: String, date: ZonedDateTime, bandName: String, location: Geometry = null) {
-    def filePath: String = s"/tmp/cache/${BASIC_ISO_DATE format date.toLocalDate}/$tileId/$bandName.tif"
+  private case class CacheEntry(tileId: String, date: ZonedDateTime, bandName: String, location: Geometry = null, empty: Boolean = false) {
+    def filePath: Option[Path] =
+      if (empty) None
+      else Some(Paths.get(s"/tmp/cache/${tileId}_${BASIC_ISO_DATE format date.toLocalDate}_${bandName}.tif"))
   }
 
   private case class Hit(_id: String, _source: Json)
@@ -63,14 +66,14 @@ object BatchProcessingApiCacheTest {
 
   private trait Cache {
     def query(datasetId: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime, // FIXME: accept more geometries
-              bandNames: Set[String]): Iterable[CacheEntry]
+              bandNames: Seq[String]): Iterable[CacheEntry]
 
     def add(datasetId: String, entry: CacheEntry)
   }
 
   private class FixedCache(entries: Iterable[CacheEntry]) extends Cache {
     override def query(datasetId: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
-                       bandNames: Set[String]): Iterable[CacheEntry] = entries
+                       bandNames: Seq[String]): Iterable[CacheEntry] = entries
 
     override def add(datasetId: String, entry: CacheEntry): Unit = ()
   }
@@ -79,7 +82,7 @@ object BatchProcessingApiCacheTest {
     private val cacheIndex = "cache" // dataset ID "S2L2A"
 
     override def query(datasetId: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
-                       bandNames: Set[String]): Iterable[CacheEntry] = {
+                       bandNames: Seq[String]): Iterable[CacheEntry] = {
       // query cache (Elasticsearch) for entries:
       //  - with matching datasetId
       //  - overlapping with geometry
@@ -118,7 +121,8 @@ object BatchProcessingApiCacheTest {
             results.result.hits.hits.map(hit => CacheEntry(
               tileId = hit.sourceField("tileId").asInstanceOf[String],
               date = ZonedDateTime parse hit.sourceField("date").asInstanceOf[String],
-              bandName = hit.sourceField("bandName").asInstanceOf[String]
+              bandName = hit.sourceField("bandName").asInstanceOf[String],
+              empty = hit.sourceField("filePath") == null // TODO: get actual value
             ))
             // FIXME: handle failures
         }
@@ -126,22 +130,18 @@ object BatchProcessingApiCacheTest {
     }
 
     override def add(datasetId: String, entry: CacheEntry): Unit = {
-      val tileId = entry.tileId
-      val date = ISO_OFFSET_DATE_TIME format entry.date
-      val bandName = entry.bandName
-
       val client = elasticClient
 
       try {
         client.execute {
-          indexInto(cacheIndex).id(s"${tileId}_${date}_${bandName}").doc(
+          indexInto(cacheIndex).id(s"${entry.tileId}_${BASIC_ISO_DATE format entry.date.toLocalDate}_${entry.bandName}").doc(
             s"""
                |{
-               |  "tileId": "${tileId}",
-               |  "date": "${date}",
-               |  "bandName": "${bandName}",
+               |  "tileId": "${entry.tileId}",
+               |  "date": "${ISO_OFFSET_DATE_TIME format entry.date}",
+               |  "bandName": "${entry.bandName}",
                |  "location": ${entry.location.toGeoJson()},
-               |  "filePath": "${entry.filePath}"
+               |  "filePath": ${entry.filePath.map(path => s""""$path"""").orNull}
                |}""".stripMargin)
         }.await
       } finally client.close()
@@ -256,7 +256,7 @@ class BatchProcessingApiCacheTest {
   }
 
   private def getNarrowerRequest(datasetId: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
-                                 bandNames: Set[String], cache: Cache): Option[(Seq[(String, Geometry)], ZonedDateTime, ZonedDateTime, Set[String])] = {
+                                 bandNames: Seq[String], cache: Cache): (Path, Option[(Seq[(String, Geometry)], ZonedDateTime, ZonedDateTime, Seq[String])]) = {
 
     // 1) instead of passing this straight on to SHub, we examine the request and determine the expected tiles
     val expectedTiles = for {
@@ -276,11 +276,23 @@ class BatchProcessingApiCacheTest {
       .filterNot { case (tileId, _, date, bandName) =>
         cacheEntries.exists(cachedTile => cachedTile.tileId == tileId && cachedTile.date.isEqual(date) && cachedTile.bandName == bandName)
       }
-      .toSet
+
+    val jobDirectory = Paths.get("/tmp", "pocs", UUID.randomUUID().toString)
+    Files.createDirectories(jobDirectory)
+
+    println(s"created job directory $jobDirectory")
+
+    for {
+      entry <- cacheEntries
+      filePath <- entry.filePath
+    } {
+      Files.copy(filePath, jobDirectory.resolve(filePath.getFileName))
+      println(s"copied $filePath from the distant past to $jobDirectory")
+    }
 
     if (missingTiles.isEmpty) {
       println("everything's cached, no need for additional requests")
-      return None
+      return (jobDirectory, None)
     }
 
     println(s"${missingTiles.size} tiles are not in the cache")
@@ -289,7 +301,7 @@ class BatchProcessingApiCacheTest {
       .groupBy { case (tileId, _, date, _) => (tileId, date) }
       .mapValues { cacheKeys =>
         val (_, geometry, _, _) = cacheKeys.head // same tile ID so same geometry
-        val bandNames = cacheKeys.map { case (_, _, _, bandName) => bandName }
+        val bandNames = cacheKeys.map { case (_, _, _, bandName) => bandName }.toSet
         (geometry, bandNames)
       }
       .toSeq
@@ -317,6 +329,8 @@ class BatchProcessingApiCacheTest {
       .map { case (_, (_, missingBands)) => missingBands }
       .reduce {_ union _}
 
+    val missingBandsOrdered = bandNames.filter(missingBands.contains)
+
     println(
       s"""submit a batch request for:
          | - $datasetId
@@ -324,7 +338,7 @@ class BatchProcessingApiCacheTest {
          | - [$lower, $upper]
          | - $missingBands""".stripMargin)
 
-    Some((incompleteTiles, lower, upper, missingBands))
+    (jobDirectory, Some((incompleteTiles, lower, upper, missingBandsOrdered)))
   }
 
   @Test
@@ -335,7 +349,7 @@ class BatchProcessingApiCacheTest {
       MultiPolygon(Extent(4.3670654296875, 51.37863823622004, 5.134735107421875, 51.5189980614127).toPolygon())
     val from = LocalDate.of(2021, 8, 17).atStartOfDay(utc)
     val to = from
-    val bandNames = Set("B04")
+    val bandNames = Seq("B04")
 
     val cache = new FixedCache(List())
 
@@ -350,7 +364,7 @@ class BatchProcessingApiCacheTest {
       MultiPolygon(Extent(4.3670654296875, 51.37863823622004, 5.134735107421875, 51.5189980614127).toPolygon())
     val from = LocalDate.of(2021, 8, 17).atStartOfDay(utc)
     val to = from
-    val bandNames = Set("B04")
+    val bandNames = Seq("B04")
 
     // 1 tile cached but for another date
     val cache = new FixedCache(List(
@@ -368,7 +382,7 @@ class BatchProcessingApiCacheTest {
       MultiPolygon(Extent(4.3670654296875, 51.37863823622004, 5.134735107421875, 51.5189980614127).toPolygon())
     val from = LocalDate.of(2021, 8, 17).atStartOfDay(utc)
     val to = from
-    val bandNames = Set("B04")
+    val bandNames = Seq("B04")
 
     // 1 tile cached but not in the geometry
     val cache = new FixedCache(List(
@@ -386,7 +400,7 @@ class BatchProcessingApiCacheTest {
       MultiPolygon(Extent(4.3670654296875, 51.37863823622004, 5.134735107421875, 51.5189980614127).toPolygon())
     val from = LocalDate.of(2021, 8, 17).atStartOfDay(utc)
     val to = from
-    val bandNames = Set("B04")
+    val bandNames = Seq("B04")
 
     // 1 tile cached but the wrong band
     val cache = new FixedCache(List(
@@ -404,7 +418,7 @@ class BatchProcessingApiCacheTest {
       MultiPolygon(Extent(4.3670654296875, 51.37863823622004, 5.134735107421875, 51.5189980614127).toPolygon())
     val from = LocalDate.of(2021, 8, 17).atStartOfDay(utc)
     val to = from
-    val bandNames = Set("B04")
+    val bandNames = Seq("B04")
 
     // 1 tile cached
     val cache = new FixedCache(List(
@@ -421,7 +435,7 @@ class BatchProcessingApiCacheTest {
       MultiPolygon(Extent(4.5049056649529309, 51.2778631700642364, 4.9462099707168559, 51.3966497916229912).toPolygon())
     val from = LocalDate.of(2021, 8, 17).atStartOfDay(utc)
     val to = from plusDays 1
-    val bandNames = Set("B04")
+    val bandNames = Seq("B04")
 
     val cache = new FixedCache(List(
       CacheEntry("31UFS_0_0", LocalDate.of(2021, 8, 17).atStartOfDay(utc), "B04"),
@@ -448,7 +462,7 @@ class BatchProcessingApiCacheTest {
       )
     val from = LocalDate.of(2021, 8, 17).atStartOfDay(utc)
     val to = from plusDays 1
-    val bandNames = Set("B04")
+    val bandNames = Seq("B04")
 
     val cache = new FixedCache(List(
       CacheEntry("31UFS_0_0", LocalDate.of(2021, 8, 17).atStartOfDay(utc), "B04"),
@@ -470,7 +484,7 @@ class BatchProcessingApiCacheTest {
       MultiPolygon(Extent(4.5049056649529309, 51.2778631700642364, 4.9462099707168559, 51.3966497916229912).toPolygon())
     val from = LocalDate.of(2021, 8, 17).atStartOfDay(utc)
     val to = from plusDays 1
-    val bandNames = Set("B04")
+    val bandNames = Seq("B04")
 
     val cache = new FixedCache(List(
       CacheEntry("31UFS_0_0", LocalDate.of(2021, 8, 17).atStartOfDay(utc), "B04"),
@@ -498,7 +512,7 @@ class BatchProcessingApiCacheTest {
       MultiPolygon(Extent(4.5049056649529309, 51.2778631700642364, 4.9462099707168559, 51.3966497916229912).toPolygon())
     val from = LocalDate.of(2021, 8, 17).atStartOfDay(utc)
     val to = from plusDays 1
-    val bandNames = Set("B0", "B1")
+    val bandNames = Seq("B0", "B1")
 
     val cache = new FixedCache(List(
       CacheEntry("31UFS_0_0", LocalDate.of(2021, 8, 17).atStartOfDay(utc), "B0"),
@@ -541,7 +555,7 @@ class BatchProcessingApiCacheTest {
       MultiPolygon(Extent(4.5049056649529309, 51.2778631700642364, 4.9462099707168559, 51.3966497916229912).toPolygon())
     val from = LocalDate.of(2021, 8, 17).atStartOfDay(utc)
     val to = from plusDays 1
-    val bandNames = Set("B04")
+    val bandNames = Seq("B04")
 
     val cache = new FixedCache(List(
       CacheEntry("31UFS_0_0", LocalDate.of(2021, 8, 17).atStartOfDay(utc), "B04"),
@@ -625,12 +639,12 @@ class BatchProcessingApiCacheTest {
     val geometry = bbox.extent.toPolygon()
     val cache: Cache = new ElasticsearchCache
 
-    val narrowerRequest = getNarrowerRequest(
+    val (jobDirectory, narrowerRequest) = getNarrowerRequest(
       datasetId,
       geometry,
       from.atStartOfDay(utc),
       to.atStartOfDay(utc),
-      bandNames.toSet, // FIXME: should probably be a Seq to maintain band order
+      bandNames,
       cache
     )
 
@@ -657,8 +671,8 @@ class BatchProcessingApiCacheTest {
         multiPolygonsCrs,
         from_date = ISO_OFFSET_DATE_TIME format lower,
         to_date = ISO_OFFSET_DATE_TIME format upper,
-        band_names = missingBands.toSeq.asJava,
-        SampleType.FLOAT32, // FIXME: UINT16 gives bad (not scaled?) results?
+        band_names = missingBands.asJava,
+        SampleType.FLOAT32, // FIXME: UINT16 gives bad (rounded?) results?
         metadata_properties = Collections.emptyMap[String, Any],
         processing_options = Collections.emptyMap[String, Any]
       )
@@ -671,11 +685,12 @@ class BatchProcessingApiCacheTest {
 
           val actualTiles = collection.mutable.Set[CacheEntry]() // TODO: avoid mutation
 
-          def cacheTile(tileId: String, date: ZonedDateTime, bandName: String, geometry: Geometry = null): Unit = {
+          def cacheTile(tileId: String, date: ZonedDateTime, bandName: String, geometry: Geometry = null, empty: Boolean = false): CacheEntry = {
             val location = if (geometry != null) geometry else getGeometry(tileId)
-            val entry = CacheEntry(tileId, date, bandName, location)
+            val entry = CacheEntry(tileId, date, bandName, location, empty)
             cache.add(datasetId, entry)
             actualTiles += entry
+            entry
           }
 
           new S3Service().downloadBatchProcessResults( // results are in, compare against expected tiles of narrow request to see which ones are empty
@@ -683,7 +698,13 @@ class BatchProcessingApiCacheTest {
             subfolder = id,
             targetDir = Paths.get("/tmp/cache"),
             bandNames,
-            (tileId, date, bandName) => cacheTile(tileId, date, bandName)
+            (tileId, date, bandName) => {
+              val entry = cacheTile(tileId, date, bandName)
+              entry.filePath.foreach { filePath =>
+                Files.copy(filePath, jobDirectory.resolve(filePath.getFileName))
+                println(s"copied $filePath from the recent past to $jobDirectory")
+              }
+            }
           )
 
           println(s"cached ${actualTiles.size} tiles from the narrow request")
@@ -701,7 +722,7 @@ class BatchProcessingApiCacheTest {
           }
 
           emptyTiles foreach { case (tileId, geometry, date, bandName) =>
-            cacheTile(tileId, date, bandName, geometry)
+            cacheTile(tileId, date, bandName, geometry, empty = true) // FIXME: mark these as empty (filePath not set)
           }
 
           println(s"cached ${emptyTiles.size} tiles missing from the narrow request")
@@ -739,7 +760,7 @@ class BatchProcessingApiCacheTest {
       geometry = Extent(-176.71783447265625, -176.59149169921875, -82.89630761177784, -82.883729227997).toPolygon(),
       from = LocalDate.of(2019, 9, 20).atStartOfDay(utc),
       to = LocalDate.of(2019, 9, 22).atStartOfDay(utc),
-      bandNames = Set("B04", "B05")
+      bandNames = Seq("B04", "B05")
     )
 
     cacheEntries foreach println
