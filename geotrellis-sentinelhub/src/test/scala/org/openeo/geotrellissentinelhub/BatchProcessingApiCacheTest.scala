@@ -265,6 +265,8 @@ class BatchProcessingApiCacheTest {
       bandName <- bandNames
     } yield (gridTileId, geometry, date, bandName)
 
+    println(s"expecting ${expectedTiles.size} tiles for the initial request")
+
     // 2) which ones are already in the cache?
     val cacheEntries = cache.query(datasetId, geometry, from, to, bandNames)
 
@@ -281,6 +283,8 @@ class BatchProcessingApiCacheTest {
       return None
     }
 
+    println(s"${missingTiles.size} tiles are not in the cache")
+
     val missingMultibandTiles = missingTiles
       .groupBy { case (tileId, _, date, _) => (tileId, date) }
       .mapValues { cacheKeys =>
@@ -289,8 +293,6 @@ class BatchProcessingApiCacheTest {
         (geometry, bandNames)
       }
       .toSeq
-
-    missingMultibandTiles foreach println
 
     // turn incomplete tiles into a SHub request:
     // determine all dates with missing positions (includes missing bands)
@@ -574,8 +576,6 @@ class BatchProcessingApiCacheTest {
     val bbox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
     val bandNames = List("B04")
 
-    println(ISO_OFFSET_DATE_TIME format from.atStartOfDay(utc))
-
     def getDataSync(date: LocalDate): Unit = {
       val pyramidFactory = new PyramidFactory(
         collectionId,
@@ -669,20 +669,42 @@ class BatchProcessingApiCacheTest {
         case Some(id) =>
           awaitDone(batchProcessingService, Seq(id))
 
-          def cacheTile(tileId: String, date: ZonedDateTime, bandName: String): Unit = {
-            val location = getGeometry(tileId)
+          val actualTiles = collection.mutable.Set[CacheEntry]() // TODO: avoid mutation
+
+          def cacheTile(tileId: String, date: ZonedDateTime, bandName: String, geometry: Geometry = null): Unit = {
+            val location = if (geometry != null) geometry else getGeometry(tileId)
             val entry = CacheEntry(tileId, date, bandName, location)
             cache.add(datasetId, entry)
-            println(s"cached $entry")
+            actualTiles += entry
           }
 
-          new S3Service().downloadBatchProcessResults(
+          new S3Service().downloadBatchProcessResults( // results are in, compare against expected tiles of narrow request to see which ones are empty
             batchProcessingService.bucketName,
             subfolder = id,
             targetDir = Paths.get("/tmp/cache"),
             bandNames,
-            cacheTile
+            (tileId, date, bandName) => cacheTile(tileId, date, bandName)
           )
+
+          println(s"cached ${actualTiles.size} tiles from the narrow request")
+
+          val expectedTiles = for { // tiles expected from the narrow request
+            (gridTileId, geometry) <- incompleteTiles
+            date <- sequentialDays(lower, upper)
+            bandName <- missingBands
+          } yield (gridTileId, geometry, date, bandName)
+
+          println(s"was expecting ${expectedTiles.size} tiles for the narrow request")
+
+          val emptyTiles = expectedTiles.filterNot { case (tileId, _, date, bandName) =>
+            actualTiles.exists(actualTile => actualTile.tileId == tileId && actualTile.date.isEqual(date) && actualTile.bandName == bandName)
+          }
+
+          emptyTiles foreach { case (tileId, geometry, date, bandName) =>
+            cacheTile(tileId, date, bandName, geometry)
+          }
+
+          println(s"cached ${emptyTiles.size} tiles missing from the narrow request")
 
         case _ => println("no data for narrower request so no batch process")
       }
