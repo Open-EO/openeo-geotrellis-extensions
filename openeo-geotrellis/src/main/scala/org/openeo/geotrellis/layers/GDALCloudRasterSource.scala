@@ -8,8 +8,8 @@ import geotrellis.vector.{Extent, MultiPolygon, Polygon}
 
 import java.net.URL
 import java.util
+import scala.collection.JavaConverters._
 import scala.xml.XML
-
 
 object GDALCloudRasterSource {
 
@@ -17,30 +17,20 @@ object GDALCloudRasterSource {
     new GDALCloudRasterSource(cloudDataPath, metadataPath, dataPath, options, targetCellType)
 
   def getDilationDistance(maskParams: Map[String, Object]): Double = {
+    // TODO: Find out best default dilation distance.
     maskParams.getOrElse("dilation_distance", "250").toString.toInt
   }
 
   def filterRasterSources(rasterSources: Seq[RasterSource],
                           maskParams: util.Map[String, Object]): Seq[RasterSource] = {
-    // TODO: Find out best default dilation distance.
-    val dilationDistance =  maskParams.getOrDefault("dilation_distance", "250").toString.toInt
+    val dilationDistance =  getDilationDistance(maskParams.asScala.toMap)
     // Filter out the entire BandCompositeRasterSource if it is fully clouded.
     val filteredSources = rasterSources.filter(compositeSource => {
       val rasterSource = compositeSource.asInstanceOf[BandCompositeRasterSource].sources.head
       rasterSource match {
         case rs: GDALCloudRasterSource =>
-          val polygons: Seq[Polygon] = rs.readCloudFile()
-          // Dilate and merge polygons.
-          val bufferedPolygons = polygons.map(p => MultiPolygon(p.buffer(dilationDistance).asInstanceOf[Polygon]))
-          val cloudPolygon: MultiPolygon = bufferedPolygons.reduce(
-            (p1,p2) => if (p1 intersects p2) {
-              p1.union(p2) match {
-                case x: MultiPolygon => x
-                case x: Polygon => MultiPolygon(x)
-              }
-            } else p1)
           // Filter out rasterSources that are fully clouded.
-          !cloudPolygon.covers(rs.readExtent())
+          !rs.getMergedPolygon(dilationDistance).covers(rs.readExtent())
         case _ => true // Keep raster sources that have no cloud data.
       }
     })
@@ -55,29 +45,17 @@ object GDALCloudRasterSource {
                           maskParams: Map[String, Object]
                          ): Iterator[(SpaceTimeKey, RasterRegion)] = {
     val dilationDistance = getDilationDistance(maskParams)
-    rasterRegions.filter({ case (key, rasterRegion) =>
+    val filteredRegions = rasterRegions.filter({ case (key, rasterRegion) =>
       source match {
         case rs: GDALCloudRasterSource =>
-          val regionExtent = key.spatialKey.extent(layout).reproject(layoutCrs, rs.getCloudCrs())
-          val polygons: Seq[Polygon] = rs.readCloudFile().filter(p => regionExtent.covers(p))
-          if (polygons.nonEmpty) {
-            // Dilate and merge polygons.
-            val t = MultiPolygon(polygons.head)
-            val bufferedPolygons: Seq[MultiPolygon] = polygons.map(p => MultiPolygon(p.buffer(dilationDistance).asInstanceOf[Polygon]))
-            val cloudPolygon: MultiPolygon = bufferedPolygons.reduce(
-              (p1,p2) => if (p1 intersects p2) {
-                p1.union(p2) match {
-                  case x: MultiPolygon => x
-                  case x: Polygon => MultiPolygon(x)
-                }
-              } else p1)
-
-            // Filter out regions that are fully clouded.
-            !cloudPolygon.covers(regionExtent)
-          } else true
+          val regionExtent = key.spatialKey.extent(layout).reproject(layoutCrs, rs.crs)
+          // Filter out regions that are fully clouded.
+          !rs.getMergedPolygon(dilationDistance).covers(regionExtent)
         case _ => true // Keep regions that have no cloud data.
       }
     })
+    if (filteredRegions.isEmpty) throw new IllegalArgumentException("No non-clouded raster regions found")
+    filteredRegions
   }
 }
 
@@ -89,12 +67,13 @@ class GDALCloudRasterSource(
                              override val targetCellType: Option[TargetCellType] = None
                            ) extends GDALRasterSource(dataPath, options, targetCellType) {
 
-  private var polygons: Option[Seq[Polygon]] = Option.empty
+  private var cloudPolygons: Option[Seq[Polygon]] = Option.empty
+  private var mergedCloudPolygon: Option[MultiPolygon] = Option.empty
   private var cloudCrs: Option[CRS] = Option.empty
   override lazy val crs: CRS = getCloudCrs()
 
   def readCloudFile(): Seq[Polygon] = {
-    if (polygons.isEmpty) {
+    if (cloudPolygons.isEmpty) {
       val xmlDoc = XML.load(cloudDataPath)
       // Cloud mask should only contain 2-dimensional points.
       val srsDimensions = (xmlDoc \\ "@srsDimension").map(_.text.toInt)
@@ -103,9 +82,27 @@ class GDALCloudRasterSource(
 
       val posLists = xmlDoc \\ "posList"
       val pointLists = posLists.map(_.text.split(" ").map(_.toDouble).grouped(2).map(l => (l(0), l(1))).toList)
-      polygons = Some(pointLists.map(Polygon(_)))
+      cloudPolygons = Some(pointLists.map(Polygon(_)))
     }
-    polygons.get
+    cloudPolygons.get
+  }
+
+  def getMergedPolygon(dilationDistance: Double): MultiPolygon = {
+    if (mergedCloudPolygon.isEmpty) {
+      val polygons: Seq[Polygon] = readCloudFile()
+      // Dilate and merge polygons.
+      val bufferedPolygons = polygons.map(p => MultiPolygon(p.buffer(dilationDistance).asInstanceOf[Polygon]))
+      mergedCloudPolygon = Some(bufferedPolygons.reduce(
+        (p1,p2) => if (p1 intersects p2) {
+          p1.union(p2) match {
+            case x: MultiPolygon => x
+            case x: Polygon => MultiPolygon(x)
+          }
+        } else p1))
+      // Delete polygons to save memory.
+      cloudPolygons = Option.empty
+    }
+    mergedCloudPolygon.get
   }
 
   def readExtent(): Extent = {

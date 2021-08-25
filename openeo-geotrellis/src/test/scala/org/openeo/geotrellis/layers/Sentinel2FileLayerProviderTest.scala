@@ -3,7 +3,7 @@ package org.openeo.geotrellis.layers
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Link
 import be.vito.eodata.gwcgeotrellis.opensearch.{OpenSearchClient, OpenSearchResponses}
 import cats.data.NonEmptyList
-import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey}
+import geotrellis.layer.FloatingLayoutScheme
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
@@ -282,7 +282,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assertRastersEqual(referenceTile,actualTile)
   }
 
-//  @Test
+  @Test
   // TODO: L1C .jp2 files return an empty crs value when read by GDALWarp.scala, which causes exceptions during reprojection.
   def testMaskL1CDilation(): Unit = {
     class MockOpenSearch extends OpenSearchClient {
@@ -310,41 +310,24 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       )
 
     val date = ZonedDateTime.parse("2021-01-01T00:00:00+00:00")
-    val utm11N = CRS.fromEpsgCode(32611)
-    val boundingBox = ProjectedExtent(Extent(499980,5200020-1000,499980+1000,5200020), utm11N)
+    val utm11NCrs = CRS.fromEpsgCode(32611)
+    val boundingBox = ProjectedExtent(Extent(499980,5200020-1000,499980+1000,5200020), utm11NCrs)
     val dataCubeParameters = new DataCubeParameters
-//    dataCubeParameters.maskingStrategyParameters = Map[String, Object](
-//      "method" -> "mask_l1c",
-//      "dilation_distance" -> "10000").asJava
-
-//    assertThrows[IllegalArgumentException](creoL1CLayerProvider.readMultibandTileLayer(
-//      from = date,
-//      to = date,
-//      boundingBox,
-//      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
-//      polygons_crs = utm35SCrs,
-//      zoom = 0,
-//      sc,
-//      Some(dataCubeParameters)
-//      ))
-
     dataCubeParameters.maskingStrategyParameters = Map[String, Object](
       "method" -> "mask_l1c",
-      "dilation_distance" -> "0").asJava
+      "dilation_distance" -> "10000").asJava
 
-    val layer: MultibandTileLayerRDD[SpaceTimeKey] = creoL1CLayerProvider.readMultibandTileLayer(
+    // A large dilation distance will filter out all raster sources and return an exception.
+    assertThrows[IllegalArgumentException](creoL1CLayerProvider.readMultibandTileLayer(
       from = date,
       to = date,
       boundingBox,
       polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
-      polygons_crs = utm11N,
+      polygons_crs = utm11NCrs,
       zoom = 0,
       sc,
       Some(dataCubeParameters)
-      )
-    val collectedLayer = layer.toSpatial().collect()
-    val length = collectedLayer.length
-    val tile1 = collectedLayer(0)._2.band(0)
+      ))
   }
 
   private def faparLayerProvider(attributeValues: Map[String, Any] = Map()) =
