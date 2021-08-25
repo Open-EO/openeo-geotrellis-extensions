@@ -587,7 +587,9 @@ class BatchProcessingApiCacheTest {
     val datasetId = "S2L2A"
     val from = LocalDate.of(2019, 9, 21)
     val to = LocalDate.of(2019, 9, 26)
-    val bbox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
+    // val to = LocalDate.of(2019, 9, 28) // one extra day with data
+    val bbox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng) // original (9 positions)
+    //val bbox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 3.0683, ymax = 51.2206), LatLng) // stretched to the right side (12 positions)
     val bandNames = List("B04")
 
     def getDataSync(date: LocalDate): Unit = {
@@ -722,7 +724,7 @@ class BatchProcessingApiCacheTest {
           }
 
           emptyTiles foreach { case (tileId, geometry, date, bandName) =>
-            cacheTile(tileId, date, bandName, geometry, empty = true) // FIXME: mark these as empty (filePath not set)
+            cacheTile(tileId, date, bandName, geometry, empty = true)
           }
 
           println(s"cached ${emptyTiles.size} tiles missing from the narrow request")
