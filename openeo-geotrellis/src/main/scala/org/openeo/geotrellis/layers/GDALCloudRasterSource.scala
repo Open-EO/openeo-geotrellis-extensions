@@ -91,6 +91,7 @@ class GDALCloudRasterSource(
 
   private var polygons: Option[Seq[Polygon]] = Option.empty
   private var cloudCrs: Option[CRS] = Option.empty
+  override lazy val crs: CRS = getCloudCrs()
 
   def readCloudFile(): Seq[Polygon] = {
     if (polygons.isEmpty) {
