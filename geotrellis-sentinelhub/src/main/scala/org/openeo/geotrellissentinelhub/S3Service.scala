@@ -137,7 +137,7 @@ class S3Service {
         val multibandGeoTiff = GeoTiffReader.readMultiband(tempMultibandFile.toAbsolutePath.toString)
 
         for ((bandName, singleBandTile) <- bandNames zip multibandGeoTiff.tile.bands) {
-          val outputFile = targetDir.resolve(s"${tileId}_${date}_${bandName}.tif") // TODO: write to nested directories (tileId/date/bandName) instead
+          val outputFile = targetDir.resolve(s"$tileId-$date-$bandName.tif") // TODO: write to nested directories (tileId/date/bandName) instead
 
           SinglebandGeoTiff(singleBandTile, multibandGeoTiff.extent, multibandGeoTiff.crs)
             .write(outputFile.toAbsolutePath.toString)

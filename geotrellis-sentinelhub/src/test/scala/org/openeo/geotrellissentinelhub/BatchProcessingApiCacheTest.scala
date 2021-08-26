@@ -8,11 +8,17 @@ import com.sksamuel.elastic4s.http.JavaClient
 import com.sksamuel.elastic4s.{ElasticClient, ElasticProperties, RequestSuccess, TimestampElasticDate}
 import com.sksamuel.elastic4s.ElasticDsl._
 import com.sksamuel.elastic4s.requests.get.GetResponse
+import geotrellis.raster.MultibandTile
+import geotrellis.raster.io.geotiff.SinglebandGeoTiff
 import geotrellis.vector.io.json.GeoJson
+import org.junit.Rule
+import org.junit.rules.TemporaryFolder
 
 import java.nio.file.{Files, Path, Paths}
-import java.time.LocalTime
+import java.time.{Duration, LocalTime}
 import java.util.UUID
+import java.util.stream.Collectors.toList
+import scala.annotation.meta.getter
 /*import com.sksamuel.elastic4s.requests.searches.GeoPoint
 import com.sksamuel.elastic4s.requests.searches.queries.geo.ShapeRelation.INTERSECTS
 import com.sksamuel.elastic4s.requests.searches.queries.geo.{InlineShape, PointShape}*/
@@ -44,7 +50,7 @@ object BatchProcessingApiCacheTest {
   private case class CacheEntry(tileId: String, date: ZonedDateTime, bandName: String, location: Geometry = null, empty: Boolean = false) {
     def filePath: Option[Path] =
       if (empty) None
-      else Some(Paths.get(s"/tmp/cache/${tileId}_${BASIC_ISO_DATE format date.toLocalDate}_${bandName}.tif"))
+      else Some(Paths.get(s"/tmp/cache/$tileId-${BASIC_ISO_DATE format date.toLocalDate}-$bandName.tif"))
   }
 
   private case class Hit(_id: String, _source: Json)
@@ -134,7 +140,7 @@ object BatchProcessingApiCacheTest {
 
       try {
         client.execute {
-          indexInto(cacheIndex).id(s"${entry.tileId}_${BASIC_ISO_DATE format entry.date.toLocalDate}_${entry.bandName}").doc(
+          indexInto(cacheIndex).id(s"${entry.tileId}-${BASIC_ISO_DATE format entry.date.toLocalDate}-${entry.bandName}").doc(
             s"""
                |{
                |  "tileId": "${entry.tileId}",
@@ -151,6 +157,10 @@ object BatchProcessingApiCacheTest {
 
 class BatchProcessingApiCacheTest {
   import org.openeo.geotrellissentinelhub.BatchProcessingApiCacheTest._
+
+  @(Rule @getter)
+  val temporaryFolder = new TemporaryFolder
+  private def collectingDir = temporaryFolder.getRoot.toPath
 
   private def bulkUpsertFeatures(batch: Iterable[Feature[Geometry, String]]): Unit = {
     val items = batch.map { case Feature(geom, tileId) =>
@@ -256,7 +266,7 @@ class BatchProcessingApiCacheTest {
   }
 
   private def getNarrowerRequest(datasetId: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
-                                 bandNames: Seq[String], cache: Cache): (Path, Option[(Seq[(String, Geometry)], ZonedDateTime, ZonedDateTime, Seq[String])]) = {
+                                 bandNames: Seq[String], cache: Cache): Option[(Seq[(String, Geometry)], ZonedDateTime, ZonedDateTime, Seq[String])] = {
 
     // 1) instead of passing this straight on to SHub, we examine the request and determine the expected tiles
     val expectedTiles = for {
@@ -277,22 +287,17 @@ class BatchProcessingApiCacheTest {
         cacheEntries.exists(cachedTile => cachedTile.tileId == tileId && cachedTile.date.isEqual(date) && cachedTile.bandName == bandName)
       }
 
-    val jobDirectory = Paths.get("/tmp", "pocs", UUID.randomUUID().toString)
-    Files.createDirectories(jobDirectory)
-
-    println(s"created job directory $jobDirectory")
-
     for {
       entry <- cacheEntries
       filePath <- entry.filePath
     } {
-      Files.copy(filePath, jobDirectory.resolve(filePath.getFileName))
-      println(s"copied $filePath from the distant past to $jobDirectory")
+      Files.copy(filePath, collectingDir.resolve(filePath.getFileName)) // TODO: symlink instead
+      println(s"copied $filePath from the distant past to $collectingDir")
     }
 
     if (missingTiles.isEmpty) {
       println("everything's cached, no need for additional requests")
-      return (jobDirectory, None)
+      return None
     }
 
     println(s"${missingTiles.size} tiles are not in the cache")
@@ -338,7 +343,7 @@ class BatchProcessingApiCacheTest {
          | - [$lower, $upper]
          | - $missingBands""".stripMargin)
 
-    (jobDirectory, Some((incompleteTiles, lower, upper, missingBandsOrdered)))
+    Some((incompleteTiles, lower, upper, missingBandsOrdered))
   }
 
   @Test
@@ -591,7 +596,12 @@ class BatchProcessingApiCacheTest {
     val bbox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng) // original (9 positions)
     //val bbox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 3.0683, ymax = 51.2206), LatLng) // stretched to the right side (12 positions)
     //val bandNames = List("B04")
-    val bandNames = List("B04", "B03") // extra band
+    //val bandNames = List("B04", "B03") // extra band
+    val bandNames = List("B04", "B03", "B02") // two extra bands
+
+    val jobDir = Paths.get("/tmp", "pocs", UUID.randomUUID().toString)
+    Files.createDirectories(jobDir)
+    println(s"created job directory $jobDir")
 
     def getDataSync(date: LocalDate): Unit = {
       val pyramidFactory = new PyramidFactory(
@@ -642,7 +652,7 @@ class BatchProcessingApiCacheTest {
     val geometry = bbox.extent.toPolygon()
     val cache: Cache = new ElasticsearchCache
 
-    val (jobDirectory, narrowerRequest) = getNarrowerRequest(
+    val narrowerRequest = getNarrowerRequest(
       datasetId,
       geometry,
       from.atStartOfDay(utc),
@@ -704,15 +714,13 @@ class BatchProcessingApiCacheTest {
             (tileId, date, bandName) => {
               val entry = cacheTile(tileId, date, bandName)
               entry.filePath.foreach { filePath =>
-                Files.copy(filePath, jobDirectory.resolve(filePath.getFileName))
-                println(s"copied $filePath from the recent past to $jobDirectory")
+                Files.copy(filePath, collectingDir.resolve(filePath.getFileName)) // TODO: symlink instead
+                println(s"copied $filePath from the recent past to $collectingDir")
               }
             }
           )
 
           println(s"cached ${actualTiles.size} tiles from the narrow request")
-          println(s"(single band) results are ready in ${jobDirectory.toAbsolutePath}")
-          // FIXME: merge these single band geotiffs band-wise to accommodate for geotiff.PyramidFactory
 
           val expectedTiles = for { // tiles expected from the narrow request
             (gridTileId, geometry) <- incompleteTiles
@@ -736,7 +744,39 @@ class BatchProcessingApiCacheTest {
       }
     }
 
-    println("done.")
+    def collectMultibandTiles(): Unit = {
+      val singleBandTiffs = Files.list(collectingDir).collect(toList[Path]).asScala
+
+      val bandsGrouped = singleBandTiffs.groupBy { singleBandTiff =>
+        val Array(tileId, date, _) = singleBandTiff.getFileName.toString.split("-")
+        (tileId, date)
+      }.mapValues(bands => bands.sortBy { singleBandTiff =>
+        val bandName = singleBandTiff.getFileName.toString.split("-")(2).takeWhile(_ != '.')
+        bandNames.indexOf(bandName)
+      })
+
+      bandsGrouped foreach { case ((tileId, date), bandTiffs) =>
+        val singleBandGeotiffs = bandTiffs.map(path => SinglebandGeoTiff.streaming(path.toAbsolutePath.toString))
+
+        val (extent, crs) = {
+          val arbitraryGeotiff = singleBandGeotiffs.head
+          (arbitraryGeotiff.extent, arbitraryGeotiff.crs)
+        }
+
+        val outputFile = jobDir.resolve(s"$tileId-$date.tif").toAbsolutePath.toString
+        println(s"combining $bandTiffs to $outputFile")
+
+        val (_, duration) = time { // TODO: can this be sped up?
+          MultibandGeoTiff(MultibandTile(singleBandGeotiffs.map(_.tile)), extent, crs).write(outputFile)
+        }
+
+        println(s"writing $outputFile took $duration")
+      }
+    }
+
+    collectMultibandTiles()
+
+    println(s"done. results are ready in ${jobDir.toAbsolutePath}")
   }
 
   private def awaitDone(batchProcessingService: BatchProcessingService, batchRequestIds: Iterable[String]): Map[String, String] = {
@@ -777,5 +817,13 @@ class BatchProcessingApiCacheTest {
       CacheEntry("31UFS_1_1", LocalDate.of(1981, 4, 24).atStartOfDay(utc), bandName = "B04", location =
         Extent(-177.0, -82.94157475849404, -176.28014823592997, -82.85256027220672).toPolygon())
     )
+  }
+
+  private def time[R](f: => R): (R, Duration) = {
+    val started = System.currentTimeMillis()
+    val r = f
+    val stopped = System.currentTimeMillis()
+
+    (r, Duration.ofMillis(stopped - started))
   }
 }
