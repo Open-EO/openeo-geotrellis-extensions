@@ -1,11 +1,13 @@
 package org.openeo.geotrellissentinelhub
 
+import geotrellis.raster.io.geotiff.SinglebandGeoTiff
+import geotrellis.raster.io.geotiff.reader.GeoTiffReader
 import software.amazon.awssdk.core.sync.ResponseTransformer
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model._
 
 import java.io.FileOutputStream
-import java.time.{LocalDate, ZonedDateTime, ZoneId}
+import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.nio.file.{Files, Path, Paths}
 import java.util
 import java.util.concurrent.TimeUnit
@@ -112,10 +114,7 @@ class S3Service {
                                   onDownloaded: (String, ZonedDateTime, String) => Unit): Unit = {
     import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
 
-    // FIXME: write bands to separate files (avoid intermediary/temp geotiffs?)
     // TODO: move details elsewhere?
-    require(bandNames.size == 1, "currently only single band is implemented")
-
     val s3Client = S3Client.builder()
       .build()
 
@@ -124,17 +123,28 @@ class S3Service {
       .map(_.key())
       .filter(_.endsWith(".tif"))
 
+
     tiffKeys foreach { key =>
       val Array(_, tileId, fileName) = key.split("/")
       val date = fileName.split(raw"\.").head.drop(1)
-      val bandName = bandNames.head
 
-      val outputFile = targetDir.resolve(s"${tileId}_${date}_${bandName}.tif")
+      // TODO: avoid intermediary/temp geotiff
+      val tempMultibandFile = Files.createTempFile(subfolder, null)
 
-      Files.createDirectories(outputFile.getParent) // TODO: this happens for every key
-      download(s3Client, bucketName, key, outputFile)
+      try {
+        download(s3Client, bucketName, key, tempMultibandFile)
 
-      onDownloaded(tileId, LocalDate.parse(date, BASIC_ISO_DATE).atStartOfDay(ZoneId.of("UTC")), bandName)
+        val multibandGeoTiff = GeoTiffReader.readMultiband(tempMultibandFile.toAbsolutePath.toString)
+
+        for ((bandName, singleBandTile) <- bandNames zip multibandGeoTiff.tile.bands) {
+          val outputFile = targetDir.resolve(s"${tileId}_${date}_${bandName}.tif") // TODO: write to nested directories (tileId/date/bandName) instead
+
+          SinglebandGeoTiff(singleBandTile, multibandGeoTiff.extent, multibandGeoTiff.crs)
+            .write(outputFile.toAbsolutePath.toString)
+
+          onDownloaded(tileId, LocalDate.parse(date, BASIC_ISO_DATE).atStartOfDay(ZoneId.of("UTC")), bandName)
+        }
+      } finally Files.delete(tempMultibandFile)
     }
   }
 

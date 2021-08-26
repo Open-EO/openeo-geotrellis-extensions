@@ -590,7 +590,8 @@ class BatchProcessingApiCacheTest {
     // val to = LocalDate.of(2019, 9, 28) // one extra day with data
     val bbox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng) // original (9 positions)
     //val bbox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 3.0683, ymax = 51.2206), LatLng) // stretched to the right side (12 positions)
-    val bandNames = List("B04")
+    //val bandNames = List("B04")
+    val bandNames = List("B04", "B03") // extra band
 
     def getDataSync(date: LocalDate): Unit = {
       val pyramidFactory = new PyramidFactory(
@@ -699,7 +700,7 @@ class BatchProcessingApiCacheTest {
             batchProcessingService.bucketName,
             subfolder = id,
             targetDir = Paths.get("/tmp/cache"),
-            bandNames,
+            missingBands,
             (tileId, date, bandName) => {
               val entry = cacheTile(tileId, date, bandName)
               entry.filePath.foreach { filePath =>
@@ -710,6 +711,8 @@ class BatchProcessingApiCacheTest {
           )
 
           println(s"cached ${actualTiles.size} tiles from the narrow request")
+          println(s"(single band) results are ready in ${jobDirectory.toAbsolutePath}")
+          // FIXME: merge these single band geotiffs band-wise to accommodate for geotiff.PyramidFactory
 
           val expectedTiles = for { // tiles expected from the narrow request
             (gridTileId, geometry) <- incompleteTiles
@@ -732,6 +735,8 @@ class BatchProcessingApiCacheTest {
         case _ => println("no data for narrower request so no batch process")
       }
     }
+
+    println("done.")
   }
 
   private def awaitDone(batchProcessingService: BatchProcessingService, batchRequestIds: Iterable[String]): Map[String, String] = {
