@@ -12,7 +12,7 @@ import geotrellis.vector.io.json.GeoJson
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{FileAlreadyExistsException, Files, Path, Paths}
 import java.time.{Duration, LocalTime}
 import java.util.UUID
 import java.util.stream.Collectors.toList
@@ -712,8 +712,12 @@ class BatchProcessingApiCacheTest {
             (tileId, date, bandName) => {
               val entry = cacheTile(tileId, date, bandName)
               entry.filePath.foreach { filePath =>
-                Files.createSymbolicLink(collectingDir.resolve(filePath.getFileName), filePath)
-                println(s"symlinked $filePath from the recent past to $collectingDir")
+                try {
+                  Files.createSymbolicLink(collectingDir.resolve(filePath.getFileName), filePath)
+                  println(s"symlinked $filePath from the recent past to $collectingDir")
+                } catch {
+                  case _: FileAlreadyExistsException => /* ignore */
+                }
               }
             }
           )
