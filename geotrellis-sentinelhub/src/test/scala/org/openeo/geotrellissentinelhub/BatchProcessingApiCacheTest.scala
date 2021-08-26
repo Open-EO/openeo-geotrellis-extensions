@@ -289,8 +289,8 @@ class BatchProcessingApiCacheTest {
       entry <- cacheEntries
       filePath <- entry.filePath
     } {
-      Files.copy(filePath, collectingDir.resolve(filePath.getFileName)) // TODO: symlink instead
-      println(s"copied $filePath from the distant past to $collectingDir")
+      Files.createSymbolicLink(collectingDir.resolve(filePath.getFileName), filePath)
+      println(s"symlinked $filePath from the distant past to $collectingDir")
     }
 
     if (missingTiles.isEmpty) {
@@ -712,8 +712,8 @@ class BatchProcessingApiCacheTest {
             (tileId, date, bandName) => {
               val entry = cacheTile(tileId, date, bandName)
               entry.filePath.foreach { filePath =>
-                Files.copy(filePath, collectingDir.resolve(filePath.getFileName)) // TODO: symlink instead
-                println(s"copied $filePath from the recent past to $collectingDir")
+                Files.createSymbolicLink(collectingDir.resolve(filePath.getFileName), filePath)
+                println(s"symlinked $filePath from the recent past to $collectingDir")
               }
             }
           )
