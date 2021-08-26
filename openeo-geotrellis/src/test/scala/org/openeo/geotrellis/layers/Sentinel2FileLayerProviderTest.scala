@@ -283,7 +283,6 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   }
 
   @Test
-  // TODO: L1C .jp2 files return an empty crs value when read by GDALWarp.scala, which causes exceptions during reprojection.
   def testMaskL1CDilation(): Unit = {
     class MockOpenSearch extends OpenSearchClient {
       override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {

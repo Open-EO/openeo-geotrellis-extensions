@@ -16,19 +16,18 @@ class GdalCloudRasterSourceTest {
     assert(polygons.length == 709)
 
     val dilationDistance = 10000
-    val bufferedPolygons = polygons.map(_.buffer(dilationDistance).asInstanceOf[Polygon])
-    val cloudPolygon: Polygon = bufferedPolygons.reduce(
-      (p1,p2) => if (p1 intersects p2) p1.union(p2).asInstanceOf[Polygon] else p1
-    )
-    assert(polygons.extent.area < bufferedPolygons.extent.area)
-    assert(bufferedPolygons.extent == cloudPolygon.extent)
-    for (p <- polygons) assert(cloudPolygon.covers(p))
+    val mergedPolygons: Seq[MultiPolygon] = source.getMergedPolygons(dilationDistance)
+    val bufferedPolygons = source.readCloudFile().map(p => MultiPolygon(p.buffer(dilationDistance).asInstanceOf[Polygon])).toBuffer
+
+    assert(mergedPolygons.extent.area == bufferedPolygons.extent.area)
+    assert(mergedPolygons.extent == bufferedPolygons.extent)
+    for (p <- polygons) assert(mergedPolygons.exists(_.covers(p)))
 
     val extent = source.readExtent()
     assert(extent.width == 109800.0)
     assert(extent.height == 109800.0)
     for (polygon <- polygons) assert(extent.covers(polygon))
 
-    assert(cloudPolygon.covers(extent))
+    assert(mergedPolygons.exists(_.covers(extent)))
   }
 }

@@ -9,6 +9,7 @@ import geotrellis.vector.{Extent, MultiPolygon, Polygon}
 import java.net.URL
 import java.util
 import scala.collection.JavaConverters._
+import scala.collection.mutable
 import scala.xml.XML
 
 object GDALCloudRasterSource {
@@ -30,7 +31,7 @@ object GDALCloudRasterSource {
       rasterSource match {
         case rs: GDALCloudRasterSource =>
           // Filter out rasterSources that are fully clouded.
-          !rs.getMergedPolygon(dilationDistance).covers(rs.readExtent())
+          !rs.getMergedPolygons(dilationDistance).exists(_.covers(rs.readExtent()))
         case _ => true // Keep raster sources that have no cloud data.
       }
     })
@@ -50,7 +51,7 @@ object GDALCloudRasterSource {
         case rs: GDALCloudRasterSource =>
           val regionExtent = key.spatialKey.extent(layout).reproject(layoutCrs, rs.crs)
           // Filter out regions that are fully clouded.
-          !rs.getMergedPolygon(dilationDistance).covers(regionExtent)
+          !rs.getMergedPolygons(dilationDistance).exists(_.covers(regionExtent))
         case _ => true // Keep regions that have no cloud data.
       }
     })
@@ -68,7 +69,7 @@ class GDALCloudRasterSource(
                            ) extends GDALRasterSource(dataPath, options, targetCellType) {
 
   private var cloudPolygons: Option[Seq[Polygon]] = Option.empty
-  private var mergedCloudPolygon: Option[MultiPolygon] = Option.empty
+  private val mergedCloudPolygons: mutable.Buffer[MultiPolygon] = mutable.Buffer[MultiPolygon]()
   private var cloudCrs: Option[CRS] = Option.empty
   override lazy val crs: CRS = getCloudCrs()
 
@@ -87,22 +88,30 @@ class GDALCloudRasterSource(
     cloudPolygons.get
   }
 
-  def getMergedPolygon(dilationDistance: Double): MultiPolygon = {
-    if (mergedCloudPolygon.isEmpty) {
-      val polygons: Seq[Polygon] = readCloudFile()
+  def getMergedPolygons(dilationDistance: Double): Seq[MultiPolygon] = {
+    if (mergedCloudPolygons.isEmpty && readCloudFile().nonEmpty) {
       // Dilate and merge polygons.
-      val bufferedPolygons = polygons.map(p => MultiPolygon(p.buffer(dilationDistance).asInstanceOf[Polygon]))
-      mergedCloudPolygon = Some(bufferedPolygons.reduce(
-        (p1,p2) => if (p1 intersects p2) {
-          p1.union(p2) match {
+      val bufferedPolygons = readCloudFile().map(p => MultiPolygon(p.buffer(dilationDistance).asInstanceOf[Polygon])).toBuffer
+
+      def mergeIntersectingPolygons(polygon: MultiPolygon): MultiPolygon = {
+        val intersectingPolygons = bufferedPolygons.filter(p => p.intersects(polygon))
+        if (intersectingPolygons.isEmpty) return polygon
+        bufferedPolygons --= intersectingPolygons
+        var mergedPolygon: MultiPolygon = polygon
+        for (iP <- intersectingPolygons) {
+          mergedPolygon = mergedPolygon.union(iP) match {
             case x: MultiPolygon => x
             case x: Polygon => MultiPolygon(x)
           }
-        } else p1))
+        }
+        mergeIntersectingPolygons(mergedPolygon)
+      }
+      for (bp <- bufferedPolygons) { if (bp != null) mergedCloudPolygons += mergeIntersectingPolygons(bp)}
+
       // Delete polygons to save memory.
       cloudPolygons = Option.empty
     }
-    mergedCloudPolygon.get
+    mergedCloudPolygons.toVector
   }
 
   def readExtent(): Extent = {
