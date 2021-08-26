@@ -8,8 +8,6 @@ import com.sksamuel.elastic4s.http.JavaClient
 import com.sksamuel.elastic4s.{ElasticClient, ElasticProperties, RequestSuccess, TimestampElasticDate}
 import com.sksamuel.elastic4s.ElasticDsl._
 import com.sksamuel.elastic4s.requests.get.GetResponse
-import geotrellis.raster.MultibandTile
-import geotrellis.raster.io.geotiff.SinglebandGeoTiff
 import geotrellis.vector.io.json.GeoJson
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
@@ -745,6 +743,8 @@ class BatchProcessingApiCacheTest {
     }
 
     def collectMultibandTiles(): Unit = {
+      import scala.sys.process._
+
       val singleBandTiffs = Files.list(collectingDir).collect(toList[Path]).asScala
 
       val bandsGrouped = singleBandTiffs.groupBy { singleBandTiff =>
@@ -756,18 +756,21 @@ class BatchProcessingApiCacheTest {
       })
 
       bandsGrouped foreach { case ((tileId, date), bandTiffs) =>
-        val singleBandGeotiffs = bandTiffs.map(path => SinglebandGeoTiff.streaming(path.toAbsolutePath.toString))
-
-        val (extent, crs) = {
-          val arbitraryGeotiff = singleBandGeotiffs.head
-          (arbitraryGeotiff.extent, arbitraryGeotiff.crs)
-        }
-
+        val vrtFile = collectingDir.resolve("combined.vrt").toAbsolutePath.toString
         val outputFile = jobDir.resolve(s"$tileId-$date.tif").toAbsolutePath.toString
-        println(s"combining $bandTiffs to $outputFile")
 
-        val (_, duration) = time { // TODO: can this be sped up?
-          MultibandGeoTiff(MultibandTile(singleBandGeotiffs.map(_.tile)), extent, crs).write(outputFile)
+        val (_, duration) = time {
+          println(s"combining $bandTiffs to $outputFile")
+
+          val gdalbuildvrt = Seq("gdalbuildvrt", "-q", "-separate", vrtFile) ++ bandTiffs.map(_.toAbsolutePath.toString)
+          if (gdalbuildvrt.! != 0) {
+            throw new IllegalStateException(s"${gdalbuildvrt mkString " "} returned non-zero exit status") // TODO: better error handling; also: gdalbuildvrt silently skips nonexistent files
+          }
+
+          val gdal_translate = Seq("gdal_translate", vrtFile, outputFile)
+          if (gdal_translate.! != 0) {
+            throw new IllegalStateException(s"${gdal_translate mkString " "} returned non-zero exit status") // TODO: better error handling
+          }
         }
 
         println(s"writing $outputFile took $duration")
