@@ -1,9 +1,6 @@
 package org.openeo.geotrellissentinelhub
 
 import com.google.common.cache.{CacheBuilder, CacheLoader}
-
-import java.time.{LocalTime, OffsetTime, ZonedDateTime}
-import java.util
 import geotrellis.layer.{KeyBounds, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.{CellSize, MultibandTile, Raster}
@@ -19,6 +16,8 @@ import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.time.ZoneOffset.UTC
+import java.time.{LocalTime, OffsetTime, ZonedDateTime}
+import java.util
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeUnit.SECONDS
 import scala.collection.JavaConverters._
@@ -47,21 +46,22 @@ object PyramidFactory {
   // convenience method for Python client
   // TODO: change name? A 429 response makes it rate-limited anyway.
   def rateLimited(endpoint: String, collectionId: String, datasetId: String, clientId: String, clientSecret: String,
-                  processingOptions: util.Map[String, Any], sampleType: SampleType): PyramidFactory =
+                  processingOptions: util.Map[String, Any], sampleType: SampleType, maxSpatialResolution: CellSize = CellSize(10,10)): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
-      clientId, clientSecret, processingOptions, sampleType, new RlGuardAdapter)
+      clientId, clientSecret, processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution)
 
   @deprecated("include a collectionId")
   def rateLimited(endpoint: String, datasetId: String, clientId: String, clientSecret: String,
-                  processingOptions: util.Map[String, Any], sampleType: SampleType): PyramidFactory =
-    rateLimited(endpoint, collectionId = null, datasetId, clientId, clientSecret, processingOptions, sampleType)
+                  processingOptions: util.Map[String, Any], sampleType: SampleType, maxSpatialResolution: CellSize = CellSize(10,10)): PyramidFactory =
+    rateLimited(endpoint, collectionId = null, datasetId, clientId, clientSecret, processingOptions, sampleType, maxSpatialResolution)
 }
 
 class PyramidFactory(collectionId: String, datasetId: String, @transient catalogApi: CatalogApi, processApi: ProcessApi,
                      clientId: String, clientSecret: String,
                      processingOptions: util.Map[String, Any] = util.Collections.emptyMap[String, Any],
                      sampleType: SampleType = UINT16,
-                     rateLimitingGuard: RateLimitingGuard = NoRateLimitingGuard) extends Serializable {
+                     rateLimitingGuard: RateLimitingGuard = NoRateLimitingGuard,
+                     maxSpatialResolution: CellSize) extends Serializable {
   import PyramidFactory._
 
   private val maxZoom = 14
@@ -278,8 +278,6 @@ class PyramidFactory(collectionId: String, datasetId: String, @transient catalog
     logger.debug(s"$rateLimitingGuard says to wait $delay")
     TimeUnit.MILLISECONDS.sleep(delay.toMillis)
   }
-
-  private val maxSpatialResolution: CellSize = CellSize(10, 10)
 
   private def layout(layoutScheme: FloatingLayoutScheme, boundingBox: ProjectedExtent): LayoutDefinition = {
     //Giving the layout a deterministic extent simplifies merging of data with spatial partitioner
