@@ -1,14 +1,11 @@
 package org.openeo.geotrellissentinelhub
 
-import _root_.io.circe.generic.auto._
-import _root_.io.circe.Json
-import _root_.io.circe.parser.decode
+import _root_.io.circe.parser._
 import cats.syntax.either._
+import com.sksamuel.elastic4s
 import com.sksamuel.elastic4s.http.JavaClient
-import com.sksamuel.elastic4s.{ElasticClient, ElasticProperties, RequestSuccess, TimestampElasticDate}
+import com.sksamuel.elastic4s.{ElasticClient, ElasticProperties, HitReader, TimestampElasticDate}
 import com.sksamuel.elastic4s.ElasticDsl._
-import com.sksamuel.elastic4s.requests.get.GetResponse
-import geotrellis.vector.io.json.GeoJson
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 
@@ -17,6 +14,7 @@ import java.time.{Duration, LocalTime}
 import java.util.UUID
 import java.util.stream.Collectors.toList
 import scala.annotation.meta.getter
+import scala.util.{Failure, Success, Try}
 /*import com.sksamuel.elastic4s.requests.searches.GeoPoint
 import com.sksamuel.elastic4s.requests.searches.queries.geo.ShapeRelation.INTERSECTS
 import com.sksamuel.elastic4s.requests.searches.queries.geo.{InlineShape, PointShape}*/
@@ -51,9 +49,21 @@ object BatchProcessingApiCacheTest {
       else Some(Paths.get(s"/tmp/cache/$tileId-${BASIC_ISO_DATE format date.toLocalDate}-$bandName.tif"))
   }
 
-  private case class Hit(_id: String, _source: Json)
-  private case class Hits(hits: Array[Hit])
-  private case class SearchResponse(hits: Hits)
+  private case class GridTile(_id: String, location: Geometry)
+
+  private implicit object GridTileHitReader extends HitReader[GridTile] {
+    override def read(hit: elastic4s.Hit): Try[GridTile] = {
+      val tileId = hit.id
+
+      val location = parse(hit.sourceAsString)
+        .flatMap(source => source.hcursor.downField("location").as[MultiPolygon])
+
+      location match {
+        case Right(location) => Success(GridTile(tileId, location))
+        case Left(e) => Failure(e)
+      }
+    }
+  }
 
   private implicit object ZonedDateTimeOrdering extends Ordering[ZonedDateTime] {
     override def compare(x: ZonedDateTime, y: ZonedDateTime): Int = x compareTo y
@@ -66,13 +76,26 @@ object BatchProcessingApiCacheTest {
       .takeWhile(date => !(date isAfter to))
   }
 
+  private implicit object CacheEntryHitReader extends HitReader[CacheEntry] {
+    override def read(hit: elastic4s.Hit): Try[CacheEntry] = Try {
+      val source = hit.sourceAsMap
+
+      CacheEntry(
+        tileId = source("tileId").asInstanceOf[String],
+        date = ZonedDateTime parse source("date").asInstanceOf[String],
+        bandName = source("bandName").asInstanceOf[String],
+        empty = source("filePath") == null // TODO: get actual value
+      )
+    }
+  }
+
   private def elasticClient: ElasticClient = ElasticClient(JavaClient(ElasticProperties("http://localhost:9200")))
 
   private trait Cache {
     def query(datasetId: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime, // FIXME: accept more geometries
               bandNames: Seq[String]): Iterable[CacheEntry]
 
-    def add(datasetId: String, entry: CacheEntry)
+    def add(datasetId: String, entry: CacheEntry): Unit
   }
 
   private class FixedCache(entries: Iterable[CacheEntry]) extends Cache {
@@ -119,17 +142,12 @@ object BatchProcessingApiCacheTest {
             .size(10000)
         }.await
 
-        resp match {
-          case results: RequestSuccess[com.sksamuel.elastic4s.requests.searches.SearchResponse] =>
-            // TODO: define a HitReader to map this to a CacheEntry
-            results.result.hits.hits.map(hit => CacheEntry(
-              tileId = hit.sourceField("tileId").asInstanceOf[String],
-              date = ZonedDateTime parse hit.sourceField("date").asInstanceOf[String],
-              bandName = hit.sourceField("bandName").asInstanceOf[String],
-              empty = hit.sourceField("filePath") == null // TODO: get actual value
-            ))
-            // FIXME: handle failures
-        }
+        resp.result
+          .safeTo[CacheEntry]
+          .collect {
+            case Success(cacheEntry) => cacheEntry
+            // faulty CacheEntries will be considered not cached, requested again and updated/fixed
+          }
       } finally client.close()
     }
 
@@ -197,48 +215,32 @@ class BatchProcessingApiCacheTest {
     }
   }
 
-  private def intersectingGridTiles(datasetId: String, geometry: Geometry): Seq[(String, Geometry)] = {
-    val searchRequestBody = // TODO: replace with Elasticsearch client
-      s"""
-        |{
-        |  "query": {
-        |    "geo_shape": {
-        |      "location": {
-        |        "shape": ${geometry.toGeoJson()},
-        |        "relation": "intersects"
-        |      }
-        |    }
-        |  },
-        |  "size": 10000
-        |}
-        |""".stripMargin
+  private def intersectingGridTiles(datasetId: String, geometry: Geometry): Seq[GridTile] = {
+    val client = elasticClient
 
-    val responseBody = Http(s"http://localhost:9200/$featureIndex/_search")
-      .headers("Content-Type" -> "application/json")
-      .postData(searchRequestBody)
-      .asString
+    try {
+      val resp = client.execute {
+        search(featureIndex)
+        .rawQuery(
+          s"""
+             |{
+             |  "geo_shape": {
+             |    "location": {
+             |      "shape": ${geometry.toGeoJson()},
+             |      "relation": "intersects"
+             |    }
+             |  }
+             |}""".stripMargin)
+          .size(10000)
+      }.await
 
-    if (responseBody.isError) {
-      throw new Exception(responseBody.body)
-    }
-
-    val searchResponse = decode[SearchResponse](responseBody.body)
-      .valueOr(throw _)
-
-    searchResponse.hits.hits.map { case Hit(_id, _source) =>
-      val tileId = _id
-
-      val geometry = for {
-        o <- _source.asObject
-        location <- o("location")
-      } yield GeoJson.parse[MultiPolygon](location.noSpaces)
-
-      (tileId, geometry.get)
-    }
+      resp.result
+        .safeTo[GridTile]
+        .map(_.get)
+    } finally client.close()
   }
 
   private def getGeometry(tileId: String): Geometry = {
-    // TODO: improve this JSON parsing (and everywhere else)
     val client = elasticClient
 
     try {
@@ -246,20 +248,10 @@ class BatchProcessingApiCacheTest {
         get(tileId).from(featureIndex)
       }.await
 
-      val geometry = resp match {
-        case result: RequestSuccess[GetResponse] =>
-          val source = decode[Json](result.result.sourceAsString)
-            .valueOr(throw _)
-
-          for {
-            o <- source.asObject
-            location <- o("location")
-          } yield GeoJson.parse[MultiPolygon](location.noSpaces)
-
-          // FIXME: handle failures
-      }
-
-      geometry.get
+      resp.result
+        .safeTo[GridTile]
+        .map(_.location)
+        .get
     } finally client.close()
   }
 
@@ -268,7 +260,7 @@ class BatchProcessingApiCacheTest {
 
     // 1) instead of passing this straight on to SHub, we examine the request and determine the expected tiles
     val expectedTiles = for {
-      (gridTileId, geometry) <- intersectingGridTiles(datasetId, geometry)
+      GridTile(gridTileId, geometry) <- intersectingGridTiles(datasetId, geometry)
       date <- sequentialDays(from, to)
       bandName <- bandNames
     } yield (gridTileId, geometry, date, bandName)
@@ -593,15 +585,11 @@ class BatchProcessingApiCacheTest {
     // val to = LocalDate.of(2019, 9, 28) // one extra day with data
     val bbox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng) // original (9 positions)
     //val bbox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 3.0683, ymax = 51.2206), LatLng) // stretched to the right side (12 positions)
-    //val bandNames = List("B04")
+    val bandNames = List("B04")
     //val bandNames = List("B04", "B03") // extra band
-    val bandNames = List("B04", "B03", "B02") // two extra bands
+    //val bandNames = List("B04", "B03", "B02") // two extra bands
 
-    val jobDir = Paths.get("/tmp", "pocs", UUID.randomUUID().toString)
-    Files.createDirectories(jobDir)
-    println(s"created job directory $jobDir")
-
-    def getDataSync(date: LocalDate): Unit = {
+    def fetchDataSync(date: LocalDate): Unit = {
       val pyramidFactory = new PyramidFactory(
         collectionId,
         datasetId,
@@ -635,12 +623,12 @@ class BatchProcessingApiCacheTest {
       tif.write(s"/tmp/poc_sync_${BASIC_ISO_DATE format date}.tif")
     }
 
-    def fetchReferenceGeotiffs() {
+    def fetchReferenceGeotiffs(): Unit = {
       val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
       try {
-        getDataSync(from)
-        getDataSync(to)
+        fetchDataSync(from)
+        fetchDataSync(to)
       } finally sc.stop()
     }
 
@@ -724,6 +712,7 @@ class BatchProcessingApiCacheTest {
 
           println(s"cached ${actualTiles.size} tiles from the narrow request")
 
+          // FIXME: this happens in another process that doesn't have any context about the request
           val expectedTiles = for { // tiles expected from the narrow request
             (gridTileId, geometry) <- incompleteTiles
             date <- sequentialDays(lower, upper)
@@ -745,6 +734,10 @@ class BatchProcessingApiCacheTest {
         case _ => println("no data for narrower request so no batch process")
       }
     }
+
+    val jobDir = Paths.get("/tmp", "pocs", UUID.randomUUID().toString)
+    Files.createDirectories(jobDir)
+    println(s"created job directory $jobDir")
 
     def collectMultibandTiles(): Unit = {
       import scala.sys.process._
