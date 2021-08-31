@@ -31,18 +31,35 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
   def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
                           to_date: String, band_names: util.List[String], sampleType: SampleType,
                           metadata_properties: util.Map[String, Any],
-                          processing_options: util.Map[String, Any]): String = {
+                          processing_options: util.Map[String, Any], subfolder: String): String = {
     val polygons = Array(MultiPolygon(bbox.toPolygon()))
     val polygonsCrs = CRS.fromName(bbox_srs)
 
     start_batch_process(collection_id, dataset_id, polygons, polygonsCrs, from_date, to_date, band_names, sampleType,
-      metadata_properties, processing_options)
+      metadata_properties, processing_options, subfolder)
   }
+
+  @deprecated("pass a subfolder")
+  def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
+                          to_date: String, band_names: util.List[String], sampleType: SampleType,
+                          metadata_properties: util.Map[String, Any],
+                          processing_options: util.Map[String, Any]): String = {
+    start_batch_process(collection_id, dataset_id, bbox, bbox_srs, from_date, to_date, band_names, sampleType,
+      metadata_properties, processing_options, subfolder = null)
+  }
+
+  @deprecated("pass a subfolder")
+  def start_batch_process(collection_id: String, dataset_id: String, polygons: Array[MultiPolygon],
+                          crs: CRS, from_date: String, to_date: String, band_names: util.List[String],
+                          sampleType: SampleType, metadata_properties: util.Map[String, Any],
+                          processing_options: util.Map[String, Any]): String =
+    start_batch_process(collection_id, dataset_id, polygons, crs, from_date, to_date, band_names,
+      sampleType, metadata_properties, processing_options, subfolder = null)
 
   def start_batch_process(collection_id: String, dataset_id: String, polygons: Array[MultiPolygon],
                           crs: CRS, from_date: String, to_date: String, band_names: util.List[String],
                           sampleType: SampleType, metadata_properties: util.Map[String, Any],
-                          processing_options: util.Map[String, Any]): String = {
+                          processing_options: util.Map[String, Any], subfolder: String): String = {
     // TODO: implement retries
     // workaround for bug where upper bound is considered inclusive in OpenEO
     val (from, to) = includeEndDay(from_date, to_date)
@@ -65,7 +82,8 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
       processing_options,
       bucketName,
       description = s"$dataset_id ${polygons.size} $from_date $to_date $band_names",
-      accessToken
+      accessToken,
+      subfolder
     ).id
 
     batchProcessingApi.startBatchProcess(batchRequestId, accessToken)
