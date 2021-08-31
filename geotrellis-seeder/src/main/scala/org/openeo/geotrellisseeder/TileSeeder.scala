@@ -51,10 +51,11 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     renderPng(path, productType, date.toString, colorMap, bands, spatialKey = Some(key))
   }
 
+
   def renderPng(path: String, productType: String, dateStr: String, colorMap: Option[String] = None, bands: Option[Array[Band]] = None,
                 productGlob: Option[String] = None, maskValues: Array[Int] = Array(), permissions: Option[String] = None,
                 spatialKey: Option[SpatialKey] = None, tooCloudyFile: Option[String] = None, datePattern: Option[String] = None,
-                oscarsEndpoint: Option[String] = None, oscarsCollection: Option[String] = None, oscarsSearchFilters: Option[Map[String, String]] = None, resampleMethod: ResampleMethod = NearestNeighbor)
+                oscarsEndpoint: Option[String] = None, oscarsCollection: Option[String] = None, oscarsSearchFilters: Option[Map[String, String]] = None, resampleMethod: Option[ResampleMethod] = NearestNeighbor)
                (implicit sc: SparkContext): Unit = {
 
     val date = dateStr match {
@@ -136,7 +137,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
       if (colorMap.isDefined) {
         val map = colormap.ColorMapParser.parse(colorMap.get)
-        getSinglebandRDD(sourcePathsWithBandId.head, spatialKey,resampleMethod)
+        getSinglebandRDD(sourcePathsWithBandId.head, spatialKey,resampleMethod.getOrElse(NearestNeighbor))
           .repartition(getPartitions)
           .foreachPartition { items =>
             configureDebugLogging()
@@ -638,7 +639,7 @@ object TileSeeder {
       val oscarsSearchFilters = jCommanderArgs.oscarsSearchFilters
       val partitions = jCommanderArgs.partitions
       val verbose = jCommanderArgs.verbose
-      val resampleMethod = jCommanderArgs.resampleMethod.map(getResampleMethod).getOrElse(NearestNeighbor)
+      val resampleMethod = jCommanderArgs.resampleMethod.map(getResampleMethod)
 
       val seeder = new TileSeeder(zoomLevel, verbose, partitions)
 
