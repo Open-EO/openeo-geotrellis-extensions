@@ -55,7 +55,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
   def renderPng(path: String, productType: String, dateStr: String, colorMap: Option[String] = None, bands: Option[Array[Band]] = None,
                 productGlob: Option[String] = None, maskValues: Array[Int] = Array(), permissions: Option[String] = None,
                 spatialKey: Option[SpatialKey] = None, tooCloudyFile: Option[String] = None, datePattern: Option[String] = None,
-                oscarsEndpoint: Option[String] = None, oscarsCollection: Option[String] = None, oscarsSearchFilters: Option[Map[String, String]] = None, resampleMethod: Option[ResampleMethod] = NearestNeighbor)
+                oscarsEndpoint: Option[String] = None, oscarsCollection: Option[String] = None, oscarsSearchFilters: Option[Map[String, String]] = None, resampleMethod: Option[ResampleMethod] = Some(NearestNeighbor))
                (implicit sc: SparkContext): Unit = {
 
     val date = dateStr match {
