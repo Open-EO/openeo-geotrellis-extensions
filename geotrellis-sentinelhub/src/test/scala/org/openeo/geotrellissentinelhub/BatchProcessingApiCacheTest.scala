@@ -679,7 +679,8 @@ class BatchProcessingApiCacheTest {
       // val batchRequestId = Some("3db6d7ff-094f-4150-b418-8e8375cfa4da")
 
       batchRequestId match {
-        case Some(id) =>
+        case BatchProcessingService.fully_cached => println("narrower request is fully cached so no batch process")
+        case id =>
           awaitDone(batchProcessingService, Seq(id))
 
           val actualTiles = collection.mutable.Set[CacheEntry]() // TODO: avoid mutation
@@ -730,8 +731,6 @@ class BatchProcessingApiCacheTest {
           }
 
           println(s"cached ${emptyTiles.size} tiles missing from the narrow request")
-
-        case _ => println("no data for narrower request so no batch process")
       }
     }
 

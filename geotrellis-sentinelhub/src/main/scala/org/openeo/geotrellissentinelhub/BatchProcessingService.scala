@@ -12,6 +12,10 @@ import java.util.concurrent.TimeUnit.MINUTES
 import scala.collection.JavaConverters._
 
 object BatchProcessingService {
+  // TODO: a better way to accomplish this keeping in mind that this code is typically called from Python?
+  // sentinel value that means that a batch process wasn't necessary because its results are already in the cache
+  val fully_cached = "fully_cached"
+
   // TODO: invalidate key on 401 Unauthorized
   private val accessTokenCache = CacheBuilder
     .newBuilder()
@@ -83,7 +87,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     val dateTimes = new DefaultCatalogApi(endpoint).dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
       accessToken, queryProperties = mapDataFilters(metadata_properties))
 
-    if (dateTimes.isEmpty) return null // TODO: maybe an exception with details as to why we're not starting a batch process is a better option
+    if (dateTimes.isEmpty) return fully_cached
 
     val batchProcessingApi = new BatchProcessingApi(endpoint)
     val batchRequestId = batchProcessingApi.createBatchProcess(
