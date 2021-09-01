@@ -1,5 +1,9 @@
 package org.openeo.geotrellis
 
+import java.nio.file.Paths
+import java.time.format.DateTimeFormatter
+import java.util.{ArrayList, Collections, Map}
+
 import geotrellis.layer._
 import geotrellis.proj4.CRS
 import geotrellis.raster
@@ -7,6 +11,7 @@ import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.io.geotiff._
 import geotrellis.raster.io.geotiff.compression.{Compression, DeflateCompression}
 import geotrellis.raster.io.geotiff.writer.GeoTiffWriter
+import geotrellis.raster.render.IndexedColorMap
 import geotrellis.raster.resample.NearestNeighbor
 import geotrellis.raster.{ArrayTile, CellType, GridBounds, MultibandTile, Raster, RasterExtent, TileLayout}
 import geotrellis.spark._
@@ -21,9 +26,6 @@ import org.openeo.geotrellis.tile_grid.TileGrid
 import org.slf4j.LoggerFactory
 import spire.syntax.cfor.cfor
 
-import java.nio.file.Paths
-import java.time.format.DateTimeFormatter
-import java.util.{ArrayList, Collections, Map}
 import scala.collection.JavaConverters._
 import scala.reflect._
 
@@ -78,7 +80,7 @@ package object geotiff {
    * @param zLevel
    * @param cropBounds
    */
-  def saveRDDTemporal(rdd:MultibandTileLayerRDD[SpaceTimeKey], path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]):java.util.List[String] = {
+  def saveRDDTemporal(rdd:MultibandTileLayerRDD[SpaceTimeKey], path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent], formatOptions:GTiffOptions = new GTiffOptions):java.util.List[String] = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
@@ -128,14 +130,14 @@ package object geotiff {
 
       val segmentCount = (bandSegmentCount*detectedBandCount)
       val thePath = Paths.get(path).resolve(tuple._1).toString
-      writeTiff( thePath  ,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, tileLayout, compression, cellTypes.head, detectedBandCount, segmentCount)
+      writeTiff( thePath  ,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, tileLayout, compression, cellTypes.head, detectedBandCount, segmentCount,formatOptions)
       thePath
     }).collect().toList.asJava
 
   }
 
-  def saveRDD(rdd:MultibandTileLayerRDD[SpatialKey], bandCount:Int, path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]):java.util.List[String] = {
-    saveRDDGeneric(rdd,bandCount, path, zLevel, cropBounds)
+  def saveRDD(rdd:MultibandTileLayerRDD[SpatialKey], bandCount:Int, path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent], formatOptions:GTiffOptions = new GTiffOptions):java.util.List[String] = {
+    saveRDDGeneric(rdd,bandCount, path, zLevel, cropBounds,formatOptions)
   }
 
   def saveRDDTileGrid(rdd:MultibandTileLayerRDD[SpatialKey], bandCount:Int, path:String, tileGrid: String, zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]) = {
@@ -159,7 +161,7 @@ package object geotiff {
     (gridBounds, croppedExtent, preprocessedRdd)
   }
 
-  def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K], bandCount:Int, path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]):java.util.List[String] = {
+  def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K], bandCount:Int, path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent], formatOptions:GTiffOptions = new GTiffOptions):java.util.List[String] = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
@@ -302,7 +304,7 @@ package object geotiff {
       .toList
   }
 
-  private def writeTiff( path: String, tiffs:collection.Map[Int, Array[Byte]] , gridBounds: GridBounds[Int], croppedExtent: Extent,crs:CRS, tileLayout: TileLayout, compression: DeflateCompression, cellType: CellType, detectedBandCount: Double, segmentCount: Int) = {
+  private def writeTiff( path: String, tiffs:collection.Map[Int, Array[Byte]] , gridBounds: GridBounds[Int], croppedExtent: Extent,crs:CRS, tileLayout: TileLayout, compression: DeflateCompression, cellType: CellType, detectedBandCount: Double, segmentCount: Int, formatOptions:GTiffOptions = new GTiffOptions) = {
     logger.info(s"Writing geotiff to $path with type ${cellType.toString()} and bands $detectedBandCount")
     val compressor = compression.createCompressor(segmentCount)
     lazy val emptySegment =
@@ -334,7 +336,7 @@ package object geotiff {
       compression,
       detectedBandCount.toInt,
       cellType)
-    val thegeotiff = MultibandGeoTiff(tiffTile, croppedExtent, crs)//.withOverviews(NearestNeighbor, List(4, 8, 16))
+    val thegeotiff = new MultibandGeoTiff(tiffTile, croppedExtent, crs,formatOptions.tags,new GeoTiffOptions(colorMap = formatOptions.colorMap.map(IndexedColorMap.fromColorMap)))//.withOverviews(NearestNeighbor, List(4, 8, 16))
 
     GeoTiffWriter.write(thegeotiff, path,true)
   }
