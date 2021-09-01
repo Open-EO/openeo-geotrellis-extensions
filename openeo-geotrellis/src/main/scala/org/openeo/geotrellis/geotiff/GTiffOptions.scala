@@ -7,7 +7,7 @@ import geotrellis.raster.render.{ColorMap, IndexedColorMap}
 
 import scala.collection.JavaConverters._
 
-class GTiffOptions {
+class GTiffOptions extends Serializable {
 
   var colorMap: Option[ColorMap] = Option.empty
   var tags: Tags = Tags.empty
@@ -25,8 +25,9 @@ class GTiffOptions {
   }
 
   def addBandTag(bandIndex:Int, tagName:String,value:String): Unit = {
-    var newBandTags = Vector.fill[Map[String,String]](math.max(bandIndex,tags.bandTags.size))(Map.empty[String,String])
-    newBandTags =  newBandTags.zip(tags.bandTags).map(elem => elem._1 ++ elem._2)
+    val emptyMap = Map.empty[String, String]
+    var newBandTags = Vector.fill[Map[String,String]](math.max(bandIndex+1,tags.bandTags.size))(emptyMap)
+    newBandTags =  newBandTags.zipAll(tags.bandTags,emptyMap,emptyMap).map(elem => elem._1 ++ elem._2)
     newBandTags = newBandTags.updated(bandIndex, newBandTags(bandIndex) + (tagName -> value))
     tags = Tags(tags.headTags ,newBandTags.toList)
   }

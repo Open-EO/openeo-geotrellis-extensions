@@ -10,6 +10,7 @@ import geotrellis.raster
 import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.io.geotiff._
 import geotrellis.raster.io.geotiff.compression.{Compression, DeflateCompression}
+import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.io.geotiff.writer.GeoTiffWriter
 import geotrellis.raster.render.IndexedColorMap
 import geotrellis.raster.resample.NearestNeighbor
@@ -219,7 +220,7 @@ package object geotiff {
     println("Saving geotiff with Celltype: " + cellType)
     val detectedBandCount =  if(totalBandCount.avg >0) totalBandCount.avg else 1
     val segmentCount = (bandSegmentCount*detectedBandCount).toInt
-    writeTiff( path,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, tileLayout, compression, cellType, detectedBandCount, segmentCount)
+    writeTiff( path,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, tileLayout, compression, cellType, detectedBandCount, segmentCount,formatOptions = formatOptions)
     return Collections.singletonList(path)
   }
 
@@ -336,7 +337,13 @@ package object geotiff {
       compression,
       detectedBandCount.toInt,
       cellType)
-    val thegeotiff = new MultibandGeoTiff(tiffTile, croppedExtent, crs,formatOptions.tags,new GeoTiffOptions(colorMap = formatOptions.colorMap.map(IndexedColorMap.fromColorMap)))//.withOverviews(NearestNeighbor, List(4, 8, 16))
+    val options = if(formatOptions.colorMap.isDefined){
+      new GeoTiffOptions(colorMap = formatOptions.colorMap.map(IndexedColorMap.fromColorMap),colorSpace = ColorSpace.Palette)
+    }else{
+      new GeoTiffOptions()
+    }
+
+    val thegeotiff = new MultibandGeoTiff(tiffTile, croppedExtent, crs,formatOptions.tags,options)//.withOverviews(NearestNeighbor, List(4, 8, 16))
 
     GeoTiffWriter.write(thegeotiff, path,true)
   }
