@@ -11,6 +11,7 @@ class GTiffOptions extends Serializable {
 
   var colorMap: Option[ColorMap] = Option.empty
   var tags: Tags = Tags.empty
+  var overviews:String = "OFF"
 
   def setColorMap(colors: util.ArrayList[Int]): Unit = {
     colorMap = Some(new IndexedColorMap(colors.asScala))
