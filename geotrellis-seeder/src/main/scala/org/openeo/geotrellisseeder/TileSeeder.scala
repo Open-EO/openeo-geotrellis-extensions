@@ -41,7 +41,7 @@ import scala.collection.mutable.ListBuffer
 import scala.math._
 import scala.xml.SAXParseException
 
-case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] = None) {
+case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] = None, selectOverlappingTile: Boolean = false) {
 
   private val logger = if (verbose) VerboseLogger(classOf[TileSeeder]) else StandardLogger(classOf[TileSeeder])
 
@@ -496,12 +496,14 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       else if (isNoData(t2)) t1
       else if (maskValues.contains(t1)) t2
       else if (maskValues.contains(t2)) t1
+      else if (selectOverlappingTile) t1
       else max(t1, t2)
     val doubleCombine = (t1: Double, t2: Double) =>
       if (isNoData(t1)) t2
       else if (isNoData(t2)) t1
       else if (maskValues.contains(t1)) t2
       else if (maskValues.contains(t2)) t1
+      else if (selectOverlappingTile) t1
       else max(t1, t2)
 
     tiles.map(_.toArrayTile()).reduce[Tile](_.dualCombine(_)(intCombine)(doubleCombine))
@@ -637,11 +639,12 @@ object TileSeeder {
       val oscarsEndpoint = jCommanderArgs.oscarsEndpoint
       val oscarsCollection = jCommanderArgs.oscarsCollection
       val oscarsSearchFilters = jCommanderArgs.oscarsSearchFilters
+      val selectOverlappingTile = jCommanderArgs.selectOverlappingTile
       val partitions = jCommanderArgs.partitions
       val verbose = jCommanderArgs.verbose
       val resampleMethod = jCommanderArgs.resampleMethod.map(getResampleMethod)
 
-      val seeder = new TileSeeder(zoomLevel, verbose, partitions)
+      val seeder = new TileSeeder(zoomLevel, verbose, partitions, selectOverlappingTile)
 
       implicit val sc: SparkContext =
         SparkContext.getOrCreate(
