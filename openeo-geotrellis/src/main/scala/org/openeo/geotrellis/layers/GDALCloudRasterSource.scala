@@ -2,11 +2,11 @@ package org.openeo.geotrellis.layers
 
 import geotrellis.layer.{LayoutDefinition, SpaceTimeKey}
 import geotrellis.proj4.CRS
+import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.{RasterRegion, RasterSource, TargetCellType}
 import geotrellis.vector.{Extent, MultiPolygon, Polygon}
 
-import java.net.URL
 import java.util
 import scala.collection.JavaConverters._
 import scala.collection.mutable
@@ -14,10 +14,10 @@ import scala.xml.XML
 
 object GDALCloudRasterSource {
 
-  def apply(cloudDataPath: URL, metadataPath: URL, dataPath: GDALPath, options: GDALWarpOptions = GDALWarpOptions.EMPTY, targetCellType: Option[TargetCellType] = None): GDALCloudRasterSource =
+  def apply(cloudDataPath: String, metadataPath: String, dataPath: GDALPath, options: GDALWarpOptions = GDALWarpOptions.EMPTY, targetCellType: Option[TargetCellType] = None): GDALCloudRasterSource =
     new GDALCloudRasterSource(cloudDataPath, metadataPath, dataPath, options, targetCellType)
 
-  def getDilationDistance(maskParams: Map[String, Object]): Double = {
+  def getDilationDistance(maskParams: Map[String, Object]): Int = {
     // TODO: Find out best default dilation distance.
     maskParams.getOrElse("dilation_distance", "250").toString.toInt
   }
@@ -58,18 +58,29 @@ object GDALCloudRasterSource {
     if (filteredRegions.isEmpty) throw new IllegalArgumentException("No non-clouded raster regions found")
     filteredRegions
   }
+
+  def isRegionFullyClouded(rasterRegion: RasterRegion, layoutCrs: CRS, layout: LayoutDefinition, dilationDistance: Int): Boolean = {
+    val source = rasterRegion.asInstanceOf[GridBoundsRasterRegion].source.asInstanceOf[BandCompositeRasterSource].sources.head.asInstanceOf[GDALCloudRasterSource]
+    source match {
+      case rs: GDALCloudRasterSource =>
+        val regionExtent = rasterRegion.extent.reproject(layoutCrs, rs.crs)
+        // Filter out regions that are fully clouded.
+        rs.getMergedPolygons(dilationDistance).exists(_.covers(regionExtent))
+      case _ => false // Keep regions that have no cloud data.
+    }
+  }
 }
 
 class GDALCloudRasterSource(
-                             val cloudDataPath: URL,
-                             val metadataPath: URL,
+                             val cloudDataPath: String,
+                             val metadataPath: String,
                              override val dataPath: GDALPath,
                              override val options: GDALWarpOptions = GDALWarpOptions.EMPTY,
                              override val targetCellType: Option[TargetCellType] = None
                            ) extends GDALRasterSource(dataPath, options, targetCellType) {
 
   private var cloudPolygons: Option[Seq[Polygon]] = Option.empty
-  private val mergedCloudPolygons: mutable.Buffer[MultiPolygon] = mutable.Buffer[MultiPolygon]()
+  private val mergedCloudPolygons: mutable.Buffer[Polygon] = mutable.Buffer[Polygon]()
   private var cloudCrs: Option[CRS] = Option.empty
   override lazy val crs: CRS = getCloudCrs()
 
@@ -88,20 +99,20 @@ class GDALCloudRasterSource(
     cloudPolygons.get
   }
 
-  def getMergedPolygons(dilationDistance: Double): Seq[MultiPolygon] = {
+  def getMergedPolygons(dilationDistance: Double): Seq[Polygon] = {
     if (mergedCloudPolygons.isEmpty && readCloudFile().nonEmpty) {
       // Dilate and merge polygons.
-      val bufferedPolygons = readCloudFile().map(p => MultiPolygon(p.buffer(dilationDistance).asInstanceOf[Polygon])).toBuffer
+      val bufferedPolygons = readCloudFile().map(p => p.buffer(dilationDistance).asInstanceOf[Polygon]).toBuffer
 
-      def mergeIntersectingPolygons(polygon: MultiPolygon): MultiPolygon = {
+      def mergeIntersectingPolygons(polygon: Polygon): Polygon = {
         val intersectingPolygons = bufferedPolygons.filter(p => p.intersects(polygon))
         if (intersectingPolygons.isEmpty) return polygon
         bufferedPolygons --= intersectingPolygons
-        var mergedPolygon: MultiPolygon = polygon
+        var mergedPolygon: Polygon = polygon
         for (iP <- intersectingPolygons) {
           mergedPolygon = mergedPolygon.union(iP) match {
-            case x: MultiPolygon => x
-            case x: Polygon => MultiPolygon(x)
+            case x: MultiPolygon => throw new Exception("Intersecting polygons do not merge into single polygon.")
+            case x: Polygon => x
           }
         }
         mergeIntersectingPolygons(mergedPolygon)

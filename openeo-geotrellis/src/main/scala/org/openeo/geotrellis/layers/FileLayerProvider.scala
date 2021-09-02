@@ -11,14 +11,15 @@ import geotrellis.raster.ResampleMethods.NearestNeighbor
 import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.GeoTiffResampleRasterSource
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.rasterize.Rasterizer
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, IntConstantNoDataArrayTile, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataArrayTile, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
-import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.slf4j.LoggerFactory
 
 import java.io.IOException
@@ -272,20 +273,10 @@ object FileLayerProvider {
     }
 
     // Convert RasterSources to RasterRegions.
-    val maskParams = datacubeParams match {
-      case Some(x) => x.maskingStrategyParameters.asScala.toMap
-      case None => Map[String, Object]()
-    }
     val rasterRegions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] =
       filteredSources
         .flatMap { tiledLayoutSource =>
-          var rasterRegions = tiledLayoutSource.keyedRasterRegions()
-          if (maskParams.getOrElse("method", "").toString == "mask_l1c") {
-            val source = tiledLayoutSource.source.asInstanceOf[BandCompositeRasterSource].sources.head
-            rasterRegions = GDALCloudRasterSource.filterRasterRegions(rasterRegions, source, metadata.crs,
-                                                                      metadata.layout, maskParams)
-          }
-          rasterRegions
+          tiledLayoutSource.keyedRasterRegions()
             //this filter step reduces the 'Shuffle Write' size of this stage, so it already
             .filter({case(key, rasterRegion) => metadata.extent.intersects(key.spatialKey.extent(metadata.layout)) } )
             .map { case (key, rasterRegion) => (key, (rasterRegion, tiledLayoutSource.source.name)) }
@@ -324,38 +315,109 @@ object FileLayerProvider {
 
           filteredRegions
             .flatMap { case (rasterRegion, sourcePath: SourcePath) =>
-              cloudFilterStrategy.loadMasked(new MaskTileLoader {
-                override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = {
-                  val gridBoundsRasterRegion = rasterRegion.asInstanceOf[GridBoundsRasterRegion]
-                  val bufferedGridBounds = gridBoundsRasterRegion.bounds.buffer(bufferInPixels, bufferInPixels, clamp = false)
+              val result: Option[(MultibandTile, SourcePath)] = cloudFilterStrategy match {
+                case l1cFilterStrategy: L1CCloudFilterStrategy =>
+                  if (GDALCloudRasterSource.isRegionFullyClouded(rasterRegion, metadata.crs, metadata.layout, l1cFilterStrategy.bufferInMeters)) {
+                    // Do not read the tile data at all.
+                    Option.empty
+                  } else {
+                    // Simply mask out the clouds.
+                    cloudFilterStrategy.loadMasked(new MaskTileLoader {
+                      override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = Option.empty
 
-                  val maskOption = gridBoundsRasterRegion.source.read(bufferedGridBounds, Seq(sclBandIndex))
+                      override def loadData: Option[MultibandTile] = {
+                        val tile: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
+                        if (tile.isDefined) {
+                          val compositeRasterSource = rasterRegion.asInstanceOf[GridBoundsRasterRegion].source.asInstanceOf[BandCompositeRasterSource]
+                          val cloudRasterSource = compositeRasterSource.sources.head.asInstanceOf[GDALCloudRasterSource]
+                          val cloudPolygons: Seq[Polygon] = cloudRasterSource.getMergedPolygons(l1cFilterStrategy.bufferInMeters)
+                          val cloudPolygon = MultiPolygon(cloudPolygons).reproject(cloudRasterSource.crs, metadata.crs)
+                          val cloudTile = Rasterizer.rasterizeWithValue(cloudPolygon, RasterExtent(rasterRegion.extent, tile.get.cols, tile.get.rows), 1)
+                          val tileData = tile.get.band(0).toArrayTile().asInstanceOf[UShortConstantNoDataArrayTile].array
+                          assert(cloudTile.asInstanceOf[IntConstantNoDataArrayTile].array.count(_ == 1) != tileData.length)
+                          val cloudMultibandTile = MultibandTile(cloudTile)
 
-                  maskOption.map { mask =>
-                    val expectedTileSize = 456
+                          val maskedTile = tile.get.localMask(cloudMultibandTile, 1, 0).convert(tile.get.cellType)
+                          //val maskedTile = tile.get.mask(rasterRegion.extent, cloudPolygon)
 
-                    if (mask.cols == expectedTileSize && mask.rows == expectedTileSize) mask // an optimization really
-                    else { // raster can be smaller than requested extent
-                      val emptyBufferedRaster: Raster[MultibandTile] = {
-                        val bufferedExtent = gridBoundsRasterRegion.source.gridExtent.extentFor(bufferedGridBounds, clamp = false)
+                          // Perform some checks
+//                          val maskedTileData = maskedTile.band(0).asInstanceOf[UShortConstantNoDataArrayTile].array
+//                          val cloudPolygonInRasterRegion = cloudPolygon.intersection(rasterRegion.extent)
+//                          val inverseCloudPolygonInRasterRegion = rasterRegion.extent.difference(cloudPolygon)
+//                          val areaComp = Map("Total" ->  rasterRegion.extent.getArea, "Clouded" -> cloudPolygonInRasterRegion.getArea, "NonClouded" -> inverseCloudPolygonInRasterRegion.getArea)
+//                          val countComp = Map(
+//                            "TotalCells" -> tileData.length,
+//                            "ZeroCells" ->  tileData.count(_ == 0),
+//                            "NonZeroCells" ->  tileData.count(_ != 0),
+//                            "ZeroCellsAfterCloudMask" -> maskedTileData.count(_ == 0),
+//                            "NonZeroCellsAfterCloudMask" -> maskedTileData.count(_ != 0)
+//                            )
+//
+//                          // Sanity checks
+//                          val diffBetweenMaskedTileAndDefaultTile = maskedTileData.zipWithIndex.filterNot(tileData.zipWithIndex.toSet).map(_._2)
+//
+//                          //assert(areaComp("Clouded") + areaComp("NonClouded") == areaComp("Total"))
+//                          assert(countComp("ZeroCells") + countComp("NonZeroCells") == countComp("TotalCells"))
+//                          if (cloudPolygon.intersects(rasterRegion.extent)) {
+//                            assert(countComp("ZeroCellsAfterCloudMask") >= countComp("ZeroCells"))
+//                          } else {
+//                            //assert(areaComp("Clouded") == areaComp("NonClouded"))
+//                            assert(diffBetweenMaskedTileAndDefaultTile.length == 0)
+//                            assert(countComp("ZeroCellsAfterCloudMask") == countComp("ZeroCells"))
+//                          }
 
-                        // warning: convoluted way of creating a NODATA tile
-                        val arbitraryNoDataCellType = FloatConstantNoDataCellType
-                        val emptyBufferedTile =
-                          FloatConstantTile(arbitraryNoDataCellType.noDataValue, cols = expectedTileSize, rows = expectedTileSize, arbitraryNoDataCellType)
-                            .toArrayTile() // TODO: not materializing messes up the NODATA value
-                            .convert(mask.cellType)
+                          // Actual checks
+                          // Check if something changed to the zero cells.
+                          // assert(zeroCellIndexes sameElements cloudCellIndexes)
 
-                        Raster(MultibandTile(emptyBufferedTile), bufferedExtent)
+                          // Ensure that inverse cloud cells weren't all zero before masking
+//                          val zeroCellIndexes = tileData.zipWithIndex.filter(_._1 == 0).map(_._2)
+//                          val cloudCellIndexes = maskedTileData.zipWithIndex.filter(_._1 == 0).map(_._2)
+//                          val nonCloudCellIndexes = inverseCloudPolygonMaskTileData.zipWithIndex.filter(_._1 == 0).map(_._2)
+//                          assert(nonCloudCellIndexes.filterNot(zeroCellIndexes.toSet).length != 0)
+
+                          //assert(cloudPolygon.intersects(rasterRegion.extent))
+                          //assert(tile != maskedTile)
+                          Some(maskedTile)
+                        } else Option.empty
                       }
-
-                      emptyBufferedRaster merge mask
-                    }
+                    }).map((_, sourcePath))
                   }
-                }
+                case _ =>
+                  cloudFilterStrategy.loadMasked(new MaskTileLoader {
+                    override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = {
+                      val gridBoundsRasterRegion = rasterRegion.asInstanceOf[GridBoundsRasterRegion]
+                      val bufferedGridBounds = gridBoundsRasterRegion.bounds.buffer(bufferInPixels, bufferInPixels, clamp = false)
 
-                override def loadData: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
-              }).map((_, sourcePath))
+                      val maskOption = gridBoundsRasterRegion.source.read(bufferedGridBounds, Seq(sclBandIndex))
+
+                      maskOption.map { mask =>
+                        val expectedTileSize = 456
+
+                        if (mask.cols == expectedTileSize && mask.rows == expectedTileSize) mask // an optimization really
+                        else { // raster can be smaller than requested extent
+                          val emptyBufferedRaster: Raster[MultibandTile] = {
+                            val bufferedExtent = gridBoundsRasterRegion.source.gridExtent.extentFor(bufferedGridBounds, clamp = false)
+
+                            // warning: convoluted way of creating a NODATA tile
+                            val arbitraryNoDataCellType = FloatConstantNoDataCellType
+                            val emptyBufferedTile =
+                              FloatConstantTile(arbitraryNoDataCellType.noDataValue, cols = expectedTileSize, rows = expectedTileSize, arbitraryNoDataCellType)
+                                .toArrayTile() // TODO: not materializing messes up the NODATA value
+                                .convert(mask.cellType)
+
+                            Raster(MultibandTile(emptyBufferedTile), bufferedExtent)
+                          }
+
+                          emptyBufferedRaster merge mask
+                        }
+                      }
+                    }
+
+                    override def loadData: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
+                  }).map((_, sourcePath))
+              }
+              result
             }
             .sortWith { case ((leftMultibandTile, leftSourcePath), (rightMultibandTile, rightSourcePath)) =>
               if (leftMultibandTile.band(0).isInstanceOf[PaddedTile] && !rightMultibandTile.band(0).isInstanceOf[PaddedTile]) true
@@ -473,8 +535,10 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
           }
         } yield new SCLConvolutionFilterStrategy(sclBandIndex)
       }
-      else if (maskMethod == "mask_l1c")
+      else if (maskMethod == "mask_l1c") {
         overlappingRasterSources = GDALCloudRasterSource.filterRasterSources(overlappingRasterSources, maskParams)
+        maskStrategy = Some(new L1CCloudFilterStrategy(GDALCloudRasterSource.getDilationDistance(maskParams.asScala.toMap)))
+      }
     }
 
     val rasterSources: RDD[LayoutTileSource[SpaceTimeKey]] = rasterSourceRDD(overlappingRasterSources, metadata, maxSpatialResolution, openSearchCollectionId)(sc)
@@ -511,7 +575,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       if(dataPath.endsWith(".jp2")) {
         val warpOptions = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution))
         if (cloudPath.isDefined) {
-          Seq(GDALCloudRasterSource(new URL(cloudPath.get._1), new URL(cloudPath.get._2), dataPath, options = warpOptions, targetCellType = targetCellType))
+          Seq(GDALCloudRasterSource(cloudPath.get._1, cloudPath.get._2, dataPath, options = warpOptions, targetCellType = targetCellType))
         }else{
           Seq(GDALRasterSource(dataPath, options = warpOptions, targetCellType = targetCellType))
         }

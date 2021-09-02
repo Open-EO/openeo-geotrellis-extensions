@@ -3,7 +3,7 @@ package org.openeo.geotrellis.layers
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Link
 import be.vito.eodata.gwcgeotrellis.opensearch.{OpenSearchClient, OpenSearchResponses}
 import cats.data.NonEmptyList
-import geotrellis.layer.FloatingLayoutScheme
+import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
@@ -11,7 +11,7 @@ import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, ShortUserDefinedNoDataCellType}
+import geotrellis.raster.{CellSize, ShortUserDefinedNoDataCellType, UShortConstantNoDataArrayTile}
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
@@ -283,7 +283,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   }
 
   @Test
-  def testMaskL1CDilation(): Unit = {
+  def testMaskL1CRasterSourceFiltering(): Unit = {
     class MockOpenSearch extends OpenSearchClient {
       override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
         val start = dateRange.get._1
@@ -327,6 +327,81 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       sc,
       Some(dataCubeParameters)
       ))
+  }
+
+  @Test
+  def testL1CTileMask(): Unit = {
+    class MockOpenSearch extends OpenSearchClient {
+      override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
+        val start = dateRange.get._1
+        Seq(OpenSearchResponses.Feature(id="/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240.SAFE",bbox.extent,start, Array(
+          Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B02.jp2"), Some("IMG_DATA_Band_10m_1_Tile1_Data")),
+          //Link(URI.create("/data/MTDA/CGS_S2/CGS_S2_L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B02.jp2"), Some("IMG_DATA_Band_10m_1_Tile1_Data")),
+          Link(URI.create("https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/MTD_TL.xml"), Some("S2_Level-1C_Tile1_Metadata")),
+          Link(URI.create("https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/QI_DATA/MSK_CLOUDS_B00.gml"), Some("FineCloudMask_Tile1_Data"))
+          ),Some(10)))
+      }
+      override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
+      override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+    }
+
+    val creoL1CLayerProvider = new FileLayerProvider(
+      new MockOpenSearch,
+      openSearchCollectionId = "Sentinel2",
+      openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_10m_1_Tile1_Data"),
+      rootPath = "/eodata",
+      maxSpatialResolution,
+      pathDateExtractor,
+      layoutScheme = FloatingLayoutScheme(tileSize = 256)
+      )
+
+    val date = ZonedDateTime.parse("2021-01-01T00:00:00+00:00")
+    val utm11NCrs = CRS.fromEpsgCode(32611)
+    val boundingBox = ProjectedExtent(Extent(499980+25000,5200020-11000,499980+26000,5200020-10000), utm11NCrs)
+    val dataCubeParameters = new DataCubeParameters
+//
+//    val layer: MultibandTileLayerRDD[SpaceTimeKey] = creoL1CLayerProvider.readMultibandTileLayer(
+//      from = date,
+//      to = date,
+//      boundingBox,
+//      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
+//      polygons_crs = utm11NCrs,
+//      zoom = 0,
+//      sc,
+//      Some(dataCubeParameters)
+//      )
+//    val spatialLayer = layer.toSpatial(date)
+//    spatialLayer.writeGeoTiff("test_L1C_default.tif", boundingBox)
+//
+    dataCubeParameters.maskingStrategyParameters = Map[String, Object](
+          "method" -> "mask_l1c",
+          "dilation_distance" -> "5").asJava
+    val maskedLayer: MultibandTileLayerRDD[SpaceTimeKey] = creoL1CLayerProvider.readMultibandTileLayer(
+      from = date,
+      to = date,
+      boundingBox,
+      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
+      polygons_crs = utm11NCrs,
+      zoom = 0,
+      sc,
+      Some(dataCubeParameters)
+      )
+    val spatialMaskedLayer = maskedLayer.toSpatial(date)
+    spatialMaskedLayer.writeGeoTiff("test_L1C_tile_mask.tif", boundingBox)
+    val referenceTile = GeoTiffRasterSource("test_L1C_default.tif").read().get
+    val actualTile = GeoTiffRasterSource("test_L1C_tile_mask.tif").read().get
+    val actualTileData = actualTile.tile.band(0).asInstanceOf[UShortConstantNoDataArrayTile].array
+    val referenceTileData = referenceTile.tile.band(0).asInstanceOf[UShortConstantNoDataArrayTile].array
+    val actualTileNoZeroCells = actualTileData.zipWithIndex.filter(_._1 != 0)
+    val referenceTileNoZeroCells = referenceTileData.zipWithIndex.filter(_._1 != 0)
+
+    assert(referenceTile.dimensions == actualTile.dimensions)
+    // Ensure that some cells have been masked.
+    assert(actualTileData.count(_ == 0) > referenceTileData.count(_ == 0))
+    // Ensure that unmasked cells remain unchanged.
+    assert(actualTileNoZeroCells.forall(referenceTileNoZeroCells.contains))
+    val maskedCellCount = actualTileData.count(_ == 0) - referenceTileData.count(_ == 0)
+    println(maskedCellCount + " cells have been masked. (" + (maskedCellCount.toFloat/actualTileData.length.toFloat)*100 + "%)")
   }
 
   private def faparLayerProvider(attributeValues: Map[String, Any] = Map()) =
