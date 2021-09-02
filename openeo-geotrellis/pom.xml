@@ -142,6 +142,11 @@
             <artifactId>netcdf4</artifactId>
             <version>5.1.0</version>
         </dependency>
+        <dependency>
+            <groupId>black.ninia</groupId>
+            <artifactId>jep</artifactId>
+            <version>3.9.1</version>
+        </dependency>
     </dependencies>
     <build>
         <plugins>

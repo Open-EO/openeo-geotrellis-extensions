@@ -244,6 +244,42 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   }
 
   @Test
+  def testReadDifferentProjection():Unit = {
+
+    val date = LocalDate.of(2019, 3, 7).atStartOfDay(UTC)
+
+    val crs = CRS.fromEpsgCode(32631)
+    val boundingBox = ProjectedExtent(Extent(640860, 5676170, 666460, 5701770), crs)
+    val utm32 = CRS.fromEpsgCode(32632)
+    val bboxUTM32 = boundingBox.reproject(utm32)
+
+    val dataCubeParameters = new DataCubeParameters
+
+    val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(
+      from = date,
+      to = date,
+      ProjectedExtent(bboxUTM32,utm32),
+      polygons = Array(MultiPolygon(bboxUTM32.toPolygon())),
+      polygons_crs = utm32,
+      zoom = 0,
+      sc,
+      Some(dataCubeParameters)
+    )
+
+    val spatialLayer = layer.toSpatial(date)
+
+    val reprojectedBoundingBox = boundingBox.reproject(spatialLayer.metadata.crs)
+
+    val stitched = spatialLayer.sparseStitch(reprojectedBoundingBox)
+    stitched match {
+      case Some(stitched) => MultibandGeoTiff(stitched.crop(reprojectedBoundingBox), spatialLayer.metadata.crs).write("/tmp/utm32.tif")
+      case _ => throw new IllegalStateException("nothing to sparse-stitch")
+    }
+    assertFalse(stitched.get.tile.band(0).isNoDataTile)
+    assertEquals(utm32,spatialLayer.metadata.crs)
+  }
+
+  @Test
   def testMaskSclDilationOnS2TileEdge(): Unit = {
     val date = LocalDate.of(2019, 3, 7).atStartOfDay(UTC)
 

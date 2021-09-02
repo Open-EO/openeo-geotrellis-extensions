@@ -120,6 +120,15 @@ class PyramidFactoryTest {
   }
 
   @Test
+  def testLandsat8L2(): Unit = {
+    val endpoint = "https://services-uswest2.sentinel-hub.com"
+    val date = LocalDate.of(2021, 4, 27).atStartOfDay(ZoneOffset.UTC)
+    testLayer(new PyramidFactory("landsat-ot-l2", "landsat-ot-l2", new DefaultCatalogApi(endpoint),
+      new DefaultProcessApi(endpoint), clientId, clientSecret, sampleType = FLOAT32), "landsat8l2", date,
+      Seq("B04", "B03", "B02"))
+  }
+
+  @Test
   def testDigitalNumbersOutput(): Unit = { // TODO: check output values programmatically
     val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)

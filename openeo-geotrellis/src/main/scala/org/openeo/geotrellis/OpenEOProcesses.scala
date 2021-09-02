@@ -19,8 +19,8 @@ import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
 import geotrellis.vector.io.json.JsonFeatureCollection
 import geotrellis.vector.{Extent, PolygonFeature}
-import org.apache.spark.SparkContext
 import org.apache.spark.rdd._
+import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrelliscommon.{FFTConvolve, SpaceTimeByMonthPartitioner}
 
@@ -128,7 +128,15 @@ class OpenEOProcesses extends Serializable {
    */
   def applyTimeDimensionTargetBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpatialKey] = {
     val function = scriptBuilder.generateFunction(context.asScala.toMap)
-    val resultRDD = datacube.groupBy(_._1.spatialKey).mapValues{ tiles => {
+    val targetBounds = datacube.metadata.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]].toSpatial
+    val partitioner: Partitioner =
+    if(datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]){
+      new SpacePartitioner(targetBounds)
+    }else{
+      Partitioner.defaultPartitioner(datacube)
+    }
+
+    val resultRDD = datacube.groupBy[SpatialKey]((t: (SpaceTimeKey, MultibandTile)) => t._1.spatialKey,partitioner).mapValues{ tiles => {
       val aTile = firstTile(tiles.map(_._2))
       val resultTile = mutable.ListBuffer[Tile]()
       for( b <- 0 until aTile.bandCount){
@@ -142,7 +150,8 @@ class OpenEOProcesses extends Serializable {
       }
 
     }}
-      ContextRDD(resultRDD,datacube.metadata.copy(bounds = datacube.metadata.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]].toSpatial))
+
+    ContextRDD(resultRDD,datacube.metadata.copy(bounds = targetBounds))
   }
 
   private def firstTile(tiles: Iterable[MultibandTile]) = {
