@@ -1,13 +1,10 @@
 package org.openeo.geotrellissentinelhub
 
-import java.time.format.DateTimeFormatter
-import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import geotrellis.layer.SpaceTimeKey
-import geotrellis.proj4.util.UTM
 import geotrellis.proj4.LatLng
-import geotrellis.raster.{HasNoData, MultibandTile, Raster}
+import geotrellis.proj4.util.UTM
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
+import geotrellis.raster.{CellSize, HasNoData, MultibandTile, Raster}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
@@ -16,6 +13,9 @@ import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
 import org.junit.Test
 import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
 
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
+import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicLong
@@ -82,7 +82,7 @@ class PyramidFactoryTest {
     }
 
     testLayer(new PyramidFactory("sentinel-1-grd", "S1GRD", new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), clientId, clientSecret, sampleType = FLOAT32), "gamma0_catalog", date,
+      new DefaultProcessApi(endpoint), clientId, clientSecret, sampleType = FLOAT32, maxSpatialResolution = CellSize(10,10)), "gamma0_catalog", date,
       Seq("VV", "VH", "dataMask"), testCellType)
   }
 
@@ -98,7 +98,7 @@ class PyramidFactoryTest {
     }
 
     testLayer(new PyramidFactory("sentinel-2-l1c", "S2L1C", new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), clientId, clientSecret), "sentinel2-L1C", date, Seq("B04", "B03", "B02"), testCellType)
+      new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10,10)), "sentinel2-L1C", date, Seq("B04", "B03", "B02"), testCellType)
   }
 
   @Test
@@ -106,7 +106,7 @@ class PyramidFactoryTest {
     val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
     testLayer(new PyramidFactory("sentinel-2-l2a", "S2L2A", new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), clientId, clientSecret), "sentinel2-L2A", date, Seq("B08", "B04", "B03"))
+      new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10,10)), "sentinel2-L2A", date, Seq("B08", "B04", "B03"))
   }
 
   @Test
@@ -114,7 +114,7 @@ class PyramidFactoryTest {
     val endpoint = "https://services-uswest2.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
     testLayer(new PyramidFactory("landsat-ot-l1", "LOTL1", new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), clientId, clientSecret), "landsat8", date, Seq("B10", "B11"))
+      new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10,10)), "landsat8", date, Seq("B10", "B11"))
   }
 
   @Test
@@ -122,7 +122,7 @@ class PyramidFactoryTest {
     val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
     testLayer(new PyramidFactory("sentinel-2-l2a", "S2L2A", new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), clientId, clientSecret), "sentinel2-L2A_mix", date, Seq("B04", "sunAzimuthAngles", "SCL"))
+      new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10,10)), "sentinel2-L2A_mix", date, Seq("B04", "sunAzimuthAngles", "SCL"))
   }
 
   @Test
@@ -132,7 +132,7 @@ class PyramidFactoryTest {
 
     try
       testLayer(new PyramidFactory("landsat-ot-l1", datasetId = "LOTL1", new DefaultCatalogApi(endpoint),
-        new DefaultProcessApi(endpoint), clientId, clientSecret), "unknown", date, Seq("UNKNOWN"))
+        new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10,10)), "unknown", date, Seq("UNKNOWN"))
     catch {
       case e: SparkException =>
         assertTrue(e.getRootCause.getClass.toString, e.getRootCause.isInstanceOf[SentinelHubException])
@@ -146,7 +146,7 @@ class PyramidFactoryTest {
 
     try
       testLayer(new PyramidFactory("landsat-ot-l1", datasetId = "LOTL1", new DefaultCatalogApi(endpoint),
-        new DefaultProcessApi(endpoint), clientId, clientSecret = "???"), "unknown", date, Seq("B10", "B11"))
+        new DefaultProcessApi(endpoint), clientId, clientSecret = "???", maxSpatialResolution = CellSize(10,10)), "unknown", date, Seq("B10", "B11"))
     catch {
       case e: Exception =>
         assertTrue(e.getRootCause.getClass.toString, e.getRootCause.isInstanceOf[SentinelHubException])
@@ -207,7 +207,7 @@ class PyramidFactoryTest {
 
       val endpoint = "https://services.sentinel-hub.com"
       val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "S2L2A", new DefaultCatalogApi(endpoint),
-        new DefaultProcessApi(endpoint), clientId, clientSecret)
+        new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10,10))
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
@@ -247,7 +247,7 @@ class PyramidFactoryTest {
         val processApiSpy = new ProcessApiSpy(endpoint)
 
         val pyramidFactory = new PyramidFactory(collectionId, "S1GRD", catalogApiSpy, processApiSpy, clientId,
-          clientSecret, sampleType = FLOAT32)
+          clientSecret, sampleType = FLOAT32, maxSpatialResolution = CellSize(10,10))
 
         val pyramid = pyramidFactory.pyramid_seq(
           boundingBox.extent,

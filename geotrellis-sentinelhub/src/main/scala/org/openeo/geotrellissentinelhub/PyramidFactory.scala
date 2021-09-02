@@ -52,8 +52,8 @@ object PyramidFactory {
 
   @deprecated("include a collectionId")
   def rateLimited(endpoint: String, datasetId: String, clientId: String, clientSecret: String,
-                  processingOptions: util.Map[String, Any], sampleType: SampleType, maxSpatialResolution: CellSize = CellSize(10,10)): PyramidFactory =
-    rateLimited(endpoint, collectionId = null, datasetId, clientId, clientSecret, processingOptions, sampleType, maxSpatialResolution)
+                  processingOptions: util.Map[String, Any], sampleType: SampleType): PyramidFactory =
+    rateLimited(endpoint, collectionId = null, datasetId, clientId, clientSecret, processingOptions, sampleType)
 }
 
 class PyramidFactory(collectionId: String, datasetId: String, @transient catalogApi: CatalogApi, processApi: ProcessApi,
