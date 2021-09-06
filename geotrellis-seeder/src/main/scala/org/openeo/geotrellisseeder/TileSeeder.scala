@@ -507,7 +507,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
     def dualCombine(t1: Tile, t2: Tile): Tile = {
       if (selectOverlappingTile) {
-        TileFetcher.combineSelectTile(t1, t2, intCombine, doubleCombine)
+        TileFetcher.combineSelectTile(t1, t2)
       } else {
         t1.dualCombine(t2)(intCombine)(doubleCombine)
       }
