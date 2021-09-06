@@ -5,7 +5,6 @@ import be.vito.eodata.gwcgeotrellis.opensearch.{OpenSearchClient, OpenSearchResp
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
-import geotrellis.raster.gdal.GDALPath
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
@@ -362,8 +361,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       layoutScheme = FloatingLayoutScheme(tileSize = 256)
       )
 
-    val source = GDALCloudRasterSource(cloudPath, metadataPath, new GDALPath(""))
-    val mergedPolygon: MultiPolygon = MultiPolygon(source.getMergedPolygons(dilationDistance))
+    // val source = GDALCloudRasterSource(cloudPath, metadataPath, new GDALPath(""))
+    // val mergedPolygon: MultiPolygon = MultiPolygon(source.getMergedPolygons(dilationDistance))
 
     val date = ZonedDateTime.parse("2021-01-01T00:00:00+00:00")
     val utm11NCrs = CRS.fromEpsgCode(32611)
@@ -371,18 +370,18 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val dataCubeParameters = new DataCubeParameters
 
     // Create a reference tile without cloud masking.
-//    val layer: MultibandTileLayerRDD[SpaceTimeKey] = creoL1CLayerProvider.readMultibandTileLayer(
-//      from = date,
-//      to = date,
-//      boundingBox,
-//      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
-//      polygons_crs = utm11NCrs,
-//      zoom = 0,
-//      sc,
-//      Some(dataCubeParameters)
-//      )
-//    val spatialLayer = layer.toSpatial(date)
-//    spatialLayer.writeGeoTiff("test_L1C_default.tif", boundingBox)
+    //    val layer: MultibandTileLayerRDD[SpaceTimeKey] = creoL1CLayerProvider.readMultibandTileLayer(
+    //      from = date,
+    //      to = date,
+    //      boundingBox,
+    //      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
+    //      polygons_crs = utm11NCrs,
+    //      zoom = 0,
+    //      sc,
+    //      Some(dataCubeParameters)
+    //      )
+    //    val spatialLayer = layer.toSpatial(date)
+    //    spatialLayer.writeGeoTiff("test_L1C_default.tif", boundingBox)
 
     // Create the tile to be tested with the mask_l1c masking strategy.
     dataCubeParameters.maskingStrategyParameters = Map[String, Object](
@@ -404,9 +403,9 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     // Compare the two tiles.
     val referenceTile = GeoTiffRasterSource("https://artifactory.vgt.vito.be/testdata-public/l1c_mask_reference.tif").read().get
     val actualTile = GeoTiffRasterSource("test_L1C_tile_mask.tif").read().get
-    val cloudArea = referenceTile.extent.intersection(mergedPolygon).getArea
-    val cloudPercentage = cloudArea / referenceTile.extent.getArea
-    println("Cloud polygon covers " + cloudArea + " Sq meters of tile with " + referenceTile.extent.getArea + " Sq meters. (" + cloudPercentage*100 +"%)")
+    // val cloudArea = referenceTile.extent.intersection(mergedPolygon).getArea
+    // val cloudPercentage = cloudArea / referenceTile.extent.getArea
+    // println("Cloud polygon covers " + cloudArea + " Sq meters of tile with " + referenceTile.extent.getArea + " Sq meters. (" + cloudPercentage*100 +"%)")
     println("Dimensions went from " + referenceTile.dimensions + " to " + actualTile.dimensions)
     var maskedCellCounts = Array[Int]()
     for (bandIndex <- 0 to 2) {
@@ -418,16 +417,16 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       assert(actualTile.dimensions.cols <= referenceTile.dimensions.cols)
       assert(actualTile.dimensions.rows <= referenceTile.dimensions.rows)
       // Ensure that some cells have been masked.
-      if (cloudArea != 0)
-        assert(actualTileData.count(_ == 0) > referenceTileData.count(_ == 0))
+      //if (cloudArea != 0)
+      assert(actualTileData.count(_ == 0) > referenceTileData.count(_ == 0))
       // Ensure that unmasked cells remain unchanged.
       assert(actualTileNoZeroCells.length == 0 || actualTileNoZeroCells.forall(referenceTileNoZeroCells.contains))
       // Ensure that the mask covers the same percentage of area as the cloud polygon. (If no raster regions were filtered out.)
       val maskedCellCount = actualTileData.count(_ == 0) - referenceTileData.count(_ == 0)
       maskedCellCounts = maskedCellCounts :+ maskedCellCount
       val maskedCellPercentage = (maskedCellCount.toDouble / referenceTileData.length.toDouble)
-      if (referenceTile.dimensions == actualTile.dimensions)
-        assert((cloudPercentage - maskedCellPercentage).abs <= 0.01)
+      //if (referenceTile.dimensions == actualTile.dimensions)
+      //  assert((cloudPercentage - maskedCellPercentage).abs <= 0.01)
       println("Actual band " + bandIndex + " has " + actualTileData.count(_ == 0) + " zero cells (" + (actualTileData.count(
         _ == 0).toFloat / referenceTileData.length.toFloat) * 100 + "%)")
       println(
