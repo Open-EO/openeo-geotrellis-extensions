@@ -1,44 +1,48 @@
 package org.openeo.geotrellisseeder
 
-import be.vito.eodata.biopar.EOProduct
-import be.vito.eodata.catalog.CatalogClient
-import be.vito.eodata.gwcgeotrellis.colormap
-import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
-import be.vito.eodata.gwcgeotrellis.s3.S3ClientConfigurator
-import com.beust.jcommander.JCommander
-import com.fasterxml.jackson.databind.ObjectMapper
-import geotrellis.layer.{KeyBounds, LayoutDefinition, Metadata, SpatialKey, TileLayerMetadata, _}
-import geotrellis.proj4.{LatLng, WebMercator}
-import geotrellis.raster.geotiff.GeoTiffReprojectRasterSource
-import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.render.ColorMap
-import geotrellis.raster.{RasterRegion, RasterSource, _}
-import geotrellis.spark._
-import geotrellis.store.hadoop.util.HdfsUtils
-import geotrellis.store.s3.{AmazonS3URI, S3ClientProducer}
-import geotrellis.vector._
-import geotrellis.vector.io.wkt.WKT
-import org.apache.hadoop.fs.Path
-import org.apache.log4j.{Level, Logger}
-import org.apache.spark.rdd.RDD
-import org.apache.spark.{SparkConf, SparkContext}
-import org.openeo.geotrellisseeder.TileSeeder.CLOUD_MILKINESS
-import software.amazon.awssdk.core.sync.RequestBody
-import software.amazon.awssdk.services.s3.model.PutObjectRequest
-
 import java.io.File
 import java.net.URL
 import java.nio.file.Paths
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ofPattern
+import be.vito.eodata.biopar.EOProduct
+import be.vito.eodata.catalog.CatalogClient
+import be.vito.eodata.gwcgeotrellis.colormap
+import be.vito.eodata.gwcgeotrellis.geotrellis.TileFetcher
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
+import be.vito.eodata.gwcgeotrellis.s3.S3ClientConfigurator
+import com.beust.jcommander.JCommander
+import com.fasterxml.jackson.databind.ObjectMapper
+import geotrellis.layer.{KeyBounds, LayoutDefinition, Metadata, SpatialKey, TileLayerMetadata, _}
+import geotrellis.proj4.{LatLng, WebMercator}
+import geotrellis.raster.ResampleMethods._
+import geotrellis.raster.geotiff.GeoTiffReprojectRasterSource
+import geotrellis.raster.rasterize.Rasterizer
+import geotrellis.raster.render.ColorMap
+import geotrellis.raster.resample.Average
+import geotrellis.raster.{RasterRegion, RasterSource, _}
+import geotrellis.spark._
+import geotrellis.store.hadoop.util.HdfsUtils
+import geotrellis.store.s3.{AmazonS3URI, S3ClientProducer}
+import geotrellis.vector._
+import geotrellis.vector.io.wkt.WKT
+
 import javax.ws.rs.client.ClientBuilder
+import org.apache.hadoop.fs.Path
+import org.apache.log4j.{Level, Logger}
+import org.apache.spark.rdd.RDD
+import org.apache.spark.{SparkConf, SparkContext}
+import org.openeo.geotrellisseeder.TileSeeder.CLOUD_MILKINESS
+import software.amazon.awssdk.core.sync.RequestBody
+import software.amazon.awssdk.services.s3.model.{NoSuchKeyException, PutObjectRequest}
+
 import scala.collection.JavaConverters.{asScalaIteratorConverter, collectionAsScalaIterableConverter}
 import scala.collection.mutable.ListBuffer
 import scala.math._
 import scala.xml.SAXParseException
 
-case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] = None) {
+case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] = None, selectOverlappingTile: Boolean = false) {
 
   private val logger = if (verbose) VerboseLogger(classOf[TileSeeder]) else StandardLogger(classOf[TileSeeder])
 
@@ -48,10 +52,11 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     renderPng(path, productType, date.toString, colorMap, bands, spatialKey = Some(key))
   }
 
+
   def renderPng(path: String, productType: String, dateStr: String, colorMap: Option[String] = None, bands: Option[Array[Band]] = None,
                 productGlob: Option[String] = None, maskValues: Array[Int] = Array(), permissions: Option[String] = None,
                 spatialKey: Option[SpatialKey] = None, tooCloudyFile: Option[String] = None, datePattern: Option[String] = None,
-                oscarsEndpoint: Option[String] = None, oscarsCollection: Option[String] = None, oscarsSearchFilters: Option[Map[String, String]] = None)
+                oscarsEndpoint: Option[String] = None, oscarsCollection: Option[String] = None, oscarsSearchFilters: Option[Map[String, String]] = None, resampleMethod: Option[ResampleMethod] = Some(NearestNeighbor))
                (implicit sc: SparkContext): Unit = {
 
     val date = dateStr match {
@@ -123,34 +128,36 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       }
     }
 
-    val globalLayout = GlobalLayout(256, zoomLevel, 0.1)
+    if (sourcePathsWithBandId.map(_._1.length).sum > 0) {
+      val globalLayout = GlobalLayout(256, zoomLevel, 0.1)
 
-    implicit val layout: LayoutDefinition =
-      globalLayout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10, 10))._1
+      implicit val layout: LayoutDefinition =
+        globalLayout.layoutDefinitionWithZoom(WebMercator, WebMercator.worldExtent, CellSize(10, 10))._1
 
-    def getPartitions = partitions.getOrElse(max(1, round(pow(2, zoomLevel) / 20).toInt))
+      def getPartitions = partitions.getOrElse(max(1, round(pow(2, zoomLevel) / 20).toInt))
 
-    if (colorMap.isDefined) {
-      val map = colormap.ColorMapParser.parse(colorMap.get)
-      getSinglebandRDD(sourcePathsWithBandId.head, spatialKey)
-        .repartition(getPartitions)
-        .foreachPartition { items =>
-          configureDebugLogging()
-          S3ClientConfigurator.configure()
-          items.foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel))
-        }
-    } else if (bands.isDefined) {
-      getMultibandRDD(sourcePathsWithBandId, spatialKey)
-        .fullOuterJoin(getTooCloudyRdd(date.get, maskValues, tooCloudyFile))
-        .repartition(getPartitions)
-        .foreach(renderMultibandRDD(path, dateStr, bands.get, zoomLevel, maskValues))
-    } else {
-      getS1MultibandRDD(sourcePathsWithBandId, spatialKey)
-        .repartition(getPartitions)
-        .foreach(renderMultibandRDD(path, dateStr, zoomLevel))
+      if (colorMap.isDefined) {
+        val map = colormap.ColorMapParser.parse(colorMap.get)
+        getSinglebandRDD(sourcePathsWithBandId.head, spatialKey,resampleMethod.getOrElse(NearestNeighbor))
+          .repartition(getPartitions)
+          .foreachPartition { items =>
+            configureDebugLogging()
+            S3ClientConfigurator.configure()
+            items.foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel))
+          }
+      } else if (bands.isDefined) {
+        getMultibandRDD(sourcePathsWithBandId, spatialKey)
+          .fullOuterJoin(getTooCloudyRdd(date.get, maskValues, tooCloudyFile))
+          .repartition(getPartitions)
+          .foreach(renderMultibandRDD(path, dateStr, bands.get, zoomLevel, maskValues))
+      } else {
+        getS1MultibandRDD(sourcePathsWithBandId, spatialKey)
+          .repartition(getPartitions)
+          .foreach(renderMultibandRDD(path, dateStr, zoomLevel))
+      }
+
+      permissions.foreach(setFilePermissions(path, dateStr, _))
     }
-
-    permissions.foreach(setFilePermissions(path, dateStr, _))
   }
 
   private def getTooCloudyRdd(date: LocalDate, maskValues: Array[Int], tooCloudyFile: Option[String] = None)(implicit sc: SparkContext, layout: LayoutDefinition) = {
@@ -211,16 +218,16 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     loadMultibandTiles(sourcesVV, sourcesVH, spatialKey)
   }
 
-  private def getSinglebandRDD(sourcePathsWithBandId: (Seq[String], Int), spatialKey: Option[SpatialKey])
+  private def getSinglebandRDD(sourcePathsWithBandId: (Seq[String], Int), spatialKey: Option[SpatialKey],resampleMethod: ResampleMethod=NearestNeighbor)
                               (implicit sc: SparkContext, layout: LayoutDefinition): RDD[(SpatialKey, (Iterable[RasterRegion], Int))] with Metadata[TileLayerMetadata[SpatialKey]] = {
 
-    val sourcesWithBandId = (reproject(sourcePathsWithBandId._1), sourcePathsWithBandId._2)
+    val sourcesWithBandId = (reproject(sourcePathsWithBandId._1,resampleMethod), sourcePathsWithBandId._2)
 
-    loadSinglebandTiles(sourcesWithBandId, spatialKey)
+    loadSinglebandTiles(sourcesWithBandId, spatialKey,resampleMethod)
   }
 
-  private def reproject(sourcePaths: Seq[String]) = {
-    sourcePaths.map(GeoTiffReprojectRasterSource(_, WebMercator))
+  private def reproject(sourcePaths: Seq[String], resampleMethod: ResampleMethod = NearestNeighbor) = {
+    sourcePaths.map(GeoTiffReprojectRasterSource(_, WebMercator,resampleMethod=resampleMethod))
   }
 
   private def renderSinglebandRDD(path: String, dateStr: String, colorMap: ColorMap, zoom: Int)
@@ -393,11 +400,11 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     ContextRDD(regionRDD, layerMetadata)
   }
 
-  private def loadSinglebandTiles(sourcesWithBandId: (Seq[RasterSource], Int), spatialKey: Option[SpatialKey])(implicit sc: SparkContext, layout: LayoutDefinition) = {
+  private def loadSinglebandTiles(sourcesWithBandId: (Seq[RasterSource], Int), spatialKey: Option[SpatialKey],resampleMethod: ResampleMethod=NearestNeighbor)(implicit sc: SparkContext, layout: LayoutDefinition) = {
 
     val layerMetadata = getLayerMetadata(sourcesWithBandId._1)
 
-    val regionRDD = rasterRegionRDDFromSources(sourcesWithBandId, spatialKey)
+    val regionRDD = rasterRegionRDDFromSources(sourcesWithBandId, spatialKey,resampleMethod)
 
     ContextRDD(regionRDD, layerMetadata)
   }
@@ -408,6 +415,9 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
         Some(s.cellType)
       } catch {
         case _: SAXParseException => None
+        case e: NoSuchKeyException =>
+          logger.logNoSuchKeyException(s.name.toString)
+          throw e
       }
     }).toSet
     require(
@@ -442,16 +452,16 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     TileLayerMetadata[SpatialKey](cellType, layout, combinedExtents, crs, layerKeyBounds)
   }
 
-  private def rasterRegionRDDFromSources(sourcesWithBandId: (Seq[RasterSource], Int), spatialKey: Option[SpatialKey])
+  private def rasterRegionRDDFromSources(sourcesWithBandId: (Seq[RasterSource], Int), spatialKey: Option[SpatialKey], resampleMethod: ResampleMethod=NearestNeighbor)
                                         (implicit sc: SparkContext, layout: LayoutDefinition): RDD[(SpatialKey, (Iterable[RasterRegion], Int))] = {
 
-    sc.parallelize(sourcesWithBandId._1)
+    sc.parallelize(sourcesWithBandId._1, partitions.getOrElse(sc.defaultParallelism))
       .mapPartitions { sources =>
         S3ClientConfigurator.configure()
 
         sources.flatMap { source =>
           try {
-            val tileSource = source.tileToLayout(layout)
+            val tileSource = source.tileToLayout(layout, resampleMethod = resampleMethod)
             val keys = spatialKey match {
               case Some(k) => tileSource.keys.filter(_ == k)
               case None => tileSource.keys
@@ -495,7 +505,15 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       else if (maskValues.contains(t2)) t1
       else max(t1, t2)
 
-    tiles.map(_.toArrayTile()).reduce[Tile](_.dualCombine(_)(intCombine)(doubleCombine))
+    def dualCombine(t1: Tile, t2: Tile): Tile = {
+      if (selectOverlappingTile) {
+        TileFetcher.combineSelectTile(t1, t2)
+      } else {
+        t1.dualCombine(t2)(intCombine)(doubleCombine)
+      }
+    }
+
+    tiles.map(_.toArrayTile()).reduce[Tile](dualCombine)
   }
 
   private def toNormalizedMultibandTile(tile: MultibandTile, bands: Array[Band], maskValues: Array[Int]): MultibandTile = {
@@ -586,6 +604,23 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 object TileSeeder {
   private val CLOUD_MILKINESS = 150
 
+  private def getResampleMethod(method:String): ResampleMethod = {
+    if(method==null) {
+      return NearestNeighbor
+    }
+    method.toLowerCase match {
+      case "mode"=> Mode
+      case "nearestneighbor"=> NearestNeighbor
+      case "bilinear"=> Bilinear
+      case "cubicspline" => CubcSpline
+      case "average"=> Average
+      case "median"=> Median
+      case "max"=> Max
+      case "min"=> Min
+      case _ => NearestNeighbor
+    }
+  }
+
   def main(args: Array[String]): Unit = {
     val appName = "GeotrellisSeeder"
 
@@ -611,10 +646,12 @@ object TileSeeder {
       val oscarsEndpoint = jCommanderArgs.oscarsEndpoint
       val oscarsCollection = jCommanderArgs.oscarsCollection
       val oscarsSearchFilters = jCommanderArgs.oscarsSearchFilters
+      val selectOverlappingTile = jCommanderArgs.selectOverlappingTile
       val partitions = jCommanderArgs.partitions
       val verbose = jCommanderArgs.verbose
+      val resampleMethod = jCommanderArgs.resampleMethod.map(getResampleMethod)
 
-      val seeder = new TileSeeder(zoomLevel, verbose, partitions)
+      val seeder = new TileSeeder(zoomLevel, verbose, partitions, selectOverlappingTile)
 
       implicit val sc: SparkContext =
         SparkContext.getOrCreate(
@@ -623,7 +660,7 @@ object TileSeeder {
             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
             .set("spark.kryoserializer.buffer.max", "1024m"))
 
-      seeder.renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, tooCloudyFile = tooCloudyFile, oscarsEndpoint = oscarsEndpoint, oscarsCollection = oscarsCollection, oscarsSearchFilters = oscarsSearchFilters, datePattern=datePattern)
+      seeder.renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, tooCloudyFile = tooCloudyFile, oscarsEndpoint = oscarsEndpoint, oscarsCollection = oscarsCollection, oscarsSearchFilters = oscarsSearchFilters, datePattern=datePattern, resampleMethod=resampleMethod)
 
       sc.stop()
     }

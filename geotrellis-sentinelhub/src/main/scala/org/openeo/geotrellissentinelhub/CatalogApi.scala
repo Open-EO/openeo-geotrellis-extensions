@@ -96,10 +96,18 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
   def searchCard4L(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
                    accessToken: String, queryProperties: collection.Map[String, String] = Map()):
   Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
+    val geometry = boundingBox.extent.toPolygon()
+    val geometryCrs = boundingBox.crs
+
+    searchCard4L(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
+  }
+
+  def searchCard4L(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
+                   accessToken: String, queryProperties: collection.Map[String, String]):
+  Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
     require(collectionId == "sentinel-1-grd", """only collection "sentinel-1-grd" is supported""")
 
     // TODO: reduce code duplication with dateTimes()
-    val Extent(xmin, ymin, xmax, ymax) = boundingBox.reproject(LatLng)
     val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
     val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
 
@@ -127,7 +135,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
            |  "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
            |  "collections": ["$collectionId"],
            |  "query": $query,
-           |  "bbox": [$xmin, $ymin, $xmax, $ymax],
+           |  "intersects": ${geometry.reproject(geometryCrs, LatLng).toGeoJson()},
            |  "next": ${nextToken.orNull}
            |}""".stripMargin
 

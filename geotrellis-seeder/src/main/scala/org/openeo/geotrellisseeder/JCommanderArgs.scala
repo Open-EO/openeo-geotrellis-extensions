@@ -91,6 +91,12 @@ class JCommanderArgs {
   @Parameter(names = Array("--partitions"), required = false, description = "number of spark partitions", converter = classOf[IntOptionConverter])
   var partitions: Option[Int] = None
 
+  @Parameter(names = Array("--resampleMethod"), required = false, description = "resample method to use, defaults to nearest neighbour. Values: nearestNeighbor, mode, bilinear", converter = classOf[StringOptionConverter])
+  var resampleMethod: Option[String] = None
+
+  @Parameter(names = Array("--selectOverlappingTile"), required = false, description = "use same values from same tile when there is overlap instead of taking max of 2 values")
+  var selectOverlappingTile: Boolean = false
+
   @Parameter(names = Array("--verbose", "-v"), required = false, description = "print debug logs")
   var verbose: Boolean = false
 

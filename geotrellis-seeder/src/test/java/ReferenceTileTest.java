@@ -25,13 +25,13 @@ import static java.lang.Integer.parseInt;
 import static java.util.stream.Collectors.toList;
 
 public class ReferenceTileTest {
-    
+
     private static final String REFERENCE_IMAGES_DIR = "/data/TERRASCOPE/automated_test_files/geotrellis-seeder";
 
     private static final String COMPARE_SCRIPT= "/compare/compare.sh";
 
     private static SparkContext sc;
-    
+
     private static TileSeeder seeder;
 
     @BeforeClass
@@ -43,8 +43,8 @@ public class ReferenceTileTest {
                         .setAppName("ReferenceTileTest")
                         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
                         .set("spark.kryoserializer.buffer.max", "1024m"));
-        
-        seeder = new TileSeeder(13, false, Option.apply(1));
+
+        seeder = new TileSeeder(13, false, Option.apply(1), false);
     }
 
     @AfterClass
@@ -56,14 +56,14 @@ public class ReferenceTileTest {
     public void testSaveAndCompareAll() throws ImageComparisonFailedException, IOException, InterruptedException {
         for (Layers layer: Layers.values()) {
             Path layerDir = layer.getDir();
-            
+
             List<Path> refs = Files.find(layerDir, 1, (path, fileAttributes) -> path.toString().contains("ref")).collect(toList());
             for (Path ref : refs) {
                 String fileName = ref.getFileName().toString();
                 String[] fileParts = fileName.split("_");
-               
+
                 LocalDate date = LocalDate.parse(fileParts[1]);
-                
+
                 Pattern p = Pattern.compile("(\\d*)x(\\d*)\\.png");
                 Matcher m = p.matcher(fileParts[2]);
                 if (m.find()) {
@@ -155,10 +155,10 @@ public class ReferenceTileTest {
             @Override
             void generateTile(String path, LocalDate date, SpatialKey key) {
                 Option<String> colorMap = Some.empty();
-                Option<Band[]> bands = Option.apply(new Band[] { 
-                        Band.apply("B04", 200, 1600), 
-                        Band.apply("B03", 200, 1600), 
-                        Band.apply("B02", 200, 1600) 
+                Option<Band[]> bands = Option.apply(new Band[] {
+                        Band.apply("B04", 200, 1600),
+                        Band.apply("B03", 200, 1600),
+                        Band.apply("B02", 200, 1600)
                 });
 
                 seeder.renderSinglePng(name(), date, key, path, colorMap, bands, sc);
@@ -177,11 +177,11 @@ public class ReferenceTileTest {
                 seeder.renderSinglePng(CGS_S2_RADIOMETRY.name(), date, key, path, colorMap, bands, sc);
             }
         };
-        
+
         abstract void generateTile(String target, LocalDate date, SpatialKey key);
-        
+
         Path getDir() {
-            return Paths.get(REFERENCE_IMAGES_DIR, name());   
+            return Paths.get(REFERENCE_IMAGES_DIR, name());
         }
     }
 }

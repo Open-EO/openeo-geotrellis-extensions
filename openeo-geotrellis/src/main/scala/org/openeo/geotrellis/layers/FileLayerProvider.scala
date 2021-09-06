@@ -9,7 +9,7 @@ import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
 import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
-import geotrellis.raster.geotiff.GeoTiffResampleRasterSource
+import geotrellis.raster.geotiff.{GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
@@ -534,17 +534,21 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         if (cloudPath.isDefined) {
           Seq(GDALCloudRasterSource(cloudPath.get._1, cloudPath.get._2, dataPath, options = warpOptions, targetCellType = targetCellType))
         }else{
-          Seq(GDALRasterSource(dataPath, options = warpOptions, targetCellType = targetCellType))
+          Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution), targetCRS=Some(targetExtent.crs)), targetCellType = targetCellType))
         }
       }else if(dataPath.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
         SentinelXMLMetadataRasterSource(new URL(dataPath.replace("/vsicurl/","").replace("/vsis3/eodata","https://finder.creodias.eu/files")),bands)
       }
       else {
-        if(experimental) {
-          Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
+        if( feature.crs.isEmpty || feature.crs.equals(targetExtent.crs)) {
+          if(experimental) {
+            Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
+          }else{
+            Seq(GeoTiffResampleRasterSource(dataPath, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None))
+          }
         }else{
-          Seq(GeoTiffResampleRasterSource(dataPath, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None))
+          Seq(GeoTiffReprojectRasterSource(dataPath, targetExtent.crs, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType = targetCellType))
         }
       }
     }

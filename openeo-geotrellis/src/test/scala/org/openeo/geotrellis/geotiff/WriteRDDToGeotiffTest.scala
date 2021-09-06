@@ -3,7 +3,7 @@ package org.openeo.geotrellis.geotiff
 import geotrellis.layer.{CRSWorldExtent, SpatialKey, ZoomedLayoutScheme}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.io.geotiff.GeoTiff
-import geotrellis.raster.{ByteArrayTile, ByteConstantTile, MultibandTile, Raster, Tile, TileLayout}
+import geotrellis.raster.{ByteArrayTile, ByteConstantTile, ColorMaps, MultibandTile, Raster, Tile, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector.Extent
@@ -47,9 +47,18 @@ class WriteRDDToGeotiffTest {
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile),TileLayout(layoutCols,layoutRows,256,256),LatLng)
     val filename = "out.tif"
-    saveRDD(tileLayerRDD.withContext{_.repartition(layoutCols*layoutRows)},1,filename)
+    val options = new GTiffOptions()
+    options.setColorMap(ColorMaps.IGBP)
+    options.addHeadTag("Copyright","The unit test.")
+    options.addBandTag(0, "BAND","Band Name")
+    options.overviews = "ALL"
+    saveRDD(tileLayerRDD.withContext{_.repartition(layoutCols*layoutRows)},1,filename,formatOptions = options)
 
-    val output = GeoTiff.readSingleband(filename).raster.tile
+    val tiff = GeoTiff.readSingleband(filename)
+    assertTrue(tiff.options.colorMap.isDefined)
+    assertEquals("Band Name",tiff.tags.bandTags(0).get("BAND").get)
+    assertEquals(1,tiff.overviews.size)
+    val output = tiff.raster.tile
     assertArrayEquals(imageTile.toArray(),output.toArray())
   }
 
