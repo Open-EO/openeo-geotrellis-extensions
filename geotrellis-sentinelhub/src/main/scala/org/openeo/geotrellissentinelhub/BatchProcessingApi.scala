@@ -170,7 +170,10 @@ class BatchProcessingApi(endpoint: String) {
     s"""|//VERSION=3
         |function setup() {
         |    return {
-        |        input: [${quotedBandNames mkString ","}],
+        |        input: [{
+        |          "bands": [${quotedBandNames mkString ","}],
+        |          "units": "DN"
+        |        }],
         |        output: [${outputs mkString ",\n"}],
         |        mosaicking: "ORBIT"
         |    };
