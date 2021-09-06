@@ -12,7 +12,7 @@ import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.GeoTiffResampleRasterSource
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, IntConstantNoDataArrayTile, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataArrayTile, UShortConstantNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.vector._
@@ -333,51 +333,8 @@ object FileLayerProvider {
                           val cloudPolygons: Seq[Polygon] = cloudRasterSource.getMergedPolygons(l1cFilterStrategy.bufferInMeters)
                           val cloudPolygon = MultiPolygon(cloudPolygons).reproject(cloudRasterSource.crs, metadata.crs)
                           val cloudTile = Rasterizer.rasterizeWithValue(cloudPolygon, RasterExtent(rasterRegion.extent, tile.get.cols, tile.get.rows), 1)
-                          val tileData = tile.get.band(0).toArrayTile().asInstanceOf[UShortConstantNoDataArrayTile].array
-                          assert(cloudTile.asInstanceOf[IntConstantNoDataArrayTile].array.count(_ == 1) != tileData.length)
-                          val cloudMultibandTile = MultibandTile(cloudTile)
-
+                          val cloudMultibandTile = MultibandTile(List.fill(tile.get.bandCount)(cloudTile))
                           val maskedTile = tile.get.localMask(cloudMultibandTile, 1, 0).convert(tile.get.cellType)
-                          //val maskedTile = tile.get.mask(rasterRegion.extent, cloudPolygon)
-
-                          // Perform some checks
-//                          val maskedTileData = maskedTile.band(0).asInstanceOf[UShortConstantNoDataArrayTile].array
-//                          val cloudPolygonInRasterRegion = cloudPolygon.intersection(rasterRegion.extent)
-//                          val inverseCloudPolygonInRasterRegion = rasterRegion.extent.difference(cloudPolygon)
-//                          val areaComp = Map("Total" ->  rasterRegion.extent.getArea, "Clouded" -> cloudPolygonInRasterRegion.getArea, "NonClouded" -> inverseCloudPolygonInRasterRegion.getArea)
-//                          val countComp = Map(
-//                            "TotalCells" -> tileData.length,
-//                            "ZeroCells" ->  tileData.count(_ == 0),
-//                            "NonZeroCells" ->  tileData.count(_ != 0),
-//                            "ZeroCellsAfterCloudMask" -> maskedTileData.count(_ == 0),
-//                            "NonZeroCellsAfterCloudMask" -> maskedTileData.count(_ != 0)
-//                            )
-//
-//                          // Sanity checks
-//                          val diffBetweenMaskedTileAndDefaultTile = maskedTileData.zipWithIndex.filterNot(tileData.zipWithIndex.toSet).map(_._2)
-//
-//                          //assert(areaComp("Clouded") + areaComp("NonClouded") == areaComp("Total"))
-//                          assert(countComp("ZeroCells") + countComp("NonZeroCells") == countComp("TotalCells"))
-//                          if (cloudPolygon.intersects(rasterRegion.extent)) {
-//                            assert(countComp("ZeroCellsAfterCloudMask") >= countComp("ZeroCells"))
-//                          } else {
-//                            //assert(areaComp("Clouded") == areaComp("NonClouded"))
-//                            assert(diffBetweenMaskedTileAndDefaultTile.length == 0)
-//                            assert(countComp("ZeroCellsAfterCloudMask") == countComp("ZeroCells"))
-//                          }
-
-                          // Actual checks
-                          // Check if something changed to the zero cells.
-                          // assert(zeroCellIndexes sameElements cloudCellIndexes)
-
-                          // Ensure that inverse cloud cells weren't all zero before masking
-//                          val zeroCellIndexes = tileData.zipWithIndex.filter(_._1 == 0).map(_._2)
-//                          val cloudCellIndexes = maskedTileData.zipWithIndex.filter(_._1 == 0).map(_._2)
-//                          val nonCloudCellIndexes = inverseCloudPolygonMaskTileData.zipWithIndex.filter(_._1 == 0).map(_._2)
-//                          assert(nonCloudCellIndexes.filterNot(zeroCellIndexes.toSet).length != 0)
-
-                          //assert(cloudPolygon.intersects(rasterRegion.extent))
-                          //assert(tile != maskedTile)
                           Some(maskedTile)
                         } else Option.empty
                       }

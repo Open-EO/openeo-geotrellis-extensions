@@ -111,7 +111,7 @@ class GDALCloudRasterSource(
         var mergedPolygon: Polygon = polygon
         for (iP <- intersectingPolygons) {
           mergedPolygon = mergedPolygon.union(iP) match {
-            case x: MultiPolygon => throw new Exception("Intersecting polygons do not merge into single polygon.")
+            case _: MultiPolygon => throw new Exception("Intersecting polygons do not merge into single polygon.")
             case x: Polygon => x
           }
         }
