@@ -1,12 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import java.io.IOException
-import java.net.{URI, URL}
-import java.nio.file.{Path, Paths}
-import java.time.temporal.ChronoUnit
-import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
-import java.util.concurrent.TimeUnit
-
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Feature
 import cats.data.NonEmptyList
@@ -18,6 +11,7 @@ import geotrellis.raster.ResampleMethods.NearestNeighbor
 import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
+import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
@@ -25,9 +19,16 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
-import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.slf4j.LoggerFactory
 
+import java.io.IOException
+import java.net.{URI, URL}
+import java.nio.file.{Path, Paths}
+import java.time.temporal.ChronoUnit
+import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
+import java.util.concurrent.TimeUnit
+import scala.collection.JavaConverters._
 import scala.collection.immutable
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
@@ -314,38 +315,66 @@ object FileLayerProvider {
 
           filteredRegions
             .flatMap { case (rasterRegion, sourcePath: SourcePath) =>
-              cloudFilterStrategy.loadMasked(new MaskTileLoader {
-                override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = {
-                  val gridBoundsRasterRegion = rasterRegion.asInstanceOf[GridBoundsRasterRegion]
-                  val bufferedGridBounds = gridBoundsRasterRegion.bounds.buffer(bufferInPixels, bufferInPixels, clamp = false)
+              val result: Option[(MultibandTile, SourcePath)] = cloudFilterStrategy match {
+                case l1cFilterStrategy: L1CCloudFilterStrategy =>
+                  if (GDALCloudRasterSource.isRegionFullyClouded(rasterRegion, metadata.crs, metadata.layout, l1cFilterStrategy.bufferInMeters)) {
+                    // Do not read the tile data at all.
+                    Option.empty
+                  } else {
+                    // Simply mask out the clouds.
+                    cloudFilterStrategy.loadMasked(new MaskTileLoader {
+                      override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = Option.empty
 
-                  val maskOption = gridBoundsRasterRegion.source.read(bufferedGridBounds, Seq(sclBandIndex))
-
-                  maskOption.map { mask =>
-                    val expectedTileSize = 456
-
-                    if (mask.cols == expectedTileSize && mask.rows == expectedTileSize) mask // an optimization really
-                    else { // raster can be smaller than requested extent
-                      val emptyBufferedRaster: Raster[MultibandTile] = {
-                        val bufferedExtent = gridBoundsRasterRegion.source.gridExtent.extentFor(bufferedGridBounds, clamp = false)
-
-                        // warning: convoluted way of creating a NODATA tile
-                        val arbitraryNoDataCellType = FloatConstantNoDataCellType
-                        val emptyBufferedTile =
-                          FloatConstantTile(arbitraryNoDataCellType.noDataValue, cols = expectedTileSize, rows = expectedTileSize, arbitraryNoDataCellType)
-                            .toArrayTile() // TODO: not materializing messes up the NODATA value
-                            .convert(mask.cellType)
-
-                        Raster(MultibandTile(emptyBufferedTile), bufferedExtent)
+                      override def loadData: Option[MultibandTile] = {
+                        val tile: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
+                        if (tile.isDefined) {
+                          val compositeRasterSource = rasterRegion.asInstanceOf[GridBoundsRasterRegion].source.asInstanceOf[BandCompositeRasterSource]
+                          val cloudRasterSource = compositeRasterSource.sources.head.asInstanceOf[GDALCloudRasterSource]
+                          val cloudPolygons: Seq[Polygon] = cloudRasterSource.getMergedPolygons(l1cFilterStrategy.bufferInMeters)
+                          val cloudPolygon = MultiPolygon(cloudPolygons).reproject(cloudRasterSource.crs, metadata.crs)
+                          val cloudTile = Rasterizer.rasterizeWithValue(cloudPolygon, RasterExtent(rasterRegion.extent, tile.get.cols, tile.get.rows), 1)
+                          val cloudMultibandTile = MultibandTile(List.fill(tile.get.bandCount)(cloudTile))
+                          val maskedTile = tile.get.localMask(cloudMultibandTile, 1, 0).convert(tile.get.cellType)
+                          Some(maskedTile)
+                        } else Option.empty
                       }
-
-                      emptyBufferedRaster merge mask
-                    }
+                    }).map((_, sourcePath))
                   }
-                }
+                case _ =>
+                  cloudFilterStrategy.loadMasked(new MaskTileLoader {
+                    override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = {
+                      val gridBoundsRasterRegion = rasterRegion.asInstanceOf[GridBoundsRasterRegion]
+                      val bufferedGridBounds = gridBoundsRasterRegion.bounds.buffer(bufferInPixels, bufferInPixels, clamp = false)
 
-                override def loadData: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
-              }).map((_, sourcePath))
+                      val maskOption = gridBoundsRasterRegion.source.read(bufferedGridBounds, Seq(sclBandIndex))
+
+                      maskOption.map { mask =>
+                        val expectedTileSize = 456
+
+                        if (mask.cols == expectedTileSize && mask.rows == expectedTileSize) mask // an optimization really
+                        else { // raster can be smaller than requested extent
+                          val emptyBufferedRaster: Raster[MultibandTile] = {
+                            val bufferedExtent = gridBoundsRasterRegion.source.gridExtent.extentFor(bufferedGridBounds, clamp = false)
+
+                            // warning: convoluted way of creating a NODATA tile
+                            val arbitraryNoDataCellType = FloatConstantNoDataCellType
+                            val emptyBufferedTile =
+                              FloatConstantTile(arbitraryNoDataCellType.noDataValue, cols = expectedTileSize, rows = expectedTileSize, arbitraryNoDataCellType)
+                                .toArrayTile() // TODO: not materializing messes up the NODATA value
+                                .convert(mask.cellType)
+
+                            Raster(MultibandTile(emptyBufferedTile), bufferedExtent)
+                          }
+
+                          emptyBufferedRaster merge mask
+                        }
+                      }
+                    }
+
+                    override def loadData: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
+                  }).map((_, sourcePath))
+              }
+              result
             }
             .sortWith { case ((leftMultibandTile, leftSourcePath), (rightMultibandTile, rightSourcePath)) =>
               if (leftMultibandTile.band(0).isInstanceOf[PaddedTile] && !rightMultibandTile.band(0).isInstanceOf[PaddedTile]) true
@@ -447,17 +476,29 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     logger.info(s"Loading ${openSearchCollectionId} with params ${datacubeParams.getOrElse(new DataCubeParameters)} and bands ${openSearchLinkTitles.toList.mkString(";")}")
 
-    val overlappingRasterSources: Seq[RasterSource] = loadRasterSourceRDD(boundingBox, from, to, zoom)
+    var overlappingRasterSources: Seq[RasterSource] = loadRasterSourceRDD(boundingBox, from, to, zoom)
     val commonCellType = overlappingRasterSources.head.cellType
     val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType, layoutScheme, maxSpatialResolution)
 
-    val rasterSources = rasterSourceRDD(overlappingRasterSources, metadata, maxSpatialResolution, openSearchCollectionId)(sc)
+    // Handle maskingStrategyParameters.
+    var maskStrategy : Option[CloudFilterStrategy] = None
+    if (datacubeParams.isDefined && datacubeParams.get.maskingStrategyParameters != null) {
+      val maskParams = datacubeParams.get.maskingStrategyParameters
+      val maskMethod = maskParams.getOrDefault("method", "").toString
+      if (maskMethod == "mask_scl_dilation") {
+        maskStrategy = for {
+          (_, sclBandIndex) <- openSearchLinkTitles.zipWithIndex.find {
+            case (linkTitle, _) => linkTitle.contains("SCENECLASSIFICATION") || linkTitle.contains("SCL")
+          }
+        } yield new SCLConvolutionFilterStrategy(sclBandIndex)
+      }
+      else if (maskMethod == "mask_l1c") {
+        overlappingRasterSources = GDALCloudRasterSource.filterRasterSources(overlappingRasterSources, maskParams)
+        maskStrategy = Some(new L1CCloudFilterStrategy(GDALCloudRasterSource.getDilationDistance(maskParams.asScala.toMap)))
+      }
+    }
 
-    val maskStrategy = for {
-      params <- datacubeParams if params.maskingStrategyParameters != null && params.maskingStrategyParameters.get("method") == "mask_scl_dilation"
-      (_, sclBandIndex) <- openSearchLinkTitles.zipWithIndex.find { case (linkTitle, _) => linkTitle.contains("SCENECLASSIFICATION") || linkTitle.contains("SCL") }
-    } yield new SCLConvolutionFilterStrategy(sclBandIndex)
-
+    val rasterSources: RDD[LayoutTileSource[SpaceTimeKey]] = rasterSourceRDD(overlappingRasterSources, metadata, maxSpatialResolution, openSearchCollectionId)(sc)
     FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc, maskStrategy.getOrElse(NoCloudFilterStrategy), datacubeParams=datacubeParams)
   }
 
@@ -487,22 +528,27 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     val re = RasterExtent(expandToCellSize(targetExtent.extent, maxSpatialResolution), maxSpatialResolution).alignTargetPixels
     val alignment = TargetAlignment(re)
 
-    def rasterSource(path:String,targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
-      if(path.endsWith(".jp2")) {
-        Seq(GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution), targetCRS=Some(targetExtent.crs)), targetCellType = targetCellType))
-      }else if(path.endsWith("MTD_TL.xml")) {
+    def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
+      if(dataPath.endsWith(".jp2")) {
+        val warpOptions = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution))
+        if (cloudPath.isDefined) {
+          Seq(GDALCloudRasterSource(cloudPath.get._1, cloudPath.get._2, dataPath, options = warpOptions, targetCellType = targetCellType))
+        }else{
+          Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution), targetCRS=Some(targetExtent.crs)), targetCellType = targetCellType))
+        }
+      }else if(dataPath.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
-        SentinelXMLMetadataRasterSource(new URL(path.replace("/vsicurl/","").replace("/vsis3/eodata","https://finder.creodias.eu/files")),bands)
+        SentinelXMLMetadataRasterSource(new URL(dataPath.replace("/vsicurl/","").replace("/vsis3/eodata","https://finder.creodias.eu/files")),bands)
       }
       else {
         if( feature.crs.isEmpty || feature.crs.equals(targetExtent.crs)) {
           if(experimental) {
-            Seq(GDALRasterSource(path, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
+            Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
           }else{
-            Seq(GeoTiffResampleRasterSource(path, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None))
+            Seq(GeoTiffResampleRasterSource(dataPath, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None))
           }
         }else{
-          Seq(GeoTiffReprojectRasterSource(path,targetExtent.crs, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType = targetCellType))
+          Seq(GeoTiffReprojectRasterSource(dataPath, targetExtent.crs, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType = targetCellType))
         }
       }
     }
@@ -511,13 +557,19 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       (title, bands) <- openSearchLinkTitlesWithBandIds.toList
       link <- feature.links.find(_.title contains title)
       path = deriveFilePath(link.href)
+      cloudPathOptions = (
+        feature.links.find(_.title contains "FineCloudMask_Tile1_Data").map(_.href.toString),
+        feature.links.find(_.title contains "S2_Level-1C_Tile1_Metadata").map(_.href.toString)
+      )
+      cloudPath = for(x <- cloudPathOptions._1; y <- cloudPathOptions._2) yield (x,y)
+
       //special case handling for data that does not declare nodata properly
       targetCellType = link.title match {
         case x if x.get.contains("SCENECLASSIFICATION_20M") =>  Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
         case x if x.get.startsWith("IMG_DATA_Band_") =>  Some(ConvertTargetCellType(UShortConstantNoDataCellType))
         case _ => None
       }
-    } yield (rasterSource(path,targetCellType, targetExtent,bands), bands)
+    } yield (rasterSource(path, cloudPath, targetCellType, targetExtent, bands), bands)
 
     rasterSources.flatMap(rs_b => rs_b._1.map(rs => (rs,rs_b._2))).toList
   }
