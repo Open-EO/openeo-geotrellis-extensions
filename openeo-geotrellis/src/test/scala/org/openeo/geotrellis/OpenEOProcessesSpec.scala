@@ -8,7 +8,7 @@ import geotrellis.raster.buffer.BufferedTile
 import geotrellis.raster.io.geotiff._
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ArrayMultibandTile, DoubleArrayTile, GridBounds, MultibandTile, Raster, Tile, TileLayout}
+import geotrellis.raster.{ArrayMultibandTile, ByteConstantTile, DoubleArrayTile, GridBounds, IntConstantNoDataCellType, MultibandTile, Raster, Tile, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
@@ -110,6 +110,42 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val stitched = maskedCube.toSpatial().stitch()
     print(stitched)
   }
+
+  @Test
+  def applyMask_spacetime_spatial() = {
+    val date = "2018-05-06T00:00:00Z"
+
+    val extent = Extent(3.4, 51.0, 3.5, 51.05)
+    val datacube= dataCube( date, date, extent, "EPSG:4326")
+
+    val selectedBands = LayerFixtures.sentinel2B04Layer
+
+    val maskTile = new ByteConstantTile(0.toByte, 256, 256).mutable
+    maskTile.set(0, 0, 0)
+    maskTile.set(0, 1, 1)
+    maskTile.set(0, 2, 1)
+
+    val mask = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, new Raster(new ArrayMultibandTile(Array[Tile](maskTile)),selectedBands.metadata.extent), selectedBands.metadata.tileLayout,selectedBands.metadata.crs)
+                  .withContext(_.mapValues(t => MultibandTile(maskTile)))
+
+    val maskedCube: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().rasterMask_spacetime_spatial(selectedBands, mask, 123)
+    val tiles = maskedCube.collectAsMap()
+
+    import scala.collection.JavaConversions._
+    for (tileEntry <- tiles.entrySet) {
+      val tile = tileEntry.getValue.band(0)
+
+      //get method applies a conversion to int, also nodata is converted
+      val value = tile.get(0, 1)
+      assertTrue(123 == value || IntConstantNoDataCellType.noDataValue == value)
+      val value2 = tile.get(0, 2)
+      assertTrue(123 == value || IntConstantNoDataCellType.noDataValue == value)
+
+    }
+
+
+  }
+
 
   @Test
   def applyMaskFFT(): Unit = {
