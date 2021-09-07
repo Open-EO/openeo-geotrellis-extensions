@@ -333,7 +333,12 @@ package object geotiff {
     val options = if(formatOptions.colorMap.isDefined){
       new GeoTiffOptions(colorMap = formatOptions.colorMap.map(IndexedColorMap.fromColorMap),colorSpace = ColorSpace.Palette)
     }else{
-      new GeoTiffOptions()
+      val theColorspace = if(detectedBandCount==3) {
+        ColorSpace.RGB
+      }else{
+        ColorSpace.BlackIsZero
+      }
+      new GeoTiffOptions(colorSpace = theColorspace)
     }
 
     val thegeotiff = new MultibandGeoTiff(tiffTile, croppedExtent, crs,formatOptions.tags,options,overviews = overviews.map(o=>MultibandGeoTiff(o,croppedExtent,crs,options = new GeoTiffOptions(subfileType = Some(ReducedImage)))))//.withOverviews(NearestNeighbor, List(4, 8, 16))
