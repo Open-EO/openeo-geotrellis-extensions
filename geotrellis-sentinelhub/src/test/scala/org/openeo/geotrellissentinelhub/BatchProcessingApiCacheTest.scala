@@ -1,6 +1,8 @@
 package org.openeo.geotrellissentinelhub
 
 import _root_.io.circe.parser._
+import _root_.io.circe.generic.auto._
+import _root_.io.circe.syntax._
 import cats.syntax.either._
 import com.sksamuel.elastic4s
 import com.sksamuel.elastic4s.http.JavaClient
@@ -37,8 +39,10 @@ import java.time.format.DateTimeFormatter.{BASIC_ISO_DATE, ISO_OFFSET_DATE_TIME}
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 
 object BatchProcessingApiCacheTest {
-  private val featureIndex = "features" // tiling grid "1"
+  private val featureIndex = "sentinel-hub-tiling-grid-1" // tiling grid "1"
   private val utc = ZoneId.of("UTC")
+  //private val elasticsearchEndpoint = "http://localhost:9200"
+  private val elasticsearchEndpoint = "https://es-apps-dev.vgt.vito.be:443"
 
   private val clientId = Utils.clientId
   private val clientSecret = Utils.clientSecret
@@ -89,7 +93,7 @@ object BatchProcessingApiCacheTest {
     }
   }
 
-  private def elasticClient: ElasticClient = ElasticClient(JavaClient(ElasticProperties("http://localhost:9200")))
+  private def elasticClient: ElasticClient = ElasticClient(JavaClient(ElasticProperties(elasticsearchEndpoint)))
 
   private trait Cache {
     def query(datasetId: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime, // FIXME: accept more geometries
@@ -169,6 +173,10 @@ object BatchProcessingApiCacheTest {
       } finally client.close()
     }
   }
+
+  case class CacheContext(bandNames: Seq[String], incompleteTiles: Option[Seq[(String, Geometry)]],
+                          lower: Option[ZonedDateTime], upper: Option[ZonedDateTime],
+                          missingBandNames: Option[Seq[String]])
 }
 
 class BatchProcessingApiCacheTest {
@@ -187,7 +195,7 @@ class BatchProcessingApiCacheTest {
 
     val bulkRequestBody = items.mkString(start = "", sep = "\n", end = "\n")
 
-    val responseBody = Http(s"http://localhost:9200/$featureIndex/_bulk")
+    val responseBody = Http(s"$elasticsearchEndpoint/$featureIndex/_bulk")
       .headers("Content-Type" -> "application/json")
       .put(bulkRequestBody)
       .asString
@@ -270,13 +278,6 @@ class BatchProcessingApiCacheTest {
     // 2) which ones are already in the cache?
     val cacheEntries = cache.query(datasetId, geometry, from, to, bandNames)
 
-    // 3) send SHub a request for the missing cache keys
-    // TODO: optimize?
-    val missingTiles = expectedTiles
-      .filterNot { case (tileId, _, date, bandName) =>
-        cacheEntries.exists(cachedTile => cachedTile.tileId == tileId && cachedTile.date.isEqual(date) && cachedTile.bandName == bandName)
-      }
-
     for {
       entry <- cacheEntries
       filePath <- entry.filePath
@@ -284,6 +285,13 @@ class BatchProcessingApiCacheTest {
       Files.createSymbolicLink(collectingDir.resolve(filePath.getFileName), filePath)
       println(s"symlinked $filePath from the distant past to $collectingDir")
     }
+
+    // 3) send SHub a request for the missing cache keys
+    // TODO: optimize?
+    val missingTiles = expectedTiles
+      .filterNot { case (tileId, _, date, bandName) =>
+        cacheEntries.exists(cachedTile => cachedTile.tileId == tileId && cachedTile.date.isEqual(date) && cachedTile.bandName == bandName)
+      }
 
     if (missingTiles.isEmpty) {
       println("everything's cached, no need for additional requests")
@@ -575,6 +583,7 @@ class BatchProcessingApiCacheTest {
     getNarrowerRequest(datasetId, geometry, from, to, bandNames, cache)
   }
 
+  @Ignore
   @Test
   def poc(): Unit = {
     val endpoint = "https://services.sentinel-hub.com"
@@ -647,7 +656,22 @@ class BatchProcessingApiCacheTest {
       cache
     )
 
+    val jobDir = Paths.get("/tmp", "pocs", UUID.randomUUID().toString)
+    Files.createDirectories(jobDir)
+    println(s"created job directory $jobDir")
+
+    saveCacheContext(jobDir.toString,
+      CacheContext(bandNames, incompleteTiles = None, lower = None, upper = None, missingBandNames = None))
+
     narrowerRequest foreach { case (incompleteTiles, lower, upper, missingBands) =>
+      val cacheContext = loadCacheContext(jobDir.toString)
+      saveCacheContext(jobDir.toString, cacheContext.copy(
+        incompleteTiles = Some(incompleteTiles),
+        lower = Some(lower),
+        upper = Some(upper),
+        missingBandNames = Some(missingBands))
+      )
+
       val batchProcessingService = new BatchProcessingService(
         endpoint,
         bucketName = "openeo-sentinelhub",
@@ -671,15 +695,15 @@ class BatchProcessingApiCacheTest {
         from_date = ISO_OFFSET_DATE_TIME format lower,
         to_date = ISO_OFFSET_DATE_TIME format upper,
         band_names = missingBands.asJava,
-        SampleType.FLOAT32, // FIXME: UINT16 gives bad (rounded?) results?
+        SampleType.FLOAT32,
         metadata_properties = Collections.emptyMap[String, Any],
         processing_options = Collections.emptyMap[String, Any]
       )
 
-      // val batchRequestId = Some("3db6d7ff-094f-4150-b418-8e8375cfa4da")
+      //val batchRequestId = "3db6d7ff-094f-4150-b418-8e8375cfa4da"
 
       batchRequestId match {
-        case BatchProcessingService.fully_cached => println("narrower request is fully cached so no batch process")
+        case null => println("no data for narrower request so no batch process was requested")
         case id =>
           awaitDone(batchProcessingService, Seq(id))
 
@@ -713,11 +737,13 @@ class BatchProcessingApiCacheTest {
 
           println(s"cached ${actualTiles.size} tiles from the narrow request")
 
-          // FIXME: this happens in another process that doesn't have any context about the request
+          val cacheContext = loadCacheContext(jobDir.toString)
+          println(s"cache context $cacheContext")
+
           val expectedTiles = for { // tiles expected from the narrow request
-            (gridTileId, geometry) <- incompleteTiles
-            date <- sequentialDays(lower, upper)
-            bandName <- missingBands
+            (gridTileId, geometry) <- cacheContext.incompleteTiles.get
+            date <- sequentialDays(cacheContext.lower.get, cacheContext.upper.get)
+            bandName <- cacheContext.missingBandNames.get
           } yield (gridTileId, geometry, date, bandName)
 
           println(s"was expecting ${expectedTiles.size} tiles for the narrow request")
@@ -734,21 +760,18 @@ class BatchProcessingApiCacheTest {
       }
     }
 
-    val jobDir = Paths.get("/tmp", "pocs", UUID.randomUUID().toString)
-    Files.createDirectories(jobDir)
-    println(s"created job directory $jobDir")
-
-    def collectMultibandTiles(): Unit = {
+    def assembleMultibandTiles(): Unit = {
       import scala.sys.process._
 
       val singleBandTiffs = Files.list(collectingDir).collect(toList[Path]).asScala
+      val bandNames = loadCacheContext(jobDir.toString).bandNames
 
       val bandsGrouped = singleBandTiffs.groupBy { singleBandTiff =>
         val Array(tileId, date, _) = singleBandTiff.getFileName.toString.split("-")
         (tileId, date)
       }.mapValues(bands => bands.sortBy { singleBandTiff =>
         val bandName = singleBandTiff.getFileName.toString.split("-")(2).takeWhile(_ != '.')
-        bandNames.indexOf(bandName)
+        bandNames.indexOf(bandName) // these are the bands of the original request
       })
 
       bandsGrouped foreach { case ((tileId, date), bandTiffs) =>
@@ -773,7 +796,7 @@ class BatchProcessingApiCacheTest {
       }
     }
 
-    collectMultibandTiles()
+    assembleMultibandTiles()
 
     println(s"done. results are ready in ${jobDir.toAbsolutePath}")
   }
@@ -824,5 +847,22 @@ class BatchProcessingApiCacheTest {
     val stopped = System.currentTimeMillis()
 
     (r, Duration.ofMillis(stopped - started))
+  }
+
+  private def saveCacheContext(subfolder: String, cacheContext: CacheContext): Unit = {
+    val json = cacheContext.asJson.noSpaces
+    Files.write(Paths.get(subfolder, "cache_context.json"), json.getBytes("UTF-8"))
+  }
+
+  private def loadCacheContext(subfolder: String): CacheContext = {
+    val json = new String(Files.readAllBytes(Paths.get(subfolder, "cache_context.json")), "UTF-8")
+    decode[CacheContext](json).valueOr(throw _)
+  }
+
+  @Ignore
+  @Test
+  def test(): Unit = {
+    saveCacheContext("/tmp",
+      CacheContext(Seq("B04"), incompleteTiles = None, lower = Some(ZonedDateTime.now(utc)), upper = None, missingBandNames = None))
   }
 }

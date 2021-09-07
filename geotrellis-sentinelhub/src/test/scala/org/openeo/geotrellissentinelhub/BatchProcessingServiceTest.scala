@@ -3,16 +3,22 @@ package org.openeo.geotrellissentinelhub
 import geotrellis.proj4.LatLng
 import geotrellis.vector.{Extent, MultiPolygon}
 import org.junit.Assert.assertEquals
-import org.junit.{Ignore, Test}
+import org.junit.rules.TemporaryFolder
+import org.junit.{Ignore, Rule, Test}
 
 import java.util.{Arrays, Collections, UUID}
 import java.time.LocalTime
+import scala.annotation.meta.getter
 import scala.collection.JavaConverters._
 
 class BatchProcessingServiceTest {
-  val endpoint = "https://services.sentinel-hub.com"
+  private val endpoint = "https://services.sentinel-hub.com" // TODO: this depends on the dataset
   private val batchProcessingService = new BatchProcessingService(endpoint, bucketName = "openeo-sentinelhub",
     Utils.clientId, Utils.clientSecret)
+
+  @(Rule @getter)
+  val temporaryFolder = new TemporaryFolder
+  private def collectingFolder = temporaryFolder.getRoot.toPath
 
   @Ignore
   @Test
@@ -74,6 +80,52 @@ class BatchProcessingServiceTest {
     )
 
     println(awaitDone(Seq(batchRequestId)))
+  }
+
+  @Ignore
+  @Test
+  def startBatchProcessForSentinel2(): Unit = {
+    val batchRequestId = batchProcessingService.start_batch_process(
+      collection_id = "sentinel-2-l2a",
+      dataset_id = "sentinel-2-l2a",
+      bbox = Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206),
+      bbox_srs = "EPSG:4326",
+      from_date = "2019-09-21T00:00:00+00:00",
+      to_date = "2019-09-21T00:00:00+00:00",
+      band_names = Arrays.asList("B04", "B03", "B02"),
+      SampleType.UINT16,
+      metadata_properties = Collections.emptyMap[String, Any],
+      processing_options = Collections.emptyMap[String, Any]
+    )
+
+    println(awaitDone(Seq(batchRequestId)))
+  }
+
+  @Ignore
+  @Test
+  def startCachedBatchProcessForSentinel2(): Unit = {
+    val subfolder = UUID.randomUUID().toString
+
+    println(s"subfolder: $subfolder")
+
+    // runs SHub batch process that puts its results into s3:///subfolder
+    // collectingFolder is a directory on disk that contains symlinks to cached tiles
+    val batchRequestId = batchProcessingService.start_batch_process_cached(
+      collection_id = "sentinel-2-l2a",
+      dataset_id = "sentinel-2-l2a",
+      bbox = Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206),
+      bbox_srs = "EPSG:4326",
+      from_date = "2019-09-21T00:00:00+00:00",
+      to_date = "2019-09-21T00:00:00+00:00",
+      band_names = Arrays.asList("B04", "B03", "B02"),
+      SampleType.UINT16,
+      metadata_properties = Collections.emptyMap[String, Any],
+      processing_options = Collections.emptyMap[String, Any],
+      subfolder,
+      collectingFolder.toAbsolutePath.toString
+    )
+
+    if (batchRequestId != null) println(awaitDone(Seq(batchRequestId)))
   }
 
   @Test

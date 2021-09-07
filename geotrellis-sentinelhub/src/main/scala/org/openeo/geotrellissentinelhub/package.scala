@@ -4,6 +4,7 @@ import org.slf4j.Logger
 
 import java.lang.Math.{pow, random}
 import java.net.SocketTimeoutException
+import java.time.ZonedDateTime
 import java.util
 import scala.annotation.tailrec
 import scala.collection.JavaConverters._
@@ -44,4 +45,9 @@ package object geotrellissentinelhub {
         case ("orbitDirection", value: String) => "sat:orbit_state" -> value
         case (property, _) => throw new IllegalArgumentException(s"unsupported metadata property $property")
       }
+
+  // TODO: put it in a central place
+  implicit object ZonedDateTimeOrdering extends Ordering[ZonedDateTime] {
+    override def compare(x: ZonedDateTime, y: ZonedDateTime): Int = x compareTo y
+  }
 }

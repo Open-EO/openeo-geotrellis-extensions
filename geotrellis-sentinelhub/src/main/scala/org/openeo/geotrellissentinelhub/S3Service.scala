@@ -2,7 +2,7 @@ package org.openeo.geotrellissentinelhub
 
 import geotrellis.raster.io.geotiff.SinglebandGeoTiff
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
-import software.amazon.awssdk.core.sync.ResponseTransformer
+import software.amazon.awssdk.core.sync.{RequestBody, ResponseTransformer}
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model._
 
@@ -11,6 +11,7 @@ import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.nio.file.{Files, Path, Paths}
 import java.util
 import java.util.concurrent.TimeUnit
+import java.util.function.Consumer
 import scala.collection.JavaConverters._
 import scala.compat.java8.FunctionConverters._
 
@@ -22,10 +23,15 @@ object S3Service {
 class S3Service {
   import S3Service._
 
-  def delete_batch_process_results(bucket_name: String, subfolder: String): Unit = {
+  private def withS3Client[R](f: S3Client => R): R = {
     val s3Client = S3Client.builder()
       .build()
 
+    try f(s3Client)
+    finally s3Client.close()
+  }
+
+  def delete_batch_process_results(bucket_name: String, subfolder: String): Unit = withS3Client { s3Client =>
     val objectIdentifiers = listObjectIdentifiers(s3Client, bucket_name, prefix = subfolder)
 
     if (objectIdentifiers.isEmpty)
@@ -54,10 +60,8 @@ class S3Service {
   // previously batch processes wrote to s3://<bucket_name>/<batch_request_id> while the new ones write to
   // s3://<bucket_name>/<request_group_id> because they comprise multiple batch process requests
   def download_stac_data(bucket_name: String, request_group_id: String, target_dir: String,
-                         metadata_poll_interval_secs: Int = 10, max_metadata_delay_secs: Int = 600): Unit = {
-    val s3Client = S3Client.builder()
-      .build()
-
+                         metadata_poll_interval_secs: Int = 10,
+                         max_metadata_delay_secs: Int = 600): Unit = withS3Client { s3Client =>
     def keys: Seq[String] = listObjectIdentifiers(s3Client, bucket_name, prefix = request_group_id)
       .asScala
       .map(_.key())
@@ -111,18 +115,14 @@ class S3Service {
   }
 
   def downloadBatchProcessResults(bucketName: String, subfolder: String, targetDir: Path, bandNames: Seq[String],
-                                  onDownloaded: (String, ZonedDateTime, String) => Unit): Unit = {
+                                  onDownloaded: (String, ZonedDateTime, String) => Unit): Unit = withS3Client { s3Client =>
     import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
 
     // TODO: move details elsewhere?
-    val s3Client = S3Client.builder()
-      .build()
-
     val tiffKeys = listObjectIdentifiers(s3Client, bucketName, prefix = subfolder)
       .asScala
       .map(_.key())
       .filter(_.endsWith(".tif"))
-
 
     tiffKeys foreach { key =>
       val Array(_, tileId, fileName) = key.split("/")
@@ -158,5 +158,57 @@ class S3Service {
 
     try s3Client.getObject(getObjectRequest, ResponseTransformer.toOutputStream[GetObjectResponse](out))
     finally out.close()
+  }
+
+  def uploadRecursively(root: Path, bucket_name: String): String = withS3Client { s3Client =>
+    val prefix = root.getFileName.toString
+
+    Files.walk(root).forEach(new Consumer[Path] { // TODO: use lambda with .asJava instead
+      override def accept(path: Path): Unit = {
+        if (Files.isRegularFile(path)) {
+          val key = root.getParent.relativize(path).toString
+
+          val putObjectRequest = PutObjectRequest.builder()
+            .bucket(bucket_name)
+            .key(key)
+            .build()
+
+          s3Client.putObject(putObjectRequest, path)
+        }
+      }
+    })
+
+    prefix
+  }
+
+  // TODO: do these two belong here?
+  def saveBatchProcessContext(batchProcessContext: BatchProcessContext, bucketName: String, subfolder: String): Unit = {
+    val json = batchProcessContext.toJson
+    uploadText(json, bucketName, batchProcessContextKey(subfolder))
+  }
+
+  def loadBatchProcessContext(bucketName: String, subfolder: String): BatchProcessContext = {
+    val json = downloadText(bucketName, batchProcessContextKey(subfolder))
+    BatchProcessContext.fromJson(json)
+  }
+
+  private def batchProcessContextKey(subfolder: String): String = s"$subfolder/request_context.json"
+
+  private def uploadText(text: String, bucketName: String, key: String): Unit = withS3Client { s3Client =>
+    val putObjectRequest = PutObjectRequest.builder()
+      .bucket(bucketName)
+      .key(key)
+      .build()
+
+    s3Client.putObject(putObjectRequest, RequestBody.fromString(text))
+  }
+
+  private def downloadText(bucketName: String, key: String): String = withS3Client { s3Client =>
+    val getObjectRequest = GetObjectRequest.builder()
+      .bucket(bucketName)
+      .key(key)
+      .build()
+
+    s3Client.getObject(getObjectRequest, ResponseTransformer.toBytes[GetObjectResponse]).asUtf8String()
   }
 }
