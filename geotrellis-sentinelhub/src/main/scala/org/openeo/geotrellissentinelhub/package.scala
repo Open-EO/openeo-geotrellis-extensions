@@ -17,7 +17,8 @@ package object geotrellissentinelhub {
         logger.warn(s"Attempt $i failed: $context -> ${e.getMessage}")
 
         i < attempts && (e match {
-          case s: SentinelHubException if s.statusCode == 429 || s.statusCode >= 500 => true
+          case s: SentinelHubException if s.statusCode == 429 || s.statusCode >= 500
+            || (s.statusCode == 400 && s.responseBody.contains("Request body should be non-empty.")) => true
           case _: SocketTimeoutException => true
           case _ => false
         })
