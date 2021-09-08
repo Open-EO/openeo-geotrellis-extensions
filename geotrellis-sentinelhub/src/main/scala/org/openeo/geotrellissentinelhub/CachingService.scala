@@ -91,7 +91,7 @@ class CachingService {
 
   def upload_multiband_tiles(subfolder: String, collecting_folder: String, bucket_name: String): String = {
     val collectingFolder = Paths.get(collecting_folder)
-    val assembledFolder = Files.createTempDirectory("assembled_")
+    val assembledFolder = Files.createTempDirectory(Paths.get("/tmp_epod/openeo_assembled"), "assembled_")
 
     val s3Service = new S3Service
 
