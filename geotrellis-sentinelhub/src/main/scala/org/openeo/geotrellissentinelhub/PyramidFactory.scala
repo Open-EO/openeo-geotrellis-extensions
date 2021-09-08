@@ -21,6 +21,7 @@ import org.slf4j.{Logger, LoggerFactory}
 import java.time.ZoneOffset.UTC
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeUnit.SECONDS
+import scala.annotation.meta.param
 import scala.collection.JavaConverters._
 
 object PyramidFactory {
@@ -57,8 +58,8 @@ object PyramidFactory {
     rateLimited(endpoint, collectionId = null, datasetId, clientId, clientSecret, processingOptions, sampleType)
 }
 
-class PyramidFactory(collectionId: String, datasetId: String, @transient catalogApi: CatalogApi, processApi: ProcessApi,
-                     clientId: String, clientSecret: String,
+class PyramidFactory(collectionId: String, datasetId: String, @(transient @param) catalogApi: CatalogApi,
+                     processApi: ProcessApi, clientId: String, clientSecret: String,
                      processingOptions: util.Map[String, Any] = util.Collections.emptyMap[String, Any],
                      sampleType: SampleType = UINT16,
                      rateLimitingGuard: RateLimitingGuard = NoRateLimitingGuard) extends Serializable {
