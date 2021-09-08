@@ -12,6 +12,10 @@ trait MaskTileLoader {
   def loadData: Option[MultibandTile]
 }
 
+class L1CCloudFilterStrategy(val bufferInMeters: Int) extends CloudFilterStrategy {
+  override def loadMasked(maskTileLoader: MaskTileLoader): Option[MultibandTile] = maskTileLoader.loadData
+}
+
 /**
  * Does no cloud filtering and returns the original data.
  */

@@ -404,7 +404,6 @@ class OpenEOProcesses extends Serializable {
   }
 
 
-
   def retile(datacube: MultibandTileLayerRDD[SpaceTimeKey], sizeX:Int, sizeY:Int, overlapX:Int, overlapY:Int): MultibandTileLayerRDD[SpaceTimeKey] = {
     val regridded =
     if(sizeX >0 && sizeY > 0){
@@ -440,6 +439,28 @@ class OpenEOProcesses extends Serializable {
     } else {
       result.mapBands { (index, t) => PaddedTile(t, 0, 0, fullSizeX, fullSizeY) }
     }
+  }
+
+  def rasterMask_spacetime_spatial(datacube: MultibandTileLayerRDD[SpaceTimeKey], mask: MultibandTileLayerRDD[SpatialKey], replacement: java.lang.Double): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val joined = new SpatialToSpacetimeJoinRdd[MultibandTile](datacube, mask)
+
+    val replacementInt: Int = if (replacement == null) NODATA else replacement.intValue()
+    val replacementDouble: Double = if (replacement == null) doubleNODATA else replacement
+    val masked = joined.mapValues(t => {
+      val dataTile = t._1
+
+      val maskTile = t._2
+      var maskIndex = 0
+      dataTile.mapBands((index,tile) =>{
+        if(dataTile.bandCount == maskTile.bandCount){
+          maskIndex = index
+        }
+        tile.dualCombine(maskTile.band(maskIndex))((v1,v2) => if (v2 != 0 && isData(v1)) replacementInt else v1)((v1,v2) => if (v2 != 0.0 && isData(v1)) replacementDouble else v1)
+      })
+
+    })
+
+    new ContextRDD(masked, datacube.metadata).convert(datacube.metadata.cellType)
   }
 
   def rasterMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], mask: MultibandTileLayerRDD[SpaceTimeKey], replacement: java.lang.Double): MultibandTileLayerRDD[SpaceTimeKey] = {

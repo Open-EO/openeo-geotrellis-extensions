@@ -3,7 +3,6 @@ package org.openeo.geotrellis.geotiff
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
-
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.spark._
@@ -14,6 +13,7 @@ import org.apache.spark.storage.StorageLevel.DISK_ONLY
 import org.junit._
 import org.openeo.geotrellis.LayerFixtures.rgbLayerProvider
 import org.openeo.geotrellis.png.PngTest
+import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrellis.{LayerFixtures, geotiff}
 
 import scala.collection.JavaConversions._
@@ -75,32 +75,28 @@ class TileGridTest {
   def testGetFeatures():Unit = {
     val utm31 = CRS.fromEpsgCode(32631)
     val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31),utm31)
-    val features = getOverlappingFeaturesFromTileGrid("20km", bbox)
+    val features = TileGrid.computeFeaturesForTileGrid("20km", bbox)
     Assert.assertEquals(1,features.size)
     Assert.assertEquals(features.get(0)._1,"31UDS_1_2")
     val extent = features.get(0)._2
 
-    //TODO: this is not a perfect 20km grid for some reason, why?
     Assert.assertEquals(extent.xmin,420000.0,0.01)
-    Assert.assertEquals(extent.ymin,5639880.0,0.01)
-    Assert.assertEquals(extent.xmax,440040.0,0.01)
-    Assert.assertEquals(extent.ymax,5659920.0,0.01)
-
+    Assert.assertEquals(extent.ymin,5640000.0,0.01)
+    Assert.assertEquals(extent.xmax,440000.0,0.01)
+    Assert.assertEquals(extent.ymax,5660000.0,0.01)
 
   }
 
-  @Ignore
   @Test
   def testGetFeatures10km():Unit = {
     val utm31 = CRS.fromEpsgCode(32631)
     val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31),utm31)
-    val features = getOverlappingFeaturesFromTileGrid("10km", bbox)
+    val features = TileGrid.computeFeaturesForTileGrid("10km", bbox)
     Assert.assertEquals(4,features.size)
     val f = features.find(_._1 == "31UDS_2_5").get
 
     var extent = f._2
 
-    //TODO: this is not a perfect 10km grid for some reason, why?
     Assert.assertEquals(420000.0,extent.xmin,0.01)
     Assert.assertEquals(5640000.0,extent.ymin,0.01)
     Assert.assertEquals(430000.0,extent.xmax,0.01)
@@ -110,12 +106,10 @@ class TileGridTest {
 
     extent = f2._2
 
-    //TODO: this is not a perfect 10km grid for some reason, why?
     Assert.assertEquals(420000.0,extent.xmin,0.01)
     Assert.assertEquals(5650000.0,extent.ymin,0.01)
     Assert.assertEquals(430000.0,extent.xmax,0.01)
     Assert.assertEquals(5660000.0,extent.ymax,0.01)
-
 
   }
 

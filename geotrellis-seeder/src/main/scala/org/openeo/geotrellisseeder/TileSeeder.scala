@@ -6,10 +6,10 @@ import java.nio.file.Paths
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ofPattern
-
 import be.vito.eodata.biopar.EOProduct
 import be.vito.eodata.catalog.CatalogClient
 import be.vito.eodata.gwcgeotrellis.colormap
+import be.vito.eodata.gwcgeotrellis.geotrellis.TileFetcher
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import be.vito.eodata.gwcgeotrellis.s3.S3ClientConfigurator
 import com.beust.jcommander.JCommander
@@ -27,6 +27,7 @@ import geotrellis.store.hadoop.util.HdfsUtils
 import geotrellis.store.s3.{AmazonS3URI, S3ClientProducer}
 import geotrellis.vector._
 import geotrellis.vector.io.wkt.WKT
+
 import javax.ws.rs.client.ClientBuilder
 import org.apache.hadoop.fs.Path
 import org.apache.log4j.{Level, Logger}
@@ -41,7 +42,7 @@ import scala.collection.mutable.ListBuffer
 import scala.math._
 import scala.xml.SAXParseException
 
-case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] = None) {
+case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] = None, selectOverlappingTile: Boolean = false) {
 
   private val logger = if (verbose) VerboseLogger(classOf[TileSeeder]) else StandardLogger(classOf[TileSeeder])
 
@@ -504,7 +505,15 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       else if (maskValues.contains(t2)) t1
       else max(t1, t2)
 
-    tiles.map(_.toArrayTile()).reduce[Tile](_.dualCombine(_)(intCombine)(doubleCombine))
+    def dualCombine(t1: Tile, t2: Tile): Tile = {
+      if (selectOverlappingTile) {
+        TileFetcher.combineSelectTile(t1, t2)
+      } else {
+        t1.dualCombine(t2)(intCombine)(doubleCombine)
+      }
+    }
+
+    tiles.map(_.toArrayTile()).reduce[Tile](dualCombine)
   }
 
   private def toNormalizedMultibandTile(tile: MultibandTile, bands: Array[Band], maskValues: Array[Int]): MultibandTile = {
@@ -637,11 +646,12 @@ object TileSeeder {
       val oscarsEndpoint = jCommanderArgs.oscarsEndpoint
       val oscarsCollection = jCommanderArgs.oscarsCollection
       val oscarsSearchFilters = jCommanderArgs.oscarsSearchFilters
+      val selectOverlappingTile = jCommanderArgs.selectOverlappingTile
       val partitions = jCommanderArgs.partitions
       val verbose = jCommanderArgs.verbose
       val resampleMethod = jCommanderArgs.resampleMethod.map(getResampleMethod)
 
-      val seeder = new TileSeeder(zoomLevel, verbose, partitions)
+      val seeder = new TileSeeder(zoomLevel, verbose, partitions, selectOverlappingTile)
 
       implicit val sc: SparkContext =
         SparkContext.getOrCreate(
