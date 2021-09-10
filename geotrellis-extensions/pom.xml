@@ -70,12 +70,6 @@
             <artifactId>geotrellis-sentinelhub</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <dependency>
-            <groupId>software.amazon.awssdk</groupId>
-            <artifactId>url-connection-client</artifactId>
-            <version>2.13.74</version>
-            <scope>runtime</scope>
-        </dependency>
     </dependencies>
     <profiles>
         <profile>

@@ -81,4 +81,14 @@ class S3ServiceTest {
   def delete_batch_process_resultsThrowsForUnknownSubfolder(): Unit = {
     s3Service.delete_batch_process_results(bucketName, subfolder = "retteketet")
   }
+
+  @Ignore
+  @Test
+  def saveBatchProcessContext(): Unit = {
+    s3Service.saveBatchProcessContext(
+      BatchProcessContext(Seq("DUMMY"), None, None, None, None),
+      bucketName = "openeo-sentinelhub",
+      subfolder = "dummy"
+    )
+  }
 }
