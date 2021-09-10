@@ -80,6 +80,16 @@
             <groupId>com.sksamuel.elastic4s</groupId>
             <artifactId>elastic4s-client-esjava_${scala.binary.version}</artifactId>
             <version>7.1.0</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.fasterxml.jackson.core</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.fasterxml.jackson.module</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
