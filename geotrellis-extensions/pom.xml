@@ -101,6 +101,10 @@
                             <groupId>com.azavea.geotrellis</groupId>
                             <artifactId>*</artifactId>
                         </exclusion>
+                        <exclusion>
+                            <groupId>software.amazon.awssdk</groupId>
+                            <artifactId>apache-client</artifactId>
+                        </exclusion>
                     </exclusions>
                 </dependency>
             </dependencies>
