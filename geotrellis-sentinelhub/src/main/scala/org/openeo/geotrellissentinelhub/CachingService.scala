@@ -44,49 +44,51 @@ class CachingService {
 
     val batchProcessContext = new S3Service().loadBatchProcessContext(bucket_name, subfolder)
 
-    val Some(incompleteTiles) = batchProcessContext.incompleteTiles
-    val Some(lower) = batchProcessContext.lower
-    val Some(upper) = batchProcessContext.upper
-    val Some(missingBandNames) = batchProcessContext.missingBandNames
+    if (batchProcessContext.includesNarrowRequest) {
+      val Some(incompleteTiles) = batchProcessContext.incompleteTiles
+      val Some(lower) = batchProcessContext.lower
+      val Some(upper) = batchProcessContext.upper
+      val Some(missingBandNames) = batchProcessContext.missingBandNames
 
-    new S3Service().downloadBatchProcessResults(
-      bucket_name,
-      subfolder,
-      Paths.get("/data/projects/OpenEO/sentinel-hub-s2l2a-cache"),
-      missingBandNames,
-      onDownloaded = (tileId, date, bandName) => {
-        val entry = cacheTile(tileId, date, bandName)
+      new S3Service().downloadBatchProcessResults(
+        bucket_name,
+        subfolder,
+        Paths.get("/data/projects/OpenEO/sentinel-hub-s2l2a-cache"),
+        missingBandNames,
+        onDownloaded = (tileId, date, bandName) => {
+          val entry = cacheTile(tileId, date, bandName)
 
-        entry.filePath.foreach { filePath =>
-          try {
-            Files.createSymbolicLink(collectingDir.resolve(filePath.getFileName), filePath)
-            logger.debug(s"symlinked $filePath from the recent past to $collectingDir")
-          } catch {
-            case _: FileAlreadyExistsException => /* ignore */
+          entry.filePath.foreach { filePath =>
+            try {
+              Files.createSymbolicLink(collectingDir.resolve(filePath.getFileName), filePath)
+              logger.debug(s"symlinked $filePath from the recent past to $collectingDir")
+            } catch {
+              case _: FileAlreadyExistsException => /* ignore */
+            }
           }
         }
+      )
+
+      logger.debug(s"cached ${actualTiles.size} tiles from the narrow request")
+
+      val expectedTiles = for { // tiles expected from the narrow request
+        (gridTileId, geometry) <- incompleteTiles
+        date <- sequentialDays(lower, upper)
+        bandName <- missingBandNames
+                                } yield (gridTileId, geometry, date, bandName)
+
+      logger.debug(s"was expecting ${expectedTiles.size} tiles for the narrow request")
+
+      val emptyTiles = expectedTiles.filterNot { case (tileId, _, date, bandName) =>
+        actualTiles.exists(actualTile => actualTile.tileId == tileId && actualTile.date.isEqual(date) && actualTile.bandName == bandName)
       }
-    )
 
-    logger.debug(s"cached ${actualTiles.size} tiles from the narrow request")
+      emptyTiles foreach { case (tileId, geometry, date, bandName) =>
+        cacheTile(tileId, date, bandName, geometry, empty = true)
+      }
 
-    val expectedTiles = for { // tiles expected from the narrow request
-      (gridTileId, geometry) <- incompleteTiles
-      date <- sequentialDays(lower, upper)
-      bandName <- missingBandNames
-    } yield (gridTileId, geometry, date, bandName)
-
-    logger.debug(s"was expecting ${expectedTiles.size} tiles for the narrow request")
-
-    val emptyTiles = expectedTiles.filterNot { case (tileId, _, date, bandName) =>
-      actualTiles.exists(actualTile => actualTile.tileId == tileId && actualTile.date.isEqual(date) && actualTile.bandName == bandName)
+      logger.debug(s"cached ${emptyTiles.size} tiles missing from the narrow request")
     }
-
-    emptyTiles foreach { case (tileId, geometry, date, bandName) =>
-      cacheTile(tileId, date, bandName, geometry, empty = true)
-    }
-
-    logger.debug(s"cached ${emptyTiles.size} tiles missing from the narrow request")
   }
 
   def upload_multiband_tiles(subfolder: String, collecting_folder: String, bucket_name: String): String = {

@@ -32,4 +32,14 @@ case class BatchProcessContext(bandNames: Seq[String], incompleteTiles: Option[S
   import BatchProcessContext._ // TODO: and what's the deal with this?
 
   def toJson: String  = this.asJson.noSpaces
+
+  def includesNarrowRequest: Boolean = {
+    val result = incompleteTiles.isDefined
+
+    assert(lower.isDefined == result)
+    assert(upper.isDefined == result)
+    assert(missingBandNames.isDefined == result)
+
+    result
+  }
 }
