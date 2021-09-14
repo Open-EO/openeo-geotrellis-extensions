@@ -105,6 +105,10 @@
                             <groupId>software.amazon.awssdk</groupId>
                             <artifactId>apache-client</artifactId>
                         </exclusion>
+                        <exclusion>
+                            <groupId>com.fasterxml.jackson.core</groupId>
+                            <artifactId>jackson-databind</artifactId>
+                        </exclusion>
                     </exclusions>
                 </dependency>
             </dependencies>
