@@ -528,17 +528,21 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     val re = RasterExtent(expandToCellSize(targetExtent.extent, maxSpatialResolution), maxSpatialResolution).alignTargetPixels
     val alignment = TargetAlignment(re)
 
+    def vsisToHttpsCreo(path: String): String = {
+      path.replace("/vsicurl/", "").replace("/vsis3/eodata", "https://finder.creodias.eu/files")
+    }
+
     def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
       if(dataPath.endsWith(".jp2")) {
         val warpOptions = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution))
         if (cloudPath.isDefined) {
-          Seq(GDALCloudRasterSource(cloudPath.get._1, cloudPath.get._2, dataPath, options = warpOptions, targetCellType = targetCellType))
+          Seq(GDALCloudRasterSource(vsisToHttpsCreo(cloudPath.get._1), vsisToHttpsCreo(cloudPath.get._2), dataPath, options = warpOptions, targetCellType = targetCellType))
         }else{
           Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution), targetCRS=Some(targetExtent.crs)), targetCellType = targetCellType))
         }
       }else if(dataPath.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
-        SentinelXMLMetadataRasterSource(new URL(dataPath.replace("/vsicurl/","").replace("/vsis3/eodata","https://finder.creodias.eu/files")),bands)
+        SentinelXMLMetadataRasterSource(new URL(vsisToHttpsCreo(dataPath)),bands)
       }
       else {
         if( feature.crs.isEmpty || feature.crs.equals(targetExtent.crs)) {

@@ -29,7 +29,7 @@ import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Ignore, Test}
 import org.openeo.geotrellis.LayerFixtures
 import org.openeo.geotrellis.TestImplicits._
-import org.openeo.geotrellis.geotiff.GTiffOptions
+import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
 import org.openeo.geotrelliscommon.DataCubeParameters
 
 import scala.collection.JavaConverters.mapAsJavaMapConverter
