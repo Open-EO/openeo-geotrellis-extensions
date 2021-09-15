@@ -24,6 +24,9 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 
 object PyramidFactoryTest {
+  private val sentinelHubBatchProcessResultsKeyRegex = raw".+\.tif".r
+  private val sentinelHubBatchProcessResultsDateRegex = raw".+(\d{4})_?(\d{2})_?(\d{2}).*\.tif".r
+
   private implicit var sc: SparkContext = _
 
   @BeforeClass
@@ -155,8 +158,8 @@ class PyramidFactoryTest {
     // no additional key filtering is necessary here
     val pyramidFactory = PyramidFactory.from_s3(
       s3_uri = s"s3://openeo-sentinelhub/$batchProcessId/",
-      key_regex = raw".+\.tif",
-      date_regex = raw".+_(\d{4})_?(\d{2})_?(\d{2}).*\.tif",
+      key_regex = sentinelHubBatchProcessResultsKeyRegex.regex,
+      date_regex = sentinelHubBatchProcessResultsDateRegex.regex,
       recursive = true,
       interpret_as_cell_type = "float32ud0"
     )
@@ -172,6 +175,35 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, reprojectedBoundingBox, zoom = maxZoom)
   }
 
+  @Ignore
+  @Test
+  def assembledSentinelHubBatchProcessResultsFromS3(): Unit = {
+    assertNotNull("AWS_ACCESS_KEY_ID is not set", System.getenv("AWS_ACCESS_KEY_ID"))
+    assertNotNull("AWS_SECRET_ACCESS_KEY is not set", System.getenv("AWS_SECRET_ACCESS_KEY"))
+    System.setProperty("aws.region", "eu-central-1")
+
+    val boundingBox = ProjectedExtent(Extent(2.59003, 51.069, 2.8949, 51.2206), LatLng)
+
+    val pyramidFactory = PyramidFactory.from_s3(
+      s3_uri = "s3://openeo-sentinelhub/assembled_1261505205781045458",
+      key_regex = sentinelHubBatchProcessResultsKeyRegex.regex,
+      date_regex = sentinelHubBatchProcessResultsDateRegex.regex,
+      recursive = true,
+      interpret_as_cell_type = "float32ud0",
+      lat_lon = false
+    )
+
+    val pyramid = pyramidFactory.pyramid_seq(
+      boundingBox.extent,
+      bbox_srs = s"EPSG:${boundingBox.crs.epsgCode.get}",
+      from_date = null,
+      to_date = null
+    )
+
+    val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
+    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
+  }
+
   @Test
   def sentinelHubCard4LBatchProcessApiGeoTiffFromS3ForMultipleDates(): Unit = {
     assertNotNull("AWS_ACCESS_KEY_ID is not set", System.getenv("AWS_ACCESS_KEY_ID"))
@@ -184,8 +216,8 @@ class PyramidFactoryTest {
 
     val pyramidFactory = PyramidFactory.from_s3(
       s3_uri = s"s3://openeo-sentinelhub/$requestGroupId/",
-      key_regex = raw".+\.tif",
-      date_regex = raw".+_(\d{4})_?(\d{2})_?(\d{2}).*\.tif",
+      key_regex = sentinelHubBatchProcessResultsKeyRegex.regex,
+      date_regex = sentinelHubBatchProcessResultsDateRegex.regex,
       recursive = true,
       interpret_as_cell_type = "float32", // TODO: is float32ud0 in the Python code
       lat_lon = true
@@ -207,7 +239,7 @@ class PyramidFactoryTest {
   def adjacentSentinelHubCard4LBatchProcessApiGeotiffs(): Unit = {
     val pyramidFactory = PyramidFactory.from_disk(
       glob_pattern = "/tmp/prod_ard/s1_rtc_*_2021_03_09_MULTIBAND.tif",
-      date_regex = raw".+_(\d{4})_?(\d{2})_?(\d{2}).*\.tif",
+      date_regex = sentinelHubBatchProcessResultsDateRegex.regex,
       interpret_as_cell_type = "float32",
       lat_lon = true
     )
@@ -238,8 +270,8 @@ class PyramidFactoryTest {
     // no additional key filtering is necessary here
     val pyramidFactory = PyramidFactory.from_s3(
       s3_uri = s"s3://openeo-sentinelhub/$batchProcessId/",
-      key_regex = raw".+\.tif",
-      date_regex = raw".+_(\d{4})_?(\d{2})_?(\d{2}).*\.tif",
+      key_regex = sentinelHubBatchProcessResultsKeyRegex.regex,
+      date_regex = sentinelHubBatchProcessResultsDateRegex.regex,
       recursive = true,
       interpret_as_cell_type = "float32ud0"
     )
@@ -288,7 +320,7 @@ class PyramidFactoryTest {
     saveAsGeotiff(joinedLayer, from, "/tmp/masked.tif")
   }
 
-  private def saveAsGeotiff(layer: MultibandTileLayerRDD[SpaceTimeKey], at: ZonedDateTime, path: String) = {
+  private def saveAsGeotiff(layer: MultibandTileLayerRDD[SpaceTimeKey], at: ZonedDateTime, path: String): Unit = {
     val Raster(tile, extent) = layer.toSpatial(at).stitch()
     GeoTiff(tile, extent, layer.metadata.crs).write(path)
   }
