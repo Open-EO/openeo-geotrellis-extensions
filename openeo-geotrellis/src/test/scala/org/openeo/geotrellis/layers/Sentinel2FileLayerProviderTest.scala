@@ -1,12 +1,18 @@
 package org.openeo.geotrellis.layers
 
+import java.net.URI
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
+import java.time._
+import java.util.Collections
+
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Link
 import be.vito.eodata.gwcgeotrellis.opensearch.{OpenSearchClient, OpenSearchResponses}
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
-import geotrellis.raster.io.geotiff.MultibandGeoTiff
+import geotrellis.raster.io.geotiff.{GeoTiffReader, MultibandGeoTiff}
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
@@ -23,13 +29,9 @@ import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Ignore, Test}
 import org.openeo.geotrellis.LayerFixtures
 import org.openeo.geotrellis.TestImplicits._
+import org.openeo.geotrellis.geotiff.GTiffOptions
 import org.openeo.geotrelliscommon.DataCubeParameters
 
-import java.net.URI
-import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
-import java.time._
-import java.util.Collections
 import scala.collection.JavaConverters.mapAsJavaMapConverter
 
 object Sentinel2FileLayerProviderTest {
@@ -274,12 +276,14 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
     val reprojectedBoundingBox = boundingBox.reproject(spatialLayer.metadata.crs)
 
-    val stitched = spatialLayer.sparseStitch(reprojectedBoundingBox)
-    stitched match {
-      case Some(stitched) => MultibandGeoTiff(stitched.crop(reprojectedBoundingBox), spatialLayer.metadata.crs).write("/tmp/utm32.tif")
-      case _ => throw new IllegalStateException("nothing to sparse-stitch")
-    }
-    assertFalse(stitched.get.tile.band(0).isNoDataTile)
+    val output_path = "/tmp/utm32.tif"
+    val options = new GTiffOptions()
+    options.overviews = "ALL"
+    saveRDD(spatialLayer,-1,output_path,cropBounds=Some(reprojectedBoundingBox),formatOptions=options)
+
+
+    val stitched: MultibandGeoTiff = GeoTiffReader.readMultiband(output_path)
+    assertFalse(stitched.tile.band(0).isNoDataTile)
     assertEquals(utm32,spatialLayer.metadata.crs)
   }
 
