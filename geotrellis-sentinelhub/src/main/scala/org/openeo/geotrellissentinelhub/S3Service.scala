@@ -2,6 +2,7 @@ package org.openeo.geotrellissentinelhub
 
 import geotrellis.raster.io.geotiff.SinglebandGeoTiff
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
+import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.sync.{RequestBody, ResponseTransformer}
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model._
@@ -11,11 +12,13 @@ import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.nio.file.{Files, Path, Paths}
 import java.util
 import java.util.concurrent.TimeUnit
-import java.util.function.Consumer
+import scala.annotation.tailrec
 import scala.collection.JavaConverters._
 import scala.compat.java8.FunctionConverters._
 
 object S3Service {
+  private val logger = LoggerFactory.getLogger(classOf[S3Service])
+
   class StacMetadataUnavailableException extends IllegalStateException
   class UnknownFolderException extends IllegalArgumentException
 }
@@ -37,6 +40,7 @@ class S3Service {
     if (objectIdentifiers.isEmpty)
       throw new UnknownFolderException
 
+    @tailrec
     def deleteBatches(offset: Int): Unit = {
       val maxBatchSize = 1000 // as specified in the docs
 
@@ -114,6 +118,7 @@ class S3Service {
       .collect(util.stream.Collectors.toList[ObjectIdentifier])
   }
 
+  // = download multiband tiles and write them as single band tiles to the cache directory (a tree)
   def downloadBatchProcessResults(bucketName: String, subfolder: String, targetDir: Path, bandNames: Seq[String],
                                   onDownloaded: (String, ZonedDateTime, String) => Unit): Unit = withS3Client { s3Client =>
     import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
@@ -124,23 +129,34 @@ class S3Service {
       .map(_.key())
       .filter(_.endsWith(".tif"))
 
-    tiffKeys foreach { key =>
+    val parts = tiffKeys.map { key => // TODO: find a better name
       val Array(_, tileId, fileName) = key.split("/")
       val date = fileName.split(raw"\.").head.drop(1)
 
+      key -> (tileId, date)
+    }.toMap
+
+    def subdirectory(date: String, tileId: String): Path = targetDir.resolve(date).resolve(tileId)
+
+    // create all subdirectories with a minimum of effort
+    for {
+      (tileId, date) <- parts.values.toSet
+    } Files.createDirectories(subdirectory(date, tileId))
+
+    for ((key, (tileId, date)) <- parts) {
       // TODO: avoid intermediary/temp geotiff
       val tempMultibandFile = Files.createTempFile(subfolder, null)
 
       try {
-        download(s3Client, bucketName, key, tempMultibandFile)
+        download(s3Client, bucketName, key, outputFile = tempMultibandFile)
 
-        val multibandGeoTiff = GeoTiffReader.readMultiband(tempMultibandFile.toAbsolutePath.toString)
+        val multibandGeoTiff = GeoTiffReader.readMultiband(tempMultibandFile.toString)
 
         for ((bandName, singleBandTile) <- bandNames zip multibandGeoTiff.tile.bands) {
-          val outputFile = targetDir.resolve(s"$tileId-$date-$bandName.tif") // TODO: write to nested directories (tileId/date/bandName) instead
+          val outputFile = subdirectory(date, tileId).resolve(s"$bandName.tif")
 
           SinglebandGeoTiff(singleBandTile, multibandGeoTiff.extent, multibandGeoTiff.crs)
-            .write(outputFile.toAbsolutePath.toString)
+            .write(outputFile.toString)
 
           onDownloaded(tileId, LocalDate.parse(date, BASIC_ISO_DATE).atStartOfDay(ZoneId.of("UTC")), bandName)
         }
@@ -163,8 +179,8 @@ class S3Service {
   def uploadRecursively(root: Path, bucket_name: String): String = withS3Client { s3Client =>
     val prefix = root.getFileName.toString
 
-    Files.walk(root).forEach(new Consumer[Path] { // TODO: use lambda with .asJava instead
-      override def accept(path: Path): Unit = {
+    val uploadFile: Path => Unit =
+      path =>
         if (Files.isRegularFile(path)) {
           val key = root.getParent.relativize(path).toString
 
@@ -174,9 +190,11 @@ class S3Service {
             .build()
 
           s3Client.putObject(putObjectRequest, path)
+
+          logger.debug(s"uploaded $path to s3://$bucket_name/$key")
         }
-      }
-    })
+
+    Files.walk(root).forEach(uploadFile.asJava)
 
     prefix
   }

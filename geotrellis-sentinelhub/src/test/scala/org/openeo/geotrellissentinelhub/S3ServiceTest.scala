@@ -5,6 +5,7 @@ import org.junit.rules.TemporaryFolder
 import org.junit.{BeforeClass, Ignore, Rule, Test}
 import org.openeo.geotrellissentinelhub.S3Service.{StacMetadataUnavailableException, UnknownFolderException}
 
+import java.nio.file.Paths
 import scala.annotation.meta.getter
 
 object S3ServiceTest {
@@ -87,11 +88,29 @@ class S3ServiceTest {
 
   @Ignore
   @Test
+  def uploadRecursively(): Unit = {
+    s3Service.uploadRecursively(Paths.get("/tmp/1"), bucketName)
+  }
+
+  @Ignore
+  @Test
   def saveBatchProcessContext(): Unit = {
     s3Service.saveBatchProcessContext(
       BatchProcessContext(Seq("DUMMY"), None, None, None, None),
       bucketName,
       subfolder = "dummy"
+    )
+  }
+
+  @Ignore
+  @Test
+  def downloadBatchProcessResults(): Unit = {
+    s3Service.downloadBatchProcessResults(
+      bucketName,
+      subfolder = "3db6d7ff-094f-4150-b418-8e8375cfa4da",
+      targetDir = Paths.get("/tmp/downloadBatchProcessResults"),
+      bandNames = Seq("B04"),
+      onDownloaded = (tileId, date, bandName) => println(s"downloaded $tileId/$date/$bandName")
     )
   }
 

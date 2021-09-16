@@ -9,6 +9,7 @@ import java.nio.file.{FileAlreadyExistsException, Files, Path, Paths}
 import java.time.ZonedDateTime
 import java.util.stream.Collectors.toList
 import scala.collection.JavaConverters._
+import scala.compat.java8.FunctionConverters._
 
 object CachingService {
   private val logger = LoggerFactory.getLogger(classOf[CachingService])
@@ -26,6 +27,7 @@ class CachingService {
   import CachingService._
 
   def download_and_cache_results(bucket_name: String, subfolder: String, collecting_folder: String): Unit = {
+    // TODO: make this uri configurable
     val elasticsearchRepository = new ElasticsearchRepository("https://es-apps-dev.vgt.vito.be:443")
     val cacheIndex = "sentinel-hub-s2l2a-cache"
     val tilingGridIndex = "sentinel-hub-tiling-grid-1"
@@ -108,35 +110,42 @@ class CachingService {
     } finally deleteDirectory(assembledFolder.toFile)
   }
 
+  // = read single band tiles from collectingDir (flat) and write them as multiband tiles to assembleDir (flat)
   private def assembleMultibandTiles(collectingDir: Path, assembledDir: Path, bandNames: Seq[String]): Unit = {
     import scala.sys.process._
 
-    // TODO: only include tiffs?
-    val singleBandTiffs = Files.list(collectingDir).collect(toList[Path]).asScala
+    val isTiffFile: Path => Boolean =
+      path => Files.isRegularFile(path) && path.getFileName.toString.endsWith(".tif")
+
+    val singleBandTiffs = Files.list(collectingDir)
+      .filter(isTiffFile.asJava)
+      .collect(toList[Path]).asScala
 
     val bandsGrouped = singleBandTiffs.groupBy { singleBandTiff =>
-      val Array(tileId, date, _) = singleBandTiff.getFileName.toString.split("-")
-      (tileId, date)
+      val Array(date, tileId, _) = singleBandTiff.getFileName.toString.split("-")
+      (date, tileId)
     }.mapValues(bands => bands.sortBy { singleBandTiff =>
       val bandName = singleBandTiff.getFileName.toString.split("-")(2).takeWhile(_ != '.')
       bandNames.indexOf(bandName)
     })
 
-    bandsGrouped foreach { case ((tileId, date), bandTiffs) =>
-      val vrtFile = collectingDir.resolve("combined.vrt").toAbsolutePath.toString
-      val outputFile = assembledDir.resolve(s"$tileId-$date.tif").toAbsolutePath.toString
+    bandsGrouped foreach { case ((date, tileId), bandTiffs) =>
+      val vrtFile = collectingDir.resolve("combined.vrt")
+      val outputFile = assembledDir.resolve(s"$date-$tileId.tif")
 
       logger.debug(s"combining $bandTiffs to $outputFile")
 
-      val gdalbuildvrt = Seq("gdalbuildvrt", "-q", "-separate", vrtFile) ++ bandTiffs.map(_.toAbsolutePath.toString)
+      val gdalbuildvrt = Seq("gdalbuildvrt", "-q", "-separate", vrtFile.toString) ++ bandTiffs.map(_.toString)
       if (gdalbuildvrt.! != 0) {
         throw new IllegalStateException(s"${gdalbuildvrt mkString " "} returned non-zero exit status") // TODO: better error handling; also: gdalbuildvrt silently skips nonexistent files
       }
 
-      val gdal_translate = Seq("gdal_translate", vrtFile, outputFile)
-      if (gdal_translate.! != 0) {
-        throw new IllegalStateException(s"${gdal_translate mkString " "} returned non-zero exit status") // TODO: better error handling
-      }
+      try {
+        val gdal_translate = Seq("gdal_translate", vrtFile.toString, outputFile.toString)
+        if (gdal_translate.! != 0) {
+          throw new IllegalStateException(s"${gdal_translate mkString " "} returned non-zero exit status") // TODO: better error handling
+        }
+      } finally Files.delete(vrtFile)
     }
   }
 }

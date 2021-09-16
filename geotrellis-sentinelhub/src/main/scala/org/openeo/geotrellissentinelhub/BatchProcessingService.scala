@@ -37,6 +37,7 @@ object BatchProcessingService {
   }
 }
 
+// TODO: snake_case for these arguments
 class BatchProcessingService(endpoint: String, val bucketName: String, clientId: String, clientSecret: String) {
   import BatchProcessingService._
 
@@ -117,7 +118,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     require(metadata_properties.isEmpty, "metadata_properties are not supported yet")
     require(processing_options.isEmpty, "processing_options are not supported yet")
 
-    // https://confluence.vito.be/pages/viewpage.action?spaceKey=EP&title=Elasticsearch+Stack+7.X
+    // TODO: make this uri configurable
     val elasticsearchRepository = new ElasticsearchRepository("https://es-apps-dev.vgt.vito.be:443")
     val tilingGridIndex = "sentinel-hub-tiling-grid-1"
     val cacheIndex = "sentinel-hub-s2l2a-cache"
@@ -142,11 +143,15 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
 
     val cacheEntries = elasticsearchRepository.queryCache(cacheIndex, geometry, from, to, bandNames)
 
+    // = read single band tiles from cache directory (a tree) and put them in collectingFolder (flat)
     for {
       entry <- cacheEntries
       filePath <- entry.filePath
     } {
-      Files.createSymbolicLink(collectingFolder.resolve(filePath.getFileName), filePath)
+      val tileId = filePath.getParent.getFileName
+      val date = filePath.getParent.getParent.getFileName
+
+      Files.createSymbolicLink(collectingFolder.resolve(s"$date-$tileId-${filePath.getFileName}"), filePath)
       logger.debug(s"start_batch_process_cached: symlinked $filePath from the distant past to $collectingFolder")
     }
 
