@@ -66,7 +66,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
                      processingOptions: util.Map[String, Any] = util.Collections.emptyMap[String, Any],
                      sampleType: SampleType = UINT16,
                      rateLimitingGuard: RateLimitingGuard = NoRateLimitingGuard,
-                     maxSpatialResolution: CellSize) extends Serializable {
+                     maxSpatialResolution: CellSize = CellSize(10,10)) extends Serializable {
   import PyramidFactory._
 
   private val maxZoom = 14
