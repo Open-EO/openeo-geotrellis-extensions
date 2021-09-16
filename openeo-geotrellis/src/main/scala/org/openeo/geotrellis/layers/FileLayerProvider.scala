@@ -4,7 +4,7 @@ import java.io.IOException
 import java.net.{URI, URL}
 import java.nio.file.{Path, Paths}
 import java.time.temporal.ChronoUnit
-import java.time.{LocalDate, LocalTime, ZoneId, ZonedDateTime}
+import java.time._
 import java.util.concurrent.TimeUnit
 
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
@@ -22,12 +22,20 @@ import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
+import geotrellis.store.s3.S3ClientProducer
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
 import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.slf4j.LoggerFactory
+import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
+import software.amazon.awssdk.core.retry.RetryPolicy
+import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy
+import software.amazon.awssdk.core.retry.conditions.{OrRetryCondition, RetryCondition}
+import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.s3.S3Client
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable
@@ -134,6 +142,42 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 }
 
 object FileLayerProvider {
+
+  {
+    val retryCondition =
+      OrRetryCondition.create(
+        RetryCondition.defaultRetryCondition(),
+        RetryOnErrorCodeCondition.create("RequestTimeout")
+      )
+    val backoffStrategy =
+      FullJitterBackoffStrategy.builder()
+        .baseDelay(Duration.ofMillis(50))
+        .maxBackoffTime(Duration.ofMillis(15))
+        .build()
+    val retryPolicy =
+      RetryPolicy.defaultRetryPolicy()
+        .toBuilder()
+        .retryCondition(retryCondition)
+        .backoffStrategy(backoffStrategy)
+        .build()
+    val overrideConfig =
+      ClientOverrideConfiguration.builder()
+        .retryPolicy(retryPolicy)
+        .build()
+
+    val endpoint = System.getenv().getOrDefault("AWS_S3_ENDPOINT","")
+    val clientBuilder = S3Client.builder()
+      .overrideConfiguration(overrideConfig)
+      .region(Region.of("RegionOne"))
+    val client = if(endpoint!="") {
+      clientBuilder.endpointOverride(URI.create(endpoint)).build()
+    }else{
+
+      clientBuilder.build()
+    }
+
+    S3ClientProducer.set(()=> client)
+  }
   private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
 
   // important: make sure to implement object equality for CacheKey's members
