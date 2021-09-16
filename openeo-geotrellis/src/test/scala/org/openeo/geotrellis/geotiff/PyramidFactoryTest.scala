@@ -26,6 +26,7 @@ import software.amazon.awssdk.services.s3.S3Client
 object PyramidFactoryTest {
   private val sentinelHubBatchProcessResultsKeyRegex = raw".+\.tif".r
   private val sentinelHubBatchProcessResultsDateRegex = raw".+(\d{4})_?(\d{2})_?(\d{2}).*\.tif".r
+  private val sentinelHubBucketName = "openeo-sentinelhub"
 
   private implicit var sc: SparkContext = _
 
@@ -142,6 +143,7 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = 10)
   }
 
+  @Ignore("the bucket is being emptied because S3 costs are through the roof")
   @Test
   def sentinelHubBatchProcessApiGeoTiffFromS3ForMultipleDates(): Unit = {
     assertNotNull("AWS_ACCESS_KEY_ID is not set", System.getenv("AWS_ACCESS_KEY_ID"))
@@ -157,7 +159,7 @@ class PyramidFactoryTest {
     // the results for this batch process obviously only contain the dates that were requested in the first place so
     // no additional key filtering is necessary here
     val pyramidFactory = PyramidFactory.from_s3(
-      s3_uri = s"s3://openeo-sentinelhub/$batchProcessId/",
+      s3_uri = s"s3://$sentinelHubBucketName/$batchProcessId/",
       key_regex = sentinelHubBatchProcessResultsKeyRegex.regex,
       date_regex = sentinelHubBatchProcessResultsDateRegex.regex,
       recursive = true,
@@ -183,9 +185,10 @@ class PyramidFactoryTest {
     System.setProperty("aws.region", "eu-central-1")
 
     val boundingBox = ProjectedExtent(Extent(2.59003, 51.069, 2.8949, 51.2206), LatLng)
+    val assembledFolder = "assembled_1261505205781045458"
 
     val pyramidFactory = PyramidFactory.from_s3(
-      s3_uri = "s3://openeo-sentinelhub/assembled_1261505205781045458",
+      s3_uri = s"s3://$sentinelHubBucketName/$assembledFolder",
       key_regex = sentinelHubBatchProcessResultsKeyRegex.regex,
       date_regex = sentinelHubBatchProcessResultsDateRegex.regex,
       recursive = true,
@@ -204,6 +207,7 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
   }
 
+  @Ignore("the bucket is being emptied because S3 costs are through the roof")
   @Test
   def sentinelHubCard4LBatchProcessApiGeoTiffFromS3ForMultipleDates(): Unit = {
     assertNotNull("AWS_ACCESS_KEY_ID is not set", System.getenv("AWS_ACCESS_KEY_ID"))
@@ -215,7 +219,7 @@ class PyramidFactoryTest {
     val requestGroupId = "a894cae5-7193-48ed-80ad-901769483a46"
 
     val pyramidFactory = PyramidFactory.from_s3(
-      s3_uri = s"s3://openeo-sentinelhub/$requestGroupId/",
+      s3_uri = s"s3://$sentinelHubBucketName/$requestGroupId/",
       key_regex = sentinelHubBatchProcessResultsKeyRegex.regex,
       date_regex = sentinelHubBatchProcessResultsDateRegex.regex,
       recursive = true,
@@ -256,6 +260,7 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
   }
 
+  @Ignore("the bucket is being emptied because S3 costs are through the roof")
   @Test
   def sentinelHubBatchProcessApiGeoTiffFromS3ForMultipleDates_pyramid_seq(): Unit = {
     assertNotNull("AWS_ACCESS_KEY_ID is not set", System.getenv("AWS_ACCESS_KEY_ID"))
@@ -269,7 +274,7 @@ class PyramidFactoryTest {
     // the results for this batch process obviously only contain the dates that were requested in the first place so
     // no additional key filtering is necessary here
     val pyramidFactory = PyramidFactory.from_s3(
-      s3_uri = s"s3://openeo-sentinelhub/$batchProcessId/",
+      s3_uri = s"s3://$sentinelHubBucketName/$batchProcessId/",
       key_regex = sentinelHubBatchProcessResultsKeyRegex.regex,
       date_regex = sentinelHubBatchProcessResultsDateRegex.regex,
       recursive = true,

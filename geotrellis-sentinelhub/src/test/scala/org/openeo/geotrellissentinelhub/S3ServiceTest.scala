@@ -23,6 +23,7 @@ class S3ServiceTest {
   @(Rule @getter)
   val temporaryFolder = new TemporaryFolder
 
+  @Ignore("the bucket is being emptied because S3 costs are through the roof")
   @Test
   def download_stac_data(): Unit = {
     val tempDir = temporaryFolder.getRoot
@@ -40,6 +41,7 @@ class S3ServiceTest {
     assertEquals(3, outputFiles.count(_.endsWith("_metadata.json")))
   }
 
+  @Ignore("the bucket is being emptied because S3 costs are through the roof")
   @Test(expected = classOf[StacMetadataUnavailableException], timeout = 60 * 1000)
   def download_stac_dataThrowsIfMetadataTakesTooLong(): Unit = {
     val tempDir = temporaryFolder.getRoot
@@ -52,6 +54,7 @@ class S3ServiceTest {
     )
   }
 
+  @Ignore("the bucket is being emptied because S3 costs are through the roof")
   @Test
   def download_stac_dataCanHandleBatchJobRetries(): Unit = {
     val tempDir = temporaryFolder.getRoot

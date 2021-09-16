@@ -13,6 +13,7 @@ import scala.collection.JavaConverters._
 class BatchProcessingApiTest {
   private val endpoint = "https://services.sentinel-hub.com"
   private val batchProcessingApi = new BatchProcessingApi(endpoint)
+  private val bucketName = "openeo-sentinelhub"
 
   private def accessToken: String = new AuthApi().authenticate(Utils.clientId, Utils.clientSecret).access_token
 
@@ -33,7 +34,7 @@ class BatchProcessingApiTest {
         "backCoeff" -> "GAMMA0_ELLIPSOID",
         "orthorectify" -> false
       ).asJava,
-      bucketName = "openeo-sentinelhub",
+      bucketName,
       description = "BatchProcessingApiTest.createBatchProcess",
       accessToken
     )
@@ -102,7 +103,8 @@ class BatchProcessingApiTest {
       card4lId,
       demInstance = null,
       additionalDataFilters = Collections.emptyMap[String, Any],
-      bucketName = "openeo-sentinelhub", subFolder = card4lId,
+      bucketName,
+      subFolder = card4lId,
       accessToken
     )
 
@@ -137,7 +139,7 @@ class BatchProcessingApiTest {
       SampleType.FLOAT32,
       additionalDataFilters = Collections.emptyMap[String, Any],
       processingOptions = Collections.emptyMap[String, Any],
-      bucketName = "openeo-sentinelhub",
+      bucketName,
       description = "BatchProcessingApiTest.createBatchProcessForSparsePolygons",
       accessToken
     )
