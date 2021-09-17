@@ -138,8 +138,10 @@ class ElasticsearchRepository(uri: String) {
     val client = elasticClient
 
     try {
+      val docId = s"${BASIC_ISO_DATE format entry.date.toLocalDate}-${entry.tileId}-${entry.bandName}"
+
       client.execute {
-        indexInto(cacheIndex).id(s"${entry.tileId}-${BASIC_ISO_DATE format entry.date.toLocalDate}-${entry.bandName}").doc(
+        indexInto(cacheIndex).id(docId).doc(
           s"""
              |{
              |  "tileId": "${entry.tileId}",
