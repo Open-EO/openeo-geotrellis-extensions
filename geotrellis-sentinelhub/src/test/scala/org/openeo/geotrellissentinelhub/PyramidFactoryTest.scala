@@ -91,7 +91,7 @@ class PyramidFactoryTest {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     def testCellType(baseLayer: MultibandTileLayerRDD[SpaceTimeKey]): Unit = baseLayer.metadata.cellType match {
-      case cellType: HasNoData[Int @unchecked] if cellType.isFloatingPoint && cellType.noDataValue == 0 =>
+      case cellType: HasNoData[Int @unchecked] if !cellType.isFloatingPoint && cellType.noDataValue == 0 =>
       case wrongCellType => fail(s"wrong CellType $wrongCellType")
     }
 
