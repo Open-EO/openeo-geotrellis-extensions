@@ -6,6 +6,7 @@ import org.openeo.geotrellissentinelhub.ElasticsearchRepository.CacheEntry
 import org.slf4j.LoggerFactory
 
 import java.nio.file.{FileAlreadyExistsException, Files, Path, Paths}
+import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
 import java.time.ZonedDateTime
 import java.util.stream.Collectors.toList
 import scala.collection.JavaConverters._
@@ -62,7 +63,8 @@ class CachingService {
 
           entry.filePath.foreach { filePath =>
             try {
-              Files.createSymbolicLink(collectingDir.resolve(filePath.getFileName), filePath)
+              val fileName = s"${BASIC_ISO_DATE format entry.date.toLocalDate}-$tileId-${filePath.getFileName}"
+              Files.createSymbolicLink(collectingDir.resolve(fileName), filePath)
               logger.debug(s"symlinked $filePath from the recent past to $collectingDir")
             } catch {
               case _: FileAlreadyExistsException => /* ignore */
