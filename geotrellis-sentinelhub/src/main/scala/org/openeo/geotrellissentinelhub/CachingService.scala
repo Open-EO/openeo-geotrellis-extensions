@@ -1,5 +1,7 @@
 package org.openeo.geotrellissentinelhub
 
+import geotrellis.raster.io.geotiff.SinglebandGeoTiff
+import geotrellis.raster.io.geotiff.reader.GeoTiffReader
 import geotrellis.vector.Geometry
 import org.apache.commons.io.FileUtils.deleteDirectory
 import org.openeo.geotrellissentinelhub.ElasticsearchRepository.CacheEntry
@@ -7,7 +9,7 @@ import org.slf4j.LoggerFactory
 
 import java.nio.file.{FileAlreadyExistsException, Files, Path, Paths}
 import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
-import java.time.ZonedDateTime
+import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.stream.Collectors.toList
 import scala.collection.JavaConverters._
 import scala.compat.java8.FunctionConverters._
@@ -53,12 +55,12 @@ class CachingService {
       val Some(upper) = batchProcessContext.upper
       val Some(missingBandNames) = batchProcessContext.missingBandNames
 
-      new S3Service().downloadBatchProcessResults(
+      downloadBatchProcessResults(
         bucket_name,
         subfolder,
         Paths.get("/data/projects/OpenEO/sentinel-hub-s2l2a-cache"),
         missingBandNames,
-        onDownloaded = (tileId, date, bandName) => {
+        onDownloaded = (tileId, date, bandName) => { // TODO: move this lambda into downloadBatchProcessResults?
           val entry = cacheTile(tileId, date, bandName)
 
           entry.filePath.foreach { filePath =>
@@ -94,6 +96,51 @@ class CachingService {
       logger.debug(s"cached ${emptyTiles.size} tiles missing from the narrow request")
     }
   }
+
+  // = download multiband tiles and write them as single band tiles to the cache directory (a tree)
+  def downloadBatchProcessResults(bucketName: String, subfolder: String, targetDir: Path, bandNames: Seq[String],
+                                  onDownloaded: (String, ZonedDateTime, String) => Unit): Unit = S3.withClient { s3Client =>
+    import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
+
+    val tiffKeys = S3.listObjectIdentifiers(s3Client, bucketName, prefix = subfolder).iterator
+      .map(_.key())
+      .filter(_.endsWith(".tif"))
+
+    val keyParts = tiffKeys.map { key =>
+      val Array(_, tileId, fileName) = key.split("/")
+      val date = fileName.split(raw"\.").head.drop(1)
+
+      key -> (tileId, date)
+    }.toMap
+
+    def subdirectory(date: String, tileId: String): Path = targetDir.resolve(date).resolve(tileId)
+
+    // create all subdirectories with a minimum of effort
+    for {
+      (tileId, date) <- keyParts.values.toSet
+    } Files.createDirectories(subdirectory(date, tileId))
+
+    for ((key, (tileId, date)) <- keyParts) {
+      // TODO: avoid intermediary/temp geotiff
+      val tempMultibandFile = Files.createTempFile(subfolder, null)
+
+      try {
+        S3.download(s3Client, bucketName, key, outputFile = tempMultibandFile)
+
+        val multibandGeoTiff = GeoTiffReader.readMultiband(tempMultibandFile.toString)
+
+        for ((bandName, singleBandTile) <- bandNames zip multibandGeoTiff.tile.bands) {
+          val outputFile = subdirectory(date, tileId).resolve(s"$bandName.tif")
+
+          SinglebandGeoTiff(singleBandTile, multibandGeoTiff.extent, multibandGeoTiff.crs)
+            .write(outputFile.toString)
+
+          onDownloaded(tileId, LocalDate.parse(date, BASIC_ISO_DATE).atStartOfDay(ZoneId.of("UTC")), bandName)
+        }
+      } finally Files.delete(tempMultibandFile)
+    }
+  }
+
 
   def upload_multiband_tiles(subfolder: String, collecting_folder: String, bucket_name: String): String = {
     val collectingFolder = Paths.get(collecting_folder)

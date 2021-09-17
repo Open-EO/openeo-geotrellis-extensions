@@ -104,18 +104,6 @@ class S3ServiceTest {
 
   @Ignore
   @Test
-  def downloadBatchProcessResults(): Unit = {
-    s3Service.downloadBatchProcessResults(
-      bucketName,
-      subfolder = "3db6d7ff-094f-4150-b418-8e8375cfa4da",
-      targetDir = Paths.get("/tmp/downloadBatchProcessResults"),
-      bandNames = Seq("B04"),
-      onDownloaded = (tileId, date, bandName) => println(s"downloaded $tileId/$date/$bandName")
-    )
-  }
-
-  @Ignore
-  @Test
   def loadBatchProcessContext(): Unit = {
     val batchProcessContext = s3Service.loadBatchProcessContext(
       bucketName,

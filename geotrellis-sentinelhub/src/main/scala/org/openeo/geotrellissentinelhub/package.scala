@@ -1,9 +1,14 @@
 package org.openeo
 
 import org.slf4j.Logger
+import software.amazon.awssdk.core.sync.ResponseTransformer
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.{GetObjectRequest, GetObjectResponse, ListObjectsV2Request, ObjectIdentifier}
 
+import java.io.FileOutputStream
 import java.lang.Math.{pow, random}
 import java.net.SocketTimeoutException
+import java.nio.file.Path
 import java.time.ZonedDateTime
 import java.util
 import scala.annotation.tailrec
@@ -50,5 +55,39 @@ package object geotrellissentinelhub {
   // TODO: put it in a central place
   implicit object ZonedDateTimeOrdering extends Ordering[ZonedDateTime] {
     override def compare(x: ZonedDateTime, y: ZonedDateTime): Int = x compareTo y
+  }
+
+  object S3 {
+    def withClient[R](f: S3Client => R): R = {
+      val s3Client = S3Client.builder()
+        .build()
+
+      try f(s3Client)
+      finally s3Client.close()
+    }
+
+    def download(s3Client: S3Client, bucketName: String, key: String, outputFile: Path): Unit = {
+      val getObjectRequest = GetObjectRequest.builder()
+        .bucket(bucketName)
+        .key(key)
+        .build()
+
+      val out = new FileOutputStream(outputFile.toFile)
+
+      try s3Client.getObject(getObjectRequest, ResponseTransformer.toOutputStream[GetObjectResponse](out))
+      finally out.close()
+    }
+
+    def listObjectIdentifiers(s3Client: S3Client, bucketName: String, prefix: String): Iterable[ObjectIdentifier] = {
+      val listObjectsResponse = s3Client.listObjectsV2Paginator(
+        ListObjectsV2Request.builder()
+          .bucket(bucketName)
+          .prefix(prefix)
+          .build()
+      )
+
+      listObjectsResponse.contents().asScala
+        .map(obj => ObjectIdentifier.builder().key(obj.key()).build())
+    }
   }
 }
