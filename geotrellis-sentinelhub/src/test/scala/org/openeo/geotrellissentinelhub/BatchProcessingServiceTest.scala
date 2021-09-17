@@ -1,7 +1,8 @@
 package org.openeo.geotrellissentinelhub
 
 import geotrellis.proj4.LatLng
-import geotrellis.vector.{Extent, MultiPolygon}
+import geotrellis.vector.io.json.GeoJson
+import geotrellis.vector._
 import org.junit.Assert.assertEquals
 import org.junit.rules.TemporaryFolder
 import org.junit.{Ignore, Rule, Test}
@@ -115,6 +116,68 @@ class BatchProcessingServiceTest {
       dataset_id = "sentinel-2-l2a",
       bbox = Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206),
       bbox_srs = "EPSG:4326",
+      from_date = "2019-09-21T00:00:00+00:00",
+      to_date = "2019-09-21T00:00:00+00:00",
+      band_names = Arrays.asList("B04", "B03", "B02"),
+      SampleType.UINT16,
+      metadata_properties = Collections.emptyMap[String, Any],
+      processing_options = Collections.emptyMap[String, Any],
+      subfolder,
+      collectingFolder.toAbsolutePath.toString
+    )
+
+    if (batchRequestId != null) println(awaitDone(Seq(batchRequestId)))
+  }
+
+  @Ignore
+  @Test
+  def startPolygonalCachedBatchProcessForSentinel2(): Unit = {
+    val subfolder = UUID.randomUUID().toString
+
+    println(s"subfolder: $subfolder")
+
+    val polygon = GeoJson.parse[Polygon](
+      """
+        |{
+        |  "type":"Polygon",
+        |  "coordinates":[
+        |    [
+        |      [
+        |        2.80426025390625,
+        |        51.03405383220282
+        |      ],
+        |      [
+        |        2.89215087890625,
+        |        51.062544053267686
+        |      ],
+        |      [
+        |        2.8900909423828125,
+        |        51.22580788296972
+        |      ],
+        |      [
+        |        2.65594482421875,
+        |        51.2425753584134
+        |      ],
+        |      [
+        |        2.6374053955078125,
+        |        51.06513320441178
+        |      ],
+        |      [
+        |        2.80426025390625,
+        |        51.03405383220282
+        |      ]
+        |    ]
+        |  ]
+        |}""".stripMargin)
+
+    val polygons: Array[MultiPolygon] = Array(MultiPolygon(polygon))
+    val polygonsCrs = LatLng
+
+    val batchRequestId = batchProcessingService.start_batch_process_cached(
+      collection_id = "sentinel-2-l2a",
+      dataset_id = "sentinel-2-l2a",
+      polygons,
+      polygonsCrs,
       from_date = "2019-09-21T00:00:00+00:00",
       to_date = "2019-09-21T00:00:00+00:00",
       band_names = Arrays.asList("B04", "B03", "B02"),
