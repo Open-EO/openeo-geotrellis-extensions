@@ -8,7 +8,7 @@ import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
-import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
+import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
@@ -580,7 +580,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       if(dataPath.endsWith(".jp2")) {
         val warpOptions = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution), targetCRS=Some(targetExtent.crs))
         if (cloudPath.isDefined) {
-          Seq(GDALCloudRasterSource(vsisToHttpsCreo(cloudPath.get._1), vsisToHttpsCreo(cloudPath.get._2), dataPath, options = warpOptions, targetCellType = targetCellType))
+          Seq(GDALCloudRasterSource(vsisToHttpsCreo(cloudPath.get._1), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType))
         }else{
           Seq(GDALRasterSource(dataPath, options = warpOptions, targetCellType = targetCellType))
         }
