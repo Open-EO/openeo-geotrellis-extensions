@@ -1,12 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import java.io.IOException
-import java.net.{URI, URL}
-import java.nio.file.{Path, Paths}
-import java.time.temporal.ChronoUnit
-import java.time._
-import java.util.concurrent.TimeUnit
-
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Feature
 import cats.data.NonEmptyList
@@ -37,6 +30,12 @@ import software.amazon.awssdk.core.retry.conditions.{OrRetryCondition, RetryCond
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 
+import java.io.IOException
+import java.net.{URI, URL}
+import java.nio.file.{Path, Paths}
+import java.time._
+import java.time.temporal.ChronoUnit
+import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
 import scala.collection.immutable
 import scala.reflect.ClassTag
@@ -579,11 +578,11 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
       if(dataPath.endsWith(".jp2")) {
-        val warpOptions = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution))
+        val warpOptions = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution), targetCRS=Some(targetExtent.crs))
         if (cloudPath.isDefined) {
           Seq(GDALCloudRasterSource(vsisToHttpsCreo(cloudPath.get._1), vsisToHttpsCreo(cloudPath.get._2), dataPath, options = warpOptions, targetCellType = targetCellType))
         }else{
-          Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution), targetCRS=Some(targetExtent.crs)), targetCellType = targetCellType))
+          Seq(GDALRasterSource(dataPath, options = warpOptions, targetCellType = targetCellType))
         }
       }else if(dataPath.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
