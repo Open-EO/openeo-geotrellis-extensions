@@ -3,8 +3,8 @@ package org.openeo.geotrellis.layers
 import java.io.IOException
 import java.net.{URI, URL}
 import java.nio.file.{Path, Paths}
-import java.time.temporal.ChronoUnit
 import java.time._
+import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
@@ -165,7 +165,7 @@ object FileLayerProvider {
         .retryPolicy(retryPolicy)
         .build()
 
-    val endpoint = System.getenv().getOrDefault("AWS_S3_ENDPOINT","")
+    val endpoint = System.getenv().getOrDefault("SWIFT_URL","")
     val clientBuilder = S3Client.builder()
       .overrideConfiguration(overrideConfig)
       .region(Region.of("RegionOne"))
