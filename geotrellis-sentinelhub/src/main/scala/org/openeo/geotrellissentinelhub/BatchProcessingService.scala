@@ -143,10 +143,10 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     val s3Service = new S3Service
 
     val expectedTiles = for {
-      GridTile(gridTileId, geometry) <- elasticsearchRepository.intersectingGridTiles(tilingGridIndex, geometry)
+      gridTile <- elasticsearchRepository.intersectingGridTiles(tilingGridIndex, geometry)
       date <- sequentialDays(from, to)
       bandName <- bandNames
-    } yield (gridTileId, geometry, date, bandName)
+    } yield (gridTile, date, bandName)
 
     logger.debug(s"start_batch_process_cached: expecting ${expectedTiles.size} tiles for the initial request")
 
@@ -165,7 +165,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     }
 
     val missingTiles = expectedTiles
-      .filterNot { case (tileId, _, date, bandName) =>
+      .filterNot { case (GridTile(tileId, _), date, bandName) =>
         cacheEntries.exists(cachedTile =>
           cachedTile.tileId == tileId && cachedTile.date.isEqual(date) && cachedTile.bandName == bandName)
       }
@@ -190,7 +190,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     )
     s3Service.saveBatchProcessContext(narrowBatchProcessContext, bucketName, subfolder)
 
-    val multiPolygons = shrink(incompleteTiles)
+    val multiPolygons = shrink(geometries = incompleteTiles.map { case (_, geometry) => geometry })
     val multiPolygonsCrs = LatLng
 
     start_batch_process(
@@ -210,7 +210,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
 
   // TODO: rename this method to e.g. batchRequestConstraints
   // TODO: introduce some (case) classes for argument and return type?
-  private def narrowRequest(tiles: Iterable[(String, Geometry, ZonedDateTime, String)], bandNames: Seq[String]):
+  private def narrowRequest(tiles: Iterable[(GridTile, ZonedDateTime, String)], bandNames: Seq[String]):
   (Seq[(String, Geometry)], ZonedDateTime, ZonedDateTime, Seq[String]) = {
     // turn incomplete tiles into a SHub request:
     // determine all dates with missing positions (includes missing bands)
@@ -220,10 +220,10 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     // - missing bands
 
     val missingMultibandTiles = tiles
-      .groupBy { case (tileId, _, date, _) => (tileId, date) }
+      .groupBy { case (GridTile(tileId, _), date, _) => (tileId, date) }
       .mapValues { cacheKeys =>
-        val (_, geometry, _, _) = cacheKeys.head // same tile ID so same geometry
-        val bandNames = cacheKeys.map { case (_, _, _, bandName) => bandName }.toSet
+        val (GridTile(_, geometry), _, _) = cacheKeys.head // same tile ID so same geometry
+        val bandNames = cacheKeys.map { case (_, _, bandName) => bandName }.toSet
         (geometry, bandNames)
       }
       .toSeq
@@ -246,18 +246,15 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
 
     val missingBandNamesOrdered = bandNames.filter(missingBandNames.contains)
 
-    // TODO: is it necessary to return tile IDs?
     (incompleteTiles, lower, upper, missingBandNamesOrdered)
   }
 
-  // TODO: get rid of tile ID arguments?
-  private def shrink(tiles: Seq[(String, Geometry)]): Seq[MultiPolygon] = {
-    tiles
-      .map { case (_, geometry) =>
-        val shrinkDistance = geometry.getEnvelopeInternal.getWidth * 0.05
-        MultiPolygon(geometry.buffer(-shrinkDistance).asInstanceOf[Polygon])
-      } // TODO: make it explicit that all grid tiles are MultiPolygons?
-  }
+  // TODO: make it explicit that all grid tiles are MultiPolygons?
+  private def shrink(geometries: Seq[Geometry]): Seq[MultiPolygon] =
+    for {
+      geometry <- geometries
+      shrinkDistance = geometry.getEnvelopeInternal.getWidth * 0.05
+    } yield MultiPolygon(geometry.buffer(-shrinkDistance).asInstanceOf[Polygon])
 
   // flattens n MultiPolygons into 1 by taking their polygon exteriors
   // drawback: can result in big GeoJSON to send over the wire

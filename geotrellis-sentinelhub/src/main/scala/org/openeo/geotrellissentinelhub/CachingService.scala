@@ -81,7 +81,7 @@ class CachingService {
         (gridTileId, geometry) <- incompleteTiles
         date <- sequentialDays(lower, upper)
         bandName <- missingBandNames
-                                } yield (gridTileId, geometry, date, bandName)
+      } yield (gridTileId, geometry, date, bandName)
 
       logger.debug(s"was expecting ${expectedTiles.size} tiles for the narrow request")
 
