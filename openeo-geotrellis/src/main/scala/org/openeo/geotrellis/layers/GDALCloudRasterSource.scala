@@ -81,8 +81,6 @@ class GDALCloudRasterSource(
 
   private var cloudPolygons: Option[Seq[Polygon]] = Option.empty
   private val mergedCloudPolygons: mutable.Buffer[Polygon] = mutable.Buffer[Polygon]()
-  private var cloudCrs: Option[CRS] = Option.empty
-  override lazy val crs: CRS = getCloudCrs()
 
   def readCloudFile(): Seq[Polygon] = {
     if (cloudPolygons.isEmpty) {
@@ -128,19 +126,9 @@ class GDALCloudRasterSource(
   def readExtent(): Extent = {
     val xmlDoc = XML.load(metadataPath)
     val geoCoding = xmlDoc \ "Geometric_Info" \ "Tile_Geocoding"
-    cloudCrs = Some(CRS.fromName((geoCoding\"HORIZONTAL_CS_CODE").text))
     val position = geoCoding \ "Geoposition"  filter (va=>(va \ "@resolution" toString) == "10")
     val ulx = (position \ "ULX").text.toDouble
     val uly = (position \ "ULY").text.toDouble
     Extent(ulx,uly-(10*10980),ulx+(10*10980),uly)
-  }
-
-  def getCloudCrs(): CRS = {
-    if (cloudCrs.isEmpty) {
-      val xmlDoc = XML.load(metadataPath)
-      val geoCoding = xmlDoc \ "Geometric_Info" \ "Tile_Geocoding"
-      cloudCrs = Some(CRS.fromName((geoCoding\"HORIZONTAL_CS_CODE").text))
-    }
-    cloudCrs.get
   }
 }

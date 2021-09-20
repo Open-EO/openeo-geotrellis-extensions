@@ -1,14 +1,18 @@
 package org.openeo.geotrellissentinelhub
 
+import geotrellis.raster.io.geotiff.SinglebandGeoTiff
+import geotrellis.raster.io.geotiff.reader.GeoTiffReader
 import geotrellis.vector.Geometry
 import org.apache.commons.io.FileUtils.deleteDirectory
 import org.openeo.geotrellissentinelhub.ElasticsearchRepository.CacheEntry
 import org.slf4j.LoggerFactory
 
 import java.nio.file.{FileAlreadyExistsException, Files, Path, Paths}
-import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
+import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.stream.Collectors.toList
 import scala.collection.JavaConverters._
+import scala.compat.java8.FunctionConverters._
 
 object CachingService {
   private val logger = LoggerFactory.getLogger(classOf[CachingService])
@@ -26,6 +30,7 @@ class CachingService {
   import CachingService._
 
   def download_and_cache_results(bucket_name: String, subfolder: String, collecting_folder: String): Unit = {
+    // TODO: make this uri configurable
     val elasticsearchRepository = new ElasticsearchRepository("https://es-apps-dev.vgt.vito.be:443")
     val cacheIndex = "sentinel-hub-s2l2a-cache"
     val tilingGridIndex = "sentinel-hub-tiling-grid-1"
@@ -50,17 +55,18 @@ class CachingService {
       val Some(upper) = batchProcessContext.upper
       val Some(missingBandNames) = batchProcessContext.missingBandNames
 
-      new S3Service().downloadBatchProcessResults(
+      downloadBatchProcessResults(
         bucket_name,
         subfolder,
         Paths.get("/data/projects/OpenEO/sentinel-hub-s2l2a-cache"),
         missingBandNames,
-        onDownloaded = (tileId, date, bandName) => {
+        onDownloaded = (tileId, date, bandName) => { // TODO: move this lambda into downloadBatchProcessResults?
           val entry = cacheTile(tileId, date, bandName)
 
           entry.filePath.foreach { filePath =>
             try {
-              Files.createSymbolicLink(collectingDir.resolve(filePath.getFileName), filePath)
+              val fileName = s"${BASIC_ISO_DATE format entry.date.toLocalDate}-$tileId-${filePath.getFileName}"
+              Files.createSymbolicLink(collectingDir.resolve(fileName), filePath)
               logger.debug(s"symlinked $filePath from the recent past to $collectingDir")
             } catch {
               case _: FileAlreadyExistsException => /* ignore */
@@ -75,7 +81,7 @@ class CachingService {
         (gridTileId, geometry) <- incompleteTiles
         date <- sequentialDays(lower, upper)
         bandName <- missingBandNames
-                                } yield (gridTileId, geometry, date, bandName)
+      } yield (gridTileId, geometry, date, bandName)
 
       logger.debug(s"was expecting ${expectedTiles.size} tiles for the narrow request")
 
@@ -90,6 +96,51 @@ class CachingService {
       logger.debug(s"cached ${emptyTiles.size} tiles missing from the narrow request")
     }
   }
+
+  // = download multiband tiles and write them as single band tiles to the cache directory (a tree)
+  def downloadBatchProcessResults(bucketName: String, subfolder: String, targetDir: Path, bandNames: Seq[String],
+                                  onDownloaded: (String, ZonedDateTime, String) => Unit): Unit = S3.withClient { s3Client =>
+    import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
+
+    val tiffKeys = S3.listObjectIdentifiers(s3Client, bucketName, prefix = subfolder).iterator
+      .map(_.key())
+      .filter(_.endsWith(".tif"))
+
+    val keyParts = tiffKeys.map { key =>
+      val Array(_, tileId, fileName) = key.split("/")
+      val date = fileName.split(raw"\.").head.drop(1)
+
+      key -> (tileId, date)
+    }.toMap
+
+    def subdirectory(date: String, tileId: String): Path = targetDir.resolve(date).resolve(tileId)
+
+    // create all subdirectories with a minimum of effort
+    for {
+      (tileId, date) <- keyParts.values.toSet
+    } Files.createDirectories(subdirectory(date, tileId))
+
+    for ((key, (tileId, date)) <- keyParts) {
+      // TODO: avoid intermediary/temp geotiff
+      val tempMultibandFile = Files.createTempFile(subfolder, null)
+
+      try {
+        S3.download(s3Client, bucketName, key, outputFile = tempMultibandFile)
+
+        val multibandGeoTiff = GeoTiffReader.readMultiband(tempMultibandFile.toString)
+
+        for ((bandName, singleBandTile) <- bandNames zip multibandGeoTiff.tile.bands) {
+          val outputFile = subdirectory(date, tileId).resolve(s"$bandName.tif")
+
+          SinglebandGeoTiff(singleBandTile, multibandGeoTiff.extent, multibandGeoTiff.crs)
+            .write(outputFile.toString)
+
+          onDownloaded(tileId, LocalDate.parse(date, BASIC_ISO_DATE).atStartOfDay(ZoneId.of("UTC")), bandName)
+        }
+      } finally Files.delete(tempMultibandFile)
+    }
+  }
+
 
   def upload_multiband_tiles(subfolder: String, collecting_folder: String, bucket_name: String): String = {
     val collectingFolder = Paths.get(collecting_folder)
@@ -108,35 +159,42 @@ class CachingService {
     } finally deleteDirectory(assembledFolder.toFile)
   }
 
+  // = read single band tiles from collectingDir (flat) and write them as multiband tiles to assembleDir (flat)
   private def assembleMultibandTiles(collectingDir: Path, assembledDir: Path, bandNames: Seq[String]): Unit = {
     import scala.sys.process._
 
-    // TODO: only include tiffs?
-    val singleBandTiffs = Files.list(collectingDir).collect(toList[Path]).asScala
+    val isTiffFile: Path => Boolean =
+      path => Files.isRegularFile(path) && path.getFileName.toString.endsWith(".tif")
+
+    val singleBandTiffs = Files.list(collectingDir)
+      .filter(isTiffFile.asJava)
+      .collect(toList[Path]).asScala
 
     val bandsGrouped = singleBandTiffs.groupBy { singleBandTiff =>
-      val Array(tileId, date, _) = singleBandTiff.getFileName.toString.split("-")
-      (tileId, date)
+      val Array(date, tileId, _) = singleBandTiff.getFileName.toString.split("-")
+      (date, tileId)
     }.mapValues(bands => bands.sortBy { singleBandTiff =>
       val bandName = singleBandTiff.getFileName.toString.split("-")(2).takeWhile(_ != '.')
       bandNames.indexOf(bandName)
     })
 
-    bandsGrouped foreach { case ((tileId, date), bandTiffs) =>
-      val vrtFile = collectingDir.resolve("combined.vrt").toAbsolutePath.toString
-      val outputFile = assembledDir.resolve(s"$tileId-$date.tif").toAbsolutePath.toString
+    bandsGrouped foreach { case ((date, tileId), bandTiffs) =>
+      val vrtFile = collectingDir.resolve("combined.vrt")
+      val outputFile = assembledDir.resolve(s"$date-$tileId.tif")
 
       logger.debug(s"combining $bandTiffs to $outputFile")
 
-      val gdalbuildvrt = Seq("gdalbuildvrt", "-q", "-separate", vrtFile) ++ bandTiffs.map(_.toAbsolutePath.toString)
+      val gdalbuildvrt = Seq("gdalbuildvrt", "-q", "-separate", vrtFile.toString) ++ bandTiffs.map(_.toString)
       if (gdalbuildvrt.! != 0) {
         throw new IllegalStateException(s"${gdalbuildvrt mkString " "} returned non-zero exit status") // TODO: better error handling; also: gdalbuildvrt silently skips nonexistent files
       }
 
-      val gdal_translate = Seq("gdal_translate", vrtFile, outputFile)
-      if (gdal_translate.! != 0) {
-        throw new IllegalStateException(s"${gdal_translate mkString " "} returned non-zero exit status") // TODO: better error handling
-      }
+      try {
+        val gdal_translate = Seq("gdal_translate", vrtFile.toString, outputFile.toString)
+        if (gdal_translate.! != 0) {
+          throw new IllegalStateException(s"${gdal_translate mkString " "} returned non-zero exit status") // TODO: better error handling
+        }
+      } finally Files.delete(vrtFile)
     }
   }
 }

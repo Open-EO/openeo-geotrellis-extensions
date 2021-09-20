@@ -39,11 +39,6 @@ object PyramidFactory {
       }
     })
 
-  // TODO: put this in a central place
-  private implicit object ZonedDateTimeOrdering extends Ordering[ZonedDateTime] {
-    override def compare(x: ZonedDateTime, y: ZonedDateTime): Int = x compareTo y
-  }
-
   // convenience method for Python client
   // TODO: change name? A 429 response makes it rate-limited anyway.
   def rateLimited(endpoint: String, collectionId: String, datasetId: String, clientId: String, clientSecret: String,

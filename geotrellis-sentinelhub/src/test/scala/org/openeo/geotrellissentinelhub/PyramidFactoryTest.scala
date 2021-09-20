@@ -9,7 +9,7 @@ import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.{SparkConf, SparkContext, SparkException}
-import org.junit.Assert.{assertEquals, assertFalse, assertTrue}
+import org.junit.Assert.{assertEquals, assertFalse, assertTrue, fail}
 import org.junit.Test
 import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
 
@@ -76,9 +76,8 @@ class PyramidFactoryTest {
     val date = ZonedDateTime.of(LocalDate.of(2019, 10, 10), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     def testCellType(baseLayer: MultibandTileLayerRDD[SpaceTimeKey]): Unit = baseLayer.metadata.cellType match {
-      case cellType: HasNoData[Double @unchecked] =>
-        assertTrue(cellType.isFloatingPoint)
-        assertEquals(0.0, cellType.noDataValue, 0)
+      case cellType: HasNoData[Double @unchecked] if cellType.isFloatingPoint && cellType.noDataValue == 0.0 =>
+      case wrongCellType => fail(s"wrong CellType $wrongCellType")
     }
 
     testLayer(new PyramidFactory("sentinel-1-grd", "S1GRD", new DefaultCatalogApi(endpoint),
@@ -92,9 +91,8 @@ class PyramidFactoryTest {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     def testCellType(baseLayer: MultibandTileLayerRDD[SpaceTimeKey]): Unit = baseLayer.metadata.cellType match {
-      case cellType: HasNoData[Int @unchecked] =>
-        assertFalse(cellType.isFloatingPoint)
-        assertEquals(0, cellType.noDataValue)
+      case cellType: HasNoData[Int @unchecked] if !cellType.isFloatingPoint && cellType.noDataValue == 0 =>
+      case wrongCellType => fail(s"wrong CellType $wrongCellType")
     }
 
     testLayer(new PyramidFactory("sentinel-2-l1c", "S2L1C", new DefaultCatalogApi(endpoint),

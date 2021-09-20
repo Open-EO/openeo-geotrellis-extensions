@@ -34,7 +34,7 @@ object ElasticsearchRepository {
                         empty: Boolean = false) {
     def filePath: Option[Path] =
       if (empty) None
-      else Some(Paths.get(s"/data/projects/OpenEO/sentinel-hub-s2l2a-cache/$tileId-${BASIC_ISO_DATE format date.toLocalDate}-$bandName.tif"))
+      else Some(Paths.get(s"/data/projects/OpenEO/sentinel-hub-s2l2a-cache/${BASIC_ISO_DATE format date.toLocalDate}/$tileId/$bandName.tif"))
   }
 
   private implicit object CacheEntryHitReader extends HitReader[CacheEntry] {
@@ -138,8 +138,10 @@ class ElasticsearchRepository(uri: String) {
     val client = elasticClient
 
     try {
+      val docId = s"${BASIC_ISO_DATE format entry.date.toLocalDate}-${entry.tileId}-${entry.bandName}"
+
       client.execute {
-        indexInto(cacheIndex).id(s"${entry.tileId}-${BASIC_ISO_DATE format entry.date.toLocalDate}-${entry.bandName}").doc(
+        indexInto(cacheIndex).id(docId).doc(
           s"""
              |{
              |  "tileId": "${entry.tileId}",

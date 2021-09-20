@@ -5,6 +5,7 @@ import org.junit.rules.TemporaryFolder
 import org.junit.{BeforeClass, Ignore, Rule, Test}
 import org.openeo.geotrellissentinelhub.S3Service.{StacMetadataUnavailableException, UnknownFolderException}
 
+import java.nio.file.Paths
 import scala.annotation.meta.getter
 
 object S3ServiceTest {
@@ -83,6 +84,12 @@ class S3ServiceTest {
   @Test(expected = classOf[UnknownFolderException])
   def delete_batch_process_resultsThrowsForUnknownSubfolder(): Unit = {
     s3Service.delete_batch_process_results(bucketName, subfolder = "retteketet")
+  }
+
+  @Ignore
+  @Test
+  def uploadRecursively(): Unit = {
+    s3Service.uploadRecursively(Paths.get("/tmp/1"), bucketName)
   }
 
   @Ignore

@@ -37,6 +37,7 @@ object BatchProcessingService {
   }
 }
 
+// TODO: snake_case for these arguments
 class BatchProcessingService(endpoint: String, val bucketName: String, clientId: String, clientSecret: String) {
   import BatchProcessingService._
 
@@ -105,11 +106,22 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     batchRequestId
   }
 
-  // TODO: overload for polygons
-  // TODO: remove code duplication
-  // TODO: move to the CachingService? What about the call to start_batch_process() then?
   def start_batch_process_cached(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
                                  from_date: String, to_date: String, band_names: util.List[String],
+                                 sampleType: SampleType, metadata_properties: util.Map[String, Any],
+                                 processing_options: util.Map[String, Any], subfolder: String,
+                                 collecting_folder: String): String = {
+    val polygons = Array(MultiPolygon(bbox.toPolygon()))
+    val polygonsCrs = CRS.fromName(bbox_srs)
+
+    start_batch_process_cached(collection_id, dataset_id, polygons, polygonsCrs, from_date, to_date, band_names,
+      sampleType, metadata_properties, processing_options, subfolder, collecting_folder)
+  }
+
+  // TODO: remove code duplication
+  // TODO: move to the CachingService? What about the call to start_batch_process() then?
+  def start_batch_process_cached(collection_id: String, dataset_id: String, polygons: Array[MultiPolygon],
+                                 crs: CRS, from_date: String, to_date: String, band_names: util.List[String],
                                  sampleType: SampleType, metadata_properties: util.Map[String, Any],
                                  processing_options: util.Map[String, Any], subfolder: String,
                                  collecting_folder: String): String = {
@@ -117,41 +129,43 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     require(metadata_properties.isEmpty, "metadata_properties are not supported yet")
     require(processing_options.isEmpty, "processing_options are not supported yet")
 
-    // https://confluence.vito.be/pages/viewpage.action?spaceKey=EP&title=Elasticsearch+Stack+7.X
+    // TODO: make this uri configurable
     val elasticsearchRepository = new ElasticsearchRepository("https://es-apps-dev.vgt.vito.be:443")
     val tilingGridIndex = "sentinel-hub-tiling-grid-1"
     val cacheIndex = "sentinel-hub-s2l2a-cache"
     val collectingFolder = Paths.get(collecting_folder)
 
-    val polygon = bbox.toPolygon()
-    val polygonCrs = CRS.fromName(bbox_srs)
+    val geometry = GeometryCollection(polygons).reproject(crs, LatLng)
 
-    val geometry = polygon.reproject(polygonCrs, LatLng)
     val (from, to) = includeEndDay(from_date, to_date)
     val bandNames = band_names.asScala
 
     val s3Service = new S3Service
 
     val expectedTiles = for {
-      GridTile(gridTileId, geometry) <- elasticsearchRepository.intersectingGridTiles(tilingGridIndex, geometry)
+      gridTile <- elasticsearchRepository.intersectingGridTiles(tilingGridIndex, geometry)
       date <- sequentialDays(from, to)
       bandName <- bandNames
-    } yield (gridTileId, geometry, date, bandName)
+    } yield (gridTile, date, bandName)
 
     logger.debug(s"start_batch_process_cached: expecting ${expectedTiles.size} tiles for the initial request")
 
     val cacheEntries = elasticsearchRepository.queryCache(cacheIndex, geometry, from, to, bandNames)
 
+    // = read single band tiles from cache directory (a tree) and put them in collectingFolder (flat)
     for {
       entry <- cacheEntries
       filePath <- entry.filePath
     } {
-      Files.createSymbolicLink(collectingFolder.resolve(filePath.getFileName), filePath)
+      val tileId = filePath.getParent.getFileName
+      val date = filePath.getParent.getParent.getFileName
+
+      Files.createSymbolicLink(collectingFolder.resolve(s"$date-$tileId-${filePath.getFileName}"), filePath)
       logger.debug(s"start_batch_process_cached: symlinked $filePath from the distant past to $collectingFolder")
     }
 
     val missingTiles = expectedTiles
-      .filterNot { case (tileId, _, date, bandName) =>
+      .filterNot { case (GridTile(tileId, _), date, bandName) =>
         cacheEntries.exists(cachedTile =>
           cachedTile.tileId == tileId && cachedTile.date.isEqual(date) && cachedTile.bandName == bandName)
       }
@@ -176,7 +190,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     )
     s3Service.saveBatchProcessContext(narrowBatchProcessContext, bucketName, subfolder)
 
-    val multiPolygons = shrink(incompleteTiles)
+    val multiPolygons = shrink(geometries = incompleteTiles.map { case (_, geometry) => geometry })
     val multiPolygonsCrs = LatLng
 
     start_batch_process(
@@ -196,7 +210,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
 
   // TODO: rename this method to e.g. batchRequestConstraints
   // TODO: introduce some (case) classes for argument and return type?
-  private def narrowRequest(tiles: Iterable[(String, Geometry, ZonedDateTime, String)], bandNames: Seq[String]):
+  private def narrowRequest(tiles: Iterable[(GridTile, ZonedDateTime, String)], bandNames: Seq[String]):
   (Seq[(String, Geometry)], ZonedDateTime, ZonedDateTime, Seq[String]) = {
     // turn incomplete tiles into a SHub request:
     // determine all dates with missing positions (includes missing bands)
@@ -206,10 +220,10 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     // - missing bands
 
     val missingMultibandTiles = tiles
-      .groupBy { case (tileId, _, date, _) => (tileId, date) }
+      .groupBy { case (GridTile(tileId, _), date, _) => (tileId, date) }
       .mapValues { cacheKeys =>
-        val (_, geometry, _, _) = cacheKeys.head // same tile ID so same geometry
-        val bandNames = cacheKeys.map { case (_, _, _, bandName) => bandName }.toSet
+        val (GridTile(_, geometry), _, _) = cacheKeys.head // same tile ID so same geometry
+        val bandNames = cacheKeys.map { case (_, _, bandName) => bandName }.toSet
         (geometry, bandNames)
       }
       .toSeq
@@ -232,18 +246,15 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
 
     val missingBandNamesOrdered = bandNames.filter(missingBandNames.contains)
 
-    // TODO: is it necessary to return tile IDs?
     (incompleteTiles, lower, upper, missingBandNamesOrdered)
   }
 
-  // TODO: get rid of tile ID arguments?
-  private def shrink(tiles: Seq[(String, Geometry)]): Seq[MultiPolygon] = {
-    tiles
-      .map { case (_, geometry) =>
-        val shrinkDistance = geometry.getEnvelopeInternal.getWidth * 0.05
-        MultiPolygon(geometry.buffer(-shrinkDistance).asInstanceOf[Polygon])
-      } // TODO: make it explicit that all grid tiles are MultiPolygons?
-  }
+  // TODO: make it explicit that all grid tiles are MultiPolygons?
+  private def shrink(geometries: Seq[Geometry]): Seq[MultiPolygon] =
+    for {
+      geometry <- geometries
+      shrinkDistance = geometry.getEnvelopeInternal.getWidth * 0.05
+    } yield MultiPolygon(geometry.buffer(-shrinkDistance).asInstanceOf[Polygon])
 
   // flattens n MultiPolygons into 1 by taking their polygon exteriors
   // drawback: can result in big GeoJSON to send over the wire
