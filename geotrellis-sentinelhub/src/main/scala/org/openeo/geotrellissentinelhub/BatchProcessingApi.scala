@@ -63,6 +63,8 @@ class BatchProcessingApi(endpoint: String) {
                          bandNames: Seq[String], sampleType: SampleType, additionalDataFilters: util.Map[String, Any],
                          processingOptions: util.Map[String, Any], bucketName: String, description: String,
                          accessToken: String, subfolder: String) : CreateBatchProcessResponse = {
+    require(dateTimes.nonEmpty)
+
     val epsgCode = multiPolygonCrs.epsgCode.getOrElse(s"unsupported crs $multiPolygonCrs")
 
     val ascendingDateTimes = dateTimes
@@ -168,7 +170,10 @@ class BatchProcessingApi(endpoint: String) {
     s"""|//VERSION=3
         |function setup() {
         |    return {
-        |        input: [${quotedBandNames mkString ","}],
+        |        input: [{
+        |          "bands": [${quotedBandNames mkString ","}],
+        |          "units": "DN"
+        |        }],
         |        output: [${outputs mkString ",\n"}],
         |        mosaicking: "ORBIT"
         |    };

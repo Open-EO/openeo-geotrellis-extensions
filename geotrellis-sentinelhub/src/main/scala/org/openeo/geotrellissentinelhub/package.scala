@@ -1,9 +1,15 @@
 package org.openeo
 
 import org.slf4j.Logger
+import software.amazon.awssdk.core.sync.ResponseTransformer
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.{GetObjectRequest, GetObjectResponse, ListObjectsV2Request, ObjectIdentifier}
 
+import java.io.FileOutputStream
 import java.lang.Math.{pow, random}
 import java.net.SocketTimeoutException
+import java.nio.file.Path
+import java.time.ZonedDateTime
 import java.util
 import scala.annotation.tailrec
 import scala.collection.JavaConverters._
@@ -16,7 +22,8 @@ package object geotrellissentinelhub {
         logger.warn(s"Attempt $i failed: $context -> ${e.getMessage}")
 
         i < attempts && (e match {
-          case s: SentinelHubException if s.statusCode == 429 || s.statusCode >= 500 => true
+          case s: SentinelHubException if s.statusCode == 429 || s.statusCode >= 500
+            || (s.statusCode == 400 && s.responseBody.contains("Request body should be non-empty.")) => true
           case _: SocketTimeoutException => true
           case _ => false
         })
@@ -44,4 +51,43 @@ package object geotrellissentinelhub {
         case ("orbitDirection", value: String) => "sat:orbit_state" -> value
         case (property, _) => throw new IllegalArgumentException(s"unsupported metadata property $property")
       }
+
+  // TODO: put it in a central place
+  implicit object ZonedDateTimeOrdering extends Ordering[ZonedDateTime] {
+    override def compare(x: ZonedDateTime, y: ZonedDateTime): Int = x compareTo y
+  }
+
+  object S3 {
+    def withClient[R](f: S3Client => R): R = {
+      val s3Client = S3Client.builder()
+        .build()
+
+      try f(s3Client)
+      finally s3Client.close()
+    }
+
+    def download(s3Client: S3Client, bucketName: String, key: String, outputFile: Path): Unit = {
+      val getObjectRequest = GetObjectRequest.builder()
+        .bucket(bucketName)
+        .key(key)
+        .build()
+
+      val out = new FileOutputStream(outputFile.toFile)
+
+      try s3Client.getObject(getObjectRequest, ResponseTransformer.toOutputStream[GetObjectResponse](out))
+      finally out.close()
+    }
+
+    def listObjectIdentifiers(s3Client: S3Client, bucketName: String, prefix: String): Iterable[ObjectIdentifier] = {
+      val listObjectsResponse = s3Client.listObjectsV2Paginator(
+        ListObjectsV2Request.builder()
+          .bucket(bucketName)
+          .prefix(prefix)
+          .build()
+      )
+
+      listObjectsResponse.contents().asScala
+        .map(obj => ObjectIdentifier.builder().key(obj.key()).build())
+    }
+  }
 }

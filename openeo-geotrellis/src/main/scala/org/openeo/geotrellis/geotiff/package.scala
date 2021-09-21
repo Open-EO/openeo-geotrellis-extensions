@@ -14,7 +14,7 @@ import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.io.geotiff.writer.GeoTiffWriter
 import geotrellis.raster.render.IndexedColorMap
 import geotrellis.raster.resample.NearestNeighbor
-import geotrellis.raster.{ArrayTile, CellType, GridBounds, MultibandTile, Raster, RasterExtent, TileLayout}
+import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, MultibandTile, Raster, RasterExtent, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.util._
@@ -77,6 +77,7 @@ package object geotiff {
 
   /**
    * Save temporal rdd, on the executors
+   *
    * @param rdd
    * @param path
    * @param zLevel
@@ -94,7 +95,7 @@ package object geotiff {
 
     val tileLayout = preprocessedRdd.metadata.tileLayout
 
-    val totalCols = maxKey.col - minKey.col +1
+    val totalCols = maxKey.col - minKey.col + 1
     val totalRows = maxKey.row - minKey.row + 1
 
     val compression = Deflate(zLevel)
@@ -105,8 +106,8 @@ package object geotiff {
       //Warning: for deflate compression, the segmentcount and index is not really used, making it stateless.
       //Not sure how this works out for other types of compression!!!
 
-      val theCompressor = compression.createCompressor( multibandTile.bandCount)
-      (key,multibandTile.bands.map {
+      val theCompressor = compression.createCompressor(multibandTile.bandCount)
+      (key, multibandTile.bands.map {
         tile => {
           bandIndex += 1
           val layoutCol = key.getComponent[SpatialKey]._1 - minKey._1
@@ -116,7 +117,7 @@ package object geotiff {
           //tiff format seems to require that we provide 'full' tiles
           val bytes = raster.CroppedTile(tile, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
           val compressedBytes = theCompressor.compress(bytes, 0)
-          (index, (multibandTile.cellType,compressedBytes))
+          (index, (multibandTile.cellType, compressedBytes))
         }
 
       })
@@ -128,7 +129,7 @@ package object geotiff {
       val detectedBandCount = tuple._2.map(_.size).max
       val segments: Iterable[(Int, (CellType, Array[Byte]))] = tuple._2.flatten
       val cellTypes = segments.map(_._2._1).toSet
-      val tiffs: Predef.Map[Int, Array[Byte]] = segments.map(tuple => (tuple._1,tuple._2._2)).toMap
+      val tiffs: Predef.Map[Int, Array[Byte]] = segments.map(tuple => (tuple._1, tuple._2._2)).toMap
 
       val segmentCount = (bandSegmentCount*detectedBandCount)
       val thePath = Paths.get(path).resolve(tuple._1).toString
@@ -163,6 +164,23 @@ package object geotiff {
     (gridBounds, croppedExtent, preprocessedRdd)
   }
 
+  class PowerOfTwoLocalLayoutScheme extends LayoutScheme {
+
+    def zoomOut(level: LayoutLevel): LayoutLevel = {
+      val LayoutLevel(zoom, LayoutDefinition(extent, tileLayout)) = level
+      require(zoom > 0)
+      // layouts may be uneven, don't let the short dimension go to 0
+      val currentSize = level.layout.cellSize
+      val outLayout = LayoutDefinition(RasterExtent(extent,CellSize(currentSize.width*2.0,currentSize.height*2.0)),level.layout.tileCols)
+
+      LayoutLevel(zoom - 1, outLayout)
+    }
+
+    // not used in Pyramiding
+    def zoomIn(level: LayoutLevel): LayoutLevel = ???
+    def levelFor(extent: Extent, cellSize: CellSize): LayoutLevel = ???
+  }
+
   def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K], bandCount:Int, path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent], formatOptions:GTiffOptions = new GTiffOptions):java.util.List[String] = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
@@ -176,13 +194,25 @@ package object geotiff {
     if(formatOptions.overviews == "ALL") {
       //create overviews
       val levels = LocalLayoutScheme.inferLayoutLevel(preprocessedRdd.metadata)
-      val pyramid: Pyramid[K, MultibandTile, TileLayerMetadata[K]] = Pyramid.fromLayerRDD(preprocessedRdd,thisZoom = Some(levels),endZoom = Some(levels-2))
 
-      val nextOverviewLevel = pyramid.levels(levels - 1)
-      val ( overViewTiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, overViewSegmentCount: Int) = getCompressedTiles(nextOverviewLevel, compression)
-      val overviewTiff = toTiff(overViewTiffs, nextOverviewLevel.metadata.gridBoundsFor(croppedExtent,clamp=true).toGridType[Int], nextOverviewLevel.metadata.tileLayout, compression, cellType, detectedBandCount, overViewSegmentCount)
+      if(levels>1) {
+        val scheme = new PowerOfTwoLocalLayoutScheme()
+        val (nextZoom,nextOverviewLevel) = Pyramid.up(preprocessedRdd,scheme,levels)
 
-      List(overviewTiff)
+        val ( overViewTiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, overViewSegmentCount: Int) = getCompressedTiles(nextOverviewLevel, compression)
+        val overviewTiff = toTiff(overViewTiffs, nextOverviewLevel.metadata.gridBoundsFor(croppedExtent,clamp=true).toGridType[Int], nextOverviewLevel.metadata.tileLayout, compression, cellType, detectedBandCount, overViewSegmentCount)
+
+        if(levels>2) {
+          val (lowerZoom,lowerOverviewLevel) = Pyramid.up(nextOverviewLevel,scheme,nextZoom)
+          val stitched: Option[Raster[MultibandTile]] = lowerOverviewLevel.withContext(_.map(t=>(t._1.getComponent[SpatialKey](),t._2))).sparseStitch()
+          List(overviewTiff,GeoTiffMultibandTile(stitched.get.tile))
+        }else{
+          List(overviewTiff)
+        }
+      }else{
+        Nil
+      }
+
     }else{
       Nil
     }
@@ -247,8 +277,8 @@ package object geotiff {
   }
 
   // This implementation does not properly work, output tiffs are not properly aligned and colors are also incorrect
-  def saveRDDGenericTileGrid[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K], bandCount:Int, path:String, tileGrid: String, zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]) = {
-    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
+  def saveRDDGenericTileGrid[K: SpatialComponent : Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, tileGrid: String, zLevel: Int = 6, cropBounds: Option[Extent] = Option.empty[Extent]) = {
+    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd, cropBounds)
     val croppedExtent: Extent = preProcessResult._2
     val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3
 
@@ -256,7 +286,7 @@ package object geotiff {
 
     val compression = Deflate(zLevel)
 
-    val features = TileGrid.computeFeaturesForTileGrid(tileGrid, ProjectedExtent(preprocessedRdd.metadata.extent,preprocessedRdd.metadata.crs))
+    val features = TileGrid.computeFeaturesForTileGrid(tileGrid, ProjectedExtent(preprocessedRdd.metadata.extent, preprocessedRdd.metadata.crs))
 
     def newFilePath(path: String, tileId: String) = {
       val index = path.lastIndexOf(".")
@@ -285,7 +315,7 @@ package object geotiff {
         val maxKey = keyBounds.get.maxKey.getComponent[SpatialKey]
         val minKey = keyBounds.get.minKey.getComponent[SpatialKey]
 
-        val totalCols = maxKey.col - minKey.col +1
+        val totalCols = maxKey.col - minKey.col + 1
         val totalRows = maxKey.row - minKey.row + 1
 
         val bandSegmentCount = totalCols * totalRows
@@ -318,7 +348,7 @@ package object geotiff {
 
         println("Saving geotiff with Celltype: " + cellType)
 
-        val segmentCount = (bandSegmentCount*detectedBandCount).toInt
+        val segmentCount = (bandSegmentCount * detectedBandCount).toInt
         val newPath = newFilePath(path, name)
         writeTiff(newPath, tiffs, gridBounds, extent.intersection(croppedExtent).get, preprocessedRdd.metadata.crs, tileLayout, compression, cellType, detectedBandCount, segmentCount)
 
@@ -327,13 +357,18 @@ package object geotiff {
       .toList
   }
 
-  private def writeTiff( path: String, tiffs:collection.Map[Int, Array[Byte]] , gridBounds: GridBounds[Int], croppedExtent: Extent,crs:CRS, tileLayout: TileLayout, compression: DeflateCompression, cellType: CellType, detectedBandCount: Double, segmentCount: Int, formatOptions:GTiffOptions = new GTiffOptions,overviews: List[GeoTiffMultibandTile] = Nil) = {
+  private def writeTiff(path: String, tiffs: collection.Map[Int, Array[Byte]], gridBounds: GridBounds[Int], croppedExtent: Extent, crs: CRS, tileLayout: TileLayout, compression: DeflateCompression, cellType: CellType, detectedBandCount: Double, segmentCount: Int, formatOptions:GTiffOptions = new GTiffOptions,overviews: List[GeoTiffMultibandTile] = Nil) = {
     logger.info(s"Writing geotiff to $path with type ${cellType.toString()} and bands $detectedBandCount")
     val tiffTile: GeoTiffMultibandTile = toTiff(tiffs, gridBounds, tileLayout, compression, cellType, detectedBandCount, segmentCount)
     val options = if(formatOptions.colorMap.isDefined){
       new GeoTiffOptions(colorMap = formatOptions.colorMap.map(IndexedColorMap.fromColorMap),colorSpace = ColorSpace.Palette)
     }else{
-      new GeoTiffOptions()
+      val theColorspace = if(detectedBandCount==3) {
+        ColorSpace.RGB
+      }else{
+        ColorSpace.BlackIsZero
+      }
+      new GeoTiffOptions(colorSpace = theColorspace)
     }
 
     val thegeotiff = new MultibandGeoTiff(tiffTile, croppedExtent, crs,formatOptions.tags,options,overviews = overviews.map(o=>MultibandGeoTiff(o,croppedExtent,crs,options = new GeoTiffOptions(subfileType = Some(ReducedImage)))))//.withOverviews(NearestNeighbor, List(4, 8, 16))

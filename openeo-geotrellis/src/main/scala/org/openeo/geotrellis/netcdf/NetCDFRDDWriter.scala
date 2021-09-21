@@ -131,12 +131,14 @@ object NetCDFRDDWriter {
 
       for (bandIndex <- bandNames.asScala.indices) {
 
-        val gridExtent = rasterExtent.gridBoundsFor(tuple._1.spatialKey.extent(rdd.metadata))
-        val origin: Array[Int] = scala.Array(timeDimIndex.toInt, gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
-        val variable = bandNames.get(bandIndex)
+        if(bandIndex < multibandTile.bandCount){
+          val gridExtent = rasterExtent.gridBoundsFor(tuple._1.spatialKey.extent(rdd.metadata))
+          val origin: Array[Int] = scala.Array(timeDimIndex.toInt, gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
+          val variable = bandNames.get(bandIndex)
 
-        val tile = multibandTile.band(bandIndex)
-        writeTile(variable, origin, tile, netcdfFile)
+          val tile = multibandTile.band(bandIndex)
+          writeTile(variable, origin, tile, netcdfFile)
+        }
       }
     }
 

@@ -49,6 +49,12 @@
             <version>${geotrellis.version}</version>
         </dependency>
         <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>url-connection-client</artifactId>
+            <version>2.13.74</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
             <artifactId>geotrellis-gdal_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>
