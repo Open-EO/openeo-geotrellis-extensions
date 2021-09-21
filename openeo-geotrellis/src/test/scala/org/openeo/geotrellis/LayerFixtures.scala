@@ -1,13 +1,5 @@
 package org.openeo.geotrellis
 
-import java.awt.image.DataBufferByte
-import java.net.URL
-import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
-import java.time.{LocalDate, ZonedDateTime}
-import java.util
-import java.util.Collections.singletonList
-
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer.{Bounds, FloatingLayoutScheme, KeyBounds, LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
@@ -15,6 +7,7 @@ import geotrellis.proj4.LatLng
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.{ArrayMultibandTile, ArrayTile, ByteArrayTile, CellSize, MultibandTile, Tile, TileLayout}
 import geotrellis.spark._
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
@@ -23,6 +16,13 @@ import org.openeo.geotrellis.file.Sentinel2PyramidFactory
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellisaccumulo.PyramidFactory
 
+import java.awt.image.DataBufferByte
+import java.net.URL
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
+import java.time.{LocalDate, ZonedDateTime}
+import java.util
+import java.util.Collections.singletonList
 import scala.collection.JavaConverters
 
 object LayerFixtures {
@@ -63,7 +63,7 @@ object LayerFixtures {
     val layout = new TileLayout(1, 1, tiles.get(0).cols.asInstanceOf[Integer], tiles.get(0).rows.asInstanceOf[Integer])
     val cubeXYB: TileLayerRDD[SpaceTimeKey] = TileLayerRDDBuilders.createSpaceTimeTileLayerRDD(JavaConverters.collectionAsScalaIterableConverter(tiles).asScala.zip(times),layout)
 
-    cubeXYB.withContext{_.mapValues(MultibandTile(_))}
+    cubeXYB.withContext{_.mapValues(MultibandTile(_)).repartitionAndSortWithinPartitions(new SpacePartitioner(cubeXYB.metadata.bounds))}
   }
 
   private[geotrellis] def tileToSpaceTimeDataCube(zeroTile: Tile): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
