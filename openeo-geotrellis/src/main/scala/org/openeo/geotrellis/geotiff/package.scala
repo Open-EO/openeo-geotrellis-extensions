@@ -1,9 +1,5 @@
 package org.openeo.geotrellis
 
-import java.nio.file.Paths
-import java.time.format.DateTimeFormatter
-import java.util.{ArrayList, Collections, Map}
-
 import geotrellis.layer._
 import geotrellis.proj4.CRS
 import geotrellis.raster
@@ -28,6 +24,9 @@ import org.openeo.geotrellis.tile_grid.TileGrid
 import org.slf4j.LoggerFactory
 import spire.syntax.cfor.cfor
 
+import java.nio.file.Paths
+import java.time.format.DateTimeFormatter
+import java.util.{ArrayList, Collections, Map}
 import scala.collection.JavaConverters._
 import scala.reflect._
 
@@ -197,18 +196,26 @@ package object geotiff {
 
       if(levels>1) {
         val scheme = new PowerOfTwoLocalLayoutScheme()
-        val (nextZoom,nextOverviewLevel) = Pyramid.up(preprocessedRdd,scheme,levels)
 
-        val ( overViewTiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, overViewSegmentCount: Int) = getCompressedTiles(nextOverviewLevel, compression)
-        val overviewTiff = toTiff(overViewTiffs, nextOverviewLevel.metadata.gridBoundsFor(croppedExtent,clamp=true).toGridType[Int], nextOverviewLevel.metadata.tileLayout, compression, cellType, detectedBandCount, overViewSegmentCount)
+        var nextOverviewLevel: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preprocessedRdd
+        var nextZoom = -1
+        val overviews = (1 to levels).reverse.map( level=>{
+          var zoom_rdd = Pyramid.up(nextOverviewLevel,scheme,level)
+          nextOverviewLevel = zoom_rdd._2
+          val ( overViewTiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, overViewSegmentCount: Int) = getCompressedTiles(nextOverviewLevel, compression)
+          val overviewTiff = toTiff(overViewTiffs, nextOverviewLevel.metadata.gridBoundsFor(croppedExtent,clamp=true).toGridType[Int], nextOverviewLevel.metadata.tileLayout, compression, cellType, detectedBandCount, overViewSegmentCount)
+          overviewTiff
+        })
 
-        if(levels>2) {
+        overviews.toList
+
+        /*if(levels>2) {
           val (lowerZoom,lowerOverviewLevel) = Pyramid.up(nextOverviewLevel,scheme,nextZoom)
           val stitched: Option[Raster[MultibandTile]] = lowerOverviewLevel.withContext(_.map(t=>(t._1.getComponent[SpatialKey](),t._2))).sparseStitch()
           List(overviewTiff,GeoTiffMultibandTile(stitched.get.tile))
-        }else{
-          List(overviewTiff)
-        }
+        }else{*/
+          //List(overviewTiff)
+        //}
       }else{
         Nil
       }
