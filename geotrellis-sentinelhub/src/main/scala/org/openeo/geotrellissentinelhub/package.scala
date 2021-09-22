@@ -1,5 +1,8 @@
 package org.openeo
 
+import _root_.io.circe.{Decoder, Encoder, HCursor, Json}
+import _root_.io.circe.Decoder.Result
+import cats.syntax.either._
 import org.slf4j.Logger
 import software.amazon.awssdk.core.sync.ResponseTransformer
 import software.amazon.awssdk.services.s3.S3Client
@@ -9,7 +12,7 @@ import java.io.FileOutputStream
 import java.lang.Math.{pow, random}
 import java.net.SocketTimeoutException
 import java.nio.file.Path
-import java.time.ZonedDateTime
+import java.time.{Instant, ZoneOffset, ZonedDateTime}
 import java.util
 import scala.annotation.tailrec
 import scala.collection.JavaConverters._
@@ -55,6 +58,15 @@ package object geotrellissentinelhub {
   // TODO: put it in a central place
   implicit object ZonedDateTimeOrdering extends Ordering[ZonedDateTime] {
     override def compare(x: ZonedDateTime, y: ZonedDateTime): Int = x compareTo y
+  }
+
+  implicit object zonedDateTimeEncoder extends Encoder[ZonedDateTime] {
+    override def apply(date: ZonedDateTime): Json = Json.fromLong(date.toInstant.toEpochMilli)
+  }
+
+  implicit object zonedDateTimeDecoder extends Decoder[ZonedDateTime] {
+    override def apply(c: HCursor): Result[ZonedDateTime] = c.as[Long]
+      .map(millis => ZonedDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneOffset.UTC))
   }
 
   object S3 {

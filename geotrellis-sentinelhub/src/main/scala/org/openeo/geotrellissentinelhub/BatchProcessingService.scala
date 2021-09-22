@@ -3,21 +3,15 @@ package org.openeo.geotrellissentinelhub
 import com.google.common.cache.{CacheBuilder, CacheLoader}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.vector._
-import org.openeo.geotrellissentinelhub.ElasticsearchRepository.GridTile
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
-import org.slf4j.LoggerFactory
 
-import java.nio.file.{Files, Paths}
 import java.time.ZoneOffset.UTC
-import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
 import java.util.concurrent.TimeUnit.MINUTES
 import scala.collection.JavaConverters._
 
 object BatchProcessingService {
-  private val logger = LoggerFactory.getLogger(classOf[BatchProcessingService])
-
   // TODO: invalidate key on 401 Unauthorized
   private val accessTokenCache = CacheBuilder
     .newBuilder()
@@ -27,14 +21,6 @@ object BatchProcessingService {
         case (clientId, clientSecret) => new AuthApi().authenticate(clientId, clientSecret).access_token
       }
     })
-
-  // TODO: put this in a central place
-  private def sequentialDays(from: ZonedDateTime, to: ZonedDateTime): Stream[ZonedDateTime] = {
-    def sequentialDays0(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDays0(from plusDays 1)
-
-    sequentialDays0(from)
-      .takeWhile(date => !(date isAfter to))
-  }
 }
 
 // TODO: snake_case for these arguments
@@ -118,143 +104,28 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
       sampleType, metadata_properties, processing_options, subfolder, collecting_folder)
   }
 
-  // TODO: remove code duplication
   // TODO: move to the CachingService? What about the call to start_batch_process() then?
   def start_batch_process_cached(collection_id: String, dataset_id: String, polygons: Array[MultiPolygon],
                                  crs: CRS, from_date: String, to_date: String, band_names: util.List[String],
                                  sampleType: SampleType, metadata_properties: util.Map[String, Any],
                                  processing_options: util.Map[String, Any], subfolder: String,
                                  collecting_folder: String): String = {
-    require(Set("S2L2A", "sentinel-2-l2a") contains dataset_id, """at the moment, only dataset_id "sentinel-2-l2a" (previously "S2L2A") is supported""")
     require(metadata_properties.isEmpty, "metadata_properties are not supported yet")
-    require(processing_options.isEmpty, "processing_options are not supported yet")
-
-    // TODO: make this uri configurable
-    val elasticsearchRepository = new ElasticsearchRepository("https://es-apps-dev.vgt.vito.be:443")
-    val tilingGridIndex = "sentinel-hub-tiling-grid-1"
-    val cacheIndex = "sentinel-hub-s2l2a-cache"
-    val collectingFolder = Paths.get(collecting_folder)
-
-    val geometry = GeometryCollection(polygons).reproject(crs, LatLng)
 
     val (from, to) = includeEndDay(from_date, to_date)
-    val bandNames = band_names.asScala
 
-    val s3Service = new S3Service
+    val cacheOperation =
+      if (Set("sentinel-2-l2a", "S2L2A") contains dataset_id)
+        new Sentinel2L2AInitialCacheOperation(dataset_id)
+      else if (Set("sentinel-1-grd", "S1GRD") contains dataset_id)
+        new Sentinel1GrdInitialCacheOperation(dataset_id)
+      else throw new IllegalArgumentException(
+        """only datasets "sentinel-2-l2a" (previously "S2L2A") and
+          | "sentinel-1-grd" (previously "S1GRD") are supported""".stripMargin)
 
-    val expectedTiles = for {
-      gridTile <- elasticsearchRepository.intersectingGridTiles(tilingGridIndex, geometry)
-      date <- sequentialDays(from, to)
-      bandName <- bandNames
-    } yield (gridTile, date, bandName)
-
-    logger.debug(s"start_batch_process_cached: expecting ${expectedTiles.size} tiles for the initial request")
-
-    val cacheEntries = elasticsearchRepository.queryCache(cacheIndex, geometry, from, to, bandNames)
-
-    // = read single band tiles from cache directory (a tree) and put them in collectingFolder (flat)
-    for {
-      entry <- cacheEntries
-      filePath <- entry.filePath
-    } {
-      val tileId = filePath.getParent.getFileName
-      val date = filePath.getParent.getParent.getFileName
-
-      Files.createSymbolicLink(collectingFolder.resolve(s"$date-$tileId-${filePath.getFileName}"), filePath)
-      logger.debug(s"start_batch_process_cached: symlinked $filePath from the distant past to $collectingFolder")
-    }
-
-    val missingTiles = expectedTiles
-      .filterNot { case (GridTile(tileId, _), date, bandName) =>
-        cacheEntries.exists(cachedTile =>
-          cachedTile.tileId == tileId && cachedTile.date.isEqual(date) && cachedTile.bandName == bandName)
-      }
-
-    val initialBatchProcessContext = BatchProcessContext(bandNames, None, None, None, None)
-    s3Service.saveBatchProcessContext(initialBatchProcessContext, bucketName, subfolder)
-
-    if (missingTiles.isEmpty) {
-      logger.debug("start_batch_process_cached: everything's cached, no need for additional requests")
-      return null
-    }
-
-    logger.debug(s"start_batch_process_cached: ${missingTiles.size} tiles are not in the cache")
-
-    val (incompleteTiles, lower, upper, missingBandNames) = narrowRequest(missingTiles, bandNames)
-
-    val narrowBatchProcessContext = initialBatchProcessContext.copy(
-      incompleteTiles = Some(incompleteTiles),
-      lower = Some(lower),
-      upper = Some(upper),
-      missingBandNames = Some(missingBandNames)
-    )
-    s3Service.saveBatchProcessContext(narrowBatchProcessContext, bucketName, subfolder)
-
-    val multiPolygons = shrink(geometries = incompleteTiles.map { case (_, geometry) => geometry })
-    val multiPolygonsCrs = LatLng
-
-    start_batch_process(
-      collection_id,
-      dataset_id,
-      multiPolygons.toArray,
-      multiPolygonsCrs,
-      from_date = ISO_OFFSET_DATE_TIME format lower,
-      to_date = ISO_OFFSET_DATE_TIME format upper,
-      band_names = missingBandNames.asJava,
-      sampleType,
-      metadata_properties,
-      processing_options,
-      subfolder
-    )
+    cacheOperation.startBatchProcess(collection_id, dataset_id, polygons, crs, from, to, band_names,
+      sampleType, metadata_properties, processing_options, bucketName, subfolder, collecting_folder, this)
   }
-
-  // TODO: rename this method to e.g. batchRequestConstraints
-  // TODO: introduce some (case) classes for argument and return type?
-  private def narrowRequest(tiles: Iterable[(GridTile, ZonedDateTime, String)], bandNames: Seq[String]):
-  (Seq[(String, Geometry)], ZonedDateTime, ZonedDateTime, Seq[String]) = {
-    // turn incomplete tiles into a SHub request:
-    // determine all dates with missing positions (includes missing bands)
-    // do a request for:
-    // - [lower, upper]
-    // - positions with missing bands
-    // - missing bands
-
-    val missingMultibandTiles = tiles
-      .groupBy { case (GridTile(tileId, _), date, _) => (tileId, date) }
-      .mapValues { cacheKeys =>
-        val (GridTile(_, geometry), _, _) = cacheKeys.head // same tile ID so same geometry
-        val bandNames = cacheKeys.map { case (_, _, bandName) => bandName }.toSet
-        (geometry, bandNames)
-      }
-      .toSeq
-
-    val datesWithIncompleteBands = missingMultibandTiles
-      .map { case ((_, date), _) => date }
-      .distinct
-      .sorted
-
-    val lower = datesWithIncompleteBands.head
-    val upper = datesWithIncompleteBands.last
-
-    val incompleteTiles = missingMultibandTiles
-      .map { case ((tileId,  _), (geometry, _)) => (tileId, geometry) }
-      .distinct
-
-    val missingBandNames = missingMultibandTiles
-      .map { case (_, (_, bandNames)) => bandNames }
-      .reduce {_ union _}
-
-    val missingBandNamesOrdered = bandNames.filter(missingBandNames.contains)
-
-    (incompleteTiles, lower, upper, missingBandNamesOrdered)
-  }
-
-  // TODO: make it explicit that all grid tiles are MultiPolygons?
-  private def shrink(geometries: Seq[Geometry]): Seq[MultiPolygon] =
-    for {
-      geometry <- geometries
-      shrinkDistance = geometry.getEnvelopeInternal.getWidth * 0.05
-    } yield MultiPolygon(geometry.buffer(-shrinkDistance).asInstanceOf[Polygon])
 
   // flattens n MultiPolygons into 1 by taking their polygon exteriors
   // drawback: can result in big GeoJSON to send over the wire
