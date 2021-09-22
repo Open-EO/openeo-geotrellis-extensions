@@ -91,34 +91,4 @@ class S3ServiceTest {
   def uploadRecursively(): Unit = {
     s3Service.uploadRecursively(Paths.get("/tmp/1"), bucketName)
   }
-
-  @Ignore
-  @Test
-  def saveBatchProcessContext(): Unit = {
-    s3Service.saveBatchProcessContext(
-      BatchProcessContext(Seq("DUMMY"), None, None, None, None),
-      bucketName,
-      subfolder = "dummy"
-    )
-  }
-
-  @Ignore
-  @Test
-  def loadBatchProcessContext(): Unit = {
-    val batchProcessContext = s3Service.loadBatchProcessContext(
-      bucketName,
-      subfolder = "044cef13-3378-436b-ab8d-4818db76b75b"
-    )
-
-    if (batchProcessContext.includesNarrowRequest) {
-      val Some(incompleteTiles) = batchProcessContext.incompleteTiles
-      val Some(lower) = batchProcessContext.lower
-      val Some(upper) = batchProcessContext.upper
-      val Some(missingBandNames) = batchProcessContext.missingBandNames
-
-      println(s"$incompleteTiles, $lower, $upper, $missingBandNames")
-    } else {
-      println("no narrow request involved")
-    }
-  }
 }

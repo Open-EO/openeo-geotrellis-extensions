@@ -1,7 +1,6 @@
 package org.openeo.geotrellissentinelhub
 
 import org.slf4j.LoggerFactory
-import software.amazon.awssdk.core.sync.{RequestBody, ResponseTransformer}
 import software.amazon.awssdk.services.s3.model._
 
 import java.nio.file.{Files, Path, Paths}
@@ -17,6 +16,7 @@ object S3Service {
 }
 
 class S3Service {
+
   import S3Service._
 
   def delete_batch_process_results(bucket_name: String, subfolder: String): Unit = S3.withClient { s3Client =>
@@ -99,36 +99,5 @@ class S3Service {
     Files.walk(root).forEach(uploadFile.asJava)
 
     prefix
-  }
-
-  // TODO: do these two belong here?
-  def saveBatchProcessContext(batchProcessContext: BatchProcessContext, bucketName: String, subfolder: String): Unit = {
-    val json = batchProcessContext.toJson
-    uploadText(json, bucketName, batchProcessContextKey(subfolder))
-  }
-
-  def loadBatchProcessContext(bucketName: String, subfolder: String): BatchProcessContext = {
-    val json = downloadText(bucketName, batchProcessContextKey(subfolder))
-    BatchProcessContext.fromJson(json)
-  }
-
-  private def batchProcessContextKey(subfolder: String): String = s"$subfolder/request_context.json"
-
-  private def uploadText(text: String, bucketName: String, key: String): Unit = S3.withClient { s3Client =>
-    val putObjectRequest = PutObjectRequest.builder()
-      .bucket(bucketName)
-      .key(key)
-      .build()
-
-    s3Client.putObject(putObjectRequest, RequestBody.fromString(text))
-  }
-
-  private def downloadText(bucketName: String, key: String): String = S3.withClient { s3Client =>
-    val getObjectRequest = GetObjectRequest.builder()
-      .bucket(bucketName)
-      .key(key)
-      .build()
-
-    s3Client.getObject(getObjectRequest, ResponseTransformer.toBytes[GetObjectResponse]).asUtf8String()
   }
 }
