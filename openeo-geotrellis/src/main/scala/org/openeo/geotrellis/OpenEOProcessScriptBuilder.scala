@@ -1,7 +1,5 @@
 package org.openeo.geotrellis
 
-import java.util
-
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.{ArrayTile, ByteUserDefinedNoDataCellType, CellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isNoData}
 import org.apache.commons.math3.exception.NotANumberException
@@ -12,6 +10,7 @@ import org.slf4j.LoggerFactory
 import spire.math.UShort
 import spire.syntax.cfor.cfor
 
+import java.util
 import scala.Double.NaN
 import scala.collection.JavaConversions.mapAsScalaMap
 import scala.collection.JavaConverters.collectionAsScalaIterableConverter
@@ -560,6 +559,14 @@ class OpenEOProcessScriptBuilder {
       case "tan" if hasX => mapFunction("x", Tan.apply)
       case "tanh" if hasX => mapFunction("x", Tanh.apply)
       // Other
+      case "first" => {
+        arguments.put("index", 0: Integer)
+        arrayElementFunction(arguments)
+      }
+      case "last" => {
+        arguments.put("index", -1: Integer)
+        arrayElementFunction(arguments)
+      }
       case "array_element" => arrayElementFunction(arguments)
       case "array_modify" => arrayModifyFunction(arguments)
       case "array_interpolate_linear" => applyListFunction("data",linearInterpolation)
@@ -756,10 +763,13 @@ class OpenEOProcessScriptBuilder {
     }
     val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
       val input: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
-      if(input.size <= index.asInstanceOf[Integer]) {
+      val indexInt = index.asInstanceOf[Integer]
+      if(input.size <= indexInt || (indexInt == -1 && input.isEmpty)) {
         throw new IllegalArgumentException("Invalid band index " + index + ", only " + input.size + " bands available.")
       }
-      Seq(input(index.asInstanceOf[Integer]))
+      if (indexInt == -1)
+        Seq(input.last)
+      Seq(input(indexInt))
     }
     bandFunction
   }
