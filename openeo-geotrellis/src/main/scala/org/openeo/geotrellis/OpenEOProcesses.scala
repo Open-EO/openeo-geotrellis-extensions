@@ -1,10 +1,5 @@
 package org.openeo.geotrellis
 
-import java.io.File
-import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, Paths}
-import java.time.{Instant, ZonedDateTime}
-
 import geotrellis.layer.SpatialKey._
 import geotrellis.layer._
 import geotrellis.proj4.CRS
@@ -25,6 +20,10 @@ import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrelliscommon.{FFTConvolve, SpaceTimeByMonthPartitioner}
 
+import java.io.File
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Paths}
+import java.time.{Instant, ZonedDateTime}
 import scala.collection.JavaConverters._
 import scala.collection.{JavaConverters, immutable, mutable}
 import scala.reflect._
@@ -338,8 +337,20 @@ class OpenEOProcesses extends Serializable {
     data.reproject(target.metadata.crs,target.metadata.layout,16,method,target.partitioner)
   }
 
+  def resampleCubeSpatial_spacetime(data: MultibandTileLayerRDD[SpaceTimeKey],crs:CRS,layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
+    if(partitioner==null) {
+      data.reproject(crs,layout,16,method,new SpacePartitioner(data.metadata.bounds))
+    }else{
+      data.reproject(crs,layout,16,method,Option(partitioner))
+    }
+  }
+
   def resampleCubeSpatial_spatial(data: MultibandTileLayerRDD[SpatialKey],crs:CRS,layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpatialKey]) = {
-    data.reproject(crs,layout,16,method,partitioner)
+    if(partitioner==null) {
+      data.reproject(crs,layout,16,method,new SpacePartitioner(data.metadata.bounds))
+    }else{
+      data.reproject(crs,layout,16,method,Option(partitioner))
+    }
   }
 
   def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String, swapOperands:Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {

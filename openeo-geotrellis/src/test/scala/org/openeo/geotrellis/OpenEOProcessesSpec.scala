@@ -1,12 +1,11 @@
 package org.openeo.geotrellis
 
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
-
 import geotrellis.layer._
+import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.raster.buffer.BufferedTile
 import geotrellis.raster.io.geotiff._
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
+import geotrellis.raster.resample.ResampleMethod
 import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.raster.{ArrayMultibandTile, ByteConstantTile, DoubleArrayTile, GridBounds, IntConstantNoDataCellType, MultibandTile, Raster, Tile, TileLayout}
 import geotrellis.spark._
@@ -22,6 +21,8 @@ import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellis.geotiff.ContextSeq
 import org.openeo.geotrellisaccumulo.PyramidFactory
 
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import scala.collection.JavaConverters._
 
 object OpenEOProcessesSpec{
@@ -116,7 +117,6 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val date = "2018-05-06T00:00:00Z"
 
     val extent = Extent(3.4, 51.0, 3.5, 51.05)
-    val datacube= dataCube( date, date, extent, "EPSG:4326")
 
     val selectedBands = LayerFixtures.sentinel2B04Layer
 
@@ -199,6 +199,24 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val filledResult = resultTiles.map{t => if(t != null) t.band(0) else emptyTile.band(0)}
     GeoTiff(Raster(MultibandTile(filledResult),layer.metadata.extent),layer.metadata.crs).write("result.tiff",true)
 
+
+  }
+
+  @Test
+  def resampleCubeSpatial_spatial():Unit = {
+    val tile: Tile = DoubleArrayTile.fill(1.0,1280, 1280)
+    val tileSize = 256
+    val targetTileSize = 302
+    val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
+    val targetLayout = new TileLayout(1 + tile.cols / targetTileSize, 1 + tile.rows / targetTileSize, targetTileSize, targetTileSize)
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, new ArrayMultibandTile(Array[Tile](tile)), layout)
+
+
+    val targetExtent = ProjectedExtent(datacube.metadata.extent,LatLng).reproject(WebMercator)
+    val resampled = new OpenEOProcesses().resampleCubeSpatial_spatial(datacube.withContext(_.repartition(10)),WebMercator,LayoutDefinition(targetExtent,targetLayout),ResampleMethod.DEFAULT,null)
+    assertEquals(WebMercator, resampled._2.metadata.crs)
+    assertEquals(302, resampled._2.metadata.tileCols)
+    val stitched: Raster[MultibandTile] = resampled._2.stitch()
 
   }
 
