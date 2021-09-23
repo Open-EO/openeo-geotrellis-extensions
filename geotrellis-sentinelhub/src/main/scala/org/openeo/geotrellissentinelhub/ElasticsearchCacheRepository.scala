@@ -81,7 +81,7 @@ object ElasticsearchCacheRepository {
          |  "bandName": "${entry.bandName}",
          |  "backCoeff": "${entry.backCoeff}",
          |  "orthorectify": ${entry.orthorectify},
-         |  "demInstance": ${entry.demInstance},
+         |  "demInstance": "${entry.demInstance}",
          |  "location": ${entry.location.toGeoJson()},
          |  "filePath": ${entry.filePath.map(path => s""""$path"""").orNull}
          |}""".stripMargin
@@ -193,12 +193,12 @@ class ElasticsearchCacheRepository(uri: String) {
 
     try {
       val docId = Seq(
-        BASIC_ISO_DATE format entry.date.toLocalDate,
-        entry.tileId,
-        entry.bandName,
         entry.backCoeff,
         if (entry.orthorectify) "orthorectified" else "non-orthorectified",
-        entry.demInstance
+        entry.demInstance,
+        BASIC_ISO_DATE format entry.date.toLocalDate,
+        entry.tileId,
+        entry.bandName
       ).mkString("-")
 
       client.execute {
