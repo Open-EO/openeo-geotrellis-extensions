@@ -559,14 +559,10 @@ class OpenEOProcessScriptBuilder {
       case "tan" if hasX => mapFunction("x", Tan.apply)
       case "tanh" if hasX => mapFunction("x", Tanh.apply)
       // Other
-      case "first" => {
-        arguments.put("index", 0: Integer)
-        arrayElementFunction(arguments)
-      }
-      case "last" => {
-        arguments.put("index", -1: Integer)
-        arrayElementFunction(arguments)
-      }
+      case "first" if ignoreNoData =>  applyListFunction("data", firstFunctionIgnoreNoData)
+      case "first" => firstLastFunctionWithNoData(arguments, true)
+      case "last" if ignoreNoData => applyListFunction("data", lastFunctionIgnoreNoData)
+      case "last" => firstLastFunctionWithNoData(arguments, false)
       case "array_element" => arrayElementFunction(arguments)
       case "array_modify" => arrayModifyFunction(arguments)
       case "array_interpolate_linear" => applyListFunction("data",linearInterpolation)
@@ -750,6 +746,24 @@ class OpenEOProcessScriptBuilder {
     bandFunction
   }
 
+  private def firstFunctionIgnoreNoData(tiles:Seq[Tile]) : Seq[Tile] =
+    multibandReduce(MultibandTile(tiles),ts => ts.head,true)
+
+  private def lastFunctionIgnoreNoData(tiles:Seq[Tile]) : Seq[Tile] =
+    multibandReduce(MultibandTile(tiles),ts => ts.last,true)
+
+  private def firstLastFunctionWithNoData(arguments:java.util.Map[String,Object], isFirst : Boolean): OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val inputFunction = storedArgs.get("data").get
+    val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
+      val input: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
+      if(input.isEmpty)
+        throw new IllegalArgumentException("Array is empty.")
+      if (isFirst) { Seq(input.head) }
+      else { Seq(input.last) }
+    }
+    bandFunction
+  }
 
   private def arrayElementFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
     val storedArgs = contextStack.head
@@ -763,13 +777,10 @@ class OpenEOProcessScriptBuilder {
     }
     val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
       val input: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
-      val indexInt = index.asInstanceOf[Integer]
-      if(input.size <= indexInt || (indexInt == -1 && input.isEmpty)) {
+      if(input.size <= index.asInstanceOf[Integer]) {
         throw new IllegalArgumentException("Invalid band index " + index + ", only " + input.size + " bands available.")
       }
-      if (indexInt == -1)
-        Seq(input.last)
-      Seq(input(indexInt))
+      Seq(input(index.asInstanceOf[Integer]))
     }
     bandFunction
   }
