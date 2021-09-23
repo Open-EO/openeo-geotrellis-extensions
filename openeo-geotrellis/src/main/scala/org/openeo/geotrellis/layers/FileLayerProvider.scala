@@ -164,7 +164,7 @@ object FileLayerProvider {
         .retryPolicy(retryPolicy)
         .build()
 
-    val endpoint = System.getenv().getOrDefault("SWIFT_URL","")
+    val endpoint = System.getenv().getOrDefault("SWIFT_URL","https://s3.waw2-1.cloudferro.com")
     val clientBuilder = S3Client.builder()
       .overrideConfiguration(overrideConfig)
       .region(Region.of("RegionOne"))

@@ -11,7 +11,7 @@ import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.{FeatureColle
 import be.vito.eodata.gwcgeotrellis.opensearch.{OpenSearchClient, OpenSearchResponses}
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.{GeoTiff, MultibandGeoTiff}
-import geotrellis.raster.{ArrayTile, CellSize, MultibandTile, Raster, Tile, UShortConstantNoDataCellType}
+import geotrellis.raster.{ArrayTile, CellSize, MultibandTile, Raster, ShortConstantNoDataCellType, Tile, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.vector.{Extent, Polygon, ProjectedExtent}
 import org.apache.commons.io.FileUtils
@@ -242,6 +242,49 @@ class CreoPyramidFactoryTest {
           })
 
       assertArrayEquals(Array(1320.3015, 1521.2037, 1482.7769), avgResult.toArray, 0.01)
+    }
+  }
+
+
+  @Ignore("Requires credentials")
+  @Test
+  def testPhenologyPyramidDatacube(): Unit = {
+
+
+    val pyramidFactory = new Sentinel2PyramidFactory(openSearchEndpoint="https://phenology.vgt.vito.be" ,openSearchCollectionId = "copernicus_r_utm-wgs84_10_m_hrvpp-vi_p_2017-ongoing_v01_r01",openSearchLinkTitles = util.Arrays.asList("PPI"),rootPath = "/eodata",
+      maxSpatialResolution = CellSize(10,10))
+
+    val date = "2019-01-01T00:00:00+00:00"
+    val endDate = "2019-01-10T00:00:00+00:00"
+
+    //http://bboxfinder.com/#11.168332,43.468587,11.250215,43.497546
+    val boundingBox: ProjectedExtent = ProjectedExtent(Extent(11.168332,43.468587,11.250215,43.497546), CRS.fromEpsgCode(4326))
+    val utmExtent = boundingBox.reproject(CRS.fromEpsgCode(32632))
+    println(utmExtent)
+    val projectedPolys = ProjectedPolygons.fromExtent(utmExtent,"EPSG:32632")
+    val properties = new util.HashMap[String,Any]()
+    properties.put("accessedFrom","S3")
+    val pyramid = pyramidFactory.datacube_seq(projectedPolys, date, endDate, properties, "NoID")
+
+    assertEquals(1, pyramid.size)
+
+    val rdd = pyramid.head._2.cache
+    assertEquals(ShortConstantNoDataCellType,rdd.metadata.cellType)
+
+    val timestamps = rdd.keys
+      .map(_.time)
+      .distinct()
+      .collect()
+      .sortWith(_ isBefore _)
+
+    assertFalse(timestamps.isEmpty)
+
+    for (timestamp <- timestamps) {
+      val output = s"${DateTimeFormatter.ISO_LOCAL_DATE format timestamp}.tif"
+      println(output)
+      saveRDD(rdd.toSpatial(timestamp),-1,output)
+      val tiff = GeoTiff.readMultiband(output)
+      assertEquals(1,tiff.tile.bandCount)
     }
   }
 }
