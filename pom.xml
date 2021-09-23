@@ -96,6 +96,33 @@
                     </archive>
                 </configuration>
             </plugin>
+            <plugin>
+                <groupId>net.alchim31.maven</groupId>
+                <artifactId>scala-maven-plugin</artifactId>
+                <version>3.4.2</version>
+                <executions>
+                    <execution>
+                        <id>scala-compile-first</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                            <goal>compile</goal>
+                            <goal>testCompile</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <scalaCompatVersion>${scala.binary.version}</scalaCompatVersion>
+                    <compilerPlugins>
+                        <compilerPlugin>
+                            <groupId>org.typelevel</groupId>
+                            <artifactId>kind-projector_${scala.binary.version}</artifactId>
+                            <version>0.10.3</version>
+                        </compilerPlugin>
+                    </compilerPlugins>
+                    <addScalacArgs>-target:jvm-1.8</addScalacArgs>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
     <organization>
