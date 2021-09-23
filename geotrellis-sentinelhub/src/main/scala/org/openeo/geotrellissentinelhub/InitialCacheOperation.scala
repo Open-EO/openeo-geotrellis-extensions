@@ -73,18 +73,20 @@ abstract class AbstractInitialCacheOperation[C] {
       bandName <- bandNames
     } yield (gridTile, date, bandName)
 
-    logger.debug(s"start_batch_process_cached: expecting ${expectedTiles.size} tiles for the initial request")
+    logger.debug(s"expecting ${expectedTiles.size} tiles for the initial request")
 
     val cacheEntries = queryCache(geometry, from, to, bandNames, processingOptions)
 
     // = read single band tiles from cache directory (a tree) and put them in collectingFolder (flat)
     for {
       entry <- cacheEntries
-      filePath <- this.filePath(entry)
-      flatFileName = this.flatFileName(filePath)
+      cachedFile <- this.filePath(entry)
+      flatFileName = this.flatFileName(cachedFile)
     } {
-      Files.createSymbolicLink(collectingFolder.resolve(flatFileName), filePath)
-      logger.debug(s"start_batch_process_cached: symlinked $filePath from the distant past to $collectingFolder")
+      val link = collectingFolder.resolve(flatFileName)
+      val target = cachedFile
+      Files.createSymbolicLink(link, target)
+      logger.debug(s"symlinked cached file from the distant past: $link -> $target")
     }
 
     val missingTiles = expectedTiles
@@ -95,11 +97,11 @@ abstract class AbstractInitialCacheOperation[C] {
     saveInitialBatchProcessContext(bandNames, processingOptions, bucketName, subfolder)
 
     if (missingTiles.isEmpty) {
-      logger.debug("start_batch_process_cached: everything's cached, no need for additional requests")
+      logger.debug("everything's cached, no need for additional requests")
       return null
     }
 
-    logger.debug(s"start_batch_process_cached: ${missingTiles.size} tiles are not in the cache")
+    logger.debug(s"${missingTiles.size} tiles are not in the cache")
 
     val (incompleteTiles, lower, upper, missingBandNames) = narrowRequest(missingTiles, bandNames)
 

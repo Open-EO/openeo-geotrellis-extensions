@@ -76,11 +76,13 @@ class CachingService {
         onDownloaded = (tileId, date, bandName) => { // TODO: move this lambda into downloadBatchProcessResults?
           val entry = cacheTile(tileId, date, bandName)
 
-          entry.filePath.foreach { filePath =>
+          entry.filePath.foreach { cachedFile =>
             try {
-              val fileName = s"${BASIC_ISO_DATE format entry.date.toLocalDate}-$tileId-${filePath.getFileName}"
-              Files.createSymbolicLink(collectingDir.resolve(fileName), filePath)
-              logger.debug(s"symlinked $filePath from the recent past to $collectingDir")
+              val flatFileName = s"${BASIC_ISO_DATE format entry.date.toLocalDate}-$tileId-${cachedFile.getFileName}"
+              val link = collectingDir.resolve(flatFileName)
+              val target = cachedFile
+              Files.createSymbolicLink(link, target)
+              logger.debug(s"symlinked cached file from the recent past: $link -> $target")
             } catch {
               case _: FileAlreadyExistsException => /* ignore */
             }
@@ -153,11 +155,13 @@ class CachingService {
         onDownloaded = (tileId, date, bandName) => { // TODO: move this lambda into downloadBatchProcessResults?
           val entry = cacheTile(backCoeff, orthorectify, demInstance, tileId, date, bandName)
 
-          entry.filePath.foreach { filePath =>
+          entry.filePath.foreach { cachedFile =>
             try {
-              val fileName = s"${BASIC_ISO_DATE format entry.date.toLocalDate}-$tileId-${filePath.getFileName}"
-              Files.createSymbolicLink(collectingDir.resolve(fileName), filePath)
-              logger.debug(s"symlinked $filePath from the recent past to $collectingDir")
+              val flatFileName = s"${BASIC_ISO_DATE format entry.date.toLocalDate}-$tileId-${cachedFile.getFileName}"
+              val link = collectingDir.resolve(flatFileName)
+              val target = cachedFile
+              Files.createSymbolicLink(link, target)
+              logger.debug(s"symlinked cached file from the recent past: $link -> $target")
             } catch {
               case _: FileAlreadyExistsException => /* ignore */
             }
