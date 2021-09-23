@@ -580,7 +580,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       if(dataPath.endsWith(".jp2")) {
         val warpOptions = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution), targetCRS=Some(targetExtent.crs))
         if (cloudPath.isDefined) {
-          Seq(GDALCloudRasterSource(cloudPath.get._1, vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType))
+          Seq(GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType))
         }else{
           Seq(GDALRasterSource(dataPath, options = warpOptions, targetCellType = targetCellType))
         }
