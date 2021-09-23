@@ -27,7 +27,7 @@ object ElasticsearchCacheRepository {
         date = ZonedDateTime parse source("date").asInstanceOf[String],
         bandName = source("bandName").asInstanceOf[String],
         empty = source("filePath") == null // TODO: get actual value
-        // remaining fields are only used to query against, not to fetch
+        // TODO: remaining fields are only used to query against, not to fetch
       )
     }
   }
@@ -43,12 +43,15 @@ object ElasticsearchCacheRepository {
          |}""".stripMargin
   }
 
-  case class Sentinel1CacheEntry(tileId: String, date: ZonedDateTime, bandName: String, backCoeff: String = null,
-                                 orthorectify: Boolean = false, demInstance: String = null, location: Geometry = null,
+  case class Sentinel1CacheEntry(tileId: String, date: ZonedDateTime, bandName: String, backCoeff: String,
+                                 orthorectify: Boolean, demInstance: String, location: Geometry = null,
                                  empty: Boolean) {
     private val formattedDate = BASIC_ISO_DATE format date.toLocalDate
 
     def filePath: Option[Path] = {
+      require(backCoeff != null, "backCoeff is null")
+      require(demInstance != null, "demInstance is null")
+
       if (empty) None
       else {
         val root = Paths.get("/data/projects/OpenEO/sentinel-hub-s1grd-cache")
@@ -67,8 +70,11 @@ object ElasticsearchCacheRepository {
         tileId = source("tileId").asInstanceOf[String],
         date = ZonedDateTime parse source("date").asInstanceOf[String],
         bandName = source("bandName").asInstanceOf[String],
+        backCoeff = source("backCoeff").asInstanceOf[String],
+        orthorectify = source("orthorectify").asInstanceOf[Boolean],
+        demInstance = source("demInstance").asInstanceOf[String],
         empty = source("filePath") == null // TODO: get actual value
-        // remaining fields are only used to query against, not to fetch
+        // TODO: remaining fields are only used to query against, not to fetch
       )
     }
   }

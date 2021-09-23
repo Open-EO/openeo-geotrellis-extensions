@@ -72,6 +72,9 @@ class ElasticsearchCacheRepositoryTest {
       demInstance = "MAPZEN"
     )
 
-    println(cacheEntries.head)
+    val someCacheEntry = cacheEntries.head
+
+    println(someCacheEntry)
+    println(cacheEntries.head.filePath)
   }
 }
