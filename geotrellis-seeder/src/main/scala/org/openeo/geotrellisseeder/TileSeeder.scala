@@ -116,8 +116,11 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     } else {
       def listFiles(path: Path) = HdfsUtils.listFiles(path, sc.hadoopConfiguration).map(_.toString)
 
-      val pattern = datePattern.getOrElse("yyyy/MM/dd")
-      val dateGlob = productGlob.get.replace("#DATE#", date.get.format(DateTimeFormatter.ofPattern(pattern)))
+      var dateGlob = productGlob.get
+      if (!date.isEmpty) {
+        val pattern = datePattern.getOrElse("yyyy/MM/dd")
+        dateGlob = productGlob.get.replace("#DATE#", date.get.format(DateTimeFormatter.ofPattern(pattern)))
+      }
 
       if (colorMap.isDefined) {
         sourcePathsWithBandId = Seq((listFiles(new Path(s"file://$dateGlob")), 0))
@@ -147,7 +150,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
           }
       } else if (bands.isDefined) {
         getMultibandRDD(sourcePathsWithBandId, spatialKey)
-          .fullOuterJoin(getTooCloudyRdd(date.get, maskValues, tooCloudyFile))
+          .fullOuterJoin(getTooCloudyRdd(if (!date.isEmpty) date.get else null, maskValues, tooCloudyFile))
           .repartition(getPartitions)
           .foreach(renderMultibandRDD(path, dateStr, bands.get, zoomLevel, maskValues))
       } else {
