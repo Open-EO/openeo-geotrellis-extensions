@@ -4,7 +4,7 @@ import geotrellis.raster.io.geotiff.SinglebandGeoTiff
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
 import geotrellis.vector.Geometry
 import org.apache.commons.io.FileUtils.deleteDirectory
-import org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.{CacheEntry, Sentinel1CacheEntry}
+import org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.{Sentinel2L2aCacheEntry, Sentinel1GrdCacheEntry}
 import org.slf4j.LoggerFactory
 
 import java.nio.file.{FileAlreadyExistsException, Files, Path, Paths}
@@ -51,12 +51,12 @@ class CachingService {
 
     val collectingDir = Paths.get(collecting_folder)
 
-    val actualTiles = collection.mutable.Set[CacheEntry]() // TODO: avoid mutation
+    val actualTiles = collection.mutable.Set[Sentinel2L2aCacheEntry]() // TODO: avoid mutation
 
     def cacheTile(tileId: String, date: ZonedDateTime, bandName: String, geometry: Geometry = null,
-                  empty: Boolean = false): CacheEntry = {
+                  empty: Boolean = false): Sentinel2L2aCacheEntry = {
       val location = if (geometry != null) geometry else tilingGridRepository.getGeometry(tilingGridIndex, tileId)
-      val entry = CacheEntry(tileId, date, bandName, location, empty)
+      val entry = Sentinel2L2aCacheEntry(tileId, date, bandName, location, empty)
       cacheRepository.save(cacheIndex, entry)
       actualTiles += entry
       entry
@@ -123,13 +123,13 @@ class CachingService {
 
     val collectingDir = Paths.get(collecting_folder)
 
-    val actualTiles = collection.mutable.Set[Sentinel1CacheEntry]() // TODO: avoid mutation
+    val actualTiles = collection.mutable.Set[Sentinel1GrdCacheEntry]() // TODO: avoid mutation
 
     def cacheTile(backCoeff: String, orthorectify: Boolean, demInstance: String, tileId: String,
                   date: ZonedDateTime, bandName: String, geometry: Geometry = null,
-                  empty: Boolean = false): Sentinel1CacheEntry = {
+                  empty: Boolean = false): Sentinel1GrdCacheEntry = {
       val location = if (geometry != null) geometry else tilingGridRepository.getGeometry(tilingGridIndex, tileId)
-      val entry = Sentinel1CacheEntry(tileId, date, bandName, backCoeff, orthorectify, demInstance, location, empty)
+      val entry = Sentinel1GrdCacheEntry(tileId, date, bandName, backCoeff, orthorectify, demInstance, location, empty)
       cacheRepository.saveSentinel1(cacheIndex, entry)
       actualTiles += entry
       entry

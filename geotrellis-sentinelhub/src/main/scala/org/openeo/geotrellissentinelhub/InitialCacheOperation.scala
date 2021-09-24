@@ -2,7 +2,7 @@ package org.openeo.geotrellissentinelhub
 
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.vector._
-import org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.{CacheEntry, Sentinel1CacheEntry}
+import org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.{CacheEntry, Sentinel1GrdCacheEntry, Sentinel2L2aCacheEntry}
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
 import org.openeo.geotrellissentinelhub.ElasticsearchTilingGridRepository.GridTile
 import org.slf4j.{Logger, LoggerFactory}
@@ -24,20 +24,26 @@ object AbstractInitialCacheOperation {
 }
 
 // TODO: rename this
-abstract class AbstractInitialCacheOperation[C] {
+abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
   import AbstractInitialCacheOperation._
 
   // TODO: make this uri configurable
   protected val elasticsearchUri = "https://es-apps-dev.vgt.vito.be:443"
 
   protected def logger: Logger
-  protected def validate(processingOptions: collection.Map[String, Any]): Unit
+  protected def normalize(processingOptions: collection.Map[String, Any]): collection.Map[String, Any]
   protected def queryCache(geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
                            bandNames: Seq[String], processingOptions: collection.Map[String, Any]): Iterable[C]
+  protected def relativize(absoluteFilePath: Path): Path
 
-  protected def filePath(cacheEntry: C): Option[Path] // TODO: do we need them both?
-  protected def flatFileName(filePath: Path): String
-  protected def matches(cacheEntry: C, tileId: String, date: ZonedDateTime, bandName: String): Boolean // TODO: better name
+  private def flatten(relativeFilePath: Path): String = {
+    def from(i: Int): Stream[String] = {
+      if (i >= relativeFilePath.getNameCount) Stream.empty
+      else relativeFilePath.getName(i).toString #:: from(i + 1)
+    }
+
+    from(0) mkString "-"
+  }
 
   protected def saveInitialBatchProcessContext(bandNames: Seq[String], processingOptions: collection.Map[String, Any],
                                                bucketName: String, subfolder: String): Unit
@@ -56,8 +62,7 @@ abstract class AbstractInitialCacheOperation[C] {
                         collecting_folder: String, batchProcessingService: BatchProcessingService): String = {
     // important: caching requires more strict processing options because specifying an option unknown to the cache
     // might return a cached result that does not match the option
-    val processingOptions = processing_options.asScala
-    validate(processingOptions)
+    val processingOptions = normalize(processing_options.asScala)
 
     val tilingGridRepository = new ElasticsearchTilingGridRepository(elasticsearchUri)
     val tilingGridIndex = "sentinel-hub-tiling-grid-1"
@@ -80,8 +85,8 @@ abstract class AbstractInitialCacheOperation[C] {
     // = read single band tiles from cache directory (a tree) and put them in collectingFolder (flat)
     for {
       entry <- cacheEntries
-      cachedFile <- this.filePath(entry)
-      flatFileName = this.flatFileName(cachedFile)
+      cachedFile <- entry.filePath
+      flatFileName = flatten(relativize(cachedFile))
     } {
       val link = collectingFolder.resolve(flatFileName)
       val target = cachedFile
@@ -91,7 +96,7 @@ abstract class AbstractInitialCacheOperation[C] {
 
     val missingTiles = expectedTiles
       .filterNot { case (GridTile(tileId, _), date, bandName) =>
-        cacheEntries.exists(entry => matches(entry, tileId, date, bandName))
+        cacheEntries.exists(_.matchesExpected(tileId, date, bandName))
       }
 
     saveInitialBatchProcessContext(bandNames, processingOptions, bucketName, subfolder)
@@ -179,27 +184,17 @@ object Sentinel2L2AInitialCacheOperation {
   private val logger = LoggerFactory.getLogger(classOf[Sentinel2L2AInitialCacheOperation])
 }
 
-class Sentinel2L2AInitialCacheOperation(dataset_id: String) extends AbstractInitialCacheOperation[CacheEntry] {
+class Sentinel2L2AInitialCacheOperation(dataset_id: String) extends AbstractInitialCacheOperation[Sentinel2L2aCacheEntry] {
   override protected def logger: Logger = Sentinel2L2AInitialCacheOperation.logger
 
-  override protected def validate(processingOptions: collection.Map[String, Any]): Unit =
+  override protected def normalize(processingOptions: collection.Map[String, Any]): collection.Map[String, Any] = {
     require(processingOptions.isEmpty, s"processing_options are not supported for dataset $dataset_id")
-
-  override protected def queryCache(geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime, bandNames: Seq[String],
-                                    processingOptions: collection.Map[String, Any]): Iterable[CacheEntry] =
-    new ElasticsearchCacheRepository(elasticsearchUri).query(cacheIndex = "sentinel-hub-s2l2a-cache", geometry, from, to, bandNames)
-
-  override protected def filePath(cacheEntry: CacheEntry): Option[Path] = cacheEntry.filePath
-
-  override protected def flatFileName(filePath: Path): String = {
-    val tileId = filePath.getParent.getFileName
-    val date = filePath.getParent.getParent.getFileName
-    s"$date-$tileId-${filePath.getFileName}"
+    processingOptions
   }
 
-  override protected def matches(cacheEntry: CacheEntry, tileId: String, date: ZonedDateTime,
-                                 bandName: String): Boolean =
-    cacheEntry.tileId == tileId && cacheEntry.date.isEqual(date) && cacheEntry.bandName == bandName
+  override protected def queryCache(geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime, bandNames: Seq[String],
+                                    processingOptions: collection.Map[String, Any]): Iterable[Sentinel2L2aCacheEntry] =
+    new ElasticsearchCacheRepository(elasticsearchUri).query(cacheIndex = "sentinel-hub-s2l2a-cache", geometry, from, to, bandNames)
 
   override protected def saveInitialBatchProcessContext(bandNames: Seq[String],
                                                         processingOptions: collection.Map[String, Any],
@@ -217,21 +212,38 @@ class Sentinel2L2AInitialCacheOperation(dataset_id: String) extends AbstractInit
       Some(upper), Some(missingBandNames))
     new S3BatchProcessContextRepository(bucketName).saveTo(extendedBatchProcessContext, subfolder)
   }
+
+  override protected def relativize(absoluteFilePath: Path): Path =
+    Paths.get("/data/projects/OpenEO/sentinel-hub-s2l2a-cache").relativize(absoluteFilePath)
 }
 
 object Sentinel1GrdInitialCacheOperation {
   private val logger = LoggerFactory.getLogger(classOf[Sentinel1GrdInitialCacheOperation])
 }
 
-class Sentinel1GrdInitialCacheOperation(dataset_id: String) extends AbstractInitialCacheOperation[Sentinel1CacheEntry] {
+class Sentinel1GrdInitialCacheOperation(dataset_id: String) extends AbstractInitialCacheOperation[Sentinel1GrdCacheEntry] {
   override protected def logger: Logger = Sentinel1GrdInitialCacheOperation.logger
 
-  override protected def validate(processingOptions: collection.Map[String, Any]): Unit =
-    require(processingOptions.keySet == Set("backCoeff", "orthorectify", "demInstance"),
-      s"processing_options for dataset $dataset_id must contain exactly backCoeff, orthorectify and demInstance")
+  override protected def normalize(processingOptions: collection.Map[String, Any]): collection.Map[String, Any] = {
+    val backCoeff = processingOptions.getOrElse("backCoeff",
+      throw new IllegalArgumentException(s"processing_options for dataset $dataset_id must contain backCoeff"))
+      .asInstanceOf[String].toUpperCase
+
+    val orthorectify = processingOptions.getOrElse("orthorectify",
+      throw new IllegalArgumentException(s"processing_options for dataset $dataset_id must contain orthorectify"))
+      .asInstanceOf[Boolean]
+
+    val demInstance = processingOptions.getOrElse("demInstance", "MAPZEN").asInstanceOf[String].toUpperCase
+
+    Map(
+      "backCoeff" -> backCoeff,
+      "orthorectify" -> orthorectify,
+      "demInstance"-> demInstance
+    )
+  }
 
   override protected def queryCache(geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime, bandNames: Seq[String],
-                                    processingOptions: collection.Map[String, Any]): Iterable[Sentinel1CacheEntry] = {
+                                    processingOptions: collection.Map[String, Any]): Iterable[Sentinel1GrdCacheEntry] = {
     val backCoeff = processingOptions("backCoeff").asInstanceOf[String]
     val orthorectify = processingOptions("orthorectify").asInstanceOf[Boolean]
     val demInstance = processingOptions("demInstance").asInstanceOf[String]
@@ -239,18 +251,6 @@ class Sentinel1GrdInitialCacheOperation(dataset_id: String) extends AbstractInit
     new ElasticsearchCacheRepository(elasticsearchUri).querySentinel1(cacheIndex = "sentinel-hub-s1grd-cache", geometry, from, to,
       bandNames, backCoeff, orthorectify, demInstance)
   }
-
-  override protected def filePath(cacheEntry: Sentinel1CacheEntry): Option[Path] = cacheEntry.filePath
-
-  override protected def flatFileName(filePath: Path): String = {
-    val tileId = filePath.getParent.getFileName
-    val date = filePath.getParent.getParent.getFileName
-    s"$date-$tileId-${filePath.getFileName}"
-  }
-
-  override protected def matches(cacheEntry: Sentinel1CacheEntry, tileId: String, date: ZonedDateTime,
-                                 bandName: String): Boolean =
-    cacheEntry.tileId == tileId && cacheEntry.date.isEqual(date) && cacheEntry.bandName == bandName
 
   override protected def saveInitialBatchProcessContext(bandNames: Seq[String],
                                                         processingOptions: collection.Map[String, Any],
@@ -281,4 +281,7 @@ class Sentinel1GrdInitialCacheOperation(dataset_id: String) extends AbstractInit
 
     (backCoeff, orthorectify, demInstance)
   }
+
+  override protected def relativize(absoluteFilePath: Path): Path =
+    Paths.get("/data/projects/OpenEO/sentinel-hub-s1grd-cache").relativize(absoluteFilePath)
 }

@@ -3,7 +3,7 @@ package org.openeo.geotrellissentinelhub
 import geotrellis.vector._
 import geotrellis.vector.io.json.GeoJson
 import org.junit.{Ignore, Test}
-import org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.Sentinel1CacheEntry
+import org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.Sentinel1GrdCacheEntry
 
 import java.time.{LocalDate, ZoneOffset}
 
@@ -15,7 +15,7 @@ class ElasticsearchCacheRepositoryTest {
 
   @Test
   def saveSentinel1(): Unit = {
-    val cacheEntry = Sentinel1CacheEntry(
+    val cacheEntry = Sentinel1GrdCacheEntry(
       tileId = "31UDS_7_2",
       date = LocalDate.of(2021, 9, 23).atStartOfDay(utc),
       bandName = "VV",
