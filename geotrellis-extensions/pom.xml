@@ -37,7 +37,7 @@
             <exclusions>
                 <exclusion>
                     <groupId>org.locationtech.geotrellis</groupId>
-                    <artifactId>geotrellis-spark_2.11</artifactId>
+                    <artifactId>geotrellis-spark_${scala.binary.version}</artifactId>
                 </exclusion>
                 <exclusion>
                     <groupId>org.scala-lang</groupId>
@@ -179,6 +179,12 @@
                                         <exclude>META-INF/*.SF</exclude>
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>org.locationtech.geotrellis:geotrellis-s3_${scala.binary.version}</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/services/geotrellis.util.RangeReaderProvider</exclude>
                                     </excludes>
                                 </filter>
                             </filters>
