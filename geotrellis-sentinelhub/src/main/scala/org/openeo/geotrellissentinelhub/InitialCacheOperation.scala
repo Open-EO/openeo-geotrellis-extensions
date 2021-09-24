@@ -31,7 +31,7 @@ abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
   protected val elasticsearchUri = "https://es-apps-dev.vgt.vito.be:443"
 
   protected def logger: Logger
-  protected def validate(processingOptions: collection.Map[String, Any]): Unit
+  protected def normalize(processingOptions: collection.Map[String, Any]): collection.Map[String, Any]
   protected def queryCache(geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
                            bandNames: Seq[String], processingOptions: collection.Map[String, Any]): Iterable[C]
   protected def relativize(absoluteFilePath: Path): Path
@@ -62,8 +62,7 @@ abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
                         collecting_folder: String, batchProcessingService: BatchProcessingService): String = {
     // important: caching requires more strict processing options because specifying an option unknown to the cache
     // might return a cached result that does not match the option
-    val processingOptions = processing_options.asScala
-    validate(processingOptions)
+    val processingOptions = normalize(processing_options.asScala)
 
     val tilingGridRepository = new ElasticsearchTilingGridRepository(elasticsearchUri)
     val tilingGridIndex = "sentinel-hub-tiling-grid-1"
@@ -188,8 +187,10 @@ object Sentinel2L2AInitialCacheOperation {
 class Sentinel2L2AInitialCacheOperation(dataset_id: String) extends AbstractInitialCacheOperation[Sentinel2L2aCacheEntry] {
   override protected def logger: Logger = Sentinel2L2AInitialCacheOperation.logger
 
-  override protected def validate(processingOptions: collection.Map[String, Any]): Unit =
+  override protected def normalize(processingOptions: collection.Map[String, Any]): collection.Map[String, Any] = {
     require(processingOptions.isEmpty, s"processing_options are not supported for dataset $dataset_id")
+    processingOptions
+  }
 
   override protected def queryCache(geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime, bandNames: Seq[String],
                                     processingOptions: collection.Map[String, Any]): Iterable[Sentinel2L2aCacheEntry] =
@@ -223,9 +224,23 @@ object Sentinel1GrdInitialCacheOperation {
 class Sentinel1GrdInitialCacheOperation(dataset_id: String) extends AbstractInitialCacheOperation[Sentinel1GrdCacheEntry] {
   override protected def logger: Logger = Sentinel1GrdInitialCacheOperation.logger
 
-  override protected def validate(processingOptions: collection.Map[String, Any]): Unit =
-    require(processingOptions.keySet == Set("backCoeff", "orthorectify", "demInstance"),
-      s"processing_options for dataset $dataset_id must contain exactly backCoeff, orthorectify and demInstance")
+  override protected def normalize(processingOptions: collection.Map[String, Any]): collection.Map[String, Any] = {
+    val backCoeff = processingOptions.getOrElse("backCoeff",
+      throw new IllegalArgumentException(s"processing_options for dataset $dataset_id must contain backCoeff"))
+      .asInstanceOf[String].toUpperCase
+
+    val orthorectify = processingOptions.getOrElse("orthorectify",
+      throw new IllegalArgumentException(s"processing_options for dataset $dataset_id must contain orthorectify"))
+      .asInstanceOf[Boolean]
+
+    val demInstance = processingOptions.getOrElse("demInstance", "MAPZEN").asInstanceOf[String].toUpperCase
+
+    Map(
+      "backCoeff" -> backCoeff,
+      "orthorectify" -> orthorectify,
+      "demInstance"-> demInstance
+    )
+  }
 
   override protected def queryCache(geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime, bandNames: Seq[String],
                                     processingOptions: collection.Map[String, Any]): Iterable[Sentinel1GrdCacheEntry] = {
