@@ -150,7 +150,7 @@ package object geotiff {
     val re = rdd.metadata.toRasterExtent()
     var gridBounds = re.gridBoundsFor(cropBounds.getOrElse(rdd.metadata.extent), clamp = true)
     val croppedExtent = re.extentFor(gridBounds, clamp = true)
-    val preprocessedRdd =
+    val preprocessedRdd = {
       if (gridBounds.colMin != 0 || gridBounds.rowMin != 0) {
         val geotiffLayout: LayoutDefinition = LayoutDefinition(RasterExtent(croppedExtent, re.cellSize), 256)
         val retiledRDD = rdd.reproject(rdd.metadata.crs, geotiffLayout)._2.crop(croppedExtent, Options(force = false))
@@ -160,7 +160,12 @@ package object geotiff {
       } else {
         rdd.crop(croppedExtent, Options(force = false))
       }
-    (gridBounds, croppedExtent, preprocessedRdd)
+    }
+    val tileLayout = rdd.metadata.tileLayout
+    val fullRDD = preprocessedRdd.withContext {
+      _.mapValues[MultibandTile]((mbt: MultibandTile) => mbt.mapBands((i: Int,t: Tile) => raster.CroppedTile(t, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1))))
+    }
+    (gridBounds, croppedExtent, fullRDD)
   }
 
   class PowerOfTwoLocalLayoutScheme extends LayoutScheme {
@@ -261,7 +266,7 @@ package object geotiff {
           val bandSegmentOffset = bandSegmentCount * bandIndex
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
           //tiff format seems to require that we provide 'full' tiles
-          val bytes = raster.CroppedTile(tile, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
+          val bytes = tile.toBytes()
           val compressedBytes = theCompressor.compress(bytes, 0)
           (index, compressedBytes)
         }
