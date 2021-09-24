@@ -195,7 +195,7 @@ package object geotiff {
     val ( tiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, segmentCount: Int) = getCompressedTiles(preprocessedRdd, compression)
 
     val overviews =
-    if(formatOptions.overviews == "ALL") {
+    if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
       //create overviews
       val levels = LocalLayoutScheme.inferLayoutLevel(preprocessedRdd.metadata)
 
