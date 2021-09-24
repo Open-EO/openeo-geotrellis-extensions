@@ -11,18 +11,30 @@ import java.time.format.DateTimeFormatter.{BASIC_ISO_DATE, ISO_OFFSET_DATE_TIME}
 import scala.util.{Success, Try}
 
 object ElasticsearchCacheRepository {
-  case class CacheEntry(tileId: String, date: ZonedDateTime, bandName: String, location: Geometry = null,
-                        empty: Boolean = false) {
-    def filePath: Option[Path] =
-      if (empty) None
-      else Some(Paths.get(s"/data/projects/OpenEO/sentinel-hub-s2l2a-cache/${BASIC_ISO_DATE format date.toLocalDate}/$tileId/$bandName.tif"))
+  trait CacheEntry {
+    def matchesExpected(tileId: String, date: ZonedDateTime, bandName: String): Boolean
+    def filePath: Option[Path]
   }
 
-  private implicit object CacheEntryHitReader extends HitReader[CacheEntry] {
-    override def read(hit: Hit): Try[CacheEntry] = Try {
+  case class Sentinel2L2aCacheEntry(tileId: String, date: ZonedDateTime, bandName: String, location: Geometry = null,
+                                    empty: Boolean = false) extends CacheEntry {
+    override def matchesExpected(tileId: String, date: ZonedDateTime, bandName: String): Boolean =
+      this.tileId == tileId && this.date.isEqual(date) && this.bandName == bandName
+
+    override val filePath: Option[Path] = {
+      if (empty) None
+      else {
+        val cacheRoot = Paths.get("/data/projects/OpenEO/sentinel-hub-s2l2a-cache")
+        Some(cacheRoot.resolve(s"${BASIC_ISO_DATE format date}/$tileId/$bandName"))
+      }
+    }
+  }
+
+  private implicit object Sentinel2L2aCacheEntryHitReader extends HitReader[Sentinel2L2aCacheEntry] {
+    override def read(hit: Hit): Try[Sentinel2L2aCacheEntry] = Try {
       val source = hit.sourceAsMap
 
-      CacheEntry(
+      Sentinel2L2aCacheEntry(
         tileId = source("tileId").asInstanceOf[String],
         date = ZonedDateTime parse source("date").asInstanceOf[String],
         bandName = source("bandName").asInstanceOf[String],
@@ -32,8 +44,8 @@ object ElasticsearchCacheRepository {
     }
   }
 
-  private implicit object CacheEntryIndexable extends Indexable[CacheEntry] {
-    override def json(entry: CacheEntry): String =
+  private implicit object Sentinel2L2aCacheEntryIndexable extends Indexable[Sentinel2L2aCacheEntry] {
+    override def json(entry: Sentinel2L2aCacheEntry): String =
       s"""{
          |  "tileId": "${entry.tileId}",
          |  "date": "${ISO_OFFSET_DATE_TIME format entry.date}",
@@ -43,30 +55,33 @@ object ElasticsearchCacheRepository {
          |}""".stripMargin
   }
 
-  case class Sentinel1CacheEntry(tileId: String, date: ZonedDateTime, bandName: String, backCoeff: String,
-                                 orthorectify: Boolean, demInstance: String, location: Geometry = null,
-                                 empty: Boolean) {
-    private val formattedDate = BASIC_ISO_DATE format date.toLocalDate
-
+  case class Sentinel1GrdCacheEntry(tileId: String, date: ZonedDateTime, bandName: String, backCoeff: String,
+                                    orthorectify: Boolean, demInstance: String, location: Geometry = null,
+                                    empty: Boolean) extends CacheEntry {
     def filePath: Option[Path] = {
       require(backCoeff != null, "backCoeff is null")
       require(demInstance != null, "demInstance is null")
 
       if (empty) None
       else {
-        val root = Paths.get("/data/projects/OpenEO/sentinel-hub-s1grd-cache")
+        val cacheRoot = Paths.get("/data/projects/OpenEO/sentinel-hub-s1grd-cache")
         val orthorectifyFlag = if (orthorectify) "orthorectified" else "non-orthorectified"
-        val subDirectory = s"$backCoeff/$orthorectifyFlag/$demInstance/$formattedDate/$tileId/$bandName.tif"
-        Some(root.resolve(subDirectory))
+
+        Some(cacheRoot
+          .resolve(s"$backCoeff/$orthorectifyFlag/$demInstance")
+          .resolve(s"${BASIC_ISO_DATE format date}/$tileId/$bandName.tif"))
       }
     }
+
+    override def matchesExpected(tileId: String, date: ZonedDateTime, bandName: String): Boolean =
+      this.tileId == tileId && this.date.isEqual(date) && this.bandName == bandName
   }
 
-  private implicit object Sentinel1CacheEntryHitReader extends HitReader[Sentinel1CacheEntry] {
-    override def read(hit: Hit): Try[Sentinel1CacheEntry] = Try {
+  private implicit object Sentinel1CacheEntryHitReader extends HitReader[Sentinel1GrdCacheEntry] {
+    override def read(hit: Hit): Try[Sentinel1GrdCacheEntry] = Try {
       val source = hit.sourceAsMap
 
-      Sentinel1CacheEntry(
+      Sentinel1GrdCacheEntry(
         tileId = source("tileId").asInstanceOf[String],
         date = ZonedDateTime parse source("date").asInstanceOf[String],
         bandName = source("bandName").asInstanceOf[String],
@@ -79,8 +94,8 @@ object ElasticsearchCacheRepository {
     }
   }
 
-  private implicit object Sentinel1CacheEntryIndexable extends Indexable[Sentinel1CacheEntry] {
-    override def json(entry: Sentinel1CacheEntry): String =
+  private implicit object Sentinel1CacheEntryIndexable extends Indexable[Sentinel1GrdCacheEntry] {
+    override def json(entry: Sentinel1GrdCacheEntry): String =
       s"""{
          |  "tileId": "${entry.tileId}",
          |  "date": "${ISO_OFFSET_DATE_TIME format entry.date}",
@@ -101,7 +116,7 @@ class ElasticsearchCacheRepository(uri: String) {
   private def elasticClient: ElasticClient = ElasticClient(JavaClient(ElasticProperties(uri)))
 
   def query(cacheIndex: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
-            bandNames: Seq[String]): Iterable[CacheEntry] = {
+            bandNames: Seq[String]): Iterable[Sentinel2L2aCacheEntry] = {
     val client = elasticClient
 
     try {
@@ -128,7 +143,7 @@ class ElasticsearchCacheRepository(uri: String) {
       }.await
 
       resp.result
-        .safeTo[CacheEntry]
+        .safeTo[Sentinel2L2aCacheEntry]
         .collect {
           case Success(cacheEntry) => cacheEntry
           // faulty CacheEntries will be considered not cached, requested again and updated/fixed
@@ -136,7 +151,7 @@ class ElasticsearchCacheRepository(uri: String) {
     } finally client.close()
   }
 
-  def save(cacheIndex: String, entry: CacheEntry): Unit = {
+  def save(cacheIndex: String, entry: Sentinel2L2aCacheEntry): Unit = {
     val client = elasticClient
 
     try {
@@ -155,7 +170,7 @@ class ElasticsearchCacheRepository(uri: String) {
   // TODO: reduce code duplication with query()
   def querySentinel1(cacheIndex: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
                      bandNames: Seq[String], backCoeff: String, orthorectify: Boolean,
-                     demInstance: String): Iterable[Sentinel1CacheEntry] = {
+                     demInstance: String): Iterable[Sentinel1GrdCacheEntry] = {
     val client = elasticClient
 
     try {
@@ -185,7 +200,7 @@ class ElasticsearchCacheRepository(uri: String) {
       }.await
 
       resp.result
-        .safeTo[Sentinel1CacheEntry]
+        .safeTo[Sentinel1GrdCacheEntry]
         .collect {
           case Success(cacheEntry) => cacheEntry
           // faulty CacheEntries will be considered not cached, requested again and updated/fixed
@@ -194,7 +209,7 @@ class ElasticsearchCacheRepository(uri: String) {
   }
 
   // TODO: reduce code duplication with save()
-  def saveSentinel1(cacheIndex: String, entry: Sentinel1CacheEntry): Unit = {
+  def saveSentinel1(cacheIndex: String, entry: Sentinel1GrdCacheEntry): Unit = {
     val client = elasticClient
 
     try {
