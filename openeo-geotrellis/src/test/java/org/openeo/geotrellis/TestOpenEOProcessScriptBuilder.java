@@ -1,10 +1,10 @@
 package org.openeo.geotrellis;
 
-
 import geotrellis.raster.*;
 import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
 import scala.Function1;
+import scala.Int;
 import scala.collection.JavaConversions;
 import scala.collection.JavaConverters;
 import scala.collection.Seq;
@@ -694,44 +694,146 @@ public class TestOpenEOProcessScriptBuilder {
         assertDoubleTileEquals(expected,result.apply(0));
     }
 
-    @DisplayName("Test first process")
+    @DisplayName("Test first process with nodata values")
     @Test
-    public void testFirst() {
+    public void testFirstWithNoData() {
+        // Assume we make a first(data, ignore_nodata=false) request on a list of tiles with a time dimension.
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
-        Map<String, Object> arguments = Collections.emptyMap();
+        Map<String, Object> arguments = Collections.singletonMap("ignore_nodata", false);
         builder.expressionStart("first", arguments);
 
         builder.argumentStart("data");
         builder.argumentEnd();
+        builder.constantArgument("ignore_nodata", false);
 
         builder.expressionEnd("first",arguments);
-
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
-        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
-        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
-        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
-        Tile res = result.apply(0);
-        assertTileEquals(tile0, res);
+
+        // When we have a data tile for every timestep.
+        ByteArrayTile tile_timestep0 = ByteConstantNoDataArrayTile.empty(4,4);
+        tile_timestep0.set(2,2,3);
+        ByteArrayTile tile_timestep1 = ByteConstantNoDataArrayTile.fill((byte)5, 4, 4);
+
+        // Then selecting all first pixels from a list of one timestep just returns us that tile.
+        Seq<Tile> single_input = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile_timestep0.mutable().copy())));
+        assertTileEquals(tile_timestep0, single_input.apply(0));
+
+        // When a second timestep is added that has actual values, the Nodata from the first tile will still be selected.
+        // Because ignore_nodata is set to false.
+        Seq<Tile> multiple_input = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile_timestep0.mutable().copy(), tile_timestep1.mutable().copy())));
+        assertEquals(Int.MinValue(), multiple_input.apply(0).get(0,0));
+        // Including the one non-NoData value in timestep 0.
+        assertEquals(3, multiple_input.apply(0).get(2,2));
+
+        // Make sure that the celltypes have not changed to double like they would for processes such as median/mean.
+        assertEquals(tile_timestep0.cellType(), single_input.apply(0).cellType());
+        assertEquals(tile_timestep0.cellType(), multiple_input.apply(0).cellType());
     }
 
-    @DisplayName("Test last process")
+    @DisplayName("Test first process without nodata values")
     @Test
-    public void testLast() {
+    public void testFirstIgnoreNodata() {
+        // Assume we make a first(data, ignore_nodata=true) request on a list of tiles with a time dimension.
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
-        Map<String, Object> arguments = Collections.emptyMap();
+        Map<String, Object> arguments = Collections.singletonMap("ignore_nodata", true);
+        builder.expressionStart("first", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.constantArgument("ignore_nodata", true);
+
+        builder.expressionEnd("first",arguments);
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+
+        // When we have a data tile for every timestep.
+        ByteArrayTile tile_timestep0 = ByteConstantNoDataArrayTile.empty(4,4);
+        tile_timestep0.set(2,2,3);
+        ByteArrayTile tile_timestep1 = ByteConstantNoDataArrayTile.fill((byte)5, 4, 4);
+
+        // Then selecting all first pixels from a list of one timestep just returns us that tile, even if it has NoData values.
+        Seq<Tile> single_input = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile_timestep0.mutable().copy())));
+        assertTileEquals(tile_timestep0, single_input.apply(0));
+
+        // When a second timestep is added that has actual values, those will be selected as first instead of the NoData values.
+        Seq<Tile> multiple_input = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile_timestep0.mutable().copy(), tile_timestep1.mutable().copy())));
+        assertEquals(5, multiple_input.apply(0).get(0,0));
+        // Except for the one non-NoData value in timestep 0.
+        assertEquals(3, multiple_input.apply(0).get(2,2));
+
+        // Make sure that the celltypes have not changed to double like they would for processes such as median/mean.
+        assertEquals(tile_timestep0.cellType(), single_input.apply(0).cellType());
+        assertEquals(tile_timestep0.cellType(), multiple_input.apply(0).cellType());
+    }
+
+    @DisplayName("Test last process with nodata values")
+    @Test
+    public void testLastWithNoData() {
+        // Assume we make a last(data, ignore_nodata=false) request on a list of tiles with a time dimension.
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.singletonMap("ignore_nodata", false);
         builder.expressionStart("last", arguments);
 
         builder.argumentStart("data");
         builder.argumentEnd();
+        builder.constantArgument("ignore_nodata", false);
 
         builder.expressionEnd("last",arguments);
-
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
-        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
-        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
-        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
-        Tile res = result.apply(0);
-        assertTileEquals(tile1, res);
+
+        // When we have a data tile for every timestep.
+        ByteArrayTile tile_timestep0 = ByteConstantNoDataArrayTile.fill((byte)5, 4, 4);
+        ByteArrayTile tile_timestep1 = ByteConstantNoDataArrayTile.empty(4,4);
+        tile_timestep1.set(2,2,3);
+
+        // Then selecting all last pixels from a list of one timestep just returns us that tile.
+        Seq<Tile> single_input = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile_timestep1.mutable().copy())));
+        assertTileEquals(tile_timestep1, single_input.apply(0));
+
+        // When a second timestep is prepended that has actual values, the Nodata from the last tile will be selected.
+        // Because ignore_nodata is set to false.
+        Seq<Tile> multiple_input = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile_timestep0.mutable().copy(), tile_timestep1.mutable().copy())));
+        assertEquals(Int.MinValue(), multiple_input.apply(0).get(0,0));
+        // Including the one non-NoData value in timestep 1.
+        assertEquals(3, multiple_input.apply(0).get(2,2));
+
+        // Make sure that the celltypes have not changed to double like they would for processes such as median/mean.
+        assertEquals(tile_timestep0.cellType(), single_input.apply(0).cellType());
+        assertEquals(tile_timestep0.cellType(), multiple_input.apply(0).cellType());
+    }
+
+    @DisplayName("Test last process without nodata values")
+    @Test
+    public void testLastIgnoreNodata() {
+        // Assume we make a last(data, ignore_nodata=true) request on a list of tiles with a time dimension.
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.singletonMap("ignore_nodata", true);
+        builder.expressionStart("last", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.constantArgument("ignore_nodata", true);
+
+        builder.expressionEnd("last",arguments);
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+
+        // When we have a data tile for every timestep.
+        ByteArrayTile tile_timestep0 = ByteConstantNoDataArrayTile.fill((byte)5, 4, 4);
+        ByteArrayTile tile_timestep1 = ByteConstantNoDataArrayTile.empty(4,4);
+        tile_timestep1.set(2,2,3);
+
+        // Then selecting all last pixels from a list of one timestep just returns us that tile.
+        Seq<Tile> single_input = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile_timestep1.mutable().copy())));
+        assertTileEquals(tile_timestep1, single_input.apply(0));
+
+        // When a second timestep is prepended that has actual values, those will be selected as last instead of the NoData values.
+        Seq<Tile> multiple_input = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile_timestep0.mutable().copy(), tile_timestep1.mutable().copy())));
+        assertEquals(5, multiple_input.apply(0).get(0,0));
+        // Except for the one non-NoData value in timestep 1.
+        assertEquals(3, multiple_input.apply(0).get(2,2));
+
+        // Make sure that the celltypes have not changed to double like they would for processes such as median/mean.
+        assertEquals(tile_timestep0.cellType(), single_input.apply(0).cellType());
+        assertEquals(tile_timestep0.cellType(), multiple_input.apply(0).cellType());
     }
 
     @DisplayName("Test array_element process")
