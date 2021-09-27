@@ -135,7 +135,8 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
         .takeWhile(date => !(date isAfter to))
     else
       catalogApi
-        .dateTimes(collectionId, boundingBox, from, atEndOfDay(to), accessToken, mapDataFilters(metadataProperties))
+        .dateTimes(collectionId, boundingBox, from, atEndOfDay(to), accessToken,
+          toQueryProperties(dataFilters = metadataProperties))
         .map(_.toLocalDate.atStartOfDay(UTC))
         .distinct // ProcessApi::getTile takes care of [day, day + 1] interval and mosaicking therein
         .sorted

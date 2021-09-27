@@ -7,6 +7,7 @@ import io.circe.generic.auto._
 import io.circe.parser.decode
 import geotrellis.vector._
 import geotrellis.vector.io.json.{JsonFeatureCollection, JsonFeatureCollectionMap}
+import org.slf4j.{Logger, LoggerFactory}
 import scalaj.http.{Http, HttpOptions, HttpRequest}
 
 import java.net.URI
@@ -24,6 +25,8 @@ trait CatalogApi {
 }
 
 object DefaultCatalogApi {
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[DefaultCatalogApi])
+
   private case class PagingContext(limit: Int, returned: Int, next: Option[Int])
   private case class PagedFeatureCollection(features: List[Json], context: PagingContext)
     extends JsonFeatureCollection(features)
@@ -62,6 +65,8 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
            |    "query": $query,
            |    "next": ${nextToken.orNull}
            |}""".stripMargin
+
+      logger.debug(s"JSON data for Sentinel Hub Catalog API: $requestBody")
 
       val request = http(s"$catalogEndpoint/search", accessToken)
         .headers("Content-Type" -> "application/json")

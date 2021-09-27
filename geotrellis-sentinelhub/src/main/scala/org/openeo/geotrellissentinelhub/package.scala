@@ -48,10 +48,16 @@ package object geotrellissentinelhub {
     attempt(i = 1)
   }
 
-  private[geotrellissentinelhub] def mapDataFilters(metadataProperties: util.Map[String, Any]): collection.Map[String, String] =
-    metadataProperties.asScala
+  /**
+   * Maps dataFilters (Process/Batch Processing API) to equivalent query properties (Catalog API).
+   */
+  private[geotrellissentinelhub] def toQueryProperties(dataFilters: util.Map[String, Any]):
+  collection.Map[String, String] =
+    dataFilters.asScala
       .map {
         case ("orbitDirection", value: String) => "sat:orbit_state" -> value
+        case ("acquisitionMode", value: String) => "sar:instrument_mode" -> value
+        case (property, value: String) => property -> value
         case (property, _) => throw new IllegalArgumentException(s"unsupported metadata property $property")
       }
 

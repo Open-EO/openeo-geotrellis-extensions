@@ -1,7 +1,7 @@
 package org.openeo.geotrellissentinelhub
 
 import geotrellis.layer.SpaceTimeKey
-import geotrellis.proj4.LatLng
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.proj4.util.UTM
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.raster.{CellSize, HasNoData, MultibandTile, Raster}
@@ -233,6 +233,39 @@ class PyramidFactoryTest {
 
       val tif = MultibandGeoTiff(multibandTile, extent, layer.metadata.crs)
       tif.write(s"/tmp/utm.tif")
+    } finally sc.stop()
+  }
+
+  @Test
+  def testPolarizationDataFilter(): Unit = {
+    val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      val boundingBox = ProjectedExtent(Extent(488960.0, 6159880.0, 491520.0, 6162440.0), CRS.fromEpsgCode(32632))
+      val date = ZonedDateTime.of(LocalDate.of(2016, 11, 10), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+      val endpoint = "https://services.sentinel-hub.com"
+      val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
+        new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10,10),
+        sampleType = FLOAT32)
+
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
+        from_date = ISO_OFFSET_DATE_TIME format date,
+        to_date = ISO_OFFSET_DATE_TIME format date,
+        band_names = Seq("HV", "HH").asJava,
+        metadata_properties = Collections.singletonMap("polarization", "DH")
+      )
+
+      val spatialLayer = layer
+        .toSpatial()
+        .crop(boundingBox.extent)
+        .cache()
+
+      val Raster(multibandTile, extent) = spatialLayer.stitch()
+
+      val tif = MultibandGeoTiff(multibandTile, extent, layer.metadata.crs)
+      tif.write(s"/tmp/polarization.tif")
     } finally sc.stop()
   }
 

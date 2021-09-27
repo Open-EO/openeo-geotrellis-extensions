@@ -100,7 +100,8 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
       },
       "evalscript": ${objectMapper.writeValueAsString(evalscript)}
     }"""
-    logger.debug(s"JSON data for Sentinel Hub Process API: ${jsonData}")
+
+    logger.debug(s"JSON data for Sentinel Hub Process API: $jsonData")
 
     val url = URI.create(endpoint).resolve("/api/v1/process").toString
     val request = Http(url)

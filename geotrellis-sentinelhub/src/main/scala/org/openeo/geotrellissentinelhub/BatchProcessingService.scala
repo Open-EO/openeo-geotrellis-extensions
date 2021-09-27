@@ -67,7 +67,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     val multiPolygonCrs = crs
 
     val dateTimes = new DefaultCatalogApi(endpoint).dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
-      accessToken, queryProperties = mapDataFilters(metadata_properties))
+      accessToken, toQueryProperties(dataFilters = metadata_properties))
 
     if (dateTimes.isEmpty) return null
 
@@ -168,7 +168,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
 
     // original features that overlap in space and time
     val features = new DefaultCatalogApi(endpoint).searchCard4L(collection_id, multiPolygon, multiPolygonCrs, from, to,
-      accessToken, queryProperties = mapDataFilters(metadata_properties))
+      accessToken, toQueryProperties(dataFilters = metadata_properties))
 
     // their intersections with input polygons (all should be in LatLng)
     val intersectionFeatures = features.mapValues(feature =>
