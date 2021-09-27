@@ -18,7 +18,7 @@ import geotrellis.vector.{Extent, PolygonFeature}
 import org.apache.spark.rdd._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.focal._
-import org.openeo.geotrelliscommon.{FFTConvolve, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, SpaceTimeByMonthPartitioner}
 
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -150,12 +150,8 @@ class OpenEOProcesses extends Serializable {
 
   private def groupOnTimeDimension(datacube: MultibandTileLayerRDD[SpaceTimeKey]) = {
     val targetBounds = datacube.metadata.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]].toSpatial
-    val partitioner: Partitioner =
-      if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
-        new SpacePartitioner(targetBounds)
-      } else {
-        Partitioner.defaultPartitioner(datacube)
-      }
+    implicit val index = ByTileSpatialPartitioner
+    val partitioner: Partitioner = new SpacePartitioner(targetBounds)
 
     val groupedOnTime = datacube.groupBy[SpatialKey]((t: (SpaceTimeKey, MultibandTile)) => t._1.spatialKey, partitioner)
     groupedOnTime

@@ -1,11 +1,24 @@
 package org.openeo
 
-import geotrellis.layer.SpaceTimeKey
+import geotrellis.layer.{SpaceTimeKey, SpatialKey}
 import geotrellis.spark.partition.PartitionerIndex
-import org.locationtech.sfcurve.zorder.Z2
+import org.locationtech.sfcurve.zorder.{Z2, ZRange}
 import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 
 package object geotrelliscommon {
+
+  /**
+   * Spatial partitioner with only 1 tile per partition: for tiles with lots of bands!
+   */
+  object ByTileSpatialPartitioner extends  PartitionerIndex[SpatialKey] {
+    private def toZ(key: SpatialKey): Z2 = Z2(key.col, key.row)
+
+    def toIndex(key: SpatialKey): BigInt = toZ(key).z
+
+    def indexRanges(keyRange: (SpatialKey, SpatialKey)): Seq[(BigInt, BigInt)] =
+      Z2.zranges(ZRange(toZ(keyRange._1), toZ(keyRange._2))).map(r => (BigInt(r.lower), BigInt(r.upper)))
+
+  }
 
   object SparseSpaceOnlyPartitioner {
     // Shift by 8 removes the last 8 bytes: 256 tiles max in one partition.
