@@ -13,11 +13,12 @@ import scala.util.{Success, Try}
 object ElasticsearchCacheRepository {
   trait CacheEntry {
     def matchesExpected(tileId: String, date: ZonedDateTime, bandName: String): Boolean
+    def geometry: Geometry
     def filePath: Option[Path]
   }
 
-  case class Sentinel2L2aCacheEntry(tileId: String, date: ZonedDateTime, bandName: String, location: Geometry = null,
-                                    empty: Boolean = false) extends CacheEntry {
+  case class Sentinel2L2aCacheEntry(tileId: String, date: ZonedDateTime, bandName: String,
+                                    override val geometry: Geometry, empty: Boolean = false) extends CacheEntry {
     override def matchesExpected(tileId: String, date: ZonedDateTime, bandName: String): Boolean =
       this.tileId == tileId && this.date.isEqual(date) && this.bandName == bandName
 
@@ -38,8 +39,8 @@ object ElasticsearchCacheRepository {
         tileId = source("tileId").asInstanceOf[String],
         date = ZonedDateTime parse source("date").asInstanceOf[String],
         bandName = source("bandName").asInstanceOf[String],
+        geometry = null, // TODO: get value
         empty = source("filePath") == null // TODO: get actual value
-        // TODO: remaining fields are only used to query against, not to fetch
       )
     }
   }
@@ -50,13 +51,13 @@ object ElasticsearchCacheRepository {
          |  "tileId": "${entry.tileId}",
          |  "date": "${ISO_OFFSET_DATE_TIME format entry.date}",
          |  "bandName": "${entry.bandName}",
-         |  "location": ${entry.location.toGeoJson()},
+         |  "location": ${entry.geometry.toGeoJson()},
          |  "filePath": ${entry.filePath.map(path => s""""$path"""").orNull}
          |}""".stripMargin
   }
 
   case class Sentinel1GrdCacheEntry(tileId: String, date: ZonedDateTime, bandName: String, backCoeff: String,
-                                    orthorectify: Boolean, demInstance: String, location: Geometry = null,
+                                    orthorectify: Boolean, demInstance: String, override val geometry: Geometry,
                                     empty: Boolean) extends CacheEntry {
     def filePath: Option[Path] = {
       require(backCoeff != null, "backCoeff is null")
@@ -88,6 +89,7 @@ object ElasticsearchCacheRepository {
         backCoeff = source("backCoeff").asInstanceOf[String],
         orthorectify = source("orthorectify").asInstanceOf[Boolean],
         demInstance = source("demInstance").asInstanceOf[String],
+        geometry = null, // TODO: get value
         empty = source("filePath") == null // TODO: get actual value
         // TODO: remaining fields are only used to query against, not to fetch
       )
@@ -103,7 +105,7 @@ object ElasticsearchCacheRepository {
          |  "backCoeff": "${entry.backCoeff}",
          |  "orthorectify": ${entry.orthorectify},
          |  "demInstance": "${entry.demInstance}",
-         |  "location": ${entry.location.toGeoJson()},
+         |  "location": ${entry.geometry.toGeoJson()},
          |  "filePath": ${entry.filePath.map(path => s""""$path"""").orNull}
          |}""".stripMargin
   }

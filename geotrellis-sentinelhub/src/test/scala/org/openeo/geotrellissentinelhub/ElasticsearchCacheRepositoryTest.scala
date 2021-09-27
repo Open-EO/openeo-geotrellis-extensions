@@ -22,7 +22,7 @@ class ElasticsearchCacheRepositoryTest {
       backCoeff = "GAMMA0_TERRAIN",
       orthorectify = true,
       demInstance = "MAPZEN",
-      location = GeoJson.parse[MultiPolygon](
+      geometry = GeoJson.parse[MultiPolygon](
       """{
         |  "type":"MultiPolygon",
         |  "coordinates":[
