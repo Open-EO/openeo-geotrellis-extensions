@@ -10,7 +10,7 @@ import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.io.geotiff.writer.GeoTiffWriter
 import geotrellis.raster.render.IndexedColorMap
 import geotrellis.raster.resample.NearestNeighbor
-import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, MultibandTile, Raster, RasterExtent, TileLayout}
+import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.util._
