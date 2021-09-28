@@ -1,10 +1,10 @@
 package org.openeo.geotrellissentinelhub
 
+import CirceException.decode
 import cats.syntax.either._
 import geotrellis.proj4.{CRS, LatLng}
 import io.circe.Json
 import io.circe.generic.auto._
-import io.circe.parser.decode
 import geotrellis.vector._
 import geotrellis.vector.io.json.{JsonFeatureCollection, JsonFeatureCollectionMap}
 import org.slf4j.{Logger, LoggerFactory}
@@ -49,53 +49,54 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
 
   // TODO: search distinct dates (https://docs.sentinel-hub.com/api/latest/api/catalog/examples/#search-with-distinct)?
   def dateTimes(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
-                accessToken: String, queryProperties: collection.Map[String, String]): Seq[ZonedDateTime] = {
-    val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
-    val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
+                accessToken: String, queryProperties: collection.Map[String, String]): Seq[ZonedDateTime] =
+    withRetries(context = s"dateTimes $collectionId") {
+      val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
+      val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
 
-    val query = this.query(queryProperties)
+      val query = this.query(queryProperties)
 
-    def getFeatureCollectionPage(nextToken: Option[Int]): PagedFeatureCollection = {
-      val requestBody =
-        s"""
-           |{
-           |    "intersects": ${geometry.reproject(geometryCrs, LatLng).toGeoJson()},
-           |    "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
-           |    "collections": ["$collectionId"],
-           |    "query": $query,
-           |    "next": ${nextToken.orNull}
-           |}""".stripMargin
+      def getFeatureCollectionPage(nextToken: Option[Int]): PagedFeatureCollection = {
+        val requestBody =
+          s"""
+             |{
+             |    "intersects": ${geometry.reproject(geometryCrs, LatLng).toGeoJson()},
+             |    "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
+             |    "collections": ["$collectionId"],
+             |    "query": $query,
+             |    "next": ${nextToken.orNull}
+             |}""".stripMargin
 
-      logger.debug(s"JSON data for Sentinel Hub Catalog API: $requestBody")
+        logger.debug(s"JSON data for Sentinel Hub Catalog API: $requestBody")
 
-      val request = http(s"$catalogEndpoint/search", accessToken)
-        .headers("Content-Type" -> "application/json")
-        .postData(requestBody)
+        val request = http(s"$catalogEndpoint/search", accessToken)
+          .headers("Content-Type" -> "application/json")
+          .postData(requestBody)
 
-      val response = request.asString
+        val response = request.asString
 
-      if (response.isError) throw SentinelHubException(request, requestBody, response)
+        if (response.isError) throw SentinelHubException(request, requestBody, response)
 
-      decode[PagedFeatureCollection](response.body)
-        .valueOr(throw _)
-    }
-
-    def getDateTimes(nextToken: Option[Int]): Seq[ZonedDateTime] = {
-      val page = getFeatureCollectionPage(nextToken)
-
-      val dateTimes = for {
-        feature <- page.features.flatMap(_.asObject)
-        properties <- feature("properties").flatMap(_.asObject)
-        datetime <- properties("datetime").flatMap(_.asString)
-      } yield ZonedDateTime.parse(datetime, ISO_OFFSET_DATE_TIME)
-
-      page.context.next match {
-        case None => dateTimes
-        case nextToken => dateTimes ++ getDateTimes(nextToken)
+        decode[PagedFeatureCollection](response.body)
+          .valueOr(throw _)
       }
-    }
 
-    getDateTimes(nextToken = None)
+      def getDateTimes(nextToken: Option[Int]): Seq[ZonedDateTime] = {
+        val page = getFeatureCollectionPage(nextToken)
+
+        val dateTimes = for {
+          feature <- page.features.flatMap(_.asObject)
+          properties <- feature("properties").flatMap(_.asObject)
+          datetime <- properties("datetime").flatMap(_.asString)
+        } yield ZonedDateTime.parse(datetime, ISO_OFFSET_DATE_TIME)
+
+        page.context.next match {
+          case None => dateTimes
+          case nextToken => dateTimes ++ getDateTimes(nextToken)
+        }
+      }
+
+      getDateTimes(nextToken = None)
   }
 
   def searchCard4L(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
@@ -109,76 +110,77 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
 
   def searchCard4L(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
                    accessToken: String, queryProperties: collection.Map[String, String]):
-  Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
-    require(collectionId == "sentinel-1-grd", """only collection "sentinel-1-grd" is supported""")
+  Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] =
+    withRetries(context = s"searchCard4L $collectionId") {
+      require(collectionId == "sentinel-1-grd", """only collection "sentinel-1-grd" is supported""")
 
-    // TODO: reduce code duplication with dateTimes()
-    val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
-    val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
+      // TODO: reduce code duplication with dateTimes()
+      val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
+      val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
 
-    val query = {
-      val requiredProperties = HashMap(
-        "sar:instrument_mode" -> "IW",
-        "resolution" -> "HIGH",
-        "polarization" -> "DV"
-      )
+      val query = {
+        val requiredProperties = HashMap(
+          "sar:instrument_mode" -> "IW",
+          "resolution" -> "HIGH",
+          "polarization" -> "DV"
+        )
 
-      val allProperties = requiredProperties.merged(HashMap(queryProperties.toSeq: _*)) {
-        case (requiredProperty @ (property, requiredValue), (_, overriddenValue)) =>
-          if (overriddenValue == requiredValue) requiredProperty
-          else throw new IllegalArgumentException(
-            s"cannot override property $property value $requiredValue with $overriddenValue")
+        val allProperties = requiredProperties.merged(HashMap(queryProperties.toSeq: _*)) {
+          case (requiredProperty @ (property, requiredValue), (_, overriddenValue)) =>
+            if (overriddenValue == requiredValue) requiredProperty
+            else throw new IllegalArgumentException(
+              s"cannot override property $property value $requiredValue with $overriddenValue")
+        }
+
+        this.query(allProperties)
       }
 
-      this.query(allProperties)
-    }
+      def getFeatureCollectionPage(nextToken: Option[Int]): PagedJsonFeatureCollectionMap = {
+        val requestBody =
+          s"""
+             |{
+             |  "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
+             |  "collections": ["$collectionId"],
+             |  "query": $query,
+             |  "intersects": ${geometry.reproject(geometryCrs, LatLng).toGeoJson()},
+             |  "next": ${nextToken.orNull}
+             |}""".stripMargin
 
-    def getFeatureCollectionPage(nextToken: Option[Int]): PagedJsonFeatureCollectionMap = {
-      val requestBody =
-        s"""
-           |{
-           |  "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
-           |  "collections": ["$collectionId"],
-           |  "query": $query,
-           |  "intersects": ${geometry.reproject(geometryCrs, LatLng).toGeoJson()},
-           |  "next": ${nextToken.orNull}
-           |}""".stripMargin
+        val request = http(s"$catalogEndpoint/search", accessToken)
+          .headers("Content-Type" -> "application/json")
+          .postData(requestBody)
 
-      val request = http(s"$catalogEndpoint/search", accessToken)
-        .headers("Content-Type" -> "application/json")
-        .postData(requestBody)
+        val response = request.asString
 
-      val response = request.asString
+        if (response.isError) throw SentinelHubException(request, requestBody, response)
 
-      if (response.isError) throw SentinelHubException(request, requestBody, response)
-
-      decode[PagedJsonFeatureCollectionMap](response.body)
-        .valueOr(throw _)
-    }
-
-    def getFeatures(nextToken: Option[Int]): Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
-      val page = getFeatureCollectionPage(nextToken)
-
-      // it is assumed the returned geometries are in LatLng
-      val features = page.getAllMultiPolygonFeatures[Json]
-        .mapValues(feature =>
-          feature.mapData { properties =>
-            val Some(datetime) = for {
-              properties <- properties.asObject
-              json <- properties("datetime")
-              datetime <- json.asString
-            } yield ZonedDateTime.parse(datetime, ISO_OFFSET_DATE_TIME)
-
-            datetime
-          })
-
-      page.context.next match {
-        case None => features
-        case nextToken => features ++ getFeatures(nextToken)
+        decode[PagedJsonFeatureCollectionMap](response.body)
+          .valueOr(throw _)
       }
-    }
 
-    getFeatures(nextToken = None)
+      def getFeatures(nextToken: Option[Int]): Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
+        val page = getFeatureCollectionPage(nextToken)
+
+        // it is assumed the returned geometries are in LatLng
+        val features = page.getAllMultiPolygonFeatures[Json]
+          .mapValues(feature =>
+            feature.mapData { properties =>
+              val Some(datetime) = for {
+                properties <- properties.asObject
+                json <- properties("datetime")
+                datetime <- json.asString
+              } yield ZonedDateTime.parse(datetime, ISO_OFFSET_DATE_TIME)
+
+              datetime
+            })
+
+        page.context.next match {
+          case None => features
+          case nextToken => features ++ getFeatures(nextToken)
+        }
+      }
+
+      getFeatures(nextToken = None)
   }
 
   private def http(url: String, accessToken: String): HttpRequest =

@@ -112,7 +112,7 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
 
     logger.info(s"Executing request: ${request.urlBuilder(request)}")
 
-    val response = withRetries(5, s"$date + $extent") {
+    val response = withRetries(context = s"getTile $date + $extent") {
       request.exec(parser = (code: Int, header: Map[String, IndexedSeq[String]], in: InputStream) =>
         if (code == 200)
           GeoTiffReader.readMultiband(IOUtils.toByteArray(in))
@@ -129,6 +129,5 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
       // unless handled differently, NODATA pîxels are 0 according to
       // https://docs.sentinel-hub.com/api/latest/user-guides/datamask/#datamask---handling-of-pixels-with-no-data
       .mapBands { case (_, tile) => tile.withNoData(Some(0)) }
-
-  }
+ }
 }

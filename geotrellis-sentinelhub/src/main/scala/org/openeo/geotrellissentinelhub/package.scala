@@ -3,49 +3,52 @@ package org.openeo
 import _root_.io.circe.{Decoder, Encoder, HCursor, Json}
 import _root_.io.circe.Decoder.Result
 import cats.syntax.either._
+import net.jodah.failsafe.event.ExecutionAttemptedEvent
+import net.jodah.failsafe.function.{CheckedConsumer, CheckedSupplier}
+import net.jodah.failsafe.{Failsafe, FailsafeExecutor, RetryPolicy}
 import org.slf4j.Logger
 import software.amazon.awssdk.core.sync.ResponseTransformer
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.{GetObjectRequest, GetObjectResponse, ListObjectsV2Request, ObjectIdentifier}
 
 import java.io.FileOutputStream
-import java.lang.Math.{pow, random}
 import java.net.SocketTimeoutException
 import java.nio.file.Path
+import java.time.temporal.ChronoUnit.SECONDS
 import java.time.{Instant, ZoneOffset, ZonedDateTime}
 import java.util
-import scala.annotation.tailrec
 import scala.collection.JavaConverters._
+import scala.compat.java8.FunctionConverters._
 
 package object geotrellissentinelhub {
-  def withRetries[T](attempts: Int, context: String)(fn: => T)(implicit logger: Logger): T = {
-    @tailrec
-    def attempt(i: Int): T = {
-      def retryable(e: Exception): Boolean = {
-        logger.warn(s"Attempt $i failed: $context -> ${e.getMessage}")
+  def withRetries[R](context: String)(fn: => R)(implicit logger: Logger): R = {
+    val retryPolicy = {
+      val tooManyRequests: SentinelHubException => Boolean = e => e.statusCode == 429
+      val serverError: SentinelHubException => Boolean = e => e.statusCode >= 500
+      val emptyRequestBody: SentinelHubException => Boolean =
+        e => e.statusCode == 400 && e.responseBody.contains("Request body should be non-empty.")
 
-        i < attempts && (e match {
-          case s: SentinelHubException if s.statusCode == 429 || s.statusCode >= 500
-            || (s.statusCode == 400 && s.responseBody.contains("Request body should be non-empty.")) => true
-          case _: SocketTimeoutException => true
-          case _ => false
+      new RetryPolicy[R]
+        .handle(classOf[SocketTimeoutException], classOf[CirceException])
+        .handleIf(tooManyRequests.asJava)
+        .handleIf(serverError.asJava)
+        .handleIf(emptyRequestBody.asJava)
+        .withBackoff(1, 1000, SECONDS) // should not reach maxDelay because of maxAttempts 5
+        .withJitter(0.5)
+        .withMaxAttempts(5)
+        .onFailedAttempt(new CheckedConsumer[ExecutionAttemptedEvent[R]] {
+          override def accept(e: ExecutionAttemptedEvent[R]): Unit = {
+            logger.warn(s"Attempt ${e.getAttemptCount} failed: $context -> ${e.getLastFailure.getMessage}")
+          }
         })
-      }
-
-      try
-        return fn
-      catch {
-        case e: Exception if retryable(e) => () // won't recognize tail-recursive calls in a catch block as such
-      }
-
-      val exponentialRetryAfter = 1000 * pow(2, i - 1)
-      val retryAfterWithJitter = (exponentialRetryAfter * (0.5 + random)).toInt
-      Thread.sleep(retryAfterWithJitter)
-      logger.debug(s"Retry $i after ${retryAfterWithJitter}ms: $context")
-      attempt(i + 1)
     }
 
-    attempt(i = 1)
+    val failsafe: FailsafeExecutor[R] = Failsafe
+      .`with`(retryPolicy)
+
+    failsafe.get(new CheckedSupplier[R] {
+      override def get(): R = fn
+    })
   }
 
   /**

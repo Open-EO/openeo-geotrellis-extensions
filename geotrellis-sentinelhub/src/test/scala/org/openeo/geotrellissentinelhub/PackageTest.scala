@@ -33,7 +33,7 @@ class PackageTest {
 
     val request = eventuallySucceedingRequest
 
-    withRetries(attempts = 5, context = "testEmptyRequestBodyIsRetried") {
+    withRetries(context = "testEmptyRequestBodyIsRetried") {
       request()
     }
   }

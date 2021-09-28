@@ -24,7 +24,7 @@ import scala.annotation.meta.param
 import scala.collection.JavaConverters._
 
 object PyramidFactory {
-  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[PyramidFactory])
+  private val logger: Logger = LoggerFactory.getLogger(classOf[PyramidFactory])
 
   private val maxKeysPerPartition = 20
 
@@ -34,8 +34,7 @@ object PyramidFactory {
     .expireAfterWrite(1800L, SECONDS)
     .build(new CacheLoader[(String, String), String] {
       override def load(credentials: (String, String)): String = credentials match {
-        case (clientId, clientSecret) =>
-          withRetries(5, clientId) { new AuthApi().authenticate(clientId, clientSecret).access_token }
+        case (clientId, clientSecret) => new AuthApi().authenticate(clientId, clientSecret).access_token
       }
     })
 
