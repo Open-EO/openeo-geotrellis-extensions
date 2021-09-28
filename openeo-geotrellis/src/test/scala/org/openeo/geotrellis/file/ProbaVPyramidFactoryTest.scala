@@ -1,12 +1,9 @@
 package org.openeo.geotrellis.file
 
-import java.time.format.DateTimeFormatter
-import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
-
 import geotrellis.layer._
 import geotrellis.proj4.LatLng
-import geotrellis.raster.Raster
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
+import geotrellis.raster.{CellSize, Raster}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
@@ -15,14 +12,16 @@ import org.apache.spark.SparkConf
 import org.junit.{Assert, Ignore, Test}
 import org.openeo.geotrellis.file.ProbaVPyramidFactory.Band._
 
+import java.time.format.DateTimeFormatter
+import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 
 class ProbaVPyramidFactoryTest {
 
   private val openSearchEndpoint = "https://services.terrascope.be/catalogue"
-  private val pyramidFactoryS5 = new ProbaVPyramidFactory(openSearchEndpoint, "urn:ogc:def:EOP:VITO:PROBAV_S5-TOC_100M_V001", "/data/MTDA/TIFFDERIVED/PROBAV_L3_S5_TOC_100M")
-  private val pyramidFactoryS10 =  new ProbaVPyramidFactory(openSearchEndpoint, "urn:ogc:def:EOP:VITO:PROBAV_S10-TOC_333M_V001", "/data/MTDA/TIFFDERIVED/PROBAV_L3_S10_TOC_333M")
+  private val pyramidFactoryS5 = new ProbaVPyramidFactory(openSearchEndpoint, "urn:ogc:def:EOP:VITO:PROBAV_S5-TOC_100M_V001", "/data/MTDA/TIFFDERIVED/PROBAV_L3_S5_TOC_100M",CellSize(0.000992063492063, 0.000992063492063))
+  private val pyramidFactoryS10 =  new ProbaVPyramidFactory(openSearchEndpoint, "urn:ogc:def:EOP:VITO:PROBAV_S10-TOC_333M_V001", "/data/MTDA/TIFFDERIVED/PROBAV_L3_S10_TOC_333M",CellSize(0.000992063492063, 0.000992063492063))
 
   @Ignore
   @Test
