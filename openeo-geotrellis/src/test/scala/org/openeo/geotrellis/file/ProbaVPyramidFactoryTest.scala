@@ -2,7 +2,7 @@ package org.openeo.geotrellis.file
 
 import geotrellis.layer._
 import geotrellis.proj4.LatLng
-import geotrellis.raster.io.geotiff.MultibandGeoTiff
+import geotrellis.raster.io.geotiff.{GeoTiffReader, MultibandGeoTiff}
 import geotrellis.raster.{CellSize, Raster}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
@@ -101,24 +101,13 @@ class ProbaVPyramidFactoryTest {
 
       Assert.assertTrue(baseLayer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
       println(s"got ${baseLayer.count()} tiles")
+      val cropBounds = boundingBox.reproject(baseLayer.metadata.crs)
+      val files = org.openeo.geotrellis.geotiff.saveRDDTemporal(baseLayer,"./",cropBounds = Some(cropBounds))
+      Assert.assertEquals(1,files.size())
+      val tiff = GeoTiffReader.readMultiband(files.get(0))
+      Assert.assertEquals(LatLng,tiff.crs)
+      Assert.assertEquals(6,tiff.bandCount)
 
-      val timestamps = baseLayer.keys
-        .map(_.time)
-        .distinct()
-        .collect()
-        .sortWith(_ isBefore _)
-
-      for (timestamp <- timestamps) {
-        val Raster(multibandTile, extent) = baseLayer
-          .toSpatial(timestamp)
-          .crop(boundingBox.reproject(baseLayer.metadata.crs))
-          .stitch()
-
-        Assert.assertTrue(multibandTile.bandCount == bandIndices.size())
-
-        MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs)
-          .write(s"/tmp/stitched_S10_${DateTimeFormatter.ISO_LOCAL_DATE format timestamp}.tif")
-      }
     } finally {
       sc.stop()
     }
