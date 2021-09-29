@@ -150,15 +150,16 @@ package object geotiff {
     val re = rdd.metadata.toRasterExtent()
     var gridBounds = re.gridBoundsFor(cropBounds.getOrElse(rdd.metadata.extent), clamp = true)
     val croppedExtent = re.extentFor(gridBounds, clamp = true)
+    val filtered = new OpenEOProcesses().filterEmptyTile(rdd)
     val preprocessedRdd = {
       if (gridBounds.colMin != 0 || gridBounds.rowMin != 0) {
         val geotiffLayout: LayoutDefinition = LayoutDefinition(RasterExtent(croppedExtent, re.cellSize), 256)
-        val retiledRDD = rdd.reproject(rdd.metadata.crs, geotiffLayout)._2.crop(croppedExtent, Options(force = false))
+        val retiledRDD = filtered.reproject(rdd.metadata.crs, geotiffLayout)._2.crop(croppedExtent, Options(force = false))
 
         gridBounds = retiledRDD.metadata.toRasterExtent().gridBoundsFor(cropBounds.getOrElse(retiledRDD.metadata.extent), clamp = true)
         retiledRDD
       } else {
-        rdd.crop(croppedExtent, Options(force = false))
+        filtered.crop(croppedExtent, Options(force = false))
       }
     }
     val tileLayout = rdd.metadata.tileLayout
