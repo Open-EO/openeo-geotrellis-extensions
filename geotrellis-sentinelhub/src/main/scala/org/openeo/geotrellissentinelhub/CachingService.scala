@@ -40,7 +40,7 @@ class CachingService {
     }
   }
 
-  def downloadAndCacheResults(batchProcessContext: Sentinel2L2aBatchProcessContext, bucket_name: String, subfolder: String, collecting_folder: String): Unit = {
+  private def downloadAndCacheResults(batchProcessContext: Sentinel2L2aBatchProcessContext, bucket_name: String, subfolder: String, collecting_folder: String): Unit = {
     // TODO: make this uri configurable
     val elasticsearchUri = "https://es-apps-dev.vgt.vito.be:443"
     val cacheRepository = new ElasticsearchCacheRepository(elasticsearchUri)
@@ -112,7 +112,7 @@ class CachingService {
     }
   }
 
-  def downloadAndCacheResults(batchProcessContext: Sentinel1GrdBatchProcessContext, bucket_name: String, subfolder: String, collecting_folder: String): Unit = {
+  private def downloadAndCacheResults(batchProcessContext: Sentinel1GrdBatchProcessContext, bucket_name: String, subfolder: String, collecting_folder: String): Unit = {
     // TODO: make this uri configurable
     val elasticsearchUri = "https://es-apps-dev.vgt.vito.be:443"
     val cacheRepository = new ElasticsearchCacheRepository(elasticsearchUri)
@@ -192,7 +192,7 @@ class CachingService {
   }
 
   // = download multiband tiles and write them as single band tiles to the cache directory (a tree)
-  def downloadBatchProcessResults(bucketName: String, subfolder: String, cacheDir: Path, bandNames: Seq[String],
+  private def downloadBatchProcessResults(bucketName: String, subfolder: String, cacheDir: Path, bandNames: Seq[String],
                                   onDownloaded: (String, ZonedDateTime, String) => Unit): Unit = S3.withClient { s3Client =>
     import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
 
@@ -201,6 +201,8 @@ class CachingService {
       .filter(_.endsWith(".tif"))
 
     val keyParts = tiffKeys.map { key =>
+      // this specifically handles the tilePath for regular (non-CARD4L) batch processes to a particular subfolder,
+      // i.e. s3://$bucketName/$subfolder/$tileId/_$date.tif (see BatchProcessingApi#createBatchProcess)
       val Array(_, tileId, fileName) = key.split("/")
       val date = fileName.split(raw"\.").head.drop(1)
 
@@ -236,7 +238,7 @@ class CachingService {
   }
 
   // = download multiband tiles and write them as single band tiles to the cache directory (a tree)
-  def downloadBatchProcessResults(bucketName: String, subfolder: String, cacheDir: Path, bandNames: Seq[String],
+  private def downloadBatchProcessResults(bucketName: String, subfolder: String, cacheDir: Path, bandNames: Seq[String],
                                   backCoeff: String, orthorectify: Boolean, demInstance: String,
                                   onDownloaded: (String, ZonedDateTime, String) => Unit): Unit = S3.withClient { s3Client =>
     import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
