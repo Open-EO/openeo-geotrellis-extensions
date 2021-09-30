@@ -9,7 +9,7 @@ import io.circe.syntax._
 import geotrellis.vector._
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
 import org.slf4j.{Logger, LoggerFactory}
-import scalaj.http.{Http, HttpOptions, HttpRequest}
+import scalaj.http.{Http, HttpOptions, HttpRequest, HttpResponse}
 
 import java.net.URI
 import java.time.ZonedDateTime
@@ -220,7 +220,7 @@ class BatchProcessingApi(endpoint: String) {
       val request = http(s"$batchEndpoint/process/$batchRequestId/start", accessToken)
         .postData(requestBody)
 
-      val response = request.execute()
+      val response: HttpResponse[String] = request.execute()
 
       if (response.isError) throw SentinelHubException(request, requestBody, response)
   }
@@ -232,7 +232,7 @@ class BatchProcessingApi(endpoint: String) {
       val request = http(s"$batchEndpoint/process/$batchRequestId/restartpartial", accessToken)
         .postData(requestBody)
 
-      val response = request.execute()
+      val response: HttpResponse[String] = request.execute()
 
       if (response.isError) throw SentinelHubException(request, requestBody, response)
   }

@@ -1,6 +1,6 @@
 package org.openeo.geotrellissentinelhub
 
-import com.google.common.cache.{CacheBuilder, CacheLoader}
+import com.github.blemale.scaffeine.{LoadingCache, Scaffeine}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.vector._
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
@@ -8,19 +8,14 @@ import org.openeo.geotrellissentinelhub.SampleType.SampleType
 import java.time.ZoneOffset.UTC
 import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
-import java.util.concurrent.TimeUnit.MINUTES
+import scala.concurrent.duration._
 import scala.collection.JavaConverters._
 
 object BatchProcessingService {
   // TODO: invalidate key on 401 Unauthorized
-  private val accessTokenCache = CacheBuilder
-    .newBuilder()
-    .expireAfterWrite(30, MINUTES) // TODO: depend on expires_in in response
-    .build(new CacheLoader[(String, String), String] {
-      override def load(credentials: (String, String)): String = credentials match {
-        case (clientId, clientSecret) => new AuthApi().authenticate(clientId, clientSecret).access_token
-      }
-    })
+  private val accessTokenCache: LoadingCache[(String, String), String] = Scaffeine()
+    .expireAfterWrite(30.minutes) // TODO: depend on expires_in in response
+    .build { case (clientId, clientSecret) => new AuthApi().authenticate(clientId, clientSecret).access_token }
 }
 
 // TODO: snake_case for these arguments
@@ -82,7 +77,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
       additionalDataFilters = metadata_properties,
       processing_options,
       bucketName,
-      description = s"$dataset_id ${polygons.size} $from_date $to_date $band_names",
+      description = s"$dataset_id ${polygons.length} $from_date $to_date $band_names",
       accessToken,
       subfolder
     ).id

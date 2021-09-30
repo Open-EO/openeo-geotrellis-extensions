@@ -1,6 +1,6 @@
 package org.openeo.geotrellissentinelhub
 
-import com.google.common.cache.{CacheBuilder, CacheLoader}
+import com.github.blemale.scaffeine.{LoadingCache, Scaffeine}
 import geotrellis.layer.{KeyBounds, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.{CellSize, MultibandTile, Raster}
@@ -18,10 +18,10 @@ import org.slf4j.{Logger, LoggerFactory}
 import java.time.ZoneOffset.UTC
 import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeUnit.SECONDS
+import java.util.concurrent.TimeUnit.MILLISECONDS
 import scala.annotation.meta.param
 import scala.collection.JavaConverters._
+import scala.concurrent.duration._
 
 object PyramidFactory {
   private val logger: Logger = LoggerFactory.getLogger(classOf[PyramidFactory])
@@ -29,14 +29,9 @@ object PyramidFactory {
   private val maxKeysPerPartition = 20
 
   // TODO: invalidate key on 401 Unauthorized
-  private val authTokenCache = CacheBuilder
-    .newBuilder()
-    .expireAfterWrite(1800L, SECONDS)
-    .build(new CacheLoader[(String, String), String] {
-      override def load(credentials: (String, String)): String = credentials match {
-        case (clientId, clientSecret) => new AuthApi().authenticate(clientId, clientSecret).access_token
-      }
-    })
+  private val authTokenCache: LoadingCache[(String, String), String] = Scaffeine()
+    .expireAfterWrite(1800.seconds)
+    .build { case (clientId, clientSecret) => new AuthApi().authenticate(clientId, clientSecret).access_token }
 
   // convenience method for Python client
   // TODO: change name? A 429 response makes it rate-limited anyway.
@@ -207,7 +202,8 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
           spatialKey <- layout.mapTransform.keysForGeometry(GeometryCollection(polygons))
         } yield SpaceTimeKey(spatialKey, date)
 
-        val maskClouds = dataCubeParameters.maskingStrategyParameters.get("method") == "mask_scl_dilation" // TODO: what's up with this warning in Idea?
+        //noinspection ComparingUnrelatedTypes
+        val maskClouds = dataCubeParameters.maskingStrategyParameters.get("method") == "mask_scl_dilation"
 
         def loadMasked(key: SpaceTimeKey): Option[MultibandTile] = {
           def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile = {
@@ -276,7 +272,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
     )
 
     logger.debug(s"$rateLimitingGuard says to wait $delay")
-    TimeUnit.MILLISECONDS.sleep(delay.toMillis)
+    MILLISECONDS.sleep(delay.toMillis)
   }
 
   private def layout(layoutScheme: FloatingLayoutScheme, boundingBox: ProjectedExtent): LayoutDefinition = {
