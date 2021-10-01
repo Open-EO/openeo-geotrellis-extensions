@@ -1,6 +1,5 @@
 package org.openeo.geotrellissentinelhub
 
-import com.github.blemale.scaffeine.{LoadingCache, Scaffeine}
 import geotrellis.layer.{KeyBounds, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.{CellSize, MultibandTile, Raster}
@@ -21,17 +20,11 @@ import java.util
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import scala.annotation.meta.param
 import scala.collection.JavaConverters._
-import scala.concurrent.duration._
 
 object PyramidFactory {
   private val logger: Logger = LoggerFactory.getLogger(classOf[PyramidFactory])
 
   private val maxKeysPerPartition = 20
-
-  // TODO: invalidate key on 401 Unauthorized
-  private val authTokenCache: LoadingCache[(String, String), String] = Scaffeine()
-    .expireAfterWrite(1800.seconds)
-    .build { case (clientId, clientSecret) => new AuthApi().authenticate(clientId, clientSecret).access_token }
 
   // convenience method for Python client
   // TODO: change name? A 429 response makes it rate-limited anyway.
@@ -60,7 +53,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
 
   private val maxZoom = 14
 
-  private def accessToken: String = authTokenCache.get((clientId, clientSecret))
+  private def accessToken: String = AccessTokenCache.get(clientId, clientSecret)
 
   private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom,
                     bandNames: Seq[String], metadataProperties: util.Map[String, Any],

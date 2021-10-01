@@ -1,6 +1,5 @@
 package org.openeo.geotrellissentinelhub
 
-import com.github.blemale.scaffeine.{LoadingCache, Scaffeine}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.vector._
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
@@ -8,21 +7,11 @@ import org.openeo.geotrellissentinelhub.SampleType.SampleType
 import java.time.ZoneOffset.UTC
 import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
-import scala.concurrent.duration._
 import scala.collection.JavaConverters._
-
-object BatchProcessingService {
-  // TODO: invalidate key on 401 Unauthorized
-  private val accessTokenCache: LoadingCache[(String, String), String] = Scaffeine()
-    .expireAfterWrite(30.minutes) // TODO: depend on expires_in in response
-    .build { case (clientId, clientSecret) => new AuthApi().authenticate(clientId, clientSecret).access_token }
-}
 
 // TODO: snake_case for these arguments
 class BatchProcessingService(endpoint: String, val bucketName: String, clientId: String, clientSecret: String) {
-  import BatchProcessingService._
-
-  private def accessToken: String = accessTokenCache.get((clientId, clientSecret))
+  private def accessToken: String = AccessTokenCache.get(clientId, clientSecret)
 
   def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
                           to_date: String, band_names: util.List[String], sampleType: SampleType,
