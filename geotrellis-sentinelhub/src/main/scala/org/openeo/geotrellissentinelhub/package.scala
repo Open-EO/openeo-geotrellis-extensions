@@ -23,22 +23,24 @@ import scala.compat.java8.FunctionConverters._
 package object geotrellissentinelhub {
   def withRetries[R](context: String)(fn: => R)(implicit logger: Logger): R = {
     val retryPolicy = {
-      val tooManyRequests: SentinelHubException => Boolean = e => e.statusCode == 429
-      val serverError: SentinelHubException => Boolean = e => e.statusCode >= 500
-      val emptyRequestBody: SentinelHubException => Boolean =
-        e => e.statusCode == 400 && e.responseBody.contains("Request body should be non-empty.")
+      val retryable: Throwable => Boolean = {
+        // exceptions like ClassCastException, MatchError etc. thrown from this predicate are swallowed by Failsafe :/
+        case SentinelHubException(_, 429, _) => true
+        case SentinelHubException(_, 400, body) if body contains "Request body should be non-empty." => true
+        case SentinelHubException(_, statusCode, _) if statusCode >= 500 => true
+        case _: SocketTimeoutException => true
+        case _: CirceException => true
+        case _ => false
+      }
 
       new RetryPolicy[R]
-        .handle(classOf[SocketTimeoutException], classOf[CirceException])
-        .handleIf(tooManyRequests.asJava)
-        .handleIf(serverError.asJava)
-        .handleIf(emptyRequestBody.asJava)
+        .handleIf(retryable.asJava)
         .withBackoff(1, 1000, SECONDS) // should not reach maxDelay because of maxAttempts 5
         .withJitter(0.5)
         .withMaxAttempts(5)
         .onFailedAttempt(new CheckedConsumer[ExecutionAttemptedEvent[R]] {
-          override def accept(e: ExecutionAttemptedEvent[R]): Unit = {
-            logger.warn(s"Attempt ${e.getAttemptCount} failed: $context -> ${e.getLastFailure.getMessage}")
+          override def accept(t: ExecutionAttemptedEvent[R]): Unit = {
+            logger.warn(s"Attempt ${t.getAttemptCount} failed: $context -> ${t.getLastFailure.getMessage}")
           }
         })
     }
@@ -49,6 +51,18 @@ package object geotrellissentinelhub {
     failsafe.get(new CheckedSupplier[R] {
       override def get(): R = fn
     })
+  }
+
+  // TODO: merge this "one time retry policy" with withRetries() and move the retries from the APIs to the services?
+  def authorized[R](clientId: String, clientSecret: String)(fn: String => R): R = {
+    def accessToken: String = AccessTokenCache.get(clientId, clientSecret)
+
+    try fn(accessToken)
+    catch {
+      case SentinelHubException(_, 401, _) =>
+        AccessTokenCache.invalidate(clientId, clientSecret)
+        fn(accessToken)
+    }
   }
 
   /**

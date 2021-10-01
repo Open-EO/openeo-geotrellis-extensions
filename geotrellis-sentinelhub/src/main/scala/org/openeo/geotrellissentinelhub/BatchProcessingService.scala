@@ -11,7 +11,8 @@ import scala.collection.JavaConverters._
 
 // TODO: snake_case for these arguments
 class BatchProcessingService(endpoint: String, val bucketName: String, clientId: String, clientSecret: String) {
-  private def accessToken: String = AccessTokenCache.get(clientId, clientSecret)
+  private def authorized[R](fn: String => R): R =
+    org.openeo.geotrellissentinelhub.authorized[R](clientId, clientSecret)(fn)
 
   def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
                           to_date: String, band_names: util.List[String], sampleType: SampleType,
@@ -50,28 +51,33 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     val multiPolygon = multiPolygonFromPolygonExteriors(polygons)
     val multiPolygonCrs = crs
 
-    val dateTimes = new DefaultCatalogApi(endpoint).dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
-      accessToken, toQueryProperties(dataFilters = metadata_properties))
+    val dateTimes = authorized { accessToken =>
+      new DefaultCatalogApi(endpoint).dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
+        accessToken, toQueryProperties(dataFilters = metadata_properties))
+    }
 
     if (dateTimes.isEmpty) return null
 
     val batchProcessingApi = new BatchProcessingApi(endpoint)
-    val batchRequestId = batchProcessingApi.createBatchProcess(
-      dataset_id,
-      multiPolygon,
-      multiPolygonCrs,
-      dateTimes,
-      band_names.asScala,
-      sampleType,
-      additionalDataFilters = metadata_properties,
-      processing_options,
-      bucketName,
-      description = s"$dataset_id ${polygons.length} $from_date $to_date $band_names",
-      accessToken,
-      subfolder
-    ).id
 
-    batchProcessingApi.startBatchProcess(batchRequestId, accessToken)
+    val batchRequestId = authorized { accessToken =>
+      batchProcessingApi.createBatchProcess(
+        dataset_id,
+        multiPolygon,
+        multiPolygonCrs,
+        dateTimes,
+        band_names.asScala,
+        sampleType,
+        additionalDataFilters = metadata_properties,
+        processing_options,
+        bucketName,
+        description = s"$dataset_id ${polygons.length} $from_date $to_date $band_names",
+        accessToken,
+        subfolder
+      ).id
+    }
+
+    authorized { accessToken => batchProcessingApi.startBatchProcess(batchRequestId, accessToken) }
 
     batchRequestId
   }
@@ -122,11 +128,13 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     MultiPolygon(polygonExteriors)
   }
 
-  def get_batch_process_status(batch_request_id: String): String =
+  def get_batch_process_status(batch_request_id: String): String = authorized { accessToken =>
     new BatchProcessingApi(endpoint).getBatchProcess(batch_request_id, accessToken).status
+  }
 
-  def restart_partially_failed_batch_process(batch_request_id: String): Unit =
+  def restart_partially_failed_batch_process(batch_request_id: String): Unit = authorized { accessToken =>
     new BatchProcessingApi(endpoint).restartPartiallyFailedBatchProcess(batch_request_id, accessToken)
+  }
 
   def start_card4l_batch_processes(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
                                    from_date: String, to_date: String, band_names: util.List[String],
@@ -151,8 +159,10 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     val (from, to) = includeEndDay(from_date, to_date)
 
     // original features that overlap in space and time
-    val features = new DefaultCatalogApi(endpoint).searchCard4L(collection_id, multiPolygon, multiPolygonCrs, from, to,
-      accessToken, toQueryProperties(dataFilters = metadata_properties))
+    val features = authorized { accessToken =>
+      new DefaultCatalogApi(endpoint).searchCard4L(collection_id, multiPolygon, multiPolygonCrs, from, to,
+        accessToken, toQueryProperties(dataFilters = metadata_properties))
+    }
 
     // their intersections with input polygons (all should be in LatLng)
     val intersectionFeatures = features.mapValues(feature =>
@@ -165,22 +175,24 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     //  processes and starts them all
     val batchRequestIds =
       for ((id, Feature(intersection, datetime)) <- intersectionFeatures)
-        yield batchProcessingApi.createCard4LBatchProcess(
-          dataset_id,
-          bounds = intersection,
-          dateTime = datetime,
-          band_names.asScala,
-          dataTakeId(id),
-          card4lId = request_group_id,
-          dem_instance,
-          additionalDataFilters = metadata_properties,
-          bucketName,
-          subfolder,
-          accessToken
-        ).id
+        yield authorized { accessToken =>
+          batchProcessingApi.createCard4LBatchProcess(
+            dataset_id,
+            bounds = intersection,
+            dateTime = datetime,
+            band_names.asScala,
+            dataTakeId(id),
+            card4lId = request_group_id,
+            dem_instance,
+            additionalDataFilters = metadata_properties,
+            bucketName,
+            subfolder,
+            accessToken
+          ).id
+        }
 
     for (batchRequestId <- batchRequestIds) {
-      batchProcessingApi.startBatchProcess(batchRequestId, accessToken)
+      authorized { accessToken => batchProcessingApi.startBatchProcess(batchRequestId, accessToken) }
     }
 
     batchRequestIds.toIndexedSeq.asJava

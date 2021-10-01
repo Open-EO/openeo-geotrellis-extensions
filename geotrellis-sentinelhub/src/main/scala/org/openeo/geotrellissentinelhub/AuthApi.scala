@@ -30,6 +30,8 @@ class AuthApi {
       val getAuthToken = http("https://services.sentinel-hub.com/oauth/token")
         .postForm(params)
 
+      logger.debug(s"requesting new access token for client ID $clientId")
+
       val response = getAuthToken
         .asString
 

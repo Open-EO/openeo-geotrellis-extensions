@@ -53,7 +53,8 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
 
   private val maxZoom = 14
 
-  private def accessToken: String = AccessTokenCache.get(clientId, clientSecret)
+  private def authorized[R](fn: String => R): R =
+    org.openeo.geotrellissentinelhub.authorized[R](clientId, clientSecret)(fn)
 
   private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom,
                     bandNames: Seq[String], metadataProperties: util.Map[String, Any],
@@ -97,8 +98,10 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
 
         awaitRateLimitingGuardDelay(bandNames, width, height)
 
-        val tile = processApi.getTile(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs),
-          key.temporalKey, width, height, bandNames, sampleType, metadataProperties, processingOptions, accessToken)
+        val tile = authorized { accessToken =>
+          processApi.getTile(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs),
+            key.temporalKey, width, height, bandNames, sampleType, metadataProperties, processingOptions, accessToken)
+        }
 
         (key, tile)
       }
@@ -120,13 +123,14 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
     if (collectionId == null)
       sequentialDates(from)
         .takeWhile(date => !(date isAfter to))
-    else
+    else authorized { accessToken =>
       catalogApi
         .dateTimes(collectionId, boundingBox, from, atEndOfDay(to), accessToken,
           toQueryProperties(dataFilters = metadataProperties))
         .map(_.toLocalDate.atStartOfDay(UTC))
         .distinct // ProcessApi::getTile takes care of [day, day + 1] interval and mosaicking therein
         .sorted
+    }
   }
 
   def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, bandNames: Seq[String],
@@ -202,8 +206,10 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
           def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile = {
             awaitRateLimitingGuardDelay(bandNames, width, height)
 
-            processApi.getTile(datasetId, projectedExtent, key.temporalKey, width, height, bandNames,
-              sampleType, metadata_properties, processingOptions, accessToken)
+            authorized { accessToken =>
+              processApi.getTile(datasetId, projectedExtent, key.temporalKey, width, height, bandNames,
+                sampleType, metadata_properties, processingOptions, accessToken)
+            }
           }
 
           val keyExtent = key.spatialKey.extent(layout)

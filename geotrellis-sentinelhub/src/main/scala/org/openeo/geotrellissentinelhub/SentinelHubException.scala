@@ -16,9 +16,9 @@ object SentinelHubException {
          |request: ${request.method} $queryString with body: $requestBody""".stripMargin
     }
 
-    new SentinelHubException(message, statusCode, responseBody)
+    SentinelHubException(message, statusCode, responseBody)
   }
 }
 
-class SentinelHubException(message: String, val statusCode: Int, val responseBody: String)
+case class SentinelHubException(message: String, statusCode: Int, responseBody: String)
   extends RuntimeException(message)
