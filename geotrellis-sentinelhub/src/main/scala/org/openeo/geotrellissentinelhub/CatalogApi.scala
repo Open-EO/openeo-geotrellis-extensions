@@ -49,14 +49,14 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
 
   // TODO: search distinct dates (https://docs.sentinel-hub.com/api/latest/api/catalog/examples/#search-with-distinct)?
   def dateTimes(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
-                accessToken: String, queryProperties: collection.Map[String, String]): Seq[ZonedDateTime] =
-    withRetries(context = s"dateTimes $collectionId") {
-      val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
-      val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
+                accessToken: String, queryProperties: collection.Map[String, String]): Seq[ZonedDateTime] = {
+    val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
+    val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
 
-      val query = this.query(queryProperties)
+    val query = this.query(queryProperties)
 
-      def getFeatureCollectionPage(nextToken: Option[Int]): PagedFeatureCollection = {
+    def getFeatureCollectionPage(nextToken: Option[Int]): PagedFeatureCollection =
+      withRetries(context = s"dateTimes $collectionId nextToken $nextToken") {
         val requestBody =
           s"""
              |{
@@ -79,24 +79,24 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
 
         decode[PagedFeatureCollection](response.body)
           .valueOr(throw _)
+    }
+
+    def getDateTimes(nextToken: Option[Int]): Seq[ZonedDateTime] = {
+      val page = getFeatureCollectionPage(nextToken)
+
+      val dateTimes = for {
+        feature <- page.features.flatMap(_.asObject)
+        properties <- feature("properties").flatMap(_.asObject)
+        datetime <- properties("datetime").flatMap(_.asString)
+      } yield ZonedDateTime.parse(datetime, ISO_OFFSET_DATE_TIME)
+
+      page.context.next match {
+        case None => dateTimes
+        case nextToken => dateTimes ++ getDateTimes(nextToken)
       }
+    }
 
-      def getDateTimes(nextToken: Option[Int]): Seq[ZonedDateTime] = {
-        val page = getFeatureCollectionPage(nextToken)
-
-        val dateTimes = for {
-          feature <- page.features.flatMap(_.asObject)
-          properties <- feature("properties").flatMap(_.asObject)
-          datetime <- properties("datetime").flatMap(_.asString)
-        } yield ZonedDateTime.parse(datetime, ISO_OFFSET_DATE_TIME)
-
-        page.context.next match {
-          case None => dateTimes
-          case nextToken => dateTimes ++ getDateTimes(nextToken)
-        }
-      }
-
-      getDateTimes(nextToken = None)
+    getDateTimes(nextToken = None)
   }
 
   def searchCard4L(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
