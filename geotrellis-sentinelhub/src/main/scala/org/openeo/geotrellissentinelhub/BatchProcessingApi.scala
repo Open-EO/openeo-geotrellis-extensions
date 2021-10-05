@@ -131,7 +131,9 @@ class BatchProcessingApi(endpoint: String) {
             |    },
             |    "output": {
             |        "defaultTilePath": "$tilePath",
-            |        "cogOutput": true
+            |        "cogOutput": true,
+            |        "overwrite": true,
+            |        "skipExisting": false
             |    },
             |    "description": "$description"
             |}""".stripMargin
