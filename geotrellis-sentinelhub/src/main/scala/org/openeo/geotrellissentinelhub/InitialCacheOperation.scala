@@ -90,6 +90,11 @@ abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
     } {
       val link = collectingFolder.resolve(flatFileName)
       val target = cachedFile
+
+      if (!Files.exists(target)) {
+        throw new IllegalStateException(s"symlink target $target does not exist")
+      }
+
       Files.createSymbolicLink(link, target)
       logger.debug(s"symlinked cached file from the distant past: $link -> $target")
     }

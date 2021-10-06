@@ -18,7 +18,7 @@ object ElasticsearchCacheRepository {
   }
 
   case class Sentinel2L2aCacheEntry(tileId: String, date: ZonedDateTime, bandName: String,
-                                    override val geometry: Geometry, empty: Boolean = false) extends CacheEntry {
+                                    override val geometry: Geometry, empty: Boolean) extends CacheEntry {
     override def matchesExpected(tileId: String, date: ZonedDateTime, bandName: String): Boolean =
       this.tileId == tileId && this.date.isEqual(date) && this.bandName == bandName
 
@@ -26,7 +26,7 @@ object ElasticsearchCacheRepository {
       if (empty) None
       else {
         val cacheRoot = Paths.get("/data/projects/OpenEO/sentinel-hub-s2l2a-cache")
-        Some(cacheRoot.resolve(s"${BASIC_ISO_DATE format date}/$tileId/$bandName"))
+        Some(cacheRoot.resolve(s"${BASIC_ISO_DATE format date.toLocalDate}/$tileId/$bandName.tif"))
       }
     }
   }
@@ -59,7 +59,10 @@ object ElasticsearchCacheRepository {
   case class Sentinel1GrdCacheEntry(tileId: String, date: ZonedDateTime, bandName: String, backCoeff: String,
                                     orthorectify: Boolean, demInstance: String, override val geometry: Geometry,
                                     empty: Boolean) extends CacheEntry {
-    def filePath: Option[Path] = {
+    override def matchesExpected(tileId: String, date: ZonedDateTime, bandName: String): Boolean =
+      this.tileId == tileId && this.date.isEqual(date) && this.bandName == bandName
+
+    override val filePath: Option[Path] = {
       require(backCoeff != null, "backCoeff is null")
       require(demInstance != null, "demInstance is null")
 
@@ -70,12 +73,9 @@ object ElasticsearchCacheRepository {
 
         Some(cacheRoot
           .resolve(s"$backCoeff/$orthorectifyFlag/$demInstance")
-          .resolve(s"${BASIC_ISO_DATE format date}/$tileId/$bandName.tif"))
+          .resolve(s"${BASIC_ISO_DATE format date.toLocalDate}/$tileId/$bandName.tif"))
       }
     }
-
-    override def matchesExpected(tileId: String, date: ZonedDateTime, bandName: String): Boolean =
-      this.tileId == tileId && this.date.isEqual(date) && this.bandName == bandName
   }
 
   private implicit object Sentinel1CacheEntryHitReader extends HitReader[Sentinel1GrdCacheEntry] {

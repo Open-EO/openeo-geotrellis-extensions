@@ -81,6 +81,11 @@ class CachingService {
               val flatFileName = s"${BASIC_ISO_DATE format entry.date.toLocalDate}-$tileId-${cachedFile.getFileName}"
               val link = collectingDir.resolve(flatFileName)
               val target = cachedFile
+
+              if (!Files.exists(target)) {
+                throw new IllegalStateException(s"symlink target $target does not exist")
+              }
+
               Files.createSymbolicLink(link, target)
               logger.debug(s"symlinked cached file from the recent past: $link -> $target")
             } catch {
@@ -160,6 +165,11 @@ class CachingService {
               val flatFileName = s"${BASIC_ISO_DATE format entry.date.toLocalDate}-$tileId-${cachedFile.getFileName}"
               val link = collectingDir.resolve(flatFileName)
               val target = cachedFile
+
+              if (!Files.exists(target)) {
+                throw new IllegalStateException(s"symlink target $target does not exist")
+              }
+
               Files.createSymbolicLink(link, target)
               logger.debug(s"symlinked cached file from the recent past: $link -> $target")
             } catch {
@@ -209,6 +219,7 @@ class CachingService {
       key -> (tileId, date)
     }.toMap
 
+    // TODO: reduce code duplication with org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.Sentinel2L2aCacheEntry.filePath
     def subdirectory(date: String, tileId: String): Path = cacheDir.resolve(date).resolve(tileId)
 
     // create all subdirectories with a minimum of effort
@@ -255,7 +266,7 @@ class CachingService {
     }.toMap
 
     def subdirectory(date: String, tileId: String): Path = {
-      // TODO: reduce code duplication with org.openeo.geotrellissentinelhub.CacheRepository.Sentinel1CacheEntry#filePath
+      // TODO: reduce code duplication with org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.Sentinel1GrdCacheEntry.filePath
       val orthorectifyFlag = if (orthorectify) "orthorectified" else "non-orthorectified"
       cacheDir.resolve(backCoeff).resolve(orthorectifyFlag).resolve(demInstance).resolve(date).resolve(tileId)
     }
