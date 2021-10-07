@@ -111,7 +111,7 @@ class PyramidFactoryTest {
   def testLandsat8(): Unit = {
     val endpoint = "https://services-uswest2.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    testLayer(new PyramidFactory("landsat-ot-l1", "LOTL1", new DefaultCatalogApi(endpoint),
+    testLayer(new PyramidFactory("landsat-ot-l1", "landsat-ot-l1", new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10,10)), "landsat8", date, Seq("B10", "B11"))
   }
 
@@ -138,7 +138,7 @@ class PyramidFactoryTest {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     try
-      testLayer(new PyramidFactory("landsat-ot-l1", datasetId = "LOTL1", new DefaultCatalogApi(endpoint),
+      testLayer(new PyramidFactory("landsat-ot-l1", datasetId = "landsat-ot-l1", new DefaultCatalogApi(endpoint),
         new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10,10)), "unknown", date, Seq("UNKNOWN"))
     catch {
       case e: SparkException =>
@@ -152,7 +152,7 @@ class PyramidFactoryTest {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     try
-      testLayer(new PyramidFactory("landsat-ot-l1", datasetId = "LOTL1", new DefaultCatalogApi(endpoint),
+      testLayer(new PyramidFactory("landsat-ot-l1", datasetId = "landsat-ot-l1", new DefaultCatalogApi(endpoint),
         new DefaultProcessApi(endpoint), clientId, clientSecret = "???", maxSpatialResolution = CellSize(10,10)), "unknown", date, Seq("B10", "B11"))
     catch {
       case e: Exception =>
