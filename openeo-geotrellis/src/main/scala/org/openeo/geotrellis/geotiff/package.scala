@@ -7,12 +7,12 @@ import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.io.geotiff._
 import geotrellis.raster.io.geotiff.compression.{Compression, DeflateCompression}
 import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
-import geotrellis.raster.io.geotiff.writer.GeoTiffWriter
 import geotrellis.raster.render.IndexedColorMap
 import geotrellis.raster.resample.NearestNeighbor
 import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
+import geotrellis.store.s3._
 import geotrellis.util._
 import geotrellis.vector.{ProjectedExtent, _}
 import org.apache.spark.SparkContext
@@ -22,9 +22,18 @@ import org.apache.spark.util.AccumulatorV2
 import org.openeo.geotrellis
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.slf4j.LoggerFactory
+import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
+import software.amazon.awssdk.core.retry.RetryPolicy
+import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy
+import software.amazon.awssdk.core.retry.conditions.{OrRetryCondition, RetryCondition}
+import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.s3.S3Client
 import spire.syntax.cfor.cfor
 
+import java.net.URI
 import java.nio.file.Paths
+import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Collections, Map}
 import scala.collection.JavaConverters._
@@ -361,11 +370,9 @@ package object geotiff {
 
         println("Saving geotiff with Celltype: " + cellType)
 
-        val segmentCount = (bandSegmentCount * detectedBandCount).toInt
+        val segmentCount = bandSegmentCount * detectedBandCount
         val newPath = newFilePath(path, name)
         writeTiff(newPath, tiffs, gridBounds, extent.intersection(croppedExtent).get, preprocessedRdd.metadata.crs, tileLayout, compression, cellType, detectedBandCount, segmentCount)
-
-        newPath
       }.collect()
       .toList
   }
@@ -386,7 +393,7 @@ package object geotiff {
 
     val thegeotiff = new MultibandGeoTiff(tiffTile, croppedExtent, crs,formatOptions.tags,options,overviews = overviews.map(o=>MultibandGeoTiff(o,croppedExtent,crs,options = new GeoTiffOptions(subfileType = Some(ReducedImage)))))//.withOverviews(NearestNeighbor, List(4, 8, 16))
 
-    GeoTiffWriter.write(thegeotiff, path,true)
+    writeGeoTiff(thegeotiff, path)
   }
 
   private def toTiff(tiffs:collection.Map[Int, Array[Byte]] , gridBounds: GridBounds[Int], tileLayout: TileLayout, compression: DeflateCompression, cellType: CellType, detectedBandCount: Double, segmentCount: Int) = {
@@ -453,9 +460,10 @@ package object geotiff {
       resampled
     }
 
-    MultibandGeoTiff(adjusted, contextRDD.metadata.crs, GeoTiffOptions(compression))
+    val geoTiff = MultibandGeoTiff(adjusted, contextRDD.metadata.crs, GeoTiffOptions(compression))
       .withOverviews(NearestNeighbor, List(4, 8, 16))
-      .write(path)
+
+    writeGeoTiff(geoTiff, path)
   }
 
   def saveStitchedTileGrid(
@@ -492,8 +500,6 @@ package object geotiff {
         val filePath = newFilePath(path, name)
 
         stitchAndWriteToTiff(tiles, filePath, layout, crs, extent, croppedExtent, cropDimensions, compression)
-
-        filePath
       }.collect()
       .toList.asJava
   }
@@ -525,10 +531,10 @@ package object geotiff {
       resampled
     }
 
-
-    MultibandGeoTiff(adjusted, crs, GeoTiffOptions(compression))
+    val geotiff = MultibandGeoTiff(adjusted, crs, GeoTiffOptions(compression))
       .withOverviews(NearestNeighbor, List(4, 8, 16))
-      .write(filePath,optimizedOrder = true)
+
+    writeGeoTiff(geotiff, filePath)
   }
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
@@ -580,10 +586,49 @@ package object geotiff {
         val filename = s"openEO_${DateTimeFormatter.ISO_DATE.format(extent.time)}_${name}.tif"
         val filePath = Paths.get(path).resolve(filename).toString
         stitchAndWriteToTiff(tiles, filePath, layout, crs, extent.extent, croppedExtent, cropDimensions, compression)
-
-        filePath
       }.collect()
       .toList.asJava
+  }
+
+  private def writeGeoTiff(geoTiff: MultibandGeoTiff, path: String): String = {
+    if (System.getenv("SWIFT_URL") != null) {
+      val bucket = Option(System.getenv("SWIFT_BUCKET")).getOrElse("OpenEO-data")
+      val s3Uri = new AmazonS3URI(s"s3://$bucket$path")
+      geoTiff.write(s3Uri, getCreoS3Client())
+      s3Uri.toString
+    } else {
+      geoTiff.write(path, optimizedOrder = true)
+      path
+    }
+  }
+
+  private def getCreoS3Client(): S3Client = {
+    val retryCondition =
+      OrRetryCondition.create(
+        RetryCondition.defaultRetryCondition(),
+        RetryOnErrorCodeCondition.create("RequestTimeout")
+      )
+    val backoffStrategy =
+      FullJitterBackoffStrategy.builder()
+        .baseDelay(Duration.ofMillis(50))
+        .maxBackoffTime(Duration.ofMillis(15))
+        .build()
+    val retryPolicy =
+      RetryPolicy.defaultRetryPolicy()
+        .toBuilder()
+        .retryCondition(retryCondition)
+        .backoffStrategy(backoffStrategy)
+        .build()
+    val overrideConfig =
+      ClientOverrideConfiguration.builder()
+        .retryPolicy(retryPolicy)
+        .build()
+
+    val clientBuilder = S3Client.builder()
+      .overrideConfiguration(overrideConfig)
+      .region(Region.of("RegionOne"))
+
+    clientBuilder.endpointOverride(URI.create(System.getenv("SWIFT_URL"))).build()
   }
 
   case class ContextSeq[K, V, M](tiles: Iterable[(K, V)], metadata: LayoutDefinition) extends Seq[(K, V)] with Metadata[LayoutDefinition] {
