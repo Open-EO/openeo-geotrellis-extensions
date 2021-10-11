@@ -9,6 +9,10 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
+    <properties>
+        <geotrellis.version>3.5.2</geotrellis.version>
+    </properties>
+
     <artifactId>geotrellis-seeder</artifactId>
     <dependencies>
         <dependency>
