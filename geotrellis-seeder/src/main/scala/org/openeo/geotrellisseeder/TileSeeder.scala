@@ -524,6 +524,8 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       t.toArray().zipWithIndex.foreach {
         case (v, i) => if (maskValues.contains(v)) {
           array(i) = CLOUD_MILKINESS
+        }  else if (isNoData(v)) {
+          array(i) = 0
         }
       }
     }
