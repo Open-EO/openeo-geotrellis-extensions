@@ -5,7 +5,7 @@ import cats.syntax.either._
 import io.circe.Decoder
 import io.circe.generic.auto._
 import org.slf4j.{Logger, LoggerFactory}
-import scalaj.http.{Http, HttpOptions, HttpRequest}
+import scalaj.http.{Http, HttpConstants, HttpOptions, HttpRequest}
 
 import java.time.Duration
 
@@ -21,27 +21,27 @@ class AuthApi {
 
   def authenticate(clientId: String, clientSecret: String): AuthResponse =
     withRetries(context = s"authenticate $clientId") {
-      val params = Seq(
+      val safeParams = Seq(
         "grant_type" -> "client_credentials",
-        "client_id" -> clientId,
-        "client_secret" -> clientSecret
+        "client_id" -> clientId
       )
 
       val getAuthToken = http("https://services.sentinel-hub.com/oauth/token")
-        .postForm(params)
+        .postForm(safeParams :+ ("client_secret" -> clientSecret))
 
       logger.debug(s"requesting new access token for client ID $clientId")
 
       val response = getAuthToken
         .asString
 
-      if (response.isError) throw SentinelHubException(getAuthToken, params.toString(), response)
+      if (response.isError) throw SentinelHubException(getAuthToken,
+        HttpConstants.toQs(safeParams, getAuthToken.charset), response)
 
       implicit val decodeDuration: Decoder[Duration] = Decoder.decodeLong.map(Duration.ofSeconds)
 
       decode[AuthResponse](response.body)
         .valueOr(throw _)
-  }
+    }
 
   private def http(url: String): HttpRequest = Http(url).option(HttpOptions.followRedirects(true))
 }

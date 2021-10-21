@@ -20,5 +20,5 @@ object SentinelHubException {
   }
 }
 
-case class SentinelHubException(message: String, statusCode: Int, responseBody: String)
+case class SentinelHubException(private val message: String, statusCode: Int, responseBody: String)
   extends RuntimeException(message)

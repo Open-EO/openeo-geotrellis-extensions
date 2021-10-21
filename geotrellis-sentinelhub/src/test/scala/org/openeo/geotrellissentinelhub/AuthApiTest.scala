@@ -1,6 +1,6 @@
 package org.openeo.geotrellissentinelhub
 
-import org.junit.Assert.assertTrue
+import org.junit.Assert.{assertFalse, assertTrue, fail}
 import org.junit.Test
 import org.openeo.geotrellissentinelhub.AuthApi.AuthResponse
 
@@ -20,6 +20,15 @@ class AuthApiTest {
     assertTrue(duration.compareTo(Duration.ofMinutes(60)) <= 0)
   }
 
-  @Test(expected = classOf[SentinelHubException])
-  def authWithWrongClientSecret(): Unit = authApi.authenticate(clientId, clientSecret = "!!!")
+  @Test
+  def authWithWrongClientSecret(): Unit = {
+    val wrongClientSecret = "s3cr3t"
+
+    try {
+      authApi.authenticate(clientId, wrongClientSecret)
+      fail(s"should have thrown a ${classOf[SentinelHubException]}")
+    } catch {
+      case e: SentinelHubException => assertFalse("contains client secret", e.getMessage contains wrongClientSecret)
+    }
+  }
 }
