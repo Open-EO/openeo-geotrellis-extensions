@@ -329,6 +329,7 @@ class CachingService {
       .collect(toList[Path]).asScala
 
     val bandsGrouped = singleBandTiffs.groupBy { singleBandTiff =>
+      // TODO: this assumes the format of org.openeo.geotrellissentinelhub.AbstractInitialCacheOperation#flatFileName
       val Array(date, tileId, _) = singleBandTiff.getFileName.toString.split("-")
       (date, tileId)
     }.mapValues(bands => bands.sortBy { singleBandTiff =>

@@ -34,19 +34,15 @@ abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
   protected def normalize(processingOptions: collection.Map[String, Any]): collection.Map[String, Any]
   protected def queryCache(geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
                            bandNames: Seq[String], processingOptions: collection.Map[String, Any]): Iterable[C]
-  protected def relativize(absoluteFilePath: Path): Path
-
-  private def flatten(relativeFilePath: Path): String = {
-    def from(i: Int): Stream[String] = {
-      if (i >= relativeFilePath.getNameCount) Stream.empty
-      else relativeFilePath.getName(i).toString #:: from(i + 1)
-    }
-
-    from(0) mkString "-"
-  }
 
   protected def saveInitialBatchProcessContext(bandNames: Seq[String], processingOptions: collection.Map[String, Any],
                                                bucketName: String, subfolder: String): Unit
+
+  private def flatFileName(filePath: Path): String = {
+    val tileId = filePath.getParent.getFileName
+    val date = filePath.getParent.getParent.getFileName
+    s"$date-$tileId-${filePath.getFileName}"
+  }
 
   // TODO: better name
   protected def saveExtendedBatchProcessContext(bandNames: Seq[String], incompleteTiles: Seq[(String, Geometry)],
@@ -86,7 +82,7 @@ abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
     for {
       entry <- cacheEntries
       cachedFile <- entry.filePath
-      flatFileName = flatten(relativize(cachedFile))
+      flatFileName = this.flatFileName(cachedFile)
     } {
       val link = collectingFolder.resolve(flatFileName)
       val target = cachedFile
@@ -217,9 +213,6 @@ class Sentinel2L2AInitialCacheOperation(dataset_id: String) extends AbstractInit
       Some(upper), Some(missingBandNames))
     new S3BatchProcessContextRepository(bucketName).saveTo(extendedBatchProcessContext, subfolder)
   }
-
-  override protected def relativize(absoluteFilePath: Path): Path =
-    Paths.get("/data/projects/OpenEO/sentinel-hub-s2l2a-cache").relativize(absoluteFilePath)
 }
 
 object Sentinel1GrdInitialCacheOperation {
@@ -286,7 +279,4 @@ class Sentinel1GrdInitialCacheOperation(dataset_id: String) extends AbstractInit
 
     (backCoeff, orthorectify, demInstance)
   }
-
-  override protected def relativize(absoluteFilePath: Path): Path =
-    Paths.get("/data/projects/OpenEO/sentinel-hub-s1grd-cache").relativize(absoluteFilePath)
 }
