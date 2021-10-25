@@ -4,9 +4,10 @@ import geotrellis.raster.io.geotiff.SinglebandGeoTiff
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
 import geotrellis.vector.Geometry
 import org.apache.commons.io.FileUtils.deleteDirectory
-import org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.{Sentinel2L2aCacheEntry, Sentinel1GrdCacheEntry}
+import org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.{Sentinel1GrdCacheEntry, Sentinel2L2aCacheEntry}
 import org.slf4j.LoggerFactory
 
+import java.net.URI
 import java.nio.file.{FileAlreadyExistsException, Files, Path, Paths}
 import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
@@ -297,24 +298,35 @@ class CachingService {
     }
   }
 
+  // assembles single band tiles in collecting_folder to multiband tiles, uploads these to
+  // s3://$bucketName/assembled_xyz and returns "assembled_xyz"
+  @deprecated("call assemble_multiband_tiles instead")
   def upload_multiband_tiles(subfolder: String, collecting_folder: String, bucket_name: String): String = {
+    val assembledFolder = Paths.get(URI.create(assemble_multiband_tiles(subfolder, collecting_folder, bucket_name)))
+
+    try {
+      val prefix = new S3Service().uploadRecursively(assembledFolder, bucket_name)
+      logger.debug(s"uploaded $assembledFolder to s3://$bucket_name/$prefix")
+      prefix
+    } finally deleteDirectory(assembledFolder.toFile)
+  }
+
+  // assembles single band tiles in collecting_folder to multiband tiles, saves these to
+  // /tmp_epod/openeo_assembled/assembled_xyz and returns "file:///tmp_epod/openeo_assembled/assembled_xyz/"
+  def assemble_multiband_tiles(subfolder: String, collecting_folder: String, bucket_name: String): String = {
     val collectingFolder = Paths.get(collecting_folder)
     val assembledFolder = Files.createTempDirectory(Paths.get("/tmp_epod/openeo_assembled"), "assembled_")
 
     val s3BatchProcessContextRepository = new S3BatchProcessContextRepository(bucket_name)
 
-    try {
-      val bandNames = s3BatchProcessContextRepository.loadFrom(subfolder) match {
-        case context: Sentinel2L2aBatchProcessContext => context.bandNames
-        case context: Sentinel1GrdBatchProcessContext => context.bandNames
-      }
+    val bandNames = s3BatchProcessContextRepository.loadFrom(subfolder) match {
+      case context: Sentinel2L2aBatchProcessContext => context.bandNames
+      case context: Sentinel1GrdBatchProcessContext => context.bandNames
+    }
 
-      assembleMultibandTiles(collectingFolder, assembledFolder, bandNames)
+    assembleMultibandTiles(collectingFolder, assembledFolder, bandNames)
 
-      val prefix = new S3Service().uploadRecursively(assembledFolder, bucket_name)
-      logger.debug(s"uploaded $assembledFolder to s3://$bucket_name/$prefix")
-      prefix
-    } finally deleteDirectory(assembledFolder.toFile)
+    assembledFolder.toUri.toString
   }
 
   // = read single band tiles from collectingDir (flat) and write them as multiband tiles to assembleDir (flat)

@@ -353,6 +353,31 @@ class PyramidFactoryTest {
     }
   }
 
+  @Ignore
+  @Test
+  def assembledSentinelHubBatchProcessResultsFromDisk(): Unit = {
+    val boundingBox = ProjectedExtent(Extent(2.59003, 51.069, 2.8949, 51.2206), LatLng)
+    val crs = CRS.fromEpsgCode(32631)
+    val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(crs), crs)
+
+    val pyramidFactory = PyramidFactory.from_disk(
+      glob_pattern = "file:///tmp/assembled_1168491449486718719//*.tif",
+      date_regex = /* raw".+/(\d{4})(\d{2})(\d{2})-[A-Z0-9_]+\.tif".r.regex */ raw".+(\d{4})_?(\d{2})_?(\d{2}).*\.tif".r.regex,
+      interpret_as_cell_type = "float32ud0",
+      lat_lon = false
+    )
+
+    val srs = s"EPSG:${reprojectedBoundingBox.crs.epsgCode.get}"
+    val pyramid = pyramidFactory.datacube_seq(ProjectedPolygons(Array(reprojectedBoundingBox.extent.toPolygon()), srs),
+      from_date = null, to_date = null)
+
+    val (maxZoom, baseLayer) = pyramid.maxBy { case (zoom, _) => zoom }
+    assertEquals(0, maxZoom)
+    assertEquals(crs, baseLayer.metadata.crs)
+
+    saveLayerAsGeoTiff(pyramid, reprojectedBoundingBox, zoom = maxZoom)
+  }
+
   @Ignore("not a real test but trying to pass a custom S3 client to a GeoTiffRasterSource")
   @Test
   def anonymousInnerClass(): Unit = {

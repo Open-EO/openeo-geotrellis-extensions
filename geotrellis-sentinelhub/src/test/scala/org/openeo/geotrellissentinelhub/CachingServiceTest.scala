@@ -29,4 +29,19 @@ class CachingServiceTest {
 
     println(s"check out results at s3://$bucketName/$assembledFolder")
   }
+
+  @Test
+  def assemble_multiband_tiles(): Unit = {
+    val bucketName = "openeo-sentinelhub"
+    val subfolder = "dummy"
+    val collectingFolder = "/home/bossie/Documents/VITO/EP-4019: improve OpenEO batch job tracking/openeo_collecting/a747c8c4-b289-4c7e-9512-0f883529975e"
+
+    val assembledFolder = cachingService.assemble_multiband_tiles(
+      subfolder,
+      collectingFolder,
+      bucketName
+    )
+
+    println(assembledFolder)
+  }
 }

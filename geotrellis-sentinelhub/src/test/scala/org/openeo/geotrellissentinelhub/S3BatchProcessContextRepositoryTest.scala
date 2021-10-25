@@ -9,18 +9,18 @@ class S3BatchProcessContextRepositoryTest {
   @Ignore
   @Test
   def saveTo(): Unit = {
-    val s2BatchProcessContext = Sentinel2L2aBatchProcessContext(Seq("DUMMY"), None, None, None, None)
+    val s2BatchProcessContext = Sentinel2L2aBatchProcessContext(Seq("B04", "B03", "B02"), None, None, None, None)
     s3BatchProcessContextRepository.saveTo(s2BatchProcessContext, subfolder = "dummy")
   }
 
   @Ignore
   @Test
   def loadFrom(): Unit = {
-    val s2BatchProcessContext = s3BatchProcessContextRepository.loadFrom("dummy")
+    val s2BatchProcessContext = s3BatchProcessContextRepository.loadFrom(subfolder = "dummy")
       .asInstanceOf[Sentinel2L2aBatchProcessContext]
 
     println(s2BatchProcessContext)
 
-    assertEquals(Seq("DUMMY"), s2BatchProcessContext.bandNames)
+    assertEquals(Seq("B04", "B03", "B02"), s2BatchProcessContext.bandNames)
   }
 }
