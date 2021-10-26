@@ -302,7 +302,9 @@ class CachingService {
   // s3://$bucketName/assembled_xyz and returns "assembled_xyz"
   @deprecated("call assemble_multiband_tiles instead")
   def upload_multiband_tiles(subfolder: String, collecting_folder: String, bucket_name: String): String = {
-    val assembledFolder = Paths.get(URI.create(assemble_multiband_tiles(subfolder, collecting_folder, bucket_name)))
+    val assembledFolder = Files.createTempDirectory(Paths.get("/tmp_epod/openeo_assembled"), "assembled_")
+
+    assemble_multiband_tiles(collecting_folder, assembledFolder.toString, bucket_name, subfolder)
 
     try {
       val prefix = new S3Service().uploadRecursively(assembledFolder, bucket_name)
@@ -313,9 +315,10 @@ class CachingService {
 
   // assembles single band tiles in collecting_folder to multiband tiles, saves these to
   // /tmp_epod/openeo_assembled/assembled_xyz and returns "file:///tmp_epod/openeo_assembled/assembled_xyz/"
-  def assemble_multiband_tiles(subfolder: String, collecting_folder: String, bucket_name: String): String = {
+  def assemble_multiband_tiles(collecting_folder: String, assembled_folder: String, bucket_name: String,
+                               subfolder: String): String = {
     val collectingFolder = Paths.get(collecting_folder)
-    val assembledFolder = Files.createTempDirectory(Paths.get("/tmp_epod/openeo_assembled"), "assembled_")
+    val assembledFolder = Paths.get(assembled_folder)
 
     val s3BatchProcessContextRepository = new S3BatchProcessContextRepository(bucket_name)
 
