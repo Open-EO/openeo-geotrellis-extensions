@@ -83,7 +83,7 @@ class BatchProcessingApi(endpoint: String) {
         .map(date => s"_${BASIC_ISO_DATE format date}")
 
       val responses = this.responses(identifiers)
-      val evalScript = this.evalScript(bandNames, identifiers, sampleType)
+      val evalScript = this.evalScript(datasetId, bandNames, identifiers, sampleType)
 
       val dataFilter: util.Map[String, Any] = {
         val baseDataFilters: Map[String, Any] = Map(
@@ -121,7 +121,7 @@ class BatchProcessingApi(endpoint: String) {
             |            ]
             |        },
             |        "output": {
-            |            "responses": [${responses mkString ","}]
+            |            "responses": [${responses mkString ", "}]
             |        },
             |        "evalscript": ${evalScript.asJson}
             |    },
@@ -152,7 +152,8 @@ class BatchProcessingApi(endpoint: String) {
         .valueOr(throw _)
   }
 
-  private def evalScript(bandNames: Seq[String], identifiers: Seq[String], sampleType: SampleType): String = {
+  private def evalScript(datasetId: String, bandNames: Seq[String], identifiers: Seq[String],
+                         sampleType: SampleType): String = {
     val outputs = identifiers map { identifier =>
       s"""|{
           |    id: "$identifier",
@@ -167,15 +168,18 @@ class BatchProcessingApi(endpoint: String) {
 
     val quotedBandNames = bandNames.map(bandName => s""""$bandName"""")
 
-    val bandValues = bandNames.map(bandName => s"samples[sampleIndex].$bandName")
+    def bandValue(bandName: String): String =
+      dnScaleFactor(datasetId, bandName)
+        .map(value => s"samples[sampleIndex].$bandName * $value").getOrElse(s"samples[sampleIndex].$bandName")
+
+    val bandValues = bandNames.map(bandValue)
     val noDataValues = bandNames.map(_ => "0")
 
     s"""|//VERSION=3
         |function setup() {
         |    return {
         |        input: [{
-        |          "bands": [${quotedBandNames mkString ","}],
-        |          "units": "DN"
+        |          "bands": [${quotedBandNames mkString ", "}]
         |        }],
         |        output: [${outputs mkString ",\n"}],
         |        mosaicking: "ORBIT"
@@ -189,7 +193,7 @@ class BatchProcessingApi(endpoint: String) {
         |}
         |
         |function bandValues(samples, sampleIndex) {
-        |    return sampleIndex < samples.length ? [${bandValues mkString ","}] : [${noDataValues mkString ","}]
+        |    return sampleIndex < samples.length ? [${bandValues mkString ", "}] : [${noDataValues mkString ", "}]
         |}
         |""".stripMargin
   }

@@ -49,24 +49,28 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
         .asJava
     }
 
-    val evalscript = s"""//VERSION=3
-      function setup() {
-        return {
-          input: [{
-            "bands": [${bandNames.map(bandName => s""""$bandName"""") mkString ", "}],
-            "units": "DN"
-          }],
-          output: {
-            bands: ${bandNames.size},
-            sampleType: "$sampleType",
-          }
-        };
-      }
+    val evalscript = {
+      def bandValue(bandName: String): String =
+        dnScaleFactor(datasetId, bandName)
+          .map(value => s"sample.$bandName * $value").getOrElse(s"sample.$bandName")
 
-      function evaluatePixel(sample) {
-        return [${bandNames.map(bandName => s"sample.$bandName") mkString ", "}];
-      }
-    """
+      s"""//VERSION=3
+         |function setup() {
+         |  return {
+         |    input: [{
+         |      "bands": [${bandNames.map(bandName => s""""$bandName"""") mkString ", "}]
+         |    }],
+         |    output: {
+         |      bands: ${bandNames.size},
+         |      sampleType: "$sampleType",
+         |    }
+         |  };
+         |}
+         |
+         |function evaluatePixel(sample) {
+         |  return [${bandNames.map(bandValue) mkString ", "}];
+         |}""".stripMargin
+    }
 
     val objectMapper = new ObjectMapper
 

@@ -125,4 +125,17 @@ package object geotrellissentinelhub {
         .map(obj => ObjectIdentifier.builder().key(obj.key()).build())
     }
   }
+
+  // to compensate for the removal of "units": "DN"
+  private[geotrellissentinelhub] def dnScaleFactor(datasetId: String, bandName: String): Option[Int] =
+    if (Set("sentinel-2-l2a", "S2L2A") contains datasetId) {
+      if (Set("B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B09", "B11", "B12") contains bandName)
+        Some(10000)
+      else if (bandName == "AOT")
+        Some(1000)
+      else None
+    } else if (Set("sentinel-2-l1c", "S2L1C").contains(datasetId) &&
+      Set("B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B09", "B10", "B11", "B12") .contains(bandName))
+      Some(10000)
+    else None
 }
