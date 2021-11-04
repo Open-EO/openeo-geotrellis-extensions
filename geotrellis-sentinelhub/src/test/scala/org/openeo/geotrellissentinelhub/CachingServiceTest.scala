@@ -39,13 +39,13 @@ class CachingServiceTest {
     val bucketName = "openeo-sentinelhub"
     val subfolder = "dummy"
 
-    val assembledUri = cachingService.assemble_multiband_tiles(
+    cachingService.assemble_multiband_tiles(
       collectingFolder,
       assembledFolder.toString,
       bucketName,
       subfolder
     )
 
-    println(assembledUri)
+    println(assembledFolder.toUri)
   }
 }

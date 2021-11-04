@@ -299,7 +299,7 @@ class CachingService {
   }
 
   // assembles single band tiles in collecting_folder to multiband tiles, uploads these to
-  // s3://$bucketName/assembled_xyz and returns "assembled_xyz"
+  // s3://$bucket_name/assembled_xyz and returns "assembled_xyz"
   @deprecated("call assemble_multiband_tiles instead")
   def upload_multiband_tiles(subfolder: String, collecting_folder: String, bucket_name: String): String = {
     val assembledFolder = Files.createTempDirectory(Paths.get("/tmp_epod/openeo_assembled"), "assembled_")
@@ -313,10 +313,9 @@ class CachingService {
     } finally deleteDirectory(assembledFolder.toFile)
   }
 
-  // assembles single band tiles in collecting_folder to multiband tiles, saves these to
-  // /tmp_epod/openeo_assembled/assembled_xyz and returns "file:///tmp_epod/openeo_assembled/assembled_xyz/"
+  // assembles single band tiles in collecting_folder to multiband tiles and saves these to disk in assembled_folder
   def assemble_multiband_tiles(collecting_folder: String, assembled_folder: String, bucket_name: String,
-                               subfolder: String): String = {
+                               subfolder: String): Unit = {
     val collectingFolder = Paths.get(collecting_folder)
     val assembledFolder = Paths.get(assembled_folder)
 
@@ -328,8 +327,6 @@ class CachingService {
     }
 
     assembleMultibandTiles(collectingFolder, assembledFolder, bandNames)
-
-    assembledFolder.toUri.toString
   }
 
   // = read single band tiles from collectingDir (flat) and write them as multiband tiles to assembleDir (flat)
