@@ -5,6 +5,7 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter.{ISO_LOCAL_DATE, ISO_OFFSET_DATE_TIME}
 import java.time.{LocalDate, ZonedDateTime}
+import java.util
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster._
@@ -64,6 +65,31 @@ class PyramidFactoryTest {
 
     singleBandGeoTiffFromDisk(
       globPattern = "file:/data/MTDA/CGS_S2/CGS_S2_FAPAR/2019/04/2[34567]/*/*/10M/*_FAPAR_10M_V102.tif", from, to)
+  }
+
+  @Test
+  def multibandGeoTiffFromDiskForSingleFixedDate(): Unit = {
+    val singlePath = "file:/data/projects/OpenEO/076f3bb3-c6fc-4b8d-9c0f-370176c2b0cf/openEO_2019-09-22Z.tif"
+    val singleDate = LocalDate.of(2019, 9, 22).atStartOfDay(UTC)
+
+    val pyramidFactory = PyramidFactory.from_disk(
+      timestamped_paths = util.Collections.singletonMap(singlePath, singleDate)
+    )
+
+    val pyramid = pyramidFactory.pyramid_seq(bbox = null, bbox_srs = null, from_date = null, to_date = null)
+
+    val (maxZoom, baseLayer) = pyramid.maxBy { case (zoom, _) => zoom }
+    assertEquals(14, maxZoom)
+
+    baseLayer.cache()
+
+    assertFalse("base layer contains no tiles!", baseLayer.isEmpty())
+
+    val uniqueTimestamps = baseLayer.keys
+      .map(_.time)
+      .distinct().collect()
+
+    assertArrayEquals(Array[Object](singleDate), uniqueTimestamps.asInstanceOf[Array[Object]])
   }
 
   private def singleBandGeoTiffFromDisk(globPattern: String, from: ZonedDateTime, to: ZonedDateTime): Unit = {
