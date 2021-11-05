@@ -33,7 +33,7 @@ import spire.syntax.cfor.cfor
 
 import java.net.URI
 import java.nio.file.Paths
-import java.time.Duration
+import java.time.{Duration, Instant}
 import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Collections, Map}
 import scala.collection.JavaConverters._
@@ -91,7 +91,7 @@ package object geotiff {
    * @param zLevel
    * @param cropBounds
    */
-  def saveRDDTemporal(rdd:MultibandTileLayerRDD[SpaceTimeKey], path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent], formatOptions:GTiffOptions = new GTiffOptions):java.util.List[String] = {
+  def saveRDDTemporal(rdd:MultibandTileLayerRDD[SpaceTimeKey], path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent], formatOptions:GTiffOptions = new GTiffOptions): java.util.List[(Instant, String)] = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
@@ -109,14 +109,14 @@ package object geotiff {
     val compression = Deflate(zLevel)
     val bandSegmentCount = totalCols * totalRows
 
-    preprocessedRdd.map { case (key: SpaceTimeKey, multibandTile: MultibandTile) => {
+    preprocessedRdd.map { case (key: SpaceTimeKey, multibandTile: MultibandTile) =>
       var bandIndex = -1
       //Warning: for deflate compression, the segmentcount and index is not really used, making it stateless.
       //Not sure how this works out for other types of compression!!!
 
       val theCompressor = compression.createCompressor(multibandTile.bandCount)
       (key, multibandTile.bands.map {
-        tile => {
+        tile =>
           bandIndex += 1
           val layoutCol = key.getComponent[SpatialKey]._1 - minKey._1
           val layoutRow = key.getComponent[SpatialKey]._2 - minKey._2
@@ -126,23 +126,22 @@ package object geotiff {
           val bytes = raster.CroppedTile(tile, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
           val compressedBytes = theCompressor.compress(bytes, 0)
           (index, (multibandTile.cellType, compressedBytes))
-        }
-
       })
-    }
     }.map(tuple => {
       val filename = s"openEO_${DateTimeFormatter.ISO_DATE.format(tuple._1.time)}.tif"
-      (filename,tuple._2)
-    }).groupByKey().map((tuple: (String, Iterable[Vector[(Int, (CellType, Array[Byte]))]])) => {
+      val timestamp = tuple._1.time.toInstant
+      ((filename, timestamp), tuple._2)
+    }).groupByKey().map((tuple: ((String, Instant), Iterable[Vector[(Int, (CellType, Array[Byte]))]])) => {
       val detectedBandCount = tuple._2.map(_.size).max
       val segments: Iterable[(Int, (CellType, Array[Byte]))] = tuple._2.flatten
       val cellTypes = segments.map(_._2._1).toSet
       val tiffs: Predef.Map[Int, Array[Byte]] = segments.map(tuple => (tuple._1, tuple._2._2)).toMap
 
       val segmentCount = (bandSegmentCount*detectedBandCount)
-      val thePath = Paths.get(path).resolve(tuple._1).toString
+      val thePath = Paths.get(path).resolve(tuple._1._1).toString
       writeTiff( thePath  ,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, tileLayout, compression, cellTypes.head, detectedBandCount, segmentCount,formatOptions)
-      thePath
+      val timestamp = tuple._1._2
+      (timestamp, thePath)
     }).collect().toList.asJava
 
   }

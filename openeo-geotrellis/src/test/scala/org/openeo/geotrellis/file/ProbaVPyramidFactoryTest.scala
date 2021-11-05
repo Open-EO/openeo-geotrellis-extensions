@@ -102,12 +102,13 @@ class ProbaVPyramidFactoryTest {
       Assert.assertTrue(baseLayer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
       println(s"got ${baseLayer.count()} tiles")
       val cropBounds = boundingBox.reproject(baseLayer.metadata.crs)
-      val files = org.openeo.geotrellis.geotiff.saveRDDTemporal(baseLayer,"./",cropBounds = Some(cropBounds))
-      Assert.assertEquals(1,files.size())
-      val tiff = GeoTiffReader.readMultiband(files.get(0))
+      val timestampedFiles = org.openeo.geotrellis.geotiff.saveRDDTemporal(baseLayer,"./",cropBounds = Some(cropBounds))
+      Assert.assertEquals(1, timestampedFiles.size())
+      val (timestamp, fileName) = timestampedFiles.get(0)
+      Assert.assertEquals(8, timestamp.atOffset(ZoneOffset.UTC).getMonthValue)
+      val tiff = GeoTiffReader.readMultiband(fileName)
       Assert.assertEquals(LatLng,tiff.crs)
       Assert.assertEquals(6,tiff.bandCount)
-
     } finally {
       sc.stop()
     }
