@@ -122,10 +122,15 @@ class TileGridTest {
 
     val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
 
-    val paths = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6))
-    val expectedPaths = List("/tmp/openEO_2020-04-05Z_31UDS_3_4.tif", "/tmp/openEO_2020-04-05Z_31UDS_2_4.tif", "/tmp/openEO_2020-04-05Z_31UDS_3_5.tif", "/tmp/openEO_2020-04-05Z_31UDS_2_5.tif")
+    val timedStampedPaths = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6))
+    val expectedTimestampedPaths = List(
+      (date.toInstant, "/tmp/openEO_2020-04-05Z_31UDS_3_4.tif"),
+      (date.toInstant, "/tmp/openEO_2020-04-05Z_31UDS_2_4.tif"),
+      (date.toInstant, "/tmp/openEO_2020-04-05Z_31UDS_3_5.tif"),
+      (date.toInstant, "/tmp/openEO_2020-04-05Z_31UDS_2_5.tif")
+    )
 
-    Assert.assertEquals(paths.groupBy(identity), expectedPaths.groupBy(identity))
+    Assert.assertEquals(timedStampedPaths.groupBy(identity), expectedTimestampedPaths.groupBy(identity))
 
   }
 
