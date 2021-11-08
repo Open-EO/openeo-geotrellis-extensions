@@ -419,7 +419,7 @@ class OpenEOProcesses extends Serializable {
   }
 
   def remove_overlap(datacube: MultibandTileLayerRDD[SpaceTimeKey], sizeX:Int, sizeY:Int, overlapX:Int, overlapY:Int): MultibandTileLayerRDD[SpaceTimeKey] = {
-    datacube.withContext(_.mapValues(_.crop(overlapX,overlapY,overlapX+sizeX-1,overlapY+sizeY-1).mapBands{ (index,tile) => tile.toArrayTile()}))
+    datacube.withContext(_.mapValues(_.crop(overlapX,overlapY,overlapX+sizeX-1,overlapY+sizeY-1,Options(clamp=false)).mapBands{ (index,tile) => tile.toArrayTile()}))
   }
 
 

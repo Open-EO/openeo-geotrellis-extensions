@@ -251,6 +251,8 @@ package object geotiff {
     val totalCols = maxKey.col - minKey.col + 1
     val totalRows = maxKey.row - minKey.row + 1
 
+    val cols = tileLayout.tileCols
+    val rows = tileLayout.tileRows
 
     val bandSegmentCount = totalCols * totalRows
 
@@ -274,8 +276,15 @@ package object geotiff {
           val layoutRow = key.getComponent[SpatialKey]._2 - minKey._2
           val bandSegmentOffset = bandSegmentCount * bandIndex
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
+
+          val bytes =
+          if(cols != tile.cols || rows != tile.rows) {
+            logger.error(s"Incorrect tile size in geotiff: ${tile.cols}x${tile.rows} " )
+            tile.crop(cols,rows,Options(clamp = false, force = true)).toBytes()
+          }else{
+            tile.toBytes()
+          }
           //tiff format seems to require that we provide 'full' tiles
-          val bytes = tile.toBytes()
           val compressedBytes = theCompressor.compress(bytes, 0)
           (index, compressedBytes)
         }
