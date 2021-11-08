@@ -68,9 +68,9 @@ class PyramidFactoryTest {
   }
 
   @Test
-  def multibandGeoTiffFromDiskForSingleFixedDate(): Unit = {
-    val singlePath = "file:/data/projects/OpenEO/076f3bb3-c6fc-4b8d-9c0f-370176c2b0cf/openEO_2019-09-22Z.tif"
-    val singleDate = LocalDate.of(2019, 9, 22).atStartOfDay(UTC)
+  def singleBandGeoTiffFromDiskForSingleFixedDate(): Unit = {
+    val singlePath = "file:/data/MTDA/CGS_S2/CGS_S2_FAPAR/2019/04/24/S2B_20190424T143759Z_19HCC_CGS_V102_000/S2B_20190424T143759Z_19HCC_FAPAR_V102/10M/S2B_20190424T143759Z_19HCC_FAPAR_10M_V102.tif"
+    val singleDate = LocalDate.of(2019, 4, 24).atStartOfDay(UTC)
 
     val pyramidFactory = PyramidFactory.from_disk(
       timestamped_paths = util.Collections.singletonMap(singlePath, singleDate)
