@@ -49,14 +49,21 @@ object PyramidFactory {
           deriveDate(date_regex.r)(path.toString)))
     }, deriveDate(date_regex.r), lat_lon)
 
-  def from_disk(timestamped_paths: util.Map[String, ZonedDateTime]): PyramidFactory =
-    new PyramidFactory({
-      val timestampedRasterSources = timestamped_paths.asScala
-        .map { case (path, timestamp) => GeoTiffRasterSource(path) -> timestamp }
-        .toSeq
+  def from_disk(timestamped_paths: util.Map[String, String]): PyramidFactory = {
+    val sc = SparkContext.getOrCreate()
 
-      timestampedRasterSources
-    }, timestamped_paths.get, latLng = false)
+    val timestampedPaths = timestamped_paths.asScala
+      .mapValues { timestamp => ZonedDateTime.parse(timestamp) }
+      .toMap
+
+    val broadcastedTimestampedPaths = sc.broadcast(timestampedPaths)
+
+    new PyramidFactory(
+      rasterSources = timestampedPaths
+        .map { case (path, timestamp) => GeoTiffRasterSource(path) -> timestamp }
+        .toSeq,
+      extractDateFromPath = broadcastedTimestampedPaths.value, latLng = false)
+  }
 
   def from_s3(s3_uri: String, key_regex: String, date_regex: String, recursive: Boolean,
               interpret_as_cell_type: String): PyramidFactory =
@@ -87,7 +94,7 @@ object PyramidFactory {
         .map(uri =>
           (GeoTiffRasterSource(uri.toString, parseTargetCellType(interpret_as_cell_type)),
             deriveDate(date_regex.r)(uri.getKey))
-        ).toSeq
+        )
     }, deriveDate(date_regex.r), lat_lon)
 
   private def deriveDate(date: Regex)(path: String): ZonedDateTime = {

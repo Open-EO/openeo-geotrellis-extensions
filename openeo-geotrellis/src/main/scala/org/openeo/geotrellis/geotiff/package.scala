@@ -33,7 +33,7 @@ import spire.syntax.cfor.cfor
 
 import java.net.URI
 import java.nio.file.Paths
-import java.time.{Duration, Instant}
+import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Collections, Map}
 import scala.collection.JavaConverters._
@@ -91,7 +91,7 @@ package object geotiff {
    * @param zLevel
    * @param cropBounds
    */
-  def saveRDDTemporal(rdd:MultibandTileLayerRDD[SpaceTimeKey], path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent], formatOptions:GTiffOptions = new GTiffOptions): java.util.List[(Instant, String)] = {
+  def saveRDDTemporal(rdd:MultibandTileLayerRDD[SpaceTimeKey], path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent], formatOptions:GTiffOptions = new GTiffOptions): java.util.List[(String, String)] = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
@@ -129,9 +129,9 @@ package object geotiff {
       })
     }.map(tuple => {
       val filename = s"openEO_${DateTimeFormatter.ISO_DATE.format(tuple._1.time)}.tif"
-      val timestamp = tuple._1.time.toInstant
+      val timestamp = tuple._1.time format DateTimeFormatter.ISO_ZONED_DATE_TIME
       ((filename, timestamp), tuple._2)
-    }).groupByKey().map((tuple: ((String, Instant), Iterable[Vector[(Int, (CellType, Array[Byte]))]])) => {
+    }).groupByKey().map((tuple: ((String, String), Iterable[Vector[(Int, (CellType, Array[Byte]))]])) => {
       val detectedBandCount = tuple._2.map(_.size).max
       val segments: Iterable[(Int, (CellType, Array[Byte]))] = tuple._2.flatten
       val cellTypes = segments.map(_._2._1).toSet
@@ -140,8 +140,8 @@ package object geotiff {
       val segmentCount = (bandSegmentCount*detectedBandCount)
       val thePath = Paths.get(path).resolve(tuple._1._1).toString
       writeTiff( thePath  ,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, tileLayout, compression, cellTypes.head, detectedBandCount, segmentCount,formatOptions)
-      val timestamp = tuple._1._2
-      (timestamp, thePath)
+      val (_, timestamp) = tuple._1
+      (thePath, timestamp)
     }).collect().toList.asJava
 
   }
@@ -540,7 +540,7 @@ package object geotiff {
                                    path: String,
                   polygons:ProjectedPolygons,
                   sampleNames: ArrayList[String],
-                                   compression: Compression): java.util.List[(Instant, String)] = {
+                                   compression: Compression): java.util.List[(String, String)] = {
     val features = sampleNames.asScala.toList.zip(polygons.polygons.map(_.extent))
     groupByFeatureAndWriteToTiff(rdd, Option.empty, features,path, Option.empty,compression)
 
@@ -549,7 +549,7 @@ package object geotiff {
   def saveStitchedTileGridTemporal( rdd:MultibandTileLayerRDD[SpaceTimeKey],
                                     path:String,
                                     tileGrid: String,
-                                    compression: Compression) : java.util.List[(Instant, String)] =
+                                    compression: Compression) : java.util.List[(String, String)] =
     geotrellis.geotiff.saveStitchedTileGridTemporal(rdd,path,tileGrid, Option.empty, Option.empty, compression)
 
   def saveStitchedTileGridTemporal(
@@ -558,13 +558,13 @@ package object geotiff {
                             tileGrid: String,
                             cropBounds: Option[Map[String, Double]],
                             cropDimensions: Option[ArrayList[Int]],
-                            compression: Compression): java.util.List[(Instant, String)] = {
+                            compression: Compression): java.util.List[(String, String)] = {
     val features = TileGrid.computeFeaturesForTileGrid(tileGrid, ProjectedExtent(rdd.metadata.extent, rdd.metadata.crs))
     groupByFeatureAndWriteToTiff(rdd, cropBounds, features,path,cropDimensions, compression)
   }
 
   private def groupByFeatureAndWriteToTiff(rdd: MultibandTileLayerRDD[SpaceTimeKey], cropBounds: Option[java.util.Map[String, Double]], features: List[(String, Extent)],path:String,cropDimensions: Option[ArrayList[Int]],
-                                           compression: Compression): java.util.List[(Instant, String)] = {
+                                           compression: Compression): java.util.List[(String, String)] = {
     val featuresBC: Broadcast[List[(String, Extent)]] = SparkContext.getOrCreate().broadcast(features)
 
     val croppedExtent = cropBounds.map(toExtent)
@@ -584,9 +584,9 @@ package object geotiff {
 
         val filename = s"openEO_${DateTimeFormatter.ISO_DATE.format(extent.time)}_${name}.tif"
         val filePath = Paths.get(path).resolve(filename).toString
-        val timestamp = extent.time.toInstant
-        (timestamp,
-          stitchAndWriteToTiff(tiles, filePath, layout, crs, extent.extent, croppedExtent, cropDimensions, compression))
+        val timestamp = extent.time format DateTimeFormatter.ISO_ZONED_DATE_TIME
+        (stitchAndWriteToTiff(tiles, filePath, layout, crs, extent.extent, croppedExtent, cropDimensions, compression),
+          timestamp)
       }.collect()
       .toList.asJava
   }

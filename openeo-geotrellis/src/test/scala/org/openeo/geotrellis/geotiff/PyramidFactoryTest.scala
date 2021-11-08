@@ -73,7 +73,7 @@ class PyramidFactoryTest {
     val singleDate = LocalDate.of(2019, 4, 24).atStartOfDay(UTC)
 
     val pyramidFactory = PyramidFactory.from_disk(
-      timestamped_paths = util.Collections.singletonMap(singlePath, singleDate)
+      timestamped_paths = util.Collections.singletonMap(singlePath, singleDate format ISO_OFFSET_DATE_TIME)
     )
 
     val pyramid = pyramidFactory.pyramid_seq(bbox = null, bbox_srs = null, from_date = null, to_date = null)
