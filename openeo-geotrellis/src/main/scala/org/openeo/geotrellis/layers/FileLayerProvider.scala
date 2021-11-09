@@ -239,9 +239,17 @@ object FileLayerProvider {
 
   def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon], polygons_crs: CRS, sc: SparkContext, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = Option.empty) = {
     // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
-    val requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map {
+    var requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map {
       _.reproject(polygons_crs, metadata.crs)
     }.clipToGrid(metadata.layout).groupByKey()
+
+    if(datacubeParams.exists(_.maskingCube.isDefined)) {
+      val maskObject =  datacubeParams.get.maskingCube.get
+      if(maskObject.isInstanceOf[MultibandTileLayerRDD[SpatialKey]]) {
+        val maskSpatialKeys = maskObject.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].filter(_._2.band(0).toArray().exists(pixel => pixel==0)).distinct()
+        requiredSpatialKeys = requiredSpatialKeys.join(maskSpatialKeys).map(tuple => (tuple._1,tuple._2._1))
+      }
+    }
 
     // Remove all source files that do not intersect with the 'interior' of the requested extent.
     // Note: A normal intersect would also include sources that exactly border the requested extent.

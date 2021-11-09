@@ -9,7 +9,7 @@ class DataCubeParameters {
   var layoutScheme: String = "ZoomedLayoutScheme"
   var partitionerTemporalResolution: String = "ByDay"
   var partitionerIndexReduction: Int = 8
-
+  var maskingCube: Option[Object] = Option.empty
 
   override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction)"
 
@@ -17,5 +17,9 @@ class DataCubeParameters {
   def setPartitionerTemporalResolution(res:String): Unit = partitionerTemporalResolution = res
   def setLayoutScheme(scheme:String): Unit = layoutScheme = scheme
   def setTileSize(size:Int): Unit = tileSize = size
+
+  def setMaskingCube(aMaskingCube: Object): Unit = {
+    maskingCube = Some(aMaskingCube)
+  }
 
 }
