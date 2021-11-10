@@ -1,13 +1,6 @@
 package org.openeo.geotrellis.netcdf
 
 //import ucar.ma2.Array
-import java.io.IOException
-import java.nio.file.{Files, Path, Paths}
-import java.time.format.DateTimeFormatter
-import java.time.{Duration, ZonedDateTime}
-import java.util
-import java.util.{ArrayList, Collections}
-
 import geotrellis.layer.TileLayerMetadata.toLayoutDefinition
 import geotrellis.layer._
 import geotrellis.proj4.CRS
@@ -23,6 +16,12 @@ import ucar.ma2.{ArrayDouble, ArrayInt, DataType}
 import ucar.nc2.write.Nc4ChunkingDefault
 import ucar.nc2.{Attribute, Dimension, NetcdfFileWriter, Variable}
 
+import java.io.IOException
+import java.nio.file.{Files, Path, Paths}
+import java.time.format.DateTimeFormatter
+import java.time.{Duration, ZonedDateTime}
+import java.util
+import java.util.{ArrayList, Collections}
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
 import scala.reflect.ClassTag
@@ -76,7 +75,6 @@ object NetCDFRDDWriter {
 
     var netcdfFile: NetcdfFileWriter = null
     for(tuple <- rdd.toLocalIterator){
-
       val cellType = tuple._2.cellType
 
       if(netcdfFile == null){
@@ -85,13 +83,16 @@ object NetCDFRDDWriter {
       val multibandTile = tuple._2
 
       for (bandIndex <- bandNames.asScala.indices) {
-
         val gridExtent = rasterExtent.gridBoundsFor(tuple._1.extent(rdd.metadata))
-        val origin: Array[Int] = scala.Array(gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
-        val variable = bandNames.get(bandIndex)
+        if(gridExtent.colMax >= rasterExtent.cols || gridExtent.rowMax >= rasterExtent.rows){
+          logger.warn("Can not write tile beyond raster bounds: " + gridExtent)
+        }else{
+          val origin: Array[Int] = scala.Array(gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
+          val variable = bandNames.get(bandIndex)
 
-        val tile = multibandTile.band(bandIndex)
-        writeTile(variable, origin, tile, netcdfFile)
+          val tile = multibandTile.band(bandIndex)
+          writeTile(variable, origin, tile, netcdfFile)
+        }
       }
     }
 
@@ -479,8 +480,6 @@ object NetCDFRDDWriter {
     netcdfFile.addVariableAttribute(variableName, "units", units)
     netcdfFile.addVariableAttribute(variableName, "axis", axis)
   }
-
-  import java.util
 
   private def addNetcdfVariable(netcdfFile: NetcdfFileWriter, dimensions: util.ArrayList[Dimension], variableName: String, dataType: DataType, standardName: String, longName: String, units: String, axis: String, fillValue: Number, coordinates: String): Unit = {
     netcdfFile.addVariable(variableName, dataType, dimensions)
