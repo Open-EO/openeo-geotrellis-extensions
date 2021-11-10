@@ -605,11 +605,10 @@ package object geotiff {
       val bucket = Option(System.getenv("SWIFT_BUCKET")).getOrElse("OpenEO-data")
       val s3Uri = new AmazonS3URI(s"s3://$bucket$path")
       geoTiff.write(s3Uri, getCreoS3Client())
-      s3Uri.toString
     } else {
       geoTiff.write(path, optimizedOrder = true)
-      path
     }
+    path
   }
 
   private def getCreoS3Client(): S3Client = {
