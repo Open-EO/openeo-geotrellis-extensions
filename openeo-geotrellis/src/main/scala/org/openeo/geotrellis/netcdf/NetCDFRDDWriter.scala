@@ -24,7 +24,6 @@ import java.time.{Duration, ZonedDateTime}
 import java.util
 import java.util.{ArrayList, Collections}
 import scala.collection.JavaConverters._
-import scala.collection.mutable.ListBuffer
 import scala.reflect.ClassTag
 
 
@@ -114,7 +113,6 @@ object NetCDFRDDWriter {
                        zLevel:Int
                  ): java.util.List[String] = {
 
-    var dates = new ListBuffer[Int]()
     val extent = rdd.metadata.apply(rdd.metadata.tileBounds)
 
     val rasterExtent = RasterExtent(extent = extent, cellSize = rdd.metadata.cellSize)
@@ -122,6 +120,7 @@ object NetCDFRDDWriter {
     val cachedRDD = rdd.persist(StorageLevel.MEMORY_AND_DISK)
     val count = cachedRDD.count()
     logger.info(s"Writing NetCDF from rdd with : ${count} elements and ${rdd.getNumPartitions} partitions.")
+    val dates = cachedRDD.keys.map(k => Duration.between(fixedTimeOffset, k.time).toDays.toInt).distinct().collect().sorted.toList
 
     var netcdfFile: NetcdfFileWriter = null
     for(tuple <- cachedRDD.toLocalIterator){
@@ -129,10 +128,7 @@ object NetCDFRDDWriter {
       val cellType = tuple._2.cellType
       val timeOffset = Duration.between(fixedTimeOffset, tuple._1.time).toDays.toInt
       var timeDimIndex = dates.indexOf(timeOffset)
-      if(timeDimIndex<0) {
-        dates.append( timeOffset )
-        timeDimIndex = dates.length-1
-      }
+
       if(netcdfFile == null){
         netcdfFile = setupNetCDF(path, rasterExtent, null, bandNames, rdd.metadata.crs, cellType,dimensionNames,attributes,zLevel)
       }
