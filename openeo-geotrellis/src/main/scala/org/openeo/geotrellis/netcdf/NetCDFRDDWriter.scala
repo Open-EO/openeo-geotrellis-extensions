@@ -10,6 +10,7 @@ import geotrellis.util._
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.storage.StorageLevel
 import org.openeo.geotrellis.ProjectedPolygons
 import org.slf4j.LoggerFactory
 import ucar.ma2.{ArrayDouble, ArrayInt, DataType}
@@ -74,7 +75,10 @@ object NetCDFRDDWriter {
     val rasterExtent = RasterExtent(extent = extent, cellSize = rdd.metadata.cellSize)
 
     var netcdfFile: NetcdfFileWriter = null
-    for(tuple <- rdd.toLocalIterator){
+    val cachedRDD = rdd.persist(StorageLevel.MEMORY_AND_DISK)
+    val count = cachedRDD.count()
+    logger.info(s"Writing NetCDF from rdd with : ${count} elements and ${rdd.getNumPartitions} partitions.")
+    for(tuple <- cachedRDD.toLocalIterator){
       val cellType = tuple._2.cellType
 
       if(netcdfFile == null){
@@ -115,8 +119,12 @@ object NetCDFRDDWriter {
 
     val rasterExtent = RasterExtent(extent = extent, cellSize = rdd.metadata.cellSize)
 
+    val cachedRDD = rdd.persist(StorageLevel.MEMORY_AND_DISK)
+    val count = cachedRDD.count()
+    logger.info(s"Writing NetCDF from rdd with : ${count} elements and ${rdd.getNumPartitions} partitions.")
+
     var netcdfFile: NetcdfFileWriter = null
-    for(tuple <- rdd.toLocalIterator){
+    for(tuple <- cachedRDD.toLocalIterator){
 
       val cellType = tuple._2.cellType
       val timeOffset = Duration.between(fixedTimeOffset, tuple._1.time).toDays.toInt
