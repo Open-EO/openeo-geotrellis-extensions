@@ -11,7 +11,7 @@ class DataCubeParameters {
   var partitionerIndexReduction: Int = 8
   var maskingCube: Option[Object] = Option.empty
 
-  override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction)"
+  override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube)"
 
   def setPartitionerIndexReduction(reduction:Int): Unit = partitionerIndexReduction = reduction
   def setPartitionerTemporalResolution(res:String): Unit = partitionerTemporalResolution = res
