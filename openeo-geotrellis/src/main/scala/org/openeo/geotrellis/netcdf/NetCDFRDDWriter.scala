@@ -94,7 +94,14 @@ object NetCDFRDDWriter {
           val variable = bandNames.get(bandIndex)
 
           val tile = multibandTile.band(bandIndex)
-          writeTile(variable, origin, tile, netcdfFile)
+          try{
+            writeTile(variable, origin, tile, netcdfFile)
+          }catch {
+            case t: IOException => {
+              logger.error("Failed to write subtile: " + gridExtent + " to variable: " + variable + " with shape: " + netcdfFile.findVariable(variable).getShape.mkString("Array(", ", ", ")"),t)
+            }
+            case t: Throwable =>  throw t
+          }
         }
       }
     }
