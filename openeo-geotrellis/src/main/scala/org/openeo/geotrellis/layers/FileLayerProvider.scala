@@ -247,11 +247,13 @@ object FileLayerProvider {
       val maskObject =  datacubeParams.get.maskingCube.get
       maskObject match {
         case theSpatialMask: MultibandTileLayerRDD[SpatialKey] =>
-          val maskSpatialKeys = theSpatialMask.filter(_._2.band(0).toArray().exists(pixel => pixel == 0)).distinct()
-          if(logger.isDebugEnabled) {
-            logger.debug(s"Spatial mask reduces the input to: ${maskSpatialKeys.count()} keys.")
+          if(theSpatialMask.metadata.bounds.get._1.isInstanceOf[SpatialKey]) {
+            val maskSpatialKeys = theSpatialMask.filter(_._2.band(0).toArray().exists(pixel => pixel == 0)).distinct()
+            if(logger.isDebugEnabled) {
+              logger.debug(s"Spatial mask reduces the input to: ${maskSpatialKeys.count()} keys.")
+            }
+            requiredSpatialKeys = requiredSpatialKeys.join(maskSpatialKeys).map(tuple => (tuple._1, tuple._2._1))
           }
-          requiredSpatialKeys = requiredSpatialKeys.join(maskSpatialKeys).map(tuple => (tuple._1, tuple._2._1))
         case _ =>
       }
     }

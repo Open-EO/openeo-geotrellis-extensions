@@ -1,11 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import java.net.URI
-import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
-import java.time._
-import java.util.Collections
-
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Link
 import be.vito.eodata.gwcgeotrellis.opensearch.{OpenSearchClient, OpenSearchResponses}
 import cats.data.NonEmptyList
@@ -32,6 +26,11 @@ import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
 import org.openeo.geotrelliscommon.DataCubeParameters
 
+import java.net.URI
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
+import java.time._
+import java.util.Collections
 import scala.collection.JavaConverters.mapAsJavaMapConverter
 
 object Sentinel2FileLayerProviderTest {
@@ -170,6 +169,24 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val bbox = ProjectedExtent(Extent(1.90283, 50.9579, 1.97116, 51.0034), LatLng)
 
     val layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+
+    val spatialLayer = layer
+      .toSpatial(date)
+      .cache()
+
+    spatialLayer.writeGeoTiff("/tmp/Sentinel2FileLayerProvider_multiband.tif", bbox)
+  }
+
+  @Test
+  def multibandWithSpacetimeMask(): Unit = {
+    val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
+    val bbox = ProjectedExtent(Extent(1.90283, 50.9579, 1.97116, 51.0034), LatLng)
+
+    val mask = sceneclassificationLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+
+    val parameters = new DataCubeParameters()
+    parameters.maskingCube = Some(mask)
+    val layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 9,datacubeParams = Some(parameters))
 
     val spatialLayer = layer
       .toSpatial(date)
