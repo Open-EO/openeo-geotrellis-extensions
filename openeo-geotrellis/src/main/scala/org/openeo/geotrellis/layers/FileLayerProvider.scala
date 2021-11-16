@@ -616,7 +616,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
     //  into account; it's more efficient to filter out the redundant ones
 
-    if (overlappingRasterSources.isEmpty) throw new IllegalArgumentException("no fitting raster sources found")
+    if (overlappingRasterSources.isEmpty) throw new IllegalArgumentException(s"Could not find data for you load_collection request with catalog ID ${openSearchCollectionId}. The catalog query had id ${correlationId} and returned ${overlappingFeatures.size} results.")
 
     overlappingRasterSources
 
