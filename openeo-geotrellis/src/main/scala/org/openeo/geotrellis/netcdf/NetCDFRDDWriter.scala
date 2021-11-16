@@ -4,6 +4,7 @@ package org.openeo.geotrellis.netcdf
 import geotrellis.layer.TileLayerMetadata.toLayoutDefinition
 import geotrellis.layer._
 import geotrellis.proj4.CRS
+import geotrellis.raster
 import geotrellis.raster._
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.util._
@@ -93,7 +94,11 @@ object NetCDFRDDWriter {
           val origin: Array[Int] = scala.Array(gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
           val variable = bandNames.get(bandIndex)
 
-          val tile = multibandTile.band(bandIndex)
+          var tile = multibandTile.band(bandIndex)
+          if(gridExtent.width < tile.cols || gridExtent.height < tile.rows){
+            tile = tile.crop(gridExtent.width,gridExtent.height,raster.CropOptions(force=true))
+            logger.warn(s"Cropping output tile to avoid going out of variable (${variable}) bounds ${gridExtent}.")
+          }
           try{
             writeTile(variable, origin, tile, netcdfFile)
           }catch {
@@ -149,7 +154,14 @@ object NetCDFRDDWriter {
           val variable = bandNames.get(bandIndex)
 
           val tile = multibandTile.band(bandIndex)
-          writeTile(variable, origin, tile, netcdfFile)
+          try{
+            writeTile(variable, origin, tile, netcdfFile)
+          }catch {
+          case t: IOException => {
+            logger.error("Failed to write subtile: " + gridExtent + " to variable: " + variable + " with shape: " + netcdfFile.findVariable(variable).getShape.mkString("Array(", ", ", ")"),t)
+          }
+          case t: Throwable =>  throw t
+        }
         }
       }
     }
