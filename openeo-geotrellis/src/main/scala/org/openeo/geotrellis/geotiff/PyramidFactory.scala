@@ -13,7 +13,7 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.store.hadoop.util.HdfsUtils
-import geotrellis.store.s3.{AmazonS3URI, S3ClientProducer}
+import geotrellis.store.s3.AmazonS3URI
 import geotrellis.vector._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
@@ -21,6 +21,8 @@ import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
 import org.openeo.geotrellis.ProjectedPolygons
+import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 
 import scala.collection.JavaConverters._
@@ -75,6 +77,9 @@ object PyramidFactory {
       val s3Uri = new AmazonS3URI(s3_uri)
       val keyPattern = key_regex.r
 
+      // TODO: get the region from the bucket like in org.openeo.geotrellis.geotiff.RegionAwareS3RangeReaderProvider?
+      val s3Client = S3Client.builder().region(Region.of("us-west-2")).build()
+
       val listObjectsRequest = {
         val requestBuilder = ListObjectsV2Request.builder()
           .bucket(s3Uri.getBucket)
@@ -83,7 +88,7 @@ object PyramidFactory {
         (if (recursive) requestBuilder else requestBuilder.delimiter("/")).build()
       }
 
-      S3ClientProducer.get()
+      s3Client
         .listObjectsV2Paginator(listObjectsRequest)
         .contents()
         .asScala
@@ -158,6 +163,9 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
           else if (from == null) !(date isAfter to)
           else if (to == null) !(date isBefore from)
           else !(date isBefore from) && !(date isAfter to)
+
+        println(s"${rasterSource.name} with extent ${rasterSource.extent} ${if (overlaps) "intersects" else "does not intersect"} ${boundingBox.extent}")
+        println(s"${rasterSource.name} is ${if (withinDateRange) "inside" else "outside"} of date range [$from, $to]")
 
         overlaps && withinDateRange
       }
