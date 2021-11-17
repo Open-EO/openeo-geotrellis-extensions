@@ -13,14 +13,14 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.store.hadoop.util.HdfsUtils
-import geotrellis.store.s3.{AmazonS3URI, S3ClientProducer}
+import geotrellis.store.s3.AmazonS3URI
 import geotrellis.vector._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
-import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrellis.{ProjectedPolygons, bucketRegion, s3Client}
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 
 import scala.collection.JavaConverters._
@@ -83,7 +83,7 @@ object PyramidFactory {
         (if (recursive) requestBuilder else requestBuilder.delimiter("/")).build()
       }
 
-      S3ClientProducer.get()
+      s3Client(bucketRegion(s3Uri.getBucket))
         .listObjectsV2Paginator(listObjectsRequest)
         .contents()
         .asScala
