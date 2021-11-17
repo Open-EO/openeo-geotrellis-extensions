@@ -300,11 +300,25 @@ object FileLayerProvider {
         }
 
     // Only use the regions that correspond with a requested spatial key.
-    val requestedRasterRegions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))]  =
+    var requestedRasterRegions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))]  =
       rasterRegions
         .map { tuple => (tuple._1.spatialKey, tuple) }
         //stage boundary, first stage of data loading ends here!
         .rightOuterJoin(requiredSpatialKeys).flatMap { t => t._2._1.toList }
+
+    if(datacubeParams.exists(_.maskingCube.isDefined)) {
+      val maskObject =  datacubeParams.get.maskingCube.get
+      maskObject match {
+        case spacetimeMask: MultibandTileLayerRDD[SpaceTimeKey] =>
+          if(spacetimeMask.metadata.bounds.get._1.isInstanceOf[SpaceTimeKey]) {
+            if(logger.isDebugEnabled) {
+              logger.debug(s"Spacetime mask is used to reduce input.")
+            }
+            requestedRasterRegions = requestedRasterRegions.join(spacetimeMask.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))).map((tuple => (tuple._1, tuple._2._1)))
+          }
+        case _ =>
+      }
+    }
 
     rasterRegionsToTiles(requestedRasterRegions, metadata, cloudFilterStrategy, partitioner)
   }
