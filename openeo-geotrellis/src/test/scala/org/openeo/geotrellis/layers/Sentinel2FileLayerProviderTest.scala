@@ -24,6 +24,7 @@ import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Ignore, Test}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
+import org.openeo.geotrellis.{LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
 import org.openeo.geotrelliscommon.DataCubeParameters
 
 import java.net.URI
@@ -195,27 +196,30 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
     val builder: OpenEOProcessScriptBuilder = new OpenEOProcessScriptBuilder
     val args: util.Map[String, AnyRef] = dummyMap("x", "y")
-    builder.expressionStart("lt", args)
+    builder.expressionStart("gte", args)
     builder.argumentStart("x")
     builder.argumentEnd()
-    builder.constantArgument("y", 5)
-    builder.expressionEnd("lt", args)
-
+    builder.constantArgument("y", 4)
+    builder.expressionEnd("gte", args)
+    //mask.toSpatial(date).writeGeoTiff("/tmp/Sentinel2FileLayerProvider_multiband_mask.tif", bbox)
     val p = new OpenEOProcesses()
     mask = p.mapBands(mask, builder)
 
-    var layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 9,datacubeParams = Option.empty)
-    mask = p.resampleCubeSpatial(mask,layer,ResampleMethod.DEFAULT)._2
+    var layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 14,datacubeParams = Option.empty)
 
+    val originalCount = layer.count()
+    mask = p.resampleCubeSpatial(mask,layer,ResampleMethod.DEFAULT)._2
     val parameters = new DataCubeParameters()
     parameters.maskingCube = Some(mask)
-    layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 9,datacubeParams = Some(parameters))
+    layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 14,datacubeParams = Some(parameters))
 
+    val maskedCount = layer.count()
     val spatialLayer = p.rasterMask(layer,mask,Double.NaN)
       .toSpatial(date)
       .cache()
 
     spatialLayer.writeGeoTiff("/tmp/Sentinel2FileLayerProvider_multiband.tif", bbox)
+    assertNotEquals(originalCount,maskedCount)
   }
 
 
