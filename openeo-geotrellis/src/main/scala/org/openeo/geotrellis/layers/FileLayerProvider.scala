@@ -314,7 +314,8 @@ object FileLayerProvider {
             if(logger.isDebugEnabled) {
               logger.debug(s"Spacetime mask is used to reduce input.")
             }
-            requestedRasterRegions = requestedRasterRegions.join(spacetimeMask.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))).map((tuple => (tuple._1, tuple._2._1)))
+            val theFilteredMask = spacetimeMask.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))
+            requestedRasterRegions = requestedRasterRegions.join(theFilteredMask).map((tuple => (tuple._1, tuple._2._1)))
           }
         case _ =>
       }

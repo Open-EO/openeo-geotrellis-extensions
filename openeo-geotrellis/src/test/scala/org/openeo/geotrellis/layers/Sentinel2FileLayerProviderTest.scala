@@ -7,6 +7,7 @@ import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.{GeoTiffReader, MultibandGeoTiff}
+import geotrellis.raster.resample.ResampleMethod
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
@@ -21,7 +22,6 @@ import org.apache.spark.SparkContext
 import org.apache.spark.util.SizeEstimator
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Ignore, Test}
-import org.openeo.geotrellis.LayerFixtures
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
 import org.openeo.geotrelliscommon.DataCubeParameters
@@ -30,6 +30,7 @@ import java.net.URI
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time._
+import java.util
 import java.util.Collections
 import scala.collection.JavaConverters.mapAsJavaMapConverter
 
@@ -177,18 +178,40 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     spatialLayer.writeGeoTiff("/tmp/Sentinel2FileLayerProvider_multiband.tif", bbox)
   }
 
+  private def dummyMap(keys: String*) = {
+    val m = new util.HashMap[String, AnyRef]
+    for (key <- keys) {
+      m.put(key, "dummy")
+    }
+    m
+  }
+
   @Test
   def multibandWithSpacetimeMask(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
     val bbox = ProjectedExtent(Extent(1.90283, 50.9579, 1.97116, 51.0034), LatLng)
 
-    val mask = sceneclassificationLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+    var mask = sceneclassificationLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+
+    val builder: OpenEOProcessScriptBuilder = new OpenEOProcessScriptBuilder
+    val args: util.Map[String, AnyRef] = dummyMap("x", "y")
+    builder.expressionStart("lt", args)
+    builder.argumentStart("x")
+    builder.argumentEnd()
+    builder.constantArgument("y", 5)
+    builder.expressionEnd("lt", args)
+
+    val p = new OpenEOProcesses()
+    mask = p.mapBands(mask, builder)
+
+    var layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 9,datacubeParams = Option.empty)
+    mask = p.resampleCubeSpatial(mask,layer,ResampleMethod.DEFAULT)._2
 
     val parameters = new DataCubeParameters()
     parameters.maskingCube = Some(mask)
-    val layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 9,datacubeParams = Some(parameters))
+    layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 9,datacubeParams = Some(parameters))
 
-    val spatialLayer = layer
+    val spatialLayer = p.rasterMask(layer,mask,Double.NaN)
       .toSpatial(date)
       .cache()
 
