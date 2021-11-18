@@ -169,7 +169,7 @@ object FileLayerProvider {
   def layerMetadata(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, cellType: CellType,
                     layoutScheme:LayoutScheme, maxSpatialResoluton: CellSize, globalBounds:Option[ProjectedExtent] = Option.empty) = {
 
-    val worldLayout: LayoutDefinition = getLayout(layoutScheme, boundingBox, zoom, maxSpatialResoluton)
+    val worldLayout: LayoutDefinition = getLayout(layoutScheme, boundingBox, zoom, maxSpatialResoluton,globalBounds = globalBounds)
 
     val reprojectedBoundingBox: ProjectedExtent = targetBoundingBox(boundingBox, layoutScheme)
 
@@ -191,7 +191,10 @@ object FileLayerProvider {
         val layoutExtent: Extent = {
           if (boundingBox.crs.proj4jCrs.getProjection.getName == "utm") {
             if(globalBounds.isDefined) {
-              globalBounds.get.reproject(boundingBox.crs)
+              val reprojected = globalBounds.get.reproject(boundingBox.crs)
+              val x = maxSpatialResolution.width
+              val y = maxSpatialResolution.height
+              Extent(x*Math.floor(reprojected.xmin/x),y*Math.floor(reprojected.ymin/y),x*Math.ceil(reprojected.xmax/x),y*Math.ceil(reprojected.ymax/y))
             }else{
               //for utm, we return an extent that goes beyound the utm zone bounds, to avoid negative spatial keys
               if (boundingBox.crs.proj4jCrs.getProjection.asInstanceOf[TransverseMercatorProjection].getSouthernHemisphere)

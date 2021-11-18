@@ -256,6 +256,7 @@ package object geotiff {
 
     val bandSegmentCount = totalCols * totalRows
 
+    preprocessedRdd.sparkContext.setJobDescription(s"Write geotiff ${preprocessedRdd.metadata.toRasterExtent()} of type ${preprocessedRdd.metadata.cellType}")
     val totalBandCount = preprocessedRdd.sparkContext.longAccumulator("TotalBandCount")
     val typeAccumulator = new SetAccumulator[CellType]()
     preprocessedRdd.sparkContext.register(typeAccumulator, "CellType")
@@ -292,6 +293,9 @@ package object geotiff {
       }
     }
     }.collectAsMap()
+
+
+    preprocessedRdd.sparkContext.clearJobGroup()
 
     val cellType = {
       if (typeAccumulator.value.isEmpty) {

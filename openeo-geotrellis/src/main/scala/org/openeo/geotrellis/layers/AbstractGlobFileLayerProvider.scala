@@ -1,8 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import java.time.{LocalDate, ZoneId, ZonedDateTime}
-import java.util.concurrent.TimeUnit.HOURS
-
 import com.google.common.cache.{CacheBuilder, CacheLoader}
 import geotrellis.layer.{Boundable, KeyExtractor, SpaceTimeKey, SpatialKey, TemporalKeyExtractor, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng}
@@ -19,6 +16,8 @@ import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrelliscommon.DataCubeParameters
 
+import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util.concurrent.TimeUnit.HOURS
 import scala.util.matching.Regex
 
 object AbstractGlobFileLayerProvider {
@@ -120,7 +119,7 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
         layoutScheme
       }
 
-    val layerMetadata = FileLayerProvider.layerMetadata(ProjectedExtent(polygonsExtent,crs),from,to,zoom min maxZoom,cellType,theLayoutScheme,resolution)
+    val layerMetadata = FileLayerProvider.layerMetadata(ProjectedExtent(polygonsExtent,crs),from,to,zoom min maxZoom,cellType,theLayoutScheme,resolution,datacubeParams.flatMap(_.globalExtent))
 
     val tiledLayoutSourceRDD =
       sources.map { rs =>

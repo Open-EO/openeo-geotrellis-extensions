@@ -390,8 +390,10 @@ class OpenEOProcesses extends Serializable {
   }
 
   private def combine_bands[K](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], leftCube: MultibandTileLayerRDD[K], rightCube: MultibandTileLayerRDD[K], updatedMetadata: TileLayerMetadata[K])(implicit kt: ClassTag[K], ord: Ordering[K] = null) = {
+    leftCube.sparkContext.setJobDescription("Merge cubes: get bandcount")
     val leftBandCount = RDDBandCount(leftCube)
     val rightBandCount = RDDBandCount(rightCube)
+    leftCube.sparkContext.clearJobGroup()
     // Concatenation band counts are allowed to differ, but all resulting multiband tiles should have the same count
     new ContextRDD(joined.mapValues({
       case (None, Some(r)) => MultibandTile(Vector.fill(leftBandCount)(ArrayTile.empty(r.cellType, r.cols, r.rows)) ++ r.bands)
