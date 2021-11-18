@@ -59,6 +59,12 @@ class MergeCubesTest {
       datacubeParams
     )
 
+    //global bounds mechanism ensures that keys are aligned
+    assertEquals(0, fapar.metadata.bounds.get.minKey.col)
+    assertEquals(0, fapar.metadata.bounds.get.minKey.row)
+    assertEquals(0, sigma0Asc.metadata.bounds.get.maxKey.col)
+    assertEquals(0, sigma0Asc.metadata.bounds.get.maxKey.row)
+
     val merged = new OpenEOProcesses().mergeCubes(sigma0Asc, fapar, operator = null)
 
     //saveRDD(merged.toSpatial(),1,"out.tiff",formatOptions = new GTiffOptions())
