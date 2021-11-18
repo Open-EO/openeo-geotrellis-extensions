@@ -13,15 +13,15 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.store.hadoop.util.HdfsUtils
-import geotrellis.store.s3.{AmazonS3URI, S3ClientProducer}
+import geotrellis.store.s3.AmazonS3URI
 import geotrellis.vector._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
-import org.openeo.geotrellis.ProjectedPolygons
-import software.amazon.awssdk.services.s3.model.ListObjectsRequest
+import org.openeo.geotrellis.{ProjectedPolygons, bucketRegion, s3Client}
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
@@ -72,29 +72,30 @@ object PyramidFactory {
   def from_s3(s3_uri: String, key_regex: String = ".*", date_regex: String, recursive: Boolean = false,
               interpret_as_cell_type: String = null, lat_lon: Boolean): PyramidFactory =
     new PyramidFactory({
-      // adapted from geotrellis.spark.io.s3.geotiff.S3GeoTiffInput.list
       val s3Uri = new AmazonS3URI(s3_uri)
       val keyPattern = key_regex.r
 
-      val requestBuilder = ListObjectsRequest.builder()
-        .bucket(s3Uri.getBucket)
-        .prefix(s3Uri.getKey)
+      val listObjectsRequest = {
+        val requestBuilder = ListObjectsV2Request.builder()
+          .bucket(s3Uri.getBucket)
+          .prefix(s3Uri.getKey)
 
-      val request = (if (recursive) requestBuilder else requestBuilder.delimiter("/")).build()
+        (if (recursive) requestBuilder else requestBuilder.delimiter("/")).build()
+      }
 
-      S3ClientProducer.get()
-        .listObjects(request)
+      s3Client(bucketRegion(s3Uri.getBucket))
+        .listObjectsV2Paginator(listObjectsRequest)
         .contents()
         .asScala
         .map(_.key())
         .flatMap(key => key match {
-          case keyPattern(_*) => Some(new AmazonS3URI(s"s3://${s3Uri.getBucket}/${key}"))
+          case keyPattern(_*) => Some(new AmazonS3URI(s"s3://${s3Uri.getBucket}/$key"))
           case _ => None
         })
         .map(uri =>
           (GeoTiffRasterSource(uri.toString, parseTargetCellType(interpret_as_cell_type)),
             deriveDate(date_regex.r)(uri.getKey))
-        )
+        ).toSeq
     }, deriveDate(date_regex.r), lat_lon)
 
   private def deriveDate(date: Regex)(path: String): ZonedDateTime = {
