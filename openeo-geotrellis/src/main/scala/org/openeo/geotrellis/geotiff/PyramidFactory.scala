@@ -20,9 +20,7 @@ import org.apache.hadoop.fs.Path
 import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
-import org.openeo.geotrellis.ProjectedPolygons
-import software.amazon.awssdk.regions.Region
-import software.amazon.awssdk.services.s3.S3Client
+import org.openeo.geotrellis.{ProjectedPolygons, bucketRegion, s3Client}
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 
 import scala.collection.JavaConverters._
@@ -77,9 +75,6 @@ object PyramidFactory {
       val s3Uri = new AmazonS3URI(s3_uri)
       val keyPattern = key_regex.r
 
-      // TODO: get the region from the bucket like in org.openeo.geotrellis.geotiff.RegionAwareS3RangeReaderProvider?
-      val s3Client = S3Client.builder().region(Region.of("us-west-2")).build()
-
       val listObjectsRequest = {
         val requestBuilder = ListObjectsV2Request.builder()
           .bucket(s3Uri.getBucket)
@@ -88,7 +83,7 @@ object PyramidFactory {
         (if (recursive) requestBuilder else requestBuilder.delimiter("/")).build()
       }
 
-      s3Client
+      s3Client(bucketRegion(s3Uri.getBucket))
         .listObjectsV2Paginator(listObjectsRequest)
         .contents()
         .asScala
