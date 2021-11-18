@@ -18,8 +18,7 @@ import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.locationtech.proj4j.proj.TransverseMercatorProjection
-import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.slf4j.LoggerFactory
 
 import java.io.IOException
@@ -152,73 +151,6 @@ object FileLayerProvider {
       .getOrElse(throw new IllegalArgumentException(s"unknown OpenSearch collection $collectionId"))
 
     ProjectedExtent(collection.bbox.reproject(LatLng, WebMercator), WebMercator)
-  }
-
-  /**
-   * Find best CRS, can be location dependent (UTM)
-   * @param boundingBox
-   * @return
-   */
-  def bestCRS(boundingBox: ProjectedExtent,layoutScheme:LayoutScheme):CRS = {
-    layoutScheme match {
-      case scheme: ZoomedLayoutScheme => scheme.crs
-      case scheme: FloatingLayoutScheme => boundingBox.crs //TODO determine native CRS based on collection metadata, not bbox?
-    }
-  }
-
-  def layerMetadata(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, cellType: CellType,
-                    layoutScheme:LayoutScheme, maxSpatialResoluton: CellSize, globalBounds:Option[ProjectedExtent] = Option.empty) = {
-
-    val worldLayout: LayoutDefinition = getLayout(layoutScheme, boundingBox, zoom, maxSpatialResoluton,globalBounds = globalBounds)
-
-    val reprojectedBoundingBox: ProjectedExtent = targetBoundingBox(boundingBox, layoutScheme)
-
-    val metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, from, to, cellType)
-    metadata
-  }
-
-  private def targetBoundingBox(boundingBox: ProjectedExtent, layoutScheme: LayoutScheme) = {
-    val crs = bestCRS(boundingBox, layoutScheme)
-    val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(crs), crs)
-    reprojectedBoundingBox
-  }
-
-  def getLayout(layoutScheme: LayoutScheme, boundingBox: ProjectedExtent, zoom: Int, maxSpatialResolution: CellSize, globalBounds:Option[ProjectedExtent] = Option.empty) = {
-    val LayoutLevel(_, worldLayout) = layoutScheme match {
-      case scheme: ZoomedLayoutScheme => scheme.levelForZoom(zoom)
-      case scheme: FloatingLayoutScheme => {
-        //Giving the layout a deterministic extent simplifies merging of data with spatial partitioner
-        val layoutExtent: Extent = {
-          if (boundingBox.crs.proj4jCrs.getProjection.getName == "utm") {
-            if(globalBounds.isDefined) {
-              val reprojected = globalBounds.get.reproject(boundingBox.crs)
-              val x = maxSpatialResolution.width
-              val y = maxSpatialResolution.height
-              Extent(x*Math.floor(reprojected.xmin/x),y*Math.floor(reprojected.ymin/y),x*Math.ceil(reprojected.xmax/x),y*Math.ceil(reprojected.ymax/y))
-            }else{
-              //for utm, we return an extent that goes beyound the utm zone bounds, to avoid negative spatial keys
-              if (boundingBox.crs.proj4jCrs.getProjection.asInstanceOf[TransverseMercatorProjection].getSouthernHemisphere)
-              //official extent: Extent(166021.4431, 1116915.0440, 833978.5569, 10000000.0000) -> round to 10m + extend
-                Extent(0.0, 1000000.0, 833970.0 + 100000.0, 10000000.0000 + 100000.0)
-              else {
-                //official extent: Extent(166021.4431, 0.0000, 833978.5569, 9329005.1825) -> round to 10m + extend
-                Extent(0.0, -1000000.0000, 833970.0 + 100000.0, 9329000.0 + 100000.0)
-              }
-            }
-          } else {
-            val extent = boundingBox.extent
-            if(extent.width < maxSpatialResolution.width || extent.height < maxSpatialResolution.height) {
-              Extent(extent.xmin,extent.ymin,Math.max(extent.xmax,extent.xmin + maxSpatialResolution.width),Math.max(extent.ymax,extent.ymin + maxSpatialResolution.height))
-            }else{
-              extent
-            }
-          }
-        }
-
-        scheme.levelFor(layoutExtent, maxSpatialResolution)
-      }
-    }
-    worldLayout
   }
 
   def rasterSourceRDD(rasterSources: Seq[RasterSource], metadata: TileLayerMetadata[SpaceTimeKey], maxSpatialResolution: CellSize, collection: String)(implicit sc: SparkContext): RDD[LayoutTileSource[SpaceTimeKey]] = {
@@ -428,18 +360,6 @@ object FileLayerProvider {
     ContextRDD(tiledRDD, metadata)
   }
 
-  private def tileLayerMetadata(layout: LayoutDefinition, projectedExtent: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, cellType: CellType): TileLayerMetadata[SpaceTimeKey] = {
-    val gridBounds = layout.mapTransform.extentToBounds(projectedExtent.extent)
-
-    TileLayerMetadata(
-      cellType,
-      layout,
-      projectedExtent.extent,
-      projectedExtent.crs,
-      KeyBounds(SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from), SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to))
-    )
-  }
-
   private val metadataCache =
     Caffeine.newBuilder()
       .refreshAfterWrite(15, TimeUnit.MINUTES)
@@ -457,6 +377,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
                         maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
                         bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "", experimental: Boolean=false) extends LayerProvider {
 
+  import DatacubeSupport._
   import FileLayerProvider._
 
   if(experimental) {
