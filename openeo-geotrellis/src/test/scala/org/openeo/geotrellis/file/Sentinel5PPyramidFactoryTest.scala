@@ -29,7 +29,7 @@ object Sentinel5PPyramidFactoryTest {
       .set("spark.kryoserializer.buffer.max", "512m")
       .set("spark.rdd.compress","true")
 
-    sc = SparkUtils.createLocalSparkContext("local[*]", classOf[Sentinel2PyramidFactoryTest].getName, sparkConf)
+    sc = SparkUtils.createLocalSparkContext("local[2]", classOf[Sentinel2PyramidFactoryTest].getName, sparkConf)
   }
 
   @AfterClass
