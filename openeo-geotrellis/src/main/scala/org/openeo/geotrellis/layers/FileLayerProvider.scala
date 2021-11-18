@@ -167,7 +167,7 @@ object FileLayerProvider {
   }
 
   def layerMetadata(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, cellType: CellType,
-                    layoutScheme:LayoutScheme, maxSpatialResoluton: CellSize) = {
+                    layoutScheme:LayoutScheme, maxSpatialResoluton: CellSize, globalBounds:Option[ProjectedExtent] = Option.empty) = {
 
     val worldLayout: LayoutDefinition = getLayout(layoutScheme, boundingBox, zoom, maxSpatialResoluton)
 
@@ -183,20 +183,24 @@ object FileLayerProvider {
     reprojectedBoundingBox
   }
 
-  def getLayout(layoutScheme: LayoutScheme, boundingBox: ProjectedExtent, zoom: Int, maxSpatialResolution: CellSize) = {
+  def getLayout(layoutScheme: LayoutScheme, boundingBox: ProjectedExtent, zoom: Int, maxSpatialResolution: CellSize, globalBounds:Option[ProjectedExtent] = Option.empty) = {
     val LayoutLevel(_, worldLayout) = layoutScheme match {
       case scheme: ZoomedLayoutScheme => scheme.levelForZoom(zoom)
       case scheme: FloatingLayoutScheme => {
         //Giving the layout a deterministic extent simplifies merging of data with spatial partitioner
         val layoutExtent: Extent = {
           if (boundingBox.crs.proj4jCrs.getProjection.getName == "utm") {
-            //for utm, we return an extent that goes beyound the utm zone bounds, to avoid negative spatial keys
-            if (boundingBox.crs.proj4jCrs.getProjection.asInstanceOf[TransverseMercatorProjection].getSouthernHemisphere)
-            //official extent: Extent(166021.4431, 1116915.0440, 833978.5569, 10000000.0000) -> round to 10m + extend
-              Extent(0.0, 1000000.0, 833970.0 + 100000.0, 10000000.0000 + 100000.0)
-            else {
-              //official extent: Extent(166021.4431, 0.0000, 833978.5569, 9329005.1825) -> round to 10m + extend
-              Extent(0.0, -1000000.0000, 833970.0 + 100000.0, 9329000.0 + 100000.0)
+            if(globalBounds.isDefined) {
+              globalBounds.get.reproject(boundingBox.crs)
+            }else{
+              //for utm, we return an extent that goes beyound the utm zone bounds, to avoid negative spatial keys
+              if (boundingBox.crs.proj4jCrs.getProjection.asInstanceOf[TransverseMercatorProjection].getSouthernHemisphere)
+              //official extent: Extent(166021.4431, 1116915.0440, 833978.5569, 10000000.0000) -> round to 10m + extend
+                Extent(0.0, 1000000.0, 833970.0 + 100000.0, 10000000.0000 + 100000.0)
+              else {
+                //official extent: Extent(166021.4431, 0.0000, 833978.5569, 9329005.1825) -> round to 10m + extend
+                Extent(0.0, -1000000.0000, 833970.0 + 100000.0, 9329000.0 + 100000.0)
+              }
             }
           } else {
             val extent = boundingBox.extent
@@ -510,7 +514,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     var overlappingRasterSources: Seq[RasterSource] = loadRasterSourceRDD(boundingBox, from, to, zoom)
     val commonCellType = overlappingRasterSources.head.cellType
-    val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType, layoutScheme, maxSpatialResolution)
+    val metadata = layerMetadata(boundingBox, from, to, zoom min maxZoom, commonCellType, layoutScheme, maxSpatialResolution,datacubeParams.flatMap(_.globalExtent))
 
     // Handle maskingStrategyParameters.
     var maskStrategy : Option[CloudFilterStrategy] = None
