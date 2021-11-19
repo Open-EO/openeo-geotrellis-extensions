@@ -62,6 +62,7 @@ class Sentinel5PPyramidFactoryTest {
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel5P/L3_CO_TD_V1",
       maxSpatialResolution = CellSize(0.05,0.05)
     )
+    dailyCOPyramidFactory.crs = LatLng
 
     val Seq((_, baseLayerByDatacube_seq)) = dailyCOPyramidFactory.datacube_seq(
         projectedPolygons,
