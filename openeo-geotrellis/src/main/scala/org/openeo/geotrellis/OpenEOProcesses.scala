@@ -333,8 +333,11 @@ class OpenEOProcesses extends Serializable {
     counts(0)
   }
 
-  def filterNegativeSpatialKeys[K: SpatialComponent: ClassTag
-  ](data: (Int, MultibandTileLayerRDD[SpaceTimeKey])):(Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
+  def filterNegativeSpatialKeys(data: (Int, MultibandTileLayerRDD[SpaceTimeKey])):(Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
+    (data._1,filterNegativeSpatialKeys(data._2))
+  }
+
+  def filterNegativeSpatialKeys_spatial(data: (Int, MultibandTileLayerRDD[SpatialKey])):(Int, MultibandTileLayerRDD[SpatialKey]) = {
     (data._1,filterNegativeSpatialKeys(data._2))
   }
 
@@ -362,9 +365,10 @@ class OpenEOProcesses extends Serializable {
     logger.info("Keybounds before preemptive filtering: " + data.metadata.bounds)
     val minKey = data.metadata.bounds.get.minKey
     val minSpatial: SpatialKey = minKey.getComponent[SpatialKey]
-    minKey.setComponent[SpatialKey](SpatialKey(math.max(0,minSpatial._1),math.max(0,minSpatial._2)))
-    logger.info("Keybounds after preemptive filtering: " + data.metadata.bounds)
-    ContextRDD(filtered,data.metadata)
+    val res = minKey.setComponent[SpatialKey](SpatialKey(math.max(0,minSpatial._1),math.max(0,minSpatial._2)))
+    val newBounds = KeyBounds(res, data.metadata.bounds.get.maxKey)
+    logger.info("Keybounds after preemptive filtering: " + newBounds)
+    ContextRDD(filtered,data.metadata.copy(bounds = newBounds))
   }
 
   def resampleCubeSpatial(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey], method:ResampleMethod): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
@@ -381,9 +385,9 @@ class OpenEOProcesses extends Serializable {
 
   def resampleCubeSpatial_spatial(data: MultibandTileLayerRDD[SpatialKey],crs:CRS,layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpatialKey]) = {
     if(partitioner==null) {
-      data.reproject(crs,layout,16,method,new SpacePartitioner(data.metadata.bounds))
+      filterNegativeSpatialKeys_spatial(data.reproject(crs,layout,16,method,new SpacePartitioner(data.metadata.bounds)))
     }else{
-      data.reproject(crs,layout,16,method,Option(partitioner))
+      filterNegativeSpatialKeys_spatial(data.reproject(crs,layout,16,method,Option(partitioner)))
     }
   }
 
