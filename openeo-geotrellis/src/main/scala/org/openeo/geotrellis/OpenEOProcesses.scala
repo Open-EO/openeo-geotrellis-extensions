@@ -19,6 +19,7 @@ import org.apache.spark.rdd._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, SpaceTimeByMonthPartitioner}
+import org.slf4j.LoggerFactory
 
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -30,6 +31,9 @@ import scala.reflect._
 
 
 object OpenEOProcesses{
+
+  private val logger = LoggerFactory.getLogger(classOf[OpenEOProcesses])
+
   private def timeseriesForBand(b: Int, values: Iterable[(SpaceTimeKey, MultibandTile)]) = {
     MultibandTile(values.toList.sortBy(_._1.instant).map(_._2.band(b)))
   }
@@ -329,15 +333,49 @@ class OpenEOProcesses extends Serializable {
     counts(0)
   }
 
+  def filterNegativeSpatialKeys[K: SpatialComponent: ClassTag
+  ](data: (Int, MultibandTileLayerRDD[SpaceTimeKey])):(Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
+    (data._1,filterNegativeSpatialKeys(data._2))
+  }
+
+  /**
+   * Negative spatial keys are not normal, but can occur when a datacube is resampled into a higher resolution.
+   * These negative keys are cropped out in any case when the final result is generated, so we preemptively filter them
+   * because they are not supported by Space Partitioner indices.
+   *
+   * For example: take AGERA5 datacube, resample to Sentinel-2 (10m) -> negative indices occur
+   * @param data
+   * @tparam K
+   * @return
+   */
+  def filterNegativeSpatialKeys[K: SpatialComponent: ClassTag
+  ](data: MultibandTileLayerRDD[K]):MultibandTileLayerRDD[K] = {
+    val filtered = data.filter( tuple => {
+      val sKey = tuple._1.getComponent[SpatialKey]()
+      if(sKey.col<0 || sKey.row<0){
+        logger.debug("Preemptively filtering negative spatial key: " + sKey)
+        false
+      }else{
+        true
+      }
+    })
+    logger.info("Keybounds before preemptive filtering: " + data.metadata.bounds)
+    val minKey = data.metadata.bounds.get.minKey
+    val minSpatial: SpatialKey = minKey.getComponent[SpatialKey]
+    minKey.setComponent[SpatialKey](SpatialKey(math.max(0,minSpatial._1),math.max(0,minSpatial._2)))
+    logger.info("Keybounds after preemptive filtering: " + data.metadata.bounds)
+    ContextRDD(filtered,data.metadata)
+  }
+
   def resampleCubeSpatial(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey], method:ResampleMethod): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
-    data.reproject(target.metadata.crs,target.metadata.layout,16,method,target.partitioner)
+    filterNegativeSpatialKeys(data.reproject(target.metadata.crs,target.metadata.layout,16,method,target.partitioner))
   }
 
   def resampleCubeSpatial_spacetime(data: MultibandTileLayerRDD[SpaceTimeKey],crs:CRS,layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
     if(partitioner==null) {
-      data.reproject(crs,layout,16,method,new SpacePartitioner(data.metadata.bounds))
+      filterNegativeSpatialKeys(data.reproject(crs,layout,16,method,new SpacePartitioner(data.metadata.bounds)))
     }else{
-      data.reproject(crs,layout,16,method,Option(partitioner))
+      filterNegativeSpatialKeys(data.reproject(crs,layout,16,method,Option(partitioner)))
     }
   }
 
