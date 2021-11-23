@@ -1,10 +1,11 @@
 package org.openeo.geotrellissentinelhub
 
 import org.slf4j.LoggerFactory
+import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.model._
 
 import java.nio.file.{Files, Path, Paths}
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 import scala.collection.JavaConverters._
 import scala.compat.java8.FunctionConverters._
 
@@ -13,28 +14,33 @@ object S3Service {
 
   class StacMetadataUnavailableException extends IllegalStateException
   class UnknownFolderException extends IllegalArgumentException
+
+  private val bucketRegionCache = new ConcurrentHashMap[String, Region]
 }
 
 class S3Service {
-
   import S3Service._
 
-  def delete_batch_process_results(bucket_name: String, subfolder: String): Unit = S3.withClient { s3Client =>
-    val objectIdentifiers = S3.listObjectIdentifiers(s3Client, bucket_name, prefix = subfolder).iterator
+  def delete_batch_process_results(bucket_name: String, subfolder: String): Unit = {
+    val bucketRegion = this.bucketRegion(bucket_name)
 
-    if (objectIdentifiers.isEmpty)
-      throw new UnknownFolderException
+    S3.withClient(bucketRegion) { s3Client =>
+      val objectIdentifiers = S3.listObjectIdentifiers(s3Client, bucket_name, prefix = subfolder).iterator
 
-    val maxBatchSize = 1000 // as specified in the docs
-    val batches = objectIdentifiers.sliding(size = maxBatchSize, step = maxBatchSize)
+      if (objectIdentifiers.isEmpty)
+        throw new UnknownFolderException
 
-    for (batch <- batches) {
-      val deleteObjectsRequest = DeleteObjectsRequest.builder()
-        .bucket(bucket_name)
-        .delete(Delete.builder().objects(batch.asJava).build())
-        .build()
+      val maxBatchSize = 1000 // as specified in the docs
+      val batches = objectIdentifiers.sliding(size = maxBatchSize, step = maxBatchSize)
 
-      s3Client.deleteObjects(deleteObjectsRequest)
+      for (batch <- batches) {
+        val deleteObjectsRequest = DeleteObjectsRequest.builder()
+          .bucket(bucket_name)
+          .delete(Delete.builder().objects(batch.asJava).build())
+          .build()
+
+        s3Client.deleteObjects(deleteObjectsRequest)
+      }
     }
   }
 
@@ -99,5 +105,24 @@ class S3Service {
     Files.walk(root).forEach(uploadFile.asJava)
 
     prefix
+  }
+
+  // TODO: reduce code duplication with openeo-geotrellis
+  private def bucketRegion(bucketName: String): Region =
+    bucketRegionCache.computeIfAbsent(bucketName, fetchBucketRegion.asJava)
+
+  private val fetchBucketRegion: String => Region = bucketName => {
+    val getBucketLocationRequest = GetBucketLocationRequest.builder()
+      .bucket(bucketName)
+      .build()
+
+    val regionName = S3.withClient { s3Client =>
+      s3Client
+        .getBucketLocation(getBucketLocationRequest)
+        .locationConstraint()
+        .toString
+    }
+
+    Region.of(regionName)
   }
 }
