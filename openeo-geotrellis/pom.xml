@@ -12,6 +12,12 @@
     <artifactId>openeo-geotrellis</artifactId>
     <dependencies>
         <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-buffer</artifactId>
+            <version>4.1.46.Final</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
             <groupId>org.openeo</groupId>
             <artifactId>geotrellis-accumulo-extensions</artifactId>
             <version>${parent.version}</version>
