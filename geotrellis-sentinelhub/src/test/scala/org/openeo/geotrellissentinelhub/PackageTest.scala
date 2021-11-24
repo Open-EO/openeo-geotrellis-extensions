@@ -2,10 +2,10 @@ package org.openeo.geotrellissentinelhub
 
 import org.junit.Assert.fail
 import org.junit.Test
-import org.slf4j.LoggerFactory
+import org.slf4j.{Logger, LoggerFactory}
 
 class PackageTest {
-  private implicit val logger = LoggerFactory.getLogger(getClass)
+  private implicit val logger: Logger = LoggerFactory.getLogger(getClass)
 
   @Test
   def testEmptyRequestBodyIsRetried(): Unit = {
@@ -33,7 +33,7 @@ class PackageTest {
 
     val request = eventuallySucceedingRequest
 
-    withRetries(attempts = 5, context = "testEmptyRequestBodyIsRetried") {
+    withRetries(context = "testEmptyRequestBodyIsRetried") {
       request()
     }
   }

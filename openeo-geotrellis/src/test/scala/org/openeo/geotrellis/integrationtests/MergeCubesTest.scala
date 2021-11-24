@@ -1,7 +1,5 @@
 package org.openeo.geotrellis.integrationtests
 
-import java.util
-
 import geotrellis.layer.SpatialKey
 import geotrellis.raster.CellSize
 import geotrellis.raster.summary.polygonal.Summary
@@ -15,6 +13,9 @@ import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.file.Sentinel2PyramidFactory
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
+import org.openeo.geotrelliscommon.DataCubeParameters
+
+import java.util
 
 object MergeCubesTest {
   private var sc: SparkContext = _
@@ -37,21 +38,36 @@ class MergeCubesTest {
     val from_date = "2019-03-07T00:00:00Z"
     val to_date = from_date
 
+    val datacubeParams = new DataCubeParameters()
+    datacubeParams.layoutScheme="FloatingLayoutScheme"
+    datacubeParams.globalExtent = Some(projected_polygons.extent)
     val Seq((_, sigma0Asc)) = sigma0PyramidFactory.datacube_seq(
       projected_polygons,
       from_date,
       to_date,
-      util.Collections.emptyMap[String, Any]()
+      util.Collections.emptyMap[String, Any](),
+      "correlationid",
+      datacubeParams
     )
 
     val Seq((_, fapar)) = faparPyramidFactory.datacube_seq(
       projected_polygons,
       from_date,
       to_date,
-      util.Collections.emptyMap[String, Any]()
+      util.Collections.emptyMap[String, Any](),
+      "correlationid",
+      datacubeParams
     )
 
+    //global bounds mechanism ensures that keys are aligned
+    assertEquals(0, fapar.metadata.bounds.get.minKey.col)
+    assertEquals(0, fapar.metadata.bounds.get.minKey.row)
+    assertEquals(0, sigma0Asc.metadata.bounds.get.maxKey.col)
+    assertEquals(0, sigma0Asc.metadata.bounds.get.maxKey.row)
+
     val merged = new OpenEOProcesses().mergeCubes(sigma0Asc, fapar, operator = null)
+
+    //saveRDD(merged.toSpatial(),1,"out.tiff",formatOptions = new GTiffOptions())
 
     val sigma0Means = meanValues(sigma0Asc.toSpatial, projected_polygons.polygons.head)
     val faparMeans = meanValues(fapar.toSpatial, projected_polygons.polygons.head)

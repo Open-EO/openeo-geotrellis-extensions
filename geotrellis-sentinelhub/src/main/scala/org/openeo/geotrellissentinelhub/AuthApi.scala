@@ -1,14 +1,17 @@
 package org.openeo.geotrellissentinelhub
 
+import CirceException.decode
 import cats.syntax.either._
 import io.circe.Decoder
 import io.circe.generic.auto._
-import io.circe.parser.decode
-import scalaj.http.{Http, HttpOptions, HttpRequest}
+import org.slf4j.{Logger, LoggerFactory}
+import scalaj.http.{Http, HttpConstants, HttpOptions, HttpRequest}
 
 import java.time.Duration
 
 object AuthApi {
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[AuthApi])
+
   // TODO: snake case to camel case
   private[geotrellissentinelhub] case class AuthResponse(access_token: String, expires_in: Duration)
 }
@@ -16,26 +19,29 @@ object AuthApi {
 class AuthApi {
   import AuthApi._
 
-  def authenticate(clientId: String, clientSecret: String): AuthResponse = {
-    val params = Seq(
-      "grant_type" -> "client_credentials",
-      "client_id" -> clientId,
-      "client_secret" -> clientSecret
-    )
+  def authenticate(clientId: String, clientSecret: String): AuthResponse =
+    withRetries(context = s"authenticate $clientId") {
+      val safeParams = Seq(
+        "grant_type" -> "client_credentials",
+        "client_id" -> clientId
+      )
 
-    val getAuthToken = http("https://services.sentinel-hub.com/oauth/token")
-      .postForm(params)
+      val getAuthToken = http("https://services.sentinel-hub.com/oauth/token")
+        .postForm(safeParams :+ ("client_secret" -> clientSecret))
 
-    val response = getAuthToken
-      .asString
+      logger.debug(s"requesting new access token for client ID $clientId")
 
-    if (response.isError) throw SentinelHubException(getAuthToken, params.toString(), response)
+      val response = getAuthToken
+        .asString
 
-    implicit val decodeDuration: Decoder[Duration] = Decoder.decodeLong.map(Duration.ofSeconds)
+      if (response.isError) throw SentinelHubException(getAuthToken,
+        HttpConstants.toQs(safeParams, getAuthToken.charset), response)
 
-    decode[AuthResponse](response.body)
-      .valueOr(throw _)
-  }
+      implicit val decodeDuration: Decoder[Duration] = Decoder.decodeLong.map(Duration.ofSeconds)
+
+      decode[AuthResponse](response.body)
+        .valueOr(throw _)
+    }
 
   private def http(url: String): HttpRequest = Http(url).option(HttpOptions.followRedirects(true))
 }

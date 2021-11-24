@@ -18,7 +18,8 @@ import geotrellis.vector.{Extent, PolygonFeature}
 import org.apache.spark.rdd._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.focal._
-import org.openeo.geotrelliscommon.{FFTConvolve, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, SpaceTimeByMonthPartitioner}
+import org.slf4j.LoggerFactory
 
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -30,6 +31,9 @@ import scala.reflect._
 
 
 object OpenEOProcesses{
+
+  private val logger = LoggerFactory.getLogger(classOf[OpenEOProcesses])
+
   private def timeseriesForBand(b: Int, values: Iterable[(SpaceTimeKey, MultibandTile)]) = {
     MultibandTile(values.toList.sortBy(_._1.instant).map(_._2.band(b)))
   }
@@ -150,12 +154,8 @@ class OpenEOProcesses extends Serializable {
 
   private def groupOnTimeDimension(datacube: MultibandTileLayerRDD[SpaceTimeKey]) = {
     val targetBounds = datacube.metadata.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]].toSpatial
-    val partitioner: Partitioner =
-      if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
-        new SpacePartitioner(targetBounds)
-      } else {
-        Partitioner.defaultPartitioner(datacube)
-      }
+    implicit val index = ByTileSpatialPartitioner
+    val partitioner: Partitioner = new SpacePartitioner(targetBounds)
 
     val groupedOnTime = datacube.groupBy[SpatialKey]((t: (SpaceTimeKey, MultibandTile)) => t._1.spatialKey, partitioner)
     groupedOnTime
@@ -333,23 +333,61 @@ class OpenEOProcesses extends Serializable {
     counts(0)
   }
 
+  def filterNegativeSpatialKeys(data: (Int, MultibandTileLayerRDD[SpaceTimeKey])):(Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
+    (data._1,filterNegativeSpatialKeys(data._2))
+  }
+
+  def filterNegativeSpatialKeys_spatial(data: (Int, MultibandTileLayerRDD[SpatialKey])):(Int, MultibandTileLayerRDD[SpatialKey]) = {
+    (data._1,filterNegativeSpatialKeys(data._2))
+  }
+
+  /**
+   * Negative spatial keys are not normal, but can occur when a datacube is resampled into a higher resolution.
+   * These negative keys are cropped out in any case when the final result is generated, so we preemptively filter them
+   * because they are not supported by Space Partitioner indices.
+   *
+   * For example: take AGERA5 datacube, resample to Sentinel-2 (10m) -> negative indices occur
+   * @param data
+   * @tparam K
+   * @return
+   */
+  def filterNegativeSpatialKeys[K: SpatialComponent: ClassTag
+  ](data: MultibandTileLayerRDD[K]):MultibandTileLayerRDD[K] = {
+    val filtered = data.filter( tuple => {
+      val sKey = tuple._1.getComponent[SpatialKey]()
+      if(sKey.col<0 || sKey.row<0){
+        logger.debug("Preemptively filtering negative spatial key: " + sKey)
+        false
+      }else{
+        true
+      }
+    })
+    logger.info("Keybounds before preemptive filtering: " + data.metadata.bounds)
+    val minKey = data.metadata.bounds.get.minKey
+    val minSpatial: SpatialKey = minKey.getComponent[SpatialKey]
+    val res = minKey.setComponent[SpatialKey](SpatialKey(math.max(0,minSpatial._1),math.max(0,minSpatial._2)))
+    val newBounds = KeyBounds(res, data.metadata.bounds.get.maxKey)
+    logger.info("Keybounds after preemptive filtering: " + newBounds)
+    ContextRDD(filtered,data.metadata.copy(bounds = newBounds))
+  }
+
   def resampleCubeSpatial(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey], method:ResampleMethod): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
-    data.reproject(target.metadata.crs,target.metadata.layout,16,method,target.partitioner)
+    filterNegativeSpatialKeys(data.reproject(target.metadata.crs,target.metadata.layout,16,method,target.partitioner))
   }
 
   def resampleCubeSpatial_spacetime(data: MultibandTileLayerRDD[SpaceTimeKey],crs:CRS,layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
     if(partitioner==null) {
-      data.reproject(crs,layout,16,method,new SpacePartitioner(data.metadata.bounds))
+      filterNegativeSpatialKeys(data.reproject(crs,layout,16,method,new SpacePartitioner(data.metadata.bounds)))
     }else{
-      data.reproject(crs,layout,16,method,Option(partitioner))
+      filterNegativeSpatialKeys(data.reproject(crs,layout,16,method,Option(partitioner)))
     }
   }
 
   def resampleCubeSpatial_spatial(data: MultibandTileLayerRDD[SpatialKey],crs:CRS,layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpatialKey]) = {
     if(partitioner==null) {
-      data.reproject(crs,layout,16,method,new SpacePartitioner(data.metadata.bounds))
+      filterNegativeSpatialKeys_spatial(data.reproject(crs,layout,16,method,new SpacePartitioner(data.metadata.bounds)))
     }else{
-      data.reproject(crs,layout,16,method,Option(partitioner))
+      filterNegativeSpatialKeys_spatial(data.reproject(crs,layout,16,method,Option(partitioner)))
     }
   }
 
@@ -394,8 +432,10 @@ class OpenEOProcesses extends Serializable {
   }
 
   private def combine_bands[K](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], leftCube: MultibandTileLayerRDD[K], rightCube: MultibandTileLayerRDD[K], updatedMetadata: TileLayerMetadata[K])(implicit kt: ClassTag[K], ord: Ordering[K] = null) = {
+    leftCube.sparkContext.setJobDescription("Merge cubes: get bandcount")
     val leftBandCount = RDDBandCount(leftCube)
     val rightBandCount = RDDBandCount(rightCube)
+    leftCube.sparkContext.clearJobGroup()
     // Concatenation band counts are allowed to differ, but all resulting multiband tiles should have the same count
     new ContextRDD(joined.mapValues({
       case (None, Some(r)) => MultibandTile(Vector.fill(leftBandCount)(ArrayTile.empty(r.cellType, r.cols, r.rows)) ++ r.bands)
@@ -423,7 +463,7 @@ class OpenEOProcesses extends Serializable {
   }
 
   def remove_overlap(datacube: MultibandTileLayerRDD[SpaceTimeKey], sizeX:Int, sizeY:Int, overlapX:Int, overlapY:Int): MultibandTileLayerRDD[SpaceTimeKey] = {
-    datacube.withContext(_.mapValues(_.crop(overlapX,overlapY,overlapX+sizeX-1,overlapY+sizeY-1).mapBands{ (index,tile) => tile.toArrayTile()}))
+    datacube.withContext(_.mapValues(_.crop(overlapX,overlapY,overlapX+sizeX-1,overlapY+sizeY-1,Options(clamp=false)).mapBands{ (index,tile) => tile.toArrayTile()}))
   }
 
 

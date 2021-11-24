@@ -49,24 +49,28 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
         .asJava
     }
 
-    val evalscript = s"""//VERSION=3
-      function setup() {
-        return {
-          input: [{
-            "bands": [${bandNames.map(bandName => s""""$bandName"""") mkString ", "}],
-            "units": "DN"
-          }],
-          output: {
-            bands: ${bandNames.size},
-            sampleType: "$sampleType",
-          }
-        };
-      }
+    val evalscript = {
+      def bandValue(bandName: String): String =
+        dnScaleFactor(datasetId, bandName)
+          .map(value => s"sample.$bandName * $value").getOrElse(s"sample.$bandName")
 
-      function evaluatePixel(sample) {
-        return [${bandNames.map(bandName => s"sample.$bandName") mkString ", "}];
-      }
-    """
+      s"""//VERSION=3
+         |function setup() {
+         |  return {
+         |    input: [{
+         |      "bands": [${bandNames.map(bandName => s""""$bandName"""") mkString ", "}]
+         |    }],
+         |    output: {
+         |      bands: ${bandNames.size},
+         |      sampleType: "$sampleType",
+         |    }
+         |  };
+         |}
+         |
+         |function evaluatePixel(sample) {
+         |  return [${bandNames.map(bandValue) mkString ", "}];
+         |}""".stripMargin
+    }
 
     val objectMapper = new ObjectMapper
 
@@ -100,18 +104,20 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
       },
       "evalscript": ${objectMapper.writeValueAsString(evalscript)}
     }"""
-    logger.debug(s"JSON data for Sentinel Hub Process API: ${jsonData}")
+
+    logger.debug(s"JSON data for Sentinel Hub Process API: $jsonData")
 
     val url = URI.create(endpoint).resolve("/api/v1/process").toString
     val request = Http(url)
       .header("Content-Type", "application/json")
       .header("Authorization", s"Bearer $accessToken")
       .header("Accept", "*/*")
+      .timeout(connTimeoutMs = 1000, readTimeoutMs = 40000)
       .postData(jsonData)
 
     logger.info(s"Executing request: ${request.urlBuilder(request)}")
 
-    val response = withRetries(5, s"$date + $extent") {
+    val response = withRetries(context = s"POST $url $jsonData") {
       request.exec(parser = (code: Int, header: Map[String, IndexedSeq[String]], in: InputStream) =>
         if (code == 200)
           GeoTiffReader.readMultiband(IOUtils.toByteArray(in))
@@ -128,6 +134,5 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
       // unless handled differently, NODATA pîxels are 0 according to
       // https://docs.sentinel-hub.com/api/latest/user-guides/datamask/#datamask---handling-of-pixels-with-no-data
       .mapBands { case (_, tile) => tile.withNoData(Some(0)) }
-
-  }
+ }
 }

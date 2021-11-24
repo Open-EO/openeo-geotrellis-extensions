@@ -3,7 +3,7 @@ package org.openeo.geotrellis.file
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer._
-import geotrellis.proj4.CRS
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{CellSize, MultibandTile}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.vector.{Extent, ProjectedExtent}
@@ -37,7 +37,7 @@ object ProbaVPyramidFactory {
   }
 }
 
-class ProbaVPyramidFactory(openSearchEndpoint: String, openSearchCollectionId: String, rootPath: String) extends Serializable {
+class ProbaVPyramidFactory(openSearchEndpoint: String, openSearchCollectionId: String, rootPath: String, maxSpatialResolution: CellSize) extends Serializable {
 
   import ProbaVPyramidFactory._
 
@@ -58,8 +58,9 @@ class ProbaVPyramidFactory(openSearchEndpoint: String, openSearchCollectionId: S
       openSearchCollectionId,
       NonEmptyList.fromListUnsafe(openSearchLinkTitlesWithBandIds.map(_._1)),
       rootPath,
-      maxSpatialResolution = CellSize(10, 10),
+      maxSpatialResolution = maxSpatialResolution,
       pathDateExtractor = ProbaVPathDateExtractor,
+      layoutScheme = ZoomedLayoutScheme(LatLng, 256),
       bandIds = openSearchLinkTitlesWithBandIds.map(_._2),
       correlationId = correlationId
       )

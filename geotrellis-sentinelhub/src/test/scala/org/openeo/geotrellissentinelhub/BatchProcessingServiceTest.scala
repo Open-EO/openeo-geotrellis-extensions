@@ -104,6 +104,28 @@ class BatchProcessingServiceTest {
 
   @Ignore
   @Test
+  def startBatchProcessForModis(): Unit = {
+    val batchProcessingService = new BatchProcessingService(endpoint = "https://services-uswest2.sentinel-hub.com",
+      bucketName = "openeo-sentinelhub-uswest2", Utils.clientId, Utils.clientSecret)
+
+    val batchRequestId = batchProcessingService.start_batch_process(
+      collection_id = "modis",
+      dataset_id = "MODIS",
+      bbox = Extent(15.449523925781252, 48.57660713188407, 15.622558593749998, 48.6927734325279),
+      bbox_srs = "EPSG:4326",
+      from_date = "2019-10-01T00:00:00+00:00",
+      to_date = "2019-10-01T00:00:00+00:00",
+      band_names = Arrays.asList("B01", "B02"),
+      SampleType.UINT16,
+      metadata_properties = Collections.emptyMap[String, Any],
+      processing_options = Collections.emptyMap[String, Any]
+    )
+
+    println(awaitDone(Seq(batchRequestId), batchProcessingService))
+  }
+
+  @Ignore
+  @Test
   def startCachedBatchProcessForSentinel2(): Unit = {
     val subfolder = UUID.randomUUID().toString
 
@@ -318,7 +340,8 @@ class BatchProcessingServiceTest {
     println(awaitDone(batchRequestIds.asScala))
   }
 
-  private def awaitDone(batchRequestIds: Iterable[String]): Map[String, String] = {
+  private def awaitDone(batchRequestIds: Iterable[String],
+                        batchProcessingService: BatchProcessingService = this.batchProcessingService): Map[String, String] = {
     import java.util.concurrent.TimeUnit._
 
     while (true) {

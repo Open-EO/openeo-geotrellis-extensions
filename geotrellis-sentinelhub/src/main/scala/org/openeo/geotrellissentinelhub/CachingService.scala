@@ -4,9 +4,10 @@ import geotrellis.raster.io.geotiff.SinglebandGeoTiff
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
 import geotrellis.vector.Geometry
 import org.apache.commons.io.FileUtils.deleteDirectory
-import org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.{CacheEntry, Sentinel1CacheEntry}
+import org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.{Sentinel1GrdCacheEntry, Sentinel2L2aCacheEntry}
 import org.slf4j.LoggerFactory
 
+import java.net.URI
 import java.nio.file.{FileAlreadyExistsException, Files, Path, Paths}
 import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
@@ -40,7 +41,7 @@ class CachingService {
     }
   }
 
-  def downloadAndCacheResults(batchProcessContext: Sentinel2L2aBatchProcessContext, bucket_name: String, subfolder: String, collecting_folder: String): Unit = {
+  private def downloadAndCacheResults(batchProcessContext: Sentinel2L2aBatchProcessContext, bucket_name: String, subfolder: String, collecting_folder: String): Unit = {
     // TODO: make this uri configurable
     val elasticsearchUri = "https://es-apps-dev.vgt.vito.be:443"
     val cacheRepository = new ElasticsearchCacheRepository(elasticsearchUri)
@@ -51,12 +52,12 @@ class CachingService {
 
     val collectingDir = Paths.get(collecting_folder)
 
-    val actualTiles = collection.mutable.Set[CacheEntry]() // TODO: avoid mutation
+    val actualTiles = collection.mutable.Set[Sentinel2L2aCacheEntry]() // TODO: avoid mutation
 
     def cacheTile(tileId: String, date: ZonedDateTime, bandName: String, geometry: Geometry = null,
-                  empty: Boolean = false): CacheEntry = {
+                  empty: Boolean = false): Sentinel2L2aCacheEntry = {
       val location = if (geometry != null) geometry else tilingGridRepository.getGeometry(tilingGridIndex, tileId)
-      val entry = CacheEntry(tileId, date, bandName, location, empty)
+      val entry = Sentinel2L2aCacheEntry(tileId, date, bandName, location, empty)
       cacheRepository.save(cacheIndex, entry)
       actualTiles += entry
       entry
@@ -81,6 +82,11 @@ class CachingService {
               val flatFileName = s"${BASIC_ISO_DATE format entry.date.toLocalDate}-$tileId-${cachedFile.getFileName}"
               val link = collectingDir.resolve(flatFileName)
               val target = cachedFile
+
+              if (!Files.exists(target)) {
+                throw new IllegalStateException(s"symlink target $target does not exist")
+              }
+
               Files.createSymbolicLink(link, target)
               logger.debug(s"symlinked cached file from the recent past: $link -> $target")
             } catch {
@@ -112,7 +118,7 @@ class CachingService {
     }
   }
 
-  def downloadAndCacheResults(batchProcessContext: Sentinel1GrdBatchProcessContext, bucket_name: String, subfolder: String, collecting_folder: String): Unit = {
+  private def downloadAndCacheResults(batchProcessContext: Sentinel1GrdBatchProcessContext, bucket_name: String, subfolder: String, collecting_folder: String): Unit = {
     // TODO: make this uri configurable
     val elasticsearchUri = "https://es-apps-dev.vgt.vito.be:443"
     val cacheRepository = new ElasticsearchCacheRepository(elasticsearchUri)
@@ -123,13 +129,13 @@ class CachingService {
 
     val collectingDir = Paths.get(collecting_folder)
 
-    val actualTiles = collection.mutable.Set[Sentinel1CacheEntry]() // TODO: avoid mutation
+    val actualTiles = collection.mutable.Set[Sentinel1GrdCacheEntry]() // TODO: avoid mutation
 
     def cacheTile(backCoeff: String, orthorectify: Boolean, demInstance: String, tileId: String,
                   date: ZonedDateTime, bandName: String, geometry: Geometry = null,
-                  empty: Boolean = false): Sentinel1CacheEntry = {
+                  empty: Boolean = false): Sentinel1GrdCacheEntry = {
       val location = if (geometry != null) geometry else tilingGridRepository.getGeometry(tilingGridIndex, tileId)
-      val entry = Sentinel1CacheEntry(tileId, date, bandName, backCoeff, orthorectify, demInstance, location, empty)
+      val entry = Sentinel1GrdCacheEntry(tileId, date, bandName, backCoeff, orthorectify, demInstance, location, empty)
       cacheRepository.saveSentinel1(cacheIndex, entry)
       actualTiles += entry
       entry
@@ -160,6 +166,11 @@ class CachingService {
               val flatFileName = s"${BASIC_ISO_DATE format entry.date.toLocalDate}-$tileId-${cachedFile.getFileName}"
               val link = collectingDir.resolve(flatFileName)
               val target = cachedFile
+
+              if (!Files.exists(target)) {
+                throw new IllegalStateException(s"symlink target $target does not exist")
+              }
+
               Files.createSymbolicLink(link, target)
               logger.debug(s"symlinked cached file from the recent past: $link -> $target")
             } catch {
@@ -192,7 +203,7 @@ class CachingService {
   }
 
   // = download multiband tiles and write them as single band tiles to the cache directory (a tree)
-  def downloadBatchProcessResults(bucketName: String, subfolder: String, cacheDir: Path, bandNames: Seq[String],
+  private def downloadBatchProcessResults(bucketName: String, subfolder: String, cacheDir: Path, bandNames: Seq[String],
                                   onDownloaded: (String, ZonedDateTime, String) => Unit): Unit = S3.withClient { s3Client =>
     import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
 
@@ -201,12 +212,15 @@ class CachingService {
       .filter(_.endsWith(".tif"))
 
     val keyParts = tiffKeys.map { key =>
+      // this specifically handles the tilePath for regular (non-CARD4L) batch processes to a particular subfolder,
+      // i.e. s3://$bucketName/$subfolder/$tileId/_$date.tif (see BatchProcessingApi#createBatchProcess)
       val Array(_, tileId, fileName) = key.split("/")
       val date = fileName.split(raw"\.").head.drop(1)
 
       key -> (tileId, date)
     }.toMap
 
+    // TODO: reduce code duplication with org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.Sentinel2L2aCacheEntry.filePath
     def subdirectory(date: String, tileId: String): Path = cacheDir.resolve(date).resolve(tileId)
 
     // create all subdirectories with a minimum of effort
@@ -236,7 +250,7 @@ class CachingService {
   }
 
   // = download multiband tiles and write them as single band tiles to the cache directory (a tree)
-  def downloadBatchProcessResults(bucketName: String, subfolder: String, cacheDir: Path, bandNames: Seq[String],
+  private def downloadBatchProcessResults(bucketName: String, subfolder: String, cacheDir: Path, bandNames: Seq[String],
                                   backCoeff: String, orthorectify: Boolean, demInstance: String,
                                   onDownloaded: (String, ZonedDateTime, String) => Unit): Unit = S3.withClient { s3Client =>
     import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
@@ -253,7 +267,7 @@ class CachingService {
     }.toMap
 
     def subdirectory(date: String, tileId: String): Path = {
-      // TODO: reduce code duplication with org.openeo.geotrellissentinelhub.CacheRepository.Sentinel1CacheEntry#filePath
+      // TODO: reduce code duplication with org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.Sentinel1GrdCacheEntry.filePath
       val orthorectifyFlag = if (orthorectify) "orthorectified" else "non-orthorectified"
       cacheDir.resolve(backCoeff).resolve(orthorectifyFlag).resolve(demInstance).resolve(date).resolve(tileId)
     }
@@ -284,24 +298,35 @@ class CachingService {
     }
   }
 
+  // assembles single band tiles in collecting_folder to multiband tiles, uploads these to
+  // s3://$bucket_name/assembled_xyz and returns "assembled_xyz"
+  @deprecated("call assemble_multiband_tiles instead")
   def upload_multiband_tiles(subfolder: String, collecting_folder: String, bucket_name: String): String = {
-    val collectingFolder = Paths.get(collecting_folder)
     val assembledFolder = Files.createTempDirectory(Paths.get("/tmp_epod/openeo_assembled"), "assembled_")
 
-    val s3BatchProcessContextRepository = new S3BatchProcessContextRepository(bucket_name)
+    assemble_multiband_tiles(collecting_folder, assembledFolder.toString, bucket_name, subfolder)
 
     try {
-      val bandNames = s3BatchProcessContextRepository.loadFrom(subfolder) match {
-        case context: Sentinel2L2aBatchProcessContext => context.bandNames
-        case context: Sentinel1GrdBatchProcessContext => context.bandNames
-      }
-
-      assembleMultibandTiles(collectingFolder, assembledFolder, bandNames)
-
       val prefix = new S3Service().uploadRecursively(assembledFolder, bucket_name)
       logger.debug(s"uploaded $assembledFolder to s3://$bucket_name/$prefix")
       prefix
     } finally deleteDirectory(assembledFolder.toFile)
+  }
+
+  // assembles single band tiles in collecting_folder to multiband tiles and saves these to disk in assembled_folder
+  def assemble_multiband_tiles(collecting_folder: String, assembled_folder: String, bucket_name: String,
+                               subfolder: String): Unit = {
+    val collectingFolder = Paths.get(collecting_folder)
+    val assembledFolder = Paths.get(assembled_folder)
+
+    val s3BatchProcessContextRepository = new S3BatchProcessContextRepository(bucket_name)
+
+    val bandNames = s3BatchProcessContextRepository.loadFrom(subfolder) match {
+      case context: Sentinel2L2aBatchProcessContext => context.bandNames
+      case context: Sentinel1GrdBatchProcessContext => context.bandNames
+    }
+
+    assembleMultibandTiles(collectingFolder, assembledFolder, bandNames)
   }
 
   // = read single band tiles from collectingDir (flat) and write them as multiband tiles to assembleDir (flat)
@@ -316,6 +341,7 @@ class CachingService {
       .collect(toList[Path]).asScala
 
     val bandsGrouped = singleBandTiffs.groupBy { singleBandTiff =>
+      // TODO: this assumes the format of org.openeo.geotrellissentinelhub.AbstractInitialCacheOperation#flatFileName
       val Array(date, tileId, _) = singleBandTiff.getFileName.toString.split("-")
       (date, tileId)
     }.mapValues(bands => bands.sortBy { singleBandTiff =>

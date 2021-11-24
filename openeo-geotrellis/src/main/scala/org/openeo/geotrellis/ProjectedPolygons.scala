@@ -1,20 +1,21 @@
 package org.openeo.geotrellis
 
-import java.net.{MalformedURLException, URL}
-
 import _root_.io.circe.DecodingFailure
 import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.vector._
 import geotrellis.vector.io.json.JsonFeatureCollection
-import geotrellis.vector.{Geometry, GeometryCollection, MultiPolygon, Polygon, _}
 import org.geotools.data.Query
 import org.geotools.data.shapefile.ShapefileDataStore
 import org.geotools.data.simple.SimpleFeatureIterator
 
+import java.net.{MalformedURLException, URL}
 import scala.collection.JavaConverters._
 import scala.io.Source
 
 case class ProjectedPolygons(polygons: Array[MultiPolygon], crs: CRS) {
   def areaInSquareMeters: Double = ProjectedPolygons.areaInSquareMeters(GeometryCollection(polygons), crs)
+
+  def extent: ProjectedExtent = ProjectedExtent(polygons.toSeq.extent,crs)
 }
 
 object ProjectedPolygons {

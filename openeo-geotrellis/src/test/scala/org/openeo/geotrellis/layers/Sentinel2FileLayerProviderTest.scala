@@ -1,11 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import java.net.URI
-import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
-import java.time._
-import java.util.Collections
-
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Link
 import be.vito.eodata.gwcgeotrellis.opensearch.{OpenSearchClient, OpenSearchResponses}
 import cats.data.NonEmptyList
@@ -13,6 +7,7 @@ import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.{GeoTiffReader, MultibandGeoTiff}
+import geotrellis.raster.resample.ResampleMethod
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
@@ -27,11 +22,17 @@ import org.apache.spark.SparkContext
 import org.apache.spark.util.SizeEstimator
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Ignore, Test}
-import org.openeo.geotrellis.LayerFixtures
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
+import org.openeo.geotrellis.{LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
 import org.openeo.geotrelliscommon.DataCubeParameters
 
+import java.net.URI
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
+import java.time._
+import java.util
+import java.util.Collections
 import scala.collection.JavaConverters.mapAsJavaMapConverter
 
 object Sentinel2FileLayerProviderTest {
@@ -176,6 +177,49 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       .cache()
 
     spatialLayer.writeGeoTiff("/tmp/Sentinel2FileLayerProvider_multiband.tif", bbox)
+  }
+
+  private def dummyMap(keys: String*) = {
+    val m = new util.HashMap[String, AnyRef]
+    for (key <- keys) {
+      m.put(key, "dummy")
+    }
+    m
+  }
+
+  @Test
+  def multibandWithSpacetimeMask(): Unit = {
+    val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
+    val bbox = ProjectedExtent(Extent(1.90283, 50.9579, 1.97116, 51.0034), LatLng)
+
+    var mask = sceneclassificationLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+
+    val builder: OpenEOProcessScriptBuilder = new OpenEOProcessScriptBuilder
+    val args: util.Map[String, AnyRef] = dummyMap("x", "y")
+    builder.expressionStart("gte", args)
+    builder.argumentStart("x")
+    builder.argumentEnd()
+    builder.constantArgument("y", 4)
+    builder.expressionEnd("gte", args)
+    //mask.toSpatial(date).writeGeoTiff("/tmp/Sentinel2FileLayerProvider_multiband_mask.tif", bbox)
+    val p = new OpenEOProcesses()
+    mask = p.mapBands(mask, builder)
+
+    var layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 14,datacubeParams = Option.empty)
+
+    val originalCount = layer.count()
+    mask = p.resampleCubeSpatial(mask,layer,ResampleMethod.DEFAULT)._2
+    val parameters = new DataCubeParameters()
+    parameters.maskingCube = Some(mask)
+    layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 14,datacubeParams = Some(parameters))
+
+    val maskedCount = layer.count()
+    val spatialLayer = p.rasterMask(layer,mask,Double.NaN)
+      .toSpatial(date)
+      .cache()
+
+    spatialLayer.writeGeoTiff("/tmp/Sentinel2FileLayerProvider_multiband.tif", bbox)
+    assertNotEquals(originalCount,maskedCount)
   }
 
 

@@ -1,7 +1,6 @@
 package org.openeo.geotrellissentinelhub
 
-import com.google.common.cache.{CacheBuilder, CacheLoader}
-import geotrellis.layer.{KeyBounds, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
+import geotrellis.layer.{SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.{CellSize, MultibandTile, Raster}
 import geotrellis.spark._
@@ -10,34 +9,21 @@ import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.locationtech.proj4j.proj.TransverseMercatorProjection
-import org.openeo.geotrelliscommon.{DataCubeParameters, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.time.ZoneOffset.UTC
 import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeUnit.SECONDS
+import java.util.concurrent.TimeUnit.MILLISECONDS
 import scala.annotation.meta.param
 import scala.collection.JavaConverters._
 
 object PyramidFactory {
-  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[PyramidFactory])
+  private val logger: Logger = LoggerFactory.getLogger(classOf[PyramidFactory])
 
   private val maxKeysPerPartition = 20
-
-  // TODO: invalidate key on 401 Unauthorized
-  private val authTokenCache = CacheBuilder
-    .newBuilder()
-    .expireAfterWrite(1800L, SECONDS)
-    .build(new CacheLoader[(String, String), String] {
-      override def load(credentials: (String, String)): String = credentials match {
-        case (clientId, clientSecret) =>
-          withRetries(5, clientId) { new AuthApi().authenticate(clientId, clientSecret).access_token }
-      }
-    })
 
   // convenience method for Python client
   // TODO: change name? A 429 response makes it rate-limited anyway.
@@ -66,7 +52,8 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
 
   private val maxZoom = 14
 
-  private def accessToken: String = authTokenCache.get((clientId, clientSecret))
+  private def authorized[R](fn: String => R): R =
+    org.openeo.geotrellissentinelhub.authorized[R](clientId, clientSecret)(fn)
 
   private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom,
                     bandNames: Seq[String], metadataProperties: util.Map[String, Any],
@@ -78,27 +65,15 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
     val targetCrs: CRS = WebMercator
     val reprojectedBoundingBox = boundingBox.reproject(targetCrs)
 
-    val layout = ZoomedLayoutScheme(targetCrs).levelForZoom(targetCrs.worldExtent, zoom).layout
+    val scheme = ZoomedLayoutScheme(targetCrs)
+    val metadata: TileLayerMetadata[SpaceTimeKey] = DatacubeSupport.layerMetadata(ProjectedExtent(reprojectedBoundingBox,targetCrs),from,to,zoom,sampleType.cellType,scheme,maxSpatialResolution)
+    val layout = metadata.layout
 
     val overlappingKeys = for {
       date <- dates
       spatialKey <- layout.mapTransform.keysForGeometry(reprojectedBoundingBox.toPolygon())
     } yield SpaceTimeKey(spatialKey, date)
 
-    val metadata: TileLayerMetadata[SpaceTimeKey] = {
-      val gridBounds = layout.mapTransform.extentToBounds(reprojectedBoundingBox)
-
-      TileLayerMetadata(
-        cellType = sampleType.cellType,
-        layout = layout,
-        extent = reprojectedBoundingBox,
-        crs = targetCrs,
-        KeyBounds(
-          SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from),
-          SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to)
-        )
-      )
-    }
 
     val partitioner = SpacePartitioner(metadata.bounds)
     assert(partitioner.index == SpaceTimeByMonthPartitioner)
@@ -110,8 +85,10 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
 
         awaitRateLimitingGuardDelay(bandNames, width, height)
 
-        val tile = processApi.getTile(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs),
-          key.temporalKey, width, height, bandNames, sampleType, metadataProperties, processingOptions, accessToken)
+        val tile = authorized { accessToken =>
+          processApi.getTile(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs),
+            key.temporalKey, width, height, bandNames, sampleType, metadataProperties, processingOptions, accessToken)
+        }
 
         (key, tile)
       }
@@ -133,12 +110,14 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
     if (collectionId == null)
       sequentialDates(from)
         .takeWhile(date => !(date isAfter to))
-    else
+    else authorized { accessToken =>
       catalogApi
-        .dateTimes(collectionId, boundingBox, from, atEndOfDay(to), accessToken, mapDataFilters(metadataProperties))
+        .dateTimes(collectionId, boundingBox, from, atEndOfDay(to), accessToken,
+          toQueryProperties(dataFilters = metadataProperties))
         .map(_.toLocalDate.atStartOfDay(UTC))
         .distinct // ProcessApi::getTile takes care of [day, day + 1] interval and mosaicking therein
         .sorted
+    }
   }
 
   def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, bandNames: Seq[String],
@@ -187,19 +166,10 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
 
       // TODO: call into AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
 
-      val layout = this.layout(FloatingLayoutScheme(256), boundingBox)
+      val scheme = FloatingLayoutScheme(256)
 
-      val metadata: TileLayerMetadata[SpaceTimeKey] = {
-        val gridBounds = layout.mapTransform.extentToBounds(boundingBox.extent)
-
-        TileLayerMetadata(
-          cellType = sampleType.cellType,
-          layout,
-          extent = boundingBox.extent,
-          crs = boundingBox.crs,
-          bounds = KeyBounds(SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from), SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to))
-        )
-      }
+      val metadata = DatacubeSupport.layerMetadata(boundingBox,from,to,0,sampleType.cellType,scheme,maxSpatialResolution,dataCubeParameters.globalExtent)
+      val layout = metadata.layout
 
       val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = {
         val overlappingKeys = for {
@@ -207,14 +177,17 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
           spatialKey <- layout.mapTransform.keysForGeometry(GeometryCollection(polygons))
         } yield SpaceTimeKey(spatialKey, date)
 
-        val maskClouds = dataCubeParameters.maskingStrategyParameters.get("method") == "mask_scl_dilation" // TODO: what's up with this warning in Idea?
+        //noinspection ComparingUnrelatedTypes
+        val maskClouds = dataCubeParameters.maskingStrategyParameters.get("method") == "mask_scl_dilation"
 
         def loadMasked(key: SpaceTimeKey): Option[MultibandTile] = {
           def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile = {
             awaitRateLimitingGuardDelay(bandNames, width, height)
 
-            processApi.getTile(datasetId, projectedExtent, key.temporalKey, width, height, bandNames,
-              sampleType, metadata_properties, processingOptions, accessToken)
+            authorized { accessToken =>
+              processApi.getTile(datasetId, projectedExtent, key.temporalKey, width, height, bandNames,
+                sampleType, metadata_properties, processingOptions, accessToken)
+            }
           }
 
           val keyExtent = key.spatialKey.extent(layout)
@@ -275,25 +248,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
     )
 
     logger.debug(s"$rateLimitingGuard says to wait $delay")
-    TimeUnit.MILLISECONDS.sleep(delay.toMillis)
+    MILLISECONDS.sleep(delay.toMillis)
   }
 
-  private def layout(layoutScheme: FloatingLayoutScheme, boundingBox: ProjectedExtent): LayoutDefinition = {
-    //Giving the layout a deterministic extent simplifies merging of data with spatial partitioner
-    val layoutExtent =
-      if (boundingBox.crs.proj4jCrs.getProjection.getName == "utm") {
-        //for utm, we return an extent that goes beyound the utm zone bounds, to avoid negative spatial keys
-        if (boundingBox.crs.proj4jCrs.getProjection.asInstanceOf[TransverseMercatorProjection].getSouthernHemisphere)
-        //official extent: Extent(166021.4431, 1116915.0440, 833978.5569, 10000000.0000) -> round to 10m + extend
-          Extent(0.0, 1000000.0, 833970.0 + 100000.0, 10000000.0000 + 100000.0)
-        else {
-          //official extent: Extent(166021.4431, 0.0000, 833978.5569, 9329005.1825) -> round to 10m + extend
-          Extent(0.0, -1000000.0000, 833970.0 + 100000.0, 9329000.0 + 100000.0)
-        }
-      } else {
-        boundingBox.extent
-      }
-
-    layoutScheme.levelFor(layoutExtent, maxSpatialResolution).layout
-  }
 }

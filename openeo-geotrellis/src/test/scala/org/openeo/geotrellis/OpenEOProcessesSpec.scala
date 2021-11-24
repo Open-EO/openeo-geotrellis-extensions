@@ -37,6 +37,8 @@ object OpenEOProcessesSpec{
       UserGroupInformation.setConfiguration(config)
 
       val conf = new SparkConf().setMaster("local[2]")//.set("spark.driver.bindAddress", "127.0.0.1")
+        .set("spark.kryoserializer.buffer.max", "512m")
+        .set("spark.rdd.compress", "true")
       //conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, conf)
     }
@@ -208,15 +210,18 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val tileSize = 256
     val targetTileSize = 302
     val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
-    val targetLayout = new TileLayout(1 + tile.cols / targetTileSize, 1 + tile.rows / targetTileSize, targetTileSize, targetTileSize)
+    val targetLayout = new TileLayout((0.5*(1 + tile.cols / targetTileSize)).toInt, (0.5*(1 + tile.rows / targetTileSize)).toInt, targetTileSize, targetTileSize)
     val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, new ArrayMultibandTile(Array[Tile](tile)), layout)
 
-
-    val targetExtent = ProjectedExtent(datacube.metadata.extent,LatLng).reproject(WebMercator)
+    val targetExtent = ProjectedExtent(Extent(-40,-40,40,40),LatLng).reproject(WebMercator)
     val resampled = new OpenEOProcesses().resampleCubeSpatial_spatial(datacube.withContext(_.repartition(10)),WebMercator,LayoutDefinition(targetExtent,targetLayout),ResampleMethod.DEFAULT,null)
     assertEquals(WebMercator, resampled._2.metadata.crs)
     assertEquals(302, resampled._2.metadata.tileCols)
     val stitched: Raster[MultibandTile] = resampled._2.stitch()
+
+    val resampledBounds = resampled._2.metadata.bounds
+    assertEquals(0,resampledBounds.get.minKey.col)
+    assertEquals(0,resampledBounds.get.minKey.row)
 
   }
 

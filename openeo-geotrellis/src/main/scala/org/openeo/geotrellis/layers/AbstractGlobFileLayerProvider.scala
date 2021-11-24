@@ -1,8 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import java.time.{LocalDate, ZoneId, ZonedDateTime}
-import java.util.concurrent.TimeUnit.HOURS
-
 import com.google.common.cache.{CacheBuilder, CacheLoader}
 import geotrellis.layer.{Boundable, KeyExtractor, SpaceTimeKey, SpatialKey, TemporalKeyExtractor, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng}
@@ -17,8 +14,10 @@ import org.apache.hadoop.fs.Path
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.ProjectedPolygons
-import org.openeo.geotrelliscommon.DataCubeParameters
+import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport}
 
+import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util.concurrent.TimeUnit.HOURS
 import scala.util.matching.Regex
 
 object AbstractGlobFileLayerProvider {
@@ -120,7 +119,7 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
         layoutScheme
       }
 
-    val layerMetadata = FileLayerProvider.layerMetadata(ProjectedExtent(polygonsExtent,crs),from,to,zoom min maxZoom,cellType,theLayoutScheme,resolution)
+    val layerMetadata = DatacubeSupport.layerMetadata(ProjectedExtent(polygonsExtent,crs),from,to,zoom min maxZoom,cellType,theLayoutScheme,resolution,datacubeParams.flatMap(_.globalExtent))
 
     val tiledLayoutSourceRDD =
       sources.map { rs =>
@@ -172,7 +171,7 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
     val (minDate, _) = datedRasterSources.head
     val (maxDate, newestRasterSource) = datedRasterSources.last
 
-    FileLayerProvider.layerMetadata(ProjectedExtent(newestRasterSource.extent,newestRasterSource.crs),minDate,maxDate,zoom min maxZoom,newestRasterSource.cellType,layoutScheme,newestRasterSource.cellSize)
+    DatacubeSupport.layerMetadata(ProjectedExtent(newestRasterSource.extent,newestRasterSource.crs),minDate,maxDate,zoom min maxZoom,newestRasterSource.cellType,layoutScheme,newestRasterSource.cellSize)
 
   }
 

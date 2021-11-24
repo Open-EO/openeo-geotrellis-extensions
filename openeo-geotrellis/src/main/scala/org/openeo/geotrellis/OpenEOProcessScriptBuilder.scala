@@ -559,14 +559,10 @@ class OpenEOProcessScriptBuilder {
       case "tan" if hasX => mapFunction("x", Tan.apply)
       case "tanh" if hasX => mapFunction("x", Tanh.apply)
       // Other
-      case "first" => {
-        arguments.put("index", 0: Integer)
-        arrayElementFunction(arguments)
-      }
-      case "last" => {
-        arguments.put("index", -1: Integer)
-        arrayElementFunction(arguments)
-      }
+      case "first" if ignoreNoData =>  applyListFunction("data", firstFunctionIgnoreNoData)
+      case "first" => applyListFunction("data", firstFunctionWithNodata)
+      case "last" if ignoreNoData => applyListFunction("data", lastFunctionIgnoreNoData)
+      case "last" => applyListFunction("data", lastFunctionWithNoData)
       case "array_element" => arrayElementFunction(arguments)
       case "array_modify" => arrayModifyFunction(arguments)
       case "array_interpolate_linear" => applyListFunction("data",linearInterpolation)
@@ -715,7 +711,6 @@ class OpenEOProcessScriptBuilder {
     bandFunction
   }
 
-
   private def arrayConcatFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
     val storedArgs = contextStack.head
     val array1Function = storedArgs("array1")
@@ -737,7 +732,6 @@ class OpenEOProcessScriptBuilder {
     bandFunction
   }
 
-
   private def arrayCreateFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
     val storedArgs = contextStack.head
     val dataFunction:OpenEOProcess = storedArgs("data")
@@ -750,6 +744,54 @@ class OpenEOProcessScriptBuilder {
     bandFunction
   }
 
+  private def firstFunctionIgnoreNoData(tiles:Seq[Tile]) : Seq[Tile] = {
+    val tile = MultibandTile(tiles)
+    val mutableResult: MutableArrayTile = tiles.head.mutable.prototype(tile.cols, tile.rows)
+
+    def findFirstBandValue(col: Int, row: Int): Any = {
+      // Find the first band where the value is not NaN and use that as the value for this (col, row).
+      cfor(0)(_ < tile.bandCount, _ + 1) { band =>
+        val d = tile.bands(band).getDouble(col, row)
+        if (!d.isNaN) {
+          mutableResult.setDouble(col, row, d)
+          return None; // (col, row) value chosen, break out of band loop.
+        }
+      }
+    }
+
+    cfor(0)(_ < tile.cols, _ + 1) { col =>
+      cfor(0)(_ < tile.rows, _ + 1) { row =>
+        findFirstBandValue(col, row)
+      }
+    }
+    Seq(mutableResult.convert(tiles.head.cellType));
+  }
+
+  private def lastFunctionIgnoreNoData(tiles:Seq[Tile]) : Seq[Tile] = {
+    val tile = MultibandTile(tiles)
+    val mutableResult: MutableArrayTile = tiles.head.mutable.prototype(tile.cols, tile.rows)
+
+    def findLastBandValue(col: Int, row: Int): Any = {
+      // Find the first band where the value is not NaN and use that as the value for this (col, row).
+      cfor(tile.bandCount-1)(_ >= 0, _ - 1) { band =>
+        val d = tile.bands(band).getDouble(col, row)
+        if (!d.isNaN) {
+          mutableResult.setDouble(col, row, d)
+          return None; // (col, row) value chosen, break out of band loop.
+        }
+      }
+    }
+
+    cfor(0)(_ < tile.cols, _ + 1) { col =>
+      cfor(0)(_ < tile.rows, _ + 1) { row =>
+        findLastBandValue(col, row)
+      }
+    }
+    Seq(mutableResult.convert(tiles.head.cellType));
+  }
+
+  private def firstFunctionWithNodata(tiles:Seq[Tile]) : Seq[Tile] = Seq(tiles.head)
+  private def lastFunctionWithNoData(tiles:Seq[Tile]) : Seq[Tile] = Seq(tiles.last)
 
   private def arrayElementFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
     val storedArgs = contextStack.head
@@ -763,13 +805,10 @@ class OpenEOProcessScriptBuilder {
     }
     val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
       val input: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
-      val indexInt = index.asInstanceOf[Integer]
-      if(input.size <= indexInt || (indexInt == -1 && input.isEmpty)) {
+      if(input.size <= index.asInstanceOf[Integer]) {
         throw new IllegalArgumentException("Invalid band index " + index + ", only " + input.size + " bands available.")
       }
-      if (indexInt == -1)
-        Seq(input.last)
-      Seq(input(indexInt))
+      Seq(input(index.asInstanceOf[Integer]))
     }
     bandFunction
   }

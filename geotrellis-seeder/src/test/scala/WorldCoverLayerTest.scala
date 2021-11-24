@@ -47,13 +47,13 @@ class WorldCoverLayerTest {
       Band("S2RGBNIR", 2, 0, 10000)
     )
 
-    new TileSeeder(14, false, Option.empty)
+    new TileSeeder(10, false, Option.empty)
       .renderPng(
         path = "/tmp/tiles/WorldCover",
         productType = "S2RGBNIR",
         dateStr = "",
         bands = Some(bands),
-        productGlob = Some("/data/MTDA/WORLDCOVER/ESA_WORLDCOVER_10M_2020_V100/S2RGBNIR/ESA_WorldCover_10m_2020_v100_S79W178_S2RGBNIR.tif")
+        productGlob = Some("/data/MTDA/WORLDCOVER/ESA_WORLDCOVER_10M_2020_V100/S2RGBNIR/ESA_WorldCover_10m_2020_v100_N68W049_S2RGBNIR.tif")
       )
   }
 }

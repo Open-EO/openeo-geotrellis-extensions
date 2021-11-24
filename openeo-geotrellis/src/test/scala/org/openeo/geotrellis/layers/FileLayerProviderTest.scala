@@ -16,7 +16,8 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.junit.Assert.{assertEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.{AfterClass, BeforeClass, Test}
-import org.openeo.geotrellis.layers.FileLayerProvider.{layerMetadata, rasterSourceRDD}
+import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
+import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 
 import java.net.URL

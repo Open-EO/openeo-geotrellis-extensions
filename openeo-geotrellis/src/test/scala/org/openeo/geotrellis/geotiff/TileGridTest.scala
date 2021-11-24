@@ -16,6 +16,7 @@ import org.openeo.geotrellis.png.PngTest
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrellis.{LayerFixtures, geotiff}
 
+import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
 import scala.collection.JavaConversions._
 
 object TileGridTest {
@@ -116,16 +117,22 @@ class TileGridTest {
   @Test
   def testSaveStitchWithTileGridsTemporal(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
+    val isoFormattedDate = date format ISO_ZONED_DATE_TIME
     val utm31 = CRS.fromEpsgCode(32631)
     val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31),utm31)
 
 
     val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
 
-    val paths = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6))
-    val expectedPaths = List("/tmp/openEO_2020-04-05Z_31UDS_3_4.tif", "/tmp/openEO_2020-04-05Z_31UDS_2_4.tif", "/tmp/openEO_2020-04-05Z_31UDS_3_5.tif", "/tmp/openEO_2020-04-05Z_31UDS_2_5.tif")
+    val timedStampedPaths = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6))
+    val expectedTimestampedPaths = List(
+      ("/tmp/openEO_2020-04-05Z_31UDS_3_4.tif", isoFormattedDate),
+      ("/tmp/openEO_2020-04-05Z_31UDS_2_4.tif", isoFormattedDate),
+      ("/tmp/openEO_2020-04-05Z_31UDS_3_5.tif", isoFormattedDate),
+      ("/tmp/openEO_2020-04-05Z_31UDS_2_5.tif", isoFormattedDate)
+    )
 
-    Assert.assertEquals(paths.groupBy(identity), expectedPaths.groupBy(identity))
+    Assert.assertEquals(timedStampedPaths.groupBy(identity), expectedTimestampedPaths.groupBy(identity))
 
   }
 

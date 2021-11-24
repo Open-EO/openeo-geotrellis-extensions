@@ -4,6 +4,7 @@ package org.openeo.geotrellis;
 import geotrellis.layer.*;
 import geotrellis.raster.*;
 import geotrellis.spark.ContextRDD;
+import geotrellis.spark.partition.SpacePartitioner;
 import geotrellis.spark.testkit.TileLayerRDDBuilders$;
 import org.apache.commons.math3.stat.descriptive.moment.StandardDeviation;
 import org.apache.commons.math3.stat.descriptive.rank.Percentile;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.DisplayName;
 import scala.Tuple2;
 import scala.collection.JavaConversions;
 import scala.collection.JavaConverters;
+import scala.math.BigInt;
 import scala.reflect.ClassTag;
 
 import java.time.ZonedDateTime;
@@ -232,6 +234,11 @@ public class TestOpenEOProcesses {
 
         OpenEOProcessScriptBuilder featureEngineeringProcess = TestOpenEOProcessScriptBuilder.createFeatureEngineering();
         RDD<Tuple2<SpatialKey, MultibandTile>> result = new OpenEOProcesses().applyTimeDimensionTargetBands(new ContextRDD<>(compositedCube,datacube1.metadata()), featureEngineeringProcess, new HashMap<>());
+        assertTrue(result.partitioner().get() instanceof SpacePartitioner);
+
+        BigInt p1 = ((SpacePartitioner<SpatialKey>) result.partitioner().get()).index().toIndex(new SpatialKey(0, 0));
+        BigInt p2 = ((SpacePartitioner<SpatialKey>) result.partitioner().get()).index().toIndex(new SpatialKey(1, 0));
+        assertNotEquals("Partitions for neighbouring keys should be different",p1,p2);
         List<Tuple2<String,MultibandTile>> results = JavaPairRDD.fromJavaRDD(result.toJavaRDD()).map(spaceTimeKeyMultibandTileTuple2 -> new Tuple2<String,MultibandTile>(spaceTimeKeyMultibandTileTuple2._1.toString(),spaceTimeKeyMultibandTileTuple2._2)).collect();
         MultibandTile interpolatedTile = results.stream().collect(Collectors.toList()).get(0)._2;
         assertEquals(5,interpolatedTile.bandCount());

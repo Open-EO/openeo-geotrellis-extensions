@@ -8,6 +8,6 @@ object SampleType extends Enumeration {
   private[geotrellissentinelhub] case class Val(cellType: CellType) extends super.Val
   implicit def valueToVal(x: Value): Val = x.asInstanceOf[Val]
 
-  val UINT16 = Val(UShortConstantNoDataCellType)
-  val FLOAT32 = Val(FloatUserDefinedNoDataCellType(0))
+  val UINT16: SampleType = Val(UShortConstantNoDataCellType)
+  val FLOAT32: SampleType = Val(FloatUserDefinedNoDataCellType(0))
 }

@@ -1,30 +1,30 @@
 package org.openeo.geotrellis.netcdf
 
 //import ucar.ma2.Array
-import java.io.IOException
-import java.nio.file.{Files, Path, Paths}
-import java.time.format.DateTimeFormatter
-import java.time.{Duration, ZonedDateTime}
-import java.util
-import java.util.{ArrayList, Collections}
-
 import geotrellis.layer.TileLayerMetadata.toLayoutDefinition
 import geotrellis.layer._
 import geotrellis.proj4.CRS
+import geotrellis.raster
 import geotrellis.raster._
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.util._
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.storage.StorageLevel
 import org.openeo.geotrellis.ProjectedPolygons
 import org.slf4j.LoggerFactory
 import ucar.ma2.{ArrayDouble, ArrayInt, DataType}
 import ucar.nc2.write.Nc4ChunkingDefault
 import ucar.nc2.{Attribute, Dimension, NetcdfFileWriter, Variable}
 
+import java.io.IOException
+import java.nio.file.{Files, Path, Paths}
+import java.time.format.DateTimeFormatter
+import java.time.{Duration, ZonedDateTime}
+import java.util
+import java.util.{ArrayList, Collections}
 import scala.collection.JavaConverters._
-import scala.collection.mutable.ListBuffer
 import scala.reflect.ClassTag
 
 
@@ -75,8 +75,10 @@ object NetCDFRDDWriter {
     val rasterExtent = RasterExtent(extent = extent, cellSize = rdd.metadata.cellSize)
 
     var netcdfFile: NetcdfFileWriter = null
-    for(tuple <- rdd.toLocalIterator){
-
+    val cachedRDD = rdd.persist(StorageLevel.MEMORY_AND_DISK)
+    val count = cachedRDD.count()
+    logger.info(s"Writing NetCDF from rdd with : ${count} elements and ${rdd.getNumPartitions} partitions.")
+    for(tuple <- cachedRDD.toLocalIterator){
       val cellType = tuple._2.cellType
 
       if(netcdfFile == null){
@@ -85,13 +87,27 @@ object NetCDFRDDWriter {
       val multibandTile = tuple._2
 
       for (bandIndex <- bandNames.asScala.indices) {
-
         val gridExtent = rasterExtent.gridBoundsFor(tuple._1.extent(rdd.metadata))
-        val origin: Array[Int] = scala.Array(gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
-        val variable = bandNames.get(bandIndex)
+        if(gridExtent.colMax >= rasterExtent.cols || gridExtent.rowMax >= rasterExtent.rows){
+          logger.warn("Can not write tile beyond raster bounds: " + gridExtent)
+        }else{
+          val origin: Array[Int] = scala.Array(gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
+          val variable = bandNames.get(bandIndex)
 
-        val tile = multibandTile.band(bandIndex)
-        writeTile(variable, origin, tile, netcdfFile)
+          var tile = multibandTile.band(bandIndex)
+          if(gridExtent.width < tile.cols || gridExtent.height < tile.rows){
+            tile = tile.crop(gridExtent.width,gridExtent.height,raster.CropOptions(force=true))
+            logger.warn(s"Cropping output tile to avoid going out of variable (${variable}) bounds ${gridExtent}.")
+          }
+          try{
+            writeTile(variable, origin, tile, netcdfFile)
+          }catch {
+            case t: IOException => {
+              logger.error("Failed to write subtile: " + gridExtent + " to variable: " + variable + " with shape: " + netcdfFile.findVariable(variable).getShape.mkString("Array(", ", ", ")"),t)
+            }
+            case t: Throwable =>  throw t
+          }
+        }
       }
     }
 
@@ -109,21 +125,22 @@ object NetCDFRDDWriter {
                        zLevel:Int
                  ): java.util.List[String] = {
 
-    var dates = new ListBuffer[Int]()
     val extent = rdd.metadata.apply(rdd.metadata.tileBounds)
 
     val rasterExtent = RasterExtent(extent = extent, cellSize = rdd.metadata.cellSize)
 
+    val cachedRDD = rdd.persist(StorageLevel.MEMORY_AND_DISK)
+    val count = cachedRDD.count()
+    logger.info(s"Writing NetCDF from rdd with : ${count} elements and ${rdd.getNumPartitions} partitions.")
+    val dates = cachedRDD.keys.map(k => Duration.between(fixedTimeOffset, k.time).toDays.toInt).distinct().collect().sorted.toList
+
     var netcdfFile: NetcdfFileWriter = null
-    for(tuple <- rdd.toLocalIterator){
+    for(tuple <- cachedRDD.toLocalIterator){
 
       val cellType = tuple._2.cellType
       val timeOffset = Duration.between(fixedTimeOffset, tuple._1.time).toDays.toInt
       var timeDimIndex = dates.indexOf(timeOffset)
-      if(timeDimIndex<0) {
-        dates.append( timeOffset )
-        timeDimIndex = dates.length-1
-      }
+
       if(netcdfFile == null){
         netcdfFile = setupNetCDF(path, rasterExtent, null, bandNames, rdd.metadata.crs, cellType,dimensionNames,attributes,zLevel)
       }
@@ -137,7 +154,14 @@ object NetCDFRDDWriter {
           val variable = bandNames.get(bandIndex)
 
           val tile = multibandTile.band(bandIndex)
-          writeTile(variable, origin, tile, netcdfFile)
+          try{
+            writeTile(variable, origin, tile, netcdfFile)
+          }catch {
+          case t: IOException => {
+            logger.error("Failed to write subtile: " + gridExtent + " to variable: " + variable + " with shape: " + netcdfFile.findVariable(variable).getShape.mkString("Array(", ", ", ")"),t)
+          }
+          case t: Throwable =>  throw t
+        }
         }
       }
     }
@@ -479,8 +503,6 @@ object NetCDFRDDWriter {
     netcdfFile.addVariableAttribute(variableName, "units", units)
     netcdfFile.addVariableAttribute(variableName, "axis", axis)
   }
-
-  import java.util
 
   private def addNetcdfVariable(netcdfFile: NetcdfFileWriter, dimensions: util.ArrayList[Dimension], variableName: String, dataType: DataType, standardName: String, longName: String, units: String, axis: String, fillValue: Number, coordinates: String): Unit = {
     netcdfFile.addVariable(variableName, dataType, dimensions)

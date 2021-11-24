@@ -141,7 +141,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
       if (colorMap.isDefined) {
         val map = colormap.ColorMapParser.parse(colorMap.get)
-        getSinglebandRDD(sourcePathsWithBandId.head, spatialKey,resampleMethod.getOrElse(NearestNeighbor))
+        getSinglebandRDD(sourcePathsWithBandId.head, spatialKey, resampleMethod.getOrElse(NearestNeighbor))
           .repartition(getPartitions)
           .foreachPartition { items =>
             configureDebugLogging()
@@ -213,7 +213,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
   }
 
   private def getS1MultibandRDD(sourcePathsWithBandId: Seq[(Seq[String], Int)], spatialKey: Option[SpatialKey])
-                             (implicit sc: SparkContext, layout:LayoutDefinition) = {
+                               (implicit sc: SparkContext, layout: LayoutDefinition) = {
 
     val sourcesVV = (reproject(sourcePathsWithBandId(0)._1), sourcePathsWithBandId(0)._2)
     val sourcesVH = (reproject(sourcePathsWithBandId(1)._1), sourcePathsWithBandId(1)._2)
@@ -221,16 +221,16 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     loadMultibandTiles(sourcesVV, sourcesVH, spatialKey)
   }
 
-  private def getSinglebandRDD(sourcePathsWithBandId: (Seq[String], Int), spatialKey: Option[SpatialKey],resampleMethod: ResampleMethod=NearestNeighbor)
+  private def getSinglebandRDD(sourcePathsWithBandId: (Seq[String], Int), spatialKey: Option[SpatialKey], resampleMethod: ResampleMethod = NearestNeighbor)
                               (implicit sc: SparkContext, layout: LayoutDefinition): RDD[(SpatialKey, (Iterable[RasterRegion], Int))] with Metadata[TileLayerMetadata[SpatialKey]] = {
 
-    val sourcesWithBandId = (reproject(sourcePathsWithBandId._1,resampleMethod), sourcePathsWithBandId._2)
+    val sourcesWithBandId = (reproject(sourcePathsWithBandId._1, resampleMethod), sourcePathsWithBandId._2)
 
-    loadSinglebandTiles(sourcesWithBandId, spatialKey,resampleMethod)
+    loadSinglebandTiles(sourcesWithBandId, spatialKey, resampleMethod)
   }
 
   private def reproject(sourcePaths: Seq[String], resampleMethod: ResampleMethod = NearestNeighbor) = {
-    sourcePaths.map(GeoTiffReprojectRasterSource(_, WebMercator,resampleMethod=resampleMethod))
+    sourcePaths.map(GeoTiffReprojectRasterSource(_, WebMercator, resampleMethod = resampleMethod))
   }
 
   private def renderSinglebandRDD(path: String, dateStr: String, colorMap: ColorMap, zoom: Int)
@@ -373,8 +373,8 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
   private def loadMultibandTiles(sourcesWithBandId: Seq[(_ <: Seq[RasterSource], Int)], spatialKey: Option[SpatialKey])
                                 (implicit sc: SparkContext, layout: LayoutDefinition):
-                                RDD[(SpatialKey, ((Iterable[RasterRegion], Int), (Iterable[RasterRegion], Int), (Iterable[RasterRegion], Int)))]
-                                with Metadata[TileLayerMetadata[SpatialKey]] = {
+  RDD[(SpatialKey, ((Iterable[RasterRegion], Int), (Iterable[RasterRegion], Int), (Iterable[RasterRegion], Int)))]
+    with Metadata[TileLayerMetadata[SpatialKey]] = {
 
     val allSources = sourcesWithBandId.map(_._1).foldLeft(Seq[RasterSource]())((r1: Seq[RasterSource], r2: Seq[RasterSource]) => r1 ++ r2)
     val layerMetadata = getLayerMetadata(allSources)
@@ -390,8 +390,8 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
   private def loadMultibandTiles(sourcesVV: (Seq[RasterSource], Int), sourcesVH: (Seq[RasterSource], Int), spatialKey: Option[SpatialKey])
                                 (implicit sc: SparkContext, layout: LayoutDefinition):
-                                RDD[(SpatialKey, ((Iterable[RasterRegion], Int), (Iterable[RasterRegion], Int)))]
-                                with Metadata[TileLayerMetadata[SpatialKey]] = {
+  RDD[(SpatialKey, ((Iterable[RasterRegion], Int), (Iterable[RasterRegion], Int)))]
+    with Metadata[TileLayerMetadata[SpatialKey]] = {
 
     val layerMetadata = getLayerMetadata(sourcesVV._1 ++ sourcesVH._1)
 
@@ -403,11 +403,11 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     ContextRDD(regionRDD, layerMetadata)
   }
 
-  private def loadSinglebandTiles(sourcesWithBandId: (Seq[RasterSource], Int), spatialKey: Option[SpatialKey],resampleMethod: ResampleMethod=NearestNeighbor)(implicit sc: SparkContext, layout: LayoutDefinition) = {
+  private def loadSinglebandTiles(sourcesWithBandId: (Seq[RasterSource], Int), spatialKey: Option[SpatialKey], resampleMethod: ResampleMethod = NearestNeighbor)(implicit sc: SparkContext, layout: LayoutDefinition) = {
 
     val layerMetadata = getLayerMetadata(sourcesWithBandId._1)
 
-    val regionRDD = rasterRegionRDDFromSources(sourcesWithBandId, spatialKey,resampleMethod)
+    val regionRDD = rasterRegionRDDFromSources(sourcesWithBandId, spatialKey, resampleMethod)
 
     ContextRDD(regionRDD, layerMetadata)
   }
@@ -455,7 +455,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     TileLayerMetadata[SpatialKey](cellType, layout, combinedExtents, crs, layerKeyBounds)
   }
 
-  private def rasterRegionRDDFromSources(sourcesWithBandId: (Seq[RasterSource], Int), spatialKey: Option[SpatialKey], resampleMethod: ResampleMethod=NearestNeighbor)
+  private def rasterRegionRDDFromSources(sourcesWithBandId: (Seq[RasterSource], Int), spatialKey: Option[SpatialKey], resampleMethod: ResampleMethod = NearestNeighbor)
                                         (implicit sc: SparkContext, layout: LayoutDefinition): RDD[(SpatialKey, (Iterable[RasterRegion], Int))] = {
 
     sc.parallelize(sourcesWithBandId._1, partitions.getOrElse(sc.defaultParallelism))
@@ -524,14 +524,33 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       t.toArray().zipWithIndex.foreach {
         case (v, i) => if (maskValues.contains(v)) {
           array(i) = CLOUD_MILKINESS
+        }  else if (isNoData(v)) {
+          array(i) = 0
         }
       }
     }
 
+
+    /**
+     * Custom implementation of the GeoTrellis normalize function. This applied the normalization function and
+     * clipping in a single call. If done separately, issues appeared with incorrect and overflowing cell data types.
+     */
+     def normalizeClip(t: Tile, oldMin: Int, oldMax: Int, newMin: Int, newMax: Int): Tile = {
+      val dnew = newMax - newMin
+      val dold = oldMax - oldMin
+      if (dold <= 0 || dnew <= 0) {
+        sys.error(s"Invalid parameters: $oldMin, $oldMax, $newMin, $newMax")
+      }
+      t.mapIfSet(z => {
+        val newZ = (((z - oldMin) * dnew) / dold) + newMin
+        1 max newZ min 255
+      })
+    }
+
+
     def normalize(bandIndex: Int, tile: Tile) = {
       val band = bands(bandIndex)
-      tile.normalize(band.min, band.max, 1, 255)
-        .mapIfSet(1 max _ min 255)
+      normalizeClip(tile, band.min, band.max, 1, 255)
         .convert(IntConstantNoDataCellType)
     }
 
@@ -551,9 +570,20 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       tile.mapDouble(10 * log10(_))
     }
 
+    def normalizeClip(t: Tile, oldMin: Double, oldMax: Double, newMin: Double, newMax: Double): Tile = {
+      val dnew = newMax - newMin
+      val dold = oldMax - oldMin
+      if (dold <= 0 || dnew <= 0) {
+        sys.error(s"Invalid parameters: $oldMin, $oldMax, $newMin, $newMax")
+      }
+      t.mapIfSetDouble(z => {
+        val newZ = (((z - oldMin) * dnew) / dold) + newMin
+        1.toDouble max newZ min 255.toDouble
+      })
+    }
+
     def normalize(t: Tile, min: Double, max: Double) = {
-      t.normalize(min, max, 1, 255)
-        .mapIfSet(1 max _ min 255)
+      normalizeClip(t, min, max, 1, 255)
     }
 
     val logTileR = logTile(tileR.toArrayTile())
@@ -607,19 +637,19 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 object TileSeeder {
   private val CLOUD_MILKINESS = 150
 
-  private def getResampleMethod(method:String): ResampleMethod = {
-    if(method==null) {
+  private def getResampleMethod(method: String): ResampleMethod = {
+    if (method == null) {
       return NearestNeighbor
     }
     method.toLowerCase match {
-      case "mode"=> Mode
-      case "nearestneighbor"=> NearestNeighbor
-      case "bilinear"=> Bilinear
+      case "mode" => Mode
+      case "nearestneighbor" => NearestNeighbor
+      case "bilinear" => Bilinear
       case "cubicspline" => CubcSpline
-      case "average"=> Average
-      case "median"=> Median
-      case "max"=> Max
-      case "min"=> Min
+      case "average" => Average
+      case "median" => Median
+      case "max" => Max
+      case "min" => Min
       case _ => NearestNeighbor
     }
   }
@@ -663,7 +693,7 @@ object TileSeeder {
             .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
             .set("spark.kryoserializer.buffer.max", "1024m"))
 
-      seeder.renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, tooCloudyFile = tooCloudyFile, oscarsEndpoint = oscarsEndpoint, oscarsCollection = oscarsCollection, oscarsSearchFilters = oscarsSearchFilters, datePattern=datePattern, resampleMethod=resampleMethod)
+      seeder.renderPng(rootPath, productType, date, colorMap, bands, productGlob, maskValues, permissions, tooCloudyFile = tooCloudyFile, oscarsEndpoint = oscarsEndpoint, oscarsCollection = oscarsCollection, oscarsSearchFilters = oscarsSearchFilters, datePattern = datePattern, resampleMethod = resampleMethod)
 
       sc.stop()
     }

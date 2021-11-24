@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.geotiff
 
-import geotrellis.layer.{CRSWorldExtent, SpatialKey, ZoomedLayoutScheme}
+import geotrellis.layer.{CRSWorldExtent, SpaceTimeKey, SpatialKey, ZoomedLayoutScheme}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.{ByteArrayTile, ByteConstantTile, ColorMaps, MultibandTile, Raster, Tile, TileLayout}
@@ -10,7 +10,9 @@ import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit._
-import org.openeo.geotrellis.LayerFixtures
+import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses}
+
+import java.util
 
 
 
@@ -34,7 +36,14 @@ object WriteRDDToGeotiffTest{
 
 class WriteRDDToGeotiffTest {
 
-
+  val allOverviewOptions = {
+    val opts = new GTiffOptions()
+    opts.setColorMap(ColorMaps.IGBP)
+    opts.addHeadTag("Copyright", "The unit test.")
+    opts.addBandTag(0, "BAND", "Band Name")
+    opts.overviews = "ALL"
+    opts
+  }
 
 
   @Test
@@ -47,12 +56,8 @@ class WriteRDDToGeotiffTest {
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile),TileLayout(layoutCols,layoutRows,256,256),LatLng)
     val filename = "out.tif"
-    val options = new GTiffOptions()
-    options.setColorMap(ColorMaps.IGBP)
-    options.addHeadTag("Copyright","The unit test.")
-    options.addBandTag(0, "BAND","Band Name")
-    options.overviews = "ALL"
-    saveRDD(tileLayerRDD.withContext{_.repartition(layoutCols*layoutRows)},1,filename,formatOptions = options)
+
+    saveRDD(tileLayerRDD.withContext{_.repartition(layoutCols*layoutRows)},1,filename,formatOptions = allOverviewOptions)
 
     val tiff = GeoTiff.readSingleband(filename)
     assertTrue(tiff.options.colorMap.isDefined)
@@ -60,6 +65,35 @@ class WriteRDDToGeotiffTest {
     assertEquals(3,tiff.overviews.size)
     val output = tiff.raster.tile
     assertArrayEquals(imageTile.toArray(),output.toArray())
+  }
+
+
+  @Test
+  def testWriteRDD_apply_neighborhood(): Unit ={
+    val layoutCols = 8
+    val layoutRows = 4
+
+    val intImage = LayerFixtures.createTextImage( layoutCols*256, layoutRows*256)
+    val imageTile = ByteArrayTile(intImage,layoutCols*256, layoutRows*256)
+
+    val tileLayerRDD = LayerFixtures.buildSingleBandSpatioTemporalDataCube(util.Arrays.asList(imageTile),Seq("2017-03-01T00:00:00Z"))
+
+    val filename = "openEO_2017-03-01Z.tif"
+    val p = new OpenEOProcesses()
+    val buffered: MultibandTileLayerRDD[SpaceTimeKey] = p.remove_overlap(p.retile(tileLayerRDD,224,224,16,16),224,224,16,16)
+
+    val cropBounds = Extent(-115, -65, 5.0, 56)
+    saveRDDTemporal(buffered,"./",cropBounds = Some(cropBounds))
+
+    val croppedRaster: Raster[MultibandTile] = tileLayerRDD.toSpatial().stitch().crop(cropBounds)
+    val referenceFile = "croppedRaster.tif"
+    GeoTiff(croppedRaster,LatLng).write(referenceFile)
+
+    val result = GeoTiff.readMultiband(filename).raster
+    val reference = GeoTiff.readMultiband(referenceFile).raster
+
+    assertArrayEquals(reference.tile.band(0).toArray(),result.tile.band(0).toArray())
+
   }
 
   @Test

@@ -12,7 +12,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
-import org.openeo.geotrellis.layers.FileLayerProvider.layerMetadata
+import org.openeo.geotrelliscommon.DatacubeSupport.layerMetadata
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
 import java.net.URL

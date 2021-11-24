@@ -1,12 +1,8 @@
 package org.openeo.geotrellis.file
 
-import java.time.LocalDate
-import java.time.ZoneOffset.UTC
-import java.time.format.DateTimeFormatter
-import java.util.Collections.{emptyMap, singletonList}
-
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.LatLng
+import geotrellis.raster.CellSize
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.spark._
@@ -17,6 +13,11 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.ProjectedPolygons
+
+import java.time.LocalDate
+import java.time.ZoneOffset.UTC
+import java.time.format.DateTimeFormatter
+import java.util.Collections.{emptyMap, singletonList}
 // import org.openeo.geotrellis.TestImplicits._
 
 object Sentinel5PPyramidFactoryTest {
@@ -28,7 +29,7 @@ object Sentinel5PPyramidFactoryTest {
       .set("spark.kryoserializer.buffer.max", "512m")
       .set("spark.rdd.compress","true")
 
-    sc = SparkUtils.createLocalSparkContext("local[*]", classOf[Sentinel2PyramidFactoryTest].getName, sparkConf)
+    sc = SparkUtils.createLocalSparkContext("local[2]", classOf[Sentinel2PyramidFactoryTest].getName, sparkConf)
   }
 
   @AfterClass
@@ -54,12 +55,14 @@ class Sentinel5PPyramidFactoryTest {
 
     val projectedPolygons = ProjectedPolygons.fromExtent(bbox.extent, srs)
 
-    val dailyCOPyramidFactory = new Sentinel5PPyramidFactory(
+    val dailyCOPyramidFactory = new Sentinel2PyramidFactory(
       openSearchEndpoint = "https://services.terrascope.be/catalogue",
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_CO_TD_V1",
       openSearchLinkTitles = singletonList("CO"),
-      rootPath = "/data/MTDA/TERRASCOPE_Sentinel5P/L3_CO_TD_V1"
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel5P/L3_CO_TD_V1",
+      maxSpatialResolution = CellSize(0.05,0.05)
     )
+    dailyCOPyramidFactory.crs = LatLng
 
     val Seq((_, baseLayerByDatacube_seq)) = dailyCOPyramidFactory.datacube_seq(
         projectedPolygons,

@@ -5,11 +5,13 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter.{ISO_LOCAL_DATE, ISO_OFFSET_DATE_TIME}
 import java.time.{LocalDate, ZonedDateTime}
+import java.util
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster._
 import geotrellis.raster.geotiff.GeoTiffRasterSource
-import geotrellis.raster.io.geotiff.{GeoTiff, MultibandGeoTiff}
+import geotrellis.raster.io.geotiff.compression.DeflateCompression
+import geotrellis.raster.io.geotiff.{GeoTiff, GeoTiffOptions, MultibandGeoTiff}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
@@ -22,6 +24,8 @@ import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
+
+import java.util.zip.Deflater.BEST_COMPRESSION
 
 object PyramidFactoryTest {
   private val sentinelHubBatchProcessResultsKeyRegex = raw".+\.tif".r
@@ -66,6 +70,31 @@ class PyramidFactoryTest {
       globPattern = "file:/data/MTDA/CGS_S2/CGS_S2_FAPAR/2019/04/2[34567]/*/*/10M/*_FAPAR_10M_V102.tif", from, to)
   }
 
+  @Test
+  def singleBandGeoTiffFromDiskForSingleFixedDate(): Unit = {
+    val singlePath = "file:/data/MTDA/CGS_S2/CGS_S2_FAPAR/2019/04/24/S2B_20190424T143759Z_19HCC_CGS_V102_000/S2B_20190424T143759Z_19HCC_FAPAR_V102/10M/S2B_20190424T143759Z_19HCC_FAPAR_10M_V102.tif"
+    val singleDate = LocalDate.of(2019, 4, 24).atStartOfDay(UTC)
+
+    val pyramidFactory = PyramidFactory.from_disk(
+      timestamped_paths = util.Collections.singletonMap(singlePath, singleDate format ISO_OFFSET_DATE_TIME)
+    )
+
+    val pyramid = pyramidFactory.pyramid_seq(bbox = null, bbox_srs = null, from_date = null, to_date = null)
+
+    val (maxZoom, baseLayer) = pyramid.maxBy { case (zoom, _) => zoom }
+    assertEquals(14, maxZoom)
+
+    baseLayer.cache()
+
+    assertFalse("base layer contains no tiles!", baseLayer.isEmpty())
+
+    val uniqueTimestamps = baseLayer.keys
+      .map(_.time)
+      .distinct().collect()
+
+    assertArrayEquals(Array[Object](singleDate), uniqueTimestamps.asInstanceOf[Array[Object]])
+  }
+
   private def singleBandGeoTiffFromDisk(globPattern: String, from: ZonedDateTime, to: ZonedDateTime): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
 
@@ -106,7 +135,9 @@ class PyramidFactoryTest {
         .stitch()
         .crop(boundingBox.reproject(layer.metadata.crs))
 
-      MultibandGeoTiff(multibandTile, extent, layer.metadata.crs)
+      val options = GeoTiffOptions(DeflateCompression(BEST_COMPRESSION))
+
+      MultibandGeoTiff(multibandTile, extent, layer.metadata.crs, options)
         .write(s"/tmp/stitched_${ISO_LOCAL_DATE format timestamp}_$zoom.tif")
     }
   }
@@ -292,6 +323,38 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
   }
 
+  @Ignore("depends on data in AWS S3")
+  @Test
+  def sentinelHubBatchProcessApiGeoTiffFromS3BucketInDifferentRegion(): Unit = {
+    assertNotNull("AWS_ACCESS_KEY_ID is not set", System.getenv("AWS_ACCESS_KEY_ID"))
+    assertNotNull("AWS_SECRET_ACCESS_KEY is not set", System.getenv("AWS_SECRET_ACCESS_KEY"))
+    System.clearProperty("aws.region")
+
+    val boundingBox = ProjectedExtent(Extent(15.06, 48.06, 16.06, 49.06), LatLng)
+
+    val differentRegionBucketName = "openeo-sentinelhub-uswest2"
+    val batchProcessId = "5e2c5280-b900-4350-9e3a-fb25048bc207"
+
+    val pyramidFactory = PyramidFactory.from_s3(
+      s3_uri = s"s3://$differentRegionBucketName/$batchProcessId",
+      //key_regex = raw".+_20191010\.tif".r.regex,  // single day
+      key_regex = raw".+/33UWQ_1_9/_20191010\.tif".r.regex, // single tile
+      date_regex = sentinelHubBatchProcessResultsDateRegex.regex,
+      recursive = true,
+      interpret_as_cell_type = "float32ud0",
+      lat_lon = false
+    )
+
+    val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
+    val projectedPolygons = ProjectedPolygons.reproject(ProjectedPolygons.fromExtent(boundingBox.extent, srs), 32633)
+    val pyramid = pyramidFactory.datacube_seq(projectedPolygons, from_date = null, to_date = null)
+
+    val (maxZoom, _) = pyramid.maxBy { case (zoom, _) => zoom }
+    assertEquals(0, maxZoom)
+
+    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
+  }
+
   @Test
   def joinLayers(): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
@@ -353,7 +416,32 @@ class PyramidFactoryTest {
     }
   }
 
-  @Ignore("not a real test but trying to pass a custom S3 client to a GeoTiffRasterSource")
+  @Ignore
+  @Test
+  def assembledSentinelHubBatchProcessResultsFromDisk(): Unit = {
+    val boundingBox = ProjectedExtent(Extent(2.59003, 51.069, 2.8949, 51.2206), LatLng)
+    val crs = CRS.fromEpsgCode(32631)
+    val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(crs), crs)
+
+    val pyramidFactory = PyramidFactory.from_disk(
+      glob_pattern = "file:///tmp/assembled_1168491449486718719//*.tif",
+      date_regex = /* raw".+/(\d{4})(\d{2})(\d{2})-[A-Z0-9_]+\.tif".r.regex */ raw".+(\d{4})_?(\d{2})_?(\d{2}).*\.tif".r.regex,
+      interpret_as_cell_type = "float32ud0",
+      lat_lon = false
+    )
+
+    val srs = s"EPSG:${reprojectedBoundingBox.crs.epsgCode.get}"
+    val pyramid = pyramidFactory.datacube_seq(ProjectedPolygons(Array(reprojectedBoundingBox.extent.toPolygon()), srs),
+      from_date = null, to_date = null)
+
+    val (maxZoom, baseLayer) = pyramid.maxBy { case (zoom, _) => zoom }
+    assertEquals(0, maxZoom)
+    assertEquals(crs, baseLayer.metadata.crs)
+
+    saveLayerAsGeoTiff(pyramid, reprojectedBoundingBox, zoom = maxZoom)
+  }
+
+  @Ignore("doesn't work, the S3Client instance is not propagated as RasterSources are manipulated")
   @Test
   def anonymousInnerClass(): Unit = {
 
@@ -372,7 +460,6 @@ class PyramidFactoryTest {
         .region(Region.of(region))
         .credentialsProvider(StaticCredentialsProvider.create( AwsBasicCredentials.create(accessKey, secretKey)))
         .build()
-
 
       val rr = S3RangeReader(uri, s3Client)
       new StreamingByteReader(rr)

@@ -2,6 +2,8 @@ package org.openeo.geotrellissentinelhub
 
 import org.junit.{Ignore, Test}
 
+import java.nio.file.Files
+
 @Ignore
 class CachingServiceTest {
 
@@ -28,5 +30,22 @@ class CachingServiceTest {
     )
 
     println(s"check out results at s3://$bucketName/$assembledFolder")
+  }
+
+  @Test
+  def assemble_multiband_tiles(): Unit = {
+    val assembledFolder = Files.createTempDirectory("assembled_")
+    val collectingFolder = "/home/bossie/Documents/VITO/EP-4019: improve OpenEO batch job tracking/openeo_collecting/a747c8c4-b289-4c7e-9512-0f883529975e"
+    val bucketName = "openeo-sentinelhub"
+    val subfolder = "dummy"
+
+    cachingService.assemble_multiband_tiles(
+      collectingFolder,
+      assembledFolder.toString,
+      bucketName,
+      subfolder
+    )
+
+    println(assembledFolder.toUri)
   }
 }

@@ -1,7 +1,5 @@
 package org.openeo.geotrellis
 
-import java.time.{LocalDate, ZoneId, ZonedDateTime}
-
 import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, SpaceTimeKey}
 import geotrellis.proj4.{CRS, LatLng, Proj4Transform}
 import geotrellis.raster.{ByteConstantNoDataCellType, CellSize}
@@ -9,11 +7,11 @@ import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.Assert._
 import org.junit.Test
-import org.openeo.geotrellis.layers.FileLayerProvider
 import org.openeo.geotrelliscommon
 import org.openeo.geotrelliscommon._
 import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 
+import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import scala.collection.immutable
 import scala.reflect.ClassTag
 
@@ -33,7 +31,7 @@ class SpaceTimePartitionerOptimizationTest {
     val maxTime = ZonedDateTime.now
 
     //construct metadata in the same way we do it in practice
-    val metadata = FileLayerProvider.layerMetadata(myExtent, ZonedDateTime.parse("2015-01-01T00:00:00Z"), ZonedDateTime.parse("2015-01-10T00:00:00Z"), 12, ByteConstantNoDataCellType, new FloatingLayoutScheme(256, 256), CellSize(10, 10))
+    val metadata = DatacubeSupport.layerMetadata(myExtent, ZonedDateTime.parse("2015-01-01T00:00:00Z"), ZonedDateTime.parse("2015-01-10T00:00:00Z"), 12, ByteConstantNoDataCellType, new FloatingLayoutScheme(256, 256), CellSize(10, 10))
 
     //implicit val index: geotrelliscommon.SpaceTimeByMonthPartitioner.type = SpaceTimeByMonthPartitioner
     val partitioner = SpacePartitioner(metadata.bounds)
@@ -74,7 +72,7 @@ class SpaceTimePartitionerOptimizationTest {
     val minTime = ZonedDateTime.parse("2015-01-01T00:00:00Z")
     val maxTime = ZonedDateTime.now
     //construct metadata in the same way we do it in practice
-    val metadata = FileLayerProvider.layerMetadata(myExtent, minTime, maxTime, 12, ByteConstantNoDataCellType, new FloatingLayoutScheme(256, 256), CellSize(10, 10))
+    val metadata = DatacubeSupport.layerMetadata(myExtent, minTime, maxTime, 12, ByteConstantNoDataCellType, new FloatingLayoutScheme(256, 256), CellSize(10, 10))
 
     //bounds is 4 tiles wide
     val maxCol = metadata.bounds.get.maxKey.col
