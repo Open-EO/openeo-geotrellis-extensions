@@ -268,8 +268,11 @@ object FileLayerProvider {
     val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] =
       rasterRegionRDD
         .groupByKey(partitioner)
-        .flatMapValues { namedRasterRegions => {
-          val allRegions = namedRasterRegions.toSeq
+        .mapPartitions(partitionIterator => {
+
+          partitionIterator.toParArray.map(tuple => {
+            val allRegions = tuple._2.toSeq
+
           val filteredRegions =
           if(allRegions.size<2 || cloudFilterStrategy == NoCloudFilterStrategy) {
             allRegions
@@ -284,7 +287,7 @@ object FileLayerProvider {
             regionsWithDistance.filter(_._1 == largestDistanceToTheEdgeOfTheRaster).map(_._2)
           }
 
-          filteredRegions
+          val tilesForRegion = filteredRegions
             .flatMap { case (rasterRegion, sourcePath: SourcePath) =>
               val result: Option[(MultibandTile, SourcePath)] = cloudFilterStrategy match {
                 case l1cFilterStrategy: L1CCloudFilterStrategy =>
@@ -354,8 +357,12 @@ object FileLayerProvider {
             }
             .map { case (multibandTile, _) => multibandTile }
             .reduceOption(_ merge _)
-        }
-        }.filter { case (_, tile) => !tile.bands.forall(_.isNoDataTile) }
+            (tuple._1,tilesForRegion)
+        })
+
+
+        }.filter { case (_, tile) => tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
+          .map(t => (t._1,t._2.get)).iterator)
 
     ContextRDD(tiledRDD, metadata)
   }
