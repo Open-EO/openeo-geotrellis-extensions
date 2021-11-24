@@ -362,7 +362,7 @@ object FileLayerProvider {
 
 
         }.filter { case (_, tile) => tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
-          .map(t => (t._1,t._2.get)).iterator)
+          .map(t => (t._1,t._2.get)).iterator,true)
 
     ContextRDD(tiledRDD, metadata)
   }
