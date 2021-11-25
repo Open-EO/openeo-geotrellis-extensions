@@ -335,7 +335,7 @@ package object geotiff {
 
           (name, extent, tileBounds)
         }.filter { case (_, _, tileBounds) =>
-          if (KeyBounds(tileBounds).includes(key.getComponent[SpatialKey]())) true else false
+          if (KeyBounds(tileBounds).includes(key.getComponent[SpatialKey])) true else false
         }.map { case (name, extent, tileBounds) =>
           val re = preprocessedRdd.metadata.toRasterExtent()
           val gridBounds = re.gridBoundsFor(extent, clamp = true)
