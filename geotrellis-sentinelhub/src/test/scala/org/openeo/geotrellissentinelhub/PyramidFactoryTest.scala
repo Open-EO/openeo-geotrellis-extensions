@@ -1,15 +1,14 @@
 package org.openeo.geotrellissentinelhub
 
 import geotrellis.layer.SpaceTimeKey
-import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.proj4.util.UTM
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, MultibandGeoTiff}
 import geotrellis.raster.{CellSize, HasNoData, MultibandTile, Raster}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
-import org.junit.Assert._
 import org.apache.spark.{SparkConf, SparkContext, SparkException}
 import org.junit.Assert.{assertEquals, assertTrue, fail}
 import org.junit.Test
@@ -83,7 +82,7 @@ class PyramidFactoryTest {
     val date = ZonedDateTime.of(LocalDate.of(2019, 10, 10), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     def testCellType(baseLayer: MultibandTileLayerRDD[SpaceTimeKey]): Unit = baseLayer.metadata.cellType match {
-      case cellType: HasNoData[Double @unchecked] if cellType.isFloatingPoint && cellType.noDataValue == 0.0 =>
+      case cellType: HasNoData[Float @unchecked] if cellType.isFloatingPoint && cellType.noDataValue == 0.0 =>
       case wrongCellType => fail(s"wrong CellType $wrongCellType")
     }
 
@@ -102,7 +101,7 @@ class PyramidFactoryTest {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     def testCellType(baseLayer: MultibandTileLayerRDD[SpaceTimeKey]): Unit = baseLayer.metadata.cellType match {
-      case cellType: HasNoData[Int @unchecked] if !cellType.isFloatingPoint && cellType.noDataValue == 0 =>
+      case cellType: HasNoData[Short @unchecked] if !cellType.isFloatingPoint && cellType.noDataValue == 0 =>
       case wrongCellType => fail(s"wrong CellType $wrongCellType")
     }
 
