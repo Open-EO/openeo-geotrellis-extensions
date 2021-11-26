@@ -170,6 +170,10 @@
                                     <pattern>org.apache.avro</pattern>
                                     <shadedPattern>org.locationtech.geopyspark.shaded.org.apache.avro</shadedPattern>
                                 </relocation>
+                                <relocation>
+                                    <pattern>cats.kernel</pattern>
+                                    <shadedPattern>org.locationtech.geopyspark.shaded.cats.kernel</shadedPattern>
+                                </relocation>
                             </relocations>
                             <filters>
                                 <filter>
