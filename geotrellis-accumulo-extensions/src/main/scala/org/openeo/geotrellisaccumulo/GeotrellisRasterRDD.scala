@@ -1,7 +1,5 @@
 package org.openeo.geotrellisaccumulo
 
-import java.util
-
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.KryoWrapper
@@ -18,6 +16,7 @@ import org.apache.spark.{Partition, SparkContext, TaskContext}
 import org.openeo.geotrellisaccumulo
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
+import java.util
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.reflect.ClassTag
@@ -26,7 +25,7 @@ import scala.util.control.Breaks._
 class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[SpaceTimeKey],writerSchema:Schema,parent:GeotrellisAccumuloRDD,val metadata: TileLayerMetadata[SpaceTimeKey], sc : SparkContext) extends RDD[(SpaceTimeKey, V)](sc,Nil) with Metadata[TileLayerMetadata[SpaceTimeKey]] {
 
   val codec = KryoWrapper(KeyValueRecordCodec[SpaceTimeKey, V])
-  val kwWriterSchema = KryoWrapper(Some(writerSchema))
+  val jsonSchema = writerSchema.toString
 
   override val partitioner: Option[org.apache.spark.Partitioner] = Some(SpacePartitioner(metadata.bounds))
 
@@ -36,8 +35,9 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
     }
     val parentIterator = parent.compute(split, context)
 
+    val schema = new Schema.Parser().parse(jsonSchema)
     parentIterator.map { case (_, value) =>
-      AvroEncoder.fromBinary(kwWriterSchema.value.getOrElse(codec.value.schema), value.get)(codec.value)
+      AvroEncoder.fromBinary(schema, value.get)(codec.value)
     }.flatten
   }
 
