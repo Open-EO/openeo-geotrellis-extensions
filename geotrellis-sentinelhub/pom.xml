@@ -12,6 +12,7 @@
     <artifactId>geotrellis-sentinelhub</artifactId>
     <dependencies>
         <dependency>
+            <!--https://github.com/typelevel/cats/issues/3628-->
             <groupId>org.typelevel</groupId>
             <artifactId>cats-kernel_${scala.binary.version}</artifactId>
             <version>2.4.2</version>

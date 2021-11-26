@@ -171,6 +171,7 @@
                                     <shadedPattern>org.locationtech.geopyspark.shaded.org.apache.avro</shadedPattern>
                                 </relocation>
                                 <relocation>
+                                    <!--https://github.com/typelevel/cats/issues/3628-->
                                     <pattern>cats.kernel</pattern>
                                     <shadedPattern>org.locationtech.geopyspark.shaded.cats.kernel</shadedPattern>
                                 </relocation>
