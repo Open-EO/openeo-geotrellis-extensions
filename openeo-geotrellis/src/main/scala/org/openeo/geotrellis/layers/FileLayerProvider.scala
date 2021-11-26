@@ -512,7 +512,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         SentinelXMLMetadataRasterSource(new URL(vsisToHttpsCreo(dataPath)),bands)
       }
       else {
-        if( feature.crs.isEmpty || feature.crs.get.equals(targetExtent.crs)) {
+        if( feature.crs.isEmpty || feature.crs.get == null || feature.crs.get.equals(targetExtent.crs)) {
           if(experimental) {
             Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
           }else{
