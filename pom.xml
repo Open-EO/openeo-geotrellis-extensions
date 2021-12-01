@@ -17,6 +17,7 @@
         <commons-compress-version>1.10</commons-compress-version>
         <gwc-geotrellis.version>0.15.0_2.12-SNAPSHOT</gwc-geotrellis.version>
         <awssdk.version>2.13.74</awssdk.version>
+        <jaxb.api.version>2.3.0</jaxb.api.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
