@@ -24,7 +24,7 @@ class BatchProcessingApiTest {
       .map(ZonedDateTime.parse(_, ISO_OFFSET_DATE_TIME))
 
     val batchProcess = batchProcessingApi.createBatchProcess(
-      datasetId = "S1GRD",
+      datasetId = "sentinel-1-grd",
       boundingBox = ProjectedExtent(Extent(586240.0, 5350920.0, 588800.0, 5353480.0), CRS.fromEpsgCode(32633)),
       dateTimes,
       bandNames = Seq("VV", "VH"),
@@ -95,7 +95,7 @@ class BatchProcessingApiTest {
     val card4lId = UUID.randomUUID().toString
 
     val batchProcess = batchProcessingApi.createCard4LBatchProcess(
-      datasetId = "S1GRD",
+      datasetId = "sentinel-1-grd",
       bounds,
       dateTime = ZonedDateTime.parse("2021-02-15T15:54:57Z", ISO_OFFSET_DATE_TIME),
       bandNames = Seq("VH", "VV"),
@@ -131,7 +131,7 @@ class BatchProcessingApiTest {
     val endOfDay = date.atTime(OffsetTime.of(LocalTime.MAX, ZoneOffset.UTC)).toZonedDateTime
 
     val batchProcess = batchProcessingApi.createBatchProcess(
-      datasetId = "S1GRD",
+      datasetId = "sentinel-1-grd",
       multiPolygon,
       multiPolygonCrs = LatLng,
       dateTimes = Seq(startOfDay, endOfDay),

@@ -26,7 +26,7 @@ class BatchProcessingServiceTest {
   def startBatchProcess(): Unit = {
     val batchRequestId = batchProcessingService.start_batch_process(
       collection_id = "sentinel-1-grd",
-      dataset_id = "S1GRD",
+      dataset_id = "sentinel-1-grd",
       bbox = Extent(2.59003, 51.069, 2.8949, 51.2206),
       bbox_srs = "EPSG:4326",
       from_date = "2019-10-10T00:00:00+00:00",
@@ -49,7 +49,7 @@ class BatchProcessingServiceTest {
 
     val batchRequestId = batchProcessingService.start_batch_process(
       collection_id = "sentinel-1-grd",
-      dataset_id = "S1GRD",
+      dataset_id = "sentinel-1-grd",
       bbox = Extent(2.59003, 51.069, 2.8949, 51.2206),
       bbox_srs = "EPSG:4326",
       from_date = "2019-10-10T00:00:00+00:00",
@@ -69,7 +69,7 @@ class BatchProcessingServiceTest {
   def startBatchProcessForOrbitDirection(): Unit = {
     val batchRequestId = batchProcessingService.start_batch_process(
       collection_id = "sentinel-1-grd",
-      dataset_id = "S1GRD",
+      dataset_id = "sentinel-1-grd",
       bbox = Extent(2.59003, 51.069, 2.8949, 51.2206),
       bbox_srs = "EPSG:4326",
       from_date = "2019-10-08T00:00:00+00:00",
@@ -228,7 +228,7 @@ class BatchProcessingServiceTest {
 
     val batchRequestIds = batchProcessingService.start_card4l_batch_processes(
       collection_id = "sentinel-1-grd",
-      dataset_id = "S1GRD",
+      dataset_id = "sentinel-1-grd",
       bbox = Extent(35.666439, -6.23476, 35.861576, -6.075694),
       bbox_srs = "EPSG:4326",
       from_date = "2021-02-01T00:00:00+00:00",
@@ -258,7 +258,7 @@ class BatchProcessingServiceTest {
 
     val batchRequestIds = batchProcessingService.start_card4l_batch_processes(
       collection_id = "sentinel-1-grd",
-      dataset_id = "S1GRD",
+      dataset_id = "sentinel-1-grd",
       bbox = Extent(35.666439, -6.23476, 35.861576, -6.075694),
       bbox_srs = "EPSG:4326",
       from_date = "2021-01-25T00:00:00+00:00",
@@ -294,7 +294,7 @@ class BatchProcessingServiceTest {
 
     val batchRequestId = batchProcessingService.start_batch_process(
       collection_id = "sentinel-1-grd",
-      dataset_id = "S1GRD",
+      dataset_id = "sentinel-1-grd",
       polygons,
       crs,
       from_date = "2020-11-05T00:00:00+00:00",
@@ -323,7 +323,7 @@ class BatchProcessingServiceTest {
 
     val batchRequestIds = batchProcessingService.start_card4l_batch_processes(
       collection_id = "sentinel-1-grd",
-      dataset_id = "S1GRD",
+      dataset_id = "sentinel-1-grd",
       polygons,
       crs,
       from_date = "2020-11-05T00:00:00+00:00",
