@@ -5,13 +5,13 @@
   <parent>
     <artifactId>openeo-geotrellis-extensions</artifactId>
     <groupId>org.openeo</groupId>
-    <version>2.2.0_2.12-SNAPSHOT</version>
+    <version>2.3.0_2.12-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>org.openeo</groupId>
   <artifactId>geotrellis-common</artifactId>
-  <version>2.2.0_2.12-SNAPSHOT</version>
+  <version>2.3.0_2.12-SNAPSHOT</version>
 
   <name>geotrellis-common</name>
 
