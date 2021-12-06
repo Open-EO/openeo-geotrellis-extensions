@@ -502,6 +502,7 @@ class OpenEOProcessScriptBuilder {
       case "lt" if hasXY => xyFunction(Less.apply,convertBitCells = false)
       case "gte" if hasXY => xyFunction(GreaterOrEqual.apply,convertBitCells = false)
       case "lte" if hasXY => xyFunction(LessOrEqual.apply,convertBitCells = false)
+      case "between" if hasX => betweenFunction(arguments)
       case "eq" if hasXY => xyFunction(Equal.apply,convertBitCells = false)
       case "neq" if hasXY => xyFunction(Unequal.apply,convertBitCells = false)
       // Boolean operators
@@ -813,5 +814,35 @@ class OpenEOProcessScriptBuilder {
     bandFunction
   }
 
+  private def betweenFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val inputFunction = storedArgs.get("x").get
+    val min = arguments.getOrDefault("min",null)
+    val max = arguments.getOrDefault("max",null)
+    val excludeMax = arguments.getOrDefault("exclude_max",Boolean.box(false))
+    if(min == null) {
+      throw new IllegalArgumentException("Missing 'min' argument in between.")
+    }
+    if(max == null) {
+      throw new IllegalArgumentException("Missing 'max' argument in between.")
+    }
+
+    val minDouble = min.asInstanceOf[Number].doubleValue()
+    val maxDouble = max.asInstanceOf[Number].doubleValue()
+    val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
+      val input: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
+      input.map(tile => {
+        val greater = GreaterOrEqual(tile, minDouble)
+        val smallerThanMax = if(excludeMax.asInstanceOf[Boolean]) {
+          Less(tile,maxDouble)
+        }else{
+          LessOrEqual(tile,maxDouble)
+        }
+        And(greater,smallerThanMax)
+      })
+
+    }
+    bandFunction
+  }
 
 }
