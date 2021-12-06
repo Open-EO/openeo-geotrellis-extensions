@@ -16,6 +16,12 @@
   <name>geotrellis-common</name>
 
   <dependencies>
+    <dependency>
+      <!--https://github.com/typelevel/cats/issues/3628-->
+      <groupId>org.typelevel</groupId>
+      <artifactId>cats-kernel_${scala.binary.version}</artifactId>
+      <version>2.4.2</version>
+    </dependency>
     <!--https://issues.apache.org/jira/browse/SPARK-22128-->
     <dependency>
       <groupId>com.thoughtworks.paranamer</groupId>
