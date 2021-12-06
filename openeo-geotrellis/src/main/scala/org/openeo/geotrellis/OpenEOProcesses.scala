@@ -13,11 +13,14 @@ import geotrellis.raster.mapalgebra.local._
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
+import geotrellis.vector.Extent.toPolygon
+import geotrellis.vector._
 import geotrellis.vector.io.json.JsonFeatureCollection
-import geotrellis.vector.{Extent, PolygonFeature}
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.focal._
+import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
 import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, SpaceTimeByMonthPartitioner}
 import org.slf4j.LoggerFactory
 
@@ -159,6 +162,62 @@ class OpenEOProcesses extends Serializable {
 
     val groupedOnTime = datacube.groupBy[SpatialKey]((t: (SpaceTimeKey, MultibandTile)) => t._1.spatialKey, partitioner)
     groupedOnTime
+  }
+
+  def groupAndMaskByGeometry(datacube: MultibandTileLayerRDD[SpaceTimeKey],
+                             projectedPolygons: ProjectedPolygons
+                            ): RDD[(MultiPolygon, Iterable[(Extent, SpaceTimeKey, MultibandTile)])] = {
+    val polygonsBC: Broadcast[List[MultiPolygon]] = SparkContext.getOrCreate().broadcast(projectedPolygons.polygons.toList)
+    val layout = datacube.metadata.layout
+
+    val groupedAndMaskedByPolygon: RDD[(MultiPolygon, Iterable[(SpaceTimeKey, MultibandTile)])] = datacube.flatMap {
+      case (key, tile: MultibandTile) =>
+        val tileExtentAsPolygon: Polygon = toPolygon(layout.mapTransform(key.getComponent[SpatialKey]))
+        // Filter the polygons that lie in this tile.
+        val polygonsInTile = polygonsBC.value.filter(polygon => tileExtentAsPolygon.intersects(polygon))
+        // Mask this tile for every polygon.
+        polygonsInTile.map { polygon =>
+            val tileExtent: Extent = layout.mapTransform(key)
+            val maskedTile = tile.mask(tileExtent, polygon)
+            ((polygon), (key, maskedTile))
+        }
+    }.groupByKey()
+
+    // For every polygon, stitch all tiles with the same date together into one tile,
+    // then crop this tile using the polygon.
+    val tilePerDateGroupedByPolygon: RDD[(MultiPolygon, Iterable[(Extent, SpaceTimeKey, MultibandTile)])] = groupedAndMaskedByPolygon.map {
+      case (polygon, values) =>
+        val valuesGroupedByDate: Map[ZonedDateTime, Iterable[(SpaceTimeKey, MultibandTile)]] = values.groupBy(_._1.time)
+        // For every date, make one tile by stitching tiles together. Then crop the tile with the polygon's extent.
+        val tilePerDate: Iterable[(Extent, SpaceTimeKey, MultibandTile)] = valuesGroupedByDate.map {
+          case (key, maskedTiles) =>
+            // Stitch.
+            val tiles: Iterable[(SpatialKey, MultibandTile)] = maskedTiles.map(tile => (tile._1.spatialKey, tile._2))
+            val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).stitch()
+            // Crop.
+            val alignedExtent = raster.rasterExtent.createAlignedGridExtent(polygon.extent).extent
+            val croppedRaster: Raster[MultibandTile] = raster.crop(alignedExtent)
+            (croppedRaster.extent, maskedTiles.head._1, croppedRaster.tile)
+        }.toList
+        (polygon, tilePerDate)
+    }
+
+    tilePerDateGroupedByPolygon
+  }
+
+  def mergeGroupedByGeometry(tiles: RDD[(MultiPolygon, Iterable[(Extent, SpaceTimeKey, MultibandTile)])], metadata: TileLayerMetadata[SpaceTimeKey]): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val keyedByTemporalExtent: RDD[(TemporalProjectedExtent, MultibandTile)] = tiles.flatMap {
+      case (_polygon, polygonTiles: Iterable[(Extent, SpaceTimeKey, MultibandTile)]) => {
+        polygonTiles.map(tile => {
+          val projectedExtent: ProjectedExtent = ProjectedExtent(tile._1, metadata.crs)
+          val key: SpaceTimeKey = tile._2
+          val multibandTile: MultibandTile = tile._3
+          (TemporalProjectedExtent(projectedExtent, key.instant), multibandTile)
+        })
+      }
+    }
+    val keyedBySpatialKey: RDD[(SpaceTimeKey, MultibandTile)] = keyedByTemporalExtent.tileToLayout(metadata)
+    ContextRDD(keyedBySpatialKey, metadata)
   }
 
   private def firstTile(tiles: Iterable[MultibandTile]) = {
