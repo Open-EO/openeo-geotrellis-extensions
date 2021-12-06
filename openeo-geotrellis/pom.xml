@@ -5,18 +5,12 @@
     <parent>
         <artifactId>openeo-geotrellis-extensions</artifactId>
         <groupId>org.openeo</groupId>
-        <version>2.1.1-SNAPSHOT</version>
+        <version>2.2.0-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>openeo-geotrellis</artifactId>
     <dependencies>
-        <dependency>
-            <groupId>com.github.wendykierp</groupId>
-            <artifactId>JTransforms</artifactId>
-            <version>3.1</version>
-            <classifier>with-dependencies</classifier>
-        </dependency>
         <dependency>
             <groupId>org.openeo</groupId>
             <artifactId>geotrellis-accumulo-extensions</artifactId>
@@ -51,6 +45,18 @@
             </exclusions>
         </dependency>
         <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-sql_${scala.binary.version}</artifactId>
+            <version>${spark.version}</version>
+            <scope>provided</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>net.java.dev.jets3t</groupId>
+                    <artifactId>jets3t</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
             <groupId>ar.com.hjg</groupId>
             <artifactId>pngj</artifactId>
             <version>2.0.1</version>
@@ -58,6 +64,12 @@
         <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
             <artifactId>geotrellis-spark-testkit_${scala.binary.version}</artifactId>
+            <version>${geotrellis.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.locationtech.geotrellis</groupId>
+            <artifactId>geotrellis-raster-testkit_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>
             <scope>test</scope>
         </dependency>
@@ -92,34 +104,47 @@
             <version>1.16.15</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>mil.nga.geopackage</groupId>
+            <artifactId>geopackage</artifactId>
+            <version>5.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>be.vito.eodata.gwc-geotrellis</groupId>
+            <artifactId>gwc-geotrellis-core</artifactId>
+            <version>${gwc-geotrellis.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>edu.ucar</groupId>
+            <artifactId>cdm</artifactId>
+            <version>5.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>edu.ucar</groupId>
+            <artifactId>netcdf4</artifactId>
+            <version>5.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>black.ninia</groupId>
+            <artifactId>jep</artifactId>
+            <version>3.9.1</version>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>url-connection-client</artifactId>
+            <version>2.13.74</version>
+            <scope>runtime</scope>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
-            <plugin>
-                <groupId>net.alchim31.maven</groupId>
-                <artifactId>scala-maven-plugin</artifactId>
-                <version>3.4.2</version>
-                <executions>
-                    <execution>
-                        <id>scala-compile-first</id>
-                        <phase>process-resources</phase>
-                        <goals>
-                            <goal>compile</goal>
-                            <goal>testCompile</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <scalaCompatVersion>${scala.binary.version}</scalaCompatVersion>
-                    <compilerPlugins>
-                        <compilerPlugin>
-                            <groupId>org.typelevel</groupId>
-                            <artifactId>kind-projector_${scala.binary.version}</artifactId>
-                            <version>0.10.3</version>
-                        </compilerPlugin>
-                    </compilerPlugins>
-                </configuration>
-            </plugin>
+
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>versions-maven-plugin</artifactId>
@@ -144,6 +169,19 @@
                     </environmentVariables>
                     <reuseForks>false</reuseForks>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>3.2.1</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

@@ -1,14 +1,17 @@
 package org.openeo.geotrelliss3
 
+import java.net.URI
 import java.nio.file.{Files, Path, Paths}
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
 
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.{FeatureCollection, Link}
+import be.vito.eodata.gwcgeotrellis.opensearch.{OpenSearchClient, OpenSearchResponses}
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.{GeoTiff, MultibandGeoTiff}
-import geotrellis.raster.{ArrayTile, MultibandTile, Raster, Tile}
+import geotrellis.raster.{ArrayTile, CellSize, MultibandTile, Raster, ShortConstantNoDataCellType, Tile, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.vector.{Extent, Polygon, ProjectedExtent}
 import org.apache.commons.io.FileUtils
@@ -16,6 +19,7 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertArrayEquals, assertEquals, assertFalse, assertTrue}
 import org.junit.{AfterClass, BeforeClass, Ignore, Test, _}
 import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrellis.file.Sentinel2PyramidFactory
 import org.openeo.geotrellis.geotiff.saveRDD
 
 import scala.collection.mutable.ListBuffer
@@ -53,6 +57,31 @@ class CreoPyramidFactoryTest {
   def removeTmpDir(): Unit = {
     FileUtils.deleteDirectory(tmpDir.toFile)
   }
+
+  class MockOpenSearch extends OpenSearchClient {
+    override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
+      val start = dateRange.get._1
+      Seq(OpenSearchResponses.Feature(id="bla",bbox.extent,start, Array(
+        Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/IMG_DATA/R10m/T37SBT_20190101T082331_B02_10m.jp2"), Some("IMG_DATA_Band_B02_10m_Tile1_Data")),
+        Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/IMG_DATA/R10m/T37SBT_20190101T082331_B03_10m.jp2"), Some("IMG_DATA_Band_B03_10m_Tile1_Data")),
+        Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/IMG_DATA/R10m/T37SBT_20190101T082331_B04_10m.jp2"), Some("IMG_DATA_Band_B04_10m_Tile1_Data")),
+        Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/MTD_TL.xml"), Some("S2_Level-2A_Tile1_Metadata"))
+      ),Some(10)))
+    }
+
+    override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = {
+      val start = dateRange.get._1
+      FeatureCollection(1,
+      Seq(OpenSearchResponses.Feature(id="bla",bbox.extent, start, Array(
+        Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/IMG_DATA/R10m/T37SBT_20190101T082331_B02_10m.jp2"), Some("IMG_DATA_Band_B02_10m_Tile1_Data")),
+        Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/IMG_DATA/R10m/T37SBT_20190101T082331_B03_10m.jp2"), Some("IMG_DATA_Band_B03_10m_Tile1_Data")),
+        Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE/GRANULE/L2A_T37SBT_A018422_20190101T082935/IMG_DATA/R10m/T37SBT_20190101T082331_B04_10m.jp2"), Some("IMG_DATA_Band_B04_10m_Tile1_Data"))
+      ),Some(10))).toArray)
+    }
+
+    override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+  }
+
 
   @Test
   def testCreoPyramid(): Unit = {
@@ -132,10 +161,11 @@ class CreoPyramidFactoryTest {
 
   @Test
   def testCreoPyramidDatacube(): Unit = {
-    val pyramidFactory = new CreoPyramidFactory(
-      Seq("https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE"),
-      Seq("B02_10m", "B03_10m", "B04_10m")
-    )
+
+    val pyramidFactory = new Sentinel2PyramidFactory(openSearchEndpoint="https://finder.creodias.eu/resto/api/collections/" ,openSearchCollectionId = "Sentinel2",openSearchLinkTitles = util.Arrays.asList("IMG_DATA_Band_B02_10m_Tile1_Data","S2_Level-2A_Tile1_Metadata##3","S2_Level-2A_Tile1_Metadata##1"),rootPath = "/eodata",
+      maxSpatialResolution = CellSize(10,10)){
+      override def createOpenSearch: OpenSearchClient = new MockOpenSearch
+    }
 
     val date = "2019-01-01T00:00:00+00:00"
 
@@ -148,6 +178,7 @@ class CreoPyramidFactoryTest {
     assertEquals(1, pyramid.size)
 
     val rdd = pyramid.head._2.cache
+    assertEquals(UShortConstantNoDataCellType,rdd.metadata.cellType)
 
     val timestamps = rdd.keys
       .map(_.time)
@@ -155,17 +186,24 @@ class CreoPyramidFactoryTest {
       .collect()
       .sortWith(_ isBefore _)
 
+    assertFalse(timestamps.isEmpty)
+
     for (timestamp <- timestamps) {
-      saveRDD(rdd.toSpatial(timestamp),-1,s"${DateTimeFormatter.ISO_LOCAL_DATE format timestamp}.tif")
+      val output = s"${DateTimeFormatter.ISO_LOCAL_DATE format timestamp}.tif"
+      println(output)
+      saveRDD(rdd.toSpatial(timestamp),-1,output)
+      val tiff = GeoTiff.readMultiband(output)
+      assertEquals(3,tiff.tile.bandCount)
     }
   }
 
   @Test
   def testCreoPyramidDatacubePolygons(): Unit = {
-    val pyramidFactory = new CreoPyramidFactory(
-      Seq("https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2019/01/01/S2A_MSIL2A_20190101T082331_N0211_R121_T37SBT_20190101T094029.SAFE"),
-      Seq("B02_10m", "B03_10m", "B04_10m")
-    )
+    val pyramidFactory = new Sentinel2PyramidFactory(openSearchEndpoint="https://finder.creodias.eu/resto/api/collections/" ,openSearchCollectionId = "Sentinel2",openSearchLinkTitles = util.Arrays.asList("IMG_DATA_Band_B02_10m_Tile1_Data","IMG_DATA_Band_B03_10m_Tile1_Data","IMG_DATA_Band_B04_10m_Tile1_Data"),rootPath = "/eodata",
+      maxSpatialResolution = CellSize(10,10)){
+      override def createOpenSearch: OpenSearchClient = new MockOpenSearch
+    }
+
 
     val date = "2019-01-01T00:00:00+00:00"
 
@@ -187,6 +225,8 @@ class CreoPyramidFactoryTest {
       .collect()
       .sortWith(_ isBefore _)
 
+    assertFalse(timestamps.isEmpty)
+
     for (timestamp <- timestamps) {
       val Raster(multibandTile, extent) = rdd
         .toSpatial(timestamp)
@@ -202,6 +242,49 @@ class CreoPyramidFactoryTest {
           })
 
       assertArrayEquals(Array(1320.3015, 1521.2037, 1482.7769), avgResult.toArray, 0.01)
+    }
+  }
+
+
+  @Ignore("Requires credentials")
+  @Test
+  def testPhenologyPyramidDatacube(): Unit = {
+
+
+    val pyramidFactory = new Sentinel2PyramidFactory(openSearchEndpoint="https://phenology.vgt.vito.be" ,openSearchCollectionId = "copernicus_r_utm-wgs84_10_m_hrvpp-vi_p_2017-ongoing_v01_r01",openSearchLinkTitles = util.Arrays.asList("PPI"),rootPath = "/eodata",
+      maxSpatialResolution = CellSize(10,10))
+
+    val date = "2019-01-01T00:00:00+00:00"
+    val endDate = "2019-01-10T00:00:00+00:00"
+
+    //http://bboxfinder.com/#11.168332,43.468587,11.250215,43.497546
+    val boundingBox: ProjectedExtent = ProjectedExtent(Extent(11.168332,43.468587,11.250215,43.497546), CRS.fromEpsgCode(4326))
+    val utmExtent = boundingBox.reproject(CRS.fromEpsgCode(32632))
+    println(utmExtent)
+    val projectedPolys = ProjectedPolygons.fromExtent(utmExtent,"EPSG:32632")
+    val properties = new util.HashMap[String,Any]()
+    properties.put("accessedFrom","S3")
+    val pyramid = pyramidFactory.datacube_seq(projectedPolys, date, endDate, properties, "NoID")
+
+    assertEquals(1, pyramid.size)
+
+    val rdd = pyramid.head._2.cache
+    assertEquals(ShortConstantNoDataCellType,rdd.metadata.cellType)
+
+    val timestamps = rdd.keys
+      .map(_.time)
+      .distinct()
+      .collect()
+      .sortWith(_ isBefore _)
+
+    assertFalse(timestamps.isEmpty)
+
+    for (timestamp <- timestamps) {
+      val output = s"${DateTimeFormatter.ISO_LOCAL_DATE format timestamp}.tif"
+      println(output)
+      saveRDD(rdd.toSpatial(timestamp),-1,output)
+      val tiff = GeoTiff.readMultiband(output)
+      assertEquals(1,tiff.tile.bandCount)
     }
   }
 }

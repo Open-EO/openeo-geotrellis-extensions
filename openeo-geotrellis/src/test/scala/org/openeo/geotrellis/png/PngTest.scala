@@ -1,20 +1,21 @@
 package org.openeo.geotrellis.png
 
-import java.net.URL
-import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
-import java.time.{LocalDate, ZonedDateTime}
-
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.proj4.LatLng
 import geotrellis.raster.CellSize
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.apache.spark.storage.StorageLevel.DISK_ONLY
 import org.apache.spark.SparkContext
+import org.apache.spark.storage.StorageLevel.DISK_ONLY
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
+
+import java.net.URL
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
+import java.time.{LocalDate, ZonedDateTime}
 
 object PngTest {
   private var sc: SparkContext = _
@@ -60,7 +61,7 @@ class PngTest {
 
   private def rgbLayerProvider =
     new FileLayerProvider(
-      openSearchEndpoint = new URL("http://oscars-01.vgt.vito.be:8080"),
+      openSearch = OpenSearchClient(new URL("https://services.terrascope.be/catalogue")),
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",

@@ -1,40 +1,33 @@
 package org.openeo.geotrelliss3
 
-import java.io.FileInputStream
-import java.lang.System.getenv
-import java.net.URI
-import java.nio.file.{Files, Paths}
-import java.time._
-import java.util
 import cats.data.NonEmptyList
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.gdal.GDALRasterSource
-import geotrellis.raster.{CellSize, MultibandTile, PaddedTile, RasterMetadata, RasterRegion, RasterSource, SourceName, SourcePath, TargetAlignment, Tile, isNoData}
+import geotrellis.raster.{CellSize, MultibandTile}
 import geotrellis.spark._
-import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector._
-
-import javax.net.ssl.HttpsURLConnection
 import org.apache.spark.SparkContext
-import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.file.AbstractPyramidFactory
 import org.openeo.geotrellis.layers.FileLayerProvider
-import org.openeo.geotrellis.layers.FileLayerProvider.{bestCRS, getLayout, layerMetadata}
-import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
+import org.openeo.geotrelliscommon.DatacubeSupport.{bestCRS, layerMetadata}
 import org.slf4j.LoggerFactory
 
-import java.time.temporal.ChronoUnit
+import java.io.FileInputStream
+import java.lang.System.getenv
+import java.net.URI
+import java.nio.file.Paths
+import java.time._
+import java.util
+import javax.net.ssl.HttpsURLConnection
 import scala.collection.JavaConverters._
-import scala.math.max
 import scala.xml.XML
 
 object CreoPyramidFactory {
 
   private val maxSpatialResolution = CellSize(10, 10)
-  private val awsDirect = "TRUE".equals(getenv("AWS_DIRECT"))
   private val logger = LoggerFactory.getLogger(classOf[CreoPyramidFactory])
 
   private implicit val dateOrdering: Ordering[ZonedDateTime] = new Ordering[ZonedDateTime] {
@@ -43,6 +36,12 @@ object CreoPyramidFactory {
   }
 }
 
+/**
+ * DEPRECATED: on Creo, we are now able to use the regular Sentinel-2 pyramidfactory
+ * @param productPaths
+ * @param bands
+ */
+@Deprecated
 class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends Serializable {
 
   import CreoPyramidFactory._
@@ -114,7 +113,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
   }
 
   private def loadRasterSources(crs: CRS) = {
-    val productKeys = productPaths.map(listProducts)
+    val productKeys = productPaths.par.map(listProducts)
 
     if (productKeys.flatten.isEmpty) throw new IllegalArgumentException("no files found for given product paths")
 
@@ -128,7 +127,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
     }
 
     productKeys.map(_.filter(p => bands.exists(b => p.contains(b))))
-      .map(paths => new BandCompositeRasterSource(NonEmptyList.fromListUnsafe(paths.map(path => GDALRasterSource(path)).toList), crs, Predef.Map("date" -> extractDate(paths.toIterator.next()).toString)))
+      .map(paths => new BandCompositeRasterSource(NonEmptyList.fromListUnsafe(paths.map(path => GDALRasterSource(path)).toList), crs, Predef.Map("date" -> extractDate(paths.toIterator.next()).toString))).seq
 
   }
 
@@ -164,7 +163,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
         .openConnection.asInstanceOf[HttpsURLConnection]
         .getInputStream
     } else {
-      gdalPrefix = "/vsis3"
+      gdalPrefix = if (getAwsDirect) "/vsis3" else ""
 
       new FileInputStream(Paths.get(path, "manifest.safe").toFile)
     }
@@ -179,17 +178,15 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
   private def listProducts(productPath: String) = {
     val keyPattern =  """.*IMG_DATA.*jp2""".r
 
-    val filePaths =
-    if (awsDirect || productPath.startsWith("https://")) {
-        getFilePathsFromManifest(productPath)
-      } else {
-        Files.walk(Paths.get(productPath)).iterator().asScala
-          .map(p => p.toString)
-      }
+    val filePaths = getFilePathsFromManifest(productPath)
 
     filePaths.flatMap {
       case key@keyPattern(_*) => Some(key)
       case _ => None
-    }.toSeq
+    }
+  }
+
+  private def getAwsDirect = {
+    "TRUE".equals(getenv("AWS_DIRECT"))
   }
 }

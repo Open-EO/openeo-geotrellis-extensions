@@ -1,9 +1,6 @@
 package org.openeo.geotrellis.file
 
-import java.net.URL
-import java.time.ZonedDateTime
-import java.util
-
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutScheme, SpaceTimeKey, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, WebMercator}
@@ -13,7 +10,11 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
+import org.openeo.geotrelliscommon.DataCubeParameters
 
+import java.net.URL
+import java.time.ZonedDateTime
+import java.util
 import scala.collection.JavaConverters._
 
 
@@ -35,7 +36,7 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
   private def sentinel2FileLayerProvider(metadataProperties: Map[String, Any],
                                          correlationId: String,
                                          layoutScheme: LayoutScheme = ZoomedLayoutScheme(crs, 256)) = new FileLayerProvider(
-    openSearchEndpointUrl,
+    createOpenSearch,
     openSearchCollectionId,
     NonEmptyList.fromListUnsafe(openSearchLinkTitles.asScala.toList),
     rootPath,
@@ -46,6 +47,10 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
     correlationId = correlationId,
     experimental = experimental
   )
+
+  def createOpenSearch = {
+    OpenSearchClient(openSearchEndpointUrl)
+  }
 
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String,
                   metadata_properties: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String):
@@ -81,7 +86,7 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
     val layerProvider = sentinel2FileLayerProvider(metadata_properties.asScala.toMap, correlationId)
 
     for (zoom <- layerProvider.maxZoom to 0 by -1)
-      yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, zoom, sc)
+      yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, zoom, sc,Option.empty)
   }
 
   def pyramid_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
@@ -103,8 +108,26 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
   def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
                    metadata_properties: util.Map[String, Any], correlationId: String):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
-    val cube = datacube(polygons.polygons, polygons.crs, from_date, to_date, metadata_properties, correlationId)
+    val cube = datacube(polygons.polygons, polygons.crs, from_date, to_date, metadata_properties, correlationId,new DataCubeParameters())
    Seq((0,cube))
+  }
+
+  /**
+   * Same as #datacube, but return same structure as pyramid_seq.
+   * This method is called from Python (Py4j), which is sensitive to the signature.
+   * @param polygons
+   * @param from_date
+   * @param to_date
+   * @param metadata_properties
+   * @param correlationId
+   * @param dataCubeParameters
+   * @return
+   */
+  def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
+                   metadata_properties: util.Map[String, Any], correlationId: String, dataCubeParameters: DataCubeParameters):
+  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+    val cube = datacube(polygons.polygons, polygons.crs, from_date, to_date, metadata_properties, correlationId, dataCubeParameters)
+    Seq((0,cube))
   }
 
   def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
@@ -112,7 +135,7 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
     datacube_seq(polygons, from_date, to_date, metadata_properties, correlationId = "")
 
   def datacube(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
-               metadata_properties: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String):
+               metadata_properties: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String,dataCubeParameters: DataCubeParameters=new DataCubeParameters()):
   MultibandTileLayerRDD[SpaceTimeKey] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
     val bbox = polygons.toSeq.extent
@@ -123,8 +146,8 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
 
     val intersectsPolygons = AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
 
-    val layerProvider = sentinel2FileLayerProvider(metadata_properties.asScala.toMap, correlationId, FloatingLayoutScheme(256))
-    layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, 0, sc)
+    val layerProvider = sentinel2FileLayerProvider(metadata_properties.asScala.toMap, correlationId, FloatingLayoutScheme(dataCubeParameters.tileSize))
+    layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, 0, sc,Some(dataCubeParameters))
   }
 
 

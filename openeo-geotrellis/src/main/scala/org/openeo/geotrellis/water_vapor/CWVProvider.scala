@@ -1,14 +1,26 @@
 package org.openeo.geotrellis.water_vapor
 
-import geotrellis.raster.{FloatConstantNoDataCellType, FloatConstantTile, MultibandTile, doubleNODATA, Tile}
+import java.util.concurrent.Callable
+
 import geotrellis.layer.SpaceTimeKey
-import org.openeo.geotrellis.icor.CorrectionDescriptorSentinel2
+import geotrellis.raster.{FloatConstantNoDataCellType, MultibandTile, Tile, doubleNODATA}
+import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
-import geotrellis.raster.FloatConstantNoDataCellType
-import org.openeo.geotrellis.icor.LookupTable
+import org.openeo.geotrellis.icor.{AtmosphericCorrection, CorrectionDescriptor, ICorCorrectionDescriptor, LookupTable, LookupTableIO}
 
-class CWVProvider {
+class CWVProvider() extends Serializable {
 
+	def findIndexOf(where: java.util.List[String], what: String) : Int = {
+		var idx : Int = -1
+		for( i:Int <- 0 until where.size()) {
+			if (where.get(i).toLowerCase().contains(what.toLowerCase())) {
+				idx=i
+			}
+		}
+		return idx
+	}
+  
+  
   def compute(
     multibandtile: (SpaceTimeKey, MultibandTile), // where is wv/r0/r1
     szaTile: Tile, 
@@ -17,26 +29,25 @@ class CWVProvider {
     elevationTile: Tile,
     aot: Double,
     ozone: Double,
-    preMult: Double,
-    postMult: Double,
-    bcLUT: Broadcast[LookupTable],
-    bandIds:java.util.List[String]
+    bandIds:java.util.List[String],
+    correctionDescriptor: CorrectionDescriptor
   ) : Tile = {
 
+    // water vapor can only be called from icor correction, because it uses lookup table -> this cast is safe
+    val cd=correctionDescriptor.asInstanceOf[ICorCorrectionDescriptor]
+    
     val wvBandId="B09"
     val r0BandId="B8A"
     val r1BandId="B11"
     
-    val cd = new CorrectionDescriptorSentinel2()
-    val bp = new BlockProcessor()
+    //val bp = new FirstInBlockProcessor()
+    val bp = new DoubleDownsampledBlockProcessor()
     val wvCalc = new AbdaWaterVaporCalculator()
-    
-    wvCalc.prepare(bcLUT.value,cd,wvBandId,r0BandId,r1BandId)
+    wvCalc.prepare(cd,wvBandId,r0BandId,r1BandId)
             
-    // TODO: use reflToRad(double src, double sza, ZonedDateTime time, int bandToConvert)
-    val wvTile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,wvBandId)).convert(FloatConstantNoDataCellType)*preMult
-    val r0Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r0BandId)).convert(FloatConstantNoDataCellType)*preMult
-    val r1Tile= multibandtile._2.band(wvCalc.findIndexOf(bandIds,r1BandId)).convert(FloatConstantNoDataCellType)*preMult
+    val wvTile= multibandtile._2.band(findIndexOf(bandIds,wvBandId)).convert(FloatConstantNoDataCellType)
+    val r0Tile= multibandtile._2.band(findIndexOf(bandIds,r0BandId)).convert(FloatConstantNoDataCellType)
+    val r1Tile= multibandtile._2.band(findIndexOf(bandIds,r1BandId)).convert(FloatConstantNoDataCellType)
                         
     // try to get at least 1 valid value on 60m resolution
     val mbtresult : Tile = try { 
@@ -47,17 +58,17 @@ class CWVProvider {
           raaTile,
           elevationTile.convert(FloatConstantNoDataCellType), 
     // AOT overriden                      aotTile.convert(FloatConstantNoDataCellType), 
-          wvTile.convert(FloatConstantNoDataCellType), 
-          r0Tile.convert(FloatConstantNoDataCellType), 
-          r1Tile.convert(FloatConstantNoDataCellType)
+          wvTile, 
+          r0Tile, 
+          r1Tile
         ),
         6, // on 10m base resolution looking for a value on 60m resolution
         aot,
         ozone,
         doubleNODATA,
-        bcLUT.value,
+        cd.bcLUT,
         wvCalc
-      )*postMult
+      )
       bp.replaceNoDataWithAverage(wvRawResultTile,doubleNODATA)
     } catch {
       case e: IllegalArgumentException => wvTile

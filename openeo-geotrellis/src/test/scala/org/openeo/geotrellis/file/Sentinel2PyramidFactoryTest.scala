@@ -1,14 +1,9 @@
 package org.openeo.geotrellis.file
 
-import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
-import java.time.format.DateTimeFormatter
-import java.time.{LocalDate, ZonedDateTime}
-import java.util.Collections.singletonList
-import java.util.Collections.emptyMap
-
 import geotrellis.layer.{Metadata, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
+import geotrellis.raster.io.geotiff.compression.DeflateCompression
+import geotrellis.raster.io.geotiff.{GeoTiff, GeoTiffOptions, MultibandGeoTiff, Tags}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.{CellSize, MultibandTile}
@@ -20,7 +15,15 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
-// import org.openeo.geotrellis.TestImplicits._
+import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
+import org.openeo.geotrelliscommon.DataCubeParameters
+
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
+import java.time.format.DateTimeFormatter
+import java.time.{LocalDate, ZonedDateTime}
+import java.util.Collections.{emptyMap, singletonList}
+import scala.collection.mutable.ListBuffer
 
 object Sentinel2PyramidFactoryTest {
     private var sc: SparkContext = _
@@ -39,6 +42,48 @@ object Sentinel2PyramidFactoryTest {
 }
 
 class Sentinel2PyramidFactoryTest {
+
+    @Test
+    def testDemLayer(): Unit = {
+        val localFromDate = LocalDate.of(2010, 1, 1)
+        val localToDate = LocalDate.of(2012, 1, 1)
+        val ZonedFromDate = ZonedDateTime.of(localFromDate, MIDNIGHT, UTC)
+        val zonedToDate = ZonedDateTime.of(localToDate, MIDNIGHT, UTC)
+
+        val extent = Extent(4.0,51.0,4.5,51.5)
+        val srs = "EPSG:4326"
+        val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, srs)
+        val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format ZonedFromDate
+        val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format zonedToDate
+        val correlation_id = ""
+
+        val factory = new Sentinel2PyramidFactory(
+            openSearchEndpoint = "http://oscars-dev.vgt.vito.be/",
+            openSearchCollectionId = "urn:eop:VITO:COP_DEM_GLO_30M_COG",
+            openSearchLinkTitles = singletonList("DEM"),
+            rootPath = "/data/MTDA/DEM/COP_DEM_30M_COG",
+            maxSpatialResolution = CellSize(0.002777777777777778, 0.002777777777777778)
+        )
+
+        val metadata_properties = emptyMap[String, Any]()
+        val datacubeParams = new DataCubeParameters()
+        datacubeParams.tileSize = 256
+        datacubeParams.layoutScheme = "FloatingLayoutScheme"
+        val baseLayer = factory.datacube_seq(
+            projected_polygons_native_crs,
+            from_date, to_date, metadata_properties, correlation_id, datacubeParams
+        ).maxBy { case (zoom, _) => zoom }._2
+
+        // Compare actual with reference tile.
+        val actualTiffs = baseLayer.toSpatial().toGeoTiffs(Tags.empty,GeoTiffOptions(DeflateCompression)).collect().toList.map(t => t._2)
+        assert(actualTiffs.length == 1)
+        //actualTiffs.head.write("/tmp/tile0_0.tiff", true)
+
+        val resourcePath = "org/openeo/geotrellis/file/testDemLayer/tile0_0.tiff"
+        val refFile = Thread.currentThread().getContextClassLoader.getResource(resourcePath)
+        val refTiff = GeoTiff.readMultiband(refFile.getPath)
+        assertArrayEquals(refTiff.toByteArray, actualTiffs.head.toByteArray)
+    }
 
     @Test
     def testStatsFromPyramid(): Unit = {
@@ -96,7 +141,7 @@ class Sentinel2PyramidFactoryTest {
     }
 
     private def sceneClassificationV200PyramidFactory = new Sentinel2PyramidFactory(
-        openSearchEndpoint = "http://oscars-01.vgt.vito.be:8080",
+        openSearchEndpoint = "https://services.terrascope.be/catalogue",
         openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
         openSearchLinkTitles = singletonList("SCENECLASSIFICATION_20M"),
         rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",

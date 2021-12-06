@@ -2,16 +2,21 @@ package org.openeo.geotrelliss3
 
 import java.time.format.DateTimeFormatter.ofPattern
 import java.time.{LocalDateTime, ZonedDateTime}
-
 import com.fasterxml.jackson.annotation.{JsonIgnoreProperties, JsonProperty}
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
 import geotrellis.vector.Polygon
+import net.jodah.failsafe.function.CheckedSupplier
+import net.jodah.failsafe.{Failsafe, FailsafeExecutor, RetryPolicy}
+
 import javax.ws.rs.client.ClientBuilder
 import org.openeo.geotrelliss3.Catalog.buildPolygon
 
+import java.time.temporal.ChronoUnit.SECONDS
+import javax.ws.rs.core.Response
 import scala.collection.mutable.ListBuffer
+import scala.compat.java8.FunctionConverters._
 
 object Catalog {
 
@@ -83,7 +88,21 @@ case class Catalog(mission: String, level: String) {
       target = target.queryParam("f", tileIdFilter)
     }
 
-    val response = target.request().get()
+    val retryPolicy = {
+      val serverError: Response => Boolean = _.getStatus >= 500
+
+      new RetryPolicy[Response]
+        .handleResultIf(serverError.asJava)
+        .withBackoff(1, 120, SECONDS)
+    }
+
+    val failsafe: FailsafeExecutor[Response] = Failsafe
+      .`with`(retryPolicy)
+
+    val response = failsafe
+      .get(new CheckedSupplier[Response] {
+        override def get(): Response = target.request().get()
+      })
 
     if (response.getStatus == 200) {
       val mapper = new ObjectMapper() with ScalaObjectMapper

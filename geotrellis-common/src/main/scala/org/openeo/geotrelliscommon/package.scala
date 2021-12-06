@@ -1,10 +1,55 @@
 package org.openeo
 
-import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
-import geotrellis.layer.SpaceTimeKey
+import geotrellis.layer.{SpaceTimeKey, SpatialKey}
 import geotrellis.spark.partition.PartitionerIndex
+import org.locationtech.sfcurve.zorder.{Z2, ZRange}
+import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 
 package object geotrelliscommon {
+
+  /**
+   * Spatial partitioner with only 1 tile per partition: for tiles with lots of bands!
+   */
+  object ByTileSpatialPartitioner extends  PartitionerIndex[SpatialKey] {
+    private def toZ(key: SpatialKey): Z2 = Z2(key.col, key.row)
+
+    def toIndex(key: SpatialKey): BigInt = toZ(key).z
+
+    def indexRanges(keyRange: (SpatialKey, SpatialKey)): Seq[(BigInt, BigInt)] =
+      Z2.zranges(ZRange(toZ(keyRange._1), toZ(keyRange._2))).map(r => (BigInt(r.lower), BigInt(r.upper)))
+
+  }
+
+  object SparseSpaceOnlyPartitioner {
+    // Shift by 8 removes the last 8 bytes: 256 tiles max in one partition.
+    def toIndex(key: SpaceTimeKey, indexReduction:Int = 8): BigInt = Z2(key.col,key.row).z >> indexReduction
+  }
+
+  object SparseSpaceTimePartitioner {
+    val keyIndex = SfCurveZSpaceTimeKeyIndex.byDay(null)
+
+    // Shift by 8 removes the last 8 bytes: 256 tiles max in one partition.
+    def toIndex(key: SpaceTimeKey, indexReduction:Int = 8): BigInt = keyIndex.toIndex(key) >> indexReduction
+  }
+
+  class SparseSpaceTimePartitioner (val indices: Array[BigInt], val indexReduction:Int = 8) extends PartitionerIndex[SpaceTimeKey] {
+
+    def toIndex(key: SpaceTimeKey): BigInt = SparseSpaceTimePartitioner.toIndex(key, indexReduction)
+
+    def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
+      indices.map(i => (i,i))
+    }
+  }
+
+  class SparseSpaceOnlyPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8) extends PartitionerIndex[SpaceTimeKey] {
+
+    def toIndex(key: SpaceTimeKey): BigInt = SparseSpaceOnlyPartitioner.toIndex(key, indexReduction)
+
+    def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
+      indices.map(i => (i,i))
+    }
+  }
+
   implicit object SpaceTimeByMonthPartitioner extends PartitionerIndex[SpaceTimeKey] {
 
     val keyIndex = SfCurveZSpaceTimeKeyIndex.byDay(null)

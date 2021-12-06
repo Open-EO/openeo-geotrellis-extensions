@@ -1,8 +1,8 @@
 package org.openeo.geotrellis.file
 
-import java.net.URL
-import java.time.ZonedDateTime
-import java.util
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.{Feature, Link}
+import be.vito.eodata.gwcgeotrellis.opensearch.backends.{CreodiasClient, OscarsClient}
 import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType}
 import geotrellis.spark._
@@ -12,18 +12,19 @@ import org.apache.spark.SparkContext
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
-import org.openeo.geotrellis.layers.FileLayerProvider.layerMetadata
-import org.openeo.geotrellis.layers.{CreoOpenSearch, OpenSearch, OscarsOpenSearch}
-import org.openeo.geotrellis.layers.OpenSearchResponses.{Feature, Link}
+import org.openeo.geotrelliscommon.DatacubeSupport.layerMetadata
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
+import java.net.URL
+import java.time.ZonedDateTime
+import java.util
 import scala.collection.JavaConverters._
 
 /**
  * A class that looks like a pyramid factory, but does not build a full datacube. Instead, it generates an RDD[SpaceTimeKey, ProductPath].
  * This RDD can then be transformed into
  */
-class FileRDDFactory(openSearch: OpenSearch, openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = "") {
+class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = "") {
 
   private val maxSpatialResolution = CellSize(10, 10)
 
@@ -35,11 +36,10 @@ class FileRDDFactory(openSearch: OpenSearch, openSearchCollectionId: String, ope
 
     val overlappingFeatures: Seq[Feature] = openSearch.getProducts(
       openSearchCollectionId,
-      from.toLocalDate,
-      to.toLocalDate,
+      (from.toLocalDate, to.toLocalDate),
       boundingBox,
       attributeValues = attributeValues.asScala.toMap,
-      correlationId = correlationId
+      correlationId, ""
     )
     return overlappingFeatures
   }
@@ -104,12 +104,12 @@ class FileRDDFactory(openSearch: OpenSearch, openSearchCollectionId: String, ope
 object FileRDDFactory {
 
   def oscars(openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = ""): FileRDDFactory = {
-    val openSearch: OpenSearch = new OscarsOpenSearch(new URL("http://oscars-01.vgt.vito.be:8080"))
+    val openSearch: OpenSearchClient = new OscarsClient(new URL("https://services.terrascope.be/catalogue"))
     new FileRDDFactory(openSearch, openSearchCollectionId, openSearchLinkTitles, attributeValues, correlationId = correlationId)
   }
 
   def creo(openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = ""): FileRDDFactory = {
-    val openSearch: OpenSearch = CreoOpenSearch
+    val openSearch: OpenSearchClient = CreodiasClient
     new FileRDDFactory(openSearch, openSearchCollectionId, openSearchLinkTitles, attributeValues, correlationId = correlationId)
   }
 

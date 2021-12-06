@@ -1,17 +1,16 @@
 package org.openeo.geotrellis;
 
-
 import geotrellis.raster.*;
+import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
 import scala.Function1;
+import scala.Int;
 import scala.collection.JavaConversions;
+import scala.collection.JavaConverters;
 import scala.collection.Seq;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -456,6 +455,36 @@ public class TestOpenEOProcessScriptBuilder {
         testMathXY("add", 4, 6, 9, 14, 23, 28);
     }
 
+    @DisplayName("Test math 'add(x,y)' bit cells")
+    @Test
+    public void testAddWithBitCells() {
+        testMathWithBitCells("add",1,2,1,0);
+    }
+
+    @DisplayName("Test math 'subtract(x,y)' bit cells")
+    @Test
+    public void testSubtractWithBitCells() {
+        testMathWithBitCells("subtract",-1,0,1,0);
+    }
+
+    public void testMathWithBitCells(String operator, int... expectedValues) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart(operator, dummyMap("x", "y"));
+        buildBandXYArguments(builder, 0, 1);
+        builder.expressionEnd(operator, dummyMap("x", "y"));
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        Tile tile0 = fillBitArrayTile(3, 2, 0,1,1,0);
+        Tile tile1 = fillBitArrayTile(3, 2, 1,1,0,0);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
+        assertEquals(1, result.length());
+        Tile res = result.apply(0);
+        ArrayTile expectedTile = fillByteArrayTile(3, 2, expectedValues).convert(new ByteUserDefinedNoDataCellType(((Integer)127).byteValue()));
+        assertTileEquals(expectedTile, res);
+
+
+    }
+
     @DisplayName("Test math 'subtract(x,y)'")
     @Test
     public void testMathSubtractXY() {
@@ -472,6 +501,24 @@ public class TestOpenEOProcessScriptBuilder {
     @Test
     public void testDivideXY() {
         testMathXY("divide", 3, 2, 1, 0, 0, 0);
+    }
+
+    @DisplayName("Test math 'normalized_difference(x,y)'")
+    @Test
+    public void testNormalizedDifferenceXY() {
+        String operator = "normalized_difference";
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart(operator, dummyMap("x", "y"));
+        buildBandXYArguments(builder, 0, 1);
+        builder.expressionEnd(operator, dummyMap("x", "y"));
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        DoubleArrayTile tile1 = fillDoubleArrayTile(4, 2, 3, 10, 6, 3, 9, 15, 0, Double.NaN);
+        DoubleArrayTile tile2 = fillDoubleArrayTile(4, 2, 0, 6, 10, 9, 7, 17, 0, Double.NaN);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1, tile2)));
+        assertEquals(1, result.length());
+        Tile ndvi = result.apply(0);
+        assertDoubleTileEquals(fillDoubleArrayTile(4, 2, 1.0, 0.25, -0.25, -0.5, 0.125, -0.0625, Double.NaN, Double.NaN), ndvi);
     }
 
 
@@ -647,6 +694,148 @@ public class TestOpenEOProcessScriptBuilder {
         assertDoubleTileEquals(expected,result.apply(0));
     }
 
+    @DisplayName("Test first process with nodata values")
+    @Test
+    public void testFirstWithNoData() {
+        // Assume we make a first(data, ignore_nodata=false) request on a list of tiles with a time dimension.
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.singletonMap("ignore_nodata", false);
+        builder.expressionStart("first", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.constantArgument("ignore_nodata", false);
+
+        builder.expressionEnd("first",arguments);
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+
+        // When we have a data tile for every timestep.
+        ByteArrayTile tile_timestep0 = ByteConstantNoDataArrayTile.empty(4,4);
+        tile_timestep0.set(2,2,3);
+        ByteArrayTile tile_timestep1 = ByteConstantNoDataArrayTile.fill((byte)5, 4, 4);
+
+        // Then selecting all first pixels from a list of one timestep just returns us that tile.
+        Seq<Tile> single_input = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile_timestep0.mutable().copy())));
+        assertTileEquals(tile_timestep0, single_input.apply(0));
+
+        // When a second timestep is added that has actual values, the Nodata from the first tile will still be selected.
+        // Because ignore_nodata is set to false.
+        Seq<Tile> multiple_input = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile_timestep0.mutable().copy(), tile_timestep1.mutable().copy())));
+        assertEquals(Int.MinValue(), multiple_input.apply(0).get(0,0));
+        // Including the one non-NoData value in timestep 0.
+        assertEquals(3, multiple_input.apply(0).get(2,2));
+
+        // Make sure that the celltypes have not changed to double like they would for processes such as median/mean.
+        assertEquals(tile_timestep0.cellType(), single_input.apply(0).cellType());
+        assertEquals(tile_timestep0.cellType(), multiple_input.apply(0).cellType());
+    }
+
+    @DisplayName("Test first process without nodata values")
+    @Test
+    public void testFirstIgnoreNodata() {
+        // Assume we make a first(data, ignore_nodata=true) request on a list of tiles with a time dimension.
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.singletonMap("ignore_nodata", true);
+        builder.expressionStart("first", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.constantArgument("ignore_nodata", true);
+
+        builder.expressionEnd("first",arguments);
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+
+        // When we have a data tile for every timestep.
+        ByteArrayTile tile_timestep0 = ByteConstantNoDataArrayTile.empty(4,4);
+        tile_timestep0.set(2,2,3);
+        ByteArrayTile tile_timestep1 = ByteConstantNoDataArrayTile.fill((byte)5, 4, 4);
+
+        // Then selecting all first pixels from a list of one timestep just returns us that tile, even if it has NoData values.
+        Seq<Tile> single_input = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile_timestep0.mutable().copy())));
+        assertTileEquals(tile_timestep0, single_input.apply(0));
+
+        // When a second timestep is added that has actual values, those will be selected as first instead of the NoData values.
+        Seq<Tile> multiple_input = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile_timestep0.mutable().copy(), tile_timestep1.mutable().copy())));
+        assertEquals(5, multiple_input.apply(0).get(0,0));
+        // Except for the one non-NoData value in timestep 0.
+        assertEquals(3, multiple_input.apply(0).get(2,2));
+
+        // Make sure that the celltypes have not changed to double like they would for processes such as median/mean.
+        assertEquals(tile_timestep0.cellType(), single_input.apply(0).cellType());
+        assertEquals(tile_timestep0.cellType(), multiple_input.apply(0).cellType());
+    }
+
+    @DisplayName("Test last process with nodata values")
+    @Test
+    public void testLastWithNoData() {
+        // Assume we make a last(data, ignore_nodata=false) request on a list of tiles with a time dimension.
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.singletonMap("ignore_nodata", false);
+        builder.expressionStart("last", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.constantArgument("ignore_nodata", false);
+
+        builder.expressionEnd("last",arguments);
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+
+        // When we have a data tile for every timestep.
+        ByteArrayTile tile_timestep0 = ByteConstantNoDataArrayTile.fill((byte)5, 4, 4);
+        ByteArrayTile tile_timestep1 = ByteConstantNoDataArrayTile.empty(4,4);
+        tile_timestep1.set(2,2,3);
+
+        // Then selecting all last pixels from a list of one timestep just returns us that tile.
+        Seq<Tile> single_input = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile_timestep1.mutable().copy())));
+        assertTileEquals(tile_timestep1, single_input.apply(0));
+
+        // When a second timestep is prepended that has actual values, the Nodata from the last tile will be selected.
+        // Because ignore_nodata is set to false.
+        Seq<Tile> multiple_input = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile_timestep0.mutable().copy(), tile_timestep1.mutable().copy())));
+        assertEquals(Int.MinValue(), multiple_input.apply(0).get(0,0));
+        // Including the one non-NoData value in timestep 1.
+        assertEquals(3, multiple_input.apply(0).get(2,2));
+
+        // Make sure that the celltypes have not changed to double like they would for processes such as median/mean.
+        assertEquals(tile_timestep0.cellType(), single_input.apply(0).cellType());
+        assertEquals(tile_timestep0.cellType(), multiple_input.apply(0).cellType());
+    }
+
+    @DisplayName("Test last process without nodata values")
+    @Test
+    public void testLastIgnoreNodata() {
+        // Assume we make a last(data, ignore_nodata=true) request on a list of tiles with a time dimension.
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.singletonMap("ignore_nodata", true);
+        builder.expressionStart("last", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.constantArgument("ignore_nodata", true);
+
+        builder.expressionEnd("last",arguments);
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+
+        // When we have a data tile for every timestep.
+        ByteArrayTile tile_timestep0 = ByteConstantNoDataArrayTile.fill((byte)5, 4, 4);
+        ByteArrayTile tile_timestep1 = ByteConstantNoDataArrayTile.empty(4,4);
+        tile_timestep1.set(2,2,3);
+
+        // Then selecting all last pixels from a list of one timestep just returns us that tile.
+        Seq<Tile> single_input = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile_timestep1.mutable().copy())));
+        assertTileEquals(tile_timestep1, single_input.apply(0));
+
+        // When a second timestep is prepended that has actual values, those will be selected as last instead of the NoData values.
+        Seq<Tile> multiple_input = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile_timestep0.mutable().copy(), tile_timestep1.mutable().copy())));
+        assertEquals(5, multiple_input.apply(0).get(0,0));
+        // Except for the one non-NoData value in timestep 1.
+        assertEquals(3, multiple_input.apply(0).get(2,2));
+
+        // Make sure that the celltypes have not changed to double like they would for processes such as median/mean.
+        assertEquals(tile_timestep0.cellType(), single_input.apply(0).cellType());
+        assertEquals(tile_timestep0.cellType(), multiple_input.apply(0).cellType());
+    }
+
     @DisplayName("Test array_element process")
     @Test
     public void testArrayElement() {
@@ -667,6 +856,438 @@ public class TestOpenEOProcessScriptBuilder {
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
         Tile res = result.apply(0);
         assertTileEquals(tile1, res);
+    }
+
+    @DisplayName("Test array_modify process: insert")
+    @Test
+    public void testArrayModifyInsert() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.singletonMap("index",1);
+        builder.expressionStart("array_modify", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.argumentStart("values");
+        buildArrayElementProcess(builder,0);
+        builder.argumentEnd();
+        builder.argumentStart("index");
+        builder.constantArrayElement(1);
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_modify",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
+        assertEquals(3,result.size());
+        Tile res = result.apply(0);
+        assertTileEquals(tile0, res);
+        assertTileEquals(tile0, result.apply(1));
+        assertTileEquals(tile1, result.apply(2));
+    }
+
+    @DisplayName("Test array_concat")
+    @Test
+    public void testArrayConcat() {
+        /* Builder setup based on:
+         python openeogeotrellis/geotrellis_tile_processgraph_visitor.py '{
+                "band0": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 0}},
+                "band1": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 1}},
+                "band2": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 2}},
+                "band3": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 3}},
+                "band4": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 4}},
+                "arrayconcat": {
+                    "process_id": "array_concat",
+                    "arguments": {
+                        "array1": [{"from_node": "band4"}, {"from_node": "band2"}, {"from_node": "band0"}],
+                        "array2": [{"from_node": "band1"}, {"from_node": "band3"}]
+                    },
+                    "result": true
+                }
+            }'
+         */
+
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart("array_concat", dummyMap("array1", "array2"));
+        builder.arrayStart("array1");
+        builder.expressionStart("array_element", map2("data","dummy", "index", 4));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 4);
+        builder.expressionEnd("array_element", map2("data","dummy","index", 4));
+        builder.arrayElementDone();
+        builder.expressionStart("array_element", map2("data","dummy","index", 2));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 2);
+        builder.expressionEnd("array_element", map2("data","dummy","index", 2));
+        builder.arrayElementDone();
+        builder.expressionStart("array_element", map2("data","dummy","index", 0));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 0);
+        builder.expressionEnd("array_element", map2("data","dummy","index", 0));
+        builder.arrayElementDone();
+        builder.arrayEnd();
+        builder.arrayStart("array2");
+        builder.expressionStart("array_element", map2("data","dummy","index", 1));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 1);
+        builder.expressionEnd("array_element", map2("data","dummy","index", 1));
+        builder.arrayElementDone();
+        builder.expressionStart("array_element", map2("data","dummy","index", 3));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 3);
+        builder.expressionEnd("array_element", map2("data","dummy","index", 3));
+        builder.arrayElementDone();
+        builder.arrayEnd();
+        builder.expressionEnd("array_concat", dummyMap("array1", "array2"));
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile t0 = ByteConstantNoDataArrayTile.fill((byte) 0, 4, 4);
+        ByteArrayTile t1 = ByteConstantNoDataArrayTile.fill((byte) 1, 4, 4);
+        ByteArrayTile t2 = ByteConstantNoDataArrayTile.fill((byte) 2, 4, 4);
+        ByteArrayTile t3 = ByteConstantNoDataArrayTile.fill((byte) 3, 4, 4);
+        ByteArrayTile t4 = ByteConstantNoDataArrayTile.fill((byte) 4, 4, 4);
+        ByteArrayTile t5 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(t0, t1, t2, t3, t4, t5)));
+        assertEquals(5, result.size());
+        assertTileEquals(t4, result.apply(0));
+        assertTileEquals(t2, result.apply(1));
+        assertTileEquals(t0, result.apply(2));
+        assertTileEquals(t1, result.apply(3));
+        assertTileEquals(t3, result.apply(4));
+    }
+
+    @DisplayName("Test array_create")
+    @Test
+    public void testArrayCreate() {
+        /* Builder setup based on:
+         python openeogeotrellis/geotrellis_tile_processgraph_visitor.py '{
+                "band0": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 0}},
+                "band1": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 1}},
+                "arrayconcat": {
+                    "process_id": "array_create",
+                    "arguments": {
+                        "data": [{"from_node": "band1"}, {"from_node": "band0"}, {"from_node": "band1"}],
+                        "repeat": 2
+                    },
+                    "result": true
+                }
+            }'
+         */
+
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart("array_create", map2("data", "dummy", "repeat", 2));
+        builder.arrayStart("data");
+        builder.expressionStart("array_element", map2("data","dummy", "index", 1));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 1);
+        builder.expressionEnd("array_element", map2("data","dummy", "index", 1));
+        builder.arrayElementDone();
+        builder.expressionStart("array_element", map2("data","dummy", "index", 0));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 0);
+        builder.expressionEnd("array_element", map2("data","dummy", "index", 0));
+        builder.arrayElementDone();
+        builder.expressionStart("array_element", map2("data","dummy", "index", 1));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.constantArgument("index", 1);
+        builder.expressionEnd("array_element", map2("data","dummy", "index", 1));
+        builder.arrayElementDone();
+        builder.arrayEnd();
+        builder.constantArgument("repeat", 2);
+        builder.expressionEnd("array_create", map2("data", "dummy", "repeat", 2));
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile t0 = ByteConstantNoDataArrayTile.fill((byte) 0, 4, 4);
+        ByteArrayTile t1 = ByteConstantNoDataArrayTile.fill((byte) 1, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(t0, t1)));
+        assertEquals(6, result.size());
+        assertTileEquals(t1, result.apply(0));
+        assertTileEquals(t0, result.apply(1));
+        assertTileEquals(t1, result.apply(2));
+        assertTileEquals(t1, result.apply(3));
+        assertTileEquals(t0, result.apply(4));
+        assertTileEquals(t1, result.apply(5));
+    }
+
+    @DisplayName("Test array_interpolate_linear process")
+    @Test
+    public void testArrayInterpolateLinear() {
+        OpenEOProcessScriptBuilder builder = createArrayInterpolateLinear();
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        ByteArrayTile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
+        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile,nodataTile,tile0, nodataTile,tile1, nodataTile,nodataTile,tile0,nodataTile).stream().map(byteArrayTile -> byteArrayTile.copy()).collect(Collectors.toList())));
+        assertEquals(9,result.size());
+        assertTrue(result.apply(0).isNoDataTile());
+        assertTrue(result.apply(1).isNoDataTile());
+        assertEquals(10,result.apply(2).get(0,0));
+        assertEquals(7,result.apply(3).get(0,0));
+        assertEquals(5,result.apply(4).get(0,0));
+        assertEquals(6,result.apply(5).get(0,0));
+        assertEquals(8,result.apply(6).get(0,0));
+        assertEquals(10,result.apply(7).get(0,0));
+        assertTrue(result.apply(8).isNoDataTile());
+
+    }
+
+    @DisplayName("Test linear_scale_range process")
+    @Test
+    public void testLinearScaleRange() {
+        OpenEOProcessScriptBuilder builder = createLinearScaleRange(0,2,0,240);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        Tile tile0 = FloatConstantNoDataArrayTile.fill(1, 4, 4);
+        Tile tile1 = FloatConstantNoDataArrayTile.fill(3, 4, 4);
+        Tile tile2 = FloatConstantNoDataArrayTile.fill(-1, 4, 4);
+        Tile tile3 = FloatConstantNoDataArrayTile.fill(1.9f, 4, 4);
+        Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
+
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile,tile0,tile1,tile2,tile3)));
+
+        assertTrue(result.apply(0).isNoDataTile());
+
+        assertEquals(120,result.apply(1).get(0,0));
+        assertEquals(240,result.apply(2).get(0,0));
+        assertEquals(0,result.apply(3).get(0,0));
+        assertEquals(228,result.apply(4).get(0,0));
+        assertEquals(UByteUserDefinedNoDataCellType.apply((byte)255),result.apply(1).cellType());
+
+
+    }
+
+    @DisplayName("Test linear_scale_range process with conversion to short")
+    @Test
+    public void testLinearScaleRangeToShort() {
+        OpenEOProcessScriptBuilder builder = createLinearScaleRange(0,10,0,1000);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        Tile tile0 = FloatConstantNoDataArrayTile.fill(1, 4, 4);
+        Tile tile1 = FloatConstantNoDataArrayTile.fill(3, 4, 4);
+        Tile tile2 = FloatConstantNoDataArrayTile.fill(-10, 4, 4);
+        Tile tile3 = FloatConstantNoDataArrayTile.fill(19f, 4, 4);
+        Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
+
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile,tile0,tile1,tile2,tile3)));
+
+        assertTrue(result.apply(0).isNoDataTile());
+        assertEquals(UShortUserDefinedNoDataCellType.apply((short)65535),result.apply(1).cellType());
+
+        assertEquals(100,result.apply(1).get(0,0));
+        assertEquals(300,result.apply(2).get(0,0));
+        assertEquals(0,result.apply(3).get(0,0));
+        assertEquals(1000,result.apply(4).get(0,0));
+
+
+    }
+
+    @DisplayName("Test median process")
+    @Test
+    public void testMedian() {
+
+        Tile tile0 = ByteConstantNoDataArrayTile.fill((byte)1, 4, 4);
+        Tile tile1 = ByteConstantNoDataArrayTile.fill((byte)3, 4, 4);
+        Tile tile2 = ByteConstantNoDataArrayTile.fill((byte)-10, 4, 4);
+        Tile tile3 = ByteConstantNoDataArrayTile.fill((byte)19, 4, 4);
+        Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
+
+        Seq<Tile> result = createMedian(null).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
+        assertEquals(ByteConstantNoDataCellType.withDefaultNoData(),result.apply(0).cellType());
+
+        assertEquals(3,result.apply(0).get(0,0));
+
+        Seq<Tile> result_nodata = createMedian(false).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)));
+        assertTrue(result_nodata.apply(0).isNoDataTile());
+
+        Seq<Tile> single_input = createMedian(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy())));
+        assertEquals(-10,single_input.apply(0).get(0,0));
+
+        Seq<Tile> even_input = createMedian(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(),tile1)));
+        assertEquals(-3.0,even_input.apply(0).get(0,0));
+    }
+
+    @DisplayName("Test quantiles process")
+    @Test
+    public void testQuantiles() {
+
+        Tile tile0 = ByteConstantNoDataArrayTile.fill((byte)1, 4, 4);
+        Tile tile1 = ByteConstantNoDataArrayTile.fill((byte)3, 4, 4);
+        Tile tile2 = ByteConstantNoDataArrayTile.fill((byte)-10, 4, 4);
+        Tile tile3 = ByteConstantNoDataArrayTile.fill((byte)19, 4, 4);
+        Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
+
+        Seq<Tile> result = createQuantiles(null,2).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
+        assertEquals(ByteConstantNoDataCellType.withDefaultNoData(),result.apply(0).cellType());
+
+        assertEquals(3,result.apply(0).get(0,0));
+
+        //Seq<Tile> result_nodata = createQuantiles(false,2).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)));
+        //assertTrue(result_nodata.apply(0).isNoDataTile());
+
+        Seq<Tile> single_input = createQuantiles(true,2).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2)));
+        assertEquals(-10,single_input.apply(0).get(0,0));
+
+        Seq<Tile> even_input = createQuantiles(true,2).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2,tile1)));
+        assertEquals(-3.0,even_input.apply(0).get(0,0));
+
+        Seq<Tile> quartiles = createQuantiles(null,4).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile,tile1,nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
+        Object[] elements = JavaConverters.seqAsJavaListConverter(quartiles).asJava().stream().map(v1 -> v1.get(0, 0)).toArray();
+        //nd,3,nd,3,3,-10,nd,19,nd
+        // -10,1 ,3 3 3 19 nd nd nd nd
+
+        assertArrayEquals(new Object[]{-1,3,7}, elements);
+    }
+
+    static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = ignoreNoData!=null? Collections.singletonMap("ignore_nodata",ignoreNoData.booleanValue()) : Collections.emptyMap();
+        builder.expressionStart("median", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+
+        if (ignoreNoData != null) {
+            builder.constantArgument("ignore_nodata",ignoreNoData.booleanValue());
+        }
+
+
+        builder.expressionEnd("median",arguments);
+        return builder;
+    }
+
+    static OpenEOProcessScriptBuilder createQuantiles(Boolean ignoreNoData, int qValue) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = ignoreNoData!=null? map2("ignore_nodata",ignoreNoData.booleanValue(),"q",qValue) : map1("q",qValue);
+        builder.expressionStart("quantiles", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.constantArgument("q",2);
+
+        if (ignoreNoData != null) {
+            builder.constantArgument("ignore_nodata",ignoreNoData.booleanValue());
+        }
+
+
+        builder.expressionEnd("quantiles",arguments);
+        return builder;
+    }
+
+    static OpenEOProcessScriptBuilder createFeatureEngineering() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart("array_concat",Collections.emptyMap());
+        builder.argumentStart("array1");
+        List<Double> percentiles = Arrays.asList(0.25, 0.5, 0.75);
+        builder.expressionStart("quantiles", map1("probabilities", percentiles));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.arrayStart("probabilities");
+        builder.constantArrayElement(0.25);
+        builder.constantArrayElement(0.5);
+        builder.constantArrayElement(0.75);
+        builder.arrayEnd();
+        builder.expressionEnd("quantiles", map1( "probabilities", percentiles));
+        builder.argumentEnd();
+        builder.arrayStart("array2");
+        builder.expressionStart("sd", map1("data","dummy"));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.expressionEnd("sd", map1("data","dummy"));
+        builder.arrayElementDone();
+        builder.expressionStart("mean", Collections.emptyMap());
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.expressionEnd("mean",map1("data","dummy"));
+        builder.arrayElementDone();
+        builder.arrayEnd();
+        builder.expressionEnd("array_concat", map1("data","dummy"));
+        return builder;
+
+    }
+
+    static OpenEOProcessScriptBuilder createMonthSelection() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart("array_concat",Collections.emptyMap());
+        builder.arrayStart("array1");
+
+        builder.expressionStart("array_element", map1("index", 3));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.expressionEnd("array_element", map1( "index", 3));
+
+        builder.arrayElementDone();
+        builder.arrayEnd();
+        builder.arrayStart("array2");
+
+        builder.expressionStart("array_element", map1("index", 8));
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+        builder.expressionEnd("array_element", map1( "index", 8));
+
+        builder.arrayElementDone();
+        builder.arrayEnd();
+        builder.expressionEnd("array_concat", map1("data","dummy"));
+        return builder;
+
+    }
+
+
+    static OpenEOProcessScriptBuilder createArrayInterpolateLinear() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.emptyMap();
+        builder.expressionStart("array_interpolate_linear", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_interpolate_linear",arguments);
+        return builder;
+    }
+
+    static OpenEOProcessScriptBuilder createLinearScaleRange(Number inputMin, Number inputMax,Number outputMin, Number outputMax) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = new HashMap<>();
+        arguments.put("inputMin", inputMin);
+        arguments.put("inputMax", inputMax);
+        if (outputMin != null) {
+            arguments.put("outputMin", outputMin);
+        }
+        if (outputMax != null) {
+            arguments.put("outputMax", outputMax);
+        }
+        builder.expressionStart("linear_scale_range", arguments);
+
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.constantArguments(arguments);
+
+
+
+        builder.expressionEnd("linear_scale_range",arguments);
+        return builder;
     }
 
 
@@ -734,6 +1355,36 @@ public class TestOpenEOProcessScriptBuilder {
         for (String key : keys) {
             m.put(key, "dummy");
         }
+        return m;
+    }
+
+    /**
+     * Build 1-item Map<String, Object>
+     */
+    private static Map<String, Object> map1(String k, Object v) {
+        Map<String, Object> m = new HashMap<String, Object>(1);
+        m.put(k, v);
+        return m;
+    }
+
+    /**
+     * Build 2-item Map<String, Object>
+     */
+    private static Map<String, Object> map2(String k1, Object v1, String k2, Object v2) {
+        Map<String, Object> m = new HashMap<String, Object>(2);
+        m.put(k1, v1);
+        m.put(k2, v2);
+        return m;
+    }
+
+    /**
+     * Build 3-item Map<String, Object>
+     */
+    private static Map<String, Object> map3(String k1, Object v1, String k2, Object v2, String k3, Object v3) {
+        Map<String, Object> m = new HashMap<String, Object>(3);
+        m.put(k1, v1);
+        m.put(k2, v2);
+        m.put(k3, v3);
         return m;
     }
 

@@ -1,18 +1,18 @@
 package org.openeo.geotrellis.file
 
-import java.net.URL
-import java.time.ZonedDateTime
-import java.util
-
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer._
-import geotrellis.proj4.CRS
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{CellSize, MultibandTile}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.openeo.geotrellis.layers.{FileLayerProvider, ProbaVPathDateExtractor}
 
+import java.net.URL
+import java.time.ZonedDateTime
+import java.util
 import scala.collection.JavaConverters._
 
 object ProbaVPyramidFactory {
@@ -37,7 +37,7 @@ object ProbaVPyramidFactory {
   }
 }
 
-class ProbaVPyramidFactory(openSearchEndpoint: String, openSearchCollectionId: String, rootPath: String) extends Serializable {
+class ProbaVPyramidFactory(openSearchEndpoint: String, openSearchCollectionId: String, rootPath: String, maxSpatialResolution: CellSize) extends Serializable {
 
   import ProbaVPyramidFactory._
 
@@ -54,15 +54,16 @@ class ProbaVPyramidFactory(openSearchEndpoint: String, openSearchCollectionId: S
       .map({case (k, v) => (k, v.map(_._2))})
       .toList
     new FileLayerProvider(
-      openSearchEndpointUrl,
+      OpenSearchClient(openSearchEndpointUrl),
       openSearchCollectionId,
       NonEmptyList.fromListUnsafe(openSearchLinkTitlesWithBandIds.map(_._1)),
       rootPath,
-      maxSpatialResolution = CellSize(10, 10),
+      maxSpatialResolution = maxSpatialResolution,
       pathDateExtractor = ProbaVPathDateExtractor,
+      layoutScheme = ZoomedLayoutScheme(LatLng, 256),
       bandIds = openSearchLinkTitlesWithBandIds.map(_._2),
       correlationId = correlationId
-    )
+      )
   }
 
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String, band_indices: java.util.List[Int],

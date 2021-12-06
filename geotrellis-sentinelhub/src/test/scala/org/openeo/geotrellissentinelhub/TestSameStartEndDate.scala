@@ -1,10 +1,12 @@
 package org.openeo.geotrellissentinelhub
 
-import scala.collection.JavaConverters._
-
+import geotrellis.raster.CellSize
 import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.{Ignore, Test}
+import org.junit.Test
+
+import java.util.Collections
+import scala.collection.JavaConverters._
 
 class TestSameStartEndDate {
 
@@ -14,15 +16,15 @@ class TestSameStartEndDate {
   @Test
   def testSameStartEndDate(): Unit = {
     val extent = Extent(-55.8071, -6.7014, -55.7933, -6.6703)
-    
+
     val bbox_srs = "EPSG:4326"
-    
+
     val from = "2019-06-01T00:00:00Z"
-    
+
     val to = "2019-06-01T00:00:00Z"
-    
+
     val bandNames = Seq("VV", "VH", "HV", "HH").asJava
-    
+
     implicit val sc = SparkContext.getOrCreate(
       new SparkConf()
         .setMaster("local[1]")
@@ -30,15 +32,18 @@ class TestSameStartEndDate {
         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
         .set("spark.kryoserializer.buffer.max", "1024m"))
 
-    val pyramid = new PyramidFactory("S1GRD", clientId, clientSecret).pyramid_seq(extent, bbox_srs, from, to, bandNames)
+    val endpoint = "https://services.sentinel-hub.com"
+    val pyramid = new PyramidFactory(collectionId = null, "sentinel-1-grd", new DefaultCatalogApi(endpoint),
+      new DefaultProcessApi(endpoint), clientId, clientSecret, rateLimitingGuard = NoRateLimitingGuard, maxSpatialResolution = CellSize(10,10))
+      .pyramid_seq(extent, bbox_srs, from, to, bandNames, metadata_properties = Collections.emptyMap[String, Any])
 
-    val topLevelRdd = pyramid.filter(r => r._1 == 14).head._2
-    
+    val (_, topLevelRdd) = pyramid.filter { case (zoom, _) => zoom == 14 }.head
+
     val results = topLevelRdd.collect()
 
     for {
-      r <- results
-      b <- r._2.bands
-    } assert(b.isNoDataTile)
+      (_, multibandTile) <- results
+      tile <- multibandTile.bands
+    } assert(tile.isNoDataTile)
   }
 }
