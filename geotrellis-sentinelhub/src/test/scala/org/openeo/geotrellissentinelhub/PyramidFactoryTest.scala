@@ -86,7 +86,7 @@ class PyramidFactoryTest {
       case wrongCellType => fail(s"wrong CellType $wrongCellType")
     }
 
-    val actual = testLayer(new PyramidFactory("sentinel-1-grd", "S1GRD", new DefaultCatalogApi(endpoint),
+    val actual = testLayer(new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint), clientId, clientSecret, sampleType = FLOAT32,
       maxSpatialResolution = CellSize(10, 10)), "gamma0_catalog", date, Seq("VV", "VH", "dataMask"), testCellType)
 
@@ -387,7 +387,7 @@ class PyramidFactoryTest {
         val catalogApiSpy = new CatalogApiSpy(endpoint)
         val processApiSpy = new ProcessApiSpy(endpoint)
 
-        val pyramidFactory = new PyramidFactory(collectionId, "S1GRD", catalogApiSpy, processApiSpy, clientId,
+        val pyramidFactory = new PyramidFactory(collectionId, "sentinel-1-grd", catalogApiSpy, processApiSpy, clientId,
           clientSecret, sampleType = FLOAT32, maxSpatialResolution = CellSize(10,10))
 
         val pyramid = pyramidFactory.pyramid_seq(

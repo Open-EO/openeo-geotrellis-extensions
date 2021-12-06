@@ -33,7 +33,7 @@ class TestSameStartEndDate {
         .set("spark.kryoserializer.buffer.max", "1024m"))
 
     val endpoint = "https://services.sentinel-hub.com"
-    val pyramid = new PyramidFactory(collectionId = null, "S1GRD", new DefaultCatalogApi(endpoint),
+    val pyramid = new PyramidFactory(collectionId = null, "sentinel-1-grd", new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint), clientId, clientSecret, rateLimitingGuard = NoRateLimitingGuard, maxSpatialResolution = CellSize(10,10))
       .pyramid_seq(extent, bbox_srs, from, to, bandNames, metadata_properties = Collections.emptyMap[String, Any])
 
