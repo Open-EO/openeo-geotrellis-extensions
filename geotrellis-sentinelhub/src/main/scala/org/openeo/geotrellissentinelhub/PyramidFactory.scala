@@ -32,7 +32,7 @@ object PyramidFactory {
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
       clientId, clientSecret, processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution)
 
-  def withoutRateGuardedLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
+  def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
                                  clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
                                  maxSpatialResolution: CellSize): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),

@@ -171,7 +171,7 @@ class PyramidFactoryTest {
     val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
-    val pyramidFactory = PyramidFactory.withoutRateGuardedLimiting(endpoint, "sentinel-2-l2a", "sentinel-2-l2a",
+    val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, "sentinel-2-l2a", "sentinel-2-l2a",
       clientId, clientSecret, processingOptions = util.Collections.emptyMap[String, Any], sampleType = UINT16,
       maxSpatialResolution = CellSize(10, 10))
 
