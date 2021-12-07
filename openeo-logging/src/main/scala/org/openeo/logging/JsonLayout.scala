@@ -1,9 +1,9 @@
-package org.openeo.geotrelliscommon
+package org.openeo.logging
 
-import org.apache.log4j.Layout
-import org.apache.log4j.spi.LoggingEvent
 import io.circe.syntax._
+import org.apache.log4j.Layout
 import org.apache.log4j.spi.LocationInfo.NA
+import org.apache.log4j.spi.LoggingEvent
 
 import java.io.IOException
 import java.lang.management.ManagementFactory

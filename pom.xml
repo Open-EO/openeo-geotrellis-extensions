@@ -58,6 +58,7 @@
                 <module>openeo-geotrellis</module>
                 <module>geotrellis-benchmarks</module>
                 <module>geotrellis-common</module>
+                <module>openeo-logging</module>
             </modules>
         </profile>
     </profiles>
