@@ -371,6 +371,7 @@ object FileLayerProvider {
         }.filter { case (_, tile) => tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
           .map(t => (t._1,t._2.get)).iterator,true)
 
+    tiledRDD.name = rasterRegionRDD.name
     ContextRDD(tiledRDD, metadata)
   }
 
@@ -473,6 +474,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     }
 
     val rasterSources: RDD[LayoutTileSource[SpaceTimeKey]] = rasterSourceRDD(overlappingRasterSources, metadata, maxSpatialResolution, openSearchCollectionId)(sc)
+    rasterSources.name = s"FileCollection-${openSearchCollectionId}"
     FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc, maskStrategy.getOrElse(NoCloudFilterStrategy), datacubeParams=datacubeParams)
   }
 

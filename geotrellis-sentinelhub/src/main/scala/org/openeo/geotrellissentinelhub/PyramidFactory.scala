@@ -255,6 +255,8 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
           .filter{case (key:SpaceTimeKey,tile:Option[MultibandTile])=> tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
           .mapValues(t => t.get)
 
+        tilesRdd.name = s"Sentinelhub-${collectionId}"
+
         tilesRdd
       }
 
