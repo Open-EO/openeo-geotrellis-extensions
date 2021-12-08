@@ -250,14 +250,11 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
         val partitioner = SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,ClassTag(classOf[SpaceTimeKey]), partitionerIndex)
 
         val tilesRdd = for {
-          key <- sc.parallelize(overlappingKeys, numSlices = (overlappingKeys.size / maxKeysPerPartition) max 1)
-          tile <- loadMasked(key)
+          key <- sc.parallelize(overlappingKeys.map((_,Option.empty))).partitionBy(partitioner)
+          tile <- loadMasked(key._1)
           if !tile.bands.forall(_.isNoDataTile)
-        } yield (key, tile)
-
-        assert(partitioner.index == SpaceTimeByMonthPartitioner)
-
-        tilesRdd.partitionBy(partitioner)
+        } yield (key._1, tile)
+        tilesRdd
       }
 
       ContextRDD(tilesRdd, metadata)
