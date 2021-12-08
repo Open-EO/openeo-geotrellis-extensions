@@ -249,14 +249,12 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
         }
         val partitioner = SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,ClassTag(classOf[SpaceTimeKey]), partitionerIndex)
 
-        val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = sc.parallelize(overlappingKeys, numSlices = (overlappingKeys.size / maxKeysPerPartition) max 1)
-          .map(key => (key,loadMasked(key)))
-          .filter{case (key:SpaceTimeKey,tile:Option[MultibandTile])=> tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
+        val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = sc.parallelize(overlappingKeys.map((_,Option.empty)))
+          .partitionBy(partitioner)
+          .map(key => (key._1,loadMasked(key._1)))
           .mapValues(t => t.get)
 
-        assert(partitioner.index == SpaceTimeByMonthPartitioner)
-
-        tilesRdd.partitionBy(partitioner)
+        tilesRdd
       }
 
       ContextRDD(tilesRdd, metadata)
