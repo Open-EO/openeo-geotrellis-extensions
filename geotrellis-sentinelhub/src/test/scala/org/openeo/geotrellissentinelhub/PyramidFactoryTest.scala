@@ -33,18 +33,18 @@ object PyramidFactoryTest {
     private val catalogApi = new DefaultCatalogApi(endpoint)
     private val dateTimesCounter = new AtomicLong
 
-    override def dateTimes(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
-                           accessToken: String, queryProperties: collection.Map[String, String]):
+    override def dateTimes(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
+                           to: ZonedDateTime, accessToken: String, queryProperties: collection.Map[String, String]):
     Seq[ZonedDateTime] = {
       dateTimesCounter.incrementAndGet()
-      catalogApi.dateTimes(collectionId, boundingBox, from, to, accessToken, queryProperties)
+      catalogApi.dateTimes(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
     }
 
-    override def searchCard4L(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime,
+    override def searchCard4L(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
                               to: ZonedDateTime, accessToken: String,
                               queryProperties: collection.Map[String, String]):
     Map[String, Feature[Geometry, ZonedDateTime]] = {
-      catalogApi.searchCard4L(collectionId, boundingBox, from, to, accessToken, queryProperties)
+      catalogApi.searchCard4L(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
     }
 
     def dateTimesCount: Long = dateTimesCounter.get()

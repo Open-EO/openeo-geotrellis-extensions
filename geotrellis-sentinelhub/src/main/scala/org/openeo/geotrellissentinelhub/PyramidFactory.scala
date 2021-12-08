@@ -113,7 +113,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
     ContextRDD(tilesRdd, metadata)
   }
 
-  private def dates(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
+  private def dates(geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
                     metadataProperties: util.Map[String, Any]): Seq[ZonedDateTime] = {
     def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
 
@@ -127,7 +127,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
         .takeWhile(date => !(date isAfter to))
     else authorized { accessToken =>
       catalogApi
-        .dateTimes(collectionId, boundingBox, from, atEndOfDay(to), accessToken,
+        .dateTimes(collectionId, geometry, geometryCrs, from, atEndOfDay(to), accessToken,
           toQueryProperties(dataFilters = metadataProperties))
         .map(_.toLocalDate.atStartOfDay(UTC))
         .distinct // ProcessApi::getTile takes care of [day, day + 1] interval and mosaicking therein
@@ -138,7 +138,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
   def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, bandNames: Seq[String],
               metadataProperties: util.Map[String, Any])(implicit sc: SparkContext):
   Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val dates = this.dates(boundingBox, from, to, metadataProperties)
+    val dates = this.dates(boundingBox.extent.toPolygon(), boundingBox.crs, from, to, metadataProperties)
 
     val layers = for (zoom <- maxZoom to 0 by -1)
       yield zoom -> layer(boundingBox, from, to, zoom, bandNames, metadataProperties, dates)
@@ -188,7 +188,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
 
       val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = {
         val overlappingKeys = for {
-          date <- dates(boundingBox, from, to, metadata_properties)
+          date <- dates(multiPolygonFromPolygonExteriors(polygons), polygons_crs, from, to, metadata_properties)
           spatialKey <- layout.mapTransform.keysForGeometry(GeometryCollection(polygons))
         } yield SpaceTimeKey(spatialKey, date)
 

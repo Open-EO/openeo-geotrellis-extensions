@@ -11,6 +11,8 @@ import scala.collection.JavaConverters._
 
 // TODO: snake_case for these arguments
 class BatchProcessingService(endpoint: String, val bucketName: String, clientId: String, clientSecret: String) {
+  private val catalogApi: CatalogApi = new DefaultCatalogApi(endpoint)
+
   private def authorized[R](fn: String => R): R =
     org.openeo.geotrellissentinelhub.authorized[R](clientId, clientSecret)(fn)
 
@@ -52,7 +54,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     val multiPolygonCrs = crs
 
     val dateTimes = authorized { accessToken =>
-      new DefaultCatalogApi(endpoint).dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
+      catalogApi.dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
         accessToken, toQueryProperties(dataFilters = metadata_properties))
     }
 
@@ -117,17 +119,6 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
       sampleType, metadata_properties, processing_options, bucketName, subfolder, collecting_folder, this)
   }
 
-  // flattens n MultiPolygons into 1 by taking their polygon exteriors
-  // drawback: can result in big GeoJSON to send over the wire
-  private def multiPolygonFromPolygonExteriors(multiPolygons: Array[MultiPolygon]): MultiPolygon =  {
-    val polygonExteriors = for {
-      multiPolygon <- multiPolygons
-      polygon <- multiPolygon.polygons
-    } yield Polygon(polygon.getExteriorRing)
-
-    MultiPolygon(polygonExteriors)
-  }
-
   def get_batch_process_status(batch_request_id: String): String = authorized { accessToken =>
     new BatchProcessingApi(endpoint).getBatchProcess(batch_request_id, accessToken).status
   }
@@ -160,7 +151,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
 
     // original features that overlap in space and time
     val features = authorized { accessToken =>
-      new DefaultCatalogApi(endpoint).searchCard4L(collection_id, multiPolygon, multiPolygonCrs, from, to,
+      catalogApi.searchCard4L(collection_id, multiPolygon, multiPolygonCrs, from, to,
         accessToken, toQueryProperties(dataFilters = metadata_properties))
     }
 

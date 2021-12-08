@@ -2,7 +2,7 @@ package org.openeo
 
 import _root_.io.circe.{Decoder, Encoder, HCursor, Json}
 import _root_.io.circe.Decoder.Result
-import cats.syntax.either._
+import geotrellis.vector._
 import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import net.jodah.failsafe.function.{CheckedConsumer, CheckedSupplier}
 import net.jodah.failsafe.{Failsafe, FailsafeExecutor, RetryPolicy}
@@ -143,4 +143,14 @@ package object geotrellissentinelhub {
       Set("B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B09", "B10", "B11", "B12") .contains(bandName))
       Some(10000)
     else None
+
+  // flattens n MultiPolygons into 1 by taking their polygon exteriors
+  private[geotrellissentinelhub] def multiPolygonFromPolygonExteriors(multiPolygons: Array[MultiPolygon]): MultiPolygon = {
+    val polygonExteriors = for {
+      multiPolygon <- multiPolygons
+      polygon <- multiPolygon.polygons
+    } yield Polygon(polygon.getExteriorRing)
+
+    MultiPolygon(polygonExteriors)
+  }
 }
