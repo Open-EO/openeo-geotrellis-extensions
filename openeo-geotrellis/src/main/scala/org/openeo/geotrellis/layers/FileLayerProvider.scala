@@ -167,10 +167,17 @@ object FileLayerProvider {
         val m = keyExtractor.getMetadata(rs)
         val tileKeyTransform: SpatialKey => SpaceTimeKey = { sk => keyExtractor.getKey(m, sk) }
         //The first form 'rs.tileToLayout' will check if rastersources are aligned, requiring reading of metadata, which has a serious performance impact!
-        if(noResampling)
-          LayoutTileSource(rs,metadata.layout,tileKeyTransform)
-        else
-          rs.tileToLayout(metadata.layout, tileKeyTransform)
+        try{
+          if(noResampling)
+            LayoutTileSource(rs,metadata.layout,tileKeyTransform)
+          else
+            rs.tileToLayout(metadata.layout, tileKeyTransform)
+        }  catch {
+          case e: IllegalArgumentException => {
+            logger.error(s"Error tiling rastersource ${rs.name} to layout: ${metadata.layout}, ${rs.gridExtent}, ${rs.cellSize}")
+            throw e
+          }
+        }
       }
 
     tiledLayoutSourceRDD
