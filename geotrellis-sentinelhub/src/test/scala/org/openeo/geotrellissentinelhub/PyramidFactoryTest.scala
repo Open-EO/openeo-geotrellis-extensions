@@ -321,6 +321,59 @@ class PyramidFactoryTest {
   }
 
   @Test
+  def testUtmSparse(): Unit = {
+    implicit val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      // small (1 tile request) regions in the upper left and lower right corners of [2.59003, 51.069, 2.8949, 51.2206]
+      val upperLeftBoundingBox =
+        Extent(xmin = 2.590670585632324, ymin = 51.219034670299344, xmax = 2.5927734375, ymax = 51.22005609157961)
+      val lowerRightBoundingBox =
+        Extent(xmin = 2.888975143432617, ymin = 51.06977173805457, xmax = 2.8932666778564453, ymax = 51.07165938028684)
+
+      val polygons = Array(upperLeftBoundingBox, lowerRightBoundingBox)
+        .map(extent => MultiPolygon(extent.toPolygon()))
+
+      val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+      val (utmPolygons, utmCrs) = {
+        val center = GeometryCollection(polygons).extent.center
+        val utmCrs = UTM.getZoneCrs(lon = center.getX, lat = center.getY)
+        (polygons.map(_.reproject(LatLng, utmCrs)), utmCrs)
+      }
+
+      val endpoint = "https://services.sentinel-hub.com"
+      val processApiSpy = new ProcessApiSpy(endpoint)
+
+      val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "sentinel-2-l2a", new DefaultCatalogApi(endpoint),
+        processApiSpy, clientId, clientSecret, maxSpatialResolution = CellSize(10, 10))
+
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        utmPolygons, utmCrs,
+        from_date = ISO_OFFSET_DATE_TIME format date,
+        to_date = ISO_OFFSET_DATE_TIME format date,
+        band_names = Seq("B08", "B04", "B03").asJava,
+        metadata_properties = Collections.emptyMap[String, Any]
+      )
+
+      val spatialLayer = layer
+        .toSpatial()
+        .cache()
+
+      val utmPolygonsExtent = utmPolygons.toSeq.extent
+      val Some(Raster(multibandTile, extent)) = spatialLayer
+        .sparseStitch(utmPolygonsExtent)
+        .map(_.crop(utmPolygonsExtent))
+
+      val tif = MultibandGeoTiff(multibandTile, extent, layer.metadata.crs, geoTiffOptions)
+      tif.write(s"/tmp/utm_sparse.tif")
+
+      assertEquals(2, processApiSpy.getTileCount)
+      // TODO: compare these regions against those for the non-sparse case (testUtm)
+    } finally sc.stop()
+  }
+
+  @Test
   def testPolarizationDataFilter(): Unit = {
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
