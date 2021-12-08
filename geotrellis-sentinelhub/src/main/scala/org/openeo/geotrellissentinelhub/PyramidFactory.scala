@@ -235,7 +235,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
           } else Some(dataTile)
         }
 
-        logger.info(s"Created Sentinelhub datacube with ${overlappingKeys} keys and metadata ${metadata}")
+        logger.info(s"Created Sentinelhub datacube with ${overlappingKeys.size} keys and metadata ${metadata}")
 
         val reduction: Int = dataCubeParameters.partitionerIndexReduction
         val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
