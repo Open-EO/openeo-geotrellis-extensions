@@ -167,10 +167,17 @@ object FileLayerProvider {
         val m = keyExtractor.getMetadata(rs)
         val tileKeyTransform: SpatialKey => SpaceTimeKey = { sk => keyExtractor.getKey(m, sk) }
         //The first form 'rs.tileToLayout' will check if rastersources are aligned, requiring reading of metadata, which has a serious performance impact!
-        if(noResampling)
-          LayoutTileSource(rs,metadata.layout,tileKeyTransform)
-        else
-          rs.tileToLayout(metadata.layout, tileKeyTransform)
+        try{
+          if(noResampling)
+            LayoutTileSource(rs,metadata.layout,tileKeyTransform)
+          else
+            rs.tileToLayout(metadata.layout, tileKeyTransform)
+        }  catch {
+          case e: IllegalArgumentException => {
+            logger.error(s"Error tiling rastersource ${rs.name} to layout: ${metadata.layout}, ${rs.gridExtent}, ${rs.cellSize}")
+            throw e
+          }
+        }
       }
 
     tiledLayoutSourceRDD
@@ -268,8 +275,11 @@ object FileLayerProvider {
     val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] =
       rasterRegionRDD
         .groupByKey(partitioner)
-        .flatMapValues { namedRasterRegions => {
-          val allRegions = namedRasterRegions.toSeq
+        .mapPartitions(partitionIterator => {
+
+          partitionIterator.toParArray.map(tuple => {
+            val allRegions = tuple._2.toSeq
+
           val filteredRegions =
           if(allRegions.size<2 || cloudFilterStrategy == NoCloudFilterStrategy) {
             allRegions
@@ -284,7 +294,7 @@ object FileLayerProvider {
             regionsWithDistance.filter(_._1 == largestDistanceToTheEdgeOfTheRaster).map(_._2)
           }
 
-          filteredRegions
+          val tilesForRegion = filteredRegions
             .flatMap { case (rasterRegion, sourcePath: SourcePath) =>
               val result: Option[(MultibandTile, SourcePath)] = cloudFilterStrategy match {
                 case l1cFilterStrategy: L1CCloudFilterStrategy =>
@@ -354,8 +364,12 @@ object FileLayerProvider {
             }
             .map { case (multibandTile, _) => multibandTile }
             .reduceOption(_ merge _)
-        }
-        }.filter { case (_, tile) => !tile.bands.forall(_.isNoDataTile) }
+            (tuple._1,tilesForRegion)
+        })
+
+
+        }.filter { case (_, tile) => tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
+          .map(t => (t._1,t._2.get)).iterator,true)
 
     ContextRDD(tiledRDD, metadata)
   }
@@ -505,7 +519,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         SentinelXMLMetadataRasterSource(new URL(vsisToHttpsCreo(dataPath)),bands)
       }
       else {
-        if( feature.crs.isEmpty || feature.crs.get.equals(targetExtent.crs)) {
+        if( feature.crs.isEmpty || feature.crs.get == null || feature.crs.get.equals(targetExtent.crs)) {
           if(experimental) {
             Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
           }else{

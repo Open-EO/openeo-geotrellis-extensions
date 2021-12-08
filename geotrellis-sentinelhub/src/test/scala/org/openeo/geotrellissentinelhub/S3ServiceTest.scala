@@ -88,6 +88,13 @@ class S3ServiceTest {
 
   @Ignore
   @Test
+  def delete_batch_process_resultsInBucketInDifferentRegion(): Unit = {
+    val bucketName = "openeo-sentinelhub-uswest2"
+    s3Service.delete_batch_process_results(bucketName, subfolder = "5e2c5280-b900-4350-9e3a-fb25048bc207")
+  }
+
+  @Ignore
+  @Test
   def uploadRecursively(): Unit = {
     s3Service.uploadRecursively(Paths.get("/tmp/1"), bucketName)
   }

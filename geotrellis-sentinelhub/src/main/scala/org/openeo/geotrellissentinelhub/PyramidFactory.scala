@@ -4,12 +4,12 @@ import geotrellis.layer.{SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.{CellSize, MultibandTile, Raster}
 import geotrellis.spark._
-import geotrellis.spark.partition.SpacePartitioner
+import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -19,19 +19,34 @@ import java.util
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import scala.annotation.meta.param
 import scala.collection.JavaConverters._
+import scala.reflect.ClassTag
 
 object PyramidFactory {
   private val logger: Logger = LoggerFactory.getLogger(classOf[PyramidFactory])
 
   private val maxKeysPerPartition = 20
 
-  // convenience method for Python client
-  // TODO: change name? A 429 response makes it rate-limited anyway.
-  def rateLimited(endpoint: String, collectionId: String, datasetId: String, clientId: String, clientSecret: String,
-                  processingOptions: util.Map[String, Any], sampleType: SampleType, maxSpatialResolution: CellSize): PyramidFactory =
+  // convenience methods for Python client
+  def withGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
+                              clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
+                              maxSpatialResolution: CellSize): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
-                       clientId, clientSecret, processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution)
+      clientId, clientSecret, processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution)
 
+  def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
+                                 clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
+                                 maxSpatialResolution: CellSize): PyramidFactory =
+    new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
+      clientId, clientSecret, processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution)
+
+  @deprecated("call withGuardedRateLimiting instead")
+  def rateLimited(endpoint: String, collectionId: String, datasetId: String, clientId: String, clientSecret: String,
+                  processingOptions: util.Map[String, Any], sampleType: SampleType,
+                  maxSpatialResolution: CellSize): PyramidFactory =
+    withGuardedRateLimiting(endpoint, collectionId, datasetId, clientId, clientSecret, processingOptions, sampleType,
+      maxSpatialResolution)
+
+  @deprecated("include a maxSpatialResolution")
   def rateLimited(endpoint: String, collectionId: String, datasetId: String, clientId: String, clientSecret: String,
                   processingOptions: util.Map[String, Any], sampleType: SampleType): PyramidFactory =
     rateLimited(endpoint, collectionId, datasetId, clientId, clientSecret, processingOptions, sampleType, CellSize(10,10))
@@ -220,16 +235,27 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
           } else Some(dataTile)
         }
 
-        val tilesRdd = for {
-          key <- sc.parallelize(overlappingKeys, numSlices = (overlappingKeys.size / maxKeysPerPartition) max 1)
-          tile <- loadMasked(key)
-          if !tile.bands.forall(_.isNoDataTile)
-        } yield (key, tile)
+        logger.info(s"Created Sentinelhub datacube with ${overlappingKeys.size} keys and metadata ${metadata}")
 
-        val partitioner = SpacePartitioner(metadata.bounds)
-        assert(partitioner.index == SpaceTimeByMonthPartitioner)
+        val reduction: Int = dataCubeParameters.partitionerIndexReduction
+        val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
+          if( dataCubeParameters.partitionerTemporalResolution!= "ByDay") {
+            val indices = overlappingKeys.map(SparseSpaceOnlyPartitioner.toIndex(_,indexReduction = reduction)).distinct.sorted.toArray
+            new SparseSpaceOnlyPartitioner(indices,reduction)
+          }else{
+            val indices = overlappingKeys.map(SparseSpaceTimePartitioner.toIndex(_,indexReduction = reduction)).distinct.sorted.toArray
+            new SparseSpaceTimePartitioner(indices,reduction)
+          }
+        }
+        val partitioner = SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,ClassTag(classOf[SpaceTimeKey]), partitionerIndex)
 
-        tilesRdd.partitionBy(partitioner)
+        val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = sc.parallelize(overlappingKeys.map((_,Option.empty)))
+          .partitionBy(partitioner)
+          .map(key => (key._1,loadMasked(key._1)))
+          .filter{case (key:SpaceTimeKey,tile:Option[MultibandTile])=> tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
+          .mapValues(t => t.get)
+
+        tilesRdd
       }
 
       ContextRDD(tilesRdd, metadata)

@@ -8,6 +8,7 @@ import net.jodah.failsafe.function.{CheckedConsumer, CheckedSupplier}
 import net.jodah.failsafe.{Failsafe, FailsafeExecutor, RetryPolicy}
 import org.slf4j.Logger
 import software.amazon.awssdk.core.sync.ResponseTransformer
+import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.{GetObjectRequest, GetObjectResponse, ListObjectsV2Request, ObjectIdentifier}
 
@@ -93,13 +94,17 @@ package object geotrellissentinelhub {
   }
 
   object S3 {
-    def withClient[R](f: S3Client => R): R = {
-      val s3Client = S3Client.builder()
+    def withClient[R](region: Region)(f: S3Client => R): R = {
+      val s3Client = Option(region)
+        .foldLeft(S3Client.builder()) { case (builder, region) => builder.region(region) }
         .build()
 
+      // TODO: cache and reuse the S3Client instead?
       try f(s3Client)
       finally s3Client.close()
     }
+
+    def withClient[R](f: S3Client => R): R = withClient(region = null)(f)
 
     def download(s3Client: S3Client, bucketName: String, key: String, outputFile: Path): Unit = {
       val getObjectRequest = GetObjectRequest.builder()

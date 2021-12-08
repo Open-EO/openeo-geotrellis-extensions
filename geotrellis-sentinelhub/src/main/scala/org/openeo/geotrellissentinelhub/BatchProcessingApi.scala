@@ -248,7 +248,8 @@ class BatchProcessingApi(endpoint: String) {
                                additionalDataFilters: util.Map[String, Any], bucketName: String,
                                subFolder: String, accessToken: String): CreateBatchProcessResponse =
     withRetries(context = s"createCard4LBatchProcess $datasetId") {
-      require(datasetId == "S1GRD", """only data set "S1GRD" is supported""")
+      require(Set("sentinel-1-grd", "S1GRD") contains datasetId,
+        """only data set sentinel-1-grd" (previously "S1GRD") is supported""")
 
       val (from, to) = (dateTime, dateTime plusSeconds 1)
 

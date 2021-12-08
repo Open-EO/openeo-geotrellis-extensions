@@ -32,7 +32,7 @@ package object geotrellis {
     } else action
   }
 
-  private val s3ClientCache = new ConcurrentHashMap[(Region, URI), S3Client]()
+  private val s3ClientCache = new ConcurrentHashMap[(Region, URI), S3Client]
 
   private[geotrellis] def s3Client(region: Region = null, endpoint: URI = null): S3Client =
     s3ClientCache.computeIfAbsent((region, endpoint), s3Client.asJava)
@@ -72,7 +72,7 @@ package object geotrellis {
     theClient
   }
 
-  private val bucketRegionCache = new ConcurrentHashMap[String, Region]()
+  private val bucketRegionCache = new ConcurrentHashMap[String, Region]
 
   private[geotrellis] def bucketRegion(bucketName: String): Region =
     bucketRegionCache.computeIfAbsent(bucketName, fetchBucketRegion.asJava)

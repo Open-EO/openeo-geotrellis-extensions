@@ -1,8 +1,8 @@
 package org.openeo.geotrellissentinelhub
 
 import geotrellis.layer.SpaceTimeKey
-import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.proj4.util.UTM
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, MultibandGeoTiff}
 import geotrellis.raster.{CellSize, HasNoData, MultibandTile, Raster}
@@ -11,8 +11,9 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.{SparkConf, SparkContext, SparkException}
 import org.junit.Assert.{assertEquals, assertTrue, fail}
-import org.junit.Test
-import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
+import org.junit.{Ignore, Test}
+import org.openeo.geotrelliscommon.DataCubeParameters
+import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType, UINT16}
 
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
@@ -82,11 +83,11 @@ class PyramidFactoryTest {
     val date = ZonedDateTime.of(LocalDate.of(2019, 10, 10), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     def testCellType(baseLayer: MultibandTileLayerRDD[SpaceTimeKey]): Unit = baseLayer.metadata.cellType match {
-      case cellType: HasNoData[Double @unchecked] if cellType.isFloatingPoint && cellType.noDataValue == 0.0 =>
+      case cellType: HasNoData[Float @unchecked] if cellType.isFloatingPoint && cellType.noDataValue == 0.0 =>
       case wrongCellType => fail(s"wrong CellType $wrongCellType")
     }
 
-    val actual = testLayer(new PyramidFactory("sentinel-1-grd", "S1GRD", new DefaultCatalogApi(endpoint),
+    val actual = testLayer(new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint), clientId, clientSecret, sampleType = FLOAT32,
       maxSpatialResolution = CellSize(10, 10)), "gamma0_catalog", date, Seq("VV", "VH", "dataMask"), testCellType)
 
@@ -101,7 +102,7 @@ class PyramidFactoryTest {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     def testCellType(baseLayer: MultibandTileLayerRDD[SpaceTimeKey]): Unit = baseLayer.metadata.cellType match {
-      case cellType: HasNoData[Int @unchecked] if !cellType.isFloatingPoint && cellType.noDataValue == 0 =>
+      case cellType: HasNoData[Short @unchecked] if !cellType.isFloatingPoint && cellType.noDataValue == 0 =>
       case wrongCellType => fail(s"wrong CellType $wrongCellType")
     }
 
@@ -131,7 +132,8 @@ class PyramidFactoryTest {
 
     val endpoint = "https://services-uswest2.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    val actual = testLayer(new PyramidFactory("landsat-ot-l1", "landsat-ot-l1", new DefaultCatalogApi(endpoint),
+
+   val actual = testLayer(new PyramidFactory("landsat-ot-l1", "landsat-ot-l1", new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10, 10)), "landsat8",
       date, Seq("B10", "B11"))
 
@@ -163,6 +165,47 @@ class PyramidFactoryTest {
       "sentinel2-L2A_mix", date, Seq("B04", "sunAzimuthAngles", "SCL"))
 
     assertEquals(expected, actual)
+  }
+
+  @Test
+  def testSclDilationCloudMasking(): Unit = {
+    val endpoint = "https://services.sentinel-hub.com"
+    val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+    val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, "sentinel-2-l2a", "sentinel-2-l2a",
+      clientId, clientSecret, processingOptions = util.Collections.emptyMap[String, Any], sampleType = UINT16,
+      maxSpatialResolution = CellSize(10, 10))
+
+    val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      val boundingBox =
+        ProjectedExtent(Extent(471275.3098352262, 5657503.248379398, 492660.20213888795, 5674436.759279663),
+          CRS.fromEpsgCode(32631))
+
+      val dataCubeParameters = new DataCubeParameters
+      dataCubeParameters.maskingStrategyParameters = util.Collections.singletonMap("method", "mask_scl_dilation")
+
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
+        from_date = ISO_OFFSET_DATE_TIME format date,
+        to_date = ISO_OFFSET_DATE_TIME format date,
+        band_names = Seq("B08", "B04", "B02", "SCL").asJava,
+        metadata_properties = Collections.emptyMap[String, Any],
+        dataCubeParameters
+      )
+
+      val spatialLayer = layer
+        .toSpatial()
+        .cache()
+
+      val Raster(multibandTile, extent) = spatialLayer
+        .crop(boundingBox.extent)
+        .stitch()
+
+      val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
+      tif.write(s"/tmp/scl_dilation_no_cloud_masking.tif")
+    } finally sc.stop()
   }
 
   @Test
@@ -279,6 +322,59 @@ class PyramidFactoryTest {
   }
 
   @Test
+  def testUtmSparse(): Unit = {
+    implicit val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      // small (1 tile request) regions in the upper left and lower right corners of [2.59003, 51.069, 2.8949, 51.2206]
+      val upperLeftBoundingBox =
+        Extent(xmin = 2.590670585632324, ymin = 51.219034670299344, xmax = 2.5927734375, ymax = 51.22005609157961)
+      val lowerRightBoundingBox =
+        Extent(xmin = 2.888975143432617, ymin = 51.06977173805457, xmax = 2.8932666778564453, ymax = 51.07165938028684)
+
+      val polygons = Array(upperLeftBoundingBox, lowerRightBoundingBox)
+        .map(extent => MultiPolygon(extent.toPolygon()))
+
+      val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+      val (utmPolygons, utmCrs) = {
+        val center = GeometryCollection(polygons).extent.center
+        val utmCrs = UTM.getZoneCrs(lon = center.getX, lat = center.getY)
+        (polygons.map(_.reproject(LatLng, utmCrs)), utmCrs)
+      }
+
+      val endpoint = "https://services.sentinel-hub.com"
+      val processApiSpy = new ProcessApiSpy(endpoint)
+
+      val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "sentinel-2-l2a", new DefaultCatalogApi(endpoint),
+        processApiSpy, clientId, clientSecret, maxSpatialResolution = CellSize(10, 10))
+
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        utmPolygons, utmCrs,
+        from_date = ISO_OFFSET_DATE_TIME format date,
+        to_date = ISO_OFFSET_DATE_TIME format date,
+        band_names = Seq("B08", "B04", "B03").asJava,
+        metadata_properties = Collections.emptyMap[String, Any]
+      )
+
+      val spatialLayer = layer
+        .toSpatial()
+        .cache()
+
+      val utmPolygonsExtent = utmPolygons.toSeq.extent
+      val Some(Raster(multibandTile, extent)) = spatialLayer
+        .sparseStitch(utmPolygonsExtent)
+        .map(_.crop(utmPolygonsExtent))
+
+      val tif = MultibandGeoTiff(multibandTile, extent, layer.metadata.crs, geoTiffOptions)
+      tif.write(s"/tmp/utm_sparse.tif")
+
+      assertEquals(2, processApiSpy.getTileCount)
+      // TODO: compare these regions against those for the non-sparse case (testUtm)
+    } finally sc.stop()
+  }
+
+  @Test
   def testPolarizationDataFilter(): Unit = {
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
@@ -315,6 +411,58 @@ class PyramidFactoryTest {
     } finally sc.stop()
   }
 
+  @Ignore("the actual collection ID is a secret")
+  @Test
+  def testPlanetScope(): Unit = {
+    import scala.io.Source
+
+    val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      val boundingBox = {
+        val crs = CRS.fromEpsgCode(32628)
+
+        ProjectedExtent(
+          Extent(-17.25725769996643, 14.753334453316254, -17.255959510803223, 14.754506838531325)
+            .reproject(LatLng, crs), crs
+        )
+      }
+
+      val date = ZonedDateTime.of(LocalDate.of(2017, 1, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+      val planetCollectionId = {
+        val in = Source.fromFile("/tmp/planetscope")
+
+        try in.mkString.trim
+        finally in.close()
+      }
+
+      val endpoint = "https://services.sentinel-hub.com"
+      val pyramidFactory = new PyramidFactory(collectionId = planetCollectionId, datasetId = planetCollectionId,
+        new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint), clientId, clientSecret,
+        maxSpatialResolution = CellSize(3, 3), sampleType = FLOAT32)
+
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
+        from_date = ISO_OFFSET_DATE_TIME format date,
+        to_date = ISO_OFFSET_DATE_TIME format date,
+        band_names = Seq("B3", "B2", "B1").asJava,
+        metadata_properties = Collections.emptyMap[String, Any]
+      )
+
+      val spatialLayer = layer
+        .toSpatial()
+        .cache()
+
+      val Raster(multibandTile, extent) = spatialLayer
+        .stitch()
+        .crop(boundingBox.extent) // it's jumping around again
+
+      val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
+      tif.write(s"/tmp/testPlanetScope.tif")
+    } finally sc.stop()
+  }
+
   @Test
   def testCatalogApiLimitsProcessApiCalls(): Unit = {
     val expected = referenceRaster("testCatalogApiLimitsProcessApiCalls_collectionId_sentinel-1-grd.tif")
@@ -335,7 +483,7 @@ class PyramidFactoryTest {
         val catalogApiSpy = new CatalogApiSpy(endpoint)
         val processApiSpy = new ProcessApiSpy(endpoint)
 
-        val pyramidFactory = new PyramidFactory(collectionId, "S1GRD", catalogApiSpy, processApiSpy, clientId,
+        val pyramidFactory = new PyramidFactory(collectionId, "sentinel-1-grd", catalogApiSpy, processApiSpy, clientId,
           clientSecret, sampleType = FLOAT32, maxSpatialResolution = CellSize(10,10))
 
         val pyramid = pyramidFactory.pyramid_seq(

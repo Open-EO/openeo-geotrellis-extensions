@@ -356,6 +356,50 @@ public class TestOpenEOProcessScriptBuilder {
         assertTileEquals(fillBitArrayTile(4, 3, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1), res);
     }
 
+
+
+
+    @Test
+    public void testLogicalBetweenBytes() {
+        Object min = (byte) 9;
+        Object max = (byte) 11;
+        int[] expected = {0, 1, 1, 1, 0};
+        testBetween(min, max, expected,null);
+    }
+
+    @Test
+    public void testLogicalBetweenDoubles() {
+        Object min = (Double) 10.;
+        Object max = (Double) 14.;
+        int[] expected = {0, 0, 1, 1, 1};
+        testBetween(min, max, expected, false);
+    }
+
+    @Test
+    public void testLogicalBetweenDoublesExclude() {
+        Object min = (Double) 10.;
+        Object max = (Double) 12.;
+        int[] expected = {0, 0, 1, 1, 0};
+        testBetween(min, max, expected, true);
+    }
+
+    private void testBetween(Object min, Object max, int[] expected, Object excludeMax) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> args = map4("x",null,"min", min, "max", max, "exclude_max",excludeMax);
+        builder.expressionStart("between", args);
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        //builder.constantArgument("min", (byte) 9);
+        //builder.constantArgument("max", (byte) 11);
+        builder.expressionEnd("between", args);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        Tile tile1 = fillByteArrayTile(4, 3, 8, 9, 10, 11, 12);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1)));
+        Tile res = result.apply(0);
+        assertTileEquals(fillBitArrayTile(4, 3, expected), res);
+    }
+
     private void testLogicalOperatorWithExpressionsArray(String operator, int... expectedValues) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Map<String, Object> args = dummyMap("expressions");
@@ -1385,6 +1429,18 @@ public class TestOpenEOProcessScriptBuilder {
         m.put(k1, v1);
         m.put(k2, v2);
         m.put(k3, v3);
+        return m;
+    }
+
+    /**
+     * Build 4-item Map<String, Object>
+     */
+    private static Map<String, Object> map4(String k1, Object v1, String k2, Object v2, String k3, Object v3, String k4, Object v4) {
+        Map<String, Object> m = new HashMap<String, Object>(3);
+        m.put(k1, v1);
+        m.put(k2, v2);
+        m.put(k3, v3);
+        m.put(k4, v4);
         return m;
     }
 
