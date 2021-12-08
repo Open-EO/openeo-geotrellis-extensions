@@ -4,12 +4,12 @@ import geotrellis.layer.{SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.{CellSize, MultibandTile, Raster}
 import geotrellis.spark._
-import geotrellis.spark.partition.SpacePartitioner
+import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -19,6 +19,7 @@ import java.util
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import scala.annotation.meta.param
 import scala.collection.JavaConverters._
+import scala.reflect.ClassTag
 
 object PyramidFactory {
   private val logger: Logger = LoggerFactory.getLogger(classOf[PyramidFactory])
@@ -234,13 +235,26 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
           } else Some(dataTile)
         }
 
+        logger.info(s"Created Sentinelhub datacube with ${overlappingKeys} keys and metadata ${metadata}")
+
+        val reduction: Int = dataCubeParameters.partitionerIndexReduction
+        val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
+          if( dataCubeParameters.partitionerTemporalResolution!= "ByDay") {
+            val indices = overlappingKeys.map(SparseSpaceOnlyPartitioner.toIndex(_,indexReduction = reduction)).distinct.sorted.toArray
+            new SparseSpaceOnlyPartitioner(indices,reduction)
+          }else{
+            val indices = overlappingKeys.map(SparseSpaceTimePartitioner.toIndex(_,indexReduction = reduction)).distinct.sorted.toArray
+            new SparseSpaceTimePartitioner(indices,reduction)
+          }
+        }
+        val partitioner = SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,ClassTag(classOf[SpaceTimeKey]), partitionerIndex)
+
         val tilesRdd = for {
           key <- sc.parallelize(overlappingKeys, numSlices = (overlappingKeys.size / maxKeysPerPartition) max 1)
           tile <- loadMasked(key)
           if !tile.bands.forall(_.isNoDataTile)
         } yield (key, tile)
 
-        val partitioner = SpacePartitioner(metadata.bounds)
         assert(partitioner.index == SpaceTimeByMonthPartitioner)
 
         tilesRdd.partitionBy(partitioner)
