@@ -252,6 +252,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
         val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = sc.parallelize(overlappingKeys.map((_,Option.empty)))
           .partitionBy(partitioner)
           .map(key => (key._1,loadMasked(key._1)))
+          .filter{case (key:SpaceTimeKey,tile:Option[MultibandTile])=> tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
           .mapValues(t => t.get)
 
         tilesRdd
