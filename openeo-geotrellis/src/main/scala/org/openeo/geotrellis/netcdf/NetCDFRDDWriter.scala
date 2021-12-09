@@ -9,9 +9,9 @@ import geotrellis.raster._
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.util._
 import geotrellis.vector._
-import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.storage.StorageLevel
+import org.apache.spark.{HashPartitioner, SparkContext}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.slf4j.LoggerFactory
 import ucar.ma2.{ArrayDouble, ArrayInt, DataType}
@@ -286,7 +286,7 @@ object NetCDFRDDWriter {
       }.map { case (name, extent) =>
         ((name, ProjectedExtent(extent, crs)), (key, tile))
       }
-    }.groupByKey()
+    }.groupByKey(new HashPartitioner(featuresBC.value.size))
   }
 
   private def stitchAndCropTiles(tilesForDate: Iterable[(SpatialKey, MultibandTile)], cropExtent: ProjectedExtent, layout: LayoutDefinition) = {
