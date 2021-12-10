@@ -112,8 +112,11 @@ object NetCDFRDDWriter {
     }
 
 
-
-    netcdfFile.close()
+    if(netcdfFile!=null) {
+      netcdfFile.close()
+    }else{
+      logger.error(s"The resulting netCDF at ${path} with bands ${bandNames} is empty, this is probably not intended?")
+    }
     return Collections.singletonList(path)
   }
 
