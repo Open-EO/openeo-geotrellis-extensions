@@ -313,17 +313,17 @@ class PyramidFactoryTest {
       val actual @ Raster(multibandTile, extent) = spatialLayer.stitch()
 
       val tif = MultibandGeoTiff(multibandTile, extent, layer.metadata.crs, geoTiffOptions)
-      tif.write(s"/tmp/utm_features.tif")
+      tif.write(s"/tmp/utm.tif")
 
-      /*val expected = referenceRaster("utm.tif")
+      val expected = referenceRaster("utm.tif")
 
-      assertEquals(expected, actual)*/
+      assertEquals(expected, actual)
     } finally sc.stop()
   }
 
   @Test
   def testUtmSparse(): Unit = {
-    implicit val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+    implicit val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
     try {
       // small (1 tile request) regions in the upper left and lower right corners of [2.59003, 51.069, 2.8949, 51.2206]
