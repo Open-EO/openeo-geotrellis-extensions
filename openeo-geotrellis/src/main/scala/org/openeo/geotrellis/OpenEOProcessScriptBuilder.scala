@@ -526,6 +526,7 @@ class OpenEOProcessScriptBuilder {
       case "divide" if hasData => reduceFunction("data", Divide.apply) // legacy 0.4 style
       case "power" => xyFunction(Pow.apply,xArgName = "base",yArgName = "p")
       case "normalized_difference" if hasXY => xyFunction((x, y) => Divide(Subtract(x, y), Add(x, y)))
+      case "clip" => clipFunction(arguments)
       // Statistics
       case "max" if hasData && !ignoreNoData => reduceFunction("data", Max.apply)
       case "max" if hasData && ignoreNoData => reduceFunction("data", MaxIgnoreNoData.apply)
@@ -813,5 +814,30 @@ class OpenEOProcessScriptBuilder {
     bandFunction
   }
 
+  private def clipFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val inputFunction = storedArgs("x")
+    val min = arguments.get("min").asInstanceOf[Number].doubleValue()
+    val max = arguments.get("max").asInstanceOf[Number].doubleValue()
 
+    val doTypeCast = min != min.toInt || max != max.toInt
+
+    val clipFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
+      val input = evaluateToTiles(inputFunction, context, tiles)
+      val castedInput =
+        if (doTypeCast)
+          input.map(_.convert(FloatConstantNoDataCellType))
+        else
+          input
+      castedInput.map(_.mapIfSetDouble(x => {
+        if (x < min)
+          min
+        else if (x > max)
+          max
+        else
+          x
+      }))
+    }
+    clipFunction
+  }
 }

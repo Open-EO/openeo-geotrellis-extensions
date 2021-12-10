@@ -1156,6 +1156,45 @@ public class TestOpenEOProcessScriptBuilder {
         assertArrayEquals(new Object[]{-1,3,7}, elements);
     }
 
+    @DisplayName("Test clip process")
+    @Test
+    public void testClip() {
+        OpenEOProcessScriptBuilder builder1 = createClip(1.0, 2);
+        OpenEOProcessScriptBuilder builder2 = createClip(1.5, 2.5);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation1 = builder1.generateFunction();
+        Function1<Seq<Tile>, Seq<Tile>> transformation2 = builder2.generateFunction();
+
+        Tile tile0 = IntConstantNoDataArrayTile.fill(0, 4, 4);
+        Tile tile1 = IntConstantNoDataArrayTile.fill(3, 4, 4);
+        Tile tile2 = FloatConstantNoDataArrayTile.fill(1.5f, 4, 4);
+        Tile tile3 = FloatConstantNoDataArrayTile.fill(3.5f, 4, 4);
+        Tile nodataTile = FloatConstantNoDataArrayTile.empty(4, 4);
+
+        Seq<Tile> result1 = transformation1.apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)));
+        Seq<Tile> result2 = transformation2.apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)));
+
+        assertTrue(result1.apply(0).isNoDataTile());
+        assertEquals(1, result1.apply(1).getDouble(0,0));
+        assertEquals(IntConstantNoDataArrayTile.empty(0, 0).cellType(), result1.apply(1).cellType());
+        assertEquals(2, result1.apply(2).getDouble(0,0));
+        assertEquals(IntConstantNoDataArrayTile.empty(0, 0).cellType(), result1.apply(2).cellType());
+        assertEquals(1.5, result1.apply(3).getDouble(0,0));
+        assertEquals(FloatConstantNoDataArrayTile.empty(0, 0).cellType(), result1.apply(3).cellType());
+        assertEquals(2, result1.apply(4).getDouble(0,0));
+        assertEquals(FloatConstantNoDataArrayTile.empty(0, 0).cellType(), result1.apply(4).cellType());
+
+        assertTrue(result2.apply(0).isNoDataTile());
+        assertEquals(1.5, result2.apply(1).getDouble(0,0));
+        assertEquals(FloatConstantNoDataArrayTile.empty(0, 0).cellType(), result2.apply(1).cellType());
+        assertEquals(2.5, result2.apply(2).getDouble(0,0));
+        assertEquals(FloatConstantNoDataArrayTile.empty(0, 0).cellType(), result2.apply(2).cellType());
+        assertEquals(1.5, result2.apply(3).getDouble(0,0));
+        assertEquals(FloatConstantNoDataArrayTile.empty(0, 0).cellType(), result2.apply(3).cellType());
+        assertEquals(2.5, result2.apply(4).getDouble(0,0));
+        assertEquals(FloatConstantNoDataArrayTile.empty(0, 0).cellType(), result2.apply(4).cellType());
+    }
+
     static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Map<String, Object> arguments = ignoreNoData!=null? Collections.singletonMap("ignore_nodata",ignoreNoData.booleanValue()) : Collections.emptyMap();
@@ -1287,6 +1326,22 @@ public class TestOpenEOProcessScriptBuilder {
 
 
         builder.expressionEnd("linear_scale_range",arguments);
+        return builder;
+    }
+
+    static OpenEOProcessScriptBuilder createClip(Number min, Number max) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = new HashMap<>();
+        arguments.put("min", min);
+        arguments.put("max", max);
+
+        builder.expressionStart("clip", arguments);
+
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.constantArguments(arguments);
+
+        builder.expressionEnd("clip", arguments);
         return builder;
     }
 
