@@ -118,27 +118,25 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
     to.toLocalDate.atTime(endOfDay).toZonedDateTime
   }
 
-  private def dates(geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
-                    metadataProperties: util.Map[String, Any]): Seq[ZonedDateTime] = {
+  private def sequentialDates(from: ZonedDateTime, to: ZonedDateTime): Stream[ZonedDateTime] = {
     def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
 
-    if (collectionId == null)
-      sequentialDates(from)
-        .takeWhile(date => !(date isAfter to))
-    else authorized { accessToken =>
-      catalogApi
-        .dateTimes(collectionId, geometry, geometryCrs, from, atEndOfDay(to), accessToken,
-          toQueryProperties(dataFilters = metadataProperties))
-        .map(_.toLocalDate.atStartOfDay(UTC))
-        .distinct // ProcessApi::getTile takes care of [day, day + 1] interval and mosaicking therein
-        .sorted
-    }
+    sequentialDates(from)
+      .takeWhile(date => !(date isAfter to))
   }
 
   def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, bandNames: Seq[String],
               metadataProperties: util.Map[String, Any])(implicit sc: SparkContext):
   Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val dates = this.dates(boundingBox.extent.toPolygon(), boundingBox.crs, from, to, metadataProperties)
+    val dates =
+      if (collectionId != null) authorized { accessToken =>
+        catalogApi
+          .dateTimes(collectionId, boundingBox.extent.toPolygon(), boundingBox.crs, from, atEndOfDay(to), accessToken,
+            toQueryProperties(dataFilters = metadataProperties))
+          .map(_.toLocalDate.atStartOfDay(UTC))
+          .distinct // ProcessApi::getTile takes care of [day, day + 1] interval and mosaicking therein
+          .sorted
+      } else sequentialDates(from, to)
 
     val layers = for (zoom <- maxZoom to 0 by -1)
       yield zoom -> layer(boundingBox, from, to, zoom, bandNames, metadataProperties, dates)
@@ -187,22 +185,28 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
       val layout = metadata.layout
 
       val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = {
-        val multiPolygon = multiPolygonFromPolygonExteriors(polygons)
+        val overlappingKeys =
+          if (collectionId != null) {
+            val multiPolygon = multiPolygonFromPolygonExteriors(polygons)
 
-        val features = authorized { accessToken =>
-          catalogApi.search(collectionId, multiPolygon, polygons_crs,
-            from, atEndOfDay(to), accessToken, toQueryProperties(dataFilters = metadata_properties))
-        }
+            val features = authorized { accessToken =>
+              catalogApi.search(collectionId, multiPolygon, polygons_crs,
+                from, atEndOfDay(to), accessToken, toQueryProperties(dataFilters = metadata_properties))
+            }
 
-        val intersectingFeatureKeys = for {
-          (_, Feature(geom, datetime)) <- features.toSet
-          date = datetime.toLocalDate.atStartOfDay(UTC)
-          reprojectedGeom = geom.reproject(LatLng, boundingBox.crs)
-          SpatialKey(col, row) <- layout.mapTransform.keysForGeometry(reprojectedGeom intersection multiPolygon)
-        } yield SpaceTimeKey(col, row, date)
+            val intersectingFeatureKeys = for {
+              (_, Feature(geom, datetime)) <- features.toSet
+              date = datetime.toLocalDate.atStartOfDay(UTC)
+              reprojectedGeom = geom.reproject(LatLng, boundingBox.crs)
+              SpatialKey(col, row) <- layout.mapTransform.keysForGeometry(reprojectedGeom intersection multiPolygon)
+            } yield SpaceTimeKey(col, row, date)
 
-        val overlappingKeys = intersectingFeatureKeys
-          .toSeq
+            intersectingFeatureKeys
+              .toSeq
+          } else for {
+            date <- sequentialDates(from, to)
+            spatialKey <- layout.mapTransform.keysForGeometry(GeometryCollection(polygons))
+          } yield SpaceTimeKey(spatialKey, date)
 
         //noinspection ComparingUnrelatedTypes
         val maskClouds = dataCubeParameters.maskingStrategyParameters.get("method") == "mask_scl_dilation"
