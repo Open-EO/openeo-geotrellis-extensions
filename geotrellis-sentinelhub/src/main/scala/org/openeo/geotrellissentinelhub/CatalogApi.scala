@@ -38,6 +38,27 @@ trait CatalogApi {
 
   def searchCard4L(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
                    accessToken: String, queryProperties: collection.Map[String, String]):
+  Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
+    require(collectionId == "sentinel-1-grd", """only collection "sentinel-1-grd" is supported""")
+
+    val requiredProperties = HashMap(
+      "sar:instrument_mode" -> "IW",
+      "resolution" -> "HIGH",
+      "polarization" -> "DV"
+    )
+
+    val allProperties = requiredProperties.merged(HashMap(queryProperties.toSeq: _*)) {
+      case (requiredProperty @ (property, requiredValue), (_, overriddenValue)) =>
+        if (overriddenValue == requiredValue) requiredProperty
+        else throw new IllegalArgumentException(
+          s"cannot override property $property value $requiredValue with $overriddenValue")
+    }
+
+    search(collectionId, geometry, geometryCrs, from, to, accessToken, allProperties)
+  }
+
+  def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
+                   accessToken: String, queryProperties: collection.Map[String, String]):
   Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]]
 }
 
@@ -108,32 +129,15 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
     getDateTimes(nextToken = None)
   }
 
-  override def searchCard4L(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
-                   accessToken: String, queryProperties: collection.Map[String, String]):
+  override def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
+                      to: ZonedDateTime, accessToken: String, queryProperties: collection.Map[String, String]):
   Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] =
-    withRetries(context = s"searchCard4L $collectionId") {
-      require(collectionId == "sentinel-1-grd", """only collection "sentinel-1-grd" is supported""")
-
+    withRetries(context = s"search $collectionId") {
       // TODO: reduce code duplication with dateTimes()
       val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
       val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
 
-      val query = {
-        val requiredProperties = HashMap(
-          "sar:instrument_mode" -> "IW",
-          "resolution" -> "HIGH",
-          "polarization" -> "DV"
-        )
-
-        val allProperties = requiredProperties.merged(HashMap(queryProperties.toSeq: _*)) {
-          case (requiredProperty @ (property, requiredValue), (_, overriddenValue)) =>
-            if (overriddenValue == requiredValue) requiredProperty
-            else throw new IllegalArgumentException(
-              s"cannot override property $property value $requiredValue with $overriddenValue")
-        }
-
-        this.query(allProperties)
-      }
+      val query = this.query(queryProperties)
 
       def getFeatureCollectionPage(nextToken: Option[Int]): PagedJsonFeatureCollectionMap = {
         val requestBody =

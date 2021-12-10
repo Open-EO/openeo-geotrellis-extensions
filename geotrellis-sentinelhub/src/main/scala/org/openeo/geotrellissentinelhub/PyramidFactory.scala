@@ -1,7 +1,7 @@
 package org.openeo.geotrellissentinelhub
 
 import geotrellis.layer.{SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
-import geotrellis.proj4.{CRS, WebMercator}
+import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.{CellSize, MultibandTile, Raster}
 import geotrellis.spark._
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
@@ -113,14 +113,14 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
     ContextRDD(tilesRdd, metadata)
   }
 
+  private def atEndOfDay(to: ZonedDateTime): ZonedDateTime = {
+    val endOfDay = OffsetTime.of(LocalTime.MAX, UTC)
+    to.toLocalDate.atTime(endOfDay).toZonedDateTime
+  }
+
   private def dates(geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
                     metadataProperties: util.Map[String, Any]): Seq[ZonedDateTime] = {
     def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
-
-    def atEndOfDay(to: ZonedDateTime): ZonedDateTime = {
-      val endOfDay = OffsetTime.of(LocalTime.MAX, UTC)
-      to.toLocalDate.atTime(endOfDay).toZonedDateTime
-    }
 
     if (collectionId == null)
       sequentialDates(from)
@@ -187,10 +187,22 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
       val layout = metadata.layout
 
       val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = {
-        val overlappingKeys = for {
-          date <- dates(multiPolygonFromPolygonExteriors(polygons), polygons_crs, from, to, metadata_properties)
-          spatialKey <- layout.mapTransform.keysForGeometry(GeometryCollection(polygons))
-        } yield SpaceTimeKey(spatialKey, date)
+        val multiPolygon = multiPolygonFromPolygonExteriors(polygons)
+
+        val features = authorized { accessToken =>
+          catalogApi.search(collectionId, multiPolygon, polygons_crs,
+            from, atEndOfDay(to), accessToken, toQueryProperties(dataFilters = metadata_properties))
+        }
+
+        val intersectingFeatureKeys = for {
+          (_, Feature(geom, datetime)) <- features.toSet
+          date = datetime.toLocalDate.atStartOfDay(UTC)
+          reprojectedGeom = geom.reproject(LatLng, boundingBox.crs)
+          SpatialKey(col, row) <- layout.mapTransform.keysForGeometry(reprojectedGeom intersection multiPolygon)
+        } yield SpaceTimeKey(col, row, date)
+
+        val overlappingKeys = intersectingFeatureKeys
+          .toSeq
 
         //noinspection ComparingUnrelatedTypes
         val maskClouds = dataCubeParameters.maskingStrategyParameters.get("method") == "mask_scl_dilation"
