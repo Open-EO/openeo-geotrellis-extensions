@@ -7,13 +7,14 @@ import org.apache.log4j.spi.LoggingEvent
 import org.apache.log4j.{Layout, Level, Logger}
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.slf4j.LoggerFactory
 
 class JsonLayoutTest {
 
-  private val logger = Logger.getLogger(classOf[JsonLayoutTest])
-
   @Test
   def testLogger(): Unit = {
+    val logger = LoggerFactory.getLogger(getClass)
+
     logger.error(s"It was the best of times.", new IllegalArgumentException("expected"))
   }
 
@@ -21,6 +22,7 @@ class JsonLayoutTest {
   def testFormat(): Unit = {
     val jsonLayout: Layout = new JsonLayout
 
+    val logger = Logger.getLogger(getClass)
     val timestamp = 1638526627000L
     val message = "It was the blorst of times."
 
