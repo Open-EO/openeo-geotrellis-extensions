@@ -20,38 +20,57 @@ object Udf {
       |from openeo.udf.xarraydatacube import XarrayDataCube
       |""".stripMargin
 
-  private def _createExtent(interp: SharedInterpreter, layoutDefinition: LayoutDefinition, key: SpatialKey): Unit = {
-    interp.set("ex", layoutDefinition.extent)
-    interp.set("tileLayout", layoutDefinition.tileLayout)
-    interp.set("keyCol", key.col)
-    interp.set("keyRow", key.row)
+  case class SpatialExtent(xmin : Double, val ymin : Double, val xmax : Double, ymax: Double, tileCols: Int, tileRows: Int)
 
-    val code =
-      """
-        |SpatialExtent = collections.namedtuple("SpatialExtent", ["top", "bottom", "right", "left", "height", "width"])
-        |x_range = ex.xmax() - ex.xmin()
-        |xinc = x_range / tileLayout.layoutCols()
-        |yrange = ex.ymax() - ex.ymin()
-        |yinc = yrange / tileLayout.layoutRows()
-        |extent = SpatialExtent(
-        |    top=ex.ymax() - yinc * keyRow,
-        |    bottom=ex.ymax() - yinc * (keyRow + 1),
-        |    right=ex.xmin() + xinc * (keyCol + 1),
-        |    left=ex.xmin() + xinc * keyCol,
-        |    height=tileLayout.tileCols(),
-        |    width=tileLayout.tileRows()
-        |)
-        |""".stripMargin
-
-    interp.exec(code)
+  private def _createExtentFromSpatialKey(layoutDefinition: LayoutDefinition,
+                                          key: SpatialKey
+                                         ): SpatialExtent = {
+    val ex = layoutDefinition.extent
+    val tileLayout = layoutDefinition.tileLayout
+    val xrange = ex.xmax - ex.xmin
+    val xinc = xrange / tileLayout.layoutCols
+    val yrange = ex.ymax - ex.ymin
+    val yinc = yrange / tileLayout.layoutRows
+    SpatialExtent(
+      ex.xmin + xinc * key.col,
+      ex.ymax - yinc * (key.row + 1),
+      ex.xmin + xinc * (key.col + 1),
+      ex.ymax - yinc * key.row,
+      tileCols=tileLayout.tileCols,
+      tileRows=tileLayout.tileRows
+    )
   }
 
-  private def _tileToDatacube(interp: SharedInterpreter, tile_shape: Array[Int], directTile: DirectNDArray[ByteBuffer],
-                        band_names: util.ArrayList[String], start_times: Array[String] = Array()): Unit = {
+  /**
+   * Converts a DirectNDArray to an XarrayDataCube by adding coordinates and dimension labels.
+   * Note: Variable 'extent' has been created in Python by _createExtentFromSpatialKey method.
+   *
+   * @param interp
+   * @param directTile
+   * @param tileShape
+   *  Shape of the tile as an array [a,b,c,d].
+   *    With,
+   *      a: time     (#dates) (if exists)
+   *      b: bands    (#bands) (if exists)
+   *      c: y-axis   (#cells)
+   *      d: x-axis   (#cells)
+   * @param spatialExtent The extent of the tile, with number of cols/rows in the tile.
+   * @param bandCoordinates A list of band names to act as coordinates for the band dimension (if exists).
+   * @param timeCoordinates A list of dates to act as coordinates for the time dimension (if exists).
+   */
+  private def _set_xarraydatacube(interp: SharedInterpreter,
+                                       directTile: DirectNDArray[ByteBuffer],
+                                       tileShape: Array[Int],
+                                       spatialExtent: SpatialExtent,
+                                       bandCoordinates: util.ArrayList[String],
+                                       timeCoordinates: Array[String] = Array()
+                                      ): Unit = {
+
     // Note: This method is a scala implementation of geopysparkdatacube._tile_to_datacube.
-    interp.set("tile_shape", tile_shape)
-    interp.set("start_times", start_times)
-    interp.set("band_names", band_names)
+    interp.set("tile_shape", tileShape)
+    interp.set("extent", spatialExtent)
+    interp.set("start_times", timeCoordinates)
+    interp.set("band_names", bandCoordinates)
 
     // Initialize coordinates and dimensions for the final xarray datacube.
     // TODO: Add message to OpenEOApiException:
@@ -75,14 +94,14 @@ object Udf {
         |        raise OpenEOApiException(status_code=400,message='')
         |
         |if extent is not None:
-        |    gridx=(extent.right-extent.left)/extent.width
-        |    gridy=(extent.top-extent.bottom)/extent.height
-        |    xdelta=gridx*0.5*(tile_shape[-1]-extent.width)
-        |    ydelta=gridy*0.5*(tile_shape[-2]-extent.height)
-        |    xmin=extent.left   -xdelta
-        |    xmax=extent.right  +xdelta
-        |    ymin=extent.bottom -ydelta
-        |    ymax=extent.top    +ydelta
+        |    gridx=(extent.xmax() - extent.xmin())/extent.tileRows()
+        |    gridy=(extent.ymax() - extent.ymin())/extent.tileCols()
+        |    xdelta=gridx*0.5*(tile_shape[-1]-extent.tileRows())
+        |    ydelta=gridy*0.5*(tile_shape[-2]-extent.tileCols())
+        |    xmin=extent.xmin()-xdelta
+        |    xmax=extent.xmax()+xdelta
+        |    ymin=extent.ymin()-ydelta
+        |    ymax=extent.ymax()+ydelta
         |    coords['x']=np.linspace(xmin+0.5*gridx,xmax-0.5*gridx,tile_shape[-1],dtype=np.float32)
         |    coords['y']=np.linspace(ymax-0.5*gridy,ymin+0.5*gridy,tile_shape[-2],dtype=np.float32)
         |""".stripMargin)
@@ -98,7 +117,7 @@ object Udf {
 
   def runUserCode(code: String, layer: MultibandTileLayerRDD[SpatialKey],
                   bandNames: util.ArrayList[String], context: util.HashMap[String, Any]): MultibandTileLayerRDD[SpatialKey] = {
-
+    // TODO: Also implement for SpaceTimeKey.
     // Map a python function to every tile of the RDD.
     // Map will serialize + send partitions to worker nodes
     // Worker nodes will receive partitions in JVM
@@ -126,8 +145,8 @@ object Udf {
 
           // Setup the xarray datacube
           interp.exec(defaultImports)
-          _createExtent(interp, layer.metadata.layout, tuple._1)
-          _tileToDatacube(interp, tileShape, directTile, bandNames, Array())
+          val spatialExtent = _createExtentFromSpatialKey(layer.metadata.layout, tuple._1)
+          _set_xarraydatacube(interp, directTile, tileShape, spatialExtent, bandNames, Array())
 
           interp.set("context", context)
           interp.exec("data = UdfData(proj={\"EPSG\": 900913}, datacube_list=[datacube], user_context=context)")
