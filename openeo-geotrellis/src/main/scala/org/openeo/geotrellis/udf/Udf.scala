@@ -140,7 +140,7 @@ object Udf {
           multiBandTile.bands.foreach((tile: Tile) => { bytes ++= tile.toBytes() })
           val buffer = ByteBuffer.allocateDirect(bytes.length) // Allocating a direct buffer is expensive.
           buffer.put(bytes)
-          val tileShape = Array(multiBandTile.bandCount, multiBandTile.bands(0).cols, multiBandTile.bands(0).rows)
+          val tileShape = Array(multiBandTile.bandCount, multiBandTile.bands(0).rows, multiBandTile.bands(0).cols)
           val directTile = new DirectNDArray(buffer, tileShape: _*)
 
           // Setup the xarray datacube
