@@ -290,9 +290,14 @@ object NetCDFRDDWriter {
 
         if (KeyBounds(tileBounds).includes(key.getComponent[SpatialKey])) true else false
       }.map { case (name, extent) =>
-        ((name, ProjectedExtent(extent, crs)), (key, tile))
+        (name, (extent,(key, tile)))
       }
-    }.groupByKey(new KeyPartitioner(keys.toArray))
+    }.groupByKey(new KeyPartitioner(keys.toArray)).map {
+      case (name, tiles) => {
+        val extent = tiles.head._1
+        ((name, ProjectedExtent(extent,crs)),tiles.map(_._2))
+      }
+    }
   }
 
   private def stitchAndCropTiles(tilesForDate: Iterable[(SpatialKey, MultibandTile)], cropExtent: ProjectedExtent, layout: LayoutDefinition) = {
