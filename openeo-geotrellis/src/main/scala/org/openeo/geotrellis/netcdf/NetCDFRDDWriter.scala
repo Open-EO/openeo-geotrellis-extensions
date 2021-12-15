@@ -7,6 +7,7 @@ import geotrellis.proj4.CRS
 import geotrellis.raster
 import geotrellis.raster._
 import geotrellis.spark.MultibandTileLayerRDD
+import geotrellis.spark.store.hadoop.KeyPartitioner
 import geotrellis.util._
 import geotrellis.vector._
 import org.apache.spark.SparkContext
@@ -208,7 +209,7 @@ object NetCDFRDDWriter {
                   ): java.util.List[String] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
-    groupByFeatureAndWriteToTiff(rdd,  features,path,bandNames,null,null)
+    groupByFeatureAndWriteToNetCDF(rdd,  features,path,bandNames,null,null)
 
   }
 
@@ -222,7 +223,7 @@ object NetCDFRDDWriter {
                  ): java.util.List[String] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
-    groupByFeatureAndWriteToTiff(rdd,  features,path,bandNames,dimensionNames,attributes)
+    groupByFeatureAndWriteToNetCDF(rdd,  features,path,bandNames,dimensionNames,attributes)
 
   }
 
@@ -240,7 +241,7 @@ object NetCDFRDDWriter {
 
   }
 
-  private def groupByFeatureAndWriteToTiff(rdd: MultibandTileLayerRDD[SpaceTimeKey], features: List[(String, Extent)],
+  private def groupByFeatureAndWriteToNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey], features: List[(String, Extent)],
                                            path:String,bandNames: ArrayList[String],
                                            dimensionNames: java.util.Map[String,String],
                                            attributes: java.util.Map[String,String]) = {
@@ -281,6 +282,8 @@ object NetCDFRDDWriter {
   private def groupRDDBySample[K: SpatialComponent: Boundable: ClassTag](rdd: MultibandTileLayerRDD[K],featuresBC: Broadcast[List[(String, Extent)]]) = {
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
+    val keys = featuresBC.value.map(_._1)
+    logger.info(s"Grouping result by ${featuresBC.value.size} features to write netCDFs.")
     rdd.flatMap {
       case (key, tile) => featuresBC.value.filter { case (_, extent) =>
         val tileBounds = layout.mapTransform(extent)
@@ -289,7 +292,7 @@ object NetCDFRDDWriter {
       }.map { case (name, extent) =>
         ((name, ProjectedExtent(extent, crs)), (key, tile))
       }
-    }.groupByKey()
+    }.groupByKey(new KeyPartitioner(keys.toArray))
   }
 
   private def stitchAndCropTiles(tilesForDate: Iterable[(SpatialKey, MultibandTile)], cropExtent: ProjectedExtent, layout: LayoutDefinition) = {
@@ -373,6 +376,7 @@ object NetCDFRDDWriter {
                           dimensionNames: java.util.Map[String,String],
                           attributes: java.util.Map[String,String],zLevel:Int =6, writeTimeDimension:Boolean = true) = {
 
+    logger.info(s"Writing netCDF to ${path} with bands ${bandNames}", ${cellType}, ${crs}, ${rasterExtent})
     val theChunking = new OpenEOChunking(zLevel)
     val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4_classic,path, theChunking)
 
