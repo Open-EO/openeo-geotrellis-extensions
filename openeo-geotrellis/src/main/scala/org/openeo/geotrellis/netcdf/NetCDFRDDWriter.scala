@@ -376,7 +376,7 @@ object NetCDFRDDWriter {
                           dimensionNames: java.util.Map[String,String],
                           attributes: java.util.Map[String,String],zLevel:Int =6, writeTimeDimension:Boolean = true) = {
 
-    logger.info(s"Writing netCDF to ${path} with bands ${bandNames}", ${cellType}, ${crs}, ${rasterExtent})
+    logger.info(s"Writing netCDF to $path with bands $bandNames, $cellType, $crs, $rasterExtent")
     val theChunking = new OpenEOChunking(zLevel)
     val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4_classic,path, theChunking)
 
