@@ -4,7 +4,7 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
 import org.junit.{Ignore, Test}
-import org.junit.Assume.assumeFalse
+import org.junit.Assume.{assumeFalse => skipTestIf}
 
 class CatalogTest {
 
@@ -20,7 +20,7 @@ class CatalogTest {
 
       assert(results.length == count)
     } catch {
-      case CatalogException(message, _) => assumeFalse(message, message contains "Bad Gateway")
+      case CatalogException(message, _) => skipTestIf(message, message contains "Bad Gateway")
     }
   }
 
@@ -32,7 +32,7 @@ class CatalogTest {
 
       assert(results.length == count)
     } catch {
-      case CatalogException(message, _) => assumeFalse(message, message contains "Bad Gateway")
+      case CatalogException(message, _) => skipTestIf(message, message contains "Bad Gateway")
     }
   }
 
