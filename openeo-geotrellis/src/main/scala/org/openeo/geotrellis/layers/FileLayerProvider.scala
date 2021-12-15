@@ -215,22 +215,7 @@ object FileLayerProvider {
 
     val partitioner = useSparsePartitioner match {
       case true => {
-        val requiredSpacetimeKeys: RDD[SpaceTimeKey] = filteredSources.flatMap(_.keys).map {
-          tuple => (tuple.spatialKey, tuple)
-        }.rightOuterJoin(requiredSpatialKeys).flatMap(_._2._1.toList)
-        // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
-        val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(8)
-        val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
-          if(datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution!= "ByDay") {
-            val indices = requiredSpacetimeKeys.map(SparseSpaceOnlyPartitioner.toIndex(_,indexReduction = reduction)).distinct().collect().sorted
-            new SparseSpaceOnlyPartitioner(indices,reduction)
-          }else{
-            val indices = requiredSpacetimeKeys.map(SparseSpaceTimePartitioner.toIndex(_,indexReduction = reduction)).distinct().collect().sorted
-            new SparseSpaceTimePartitioner(indices,reduction)
-          }
-        }
-        Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,
-                                               ClassTag(classOf[SpaceTimeKey]), partitionerIndex))
+        createPartitioner(datacubeParams, requiredSpatialKeys, filteredSources, metadata)
       }
       case false => Option.empty
     }
@@ -268,6 +253,25 @@ object FileLayerProvider {
     }
 
     rasterRegionsToTiles(requestedRasterRegions, metadata, cloudFilterStrategy, partitioner)
+  }
+
+  def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])], filteredSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey]) = {
+    val requiredSpacetimeKeys: RDD[SpaceTimeKey] = filteredSources.flatMap(_.keys).map {
+      tuple => (tuple.spatialKey, tuple)
+    }.rightOuterJoin(requiredSpatialKeys).flatMap(_._2._1.toList)
+    // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
+    val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(8)
+    val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
+      if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
+        val indices = requiredSpacetimeKeys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct().collect().sorted
+        new SparseSpaceOnlyPartitioner(indices, reduction)
+      } else {
+        val indices = requiredSpacetimeKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct().collect().sorted
+        new SparseSpaceTimePartitioner(indices, reduction)
+      }
+    }
+    Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,
+      ClassTag(classOf[SpaceTimeKey]), partitionerIndex))
   }
 
   private def rasterRegionsToTiles(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))], metadata: TileLayerMetadata[SpaceTimeKey], cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, partitionerOption: Option[SpacePartitioner[SpaceTimeKey]] = Option.empty) = {

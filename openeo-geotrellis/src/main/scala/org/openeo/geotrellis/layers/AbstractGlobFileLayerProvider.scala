@@ -5,7 +5,7 @@ import geotrellis.layer.{Boundable, KeyExtractor, SpaceTimeKey, SpatialKey, Temp
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{MultibandTile, RasterRegion, RasterSource, SourceName, SourcePath}
 import geotrellis.spark._
-import geotrellis.spark.partition.SpacePartitioner
+import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.store.hadoop.util.HdfsUtils
 import geotrellis.util._
 import geotrellis.vector._
@@ -14,10 +14,12 @@ import org.apache.hadoop.fs.Path
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.ProjectedPolygons
-import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport}
+import org.openeo.geotrellis.layers.FileLayerProvider.createPartitioner
+import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.concurrent.TimeUnit.HOURS
+import scala.reflect.ClassTag
 import scala.util.matching.Regex
 
 object AbstractGlobFileLayerProvider {
@@ -148,10 +150,18 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
       .mapValues { case (keyedRasterRegion, _) => keyedRasterRegion }
       .values
 
+    val thePartitioner: Partitioner = if(partitioner.isDefined) {
+      partitioner.get
+    }else if(datacubeParams.isDefined){
+      FileLayerProvider.createPartitioner(datacubeParams, requiredKeys, tiledLayoutSourceRDD, layerMetadata).get
+    }else{
+      SpacePartitioner(layerMetadata.bounds)
+    }
+
 
     val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] =
       filteredRdd
-        .groupByKey(partitioner.getOrElse(SpacePartitioner(layerMetadata.bounds)))
+        .groupByKey(thePartitioner)
         .mapValues { iter =>
           MultibandTile( // TODO: use our version? (see org.openeo.geotrellis.geotiff.PyramidFactory.tiledLayerRDD)
             iter.flatMap { _.raster.toSeq.flatMap { _.tile.bands } }
