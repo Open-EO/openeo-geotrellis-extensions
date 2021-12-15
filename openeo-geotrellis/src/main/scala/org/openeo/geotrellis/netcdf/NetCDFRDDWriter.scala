@@ -6,6 +6,7 @@ import geotrellis.layer._
 import geotrellis.proj4.CRS
 import geotrellis.raster
 import geotrellis.raster._
+import geotrellis.raster.crop.Crop.Options
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.spark.store.hadoop.KeyPartitioner
 import geotrellis.util._
@@ -22,7 +23,7 @@ import ucar.nc2.{Attribute, Dimension, NetcdfFileWriter, Variable}
 import java.io.IOException
 import java.nio.file.{Files, Path, Paths}
 import java.time.format.DateTimeFormatter
-import java.time.{Duration, ZonedDateTime}
+import java.time.{Duration, ZoneOffset, ZonedDateTime}
 import java.util
 import java.util.{ArrayList, Collections}
 import scala.collection.JavaConverters._
@@ -247,25 +248,16 @@ object NetCDFRDDWriter {
                                            attributes: java.util.Map[String,String]) = {
     val featuresBC: Broadcast[List[(String, Extent)]] = SparkContext.getOrCreate().broadcast(features)
 
-
-    val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
-    groupRDDBySample(rdd,featuresBC)
-      .map { case ((name, extent), tiles) =>
+    stitchRDDBySample(rdd,featuresBC)
+      .map { case (name, tiles) =>
 
         val outputAsPath: Path = getSamplePath(name, path)
         val filePath = outputAsPath.toString
 
-        val grouped = tiles.groupBy(_._1.time)
-        val allRasters = for(key_tile <- grouped) yield {
-          val tilesForDate = key_tile._2.map { tuple => (tuple._1.spatialKey, tuple._2) }
-          val sample: _root_.geotrellis.raster.Raster[_root_.geotrellis.raster.MultibandTile] = stitchAndCropTiles(tilesForDate, extent, layout)
-          (key_tile._1,sample)
-        }
-
-        val sorted = allRasters.toSeq.sortBy(_._1.toEpochSecond)
+        val sorted = tiles.toSeq.sortBy(_._1)
         try{
-          writeToDisk(sorted.map(_._2),sorted.map(_._1),filePath,bandNames,crs,dimensionNames,attributes)
+          writeToDisk(sorted.map(_._2),sorted.map(  t=> ZonedDateTime.ofInstant(t._1, ZoneOffset.UTC)),filePath,bandNames,crs,dimensionNames,attributes)
           filePath
         }catch {
           case t: IOException => {
@@ -274,9 +266,33 @@ object NetCDFRDDWriter {
           case t: Throwable =>  throw t
         }
 
-
       }.collect()
       .toList.asJava
+  }
+
+  private def stitchRDDBySample(rdd: MultibandTileLayerRDD[SpaceTimeKey],featuresBC: Broadcast[List[(String, Extent)]]) = {
+    val layout = rdd.metadata.layout
+
+    val keys = featuresBC.value.map(_._1)
+    logger.info(s"Grouping result by ${featuresBC.value.size} features to write netCDFs.")
+    rdd.flatMap {
+      case (key, tile) => featuresBC.value.filter { case (_, extent) =>
+        val tileBounds = layout.mapTransform(extent)
+
+        if (KeyBounds(tileBounds).includes(key.getComponent[SpatialKey])) true else false
+      }.map { case (name, extent) =>{
+        val raster: Raster[MultibandTile] = Raster(tile,layout.mapTransform.keyToExtent(key.getComponent[SpatialKey]))
+        val re: RasterExtent = raster.rasterExtent
+        val alignedExtent = re.createAlignedGridExtent(extent).extent
+        val sample = raster.crop(alignedExtent,Options(clamp=false,force=false))
+        ((name,key.instant), sample)
+      }
+      }
+    }.reduceByKey{
+      case (tile1,tile2) => {
+        tile1.merge(tile2)
+      }
+    }.map(t => (t._1._1,(t._1._2,t._2))).groupByKey(new KeyPartitioner(keys.toArray))
   }
 
   private def groupRDDBySample[K: SpatialComponent: Boundable: ClassTag](rdd: MultibandTileLayerRDD[K],featuresBC: Broadcast[List[(String, Extent)]]) = {
