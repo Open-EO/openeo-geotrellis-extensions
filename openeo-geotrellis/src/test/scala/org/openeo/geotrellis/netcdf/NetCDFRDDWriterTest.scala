@@ -1,10 +1,5 @@
 package org.openeo.geotrellis.netcdf
 
-import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
-import java.time.{LocalDate, ZonedDateTime}
-import java.util
-
 import geotrellis.layer.SpatialKey
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{ByteArrayTile, CellType, FloatConstantNoDataCellType, IntUserDefinedNoDataCellType, RasterExtent, UByteUserDefinedNoDataCellType, UShortCellType}
@@ -14,9 +9,13 @@ import geotrellis.vector.{ProjectedExtent, _}
 import org.apache.spark.SparkContext
 import org.junit.{Assert, BeforeClass, Ignore, Test}
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
-import org.openeo.geotrelliscommon.DataCubeParameters
+import org.openeo.geotrelliscommon.{ByKeyPartitioner, DataCubeParameters}
 import ucar.nc2.dataset.NetcdfDataset
 
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
+import java.time.{LocalDate, ZonedDateTime}
+import java.util
 import scala.collection.JavaConverters.asScalaBufferConverter
 
 
@@ -41,6 +40,7 @@ object NetCDFRDDWriterTest {
 
 
 }
+
 
 class NetCDFRDDWriterTest {
 
@@ -70,6 +70,19 @@ class NetCDFRDDWriterTest {
     val expectedPaths = List("/tmp/openEO_0.nc", "/tmp/openEO_1.nc")
 
     Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
+  }
+
+  @Test
+  def testKeyPartitioner():Unit = {
+    val splits = (0 to 30).map(_.toString).toArray
+    val p = new ByKeyPartitioner(splits)
+    Assert.assertEquals(0,p.getPartition("0"))
+    Assert.assertEquals(1,p.getPartition("1"))
+    Assert.assertEquals(2,p.getPartition("2"))
+    Assert.assertEquals(3,p.getPartition("3"))
+    Assert.assertEquals(4,p.getPartition("4"))
+    Assert.assertEquals(20,p.getPartition("20"))
+    Assert.assertEquals(30,p.getPartition("30"))
   }
 
   @Test

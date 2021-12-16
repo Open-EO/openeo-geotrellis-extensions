@@ -11,10 +11,11 @@ import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.spark.store.hadoop.KeyPartitioner
 import geotrellis.util._
 import geotrellis.vector._
+import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.storage.StorageLevel
-import org.apache.spark.{HashPartitioner, SparkContext}
 import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
 import ucar.ma2.{ArrayDouble, ArrayInt, DataType}
 import ucar.nc2.write.Nc4ChunkingDefault
@@ -292,7 +293,7 @@ object NetCDFRDDWriter {
       case (tile1,tile2) => {
         tile1.merge(tile2)
       }
-    }.map(t => (t._1._1,(t._1._2,t._2))).groupByKey(new KeyPartitioner(keys.toArray))
+    }.map(t => (t._1._1,(t._1._2,t._2))).groupByKey(new ByKeyPartitioner(keys.toArray))
   }
 
   private def groupRDDBySample[K: SpatialComponent: Boundable: ClassTag](rdd: MultibandTileLayerRDD[K],featuresBC: Broadcast[List[(String, Extent)]]) = {
