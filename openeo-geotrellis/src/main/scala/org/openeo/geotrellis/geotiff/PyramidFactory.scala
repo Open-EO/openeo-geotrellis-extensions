@@ -1,10 +1,5 @@
 package org.openeo.geotrellis.geotiff
 
-import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneId
-import java.time.{LocalDate, ZonedDateTime}
-import java.util
-import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource}
@@ -17,12 +12,16 @@ import geotrellis.store.s3.AmazonS3URI
 import geotrellis.vector._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
-import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.rdd.RDD
+import org.apache.spark.{Partitioner, SparkContext}
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
 import org.openeo.geotrellis.{ProjectedPolygons, bucketRegion, s3Client}
+import org.openeo.geotrelliscommon.{OpenEORasterCube, OpenEORasterCubeMetadata, SpaceTimeByMonthPartitioner}
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 
+import java.time.LocalTime.MIDNIGHT
+import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
@@ -145,7 +144,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
     layer(reprojectedRasterSources, reprojectedBoundingBox, from, to, layout)
   }
 
-  private def layer(rasterSources: Seq[(RasterSource, ZonedDateTime)], boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, layout: LayoutDefinition)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
+  private def layer(rasterSources: Seq[(RasterSource, ZonedDateTime)], boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, layout: LayoutDefinition)(implicit sc: SparkContext): OpenEORasterCube[SpaceTimeKey] = {
     val overlappingRasterSources = rasterSources
       .filter { case (rasterSource, date) =>
         // FIXME: this means the driver will (partially) read the geotiff instead of the executor - on the other hand, e.g. an AccumuloRDDReader will interpret a LayerQuery both in the driver (to determine Accumulo ranges) and the executors
@@ -168,7 +167,8 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
       KeyBounds(SpaceTimeKey(minCol, minRow, from), SpaceTimeKey(maxCol, maxRow, to))
     }
 
-    rasterSourceRDD(overlappingRasterSources.map { case (rasterSource, _) => rasterSource }, layout, bounds)
+    val resultRDD = rasterSourceRDD(overlappingRasterSources.map { case (rasterSource, _) => rasterSource }, layout, bounds)
+    new OpenEORasterCube[SpaceTimeKey](resultRDD,resultRDD.metadata, OpenEORasterCubeMetadata())
   }
 
   private def rasterSourceRDD(
