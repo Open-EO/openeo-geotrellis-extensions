@@ -3,7 +3,7 @@ package org.openeo.geotrelliscommon
 object OpenEORasterCubeMetadata{
 
   def apply(): OpenEORasterCubeMetadata ={
-    return new OpenEORasterCubeMetadata()
+    return new OpenEORasterCubeMetadata(Seq.empty)
   }
 }
 
