@@ -360,6 +360,8 @@ class PyramidFactoryTest {
         metadata_properties = Collections.emptyMap[String, Any]
       )
 
+      assertTrue(layer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
+
       val spatialLayer = layer
         .toSpatial()
         .cache()
