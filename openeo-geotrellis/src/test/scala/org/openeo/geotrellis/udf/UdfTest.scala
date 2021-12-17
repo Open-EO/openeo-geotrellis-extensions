@@ -1,15 +1,21 @@
 package org.openeo.geotrellis.udf
 
-import geotrellis.layer.{SpatialKey, TileLayerMetadata}
-import geotrellis.raster.{ArrayMultibandTile, ByteArrayTile, MultibandTile, MutableArrayTile, Tile, TileLayout}
-import geotrellis.spark.ContextRDD
+import geotrellis.layer.{Bounds, KeyBounds, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
+import geotrellis.raster.render.ColorRamp
+import geotrellis.raster.{ArrayMultibandTile, FloatArrayTile, MultibandTile, MutableArrayTile, Raster, Tile, TileLayout}
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
-import geotrellis.vector.Extent
+import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, _}
+import geotrellis.vector.{Extent, MultiPolygon}
+import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.{AfterClass, BeforeClass}
+import org.junit.{AfterClass, BeforeClass, Test}
+import org.openeo.geotrellis.geotiff.saveRDD
+import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 
+import java.time.ZonedDateTime
 import java.util
+import scala.collection.mutable.ListBuffer
 import scala.io.Source
 
 object UdfTest {
@@ -41,12 +47,18 @@ If you use the virtual environment venv (with JEP and Numpy installed):
 */
 class UdfTest {
 
-  //@Test
-  def testSimpleDatacubeOperations(): Unit = {
+  /*
+    Supported CellTypes: Float
+    Unsupported CellTypes: Bit, Byte, Ubyte, Short, UShort, Int, Float, Double
+   */
+  @Test
+  def testSimpleDatacubeOperationsFloat(): Unit = {
     val filename = "/org/openeo/geotrellis/udf/simple_datacube_operations.py"
-    val code = Source.fromURL(getClass.getResource(filename)).getLines.mkString("\n")
+    val source = Source.fromURL(getClass.getResource(filename))
+    val code = source.getLines.mkString("\n")
+    source.close()
 
-    val zeroTile: MutableArrayTile = ByteArrayTile.fill(0, 256, 256)
+    val zeroTile: MutableArrayTile = FloatArrayTile.fill(0, 256, 256)
     val multibandTile: MultibandTile = new ArrayMultibandTile(Array(zeroTile).asInstanceOf[Array[Tile]])
     val extent: Extent = new Extent(0,0,10,10)
     val tileLayout = new TileLayout(1, 1, zeroTile.cols.asInstanceOf[Integer], zeroTile.rows.asInstanceOf[Integer])

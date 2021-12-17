@@ -1,18 +1,25 @@
 package org.openeo.geotrellis.udf
 
-import geotrellis.layer.{LayoutDefinition, SpatialKey}
-import geotrellis.raster.{ArrayTile, MultibandTile, Tile}
+import geotrellis.layer.{LayoutDefinition, SpaceTimeKey, SpatialKey}
+import geotrellis.raster.{CroppedTile, FloatArrayTile, MultibandTile}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
+import geotrellis.vector.{Extent, MultiPolygon}
 import jep.{DirectNDArray, SharedInterpreter}
+import org.apache.spark.rdd.RDD
+import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 
-import java.nio.ByteBuffer
+import java.nio.{ByteBuffer, ByteOrder, FloatBuffer}
 import java.util
+import scala.collection.JavaConverters._
 
 object Udf {
+
+  private val SIZE_OF_FLOAT = 4
 
   private val defaultImports =
     """
       |import collections
+      |import datetime
       |import numpy as np
       |import xarray as xr
       |import openeo.metadata
@@ -59,18 +66,17 @@ object Udf {
    * @param timeCoordinates A list of dates to act as coordinates for the time dimension (if exists).
    */
   private def _set_xarraydatacube(interp: SharedInterpreter,
-                                       directTile: DirectNDArray[ByteBuffer],
-                                       tileShape: Array[Int],
+                                       directTile: DirectNDArray[FloatBuffer],
+                                       tileShape: List[Int],
                                        spatialExtent: SpatialExtent,
                                        bandCoordinates: util.ArrayList[String],
-                                       timeCoordinates: Array[String] = Array()
+                                       timeCoordinates: List[Long] = List()
                                       ): Unit = {
-
     // Note: This method is a scala implementation of geopysparkdatacube._tile_to_datacube.
-    interp.set("tile_shape", tileShape)
+    interp.set("tile_shape", new util.ArrayList[Int](tileShape.asJava))
     interp.set("extent", spatialExtent)
-    interp.set("start_times", timeCoordinates)
     interp.set("band_names", bandCoordinates)
+    interp.set("start_times", new util.ArrayList[Long](timeCoordinates.asJava))
 
     // Initialize coordinates and dimensions for the final xarray datacube.
     // TODO: Add message to OpenEOApiException:
@@ -82,8 +88,9 @@ object Udf {
         |
         |# time coordinates if exists
         |if len(tile_shape) == 4:
-        |    #we have a temporal dimension
-        |    coords = {'t':start_times}
+        |    # There is a temporal dimension.
+        |    time_coordinates = [datetime.datetime.utcfromtimestamp(start_time / 1000) for start_time in start_times]
+        |    coords = {'t':time_coordinates}
         |    dims = ('t' ,'bands','y', 'x')
         |
         |# band names if exists
@@ -130,52 +137,49 @@ object Udf {
       // TODO: Start an interpreter for every partition
       // TODO: Currently this fails because per tile processing cannot access the interpreter
       // TODO: This is because every tile in a partition is handled in a separate thread.
-      iter.map(tuple => {
+      iter.map(key_and_tile => {
         val interp: SharedInterpreter = new SharedInterpreter
-        val multiBandTile: MultibandTile = tuple._2
+        val multiBandTile: MultibandTile = key_and_tile._2
         var resultMultiBandTile = multiBandTile
         try {
-          // Convert tile to DirectNDArray
-          var bytes: Array[Byte] = Array()
-          multiBandTile.bands.foreach((tile: Tile) => { bytes ++= tile.toBytes() })
-          val buffer = ByteBuffer.allocateDirect(bytes.length) // Allocating a direct buffer is expensive.
-          buffer.put(bytes)
-          val tileShape = Array(multiBandTile.bandCount, multiBandTile.bands(0).rows, multiBandTile.bands(0).cols)
-          val directTile = new DirectNDArray(buffer, tileShape: _*)
+          val tileRows = multiBandTile.bands(0).rows
+          val tileCols = multiBandTile.bands(0).cols
+          val tileShape = List(multiBandTile.bandCount, tileRows, tileCols)
+          val tileSize = tileRows * tileCols
+          val multiBandTileSize = multiBandTile.bandCount * tileSize
 
-          // Setup the xarray datacube
+          // Convert multiBandTile to DirectNDArray
+          // Allocating a direct buffer is expensive.
+          val buffer = ByteBuffer.allocateDirect(multiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
+          multiBandTile.bands.foreach(tile => {
+            val tileFloats: Array[Float] = tile.asInstanceOf[FloatArrayTile].array
+            buffer.put(tileFloats, 0, tileFloats.length)
+          })
+          val directTile = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
+
+          // Setup the xarray datacube.
           interp.exec(defaultImports)
-          val spatialExtent = _createExtentFromSpatialKey(layer.metadata.layout, tuple._1)
-          _set_xarraydatacube(interp, directTile, tileShape, spatialExtent, bandNames, Array())
+          val spatialExtent = _createExtentFromSpatialKey(layer.metadata.layout, key_and_tile._1)
+          _set_xarraydatacube(interp, directTile, tileShape, spatialExtent, bandNames)
 
           interp.set("context", context)
           interp.exec("data = UdfData(proj={\"EPSG\": 900913}, datacube_list=[datacube], user_context=context)")
           interp.exec(code)
           interp.exec("result_cube = apply_datacube(data.get_datacube_list()[0], data.user_context)")
 
-          // Copy the result back to java heap memory.
-          // In the future we can hopefully keep it in native memory from deserialization to serialization.
-          val resultData: Array[Byte] = Array.fill(bytes.length)(0)
-          buffer.rewind()
-          for (i <- bytes.indices) {
-            resultData(i) = buffer.get
-          }
-
           // Convert the result back to a MultibandTile.
+          buffer.rewind()
           resultMultiBandTile = multiBandTile.mapBands((bandNumber, tile) => {
-            val tileSize = tile.dimensions.cols * tile.dimensions.rows
-            val tileOffset = bandNumber * tileSize
-            val tileData = resultData.slice(tileOffset, tileOffset + tileSize)
-            ArrayTile(tileData, tile.dimensions.cols, tile.dimensions.rows)
+            val tileData: Array[Float] = Array.fill(tileSize)(0)
+            buffer.get(tileData, 0, tileSize) // Copy buffer data to array.
+            FloatArrayTile(tileData, tile.dimensions.cols, tile.dimensions.rows)
           })
         } finally if (interp != null) interp.close()
 
-        (tuple._1, resultMultiBandTile)
+        (key_and_tile._1, resultMultiBandTile)
       })
     }, preservesPartitioning = true)
 
     ContextRDD(result, layer.metadata)
   }
-
-
 }
