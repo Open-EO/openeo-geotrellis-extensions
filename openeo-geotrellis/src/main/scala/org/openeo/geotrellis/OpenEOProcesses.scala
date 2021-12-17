@@ -166,7 +166,8 @@ class OpenEOProcesses extends Serializable {
 
   def groupAndMaskByGeometry(datacube: MultibandTileLayerRDD[SpaceTimeKey],
                              projectedPolygons: ProjectedPolygons
-                            ): RDD[(MultiPolygon, Iterable[(Extent, SpaceTimeKey, MultibandTile)])] = {
+                            ): RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] = {
+    // Key to projectedExtent
     val polygonsBC: Broadcast[List[MultiPolygon]] = SparkContext.getOrCreate().broadcast(projectedPolygons.polygons.toList)
     val layout = datacube.metadata.layout
 
@@ -185,11 +186,11 @@ class OpenEOProcesses extends Serializable {
 
     // For every polygon, stitch all tiles with the same date together into one tile,
     // then crop this tile using the polygon.
-    val tilePerDateGroupedByPolygon: RDD[(MultiPolygon, Iterable[(Extent, SpaceTimeKey, MultibandTile)])] = groupedAndMaskedByPolygon.map {
+    val tilePerDateGroupedByPolygon: RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] = groupedAndMaskedByPolygon.map {
       case (polygon, values) =>
         val valuesGroupedByDate: Map[ZonedDateTime, Iterable[(SpaceTimeKey, MultibandTile)]] = values.groupBy(_._1.time)
         // For every date, make one tile by stitching tiles together. Then crop the tile with the polygon's extent.
-        val tilePerDate: Iterable[(Extent, SpaceTimeKey, MultibandTile)] = valuesGroupedByDate.map {
+        val tilePerDate: Iterable[(Extent, Long, MultibandTile)] = valuesGroupedByDate.map {
           case (key, maskedTiles) =>
             // Stitch.
             val tiles: Iterable[(SpatialKey, MultibandTile)] = maskedTiles.map(tile => (tile._1.spatialKey, tile._2))
@@ -197,7 +198,7 @@ class OpenEOProcesses extends Serializable {
             // Crop.
             val alignedExtent = raster.rasterExtent.createAlignedGridExtent(polygon.extent).extent
             val croppedRaster: Raster[MultibandTile] = raster.crop(alignedExtent)
-            (croppedRaster.extent, maskedTiles.head._1, croppedRaster.tile)
+            (croppedRaster.extent, maskedTiles.head._1.instant, croppedRaster.tile)
         }.toList
         (polygon, tilePerDate)
     }
@@ -205,16 +206,14 @@ class OpenEOProcesses extends Serializable {
     tilePerDateGroupedByPolygon
   }
 
-  def mergeGroupedByGeometry(tiles: RDD[(MultiPolygon, Iterable[(Extent, SpaceTimeKey, MultibandTile)])], metadata: TileLayerMetadata[SpaceTimeKey]): MultibandTileLayerRDD[SpaceTimeKey] = {
+  def mergeGroupedByGeometry(tiles: RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])], metadata: TileLayerMetadata[SpaceTimeKey]): MultibandTileLayerRDD[SpaceTimeKey] = {
     val keyedByTemporalExtent: RDD[(TemporalProjectedExtent, MultibandTile)] = tiles.flatMap {
-      case (_polygon, polygonTiles: Iterable[(Extent, SpaceTimeKey, MultibandTile)]) => {
+      case (_polygon, polygonTiles: Iterable[(Extent, Long, MultibandTile)]) =>
         polygonTiles.map(tile => {
           val projectedExtent: ProjectedExtent = ProjectedExtent(tile._1, metadata.crs)
-          val key: SpaceTimeKey = tile._2
           val multibandTile: MultibandTile = tile._3
-          (TemporalProjectedExtent(projectedExtent, key.instant), multibandTile)
+          (TemporalProjectedExtent(projectedExtent, tile._2), multibandTile)
         })
-      }
     }
     val keyedBySpatialKey: RDD[(SpaceTimeKey, MultibandTile)] = keyedByTemporalExtent.tileToLayout(metadata)
     ContextRDD(keyedBySpatialKey, metadata)

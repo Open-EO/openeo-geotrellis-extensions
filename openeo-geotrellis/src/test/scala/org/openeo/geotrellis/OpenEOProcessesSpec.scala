@@ -209,7 +209,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
       projectedPolygons1.crs
     )
 
-    val groupedAndMaskedByGeometry: RDD[(MultiPolygon, Iterable[(Extent, SpaceTimeKey, MultibandTile)])] =
+    val groupedAndMaskedByGeometry: RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] =
       processes.groupAndMaskByGeometry(datacube, projectedPolygons)
     assertFalse(groupedAndMaskedByGeometry.isEmpty)
 
@@ -221,7 +221,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     // Check if tiles are masked correctly
     groupedAndMaskedByGeometry.collect().foreach {
-      case (polygon, tilesByDate) => {
+      case (polygon, tilesByDate) =>
         val numberOfDataCells = tilesByDate.head._3.band(0).toArray().count(_ > 0)
         tilesByDate.foreach(keyAndTile => {
           for (band <- keyAndTile._3.bands) {
@@ -229,7 +229,6 @@ class OpenEOProcessesSpec extends RasterMatchers {
             assertEquals(numberOfDataCells, band.toArray().count(_ > 0))
           }
         })
-      }
     }
 
     // Check if tiles are merged correctly.
@@ -243,9 +242,9 @@ class OpenEOProcessesSpec extends RasterMatchers {
     assertRastersEqual(referenceRaster, actualRaster)
 
     // Visualize RDD.
-    //val tiles: Iterable[(SpatialKey, Tile)] = resultArray.map(tile => (tile._1.spatialKey, tile._2.band(0)))
-    //val fullRaster: Raster[Tile] = org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq(tiles, datacube.metadata.layout).stitch()
-    //fullRaster.tile.renderPng(ColorRamps.BlueToRed).write("fullTile")
+    // val tiles: Iterable[(SpatialKey, Tile)] = resultArray.map(tile => (tile._1.spatialKey, tile._2.band(0)))
+    // val fullRaster: Raster[Tile] = org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq(tiles, datacube.metadata.layout).stitch()
+    // fullRaster.tile.renderPng(ColorRamps.BlueToRed).write("fullTile")
   }
 
   @Test
