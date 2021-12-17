@@ -46,6 +46,25 @@ package object geotrelliscommon {
     def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
       indices.map(i => (i,i))
     }
+
+
+    def canEqual(other: Any): Boolean = other.isInstanceOf[SparseSpaceTimePartitioner]
+
+    override def equals(other: Any): Boolean = other match {
+      case that: SparseSpaceTimePartitioner =>
+        (that canEqual this) &&
+          indices == that.indices &&
+          indexReduction == that.indexReduction
+      case _ => false
+    }
+
+    override def hashCode(): Int = {
+      val state = Seq(indices, indexReduction)
+      state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
+    }
+
+
+    override def toString = s"SparseSpaceTimePartitioner ${indices.length}"
   }
 
   class SparseSpaceOnlyPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8) extends PartitionerIndex[SpaceTimeKey] {
@@ -54,6 +73,22 @@ package object geotrelliscommon {
 
     def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
       indices.map(i => (i,i))
+    }
+
+
+    def canEqual(other: Any): Boolean = other.isInstanceOf[SparseSpaceOnlyPartitioner]
+
+    override def equals(other: Any): Boolean = other match {
+      case that: SparseSpaceOnlyPartitioner =>
+        (that canEqual this) &&
+          indices == that.indices &&
+          indexReduction == that.indexReduction
+      case _ => false
+    }
+
+    override def hashCode(): Int = {
+      val state = Seq(indices, indexReduction)
+      state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
     }
   }
 
