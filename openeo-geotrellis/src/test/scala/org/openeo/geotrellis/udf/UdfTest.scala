@@ -11,7 +11,7 @@ import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, _}
 import geotrellis.vector.{Extent, MultiPolygon}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.{AfterClass, BeforeClass}
 import org.openeo.geotrellis.geotiff.saveRDD
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 
@@ -53,7 +53,7 @@ class UdfTest extends RasterMatchers {
     Supported CellTypes: Float
     Unsupported CellTypes: Bit, Byte, Ubyte, Short, UShort, Int, Float, Double
    */
-  @Test
+//  @Test
   def testSimpleDatacubeOperationsFloat(): Unit = {
     val filename = "/org/openeo/geotrellis/udf/simple_datacube_operations.py"
     val source = Source.fromURL(getClass.getResource(filename))
@@ -72,7 +72,7 @@ class UdfTest extends RasterMatchers {
     resultRDD.values.first().bands(0).foreach(e => assert(e == 60))
   }
 
-  @Test
+//  @Test
   def testRunChunkPolygonUserCode(): Unit = {
     val filename = "/org/openeo/geotrellis/udf/chunk_polygon_test.py"
     val source = Source.fromURL(getClass.getResource(filename))
