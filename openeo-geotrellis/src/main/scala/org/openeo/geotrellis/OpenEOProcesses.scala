@@ -354,7 +354,18 @@ class OpenEOProcesses extends Serializable {
     val kbLeft: Bounds[K] = leftCube.metadata.getComponent[Bounds[K]]
     val kbRight: Bounds[K] = rightCube.metadata.getComponent[Bounds[K]]
     val kb: Bounds[K] = kbLeft.combine(kbRight)
-    val part = SpacePartitioner(kb)
+    val part =if( leftCube.partitioner.isDefined && rightCube.partitioner.isDefined && leftCube.partitioner.get.isInstanceOf[SpacePartitioner] && rightCube.partitioner.get.isInstanceOf[SpacePartitioner]) {
+      val leftPart = leftCube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
+      val rightPart = rightCube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
+      logger.info(s"Merging cubes with spatial indices: ${leftPart.index} - ${rightPart.index}")
+      if(leftPart.index == rightPart.index) {
+        leftPart
+      }else{
+        SpacePartitioner(kb)
+      }
+    } else {
+      SpacePartitioner(kb)
+    }
 
     val joinRdd =
       new CoGroupedRDD[K](List(part(leftCube), part(rightCube)), part)

@@ -268,7 +268,9 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
         tilesRdd
       }
 
-      ContextRDD(tilesRdd, metadata)
+      val cRDD = ContextRDD(tilesRdd, metadata)
+      cRDD.name = tilesRdd.name
+      cRDD
     }
 
     Seq(0 -> cube)
