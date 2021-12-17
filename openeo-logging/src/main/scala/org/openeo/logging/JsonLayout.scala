@@ -57,7 +57,7 @@ class JsonLayout extends Layout {
     }
 
     withBatchJobId
-      .asJson.noSpaces
+      .asJson.noSpaces + System.lineSeparator()
   }
 
   override def ignoresThrowable(): Boolean = false

@@ -2,10 +2,17 @@ package org.openeo
 
 import geotrellis.layer.{SpaceTimeKey, SpatialKey}
 import geotrellis.spark.partition.PartitionerIndex
+import org.apache.spark.Partitioner
 import org.locationtech.sfcurve.zorder.{Z2, ZRange}
 import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 
 package object geotrelliscommon {
+
+  class ByKeyPartitioner[K](splits: Array[K]) extends Partitioner {
+    override def numPartitions: Int = splits.length
+
+    override def getPartition(key: Any): Int = splits.indexOf(key)
+  }
 
   /**
    * Spatial partitioner with only 1 tile per partition: for tiles with lots of bands!

@@ -375,7 +375,7 @@ class OpenEOProcesses extends Serializable {
    */
   def RDDBandCount[K](cube: MultibandTileLayerRDD[K]): Int = {
     // For performance reasons we only check a small subset of tile band counts
-    println("Computing number of bands in cube: " + cube.metadata)
+    println(s"Computing number of bands in cube: ${cube.metadata}")
     val counts = cube.take(10).map({ case (k, t) => t.bandCount }).distinct
 
     if(counts.size==0){
@@ -430,7 +430,12 @@ class OpenEOProcesses extends Serializable {
   }
 
   def resampleCubeSpatial(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey], method:ResampleMethod): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
-    filterNegativeSpatialKeys(data.reproject(target.metadata.crs,target.metadata.layout,16,method,target.partitioner))
+    if(target.metadata.crs.equals(data.metadata.crs) && target.metadata.layout.equals(data.metadata.layout)) {
+      logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
+      (0,data)
+    }else{
+      filterNegativeSpatialKeys(data.reproject(target.metadata.crs,target.metadata.layout,16,method,target.partitioner))
+    }
   }
 
   def resampleCubeSpatial_spacetime(data: MultibandTileLayerRDD[SpaceTimeKey],crs:CRS,layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
@@ -490,8 +495,9 @@ class OpenEOProcesses extends Serializable {
   }
 
   private def combine_bands[K](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], leftCube: MultibandTileLayerRDD[K], rightCube: MultibandTileLayerRDD[K], updatedMetadata: TileLayerMetadata[K])(implicit kt: ClassTag[K], ord: Ordering[K] = null) = {
-    leftCube.sparkContext.setJobDescription("Merge cubes: get bandcount")
+    leftCube.sparkContext.setJobDescription(s"Merge cubes: get bandcount ${leftCube.name}")
     val leftBandCount = RDDBandCount(leftCube)
+    leftCube.sparkContext.setJobDescription(s"Merge cubes: get bandcount ${rightCube.name}")
     val rightBandCount = RDDBandCount(rightCube)
     leftCube.sparkContext.clearJobGroup()
     // Concatenation band counts are allowed to differ, but all resulting multiband tiles should have the same count

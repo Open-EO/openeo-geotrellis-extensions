@@ -78,6 +78,9 @@
                 <groupId>pl.project13.maven</groupId>
                 <artifactId>git-commit-id-plugin</artifactId>
                 <version>2.2.4</version>
+                <configuration>
+                    <useNativeGit>true</useNativeGit>
+                </configuration>
                 <executions>
                     <execution>
                         <id>get-the-git-infos</id>

@@ -1,19 +1,18 @@
 package org.openeo.geotrelliss3
 
 import java.time.format.DateTimeFormatter.ofPattern
-import java.time.{LocalDateTime, ZonedDateTime}
+import java.time.{Duration, LocalDateTime, ZonedDateTime}
 import com.fasterxml.jackson.annotation.{JsonIgnoreProperties, JsonProperty}
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
 import geotrellis.vector.Polygon
-import net.jodah.failsafe.function.CheckedSupplier
 import net.jodah.failsafe.{Failsafe, FailsafeExecutor, RetryPolicy}
 
 import javax.ws.rs.client.ClientBuilder
 import org.openeo.geotrelliss3.Catalog.buildPolygon
 
-import java.time.temporal.ChronoUnit.SECONDS
+import java.time.temporal.ChronoUnit.{MINUTES, SECONDS}
 import javax.ws.rs.core.Response
 import scala.collection.mutable.ListBuffer
 import scala.compat.java8.FunctionConverters._
@@ -93,16 +92,16 @@ case class Catalog(mission: String, level: String) {
 
       new RetryPolicy[Response]
         .handleResultIf(serverError.asJava)
-        .withBackoff(1, 120, SECONDS)
+        .withMaxRetries(-1)
+        .withMaxDuration(Duration.of(2, MINUTES))
+        .withBackoff(1, 30, SECONDS)
     }
 
     val failsafe: FailsafeExecutor[Response] = Failsafe
       .`with`(retryPolicy)
 
     val response = failsafe
-      .get(new CheckedSupplier[Response] {
-        override def get(): Response = target.request().get()
-      })
+      .get(() => target.request().get())
 
     if (response.getStatus == 200) {
       val mapper = new ObjectMapper() with ScalaObjectMapper
@@ -132,7 +131,7 @@ case class CatalogEntry(productId: String) {
   }
 }
 
-case class CatalogException(message: String = "", cause: Throwable = None.orNull) extends Exception(message, cause)
+case class CatalogException(message: String = "", cause: Throwable = null) extends Exception(message, cause)
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 case class CatalogResponse(@JsonProperty("totalnb") totalHits: Int, collection: String, hits: Seq[Hit])

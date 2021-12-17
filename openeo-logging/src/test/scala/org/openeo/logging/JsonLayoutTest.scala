@@ -5,7 +5,7 @@ import io.circe.Json
 import io.circe.parser.decode
 import org.apache.log4j.spi.LoggingEvent
 import org.apache.log4j.{Layout, Level, Logger}
-import org.junit.Assert.assertEquals
+import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.Test
 import org.slf4j.LoggerFactory
 
@@ -29,7 +29,9 @@ class JsonLayoutTest {
     val loggingEvent = new LoggingEvent(null, logger, timestamp, Level.INFO, message, null)
     val logLine = jsonLayout.format(loggingEvent)
 
-    println(logLine)
+    assertTrue(s"$logLine doesn't end with a newline", logLine.endsWith(System.lineSeparator()))
+
+    print(logLine)
     val logEntry = decode[Map[String, Json]](logLine).valueOr(throw _)
 
     // TODO: extend this
