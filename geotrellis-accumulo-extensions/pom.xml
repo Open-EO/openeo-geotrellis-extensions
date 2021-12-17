@@ -15,7 +15,6 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <geotrellis.version>3.5.1</geotrellis.version>
     </properties>
 
     <repositories>
