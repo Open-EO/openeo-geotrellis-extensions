@@ -122,6 +122,81 @@ object Udf {
         |""".stripMargin)
   }
 
+  def runChunkPolygonUserCode(code: String,
+                              layer: MultibandTileLayerRDD[SpaceTimeKey],
+                              projectedPolygons: ProjectedPolygons,
+                              bandNames: util.ArrayList[String],
+                              context: util.HashMap[String, Any]
+                             ): MultibandTileLayerRDD[SpaceTimeKey] = {
+    // Group all tiles by geometry and mask them with that geometry.
+    // Key: MultiPolygon, Value: One tile for each date (combined with the polygon's extent and SpaceTimeKey).
+    val processes = new OpenEOProcesses()
+    val grouped_and_masked_rdd: RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] =
+      processes.groupAndMaskByGeometry(layer, projectedPolygons)
+
+    val result: RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] = grouped_and_masked_rdd.mapPartitions(iter => {
+      iter.map(tuple => {
+        val interp: SharedInterpreter = new SharedInterpreter
+        val tiles: Iterable[(Extent, Long, MultibandTile)] = tuple._2
+
+        // Sort tiles by date.
+        val sortedtiles = tiles.toList.sortBy(_._2)
+        val dates: List[Long] = sortedtiles.map(_._2)
+        val multibandTiles: Seq[MultibandTile] = sortedtiles.map(_._3)
+
+        // Setup spatialextent
+        val tileRows = multibandTiles.head.bands(0).rows
+        val tileCols = multibandTiles.head.bands(0).cols
+        val tileShape = List(dates.length, multibandTiles.head.bandCount, tileRows, tileCols)
+        val tileSize = tileRows * tileCols
+        val multiDateMultiBandTileSize = dates.length *  multibandTiles.head.bandCount * tileSize
+
+        val polygonExtent: Extent = sortedtiles.head._1
+        val spatialExtent = SpatialExtent(
+          polygonExtent.xmin, polygonExtent.ymin, polygonExtent.xmax, polygonExtent.ymax, tileCols, tileRows
+        )
+
+        var resultTiles: Iterable[(Extent, Long, MultibandTile)] = tiles
+        try {
+          // Convert multibandTiles to one DirectNDArray with shape (#dates, #bands, y-axis, x-axis) => Numpy array
+          val buffer = ByteBuffer.allocateDirect(multiDateMultiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
+          multibandTiles.foreach(_.bands.foreach(tile => {
+            val tileFloats: Array[Float] =  tile.asInstanceOf[CroppedTile].toArrayDouble().map(_.toFloat)
+            buffer.put(tileFloats, 0, tileFloats.length)
+          }))
+          val directTile = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
+
+          interp.exec(defaultImports)
+          // Convert DirectNDArray to XarrayDatacube
+          _set_xarraydatacube(interp, directTile, tileShape, spatialExtent, bandNames, dates)
+
+          interp.set("context", context)
+          interp.exec("data = UdfData(proj={\"EPSG\": 900913}, datacube_list=[datacube], user_context=context)")
+          interp.exec(code)
+          interp.exec("result_cube = apply_datacube(data.get_datacube_list()[0], data.user_context)")
+
+          // Convert the result back to a MultibandTile.
+          buffer.rewind()
+          resultTiles = multibandTiles.zipWithIndex.map {
+            case (tile: MultibandTile, index: Int) =>
+              val newTile = tile.mapBands((bandNumber, tile) => {
+                val tileData: Array[Float] = Array.fill(tileSize)(0)
+                buffer.get(tileData, 0, tileSize) // Copy buffer data to array.
+                FloatArrayTile(tileData, tile.dimensions.cols, tile.dimensions.rows)
+              })
+              val original = sortedtiles(index)
+              (original._1, original._2, newTile)
+          }
+        } finally if (interp != null) interp.close()
+
+        (tuple._1, resultTiles)
+      })
+    }, preservesPartitioning = true)
+
+    val result_grouped_by_spacetimekey: MultibandTileLayerRDD[SpaceTimeKey] = processes.mergeGroupedByGeometry(result, layer.metadata)
+    ContextRDD(result_grouped_by_spacetimekey, layer.metadata)
+  }
+
   def runUserCode(code: String, layer: MultibandTileLayerRDD[SpatialKey],
                   bandNames: util.ArrayList[String], context: util.HashMap[String, Any]): MultibandTileLayerRDD[SpatialKey] = {
     // TODO: Also implement for SpaceTimeKey.
