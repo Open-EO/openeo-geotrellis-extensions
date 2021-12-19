@@ -13,7 +13,7 @@ import geotrellis.vector._
 import org.apache.spark.{SparkConf, SparkContext, SparkException}
 import org.junit.Assert.{assertEquals, assertTrue, fail}
 import org.junit.{Ignore, Test}
-import org.openeo.geotrelliscommon.DataCubeParameters
+import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType, UINT16}
 
 import java.time.format.DateTimeFormatter
@@ -362,6 +362,18 @@ class PyramidFactoryTest {
 
       assertTrue(layer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
 
+      val sentinel1Layer: MultibandTileLayerRDD[SpaceTimeKey] = sparseSentinel1Layer(utmPolygons,utmCrs, date)
+      assertTrue(sentinel1Layer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
+      val s2Part = layer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]]
+      val s1Part = sentinel1Layer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]]
+
+      print(s2Part)
+      print(s1Part)
+      assertEquals(s2Part.bounds,s1Part.bounds)
+      assertTrue(s2Part.index.isInstanceOf[SparseSpaceTimePartitioner])
+      assertTrue(s1Part.index.isInstanceOf[SparseSpaceTimePartitioner])
+      assertEquals(s2Part.index,s1Part.index)
+
       val spatialLayer = layer
         .toSpatial()
         .cache()
@@ -387,18 +399,8 @@ class PyramidFactoryTest {
       val boundingBox = ProjectedExtent(Extent(488960.0, 6159880.0, 491520.0, 6162440.0), CRS.fromEpsgCode(32632))
       val date = ZonedDateTime.of(LocalDate.of(2016, 11, 10), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
-      val endpoint = "https://services.sentinel-hub.com"
-      val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
-        new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10,10),
-        sampleType = FLOAT32)
-
-      val Seq((_, layer)) = pyramidFactory.datacube_seq(
-        Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
-        from_date = ISO_OFFSET_DATE_TIME format date,
-        to_date = ISO_OFFSET_DATE_TIME format date,
-        band_names = Seq("HV", "HH").asJava,
-        metadata_properties = Collections.singletonMap("polarization", "DH")
-      )
+      val polygon = MultiPolygon(boundingBox.extent.toPolygon())
+      val layer: _root_.geotrellis.spark.MultibandTileLayerRDD[_root_.geotrellis.layer.SpaceTimeKey] = sparseSentinel1Layer(Array(polygon),boundingBox.crs, date)
 
       val spatialLayer = layer
         .toSpatial()
@@ -414,6 +416,22 @@ class PyramidFactoryTest {
 
       assertEquals(expected, actual)
     } finally sc.stop()
+  }
+
+  private def sparseSentinel1Layer(polygon: Array[MultiPolygon],crs:CRS, date: ZonedDateTime) = {
+    val endpoint = "https://services.sentinel-hub.com"
+    val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
+      new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10, 10),
+      sampleType = FLOAT32)
+
+    val Seq((_, layer)) = pyramidFactory.datacube_seq(
+      polygon, crs,
+      from_date = ISO_OFFSET_DATE_TIME format date,
+      to_date = ISO_OFFSET_DATE_TIME format date,
+      band_names = Seq("HV", "HH").asJava,
+      metadata_properties = Collections.singletonMap("polarization", "DH")
+    )
+    layer
   }
 
   @Ignore("the actual collection ID is a secret")
