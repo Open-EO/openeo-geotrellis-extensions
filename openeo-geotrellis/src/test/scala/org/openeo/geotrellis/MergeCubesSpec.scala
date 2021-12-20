@@ -9,7 +9,7 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.LayerFixtures._
-import org.openeo.geotrelliscommon.SparseSpaceTimePartitioner
+import org.openeo.geotrelliscommon.{OpenEORasterCube, OpenEORasterCubeMetadata, SparseSpaceTimePartitioner}
 
 import java.time.ZonedDateTime
 import java.util
@@ -40,7 +40,8 @@ class MergeCubesSpec {
     zeroTile.set(0, 0, 1)
     zeroTile.set(0, 1, ByteConstantNoDataCellType.noDataValue)
     val tileLayerRDD: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = tileToSpaceTimeDataCube(zeroTile)
-    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().mergeCubes(tileLayerRDD, tileLayerRDD, null)
+    val wrappedRDD = new OpenEORasterCube[SpaceTimeKey](tileLayerRDD.rdd,tileLayerRDD.metadata,new OpenEORasterCubeMetadata(Seq("B01","B02")))
+    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().mergeCubes(wrappedRDD, tileLayerRDD, null)
     val firstTile: MultibandTile = merged.toJavaRDD.take(1).get(0)._2
     System.out.println("firstTile = " + firstTile)
     assertEquals(4, firstTile.bandCount)

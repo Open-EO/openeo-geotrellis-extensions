@@ -21,7 +21,7 @@ import org.apache.spark.rdd._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
-import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.slf4j.LoggerFactory
 
 import java.io.File
@@ -83,6 +83,10 @@ class OpenEOProcesses extends Serializable {
     "subtract" -> Subtract,
     "xor" -> Xor
   )
+
+  def wrapCube[K](datacube:MultibandTileLayerRDD[K]): OpenEORasterCube[K] = {
+    return new OpenEORasterCube[K](datacube,datacube.metadata,new OpenEORasterCubeMetadata(Seq.empty))
+  }
 
   def applyProcess[K](datacube:MultibandTileLayerRDD[K], process:String): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]= {
     val proc = unaryProcesses(process)
@@ -393,20 +397,26 @@ class OpenEOProcesses extends Serializable {
    */
   def RDDBandCount[K](cube: MultibandTileLayerRDD[K]): Int = {
     // For performance reasons we only check a small subset of tile band counts
-    println(s"Computing number of bands in cube: ${cube.metadata}")
-    val counts = cube.take(10).map({ case (k, t) => t.bandCount }).distinct
+    if(cube.isInstanceOf[OpenEORasterCube[K]] && cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount >0 ) {
+      val count = cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount
+      logger.info(s"Computed band count ${count} from metadata of ${cube}")
+      return count
+    }else{
+      logger.info(s"Computing number of bands in cube: ${cube.metadata}")
+      val counts = cube.take(10).map({ case (k, t) => t.bandCount }).distinct
 
-    if(counts.size==0){
-      if(cube.isEmpty())
-        println("This cube is empty, no band count.")
-      else
-        println("This cube is not empty, but could not determine band count.")
-      return 1
+      if(counts.size==0){
+        if(cube.isEmpty())
+          logger.info("This cube is empty, no band count.")
+        else
+          logger.info("This cube is not empty, but could not determine band count.")
+        return 1
+      }
+      if (counts.size != 1) {
+        throw new IllegalArgumentException("Cube doesn't have single consistent band count across tiles: [%s]".format(counts.mkString(", ")))
+      }
+      counts(0)
     }
-    if (counts.size != 1) {
-      throw new IllegalArgumentException("Cube doesn't have single consistent band count across tiles: [%s]".format(counts.mkString(", ")))
-    }
-    counts(0)
   }
 
   def filterNegativeSpatialKeys(data: (Int, MultibandTileLayerRDD[SpaceTimeKey])):(Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
@@ -522,7 +532,12 @@ class OpenEOProcesses extends Serializable {
     new ContextRDD(joined.mapValues({
       case (None, Some(r)) => MultibandTile(Vector.fill(leftBandCount)(ArrayTile.empty(r.cellType, r.cols, r.rows)) ++ r.bands)
       case (Some(l), None) => MultibandTile(l.bands ++ Vector.fill(rightBandCount)(ArrayTile.empty(l.cellType, l.cols, l.rows)))
-      case (Some(l), Some(r)) => MultibandTile(l.bands ++ r.bands)
+      case (Some(l), Some(r)) => {
+        if(l.bandCount!=leftBandCount || r.bandCount != rightBandCount){
+          throw new IllegalArgumentException(s"The number of bands in the metadata ${leftBandCount}/${rightBandCount} does not match the actual band count in the cubes (left/right): ${l.bandCount}/${r.bandCount}. You can fix this by explicitly specifying correct band labels.")
+        }
+        MultibandTile(l.bands ++ r.bands)
+      }
     }), updatedMetadata)
   }
 
