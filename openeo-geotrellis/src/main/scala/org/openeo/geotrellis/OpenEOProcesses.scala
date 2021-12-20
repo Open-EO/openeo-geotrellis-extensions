@@ -1,7 +1,7 @@
 package org.openeo.geotrellis
 
 import geotrellis.layer.SpatialKey._
-import geotrellis.layer._
+import geotrellis.layer.{SpaceTimeKey, TileLayerMetadata, _}
 import geotrellis.proj4.CRS
 import geotrellis.raster._
 import geotrellis.raster.buffer.{BufferSizes, BufferedTile}
@@ -21,7 +21,7 @@ import org.apache.spark.rdd._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
-import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.slf4j.LoggerFactory
 
 import java.io.File
@@ -358,13 +358,20 @@ class OpenEOProcesses extends Serializable {
       val leftPart = leftCube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
       val rightPart = rightCube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
       logger.info(s"Merging cubes with spatial indices: ${leftPart.index} - ${rightPart.index}")
-      if(leftPart.index == rightPart.index) {
-        leftPart
-      }else{
-        SpacePartitioner(kb)
+      if(leftPart.index == rightPart.index && leftPart.index.isInstanceOf[SparseSpaceTimePartitioner]) {
+        val newIndices: Array[BigInt] = (leftPart.index.asInstanceOf[SparseSpaceTimePartitioner].indices ++ rightPart.index.asInstanceOf[SparseSpaceTimePartitioner].indices).distinct.sorted
+        implicit val newIndex: PartitionerIndex[K] = new SparseSpaceTimePartitioner(newIndices,leftPart.index.asInstanceOf[SparseSpaceTimePartitioner].indexReduction).asInstanceOf[PartitionerIndex[K]]
+        SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
+      }else if(leftPart.index == rightPart.index && leftPart.index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
+        val newIndices: Array[BigInt] = (leftPart.index.asInstanceOf[SparseSpaceOnlyPartitioner].indices ++ rightPart.index.asInstanceOf[SparseSpaceOnlyPartitioner].indices).distinct.sorted
+        implicit val newIndex: PartitionerIndex[K] = new SparseSpaceOnlyPartitioner(newIndices,leftPart.index.asInstanceOf[SparseSpaceOnlyPartitioner].indexReduction).asInstanceOf[PartitionerIndex[K]]
+        SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
+      }
+      else{
+        SpacePartitioner[K](kb)
       }
     } else {
-      SpacePartitioner(kb)
+      SpacePartitioner[K](kb)
     }
 
     val joinRdd =

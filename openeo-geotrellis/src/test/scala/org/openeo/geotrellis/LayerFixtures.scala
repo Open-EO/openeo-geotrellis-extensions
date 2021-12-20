@@ -15,6 +15,7 @@ import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.file.Sentinel2PyramidFactory
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellisaccumulo.PyramidFactory
+import org.openeo.geotrelliscommon.SparseSpaceTimePartitioner
 
 import java.awt.image.DataBufferByte
 import java.net.URL
@@ -24,6 +25,8 @@ import java.time.{LocalDate, ZonedDateTime}
 import java.util
 import java.util.Collections.singletonList
 import scala.collection.JavaConverters
+import scala.collection.JavaConverters._
+import scala.reflect.ClassTag
 
 object LayerFixtures {
 
@@ -43,7 +46,8 @@ object LayerFixtures {
   }
 
   def buildSpatioTemporalDataCube(tiles: util.List[Tile], dates: Seq[String]): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val cubeXYB: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, new ArrayMultibandTile(tiles.toArray.asInstanceOf[Array[Tile]]), new TileLayout(1, 1, tiles.get(0).cols.asInstanceOf[Integer], tiles.get(0).rows.asInstanceOf[Integer])).asInstanceOf[ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]]]
+    val mbTile = ArrayMultibandTile(tiles.asScala)
+    val cubeXYB: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, mbTile, new TileLayout(1, 1, tiles.get(0).cols.asInstanceOf[Integer], tiles.get(0).rows.asInstanceOf[Integer])).asInstanceOf[ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]]]
     val times: Seq[ZonedDateTime] = dates.map(ZonedDateTime.parse(_))
     val cubeXYTB: RDD[(SpaceTimeKey,MultibandTile)] = cubeXYB.flatMap((pair: Tuple2[SpatialKey, MultibandTile]) => {
       times.map((time: ZonedDateTime) => (SpaceTimeKey(pair._1, TemporalKey(time)), pair._2))
@@ -182,6 +186,17 @@ object LayerFixtures {
     val newBounds = KeyBounds[SpaceTimeKey](SpaceTimeKey(spatialM.bounds.get._1,TemporalKey(0L)),SpaceTimeKey(spatialM.bounds.get._2,TemporalKey(0L)))
     val temporalMetadata = new TileLayerMetadata[SpaceTimeKey](spatialM.cellType,spatialM.layout,spatialM.extent,spatialM.crs,newBounds)
     (ContextRDD(temporal,temporalMetadata),imageTile)
+  }
+
+  def aSparseSpacetimeTileLayerRdd(desiredKeys:Seq[SpatialKey] = Seq(SpatialKey(0,0),SpatialKey(3,1),SpatialKey(7,2))): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val collection = aSpacetimeTileLayerRdd(8,4,4)
+
+    val allKeys = collection._1.map(_._1).filter(k => desiredKeys.contains(k.spatialKey)).collect().toArray
+
+    val indices = allKeys.map(SparseSpaceTimePartitioner.toIndex(_,indexReduction = 0)).distinct.sorted.toArray
+    val partitionerIndex = new SparseSpaceTimePartitioner(indices,0)
+    val partitioner = SpacePartitioner(collection._1.metadata.bounds)(SpaceTimeKey.Boundable,ClassTag(classOf[SpaceTimeKey]), partitionerIndex)
+    return collection._1.withContext{_.filter(t => desiredKeys.contains(t._1.spatialKey)).partitionBy(partitioner)}
   }
 
   def createTextImage(width:Int,height:Int, fontSize:Int = 500) = {
