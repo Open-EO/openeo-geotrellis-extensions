@@ -1,7 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import java.time.ZonedDateTime
-
 import geotrellis.layer._
 import geotrellis.proj4.CRS
 import geotrellis.raster.rasterize.Rasterizer
@@ -13,10 +11,13 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 
+import java.time.ZonedDateTime
+
 object LayerProvider{
   def createMaskLayer(features: Seq[Feature[MultiPolygon, Double]], crs: CRS, metadata: TileLayerMetadata[SpaceTimeKey], sc: SparkContext): RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition] = {
 
-    val reprojected: RDD[MultiPolygonFeature[Double]] = sc.parallelize(features).map(_.reproject(crs, metadata.crs))
+    val rddCount = math.max(10,features.size / 100)
+    val reprojected: RDD[MultiPolygonFeature[Double]] = sc.parallelize(features,rddCount).map(_.reproject(crs, metadata.crs))
     val envelope = reprojected.map(_.geom.extent).reduce{_.combine(_)}
 
     val partitioner = {
