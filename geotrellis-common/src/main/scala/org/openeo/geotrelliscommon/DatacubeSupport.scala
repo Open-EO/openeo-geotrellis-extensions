@@ -9,6 +9,7 @@ import org.apache.spark.rdd.RDD
 import org.slf4j.LoggerFactory
 
 import java.time.ZonedDateTime
+import scala.reflect.ClassTag
 
 object DatacubeSupport {
 
@@ -95,7 +96,7 @@ object DatacubeSupport {
     )
   }
 
-  def applyDataMask[T](datacubeParams:Option[DataCubeParameters], rdd:RDD[(SpaceTimeKey,T)]): RDD[(SpaceTimeKey,T)] = {
+  def applyDataMask[T](datacubeParams:Option[DataCubeParameters], rdd:RDD[(SpaceTimeKey,T)])(implicit vt: ClassTag[T]): RDD[(SpaceTimeKey,T)] = {
     if (datacubeParams.exists(_.maskingCube.isDefined)) {
       val maskObject = datacubeParams.get.maskingCube.get
       maskObject match {
