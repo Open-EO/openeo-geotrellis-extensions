@@ -3,11 +3,17 @@ package org.openeo.geotrelliscommon
 import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutLevel, LayoutScheme, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.CRS
 import geotrellis.raster.{CellSize, CellType}
+import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.vector.{Extent, ProjectedExtent}
+import org.apache.spark.rdd.RDD
+import org.slf4j.LoggerFactory
 
 import java.time.ZonedDateTime
 
 object DatacubeSupport {
+
+  private val logger = LoggerFactory.getLogger(classOf[OpenEORasterCubeMetadata])
+
   /**
    * Find best CRS, can be location dependent (UTM)
    *
@@ -87,5 +93,23 @@ object DatacubeSupport {
       projectedExtent.crs,
       KeyBounds(SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from), SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to))
     )
+  }
+
+  def applyDataMask[T](datacubeParams:Option[DataCubeParameters], rdd:RDD[(SpaceTimeKey,T)]): RDD[(SpaceTimeKey,T)] = {
+    if (datacubeParams.exists(_.maskingCube.isDefined)) {
+      val maskObject = datacubeParams.get.maskingCube.get
+      maskObject match {
+        case spacetimeMask: MultibandTileLayerRDD[SpaceTimeKey] =>
+          if (spacetimeMask.metadata.bounds.get._1.isInstanceOf[SpaceTimeKey]) {
+            if (logger.isDebugEnabled) {
+              logger.debug(s"Spacetime mask is used to reduce input.")
+            }
+            val theFilteredMask = spacetimeMask.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))
+            return rdd.join(theFilteredMask).map((tuple => (tuple._1, tuple._2._1)))
+          }
+        case _ => return rdd
+      }
+    }
+    return rdd
   }
 }

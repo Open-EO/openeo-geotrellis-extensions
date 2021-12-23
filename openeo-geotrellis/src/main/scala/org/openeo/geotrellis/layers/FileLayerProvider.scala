@@ -237,23 +237,11 @@ object FileLayerProvider {
         //stage boundary, first stage of data loading ends here!
         .rightOuterJoin(requiredSpatialKeys).flatMap { t => t._2._1.toList }
 
-    if(datacubeParams.exists(_.maskingCube.isDefined)) {
-      val maskObject =  datacubeParams.get.maskingCube.get
-      maskObject match {
-        case spacetimeMask: MultibandTileLayerRDD[SpaceTimeKey] =>
-          if(spacetimeMask.metadata.bounds.get._1.isInstanceOf[SpaceTimeKey]) {
-            if(logger.isDebugEnabled) {
-              logger.debug(s"Spacetime mask is used to reduce input.")
-            }
-            val theFilteredMask = spacetimeMask.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))
-            requestedRasterRegions = requestedRasterRegions.join(theFilteredMask).map((tuple => (tuple._1, tuple._2._1)))
-          }
-        case _ =>
-      }
-    }
+    DatacubeSupport.applyDataMask(datacubeParams,requestedRasterRegions)
 
     rasterRegionsToTiles(requestedRasterRegions, metadata, cloudFilterStrategy, partitioner)
   }
+
 
   def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])], filteredSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey]) = {
     val requiredSpacetimeKeys: RDD[SpaceTimeKey] = filteredSources.flatMap(_.keys).map {

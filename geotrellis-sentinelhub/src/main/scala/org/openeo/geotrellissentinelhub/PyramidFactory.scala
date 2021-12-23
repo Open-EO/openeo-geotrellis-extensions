@@ -257,8 +257,12 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
         }
         val partitioner = SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,ClassTag(classOf[SpaceTimeKey]), partitionerIndex)
 
-        val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = sc.parallelize(overlappingKeys.map((_,Option.empty)))
+        var keysRdd = sc.parallelize(overlappingKeys.map((_, Option.empty)))
           .partitionBy(partitioner)
+
+        keysRdd = DatacubeSupport.applyDataMask(Some(dataCubeParameters),keysRdd)
+
+        val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = keysRdd
           .mapPartitions(_.map(key => (key._1,loadMasked(key._1))),preservesPartitioning = true)
           .filter{case (key:SpaceTimeKey,tile:Option[MultibandTile])=> tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
           .mapValues(t => t.get)
