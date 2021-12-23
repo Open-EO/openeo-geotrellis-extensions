@@ -237,7 +237,7 @@ object FileLayerProvider {
         //stage boundary, first stage of data loading ends here!
         .rightOuterJoin(requiredSpatialKeys).flatMap { t => t._2._1.toList }
 
-    DatacubeSupport.applyDataMask(datacubeParams,requestedRasterRegions)
+    requestedRasterRegions = DatacubeSupport.applyDataMask(datacubeParams,requestedRasterRegions)
 
     rasterRegionsToTiles(requestedRasterRegions, metadata, cloudFilterStrategy, partitioner)
   }
