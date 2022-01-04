@@ -36,8 +36,12 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
   extends MosaicRasterSource { // FIXME: don't inherit?
 
   override val sources: NonEmptyList[RasterSource] = sourcesList
-  protected def reprojectedSources: List[RasterSource] = sourcesList map { _.reproject(crs) }
-  protected def reprojectedSources(bands: Seq[Int]): List[RasterSource] = (bands.map(sourcesList.toList)) map { _.reproject(crs) }
+  protected def reprojectedSources: NonEmptyList[RasterSource] = sourcesList map { _.reproject(crs) }
+  protected def reprojectedSources(bands: Seq[Int]): NonEmptyList[RasterSource] = {
+    val selectedBands =  (NonEmptyList.fromList(bands.map(sourcesList.toList).toList)).get
+    selectedBands map { _.reproject(crs)}
+  }
+
 
   override def gridExtent: GridExtent[Long] = {
     try {
@@ -55,7 +59,7 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val selectedSources = reprojectedSources(bands)
-    val singleBandRasters = selectedSources.par
+    val singleBandRasters = selectedSources.toList.par
       .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
       .collect { case Some(raster) => raster }
 
@@ -64,8 +68,8 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    val selectedSources = bands.map(reprojectedSources.toList)
-    val singleBandRasters = selectedSources.par
+    val selectedSources = reprojectedSources(bands)
+    val singleBandRasters = selectedSources.toList.par
       .map { _.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
       .collect { case Some(raster) => raster }
 
