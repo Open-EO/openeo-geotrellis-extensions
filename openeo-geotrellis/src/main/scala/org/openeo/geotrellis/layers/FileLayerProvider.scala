@@ -264,12 +264,18 @@ object FileLayerProvider {
 
   private def rasterRegionsToTiles(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))], metadata: TileLayerMetadata[SpaceTimeKey], cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, partitionerOption: Option[SpacePartitioner[SpaceTimeKey]] = Option.empty) = {
     val partitioner = partitionerOption.getOrElse(SpacePartitioner(metadata.bounds))
+    val totalChunksAcc = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
+    val loadingTimeAcc = rasterRegionRDD.sparkContext.doubleAccumulator("SecondsPerChunk_" + rasterRegionRDD.name)
     val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] =
       rasterRegionRDD
         .groupByKey(partitioner)
         .mapPartitions(partitionIterator => {
 
-          partitionIterator.toParArray.map(tuple => {
+          var totalPixelsPartition = 0
+
+          val startTime = System.currentTimeMillis()
+
+          val loadedPartitions = partitionIterator.toParArray.map(tuple => {
             val allRegions = tuple._2.toSeq
 
           val filteredRegions =
@@ -347,6 +353,12 @@ object FileLayerProvider {
                     override def loadData: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
                   }).map((_, sourcePath))
               }
+              if(result.isDefined){
+                val mbTile = result.get._1
+                val totalPixels = mbTile.rows * mbTile.cols * mbTile.bandCount
+                totalPixelsPartition += totalPixels
+                totalChunksAcc.add(totalPixels/(256*256))
+              }
               result
             }
             .sortWith { case ((leftMultibandTile, leftSourcePath), (rightMultibandTile, rightSourcePath)) =>
@@ -357,8 +369,13 @@ object FileLayerProvider {
             .map { case (multibandTile, _) => multibandTile }
             .reduceOption(_ merge _)
             (tuple._1,tilesForRegion)
-        })
+        }
 
+          )
+          val durationMillis = System.currentTimeMillis() - startTime
+          val secondsPerChunk = (durationMillis/1000.0)/(totalPixelsPartition/(256*256))
+          loadingTimeAcc.add(secondsPerChunk)
+          loadedPartitions
 
         }.filter { case (_, tile) => tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
           .map(t => (t._1,t._2.get)).iterator,true)
@@ -580,6 +597,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }
     }
 
+    rasterRegionRDD.name = openSearchCollectionId
     rasterRegionsToTiles(rasterRegionRDD, metadata)
   }
 
