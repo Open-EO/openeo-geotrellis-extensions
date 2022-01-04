@@ -1,7 +1,7 @@
 package org.openeo.geotrellis
 
 import geotrellis.layer.SpatialKey._
-import geotrellis.layer.{SpaceTimeKey, TileLayerMetadata, _}
+import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata, _}
 import geotrellis.proj4.CRS
 import geotrellis.raster._
 import geotrellis.raster.buffer.{BufferSizes, BufferedTile}
@@ -10,6 +10,7 @@ import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
+import geotrellis.spark.join.SpatialJoin
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
@@ -624,7 +625,16 @@ class OpenEOProcesses extends Serializable {
   }
 
   def rasterMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], mask: MultibandTileLayerRDD[SpaceTimeKey], replacement: java.lang.Double): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val joined = datacube.spatialLeftOuterJoin(mask)
+    rasterMaskGeneric(datacube,mask,replacement).convert(datacube.metadata.cellType)
+  }
+
+  def rasterMask_spatial_spatial(datacube: MultibandTileLayerRDD[SpatialKey], mask: MultibandTileLayerRDD[SpatialKey], replacement: java.lang.Double): MultibandTileLayerRDD[SpatialKey] = {
+    rasterMaskGeneric(datacube,mask,replacement).convert(datacube.metadata.cellType)
+  }
+
+  def rasterMaskGeneric[K: Boundable: PartitionerIndex: ClassTag,M: GetComponent[*, Bounds[K]]]
+  (datacube: RDD[(K,MultibandTile)] with Metadata[M], mask: RDD[(K,MultibandTile)] with Metadata[M], replacement: java.lang.Double): RDD[(K,MultibandTile)] with Metadata[M] = {
+    val joined = SpatialJoin.leftOuterJoin(datacube, mask)
     val replacementInt: Int = if (replacement == null) NODATA else replacement.intValue()
     val replacementDouble: Double = if (replacement == null) doubleNODATA else replacement
     val masked = joined.mapValues(t => {
@@ -645,7 +655,7 @@ class OpenEOProcesses extends Serializable {
 
     })
 
-    new ContextRDD(masked, datacube.metadata).convert(datacube.metadata.cellType)
+    new ContextRDD(masked, datacube.metadata)
   }
 
   /**
