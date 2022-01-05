@@ -244,6 +244,7 @@ object FileLayerProvider {
 
     requestedRasterRegions = DatacubeSupport.applyDataMask(datacubeParams,requestedRasterRegions)
 
+    requestedRasterRegions.name = rasterSources.name
     rasterRegionsToTiles(requestedRasterRegions, metadata, cloudFilterStrategy, partitioner)
   }
 
@@ -387,8 +388,9 @@ object FileLayerProvider {
         }.filter { case (_, tile) => tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
           .map(t => (t._1,t._2.get)).iterator,true)
 
-    tiledRDD.name = rasterRegionRDD.name
-    ContextRDD(tiledRDD, metadata)
+    val cRDD = ContextRDD(tiledRDD, metadata)
+    cRDD.name = rasterRegionRDD.name
+    cRDD
   }
 
   private val metadataCache =
