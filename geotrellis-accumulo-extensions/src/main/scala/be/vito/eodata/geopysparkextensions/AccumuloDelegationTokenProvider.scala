@@ -1,7 +1,4 @@
 package be.vito.eodata.geopysparkextensions
-import java.security.PrivilegedAction
-import java.util.concurrent.TimeUnit
-
 import geotrellis.store.accumulo.AccumuloInstance
 import org.apache.accumulo.core.client.ClientConfiguration
 import org.apache.accumulo.core.client.impl.DelegationTokenImpl
@@ -10,11 +7,18 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.security.token.Token
 import org.apache.hadoop.security.{Credentials, UserGroupInformation}
 import org.apache.spark.SparkConf
+import org.apache.spark.security.HadoopDelegationTokenProvider
 
-class AccumuloDelegationTokenProvider {
+import java.security.PrivilegedAction
+import java.util.concurrent.TimeUnit
+
+class AccumuloDelegationTokenProvider extends HadoopDelegationTokenProvider {
   def serviceName: String = "accumulo"
 
 
+  override def delegationTokensRequired(sparkConf: SparkConf, hadoopConf: Configuration): Boolean = {
+    UserGroupInformation.isSecurityEnabled
+  }
   /**
     * Generate delegation tokens, which Spark will pass on to the UserGroupInformation on each executor
     *
@@ -23,7 +27,7 @@ class AccumuloDelegationTokenProvider {
     * @param creds
     * @return
     */
-  def obtainCredentials(hadoopConf: Configuration, sparkConf: SparkConf, creds: Credentials): Option[Long] = {
+  override def obtainDelegationTokens(hadoopConf: Configuration, sparkConf: SparkConf, creds: Credentials): Option[Long] = {
     val useKerberos = ClientConfiguration
       .loadDefault()
       .getBoolean(ClientConfiguration.ClientProperty.INSTANCE_RPC_SASL_ENABLED.getKey, false)
