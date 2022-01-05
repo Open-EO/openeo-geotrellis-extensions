@@ -6,6 +6,7 @@ import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.Test
 
 import java.time.{LocalDate, ZoneId}
+import java.util.Collections.singletonMap
 
 class DefaultCatalogApiTest {
   private val endpoint = "https://services.sentinel-hub.com"
@@ -101,6 +102,6 @@ class DefaultCatalogApiTest {
         from = LocalDate.of(2021, 1, 6).atStartOfDay(utc),
         to = LocalDate.of(2021, 1, 25).atTime(23, 59, 59).atZone(utc),
         accessToken,
-        queryProperties = Map("someUnknownProperty" -> "???")
+        queryProperties = singletonMap("someUnknownProperty", singletonMap("eq", "???"))
       )
 }

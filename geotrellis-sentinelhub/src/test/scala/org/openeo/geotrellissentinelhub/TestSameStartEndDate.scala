@@ -5,7 +5,7 @@ import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Test
 
-import java.util.Collections
+import java.util
 import scala.collection.JavaConverters._
 
 class TestSameStartEndDate {
@@ -35,7 +35,7 @@ class TestSameStartEndDate {
     val endpoint = "https://services.sentinel-hub.com"
     val pyramid = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint), clientId, clientSecret, rateLimitingGuard = NoRateLimitingGuard, maxSpatialResolution = CellSize(10,10))
-      .pyramid_seq(extent, bbox_srs, from, to, bandNames, metadata_properties = Collections.emptyMap[String, Any])
+      .pyramid_seq(extent, bbox_srs, from, to, bandNames, metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]])
 
     val (_, topLevelRdd) = pyramid.filter { case (zoom, _) => zoom == 14 }.head
 

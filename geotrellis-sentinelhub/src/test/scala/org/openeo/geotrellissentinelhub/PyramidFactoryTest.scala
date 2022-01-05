@@ -35,7 +35,7 @@ object PyramidFactoryTest {
     private val dateTimesCounter = new AtomicLong
 
     override def dateTimes(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
-                           to: ZonedDateTime, accessToken: String, queryProperties: collection.Map[String, String]):
+                           to: ZonedDateTime, accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
     Seq[ZonedDateTime] = {
       dateTimesCounter.incrementAndGet()
       catalogApi.dateTimes(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
@@ -43,7 +43,7 @@ object PyramidFactoryTest {
 
     override def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
                               to: ZonedDateTime, accessToken: String,
-                              queryProperties: collection.Map[String, String]):
+                              queryProperties: util.Map[String, util.Map[String, Any]]):
     Map[String, Feature[Geometry, ZonedDateTime]] = {
       catalogApi.search(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
     }
@@ -192,7 +192,7 @@ class PyramidFactoryTest {
         from_date = ISO_OFFSET_DATE_TIME format date,
         to_date = ISO_OFFSET_DATE_TIME format date,
         band_names = Seq("B08", "B04", "B02", "SCL").asJava,
-        metadata_properties = Collections.emptyMap[String, Any],
+        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
         dataCubeParameters
       )
 
@@ -254,7 +254,7 @@ class PyramidFactoryTest {
 
       val isoDate = ISO_OFFSET_DATE_TIME format date
       val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs, isoDate, isoDate, bandNames.asJava,
-        metadata_properties = Collections.emptyMap[String, Any]) // https://github.com/scala/bug/issues/8911
+        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]) // https://github.com/scala/bug/issues/8911
 
       val (zoom, baseLayer) = pyramid
         .maxBy { case (zoom, _) => zoom }
@@ -303,7 +303,7 @@ class PyramidFactoryTest {
         from_date = ISO_OFFSET_DATE_TIME format date,
         to_date = ISO_OFFSET_DATE_TIME format date,
         band_names = Seq("B08", "B04", "B03").asJava,
-        metadata_properties = Collections.emptyMap[String, Any]
+        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
       )
 
       assertTrue(layer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
@@ -357,7 +357,7 @@ class PyramidFactoryTest {
         from_date = ISO_OFFSET_DATE_TIME format date,
         to_date = ISO_OFFSET_DATE_TIME format date,
         band_names = Seq("B08", "B04", "B03").asJava,
-        metadata_properties = Collections.emptyMap[String, Any]
+        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
       )
 
       assertTrue(layer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
@@ -429,7 +429,7 @@ class PyramidFactoryTest {
       from_date = ISO_OFFSET_DATE_TIME format date,
       to_date = ISO_OFFSET_DATE_TIME format date,
       band_names = Seq("HV", "HH").asJava,
-      metadata_properties = Collections.singletonMap("polarization", "DH")
+      metadata_properties = Collections.singletonMap("polarization", Collections.singletonMap("eq", "DH"))
     )
     layer
   }
@@ -470,7 +470,7 @@ class PyramidFactoryTest {
         from_date = ISO_OFFSET_DATE_TIME format date,
         to_date = ISO_OFFSET_DATE_TIME format date,
         band_names = Seq("B3", "B2", "B1").asJava,
-        metadata_properties = Collections.emptyMap[String, Any]
+        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
       )
 
       val spatialLayer = layer
