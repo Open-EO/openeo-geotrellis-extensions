@@ -378,8 +378,10 @@ object FileLayerProvider {
 
           )
           val durationMillis = System.currentTimeMillis() - startTime
-          val secondsPerChunk = (durationMillis/1000.0)/(totalPixelsPartition/(256*256))
-          loadingTimeAcc.add(secondsPerChunk)
+          if(totalPixelsPartition>0) {
+            val secondsPerChunk = (durationMillis/1000.0)/(totalPixelsPartition/(256*256))
+            loadingTimeAcc.add(secondsPerChunk)
+          }
           loadedPartitions
 
         }.filter { case (_, tile) => tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
