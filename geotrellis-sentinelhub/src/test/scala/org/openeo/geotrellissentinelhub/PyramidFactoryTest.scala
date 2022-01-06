@@ -282,6 +282,8 @@ class PyramidFactoryTest {
 
   @Test
   def testUtm(): Unit = {
+    val expected = referenceRaster("utm.tif")
+
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
     try {
@@ -317,8 +319,6 @@ class PyramidFactoryTest {
 
       val tif = MultibandGeoTiff(multibandTile, extent, layer.metadata.crs, geoTiffOptions)
       tif.write(s"/tmp/utm.tif")
-
-      val expected = referenceRaster("utm.tif")
 
       assertEquals(expected, actual)
     } finally sc.stop()
@@ -393,6 +393,8 @@ class PyramidFactoryTest {
 
   @Test
   def testPolarizationDataFilter(): Unit = {
+    val expected = referenceRaster("polarization.tif")
+
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
     try {
@@ -400,7 +402,7 @@ class PyramidFactoryTest {
       val date = ZonedDateTime.of(LocalDate.of(2016, 11, 10), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
       val polygon = MultiPolygon(boundingBox.extent.toPolygon())
-      val layer: _root_.geotrellis.spark.MultibandTileLayerRDD[_root_.geotrellis.layer.SpaceTimeKey] = sparseSentinel1Layer(Array(polygon),boundingBox.crs, date)
+      val layer = sparseSentinel1Layer(Array(polygon), boundingBox.crs, date)
 
       val spatialLayer = layer
         .toSpatial()
@@ -412,13 +414,11 @@ class PyramidFactoryTest {
       val tif = MultibandGeoTiff(multibandTile, extent, layer.metadata.crs, geoTiffOptions)
       tif.write(s"/tmp/polarization.tif")
 
-      val expected = referenceRaster("polarization.tif")
-
       assertEquals(expected, actual)
     } finally sc.stop()
   }
 
-  private def sparseSentinel1Layer(polygon: Array[MultiPolygon],crs:CRS, date: ZonedDateTime) = {
+  private def sparseSentinel1Layer(polygon: Array[MultiPolygon], crs:CRS, date: ZonedDateTime): MultibandTileLayerRDD[SpaceTimeKey] = {
     val endpoint = "https://services.sentinel-hub.com"
     val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10, 10),
