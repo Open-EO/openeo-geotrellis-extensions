@@ -27,8 +27,10 @@ import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.core.retry.RetryPolicy
 import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy
 import software.amazon.awssdk.core.retry.conditions.{OrRetryCondition, RetryCondition}
+import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import spire.syntax.cfor.cfor
 
 import java.net.URI
@@ -609,7 +611,18 @@ package object geotiff {
     if (System.getenv("SWIFT_URL") != null && !path.contains("openeo-pydrvr")) {
       val bucket = Option(System.getenv("SWIFT_BUCKET")).getOrElse("OpenEO-data")
       val s3Uri = new AmazonS3URI(s"s3://$bucket$path")
-      geoTiff.write(s3Uri, getCreoS3Client())
+
+      import java.nio.file.Files
+
+      val tempFile = Files.createTempFile(null, null)
+      geoTiff.write(tempFile.toString, optimizedOrder = true)
+      val objectRequest = PutObjectRequest.builder
+        .bucket(s3Uri.getBucket)
+        .key(s3Uri.getKey)
+        .build
+
+      getCreoS3Client().putObject(objectRequest, RequestBody.fromFile(tempFile))
+
     } else {
       geoTiff.write(path, optimizedOrder = true)
     }
