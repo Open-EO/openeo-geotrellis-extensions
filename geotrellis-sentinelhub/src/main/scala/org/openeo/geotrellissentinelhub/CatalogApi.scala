@@ -2,6 +2,7 @@ package org.openeo.geotrellissentinelhub
 
 import CirceException.decode
 import cats.syntax.either._
+import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.proj4.{CRS, LatLng}
 import io.circe.Json
 import io.circe.generic.auto._
@@ -13,11 +14,14 @@ import scalaj.http.{Http, HttpOptions, HttpRequest}
 import java.net.URI
 import java.time.format.DateTimeFormatter.{ISO_INSTANT, ISO_OFFSET_DATE_TIME}
 import java.time.{ZoneId, ZonedDateTime}
+import java.util
 import scala.collection.immutable.HashMap
+import scala.collection.JavaConverters._
 
 trait CatalogApi {
   def dateTimes(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
-                accessToken: String, queryProperties: collection.Map[String, String] = Map()): Seq[ZonedDateTime] = {
+                accessToken: String,
+                queryProperties: util.Map[String, util.Map[String, Any]] = util.Collections.emptyMap()): Seq[ZonedDateTime] = {
     val geometry = boundingBox.extent.toPolygon()
     val geometryCrs = boundingBox.crs
 
@@ -25,10 +29,11 @@ trait CatalogApi {
   }
 
   def dateTimes(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
-                accessToken: String, queryProperties: collection.Map[String, String]): Seq[ZonedDateTime]
+                accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]): Seq[ZonedDateTime]
 
   def searchCard4L(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
-                   accessToken: String, queryProperties: collection.Map[String, String] = Map()):
+                   accessToken: String,
+                   queryProperties: util.Map[String, util.Map[String, Any]] = util.Collections.emptyMap()):
   Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
     val geometry = boundingBox.extent.toPolygon()
     val geometryCrs = boundingBox.crs
@@ -37,28 +42,28 @@ trait CatalogApi {
   }
 
   def searchCard4L(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
-                   accessToken: String, queryProperties: collection.Map[String, String]):
+                   accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
   Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
     require(collectionId == "sentinel-1-grd", """only collection "sentinel-1-grd" is supported""")
 
     val requiredProperties = HashMap(
-      "sar:instrument_mode" -> "IW",
-      "resolution" -> "HIGH",
-      "polarization" -> "DV"
+      "sar:instrument_mode" -> Map("eq" -> ("IW": Any)).asJava,
+      "resolution" -> Map("eq" -> ("HIGH": Any)).asJava,
+      "polarization" -> Map("eq" -> ("DV": Any)).asJava
     )
 
-    val allProperties = requiredProperties.merged(HashMap(queryProperties.toSeq: _*)) {
+    val allProperties = requiredProperties.merged(HashMap(queryProperties.asScala.toSeq: _*)) {
       case (requiredProperty @ (property, requiredValue), (_, overriddenValue)) =>
         if (overriddenValue == requiredValue) requiredProperty
         else throw new IllegalArgumentException(
           s"cannot override property $property value $requiredValue with $overriddenValue")
     }
 
-    search(collectionId, geometry, geometryCrs, from, to, accessToken, allProperties)
+    search(collectionId, geometry, geometryCrs, from, to, accessToken, allProperties.asJava)
   }
 
   def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
-                   accessToken: String, queryProperties: collection.Map[String, String]):
+                   accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
   Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]]
 }
 
@@ -76,10 +81,11 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
   import DefaultCatalogApi._
 
   private val catalogEndpoint = URI.create(endpoint).resolve("/api/v1/catalog")
+  private val objectMapper = new ObjectMapper
 
   // TODO: search distinct dates (https://docs.sentinel-hub.com/api/latest/api/catalog/examples/#search-with-distinct)?
   override def dateTimes(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
-                accessToken: String, queryProperties: collection.Map[String, String]): Seq[ZonedDateTime] = {
+                accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]): Seq[ZonedDateTime] = {
     val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
     val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
 
@@ -130,7 +136,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
   }
 
   override def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
-                      to: ZonedDateTime, accessToken: String, queryProperties: collection.Map[String, String]):
+                      to: ZonedDateTime, accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
   Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] =
     withRetries(context = s"search $collectionId") {
       // TODO: reduce code duplication with dateTimes()
@@ -149,6 +155,8 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
              |  "intersects": ${geometry.reproject(geometryCrs, LatLng).toGeoJson()},
              |  "next": ${nextToken.orNull}
              |}""".stripMargin
+
+        logger.debug(s"JSON data for Sentinel Hub Catalog API: $requestBody")
 
         val request = http(s"$catalogEndpoint/search", accessToken)
           .headers("Content-Type" -> "application/json")
@@ -192,8 +200,6 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
       .option(HttpOptions.followRedirects(true))
       .headers("Authorization" -> s"Bearer $accessToken")
 
-  private def query(queryProperties: collection.Map[String, String]): String =
-    queryProperties
-      .map { case (key, value) => s""""$key": {"eq": "$value"}"""}
-      .mkString("{", ", ", "}")
+  private def query(queryProperties: util.Map[String, util.Map[String, Any]]): String =
+    objectMapper.writeValueAsString(queryProperties)
 }

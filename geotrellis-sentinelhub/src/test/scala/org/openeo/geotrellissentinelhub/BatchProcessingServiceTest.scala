@@ -7,7 +7,7 @@ import org.junit.Assert.assertEquals
 import org.junit.rules.TemporaryFolder
 import org.junit.{Ignore, Rule, Test}
 
-import java.util.{Arrays, Collections, UUID}
+import java.util.{Arrays, Collections, Map => JMap, UUID}
 import java.time.LocalTime
 import scala.annotation.meta.getter
 import scala.collection.JavaConverters._
@@ -33,7 +33,7 @@ class BatchProcessingServiceTest {
       to_date = "2019-10-10T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV"),
       SampleType.FLOAT32,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Collections.emptyMap[String, Any]
     )
 
@@ -56,7 +56,7 @@ class BatchProcessingServiceTest {
       to_date = "2019-10-10T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV"),
       SampleType.FLOAT32,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Collections.emptyMap[String, Any],
       subfolder
     )
@@ -76,7 +76,26 @@ class BatchProcessingServiceTest {
       to_date = "2019-10-12T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV"),
       SampleType.FLOAT32,
-      metadata_properties = Collections.singletonMap("orbitDirection", "ASCENDING"),
+      metadata_properties = Collections.singletonMap("orbitDirection", Collections.singletonMap("eq", "ASCENDING")),
+      processing_options = Collections.emptyMap[String, Any]
+    )
+
+    println(awaitDone(Seq(batchRequestId)))
+  }
+
+  @Ignore
+  @Test
+  def startBatchProcessForEoCloudCover(): Unit = {
+    val batchRequestId = batchProcessingService.start_batch_process(
+      collection_id = "sentinel-2-l2a",
+      dataset_id = "sentinel-2-l2a",
+      bbox = Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206),
+      bbox_srs = "EPSG:4326",
+      from_date = "2019-09-21T00:00:00+00:00",
+      to_date = "2019-09-21T00:00:00+00:00",
+      band_names = Arrays.asList("B04", "B03", "B02"),
+      SampleType.UINT16,
+      metadata_properties = Collections.singletonMap("eo:cloud_cover", Collections.singletonMap("lte", 20)),
       processing_options = Collections.emptyMap[String, Any]
     )
 
@@ -95,7 +114,7 @@ class BatchProcessingServiceTest {
       to_date = "2019-09-21T00:00:00+00:00",
       band_names = Arrays.asList("B04", "B03", "B02"),
       SampleType.UINT16,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Collections.emptyMap[String, Any]
     )
 
@@ -117,7 +136,7 @@ class BatchProcessingServiceTest {
       to_date = "2019-10-01T00:00:00+00:00",
       band_names = Arrays.asList("B01", "B02"),
       SampleType.UINT16,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Collections.emptyMap[String, Any]
     )
 
@@ -142,7 +161,7 @@ class BatchProcessingServiceTest {
       to_date = "2019-09-21T00:00:00+00:00",
       band_names = Arrays.asList("B04", "B03", "B02"),
       SampleType.UINT16,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Collections.emptyMap[String, Any],
       subfolder,
       collectingFolder.toAbsolutePath.toString
@@ -204,7 +223,7 @@ class BatchProcessingServiceTest {
       to_date = "2019-09-21T00:00:00+00:00",
       band_names = Arrays.asList("B04", "B03", "B02"),
       SampleType.UINT16,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Collections.emptyMap[String, Any],
       subfolder,
       collectingFolder.toAbsolutePath.toString
@@ -235,7 +254,7 @@ class BatchProcessingServiceTest {
       to_date = "2021-02-17T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV", "dataMask", "localIncidenceAngle"),
       dem_instance = null,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       subfolder = requestGroupId,
       requestGroupId
     )
@@ -265,7 +284,7 @@ class BatchProcessingServiceTest {
       to_date = "2021-02-17T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV", "dataMask", "localIncidenceAngle"),
       dem_instance = null,
-      metadata_properties = Collections.singletonMap("orbitDirection", "DESCENDING"),
+      metadata_properties = Collections.singletonMap("orbitDirection", Collections.singletonMap("eq", "DESCENDING")),
       subfolder = requestGroupId,
       requestGroupId
     )
@@ -301,7 +320,7 @@ class BatchProcessingServiceTest {
       to_date = "2020-11-05T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV"),
       SampleType.FLOAT32,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Collections.emptyMap[String, Any]
     )
 
@@ -330,7 +349,7 @@ class BatchProcessingServiceTest {
       to_date = "2020-11-05T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV"),
       dem_instance = null,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       subfolder = requestGroupId,
       requestGroupId
     )

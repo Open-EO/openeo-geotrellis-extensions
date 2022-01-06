@@ -68,7 +68,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
     org.openeo.geotrellissentinelhub.authorized[R](clientId, clientSecret)(fn)
 
   private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom,
-                    bandNames: Seq[String], metadataProperties: util.Map[String, Any],
+                    bandNames: Seq[String], metadataProperties: util.Map[String, util.Map[String, Any]],
                     features: collection.Map[String, Feature[Geometry, ZonedDateTime]])(implicit sc: SparkContext):
   MultibandTileLayerRDD[SpaceTimeKey] = {
     require(zoom >= 0)
@@ -108,7 +108,8 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
 
         val tile = authorized { accessToken =>
           processApi.getTile(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs),
-            key.temporalKey, width, height, bandNames, sampleType, metadataProperties, processingOptions, accessToken)
+            key.temporalKey, width, height, bandNames, sampleType, Criteria.toDataFilters(metadataProperties),
+            processingOptions, accessToken)
         }
 
         (key, tile)
@@ -125,13 +126,13 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
   }
 
   def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, bandNames: Seq[String],
-              metadataProperties: util.Map[String, Any])(implicit sc: SparkContext):
+              metadataProperties: util.Map[String, util.Map[String, Any]])(implicit sc: SparkContext):
   Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val (polygon, polygonCrs) = (boundingBox.extent.toPolygon(), boundingBox.crs)
 
     val features = authorized { accessToken =>
       catalogApi.search(collectionId, polygon, polygonCrs,
-        from, atEndOfDay(to), accessToken, toQueryProperties(dataFilters = metadataProperties))
+        from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadataProperties))
     }
 
     val layers = for (zoom <- maxZoom to 0 by -1)
@@ -141,7 +142,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
   }
 
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String, band_names: util.List[String],
-                  metadata_properties: util.Map[String, Any]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+                  metadata_properties: util.Map[String, util.Map[String, Any]]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
 
     val projectedExtent = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
@@ -154,12 +155,12 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
   }
 
   def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
-                   band_names: util.List[String], metadata_properties: util.Map[String, Any]):
+                   band_names: util.List[String], metadata_properties: util.Map[String, util.Map[String, Any]]):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = datacube_seq(polygons, polygons_crs, from_date, to_date,
     band_names, metadata_properties, new DataCubeParameters)
 
   def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
-                   band_names: util.List[String], metadata_properties: util.Map[String, Any],
+                   band_names: util.List[String], metadata_properties: util.Map[String, util.Map[String, Any]],
                    dataCubeParameters: DataCubeParameters):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     // TODO: use ProjectedPolygons type
@@ -186,7 +187,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
 
           val features = authorized { accessToken =>
             catalogApi.search(collectionId, multiPolygon, polygons_crs,
-              from, atEndOfDay(to), accessToken, toQueryProperties(dataFilters = metadata_properties))
+              from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
           }
 
           val intersectingFeatureKeys = for {
@@ -209,7 +210,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
 
             authorized { accessToken =>
               processApi.getTile(datasetId, projectedExtent, key.temporalKey, width, height, bandNames,
-                sampleType, metadata_properties, processingOptions, accessToken)
+                sampleType, Criteria.toDataFilters(metadata_properties), processingOptions, accessToken)
             }
           }
 

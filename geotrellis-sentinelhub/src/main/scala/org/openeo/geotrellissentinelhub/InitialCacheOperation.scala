@@ -53,7 +53,7 @@ abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
 
   def startBatchProcess(collection_id: String, dataset_id: String, polygons: Array[MultiPolygon],
                         crs: CRS, from: ZonedDateTime, to: ZonedDateTime, band_names: util.List[String],
-                        sampleType: SampleType, metadata_properties: util.Map[String, Any],
+                        sampleType: SampleType, metadata_properties: util.Map[String, util.Map[String, Any]],
                         processing_options: util.Map[String, Any], bucketName: String, subfolder: String,
                         collecting_folder: String, batchProcessingService: BatchProcessingService): String = {
     // important: caching requires more strict processing options because specifying an option unknown to the cache

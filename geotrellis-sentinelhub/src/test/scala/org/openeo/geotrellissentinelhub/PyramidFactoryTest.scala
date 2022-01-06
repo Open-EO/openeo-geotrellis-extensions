@@ -35,7 +35,7 @@ object PyramidFactoryTest {
     private val dateTimesCounter = new AtomicLong
 
     override def dateTimes(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
-                           to: ZonedDateTime, accessToken: String, queryProperties: collection.Map[String, String]):
+                           to: ZonedDateTime, accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
     Seq[ZonedDateTime] = {
       dateTimesCounter.incrementAndGet()
       catalogApi.dateTimes(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
@@ -43,7 +43,7 @@ object PyramidFactoryTest {
 
     override def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
                               to: ZonedDateTime, accessToken: String,
-                              queryProperties: collection.Map[String, String]):
+                              queryProperties: util.Map[String, util.Map[String, Any]]):
     Map[String, Feature[Geometry, ZonedDateTime]] = {
       catalogApi.search(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
     }
@@ -192,7 +192,7 @@ class PyramidFactoryTest {
         from_date = ISO_OFFSET_DATE_TIME format date,
         to_date = ISO_OFFSET_DATE_TIME format date,
         band_names = Seq("B08", "B04", "B02", "SCL").asJava,
-        metadata_properties = Collections.emptyMap[String, Any],
+        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
         dataCubeParameters
       )
 
@@ -254,7 +254,7 @@ class PyramidFactoryTest {
 
       val isoDate = ISO_OFFSET_DATE_TIME format date
       val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs, isoDate, isoDate, bandNames.asJava,
-        metadata_properties = Collections.emptyMap[String, Any]) // https://github.com/scala/bug/issues/8911
+        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]) // https://github.com/scala/bug/issues/8911
 
       val (zoom, baseLayer) = pyramid
         .maxBy { case (zoom, _) => zoom }
@@ -282,6 +282,8 @@ class PyramidFactoryTest {
 
   @Test
   def testUtm(): Unit = {
+    val expected = referenceRaster("utm.tif")
+
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
     try {
@@ -303,7 +305,7 @@ class PyramidFactoryTest {
         from_date = ISO_OFFSET_DATE_TIME format date,
         to_date = ISO_OFFSET_DATE_TIME format date,
         band_names = Seq("B08", "B04", "B03").asJava,
-        metadata_properties = Collections.emptyMap[String, Any]
+        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
       )
 
       assertTrue(layer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
@@ -317,8 +319,6 @@ class PyramidFactoryTest {
 
       val tif = MultibandGeoTiff(multibandTile, extent, layer.metadata.crs, geoTiffOptions)
       tif.write(s"/tmp/utm.tif")
-
-      val expected = referenceRaster("utm.tif")
 
       assertEquals(expected, actual)
     } finally sc.stop()
@@ -357,7 +357,7 @@ class PyramidFactoryTest {
         from_date = ISO_OFFSET_DATE_TIME format date,
         to_date = ISO_OFFSET_DATE_TIME format date,
         band_names = Seq("B08", "B04", "B03").asJava,
-        metadata_properties = Collections.emptyMap[String, Any]
+        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
       )
 
       assertTrue(layer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
@@ -393,6 +393,8 @@ class PyramidFactoryTest {
 
   @Test
   def testPolarizationDataFilter(): Unit = {
+    val expected = referenceRaster("polarization.tif")
+
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
     try {
@@ -400,7 +402,7 @@ class PyramidFactoryTest {
       val date = ZonedDateTime.of(LocalDate.of(2016, 11, 10), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
       val polygon = MultiPolygon(boundingBox.extent.toPolygon())
-      val layer: _root_.geotrellis.spark.MultibandTileLayerRDD[_root_.geotrellis.layer.SpaceTimeKey] = sparseSentinel1Layer(Array(polygon),boundingBox.crs, date)
+      val layer = sparseSentinel1Layer(Array(polygon), boundingBox.crs, date)
 
       val spatialLayer = layer
         .toSpatial()
@@ -412,13 +414,11 @@ class PyramidFactoryTest {
       val tif = MultibandGeoTiff(multibandTile, extent, layer.metadata.crs, geoTiffOptions)
       tif.write(s"/tmp/polarization.tif")
 
-      val expected = referenceRaster("polarization.tif")
-
       assertEquals(expected, actual)
     } finally sc.stop()
   }
 
-  private def sparseSentinel1Layer(polygon: Array[MultiPolygon],crs:CRS, date: ZonedDateTime) = {
+  private def sparseSentinel1Layer(polygon: Array[MultiPolygon], crs:CRS, date: ZonedDateTime): MultibandTileLayerRDD[SpaceTimeKey] = {
     val endpoint = "https://services.sentinel-hub.com"
     val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10, 10),
@@ -429,7 +429,7 @@ class PyramidFactoryTest {
       from_date = ISO_OFFSET_DATE_TIME format date,
       to_date = ISO_OFFSET_DATE_TIME format date,
       band_names = Seq("HV", "HH").asJava,
-      metadata_properties = Collections.singletonMap("polarization", "DH")
+      metadata_properties = Collections.singletonMap("polarization", Collections.singletonMap("eq", "DH"))
     )
     layer
   }
@@ -470,7 +470,7 @@ class PyramidFactoryTest {
         from_date = ISO_OFFSET_DATE_TIME format date,
         to_date = ISO_OFFSET_DATE_TIME format date,
         band_names = Seq("B3", "B2", "B1").asJava,
-        metadata_properties = Collections.emptyMap[String, Any]
+        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
       )
 
       val spatialLayer = layer
@@ -483,6 +483,43 @@ class PyramidFactoryTest {
 
       val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
       tif.write(s"/tmp/testPlanetScope.tif")
+    } finally sc.stop()
+  }
+
+  @Test
+  def testEoCloudCover(): Unit = {
+    val endpoint = "https://services.sentinel-hub.com"
+    val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+    val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, "sentinel-2-l2a", "sentinel-2-l2a",
+      clientId, clientSecret, processingOptions = util.Collections.emptyMap[String, Any], sampleType = UINT16,
+      maxSpatialResolution = CellSize(10, 10))
+
+    val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      val boundingBox =
+        ProjectedExtent(Extent(471275.3098352262, 5657503.248379398, 492660.20213888795, 5674436.759279663),
+          CRS.fromEpsgCode(32631))
+
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
+        from_date = ISO_OFFSET_DATE_TIME format date,
+        to_date = ISO_OFFSET_DATE_TIME format date,
+        band_names = Seq("B04", "B03", "B02").asJava,
+        metadata_properties = Collections.singletonMap("eo:cloud_cover", Collections.singletonMap("lte", 20))
+      )
+
+      val spatialLayer = layer
+        .toSpatial()
+        .cache()
+
+      val Raster(multibandTile, extent) = spatialLayer
+        .crop(boundingBox.extent)
+        .stitch()
+
+      val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
+      tif.write(s"/tmp/testEoCloudCover.tif")
     } finally sc.stop()
   }
 }
