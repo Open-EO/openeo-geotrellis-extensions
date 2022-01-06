@@ -485,4 +485,41 @@ class PyramidFactoryTest {
       tif.write(s"/tmp/testPlanetScope.tif")
     } finally sc.stop()
   }
+
+  @Test
+  def testEoCloudCover(): Unit = {
+    val endpoint = "https://services.sentinel-hub.com"
+    val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+    val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, "sentinel-2-l2a", "sentinel-2-l2a",
+      clientId, clientSecret, processingOptions = util.Collections.emptyMap[String, Any], sampleType = UINT16,
+      maxSpatialResolution = CellSize(10, 10))
+
+    val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      val boundingBox =
+        ProjectedExtent(Extent(471275.3098352262, 5657503.248379398, 492660.20213888795, 5674436.759279663),
+          CRS.fromEpsgCode(32631))
+
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
+        from_date = ISO_OFFSET_DATE_TIME format date,
+        to_date = ISO_OFFSET_DATE_TIME format date,
+        band_names = Seq("B04", "B03", "B02").asJava,
+        metadata_properties = Collections.singletonMap("eo:cloud_cover", Collections.singletonMap("lte", 20))
+      )
+
+      val spatialLayer = layer
+        .toSpatial()
+        .cache()
+
+      val Raster(multibandTile, extent) = spatialLayer
+        .crop(boundingBox.extent)
+        .stitch()
+
+      val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
+      tif.write(s"/tmp/testEoCloudCover.tif")
+    } finally sc.stop()
+  }
 }

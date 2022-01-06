@@ -156,6 +156,8 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
              |  "next": ${nextToken.orNull}
              |}""".stripMargin
 
+        logger.debug(s"JSON data for Sentinel Hub Catalog API: $requestBody")
+
         val request = http(s"$catalogEndpoint/search", accessToken)
           .headers("Content-Type" -> "application/json")
           .postData(requestBody)

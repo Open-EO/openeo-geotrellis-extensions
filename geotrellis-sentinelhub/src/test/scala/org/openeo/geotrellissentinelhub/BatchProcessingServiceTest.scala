@@ -85,6 +85,25 @@ class BatchProcessingServiceTest {
 
   @Ignore
   @Test
+  def startBatchProcessForEoCloudCover(): Unit = {
+    val batchRequestId = batchProcessingService.start_batch_process(
+      collection_id = "sentinel-2-l2a",
+      dataset_id = "sentinel-2-l2a",
+      bbox = Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206),
+      bbox_srs = "EPSG:4326",
+      from_date = "2019-09-21T00:00:00+00:00",
+      to_date = "2019-09-21T00:00:00+00:00",
+      band_names = Arrays.asList("B04", "B03", "B02"),
+      SampleType.UINT16,
+      metadata_properties = Collections.singletonMap("eo:cloud_cover", Collections.singletonMap("lte", 20)),
+      processing_options = Collections.emptyMap[String, Any]
+    )
+
+    println(awaitDone(Seq(batchRequestId)))
+  }
+
+  @Ignore
+  @Test
   def startBatchProcessForSentinel2(): Unit = {
     val batchRequestId = batchProcessingService.start_batch_process(
       collection_id = "sentinel-2-l2a",
