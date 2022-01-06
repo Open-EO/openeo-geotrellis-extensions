@@ -128,11 +128,13 @@ object Udf {
                               bandNames: util.ArrayList[String],
                               context: util.HashMap[String, Any]
                              ): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val projectedPolygonsNativeCRS = ProjectedPolygons.reproject(projectedPolygons, layer.metadata.crs);
+
     // Group all tiles by geometry and mask them with that geometry.
     // Key: MultiPolygon, Value: One tile for each date (combined with the polygon's extent and SpaceTimeKey).
     val processes = new OpenEOProcesses()
     val grouped_and_masked_rdd: RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] =
-      processes.groupAndMaskByGeometry(layer, projectedPolygons)
+      processes.groupAndMaskByGeometry(layer, projectedPolygonsNativeCRS)
 
     val result: RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] = grouped_and_masked_rdd.mapPartitions(iter => {
       iter.map(tuple => {
