@@ -14,6 +14,7 @@ object Criteria {
 
   private def toQueryPropertyName(metadataPropertyName: String): String = metadataPropertyName match {
     case "orbitDirection" => "sat:orbit_state"
+    case "sar:polarization" => "polarization"
     case _ => metadataPropertyName
   }
 
@@ -41,6 +42,8 @@ object Criteria {
       .map {
         case ("eo:cloud_cover", "lte", value) => "maxCloudCoverage" -> value
         case ("sat:orbit_state", "eq", value) => "orbitDirection" -> value
+        case ("sar:polarization", "eq", value) => "polarization" -> value
+        case ("sar:instrument_mode", "eq", value) => "acquisitionMode" -> value
         case (metadataProperty, "eq", value) => metadataProperty -> value
         case (metaDataProperty, operator, value) =>
           throw new IllegalArgumentException(s"unsupported dataFilter $metaDataProperty $operator $value")

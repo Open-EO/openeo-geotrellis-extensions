@@ -23,13 +23,52 @@ class CriteriaTest {
   }
 
   @Test
-  def queryPropertiesForSatOrbitDirection(): Unit = {
+  def queryPropertiesForOrbitDirection(): Unit = {
     val metadata_properties = Map(
       "orbitDirection" -> Map("eq" -> ("descending": Any)).asJava
     ).asJava
 
     val expected = Map(
       "sat:orbit_state" -> Map("eq" -> "descending").asJava
+    ).asJava
+
+    assertEquals(expected, Criteria.toQueryProperties(metadata_properties))
+  }
+
+  @Test
+  def queryPropertiesForSarPolarization(): Unit = {
+    val metadata_properties = Map(
+      "sar:polarization" -> Map("eq" -> ("DV": Any)).asJava
+    ).asJava
+
+    val expected = Map(
+      "polarization" -> Map("eq" -> "DV").asJava
+    ).asJava
+
+    assertEquals(expected, Criteria.toQueryProperties(metadata_properties))
+  }
+
+  @Test
+  def queryPropertiesForPolarization(): Unit = {
+    val metadata_properties = Map(
+      "polarization" -> Map("eq" -> ("DV": Any)).asJava
+    ).asJava
+
+    val expected = Map(
+      "polarization" -> Map("eq" -> "DV").asJava
+    ).asJava
+
+    assertEquals(expected, Criteria.toQueryProperties(metadata_properties))
+  }
+
+  @Test
+  def queryPropertiesForSarInstrumentMode(): Unit = {
+    val metadata_properties = Map(
+      "sar:instrument_mode" -> Map("eq" -> ("IW": Any)).asJava
+    ).asJava
+
+    val expected = Map(
+      "sar:instrument_mode" -> Map("eq" -> "IW").asJava
     ).asJava
 
     assertEquals(expected, Criteria.toQueryProperties(metadata_properties))
@@ -58,6 +97,50 @@ class CriteriaTest {
     ).asJava
 
     val expected = Map("orbitDirection" -> "descending").asJava
+
+    assertEquals(expected, Criteria.toDataFilters(metadata_properties))
+  }
+
+  @Test
+  def dataFiltersForOrbitDirection(): Unit = {
+    val metadata_properties = Map(
+      "orbitDirection" -> Map("eq" -> ("descending": Any)).asJava
+    ).asJava
+
+    val expected = Map("orbitDirection" -> "descending").asJava
+
+    assertEquals(expected, Criteria.toDataFilters(metadata_properties))
+  }
+
+  @Test
+  def dataFiltersForSarPolarization(): Unit = {
+    val metadata_properties = Map(
+      "sar:polarization" -> Map("eq" -> ("DV": Any)).asJava
+    ).asJava
+
+    val expected = Map("polarization" -> "DV").asJava
+
+    assertEquals(expected, Criteria.toDataFilters(metadata_properties))
+  }
+
+  @Test
+  def dataFiltersForPolarization(): Unit = {
+    val metadata_properties = Map(
+      "polarization" -> Map("eq" -> ("DV": Any)).asJava
+    ).asJava
+
+    val expected = Map("polarization" -> "DV").asJava
+
+    assertEquals(expected, Criteria.toDataFilters(metadata_properties))
+  }
+
+  @Test
+  def dataFiltersForSarInstrumentMode(): Unit = {
+    val metadata_properties = Map(
+      "sar:instrument_mode" -> Map("eq" -> ("IW": Any)).asJava
+    ).asJava
+
+    val expected = Map("acquisitionMode" -> "IW").asJava
 
     assertEquals(expected, Criteria.toDataFilters(metadata_properties))
   }
