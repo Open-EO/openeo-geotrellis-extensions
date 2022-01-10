@@ -15,11 +15,13 @@ import geotrellis.spark.pyramid.Pyramid
 import geotrellis.store.s3._
 import geotrellis.util._
 import geotrellis.vector.{ProjectedExtent, _}
+import org.apache.commons.io.FilenameUtils
 import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.AccumulatorV2
 import org.openeo.geotrellis
+import org.openeo.geotrellis.stac.STACItem
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
@@ -240,6 +242,11 @@ package object geotiff {
     }else{
       Nil
     }
+
+    val stacItemPath = FilenameUtils.removeExtension(path) + "_item.json"
+    val metadata = new STACItem()
+    metadata.asset(path)
+    metadata.write(stacItemPath)
     writeTiff( path,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, preprocessedRdd.metadata.tileLayout, compression, cellType, detectedBandCount, segmentCount,formatOptions = formatOptions, overviews = overviews)
     return Collections.singletonList(path)
   }
