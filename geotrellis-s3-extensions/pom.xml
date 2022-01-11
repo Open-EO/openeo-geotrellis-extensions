@@ -47,6 +47,12 @@
             <groupId>org.locationtech.geotrellis</groupId>
             <artifactId>geotrellis-s3-spark_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.fasterxml.jackson.core</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
