@@ -141,9 +141,12 @@ class UdfTest extends RasterMatchers {
     val projectedPolygons6 = ProjectedPolygons.fromExtent(
       new Extent(150, 70, 155, 80), "EPSG:4326"
     )
+    val projectedPolygonsTriangle = ProjectedPolygons(List(Polygon((-20.0,-70.0), (-50.0,-70.0), (-20.0, -80.0), (-20.0,-70.0))), "EPSG:4326")
+
     val projectedPolygons = new ProjectedPolygons(
       projectedPolygons1.polygons ++ projectedPolygons2.polygons ++ projectedPolygons3.polygons ++
-        projectedPolygons4.polygons ++ projectedPolygons5.polygons ++ projectedPolygons6.polygons,
+      projectedPolygons4.polygons ++ projectedPolygons5.polygons ++ projectedPolygons6.polygons ++
+      projectedPolygonsTriangle.polygons,
       projectedPolygons1.crs
     )
     val bandNames = new util.ArrayList[String]()

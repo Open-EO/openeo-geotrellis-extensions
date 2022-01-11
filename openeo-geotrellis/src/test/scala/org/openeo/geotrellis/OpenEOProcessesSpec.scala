@@ -8,7 +8,7 @@ import geotrellis.raster.io.geotiff._
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.resample.ResampleMethod
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ArrayMultibandTile, ByteConstantTile, DoubleArrayTile, GridBounds, IntConstantNoDataCellType, MultibandTile, Raster, ShortConstantTile, Tile, TileLayout}
+import geotrellis.raster.{ArrayMultibandTile, ByteConstantTile, DoubleArrayTile, FloatConstantTile, GridBounds, IntConstantNoDataCellType, MultibandTile, Raster, Tile, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
@@ -204,8 +204,11 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val projectedPolygons3 = ProjectedPolygons.fromExtent(
       new Extent(-140, -80, -100, -70), "EPSG:4326"
     )
+    val projectedPolygonsTriangle = ProjectedPolygons(List(Polygon((-20.0,-70.0), (-50.0,-70.0), (-20.0, -80.0), (-20.0,-70.0))), "EPSG:4326")
     val projectedPolygons = new ProjectedPolygons(
-      projectedPolygons1.polygons ++ projectedPolygons2.polygons ++ projectedPolygons3.polygons,
+      projectedPolygons1.polygons ++ projectedPolygons2.polygons
+        ++ projectedPolygons3.polygons
+        ++ projectedPolygonsTriangle.polygons,
       projectedPolygons1.crs
     )
 
@@ -233,7 +236,6 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     // Check if tiles are merged correctly.
     val resultCube: MultibandTileLayerRDD[SpaceTimeKey] = processes.mergeGroupedByGeometry(groupedAndMaskedByGeometry, datacube.metadata)
-    val resultArray: Array[(SpaceTimeKey, MultibandTile)] = resultCube.collect()
 
     // Compare to reference tile.
     saveRDD(resultCube.toSpatial(times.head),2, "groupByGeometry_2017-01-15_actual.tif", 6, Some(datacube.metadata.extent))
@@ -242,6 +244,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     assertRastersEqual(referenceRaster, actualRaster)
 
     // Visualize RDD.
+    //val resultArray: Array[(SpaceTimeKey, MultibandTile)] = resultCube.collect()
     // val tiles: Iterable[(SpatialKey, Tile)] = resultArray.map(tile => (tile._1.spatialKey, tile._2.band(0)))
     // val fullRaster: Raster[Tile] = org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq(tiles, datacube.metadata.layout).stitch()
     // fullRaster.tile.renderPng(ColorRamps.BlueToRed).write("fullTile")
