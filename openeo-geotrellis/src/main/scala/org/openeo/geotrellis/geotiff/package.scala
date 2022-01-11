@@ -615,9 +615,8 @@ package object geotiff {
   }
 
   private def writeGeoTiff(geoTiff: MultibandGeoTiff, path: String): String = {
-    if (System.getenv("SWIFT_URL") != null && !path.contains("openeo-pydrvr")) {
-      val bucket = Option(System.getenv("SWIFT_BUCKET")).getOrElse("OpenEO-data")
-      val s3Uri = new AmazonS3URI(s"s3://$bucket$path")
+    if (path.startsWith("s3://")) {
+      val s3Uri = new AmazonS3URI(path)
 
       import java.nio.file.Files
 
