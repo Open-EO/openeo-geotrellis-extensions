@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.udf
 
 import geotrellis.layer.{LayoutDefinition, SpaceTimeKey, SpatialKey}
-import geotrellis.raster.{CroppedTile, FloatArrayTile, MultibandTile}
+import geotrellis.raster.{FloatArrayTile, MultibandTile}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.vector.{Extent, MultiPolygon}
 import jep.{DirectNDArray, SharedInterpreter}
@@ -126,7 +126,8 @@ object Udf {
                               layer: MultibandTileLayerRDD[SpaceTimeKey],
                               projectedPolygons: ProjectedPolygons,
                               bandNames: util.ArrayList[String],
-                              context: util.HashMap[String, Any]
+                              context: util.HashMap[String, Any],
+                              maskValue: Float = -1.0f
                              ): MultibandTileLayerRDD[SpaceTimeKey] = {
     val projectedPolygonsNativeCRS = ProjectedPolygons.reproject(projectedPolygons, layer.metadata.crs);
 
@@ -134,7 +135,7 @@ object Udf {
     // Key: MultiPolygon, Value: One tile for each date (combined with the polygon's extent and SpaceTimeKey).
     val processes = new OpenEOProcesses()
     val grouped_and_masked_rdd: RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] =
-      processes.groupAndMaskByGeometry(layer, projectedPolygonsNativeCRS)
+      processes.groupAndMaskByGeometry(layer, projectedPolygonsNativeCRS, maskValue)
 
     val result: RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] = grouped_and_masked_rdd.mapPartitions(iter => {
       iter.map(tuple => {
@@ -146,7 +147,7 @@ object Udf {
         val dates: List[Long] = sortedtiles.map(_._2)
         val multibandTiles: Seq[MultibandTile] = sortedtiles.map(_._3)
 
-        // Setup spatialextent
+        // Initialize spatial extent.
         val tileRows = multibandTiles.head.bands(0).rows
         val tileCols = multibandTiles.head.bands(0).cols
         val tileShape = List(dates.length, multibandTiles.head.bandCount, tileRows, tileCols)
@@ -160,16 +161,16 @@ object Udf {
 
         var resultTiles: Iterable[(Extent, Long, MultibandTile)] = tiles
         try {
-          // Convert multibandTiles to one DirectNDArray with shape (#dates, #bands, y-axis, x-axis) => Numpy array
+          // Convert multi-band tiles to one DirectNDArray with shape (#dates, #bands, #y-cells, #x-cells).
           val buffer = ByteBuffer.allocateDirect(multiDateMultiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
           multibandTiles.foreach(_.bands.foreach(tile => {
-            val tileFloats: Array[Float] =  tile.asInstanceOf[CroppedTile].toArrayDouble().map(_.toFloat)
+            val tileFloats: Array[Float] =  tile.toArrayDouble().map(_.toFloat)
             buffer.put(tileFloats, 0, tileFloats.length)
           }))
           val directTile = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
 
           interp.exec(defaultImports)
-          // Convert DirectNDArray to XarrayDatacube
+          // Convert DirectNDArray to XarrayDatacube.
           _set_xarraydatacube(interp, directTile, tileShape, spatialExtent, bandNames, dates)
 
           interp.set("context", context)
@@ -177,7 +178,7 @@ object Udf {
           interp.exec(code)
           interp.exec("result_cube = apply_datacube(data.get_datacube_list()[0], data.user_context)")
 
-          // Convert the result back to a MultibandTile.
+          // Convert the result back to a multi-band tile.
           buffer.rewind()
           resultTiles = multibandTiles.zipWithIndex.map {
             case (tile: MultibandTile, index: Int) =>

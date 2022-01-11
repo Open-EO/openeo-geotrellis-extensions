@@ -150,7 +150,7 @@ class UdfTest extends RasterMatchers {
     bandNames.add("B01")
     bandNames.add("B02")
 
-    val resultCube: MultibandTileLayerRDD[SpaceTimeKey] = Udf.runChunkPolygonUserCode(code, datacube, projectedPolygons, bandNames, new util.HashMap[String, Any]())
+    val resultCube: MultibandTileLayerRDD[SpaceTimeKey] = Udf.runChunkPolygonUserCode(code, datacube, projectedPolygons, bandNames, new util.HashMap[String, Any](), -1.0f)
 
     // Handle results
 
@@ -165,7 +165,7 @@ class UdfTest extends RasterMatchers {
     // Assert UDF effects.
     val processes = new OpenEOProcesses
     val groupedAndMaskedByGeometry: RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] =
-      processes.groupAndMaskByGeometry(datacube, projectedPolygons)
+      processes.groupAndMaskByGeometry(datacube, projectedPolygons, -1.0f)
     val resultCubeNoUdf: MultibandTileLayerRDD[SpaceTimeKey] = processes.mergeGroupedByGeometry(groupedAndMaskedByGeometry, datacube.metadata)
     val resultArrayNoUdf: Array[(SpaceTimeKey, MultibandTile)] = resultCubeNoUdf.collect()
     val tilesBand0NoUdf: Iterable[(SpatialKey, Tile)] = resultArrayNoUdf.map(tile => (tile._1.spatialKey, tile._2.band(0)))

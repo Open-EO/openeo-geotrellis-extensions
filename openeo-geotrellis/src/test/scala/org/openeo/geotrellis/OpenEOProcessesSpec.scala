@@ -170,7 +170,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val processes = new OpenEOProcesses
 
     val dates = Seq("2017-01-15T00:00:00Z","2017-01-16T00:00:00Z")
-    val bands = List.fill(2)(new ShortConstantTile(100, 512, 512).asInstanceOf[Tile])
+    val bands = List.fill(2)(new FloatConstantTile(100, 512, 512).asInstanceOf[Tile])
 
     val arrayMultibandTile = new ArrayMultibandTile(bands.toArray)
     // Chop each large tile in bands into a 16x16 array (with 32x32 pixels each).
@@ -210,7 +210,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     )
 
     val groupedAndMaskedByGeometry: RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] =
-      processes.groupAndMaskByGeometry(datacube, projectedPolygons)
+      processes.groupAndMaskByGeometry(datacube, projectedPolygons, -1.0f)
     assertFalse(groupedAndMaskedByGeometry.isEmpty)
 
     // Check polygons.

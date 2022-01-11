@@ -5,11 +5,13 @@ import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata, _}
 import geotrellis.proj4.CRS
 import geotrellis.raster._
 import geotrellis.raster.buffer.{BufferSizes, BufferedTile}
+import geotrellis.raster.crop.Crop
 import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
+import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.spark.join.SpatialJoin
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.{MultibandTileLayerRDD, _}
@@ -169,10 +171,18 @@ class OpenEOProcesses extends Serializable {
     groupedOnTime
   }
 
+  /**
+   * @param datacube The datacube to be masked. The celltype is assumed to be Float with NoDataHandling.
+   * @param projectedPolygons A list of polygons to mask the original datacube with.
+   * @param maskValue The value used for any cell outside of the polygon.
+   *                  This allows for a distinction between NoData cells within the polygon,
+   *                  and areas outside of it.
+   * @return A new RDD with a list of masked tiles for every polygon in projectedPolygons.
+   */
   def groupAndMaskByGeometry(datacube: MultibandTileLayerRDD[SpaceTimeKey],
-                             projectedPolygons: ProjectedPolygons
+                             projectedPolygons: ProjectedPolygons,
+                             maskValue: Float
                             ): RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] = {
-    // Key to projectedExtent
     val polygonsBC: Broadcast[List[MultiPolygon]] = SparkContext.getOrCreate().broadcast(projectedPolygons.polygons.toList)
     val layout = datacube.metadata.layout
 
@@ -180,7 +190,8 @@ class OpenEOProcesses extends Serializable {
       case (key, tile: MultibandTile) =>
         val tileExtentAsPolygon: Polygon = toPolygon(layout.mapTransform(key.getComponent[SpatialKey]))
         // Filter the polygons that lie in this tile.
-        val polygonsInTile = polygonsBC.value.filter(polygon => tileExtentAsPolygon.intersects(polygon))
+        val polygonsInTile: Seq[MultiPolygon] = polygonsBC.value.filter(polygon => tileExtentAsPolygon.intersects(polygon))
+        polygonsInTile.map { polygon => (polygon, (key, tile)) }
         // Mask this tile for every polygon.
         polygonsInTile.map { polygon =>
             val tileExtent: Extent = layout.mapTransform(key)
@@ -194,16 +205,32 @@ class OpenEOProcesses extends Serializable {
     val tilePerDateGroupedByPolygon: RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] = groupedAndMaskedByPolygon.map {
       case (polygon, values) =>
         val valuesGroupedByDate: Map[ZonedDateTime, Iterable[(SpaceTimeKey, MultibandTile)]] = values.groupBy(_._1.time)
-        // For every date, make one tile by stitching tiles together. Then crop the tile with the polygon's extent.
+        // For every date, make one tile by stitching tiles together.
         val tilePerDate: Iterable[(Extent, Long, MultibandTile)] = valuesGroupedByDate.map {
           case (key, maskedTiles) =>
-            // Stitch.
+            // 1. Stitch.
             val tiles: Iterable[(SpatialKey, MultibandTile)] = maskedTiles.map(tile => (tile._1.spatialKey, tile._2))
             val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).stitch()
-            // Crop.
+            // 2. Crop.
+            // Take the smallest grid-aligned extent that covers the polygon.
+            // Clamp = false: ensures that tiles within the extent that do not exist in the raster show up as NoData.
             val alignedExtent = raster.rasterExtent.createAlignedGridExtent(polygon.extent).extent
-            val croppedRaster: Raster[MultibandTile] = raster.crop(alignedExtent)
-            (croppedRaster.extent, maskedTiles.head._1.instant, croppedRaster.tile)
+            val cropOptions = Crop.Options(clamp = false, force = true)
+            val croppedRaster: Raster[MultibandTile] = raster.crop(alignedExtent, cropOptions)
+            // 3. Finally, mask out the polygon.
+            val maskedTile = croppedRaster.tile.mapBands { (_index, t) =>
+              if (!t.cellType.isFloatingPoint)
+                throw new IllegalArgumentException("groupAndMaskByGeometry only supports floating point cell types.")
+              val cellType = t.cellType.asInstanceOf[FloatCells with NoDataHandling]
+              val result = FloatArrayTile.fill(maskValue, t.cols, t.rows, cellType)
+              val re = croppedRaster.rasterExtent
+              val options = Rasterizer.Options.DEFAULT
+              polygon.foreach(re, options)({ (col: Int, row: Int) =>
+                result.setDouble(col, row, t.getDouble(col, row))
+              })
+              result
+            }
+            (croppedRaster.extent, maskedTiles.head._1.instant, maskedTile)
         }.toList
         (polygon, tilePerDate)
     }
