@@ -127,7 +127,7 @@ object Udf {
                               projectedPolygons: ProjectedPolygons,
                               bandNames: util.ArrayList[String],
                               context: util.HashMap[String, Any],
-                              maskValue: Float = -1.0f
+                              maskValue: java.lang.Double = null
                              ): MultibandTileLayerRDD[SpaceTimeKey] = {
     val projectedPolygonsNativeCRS = ProjectedPolygons.reproject(projectedPolygons, layer.metadata.crs);
 

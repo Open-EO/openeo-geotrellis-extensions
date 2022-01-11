@@ -181,8 +181,9 @@ class OpenEOProcesses extends Serializable {
    */
   def groupAndMaskByGeometry(datacube: MultibandTileLayerRDD[SpaceTimeKey],
                              projectedPolygons: ProjectedPolygons,
-                             maskValue: Float
+                             maskValue: java.lang.Double
                             ): RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] = {
+    val useNoDataMask = maskValue == null
     val polygonsBC: Broadcast[List[MultiPolygon]] = SparkContext.getOrCreate().broadcast(projectedPolygons.polygons.toList)
     val layout = datacube.metadata.layout
 
@@ -221,14 +222,19 @@ class OpenEOProcesses extends Serializable {
             val maskedTile = croppedRaster.tile.mapBands { (_index, t) =>
               if (!t.cellType.isFloatingPoint)
                 throw new IllegalArgumentException("groupAndMaskByGeometry only supports floating point cell types.")
-              val cellType = t.cellType.asInstanceOf[FloatCells with NoDataHandling]
-              val result = FloatArrayTile.fill(maskValue, t.cols, t.rows, cellType)
               val re = croppedRaster.rasterExtent
-              val options = Rasterizer.Options.DEFAULT
-              polygon.foreach(re, options)({ (col: Int, row: Int) =>
-                result.setDouble(col, row, t.getDouble(col, row))
-              })
-              result
+              if (useNoDataMask) {
+                t.mask(re.extent, polygon)
+              }
+              else {
+                val cellType = t.cellType.asInstanceOf[FloatCells with NoDataHandling]
+                val result = FloatArrayTile.fill(maskValue.floatValue(), t.cols, t.rows, cellType)
+                val options = Rasterizer.Options.DEFAULT
+                polygon.foreach(re, options)({ (col: Int, row: Int) =>
+                  result.setDouble(col, row, t.getDouble(col, row))
+                })
+                result
+              }
             }
             (croppedRaster.extent, maskedTiles.head._1.instant, maskedTile)
         }.toList
