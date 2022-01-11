@@ -1,9 +1,9 @@
 package org.openeo.geotrellis.stac
 
 import org.slf4j.LoggerFactory
-import sun.nio.cs.UTF_8
 
 import java.io.IOException
+import java.nio.charset.Charset
 import java.nio.file.{Files, Paths, StandardOpenOption}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -56,7 +56,7 @@ class STACItem {
          |""".stripMargin
     try {
 
-      Files.write(Paths.get(path),template.getBytes(UTF_8.INSTANCE),StandardOpenOption.CREATE_NEW)
+      Files.write(Paths.get(path),template.getBytes(Charset.forName("UTF-8")),StandardOpenOption.CREATE_NEW)
     } catch {
       case e: IOException => logger.warn("Failed to write STAC metadata.", e)
     }
