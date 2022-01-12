@@ -615,8 +615,9 @@ package object geotiff {
   }
 
   private def writeGeoTiff(geoTiff: MultibandGeoTiff, path: String): String = {
-    if (path.startsWith("s3://")) {
-      val s3Uri = new AmazonS3URI(path)
+    if (path.startsWith("s3:/")) {
+      val correctS3Path = path.replaceFirst("s3:/(?!/)", "s3://")
+      val s3Uri = new AmazonS3URI(correctS3Path)
 
       import java.nio.file.Files
 
