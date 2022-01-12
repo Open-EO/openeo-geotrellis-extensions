@@ -4,7 +4,7 @@ import geotrellis.layer.{LayoutDefinition, SpaceTimeKey, SpatialKey}
 import geotrellis.raster.{FloatArrayTile, MultibandTile}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.vector.{Extent, MultiPolygon}
-import jep.{DirectNDArray, SharedInterpreter}
+import jep.{DirectNDArray, JepConfig, SharedInterpreter}
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 
@@ -16,7 +16,7 @@ object Udf {
 
   private val SIZE_OF_FLOAT = 4
 
-  private val defaultImports =
+  private val DEFAULT_IMPORTS =
     """
       |import collections
       |import datetime
@@ -27,7 +27,19 @@ object Udf {
       |from openeo.udf.xarraydatacube import XarrayDataCube
       |""".stripMargin
 
+  private var initialized = false
+
   case class SpatialExtent(xmin : Double, val ymin : Double, val xmax : Double, ymax: Double, tileCols: Int, tileRows: Int)
+
+  private def _createSharedInterpreter(): SharedInterpreter = {
+    if (!initialized) {
+      val config = new JepConfig()
+      config.setRedirectOutputStreams(true)
+      SharedInterpreter.setConfig(config)
+      initialized = true
+    }
+    new SharedInterpreter
+  }
 
   private def _createExtentFromSpatialKey(layoutDefinition: LayoutDefinition,
                                           key: SpatialKey
@@ -139,7 +151,7 @@ object Udf {
 
     val result: RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] = grouped_and_masked_rdd.mapPartitions(iter => {
       iter.map(tuple => {
-        val interp: SharedInterpreter = new SharedInterpreter
+        val interp = _createSharedInterpreter()
         val tiles: Iterable[(Extent, Long, MultibandTile)] = tuple._2
 
         // Sort tiles by date.
@@ -169,7 +181,7 @@ object Udf {
           }))
           val directTile = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
 
-          interp.exec(defaultImports)
+          interp.exec(DEFAULT_IMPORTS)
           // Convert DirectNDArray to XarrayDatacube.
           _set_xarraydatacube(interp, directTile, tileShape, spatialExtent, bandNames, dates)
 
@@ -216,7 +228,7 @@ object Udf {
       // TODO: Currently this fails because per tile processing cannot access the interpreter
       // TODO: This is because every tile in a partition is handled in a separate thread.
       iter.map(key_and_tile => {
-        val interp: SharedInterpreter = new SharedInterpreter
+        val interp = _createSharedInterpreter()
         val multiBandTile: MultibandTile = key_and_tile._2
         var resultMultiBandTile = multiBandTile
         try {
@@ -236,7 +248,7 @@ object Udf {
           val directTile = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
 
           // Setup the xarray datacube.
-          interp.exec(defaultImports)
+          interp.exec(DEFAULT_IMPORTS)
           val spatialExtent = _createExtentFromSpatialKey(layer.metadata.layout, key_and_tile._1)
           _set_xarraydatacube(interp, directTile, tileShape, spatialExtent, bandNames)
 
