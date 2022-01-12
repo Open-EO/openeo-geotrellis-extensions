@@ -22,6 +22,18 @@
       <version>${geotrellis.version}</version>
     </dependency>
     <dependency>
+      <groupId>org.apache.spark</groupId>
+      <artifactId>spark-core_${scala.binary.version}</artifactId>
+      <version>${spark.version}</version>
+      <scope>provided</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>net.java.dev.jets3t</groupId>
+          <artifactId>jets3t</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
       <groupId>org.locationtech.sfcurve</groupId>
       <artifactId>sfcurve-zorder_${scala.binary.version}</artifactId>
       <version>0.2.2</version>
