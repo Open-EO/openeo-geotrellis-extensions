@@ -115,7 +115,7 @@ class ElasticsearchCacheRepository(uri: String) {
   // TODO: use paging instead of size(10000)
   import ElasticsearchCacheRepository._
 
-  private def elasticClient: ElasticClient = ElasticClient(JavaClient(ElasticProperties(uri)))
+  private def elasticClient: ElasticClient = Elasticsearch.client(uri)
 
   def query(cacheIndex: String, geometry: Geometry, from: ZonedDateTime, to: ZonedDateTime,
             bandNames: Seq[String]): Iterable[Sentinel2L2aCacheEntry] = {
