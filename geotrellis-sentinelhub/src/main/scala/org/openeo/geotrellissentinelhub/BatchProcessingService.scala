@@ -48,7 +48,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     // workaround for bug where upper bound is considered inclusive in OpenEO
     val (from, to) = includeEndDay(from_date, to_date)
 
-    val multiPolygon = multiPolygonFromPolygonExteriors(polygons)
+    val multiPolygon = simplify(polygons)
     val multiPolygonCrs = crs
 
     val dateTimes = authorized { accessToken =>
@@ -152,7 +152,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
                                    dem_instance: String, metadata_properties: util.Map[String, Any], subfolder: String,
                                    request_group_id: String): util.List[String] = {
     // TODO: add error handling
-    val multiPolygon = multiPolygonFromPolygonExteriors(polygons).reproject(crs, LatLng)
+    val multiPolygon = simplify(polygons).reproject(crs, LatLng)
     val multiPolygonCrs = LatLng
 
     // from should be start of day, to should be end of day (23:59:59)
