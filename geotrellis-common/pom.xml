@@ -9,7 +9,6 @@
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>org.openeo</groupId>
   <artifactId>geotrellis-common</artifactId>
   <version>2.3.0_2.12-SNAPSHOT</version>
 
@@ -41,12 +40,12 @@
     </dependency>
     <dependency>
       <groupId>org.locationtech.sfcurve</groupId>
-      <artifactId>sfcurve-api_${scala.binary.version}</artifactId><!-- not yet available for scala 2.12!! -->
+      <artifactId>sfcurve-api_${scala.binary.version}</artifactId>
       <version>0.2.2</version>
     </dependency>
     <dependency>
       <groupId>org.locationtech.sfcurve</groupId>
-      <artifactId>sfcurve-zorder_${scala.binary.version}</artifactId><!-- not yet available for scala 2.12!! -->
+      <artifactId>sfcurve-zorder_${scala.binary.version}</artifactId>
       <version>0.2.2</version>
     </dependency>
     <dependency>
