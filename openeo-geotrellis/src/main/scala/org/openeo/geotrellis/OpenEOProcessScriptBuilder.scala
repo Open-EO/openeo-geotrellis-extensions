@@ -1,7 +1,7 @@
 package org.openeo.geotrellis
 
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{ArrayTile, ByteUserDefinedNoDataCellType, CellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isNoData}
+import geotrellis.raster.{ArrayTile, ByteUserDefinedNoDataCellType, CellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isNoData}
 import org.apache.commons.math3.exception.NotANumberException
 import org.apache.commons.math3.stat.descriptive.rank.Percentile
 import org.apache.commons.math3.stat.ranking.NaNStrategy
@@ -16,6 +16,7 @@ import scala.collection.JavaConversions.mapAsScalaMap
 import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.collection.{immutable, mutable}
+import scala.util.Try
 
 object OpenEOProcessScriptBuilder{
 
@@ -239,7 +240,18 @@ object OpenEOProcessScriptBuilder{
       }
       ts
     })
+  }
 
+  private def countValid(tiles:Seq[Tile]) : Seq[Tile] = {
+    multibandReduce(MultibandTile(tiles),ts => ts.length)
+  }
+
+  private def countAll(tiles:Seq[Tile]) : Seq[Tile] = {
+    multibandReduce(MultibandTile(tiles), ts => ts.length, ignoreNoData = false)
+  }
+
+  private def countCondition(tiles:Seq[Tile]) : Seq[Tile] = {
+    multibandReduce(MultibandTile(tiles).convert(IntConstantNoDataCellType), ts => ts.count(_ != 0), ignoreNoData = false)
   }
 
   object MinIgnoreNoData extends LocalTileBinaryOp {
@@ -318,6 +330,17 @@ class OpenEOProcessScriptBuilder {
 
   private def applyListFunction(argName: String, operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
     unaryFunction(argName, (tiles: Seq[Tile]) => operator(tiles))
+  }
+
+  private def mapListFunction(listArgName: String, mapArgName:String, operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val mapFunction: Option[OpenEOProcess] = storedArgs.get(mapArgName)
+    val listFunction: Option[OpenEOProcess] = storedArgs.get(listArgName)
+
+    (context: Map[String,Any]) => (tiles: Seq[Tile]) => {
+      val mapTiles = if (mapFunction.isDefined) mapFunction.get(context)(tiles) else tiles
+      composeFunctions((tiles: Seq[Tile]) => operator(tiles), listFunction)(context)(mapTiles)
+    }
   }
 
   private def reduceListFunction(argName: String, operator: Seq[Tile] => Tile): OpenEOProcess = {
@@ -494,6 +517,8 @@ class OpenEOProcessScriptBuilder {
     val hasExpressions = arguments.containsKey("expressions")
     val hasData = arguments.containsKey("data")
     val ignoreNoData = !(arguments.getOrDefault("ignore_nodata",Boolean.box(true).asInstanceOf[Object]) == Boolean.box(false) || arguments.getOrDefault("ignore_nodata",None) == "false" )
+    val hasTrueCondition = Try(arguments.get("condition").toString.toBoolean).getOrElse(false)
+    val hasConditionExpression = arguments.get("condition") != null && !arguments.get("condition").isInstanceOf[Boolean.type]
 
     val operation: OpenEOProcess = operator match {
       case "if" => ifProcess(arguments)
@@ -539,6 +564,9 @@ class OpenEOProcessScriptBuilder {
       case "sd" if hasData => reduceListFunction("data", Sqrt.apply _ compose Variance.apply)
       case "median" if ignoreNoData => applyListFunction("data",median)
       case "median" => applyListFunction("data",medianWithNodata)
+      case "count" if hasTrueCondition => applyListFunction("data", countAll)
+      case "count" if hasConditionExpression => mapListFunction("data", "condition", countCondition)
+      case "count" => applyListFunction("data", countValid)
       // Unary math
       case "abs" if hasX => mapFunction("x", Abs.apply)
       case "absolute" if hasX => mapFunction("x", Abs.apply)
