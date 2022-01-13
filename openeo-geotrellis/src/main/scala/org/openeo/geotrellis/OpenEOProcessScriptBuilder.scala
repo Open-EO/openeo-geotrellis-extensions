@@ -599,6 +599,7 @@ class OpenEOProcessScriptBuilder {
       case "linear_scale_range" => linearScaleRangeFunction(arguments)
       case "quantiles" => quantilesFunction(arguments,ignoreNoData)
       case "array_concat" => arrayConcatFunction(arguments)
+      case "array_append" => arrayAppendFunction(arguments)
       case "array_create" => arrayCreateFunction(arguments)
       case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
     }
@@ -737,6 +738,19 @@ class OpenEOProcessScriptBuilder {
         throw new UnsupportedOperationException("Geotrellis backend only supports inserting in array-modify")
       }
 
+    }
+    bandFunction
+  }
+
+  private def arrayAppendFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val inputFunction = storedArgs.get("data").get
+    val valueFunction = storedArgs.get("value").get
+
+    val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
+      val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
+      val values: Seq[Tile] = evaluateToTiles(valueFunction, context, tiles)
+      data ++ values
     }
     bandFunction
   }
