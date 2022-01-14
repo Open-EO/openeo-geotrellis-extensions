@@ -144,13 +144,21 @@ package object geotrellissentinelhub {
       Some(10000)
     else None
 
-  // flattens n MultiPolygons into 1 by taking their polygon exteriors
-  private[geotrellissentinelhub] def multiPolygonFromPolygonExteriors(multiPolygons: Array[MultiPolygon]): MultiPolygon = {
-    val polygonExteriors = for {
+  // flattens n MultiPolygons into their polygon exteriors
+  private def polygonExteriors(multiPolygons: Array[MultiPolygon]): Seq[Polygon] =
+    for {
       multiPolygon <- multiPolygons
       polygon <- multiPolygon.polygons
     } yield Polygon(polygon.getExteriorRing)
 
-    MultiPolygon(polygonExteriors)
+  // TODO: can the return type be generalized to Geometry?
+  private def dissolve(polygons: Seq[Polygon]): MultiPolygon = {
+    GeometryCollection(polygons).union() match {
+      case polygon: Polygon => MultiPolygon(polygon)
+      case multiPolygon: MultiPolygon => multiPolygon
+    }
   }
+
+  private[geotrellissentinelhub] def simplify(multiPolygons: Array[MultiPolygon]): MultiPolygon =
+    dissolve(polygonExteriors(multiPolygons))
 }
