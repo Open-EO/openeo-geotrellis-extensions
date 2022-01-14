@@ -143,21 +143,21 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
                                    dem_instance: String, metadata_properties: util.Map[String, util.Map[String, Any]],
                                    subfolder: String, request_group_id: String): util.List[String] = {
     // TODO: add error handling
-    val multiPolygon = simplify(polygons).reproject(crs, LatLng)
-    val multiPolygonCrs = LatLng
+    val geometry = simplify(polygons).reproject(crs, LatLng)
+    val geometryCrs = LatLng
 
     // from should be start of day, to should be end of day (23:59:59)
     val (from, to) = includeEndDay(from_date, to_date)
 
     // original features that overlap in space and time
     val features = authorized { accessToken =>
-      catalogApi.searchCard4L(collection_id, multiPolygon, multiPolygonCrs, from, to,
+      catalogApi.searchCard4L(collection_id, geometry, geometryCrs, from, to,
         accessToken, Criteria.toQueryProperties(metadata_properties))
     }
 
     // their intersections with input polygons (all should be in LatLng)
     val intersectionFeatures = features.mapValues(feature =>
-      feature.mapGeom(geom => geom intersection multiPolygon)
+      feature.mapGeom(geom => geom intersection geometry)
     )
 
     val batchProcessingApi = new BatchProcessingApi(endpoint)
