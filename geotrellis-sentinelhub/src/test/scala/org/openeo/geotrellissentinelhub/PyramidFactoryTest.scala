@@ -322,7 +322,7 @@ class PyramidFactoryTest {
 
   @Test
   def testUtmSparse(): Unit = {
-    implicit val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+    implicit val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
     try {
       // small (1 tile request) regions in the upper left and lower right corners of [2.59003, 51.069, 2.8949, 51.2206]
@@ -370,6 +370,59 @@ class PyramidFactoryTest {
 
       assertEquals(2, processApiSpy.getTileCount)
       // TODO: compare these regions against those for the non-sparse case (testUtm)
+    } finally sc.stop()
+  }
+
+  @Test
+  def testOverlappingPolygons(): Unit = {
+    implicit val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      val upperLeftPolygon =
+        Extent(4.093673229217529, 50.39570215730746, 4.095818996429443, 50.39704266811707).toPolygon()
+      val lowerRightPolygon =
+        Extent(4.094831943511963, 50.39508660393027, 4.0970635414123535, 50.396317702692095).toPolygon()
+
+      assertTrue("polygons do not overlap", upperLeftPolygon intersects lowerRightPolygon)
+
+      val polygons: Array[MultiPolygon] = Array(
+        MultiPolygon(upperLeftPolygon),
+        MultiPolygon(lowerRightPolygon)
+      )
+
+      val date = ZonedDateTime.of(LocalDate.of(2021, 4, 3), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+      val (utmPolygons, utmCrs) = {
+        val center = GeometryCollection(polygons).extent.center
+        val utmCrs = UTM.getZoneCrs(lon = center.getX, lat = center.getY)
+        (polygons.map(_.reproject(LatLng, utmCrs)), utmCrs)
+      }
+
+      val endpoint = "https://services.sentinel-hub.com"
+
+      val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
+        new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10, 10),
+        sampleType = FLOAT32)
+
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        utmPolygons, utmCrs,
+        from_date = ISO_OFFSET_DATE_TIME format date,
+        to_date = ISO_OFFSET_DATE_TIME format date,
+        band_names = Seq("VH", "VV").asJava,
+        metadata_properties = Collections.emptyMap[String, Any]
+      )
+
+      val spatialLayer = layer
+        .toSpatial()
+        .cache()
+
+      val utmPolygonsExtent = utmPolygons.toSeq.extent
+      val Some(Raster(multibandTile, extent)) = spatialLayer
+        .sparseStitch(utmPolygonsExtent)
+        .map(_.crop(utmPolygonsExtent))
+
+      val tif = MultibandGeoTiff(multibandTile, extent, layer.metadata.crs, geoTiffOptions)
+      tif.write(s"/tmp/overlapping.tif")
     } finally sc.stop()
   }
 

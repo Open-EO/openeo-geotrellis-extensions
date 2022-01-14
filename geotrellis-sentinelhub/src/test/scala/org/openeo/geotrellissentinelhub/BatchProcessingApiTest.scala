@@ -124,16 +124,14 @@ class BatchProcessingApiTest {
     val polygons = Seq(bboxLeft, bboxRight)
       .map(extent => extent.toPolygon())
 
-    val multiPolygon = MultiPolygon(polygons)
-
     val date = LocalDate.of(2020, 11, 5)
     val startOfDay = date.atStartOfDay(ZoneOffset.UTC)
     val endOfDay = date.atTime(OffsetTime.of(LocalTime.MAX, ZoneOffset.UTC)).toZonedDateTime
 
     val batchProcess = batchProcessingApi.createBatchProcess(
       datasetId = "sentinel-1-grd",
-      multiPolygon,
-      multiPolygonCrs = LatLng,
+      geometry = MultiPolygon(polygons),
+      geometryCrs = LatLng,
       dateTimes = Seq(startOfDay, endOfDay),
       bandNames = Seq("VV", "VH"),
       SampleType.FLOAT32,

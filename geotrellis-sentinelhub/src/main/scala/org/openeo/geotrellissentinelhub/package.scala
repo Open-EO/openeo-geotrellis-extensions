@@ -7,6 +7,7 @@ import geotrellis.vector._
 import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import net.jodah.failsafe.function.{CheckedConsumer, CheckedSupplier}
 import net.jodah.failsafe.{Failsafe, FailsafeExecutor, RetryPolicy}
+import org.locationtech.jts.geom.Polygonal
 import org.slf4j.Logger
 import software.amazon.awssdk.core.sync.ResponseTransformer
 import software.amazon.awssdk.regions.Region
@@ -152,9 +153,9 @@ package object geotrellissentinelhub {
       polygon <- multiPolygon.polygons
     } yield Polygon(polygon.getExteriorRing)
 
-  private def dissolve(polygons: Seq[Polygon]): MultiPolygon =
-    GeometryCollection(polygons).union().asInstanceOf[MultiPolygon]
+  private def dissolve(polygons: Seq[Polygon]): Geometry with Polygonal =
+    GeometryCollection(polygons).union().asInstanceOf[Geometry with Polygonal]
 
-  private[geotrellissentinelhub] def simplify(multiPolygons: Array[MultiPolygon]): MultiPolygon =
+  private[geotrellissentinelhub] def simplify(multiPolygons: Array[MultiPolygon]): Geometry with Polygonal =
     dissolve(polygonExteriors(multiPolygons))
 }
