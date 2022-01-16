@@ -98,7 +98,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     val bandCount = new OpenEOProcesses().RDDBandCount(datacube)
 
     try
-      computeStatsGeotrellis.aggregateSpatialGeneric(reducer, datacube.persist(MEMORY_AND_DISK_SER),splitPolygons, polygons.crs, bandCount)
+      computeStatsGeotrellis.aggregateSpatialGeneric(reducer, datacube.persist(MEMORY_AND_DISK_SER),splitPolygons, polygons.crs, bandCount,output_file)
     finally
       statisticsWriter.close()
   }

@@ -91,7 +91,7 @@ class AggregatePolygonProcess() {
   }
 
 
-  def aggregateSpatialGeneric(reducer:String, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int): Unit = {
+  def aggregateSpatialGeneric(reducer:String, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int, outputPath:String): Unit = {
     import org.apache.spark.storage.StorageLevel._
 
     val (polygons, indexMapping) = polygonsWithIndexMapping
@@ -146,12 +146,8 @@ class AggregatePolygonProcess() {
       val dataframe = df.withColumnRenamed(df.columns(0),"date").withColumnRenamed(df.columns(1),"feature_index")
       //val expressions = bandColumns.flatMap(col => Seq((col,"sum"),(col,"max"))).toMap
       //https://spark.apache.org/docs/3.2.0/sql-ref-null-semantics.html#built-in-aggregate
-      val expressionCols = bandColumns.map(df.col(_)).flatMap(col => Seq(avg(col),sum(col),count(col.isNull),count(not(col.isNull)),expr(s"percentile_approx(band_1,0.95)")))
-      val inputRows = dataframe.collect()
-      print(inputRows)
-      val result = dataframe.groupBy("date","feature_index").agg(expressionCols.head,expressionCols.tail:_*).collect()
-      print(result.mkString)
-
+      val expressionCols = bandColumns.map(df.col(_)).flatMap(col => Seq(avg(col),sum(col),count(col.isNull),count(not(col.isNull))))//,expr(s"percentile_approx(band_1,0.95)")
+      dataframe.groupBy("date","feature_index").agg(expressionCols.head,expressionCols.tail:_*).write.csv("file://" + outputPath)
 
     }finally{
       byIndexMask.unpersist()
