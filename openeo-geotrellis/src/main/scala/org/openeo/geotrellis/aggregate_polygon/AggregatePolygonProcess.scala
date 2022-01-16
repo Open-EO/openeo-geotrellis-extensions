@@ -10,11 +10,21 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.vector._
 import org.apache.spark.SparkContext
-import org.apache.spark.rdd.RDD
+import org.apache.spark.rdd._
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types._
+import org.apache.spark.sql.{Row, SparkSession}
 import org.openeo.geotrellis.SpatialToSpacetimeJoinRdd
 import org.openeo.geotrellis.aggregate_polygon.intern.PixelRateValidator.exceedsTreshold
 import org.openeo.geotrellis.aggregate_polygon.intern._
 import org.openeo.geotrellis.layers.LayerProvider
+import org.slf4j.LoggerFactory
+import spire.syntax.cfor.cfor
+
+import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit.DAYS
+import scala.collection.JavaConverters._
+import scala.collection.mutable.ListBuffer
 
 object AggregatePolygonProcess {
   private type PolygonsWithIndexMapping = (Seq[MultiPolygon], Seq[Set[Int]])
@@ -77,6 +87,74 @@ class AggregatePolygonProcess() {
       }))
 
       statisticsCallback.onCompleted()
+    }
+  }
+
+
+  def aggregateSpatialGeneric(reducer:String, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int): Unit = {
+    import org.apache.spark.storage.StorageLevel._
+
+    val (polygons, indexMapping) = polygonsWithIndexMapping
+
+    // each polygon becomes a feature with a value that's equal to its position in the array
+    val indexedFeatures = polygons
+      .zipWithIndex
+      .map { case (multiPolygon, index) => MultiPolygonFeature(multiPolygon, index.toDouble) }
+
+    val sc = datacube.sparkContext
+
+    val byIndexMask = LayerProvider.createMaskLayer(indexedFeatures, crs, datacube.metadata, sc)
+
+    try {
+      val spatiallyPartitionedIndexMaskLayer: RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition] = ContextRDD(byIndexMask.persist(MEMORY_ONLY_2), byIndexMask.metadata)
+      val combinedRDD = new SpatialToSpacetimeJoinRdd(datacube, spatiallyPartitionedIndexMaskLayer)
+      val pixelRDD: RDD[Row] = combinedRDD.flatMap{
+        case (key: SpaceTimeKey,( tile: MultibandTile,zones: Tile)) => {
+          val rows  = tile.rows
+          val cols  = tile.cols
+          val bands = tile.bandCount
+
+          val date = java.sql.Date.valueOf(key.time.toLocalDate)
+          val result: ListBuffer[Row] = ListBuffer()
+          val bandsValues = Array.ofDim[Double](bands)
+
+          cfor(0)(_ < rows, _ + 1) { row =>
+            cfor(0)(_ < cols, _ + 1) { col =>
+              val z = zones.get(col, row)
+              if(z>=0) {
+                cfor(0)(_ < bands, _ + 1) { band =>
+                  val v = tile.band(band).getDouble(col, row)
+                  bandsValues(band) = v
+                }
+                result.append(Row.fromSeq(Seq(date, z) ++ bandsValues.toSeq))
+              }
+            }
+          }
+
+          result
+        }
+      }
+      val session = SparkSession.builder().config(sc.getConf).getOrCreate()
+
+      val bandColumns = (0 until bandCount).map(b => f"band_$b")
+      val bandStructs = bandColumns.map(StructField( _,DoubleType,true))
+
+      val schema = StructType(Seq(StructField("date", DateType, true),
+        StructField("feature_index", IntegerType, true),
+      ) ++ bandStructs)
+      val df = session.createDataFrame(pixelRDD,schema)
+      val dataframe = df.withColumnRenamed(df.columns(0),"date").withColumnRenamed(df.columns(1),"feature_index")
+      //val expressions = bandColumns.flatMap(col => Seq((col,"sum"),(col,"max"))).toMap
+      //https://spark.apache.org/docs/3.2.0/sql-ref-null-semantics.html#built-in-aggregate
+      val expressionCols = bandColumns.map(df.col(_)).flatMap(col => Seq(avg(col),sum(col),count(col.isNull),count(not(col.isNull)),expr(s"percentile_approx(band_1,0.95)")))
+      val inputRows = dataframe.collect()
+      print(inputRows)
+      val result = dataframe.groupBy("date","feature_index").agg(expressionCols.head,expressionCols.tail:_*).collect()
+      print(result.mkString)
+
+
+    }finally{
+      byIndexMask.unpersist()
     }
   }
 
