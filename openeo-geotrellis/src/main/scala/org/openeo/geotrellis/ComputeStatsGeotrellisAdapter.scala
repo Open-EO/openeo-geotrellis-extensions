@@ -15,7 +15,6 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
 import scala.collection.JavaConverters._
-import scala.collection.immutable.Seq
 
 
 object ComputeStatsGeotrellisAdapter {
