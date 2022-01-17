@@ -2,9 +2,8 @@ package org.openeo.geotrellis.udf
 
 import geotrellis.layer.{Bounds, KeyBounds, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
-import geotrellis.raster.render.ColorRamp
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ArrayMultibandTile, FloatArrayTile, MultibandTile, MutableArrayTile, Raster, Tile, TileLayout}
+import geotrellis.raster.{ArrayMultibandTile, FloatArrayTile, MultibandTile, MutableArrayTile, Tile, TileLayout}
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, _}
@@ -72,13 +71,7 @@ class UdfTest extends RasterMatchers {
     resultRDD.values.first().bands(0).foreach(e => assert(e == 60))
   }
 
-//  @Test
-  def testRunChunkPolygonUserCode(): Unit = {
-    val filename = "/org/openeo/geotrellis/udf/chunk_polygon_test.py"
-    val source = Source.fromURL(getClass.getResource(filename))
-    val code = source.getLines.mkString("\n")
-    source.close()
-
+  def _createChunkPolygonDatacube(): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
     val dates = Seq("2017-01-15T00:00:00Z","2017-01-16T00:00:00Z")
     val constantFloats: Array[Float] = Array.fill(512*512)(0f)
     val constantBands = List.fill(2)(FloatArrayTile(constantFloats, 512, 512))
@@ -112,17 +105,10 @@ class UdfTest extends RasterMatchers {
     val maxKey: SpaceTimeKey = SpaceTimeKey.apply(bounds.get.maxKey, TemporalKey(times.last))
     val metadata: TileLayerMetadata[SpaceTimeKey] = new TileLayerMetadata[SpaceTimeKey](md.cellType, md.layout, md.extent, md.crs, new KeyBounds[SpaceTimeKey](minKey, maxKey))
     val datacube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = ContextRDD(cubeXYTB, metadata)
+    datacube
+  }
 
-    // Visualize original RDD.
-    val colorRamp =
-      ColorRamp(0xFF0000FF, 0x0000FFFF)
-        .stops(512*512)
-        .setAlphaGradient(0xFF, 0xAA)
-    val tiles1: Iterable[(SpatialKey, Tile)] = datacube.collect().map(tile => (tile._1.spatialKey, tile._2.band(0)))
-    val fullRaster2: Raster[Tile] = org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq(tiles1, datacube.metadata.layout).stitch()
-    fullRaster2.tile.renderPng(colorRamp).write("orig_udf_fullTile")
-
-    // Datacube extent(-180.0, -89.99999, 179.99999, 89.99999).
+  def _createChunkPolygonProjectedPolygons(): ProjectedPolygons = {
     val projectedPolygons1 = ProjectedPolygons.fromExtent(
       new Extent(-180, -80, -156, -72), "EPSG:4326"
     )
@@ -142,27 +128,40 @@ class UdfTest extends RasterMatchers {
       new Extent(150, 70, 155, 80), "EPSG:4326"
     )
     val projectedPolygonsTriangle = ProjectedPolygons(List(Polygon((-20.0,-70.0), (-50.0,-70.0), (-20.0, -80.0), (-20.0,-70.0))), "EPSG:4326")
-
-    val projectedPolygons = new ProjectedPolygons(
+    new ProjectedPolygons(
       projectedPolygons1.polygons ++ projectedPolygons2.polygons ++ projectedPolygons3.polygons ++
-      projectedPolygons4.polygons ++ projectedPolygons5.polygons ++ projectedPolygons6.polygons ++
-      projectedPolygonsTriangle.polygons,
+        projectedPolygons4.polygons ++ projectedPolygons5.polygons ++ projectedPolygons6.polygons ++
+        projectedPolygonsTriangle.polygons,
       projectedPolygons1.crs
     )
+  }
+
+//  @Test
+  def testChunkPolygonInPlaceModify(): Unit = {
+    val filename = "/org/openeo/geotrellis/udf/chunk_polygon_test.py"
+    val source = Source.fromURL(getClass.getResource(filename))
+    val code = source.getLines.mkString("\n")
+    source.close()
+
+    // Datacube extent: (-180.0, -89.99999, 179.99999, 89.99999).
+    val datacube = _createChunkPolygonDatacube()
+    val projectedPolygons = _createChunkPolygonProjectedPolygons()
     val bandNames = new util.ArrayList[String]()
     bandNames.add("B01")
     bandNames.add("B02")
 
-    val resultCube: MultibandTileLayerRDD[SpaceTimeKey] = Udf.runChunkPolygonUserCode(code, datacube, projectedPolygons, bandNames, new util.HashMap[String, Any](), -1.0f)
-
-    // Handle results
+    val resultCube: MultibandTileLayerRDD[SpaceTimeKey] = Udf.runChunkPolygonUserCode(
+      code, datacube, projectedPolygons, bandNames, new util.HashMap[String, Any](), -1.0f
+    )
 
     // Compare bands.
     val resultArray: Array[(SpaceTimeKey, MultibandTile)] = resultCube.collect()
     val tilesBand0: Iterable[(SpatialKey, Tile)] = resultArray.map(tile => (tile._1.spatialKey, tile._2.band(0)))
     val tilesBand1: Iterable[(SpatialKey, Tile)] = resultArray.map(tile => (tile._1.spatialKey, tile._2.band(1)))
     tilesBand0.zip(tilesBand1).foreach( x =>
-      assert(x._1._2.asInstanceOf[FloatArrayTile].toArray().filter(_ > 0).map(_+1) sameElements x._2._2.asInstanceOf[FloatArrayTile].toArray().filter(_ > 0))
+      assert(x._1._2.asInstanceOf[FloatArrayTile]
+        .toArray().filter(_ > 0).map(_+1) sameElements x._2._2.asInstanceOf[FloatArrayTile].toArray().filter(_ > 0)
+      )
     )
 
     // Assert UDF effects.
@@ -181,7 +180,7 @@ class UdfTest extends RasterMatchers {
     )
 
     // Compare to reference tile.
-    saveRDD(resultCube.toSpatial(times.head),2, "chunkPolygon_actual.tif", 6, Some(datacube.metadata.extent))
+    saveRDD(resultCube.toSpatial(resultArray(0)._1.time),2, "chunkPolygon_actual.tif", 6, Some(datacube.metadata.extent))
     val actualRaster = GeoTiffRasterSource("chunkPolygon_actual.tif").read().get
     val referenceRaster = GeoTiffRasterSource("https://artifactory.vgt.vito.be/testdata-public/chunkPolygon_reference.tif").read().get
     assertRastersEqual(referenceRaster, actualRaster)
@@ -189,6 +188,41 @@ class UdfTest extends RasterMatchers {
     // Visualize RDD.
     // val fullRaster: Raster[Tile] = org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq(tilesBand0, datacube.metadata.layout).stitch()
     // fullRaster.tile.renderPng(colorRamp).write("udf_fullTile_band0")
+  }
+
+//  @Test
+  def testChunkPolygonEditDatesAndBands(): Unit = {
+    val filename = "/org/openeo/geotrellis/udf/chunk_polygon_edit_dates_and_bands_test.py"
+    val source = Source.fromURL(getClass.getResource(filename))
+    val code = source.getLines.mkString("\n")
+    source.close()
+
+    val datacube = _createChunkPolygonDatacube()
+    val projectedPolygons = _createChunkPolygonProjectedPolygons()
+    val bandNames = new util.ArrayList[String]()
+    bandNames.add("B01")
+    bandNames.add("B02")
+
+    val resultCube: MultibandTileLayerRDD[SpaceTimeKey] = Udf.runChunkPolygonUserCode(
+      code, datacube, projectedPolygons, bandNames, new util.HashMap[String, Any](), -1.0f
+    )
+
+    val originalArray: Array[(SpaceTimeKey, MultibandTile)] = datacube.collect()
+    val resultArray: Array[(SpaceTimeKey, MultibandTile)] = resultCube.collect()
+    val resultDates = resultArray.map(_._1.instant).toSet
+
+    assert(resultDates.size == 1)
+    assert(resultArray.head._2.bandCount == 1)
+    assert(resultArray.head._2.cols == originalArray.head._2.cols)
+    assert(resultArray.head._2.rows == originalArray.head._2.rows)
+
+    saveRDD(resultCube.toSpatial(
+      resultArray(0)._1.time),
+      1,
+      "chunkPolygon_edit_dates_and_bands_actual.tif",
+      6,
+      Some(datacube.metadata.extent)
+    )
   }
 
 }
