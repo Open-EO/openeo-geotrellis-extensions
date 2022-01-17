@@ -9,8 +9,14 @@ import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
 import scala.collection.JavaConverters._
 
+object BatchProcessingService {
+  case class NoSuchFeaturesException(message: String) extends IllegalArgumentException(message)
+}
+
 // TODO: snake_case for these arguments
 class BatchProcessingService(endpoint: String, val bucketName: String, clientId: String, clientSecret: String) {
+  import BatchProcessingService._
+
   private val catalogApi: CatalogApi = new DefaultCatalogApi(endpoint)
 
   private def authorized[R](fn: String => R): R =
@@ -58,7 +64,13 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
         accessToken, Criteria.toQueryProperties(metadata_properties))
     }
 
-    if (dateTimes.isEmpty) return null
+    if (dateTimes.isEmpty)
+      throw NoSuchFeaturesException(message =
+        s"""no features found for criteria:
+           |collection ID "$collection_id"
+           |${polygons.length} polygon(s)
+           |[$from_date, $to_date]
+           |metadata properties $metadata_properties""".stripMargin)
 
     val batchProcessingApi = new BatchProcessingApi(endpoint)
 
