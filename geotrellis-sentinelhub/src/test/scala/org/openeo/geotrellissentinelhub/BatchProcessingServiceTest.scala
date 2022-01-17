@@ -371,6 +371,22 @@ class BatchProcessingServiceTest {
     println(awaitDone(batchRequestIds.asScala))
   }
 
+  @Test(expected = classOf[BatchProcessingService.NoSuchFeaturesException])
+  def startBatchProcessForPeculiarTimeInterval(): Unit = {
+    batchProcessingService.start_batch_process(
+      collection_id = "sentinel-2-l2a",
+      dataset_id = "sentinel-2-l2a",
+      bbox = Extent(11.89, 41.58, 12.56, 42.2),
+      bbox_srs = "EPSG:4326",
+      from_date = "2021-12-07T00:00:00+00:00",
+      to_date = "2021-12-06T00:00:00+00:00",
+      band_names = Arrays.asList("B8A", "B11", "B05"),
+      SampleType.FLOAT32,
+      metadata_properties = Collections.emptyMap[String, Any],
+      processing_options = Collections.emptyMap[String, Any]
+    )
+  }
+
   private def awaitDone(batchRequestIds: Iterable[String],
                         batchProcessingService: BatchProcessingService = this.batchProcessingService): Map[String, String] = {
     import java.util.concurrent.TimeUnit._
