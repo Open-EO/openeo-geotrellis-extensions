@@ -3,7 +3,7 @@ package org.openeo.geotrellissentinelhub
 import geotrellis.proj4.LatLng
 import geotrellis.vector.io.json.GeoJson
 import geotrellis.vector._
-import org.junit.Assert.assertEquals
+import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.rules.TemporaryFolder
 import org.junit.{Ignore, Rule, Test}
 
@@ -31,6 +31,37 @@ class BatchProcessingServiceTest {
       bbox_srs = "EPSG:4326",
       from_date = "2019-10-10T00:00:00+00:00",
       to_date = "2019-10-10T00:00:00+00:00",
+      band_names = Arrays.asList("VH", "VV"),
+      SampleType.FLOAT32,
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
+      processing_options = Collections.emptyMap[String, Any]
+    )
+
+    println(awaitDone(Seq(batchRequestId)))
+  }
+
+  @Ignore
+  @Test
+  def startBatchProcessForOverlappingPolygons(): Unit = {
+    val upperLeftPolygon =
+      Extent(4.093673229217529, 50.39570215730746, 4.095818996429443, 50.39704266811707).toPolygon()
+    val lowerRightPolygon =
+      Extent(4.094831943511963, 50.39508660393027, 4.0970635414123535, 50.396317702692095).toPolygon()
+
+    assertTrue("polygons do not overlap", upperLeftPolygon intersects lowerRightPolygon)
+
+    val polygons = Array(
+      MultiPolygon(upperLeftPolygon),
+      MultiPolygon(lowerRightPolygon)
+    )
+
+    val batchRequestId = batchProcessingService.start_batch_process(
+      collection_id = "sentinel-1-grd",
+      dataset_id = "sentinel-1-grd",
+      polygons,
+      crs = LatLng,
+      from_date = "2021-04-03T00:00:00+00:00",
+      to_date = "2021-04-03T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV"),
       SampleType.FLOAT32,
       metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
@@ -357,6 +388,22 @@ class BatchProcessingServiceTest {
     println(s"batch process(es) $batchRequestIds will write to ${batchProcessingService.bucketName}/$requestGroupId")
 
     println(awaitDone(batchRequestIds.asScala))
+  }
+
+  @Test(expected = classOf[BatchProcessingService.NoSuchFeaturesException])
+  def startBatchProcessForPeculiarTimeInterval(): Unit = {
+    batchProcessingService.start_batch_process(
+      collection_id = "sentinel-2-l2a",
+      dataset_id = "sentinel-2-l2a",
+      bbox = Extent(11.89, 41.58, 12.56, 42.2),
+      bbox_srs = "EPSG:4326",
+      from_date = "2021-12-07T00:00:00+00:00",
+      to_date = "2021-12-06T00:00:00+00:00",
+      band_names = Arrays.asList("B8A", "B11", "B05"),
+      SampleType.FLOAT32,
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
+      processing_options = Collections.emptyMap[String, Any]
+    )
   }
 
   private def awaitDone(batchRequestIds: Iterable[String],

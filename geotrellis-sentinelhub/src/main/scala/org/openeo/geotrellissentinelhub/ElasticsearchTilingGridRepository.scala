@@ -1,11 +1,10 @@
 package org.openeo.geotrellissentinelhub
 
-import com.sksamuel.elastic4s.{ElasticClient, ElasticProperties, Hit, HitReader}
+import com.sksamuel.elastic4s.{ElasticClient, Hit, HitReader}
 import geotrellis.vector._
 import _root_.io.circe.parser.parse
 import cats.syntax.either._
 import com.sksamuel.elastic4s.ElasticDsl._
-import com.sksamuel.elastic4s.http.JavaClient
 
 import scala.util.{Failure, Success, Try}
 
@@ -27,11 +26,10 @@ object ElasticsearchTilingGridRepository {
   }
 }
 
-// TODO: rename to ElasticsearchTilingGridRepository
 class ElasticsearchTilingGridRepository(elasticsearchUri: String) {
   import ElasticsearchTilingGridRepository._
 
-  private def elasticClient: ElasticClient = ElasticClient(JavaClient(ElasticProperties(elasticsearchUri)))
+  private def elasticClient: ElasticClient = Elasticsearch.client(elasticsearchUri)
 
   def intersectingGridTiles(tilingGridIndex: String, geometry: Geometry): Iterable[GridTile] = {
     val client = elasticClient

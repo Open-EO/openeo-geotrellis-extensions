@@ -183,7 +183,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
 
       val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = {
         val overlappingKeys = {
-          val multiPolygon = multiPolygonFromPolygonExteriors(polygons)
+          val multiPolygon = simplify(polygons)
 
           val features = authorized { accessToken =>
             catalogApi.search(collectionId, multiPolygon, polygons_crs,

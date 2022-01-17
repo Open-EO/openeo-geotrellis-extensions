@@ -38,10 +38,10 @@ class BatchProcessingApi(endpoint: String) {
                          bandNames: Seq[String], sampleType: SampleType, additionalDataFilters: util.Map[String, Any],
                          processingOptions: util.Map[String, Any], bucketName: String, description: String,
                          accessToken: String, subfolder: String) : CreateBatchProcessResponse = {
-    val multiPolygon = MultiPolygon(boundingBox.extent.toPolygon())
-    val multiPolygonCrs = boundingBox.crs
+    val geometry = boundingBox.extent.toPolygon()
+    val geometryCrs = boundingBox.crs
 
-    createBatchProcess(datasetId, multiPolygon, multiPolygonCrs, dateTimes, bandNames, sampleType,
+    createBatchProcess(datasetId, geometry, geometryCrs, dateTimes, bandNames, sampleType,
       additionalDataFilters, processingOptions, bucketName, description, accessToken, subfolder)
   }
 
@@ -52,21 +52,21 @@ class BatchProcessingApi(endpoint: String) {
     createBatchProcess(datasetId, boundingBox, dateTimes, bandNames, sampleType, additionalDataFilters,
       processingOptions, bucketName, description, accessToken, subfolder = null)
 
-  def createBatchProcess(datasetId: String, multiPolygon: MultiPolygon, multiPolygonCrs: CRS, dateTimes: Seq[ZonedDateTime],
+  def createBatchProcess(datasetId: String, geometry: Geometry, geometryCrs: CRS, dateTimes: Seq[ZonedDateTime],
                          bandNames: Seq[String], sampleType: SampleType, additionalDataFilters: util.Map[String, Any],
                          processingOptions: util.Map[String, Any], bucketName: String, description: String,
                          accessToken: String) : CreateBatchProcessResponse =
-    createBatchProcess(datasetId, multiPolygon, multiPolygonCrs, dateTimes, bandNames, sampleType,
+    createBatchProcess(datasetId, geometry, geometryCrs, dateTimes, bandNames, sampleType,
       additionalDataFilters, processingOptions, bucketName, description, accessToken, subfolder = null)
 
-  def createBatchProcess(datasetId: String, multiPolygon: MultiPolygon, multiPolygonCrs: CRS, dateTimes: Seq[ZonedDateTime],
+  def createBatchProcess(datasetId: String, geometry: Geometry, geometryCrs: CRS, dateTimes: Seq[ZonedDateTime],
                          bandNames: Seq[String], sampleType: SampleType, additionalDataFilters: util.Map[String, Any],
                          processingOptions: util.Map[String, Any], bucketName: String, description: String,
                          accessToken: String, subfolder: String) : CreateBatchProcessResponse =
     withRetries(context = s"createBatchProcess $datasetId") {
       require(dateTimes.nonEmpty)
 
-      val epsgCode = multiPolygonCrs.epsgCode.getOrElse(s"unsupported crs $multiPolygonCrs")
+      val epsgCode = geometryCrs.epsgCode.getOrElse(s"unsupported crs $geometryCrs")
 
       val ascendingDateTimes = dateTimes
         .sortWith(_ isBefore _)
@@ -107,7 +107,7 @@ class BatchProcessingApi(endpoint: String) {
             |    "processRequest": {
             |        "input": {
             |            "bounds": {
-            |                "geometry": ${multiPolygon.toGeoJson()},
+            |                "geometry": ${geometry.toGeoJson()},
             |                "properties": {
             |                    "crs": "http://www.opengis.net/def/crs/EPSG/0/$epsgCode"
             |                }

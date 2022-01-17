@@ -1,10 +1,5 @@
 package org.openeo.geotrellis
 
-import java.io.File
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
-import java.util
-
 import geotrellis.layer._
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.summary.Statistics
@@ -15,6 +10,10 @@ import org.openeo.geotrellis.aggregate_polygon.intern._
 import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, intern}
 import org.slf4j.{Logger, LoggerFactory}
 
+import java.io.File
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.util
 import scala.collection.JavaConverters._
 
 
@@ -82,6 +81,24 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
 
     try
       computeStatsGeotrellis.computeAverageTimeSeries(datacube.persist(MEMORY_AND_DISK_SER), polygons.polygons, polygons.crs, startDate, endDate, statisticsWriter, unusedCancellationContext, sc)
+    finally
+      statisticsWriter.close()
+  }
+
+  /**
+   * Writes means to an UTF-8 encoded JSON file.
+   */
+  def compute_generic_timeseries_from_datacube(reducer:String, datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, output_file: String): Unit = {
+    val computeStatsGeotrellis = new AggregatePolygonProcess()
+
+    val splitPolygons = splitOverlappingPolygons(polygons.polygons)
+
+    val statisticsWriter = new MultibandStatisticsWriter(new File(output_file))
+
+    val bandCount = new OpenEOProcesses().RDDBandCount(datacube)
+
+    try
+      computeStatsGeotrellis.aggregateSpatialGeneric(reducer, datacube.persist(MEMORY_AND_DISK_SER),splitPolygons, polygons.crs, bandCount,output_file)
     finally
       statisticsWriter.close()
   }

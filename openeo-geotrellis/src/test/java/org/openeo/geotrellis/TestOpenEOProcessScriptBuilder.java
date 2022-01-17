@@ -1239,6 +1239,31 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(FloatConstantNoDataArrayTile.empty(0, 0).cellType(), result2.apply(4).cellType());
     }
 
+    @DisplayName("Test count process")
+    @Test
+    public void testCount() {
+        Tile tile0 = FloatConstantNoDataArrayTile.fill(0, 4, 4);
+        Tile tile1 = FloatConstantNoDataArrayTile.fill(3, 4, 4);
+        Tile tile2 = FloatConstantNoDataArrayTile.fill(4, 4, 4);
+        Tile tile3 = FloatConstantNoDataArrayTile.fill(Float.NaN, 4, 4);
+
+        Seq<Tile> result1 = createCount(false).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0.mutable().copy(), tile1.mutable().copy(), tile2.mutable().copy(), tile3.mutable().copy())));
+
+        assertEquals(3, result1.apply(0).get(0, 0));
+
+        Seq<Tile> result2 = createCount(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0.mutable().copy(), tile1.mutable().copy(), tile2.mutable().copy(), tile3.mutable().copy())));
+
+        assertEquals(4, result2.apply(0).get(0, 0));
+
+        Seq<Tile> result3 = createCount("gt", 2.0, false).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0.mutable().copy(), tile1.mutable().copy(), tile2.mutable().copy(), tile3.mutable().copy())));
+
+        assertEquals(2, result3.apply(0).get(0, 0));
+
+        Seq<Tile> result4 = createCount("eq", 3.0, true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0.mutable().copy(), tile1.mutable().copy(), tile2.mutable().copy(), tile3.mutable().copy())));
+
+        assertEquals(3, result4.apply(0).get(0, 0));
+    }
+
     static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Map<String, Object> arguments = ignoreNoData!=null? Collections.singletonMap("ignore_nodata",ignoreNoData.booleanValue()) : Collections.emptyMap();
@@ -1389,6 +1414,50 @@ public class TestOpenEOProcessScriptBuilder {
         return builder;
     }
 
+    static OpenEOProcessScriptBuilder createCount(boolean countAll) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = new HashMap<>();
+        if (countAll)
+            arguments.put("condition", true);
+        else
+            arguments.put("condition", null);
+
+        builder.expressionStart("count", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.constantArguments(arguments);
+
+        builder.expressionEnd("count", arguments);
+
+        return builder;
+    }
+
+    static OpenEOProcessScriptBuilder createCount(String xyOperator, Double yValue, boolean negation) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+
+        builder.expressionStart("count", dummyMap("data", "condition"));
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.argumentStart("condition");
+        if (negation) {
+            builder.expressionStart("not", dummyMap("x"));
+            builder.argumentStart("x");
+        }
+        builder.expressionStart(xyOperator, dummyMap("x", "y"));
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.constantArgument("y", yValue);
+        builder.expressionEnd(xyOperator, dummyMap("x", "y"));
+        if (negation) {
+            builder.argumentEnd();
+            builder.expressionEnd("not", dummyMap("x"));
+        }
+        builder.argumentEnd();
+        builder.expressionEnd("count", dummyMap("data", "condition"));
+
+        return builder;
+    }
 
     private static void buildArrayElementProcess(OpenEOProcessScriptBuilder builder, Integer index) {
         Map<String, Object> args = Collections.singletonMap("index", index);
