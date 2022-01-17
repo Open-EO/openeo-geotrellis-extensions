@@ -147,7 +147,7 @@ class AggregatePolygonProcess() {
       //val expressions = bandColumns.flatMap(col => Seq((col,"sum"),(col,"max"))).toMap
       //https://spark.apache.org/docs/3.2.0/sql-ref-null-semantics.html#built-in-aggregate
       val expressionCols = bandColumns.map(df.col(_)).flatMap(col => Seq(avg(col),sum(col),count(col.isNull),count(not(col.isNull))))//,expr(s"percentile_approx(band_1,0.95)")
-      dataframe.groupBy("date","feature_index").agg(expressionCols.head,expressionCols.tail:_*).write.mode(SaveMode.Append).csv("file://" + outputPath)
+      dataframe.groupBy("date","feature_index").agg(expressionCols.head,expressionCols.tail:_*).write.mode(SaveMode.Overwrite).csv("file://" + outputPath)
 
     }finally{
       byIndexMask.unpersist()
