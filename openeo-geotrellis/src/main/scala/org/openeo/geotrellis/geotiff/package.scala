@@ -636,7 +636,7 @@ package object geotiff {
     path
   }
 
-  private def getCreoS3Client(): S3Client = {
+  def getCreoS3Client(): S3Client = {
     val retryCondition =
       OrRetryCondition.create(
         RetryCondition.defaultRetryCondition(),

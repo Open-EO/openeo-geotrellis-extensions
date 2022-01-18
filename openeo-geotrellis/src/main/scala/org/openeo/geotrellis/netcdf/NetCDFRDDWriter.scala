@@ -9,14 +9,18 @@ import geotrellis.raster._
 import geotrellis.raster.crop.Crop.Options
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.spark.store.hadoop.KeyPartitioner
+import geotrellis.store.s3.AmazonS3URI
 import geotrellis.util._
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.storage.StorageLevel
 import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrellis.geotiff.getCreoS3Client
 import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
+import software.amazon.awssdk.core.sync.RequestBody
+import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import ucar.ma2.{ArrayDouble, ArrayInt, DataType}
 import ucar.nc2.write.Nc4ChunkingDefault
 import ucar.nc2.{Attribute, Dimension, NetcdfFileWriter, Variable}
@@ -379,7 +383,14 @@ object NetCDFRDDWriter {
     val aRaster = rasters.head
     val rasterExtent = aRaster.rasterExtent
 
-    val netcdfFile: NetcdfFileWriter = setupNetCDF(path, rasterExtent, dates, bandNames, crs, aRaster.cellType,dimensionNames, attributes, writeTimeDimension= dates!=null)
+    val intermediatePath =
+    if (path.startsWith("s3:/")) {
+      Files.createTempFile(null, null).toString
+    }else{
+      path
+    }
+
+    val netcdfFile: NetcdfFileWriter = setupNetCDF(intermediatePath, rasterExtent, dates, bandNames, crs, aRaster.cellType,dimensionNames, attributes, writeTimeDimension= dates!=null)
     try{
 
       for (bandIndex <- bandNames.asScala.indices) {
@@ -389,6 +400,18 @@ object NetCDFRDDWriter {
       }
     }finally {
       netcdfFile.close()
+    }
+
+    if (path.startsWith("s3:/")) {
+      val correctS3Path = path.replaceFirst("s3:/(?!/)", "s3://")
+      val s3Uri = new AmazonS3URI(correctS3Path)
+
+      val objectRequest = PutObjectRequest.builder
+        .bucket(s3Uri.getBucket)
+        .key(s3Uri.getKey)
+        .build
+
+      getCreoS3Client().putObject(objectRequest, RequestBody.fromFile(Paths.get(intermediatePath)))
     }
 
   }
