@@ -2,10 +2,11 @@ package org.openeo.geotrellis.aggregate_polygon
 
 import org.apache.spark.sql.Column
 import org.apache.spark.sql.functions.{avg, count, first, kurtosis, last, lit, max, min, not, percentile_approx, product, skewness, stddev, sum, variance}
+import org.openeo.geotrellis.OpenEOProcessScriptBuilder
 import org.slf4j.LoggerFactory
 
+import java.util
 import scala.collection.JavaConversions.mapAsScalaMap
-
 import scala.collection.mutable.ListBuffer
 
 object SparkAggregateScriptBuilder {
@@ -101,28 +102,52 @@ class SparkAggregateScriptBuilder {
     val hasData = arguments.containsKey("data")
     val ignoreNoData = !(arguments.getOrDefault("ignore_nodata",Boolean.box(true).asInstanceOf[Object]) == Boolean.box(false) || arguments.getOrDefault("ignore_nodata",None) == "false" )
 
-    val expressionBuilder: (Column, String) => Column = (col: Column, columnName: String) => {
-      val theExpression:Column =
-        operator match {
-          case "mean" => avg(col)
-          case "count" => count(not(col.isNull))
-          case "max" => max(col)
-          case "min" => min(col)
-          case "first" => first(col)
-          case "last" => last(col)
-          case "median" => percentile_approx(col,lit(0.5),lit(100000))
-          case "product" => product(col)
-          case "sd" => stddev(col)
-          case "sum" => sum(col)
-          case "variance" => variance(col)
-          case "kurtosis" => kurtosis(col)
-          case "skewness" => skewness(col)
-          case _ => throw new IllegalArgumentException(s"Unsupported reducer for aggregate_spatial: ${operator}")
-        }
-      theExpression
+    if(operator == "quantiles") {
+      val probs = arguments.getOrDefault("probabilities",null)
+      val qRaw = arguments.getOrDefault("q",-1)
+      if(probs==null && qRaw.asInstanceOf[Integer] <2) {
+        throw new IllegalArgumentException("QuantilesParameterMissing: either 'q' or 'probabilities' argument needs to be set")
+      }else if(probs!=null && qRaw.asInstanceOf[Integer] >=2) {
+        throw new IllegalArgumentException(s"QuantilesParameterConflict: both 'q' and 'probabilities' argument is set. ${qRaw} - ${probs}")
+      }else {
+        val probabilities: Seq[Double] = OpenEOProcessScriptBuilder.getQuantilesProbabilities(arguments)
+        probabilities.foreach(p=>{
+          reducers.append( (col: Column, columnName: String) => {percentile_approx(col,lit(p),lit(100000))})
+        })
+      }
+
+    }else{
+
+      val expressionBuilder: (Column, String) => Column = (col: Column, columnName: String) => {
+        val theExpression:Column =
+          operator match {
+            case "mean" => avg(col)
+            case "count" => {
+              if(ignoreNoData) {
+                count(not(col.isNull))
+              }else{
+                count(col)
+              }
+            }
+            case "max" => max(col)
+            case "min" => min(col)
+            case "first" => first(col)
+            case "last" => last(col)
+            case "median" => percentile_approx(col,lit(0.5),lit(100000))
+            case "product" => product(col)
+            case "sd" => stddev(col)
+            case "sum" => sum(col)
+            case "variance" => variance(col)
+            case "kurtosis" => kurtosis(col)
+            case "skewness" => skewness(col)
+            case _ => throw new IllegalArgumentException(s"Unsupported reducer for aggregate_spatial: ${operator}")
+          }
+        theExpression
+      }
+
+      reducers.append(expressionBuilder)
     }
 
-    reducers.append(expressionBuilder)
 
 
 

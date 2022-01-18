@@ -254,6 +254,25 @@ object OpenEOProcessScriptBuilder{
     multibandReduce(MultibandTile(tiles).convert(IntConstantNoDataCellType), ts => ts.count(_ != 0), ignoreNoData = false)
   }
 
+  def getQuantilesProbabilities(arguments: util.Map[String, Object]): Seq[Double] = {
+    val qRaw = arguments.get("q")
+    val probabilities: Seq[Double] =
+      if (qRaw == null) {
+        arguments.get("probabilities") match {
+          case doubles: util.List[Double] =>
+            doubles.asScala.toArray.toSeq
+          case doubles: Array[Double] =>
+            doubles.asInstanceOf[Array[Double]].toSeq
+          case any => throw new IllegalArgumentException(s"Unsupported probabilities parameter in quantiles: ${any} ")
+        }
+      } else {
+        val q = qRaw.asInstanceOf[Int].toDouble
+
+        (1 to (q.intValue() - 1)).map(d => d.doubleValue() / q)
+      }
+    return probabilities
+  }
+
   object MinIgnoreNoData extends LocalTileBinaryOp {
     def combine(z1:Int,z2:Int) =
       if( isNoData(z1) && isNoData(z2)) NODATA
@@ -671,21 +690,7 @@ class OpenEOProcessScriptBuilder {
   private def quantilesFunction(arguments:java.util.Map[String,Object], ignoreNoData:Boolean = true): OpenEOProcess = {
     val storedArgs = contextStack.head
     val inputFunction = storedArgs.get("data").get
-    val qRaw = arguments.get("q")
-    val probabilities: Seq[Double] =
-      if(qRaw==null) {
-        arguments.get("probabilities") match {
-          case doubles: util.List[Double] =>
-            doubles.asScala.toArray.toSeq
-          case doubles: Array[Double] =>
-            doubles.asInstanceOf[Array[Double]].toSeq
-          case any => throw new IllegalArgumentException(s"Unsupported probabilities parameter in quantiles: ${any} " )
-        }
-      }else{
-        val q = qRaw.asInstanceOf[Int].toDouble
-
-        (1 to (q.intValue() - 1)).map(d => d.doubleValue() / q)
-      }
+    val probabilities = getQuantilesProbabilities(arguments)
 
 
     val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
@@ -712,6 +717,7 @@ class OpenEOProcessScriptBuilder {
     }
     bandFunction
   }
+
 
   private def arrayModifyFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
     val storedArgs = contextStack.head
