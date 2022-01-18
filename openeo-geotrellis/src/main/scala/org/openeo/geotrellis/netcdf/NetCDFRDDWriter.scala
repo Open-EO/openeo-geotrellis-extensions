@@ -146,7 +146,7 @@ object NetCDFRDDWriter {
     val shuffledRDD =
     if(elementsPartitionRatio<4) {
       //avoid iterating over many empty partitions
-      cachedRDD.repartition((count / 4).toInt)()
+      cachedRDD.repartition(math.max(1,(count / 4).toInt))()
     }else{
       cachedRDD
     }
