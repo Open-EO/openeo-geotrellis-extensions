@@ -10,7 +10,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import org.apache.spark.sql.{Row, SaveMode, SparkSession}
+import org.apache.spark.sql.{Column, Row, SaveMode, SparkSession}
 import org.openeo.geotrellis.SpatialToSpacetimeJoinRdd
 import org.openeo.geotrellis.aggregate_polygon.intern.PixelRateValidator.exceedsTreshold
 import org.openeo.geotrellis.aggregate_polygon.intern._
