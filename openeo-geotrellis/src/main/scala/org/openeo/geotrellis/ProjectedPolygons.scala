@@ -149,6 +149,13 @@ object ProjectedPolygons {
     ProjectedPolygons(multiPolygons, LatLng)
   }
 
+  /**
+   * TODO: we had a very strange problem in a python unit test where this method was returning different results across multiple runs.
+   * This method seems top assume that the input is always in EPSG:4326
+   * @param geometry
+   * @param crs
+   * @return
+   */
   private def areaInSquareMeters(geometry: Geometry, crs: CRS): Double = {
     val bounds = geometry.extent
     val targetCrs = CRS.fromString(s"+proj=aea +lat_0=0 +lon_0=0 +lat_1=${bounds.ymin} +lat_2=${bounds.ymax} +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs")
