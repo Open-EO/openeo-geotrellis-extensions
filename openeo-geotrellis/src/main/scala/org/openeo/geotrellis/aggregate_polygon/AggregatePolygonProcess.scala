@@ -108,6 +108,7 @@ class AggregatePolygonProcess() {
         case "variance" => variance(col)
         case "kurtosis" => kurtosis(col)
         case "skewness" => skewness(col)
+        case _ => throw new IllegalArgumentException(s"Unsupported reducer for aggregate_spatial: ${reducer}")
       }
       Seq(theExpression)
     }
