@@ -1,8 +1,5 @@
 package org.openeo.geotrellis.aggregate_polygon
 
-import java.time.ZonedDateTime
-import java.time.temporal.ChronoUnit.DAYS
-
 import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey}
 import geotrellis.proj4.CRS
 import geotrellis.raster.{MultibandTile, Tile}
@@ -23,10 +20,12 @@ import spire.syntax.cfor.cfor
 
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit.DAYS
-import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
 
 object AggregatePolygonProcess {
+
+  private val logger = LoggerFactory.getLogger(classOf[AggregatePolygonProcess])
+
   private type PolygonsWithIndexMapping = (Seq[MultiPolygon], Seq[Set[Int]])
 }
 
