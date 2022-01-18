@@ -144,6 +144,13 @@ object NetCDFRDDWriter {
     logger.info(s"Writing NetCDF from rdd with : ${count} elements and ${rdd.getNumPartitions} partitions.")
     val dates = cachedRDD.keys.map(k => Duration.between(fixedTimeOffset, k.time).toDays.toInt).distinct().collect().sorted.toList
 
+    val intermediatePath =
+      if (path.startsWith("s3:/")) {
+        Files.createTempFile(null, null).toString
+      }else{
+        path
+      }
+
     var netcdfFile: NetcdfFileWriter = null
     for(tuple <- cachedRDD.toLocalIterator){
 
@@ -152,7 +159,7 @@ object NetCDFRDDWriter {
       var timeDimIndex = dates.indexOf(timeOffset)
 
       if(netcdfFile == null){
-        netcdfFile = setupNetCDF(path, rasterExtent, null, bandNames, rdd.metadata.crs, cellType,dimensionNames,attributes,zLevel)
+        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, bandNames, rdd.metadata.crs, cellType,dimensionNames,attributes,zLevel)
       }
       val multibandTile = tuple._2
 
@@ -180,6 +187,10 @@ object NetCDFRDDWriter {
     writeTime(timeDimName, netcdfFile, dates)
 
     netcdfFile.close()
+    if (path.startsWith("s3:/")) {
+      uploadToS3(path, intermediatePath)
+    }
+
     return Collections.singletonList(path)
   }
 
@@ -403,23 +414,27 @@ object NetCDFRDDWriter {
     }
 
     if (path.startsWith("s3:/")) {
-      val correctS3Path = path.replaceFirst("s3:/(?!/)", "s3://")
-      val s3Uri = new AmazonS3URI(correctS3Path)
-
-      val objectRequest = PutObjectRequest.builder
-        .bucket(s3Uri.getBucket)
-        .key(s3Uri.getKey)
-        .build
-
-      getCreoS3Client().putObject(objectRequest, RequestBody.fromFile(Paths.get(intermediatePath)))
+      uploadToS3(path, intermediatePath)
     }
 
   }
 
+  private def uploadToS3(objectStoragePath: String, localPath: String) = {
+    val correctS3Path = objectStoragePath.replaceFirst("s3:/(?!/)", "s3://")
+    val s3Uri = new AmazonS3URI(correctS3Path)
+
+    val objectRequest = PutObjectRequest.builder
+      .bucket(s3Uri.getBucket)
+      .key(s3Uri.getKey)
+      .build
+
+    getCreoS3Client().putObject(objectRequest, RequestBody.fromFile(Paths.get(localPath)))
+  }
+
   private[netcdf] def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime],
-                          bandNames: util.ArrayList[String], crs: CRS, cellType: CellType,
-                          dimensionNames: java.util.Map[String,String],
-                          attributes: java.util.Map[String,String],zLevel:Int =6, writeTimeDimension:Boolean = true) = {
+                                  bandNames: util.ArrayList[String], crs: CRS, cellType: CellType,
+                                  dimensionNames: java.util.Map[String,String],
+                                  attributes: java.util.Map[String,String], zLevel:Int =6, writeTimeDimension:Boolean = true) = {
 
     logger.info(s"Writing netCDF to $path with bands $bandNames, $cellType, $crs, $rasterExtent")
     val theChunking = new OpenEOChunking(zLevel)
