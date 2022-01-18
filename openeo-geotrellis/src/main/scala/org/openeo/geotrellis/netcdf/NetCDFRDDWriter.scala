@@ -142,6 +142,15 @@ object NetCDFRDDWriter {
     val cachedRDD = rdd.persist(StorageLevel.MEMORY_AND_DISK)
     val count = cachedRDD.count()
     logger.info(s"Writing NetCDF from rdd with : ${count} elements and ${rdd.getNumPartitions} partitions.")
+    val elementsPartitionRatio = count / rdd.getNumPartitions
+    val shuffledRDD =
+    if(elementsPartitionRatio<4) {
+      //avoid iterating over many empty partitions
+      cachedRDD.repartition((count / 4).toInt)()
+    }else{
+      cachedRDD
+    }
+
     val dates = cachedRDD.keys.map(k => Duration.between(fixedTimeOffset, k.time).toDays.toInt).distinct().collect().sorted.toList
 
     val intermediatePath =
@@ -152,7 +161,7 @@ object NetCDFRDDWriter {
       }
 
     var netcdfFile: NetcdfFileWriter = null
-    for(tuple <- cachedRDD.toLocalIterator){
+    for(tuple <- shuffledRDD.toLocalIterator){
 
       val cellType = tuple._2.cellType
       val timeOffset = Duration.between(fixedTimeOffset, tuple._1.time).toDays.toInt
@@ -187,6 +196,7 @@ object NetCDFRDDWriter {
     writeTime(timeDimName, netcdfFile, dates)
 
     netcdfFile.close()
+    cachedRDD.unpersist(blocking = false)
     if (path.startsWith("s3:/")) {
       uploadToS3(path, intermediatePath)
     }
