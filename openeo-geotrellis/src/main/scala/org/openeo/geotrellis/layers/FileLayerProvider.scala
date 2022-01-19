@@ -253,6 +253,10 @@ object FileLayerProvider {
     val requiredSpacetimeKeys: RDD[SpaceTimeKey] = filteredSources.flatMap(_.keys).map {
       tuple => (tuple.spatialKey, tuple)
     }.rightOuterJoin(requiredSpatialKeys).flatMap(_._2._1.toList)
+    createPartitioner(datacubeParams, requiredSpacetimeKeys, metadata)
+  }
+
+  def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpacetimeKeys: RDD[SpaceTimeKey],  metadata: TileLayerMetadata[SpaceTimeKey]): Some[SpacePartitioner[SpaceTimeKey]] = {
     // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
     val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(8)
     val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {

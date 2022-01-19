@@ -4,6 +4,7 @@ import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.{Feature, Link}
 import be.vito.eodata.gwcgeotrellis.opensearch.backends.{CreodiasClient, OscarsClient}
 import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLayerMetadata}
+import geotrellis.proj4.LatLng
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
@@ -12,6 +13,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrellis.layers.FileLayerProvider
 import org.openeo.geotrelliscommon.DatacubeSupport.layerMetadata
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
@@ -65,14 +67,17 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
     //construct Spatial Keys that we want to load
     val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons.polygons).map{_.reproject(polygons.crs,metadata.crs)}.clipToGrid(metadata.layout).groupByKey()
     val productsRDD = sc.parallelize(productMetadata)
-    val spatialRDD: RDD[(SpaceTimeKey, Feature)] = requiredKeys.keys.cartesian(productsRDD).map{ case (key,value) => (SpaceTimeKey(key.col,key.row,value.nominalDate),value)}
+    val spatialRDD: RDD[(SpaceTimeKey, Feature)] = requiredKeys.keys.cartesian(productsRDD).map{ case (key,value) => (SpaceTimeKey(key.col,key.row,value.nominalDate),value)}.filter(tuple =>{
 
+      val keyExtent = metadata.mapTransform.keyToExtent(tuple._1.spatialKey)
+      ProjectedExtent(tuple._2.bbox,LatLng).reproject(metadata.crs).intersects(keyExtent)
+    })
+
+    val partitioner = FileLayerProvider.createPartitioner(None,spatialRDD.map(_._1),metadata)
     /**
      * Note that keys in spatialRDD are not necessarily unique, because one date can have multiple Sentinel-1 products
-     * Further possible improvements:
-     * already filter out spatialkeys that do not match the feature extent
      */
-    return new ContextRDD(spatialRDD.partitionBy(SpacePartitioner(metadata.bounds)),metadata)
+    return new ContextRDD(spatialRDD.partitionBy(partitioner.get),metadata)
   }
 
   /**
