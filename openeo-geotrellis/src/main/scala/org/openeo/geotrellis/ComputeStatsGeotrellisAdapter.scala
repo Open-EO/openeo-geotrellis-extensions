@@ -93,14 +93,9 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
 
     val splitPolygons = splitOverlappingPolygons(polygons.polygons)
 
-    val statisticsWriter = new MultibandStatisticsWriter(new File(output_file))
-
     val bandCount = new OpenEOProcesses().RDDBandCount(datacube)
+    computeStatsGeotrellis.aggregateSpatialGeneric(reducer, datacube.persist(MEMORY_AND_DISK_SER),splitPolygons, polygons.crs, bandCount,output_file)
 
-    try
-      computeStatsGeotrellis.aggregateSpatialGeneric(reducer, datacube.persist(MEMORY_AND_DISK_SER),splitPolygons, polygons.crs, bandCount,output_file)
-    finally
-      statisticsWriter.close()
   }
 
   def compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
