@@ -89,32 +89,8 @@ class AggregatePolygonProcess() {
     }
   }
 
-  private def expressionBuilder(reducer:String): (Column, String) => Seq[Column] = {
 
-    return (col: Column, columnName: String) => {
-      val theExpression:Column =
-      reducer match {
-        case "mean" => avg(col)
-        case "count" => count(not(col.isNull))
-        case "max" => max(col)
-        case "min" => min(col)
-        case "first" => first(col)
-        case "last" => last(col)
-        case "median" => percentile_approx(col,lit(0.5),lit(100000))
-        case "product" => product(col)
-        case "sd" => stddev(col)
-        case "sum" => sum(col)
-        case "variance" => variance(col)
-        case "kurtosis" => kurtosis(col)
-        case "skewness" => skewness(col)
-        case _ => throw new IllegalArgumentException(s"Unsupported reducer for aggregate_spatial: ${reducer}")
-      }
-      Seq(theExpression)
-    }
-  }
-
-
-  def aggregateSpatialGeneric(reducer:String, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int, outputPath:String): Unit = {
+  def aggregateSpatialGeneric(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int, outputPath:String): Unit = {
     import org.apache.spark.storage.StorageLevel._
 
     val (polygons, indexMapping) = polygonsWithIndexMapping
@@ -155,7 +131,11 @@ class AggregatePolygonProcess() {
               if(z>=0) {
                 cfor(0)(_ < bands, _ + 1) { band =>
                   val v = tile.band(band).getDouble(col, row)
-                  bandsValues(band) = v
+                  if(v.isNaN) {
+                    //bandsValues(band) = null
+                  }else{
+                    bandsValues(band) = v
+                  }
                 }
                 val indices = mapping(z)
                 indices.foreach(polygonIndex => result.append(Row.fromSeq(Seq(date, polygonIndex) ++ bandsValues.toSeq)))
@@ -179,7 +159,7 @@ class AggregatePolygonProcess() {
       //val expressions = bandColumns.flatMap(col => Seq((col,"sum"),(col,"max"))).toMap
       //https://spark.apache.org/docs/3.2.0/sql-ref-null-semantics.html#built-in-aggregate
       //Seq(count(col.isNull),count(not(col.isNull)),expr(s"percentile_approx(band_1,0.95)")
-      val builder = expressionBuilder(reducer)
+      val builder = scriptBuilder.generateFunction()
       val expressionCols: Seq[Column] = bandColumns.flatMap(col => builder(df.col(col),col))
       dataframe.groupBy("date","feature_index").agg(expressionCols.head,expressionCols.tail:_*).coalesce(1).write.option("header","true").mode(SaveMode.Overwrite).csv("file://" + outputPath)
 

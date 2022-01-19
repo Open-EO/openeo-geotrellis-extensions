@@ -7,7 +7,7 @@ import geotrellis.spark._
 import org.apache.spark.SparkContext
 import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK_SER
 import org.openeo.geotrellis.aggregate_polygon.intern._
-import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, intern}
+import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder, intern}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.File
@@ -89,12 +89,21 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
    * Writes means to an UTF-8 encoded JSON file.
    */
   def compute_generic_timeseries_from_datacube(reducer:String, datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, output_file: String): Unit = {
+    val builder = new SparkAggregateScriptBuilder
+    builder.expressionEnd(reducer,new util.HashMap[String,Object]())
+    this.compute_generic_timeseries_from_datacube(builder,datacube, polygons, output_file)
+  }
+
+  /**
+   * Writes means to an UTF-8 encoded JSON file.
+   */
+  def compute_generic_timeseries_from_datacube(scriptBuilder:SparkAggregateScriptBuilder, datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, output_file: String): Unit = {
     val computeStatsGeotrellis = new AggregatePolygonProcess()
 
     val splitPolygons = splitOverlappingPolygons(polygons.polygons)
 
     val bandCount = new OpenEOProcesses().RDDBandCount(datacube)
-    computeStatsGeotrellis.aggregateSpatialGeneric(reducer, datacube.persist(MEMORY_AND_DISK_SER),splitPolygons, polygons.crs, bandCount,output_file)
+    computeStatsGeotrellis.aggregateSpatialGeneric(scriptBuilder, datacube.persist(MEMORY_AND_DISK_SER),splitPolygons, polygons.crs, bandCount,output_file)
 
   }
 

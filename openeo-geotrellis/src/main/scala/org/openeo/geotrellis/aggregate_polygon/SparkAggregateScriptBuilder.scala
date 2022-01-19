@@ -1,7 +1,8 @@
 package org.openeo.geotrellis.aggregate_polygon
 
 import org.apache.spark.sql.Column
-import org.apache.spark.sql.functions.{avg, count, first, kurtosis, last, lit, max, min, not, percentile_approx, product, skewness, stddev, sum, variance}
+import org.apache.spark.sql.functions.{avg, count, countDistinct, first, kurtosis, last, lit, max, min, not, percentile_approx, product, skewness, stddev, sum, variance, when}
+import org.apache.spark.sql.types.DataType
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder
 import org.slf4j.LoggerFactory
 
@@ -124,7 +125,7 @@ class SparkAggregateScriptBuilder {
             case "mean" => avg(col)
             case "count" => {
               if(ignoreNoData) {
-                count(not(col.isNull))
+                sum(not(col.isNaN).cast("long"))
               }else{
                 count(col)
               }
