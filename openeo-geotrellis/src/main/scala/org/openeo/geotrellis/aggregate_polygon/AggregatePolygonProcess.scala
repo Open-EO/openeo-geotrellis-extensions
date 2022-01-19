@@ -129,6 +129,7 @@ class AggregatePolygonProcess() {
     val byIndexMask = LayerProvider.createMaskLayer(indexedFeatures, crs, datacube.metadata, sc)
 
     try {
+      val polygonMappingBC = sc.broadcast(polygonsWithIndexMapping._2)
       val spatiallyPartitionedIndexMaskLayer: RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition] = ContextRDD(byIndexMask.persist(MEMORY_ONLY_2), byIndexMask.metadata)
       val combinedRDD = new SpatialToSpacetimeJoinRdd(datacube, spatiallyPartitionedIndexMaskLayer)
       val pixelRDD: RDD[Row] = combinedRDD.flatMap{
@@ -137,6 +138,7 @@ class AggregatePolygonProcess() {
           val cols  = tile.cols
           val bands = tile.bandCount
 
+          val mapping = polygonMappingBC.value
           val date = java.sql.Date.valueOf(key.time.toLocalDate)
           val result: ListBuffer[Row] = ListBuffer()
           val bandsValues = Array.ofDim[Double](bands)
@@ -149,7 +151,8 @@ class AggregatePolygonProcess() {
                   val v = tile.band(band).getDouble(col, row)
                   bandsValues(band) = v
                 }
-                result.append(Row.fromSeq(Seq(date, z) ++ bandsValues.toSeq))
+                val indices = mapping(z)
+                indices.foreach(polygonIndex => result.append(Row.fromSeq(Seq(date, polygonIndex) ++ bandsValues.toSeq)))
               }
             }
           }
@@ -172,7 +175,7 @@ class AggregatePolygonProcess() {
       //Seq(count(col.isNull),count(not(col.isNull)),expr(s"percentile_approx(band_1,0.95)")
       val builder = expressionBuilder(reducer)
       val expressionCols: Seq[Column] = bandColumns.flatMap(col => builder(df.col(col),col))
-      dataframe.groupBy("date","feature_index").agg(expressionCols.head,expressionCols.tail:_*).write.mode(SaveMode.Overwrite).csv("file://" + outputPath)
+      dataframe.groupBy("date","feature_index").agg(expressionCols.head,expressionCols.tail:_*).coalesce(1).write.option("header","true").mode(SaveMode.Overwrite).csv("file://" + outputPath)
 
     }finally{
       byIndexMask.unpersist()
