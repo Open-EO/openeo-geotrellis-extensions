@@ -22,6 +22,8 @@ object LayerProvider{
 
     val partitioner = {
       val gridBounds = metadata.mapTransform(envelope)
+      //negative spatial keys means going out of bounds of
+      val nonNegativeBounds = gridBounds.copy(colMin = math.max(0,gridBounds.colMin),rowMin = math.max(0,gridBounds.rowMin))
 
       implicit val spatialPartitioner = new PartitionerIndex[SpatialKey] {
         private def toZ(key: SpatialKey): Z2 = Z2(key.col >> 3, key.row >> 3)
@@ -32,7 +34,7 @@ object LayerProvider{
           Z2.zranges(toZ(keyRange._1), toZ(keyRange._2))
       }
 
-      SpacePartitioner(KeyBounds(gridBounds))
+      SpacePartitioner(KeyBounds(nonNegativeBounds))
     }
 
     // note: this rasterizes the mask to the resolution of the data. This means that very small polygons that lie

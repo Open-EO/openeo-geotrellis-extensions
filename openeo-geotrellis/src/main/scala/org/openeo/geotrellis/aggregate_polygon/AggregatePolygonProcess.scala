@@ -119,6 +119,12 @@ class AggregatePolygonProcess() {
 
     val (polygons, indexMapping) = polygonsWithIndexMapping
 
+    var index = -1
+    val invertedMapping = indexMapping.flatMap(set => {
+      index = index + 1
+      set.map((_,index))
+    }).groupBy(_._1).map{t => (t._1,t._2.map(_._2))}.toList.sortBy(_._1 ).map(_._2)
+
     // each polygon becomes a feature with a value that's equal to its position in the array
     val indexedFeatures = polygons
       .zipWithIndex
@@ -129,7 +135,7 @@ class AggregatePolygonProcess() {
     val byIndexMask = LayerProvider.createMaskLayer(indexedFeatures, crs, datacube.metadata, sc)
 
     try {
-      val polygonMappingBC = sc.broadcast(polygonsWithIndexMapping._2)
+      val polygonMappingBC = sc.broadcast(invertedMapping)
       val spatiallyPartitionedIndexMaskLayer: RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition] = ContextRDD(byIndexMask.persist(MEMORY_ONLY_2), byIndexMask.metadata)
       val combinedRDD = new SpatialToSpacetimeJoinRdd(datacube, spatiallyPartitionedIndexMaskLayer)
       val pixelRDD: RDD[Row] = combinedRDD.flatMap{
