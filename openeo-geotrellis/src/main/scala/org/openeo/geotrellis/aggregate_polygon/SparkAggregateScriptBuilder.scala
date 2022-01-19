@@ -103,11 +103,11 @@ class SparkAggregateScriptBuilder {
     val ignoreNoData = !(arguments.getOrDefault("ignore_nodata",Boolean.box(true).asInstanceOf[Object]) == Boolean.box(false) || arguments.getOrDefault("ignore_nodata",None) == "false" )
 
     if(operator == "quantiles") {
-      val probs = arguments.getOrDefault("probabilities",null)
-      val qRaw = arguments.getOrDefault("q",-1)
-      if(probs==null && qRaw.asInstanceOf[Integer] <2) {
+      val probs = arguments.get("probabilities")
+      val qRaw = arguments.get("q")
+      if(probs==null && qRaw == null) {
         throw new IllegalArgumentException("QuantilesParameterMissing: either 'q' or 'probabilities' argument needs to be set")
-      }else if(probs!=null && qRaw.asInstanceOf[Integer] >=2) {
+      }else if(probs!=null && qRaw != null) {
         throw new IllegalArgumentException(s"QuantilesParameterConflict: both 'q' and 'probabilities' argument is set. ${qRaw} - ${probs}")
       }else {
         val probabilities: Seq[Double] = OpenEOProcessScriptBuilder.getQuantilesProbabilities(arguments)
