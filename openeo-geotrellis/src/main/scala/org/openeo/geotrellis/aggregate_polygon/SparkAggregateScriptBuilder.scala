@@ -96,7 +96,7 @@ class SparkAggregateScriptBuilder {
 
     logger.debug(operator + " process with arguments: " + arguments.mkString(","))
 
-    if( operator == "create_array") {
+    if( operator == "create_array" ||  operator == "array_create") {
       return
     }
 
