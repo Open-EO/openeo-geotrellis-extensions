@@ -1,14 +1,27 @@
 package org.openeo.geotrellis
 
+import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, TileLayerMetadata}
+import geotrellis.proj4.LatLng
+import geotrellis.raster.{ByteCells, ByteConstantTile, MultibandTile}
+import geotrellis.spark.ContextRDD
 import geotrellis.spark.util.SparkUtils
+import geotrellis.vector._
 import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
+import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
+import org.junit.Assert.{assertArrayEquals, assertEquals}
 import org.junit.{AfterClass, BeforeClass, Test}
-import org.openeo.geotrellis.ComputeStatsGeotrellisAdapterTest.{getClass, sc}
+import org.openeo.geotrellis.ComputeStatsGeotrellisAdapterTest.{JList, getClass, polygon1, polygon2, sc}
 import org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder
 
+import java.nio.file.{Files, Paths}
+import java.time.ZonedDateTime
 import java.util
+import scala.collection.immutable.Seq
+import scala.collection.JavaConverters._
+import scala.collection.mutable
+import scala.io.Source
 
 object AggregateSpatialTest {
 
@@ -23,6 +36,16 @@ object AggregateSpatialTest {
 
       val conf = new SparkConf().set("spark.driver.bindAddress", "127.0.0.1")
       SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, conf)
+    }
+
+  }
+
+  def assertEqualTimeseriesStats(expected: Seq[Seq[Double]], actual: collection.Seq[collection.Seq[Double]]): Unit = {
+    print(expected)
+    print(actual)
+    assertEquals("should have same polygon count", expected.length, actual.length)
+    expected.indices.foreach { i =>
+      assertArrayEquals("should have same band stats", expected(i).toArray, actual(i).toArray, 1e-6)
     }
   }
 
@@ -41,6 +64,20 @@ class AggregateSpatialTest {
     accumuloInstanceName = "hdp-accumulo-instance"
   )
 
+
+  private def buildCubeRdd(from: ZonedDateTime, to: ZonedDateTime): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+    val tile10 = new ByteConstantTile(10.toByte, 256, 256, ByteCells.withNoData(Some(255.byteValue())))
+    val datacube = TestOpenEOProcesses.tileToSpaceTimeDataCube(tile10).withContext(_.filter { case (key, _) => !(key.time isBefore from) && !(key.time isAfter to) })
+    val polygonExtent = polygon1.extent.combine(polygon2.extent)
+    val updatedMetadata = datacube.metadata.copy(
+      extent = polygonExtent,
+      crs = LatLng,
+      layout = LayoutDefinition(polygonExtent, datacube.metadata.tileLayout)
+    )
+
+    ContextRDD(datacube, updatedMetadata)
+  }
+
   @Test def computeVectorCube_on_datacube_from_polygons(): Unit = {
     val cube = LayerFixtures.sentinel2B04Layer
     computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube("max",cube,LayerFixtures.b04Polygons,"/tmp/csvoutput")
@@ -58,5 +95,50 @@ class AggregateSpatialTest {
     builder.expressionEnd("sum",emptyMap)
     builder.expressionEnd("count",emptyMap)
     computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(builder,cube,LayerFixtures.b04Polygons,"/tmp/csvoutput")
+  }
+
+  @Test
+  def compute_median_timeseries_on_datacube_from_polygons(): Unit = {
+    val from_date = "2017-01-01T00:00:00Z"
+    val to_date = "2017-03-10T00:00:00Z"
+
+    val builder= new SparkAggregateScriptBuilder
+    val emptyMap = new util.HashMap[String,Object]()
+    builder.expressionEnd("median",emptyMap)
+
+    val outDir = "/tmp/csvoutput2"
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(
+      builder,
+      buildCubeRdd(ZonedDateTime.parse(from_date), ZonedDateTime.parse(to_date)),
+      ProjectedPolygons(Seq(polygon1, polygon2), "EPSG:4326"),
+        outDir
+    )
+
+    val groupedStats = parseCSV(outDir)
+    val keys = Seq("2017-01-01", "2017-01-15", "2017-02-01")
+    keys.foreach(k => assertEqualTimeseriesStats(
+      Seq(Seq(10.0, Double.NaN), Seq(10.0, Double.NaN)), groupedStats.get(k).get
+    ))
+  }
+
+  private def parseCSV(outDir: String): Map[String, scala.Seq[scala.Seq[Double]]] = {
+    val stats = mutable.ListBuffer[(String, Int, scala.Seq[Double])]()
+    //Paths.get(outDir).
+    Files.list(Paths.get(outDir)).filter(_.toString.endsWith(".csv")).forEach(path => {
+      println(path)
+      val bufferedSource = Source.fromFile(path.toFile)
+      for (line <- bufferedSource.getLines.drop(1)) {
+        var cols: Array[String] = line.split(",").map(_.trim)
+        if (line.endsWith(",")) {
+          cols = cols ++ Seq("NaN")
+        }
+        stats.append((cols(0), cols(1).toInt, cols.tail.tail.map(_.toDouble).toSeq))
+      }
+      bufferedSource.close
+    })
+
+    val groupedStats = stats.groupBy(_._1).toMap.mapValues(_.sortBy(_._1).map(_._3).toSeq)
+    groupedStats.foreach(println)
+    return groupedStats
   }
 }
