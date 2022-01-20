@@ -97,7 +97,7 @@ String updateMavenVersion(){
 void build(tests = true){
     def publishable_branches = ["master","develop", "feature/spark3"]
     String jdktool = tool name: "OpenJDK 8 Centos7", type: 'hudson.model.JDK'
-    List jdkEnv = ["PATH+JDK=${jdktool}/bin", "JAVA_HOME=${jdktool}", "HADOOP_CONF_DIR=/etc/hadoop/conf/"]
+    List jdkEnv = ["PATH+JDK=${jdktool}/bin", "JAVA_HOME=${jdktool}", "HADOOP_CONF_DIR=/etc/hadoop/conf/","SPARK_LOCAL_IP=127.0.0.1"]
     withEnv(jdkEnv) {
         def server = Artifactory.server('vitoartifactory')
         def rtMaven = Artifactory.newMavenBuild()
