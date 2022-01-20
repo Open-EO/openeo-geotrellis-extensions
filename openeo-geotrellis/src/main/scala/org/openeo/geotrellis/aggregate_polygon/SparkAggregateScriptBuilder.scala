@@ -125,7 +125,7 @@ class SparkAggregateScriptBuilder {
             case "mean" => avg(col)
             case "count" => {
               if(ignoreNoData) {
-                sum(not(col.isNaN).cast("long"))
+                sum(not(col.isNull).cast("long"))
               }else{
                 count(col)
               }

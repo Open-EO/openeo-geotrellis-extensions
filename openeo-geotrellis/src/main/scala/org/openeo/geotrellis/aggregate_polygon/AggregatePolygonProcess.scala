@@ -2,7 +2,7 @@ package org.openeo.geotrellis.aggregate_polygon
 
 import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey}
 import geotrellis.proj4.CRS
-import geotrellis.raster.{MultibandTile, Tile}
+import geotrellis.raster.{MultibandTile, NODATA, Tile}
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.vector._
@@ -123,25 +123,46 @@ class AggregatePolygonProcess() {
           val mapping = polygonMappingBC.value
           val date = java.sql.Date.valueOf(key.time.toLocalDate)
           val result: ListBuffer[Row] = ListBuffer()
-          val bandsValues = Array.ofDim[Double](bands)
+          val bandsValues: Array[Object] = Array.ofDim[Object](bands)
 
-          cfor(0)(_ < rows, _ + 1) { row =>
-            cfor(0)(_ < cols, _ + 1) { col =>
-              val z = zones.get(col, row)
-              if(z>=0) {
-                cfor(0)(_ < bands, _ + 1) { band =>
-                  val v = tile.band(band).getDouble(col, row)
-                  if(v.isNaN) {
-                    //bandsValues(band) = null
-                  }else{
-                    bandsValues(band) = v
+          if(tile.cellType.isFloatingPoint){
+            cfor(0)(_ < rows, _ + 1) { row =>
+              cfor(0)(_ < cols, _ + 1) { col =>
+                val z = zones.get(col, row)
+                if(z>=0) {
+                  cfor(0)(_ < bands, _ + 1) { band =>
+                    val v = tile.band(band).getDouble(col, row)
+                    if(v.isNaN) {
+                      bandsValues(band) = null
+                    }else{
+                      bandsValues(band) = v.asInstanceOf[Object]
+                    }
                   }
+                  val indices = mapping(z)
+                  indices.foreach(polygonIndex => result.append(Row.fromSeq(Seq(date, polygonIndex) ++ bandsValues.toSeq)))
                 }
-                val indices = mapping(z)
-                indices.foreach(polygonIndex => result.append(Row.fromSeq(Seq(date, polygonIndex) ++ bandsValues.toSeq)))
+              }
+            }
+          }else{
+            cfor(0)(_ < rows, _ + 1) { row =>
+              cfor(0)(_ < cols, _ + 1) { col =>
+                val z = zones.get(col, row)
+                if(z>=0) {
+                  cfor(0)(_ < bands, _ + 1) { band =>
+                    val v = tile.band(band).get(col, row)
+                    if(v == NODATA) {
+                      bandsValues(band) = null
+                    }else{
+                      bandsValues(band) = v.asInstanceOf[Object]
+                    }
+                  }
+                  val indices = mapping(z)
+                  indices.foreach(polygonIndex => result.append(Row.fromSeq(Seq(date, polygonIndex) ++ bandsValues.toSeq)))
+                }
               }
             }
           }
+
 
           result
         }
@@ -149,7 +170,14 @@ class AggregatePolygonProcess() {
       val session = SparkSession.builder().config(sc.getConf).getOrCreate()
 
       val bandColumns = (0 until bandCount).map(b => f"band_$b")
-      val bandStructs = bandColumns.map(StructField( _,DoubleType,true))
+
+      val dataType =
+        if(datacube.metadata.cellType.isFloatingPoint) {
+          DoubleType
+        }else{
+          IntegerType
+        }
+      val bandStructs = bandColumns.map(StructField( _,dataType,true))
 
       val schema = StructType(Seq(StructField("date", DateType, true),
         StructField("feature_index", IntegerType, true),
