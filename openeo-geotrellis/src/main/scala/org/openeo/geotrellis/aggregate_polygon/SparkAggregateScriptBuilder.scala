@@ -102,6 +102,7 @@ class SparkAggregateScriptBuilder {
 
     val hasData = arguments.containsKey("data")
     val ignoreNoData = !(arguments.getOrDefault("ignore_nodata",Boolean.box(true).asInstanceOf[Object]) == Boolean.box(false) || arguments.getOrDefault("ignore_nodata",None) == "false" )
+    val condition = arguments.getOrDefault("condition",null)
 
     if(operator == "quantiles") {
       val probs = arguments.get("probabilities")
@@ -124,10 +125,11 @@ class SparkAggregateScriptBuilder {
           operator match {
             case "mean" => avg(col)
             case "count" => {
-              if(ignoreNoData) {
-                sum(not(col.isNull).cast("long"))
+              if(condition == Boolean.box(true) || condition == "true") {
+                count(col.isNull.or(col.isNotNull))
               }else{
                 count(col)
+                //sum(not(col.isNull).cast("long"))
               }
             }
             case "max" => max(col)

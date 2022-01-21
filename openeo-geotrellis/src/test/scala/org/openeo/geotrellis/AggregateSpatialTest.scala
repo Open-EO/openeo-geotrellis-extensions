@@ -87,6 +87,8 @@ class AggregateSpatialTest {
     val cube = LayerFixtures.sentinel2B04Layer
     val builder= new SparkAggregateScriptBuilder
     val emptyMap = new util.HashMap[String,Object]()
+    val countMap = new util.HashMap[String,Object]()
+    countMap.put("condition",true.asInstanceOf[Object])
     builder.expressionEnd("min",emptyMap)
     builder.expressionEnd("median",emptyMap)
     builder.expressionEnd("mean",emptyMap)
@@ -94,6 +96,7 @@ class AggregateSpatialTest {
     builder.expressionEnd("sd",emptyMap)
     builder.expressionEnd("sum",emptyMap)
     builder.expressionEnd("count",emptyMap)
+    builder.expressionEnd("count",countMap)
     computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(builder,cube,LayerFixtures.b04Polygons,"/tmp/csvoutput")
   }
 
