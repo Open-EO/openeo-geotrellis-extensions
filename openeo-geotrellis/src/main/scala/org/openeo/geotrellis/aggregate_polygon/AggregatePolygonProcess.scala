@@ -189,7 +189,7 @@ class AggregatePolygonProcess() {
       //Seq(count(col.isNull),count(not(col.isNull)),expr(s"percentile_approx(band_1,0.95)")
       val builder = scriptBuilder.generateFunction()
       val expressionCols: Seq[Column] = bandColumns.flatMap(col => builder(df.col(col),col))
-      dataframe.groupBy("date","feature_index").agg(expressionCols.head,expressionCols.tail:_*).coalesce(1).write.option("header","true").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+      dataframe.groupBy("date","feature_index").agg(expressionCols.head,expressionCols.tail:_*).coalesce(1).write.option("header","true").option("emptyValue","").mode(SaveMode.Overwrite).csv("file://" + outputPath)
 
     }finally{
       byIndexMask.unpersist()
