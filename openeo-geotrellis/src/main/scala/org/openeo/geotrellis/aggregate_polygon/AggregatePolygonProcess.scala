@@ -2,9 +2,10 @@ package org.openeo.geotrellis.aggregate_polygon
 
 import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey}
 import geotrellis.proj4.CRS
-import geotrellis.raster.{MultibandTile, NODATA, Tile}
+import geotrellis.raster
+import geotrellis.raster._
 import geotrellis.spark.partition.SpacePartitioner
-import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
+import geotrellis.spark._
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd._
@@ -90,6 +91,62 @@ class AggregatePolygonProcess() {
   }
 
 
+  def aggregateSpatialForGeometry(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], points: Seq[Geometry], crs: CRS, bandCount:Int, outputPath:String): Unit = {
+    val sc = datacube.sparkContext
+
+    // each polygon becomes a feature with a value that's equal to its position in the array
+    val indexedFeatures = points
+      .zipWithIndex
+      .map { case (geom, index) => Feature(geom, index.toInt) }
+
+    val geometryRDD = sc.parallelize(indexedFeatures).clipToGrid(datacube.metadata).groupByKey()
+    val combinedRDD = new SpatialToSpacetimeJoinRdd(datacube, geometryRDD)
+
+    val pixelRDD: RDD[Row] = combinedRDD.flatMap {
+      case (key: SpaceTimeKey, (tile: MultibandTile, geoms: Iterable[Feature[Geometry,Int]])) => {
+        val result: ListBuffer[Row] = ListBuffer()
+        val bands = tile.bandCount
+
+        val options = raster.RasterizerOptions.DEFAULT
+
+
+        val date = java.sql.Date.valueOf(key.time.toLocalDate)
+        val re = RasterExtent(tile, datacube.metadata.keyToExtent(key))
+        val bandsValues: Array[Object] = Array.ofDim[Object](bands)
+        for (g: Feature[Geometry, Int] <- geoms) {
+          if (tile.cellType.isFloatingPoint) {
+            g.geom.foreach(re, options)({ (col: Int, row: Int) =>
+              cfor(0)(_ < bands, _ + 1) { band =>
+                val v = tile.band(band).getDouble(col, row)
+                if(v.isNaN) {
+                  bandsValues(band) = null
+                }else{
+                  bandsValues(band) = v.asInstanceOf[Object]
+                }
+              }
+              result.append(Row.fromSeq(Seq(date, g.data) ++ bandsValues.toSeq))
+            })
+          } else {
+            g.geom.foreach(re, options)({ (col: Int, row: Int) =>
+              cfor(0)(_ < bands, _ + 1) { band =>
+                val v = tile.band(band).get(col, row)
+                if(v == NODATA) {
+                  bandsValues(band) = null
+                }else{
+                  bandsValues(band) = v.asInstanceOf[Object]
+                }
+              }
+              result.append(Row.fromSeq(Seq(date, g.data) ++ bandsValues.toSeq))
+            })
+          }
+        }
+        result
+      }
+    }
+    val cellType = datacube.metadata.cellType
+    aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath)
+  }
+
   def aggregateSpatialGeneric(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int, outputPath:String): Unit = {
     import org.apache.spark.storage.StorageLevel._
 
@@ -167,33 +224,37 @@ class AggregatePolygonProcess() {
           result
         }
       }
-      val session = SparkSession.builder().config(sc.getConf).getOrCreate()
-
-      val bandColumns = (0 until bandCount).map(b => f"band_$b")
-
-      val dataType =
-        if(datacube.metadata.cellType.isFloatingPoint) {
-          DoubleType
-        }else{
-          IntegerType
-        }
-      val bandStructs = bandColumns.map(StructField( _,dataType,true))
-
-      val schema = StructType(Seq(StructField("date", DateType, true),
-        StructField("feature_index", IntegerType, true),
-      ) ++ bandStructs)
-      val df = session.createDataFrame(pixelRDD,schema)
-      val dataframe = df.withColumnRenamed(df.columns(0),"date").withColumnRenamed(df.columns(1),"feature_index")
-      //val expressions = bandColumns.flatMap(col => Seq((col,"sum"),(col,"max"))).toMap
-      //https://spark.apache.org/docs/3.2.0/sql-ref-null-semantics.html#built-in-aggregate
-      //Seq(count(col.isNull),count(not(col.isNull)),expr(s"percentile_approx(band_1,0.95)")
-      val builder = scriptBuilder.generateFunction()
-      val expressionCols: Seq[Column] = bandColumns.flatMap(col => builder(df.col(col),col))
-      dataframe.groupBy("date","feature_index").agg(expressionCols.head,expressionCols.tail:_*).coalesce(1).write.option("header","true").option("emptyValue","").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+      val cellType = datacube.metadata.cellType
+      aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath)
 
     }finally{
       byIndexMask.unpersist()
     }
+  }
+
+  private def aggregateByDateAndPolygon(pixelRDD: RDD[Row], scriptBuilder: SparkAggregateScriptBuilder, bandCount: Int, cellType: CellType, outputPath: String) = {
+    val session = SparkSession.builder().config(pixelRDD.sparkContext.getConf).getOrCreate()
+    val dataType =
+      if (cellType.isFloatingPoint) {
+        DoubleType
+      } else {
+        IntegerType
+      }
+    val bandColumns = (0 until bandCount).map(b => f"band_$b")
+
+    val bandStructs = bandColumns.map(StructField(_, dataType, true))
+
+    val schema = StructType(Seq(StructField("date", DateType, true),
+      StructField("feature_index", IntegerType, true),
+    ) ++ bandStructs)
+    val df = session.createDataFrame(pixelRDD, schema)
+    val dataframe = df.withColumnRenamed(df.columns(0), "date").withColumnRenamed(df.columns(1), "feature_index")
+    //val expressions = bandColumns.flatMap(col => Seq((col,"sum"),(col,"max"))).toMap
+    //https://spark.apache.org/docs/3.2.0/sql-ref-null-semantics.html#built-in-aggregate
+    //Seq(count(col.isNull),count(not(col.isNull)),expr(s"percentile_approx(band_1,0.95)")
+    val builder = scriptBuilder.generateFunction()
+    val expressionCols: Seq[Column] = bandColumns.flatMap(col => builder(df.col(col), col))
+    dataframe.groupBy("date", "feature_index").agg(expressionCols.head, expressionCols.tail: _*).coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
   }
 
   /*
