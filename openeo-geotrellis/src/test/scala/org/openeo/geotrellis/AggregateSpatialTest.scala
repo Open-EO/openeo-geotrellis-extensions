@@ -85,6 +85,7 @@ class AggregateSpatialTest {
 
   @Test def multiple_statistics(): Unit = {
     val cube = LayerFixtures.sentinel2B04Layer
+
     val builder= new SparkAggregateScriptBuilder
     val emptyMap = new util.HashMap[String,Object]()
     val countMap = new util.HashMap[String,Object]()
@@ -97,7 +98,53 @@ class AggregateSpatialTest {
     builder.expressionEnd("sum",emptyMap)
     builder.expressionEnd("count",emptyMap)
     builder.expressionEnd("count",countMap)
-    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(builder,cube,LayerFixtures.b04Polygons,"/tmp/csvoutput")
+    val outDir = "/tmp/csvoutput"
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(builder,cube,LayerFixtures.b04Polygons,outDir)
+
+    val groupedStats = parseCSV(outDir).toSeq.sortBy(_._1).map(_._2)
+    val thePolygons = ProjectedPolygons.reproject(LayerFixtures.b04Polygons, cube.metadata.crs)
+    var polygonIndex = 0
+
+    def nd(d:Double):Double = {
+      if(d.isNaN) {
+        32767.0
+      }else{
+        d
+      }
+    }
+    for(geom:Geometry <- thePolygons.polygons){
+      val histograms = LayerFixtures.b04Raster.mask(geom).tile.histogram
+
+      var dateIndex = 0
+      for( h <- histograms) {
+        val ignoreNodata = h.mutable()
+        ignoreNodata.uncountItem(32767)
+        val expected = groupedStats(dateIndex)(polygonIndex)
+        if(ignoreNodata.totalCount()!=0){
+          val count = nd(expected(6))
+          assertEquals(count,ignoreNodata.totalCount(),0.1)
+
+          val diff = math.abs(nd(expected(2)) - ignoreNodata.mean().get)
+          if( diff>2){
+            //TODO: seems to be something wrong with mean from histogram??
+            if(count > 10)
+              println(s"large diff ${diff}")
+            else
+              println("large diff for low number")
+          }else{
+            if(!ignoreNodata.mean().get.isNaN) {
+              assertEquals(nd(expected(2)) ,ignoreNodata.mean().get,2.1)
+              //assertEquals(nd(expected(1)) ,ignoreNodata.median().get,6.1)//medians have some room for rounding
+            }
+
+          }
+          assertEquals(nd(expected(0)),ignoreNodata.minValue().get,0.1)
+          assertEquals(nd(expected(3)),ignoreNodata.maxValue().get,0.1)
+        }
+        dateIndex = dateIndex +1
+      }
+      polygonIndex = polygonIndex + 1
+    }
   }
 
   @Test
@@ -135,12 +182,19 @@ class AggregateSpatialTest {
         if (line.endsWith(",")) {
           cols = cols ++ Seq("NaN")
         }
-        stats.append((cols(0), cols(1).toInt, cols.tail.tail.map(_.toDouble).toSeq))
+        def asDouble(s:String) = {
+          if("" == s){
+            Double.NaN
+          }else{
+            s.toDouble
+          }
+        }
+        stats.append((cols(0), cols(1).toInt, cols.tail.tail.map(asDouble).toSeq))
       }
       bufferedSource.close
     })
 
-    val groupedStats = stats.groupBy(_._1).toMap.mapValues(_.sortBy(_._1).map(_._3).toSeq)
+    val groupedStats = stats.groupBy(_._1).toMap.mapValues(_.sortBy(_._2).map(_._3).toSeq)
     groupedStats.foreach(println)
     return groupedStats
   }
