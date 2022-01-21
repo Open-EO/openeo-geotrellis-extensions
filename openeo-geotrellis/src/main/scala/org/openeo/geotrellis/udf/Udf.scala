@@ -134,6 +134,24 @@ object Udf {
         |""".stripMargin)
   }
 
+  private def _setContextInPython(interp: SharedInterpreter, context: util.HashMap[String, Any]): Unit = {
+    interp.exec(
+      """def pyjmap_to_dict(pyjmap):
+        |  new_dict = {}
+        |  pyjmap_str = "jep.PyJMap"
+        |  for key in pyjmap:
+        |    value = pyjmap[key]
+        |    if pyjmap_str in str(type(value)):
+        |      value = pyjmap_to_dict(value)
+        |    new_dict[key] = value
+        |  return new_dict""".stripMargin)
+
+    interp.set("pyjmap_context", context)
+    interp.exec("context = pyjmap_to_dict(pyjmap_context)")
+  }
+
+
+
   def runChunkPolygonUserCode(code: String,
                               layer: MultibandTileLayerRDD[SpaceTimeKey],
                               projectedPolygons: ProjectedPolygons,
@@ -185,15 +203,16 @@ object Udf {
 
           // Convert DirectNDArray to XarrayDatacube.
           _setXarraydatacubeInPython(interp, directTile, tileShape, spatialExtent, bandNames, dates)
+          // Convert context from jep.PyJMap to dict.
+          _setContextInPython(interp, context)
 
           // Execute the UDF in python.
-          interp.set("context", context)
           interp.exec("data = UdfData(proj={\"EPSG\": 900913}, datacube_list=[datacube], user_context=context)")
           interp.exec(code)
           interp.exec("result_cube = apply_datacube(data.get_datacube_list()[0], data.user_context)")
 
           // Convert the result back to a list of multi-band tiles.
-          val resultDimensions = interp.getValue("result_cube.get_array().values.shape").asInstanceOf[java.util.List[Int]].asScala.toList
+          val resultDimensions = interp.getValue("result_cube.get_array().values.shape").asInstanceOf[java.util.List[Long]].asScala.toList.map(_.toInt)
           val resultCube = interp.getValue("result_cube.get_array().values")
           var resultBuffer: FloatBuffer = null
           resultCube match {
