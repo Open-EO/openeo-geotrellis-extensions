@@ -150,8 +150,12 @@ class UdfTest extends RasterMatchers {
     bandNames.add("B01")
     bandNames.add("B02")
 
+    val context = new util.HashMap[String, Any]()
+    val context_inner = new util.HashMap[String, Any]()
+    context_inner.put("innerkey", "innervalue")
+    context.put("soil_type", context_inner)
     val resultCube: MultibandTileLayerRDD[SpaceTimeKey] = Udf.runChunkPolygonUserCode(
-      code, datacube, projectedPolygons, bandNames, new util.HashMap[String, Any](), -1.0f
+      code, datacube, projectedPolygons, bandNames, context, -1.0f
     )
 
     // Compare bands.
