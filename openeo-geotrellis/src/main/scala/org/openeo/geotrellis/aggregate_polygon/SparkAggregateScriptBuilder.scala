@@ -56,7 +56,7 @@ class SparkAggregateScriptBuilder {
   }
 
   def fromParameter(parameterName:String): Unit = {
-    throw new UnsupportedOperationException("Parameters are not supported in reducer.")
+
   }
 
   def argumentEnd(): Unit = {
