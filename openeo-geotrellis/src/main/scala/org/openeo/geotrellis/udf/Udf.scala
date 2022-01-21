@@ -193,29 +193,43 @@ object Udf {
           interp.exec("result_cube = apply_datacube(data.get_datacube_list()[0], data.user_context)")
 
           // Convert the result back to a list of multi-band tiles.
+          val resultDimensions = interp.getValue("result_cube.get_array().values.shape").asInstanceOf[java.util.List[Int]].asScala.toList
           val resultCube = interp.getValue("result_cube.get_array().values")
+          var resultBuffer: FloatBuffer = null
+          resultCube match {
+            case cube: DirectNDArray[FloatBuffer] =>
+              // The datacube was modified inplace.
+              resultBuffer = cube.getData
+            case cube: NDArray[Array[Float]] =>
+              // UDF created a new datacube.
+              val dtype = interp.getValue("str(result_cube.get_array().values.dtype)").asInstanceOf[String]
+              if (!dtype.equals("float32")) {
+                throw new IllegalArgumentException("UDF returned a datacube that does not have dtype == np.float32.")
+              }
+              if (resultDimensions.length != 4) {
+                throw new IllegalArgumentException((
+                  "UDF returned a datacube that does not have dimensions (#dates, #bands, #rows, #cols). " +
+                    "Actual dimensions: (%s).").format(resultDimensions.mkString(", "))
+                )
+              }
+              if (resultDimensions(3) != tileRows || resultDimensions(4) != tileCols) {
+                throw new IllegalArgumentException((
+                  "UDF returned a datacube that does not have the same rows and columns as the input cube. " +
+                    "Actual spatial dimensions: (%d, %d). Expected spatial dimensions: (%d, %d).")
+                  .format(resultDimensions(3), resultDimensions(4), tileRows, tileCols)
+                )
+              }
+              resultBuffer = FloatBuffer.wrap(cube.getData)
+          }
+
           // Note: xarray instants are in nanoseconds.
           interp.exec("result_dates = result_cube.get_array().coords['t'].values.tolist()")
           val resultDates = interp
             .getValue("result_dates if isinstance(result_dates, list) else [result_dates]")
             .asInstanceOf[java.util.ArrayList[Long]].asScala.transform(l => (l / scala.math.pow(10,6)).longValue)
-          var resultBuffer: FloatBuffer = null
-          var newNumberOfBands = 0
-          resultCube match {
-            case cube: DirectNDArray[FloatBuffer] => {
-              // The datacube was modified inplace.
-              resultBuffer = cube.getData
-              newNumberOfBands = cube.getDimensions()(1)
-            }
-            case cube: NDArray[Array[Float]] => {
-              // UDF created a new datacube.
-              resultBuffer = FloatBuffer.wrap(cube.getData)
-              newNumberOfBands = cube.getDimensions()(1)
-              // TODO: Check if time dimension has been removed.
-            }
-          }
 
           // UDFs can add/remove bands or dates from the original datacube but not rows, cols.
+          val newNumberOfBands = resultDimensions(1)
           resultBuffer.rewind()
           for (resultDate <- resultDates) {
             val newBands = new ListBuffer[FloatArrayTile]()
