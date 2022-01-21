@@ -34,7 +34,7 @@ class SparkAggregateScriptBuilder {
   }
 
   def constantArgument(name:String,value:Number): Unit = {
-    throw new UnsupportedOperationException("Constants are not supported in reducer.")
+
   }
 
   def constantArguments(args: java.util.Map[String,Object]): Unit = {
