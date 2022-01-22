@@ -147,6 +147,80 @@ class AggregatePolygonProcess() {
     aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath)
   }
 
+  def aggregateSpatialForGeometryWithSpatialCube(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpatialKey], points: Seq[Geometry], crs: CRS, bandCount:Int, outputPath:String): Unit = {
+    val sc = datacube.sparkContext
+
+    // each polygon becomes a feature with a value that's equal to its position in the array
+    val indexedFeatures = points
+      .zipWithIndex
+      .map { case (geom, index) => Feature(geom, index.toInt) }
+
+    val geometryRDD = sc.parallelize(indexedFeatures).clipToGrid(datacube.metadata).groupByKey()
+    val combinedRDD = datacube.join(geometryRDD)
+
+    val pixelRDD: RDD[Row] = combinedRDD.flatMap {
+      case (key: SpatialKey, (tile: MultibandTile, geoms: Iterable[Feature[Geometry,Int]])) => {
+        val result: ListBuffer[Row] = ListBuffer()
+        val bands = tile.bandCount
+
+        val options = raster.RasterizerOptions.DEFAULT
+
+        val re = RasterExtent(tile, datacube.metadata.keyToExtent(key))
+        val bandsValues: Array[Object] = Array.ofDim[Object](bands)
+        for (g: Feature[Geometry, Int] <- geoms) {
+          if (tile.cellType.isFloatingPoint) {
+            g.geom.foreach(re, options)({ (col: Int, row: Int) =>
+              cfor(0)(_ < bands, _ + 1) { band =>
+                val v = tile.band(band).getDouble(col, row)
+                if(v.isNaN) {
+                  bandsValues(band) = null
+                }else{
+                  bandsValues(band) = v.asInstanceOf[Object]
+                }
+              }
+              result.append(Row.fromSeq(Seq( g.data) ++ bandsValues.toSeq))
+            })
+          } else {
+            g.geom.foreach(re, options)({ (col: Int, row: Int) =>
+              cfor(0)(_ < bands, _ + 1) { band =>
+                val v = tile.band(band).get(col, row)
+                if(v == NODATA) {
+                  bandsValues(band) = null
+                }else{
+                  bandsValues(band) = v.asInstanceOf[Object]
+                }
+              }
+              result.append(Row.fromSeq(Seq( g.data) ++ bandsValues.toSeq))
+            })
+          }
+        }
+        result
+      }
+    }
+    val cellType = datacube.metadata.cellType
+    aggregateByPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath)
+  }
+
+  private def aggregateByPolygon(pixelRDD: RDD[Row], scriptBuilder: SparkAggregateScriptBuilder, bandCount: Int, cellType: CellType, outputPath: String) = {
+    val session = SparkSession.builder().config(pixelRDD.sparkContext.getConf).getOrCreate()
+    val dataType =
+      if (cellType.isFloatingPoint) {
+        DoubleType
+      } else {
+        IntegerType
+      }
+    val bandColumns = (0 until bandCount).map(b => f"band_$b")
+    val bandStructs = bandColumns.map(StructField(_, dataType, true))
+
+    val schema = StructType(Seq(StructField("feature_index", IntegerType, true)) ++ bandStructs)
+    val df = session.createDataFrame(pixelRDD, schema)
+    val dataframe = df.withColumnRenamed(df.columns(1), "feature_index")
+
+    val builder = scriptBuilder.generateFunction()
+    val expressionCols: Seq[Column] = bandColumns.flatMap(col => builder(df.col(col), col))
+    dataframe.groupBy("feature_index").agg(expressionCols.head, expressionCols.tail: _*).coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+  }
+
   def aggregateSpatialGeneric(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int, outputPath:String): Unit = {
     import org.apache.spark.storage.StorageLevel._
 
