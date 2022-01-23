@@ -230,7 +230,7 @@ class AggregatePolygonProcess() {
     val invertedMapping = indexMapping.flatMap(set => {
       index = index + 1
       set.map((_,index))
-    }).groupBy(_._1).map{t => (t._1,t._2.map(_._2))}.toList.sortBy(_._1 ).map(_._2)
+    }).groupBy(_._1).map{t => (t._1,t._2.map(_._2))}.toList.sortBy(_._1 ).map(_._2).toArray
 
     // each polygon becomes a feature with a value that's equal to its position in the array
     val indexedFeatures = polygons
