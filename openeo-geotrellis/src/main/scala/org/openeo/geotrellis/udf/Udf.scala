@@ -231,11 +231,11 @@ object Udf {
                     "Actual dimensions: (%s).").format(resultDimensions.mkString(", "))
                 )
               }
-              if (resultDimensions(3) != tileRows || resultDimensions(4) != tileCols) {
+              if (resultDimensions(2) != tileRows || resultDimensions(3) != tileCols) {
                 throw new IllegalArgumentException((
                   "UDF returned a datacube that does not have the same rows and columns as the input cube. " +
                     "Actual spatial dimensions: (%d, %d). Expected spatial dimensions: (%d, %d).")
-                  .format(resultDimensions(3), resultDimensions(4), tileRows, tileCols)
+                  .format(resultDimensions(2), resultDimensions(3), tileRows, tileCols)
                 )
               }
               resultBuffer = FloatBuffer.wrap(cube.getData)
