@@ -54,7 +54,10 @@ class RlGuardAdapter extends RateLimitingGuard with Serializable {
 
     try {
       val rlGuardAdapterOutput = rlGuardAdapterInvocation
-        .!!(ProcessLogger(fout = _ => (), ferr = s => stdErrBuffer.append(s).append(newline)))
+        .!!(ProcessLogger(fout = _ => (), ferr = s => {
+          logger.debug(s) // assumes rlguard_adapter logs to stderr (= Python's logging default destination)
+          stdErrBuffer.append(s).append(newline)
+        }))
 
       val delayInSeconds = decode[Map[String, Json]](rlGuardAdapterOutput.trim)
         .map { result =>
