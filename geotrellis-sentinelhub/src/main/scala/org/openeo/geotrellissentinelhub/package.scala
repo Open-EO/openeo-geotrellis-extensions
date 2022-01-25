@@ -28,7 +28,8 @@ package object geotrellissentinelhub {
       val retryable: Throwable => Boolean = {
         // exceptions like ClassCastException, MatchError etc. thrown from this predicate are swallowed by Failsafe :/
         case SentinelHubException(_, 429, _) => true
-        case SentinelHubException(_, 400, body) if body contains "Request body should be non-empty." => true
+        case SentinelHubException(_, 400, responseBody) if responseBody.contains("Request body should be non-empty.")
+          || responseBody.contains("Missing grant_type parameter") => true
         case SentinelHubException(_, statusCode, _) if statusCode >= 500 => true
         case _: SocketTimeoutException => true
         case _: CirceException => true
