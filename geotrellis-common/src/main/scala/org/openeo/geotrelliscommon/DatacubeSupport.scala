@@ -44,6 +44,9 @@ object DatacubeSupport {
           if (p.getName == "utm") {
             if(globalBounds.isDefined) {
               val reprojected = globalBounds.get.reproject(boundingBox.crs)
+              if (!reprojected.covers(boundingBox.extent)) {
+                throw new IllegalArgumentException(f"Trying to construct a datacube with a bounds ${boundingBox.extent} that is not entirely inside the global bounds: ${reprojected}. ")
+              }
               val x = maxSpatialResolution.width
               val y = maxSpatialResolution.height
               Extent(x*Math.floor(reprojected.xmin/x),y*Math.floor(reprojected.ymin/y),x*Math.ceil(reprojected.xmax/x),y*Math.ceil(reprojected.ymax/y))
