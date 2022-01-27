@@ -564,9 +564,9 @@ package object geotiff {
                   polygons:ProjectedPolygons,
                   sampleNames: ArrayList[String],
                                    compression: Compression): java.util.List[(String, String)] = {
-    val features = sampleNames.asScala.toList.zip(polygons.polygons.map(_.extent))
+    val reprojected = ProjectedPolygons.reproject(polygons, rdd.metadata.crs)
+    val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
     groupByFeatureAndWriteToTiff(rdd, Option.empty, features,path, Option.empty,compression)
-
 }
 
   def saveStitchedTileGridTemporal( rdd:MultibandTileLayerRDD[SpaceTimeKey],
