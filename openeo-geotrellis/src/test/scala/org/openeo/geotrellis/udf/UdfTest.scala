@@ -59,23 +59,27 @@ class UdfTest extends RasterMatchers {
     val code = source.getLines.mkString("\n")
     source.close()
 
-    val zeroTile: MutableArrayTile = FloatArrayTile.fill(0, 256, 256)
-    val multibandTile: MultibandTile = new ArrayMultibandTile(Array(zeroTile).asInstanceOf[Array[Tile]])
-    val extent: Extent = new Extent(0,0,10,10)
-    val tileLayout = new TileLayout(1, 1, zeroTile.cols.asInstanceOf[Integer], zeroTile.rows.asInstanceOf[Integer])
-
-    val tileLayerRDD: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, multibandTile, tileLayout).asInstanceOf[ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]]]
-
-    tileLayerRDD.values.first().bands(0).foreach(e => assert(e == 0))
-    val resultRDD = Udf.runUserCode(code, tileLayerRDD, new util.ArrayList[String](), new util.HashMap[String, Any]())
+    val dates = _getDates()
+    val datacube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = _createChunkPolygonDatacube(dates)
+    datacube.values.first().bands(0).foreach(e => assert(e == 0))
+    val resultRDD = Udf.runUserCode(code, datacube, new util.ArrayList[String](), new util.HashMap[String, Any]())
     resultRDD.values.first().bands(0).foreach(e => assert(e == 60))
   }
 
-  def _createChunkPolygonDatacube(): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
-    val dates = Seq("2017-01-15T00:00:00Z","2017-01-16T00:00:00Z")
+  def _getDates(): Seq[ZonedDateTime] = {
+    val dates = Seq(
+      "2017-01-15T00:01:00Z","2017-01-16T00:01:00Z", "2017-02-01T00:03:00Z",
+      "2017-02-04T00:04:00Z", "2017-02-06T00:02:00Z", "2017-02-07T00:04:00Z", "2017-02-10T00:00:00Z",
+      "2017-02-11T00:05:00Z", "2017-03-10T00:00:00Z", "2020-01-31T00:05:00Z")
+    dates.map(ZonedDateTime.parse(_))
+  }
+
+  def _createChunkPolygonDatacube(times: Seq[ZonedDateTime]): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
     val constantFloats: Array[Float] = Array.fill(512*512)(0f)
     val constantBands = List.fill(2)(FloatArrayTile(constantFloats, 512, 512))
     val bands = ListBuffer[FloatArrayTile]()
+    // Give a different value to every tile in tileLayout.
+    // This makes it easier to identify stitching or merging errors.
     for (constantBand <- constantBands) {
       bands += constantBand.map((col: Int, row: Int, value: Int) => {
         val layoutCol = math.floor(col / 32).toInt
@@ -85,7 +89,7 @@ class UdfTest extends RasterMatchers {
     }
 
     val arrayMultibandTile = new ArrayMultibandTile(bands.toArray)
-    // Chop each large tile in bands into a 16x16 array (with 32x32 pixels each).
+    // Chop each large tile into a 16x16 array (with 32x32 pixels each).
     val tileLayout = new TileLayout(16, 16, 32, 32)
 
     // Create cube with (x, y, bands) dimensions.
@@ -94,9 +98,10 @@ class UdfTest extends RasterMatchers {
         SparkContext.getOrCreate, arrayMultibandTile, tileLayout
       ).asInstanceOf[ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]]]
     // Add time dimension.
-    val times: Seq[ZonedDateTime] = dates.map(ZonedDateTime.parse(_))
     val cubeXYTB: RDD[(SpaceTimeKey, MultibandTile)] = cubeXYB.flatMap((pair: Tuple2[SpatialKey, MultibandTile]) => {
-      times.map((time: ZonedDateTime) => (SpaceTimeKey(pair._1, TemporalKey(time)), pair._2))
+      times.zipWithIndex.map(timePair => {
+        (SpaceTimeKey(pair._1, TemporalKey(timePair._1)), pair._2.map((_b, c) => c + timePair._2))
+      })
     })
     // Combine cube with metadata to create the final datacube.
     val md: TileLayerMetadata[SpatialKey] = cubeXYB.metadata
@@ -144,7 +149,8 @@ class UdfTest extends RasterMatchers {
     source.close()
 
     // Datacube extent: (-180.0, -89.99999, 179.99999, 89.99999).
-    val datacube = _createChunkPolygonDatacube()
+    val dates = _getDates()
+    val datacube = _createChunkPolygonDatacube(dates)
     val projectedPolygons = _createChunkPolygonProjectedPolygons()
     val bandNames = new util.ArrayList[String]()
     bandNames.add("B01")
@@ -155,7 +161,7 @@ class UdfTest extends RasterMatchers {
     context_inner.put("innerkey", "innervalue")
     context.put("soil_type", context_inner)
     val resultCube: MultibandTileLayerRDD[SpaceTimeKey] = Udf.runChunkPolygonUserCode(
-      code, datacube, projectedPolygons, bandNames, context, -1.0f
+      code, datacube, projectedPolygons, bandNames, context, -9000.0f
     )
 
     // Compare bands.
@@ -167,6 +173,17 @@ class UdfTest extends RasterMatchers {
         .toArray().filter(_ > 0).map(_+1) sameElements x._2._2.asInstanceOf[FloatArrayTile].toArray().filter(_ > 0)
       )
     )
+
+    // Compare dates.
+    //resultArray.foreach (key_and_tile => {
+    //  val keyToCheck = key_and_tile._1
+    //  val resultTileToCheck = key_and_tile._2.band(0)
+    //  val inputTileToCheck = datacube.collect().toMap.get(keyToCheck).get.band(0)
+    //  val inputArray = inputTileToCheck.map(_ + 1001).toArray()
+    //  inputArray.zip(resultTileToCheck.toArray()).foreach(pair => {
+    //    if (pair._2 > 0) assert(pair._1 == pair._2)
+    //  })
+    //})
 
     // Assert UDF effects.
     val processes = new OpenEOProcesses
@@ -201,7 +218,8 @@ class UdfTest extends RasterMatchers {
     val code = source.getLines.mkString("\n")
     source.close()
 
-    val datacube = _createChunkPolygonDatacube()
+    val dates = _getDates()
+    val datacube = _createChunkPolygonDatacube(dates)
     val projectedPolygons = _createChunkPolygonProjectedPolygons()
     val bandNames = new util.ArrayList[String]()
     bandNames.add("B01")
