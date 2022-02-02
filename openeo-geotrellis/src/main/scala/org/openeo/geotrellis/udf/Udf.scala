@@ -82,7 +82,7 @@ object Udf {
                                          tileShape: List[Int],
                                          spatialExtent: SpatialExtent,
                                          bandCoordinates: util.ArrayList[String],
-                                         timeCoordinates: Set[Long] = Set()
+                                         timeCoordinates: List[Long] = List()
                                       ): Unit = {
     // Note: This method is a scala implementation of geopysparkdatacube._tile_to_datacube.
     interp.set("tile_shape", new util.ArrayList[Int](tileShape.asJava))
@@ -174,7 +174,7 @@ object Udf {
 
         // Sort tiles by date.
         val sortedtiles = tiles.toList.sortBy(_._2)
-        val dates: Set[Long] = sortedtiles.map(_._2).toSet
+        val dates: List[Long] = sortedtiles.map(_._2)
         val multibandTiles: Seq[MultibandTile] = sortedtiles.map(_._3)
 
         // Initialize spatial extent.
@@ -197,7 +197,7 @@ object Udf {
           val buffer = ByteBuffer.allocateDirect(multiDateMultiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
           multibandTiles.foreach(_.bands.foreach(tile => {
             val tileFloats: Array[Float] =  tile.asInstanceOf[FloatArrayTile].array
-            buffer.put(tileFloats, 0, tileFloats.length) // This copies from JVM
+            buffer.put(tileFloats, 0, tileFloats.length)
           }))
           val directTile = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
 
