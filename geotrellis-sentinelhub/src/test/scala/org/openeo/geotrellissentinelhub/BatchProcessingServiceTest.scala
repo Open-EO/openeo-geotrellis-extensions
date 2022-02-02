@@ -406,6 +406,26 @@ class BatchProcessingServiceTest {
     )
   }
 
+  @Ignore("not implemented yet")
+  @Test(expected = classOf[BatchProcessingService.NoSuchFeaturesException])
+  def startCard4LBatchProcessesForXXX(): Unit = {
+    val requestGroupId = UUID.randomUUID().toString
+
+    batchProcessingService.start_card4l_batch_processes(
+      collection_id = "sentinel-1-grd",
+      dataset_id = "sentinel-1-grd",
+      bbox = Extent(11.016694, 46.538743, 11.28595, 46.745225),
+      bbox_srs = "EPSG:4326",
+      from_date = "2018-07-01T00:00:00+00:00",
+      to_date = "2018-07-03T00:00:00+00:00",
+      band_names = Arrays.asList("VV", "VH", "HV", "HH"),
+      dem_instance = "COPERNICUS_30",
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
+      subfolder = requestGroupId,
+      requestGroupId
+    )
+  }
+
   private def awaitDone(batchRequestIds: Iterable[String],
                         batchProcessingService: BatchProcessingService = this.batchProcessingService): Map[String, String] = {
     import java.util.concurrent.TimeUnit._
