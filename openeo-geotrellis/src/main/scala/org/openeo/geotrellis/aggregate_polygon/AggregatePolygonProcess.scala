@@ -110,7 +110,7 @@ class AggregatePolygonProcess() {
         val options = raster.RasterizerOptions.DEFAULT
 
 
-        val date = java.sql.Date.valueOf(key.time.toLocalDate)
+        val date = java.sql.Timestamp.from(key.time.toInstant)
         val re = RasterExtent(tile, datacube.metadata.keyToExtent(key))
         val bandsValues: Array[Object] = Array.ofDim[Object](bands)
         for (g: Feature[Geometry, Int] <- geoms) {
@@ -252,7 +252,7 @@ class AggregatePolygonProcess() {
           val bands = tile.bandCount
 
           val mapping = polygonMappingBC.value
-          val date = java.sql.Date.valueOf(key.time.toLocalDate)
+          val date = java.sql.Timestamp.from(key.time.toInstant)
           val result: ListBuffer[Row] = ListBuffer()
           val bandsValues: Array[Object] = Array.ofDim[Object](bands)
 
@@ -318,7 +318,7 @@ class AggregatePolygonProcess() {
 
     val bandStructs = bandColumns.map(StructField(_, dataType, true))
 
-    val schema = StructType(Seq(StructField("date", DateType, true),
+    val schema = StructType(Seq(StructField("date", TimestampType, true),
       StructField("feature_index", IntegerType, true),
     ) ++ bandStructs)
     val df = session.createDataFrame(pixelRDD, schema)
