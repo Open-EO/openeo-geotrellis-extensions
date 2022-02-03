@@ -150,7 +150,32 @@ object Udf {
     interp.exec("context = pyjmap_to_dict(pyjmap_context)")
   }
 
+  private def _checkOutputDtype(dtype: String): Unit = {
+    if (!dtype.equals("float32"))
+      throw new IllegalArgumentException("UDF returned a datacube that does not have dtype == np.float32.")
+  }
 
+  private def _checkOutputSpatialDimensions(resultDimensions: Seq[Int], tileRows: Int, tileCols: Int): Unit = {
+    if (resultDimensions(resultDimensions.length - 2) != tileRows || resultDimensions.last != tileCols) {
+      throw new IllegalArgumentException((
+        "UDF returned a datacube that does not have the same rows and columns as the input cube. " +
+          "Actual spatial dimensions: (%d, %d). Expected spatial dimensions: (%d, %d).")
+        .format(resultDimensions(2), resultDimensions(3), tileRows, tileCols)
+      )
+    }
+  }
+
+  private def _extractMultibandTileFromBuffer(resultBuffer: FloatBuffer, newNumberOfBands: Int,
+                                    tileSize: Int, tileCols: Int, tileRows: Int): MultibandTile = {
+    val newBands = new ListBuffer[FloatArrayTile]()
+    for (_b <- 1 to newNumberOfBands) {
+      // Tile size remains the same because #cols and #rows are not changed by UDF.
+      val tileData: Array[Float] = Array.fill(tileSize)(0)
+      resultBuffer.get(tileData, 0, tileSize) // Copy buffer data to tile.
+      newBands += FloatArrayTile(tileData, tileCols, tileRows)
+    }
+    new ArrayMultibandTile(newBands.toArray)
+  }
 
   def runChunkPolygonUserCode(code: String,
                               layer: MultibandTileLayerRDD[SpaceTimeKey],
@@ -221,27 +246,19 @@ object Udf {
               resultBuffer = cube.getData
             case cube: NDArray[Array[Float]] =>
               // UDF created a new datacube.
-              val dtype = interp.getValue("str(result_cube.get_array().values.dtype)").asInstanceOf[String]
-              if (!dtype.equals("float32")) {
-                throw new IllegalArgumentException("UDF returned a datacube that does not have dtype == np.float32.")
-              }
               if (resultDimensions.length != 4) {
                 throw new IllegalArgumentException((
                   "UDF returned a datacube that does not have dimensions (#dates, #bands, #rows, #cols). " +
                     "Actual dimensions: (%s).").format(resultDimensions.mkString(", "))
                 )
               }
-              if (resultDimensions(2) != tileRows || resultDimensions(3) != tileCols) {
-                throw new IllegalArgumentException((
-                  "UDF returned a datacube that does not have the same rows and columns as the input cube. " +
-                    "Actual spatial dimensions: (%d, %d). Expected spatial dimensions: (%d, %d).")
-                  .format(resultDimensions(2), resultDimensions(3), tileRows, tileCols)
-                )
-              }
+              val dtype = interp.getValue("str(result_cube.get_array().values.dtype)").asInstanceOf[String]
+              _checkOutputDtype(dtype)
+              _checkOutputSpatialDimensions(resultDimensions, tileRows, tileCols)
               resultBuffer = FloatBuffer.wrap(cube.getData)
           }
 
-          // Note: xarray instants are in nanoseconds.
+          // Note: xarray instants are in nanoseconds, divide by 10**6 for milliseconds.
           interp.exec("result_dates = result_cube.get_array().coords['t'].values.tolist()")
           val resultDates = interp
             .getValue("result_dates if isinstance(result_dates, list) else [result_dates]")
@@ -251,15 +268,8 @@ object Udf {
           val newNumberOfBands = resultDimensions(1)
           resultBuffer.rewind()
           for (resultDate <- resultDates) {
-            val newBands = new ListBuffer[FloatArrayTile]()
-            for (_b <- 1 to newNumberOfBands) {
-              // Tile size remains the same because #cols and #rows are not changed by UDF.
-              val tileData: Array[Float] = Array.fill(tileSize)(0)
-              resultBuffer.get(tileData, 0, tileSize) // Copy buffer data to tile.
-              newBands += FloatArrayTile(tileData, tileCols, tileRows)
-            }
+            val multibandTile = _extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, tileSize, tileCols, tileRows)
             val projectedExtent: ProjectedExtent = ProjectedExtent(polygonExtent, layer.metadata.crs)
-            val multibandTile = new ArrayMultibandTile(newBands.toArray)
             resultTiles += ((TemporalProjectedExtent(projectedExtent, resultDate), multibandTile))
           }
         } finally { if (interp != null) interp.close() }
@@ -271,9 +281,8 @@ object Udf {
     ContextRDD(resultGroupedBySpaceTimeKey, layer.metadata)
   }
 
-  def runUserCode(code: String, layer: MultibandTileLayerRDD[SpatialKey],
-                  bandNames: util.ArrayList[String], context: util.HashMap[String, Any]): MultibandTileLayerRDD[SpatialKey] = {
-    // TODO: Also implement for SpaceTimeKey.
+  def runUserCode(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
+                  bandNames: util.ArrayList[String], context: util.HashMap[String, Any]): MultibandTileLayerRDD[SpaceTimeKey] = {
     // TODO: Implement apply_timeseries, apply_hypercube.
     // Map a python function to every tile of the RDD.
     // Map will serialize + send partitions to worker nodes
@@ -288,15 +297,17 @@ object Udf {
       // TODO: Currently this fails because per tile processing cannot access the interpreter
       // TODO: This is because every tile in a partition is handled in a separate thread.
       iter.map(key_and_tile => {
-        val interp = _createSharedInterpreter()
         val multiBandTile: MultibandTile = key_and_tile._2
+        val tileRows = multiBandTile.bands(0).rows
+        val tileCols = multiBandTile.bands(0).cols
+        val tileShape = List(multiBandTile.bandCount, tileRows, tileCols)
+        val tileSize = tileRows * tileCols
+        val multiBandTileSize = multiBandTile.bandCount * tileSize
+
         var resultMultiBandTile = multiBandTile
+        val interp = _createSharedInterpreter()
         try {
-          val tileRows = multiBandTile.bands(0).rows
-          val tileCols = multiBandTile.bands(0).cols
-          val tileShape = List(multiBandTile.bandCount, tileRows, tileCols)
-          val tileSize = tileRows * tileCols
-          val multiBandTileSize = multiBandTile.bandCount * tileSize
+          interp.exec(DEFAULT_IMPORTS)
 
           // Convert multiBandTile to DirectNDArray
           // Allocating a direct buffer is expensive.
@@ -308,22 +319,54 @@ object Udf {
           val directTile = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
 
           // Setup the xarray datacube.
-          interp.exec(DEFAULT_IMPORTS)
-          val spatialExtent = _createExtentFromSpatialKey(layer.metadata.layout, key_and_tile._1)
+          val spatialExtent = _createExtentFromSpatialKey(layer.metadata.layout, key_and_tile._1.spatialKey)
           _setXarraydatacubeInPython(interp, directTile, tileShape, spatialExtent, bandNames)
+          // Convert context from jep.PyJMap to python dict.
+          _setContextInPython(interp, context)
 
-          interp.set("context", context)
+          // Execute the UDF in python.
           interp.exec("data = UdfData(proj={\"EPSG\": 900913}, datacube_list=[datacube], user_context=context)")
           interp.exec(code)
           interp.exec("result_cube = apply_datacube(data.get_datacube_list()[0], data.user_context)")
 
           // Convert the result back to a MultibandTile.
-          buffer.rewind()
-          resultMultiBandTile = multiBandTile.mapBands((bandNumber, tile) => {
-            val tileData: Array[Float] = Array.fill(tileSize)(0)
-            buffer.get(tileData, 0, tileSize) // Copy buffer data to array.
-            FloatArrayTile(tileData, tile.dimensions.cols, tile.dimensions.rows)
-          })
+          val resultDimensions = interp.getValue("result_cube.get_array().values.shape").asInstanceOf[java.util.List[Long]].asScala.toList.map(_.toInt)
+          val resultCube = interp.getValue("result_cube.get_array().values")
+          var resultBuffer: FloatBuffer = null
+          resultCube match {
+            case cube: DirectNDArray[FloatBuffer] =>
+              // The datacube was modified inplace.
+              resultBuffer = cube.getData
+            case cube: NDArray[Array[Float]] =>
+              // UDF created a new datacube.
+              if (resultDimensions.length < 2) {
+                throw new IllegalArgumentException((
+                  "UDF returned a datacube that has less than 2 dimensions. " +
+                    "Actual dimensions: (%s).").format(resultDimensions.mkString(", "))
+                )
+              }
+              val dtype = interp.getValue("str(result_cube.get_array().values.dtype)").asInstanceOf[String]
+              _checkOutputDtype(dtype)
+              _checkOutputSpatialDimensions(resultDimensions, tileRows, tileCols)
+              resultBuffer = FloatBuffer.wrap(cube.getData)
+          }
+
+          // UDFs can
+          //  * add/remove band coordinates but not rows, cols.
+          //  * remove the band or date dimension
+          // UDFs can not
+          //  * add/remove time coordinates (Since map returns one SpaceTimeKey and MultiBandTile)
+          // TODO: This is how it is done in apply_tiles (python), check if this meets user requirements.
+          val resultHasBandDimension = interp.getValue("'bands' in result_cube.get_array().dims").asInstanceOf[Boolean]
+
+          var newNumberOfBands = 1
+          if (resultHasBandDimension) {
+            newNumberOfBands = interp
+              .getValue("result_cube.get_array().coords['bands'].values.size")
+              .asInstanceOf[Long].toInt
+          }
+          resultBuffer.rewind()
+          resultMultiBandTile = _extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, tileSize, tileCols, tileRows)
         } finally if (interp != null) interp.close()
 
         (key_and_tile._1, resultMultiBandTile)
