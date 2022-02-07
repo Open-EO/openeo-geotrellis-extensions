@@ -34,7 +34,7 @@ object AggregateSpatialTest {
       config.set("hadoop.security.authentication", "kerberos")
       UserGroupInformation.setConfiguration(config)
 
-      val conf = new SparkConf().set("spark.driver.bindAddress", "127.0.0.1")
+      val conf = new SparkConf()//.set("spark.driver.bindAddress", "127.0.0.1")
       SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, conf)
     }
 
@@ -198,5 +198,18 @@ class AggregateSpatialTest {
     val groupedStats = stats.groupBy(_._1).toMap.mapValues(_.sortBy(_._2).map(_._3).toSeq)
     groupedStats.foreach(println)
     return groupedStats
+  }
+
+  @Test
+  def compute_something(): Unit = {
+    val builder = new SparkAggregateScriptBuilder
+    val emptyMap = new util.HashMap[String,Object]()
+    builder.expressionEnd("mean", emptyMap)
+
+    val cube = LayerFixtures.sentinel2B04Layer
+    val pointCrs = LatLng
+    val point = cube.metadata.extent.center.reproject(cube.metadata.crs, pointCrs)
+
+    computeStatsGeotrellisAdapter.compute_something(builder, cube, Seq(point), pointCrs, "/tmp/compute_something")
   }
 }

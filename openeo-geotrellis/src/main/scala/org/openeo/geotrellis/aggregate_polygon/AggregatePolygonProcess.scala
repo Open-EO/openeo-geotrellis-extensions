@@ -96,8 +96,9 @@ class AggregatePolygonProcess() {
 
     // each polygon becomes a feature with a value that's equal to its position in the array
     val indexedFeatures = points
+      .map(_.reproject(crs, datacube.metadata.crs))
       .zipWithIndex
-      .map { case (geom, index) => Feature(geom, index.toInt) }
+      .map { case (geom, index) => Feature(geom, index) }
 
     val geometryRDD = sc.parallelize(indexedFeatures).clipToGrid(datacube.metadata).groupByKey()
     val combinedRDD = new SpatialToSpacetimeJoinRdd(datacube, geometryRDD)
