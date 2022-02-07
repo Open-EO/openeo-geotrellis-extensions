@@ -492,26 +492,26 @@ class PyramidFactoryTest {
   def testPlanetScope(): Unit = {
     import scala.io.Source
 
+    val planetCollectionId = {
+      val in = Source.fromFile("/tmp/african_script_contest_collection_id")
+
+      try in.mkString.trim
+      finally in.close()
+    }
+
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
     try {
-      val boundingBox = {
-        val crs = CRS.fromEpsgCode(32628)
+      val utmBoundingBox = {
+        val boundingBox = ProjectedExtent(
+          Extent(-17.25725769996643, 14.753334453316254, -17.255959510803223, 14.754506838531325), LatLng)
+        val center = boundingBox.extent.center
+        val utmCrs = UTM.getZoneCrs(lon = center.getX, lat = center.getY)
 
-        ProjectedExtent(
-          Extent(-17.25725769996643, 14.753334453316254, -17.255959510803223, 14.754506838531325)
-            .reproject(LatLng, crs), crs
-        )
+        ProjectedExtent(boundingBox.reproject(utmCrs), utmCrs)
       }
 
       val date = ZonedDateTime.of(LocalDate.of(2017, 1, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-
-      val planetCollectionId = {
-        val in = Source.fromFile("/tmp/planetscope")
-
-        try in.mkString.trim
-        finally in.close()
-      }
 
       val endpoint = "https://services.sentinel-hub.com"
       val pyramidFactory = new PyramidFactory(collectionId = planetCollectionId, datasetId = planetCollectionId,
@@ -519,7 +519,7 @@ class PyramidFactoryTest {
         maxSpatialResolution = CellSize(3, 3), sampleType = FLOAT32)
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
-        Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
+        Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
         from_date = ISO_OFFSET_DATE_TIME format date,
         to_date = ISO_OFFSET_DATE_TIME format date,
         band_names = Seq("B3", "B2", "B1").asJava,
@@ -532,10 +532,112 @@ class PyramidFactoryTest {
 
       val Raster(multibandTile, extent) = spatialLayer
         .stitch()
-        .crop(boundingBox.extent) // it's jumping around again
+        .crop(utmBoundingBox.extent) // it's jumping around again
 
       val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
       tif.write(s"/tmp/testPlanetScope.tif")
+    } finally sc.stop()
+  }
+
+  @Ignore("the actual collection ID is a secret")
+  @Test
+  def testPlanetScopeCatalogReturnsMultiPolygonFeatures(): Unit = {
+    import scala.io.Source
+
+    val planetCollectionId = {
+      val in = Source.fromFile("/tmp/african_script_contest_collection_id")
+
+      try in.mkString.trim
+      finally in.close()
+    }
+
+    val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      val utmBoundingBox = {
+        val boundingBox = ProjectedExtent(Extent(-17.348314, 14.743654, -17.307115, 14.762578), LatLng)
+        val center = boundingBox.extent.center
+        val utmCrs = UTM.getZoneCrs(lon = center.getX, lat = center.getY)
+
+        ProjectedExtent(boundingBox.reproject(utmCrs), utmCrs)
+      }
+
+      val date = ZonedDateTime.of(LocalDate.of(2021, 5, 11), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+      val endpoint = "https://services.sentinel-hub.com"
+      val pyramidFactory = new PyramidFactory(collectionId = planetCollectionId, datasetId = planetCollectionId,
+        new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint), clientId, clientSecret,
+        maxSpatialResolution = CellSize(3, 3), sampleType = FLOAT32)
+
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
+        from_date = ISO_OFFSET_DATE_TIME format date,
+        to_date = ISO_OFFSET_DATE_TIME format date,
+        band_names = Seq("B2").asJava,
+        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
+      )
+
+      val spatialLayer = layer
+        .toSpatial()
+        .cache()
+
+      val Raster(multibandTile, extent) = spatialLayer
+        .stitch()
+        .crop(utmBoundingBox.extent) // it's jumping around again
+
+      val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
+      tif.write(s"/tmp/testPlanetScopeCatalogReturnsMultiPolygonFeatures.tif")
+    } finally sc.stop()
+  }
+
+  @Ignore("the actual collection ID is a secret")
+  @Test
+  def testPlanetScopeCatalogReturnsPolygonFeatures(): Unit = {
+    import scala.io.Source
+
+    val planetCollectionId = {
+      val in = Source.fromFile("/tmp/uc8_collection_id")
+
+      try in.mkString.trim
+      finally in.close()
+    }
+
+    val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      val utmBoundingBox = {
+        val boundingBox = ProjectedExtent(Extent(8.51666, 49.86128, 8.52365, 49.86551), LatLng)
+        val center = boundingBox.extent.center
+        val utmCrs = UTM.getZoneCrs(lon = center.getX, lat = center.getY)
+
+        ProjectedExtent(boundingBox.reproject(utmCrs), utmCrs)
+      }
+
+      val date = ZonedDateTime.of(LocalDate.of(2021, 12, 6), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+      val endpoint = "https://services.sentinel-hub.com"
+      val pyramidFactory = new PyramidFactory(collectionId = planetCollectionId, datasetId = planetCollectionId,
+        new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint), clientId, clientSecret,
+        maxSpatialResolution = CellSize(3, 3), sampleType = FLOAT32)
+
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
+        from_date = ISO_OFFSET_DATE_TIME format date,
+        to_date = ISO_OFFSET_DATE_TIME format date,
+        band_names = Seq("B4").asJava,
+        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
+      )
+
+      val spatialLayer = layer
+        .toSpatial()
+        .cache()
+
+      val Raster(multibandTile, extent) = spatialLayer
+        .stitch()
+        .crop(utmBoundingBox.extent) // it's jumping around again
+
+      val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
+      tif.write(s"/tmp/testPlanetScopeCatalogReturnsPolygonFeatures.tif")
     } finally sc.stop()
   }
 

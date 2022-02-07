@@ -174,7 +174,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
         val page = getFeatureCollectionPage(nextToken)
 
         // it is assumed the returned geometries are in LatLng
-        val features = page.getAllMultiPolygonFeatures[Json]
+        val features = page.getAllFeatures[Feature[Geometry, Json]]
           .mapValues(feature =>
             feature.mapData { properties =>
               val Some(datetime) = for {

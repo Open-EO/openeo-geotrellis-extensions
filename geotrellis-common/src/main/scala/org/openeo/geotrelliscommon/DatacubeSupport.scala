@@ -34,6 +34,7 @@ object DatacubeSupport {
     reprojectedBoundingBox
   }
 
+  // note: make sure to express boundingBox and maxSpatialResolution in the same units
   def getLayout(layoutScheme: LayoutScheme, boundingBox: ProjectedExtent, zoom: Int, maxSpatialResolution: CellSize, globalBounds:Option[ProjectedExtent] = Option.empty) = {
     val LayoutLevel(_, worldLayout) = layoutScheme match {
       case scheme: ZoomedLayoutScheme => scheme.levelForZoom(zoom)
