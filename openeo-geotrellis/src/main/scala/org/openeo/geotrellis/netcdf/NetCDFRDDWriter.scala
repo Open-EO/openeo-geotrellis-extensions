@@ -14,9 +14,10 @@ import geotrellis.util._
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
-import org.openeo.geotrellis.ProjectedPolygons
-import org.openeo.geotrellis.geotiff.getCreoS3Client
+import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
+import org.openeo.geotrellis.geotiff.{getCreoS3Client, preProcess}
 import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.sync.RequestBody
