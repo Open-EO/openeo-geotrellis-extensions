@@ -301,7 +301,8 @@ object NetCDFRDDWriter {
 
     val keys = featuresBC.value.map(_._1)
     logger.info(s"Grouping result by ${featuresBC.value.size} features to write netCDFs.")
-    rdd.flatMap {
+    val filtered = new OpenEOProcesses().filterEmptyTile(rdd)
+    filtered.flatMap {
       case (key, tile) => featuresBC.value.filter { case (_, extent) =>
         val tileBounds = layout.mapTransform(extent)
 
