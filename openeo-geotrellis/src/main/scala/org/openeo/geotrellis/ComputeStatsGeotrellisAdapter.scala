@@ -111,15 +111,15 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
 
   // TODO: rename
   def compute_something(reducer: String, datacube: MultibandTileLayerRDD[SpaceTimeKey],
-                        pointWkt: String, pointSrs: String, output_file: String): Unit = {
+                        geometryWkts: JList[String], geometriesSrs: String, output_file: String): Unit = {
     import geotrellis.vector._
 
-    val point = pointWkt.parseWKT().asInstanceOf[Point]
-    val pointCrs = CRS.fromName(pointSrs)
+    val geometries = geometryWkts.asScala.map(_.parseWKT())
+    val geometriesCrs = CRS.fromName(geometriesSrs)
 
     val builder = new SparkAggregateScriptBuilder
     builder.expressionEnd(reducer,new util.HashMap[String,Object]())
-    this.compute_something(builder, datacube, Seq(point), pointCrs, output_file)
+    this.compute_something(builder, datacube, geometries, geometriesCrs, output_file)
   }
 
   // TODO: rename

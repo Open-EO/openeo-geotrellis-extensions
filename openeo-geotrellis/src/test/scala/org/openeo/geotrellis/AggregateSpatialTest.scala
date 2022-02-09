@@ -34,7 +34,7 @@ object AggregateSpatialTest {
       config.set("hadoop.security.authentication", "kerberos")
       UserGroupInformation.setConfiguration(config)
 
-      val conf = new SparkConf()//.set("spark.driver.bindAddress", "127.0.0.1")
+      val conf = new SparkConf()//.set("spark.driver.bindAddress", "127.0.0.1") // TODO: uncomment
       SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, conf)
     }
 
