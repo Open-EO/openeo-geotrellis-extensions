@@ -201,7 +201,7 @@ class AggregateSpatialTest {
   }
 
   @Test
-  def compute_something(): Unit = {
+  def compute_generic_timeseries_from_datacube(): Unit = {
     val builder = new SparkAggregateScriptBuilder
     val emptyMap = new util.HashMap[String,Object]()
     builder.expressionEnd("mean", emptyMap)
@@ -210,6 +210,6 @@ class AggregateSpatialTest {
     val pointCrs = LatLng
     val point = cube.metadata.extent.center.reproject(cube.metadata.crs, pointCrs)
 
-    computeStatsGeotrellisAdapter.compute_something(builder, cube, Seq(point), pointCrs, "/tmp/compute_something")
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(builder, cube, Seq(point), pointCrs, "/tmp/compute_something")
   }
 }

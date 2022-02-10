@@ -109,8 +109,7 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
 
   }
 
-  // TODO: rename
-  def compute_something(reducer: String, datacube: MultibandTileLayerRDD[SpaceTimeKey],
+  def compute_generic_timeseries_from_datacube(reducer: String, datacube: MultibandTileLayerRDD[SpaceTimeKey],
                         geometryWkts: JList[String], geometriesSrs: String, output_file: String): Unit = {
     import geotrellis.vector._
 
@@ -119,17 +118,17 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
 
     val builder = new SparkAggregateScriptBuilder
     builder.expressionEnd(reducer,new util.HashMap[String,Object]())
-    this.compute_something(builder, datacube, geometries, geometriesCrs, output_file)
+    this.compute_generic_timeseries_from_datacube(builder, datacube, geometries, geometriesCrs, output_file)
   }
 
-  // TODO: rename
-  def compute_something(scriptBuilder: SparkAggregateScriptBuilder, datacube: MultibandTileLayerRDD[SpaceTimeKey],
-                        geometries: Seq[Geometry], geometriesCrs: CRS, output_file: String): Unit = {
+  def compute_generic_timeseries_from_datacube(scriptBuilder: SparkAggregateScriptBuilder,
+                                               datacube: MultibandTileLayerRDD[SpaceTimeKey], geometries: Seq[Geometry],
+                                               geometriesCrs: CRS, output_file: String): Unit = {
     val aggregatePolygonProcess = new AggregatePolygonProcess
 
     val bandCount = new OpenEOProcesses().RDDBandCount(datacube)
-    aggregatePolygonProcess.aggregateSpatialForGeometry(scriptBuilder, datacube, points = geometries, // TODO: rename "points" param
-      geometriesCrs, bandCount, output_file)
+    aggregatePolygonProcess.aggregateSpatialForGeometry(scriptBuilder, datacube, geometries, geometriesCrs, bandCount,
+      output_file)
   }
 
   def compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
