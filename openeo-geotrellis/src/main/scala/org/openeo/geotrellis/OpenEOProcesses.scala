@@ -192,7 +192,6 @@ class OpenEOProcesses extends Serializable {
         val tileExtentAsPolygon: Polygon = toPolygon(layout.mapTransform(key.getComponent[SpatialKey]))
         // Filter the polygons that lie in this tile.
         val polygonsInTile: Seq[MultiPolygon] = polygonsBC.value.filter(polygon => tileExtentAsPolygon.intersects(polygon))
-        polygonsInTile.map { polygon => (polygon, (key, tile)) }
         // Mask this tile for every polygon.
         polygonsInTile.map { polygon =>
             val tileExtent: Extent = layout.mapTransform(key)
