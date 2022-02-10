@@ -210,6 +210,7 @@ class AggregateSpatialTest {
     val pointCrs = LatLng
     val point = cube.metadata.extent.center.reproject(cube.metadata.crs, pointCrs)
 
-    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(builder, cube, Seq(point), pointCrs, "/tmp/compute_something")
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(builder, cube, Seq(point.toWKT()).asJava,
+      s"EPSG:${pointCrs.epsgCode.get}", "/tmp/compute_generic_timeseries_from_datacube")
   }
 }

@@ -111,19 +111,20 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
 
   def compute_generic_timeseries_from_datacube(reducer: String, datacube: MultibandTileLayerRDD[SpaceTimeKey],
                         geometryWkts: JList[String], geometriesSrs: String, output_file: String): Unit = {
+    val builder = new SparkAggregateScriptBuilder
+    builder.expressionEnd(reducer,new util.HashMap[String,Object]())
+    this.compute_generic_timeseries_from_datacube(builder, datacube, geometryWkts, geometriesSrs, output_file)
+  }
+
+  def compute_generic_timeseries_from_datacube(scriptBuilder: SparkAggregateScriptBuilder,
+                                               datacube: MultibandTileLayerRDD[SpaceTimeKey],
+                                               geometryWkts: JList[String], geometriesSrs: String,
+                                               output_file: String): Unit = {
     import geotrellis.vector._
 
     val geometries = geometryWkts.asScala.map(_.parseWKT())
     val geometriesCrs = CRS.fromName(geometriesSrs)
 
-    val builder = new SparkAggregateScriptBuilder
-    builder.expressionEnd(reducer,new util.HashMap[String,Object]())
-    this.compute_generic_timeseries_from_datacube(builder, datacube, geometries, geometriesCrs, output_file)
-  }
-
-  def compute_generic_timeseries_from_datacube(scriptBuilder: SparkAggregateScriptBuilder,
-                                               datacube: MultibandTileLayerRDD[SpaceTimeKey], geometries: Seq[Geometry],
-                                               geometriesCrs: CRS, output_file: String): Unit = {
     val aggregatePolygonProcess = new AggregatePolygonProcess
 
     val bandCount = new OpenEOProcesses().RDDBandCount(datacube)
