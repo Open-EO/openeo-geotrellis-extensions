@@ -12,7 +12,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertArrayEquals, assertEquals}
 import org.junit.{AfterClass, BeforeClass, Test}
-import org.openeo.geotrellis.ComputeStatsGeotrellisAdapterTest.{JList, getClass, polygon1, polygon2, sc}
+import org.openeo.geotrellis.ComputeStatsGeotrellisAdapterTest.{polygon1, polygon2}
 import org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder
 
 import java.nio.file.{Files, Paths}
@@ -198,5 +198,19 @@ class AggregateSpatialTest {
     val groupedStats = stats.groupBy(_._1).toMap.mapValues(_.sortBy(_._2).map(_._3).toSeq)
     groupedStats.foreach(println)
     return groupedStats
+  }
+
+  @Test
+  def compute_generic_timeseries_from_datacube(): Unit = {
+    val builder = new SparkAggregateScriptBuilder
+    val emptyMap = new util.HashMap[String,Object]()
+    builder.expressionEnd("mean", emptyMap)
+
+    val cube = LayerFixtures.sentinel2B04Layer
+    val pointCrs = LatLng
+    val point = cube.metadata.extent.center.reproject(cube.metadata.crs, pointCrs)
+
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(builder, cube, Seq(point.toWKT()).asJava,
+      s"EPSG:${pointCrs.epsgCode.get}", "/tmp/compute_generic_timeseries_from_datacube")
   }
 }
