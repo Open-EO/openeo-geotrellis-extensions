@@ -107,8 +107,8 @@ package object geotiff {
 
     val tileLayout = preprocessedRdd.metadata.tileLayout
 
-    val totalCols = maxKey.col - minKey.col + 1
-    val totalRows = maxKey.row - minKey.row + 1
+    val totalCols = math.ceil(gridBounds.width.toDouble / tileLayout.tileCols).toInt
+    val totalRows = math.ceil(gridBounds.height.toDouble / tileLayout.tileRows).toInt
 
     val compression = Deflate(zLevel)
     val bandSegmentCount = totalCols * totalRows
