@@ -172,6 +172,38 @@ class AggregateSpatialTest {
     ))
   }
 
+  @Test
+  def compute_generic_timeseries_from_datacube(): Unit = {
+    val builder = new SparkAggregateScriptBuilder
+
+    val emptyMap = new util.HashMap[String, Object]()
+    val countMap = new util.HashMap[String, Object]()
+    countMap.put("condition", true.asInstanceOf[Object])
+
+    builder.expressionEnd("min", emptyMap)
+    builder.expressionEnd("mean", emptyMap)
+    builder.expressionEnd("count", countMap)
+
+    val from_date = "2017-01-01T00:00:00Z"
+
+    val cube = buildCubeRdd(ZonedDateTime.parse(from_date), ZonedDateTime.now())
+
+    val pointWkts = Seq(polygon1, polygon2).map(_.getCentroid.toWKT())
+    val pointsCrs = LatLng
+
+    val outDir = "/tmp/compute_generic_timeseries_from_datacube"
+
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(builder, cube, pointWkts.asJava,
+      s"EPSG:${pointsCrs.epsgCode.get}", outDir)
+
+    val groupedStats = parseCSV(outDir)
+
+    for ((_, stats) <- groupedStats) assertEqualTimeseriesStats(Seq(
+      Seq(10, 10, 1, Double.NaN, Double.NaN, 1), // point1
+      Seq(10, 10, 1, Double.NaN, Double.NaN, 1)), // point2
+      stats)
+  }
+
   private def parseCSV(outDir: String): Map[String, scala.Seq[scala.Seq[Double]]] = {
     val stats = mutable.ListBuffer[(String, Int, scala.Seq[Double])]()
     //Paths.get(outDir).
@@ -198,19 +230,5 @@ class AggregateSpatialTest {
     val groupedStats = stats.groupBy(_._1).toMap.mapValues(_.sortBy(_._2).map(_._3).toSeq)
     groupedStats.foreach(println)
     return groupedStats
-  }
-
-  @Test
-  def compute_generic_timeseries_from_datacube(): Unit = {
-    val builder = new SparkAggregateScriptBuilder
-    val emptyMap = new util.HashMap[String,Object]()
-    builder.expressionEnd("mean", emptyMap)
-
-    val cube = LayerFixtures.sentinel2B04Layer
-    val pointCrs = LatLng
-    val point = cube.metadata.extent.center.reproject(cube.metadata.crs, pointCrs)
-
-    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(builder, cube, Seq(point.toWKT()).asJava,
-      s"EPSG:${pointCrs.epsgCode.get}", "/tmp/compute_generic_timeseries_from_datacube")
   }
 }
