@@ -110,6 +110,8 @@ package object geotiff {
     val totalCols = math.ceil(gridBounds.width.toDouble / tileLayout.tileCols).toInt
     val totalRows = math.ceil(gridBounds.height.toDouble / tileLayout.tileRows).toInt
 
+    logger.info(s"Write Geotiff per date ${croppedExtent}, ${gridBounds}, ${tileLayout}")
+
     val compression = Deflate(zLevel)
     val bandSegmentCount = totalCols * totalRows
 
