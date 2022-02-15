@@ -146,7 +146,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
     layer(reprojectedRasterSources, reprojectedBoundingBox, from, to, parameters, zoom = zoom)
   }
 
-  private def layer(rasterSources: Seq[(RasterSource, ZonedDateTime)], boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, params: DataCubeParameters, zoom: Int = maxZoom)(implicit sc: SparkContext): OpenEORasterCube[SpaceTimeKey] = {
+  private def layer(rasterSources: Seq[(RasterSource, ZonedDateTime)], boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, params: DataCubeParameters, zoom: Int)(implicit sc: SparkContext): OpenEORasterCube[SpaceTimeKey] = {
     val overlappingRasterSources = rasterSources
       .filter { case (rasterSource, date) =>
         // FIXME: this means the driver will (partially) read the geotiff instead of the executor - on the other hand, e.g. an AccumuloRDDReader will interpret a LayerQuery both in the driver (to determine Accumulo ranges) and the executors
@@ -208,7 +208,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
     if (latLng) // TODO: drop the workaround for what look like negative SpatialKeys?
       Seq(0 -> layer(boundingBox, from, to))
     else {
-      Seq(0 -> layer(rasterSources, boundingBox, from, to, dataCubeParameters))
+      Seq(0 -> layer(rasterSources, boundingBox, from, to, dataCubeParameters,maxZoom))
     }
 
   }
