@@ -58,7 +58,7 @@ class PyramidFactoryTest {
     val to = from
 
     singleBandGeoTiffFromDisk(
-      globPattern = "/data/MTDA/CGS_S2/CGS_S2_FAPAR/2019/04/24/*/*/10M/*_FAPAR_10M_V102.tif", from, to)
+      globPattern = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2019/04/24/*/*/10M/*_FAPAR_10M_V200.tif", from, to)
   }
 
   @Test
@@ -67,22 +67,22 @@ class PyramidFactoryTest {
     val to = from plusDays 2
 
     singleBandGeoTiffFromDisk(
-      globPattern = "file:/data/MTDA/CGS_S2/CGS_S2_FAPAR/2019/04/2[34567]/*/*/10M/*_FAPAR_10M_V102.tif", from, to)
+      globPattern = "file:/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2019/04/2[34567]/*/*/10M/*_FAPAR_10M_V200.tif", from, to)
   }
 
   @Test
   def singleBandGeoTiffFromDiskForSingleFixedDate(): Unit = {
-    val singlePath = "file:/data/MTDA/CGS_S2/CGS_S2_FAPAR/2019/04/24/S2B_20190424T143759Z_19HCC_CGS_V102_000/S2B_20190424T143759Z_19HCC_FAPAR_V102/10M/S2B_20190424T143759Z_19HCC_FAPAR_10M_V102.tif"
+    val singlePath = "file:/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2019/04/24/S2B_20190424T143759_19HCC_FAPAR_V200/20M/S2B_20190424T143759_19HCC_FAPAR_20M_V200.tif"
     val singleDate = LocalDate.of(2019, 4, 24).atStartOfDay(UTC)
 
     val pyramidFactory = PyramidFactory.from_disk(
       timestamped_paths = util.Collections.singletonMap(singlePath, singleDate format ISO_OFFSET_DATE_TIME)
     )
 
-    val pyramid = pyramidFactory.pyramid_seq(bbox = null, bbox_srs = null, from_date = null, to_date = null)
+    val pyramid = pyramidFactory.pyramid_seq(bbox = Extent(-70.12,-34.38,-70.06,-34.34), bbox_srs = "EPSG:4326", from_date = singleDate.toString, to_date = singleDate.plusDays(1).toString)
 
     val (maxZoom, baseLayer) = pyramid.maxBy { case (zoom, _) => zoom }
-    assertEquals(14, maxZoom)
+    assertEquals(13, maxZoom)
 
     baseLayer.cache()
 
