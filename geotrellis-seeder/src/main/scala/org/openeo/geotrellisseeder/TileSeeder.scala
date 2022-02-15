@@ -1,11 +1,5 @@
 package org.openeo.geotrellisseeder
 
-import java.io.File
-import java.net.URL
-import java.nio.file.Paths
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.time.format.DateTimeFormatter.ofPattern
 import be.vito.eodata.biopar.EOProduct
 import be.vito.eodata.catalog.CatalogClient
 import be.vito.eodata.gwcgeotrellis.colormap
@@ -27,22 +21,27 @@ import geotrellis.store.hadoop.util.HdfsUtils
 import geotrellis.store.s3.{AmazonS3URI, S3ClientProducer}
 import geotrellis.vector._
 import geotrellis.vector.io.wkt.WKT
-
-import javax.ws.rs.client.ClientBuilder
 import org.apache.hadoop.fs.Path
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.openeo.geotrellisseeder.TileSeeder.CLOUD_MILKINESS
 import software.amazon.awssdk.core.sync.RequestBody
-import software.amazon.awssdk.services.s3.model.{NoSuchKeyException, PutObjectRequest}
+import software.amazon.awssdk.services.s3.model.{DeleteObjectRequest, ListObjectsV2Request, NoSuchKeyException, PutObjectRequest}
 
-import scala.collection.JavaConverters.{asScalaIteratorConverter, collectionAsScalaIterableConverter}
+import java.io.File
+import java.net.URL
+import java.nio.file.Paths
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatter.ofPattern
+import javax.ws.rs.client.ClientBuilder
+import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
 import scala.math._
 import scala.xml.SAXParseException
 
-case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] = None, selectOverlappingTile: Boolean = false) {
+case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] = None, selectOverlappingTile: Boolean = false, unseedTiles: Boolean = false) {
 
   private val logger = if (verbose) VerboseLogger(classOf[TileSeeder]) else StandardLogger(classOf[TileSeeder])
 
@@ -58,6 +57,8 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
                 spatialKey: Option[SpatialKey] = None, tooCloudyFile: Option[String] = None, datePattern: Option[String] = None,
                 oscarsEndpoint: Option[String] = None, oscarsCollection: Option[String] = None, oscarsSearchFilters: Option[Map[String, String]] = None, resampleMethod: Option[ResampleMethod] = Some(NearestNeighbor))
                (implicit sc: SparkContext): Unit = {
+
+    val existingFiles = getExistingFiles(path, dateStr, zoomLevel)
 
     val date = dateStr match {
       case d if d.nonEmpty => Some(LocalDate.parse(dateStr.substring(0, 10)))
@@ -139,27 +140,37 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
       def getPartitions = partitions.getOrElse(max(1, round(pow(2, zoomLevel) / 20).toInt))
 
+      var createdFiles = List[String]()
+
       if (colorMap.isDefined) {
         val map = colormap.ColorMapParser.parse(colorMap.get)
-        getSinglebandRDD(sourcePathsWithBandId.head, spatialKey, resampleMethod.getOrElse(NearestNeighbor))
+        createdFiles = getSinglebandRDD(sourcePathsWithBandId.head, spatialKey, resampleMethod.getOrElse(NearestNeighbor))
           .repartition(getPartitions)
-          .foreachPartition { items =>
+          .mapPartitions { items =>
             configureDebugLogging()
             S3ClientConfigurator.configure()
-            items.foreach(renderSinglebandRDD(path, dateStr, map, zoomLevel))
+            items.flatMap(renderSinglebandRDD(path, dateStr, map, zoomLevel))
           }
+          .collect
+          .toList
       } else if (bands.isDefined) {
-        getMultibandRDD(sourcePathsWithBandId, spatialKey)
+        createdFiles = getMultibandRDD(sourcePathsWithBandId, spatialKey)
           .fullOuterJoin(getTooCloudyRdd(if (!date.isEmpty) date.get else null, maskValues, tooCloudyFile))
           .repartition(getPartitions)
-          .foreach(renderMultibandRDD(path, dateStr, bands.get, zoomLevel, maskValues))
+          .flatMap(renderMultibandRDD(path, dateStr, bands.get, zoomLevel, maskValues))
+          .collect
+          .toList
       } else {
-        getS1MultibandRDD(sourcePathsWithBandId, spatialKey)
+        createdFiles = getS1MultibandRDD(sourcePathsWithBandId, spatialKey)
           .repartition(getPartitions)
-          .foreach(renderMultibandRDD(path, dateStr, zoomLevel))
+          .flatMap(renderMultibandRDD(path, dateStr, zoomLevel))
+          .collect
+          .toList
       }
 
       permissions.foreach(setFilePermissions(path, dateStr, _))
+
+      removeFiles(existingFiles diff createdFiles)
     }
   }
 
@@ -234,7 +245,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
   }
 
   private def renderSinglebandRDD(path: String, dateStr: String, colorMap: ColorMap, zoom: Int)
-                                 (item: (SpatialKey, (Iterable[RasterRegion], Int))) {
+                                 (item: (SpatialKey, (Iterable[RasterRegion], Int))): Option[String] = {
     item match {
       case (key, regions) =>
         logger.logKey(key)
@@ -256,14 +267,18 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
           }
 
           logger.logTile(key, tilePath)
+
+          Some(tilePath)
         } else {
           logger.logNoDataTile(key)
+
+          None
         }
     }
   }
 
   private def renderMultibandRDD(path: String, dateStr: String, bands: Array[Band], zoom: Int, maskValues: Array[Int])
-                                (item: (SpatialKey, (Option[((Iterable[RasterRegion], Int), (Iterable[RasterRegion], Int), (Iterable[RasterRegion], Int))], Option[Tile]))): Unit = {
+                                (item: (SpatialKey, (Option[((Iterable[RasterRegion], Int), (Iterable[RasterRegion], Int), (Iterable[RasterRegion], Int))], Option[Tile]))): Option[String] = {
     item match {
       case (key, (regions, cloudTile)) =>
         logger.logKey(key)
@@ -292,14 +307,18 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
           tile.get.renderPng().write(tilePath)
 
           logger.logTile(key, tilePath)
+
+          Some(tilePath)
         } else {
           logger.logNoDataTile(key)
+
+          None
         }
     }
   }
 
   private def renderMultibandRDD(path: String, dateStr: String, zoom: Int)
-                                (item: (SpatialKey, ((Iterable[RasterRegion], Int), (Iterable[RasterRegion], Int)))) {
+                                (item: (SpatialKey, ((Iterable[RasterRegion], Int), (Iterable[RasterRegion], Int)))): Option[String] = {
     item match {
       case (key, (vvRegions, vhRegions)) =>
         logger.logKey(key)
@@ -315,8 +334,12 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
           toNormalizedMultibandTile(tileR, tileG).renderPng().write(tilePath)
 
           logger.logTile(key, tilePath)
+
+          Some(tilePath)
         } else {
           logger.logNoDataTile(key)
+
+          None
         }
     }
   }
@@ -627,6 +650,38 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
     }
   }
 
+  private def getExistingFiles(path: String, dateStr: String, zoom: Int)(implicit sc: SparkContext) = {
+    if (unseedTiles) {
+      val grid = "g"
+
+      val z = f"$zoom%02d"
+
+      if (path.startsWith("s3:")) {
+        S3ClientConfigurator.configure()
+        val s3 = S3ClientProducer.get()
+        val uri = new AmazonS3URI(path + Paths.get("/", grid, dateStr, z))
+        s3.listObjectsV2(ListObjectsV2Request.builder().bucket(uri.getBucket).prefix(uri.getKey).build()).contents().asScala.map(c => s"s3://${uri.getBucket}/${c.key()}").toList
+      } else {
+        HdfsUtils.listFiles(new Path(s"file://${Paths.get(path, grid, dateStr, z).toString}"), sc.hadoopConfiguration).map(_.toString.replace("file:", ""))
+      }
+    } else {
+      List()
+    }
+  }
+
+  private def removeFiles(files: List[String]): Unit = {
+    def delete(path: String): Unit = {
+      if (path.startsWith("s3:")) {
+        val s3 = S3ClientProducer.get()
+        val uri = new AmazonS3URI(path)
+        s3.deleteObject(DeleteObjectRequest.builder().bucket(uri.getBucket).key(uri.getKey).build())
+      } else {
+        new File(path).delete()
+      }
+    }
+    files.foreach(delete)
+  }
+
   private def configureDebugLogging(): Unit = {
     if (System.getProperty("logger.debug") != null) {
       Logger.getRootLogger.setLevel(Level.DEBUG)
@@ -680,11 +735,12 @@ object TileSeeder {
       val oscarsCollection = jCommanderArgs.oscarsCollection
       val oscarsSearchFilters = jCommanderArgs.oscarsSearchFilters
       val selectOverlappingTile = jCommanderArgs.selectOverlappingTile
+      val unseedTiles = jCommanderArgs.unseedTiles
       val partitions = jCommanderArgs.partitions
       val verbose = jCommanderArgs.verbose
       val resampleMethod = jCommanderArgs.resampleMethod.map(getResampleMethod)
 
-      val seeder = new TileSeeder(zoomLevel, verbose, partitions, selectOverlappingTile)
+      val seeder = new TileSeeder(zoomLevel, verbose, partitions, selectOverlappingTile, unseedTiles)
 
       implicit val sc: SparkContext =
         SparkContext.getOrCreate(

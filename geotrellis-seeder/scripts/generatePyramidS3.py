@@ -260,7 +260,7 @@ def cacheLevels(index):
     return level1, level2, level3
 
 
-def buildFromPrefix(bucket, collection, date, zoomFrom, toTileIndex, x, y, blankTile):
+def buildFromPrefix(endpoint_url, region, bucket, collection, date, zoomFrom, toTileIndex, x, y, blankTile):
 
     fromXLevels = cacheLevels((toTileIndex[0] * 2) + x)
     fromYLevels = cacheLevels((toTileIndex[1] * 2) + y)
@@ -273,8 +273,7 @@ def buildFromPrefix(bucket, collection, date, zoomFrom, toTileIndex, x, y, blank
 
     print(fromPrefix)
 
-    s3 = boto3.resource('s3', endpoint_url="https://cf2.cloudferro.com:8080", region_name="RegionOne")
-    bucket = s3.Bucket(bucket)
+    bucket = s3(endpoint_url, region).Bucket(bucket)
     bucket_files = [x.key for x in bucket.objects.filter(Prefix=fromPrefix)]
 
     # if file doesn't exist or file is a symlink to a blank file, consider it as blank
@@ -301,10 +300,12 @@ def generateUpperTile(toTileIndex, endpoint_url, region, bucket, collection, zoo
 
     blank = os.path.join(collection, "g", "blanks", blankTile + ".png")
 
-    fromX0Y0Path = buildFromPrefix(bucket, collection, date, zoomFrom, toTileIndex, 0, 0, blankTile)
-    fromX0Y1Path = buildFromPrefix(bucket, collection, date, zoomFrom, toTileIndex, 0, 1, blankTile)
-    fromX1Y0Path = buildFromPrefix(bucket, collection, date, zoomFrom, toTileIndex, 1, 0, blankTile)
-    fromX1Y1Path = buildFromPrefix(bucket, collection, date, zoomFrom, toTileIndex, 1, 1, blankTile)
+    fromX0Y0Path = buildFromPrefix(endpoint_url, region, bucket, collection, date, zoomFrom, toTileIndex, 0, 0, blankTile)
+    fromX0Y1Path = buildFromPrefix(endpoint_url, region, bucket, collection, date, zoomFrom, toTileIndex, 0, 1, blankTile)
+    fromX1Y0Path = buildFromPrefix(endpoint_url, region, bucket, collection, date, zoomFrom, toTileIndex, 1, 0, blankTile)
+    fromX1Y1Path = buildFromPrefix(endpoint_url, region, bucket, collection, date, zoomFrom, toTileIndex, 1, 1, blankTile)
+
+    return_key = None
 
     if(fromX0Y0Path == blank and fromX1Y0Path == blank
             and fromX0Y1Path == blank and fromX1Y1Path == blank):
@@ -343,15 +344,17 @@ def generateUpperTile(toTileIndex, endpoint_url, region, bucket, collection, zoo
         if compress and zoomTo == topZoom:
             toImage.convert('P', palette=Image.ADAPTIVE, colors=256)
 
-        put_s3_object(toImage, endpoint_url, region, bucket, toKey)
+        # put_s3_object(toImage, endpoint_url, region, bucket, toKey)
         toImage.close()
+
+        return_key = toKey
 
         def convertRGBToPNG8(tile: Image, key: str):
             info = PngImagePlugin.PngInfo()
             info.add_text("generated_by", "generatePyramid")
 
             tile = tile.convert('P', palette=Image.ADAPTIVE, colors=256)
-            put_s3_object(tile, endpoint_url, region, bucket, key)
+            # put_s3_object(tile, endpoint_url, region, bucket, key)
 
         # now also convert the "from" tiles to PNG8
         if compress:
@@ -367,6 +370,8 @@ def generateUpperTile(toTileIndex, endpoint_url, region, bucket, collection, zoo
             if fromX1Y1Path != blank:
                 convertRGBToPNG8(fromX1Y1Image, fromX1Y1Path)
                 fromX1Y1Image.close()
+
+    return return_key
 
 
 def main():
@@ -393,19 +398,25 @@ def main():
             # from zoom level zoomFrom, generate upper level (zoom - 1)
             minX, minY, maxX, maxY = int(minX/2), int(minY/2), int(maxX/2)+1, int(maxY/2)+1
 
+            existing_keys = s3_existing_keys(endpoint_url, region, bucket, os.path.join(prefix, str(zoomFrom - 1).zfill(2)))
+            created_keys = []
+
             print("Zoom level: " + str(zoomFrom))
             print("BBox: X:" + str (minX) + "-" + str(maxX) + " Y:" + str(minY) + "-" + str(maxY))
             if args.local:
                 for x in range(minX, maxX):
                     for y in range(minY,maxY):
-                        generateUpperTile((x,y), endpoint_url=endpoint_url, region=region, bucket=args.bucket, collection=args.collection, zoomFrom=zoomFrom,
-                                          topZoom=args.topZoom, date=args.date, compress=args.compress, blankTile=args.blankTile)
+                        created_keys.append(generateUpperTile((x,y), endpoint_url=endpoint_url, region=region, bucket=args.bucket, collection=args.collection, zoomFrom=zoomFrom,
+                                          topZoom=args.topZoom, date=args.date, compress=args.compress, blankTile=args.blankTile))
             else:
                 xRDD = sc.parallelize(range(minX, maxX))
                 yRDD = sc.parallelize(range(minY, maxY))
-                xRDD.cartesian(yRDD).repartition(max(4,int((maxX-minX)*(maxY-minY)/20000))).foreach(
+                created_keys = xRDD.cartesian(yRDD).repartition(max(4,int((maxX-minX)*(maxY-minY)/20000))).foreach(
                     partial(generateUpperTile, endpoint_url=endpoint_url, region=region, bucket=args.bucket, collection=args.collection, zoomFrom=zoomFrom,
-                            topZoom=args.topZoom, date=args.date, compress=args.compress, blankTile=args.blankTile))
+                            topZoom=args.topZoom, date=args.date, compress=args.compress, blankTile=args.blankTile)).collect()
+
+            for k in list(set(existing_keys) - set(created_keys)):
+                delete_s3_object(endpoint_url, region, bucket, k)
     finally:
         if sc != None:
             sc.stop()
@@ -426,6 +437,15 @@ def put_s3_object(image, endpoint_url, region, bucket, key):
     buffer.seek(0)
 
     s3(endpoint_url, region).Object(bucket, key).put(Body=buffer)
+
+
+def delete_s3_object(endpoint_url, region, bucket, key):
+    s3(endpoint_url, region).Object(bucket, key).delete()
+
+
+def s3_existing_keys(endpoint_url, region, bucket, prefix):
+    bucket = s3(endpoint_url, region).Bucket(bucket)
+    return [x.key for x in bucket.objects.filter(Prefix=prefix)]
 
 
 def toMinMax(s3_bucket, prefix, bottomZoom):
