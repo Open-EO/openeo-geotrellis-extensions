@@ -191,7 +191,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
 
     val layerMetadata = DatacubeSupport.layerMetadata(boundingBox,from,to,zoom,summary.cellType,scheme,summary.cellSize,params.globalExtent)
     val sourceRDD = FileLayerProvider.rasterSourceRDD(rasterSources,layerMetadata,summary.cellSize,"Geotiff collection")
-    FileLayerProvider.readMultibandTileLayer(sourceRDD,layerMetadata,Array(toPolygon(boundingBox.extent)),boundingBox.crs,sc,datacubeParams = Some(params))
+    FileLayerProvider.readMultibandTileLayer(sourceRDD,layerMetadata,Array(MultiPolygon(toPolygon(boundingBox.extent))),boundingBox.crs,sc,datacubeParams = Some(params))
 
   }
 
