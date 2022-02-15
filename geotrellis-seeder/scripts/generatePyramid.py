@@ -329,6 +329,8 @@ def generateUpperTile(toTileIndex, cacheRoot, collection, zoomFrom, topZoom, dat
     fromX1Y0Path = buildFromPath(cacheRoot, collection, date, zoomFrom, toTileIndex, 1, 0, blankTile)
     fromX1Y1Path = buildFromPath(cacheRoot, collection, date, zoomFrom, toTileIndex, 1, 1, blankTile)
 
+    return_path = None
+
     if(fromX0Y0Path == blank and fromX1Y0Path == blank
             and fromX0Y1Path == blank and fromX1Y1Path == blank):
         logger.info("Skipping tile %s, level %s because found no non-empty parent tiles found", toTileIndex, zoomTo)
@@ -382,6 +384,7 @@ def generateUpperTile(toTileIndex, cacheRoot, collection, zoomFrom, topZoom, dat
             toImage.save(to, quality=95)
             os.chmod(to, 0o644)
             toImage.close()
+            return_path = to
 
         # now also convert the "from" tiles to PNG8
         if compress:
@@ -397,6 +400,8 @@ def generateUpperTile(toTileIndex, cacheRoot, collection, zoomFrom, topZoom, dat
             if fromX1Y1Path != blank:
                 convertRGBToPNG8(fromX1Y1Image, fromX1Y1Path)
                 fromX1Y1Image.close()
+
+    return return_path
 
 
 def main():
@@ -425,19 +430,25 @@ def main():
             # from zoom level zoomFrom, generate upper level (zoom - 1)
             minX, minY, maxX, maxY = int(minX/2), int(minY/2), int(maxX/2)+1, int(maxY/2)+1
 
+            existing_files = [os.path.join(dirpath, file) for dirpath, dirnames, filenames in os.walk(os.path.join(args.cacheRoot, args.collection, "g", args.date, str(zoomFrom - 1).zfill(2))) for file in filenames]
+            created_files = []
+
             print("Zoom level: " + str(zoomFrom))
             print("BBox: X:" + str (minX) + "-" + str(maxX) + " Y:" + str(minY) + "-" + str(maxY))
             if args.local:
                 for x in range(minX, maxX):
                     for y in range(minY,maxY):
-                        generateUpperTile((x,y),cacheRoot=args.cacheRoot, collection=args.collection, zoomFrom=zoomFrom,
-                                          topZoom=args.topZoom, date=args.date, compress=args.compress, blankTile=args.blankTile)
+                        created_files.append(generateUpperTile((x,y),cacheRoot=args.cacheRoot, collection=args.collection, zoomFrom=zoomFrom,
+                                          topZoom=args.topZoom, date=args.date, compress=args.compress, blankTile=args.blankTile))
             else:
                 xRDD = sc.parallelize(range(minX, maxX))
                 yRDD = sc.parallelize(range(minY, maxY))
-                xRDD.cartesian(yRDD).repartition(max(4,int((maxX-minX)*(maxY-minY)/20000))).foreach(
+                created_files = xRDD.cartesian(yRDD).repartition(max(4,int((maxX-minX)*(maxY-minY)/20000))).map(
                     partial(generateUpperTile, cacheRoot=args.cacheRoot, collection=args.collection, zoomFrom=zoomFrom,
-                            topZoom=args.topZoom, date=args.date, compress=args.compress, blankTile=args.blankTile))
+                            topZoom=args.topZoom, date=args.date, compress=args.compress, blankTile=args.blankTile)).collect()
+
+            for f in list(set(existing_files) - set(created_files)):
+                os.remove(f)
     finally:
         if sc != None:
             sc.stop()

@@ -97,6 +97,9 @@ class JCommanderArgs {
   @Parameter(names = Array("--selectOverlappingTile"), required = false, arity = 1, description = "use same values from same tile when there is overlap instead of taking max of 2 values")
   var selectOverlappingTile: Boolean = false
 
+  @Parameter(names = Array("--unseedTiles"), required = false, arity = 1, description = "remove seeded tiles if input products are removed from oscars")
+  var unseedTiles: Boolean = false
+
   @Parameter(names = Array("--verbose", "-v"), required = false, description = "print debug logs")
   var verbose: Boolean = false
 
