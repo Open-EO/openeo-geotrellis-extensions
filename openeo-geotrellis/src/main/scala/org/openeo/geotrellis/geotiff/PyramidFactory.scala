@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.geotiff
 
+import cats.data.NonEmptyList
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource}
@@ -9,14 +10,16 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.store.hadoop.util.HdfsUtils
 import geotrellis.store.s3.AmazonS3URI
+import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{Partitioner, SparkContext}
 import org.locationtech.proj4j.proj.TransverseMercatorProjection
+import org.openeo.geotrellis.layers.{BandCompositeRasterSource, FileLayerProvider}
 import org.openeo.geotrellis.{ProjectedPolygons, bucketRegion, s3Client}
-import org.openeo.geotrelliscommon.{OpenEORasterCube, OpenEORasterCubeMetadata, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, OpenEORasterCube, OpenEORasterCubeMetadata, SpaceTimeByMonthPartitioner}
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 
 import java.time.LocalTime.MIDNIGHT
@@ -138,13 +141,12 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
     Pyramid(layers.toMap)
   }
 
-  def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
+  def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom, parameters: DataCubeParameters = new DataCubeParameters)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(targetCrs), targetCrs)
-    val layout = ZoomedLayoutScheme(targetCrs).levelForZoom(zoom).layout
-    layer(reprojectedRasterSources, reprojectedBoundingBox, from, to, layout)
+    layer(reprojectedRasterSources, reprojectedBoundingBox, from, to, parameters, zoom = zoom)
   }
 
-  private def layer(rasterSources: Seq[(RasterSource, ZonedDateTime)], boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, layout: LayoutDefinition)(implicit sc: SparkContext): OpenEORasterCube[SpaceTimeKey] = {
+  private def layer(rasterSources: Seq[(RasterSource, ZonedDateTime)], boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, params: DataCubeParameters, zoom: Int = maxZoom)(implicit sc: SparkContext): OpenEORasterCube[SpaceTimeKey] = {
     val overlappingRasterSources = rasterSources
       .filter { case (rasterSource, date) =>
         // FIXME: this means the driver will (partially) read the geotiff instead of the executor - on the other hand, e.g. an AccumuloRDDReader will interpret a LayerQuery both in the driver (to determine Accumulo ranges) and the executors
@@ -160,70 +162,42 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
 
         overlaps && withinDateRange
       }
+      .map { case (rasterSource, date) =>
+        new BandCompositeRasterSource(NonEmptyList.of(rasterSource), boundingBox.crs, Predef.Map("date"->date.toString))
+      }
 
-    lazy val bounds = {
-      val spatialBounds = layout.mapTransform.extentToBounds(boundingBox.extent)
-      val KeyBounds(SpatialKey(minCol, minRow), SpatialKey(maxCol, maxRow)) = KeyBounds(spatialBounds)
-      KeyBounds(SpaceTimeKey(minCol, minRow, from), SpaceTimeKey(maxCol, maxRow, to))
-    }
-
-    val resultRDD = rasterSourceRDD(overlappingRasterSources.map { case (rasterSource, _) => rasterSource }, layout, bounds)
+    val resultRDD = rasterSourceRDD(overlappingRasterSources,boundingBox,from,to, params)
     new OpenEORasterCube[SpaceTimeKey](resultRDD,resultRDD.metadata, OpenEORasterCubeMetadata())
   }
 
   private def rasterSourceRDD(
     rasterSources: Seq[RasterSource],
-    layout: LayoutDefinition,
-    bounds: => KeyBounds[SpaceTimeKey]
+    boundingBox: ProjectedExtent,
+    from: ZonedDateTime, to: ZonedDateTime,
+    params: DataCubeParameters,
+    zoom:Int = maxZoom
   )(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     val extractDateFromPath = this.extractDateFromPath
     val keyExtractor = TemporalKeyExtractor.fromPath { case GeoTiffPath(value) => extractDateFromPath(value) }
 
     val sources = sc.parallelize(rasterSources).cache()
     val summary = RasterSummary.fromRDD(sources, keyExtractor.getMetadata)
-    val layerMetadata = summary.toTileLayerMetadata(layout, keyExtractor.getKey)
 
-    // FIXME: supply our own RasterSummary? (use bounds)
-    tiledLayerRDD(
-      sources,
-      layout,
-      keyExtractor,
-      layerMetadata,
-      SpacePartitioner(layerMetadata.bounds)
-    )
+    val scheme = if(params.layoutScheme=="ZoomedLayoutScheme"){
+      ZoomedLayoutScheme(targetCrs)
+    }else{
+      FloatingLayoutScheme(params.tileSize)
+    }
+
+    val layerMetadata = DatacubeSupport.layerMetadata(boundingBox,from,to,zoom,summary.cellType,scheme,summary.cellSize,params.globalExtent)
+    val sourceRDD = FileLayerProvider.rasterSourceRDD(rasterSources,layerMetadata,summary.cellSize,"Geotiff collection")
+    FileLayerProvider.readMultibandTileLayer(sourceRDD,layerMetadata,Array(toPolygon(boundingBox.extent)),boundingBox.crs,sc,datacubeParams = Some(params))
+
   }
 
-  // adapted from geotrellis.spark.RasterSourceRDD.tiledLayerRDD
-  private def tiledLayerRDD[K: SpatialComponent: Boundable: ClassTag, M: Boundable](
-    sources: RDD[RasterSource],
-    layout: LayoutDefinition,
-    keyExtractor: KeyExtractor.Aux[K, M],
-    layerMetadata: TileLayerMetadata[K],
-    partitioner: Partitioner
-  ): MultibandTileLayerRDD[K] = {
-    val tiledLayoutSourceRDD =
-      sources.map { rs =>
-        val m = keyExtractor.getMetadata(rs)
-        val tileKeyTransform: SpatialKey => K = { sk => keyExtractor.getKey(m, sk) }
-        rs.tileToLayout(layout, tileKeyTransform)
-      }
 
-    val rasterRegionRDD: RDD[(K, RasterRegion)] =
-      tiledLayoutSourceRDD.flatMap { _.keyedRasterRegions() }
-
-    val tiledRDD: RDD[(K, MultibandTile)] =
-      rasterRegionRDD
-        .groupByKey(partitioner)
-        .mapValues { overlappingRasterRegions =>
-          overlappingRasterRegions
-            .flatMap(rasterRegion => rasterRegion.raster.map(_.tile.interpretAs(rasterRegion.cellType)))
-            .reduce(_ merge _)
-        }
-
-    ContextRDD(tiledRDD, layerMetadata)
-  }
-
-  def datacube_seq(polygons: ProjectedPolygons, from_date: String, to_date: String):
+  def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
+                   metadata_properties: util.Map[String, Any], correlationId: String, dataCubeParameters: DataCubeParameters):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
 
@@ -234,29 +208,15 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
     if (latLng) // TODO: drop the workaround for what look like negative SpatialKeys?
       Seq(0 -> layer(boundingBox, from, to))
     else {
-      val layout = this.layout(FloatingLayoutScheme(256), boundingBox)
-      Seq(0 -> layer(rasterSources, boundingBox, from, to, layout))
+      Seq(0 -> layer(rasterSources, boundingBox, from, to, dataCubeParameters))
     }
+
   }
 
-  private val maxSpatialResolution: CellSize = CellSize(10, 10)
-
-  private def layout(layoutScheme: FloatingLayoutScheme, boundingBox: ProjectedExtent): LayoutDefinition = {
-    //Giving the layout a deterministic extent simplifies merging of data with spatial partitioner
-    val layoutExtent =
-      if (boundingBox.crs.proj4jCrs.getProjection.getName == "utm") {
-        //for utm, we return an extent that goes beyound the utm zone bounds, to avoid negative spatial keys
-        if (boundingBox.crs.proj4jCrs.getProjection.asInstanceOf[TransverseMercatorProjection].getSouthernHemisphere)
-        //official extent: Extent(166021.4431, 1116915.0440, 833978.5569, 10000000.0000) -> round to 10m + extend
-          Extent(0.0, 1000000.0, 833970.0 + 100000.0, 10000000.0000 + 100000.0)
-        else {
-          //official extent: Extent(166021.4431, 0.0000, 833978.5569, 9329005.1825) -> round to 10m + extend
-          Extent(0.0, -1000000.0000, 833970.0 + 100000.0, 9329000.0 + 100000.0)
-        }
-      } else {
-        boundingBox.extent
-      }
-
-    layoutScheme.levelFor(layoutExtent, maxSpatialResolution).layout
+  def datacube_seq(polygons: ProjectedPolygons, from_date: String, to_date: String):
+  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+    datacube_seq(polygons, from_date, to_date,null,"",new DataCubeParameters)
   }
+
+
 }
