@@ -110,20 +110,21 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   }
 
   def compute_generic_timeseries_from_datacube(reducer: String, datacube: MultibandTileLayerRDD[SpaceTimeKey],
-                        geometryWkts: JList[String], geometriesSrs: String, output_file: String): Unit = {
+                                               geometry_wkts: JList[String], geometries_srs: String,
+                                               output_file: String): Unit = {
     val builder = new SparkAggregateScriptBuilder
     builder.expressionEnd(reducer,new util.HashMap[String,Object]())
-    this.compute_generic_timeseries_from_datacube(builder, datacube, geometryWkts, geometriesSrs, output_file)
+    this.compute_generic_timeseries_from_datacube(builder, datacube, geometry_wkts, geometries_srs, output_file)
   }
 
   def compute_generic_timeseries_from_datacube(scriptBuilder: SparkAggregateScriptBuilder,
                                                datacube: MultibandTileLayerRDD[SpaceTimeKey],
-                                               geometryWkts: JList[String], geometriesSrs: String,
+                                               geometry_wkts: JList[String], geometries_srs: String,
                                                output_file: String): Unit = {
     import geotrellis.vector._
 
-    val geometries = geometryWkts.asScala.map(_.parseWKT())
-    val geometriesCrs = CRS.fromName(geometriesSrs)
+    val geometries = geometry_wkts.asScala.map(_.parseWKT())
+    val geometriesCrs = CRS.fromName(geometries_srs)
 
     val aggregatePolygonProcess = new AggregatePolygonProcess
 
