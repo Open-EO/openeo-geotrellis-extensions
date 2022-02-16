@@ -213,7 +213,7 @@ package object geotiff {
     val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3
 
     val compression = Deflate(zLevel)
-    val ( tiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, segmentCount: Int) = getCompressedTiles(preprocessedRdd, compression)
+    val ( tiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, segmentCount: Int) = getCompressedTiles(preprocessedRdd, gridBounds, compression)
 
     val overviews =
     if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
@@ -228,7 +228,7 @@ package object geotiff {
         val overviews = (1 to levels).reverse.map( level=>{
           var zoom_rdd = Pyramid.up(nextOverviewLevel,scheme,level)
           nextOverviewLevel = zoom_rdd._2
-          val ( overViewTiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, overViewSegmentCount: Int) = getCompressedTiles(nextOverviewLevel, compression)
+          val ( overViewTiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, overViewSegmentCount: Int) = getCompressedTiles(nextOverviewLevel,gridBounds, compression)
           val overviewTiff = toTiff(overViewTiffs, nextOverviewLevel.metadata.gridBoundsFor(croppedExtent,clamp=true).toGridType[Int], nextOverviewLevel.metadata.tileLayout, compression, cellType, detectedBandCount, overViewSegmentCount)
           overviewTiff
         })
@@ -258,15 +258,14 @@ package object geotiff {
     return Collections.singletonList(path)
   }
 
-  private def getCompressedTiles[K: SpatialComponent : Boundable : ClassTag](preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]], compression: Compression) = {
+  private def getCompressedTiles[K: SpatialComponent : Boundable : ClassTag](preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]],gridBounds: GridBounds[Int], compression: Compression) = {
     val keyBounds = preprocessedRdd.metadata.bounds
-    val maxKey = keyBounds.get.maxKey.getComponent[SpatialKey]
     val minKey = keyBounds.get.minKey.getComponent[SpatialKey]
 
     val tileLayout = preprocessedRdd.metadata.tileLayout
 
-    val totalCols = maxKey.col - minKey.col + 1
-    val totalRows = maxKey.row - minKey.row + 1
+    val totalCols = math.ceil(gridBounds.width.toDouble / tileLayout.tileCols).toInt
+    val totalRows = math.ceil(gridBounds.height.toDouble / tileLayout.tileRows).toInt
 
     val cols = tileLayout.tileCols
     val rows = tileLayout.tileRows
@@ -363,11 +362,10 @@ package object geotiff {
         //The part below is probably wrong: each tile in a fixed tilegrid, will have it's own 'tilelayout', while here
         //we use the global tilelayout of the RDD.
         val keyBounds = KeyBounds(tileBounds)
-        val maxKey = keyBounds.get.maxKey.getComponent[SpatialKey]
         val minKey = keyBounds.get.minKey.getComponent[SpatialKey]
 
-        val totalCols = maxKey.col - minKey.col + 1
-        val totalRows = maxKey.row - minKey.row + 1
+        val totalCols = math.ceil(gridBounds.width.toDouble / tileLayout.tileCols).toInt
+        val totalRows = math.ceil(gridBounds.height.toDouble / tileLayout.tileRows).toInt
 
         val bandSegmentCount = totalCols * totalRows
         val someTile = tiles.head._2
