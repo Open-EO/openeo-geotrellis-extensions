@@ -301,9 +301,9 @@ object NetCDFRDDWriter {
     filtered
       .flatMap {
         case (key, tile) => featuresBC.value.filter { case (_, geometry) =>
-          layout.mapTransform.keysForGeometry(geometry) contains key.getComponent[SpatialKey]
+          layout.mapTransform.keysForGeometry(geometry) contains key.spatialKey
         }.map { case (sampleName, geometry) =>
-          val keyExtent = layout.mapTransform.keyToExtent(key.getComponent[SpatialKey])
+          val keyExtent = layout.mapTransform.keyToExtent(key.spatialKey)
           val sample = Raster(tile, keyExtent).mask(geometry)
           ((sampleName, key.instant), sample)
         }
