@@ -531,13 +531,13 @@ package object geotiff {
       .toList.asJava
   }
 
-  private def stitchAndWriteToTiff(tiles: Iterable[(SpatialKey, MultibandTile)], filePath: String, layout: LayoutDefinition, crs: CRS, extent: Extent, croppedExtent: Option[Extent], cropDimensions: Option[java.util.ArrayList[Int]], compression: Compression) = {
+  private def stitchAndWriteToTiff(tiles: Iterable[(SpatialKey, MultibandTile)], filePath: String, layout: LayoutDefinition, crs: CRS, geometry: Geometry, croppedExtent: Option[Extent], cropDimensions: Option[java.util.ArrayList[Int]], compression: Compression) = {
     val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).stitch()
 
     val re = raster.rasterExtent
-    val alignedExtent = re.createAlignedGridExtent(extent).extent
+    val alignedExtent = re.createAlignedGridExtent(geometry.extent).extent
 
-    val stitched: Raster[MultibandTile] = raster.crop(alignedExtent)
+    val stitched: Raster[MultibandTile] = raster.mask(geometry).crop(alignedExtent)
 
     //TODO this additional cropping + resampling might not be needed, as a tile grid already defines a clear cropping
     val adjusted = {
@@ -570,7 +570,7 @@ package object geotiff {
                   sampleNames: ArrayList[String],
                                    compression: Compression): java.util.List[(String, String)] = {
     val reprojected = ProjectedPolygons.reproject(polygons, rdd.metadata.crs)
-    val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
+    val features = sampleNames.asScala.zip(reprojected.polygons)
     groupByFeatureAndWriteToTiff(rdd, Option.empty, features,path, Option.empty,compression)
 }
 
@@ -588,34 +588,33 @@ package object geotiff {
                             cropDimensions: Option[ArrayList[Int]],
                             compression: Compression): java.util.List[(String, String)] = {
     val features = TileGrid.computeFeaturesForTileGrid(tileGrid, ProjectedExtent(rdd.metadata.extent, rdd.metadata.crs))
+      .map { case (s, extent) => (s, extent.toPolygon()) }
     groupByFeatureAndWriteToTiff(rdd, cropBounds, features,path,cropDimensions, compression)
   }
 
-  private def groupByFeatureAndWriteToTiff(rdd: MultibandTileLayerRDD[SpaceTimeKey], cropBounds: Option[java.util.Map[String, Double]], features: List[(String, Extent)],path:String,cropDimensions: Option[ArrayList[Int]],
+  private def groupByFeatureAndWriteToTiff(rdd: MultibandTileLayerRDD[SpaceTimeKey], cropBounds: Option[java.util.Map[String, Double]], features: Seq[(String, Geometry)],path:String,cropDimensions: Option[ArrayList[Int]],
                                            compression: Compression): java.util.List[(String, String)] = {
-    val featuresBC: Broadcast[List[(String, Extent)]] = SparkContext.getOrCreate().broadcast(features)
+    val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
 
     val croppedExtent = cropBounds.map(toExtent)
 
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
-    rdd.flatMap {
-      case (key, tile) => featuresBC.value.filter { case (_, extent) =>
-        val tileBounds = layout.mapTransform(extent)
 
-        if (KeyBounds(tileBounds).includes(key.spatialKey)) true else false
-      }.map { case (name, extent) =>
-        ((name, TemporalProjectedExtent(extent, crs, key.time)), (key.spatialKey, tile))
+    rdd
+      .flatMap { case (key, tile) => featuresBC.value
+        .filter { case (_, geometry) => layout.mapTransform.keysForGeometry(geometry) contains key.spatialKey }
+        .map { case (name, geometry) => ((name, (geometry, key.time)), (key.spatialKey, tile)) }
       }
-    }.groupByKey()
-      .map { case ((name, extent), tiles) =>
-
-        val filename = s"openEO_${DateTimeFormatter.ISO_DATE.format(extent.time)}_${name}.tif"
+      .groupByKey()
+      .map { case ((name, (geometry, time)), tiles) =>
+        val filename = s"openEO_${DateTimeFormatter.ISO_DATE.format(time)}_$name.tif"
         val filePath = Paths.get(path).resolve(filename).toString
-        val timestamp = extent.time format DateTimeFormatter.ISO_ZONED_DATE_TIME
-        (stitchAndWriteToTiff(tiles, filePath, layout, crs, extent.extent, croppedExtent, cropDimensions, compression),
+        val timestamp = time format DateTimeFormatter.ISO_ZONED_DATE_TIME
+        (stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression),
           timestamp)
-      }.collect()
+      }
+      .collect()
       .toList.asJava
   }
 
