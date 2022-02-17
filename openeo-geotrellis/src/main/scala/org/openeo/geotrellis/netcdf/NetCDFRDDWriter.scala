@@ -234,12 +234,8 @@ object NetCDFRDDWriter {
                   polygons:ProjectedPolygons,
                   sampleNames: ArrayList[String],
                   bandNames: ArrayList[String]
-                  ): java.util.List[String] = {
-    val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
-    val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
-    groupByFeatureAndWriteToNetCDF(rdd,  features,path,bandNames,null,null)
-
-  }
+                  ): java.util.List[String] =
+    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null)
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                   path: String,
@@ -250,9 +246,8 @@ object NetCDFRDDWriter {
                   attributes: java.util.Map[String,String]
                  ): java.util.List[String] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
-    val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
-    groupByFeatureAndWriteToNetCDF(rdd,  features,path,bandNames,dimensionNames,attributes)
-
+    val features = sampleNames.asScala.zip(reprojected.polygons)
+    groupByFeatureAndWriteToNetCDF(rdd, features, path, bandNames, dimensionNames, attributes)
   }
 
   def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
@@ -269,14 +264,14 @@ object NetCDFRDDWriter {
 
   }
 
-  private def groupByFeatureAndWriteToNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey], features: List[(String, Extent)],
+  private def groupByFeatureAndWriteToNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey], features: Seq[(String, Geometry)],
                                            path:String,bandNames: ArrayList[String],
                                            dimensionNames: java.util.Map[String,String],
-                                           attributes: java.util.Map[String,String]) = {
-    val featuresBC: Broadcast[List[(String, Extent)]] = SparkContext.getOrCreate().broadcast(features)
+                                           attributes: java.util.Map[String,String]): util.List[String] = {
+    val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
 
     val crs = rdd.metadata.crs
-    stitchRDDBySample(rdd,featuresBC)
+    stitchRDDBySample(rdd, featuresBC)
       .map { case (name, tiles) =>
 
         val outputAsPath: Path = getSamplePath(name, path)
@@ -297,30 +292,25 @@ object NetCDFRDDWriter {
       .toList.asJava
   }
 
-  private def stitchRDDBySample(rdd: MultibandTileLayerRDD[SpaceTimeKey],featuresBC: Broadcast[List[(String, Extent)]]) = {
+  private def stitchRDDBySample(rdd: MultibandTileLayerRDD[SpaceTimeKey], featuresBC: Broadcast[Seq[(String, Geometry)]]) = {
     val layout = rdd.metadata.layout
 
-    val keys = featuresBC.value.map(_._1)
+    val sampleNames = featuresBC.value.map { case (sampleName, _) => sampleName }
     logger.info(s"Grouping result by ${featuresBC.value.size} features to write netCDFs.")
     val filtered = new OpenEOProcesses().filterEmptyTile(rdd)
-    filtered.flatMap {
-      case (key, tile) => featuresBC.value.filter { case (_, extent) =>
-        val tileBounds = layout.mapTransform(extent)
-
-        if (KeyBounds(tileBounds).includes(key.getComponent[SpatialKey])) true else false
-      }.map { case (name, extent) =>{
-        val raster: Raster[MultibandTile] = Raster(tile,layout.mapTransform.keyToExtent(key.getComponent[SpatialKey]))
-        val re: RasterExtent = raster.rasterExtent
-        val alignedExtent = re.createAlignedGridExtent(extent).extent
-        val sample = raster.crop(alignedExtent,Options(clamp=false,force=false))
-        ((name,key.instant), sample)
+    filtered
+      .flatMap {
+        case (key, tile) => featuresBC.value.filter { case (_, geometry) =>
+          layout.mapTransform.keysForGeometry(geometry) contains key.getComponent[SpatialKey]
+        }.map { case (sampleName, geometry) =>
+          val keyExtent = layout.mapTransform.keyToExtent(key.getComponent[SpatialKey])
+          val sample = Raster(tile, keyExtent).mask(geometry)
+          ((sampleName, key.instant), sample)
+        }
       }
-      }
-    }.reduceByKey{
-      case (tile1,tile2) => {
-        tile1.merge(tile2)
-      }
-    }.map(t => (t._1._1,(t._1._2,t._2))).groupByKey(new ByKeyPartitioner(keys.toArray))
+      .reduceByKey(_ merge _)
+      .map { case ((sampleName, instant), raster) => (sampleName, (instant, raster)) }
+      .groupByKey(new ByKeyPartitioner(sampleNames.toArray))
   }
 
   private def groupRDDBySample[K: SpatialComponent: Boundable: ClassTag](rdd: MultibandTileLayerRDD[K],featuresBC: Broadcast[List[(String, Extent)]]) = {
