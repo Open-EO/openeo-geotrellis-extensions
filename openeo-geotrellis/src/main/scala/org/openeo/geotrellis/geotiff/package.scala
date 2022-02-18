@@ -39,7 +39,7 @@ import java.net.URI
 import java.nio.file.Paths
 import java.time.Duration
 import java.time.format.DateTimeFormatter
-import java.util.{ArrayList, Collections, Map}
+import java.util.{List => JList, ArrayList, Collections, Map}
 import scala.collection.JavaConverters._
 import scala.reflect._
 
@@ -567,8 +567,8 @@ package object geotiff {
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                                    path: String,
                   polygons:ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                                   compression: Compression): java.util.List[(String, String)] = {
+                  sampleNames: JList[String],
+                                   compression: Compression): JList[(String, String)] = {
     val reprojected = ProjectedPolygons.reproject(polygons, rdd.metadata.crs)
     val features = sampleNames.asScala.zip(reprojected.polygons)
     groupByFeatureAndWriteToTiff(rdd, Option.empty, features,path, Option.empty,compression)

@@ -3,17 +3,20 @@ package org.openeo.geotrellis.geotiff
 import geotrellis.layer.{CRSWorldExtent, SpaceTimeKey, SpatialKey, ZoomedLayoutScheme}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.io.geotiff.GeoTiff
-import geotrellis.raster.{ByteArrayTile, ByteConstantTile, ColorMaps, MultibandTile, Raster, Tile, TileLayout}
+import geotrellis.raster.io.geotiff.compression.DeflateCompression
+import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, ColorMaps, MultibandTile, Raster, Tile, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit._
-import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses}
+import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 
+import java.time.ZonedDateTime
 import java.util
-
+import java.util.zip.Deflater._
+import scala.collection.JavaConverters._
 
 
 object WriteRDDToGeotiffTest{
@@ -23,7 +26,7 @@ object WriteRDDToGeotiffTest{
   @BeforeClass
   def setupSpark() = {
     sc = {
-      val conf = new SparkConf().setMaster("local[2]").setAppName(getClass.getSimpleName)
+      val conf = new SparkConf().setMaster("local[*]").setAppName(getClass.getSimpleName)
         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
         .set("spark.kryo.registrator", classOf[geotrellis.spark.store.kryo.KryoRegistrator].getName)
       SparkContext.getOrCreate(conf)
@@ -239,6 +242,32 @@ class WriteRDDToGeotiffTest {
 
   }
 
+  @Test
+  def testSaveSamplesForOverlappingPolygonExtents(): Unit = {
+    val layoutCols = 8
+    val layoutRows = 4
 
+    val intImage = LayerFixtures.createTextImage( layoutCols*256, layoutRows*256)
+    val imageTile = ByteArrayTile(intImage,layoutCols*256, layoutRows*256)
+
+    val date = ZonedDateTime.now()
+
+    val tileLayerRDD = TileLayerRDDBuilders
+      .createSpaceTimeTileLayerRDD(Seq((imageTile, date)), TileLayout(layoutCols,layoutRows,256,256), ByteConstantNoDataCellType )(WriteRDDToGeotiffTest.sc)
+      .withContext(_.mapValues(MultibandTile(_)))
+
+    val targetDir = "/tmp/testSaveSamplesForOverlappingPolygonExtents"
+    val polygonsWithOverlappingExtents: ProjectedPolygons =
+      //ProjectedPolygons.fromExtent(Extent(0.0, 50.0, 5.0, 55.0), "EPSG:4326")
+    ProjectedPolygons.fromVectorFile("/tmp/australia.geojson")
+
+    val sampleNames = polygonsWithOverlappingExtents.polygons.indices
+      .map(_.toString)
+      .asJava
+
+    saveSamples(tileLayerRDD, targetDir, polygonsWithOverlappingExtents, sampleNames, DeflateCompression(BEST_COMPRESSION))
+    /*val raster = tileLayerRDD.toSpatial().stitch()
+    GeoTiff(raster, tileLayerRDD.metadata.crs).write("/tmp/stitched.tif")*/
+  }
 
 }

@@ -26,7 +26,7 @@ object NetCDFRDDWriterTest {
   def setupSpark(): Unit = {
     // originally geotrellis.spark.util.SparkUtils.createLocalSparkContext
     val conf = SparkUtils.createSparkConf
-      .setMaster("local[1]")
+      .setMaster("local[*]")
       .setAppName(NetCDFRDDWriterTest.getClass.getName)
       .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       // .set("spark.kryo.registrationRequired", "true") // this requires e.g. RasterSource to be registered too
@@ -66,11 +66,14 @@ class NetCDFRDDWriterTest {
     val sampleNameList = new util.ArrayList[String]()
     sampleNames.foreach(sampleNameList.add)
 
-    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSamples(layer,"/tmp",polygonsUTM31,sampleNameList, new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M")))
+    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSamples(layer,"/tmp",polygonsUTM31,sampleNameList, new util.ArrayList(util.Arrays.asList("TOC-B04_10M")))
     val expectedPaths = List("/tmp/openEO_0.nc", "/tmp/openEO_1.nc")
 
     Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
   }
+
+  @Test
+  def testWriteSamplesForOverlappingPolygonExtents(): Unit = ???
 
   @Test
   def testKeyPartitioner():Unit = {
