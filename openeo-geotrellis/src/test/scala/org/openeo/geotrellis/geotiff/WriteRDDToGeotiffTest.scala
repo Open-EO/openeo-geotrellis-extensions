@@ -247,27 +247,29 @@ class WriteRDDToGeotiffTest {
     val layoutCols = 8
     val layoutRows = 4
 
-    val intImage = LayerFixtures.createTextImage( layoutCols*256, layoutRows*256)
-    val imageTile = ByteArrayTile(intImage,layoutCols*256, layoutRows*256)
+    val intImage = LayerFixtures.createTextImage(layoutCols * 256, layoutRows * 256)
+    val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
 
     val date = ZonedDateTime.now()
 
     val tileLayerRDD = TileLayerRDDBuilders
-      .createSpaceTimeTileLayerRDD(Seq((imageTile, date)), TileLayout(layoutCols,layoutRows,256,256), ByteConstantNoDataCellType )(WriteRDDToGeotiffTest.sc)
+      .createSpaceTimeTileLayerRDD(Seq((imageTile, date)), TileLayout(layoutCols, layoutRows, 256, 256),
+        ByteConstantNoDataCellType)(WriteRDDToGeotiffTest.sc)
       .withContext(_.mapValues(MultibandTile(_)))
 
-    val targetDir = "/tmp/testSaveSamplesForOverlappingPolygonExtents"
+    val targetDir = "./"
+
     val polygonsWithOverlappingExtents: ProjectedPolygons =
-      //ProjectedPolygons.fromExtent(Extent(0.0, 50.0, 5.0, 55.0), "EPSG:4326")
-    ProjectedPolygons.fromVectorFile("/tmp/australia.geojson")
+      ProjectedPolygons.fromVectorFile(
+        getClass.getResource("/org/openeo/geotrellis/geotiff/overlappingExtentsGeometryCollection.geojson").getPath)
 
     val sampleNames = polygonsWithOverlappingExtents.polygons.indices
       .map(_.toString)
       .asJava
 
-    saveSamples(tileLayerRDD, targetDir, polygonsWithOverlappingExtents, sampleNames, DeflateCompression(BEST_COMPRESSION))
-    /*val raster = tileLayerRDD.toSpatial().stitch()
-    GeoTiff(raster, tileLayerRDD.metadata.crs).write("/tmp/stitched.tif")*/
-  }
+    saveSamples(tileLayerRDD, targetDir, polygonsWithOverlappingExtents, sampleNames,
+      DeflateCompression(BEST_COMPRESSION))
 
+    // TODO: currently relies on visual inspection
+  }
 }
