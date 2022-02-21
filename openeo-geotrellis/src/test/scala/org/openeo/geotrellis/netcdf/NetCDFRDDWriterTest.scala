@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.netcdf
 
+import com.azavea.gdal.GDALWarp
 import geotrellis.layer.SpatialKey
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.gdal.GDALRasterSource
@@ -11,7 +12,7 @@ import geotrellis.vector.{ProjectedExtent, _}
 import org.apache.spark.SparkContext
 import org.junit.Assert.{assertFalse, assertTrue}
 import org.junit.rules.TemporaryFolder
-import org.junit.{Assert, BeforeClass, Ignore, Rule, Test}
+import org.junit.{AfterClass, Assert, BeforeClass, Ignore, Rule, Test}
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.{ByKeyPartitioner, DataCubeParameters}
 import ucar.nc2.dataset.NetcdfDataset
@@ -44,7 +45,8 @@ object NetCDFRDDWriterTest {
     sc = SparkContext.getOrCreate(conf)
   }
 
-
+  @AfterClass
+  def tearDown(): Unit = GDALWarp.deinit()
 }
 
 
