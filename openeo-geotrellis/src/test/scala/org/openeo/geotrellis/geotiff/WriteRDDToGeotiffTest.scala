@@ -12,12 +12,14 @@ import geotrellis.vector.io.json.GeoJson
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit._
+import org.junit.rules.TemporaryFolder
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 
 import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.util
 import java.util.zip.Deflater._
+import scala.annotation.meta.getter
 import scala.collection.JavaConverters._
 import scala.io.Source
 
@@ -41,6 +43,9 @@ object WriteRDDToGeotiffTest{
 }
 
 class WriteRDDToGeotiffTest {
+
+  @(Rule @getter)
+  val temporaryFolder = new TemporaryFolder
 
   val allOverviewOptions = {
     val opts = new GTiffOptions()
@@ -269,13 +274,13 @@ class WriteRDDToGeotiffTest {
       .map(_.toString)
       .asJava
 
-    val targetDir = "/tmp/testSaveSamplesOnlyConsidersPixelsWithinGeometry"
+    val targetDir = temporaryFolder.getRoot.toString
 
     saveSamples(tileLayerRDD, targetDir, tiltedRectangle, sampleNames,
       DeflateCompression(BEST_COMPRESSION))
 
-    val geoTiffPath = Files.list(Paths.get(targetDir)).findFirst().get().toString // 1 date, 1 polygon
-    val raster = GeoTiff.readMultiband(geoTiffPath).raster.mapTile(_.band(0))
+    val Array(geoTiffPath) = Files.list(Paths.get(targetDir)).iterator().asScala.toArray // 1 date, 1 polygon
+    val raster = GeoTiff.readMultiband(geoTiffPath.toString).raster.mapTile(_.band(0))
 
     val geometries = {
       val in = Source.fromFile(geometriesPath)
