@@ -4,19 +4,22 @@ import geotrellis.layer.{CRSWorldExtent, SpaceTimeKey, SpatialKey, ZoomedLayoutS
 import geotrellis.proj4.LatLng
 import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
-import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, ColorMaps, MultibandTile, Raster, Tile, TileLayout}
+import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, ColorMaps, MultibandTile, Raster, Tile, TileLayout, isData}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
-import geotrellis.vector.Extent
+import geotrellis.vector._
+import geotrellis.vector.io.json.GeoJson
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit._
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 
+import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.util
 import java.util.zip.Deflater._
 import scala.collection.JavaConverters._
+import scala.io.Source
 
 
 object WriteRDDToGeotiffTest{
@@ -243,7 +246,7 @@ class WriteRDDToGeotiffTest {
   }
 
   @Test
-  def testSaveSamplesForOverlappingPolygonExtents(): Unit = {
+  def testSaveSamplesOnlyConsidersPixelsWithinGeometry(): Unit = {
     val layoutCols = 8
     val layoutRows = 4
 
@@ -257,19 +260,50 @@ class WriteRDDToGeotiffTest {
         ByteConstantNoDataCellType)(WriteRDDToGeotiffTest.sc)
       .withContext(_.mapValues(MultibandTile(_)))
 
-    val targetDir = "./"
+    val geometriesPath = getClass.getResource("/org/openeo/geotrellis/geotiff/ll_ur_polygon.geojson").getPath
 
-    val polygonsWithOverlappingExtents: ProjectedPolygons =
-      ProjectedPolygons.fromVectorFile(
-        getClass.getResource("/org/openeo/geotrellis/geotiff/overlappingExtentsGeometryCollection.geojson").getPath)
+    // its extent differs substantially from its shape
+    val tiltedRectangle = ProjectedPolygons.fromVectorFile(geometriesPath)
 
-    val sampleNames = polygonsWithOverlappingExtents.polygons.indices
+    val sampleNames = tiltedRectangle.polygons.indices
       .map(_.toString)
       .asJava
 
-    saveSamples(tileLayerRDD, targetDir, polygonsWithOverlappingExtents, sampleNames,
+    val targetDir = "/tmp/testSaveSamplesOnlyConsidersPixelsWithinGeometry"
+
+    saveSamples(tileLayerRDD, targetDir, tiltedRectangle, sampleNames,
       DeflateCompression(BEST_COMPRESSION))
 
-    // TODO: currently relies on visual inspection
+    val geoTiffPath = Files.list(Paths.get(targetDir)).findFirst().get().toString // 1 date, 1 polygon
+    val raster = GeoTiff.readMultiband(geoTiffPath).raster.mapTile(_.band(0))
+
+    val geometries = {
+      val in = Source.fromFile(geometriesPath)
+      try GeoJson.parse[Geometry](in.mkString)
+      finally in.close()
+    }
+
+    // raster extent should be the same as the extent of the input geometries
+    assertTrue(raster.extent.equalsExact(geometries.extent, 1.0))
+
+    def rasterValueAt(point: Point): Int = {
+      val (col, row) = raster.rasterExtent.mapToGrid(point)
+      raster.tile.get(col, row)
+    }
+
+    // pixels within input geometries should carry data
+    val pointWithinGeometries = geometries.getCentroid
+    assertTrue(isData(rasterValueAt(pointWithinGeometries)))
+
+    // pixels outside of geometries should not carry data
+    val pointOutsideOfGeometries = {
+      val point = LineString(geometries.getCentroid, geometries.extent.southEast).getCentroid
+      // sanity checks
+      assertTrue(geometries.extent contains point)
+      assertFalse(geometries.union() contains point)
+      point
+    }
+
+    assertFalse(isData(rasterValueAt(pointOutsideOfGeometries)))
   }
 }
