@@ -1,13 +1,18 @@
 package org.openeo.geotrellis.netcdf
 
+import com.azavea.gdal.GDALWarp
 import geotrellis.layer.SpatialKey
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.{ByteArrayTile, CellType, FloatConstantNoDataCellType, IntUserDefinedNoDataCellType, RasterExtent, UByteUserDefinedNoDataCellType, UShortCellType}
+import geotrellis.raster.gdal.GDALRasterSource
+import geotrellis.raster.{ByteArrayTile, CellType, FloatConstantNoDataCellType, IntUserDefinedNoDataCellType, RasterExtent, UByteUserDefinedNoDataCellType, UShortCellType, isData}
 import geotrellis.spark.util.SparkUtils
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
+import geotrellis.vector.io.json.GeoJson
 import geotrellis.vector.{ProjectedExtent, _}
 import org.apache.spark.SparkContext
-import org.junit.{Assert, BeforeClass, Ignore, Test}
+import org.junit.Assert.{assertFalse, assertTrue}
+import org.junit.rules.TemporaryFolder
+import org.junit.{AfterClass, Assert, BeforeClass, Ignore, Rule, Test}
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.{ByKeyPartitioner, DataCubeParameters}
 import ucar.nc2.dataset.NetcdfDataset
@@ -16,7 +21,9 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
 import java.util
+import scala.annotation.meta.getter
 import scala.collection.JavaConverters.asScalaBufferConverter
+import scala.io.Source
 
 
 object NetCDFRDDWriterTest {
@@ -38,19 +45,23 @@ object NetCDFRDDWriterTest {
     sc = SparkContext.getOrCreate(conf)
   }
 
-
+  @AfterClass
+  def tearDown(): Unit = GDALWarp.deinit()
 }
 
 
 class NetCDFRDDWriterTest {
-
   import org.openeo.geotrellis.netcdf.NetCDFRDDWriterTest._
+
+  @(Rule @getter)
+  val temporaryFolder = new TemporaryFolder
 
   @Test
   def testWriteSamples(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
     val utm31 = CRS.fromEpsgCode(32631)
-    val polygons = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/minimallyOverlappingGeometryCollection.json").getPath)
+    val geometriesPath = getClass.getResource("/org/openeo/geotrellis/minimallyOverlappingGeometryCollection.json").getPath
+    val polygons = ProjectedPolygons.fromVectorFile(geometriesPath)
 
     val extent = polygons.polygons.seq.extent
     val bbox = ProjectedExtent(ProjectedExtent(extent, LatLng).reproject(utm31),utm31)
@@ -66,10 +77,49 @@ class NetCDFRDDWriterTest {
     val sampleNameList = new util.ArrayList[String]()
     sampleNames.foreach(sampleNameList.add)
 
-    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSamples(layer,"/tmp",polygonsUTM31,sampleNameList, new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M")))
-    val expectedPaths = List("/tmp/openEO_0.nc", "/tmp/openEO_1.nc")
+    val targetDir = temporaryFolder.getRoot.toString
+
+    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSamples(layer, targetDir, polygonsUTM31,
+      sampleNameList, new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M",
+        "SCENECLASSIFICATION_20M")))
+
+    val expectedPaths = List(s"$targetDir/openEO_0.nc", s"$targetDir/openEO_1.nc")
 
     Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
+
+    // note: tests first geometry only
+    val bandName = "TOC-B04_10M"
+    val rasterSource = GDALRasterSource(s"""NETCDF:"${expectedPaths.head}":$bandName""")
+    val Some(multiBandRaster) = rasterSource.read()
+    val raster = multiBandRaster.mapTile(_.band(0)) // first timestamp
+
+    val geometry = {
+      val in = Source.fromFile(geometriesPath)
+      try GeoJson.parse[GeometryCollection](in.mkString).getGeometryN(0)
+      finally in.close()
+    }
+
+    // TODO: raster extent should be the same as the extent of the input geometries
+
+    def rasterValueAt(point: Point): Int = {
+      val reprojectedPoint = point.reproject(LatLng, rasterSource.crs)
+      val (col, row) = raster.rasterExtent.mapToGrid(reprojectedPoint)
+      raster.tile.get(col, row)
+    }
+
+    // pixels within input geometries should carry data
+    val pointWithinGeometry = geometry.getCentroid
+    assertTrue(isData(rasterValueAt(pointWithinGeometry)))
+
+    val pointOutsideOfGeometry = {
+      val point = Point(3.251151, 50.977251)
+      // sanity checks
+      assertTrue(geometry.extent contains point)
+      assertFalse(geometry.union() contains point)
+      point
+    }
+
+    assertFalse(isData(rasterValueAt(pointOutsideOfGeometry)))
   }
 
   @Test

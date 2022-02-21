@@ -3,17 +3,25 @@ package org.openeo.geotrellis.geotiff
 import geotrellis.layer.{CRSWorldExtent, SpaceTimeKey, SpatialKey, ZoomedLayoutScheme}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.io.geotiff.GeoTiff
-import geotrellis.raster.{ByteArrayTile, ByteConstantTile, ColorMaps, MultibandTile, Raster, Tile, TileLayout}
+import geotrellis.raster.io.geotiff.compression.DeflateCompression
+import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, ColorMaps, MultibandTile, Raster, Tile, TileLayout, isData}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
-import geotrellis.vector.Extent
+import geotrellis.vector._
+import geotrellis.vector.io.json.GeoJson
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit._
-import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses}
+import org.junit.rules.TemporaryFolder
+import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 
+import java.nio.file.{Files, Paths}
+import java.time.ZonedDateTime
 import java.util
-
+import java.util.zip.Deflater._
+import scala.annotation.meta.getter
+import scala.collection.JavaConverters._
+import scala.io.Source
 
 
 object WriteRDDToGeotiffTest{
@@ -35,6 +43,9 @@ object WriteRDDToGeotiffTest{
 }
 
 class WriteRDDToGeotiffTest {
+
+  @(Rule @getter)
+  val temporaryFolder = new TemporaryFolder
 
   val allOverviewOptions = {
     val opts = new GTiffOptions()
@@ -239,6 +250,65 @@ class WriteRDDToGeotiffTest {
 
   }
 
+  @Test
+  def testSaveSamplesOnlyConsidersPixelsWithinGeometry(): Unit = {
+    val layoutCols = 8
+    val layoutRows = 4
 
+    val intImage = LayerFixtures.createTextImage(layoutCols * 256, layoutRows * 256)
+    val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
 
+    val date = ZonedDateTime.now()
+
+    val tileLayerRDD = TileLayerRDDBuilders
+      .createSpaceTimeTileLayerRDD(Seq((imageTile, date)), TileLayout(layoutCols, layoutRows, 256, 256),
+        ByteConstantNoDataCellType)(WriteRDDToGeotiffTest.sc)
+      .withContext(_.mapValues(MultibandTile(_)))
+
+    val geometriesPath = getClass.getResource("/org/openeo/geotrellis/geotiff/ll_ur_polygon.geojson").getPath
+
+    // its extent differs substantially from its shape
+    val tiltedRectangle = ProjectedPolygons.fromVectorFile(geometriesPath)
+
+    val sampleNames = tiltedRectangle.polygons.indices
+      .map(_.toString)
+      .asJava
+
+    val targetDir = temporaryFolder.getRoot.toString
+
+    saveSamples(tileLayerRDD, targetDir, tiltedRectangle, sampleNames,
+      DeflateCompression(BEST_COMPRESSION))
+
+    val Array(geoTiffPath) = Files.list(Paths.get(targetDir)).iterator().asScala.toArray // 1 date, 1 polygon
+    val raster = GeoTiff.readMultiband(geoTiffPath.toString).raster.mapTile(_.band(0))
+
+    val geometry = {
+      val in = Source.fromFile(geometriesPath)
+      try GeoJson.parse[GeometryCollection](in.mkString).getGeometryN(0)
+      finally in.close()
+    }
+
+    // raster extent should be the same as the extent of the input geometry
+    assertTrue(raster.extent.equalsExact(geometry.extent, 1.0))
+
+    def rasterValueAt(point: Point): Int = {
+      val (col, row) = raster.rasterExtent.mapToGrid(point)
+      raster.tile.get(col, row)
+    }
+
+    // pixels within input geometry should carry data
+    val pointWithinGeometry = geometry.getCentroid
+    assertTrue(isData(rasterValueAt(pointWithinGeometry)))
+
+    // pixels outside of geometry should not carry data
+    val pointOutsideOfGeometry = {
+      val point = LineString(geometry.getCentroid, geometry.extent.southEast).getCentroid
+      // sanity checks
+      assertTrue(geometry.extent contains point)
+      assertFalse(geometry.union() contains point)
+      point
+    }
+
+    assertFalse(isData(rasterValueAt(pointOutsideOfGeometry)))
+  }
 }
