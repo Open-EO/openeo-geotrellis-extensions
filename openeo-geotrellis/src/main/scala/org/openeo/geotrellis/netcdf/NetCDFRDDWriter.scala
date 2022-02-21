@@ -6,7 +6,6 @@ import geotrellis.layer._
 import geotrellis.proj4.CRS
 import geotrellis.raster
 import geotrellis.raster._
-import geotrellis.raster.crop.Crop.Options
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.spark.store.hadoop.KeyPartitioner
 import geotrellis.store.s3.AmazonS3URI
@@ -14,10 +13,9 @@ import geotrellis.util._
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
-import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
+import org.openeo.geotrellis.geotiff.getCreoS3Client
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
-import org.openeo.geotrellis.geotiff.{getCreoS3Client, preProcess}
 import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.sync.RequestBody
@@ -247,6 +245,8 @@ object NetCDFRDDWriter {
                  ): java.util.List[String] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.zip(reprojected.polygons)
+    logger.info(s"Using metadata: ${rdd.metadata}.")
+    logger.info(s"Using features: ${features}.")
     groupByFeatureAndWriteToNetCDF(rdd, features, path, bandNames, dimensionNames, attributes)
   }
 
@@ -271,12 +271,13 @@ object NetCDFRDDWriter {
     val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
 
     val crs = rdd.metadata.crs
-    stitchRDDBySample(rdd, featuresBC)
-      .map { case (name, tiles) =>
-
+    val groupedBySample = stitchRDDBySample(rdd, featuresBC)
+    logger.info(s"Writing ${groupedBySample.count()} samples to disk.")
+    groupedBySample.map { case (name, tiles: Iterable[(Long, Raster[MultibandTile])]) =>
         val outputAsPath: Path = getSamplePath(name, path)
         val filePath = outputAsPath.toString
 
+        // Sort by date before writing.
         val sorted = tiles.toSeq.sortBy(_._1)
         try{
           writeToDisk(sorted.map(_._2),sorted.map(  t=> ZonedDateTime.ofInstant(t._1, ZoneOffset.UTC)),filePath,bandNames,crs,dimensionNames,attributes)
@@ -298,6 +299,7 @@ object NetCDFRDDWriter {
     val sampleNames = featuresBC.value.map { case (sampleName, _) => sampleName }
     logger.info(s"Grouping result by ${featuresBC.value.size} features to write netCDFs.")
     val filtered = new OpenEOProcesses().filterEmptyTile(rdd)
+    logger.info(s"Filtered out ${rdd.count() - filtered.count()} empty tiles. ${rdd.count()} -> ${filtered.count()}")
     filtered
       .flatMap {
         case (key, tile) => featuresBC.value.filter { case (_, geometry) =>
