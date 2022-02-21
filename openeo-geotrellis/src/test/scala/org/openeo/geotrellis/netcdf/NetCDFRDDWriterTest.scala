@@ -32,7 +32,7 @@ object NetCDFRDDWriterTest {
   def setupSpark(): Unit = {
     // originally geotrellis.spark.util.SparkUtils.createLocalSparkContext
     val conf = SparkUtils.createSparkConf
-      .setMaster("local[*]") // TODO: restore
+      .setMaster("local[1]")
       .setAppName(NetCDFRDDWriterTest.getClass.getName)
       .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       // .set("spark.kryo.registrationRequired", "true") // this requires e.g. RasterSource to be registered too
@@ -78,7 +78,9 @@ class NetCDFRDDWriterTest {
     val targetDir = temporaryFolder.getRoot.toString
 
     val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSamples(layer, targetDir, polygonsUTM31,
-      sampleNameList, new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M"))) // TODO: restore bands
+      sampleNameList, new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M",
+        "SCENECLASSIFICATION_20M")))
+
     val expectedPaths = List(s"$targetDir/openEO_0.nc", s"$targetDir/openEO_1.nc")
 
     Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))

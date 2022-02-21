@@ -31,7 +31,7 @@ object WriteRDDToGeotiffTest{
   @BeforeClass
   def setupSpark() = {
     sc = {
-      val conf = new SparkConf().setMaster("local[*]").setAppName(getClass.getSimpleName)
+      val conf = new SparkConf().setMaster("local[2]").setAppName(getClass.getSimpleName)
         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
         .set("spark.kryo.registrator", classOf[geotrellis.spark.store.kryo.KryoRegistrator].getName)
       SparkContext.getOrCreate(conf)
