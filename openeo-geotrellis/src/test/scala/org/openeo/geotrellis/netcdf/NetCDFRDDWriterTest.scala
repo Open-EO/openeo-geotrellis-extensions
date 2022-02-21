@@ -10,7 +10,8 @@ import geotrellis.vector.io.json.GeoJson
 import geotrellis.vector.{ProjectedExtent, _}
 import org.apache.spark.SparkContext
 import org.junit.Assert.{assertFalse, assertTrue}
-import org.junit.{Assert, BeforeClass, Ignore, Test}
+import org.junit.rules.TemporaryFolder
+import org.junit.{Assert, BeforeClass, Ignore, Rule, Test}
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.{ByKeyPartitioner, DataCubeParameters}
 import ucar.nc2.dataset.NetcdfDataset
@@ -19,6 +20,7 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
 import java.util
+import scala.annotation.meta.getter
 import scala.collection.JavaConverters.asScalaBufferConverter
 import scala.io.Source
 
@@ -47,8 +49,10 @@ object NetCDFRDDWriterTest {
 
 
 class NetCDFRDDWriterTest {
-
   import org.openeo.geotrellis.netcdf.NetCDFRDDWriterTest._
+
+  @(Rule @getter)
+  val temporaryFolder = new TemporaryFolder
 
   @Test
   def testWriteSamples(): Unit = {
@@ -71,8 +75,11 @@ class NetCDFRDDWriterTest {
     val sampleNameList = new util.ArrayList[String]()
     sampleNames.foreach(sampleNameList.add)
 
-    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSamples(layer,"/tmp",polygonsUTM31,sampleNameList, new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M"))) // TODO: restore bands
-    val expectedPaths = List("/tmp/openEO_0.nc", "/tmp/openEO_1.nc")
+    val targetDir = temporaryFolder.getRoot.toString
+
+    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSamples(layer, targetDir, polygonsUTM31,
+      sampleNameList, new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M"))) // TODO: restore bands
+    val expectedPaths = List(s"$targetDir/openEO_0.nc", s"$targetDir/openEO_1.nc")
 
     Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
 
