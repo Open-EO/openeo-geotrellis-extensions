@@ -282,33 +282,33 @@ class WriteRDDToGeotiffTest {
     val Array(geoTiffPath) = Files.list(Paths.get(targetDir)).iterator().asScala.toArray // 1 date, 1 polygon
     val raster = GeoTiff.readMultiband(geoTiffPath.toString).raster.mapTile(_.band(0))
 
-    val geometries = {
+    val geometry = {
       val in = Source.fromFile(geometriesPath)
-      try GeoJson.parse[Geometry](in.mkString)
+      try GeoJson.parse[GeometryCollection](in.mkString).getGeometryN(0)
       finally in.close()
     }
 
-    // raster extent should be the same as the extent of the input geometries
-    assertTrue(raster.extent.equalsExact(geometries.extent, 1.0))
+    // raster extent should be the same as the extent of the input geometry
+    assertTrue(raster.extent.equalsExact(geometry.extent, 1.0))
 
     def rasterValueAt(point: Point): Int = {
       val (col, row) = raster.rasterExtent.mapToGrid(point)
       raster.tile.get(col, row)
     }
 
-    // pixels within input geometries should carry data
-    val pointWithinGeometries = geometries.getCentroid
-    assertTrue(isData(rasterValueAt(pointWithinGeometries)))
+    // pixels within input geometry should carry data
+    val pointWithinGeometry = geometry.getCentroid
+    assertTrue(isData(rasterValueAt(pointWithinGeometry)))
 
-    // pixels outside of geometries should not carry data
-    val pointOutsideOfGeometries = {
-      val point = LineString(geometries.getCentroid, geometries.extent.southEast).getCentroid
+    // pixels outside of geometry should not carry data
+    val pointOutsideOfGeometry = {
+      val point = LineString(geometry.getCentroid, geometry.extent.southEast).getCentroid
       // sanity checks
-      assertTrue(geometries.extent contains point)
-      assertFalse(geometries.union() contains point)
+      assertTrue(geometry.extent contains point)
+      assertFalse(geometry.union() contains point)
       point
     }
 
-    assertFalse(isData(rasterValueAt(pointOutsideOfGeometries)))
+    assertFalse(isData(rasterValueAt(pointOutsideOfGeometry)))
   }
 }
