@@ -32,28 +32,27 @@ import scala.collection.immutable
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
 
-class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], override val crs: CRS, var theAttributes:Map[String,String]=Map.empty)
-  extends MosaicRasterSource { // FIXME: don't inherit?
+// TODO: are these attributes typically propagated as RasterSources are transformed? Maybe we should find another way to
+//  attach e.g. a date to a RasterSource.
+class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource], override val crs: CRS, override val attributes: Map[String, String] = Map.empty)
+  extends MosaicRasterSource { // TODO: don't inherit?
 
-  override val sources: NonEmptyList[RasterSource] = sourcesList
-  protected def reprojectedSources: NonEmptyList[RasterSource] = sourcesList map { _.reproject(crs) }
+  protected def reprojectedSources: NonEmptyList[RasterSource] = sources map { _.reproject(crs) }
   protected def reprojectedSources(bands: Seq[Int]): NonEmptyList[RasterSource] = {
-    val selectedBands =  (NonEmptyList.fromList(bands.map(sourcesList.toList).toList)).get
+    val selectedBands =  (NonEmptyList.fromList(bands.map(sources.toList).toList)).get
     selectedBands map { _.reproject(crs)}
   }
-
 
   override def gridExtent: GridExtent[Long] = {
     try {
       sources.head.gridExtent
     }  catch {
-      case e: Throwable => throw new IOException(s"Error while reading extent of: ${sources.head.name.toString}",e)
+      case e: Exception => throw new IOException(s"Error while reading extent of: ${sources.head.name.toString}", e)
     }
 
   }
   override def cellType: CellType = sources.map(_.cellType).reduceLeft(_ union _)
 
-  override def attributes: Map[String, String] = theAttributes // TODO: use override val attributes instead
   override def name: SourceName = sources.head.name
   override def bandCount: Int = sources.size
 
@@ -94,7 +93,10 @@ class BandCompositeRasterSource(val sourcesList: NonEmptyList[RasterSource], ove
     )
 }
 
-class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(RasterSource, Seq[Int])], override val crs: CRS, override val attributes: Map[String,String] = Map.empty)
+// TODO: is this class necessary? Looks like a more general case of BandCompositeRasterSource so maybe the inheritance
+//  relationship should be reversed; or maybe the BandCompositeRasterSource could be made more general and accept
+//  multi-band RasterSources too.
+class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(RasterSource, Seq[Int])], override val crs: CRS, override val attributes: Map[String, String] = Map.empty)
   extends BandCompositeRasterSource(sourcesListWithBandIds.map(_._1), crs, attributes) {
 
   override def bandCount: Int = sourcesListWithBandIds.map(_._2.size).toList.sum

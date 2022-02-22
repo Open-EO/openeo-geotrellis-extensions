@@ -4,9 +4,8 @@ import cats.data.NonEmptyList
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource}
-import geotrellis.raster.{CellSize, CellType, InterpretAsTargetCellType, MultibandTile, RasterRegion, RasterSource}
+import geotrellis.raster.{CellType, InterpretAsTargetCellType, MultibandTile, RasterSource}
 import geotrellis.spark._
-import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.store.hadoop.util.HdfsUtils
 import geotrellis.store.s3.AmazonS3URI
@@ -14,19 +13,16 @@ import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
-import org.apache.spark.rdd.RDD
-import org.apache.spark.{Partitioner, SparkContext}
-import org.locationtech.proj4j.proj.TransverseMercatorProjection
-import org.openeo.geotrellis.layers.{BandCompositeRasterSource, FileLayerProvider}
+import org.apache.spark.SparkContext
+import org.openeo.geotrellis.layers.{FileLayerProvider, MultibandCompositeRasterSource}
 import org.openeo.geotrellis.{ProjectedPolygons, bucketRegion, s3Client}
-import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, OpenEORasterCube, OpenEORasterCubeMetadata, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, OpenEORasterCube, OpenEORasterCubeMetadata}
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 
 import java.time.LocalTime.MIDNIGHT
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util
 import scala.collection.JavaConverters._
-import scala.reflect.ClassTag
 import scala.util.matching.Regex
 
 object PyramidFactory {
@@ -163,7 +159,8 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
         overlaps && withinDateRange
       }
       .map { case (rasterSource, date) =>
-        new BandCompositeRasterSource(NonEmptyList.of(rasterSource), boundingBox.crs, Predef.Map("date"->date.toString))
+        val sourcesListWithBandIds = NonEmptyList.of((rasterSource, 0 until rasterSource.bandCount))
+        new MultibandCompositeRasterSource(sourcesListWithBandIds, boundingBox.crs, Predef.Map("date" -> date.toString))
       }
 
     val resultRDD = rasterSourceRDD(overlappingRasterSources,boundingBox,from,to, params)
