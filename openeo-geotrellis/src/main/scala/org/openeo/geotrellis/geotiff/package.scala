@@ -45,7 +45,7 @@ import scala.reflect._
 
 package object geotiff {
 
-  private val logger = LoggerFactory.getLogger(classOf[OpenEOProcesses])
+  private val logger = LoggerFactory.getLogger(getClass)
 
   class SetAccumulator[T](var value: Set[T]) extends AccumulatorV2[T, Set[T]] {
     def this() = this(Set.empty[T])
