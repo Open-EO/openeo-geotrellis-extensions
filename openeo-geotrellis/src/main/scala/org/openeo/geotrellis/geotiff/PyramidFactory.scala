@@ -196,6 +196,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
   def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
                    metadata_properties: util.Map[String, Any], correlationId: String, dataCubeParameters: DataCubeParameters):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+    // TODO: restore support for null from_date/to_date
     implicit val sc: SparkContext = SparkContext.getOrCreate()
 
     val boundingBox = ProjectedExtent(polygons.polygons.toTraversable.extent, polygons.crs)
