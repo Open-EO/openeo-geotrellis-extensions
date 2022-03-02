@@ -279,8 +279,10 @@ object NetCDFRDDWriter {
 
         // Sort by date before writing.
         val sorted = tiles.toSeq.sortBy(_._1)
+        val dates = sorted.map(  t=> ZonedDateTime.ofInstant(t._1, ZoneOffset.UTC))
+        logger.info(s"Writing ${name} with dates ${dates}.")
         try{
-          writeToDisk(sorted.map(_._2),sorted.map(  t=> ZonedDateTime.ofInstant(t._1, ZoneOffset.UTC)),filePath,bandNames,crs,dimensionNames,attributes)
+          writeToDisk(sorted.map(_._2), dates, filePath, bandNames, crs, dimensionNames, attributes)
           filePath
         }catch {
           case t: IOException => {
@@ -305,8 +307,12 @@ object NetCDFRDDWriter {
         case (key, tile) => featuresBC.value.filter { case (_, geometry) =>
           layout.mapTransform.keysForGeometry(geometry) contains key.spatialKey
         }.map { case (sampleName, geometry) =>
+          logger.info(s"Key ${key} with geometry ${geometry}.")
           val keyExtent = layout.mapTransform.keyToExtent(key.spatialKey)
+          logger.info(s"Masking tile using KeyExtent: ${keyExtent}.")
           val sample = Raster(tile, keyExtent).mask(geometry)
+          logger.info(s"Sum of masked tile: ${tile.map((a, b) => a + b)}")
+          logger.info(s"Creating (${sampleName}. ${key.instant})")
           ((sampleName, key.instant), sample)
         }
       }
