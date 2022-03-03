@@ -677,4 +677,42 @@ class PyramidFactoryTest {
       tif.write(s"/tmp/testEoCloudCover.tif")
     } finally sc.stop()
   }
+
+  @Test
+  def testMapzenDem(): Unit = {
+    val endpoint = "https://services-uswest2.sentinel-hub.com"
+    val date = ZonedDateTime.now()
+
+    // from https://collections.eurodatacube.com/stac/mapzen-dem.json
+    val maxSpatialResolution = CellSize(0.000277777777778, 0.000277777777778)
+
+    val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, collectionId = null, datasetId = "dem",
+      clientId, clientSecret, processingOptions = util.Collections.emptyMap[String, Any], sampleType = FLOAT32,
+      maxSpatialResolution)
+
+    val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      val boundingBox = ProjectedExtent(Extent(2.59003, 51.069, 2.8949, 51.2206), LatLng)
+
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
+        from_date = ISO_OFFSET_DATE_TIME format date,
+        to_date = ISO_OFFSET_DATE_TIME format date,
+        band_names = Seq("DEM").asJava,
+        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
+      )
+
+      val spatialLayer = layer
+        .toSpatial()
+        .cache()
+
+      val Raster(multibandTile, extent) = spatialLayer
+        .crop(boundingBox.extent)
+        .stitch()
+
+      val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
+      tif.write(s"/tmp/testMapzenDem.tif")
+    } finally sc.stop()
+  }
 }

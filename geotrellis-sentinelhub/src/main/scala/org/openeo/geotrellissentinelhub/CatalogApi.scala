@@ -203,3 +203,23 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
   private def query(queryProperties: util.Map[String, util.Map[String, Any]]): String =
     objectMapper.writeValueAsString(queryProperties)
 }
+
+/**
+ * For lack of a better name, a CatalogApi implementation that returns features that exactly cover the input date range
+ * and geometry; it simplifies working with data that is not available in the real Catalog API like the Mapzen DEM.
+ */
+class MadeToMeasureCatalogApi extends CatalogApi {
+  override def dateTimes(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
+                         to: ZonedDateTime, accessToken: String,
+                         queryProperties: util.Map[String, util.Map[String, Any]]): Seq[ZonedDateTime] =
+    sequentialDays(from, to)
+
+  override def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
+                      to: ZonedDateTime, accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
+  Map[String, Feature[Geometry, ZonedDateTime]] = {
+    val features = for ((timestamp, index) <- sequentialDays(from, to).zipWithIndex)
+      yield index.toString -> Feature(geometry.reproject(geometryCrs, LatLng), timestamp)
+
+    features.toMap
+  }
+}

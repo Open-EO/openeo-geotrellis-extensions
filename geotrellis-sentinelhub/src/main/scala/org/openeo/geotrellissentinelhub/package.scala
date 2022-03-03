@@ -158,4 +158,11 @@ package object geotrellissentinelhub {
 
   private[geotrellissentinelhub] def simplify(multiPolygons: Array[MultiPolygon]): Geometry with Polygonal =
     dissolve(polygonExteriors(multiPolygons))
+
+  private[geotrellissentinelhub] def sequentialDays(from: ZonedDateTime, to: ZonedDateTime): Stream[ZonedDateTime] = {
+    def sequentialDays0(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDays0(from plusDays 1)
+
+    sequentialDays0(from)
+      .takeWhile(date => !(date isAfter to))
+  }
 }

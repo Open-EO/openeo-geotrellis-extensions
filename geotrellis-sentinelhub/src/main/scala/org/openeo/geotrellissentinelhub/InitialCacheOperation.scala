@@ -13,20 +13,8 @@ import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.util
 import scala.collection.JavaConverters._
 
-object AbstractInitialCacheOperation {
-  // TODO: put this in a central place
-  private def sequentialDays(from: ZonedDateTime, to: ZonedDateTime): Stream[ZonedDateTime] = {
-    def sequentialDays0(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDays0(from plusDays 1)
-
-    sequentialDays0(from)
-      .takeWhile(date => !(date isAfter to))
-  }
-}
-
 // TODO: rename this
 abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
-  import AbstractInitialCacheOperation._
-
   // TODO: make this uri configurable
   protected val elasticsearchUri = "https://es-apps-dev.vgt.vito.be:443"
 

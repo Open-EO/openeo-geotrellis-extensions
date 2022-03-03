@@ -7,7 +7,6 @@ import org.apache.commons.io.FileUtils.deleteDirectory
 import org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.{Sentinel1GrdCacheEntry, Sentinel2L2aCacheEntry}
 import org.slf4j.LoggerFactory
 
-import java.net.URI
 import java.nio.file.{FileAlreadyExistsException, Files, Path, Paths}
 import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
@@ -17,14 +16,6 @@ import scala.compat.java8.FunctionConverters._
 
 object CachingService {
   private val logger = LoggerFactory.getLogger(classOf[CachingService])
-
-  // TODO: put this in a central place
-  private def sequentialDays(from: ZonedDateTime, to: ZonedDateTime): Stream[ZonedDateTime] = {
-    def sequentialDays0(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDays0(from plusDays 1)
-
-    sequentialDays0(from)
-      .takeWhile(date => !(date isAfter to))
-  }
 }
 
 class CachingService {

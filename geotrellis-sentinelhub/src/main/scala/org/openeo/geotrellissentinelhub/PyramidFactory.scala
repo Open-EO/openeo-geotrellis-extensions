@@ -17,7 +17,6 @@ import java.time.ZoneOffset.UTC
 import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
 import java.util.concurrent.TimeUnit.MILLISECONDS
-import scala.annotation.meta.param
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 
@@ -52,7 +51,7 @@ object PyramidFactory {
     rateLimited(endpoint, collectionId, datasetId, clientId, clientSecret, processingOptions, sampleType, CellSize(10,10))
 }
 
-class PyramidFactory(collectionId: String, datasetId: String, @(transient @param) catalogApi: CatalogApi,
+class PyramidFactory(collectionId: String, datasetId: String, catalogApi: CatalogApi,
                      processApi: ProcessApi, clientId: String, clientSecret: String,
                      processingOptions: util.Map[String, Any] = util.Collections.emptyMap[String, Any],
                      sampleType: SampleType = UINT16,
@@ -60,7 +59,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
                      maxSpatialResolution: CellSize = CellSize(10,10)) extends Serializable {
   import PyramidFactory._
 
-  require(collectionId != null, "collectionId is mandatory")
+  @transient private val _catalogApi = if (collectionId == null) new MadeToMeasureCatalogApi else catalogApi
 
   private val maxZoom = 14
 
@@ -131,7 +130,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
     val (polygon, polygonCrs) = (boundingBox.extent.toPolygon(), boundingBox.crs)
 
     val features = authorized { accessToken =>
-      catalogApi.search(collectionId, polygon, polygonCrs,
+      _catalogApi.search(collectionId, polygon, polygonCrs,
         from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadataProperties))
     }
 
@@ -186,7 +185,7 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
           val multiPolygon = simplify(polygons)
 
           val features = authorized { accessToken =>
-            catalogApi.search(collectionId, multiPolygon, polygons_crs,
+            _catalogApi.search(collectionId, multiPolygon, polygons_crs,
               from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
           }
 
