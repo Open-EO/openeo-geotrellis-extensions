@@ -17,8 +17,6 @@ object BatchProcessingService {
 class BatchProcessingService(endpoint: String, val bucketName: String, clientId: String, clientSecret: String) {
   import BatchProcessingService._
 
-  private val catalogApi: CatalogApi = new DefaultCatalogApi(endpoint)
-
   private def authorized[R](fn: String => R): R =
     org.openeo.geotrellissentinelhub.authorized[R](clientId, clientSecret)(fn)
 
@@ -60,6 +58,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     val multiPolygonCrs = crs
 
     val dateTimes = authorized { accessToken =>
+      val catalogApi = if (collection_id == null) new MadeToMeasureCatalogApi else new DefaultCatalogApi(endpoint)
       catalogApi.dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
         accessToken, Criteria.toQueryProperties(metadata_properties))
     }
@@ -163,7 +162,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
 
     // original features that overlap in space and time
     val features = authorized { accessToken =>
-      catalogApi.searchCard4L(collection_id, geometry, geometryCrs, from, to,
+      new DefaultCatalogApi(endpoint).searchCard4L(collection_id, geometry, geometryCrs, from, to,
         accessToken, Criteria.toQueryProperties(metadata_properties))
     }
 

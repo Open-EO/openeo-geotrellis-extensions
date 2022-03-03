@@ -176,6 +176,28 @@ class BatchProcessingServiceTest {
 
   @Ignore
   @Test
+  def startBatchProcessForMapzenDem(): Unit = {
+    val batchProcessingService = new BatchProcessingService(endpoint = "https://services-uswest2.sentinel-hub.com",
+      bucketName = "openeo-sentinelhub-uswest2", Utils.clientId, Utils.clientSecret)
+
+    val batchRequestId = batchProcessingService.start_batch_process(
+      collection_id = null,
+      dataset_id = "dem",
+      bbox = Extent(2.59003, 51.069, 2.8949, 51.2206),
+      bbox_srs = "EPSG:4326",
+      from_date = "2020-01-01T00:00:00+00:00",
+      to_date = "2020-01-01T00:00:00+00:00",
+      band_names = Arrays.asList("DEM"),
+      SampleType.FLOAT32,
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
+      processing_options = Collections.emptyMap[String, Any]
+    )
+
+    println(awaitDone(Seq(batchRequestId), batchProcessingService))
+  }
+
+  @Ignore
+  @Test
   def startCachedBatchProcessForSentinel2(): Unit = {
     val subfolder = UUID.randomUUID().toString
 
