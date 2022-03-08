@@ -32,23 +32,22 @@ object PyramidFactoryTest {
 
   private class CatalogApiSpy(endpoint: String) extends CatalogApi {
     private val catalogApi = new DefaultCatalogApi(endpoint)
-    private val dateTimesCounter = new AtomicLong
+    private val searchCounter = new AtomicLong
 
     override def dateTimes(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
-                           to: ZonedDateTime, accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
-    Seq[ZonedDateTime] = {
-      dateTimesCounter.incrementAndGet()
+                           to: ZonedDateTime, accessToken: String,
+                           queryProperties: util.Map[String, util.Map[String, Any]]): Seq[ZonedDateTime] =
       catalogApi.dateTimes(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
-    }
 
     override def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
                               to: ZonedDateTime, accessToken: String,
                               queryProperties: util.Map[String, util.Map[String, Any]]):
     Map[String, Feature[Geometry, ZonedDateTime]] = {
+      searchCounter.incrementAndGet()
       catalogApi.search(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
     }
 
-    def dateTimesCount: Long = dateTimesCounter.get()
+    def searchCount: Long = searchCounter.get()
   }
 
   private class ProcessApiSpy(endpoint: String)(implicit sc: SparkContext) extends ProcessApi with Serializable {
@@ -714,6 +713,68 @@ class PyramidFactoryTest {
 
       val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
       tif.write(s"/tmp/testMapzenDem_to.tif")
+    } finally sc.stop()
+  }
+
+  @Test
+  def testCatalogApiLimitsProcessApiCalls(): Unit = {
+    val expected = referenceRaster("testCatalogApiLimitsProcessApiCalls_collectionId_sentinel-1-grd.tif")
+
+    // [2021-02-03, 2021-02-06] has no data for orbit direction DESCENDING, only 2021-02-07 does
+    val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
+
+    val from = LocalDate.of(2021, 2, 3).atStartOfDay(ZoneOffset.UTC)
+    val to = LocalDate.of(2021, 2, 7).atStartOfDay(ZoneOffset.UTC)
+
+    val endpoint = "https://services.sentinel-hub.com"
+
+    implicit val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      def assembleGeoTiff(collectionId: String, expectedSearchCount: Long,
+                          expectedGetTileCount: Long): Raster[MultibandTile] = {
+        val catalogApiSpy = new CatalogApiSpy(endpoint)
+        val processApiSpy = new ProcessApiSpy(endpoint)
+
+        val pyramidFactory = new PyramidFactory(collectionId, "sentinel-1-grd", catalogApiSpy, processApiSpy, clientId,
+          clientSecret, sampleType = FLOAT32, maxSpatialResolution = CellSize(10,10))
+
+        val pyramid = pyramidFactory.pyramid_seq(
+          boundingBox.extent,
+          bbox_srs = s"EPSG:${boundingBox.crs.epsgCode.get}",
+          ISO_OFFSET_DATE_TIME format from,
+          ISO_OFFSET_DATE_TIME format to,
+          band_names = Seq("VH", "VV").asJava,
+          metadata_properties = Collections.singletonMap("orbitDirection", Collections.singletonMap("eq", "DESCENDING"))
+        )
+
+        val (_, baseLayer) = pyramid
+          .maxBy { case (zoom, _) => zoom }
+
+        val spatialLayer = baseLayer
+          .toSpatial(to)
+          .crop(boundingBox.reproject(baseLayer.metadata.crs))
+          .cache()
+
+        val raster @ Raster(multibandTile, extent) = spatialLayer.stitch()
+
+        val tif = MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs, geoTiffOptions)
+        tif.write(s"/tmp/testCatalogApiLimitsProcessApiCalls_collectionId_$collectionId.tif")
+
+        assertEquals(expectedSearchCount, catalogApiSpy.searchCount)
+        assertEquals(expectedGetTileCount, processApiSpy.getTileCount)
+
+        raster
+      }
+
+      val rasterWithoutCatalog =
+        assembleGeoTiff(collectionId = null, expectedSearchCount = 0, expectedGetTileCount = 900)
+
+      val rasterWithCatalog =
+        assembleGeoTiff(collectionId = "sentinel-1-grd", expectedSearchCount = 1, expectedGetTileCount = 180)
+
+      assertEquals(rasterWithoutCatalog, rasterWithCatalog)
+      assertEquals(expected, rasterWithoutCatalog)
     } finally sc.stop()
   }
 }
