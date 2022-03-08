@@ -181,39 +181,20 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
       val layout = metadata.layout
 
       val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = {
-        val overlappingKeys = {
-          val multiPolygon = simplify(polygons)
-
-          val features = authorized { accessToken =>
-            _catalogApi.search(collectionId, multiPolygon, polygons_crs,
-              from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
-          }
-
-          val intersectingFeatureKeys = for {
-            (_, Feature(geom, datetime)) <- features.toSet
-            date = datetime.toLocalDate.atStartOfDay(UTC)
-            reprojectedGeom = geom.reproject(LatLng, boundingBox.crs)
-            SpatialKey(col, row) <- layout.mapTransform.keysForGeometry(reprojectedGeom intersection multiPolygon)
-          } yield SpaceTimeKey(col, row, date)
-
-          intersectingFeatureKeys
-            .toSeq
-        }
-
         //noinspection ComparingUnrelatedTypes
         val maskClouds = dataCubeParameters.maskingStrategyParameters.get("method") == "mask_scl_dilation"
 
-        def loadMasked(key: SpaceTimeKey): Option[MultibandTile] = {
+        def loadMasked(spatialKey: SpatialKey, dateTime: ZonedDateTime): Option[MultibandTile] = {
           def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile = {
             awaitRateLimitingGuardDelay(bandNames, width, height)
 
             authorized { accessToken =>
-              processApi.getTile(datasetId, projectedExtent, key.temporalKey, width, height, bandNames,
+              processApi.getTile(datasetId, projectedExtent, dateTime, width, height, bandNames,
                 sampleType, Criteria.toDataFilters(metadata_properties), processingOptions, accessToken)
             }
           }
 
-          val keyExtent = key.spatialKey.extent(layout)
+          val keyExtent = spatialKey.extent(layout)
 
           def dataTile: MultibandTile = getTile(band_names.asScala, ProjectedExtent(keyExtent, boundingBox.crs),
             width = layout.tileLayout.tileCols, height = layout.tileLayout.tileRows)
@@ -243,32 +224,74 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
           } else Some(dataTile)
         }
 
-        logger.info(s"Created Sentinelhub datacube with ${overlappingKeys.size} keys and metadata ${metadata}")
+        val tilesRdd =
+          if (datasetId == "dem") {
+            val overlappingKeys = layout.mapTransform.keysForGeometry(GeometryCollection(polygons)).toSeq
+            val keysRdd = sc.parallelize(overlappingKeys)
 
-        val reduction: Int = dataCubeParameters.partitionerIndexReduction
-        val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
-          if( dataCubeParameters.partitionerTemporalResolution!= "ByDay") {
-            val indices = overlappingKeys.map(SparseSpaceOnlyPartitioner.toIndex(_,indexReduction = reduction)).distinct.sorted.toArray
-            new SparseSpaceOnlyPartitioner(indices,reduction)
-          }else{
-            val indices = overlappingKeys.map(SparseSpaceTimePartitioner.toIndex(_,indexReduction = reduction)).distinct.sorted.toArray
-            new SparseSpaceTimePartitioner(indices,reduction)
+            val tilesRdd = keysRdd
+              .flatMap { spatialKey =>
+                // "dem" data doesn't have a time dimension so the actual timestamp doesn't matter
+                loadMasked(spatialKey, ZonedDateTime.of(1981, 4, 24, 2, 0, 0, 0, UTC))
+                  .map(tile => spatialKey -> tile)
+              }
+              .flatMap { case (spatialKey, tile) =>
+                if (!tile.bands.forall(_.isNoDataTile))
+                  sequentialDays(from, to)
+                    .map(day => SpaceTimeKey(spatialKey.col, spatialKey.row, day.toLocalDate.atStartOfDay(UTC)) -> tile)
+                else
+                  Stream.empty
+              }
+
+            DatacubeSupport.applyDataMask(Some(dataCubeParameters), tilesRdd)
+          } else {
+            val overlappingKeys = {
+              val multiPolygon = simplify(polygons)
+
+              val features = authorized { accessToken =>
+                _catalogApi.search(collectionId, multiPolygon, polygons_crs,
+                  from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
+              }
+
+              val intersectingFeatureKeys = for {
+                (_, Feature(geom, datetime)) <- features.toSet
+                date = datetime.toLocalDate.atStartOfDay(UTC)
+                reprojectedGeom = geom.reproject(LatLng, boundingBox.crs)
+                SpatialKey(col, row) <- layout.mapTransform.keysForGeometry(reprojectedGeom intersection multiPolygon)
+              } yield SpaceTimeKey(col, row, date)
+
+              intersectingFeatureKeys
+                .toSeq
+            }
+
+            logger.info(s"Created Sentinelhub datacube with ${overlappingKeys.size} keys and metadata ${metadata}")
+
+            val reduction: Int = dataCubeParameters.partitionerIndexReduction
+            val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
+              if (dataCubeParameters.partitionerTemporalResolution != "ByDay") {
+                val indices = overlappingKeys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted.toArray
+                new SparseSpaceOnlyPartitioner(indices, reduction)
+              } else {
+                val indices = overlappingKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted.toArray
+                new SparseSpaceTimePartitioner(indices, reduction)
+              }
+            }
+            val partitioner = SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), partitionerIndex)
+
+            var keysRdd = sc.parallelize(overlappingKeys.map((_, Option.empty)))
+              .partitionBy(partitioner)
+
+            keysRdd = DatacubeSupport.applyDataMask(Some(dataCubeParameters),keysRdd)
+
+            val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = keysRdd
+              .mapPartitions(_.map(key => (key._1,loadMasked(key._1.spatialKey, key._1.time))),preservesPartitioning = true)
+              .filter{case (key:SpaceTimeKey,tile:Option[MultibandTile])=> tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
+              .mapValues(t => t.get)
+
+            tilesRdd
           }
-        }
-        val partitioner = SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,ClassTag(classOf[SpaceTimeKey]), partitionerIndex)
 
-        var keysRdd = sc.parallelize(overlappingKeys.map((_, Option.empty)))
-          .partitionBy(partitioner)
-
-        keysRdd = DatacubeSupport.applyDataMask(Some(dataCubeParameters),keysRdd)
-
-        val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = keysRdd
-          .mapPartitions(_.map(key => (key._1,loadMasked(key._1))),preservesPartitioning = true)
-          .filter{case (key:SpaceTimeKey,tile:Option[MultibandTile])=> tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
-          .mapValues(t => t.get)
-
-        tilesRdd.name = s"Sentinelhub-${collectionId}"
-
+        tilesRdd.name = s"Sentinelhub-$collectionId"
         tilesRdd
       }
 

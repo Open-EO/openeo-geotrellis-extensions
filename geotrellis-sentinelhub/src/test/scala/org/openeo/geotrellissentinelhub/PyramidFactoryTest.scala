@@ -681,7 +681,8 @@ class PyramidFactoryTest {
   @Test
   def testMapzenDem(): Unit = {
     val endpoint = "https://services-uswest2.sentinel-hub.com"
-    val date = ZonedDateTime.now()
+    val date = ZonedDateTime.now(ZoneOffset.UTC)
+    val to = date plusDays 100
 
     // from https://collections.eurodatacube.com/stac/mapzen-dem.json
     val maxSpatialResolution = CellSize(0.000277777777778, 0.000277777777778)
@@ -698,13 +699,13 @@ class PyramidFactoryTest {
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
         from_date = ISO_OFFSET_DATE_TIME format date,
-        to_date = ISO_OFFSET_DATE_TIME format date,
+        to_date = ISO_OFFSET_DATE_TIME format to,
         band_names = Seq("DEM").asJava,
         metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
       )
 
       val spatialLayer = layer
-        .toSpatial()
+        .toSpatial(to.toLocalDate.atStartOfDay(ZoneOffset.UTC))
         .cache()
 
       val Raster(multibandTile, extent) = spatialLayer
@@ -712,7 +713,7 @@ class PyramidFactoryTest {
         .stitch()
 
       val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
-      tif.write(s"/tmp/testMapzenDem.tif")
+      tif.write(s"/tmp/testMapzenDem_to.tif")
     } finally sc.stop()
   }
 }
