@@ -4,7 +4,7 @@ import com.azavea.gdal.GDALWarp
 import geotrellis.layer.SpatialKey
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.gdal.GDALRasterSource
-import geotrellis.raster.{ByteArrayTile, CellType, FloatConstantNoDataCellType, IntUserDefinedNoDataCellType, RasterExtent, UByteUserDefinedNoDataCellType, UShortCellType, isData}
+import geotrellis.raster.{ByteArrayTile, CellType, FloatConstantNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, Raster, RasterExtent, UByteUserDefinedNoDataCellType, UShortCellType, isData}
 import geotrellis.spark.util.SparkUtils
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.vector.io.json.GeoJson
@@ -12,7 +12,7 @@ import geotrellis.vector.{ProjectedExtent, _}
 import org.apache.spark.SparkContext
 import org.junit.Assert.{assertFalse, assertTrue}
 import org.junit.rules.TemporaryFolder
-import org.junit.{AfterClass, Assert, BeforeClass, Ignore, Rule, Test}
+import org.junit._
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.{ByKeyPartitioner, DataCubeParameters}
 import ucar.nc2.dataset.NetcdfDataset
@@ -120,6 +120,52 @@ class NetCDFRDDWriterTest {
     }
 
     assertFalse(isData(rasterValueAt(pointOutsideOfGeometry)))
+  }
+
+  @Test
+  def testWriteSamplesWithGlobalBoundsBuffer(): Unit = {
+    val utm30 = CRS.fromEpsgCode(32630)
+    val startDate = ZonedDateTime.of(LocalDate.of(2021, 12, 1), MIDNIGHT, UTC)
+    val endDate = ZonedDateTime.of(LocalDate.of(2021, 12, 31), MIDNIGHT, UTC)
+
+    val polygon1 = new Extent(-0.6, 60.0, -0.597, 60.003).toPolygon()
+    val polygon2 = new Extent(-0.6, 61.0, -0.597, 61.003).toPolygon()
+    val polygon3 = new Extent(-0.6, 62.0, -0.597, 62.003).toPolygon()
+
+    val polygon1_nativecrs = polygon1.reproject(CRS.fromEpsgCode(4326), utm30)
+    val polygon2_nativecrs = polygon2.reproject(CRS.fromEpsgCode(4326), utm30)
+    val polygon3_nativecrs = polygon3.reproject(CRS.fromEpsgCode(4326), utm30)
+    val polySeq = List(MultiPolygon(polygon1_nativecrs), MultiPolygon(polygon2_nativecrs), MultiPolygon(polygon3_nativecrs)).toArray
+    val polygons = new ProjectedPolygons(polySeq, CRS.fromEpsgCode(32630))
+
+    val extent = polygons.polygons.seq.extent
+    val bbox = ProjectedExtent(extent, utm30)
+
+    val dcParams = new DataCubeParameters()
+    dcParams.layoutScheme = "FloatingLayoutScheme"
+    dcParams.tileSize = 256
+    dcParams.setPartitionerIndexReduction(8)
+    dcParams.setPartitionerTemporalResolution("ByDay")
+    dcParams.setGlobalExtent(-0.6, 60.0, -0.597, 62.003, "EPSG:4326")
+    val zoom = 0
+    val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from=startDate, to=endDate, bbox, polygons.polygons, utm30,zoom, sc = sc, Some(dcParams))
+
+    val sampleNames = polygons.polygons.indices.map(_.toString)
+    val sampleNameList = new util.ArrayList[String]()
+    sampleNames.foreach(sampleNameList.add)
+    val bandNames = new util.ArrayList(util.Arrays.asList("TOC-B04_10M"))
+
+    val targetDir = temporaryFolder.getRoot.toString
+
+    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSamples(
+      layer, targetDir, polygons, sampleNameList, bandNames
+    )
+
+    val raster: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:"${sampleFilenames.get(0)}""").read().get
+    for(bandIndex:Int <- 0 until 4) {
+      // Ensure there is data within the polygon on this band.
+      assert(raster.tile.band(bandIndex).mask(raster.extent, polygon1_nativecrs).toArray().exists(p => p != -2147483648))
+    }
   }
 
   @Test
