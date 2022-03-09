@@ -7,7 +7,6 @@ import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLay
 import geotrellis.proj4.LatLng
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType}
 import geotrellis.spark._
-import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.api.java.JavaRDD
@@ -15,7 +14,6 @@ import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.FileLayerProvider
 import org.openeo.geotrelliscommon.DatacubeSupport.layerMetadata
-import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
 import java.net.URL
 import java.time.ZonedDateTime
@@ -62,7 +60,11 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
     //construct layer metadata
     //hardcoded celltype of float: assuming we will generate floats in further processing
     //use a floating layout scheme, so we will process data in original utm projection and 10m resolution
-    val metadata: TileLayerMetadata[SpaceTimeKey] = layerMetadata(boundingBox, from, to, 0, FloatConstantNoDataCellType, FloatingLayoutScheme(tileSize), maxSpatialResolution)
+    val multiple_polygons_flag = polygons.polygons.length > 1
+    val metadata: TileLayerMetadata[SpaceTimeKey] = layerMetadata(
+      boundingBox, from, to, 0, FloatConstantNoDataCellType, FloatingLayoutScheme(tileSize),
+      maxSpatialResolution, multiple_polygons_flag = multiple_polygons_flag
+    )
 
     //construct Spatial Keys that we want to load
     val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons.polygons).map{_.reproject(polygons.crs,metadata.crs)}.clipToGrid(metadata.layout).groupByKey()

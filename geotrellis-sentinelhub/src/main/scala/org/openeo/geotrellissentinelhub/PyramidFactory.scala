@@ -177,7 +177,11 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
       val scheme = FloatingLayoutScheme(256)
 
-      val metadata = DatacubeSupport.layerMetadata(boundingBox,from,to,0,sampleType.cellType,scheme,maxSpatialResolution,dataCubeParameters.globalExtent)
+      val multiple_polygons_flag = polygons.length > 1
+      val metadata = DatacubeSupport.layerMetadata(
+        boundingBox, from, to, 0, sampleType.cellType, scheme, maxSpatialResolution,
+        dataCubeParameters.globalExtent, multiple_polygons_flag
+      )
       val layout = metadata.layout
 
       val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = {

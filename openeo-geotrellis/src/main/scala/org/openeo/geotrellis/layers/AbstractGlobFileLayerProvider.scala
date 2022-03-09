@@ -5,7 +5,7 @@ import geotrellis.layer.{Boundable, KeyExtractor, SpaceTimeKey, SpatialKey, Temp
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{MultibandTile, RasterRegion, RasterSource, SourceName, SourcePath}
 import geotrellis.spark._
-import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.store.hadoop.util.HdfsUtils
 import geotrellis.util._
 import geotrellis.vector._
@@ -14,12 +14,10 @@ import org.apache.hadoop.fs.Path
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.ProjectedPolygons
-import org.openeo.geotrellis.layers.FileLayerProvider.createPartitioner
-import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport}
 
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.concurrent.TimeUnit.HOURS
-import scala.reflect.ClassTag
 import scala.util.matching.Regex
 
 object AbstractGlobFileLayerProvider {
@@ -121,7 +119,11 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
         layoutScheme
       }
 
-    val layerMetadata = DatacubeSupport.layerMetadata(ProjectedExtent(polygonsExtent,crs),from,to,zoom min maxZoom,cellType,theLayoutScheme,resolution,datacubeParams.flatMap(_.globalExtent))
+    val multiple_polygons_flag = polygons.length > 1
+    val layerMetadata = DatacubeSupport.layerMetadata(
+      ProjectedExtent(polygonsExtent,crs), from, to, zoom min maxZoom, cellType, theLayoutScheme,
+      resolution,datacubeParams.flatMap(_.globalExtent), multiple_polygons_flag
+    )
 
     val tiledLayoutSourceRDD =
       sources.map { rs =>
