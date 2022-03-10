@@ -119,10 +119,9 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
         layoutScheme
       }
 
-    val multiple_polygons_flag = polygons.length > 1
     val layerMetadata = DatacubeSupport.layerMetadata(
-      ProjectedExtent(polygonsExtent,crs), from, to, zoom min maxZoom, cellType, theLayoutScheme,
-      resolution,datacubeParams.flatMap(_.globalExtent), multiple_polygons_flag
+      ProjectedExtent(polygonsExtent,crs), from, to, zoom min maxZoom, cellType, theLayoutScheme, resolution,
+      datacubeParams.flatMap(_.globalExtent)
     )
 
     val tiledLayoutSourceRDD =

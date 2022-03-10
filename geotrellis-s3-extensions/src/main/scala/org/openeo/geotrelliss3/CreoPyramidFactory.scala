@@ -105,10 +105,7 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     //unsafe, don't we need union of cell type?
     val commonCellType = overlappingRasterSources.head.cellType
-    val metadata = layerMetadata(
-      boundingBox, from, to, zoom, commonCellType, layoutScheme, maxSpatialResolution,
-      multiple_polygons_flag = polygons.length > 1
-    )
+    val metadata = layerMetadata(boundingBox, from, to, zoom, commonCellType, layoutScheme, maxSpatialResolution)
 
     val rasterSources = FileLayerProvider.rasterSourceRDD(overlappingRasterSources, metadata, maxSpatialResolution, "Creo")(sc)
 

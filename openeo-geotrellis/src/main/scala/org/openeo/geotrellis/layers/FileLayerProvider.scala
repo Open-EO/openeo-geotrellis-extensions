@@ -477,10 +477,9 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     var overlappingRasterSources: Seq[RasterSource] = loadRasterSourceRDD(boundingBox, from, to, zoom)
     val commonCellType = overlappingRasterSources.head.cellType
-    val multiple_polygons_flag = polygons.length > 1
     val metadata = layerMetadata(
       boundingBox, from, to, zoom min maxZoom, commonCellType, layoutScheme, maxSpatialResolution,
-      datacubeParams.flatMap(_.globalExtent), multiple_polygons_flag
+      datacubeParams.flatMap(_.globalExtent)
     )
 
     // Handle maskingStrategyParameters.
