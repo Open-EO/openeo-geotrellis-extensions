@@ -302,23 +302,24 @@ object NetCDFRDDWriter {
     logger.info(s"Grouping result by ${featuresBC.value.size} features to write netCDFs.")
     val filtered = new OpenEOProcesses().filterEmptyTile(rdd)
     logger.info(s"Filtered out ${rdd.count() - filtered.count()} empty tiles. ${rdd.count()} -> ${filtered.count()}")
-    filtered
-      .flatMap {
-        case (key, tile) => featuresBC.value.filter { case (_, geometry) =>
-          layout.mapTransform.keysForGeometry(geometry) contains key.spatialKey
-        }.map { case (sampleName, geometry) =>
-          logger.info(s"Key ${key} with geometry ${geometry}.")
-          val keyExtent = layout.mapTransform.keyToExtent(key.spatialKey)
-          logger.info(s"Masking tile using KeyExtent: ${keyExtent}.")
-          val sample = Raster(tile, keyExtent).mask(geometry)
-          logger.info(s"Sum of masked tile: ${tile.map((a, b) => a + b)}")
-          logger.info(s"Creating (${sampleName}. ${key.instant})")
-          ((sampleName, key.instant), sample)
-        }
+    val groupedByInstant = filtered.flatMap {
+      case (key, tile) => featuresBC.value.filter { case (_, geometry) =>
+        layout.mapTransform.keysForGeometry(geometry) contains key.spatialKey
+      }.map { case (sampleName, geometry) =>
+        val keyExtent = layout.mapTransform.keyToExtent(key.spatialKey)
+        val sample = tile.mask(keyExtent, geometry)
+        ((sampleName, key.instant), (key.spatialKey, sample))
       }
-      .reduceByKey(_ merge _)
-      .map { case ((sampleName, instant), raster) => (sampleName, (instant, raster)) }
-      .groupByKey(new ByKeyPartitioner(sampleNames.toArray))
+    }.groupByKey()
+    val stitchedByInstant = groupedByInstant.map(sample => {
+        val tiles: Iterable[(SpatialKey, MultibandTile)] = sample._2
+        val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).stitch()
+        (sample._1, raster)
+      }
+    )
+    val keyedBySample = stitchedByInstant.map { case ((sampleName, instant), raster) => (sampleName, (instant, raster)) }
+    val groupedBySample = keyedBySample.groupByKey(new ByKeyPartitioner(sampleNames.toArray))
+    groupedBySample
   }
 
   private def groupRDDBySample[K: SpatialComponent: Boundable: ClassTag](rdd: MultibandTileLayerRDD[K],featuresBC: Broadcast[List[(String, Extent)]]) = {
@@ -401,6 +402,8 @@ object NetCDFRDDWriter {
                   bandNames: ArrayList[String],
                   crs:CRS, dimensionNames: java.util.Map[String,String],
                   attributes: java.util.Map[String,String]) = {
+    if (!rasters.forall(_.rasterExtent == rasters.head.rasterExtent))
+      throw new IOException("Failed to write rasters to disk. Raster extents are not equal.")
     val aRaster = rasters.head
     val rasterExtent = aRaster.rasterExtent
 

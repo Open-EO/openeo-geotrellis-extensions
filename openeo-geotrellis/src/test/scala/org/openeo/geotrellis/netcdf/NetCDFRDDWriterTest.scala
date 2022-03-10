@@ -11,8 +11,8 @@ import geotrellis.vector.io.json.GeoJson
 import geotrellis.vector.{ProjectedExtent, _}
 import org.apache.spark.SparkContext
 import org.junit.Assert.{assertFalse, assertTrue}
-import org.junit.rules.TemporaryFolder
 import org.junit._
+import org.junit.rules.TemporaryFolder
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.{ByKeyPartitioner, DataCubeParameters}
 import ucar.nc2.dataset.NetcdfDataset
@@ -161,10 +161,19 @@ class NetCDFRDDWriterTest {
       layer, targetDir, polygons, sampleNameList, bandNames
     )
 
-    val raster: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:"${sampleFilenames.get(0)}""").read().get
+    val raster1: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:"${sampleFilenames.get(0)}""").read().get
+    val raster2: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:"${sampleFilenames.get(1)}""").read().get
+
+    // Compare raster extent
+    assert(raster1.extent.width == 2560.0)
+    assert(raster1.extent.height == 2 * 2560.0)
+    assert(raster2.extent.width == 2560.0)
+    assert(raster2.extent.height == 2560.0)
+
+    // Compare dates for openeo_0
     for(bandIndex:Int <- 0 until 4) {
       // Ensure there is data within the polygon on this band.
-      assert(raster.tile.band(bandIndex).mask(raster.extent, polygon1_nativecrs).toArray().exists(p => p != -2147483648))
+      assert(raster1.tile.band(bandIndex).mask(raster1.extent, polygon1_nativecrs).toArray().exists(p => p != -2147483648))
     }
   }
 
