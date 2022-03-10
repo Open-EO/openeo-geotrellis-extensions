@@ -3,7 +3,7 @@ package org.openeo.geotrellis
 import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.{ByteCells, ByteConstantTile, MultibandTile}
-import geotrellis.spark.ContextRDD
+import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.hadoop.hdfs.HdfsConfiguration
@@ -41,8 +41,8 @@ object AggregateSpatialTest {
   }
 
   def assertEqualTimeseriesStats(expected: Seq[Seq[Double]], actual: collection.Seq[collection.Seq[Double]]): Unit = {
-    print(expected)
-    print(actual)
+    println(s"expected: $expected")
+    println(s"actual: $actual")
     assertEquals("should have same polygon count", expected.length, actual.length)
     expected.indices.foreach { i =>
       assertArrayEquals("should have same band stats", expected(i).toArray, actual(i).toArray, 1e-6)
@@ -184,9 +184,9 @@ class AggregateSpatialTest {
     builder.expressionEnd("mean", emptyMap)
     builder.expressionEnd("count", countMap)
 
-    val from_date = "2017-01-01T00:00:00Z"
+    val from = ZonedDateTime.parse("2017-01-01T00:00:00Z")
 
-    val cube = buildCubeRdd(ZonedDateTime.parse(from_date), ZonedDateTime.now())
+    val cube = buildCubeRdd(from, to = ZonedDateTime.now())
 
     val pointWkts = Seq(polygon1, polygon2).map(_.getCentroid.toWKT())
     val pointsCrs = LatLng
@@ -204,31 +204,69 @@ class AggregateSpatialTest {
       stats)
   }
 
-  private def parseCSV(outDir: String): Map[String, scala.Seq[scala.Seq[Double]]] = {
+  @Test
+  def compute_generic_timeseries_from_spatial_datacube(): Unit = {
+    val builder = new SparkAggregateScriptBuilder
+    val emptyMap = new util.HashMap[String, Object]()
+
+    builder.expressionEnd("min", emptyMap)
+    builder.expressionEnd("mean", emptyMap)
+
+    val from = ZonedDateTime.parse("2017-01-01T00:00:00Z")
+
+    val spatialCube = buildCubeRdd(from, to = ZonedDateTime.now())
+      .toSpatial(from)
+
+    val geometryWkts = Seq(polygon1, polygon2.getCentroid).map(_.toWKT())
+    val geometriesCrs = LatLng
+
+    val outDir = "/tmp/compute_generic_timeseries_from_spatial_datacube"
+
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_spatial_datacube(builder, spatialCube,
+      geometryWkts.asJava, s"EPSG:${geometriesCrs.epsgCode.get}", outDir)
+
+    val groupedStats = parseCSV(outDir, spatioTemporal = false)
+
+    for ((_, stats) <- groupedStats) assertEqualTimeseriesStats(Seq(
+      Seq(10, 10.0, Double.NaN, Double.NaN), // geometry1
+      Seq(10, 10.0, Double.NaN, Double.NaN)), // geometry2
+      stats)
+  }
+
+  private def parseCSV(outDir: String, spatioTemporal: Boolean = true): Map[String, scala.Seq[scala.Seq[Double]]] = {
     val stats = mutable.ListBuffer[(String, Int, scala.Seq[Double])]()
-    //Paths.get(outDir).
+
     Files.list(Paths.get(outDir)).filter(_.toString.endsWith(".csv")).forEach(path => {
       println(path)
       val bufferedSource = Source.fromFile(path.toFile)
-      for (line <- bufferedSource.getLines.drop(1)) {
-        var cols: Array[String] = line.split(",").map(_.trim)
-        if (line.endsWith(",")) {
-          cols = cols ++ Seq("NaN")
-        }
-        def asDouble(s:String) = {
-          if("" == s){
-            Double.NaN
-          }else{
-            s.toDouble
+
+      try {
+        for (line <- bufferedSource.getLines.drop(1)) { // skip the header
+          val includeTrailingEmptyStrings = -1
+          var columnValues = line.split(",", includeTrailingEmptyStrings).map(_.trim).toSeq
+
+          if (!spatioTemporal) {
+            columnValues = "no_timestamp" +: columnValues
           }
+
+          def asDouble(s: String) = if (s == "") Double.NaN else s.toDouble
+
+          val timestamp +: geometry +: numbers = columnValues // pattern match against Seq(timestamp, geometry, numbers @ _*) doesn't work?
+          stats.append((timestamp, geometry.toInt, numbers.map(asDouble)))
         }
-        stats.append((cols(0), cols(1).toInt, cols.tail.tail.map(asDouble).toSeq))
       }
-      bufferedSource.close
+      finally bufferedSource.close()
     })
 
-    val groupedStats = stats.groupBy(_._1).toMap.mapValues(_.sortBy(_._2).map(_._3).toSeq)
+    val groupedStats = stats
+      .groupBy { case (timestamp, _, _) => timestamp }
+      .mapValues {timestampedValues =>
+        timestampedValues
+          .sortBy { case (_, geometry, _) => geometry }
+          .map { case (_, _, numbers) => numbers }
+      }
+
     groupedStats.foreach(println)
-    return groupedStats
+    groupedStats
   }
 }
