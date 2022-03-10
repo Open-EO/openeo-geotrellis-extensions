@@ -148,19 +148,22 @@ class AggregatePolygonProcess() {
     aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath)
   }
 
-  def aggregateSpatialForGeometryWithSpatialCube(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpatialKey], points: Seq[Geometry], crs: CRS, bandCount:Int, outputPath:String): Unit = {
+  def aggregateSpatialForGeometryWithSpatialCube(scriptBuilder: SparkAggregateScriptBuilder,
+                                                 datacube: MultibandTileLayerRDD[SpatialKey], geometries: Seq[Geometry],
+                                                 crs: CRS, bandCount: Int, outputPath: String): Unit = {
     val sc = datacube.sparkContext
 
     // each polygon becomes a feature with a value that's equal to its position in the array
-    val indexedFeatures = points
+    val indexedFeatures = geometries
+      .map(_.reproject(crs, datacube.metadata.crs))
       .zipWithIndex
-      .map { case (geom, index) => Feature(geom, index.toInt) }
+      .map { case (geom, index) => Feature(geom, index) }
 
     val geometryRDD = sc.parallelize(indexedFeatures).clipToGrid(datacube.metadata).groupByKey()
     val combinedRDD = datacube.join(geometryRDD)
 
     val pixelRDD: RDD[Row] = combinedRDD.flatMap {
-      case (key: SpatialKey, (tile: MultibandTile, geoms: Iterable[Feature[Geometry,Int]])) => {
+      case (key: SpatialKey, (tile: MultibandTile, geoms: Iterable[Feature[Geometry, Int]])) =>
         val result: ListBuffer[Row] = ListBuffer()
         val bands = tile.bandCount
 
@@ -196,29 +199,23 @@ class AggregatePolygonProcess() {
           }
         }
         result
-      }
     }
     val cellType = datacube.metadata.cellType
     aggregateByPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath)
   }
 
-  private def aggregateByPolygon(pixelRDD: RDD[Row], scriptBuilder: SparkAggregateScriptBuilder, bandCount: Int, cellType: CellType, outputPath: String) = {
+  private def aggregateByPolygon(pixelRDD: RDD[Row], scriptBuilder: SparkAggregateScriptBuilder, bandCount: Int, cellType: CellType, outputPath: String): Unit = {
     val session = SparkSession.builder().config(pixelRDD.sparkContext.getConf).getOrCreate()
-    val dataType =
-      if (cellType.isFloatingPoint) {
-        DoubleType
-      } else {
-        IntegerType
-      }
-    val bandColumns = (0 until bandCount).map(b => f"band_$b")
-    val bandStructs = bandColumns.map(StructField(_, dataType, true))
+    val dataType = if (cellType.isFloatingPoint) DoubleType else IntegerType
 
-    val schema = StructType(Seq(StructField("feature_index", IntegerType, true)) ++ bandStructs)
-    val df = session.createDataFrame(pixelRDD, schema)
-    val dataframe = df.withColumnRenamed(df.columns(1), "feature_index")
+    val bandColumns = (0 until bandCount).map(b => f"band_$b")
+    val bandStructs = bandColumns.map(StructField(_, dataType, nullable = true))
+
+    val schema = StructType(Seq(StructField("feature_index", IntegerType, nullable = true)) ++ bandStructs)
+    val dataframe = session.createDataFrame(pixelRDD, schema)
 
     val builder = scriptBuilder.generateFunction()
-    val expressionCols: Seq[Column] = bandColumns.flatMap(col => builder(df.col(col), col))
+    val expressionCols: Seq[Column] = bandColumns.flatMap(col => builder(dataframe.col(col), col))
     dataframe.groupBy("feature_index").agg(expressionCols.head, expressionCols.tail: _*).coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
   }
 
