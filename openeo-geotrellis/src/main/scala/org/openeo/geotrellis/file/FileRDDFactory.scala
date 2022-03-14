@@ -60,8 +60,10 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
     //construct layer metadata
     //hardcoded celltype of float: assuming we will generate floats in further processing
     //use a floating layout scheme, so we will process data in original utm projection and 10m resolution
+    val multiple_polygons_flag = polygons.polygons.length > 1
     val metadata: TileLayerMetadata[SpaceTimeKey] = layerMetadata(
-      boundingBox, from, to, 0, FloatConstantNoDataCellType, FloatingLayoutScheme(tileSize), maxSpatialResolution
+      boundingBox, from, to, 0, FloatConstantNoDataCellType, FloatingLayoutScheme(tileSize),
+      maxSpatialResolution, multiple_polygons_flag = multiple_polygons_flag
     )
 
     //construct Spatial Keys that we want to load

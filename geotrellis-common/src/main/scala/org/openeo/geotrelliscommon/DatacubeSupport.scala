@@ -35,7 +35,7 @@ object DatacubeSupport {
   }
 
   // note: make sure to express boundingBox and maxSpatialResolution in the same units
-  def getLayout(layoutScheme: LayoutScheme, boundingBox: ProjectedExtent, zoom: Int, maxSpatialResolution: CellSize, globalBounds:Option[ProjectedExtent] = Option.empty) = {
+  def getLayout(layoutScheme: LayoutScheme, boundingBox: ProjectedExtent, zoom: Int, maxSpatialResolution: CellSize, globalBounds:Option[ProjectedExtent] = Option.empty, multiple_polygons_flag: Boolean = false) = {
     val LayoutLevel(_, worldLayout) = layoutScheme match {
       case scheme: ZoomedLayoutScheme => scheme.levelForZoom(zoom)
       case scheme: FloatingLayoutScheme => {
@@ -45,6 +45,9 @@ object DatacubeSupport {
           if (p.getName == "utm") {
             if(globalBounds.isDefined) {
               var reprojected = globalBounds.get.reproject(boundingBox.crs)
+              if (multiple_polygons_flag) {
+                reprojected = globalBounds.get.extent.buffer(0.1).reprojectAsPolygon(globalBounds.get.crs, boundingBox.crs, 0.01).getEnvelopeInternal
+              }
               if (!reprojected.covers(boundingBox.extent)) {
                 logger.error(f"Trying to construct a datacube with a bounds ${boundingBox.extent} that is not entirely inside the global bounds: ${reprojected}. ")
               }
@@ -78,9 +81,9 @@ object DatacubeSupport {
   }
 
   def layerMetadata(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, cellType: CellType,
-                    layoutScheme:LayoutScheme, maxSpatialResoluton: CellSize, globalBounds:Option[ProjectedExtent] = Option.empty) = {
+                    layoutScheme:LayoutScheme, maxSpatialResoluton: CellSize, globalBounds:Option[ProjectedExtent] = Option.empty, multiple_polygons_flag: Boolean = false) = {
 
-    val worldLayout: LayoutDefinition = DatacubeSupport.getLayout(layoutScheme, boundingBox, zoom, maxSpatialResoluton, globalBounds = globalBounds)
+    val worldLayout: LayoutDefinition = DatacubeSupport.getLayout(layoutScheme, boundingBox, zoom, maxSpatialResoluton, globalBounds = globalBounds, multiple_polygons_flag = multiple_polygons_flag)
 
     val reprojectedBoundingBox: ProjectedExtent = DatacubeSupport.targetBoundingBox(boundingBox, layoutScheme)
 
