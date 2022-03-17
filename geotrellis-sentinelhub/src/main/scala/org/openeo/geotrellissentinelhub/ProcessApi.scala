@@ -117,7 +117,7 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
 
     logger.info(s"Executing request: ${request.urlBuilder(request)}")
 
-    val response = withRetries(context = s"POST $url $jsonData") {
+    val response = withRetries(context = s"getTile $datasetId $date") {
       request.exec(parser = (code: Int, header: Map[String, IndexedSeq[String]], in: InputStream) =>
         if (code == 200)
           GeoTiffReader.readMultiband(IOUtils.toByteArray(in))

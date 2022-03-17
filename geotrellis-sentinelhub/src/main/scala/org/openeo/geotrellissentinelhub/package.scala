@@ -3,7 +3,7 @@ package org.openeo
 import _root_.io.circe.{Decoder, Encoder, HCursor, Json}
 import _root_.io.circe.Decoder.Result
 import geotrellis.vector._
-import net.jodah.failsafe.event.ExecutionAttemptedEvent
+import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
 import net.jodah.failsafe.function.{CheckedConsumer, CheckedSupplier}
 import net.jodah.failsafe.{Failsafe, FailsafeExecutor, RetryPolicy}
 import org.locationtech.jts.geom.Polygonal
@@ -30,10 +30,11 @@ package object geotrellissentinelhub {
         case SentinelHubException(_, 429, _) => true
         case SentinelHubException(_, 400, responseBody) if responseBody.contains("Request body should be non-empty.")
           || responseBody.contains("Missing grant_type parameter") => true
-        case SentinelHubException(_, statusCode, _) if statusCode >= 500 => true
+        case SentinelHubException(_, statusCode, responseBody) if statusCode >= 500
+          && !responseBody.contains("newLimit > capacity") && !responseBody.contains("Illegal request to https") => true
         case _: SocketTimeoutException => true
         case _: CirceException => true
-        case _ => false
+        case e => logger.error(s"Not attempting to retry unrecoverable error: $context -> ${e.getMessage}"); false
       }
 
       new RetryPolicy[R]
@@ -41,10 +42,11 @@ package object geotrellissentinelhub {
         .withBackoff(1, 1000, SECONDS) // should not reach maxDelay because of maxAttempts 5
         .withJitter(0.5)
         .withMaxAttempts(5)
-        .onFailedAttempt(new CheckedConsumer[ExecutionAttemptedEvent[R]] {
-          override def accept(t: ExecutionAttemptedEvent[R]): Unit = {
-            logger.warn(s"Attempt ${t.getAttemptCount} failed: $context -> ${t.getLastFailure.getMessage}")
-          }
+        .onFailedAttempt((attempt: ExecutionAttemptedEvent[R]) => {
+          logger.warn(s"Attempt ${attempt.getAttemptCount} failed: $context -> ${attempt.getLastFailure.getMessage}")
+        })
+        .onFailure((execution: ExecutionCompletedEvent[R]) => {
+          logger.error(s"Failed after ${execution.getAttemptCount} attempt(s): $context -> ${execution.getFailure.getMessage}")
         })
     }
 
