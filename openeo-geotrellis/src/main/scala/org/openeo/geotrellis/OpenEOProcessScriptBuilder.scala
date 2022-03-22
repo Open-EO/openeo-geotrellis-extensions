@@ -1,10 +1,12 @@
 package org.openeo.geotrellis
 
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{ArrayTile, ByteUserDefinedNoDataCellType, CellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isNoData}
+import geotrellis.raster.{ArrayTile, ByteUserDefinedNoDataCellType, CellType, Dimensions, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isData, isNoData}
 import org.apache.commons.math3.exception.NotANumberException
 import org.apache.commons.math3.stat.descriptive.rank.Percentile
 import org.apache.commons.math3.stat.ranking.NaNStrategy
+import org.apache.spark.mllib.linalg
+import org.apache.spark.mllib.tree.model.RandomForestModel
 import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase}
 import org.slf4j.LoggerFactory
 import spire.math.UShort
@@ -620,6 +622,7 @@ class OpenEOProcessScriptBuilder {
       case "array_concat" => arrayConcatFunction(arguments)
       case "array_append" => arrayAppendFunction(arguments)
       case "array_create" => arrayCreateFunction(arguments)
+      case "predict_random_forest" if hasData => predictRandomForestFunction(arguments)
       case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
     }
 
@@ -792,6 +795,43 @@ class OpenEOProcessScriptBuilder {
       Seq.fill(repeat)(data).flatten
     }
     bandFunction
+  }
+
+  private def predictRandomForestFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
+    val model: RandomForestModel = arguments.getOrDefault("model", null).asInstanceOf[RandomForestModel]
+    if(model == null)
+      throw new IllegalArgumentException("Missing 'model' argument in predict_random_forest.")
+
+    reduceListFunction("data", (rs: Seq[Tile]) => {
+      rs.assertEqualDimensions()
+
+      val layerCount = rs.length
+      if (layerCount == 0) sys.error(s"No features provided for predict_random_forest.")
+      else {
+        val newCellType = rs.map(_.cellType).reduce(_.union(_))
+        val Dimensions(cols, rows) = rs.head.dimensions
+        val tile = ArrayTile.alloc(newCellType, cols, rows)
+
+        cfor(0)(_ < rows, _ + 1) { row =>
+          cfor(0)(_ < cols, _ + 1) { col =>
+            val features: scala.Array[scala.Double] = new Array[Double](layerCount)
+            cfor(0)(_ < layerCount, _ + 1) { i =>
+              val v = rs(i).getDouble(col, row)
+              if (isData(v)) {
+                features(i) = v
+              } else {
+                throw new UnsupportedOperationException("Predict random forest does not support NoData pixels.")
+              }
+            }
+
+            val featuresVector = linalg.Vectors.dense(features)
+            val prediction = model.predict(featuresVector)
+            tile.setDouble(col, row, prediction)
+          }
+        }
+        tile
+      }
+    })
   }
 
   private def firstFunctionIgnoreNoData(tiles:Seq[Tile]) : Seq[Tile] = {
