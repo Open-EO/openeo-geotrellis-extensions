@@ -14,6 +14,7 @@ import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.FileLayerProvider
 import org.openeo.geotrelliscommon.DatacubeSupport.layerMetadata
+import org.openeo.geotrelliscommon.{DataCubeParameters, SpaceTimeByMonthPartitioner}
 
 import java.net.URL
 import java.time.ZonedDateTime
@@ -45,7 +46,7 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
   }
 
 
-  def loadSpatialFeatureRDD(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int, tileSize: Int = 256): ContextRDD[SpaceTimeKey, Feature, TileLayerMetadata[SpaceTimeKey]] = {
+  def loadSpatialFeatureRDD(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters): ContextRDD[SpaceTimeKey, Feature, TileLayerMetadata[SpaceTimeKey]] = {
     val sc = SparkContext.getOrCreate()
 
     val from = ZonedDateTime.parse(from_date)
@@ -63,7 +64,7 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
     val multiple_polygons_flag = polygons.polygons.length > 1
     val metadata: TileLayerMetadata[SpaceTimeKey] = layerMetadata(
       boundingBox, from, to, 0, FloatConstantNoDataCellType, FloatingLayoutScheme(tileSize),
-      maxSpatialResolution, multiple_polygons_flag = multiple_polygons_flag
+      maxSpatialResolution, dataCubeParameters.globalExtent ,multiple_polygons_flag = multiple_polygons_flag
     )
 
     //construct Spatial Keys that we want to load
@@ -86,9 +87,9 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
    * Variant of `loadSpatialFeatureRDD` that allows working with the data in JavaRDD format in PySpark context:
    * (e.g. oscars response is JSON-serialized)
    */
-  def loadSpatialFeatureJsonRDD(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int, tileSize: Int = 256): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey]) = {
+  def loadSpatialFeatureJsonRDD(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters = null): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey]) = {
     import org.openeo.geotrellis.file.FileRDDFactory.{jsonObject, toJson}
-    val crdd = loadSpatialFeatureRDD(polygons, from_date, to_date, zoom, tileSize)
+    val crdd = loadSpatialFeatureRDD(polygons, from_date, to_date, zoom, tileSize, dataCubeParameters)
     val jrdd = crdd.map { case (key, feature) => jsonObject(
       "key" -> toJson(key),
       "key_extent" -> toJson(crdd.metadata.mapTransform.keyToExtent(key)),
