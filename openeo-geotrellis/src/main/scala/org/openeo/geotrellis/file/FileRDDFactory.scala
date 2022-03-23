@@ -64,7 +64,7 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
     val multiple_polygons_flag = polygons.polygons.length > 1
     val metadata: TileLayerMetadata[SpaceTimeKey] = layerMetadata(
       boundingBox, from, to, 0, FloatConstantNoDataCellType, FloatingLayoutScheme(tileSize),
-      maxSpatialResolution, dataCubeParameters.globalExtent ,multiple_polygons_flag = multiple_polygons_flag
+      maxSpatialResolution, Option(dataCubeParameters).flatMap(_.globalExtent) ,multiple_polygons_flag = multiple_polygons_flag
     )
 
     //construct Spatial Keys that we want to load
