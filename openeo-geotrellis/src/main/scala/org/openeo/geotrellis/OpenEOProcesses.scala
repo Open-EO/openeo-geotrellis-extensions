@@ -128,7 +128,12 @@ class OpenEOProcesses extends Serializable {
       resultMap.map(tuple => (tuple._1,MultibandTile(tuple._2)))
 
     }}
-    ContextRDD(rdd,datacube.metadata)
+
+    if(datacube.partitioner.isDefined) {
+      ContextRDD(rdd.partitionBy(datacube.partitioner.get),datacube.metadata)
+    }else{
+      ContextRDD(rdd,datacube.metadata)
+    }
   }
 
 
