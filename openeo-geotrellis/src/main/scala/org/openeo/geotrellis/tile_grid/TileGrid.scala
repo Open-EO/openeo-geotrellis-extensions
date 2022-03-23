@@ -88,7 +88,7 @@ object TileGrid {
 
     def featureForColRow(col: Int, row: Int) = {
       val e = gridExtent.extentFor(GridBounds(col, row, col ,row))
-      val mgrsId = MGRS.getUTM2MGRSSqId(e.center.getX, e.center.getY, utmZone.left.getOrElse(utmZone.left.get), utmZone.isLeft)
+      val mgrsId = MGRS.getUTM2MGRSSqId(e.center.getX, e.center.getY, utmZone.left.getOrElse(utmZone.right.get), isNorth = utmZone.isLeft)
 
       (s"${mgrsId}_${col}_$row", e.reproject(utmCrs, extent.crs))
     }
