@@ -1,6 +1,14 @@
 package org.openeo.geotrellis;
 
 import geotrellis.raster.*;
+import org.apache.spark.SparkConf;
+import org.apache.spark.SparkContext;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.mllib.linalg.Vectors;
+import org.apache.spark.mllib.regression.LabeledPoint;
+import org.apache.spark.mllib.tree.RandomForest;
+import org.apache.spark.mllib.tree.model.RandomForestModel;
 import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
 import scala.Function1;
@@ -1263,6 +1271,76 @@ public class TestOpenEOProcessScriptBuilder {
 
         assertEquals(3, result4.apply(0).get(0, 0));
     }
+
+
+    @DisplayName("Test predict predict_random_forest")
+    @Test
+    public void testPredictRandomForest() {
+        SparkConf conf = new SparkConf();
+        conf.setAppName("OpenEOTest");
+        conf.setMaster("local[1]");
+        //conf.set("spark.driver.bindAddress", "127.0.0.1");
+        conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
+        SparkContext.getOrCreate(conf);
+        Random random = new Random(42);
+
+        FloatArrayTile tile0 = FloatArrayTile.empty(4,4);
+        FloatArrayTile tile1 = FloatArrayTile.empty(4,4);
+        FloatArrayTile tile2 = FloatArrayTile.empty(4,4);
+        for (int col = 0; col < 4; col++) {
+            for (int row = 0; row < 4; row++) {
+                tile0.setDouble(col, row, (random.nextDouble() * 10));
+                tile1.setDouble(col, row, (random.nextDouble() * 10));
+                tile2.setDouble(col, row, (random.nextDouble() * 10));
+            }
+        }
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+
+        JavaSparkContext sc = JavaSparkContext.fromSparkContext(SparkContext.getOrCreate());
+        List<LabeledPoint> labels = new ArrayList<>();
+        int numberOfLabels = 100;
+        for (int labelIndex = 0; labelIndex < numberOfLabels; labelIndex++) {
+            double[] featureValues = new double[3];
+            for (int featureIndex = 0; featureIndex < featureValues.length; featureIndex++) {
+                featureValues[featureIndex] = random.nextDouble() * 10;
+            }
+            org.apache.spark.mllib.linalg.Vector features = Vectors.dense(featureValues);
+            labels.add(new LabeledPoint(random.nextInt(10), features));
+        }
+
+        JavaRDD<LabeledPoint> trainingData = sc.parallelize(labels);
+        int numClasses = 10;
+        Map<Integer, Integer> categoricalFeaturesInfo = new HashMap<>();
+        int numTrees = 3;
+        String featureSubsetStrategy = "auto";
+        String impurity = "gini";
+        int maxDepth = 4;
+        int maxBins = 32;
+        int seed = 42;
+        RandomForestModel model = RandomForest.trainClassifier(
+            trainingData, numClasses, categoricalFeaturesInfo,
+            numTrees, featureSubsetStrategy, impurity, maxDepth, maxBins, seed
+        );
+        Map<String, Object> arguments = new HashMap<>();
+        arguments.put("model", model);
+        arguments.put("data", "dummy");
+        builder.expressionStart("predict_random_forest", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+
+        builder.expressionEnd("predict_random_forest",arguments);
+
+        Seq<Tile> result = builder.generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1, tile2)));
+        assertEquals(FloatCellType.withDefaultNoData(),result.apply(0).cellType());
+        assertEquals(8, result.apply(0).get(0,0));
+        assertEquals(4, result.apply(0).get(0,1));
+        assertEquals(4, result.apply(0).get(0,2));
+        assertEquals(1, result.apply(0).get(3,2));
+        assertEquals(9, result.apply(0).get(3,3));
+        SparkContext.getOrCreate().stop();
+    }
+
 
     static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
