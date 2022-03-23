@@ -174,7 +174,7 @@ class PyramidFactoryTest {
 
     val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, "sentinel-2-l2a", "sentinel-2-l2a",
       clientId, clientSecret, processingOptions = util.Collections.emptyMap[String, Any], sampleType = UINT16,
-      maxSpatialResolution = CellSize(10, 10))
+      maxSpatialResolution = CellSize(10, 10), softErrors = false)
 
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
@@ -647,7 +647,7 @@ class PyramidFactoryTest {
 
     val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, "sentinel-2-l2a", "sentinel-2-l2a",
       clientId, clientSecret, processingOptions = util.Collections.emptyMap[String, Any], sampleType = UINT16,
-      maxSpatialResolution = CellSize(10, 10))
+      maxSpatialResolution = CellSize(10, 10), softErrors = false)
 
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
@@ -688,7 +688,7 @@ class PyramidFactoryTest {
 
     val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, collectionId = null, datasetId = "dem",
       clientId, clientSecret, processingOptions = util.Collections.emptyMap[String, Any], sampleType = FLOAT32,
-      maxSpatialResolution)
+      maxSpatialResolution, softErrors = false)
 
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
@@ -792,7 +792,8 @@ class PyramidFactoryTest {
         ProjectedExtent(Extent(488960.0, 6159880.0, 491520.0, 6162440.0), CRS.fromEpsgCode(32632))
 
       val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, "sentinel-1-grd", "sentinel-1-grd",
-        clientId, clientSecret, processingOptions, sampleType = FLOAT32, maxSpatialResolution = CellSize(10, 10))
+        clientId, clientSecret, processingOptions, sampleType = FLOAT32, maxSpatialResolution = CellSize(10, 10),
+        softErrors)
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),

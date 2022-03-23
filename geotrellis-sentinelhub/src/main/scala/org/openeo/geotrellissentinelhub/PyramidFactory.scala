@@ -28,22 +28,23 @@ object PyramidFactory {
   // convenience methods for Python client
   def withGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
                               clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
-                              maxSpatialResolution: CellSize): PyramidFactory =
+                              maxSpatialResolution: CellSize, softErrors: Boolean): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
-      clientId, clientSecret, processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution)
+      clientId, clientSecret, processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution, softErrors)
 
   def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
                                  clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
-                                 maxSpatialResolution: CellSize): PyramidFactory =
+                                 maxSpatialResolution: CellSize, softErrors: Boolean): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
-      clientId, clientSecret, processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution)
+      clientId, clientSecret, processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution,
+      softErrors = softErrors)
 
   @deprecated("call withGuardedRateLimiting instead")
   def rateLimited(endpoint: String, collectionId: String, datasetId: String, clientId: String, clientSecret: String,
                   processingOptions: util.Map[String, Any], sampleType: SampleType,
                   maxSpatialResolution: CellSize): PyramidFactory =
     withGuardedRateLimiting(endpoint, collectionId, datasetId, clientId, clientSecret, processingOptions, sampleType,
-      maxSpatialResolution)
+      maxSpatialResolution, softErrors = false)
 
   @deprecated("include a maxSpatialResolution")
   def rateLimited(endpoint: String, collectionId: String, datasetId: String, clientId: String, clientSecret: String,
@@ -56,7 +57,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                      processingOptions: util.Map[String, Any] = util.Collections.emptyMap[String, Any],
                      sampleType: SampleType = UINT16,
                      rateLimitingGuard: RateLimitingGuard = NoRateLimitingGuard,
-                     maxSpatialResolution: CellSize = CellSize(10,10)) extends Serializable {
+                     maxSpatialResolution: CellSize = CellSize(10,10), softErrors: Boolean = false) extends Serializable {
   import PyramidFactory._
 
   @transient private val _catalogApi = if (collectionId == null) new MadeToMeasureCatalogApi else catalogApi
@@ -188,7 +189,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
         //noinspection ComparingUnrelatedTypes
         val maskClouds = dataCubeParameters.maskingStrategyParameters.get("method") == "mask_scl_dilation"
 
-        def loadMasked(spatialKey: SpatialKey, dateTime: ZonedDateTime): Option[MultibandTile] = {
+        def loadMasked(spatialKey: SpatialKey, dateTime: ZonedDateTime): Option[MultibandTile] = try {
           def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile = {
             awaitRateLimitingGuardDelay(bandNames, width, height)
 
@@ -226,6 +227,10 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               override def loadData: Option[MultibandTile] = Some(dataTile)
             })
           } else Some(dataTile)
+        } catch {
+          case e @ SentinelHubException(_, _, responseBody) if softErrors =>
+            logger.warn(s"ignoring soft error $responseBody", e)
+            None
         }
 
         val tilesRdd =
