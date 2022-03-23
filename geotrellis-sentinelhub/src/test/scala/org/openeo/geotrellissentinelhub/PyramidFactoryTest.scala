@@ -174,7 +174,7 @@ class PyramidFactoryTest {
 
     val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, "sentinel-2-l2a", "sentinel-2-l2a",
       clientId, clientSecret, processingOptions = util.Collections.emptyMap[String, Any], sampleType = UINT16,
-      maxSpatialResolution = CellSize(10, 10))
+      maxSpatialResolution = CellSize(10, 10), softErrors = false)
 
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
@@ -647,7 +647,7 @@ class PyramidFactoryTest {
 
     val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, "sentinel-2-l2a", "sentinel-2-l2a",
       clientId, clientSecret, processingOptions = util.Collections.emptyMap[String, Any], sampleType = UINT16,
-      maxSpatialResolution = CellSize(10, 10))
+      maxSpatialResolution = CellSize(10, 10), softErrors = false)
 
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
@@ -688,7 +688,7 @@ class PyramidFactoryTest {
 
     val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, collectionId = null, datasetId = "dem",
       clientId, clientSecret, processingOptions = util.Collections.emptyMap[String, Any], sampleType = FLOAT32,
-      maxSpatialResolution)
+      maxSpatialResolution, softErrors = false)
 
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
@@ -775,6 +775,50 @@ class PyramidFactoryTest {
 
       assertEquals(rasterWithoutCatalog, rasterWithCatalog)
       assertEquals(expected, rasterWithoutCatalog)
+    } finally sc.stop()
+  }
+
+  @Test
+  def testSoftErrors(): Unit = {
+    implicit val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    def provokeNonTransientError(softErrors: Boolean): Unit = {
+      // any non-transient error will do but covering a failed tile request is most important
+      val endpoint = "https://services.sentinel-hub.com"
+      val processingOptions =
+        Map("demInstance" -> "MAPZEN", "backCoeff" -> "GAMMA0_TERRAIN", "orthorectify" -> true).asJava
+
+      val boundingBox =
+        ProjectedExtent(Extent(488960.0, 6159880.0, 491520.0, 6162440.0), CRS.fromEpsgCode(32632))
+
+      val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, "sentinel-1-grd", "sentinel-1-grd",
+        clientId, clientSecret, processingOptions, sampleType = FLOAT32, maxSpatialResolution = CellSize(10, 10),
+        softErrors)
+
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
+        polygons_crs = boundingBox.crs,
+        from_date = "2016-11-10T00:00:00Z",
+        to_date = "2016-11-10T00:00:00Z",
+        band_names = util.Arrays.asList("VH", "VV"),
+        metadata_properties = util.Collections.emptyMap()
+      )
+
+      layer.isEmpty() // force evaluation
+    }
+
+    try {
+      // sanity check
+      try {
+        provokeNonTransientError(softErrors = false)
+        fail("should have thrown a SentinelHubException")
+      } catch {
+        case e: SparkException =>
+          val SentinelHubException(_, 400, responseBody) = e.getRootCause
+          assertTrue(responseBody, responseBody contains "not present in Sentinel 1 tile")
+      }
+
+      provokeNonTransientError(softErrors = true) // shouldn't throw
     } finally sc.stop()
   }
 }
