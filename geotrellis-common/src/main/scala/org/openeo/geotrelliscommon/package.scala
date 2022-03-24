@@ -39,7 +39,7 @@ package object geotrelliscommon {
     def toIndex(key: SpaceTimeKey, indexReduction:Int = 8): BigInt = keyIndex.toIndex(key) >> indexReduction
   }
 
-  class SparseSpaceTimePartitioner (val indices: Array[BigInt], val indexReduction:Int = 8) extends PartitionerIndex[SpaceTimeKey] {
+  class SparseSpaceTimePartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpaceTimeKey]] = Option.empty) extends PartitionerIndex[SpaceTimeKey] {
 
     def toIndex(key: SpaceTimeKey): BigInt = SparseSpaceTimePartitioner.toIndex(key, indexReduction)
 
@@ -72,7 +72,7 @@ package object geotrelliscommon {
     override def toString = s"SparseSpaceTimePartitioner ${indices.length}"
   }
 
-  class SparseSpaceOnlyPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8) extends PartitionerIndex[SpaceTimeKey] {
+  class SparseSpaceOnlyPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpaceTimeKey]] = Option.empty ) extends PartitionerIndex[SpaceTimeKey] {
 
     def toIndex(key: SpaceTimeKey): BigInt = SparseSpaceOnlyPartitioner.toIndex(key, indexReduction)
 
@@ -85,6 +85,31 @@ package object geotrelliscommon {
 
     override def equals(other: Any): Boolean = other match {
       case that: SparseSpaceOnlyPartitioner =>
+        (that canEqual this) &&
+          indices == that.indices &&
+          indexReduction == that.indexReduction
+      case _ => false
+    }
+
+    override def hashCode(): Int = {
+      val state = Seq(indices, indexReduction)
+      state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
+    }
+  }
+
+  class SparseSpatialPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpatialKey]] = Option.empty ) extends PartitionerIndex[SpatialKey] {
+
+    def toIndex(key: SpatialKey): BigInt = Z2(key.col,key.row).z >> indexReduction
+
+    def indexRanges(keyRange: (SpatialKey, SpatialKey)): Seq[(BigInt, BigInt)] = {
+      indices.map(i => (i,i))
+    }
+
+
+    def canEqual(other: Any): Boolean = other.isInstanceOf[SparseSpatialPartitioner]
+
+    override def equals(other: Any): Boolean = other match {
+      case that: SparseSpatialPartitioner =>
         (that canEqual this) &&
           indices == that.indices &&
           indexReduction == that.indexReduction

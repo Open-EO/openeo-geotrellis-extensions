@@ -262,12 +262,13 @@ object FileLayerProvider {
     // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
     val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(8)
     val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
+      val keys = requiredSpacetimeKeys.distinct().collect()
       if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
-        val indices = requiredSpacetimeKeys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct().collect().sorted
-        new SparseSpaceOnlyPartitioner(indices, reduction)
+        val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
+        new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
       } else {
-        val indices = requiredSpacetimeKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct().collect().sorted
-        new SparseSpaceTimePartitioner(indices, reduction)
+        val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
+        new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
       }
     }
     Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,

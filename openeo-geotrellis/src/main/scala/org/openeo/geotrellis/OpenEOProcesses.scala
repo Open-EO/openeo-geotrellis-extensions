@@ -24,7 +24,7 @@ import org.apache.spark.rdd._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
-import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner}
 import org.slf4j.LoggerFactory
 
 import java.io.File
@@ -169,7 +169,27 @@ class OpenEOProcesses extends Serializable {
 
   private def groupOnTimeDimension(datacube: MultibandTileLayerRDD[SpaceTimeKey]) = {
     val targetBounds = datacube.metadata.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]].toSpatial
-    implicit val index = ByTileSpatialPartitioner
+
+    val keys: Option[Array[SpaceTimeKey]] = if( datacube.partitioner.isDefined && datacube.partitioner.isInstanceOf[SpacePartitioner[SpaceTimeKey]]){
+      val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+      if(index.isInstanceOf[SparseSpaceTimePartitioner]){
+        index.asInstanceOf[SparseSpaceTimePartitioner].theKeys
+      }else if(index.isInstanceOf[SparseSpaceOnlyPartitioner]){
+        index.asInstanceOf[SparseSpaceOnlyPartitioner].theKeys
+      }else{
+        Option.empty
+      }
+    } else{
+      Option.empty
+    }
+
+    implicit val index =
+      if(keys.isDefined) {
+        new SparseSpatialPartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, 0,keys.map(_.map(_.spatialKey)))
+      }else{
+        ByTileSpatialPartitioner
+      }
+
     val partitioner: Partitioner = new SpacePartitioner(targetBounds)
 
     val groupedOnTime = datacube.groupBy[SpatialKey]((t: (SpaceTimeKey, MultibandTile)) => t._1.spatialKey, partitioner)
