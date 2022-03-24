@@ -341,7 +341,7 @@ object FileLayerProvider {
                       val maskOption = gridBoundsRasterRegion.source.read(bufferedGridBounds, Seq(sclBandIndex))
 
                       maskOption.map { mask =>
-                        val expectedTileSize = 456
+                        val expectedTileSize = gridBoundsRasterRegion.cols + 2 * bufferInPixels
 
                         if (mask.cols == expectedTileSize && mask.rows == expectedTileSize) mask // an optimization really
                         else { // raster can be smaller than requested extent
