@@ -164,15 +164,14 @@ abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
   // TODO: make it explicit that all grid tiles are MultiPolygons?
   private def simplify(gridGeometries: Seq[Geometry]): MultiPolygon = {
     // make sure they dissolve properly
-    val slightlyOverlappingTiles = for {
-      geometry <- gridGeometries
-      growDistance = geometry.getEnvelopeInternal.getWidth * 0.05
-    } yield geometry.buffer(growDistance).asInstanceOf[Polygon]
+    val growDistance = gridGeometries.head.getEnvelopeInternal.getWidth * 0.05
+    val slightlyOverlappingGridGeometries = gridGeometries.map(_.buffer(growDistance).asInstanceOf[Polygon])
 
-    // TODO: ditch extra tiles requested because we enlarged them a bit? maybe this is not so bad in a caching context
-    dissolve(slightlyOverlappingTiles) match {
-      case polygon: Polygon => MultiPolygon(polygon)
-      case multiPolygon: MultiPolygon => multiPolygon
+    def shrink(gridGeometry: Polygon): Polygon = gridGeometry.buffer(-growDistance * 2).asInstanceOf[Polygon]
+
+    dissolve(slightlyOverlappingGridGeometries) match {
+      case polygon: Polygon => MultiPolygon(shrink(polygon))
+      case multiPolygon: MultiPolygon => MultiPolygon(multiPolygon.polygons.map(shrink))
     }
   }
 }
