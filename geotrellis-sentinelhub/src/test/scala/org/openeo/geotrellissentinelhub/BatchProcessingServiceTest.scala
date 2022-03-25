@@ -285,6 +285,67 @@ class BatchProcessingServiceTest {
     if (batchRequestId != null) println(awaitDone(Seq(batchRequestId)))
   }
 
+  @Ignore
+  @Test
+  def startLargePolygonCachedBatchProcessForSentinel1(): Unit = {
+    val subfolder = UUID.randomUUID().toString
+
+    println(s"subfolder: $subfolder")
+
+    val malawiPolygon = GeoJson.parse[Polygon](
+      """
+        |{
+        |  "type":"Polygon",
+        |  "coordinates":[
+        |    [
+        |      [
+        |        33.15374754008658,
+        |        -13.579730951495556
+        |      ],
+        |      [
+        |        33.15374754008658,
+        |        -12.523064670912134
+        |      ],
+        |      [
+        |        33.961499361964435,
+        |        -12.523064670912134
+        |      ],
+        |      [
+        |        33.961499361964435,
+        |        -13.579730951495556
+        |      ],
+        |      [
+        |        33.15374754008658,
+        |        -13.579730951495556
+        |      ]
+        |    ]
+        |  ]
+        |}""".stripMargin)
+
+    val polygons: Array[MultiPolygon] = Array(MultiPolygon(malawiPolygon))
+    val polygonsCrs = LatLng
+
+    val batchRequestId = batchProcessingService.start_batch_process_cached(
+      collection_id = "sentinel-1-grd",
+      dataset_id = "sentinel-1-grd",
+      polygons,
+      polygonsCrs,
+      from_date = "2020-11-25T00:00:00+00:00",
+      to_date = "2020-11-25T00:00:00+00:00",
+      band_names = Arrays.asList("VH"/*, "VV"*/),
+      SampleType.FLOAT32,
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
+      processing_options = Map(
+        "backCoeff" -> "GAMMA0_TERRAIN",
+        "orthorectify" -> true
+      ).asJava,
+      subfolder,
+      collectingFolder.toAbsolutePath.toString
+    )
+
+    if (batchRequestId != null) println(awaitDone(Seq(batchRequestId)))
+  }
+
   @Test
   def getBatchProcessStatus(): Unit = {
     val status =

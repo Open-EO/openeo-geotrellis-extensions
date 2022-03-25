@@ -102,13 +102,13 @@ abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
     saveExtendedBatchProcessContext(bandNames, incompleteTiles, lower, upper, missingBandNames, processingOptions,
       bucketName, subfolder)
 
-    val multiPolygons = shrink(geometries = incompleteTiles.map { case (_, geometry) => geometry })
+    val multiPolygons = Array(simplify(gridGeometries = incompleteTiles.map { case (_, geometry) => geometry }))
     val multiPolygonsCrs = LatLng
 
     batchProcessingService.start_batch_process(
       collection_id,
       dataset_id,
-      multiPolygons.toArray,
+      multiPolygons,
       multiPolygonsCrs,
       from_date = ISO_OFFSET_DATE_TIME format lower,
       to_date = ISO_OFFSET_DATE_TIME format upper,
@@ -162,11 +162,19 @@ abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
   }
 
   // TODO: make it explicit that all grid tiles are MultiPolygons?
-  private def shrink(geometries: Seq[Geometry]): Seq[MultiPolygon] =
-    for {
-      geometry <- geometries
-      shrinkDistance = geometry.getEnvelopeInternal.getWidth * 0.05
-    } yield MultiPolygon(geometry.buffer(-shrinkDistance).asInstanceOf[Polygon])
+  private def simplify(gridGeometries: Seq[Geometry]): MultiPolygon = {
+    // make sure they dissolve properly
+    val slightlyOverlappingTiles = for {
+      geometry <- gridGeometries
+      growDistance = geometry.getEnvelopeInternal.getWidth * 0.05
+    } yield geometry.buffer(growDistance).asInstanceOf[Polygon]
+
+    // TODO: ditch extra tiles requested because we enlarged them a bit? maybe this is not so bad in a caching context
+    dissolve(slightlyOverlappingTiles) match {
+      case polygon: Polygon => MultiPolygon(polygon)
+      case multiPolygon: MultiPolygon => multiPolygon
+    }
+  }
 }
 
 object Sentinel2L2AInitialCacheOperation {

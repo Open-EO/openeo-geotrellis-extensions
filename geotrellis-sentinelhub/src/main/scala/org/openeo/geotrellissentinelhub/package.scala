@@ -156,7 +156,7 @@ package object geotrellissentinelhub {
       polygon <- multiPolygon.polygons
     } yield Polygon(polygon.getExteriorRing)
 
-  private def dissolve(polygons: Seq[Polygon]): Geometry with Polygonal =
+  private[geotrellissentinelhub] def dissolve(polygons: Seq[Polygon]): Geometry with Polygonal =
     GeometryCollection(polygons).union().asInstanceOf[Geometry with Polygonal]
 
   private[geotrellissentinelhub] def simplify(multiPolygons: Array[MultiPolygon]): Geometry with Polygonal =
