@@ -30,6 +30,7 @@ package object geotrellissentinelhub {
         case SentinelHubException(_, 429, _) => true
         case SentinelHubException(_, 400, responseBody) if responseBody.contains("Request body should be non-empty.")
           || responseBody.contains("Missing grant_type parameter") => true
+        case SentinelHubException(_, 404, _) if context.startsWith("startBatchProcess") => true // hack, needs work
         case SentinelHubException(_, statusCode, responseBody) if statusCode >= 500
           && !responseBody.contains("newLimit > capacity") && !responseBody.contains("Illegal request to https") => true
         case _: SocketTimeoutException => true
