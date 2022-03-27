@@ -1334,7 +1334,7 @@ public class TestOpenEOProcessScriptBuilder {
         builder.expressionEnd("predict_random_forest",arguments);
 
         scala.collection.mutable.Buffer<Tile> tiles = JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1, tile2));
-        Map<String, Object> javaContext = new HashMap<String, Object>() {{ put("context", model); put("data", tiles); }};
+        Map<String, Object> javaContext = new HashMap<String, Object>() {{ put("context", model); }};
         List<Tuple2<String, Object>> contextTuples = javaContext.entrySet().stream()
                 .map(e -> Tuple2.apply(e.getKey(), e.getValue()))
                 .collect(Collectors.toList());
