@@ -13,6 +13,7 @@ import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
 import scala.Function1;
 import scala.Int;
+import scala.Tuple2;
 import scala.collection.JavaConversions;
 import scala.collection.JavaConverters;
 import scala.collection.Seq;
@@ -1321,17 +1322,27 @@ public class TestOpenEOProcessScriptBuilder {
             trainingData, numClasses, categoricalFeaturesInfo,
             numTrees, featureSubsetStrategy, impurity, maxDepth, maxBins, seed
         );
-        Map<String, Object> arguments = new HashMap<>();
-        arguments.put("model", model);
+        java.util.Map<String, Object> arguments = new HashMap<>();
+        arguments.put("model", new HashMap<String, String>() {{ put("from_parameter", "context"); }});
         arguments.put("data", "dummy");
         builder.expressionStart("predict_random_forest", arguments);
 
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
 
         builder.expressionEnd("predict_random_forest",arguments);
 
-        Seq<Tile> result = builder.generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1, tile2)));
+        scala.collection.mutable.Buffer<Tile> tiles = JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1, tile2));
+        Map<String, Object> javaContext = new HashMap<String, Object>() {{ put("context", model); put("data", tiles); }};
+        List<Tuple2<String, Object>> contextTuples = javaContext.entrySet().stream()
+                .map(e -> Tuple2.apply(e.getKey(), e.getValue()))
+                .collect(Collectors.toList());
+        scala.collection.immutable.Map<String, Object> scalaContext = scala.collection.immutable.Map$.MODULE$.apply(JavaConversions.asScalaBuffer(contextTuples).toSeq());
+
+        Seq<Tile> result = builder
+                .generateFunction(scalaContext)
+                .apply(tiles.toSeq());
         assertEquals(FloatCellType.withDefaultNoData(),result.apply(0).cellType());
         assertEquals(8, result.apply(0).get(0,0));
         assertEquals(4, result.apply(0).get(0,1));
