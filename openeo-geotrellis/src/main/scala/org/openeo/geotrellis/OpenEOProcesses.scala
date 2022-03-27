@@ -31,6 +31,7 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
 import java.time.{Instant, ZonedDateTime}
+import java.util
 import scala.collection.JavaConverters._
 import scala.collection.{JavaConverters, immutable, mutable}
 import scala.reflect._
@@ -353,12 +354,16 @@ class OpenEOProcesses extends Serializable {
 
   }
 
-  def mapBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]= {
-    mapBandsGeneric(datacube,scriptBuilder)
+  def mapBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder, context: java.util.Map[String,Any] = new util.HashMap[String, Any]()): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]= {
+    mapBandsGeneric(datacube,scriptBuilder,context)
   }
 
-  def mapBandsGeneric[K:ClassTag](datacube:MultibandTileLayerRDD[K], scriptBuilder:OpenEOProcessScriptBuilder): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
-    val function = scriptBuilder.generateFunction()
+  def mapBandsGeneric[K:ClassTag](datacube:MultibandTileLayerRDD[K], scriptBuilder:OpenEOProcessScriptBuilder, context: java.util.Map[String,Any]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
+    val function = if (context.isEmpty) {
+      scriptBuilder.generateFunction()
+    } else {
+      scriptBuilder.generateFunction(context.asScala.toMap)
+    }
     return datacube.withContext(new org.apache.spark.rdd.PairRDDFunctions[K,MultibandTile](_).mapValues(tile => {
       if (!tile.isInstanceOf[EmptyMultibandTile]) {
         val resultTiles = function(tile.bands)

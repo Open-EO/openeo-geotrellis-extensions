@@ -1,9 +1,5 @@
 package org.openeo.geotrellis
 
-import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
-import java.util
-
 import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.raster.histogram.Histogram
@@ -27,6 +23,9 @@ import org.openeo.geotrellis.TimeSeriesServiceResponses._
 import org.openeo.geotrellis.aggregate_polygon.intern.{CancellationContext, StatisticsCallback}
 import org.openeo.geotrellisaccumulo.PyramidFactory
 
+import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
+import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
+import java.util
 import scala.collection.JavaConverters._
 import scala.collection.immutable.Seq
 
@@ -246,11 +245,10 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
 
   @Test
   def compute_average_timeseries_on_datacube_to_json_file(): Unit = {
-    import java.nio.file.Files
-
     import _root_.io.circe.parser.decode
     import cats.syntax.either._
 
+    import java.nio.file.Files
     import scala.io.{Codec, Source}
 
     val vector_file = this.getClass.getResource("/org/openeo/geotrellis/minimallyOverlappingGeometryCollection.json").getPath
@@ -397,7 +395,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
 
     val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1,3)))
     val ndviProcess = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess10AddXY
-    val ndviDataCube = new OpenEOProcesses().mapBandsGeneric(selectedBands, ndviProcess)
+    val ndviDataCube = new OpenEOProcesses().mapBandsGeneric(selectedBands, ndviProcess, new util.HashMap[String, Any])
 
     assertMedianComputedCorrectly(ndviDataCube, minDateString, minDate, maxDate, polygons)
   }
@@ -508,7 +506,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1,3))).convert(DoubleConstantNoDataCellType)
     val ndviProcess = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess10AddXY
     val processes = new OpenEOProcesses()
-    val ndviDataCube = processes.mapBandsGeneric(selectedBands, ndviProcess)//.withContext(_.mapValues(_.mapDouble(0)(pixel => 0.1)))
+    val ndviDataCube = processes.mapBandsGeneric(selectedBands, ndviProcess, new util.HashMap[String, Any])//.withContext(_.mapValues(_.mapDouble(0)(pixel => 0.1)))
 
     val mask = accumuloDataCube("S2_SCENECLASSIFICATION_PYRAMID_20200407", minDateString, maxDateString, polygons.extent, "EPSG:4326")
     val binaryMask = mask.withContext(_.mapValues( _.map(0)(pixel => if ( pixel < 5) 1 else 0)))
