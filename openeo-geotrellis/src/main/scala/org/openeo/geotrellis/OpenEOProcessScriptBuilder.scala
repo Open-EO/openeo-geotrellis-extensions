@@ -19,6 +19,7 @@ import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.collection.{immutable, mutable}
 import scala.util.Try
+import scala.util.control.Breaks.{break, breakable}
 
 object OpenEOProcessScriptBuilder{
 
@@ -822,31 +823,44 @@ class OpenEOProcessScriptBuilder {
         val newCellType = rs.map(_.cellType).reduce(_.union(_))
         val Dimensions(cols, rows) = rs.head.dimensions
         val tile = ArrayTile.alloc(newCellType, cols, rows)
+        var numberOfNoValuePredictions = 0;
 
         cfor(0)(_ < rows, _ + 1) { row =>
           cfor(0)(_ < cols, _ + 1) { col =>
             val features = new Array[Double](layerCount)
-            cfor(0)(_ < layerCount, _ + 1) { i =>
-              val v = rs(i).getDouble(col, row)
-              if (isData(v)) {
-                features(i) = v
-              } else {
-                throw new UnsupportedOperationException("Predict random forest does not support NoData pixels.")
+            var featureIsNoData = false;
+            breakable {
+              cfor(0)(_ < layerCount, _ + 1) { i =>
+                val v = rs(i).getDouble(col, row)
+                if (isData(v)) {
+                  features(i) = v
+                } else {
+                  // SoftError: Use NoData value as prediction.
+                  featureIsNoData = true;
+                  numberOfNoValuePredictions += 1;
+                  tile.setDouble(col, row, v)
+                  break
+                }
               }
             }
-
-            try {
-              val featuresVector = linalg.Vectors.dense(features)
-              val prediction = model.predict(featuresVector)
-              tile.setDouble(col, row, prediction)
+            if (!featureIsNoData) {
+              try {
+                val featuresVector = linalg.Vectors.dense(features)
+                val prediction = model.predict(featuresVector)
+                tile.setDouble(col, row, prediction)
+              }
+              catch {
+                case e: ArrayIndexOutOfBoundsException =>
+                  throw new IllegalArgumentException(s"The data to predict only contains ${layerCount} features per row, " +
+                    s"but the model was trained on more features.")
+              }
             }
-            catch {
-              case e: ArrayIndexOutOfBoundsException =>
-                throw new IllegalArgumentException(s"The data to predict only contains ${layerCount} features per row, " +
-                  s"but the model was trained on more features.")
-            }
-
           }
+        }
+        if (numberOfNoValuePredictions != 0) {
+          println(s"PredictRandomForest Warning! " +
+            s"${numberOfNoValuePredictions}/${rows*cols} cells contained at least one NoData feature. " +
+            s"The prediction for those cells has been set to NoData.")
         }
         Seq(tile)
       }
