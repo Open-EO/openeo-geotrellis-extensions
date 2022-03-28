@@ -1273,28 +1273,13 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(3, result4.apply(0).get(0, 0));
     }
 
-
-    @DisplayName("Test predict predict_random_forest")
-    @Test
-    public void testPredictRandomForest() {
+    private Seq<Tile> predictWithDefaultRandomForestClassifier(scala.collection.mutable.Buffer<Tile> tiles, Random random) {
         SparkConf conf = new SparkConf();
         conf.setAppName("OpenEOTest");
         conf.setMaster("local[1]");
         //conf.set("spark.driver.bindAddress", "127.0.0.1");
         conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
         SparkContext.getOrCreate(conf);
-        Random random = new Random(42);
-
-        FloatArrayTile tile0 = FloatArrayTile.empty(4,4);
-        FloatArrayTile tile1 = FloatArrayTile.empty(4,4);
-        FloatArrayTile tile2 = FloatArrayTile.empty(4,4);
-        for (int col = 0; col < 4; col++) {
-            for (int row = 0; row < 4; row++) {
-                tile0.setDouble(col, row, (random.nextDouble() * 10));
-                tile1.setDouble(col, row, (random.nextDouble() * 10));
-                tile2.setDouble(col, row, (random.nextDouble() * 10));
-            }
-        }
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
 
         JavaSparkContext sc = JavaSparkContext.fromSparkContext(SparkContext.getOrCreate());
@@ -1333,7 +1318,6 @@ public class TestOpenEOProcessScriptBuilder {
 
         builder.expressionEnd("predict_random_forest",arguments);
 
-        scala.collection.mutable.Buffer<Tile> tiles = JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1, tile2));
         Map<String, Object> javaContext = new HashMap<String, Object>() {{ put("context", model); }};
         List<Tuple2<String, Object>> contextTuples = javaContext.entrySet().stream()
                 .map(e -> Tuple2.apply(e.getKey(), e.getValue()))
@@ -1343,15 +1327,52 @@ public class TestOpenEOProcessScriptBuilder {
         Seq<Tile> result = builder
                 .generateFunction(scalaContext)
                 .apply(tiles.toSeq());
+        SparkContext.getOrCreate().stop();
+        return result;
+    }
+
+
+    @DisplayName("Test predict predict_random_forest")
+    @Test
+    public void testPredictRandomForest() {
+        Random random = new Random(42);
+
+        FloatArrayTile tile0 = FloatArrayTile.empty(4,4);
+        FloatArrayTile tile1 = FloatArrayTile.empty(4,4);
+        FloatArrayTile tile2 = FloatArrayTile.empty(4,4);
+        for (int col = 0; col < 4; col++) {
+            for (int row = 0; row < 4; row++) {
+                tile0.setDouble(col, row, (random.nextDouble() * 10));
+                tile1.setDouble(col, row, (random.nextDouble() * 10));
+                tile2.setDouble(col, row, (random.nextDouble() * 10));
+            }
+        }
+        scala.collection.mutable.Buffer<Tile> tiles = JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1, tile2));
+        Seq<Tile> result = predictWithDefaultRandomForestClassifier(tiles, random);
         assertEquals(FloatCellType.withDefaultNoData(),result.apply(0).cellType());
         assertEquals(8, result.apply(0).get(0,0));
         assertEquals(4, result.apply(0).get(0,1));
         assertEquals(4, result.apply(0).get(0,2));
         assertEquals(1, result.apply(0).get(3,2));
         assertEquals(9, result.apply(0).get(3,3));
-        SparkContext.getOrCreate().stop();
     }
 
+    @DisplayName("Test predict predict_random_forest with the wrong number of features.")
+    @Test
+    public void testPredictRandomForestTooFewFeatures() {
+        Random random = new Random(42);
+
+        FloatArrayTile tile0 = FloatArrayTile.empty(4,4);
+        FloatArrayTile tile1 = FloatArrayTile.empty(4,4);
+        for (int col = 0; col < 4; col++) {
+            for (int row = 0; row < 4; row++) {
+                tile0.setDouble(col, row, (random.nextDouble() * 10));
+                tile1.setDouble(col, row, (random.nextDouble() * 10));
+            }
+        }
+        scala.collection.mutable.Buffer<Tile> tiles = JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1));
+        assertThrows(IllegalArgumentException.class, () -> predictWithDefaultRandomForestClassifier(tiles, random));
+    }
 
     static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
