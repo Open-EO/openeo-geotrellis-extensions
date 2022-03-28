@@ -835,9 +835,17 @@ class OpenEOProcessScriptBuilder {
               }
             }
 
-            val featuresVector = linalg.Vectors.dense(features)
-            val prediction = model.predict(featuresVector)
-            tile.setDouble(col, row, prediction)
+            try {
+              val featuresVector = linalg.Vectors.dense(features)
+              val prediction = model.predict(featuresVector)
+              tile.setDouble(col, row, prediction)
+            }
+            catch {
+              case e: ArrayIndexOutOfBoundsException =>
+                throw new IllegalArgumentException(s"The data to predict only contains ${layerCount} features per row, " +
+                  s"but the model was trained on more features.")
+            }
+
           }
         }
         Seq(tile)
