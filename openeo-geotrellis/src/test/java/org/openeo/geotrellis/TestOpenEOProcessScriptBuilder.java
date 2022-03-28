@@ -1332,7 +1332,7 @@ public class TestOpenEOProcessScriptBuilder {
     }
 
 
-    @DisplayName("Test predict predict_random_forest")
+    @DisplayName("Test predict_random_forest")
     @Test
     public void testPredictRandomForest() {
         Random random = new Random(42);
@@ -1357,11 +1357,12 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(9, result.apply(0).get(3,3));
     }
 
-    @DisplayName("Test predict predict_random_forest with the wrong number of features.")
+    @DisplayName("Test predict_random_forest with the wrong arguments.")
     @Test
-    public void testPredictRandomForestTooFewFeatures() {
+    public void testPredictRandomForestWithWrongArguments() {
         Random random = new Random(42);
 
+        // Not enough features.
         FloatArrayTile tile0 = FloatArrayTile.empty(4,4);
         FloatArrayTile tile1 = FloatArrayTile.empty(4,4);
         for (int col = 0; col < 4; col++) {
@@ -1372,6 +1373,19 @@ public class TestOpenEOProcessScriptBuilder {
         }
         scala.collection.mutable.Buffer<Tile> tiles = JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1));
         assertThrows(IllegalArgumentException.class, () -> predictWithDefaultRandomForestClassifier(tiles, random));
+
+        // NoData cells.
+        FloatArrayTile emptyTile0 = FloatArrayTile.empty(4,4);
+        FloatArrayTile emptyTile1 = FloatArrayTile.empty(4,4);
+        FloatArrayTile emptyTile2 = FloatArrayTile.empty(4,4);
+        scala.collection.mutable.Buffer<Tile> emptyTiles = JavaConversions.asScalaBuffer(Arrays.asList(emptyTile0, emptyTile1, emptyTile2));
+        Seq<Tile> result = predictWithDefaultRandomForestClassifier(emptyTiles, random);
+        double noDataValue = emptyTile0.get(0,0);
+        assertEquals(noDataValue, result.apply(0).get(0,0));
+        assertEquals(noDataValue, result.apply(0).get(0,1));
+        assertEquals(noDataValue, result.apply(0).get(0,2));
+        assertEquals(noDataValue, result.apply(0).get(3,2));
+        assertEquals(noDataValue, result.apply(0).get(3,3));
     }
 
     static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
