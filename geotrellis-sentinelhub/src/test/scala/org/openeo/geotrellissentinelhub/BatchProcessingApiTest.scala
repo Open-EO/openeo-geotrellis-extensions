@@ -144,4 +144,12 @@ class BatchProcessingApiTest {
 
     println(batchProcess.id)
   }
+
+  @Test(expected = classOf[SentinelHubException])
+  def startJustCreatedBatchProcessIsRetried(): Unit = {
+    // mimics a batch process that should have been created but returns a 404 Not Found on /start (it's actually an
+    // unknown batch process ID)
+    batchProcessingApi.startBatchProcess("18d81bca-eb5a-4dde-8066-0b42b197373e", accessToken)
+    // no assertions, visual inspection only (the logger output)
+  }
 }
