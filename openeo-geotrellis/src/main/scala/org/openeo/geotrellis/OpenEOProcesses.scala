@@ -188,7 +188,7 @@ class OpenEOProcesses extends Serializable {
   }
 
   private def findPartitionerKeys(datacube: MultibandTileLayerRDD[SpaceTimeKey]) = {
-    val keys: Option[Array[SpaceTimeKey]] = if (datacube.partitioner.isDefined && datacube.partitioner.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
+    val keys: Option[Array[SpaceTimeKey]] = if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
       val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
       if (index.isInstanceOf[SparseSpaceTimePartitioner]) {
         index.asInstanceOf[SparseSpaceTimePartitioner].theKeys
