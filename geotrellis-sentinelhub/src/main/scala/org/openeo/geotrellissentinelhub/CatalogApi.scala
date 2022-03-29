@@ -69,6 +69,7 @@ trait CatalogApi {
 
 object DefaultCatalogApi {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[DefaultCatalogApi])
+  private val maxLimit = 100
 
   private case class PagingContext(limit: Int, returned: Int, next: Option[Int])
   private case class PagedFeatureCollection(features: List[Json], context: PagingContext)
@@ -91,7 +92,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
 
     val query = this.query(queryProperties)
 
-    def getFeatureCollectionPage(nextToken: Option[Int]): PagedFeatureCollection =
+    def getFeatureCollectionPage(limit: Int, nextToken: Option[Int]): PagedFeatureCollection =
       withRetries(context = s"dateTimes $collectionId nextToken $nextToken") {
         val requestBody =
           s"""
@@ -100,6 +101,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
              |    "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
              |    "collections": ["$collectionId"],
              |    "query": $query,
+             |    "limit": $limit,
              |    "next": ${nextToken.orNull}
              |}""".stripMargin
 
@@ -117,8 +119,8 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
           .valueOr(throw _)
     }
 
-    def getDateTimes(nextToken: Option[Int]): Seq[ZonedDateTime] = {
-      val page = getFeatureCollectionPage(nextToken)
+    def getDateTimes(limit: Int, nextToken: Option[Int]): Seq[ZonedDateTime] = {
+      val page = getFeatureCollectionPage(limit, nextToken)
 
       val dateTimes = for {
         feature <- page.features.flatMap(_.asObject)
@@ -128,11 +130,11 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
 
       page.context.next match {
         case None => dateTimes
-        case nextToken => dateTimes ++ getDateTimes(nextToken)
+        case nextToken => dateTimes ++ getDateTimes(page.context.limit, nextToken)
       }
     }
 
-    getDateTimes(nextToken = None)
+    getDateTimes(maxLimit, nextToken = None)
   }
 
   override def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
@@ -145,7 +147,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
 
       val query = this.query(queryProperties)
 
-      def getFeatureCollectionPage(nextToken: Option[Int]): PagedJsonFeatureCollectionMap = {
+      def getFeatureCollectionPage(limit: Int, nextToken: Option[Int]): PagedJsonFeatureCollectionMap = {
         val requestBody =
           s"""
              |{
@@ -153,6 +155,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
              |  "collections": ["$collectionId"],
              |  "query": $query,
              |  "intersects": ${geometry.reproject(geometryCrs, LatLng).toGeoJson()},
+             |  "limit": $limit,
              |  "next": ${nextToken.orNull}
              |}""".stripMargin
 
@@ -170,8 +173,8 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
           .valueOr(throw _)
       }
 
-      def getFeatures(nextToken: Option[Int]): Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
-        val page = getFeatureCollectionPage(nextToken)
+      def getFeatures(limit: Int, nextToken: Option[Int]): Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
+        val page = getFeatureCollectionPage(limit, nextToken)
 
         // it is assumed the returned geometries are in LatLng
         val features = page.getAllFeatures[Feature[Geometry, Json]]
@@ -188,11 +191,11 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
 
         page.context.next match {
           case None => features
-          case nextToken => features ++ getFeatures(nextToken)
+          case nextToken => features ++ getFeatures(page.context.limit, nextToken)
         }
       }
 
-      getFeatures(nextToken = None)
+      getFeatures(maxLimit, nextToken = None)
   }
 
   private def http(url: String, accessToken: String): HttpRequest =
