@@ -64,7 +64,7 @@ class RlGuardAdapter extends RateLimitingGuard with Serializable {
           val error = result.get("error").flatMap(_.asString)
 
           error match {
-            case Some(message) => logger.error(message); 0.0 // retry with exponential backoff
+            case Some(message) => logger.error(message, new IOException(message)); 0.0 // retry with exponential backoff
             case _ => result("delay_s").asNumber.map(_.toDouble).get
           }
         }
