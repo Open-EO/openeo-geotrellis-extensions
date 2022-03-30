@@ -330,15 +330,15 @@ class OpenEOProcesses extends Serializable {
 
     val allPossibleSpacetime =  allPossibleKeys.flatMap(x => labelsDates.map(y => (SpaceTimeKey(x, TemporalKey(y)),null)))
 
-    implicit val index: PartitionerIndex[_ >: SpatialKey with SpaceTimeKey <: Product] =
+    val index: PartitionerIndex[SpaceTimeKey] =
       if(keys.isDefined) {
-        new SparseSpatialPartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, 0,keys.map(_.map(_.spatialKey)))
+        new SparseSpaceTimePartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, 0,keys)
       }else{
         SpaceTimeByMonthPartitioner
       }
 
     logger.info(s"aggregate_temporal results in ${allPossibleSpacetime.size} keys, using partitioner index: ${index}" )
-    val partitioner = new SpacePartitioner(datacube.metadata.bounds)
+    val partitioner: SpacePartitioner[SpaceTimeKey] = SpacePartitioner[SpaceTimeKey](datacube.metadata.bounds)(implicitly,implicitly, index)
 
     val allKeysRDD: RDD[(SpaceTimeKey, Null)] = SparkContext.getOrCreate().parallelize(allPossibleSpacetime)
     val tilesByInterval: RDD[(SpaceTimeKey, MultibandTile)] = datacube.flatMap(tuple => {
