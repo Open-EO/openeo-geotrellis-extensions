@@ -112,7 +112,13 @@ class OpenEOProcesses extends Serializable {
    * @return
    */
   def applyTimeDimension(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpaceTimeKey] = {
-    logger.info(s"Applying callback on time dimension of cube: ${datacube.partitioner.getOrElse("no partitioner")} and metadata ${datacube.metadata}")
+    val index: Option[PartitionerIndex[SpaceTimeKey]] =
+    if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
+       Some(datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index)
+    }else{
+      None
+    }
+    logger.info(s"Applying callback on time dimension of cube with partitioner: ${datacube.partitioner.getOrElse("no partitioner")} - index: ${index.getOrElse("no index")} and metadata ${datacube.metadata}")
     val function = scriptBuilder.generateFunction(context.asScala.toMap)
     val rdd =  groupOnTimeDimension(datacube).flatMap{ tiles => {
       val values = tiles._2
