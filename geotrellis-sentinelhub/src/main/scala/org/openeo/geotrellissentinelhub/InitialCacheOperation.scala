@@ -165,9 +165,12 @@ abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
   private def simplify(gridGeometries: Seq[Geometry]): MultiPolygon = {
     // make sure they dissolve properly
     val growDistance = gridGeometries.head.getEnvelopeInternal.getWidth * 0.05
-    val slightlyOverlappingGridGeometries = gridGeometries.map(_.buffer(growDistance).asInstanceOf[Polygon])
+    val quadrantSegments = 0
+    val slightlyOverlappingGridGeometries =
+      gridGeometries.map(_.buffer(growDistance, quadrantSegments).asInstanceOf[Polygon])
 
-    def shrink(gridGeometry: Polygon): Polygon = gridGeometry.buffer(-growDistance * 2).asInstanceOf[Polygon]
+    def shrink(gridGeometry: Polygon): Polygon =
+      gridGeometry.buffer(-growDistance * 2, quadrantSegments).asInstanceOf[Polygon]
 
     dissolve(slightlyOverlappingGridGeometries) match {
       case polygon: Polygon => MultiPolygon(shrink(polygon))
