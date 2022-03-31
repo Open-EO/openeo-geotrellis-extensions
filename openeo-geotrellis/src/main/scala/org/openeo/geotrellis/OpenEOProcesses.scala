@@ -441,6 +441,13 @@ class OpenEOProcesses extends Serializable {
     datacube.partitionBy( SpacePartitioner(keyBounds))
   }
 
+  def applySparseSpacetimePartitioner(datacube: RDD[(SpaceTimeKey, MultibandTile)],  keys: Array[SpaceTimeKey],indexReduction:Int): RDD[(SpaceTimeKey, MultibandTile)] = {
+    implicit val newIndex: PartitionerIndex[SpaceTimeKey] = new SparseSpaceTimePartitioner(keys.map(SparseSpaceTimePartitioner.toIndex(_,indexReduction)),indexReduction)
+    val bounds = KeyBounds(keys.min,keys.max)
+    val partitioner = SpacePartitioner[SpaceTimeKey](bounds)(implicitly,implicitly,newIndex)
+    datacube.partitionBy( partitioner)
+  }
+
   private def outerJoin[K: Boundable: PartitionerIndex: ClassTag,
     M: GetComponent[*, Bounds[K]],
     M1: GetComponent[*, Bounds[K]]
