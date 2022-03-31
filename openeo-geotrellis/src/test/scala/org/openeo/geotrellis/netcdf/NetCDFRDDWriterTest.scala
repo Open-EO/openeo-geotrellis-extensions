@@ -136,7 +136,7 @@ class NetCDFRDDWriterTest {
     val polygon2_nativecrs = polygon2.reproject(CRS.fromEpsgCode(4326), utm30)
     val polygon3_nativecrs = polygon3.reproject(CRS.fromEpsgCode(4326), utm30)
     val polySeq = List(MultiPolygon(polygon1_nativecrs), MultiPolygon(polygon2_nativecrs), MultiPolygon(polygon3_nativecrs)).toArray
-    val polygons = new ProjectedPolygons(polySeq, CRS.fromEpsgCode(32630))
+    val polygons = ProjectedPolygons(polySeq, CRS.fromEpsgCode(32630))
 
     val extent = polygons.polygons.seq.extent
     val bbox = ProjectedExtent(extent, utm30)
