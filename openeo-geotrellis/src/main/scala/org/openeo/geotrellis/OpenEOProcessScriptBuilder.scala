@@ -615,6 +615,7 @@ class OpenEOProcessScriptBuilder {
       case "first" => applyListFunction("data", firstFunctionWithNodata)
       case "last" if ignoreNoData => applyListFunction("data", lastFunctionIgnoreNoData)
       case "last" => applyListFunction("data", lastFunctionWithNoData)
+      case "is_nodata" => mapFunction("x", Undefined.apply)
       case "array_element" => arrayElementFunction(arguments)
       case "array_modify" => arrayModifyFunction(arguments)
       case "array_interpolate_linear" => applyListFunction("data",linearInterpolation)
