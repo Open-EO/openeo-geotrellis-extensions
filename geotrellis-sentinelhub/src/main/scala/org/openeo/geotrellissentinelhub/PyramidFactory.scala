@@ -279,10 +279,10 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
               if (dataCubeParameters.partitionerTemporalResolution != "ByDay") {
                 val indices = overlappingKeys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted.toArray
-                new SparseSpaceOnlyPartitioner(indices, reduction)
+                new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(overlappingKeys.toArray))
               } else {
                 val indices = overlappingKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted.toArray
-                new SparseSpaceTimePartitioner(indices, reduction)
+                new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(overlappingKeys.toArray))
               }
             }
             val partitioner = SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), partitionerIndex)
