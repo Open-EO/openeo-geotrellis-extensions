@@ -3,11 +3,12 @@ package org.openeo.geotrellissentinelhub
 import com.github.blemale.scaffeine.{LoadingCache, Scaffeine}
 import org.openeo.geotrellissentinelhub.AuthApi.AuthResponse
 
+import java.util.concurrent.TimeUnit
 import scala.concurrent.duration._
 
 object AccessTokenCache {
   private val accessTokenCache: LoadingCache[(String, String), AuthResponse] = {
-    def expiresIn(authResponse: AuthResponse): FiniteDuration = authResponse.expires_in.toNanos.nanoseconds / 2
+    def expiresIn(authResponse: AuthResponse): FiniteDuration = authResponse.expires_in.toNanos.nanoseconds - FiniteDuration(10,TimeUnit.SECONDS)
 
     Scaffeine()
       .expireAfter[(String, String), AuthResponse](
