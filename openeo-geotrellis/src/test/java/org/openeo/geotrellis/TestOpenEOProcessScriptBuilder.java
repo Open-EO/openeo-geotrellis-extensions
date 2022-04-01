@@ -889,6 +889,24 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(tile_timestep0.cellType(), multiple_input.apply(0).cellType());
     }
 
+    @DisplayName("Test 'is_nodata' process")
+    @Test
+    public void testIsNoData() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.expressionStart("is_nodata", new HashMap<String, Object>());
+        builder.expressionEnd("is_nodata", new HashMap<String, Object>());
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        FloatArrayTile tile0 = FloatConstantNoDataArrayTile.empty(3, 3);
+        tile0.setDouble(0,0, 5.0);
+        tile0.setDouble(2,1, 4.0);
+        tile0.setDouble(2,2, 17.0);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile0)));
+        Tile res = result.apply(0);
+
+        assertTileEquals(fillBitArrayTile(3, 3, 0, 1, 1, 1, 1, 0, 1, 1, 0), res);
+    }
+
     @DisplayName("Test array_element process")
     @Test
     public void testArrayElement() {
