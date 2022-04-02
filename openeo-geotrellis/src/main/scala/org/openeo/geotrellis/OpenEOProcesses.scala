@@ -472,6 +472,11 @@ class OpenEOProcesses extends Serializable {
       else if(leftPart.index == rightPart.index && leftPart.index == ByTileSpatialPartitioner ) {
         leftPart
       }
+      else if(leftPart.index == rightPart.index  && leftPart.index.isInstanceOf[SparseSpatialPartitioner] ) {
+        val newIndices: Array[BigInt] = (leftPart.index.asInstanceOf[SparseSpatialPartitioner].indices ++ rightPart.index.asInstanceOf[SparseSpatialPartitioner].indices).distinct.sorted
+        implicit val newIndex: PartitionerIndex[K] = new SparseSpatialPartitioner(newIndices,leftPart.index.asInstanceOf[SparseSpatialPartitioner].indexReduction).asInstanceOf[PartitionerIndex[K]]
+        SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
+      }
       else{
         SpacePartitioner[K](kb)
       }

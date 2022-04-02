@@ -64,7 +64,7 @@ package object geotrelliscommon {
     }
 
     override def hashCode(): Int = {
-      val state = Seq(indices, indexReduction)
+      val state = Seq(indexReduction)
       state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
     }
 
@@ -86,13 +86,12 @@ package object geotrelliscommon {
     override def equals(other: Any): Boolean = other match {
       case that: SparseSpaceOnlyPartitioner =>
         (that canEqual this) &&
-          indices == that.indices &&
           indexReduction == that.indexReduction
       case _ => false
     }
 
     override def hashCode(): Int = {
-      val state = Seq(indices, indexReduction)
+      val state = Seq( indexReduction)
       state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
     }
   }
@@ -111,13 +110,12 @@ package object geotrelliscommon {
     override def equals(other: Any): Boolean = other match {
       case that: SparseSpatialPartitioner =>
         (that canEqual this) &&
-          indices == that.indices &&
           indexReduction == that.indexReduction
       case _ => false
     }
 
     override def hashCode(): Int = {
-      val state = Seq(indices, indexReduction)
+      val state = Seq( indexReduction)
       state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
     }
   }
