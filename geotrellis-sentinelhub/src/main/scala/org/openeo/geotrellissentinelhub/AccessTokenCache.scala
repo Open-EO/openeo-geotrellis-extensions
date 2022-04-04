@@ -26,7 +26,7 @@ object AccessTokenCache {
       .build { case (clientId, clientSecret) => new AuthApi().authenticate(clientId, clientSecret) }
   }
 
-  def get(clientId: String, clientSecret: String): AuthResponse = accessTokenCache.get((clientId, clientSecret))
+  def get(clientId: String, clientSecret: String): String = accessTokenCache.get((clientId, clientSecret)).access_token
   def put(clientId: String, clientSecret: String, authResponse: AuthResponse): Unit = accessTokenCache.put((clientId, clientSecret), authResponse)
 
   def invalidate(clientId: String, clientSecret: String): Unit = accessTokenCache.invalidate((clientId, clientSecret))
