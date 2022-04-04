@@ -18,7 +18,7 @@ class AccessTokenCacheTest {
     AccessTokenCache.put(clientId, clientSecret, initialAccessToken)
 
     // should still be valid
-    assertEquals(initialAccessToken, AccessTokenCache.get(clientId, clientSecret))
+    assertEquals(initialAccessToken.access_token, AccessTokenCache.get(clientId, clientSecret))
 
     TimeUnit.SECONDS.sleep(5) // let it evict
 
