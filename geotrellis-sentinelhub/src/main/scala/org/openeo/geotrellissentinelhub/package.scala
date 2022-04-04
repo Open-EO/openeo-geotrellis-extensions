@@ -62,8 +62,8 @@ package object geotrellissentinelhub {
   }
 
   // TODO: merge this "one time retry policy" with withRetries() and move the retries from the APIs to the services?
-  def authorized[R](clientId: String, clientSecret: String)(fn: String => R): R = {
-    def accessToken: String = AccessTokenCache.get(clientId, clientSecret)
+  def authorized[R](clientId: String, clientSecret: String)(fn: AuthApi.AuthResponse => R): R = {
+    def accessToken: AuthApi.AuthResponse = AccessTokenCache.get(clientId, clientSecret)
 
     try fn(accessToken)
     catch {

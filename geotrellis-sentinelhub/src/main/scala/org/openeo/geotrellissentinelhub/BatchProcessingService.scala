@@ -17,7 +17,7 @@ object BatchProcessingService {
 class BatchProcessingService(endpoint: String, val bucketName: String, clientId: String, clientSecret: String) {
   import BatchProcessingService._
 
-  private def authorized[R](fn: String => R): R =
+  private def authorized[R](fn: AuthApi.AuthResponse => R): R =
     org.openeo.geotrellissentinelhub.authorized[R](clientId, clientSecret)(fn)
 
   def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
@@ -60,7 +60,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     val dateTimes = authorized { accessToken =>
       val catalogApi = if (collection_id == null) new MadeToMeasureCatalogApi else new DefaultCatalogApi(endpoint)
       catalogApi.dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
-        accessToken, Criteria.toQueryProperties(metadata_properties))
+        accessToken.access_token, Criteria.toQueryProperties(metadata_properties))
     }
 
     if (dateTimes.isEmpty)
@@ -85,12 +85,12 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
         processing_options,
         bucketName,
         description = s"$dataset_id ${polygons.length} $from_date $to_date $band_names",
-        accessToken,
+        accessToken.access_token,
         subfolder
       ).id
     }
 
-    authorized { accessToken => batchProcessingApi.startBatchProcess(batchRequestId, accessToken) }
+    authorized { accessToken => batchProcessingApi.startBatchProcess(batchRequestId, accessToken.access_token) }
 
     batchRequestId
   }
@@ -131,11 +131,11 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
   }
 
   def get_batch_process_status(batch_request_id: String): String = authorized { accessToken =>
-    new BatchProcessingApi(endpoint).getBatchProcess(batch_request_id, accessToken).status
+    new BatchProcessingApi(endpoint).getBatchProcess(batch_request_id, accessToken.access_token).status
   }
 
   def restart_partially_failed_batch_process(batch_request_id: String): Unit = authorized { accessToken =>
-    new BatchProcessingApi(endpoint).restartPartiallyFailedBatchProcess(batch_request_id, accessToken)
+    new BatchProcessingApi(endpoint).restartPartiallyFailedBatchProcess(batch_request_id, accessToken.access_token)
   }
 
   def start_card4l_batch_processes(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
@@ -163,7 +163,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     // original features that overlap in space and time
     val features = authorized { accessToken =>
       new DefaultCatalogApi(endpoint).searchCard4L(collection_id, geometry, geometryCrs, from, to,
-        accessToken, Criteria.toQueryProperties(metadata_properties))
+        accessToken.access_token, Criteria.toQueryProperties(metadata_properties))
     }
 
     // their intersections with input polygons (all should be in LatLng)
@@ -189,12 +189,12 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
             additionalDataFilters = Criteria.toDataFilters(metadata_properties),
             bucketName,
             subfolder,
-            accessToken
+            accessToken.access_token
           ).id
         }
 
     for (batchRequestId <- batchRequestIds) {
-      authorized { accessToken => batchProcessingApi.startBatchProcess(batchRequestId, accessToken) }
+      authorized { accessToken => batchProcessingApi.startBatchProcess(batchRequestId, accessToken.access_token) }
     }
 
     batchRequestIds.toIndexedSeq.asJava

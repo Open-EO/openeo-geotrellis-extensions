@@ -1,14 +1,21 @@
 package org.openeo.geotrellissentinelhub
 
 import com.github.blemale.scaffeine.{LoadingCache, Scaffeine}
+import org.apache.commons.math3.random.RandomDataGenerator
 import org.openeo.geotrellissentinelhub.AuthApi.AuthResponse
 
-import java.util.concurrent.TimeUnit
 import scala.concurrent.duration._
 
 object AccessTokenCache {
+  private val rnd = new RandomDataGenerator
+
   private val accessTokenCache: LoadingCache[(String, String), AuthResponse] = {
-    def expiresIn(authResponse: AuthResponse): FiniteDuration = authResponse.expires_in.toNanos.nanoseconds - FiniteDuration(10,TimeUnit.SECONDS)
+    def expiresIn(authResponse: AuthResponse): FiniteDuration = {
+      val expiresInMillis = authResponse.expires_in.toMillis
+      val (lower, upper) = (expiresInMillis / 4, expiresInMillis * 3/4)
+      val expiresInMillisWithJitter = rnd.nextLong(lower, upper)
+      expiresInMillisWithJitter.millis
+    }
 
     Scaffeine()
       .expireAfter[(String, String), AuthResponse](
@@ -19,7 +26,8 @@ object AccessTokenCache {
       .build { case (clientId, clientSecret) => new AuthApi().authenticate(clientId, clientSecret) }
   }
 
-  def get(clientId: String, clientSecret: String): String = accessTokenCache.get((clientId, clientSecret)).access_token
+  def get(clientId: String, clientSecret: String): AuthResponse = accessTokenCache.get((clientId, clientSecret))
+  def put(clientId: String, clientSecret: String, authResponse: AuthResponse): Unit = accessTokenCache.put((clientId, clientSecret), authResponse)
 
   def invalidate(clientId: String, clientSecret: String): Unit = accessTokenCache.invalidate((clientId, clientSecret))
 }

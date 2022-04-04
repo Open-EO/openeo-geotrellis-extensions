@@ -64,12 +64,13 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
   private val maxZoom = 14
 
-  private def authorized[R](fn: String => R): R =
+  private def authorized[R](fn: AuthApi.AuthResponse => R): R =
     org.openeo.geotrellissentinelhub.authorized[R](clientId, clientSecret)(fn)
 
   private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom,
                     bandNames: Seq[String], metadataProperties: util.Map[String, util.Map[String, Any]],
-                    features: collection.Map[String, Feature[Geometry, ZonedDateTime]])(implicit sc: SparkContext):
+                    features: collection.Map[String, Feature[Geometry, ZonedDateTime]],
+                    initialAccessToken: AuthApi.AuthResponse)(implicit sc: SparkContext):
   MultibandTileLayerRDD[SpaceTimeKey] = {
     require(zoom >= 0)
     require(zoom <= maxZoom)
@@ -100,6 +101,10 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
     assert(partitioner.index == SpaceTimeByMonthPartitioner)
 
     val tilesRdd = sc.parallelize(overlappingKeys, numSlices = (overlappingKeys.size / maxKeysPerPartition) max 1)
+      .mapPartitions(keys => {
+        AccessTokenCache.put(clientId, clientSecret, initialAccessToken)
+        keys
+      }, preservesPartitioning = true)
       .map { key =>
         val width = layout.tileLayout.tileCols
         val height = layout.tileLayout.tileRows
@@ -109,7 +114,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
         val tile = authorized { accessToken =>
           processApi.getTile(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs),
             key.temporalKey, width, height, bandNames, sampleType, Criteria.toDataFilters(metadataProperties),
-            processingOptions, accessToken)
+            processingOptions, accessToken.access_token)
         }
 
         (key, tile)
@@ -130,13 +135,13 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
   Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val (polygon, polygonCrs) = (boundingBox.extent.toPolygon(), boundingBox.crs)
 
-    val features = authorized { accessToken =>
-      _catalogApi.search(collectionId, polygon, polygonCrs,
-        from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadataProperties))
-    }
+    val accessToken = authorized(identity)
+
+    val features = _catalogApi.search(collectionId, polygon, polygonCrs,
+      from, atEndOfDay(to), accessToken.access_token, Criteria.toQueryProperties(metadataProperties))
 
     val layers = for (zoom <- maxZoom to 0 by -1)
-      yield zoom -> layer(boundingBox, from, to, zoom, bandNames, metadataProperties, features)
+      yield zoom -> layer(boundingBox, from, to, zoom, bandNames, metadataProperties, features, accessToken)
 
     Pyramid(layers.toMap)
   }
@@ -195,7 +200,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             authorized { accessToken =>
               processApi.getTile(datasetId, projectedExtent, dateTime, width, height, bandNames,
-                sampleType, Criteria.toDataFilters(metadata_properties), processingOptions, accessToken)
+                sampleType, Criteria.toDataFilters(metadata_properties), processingOptions, accessToken.access_token)
             }
           }
 
@@ -236,7 +241,13 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
         val tilesRdd =
           if (datasetId == "dem") {
             val overlappingKeys = layout.mapTransform.keysForGeometry(GeometryCollection(polygons)).toSeq
+            val accessToken = authorized(identity)
+
             val keysRdd = sc.parallelize(overlappingKeys)
+              .mapPartitions(keys => {
+                AccessTokenCache.put(clientId, clientSecret, accessToken)
+                keys
+              }, preservesPartitioning = true)
 
             val tilesRdd = keysRdd
               .flatMap { spatialKey =>
@@ -254,12 +265,14 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             DatacubeSupport.applyDataMask(Some(dataCubeParameters), tilesRdd)
           } else {
+            val accessToken = authorized(identity)
+
             val overlappingKeys = {
               val multiPolygon = simplify(polygons)
 
               val features = authorized { accessToken =>
                 _catalogApi.search(collectionId, multiPolygon, polygons_crs,
-                  from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
+                  from, atEndOfDay(to), accessToken.access_token, Criteria.toQueryProperties(metadata_properties))
               }
 
               val intersectingFeatureKeys = for {
@@ -293,8 +306,11 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             keysRdd = DatacubeSupport.applyDataMask(Some(dataCubeParameters),keysRdd)
 
             val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = keysRdd
-              .mapPartitions(_.map(key => (key._1,loadMasked(key._1.spatialKey, key._1.time))),preservesPartitioning = true)
-              .filter{case (key:SpaceTimeKey,tile:Option[MultibandTile])=> tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
+              .mapPartitions(keys => {
+                AccessTokenCache.put(clientId, clientSecret, accessToken)
+                keys.map { case (spaceTimeKey, _) => (spaceTimeKey, loadMasked(spaceTimeKey.spatialKey, spaceTimeKey.time)) }
+              }, preservesPartitioning = true)
+              .filter {case (_: SpaceTimeKey, tile: Option[MultibandTile]) => tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
               .mapValues(t => t.get)
 
             tilesRdd
