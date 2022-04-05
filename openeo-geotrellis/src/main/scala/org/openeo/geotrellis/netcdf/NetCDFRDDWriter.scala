@@ -402,9 +402,11 @@ object NetCDFRDDWriter {
                   bandNames: ArrayList[String],
                   crs:CRS, dimensionNames: java.util.Map[String,String],
                   attributes: java.util.Map[String,String]) = {
-    if (!rasters.forall(_.rasterExtent == rasters.head.rasterExtent))
-      throw new IOException("Failed to write rasters to disk. Raster extents are not equal.")
-    val aRaster = rasters.head
+    val maxExtent: Extent = rasters.map(_._2).reduce((a, b) => if (a.area > b.area) a else b)
+    val equalRasters = rasters.map(raster =>
+      if (raster.extent != maxExtent) raster.crop(maxExtent, CropOptions(clamp = false, force = true)) else raster
+    )
+    val aRaster = equalRasters.head
     val rasterExtent = aRaster.rasterExtent
 
     val intermediatePath =
@@ -418,8 +420,8 @@ object NetCDFRDDWriter {
     try{
 
       for (bandIndex <- bandNames.asScala.indices) {
-        for (i <- rasters.indices) {
-          writeTile(bandNames.get(bandIndex),  if(dates!=null)  scala.Array(i , 0, 0) else scala.Array( 0, 0), rasters(i).tile.band(bandIndex), netcdfFile)
+        for (i <- equalRasters.indices) {
+          writeTile(bandNames.get(bandIndex),  if(dates!=null)  scala.Array(i , 0, 0) else scala.Array( 0, 0), equalRasters(i).tile.band(bandIndex), netcdfFile)
         }
       }
     }finally {
