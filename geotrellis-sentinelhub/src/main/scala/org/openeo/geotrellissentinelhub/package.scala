@@ -35,7 +35,7 @@ package object geotrellissentinelhub {
           && !responseBody.contains("newLimit > capacity") && !responseBody.contains("Illegal request to https") => true
         case _: SocketTimeoutException => true
         case _: CirceException => true
-        case e => logger.error(s"Not attempting to retry unrecoverable error: $context -> ${e.getMessage}", e); false
+        case e => logger.error(s"Not attempting to retry unrecoverable error in context: $context", e); false
       }
 
       new RetryPolicy[R]
@@ -45,11 +45,11 @@ package object geotrellissentinelhub {
         .withMaxAttempts(5)
         .onFailedAttempt((attempt: ExecutionAttemptedEvent[R]) => {
           val e = attempt.getLastFailure
-          logger.warn(s"Attempt ${attempt.getAttemptCount} failed: $context -> ${e.getMessage}", e)
+          logger.warn(s"Attempt ${attempt.getAttemptCount} failed in context: $context", e)
         })
         .onFailure((execution: ExecutionCompletedEvent[R]) => {
           val e = execution.getFailure
-          logger.error(s"Failed after ${execution.getAttemptCount} attempt(s): $context -> ${e.getMessage}", e)
+          logger.error(s"Failed after ${execution.getAttemptCount} attempt(s) in context: $context", e)
         })
     }
 
