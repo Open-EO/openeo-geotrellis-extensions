@@ -441,9 +441,10 @@ class OpenEOProcesses extends Serializable {
     datacube.partitionBy( SpacePartitioner(keyBounds))
   }
 
-  def applySparseSpacetimePartitioner(datacube: RDD[(SpaceTimeKey, MultibandTile)],  keys: Array[SpaceTimeKey],indexReduction:Int): RDD[(SpaceTimeKey, MultibandTile)] = {
-    implicit val newIndex: PartitionerIndex[SpaceTimeKey] = new SparseSpaceTimePartitioner(keys.map(SparseSpaceTimePartitioner.toIndex(_,indexReduction)),indexReduction)
-    val bounds = KeyBounds(keys.min,keys.max)
+  def applySparseSpacetimePartitioner(datacube: RDD[(SpaceTimeKey, MultibandTile)],  keys: util.List[SpaceTimeKey],indexReduction:Int): RDD[(SpaceTimeKey, MultibandTile)] = {
+    val scalaKeys = keys.asScala
+    implicit val newIndex: PartitionerIndex[SpaceTimeKey] = new SparseSpaceTimePartitioner(scalaKeys.map(SparseSpaceTimePartitioner.toIndex(_,indexReduction)),indexReduction)
+    val bounds = KeyBounds(scalaKeys.min,scalaKeys.max)
     val partitioner = SpacePartitioner[SpaceTimeKey](bounds)(implicitly,implicitly,newIndex)
     datacube.partitionBy( partitioner)
   }
