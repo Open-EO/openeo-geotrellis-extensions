@@ -13,6 +13,7 @@ import geotrellis.util._
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.openeo.geotrellis.geotiff.getCreoS3Client
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
@@ -81,9 +82,7 @@ object NetCDFRDDWriter {
     val rasterExtent = RasterExtent(extent = extent, cellSize = rdd.metadata.cellSize)
 
     var netcdfFile: NetcdfFileWriter = null
-    val cachedRDD = rdd.persist(StorageLevel.MEMORY_AND_DISK)
-    val count = cachedRDD.count()
-    logger.info(s"Writing NetCDF from rdd with : ${count} elements and ${rdd.getNumPartitions} partitions.")
+    val cachedRDD: RDD[(SpatialKey, MultibandTile)] = cacheAndRepartition(rdd)
     for(tuple <- cachedRDD.toLocalIterator){
       val cellType = tuple._2.cellType
 
@@ -138,17 +137,7 @@ object NetCDFRDDWriter {
 
     val rasterExtent = RasterExtent(extent = extent, cellSize = rdd.metadata.cellSize)
 
-    val cachedRDD = rdd.persist(StorageLevel.MEMORY_AND_DISK)
-    val count = cachedRDD.count()
-    logger.info(s"Writing NetCDF from rdd with : ${count} elements and ${rdd.getNumPartitions} partitions.")
-    val elementsPartitionRatio = count / rdd.getNumPartitions
-    val shuffledRDD =
-    if(elementsPartitionRatio<4) {
-      //avoid iterating over many empty partitions
-      cachedRDD.repartition(math.max(1,(count / 4).toInt))()
-    }else{
-      cachedRDD
-    }
+    val cachedRDD: RDD[(SpaceTimeKey, MultibandTile)] = cacheAndRepartition(rdd)
 
     val dates = cachedRDD.keys.map(k => Duration.between(fixedTimeOffset, k.time).toDays.toInt).distinct().collect().sorted.toList
 
@@ -160,7 +149,7 @@ object NetCDFRDDWriter {
       }
 
     var netcdfFile: NetcdfFileWriter = null
-    for(tuple <- shuffledRDD.toLocalIterator){
+    for(tuple <- cachedRDD.toLocalIterator){
 
       val cellType = tuple._2.cellType
       val timeOffset = Duration.between(fixedTimeOffset, tuple._1.time).toDays.toInt
@@ -203,6 +192,21 @@ object NetCDFRDDWriter {
     return Collections.singletonList(path)
   }
 
+
+  private def cacheAndRepartition[K](rdd: MultibandTileLayerRDD[K]) = {
+    val cachedRDD = rdd.persist(StorageLevel.MEMORY_AND_DISK)
+    val count = cachedRDD.count()
+    logger.info(s"Writing NetCDF from rdd with : ${count} elements and ${rdd.getNumPartitions} partitions.")
+    val elementsPartitionRatio = count / rdd.getNumPartitions
+    val shuffledRDD =
+      if (elementsPartitionRatio < 4) {
+        //avoid iterating over many empty partitions
+        cachedRDD.repartition(math.max(1, (count / 4).toInt))()
+      } else {
+        cachedRDD
+      }
+    shuffledRDD
+  }
 
   private def writeTile(variable: String, origin: Array[Int], tile: Tile, netcdfFile: NetcdfFileWriter) = {
     val cols = tile.cols
