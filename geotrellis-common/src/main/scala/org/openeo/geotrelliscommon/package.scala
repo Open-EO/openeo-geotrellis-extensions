@@ -69,7 +69,7 @@ package object geotrelliscommon {
     }
 
 
-    override def toString = s"SparseSpaceTimePartitioner ${indices.length}"
+    override def toString = s"SparseSpaceTimePartitioner ${indices.length} ${theKeys.isDefined}"
   }
 
   class SparseSpaceOnlyPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpaceTimeKey]] = Option.empty ) extends PartitionerIndex[SpaceTimeKey] {
