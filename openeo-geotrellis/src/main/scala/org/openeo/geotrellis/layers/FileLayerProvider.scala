@@ -227,22 +227,39 @@ object FileLayerProvider {
       case false => Option.empty
     }
 
-    // Convert RasterSources to RasterRegions.
-    val rasterRegions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] =
+    var requestedRasterRegions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))]  =
+    if(useSparsePartitioner) {
+      val keys = sc.broadcast(requiredSpatialKeys.map(_._1).collect())
       filteredSources
         .flatMap { tiledLayoutSource =>
-          tiledLayoutSource.keyedRasterRegions()
-            //this filter step reduces the 'Shuffle Write' size of this stage, so it already
-            .filter({case(key, rasterRegion) => metadata.extent.intersects(key.spatialKey.extent(metadata.layout)) } )
-            .map { case (key, rasterRegion) => (key, (rasterRegion, tiledLayoutSource.source.name)) }
+          {
+            val spaceTimeKeys: Array[SpaceTimeKey] = keys.value.map(tiledLayoutSource.tileKeyTransform(_))
+            spaceTimeKeys
+              .map(key => (key, tiledLayoutSource.rasterRegionForKey(key))).filter(_._2.isDefined).map(t=>(t._1,t._2.get))
+              .filter({case(key, rasterRegion) => metadata.extent.intersects(key.spatialKey.extent(metadata.layout)) } )
+              .map { case (key, rasterRegion) => (key, (rasterRegion, tiledLayoutSource.source.name)) }
+          }
         }
+    }else{
+      // Convert RasterSources to RasterRegions.
+      val rasterRegions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] =
+        filteredSources
+          .flatMap { tiledLayoutSource =>
+            tiledLayoutSource.keyedRasterRegions()
+              //this filter step reduces the 'Shuffle Write' size of this stage, so it already
+              .filter({case(key, rasterRegion) => metadata.extent.intersects(key.spatialKey.extent(metadata.layout)) } )
+              .map { case (key, rasterRegion) => (key, (rasterRegion, tiledLayoutSource.source.name)) }
+          }
 
-    // Only use the regions that correspond with a requested spatial key.
-    var requestedRasterRegions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))]  =
-      rasterRegions
-        .map { tuple => (tuple._1.spatialKey, tuple) }
-        //stage boundary, first stage of data loading ends here!
-        .rightOuterJoin(requiredSpatialKeys).flatMap { t => t._2._1.toList }
+      // Only use the regions that correspond with a requested spatial key.
+
+        rasterRegions
+          .map { tuple => (tuple._1.spatialKey, tuple) }
+          //for sparse keys, this takes a silly amount of time and memory. Just broadcasting spatialkeys and filtering on that may be a lot easier...
+          //stage boundary, first stage of data loading ends here!
+          .rightOuterJoin(requiredSpatialKeys).flatMap { t => t._2._1.toList }
+
+    }
 
     requestedRasterRegions = DatacubeSupport.applyDataMask(datacubeParams,requestedRasterRegions)
 
