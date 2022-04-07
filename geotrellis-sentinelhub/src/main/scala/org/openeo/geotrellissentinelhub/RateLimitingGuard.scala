@@ -96,7 +96,7 @@ class RlGuardAdapter extends RateLimitingGuard with Serializable {
 
     if (python == null) {
       logger.warn("Cannot invoke rate-limiting guard process because PYSPARK_PYTHON is not set")
-      return None
+      return None // TODO: this is to make unit test pass, really.
     }
 
     val rlGuardAdapterInvocation = Seq(python, "-m", "openeogeotrellis.sentinel_hub.rlguard_adapter",
