@@ -14,7 +14,8 @@ trait Authorizer extends Serializable {
 }
 
 object MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer {
-  private val logger = LoggerFactory.getLogger(getClass)
+  private val logger =
+    LoggerFactory.getLogger(classOf[MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer])
 }
 
 class MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId: String, clientSecret: String)
@@ -52,7 +53,7 @@ class MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(clien
 }
 
 object MemoizedAuthApiAccessTokenAuthorizer {
-  private val logger = LoggerFactory.getLogger(getClass)
+  private val logger = LoggerFactory.getLogger(classOf[MemoizedAuthApiAccessTokenAuthorizer])
 }
 
 class MemoizedAuthApiAccessTokenAuthorizer(clientId: String, clientSecret: String) extends Authorizer {

@@ -115,8 +115,6 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
       .timeout(connTimeoutMs = 1000, readTimeoutMs = 40000)
       .postData(jsonData)
 
-    logger.info(s"Executing request: ${request.urlBuilder(request)}")
-
     val response = withRetries(context = s"getTile $datasetId $date") {
       request.exec(parser = (code: Int, header: Map[String, IndexedSeq[String]], in: InputStream) =>
         if (code == 200)

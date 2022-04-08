@@ -73,10 +73,8 @@ class RlGuardAdapter extends RateLimitingGuard with Serializable {
   private def call[R](request: Map[String, Json], onSuccess: Map[String, Json] => R, onError: => R): R = {
     val python = System.getenv("PYSPARK_PYTHON")
 
-    if (python == null) {
-      logger.warn("Cannot invoke rate-limiting guard process because PYSPARK_PYTHON is not set")
+    if (python == null)
       throw new IllegalStateException("Cannot invoke rate-limiting guard process because PYSPARK_PYTHON is not set")
-    }
 
     val rlGuardAdapterInvocation = Seq(python, "-m", "openeogeotrellis.sentinel_hub.rlguard_adapter",
       request.asJson.noSpaces)

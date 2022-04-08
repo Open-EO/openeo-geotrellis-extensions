@@ -311,8 +311,9 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
       s1Orthorectification = false
     )
 
-    logger.debug(s"$rateLimitingGuard says to wait $delay")
+    if (logger.isDebugEnabled) logger.debug(s"$rateLimitingGuard says to wait $delay")
+    else if (!delay.isZero) logger.info(s"$rateLimitingGuard says to wait $delay")
+
     MILLISECONDS.sleep(delay.toMillis)
   }
-
 }
