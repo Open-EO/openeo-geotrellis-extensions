@@ -13,12 +13,15 @@ object BatchProcessingService {
   case class NoSuchFeaturesException(message: String) extends IllegalArgumentException(message)
 }
 
-// TODO: snake_case for these arguments
-class BatchProcessingService(endpoint: String, val bucketName: String, clientId: String, clientSecret: String) {
+class BatchProcessingService(endpoint: String, val bucketName: String, authorizer: Authorizer) {
   import BatchProcessingService._
 
-  private def authorized[R](fn: String => R): R =
-    org.openeo.geotrellissentinelhub.authorized[R](clientId, clientSecret)(fn)
+  // convenience method for Python client
+  def this(endpoint: String, bucket_name: String, client_id: String, client_secret: String) =
+    this(endpoint, bucket_name,
+      new MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(client_id, client_secret))
+
+  private def authorized[R](fn: String => R): R = authorizer.authorized(fn)
 
   def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
                           to_date: String, band_names: util.List[String], sampleType: SampleType,

@@ -50,53 +50,32 @@ class RlGuardAdapter extends RateLimitingGuard with Serializable {
       ).asJson
     )
 
-    val python = System.getenv("PYSPARK_PYTHON")
-
-    if (python == null)
-      throw new IllegalStateException("Cannot invoke rate-limiting guard process because PYSPARK_PYTHON is not set")
-
-    val rlGuardAdapterInvocation = Seq(python, "-m", "openeogeotrellis.sentinel_hub.rlguard_adapter",
-      request.asJson.noSpaces)
-
-    val stdErrBuffer = new StringBuilder
-
-    try {
-      val rlGuardAdapterOutput = rlGuardAdapterInvocation
-        .!!(ProcessLogger(fout = _ => (), ferr = s => {
-          logger.debug(s) // assumes rlguard_adapter logs to stderr (= Python's logging default destination)
-          stdErrBuffer.append(s).append(newline)
-        }))
-
-      val delayInSeconds = decode[Map[String, Json]](rlGuardAdapterOutput.trim)
-        .map { result =>
-          val error = result.get("error").flatMap(_.asString)
-
-          error match {
-            case Some(message) => logger.error(message, new IOException(message)); 0.0 // retry with exponential backoff
-            case _ => result("delay_s").asNumber.map(_.toDouble).get
-          }
-        }
-        .valueOr(throw _)
-
-      Duration.ofMillis((delayInSeconds * 1000).toLong)
-    } catch {
-      case e: RuntimeException if e.getMessage startsWith "Nonzero exit value: " => // actual exception is undocumented
-        // propagate to driver with more context
-        val stderr = stdErrBuffer.result().trim
-        val message = s"""Failed to invoke rate-limiting guard process "$rlGuardAdapterInvocation":$newline$stderr"""
-        throw new IOException(message, e)
-    }
+    call[Duration](
+      request,
+      onSuccess = result => {
+        val delayInSeconds = result("delay_s").asNumber.map(_.toDouble).get
+        Duration.ofMillis((delayInSeconds * 1000).toLong)
+      },
+      onError = Duration.ZERO // retry with exponential backoff
+    )
   }
 
   def accessToken: Option[AccessToken] = {
-    // TODO: reduce code duplication with delay
-    val request = Map("request_id" -> "access_token")
+    val request = Map("request_id" -> "access_token".asJson)
 
+    call[Option[AccessToken]](
+      request,
+      onSuccess = result => result("access_token").as[Option[AccessToken]].valueOr(throw _),
+      onError = None // retry with Auth API token
+    )
+  }
+
+  private def call[R](request: Map[String, Json], onSuccess: Map[String, Json] => R, onError: => R): R = {
     val python = System.getenv("PYSPARK_PYTHON")
 
     if (python == null) {
       logger.warn("Cannot invoke rate-limiting guard process because PYSPARK_PYTHON is not set")
-      return None // TODO: this is to make unit test pass, really.
+      throw new IllegalStateException("Cannot invoke rate-limiting guard process because PYSPARK_PYTHON is not set")
     }
 
     val rlGuardAdapterInvocation = Seq(python, "-m", "openeogeotrellis.sentinel_hub.rlguard_adapter",
@@ -116,8 +95,8 @@ class RlGuardAdapter extends RateLimitingGuard with Serializable {
           val error = result.get("error").flatMap(_.asString)
 
           error match {
-            case Some(message) => logger.error(message, new IOException(message)); None // retry with Auth API token
-            case _ => result("access_token").as[Option[AccessToken]].valueOr(throw _)
+            case Some(message) => logger.error(message, new IOException(message)); onError
+            case _ => onSuccess(result)
           }
         }
         .valueOr(throw _)

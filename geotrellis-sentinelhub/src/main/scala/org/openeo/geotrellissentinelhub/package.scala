@@ -4,7 +4,7 @@ import _root_.io.circe.{Decoder, Encoder, HCursor, Json}
 import _root_.io.circe.Decoder.Result
 import geotrellis.vector._
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
-import net.jodah.failsafe.function.{CheckedConsumer, CheckedSupplier}
+import net.jodah.failsafe.function.CheckedSupplier
 import net.jodah.failsafe.{Failsafe, FailsafeExecutor, RetryPolicy}
 import org.locationtech.jts.geom.Polygonal
 import org.slf4j.Logger
@@ -59,18 +59,6 @@ package object geotrellissentinelhub {
     failsafe.get(new CheckedSupplier[R] {
       override def get(): R = fn
     })
-  }
-
-  // TODO: merge this "one time retry policy" with withRetries() and move the retries from the APIs to the services?
-  def authorized[R](clientId: String, clientSecret: String)(fn: String => R): R = { // fn: accessToken => result
-    def accessToken: String = AccessTokenCache.get(clientId, clientSecret)
-
-    try fn(accessToken)
-    catch {
-      case SentinelHubException(_, 401, _) =>
-        AccessTokenCache.invalidate(clientId, clientSecret)
-        fn(accessToken)
-    }
   }
 
   /**

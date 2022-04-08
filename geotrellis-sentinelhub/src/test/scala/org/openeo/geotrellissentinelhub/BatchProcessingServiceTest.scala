@@ -14,8 +14,9 @@ import scala.collection.JavaConverters._
 
 class BatchProcessingServiceTest {
   private val endpoint = "https://services.sentinel-hub.com" // TODO: this depends on the dataset
+  private val authorizer = new MemoizedAuthApiAccessTokenAuthorizer(Utils.clientId, Utils.clientSecret)
   private val batchProcessingService = new BatchProcessingService(endpoint, bucketName = "openeo-sentinelhub",
-    Utils.clientId, Utils.clientSecret)
+    authorizer)
 
   @(Rule @getter)
   val temporaryFolder = new TemporaryFolder
@@ -156,7 +157,7 @@ class BatchProcessingServiceTest {
   @Test
   def startBatchProcessForModis(): Unit = {
     val batchProcessingService = new BatchProcessingService(endpoint = "https://services-uswest2.sentinel-hub.com",
-      bucketName = "openeo-sentinelhub-uswest2", Utils.clientId, Utils.clientSecret)
+      bucketName = "openeo-sentinelhub-uswest2", authorizer)
 
     val batchRequestId = batchProcessingService.start_batch_process(
       collection_id = "modis",
@@ -178,7 +179,7 @@ class BatchProcessingServiceTest {
   @Test
   def startBatchProcessForMapzenDem(): Unit = {
     val batchProcessingService = new BatchProcessingService(endpoint = "https://services-uswest2.sentinel-hub.com",
-      bucketName = "openeo-sentinelhub-uswest2", Utils.clientId, Utils.clientSecret)
+      bucketName = "openeo-sentinelhub-uswest2", authorizer)
 
     val batchRequestId = batchProcessingService.start_batch_process(
       collection_id = null,

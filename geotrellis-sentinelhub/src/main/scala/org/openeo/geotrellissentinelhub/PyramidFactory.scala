@@ -30,30 +30,19 @@ object PyramidFactory {
                               clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
                               maxSpatialResolution: CellSize, softErrors: Boolean): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
-      clientId, clientSecret, processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution, softErrors)
+      new MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
+      processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution, softErrors)
 
   def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
                                  clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
                                  maxSpatialResolution: CellSize, softErrors: Boolean): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
-      clientId, clientSecret, processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution,
-      softErrors = softErrors)
-
-  @deprecated("call withGuardedRateLimiting instead")
-  def rateLimited(endpoint: String, collectionId: String, datasetId: String, clientId: String, clientSecret: String,
-                  processingOptions: util.Map[String, Any], sampleType: SampleType,
-                  maxSpatialResolution: CellSize): PyramidFactory =
-    withGuardedRateLimiting(endpoint, collectionId, datasetId, clientId, clientSecret, processingOptions, sampleType,
-      maxSpatialResolution, softErrors = false)
-
-  @deprecated("include a maxSpatialResolution")
-  def rateLimited(endpoint: String, collectionId: String, datasetId: String, clientId: String, clientSecret: String,
-                  processingOptions: util.Map[String, Any], sampleType: SampleType): PyramidFactory =
-    rateLimited(endpoint, collectionId, datasetId, clientId, clientSecret, processingOptions, sampleType, CellSize(10,10))
+      new MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
+      processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, softErrors = softErrors)
 }
 
-class PyramidFactory(collectionId: String, datasetId: String, catalogApi: CatalogApi,
-                     processApi: ProcessApi, clientId: String, clientSecret: String,
+class PyramidFactory(collectionId: String, datasetId: String, catalogApi: CatalogApi, processApi: ProcessApi,
+                     authorizer: Authorizer,
                      processingOptions: util.Map[String, Any] = util.Collections.emptyMap[String, Any],
                      sampleType: SampleType = UINT16,
                      rateLimitingGuard: RateLimitingGuard = NoRateLimitingGuard,
@@ -64,8 +53,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
   private val maxZoom = 14
 
-  private def authorized[R](fn: String => R): R =
-    org.openeo.geotrellissentinelhub.authorized[R](clientId, clientSecret)(fn)
+  private def authorized[R](fn: String => R): R = authorizer.authorized(fn)
 
   private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom,
                     bandNames: Seq[String], metadataProperties: util.Map[String, util.Map[String, Any]],

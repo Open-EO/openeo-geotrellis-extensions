@@ -72,6 +72,7 @@ class PyramidFactoryTest {
 
   private val clientId = Utils.clientId
   private val clientSecret = Utils.clientSecret
+  private val authorizer = new MemoizedAuthApiAccessTokenAuthorizer(clientId, clientSecret)
 
   private val geoTiffOptions = GeoTiffOptions(DeflateCompression(BEST_COMPRESSION))
 
@@ -88,7 +89,7 @@ class PyramidFactoryTest {
     }
 
     val actual = testLayer(new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), clientId, clientSecret, sampleType = FLOAT32,
+      new DefaultProcessApi(endpoint), authorizer, sampleType = FLOAT32,
       maxSpatialResolution = CellSize(10, 10)), "gamma0_catalog", date, Seq("VV", "VH", "dataMask"), testCellType)
 
     assertEquals(expected, actual)
@@ -107,7 +108,7 @@ class PyramidFactoryTest {
     }
 
     val actual = testLayer(new PyramidFactory("sentinel-2-l1c", "S2L1C", new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10, 10)),
+      new DefaultProcessApi(endpoint), authorizer, maxSpatialResolution = CellSize(10, 10)),
       "sentinel2-L1C", date, Seq("B04", "B03", "B02"), testCellType)
 
     assertEquals(expected, actual)
@@ -120,7 +121,7 @@ class PyramidFactoryTest {
     val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
     val actual = testLayer(new PyramidFactory("sentinel-2-l2a", "S2L2A", new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10, 10)),
+      new DefaultProcessApi(endpoint), authorizer, maxSpatialResolution = CellSize(10, 10)),
       "sentinel2-L2A", date, Seq("B08", "B04", "B03"))
 
     assertEquals(expected, actual)
@@ -134,7 +135,7 @@ class PyramidFactoryTest {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
    val actual = testLayer(new PyramidFactory("landsat-ot-l1", "landsat-ot-l1", new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10, 10)), "landsat8",
+      new DefaultProcessApi(endpoint), authorizer, maxSpatialResolution = CellSize(10, 10)), "landsat8",
       date, Seq("B10", "B11"))
 
     assertEquals(expected, actual)
@@ -147,7 +148,7 @@ class PyramidFactoryTest {
     val endpoint = "https://services-uswest2.sentinel-hub.com"
     val date = LocalDate.of(2021, 4, 27).atStartOfDay(ZoneOffset.UTC)
     val actual = testLayer(new PyramidFactory("landsat-ot-l2", "landsat-ot-l2", new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), clientId, clientSecret, sampleType = FLOAT32), "landsat8l2", date,
+      new DefaultProcessApi(endpoint), authorizer, sampleType = FLOAT32), "landsat8l2", date,
       Seq("B04", "B03", "B02"))
 
     assertEquals(expected, actual)
@@ -161,7 +162,7 @@ class PyramidFactoryTest {
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     val actual = testLayer(new PyramidFactory("sentinel-2-l2a", "S2L2A", new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10, 10)),
+      new DefaultProcessApi(endpoint), authorizer, maxSpatialResolution = CellSize(10, 10)),
       "sentinel2-L2A_mix", date, Seq("B04", "sunAzimuthAngles", "SCL"))
 
     assertEquals(expected, actual)
@@ -172,9 +173,8 @@ class PyramidFactoryTest {
     val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
-    val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, "sentinel-2-l2a", "sentinel-2-l2a",
-      clientId, clientSecret, processingOptions = util.Collections.emptyMap[String, Any], sampleType = UINT16,
-      maxSpatialResolution = CellSize(10, 10), softErrors = false)
+    val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "sentinel-2-l2a", new DefaultCatalogApi(endpoint),
+      new DefaultProcessApi(endpoint), authorizer)
 
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
@@ -215,7 +215,7 @@ class PyramidFactoryTest {
 
     try
       testLayer(new PyramidFactory("landsat-ot-l1", datasetId = "landsat-ot-l1", new DefaultCatalogApi(endpoint),
-        new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10, 10)), "unknown",
+        new DefaultProcessApi(endpoint), authorizer, maxSpatialResolution = CellSize(10, 10)), "unknown",
         date, Seq("UNKNOWN"))
     catch {
       case e: SparkException =>
@@ -230,7 +230,7 @@ class PyramidFactoryTest {
 
     try
       testLayer(new PyramidFactory("landsat-ot-l1", datasetId = "landsat-ot-l1", new DefaultCatalogApi(endpoint),
-        new DefaultProcessApi(endpoint), clientId, clientSecret = "???", maxSpatialResolution = CellSize(10, 10)),
+        new DefaultProcessApi(endpoint), new MemoizedAuthApiAccessTokenAuthorizer(clientId, clientSecret = "???")),
         "unknown", date, Seq("B10", "B11"))
     catch {
       case e: Exception =>
@@ -297,7 +297,7 @@ class PyramidFactoryTest {
 
       val endpoint = "https://services.sentinel-hub.com"
       val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "S2L2A", new DefaultCatalogApi(endpoint),
-        new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10,10))
+        new DefaultProcessApi(endpoint), authorizer, maxSpatialResolution = CellSize(10,10))
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
@@ -349,7 +349,7 @@ class PyramidFactoryTest {
       val processApiSpy = new ProcessApiSpy(endpoint)
 
       val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "sentinel-2-l2a", new DefaultCatalogApi(endpoint),
-        processApiSpy, clientId, clientSecret, maxSpatialResolution = CellSize(10, 10))
+        processApiSpy, authorizer, maxSpatialResolution = CellSize(10, 10))
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         utmPolygons, utmCrs,
@@ -418,7 +418,7 @@ class PyramidFactoryTest {
       val endpoint = "https://services.sentinel-hub.com"
 
       val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
-        new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10, 10),
+        new DefaultProcessApi(endpoint), authorizer, maxSpatialResolution = CellSize(10, 10),
         sampleType = FLOAT32)
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
@@ -473,7 +473,7 @@ class PyramidFactoryTest {
   private def sparseSentinel1Layer(polygon: Array[MultiPolygon], crs:CRS, date: ZonedDateTime): MultibandTileLayerRDD[SpaceTimeKey] = {
     val endpoint = "https://services.sentinel-hub.com"
     val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), clientId, clientSecret, maxSpatialResolution = CellSize(10, 10),
+      new DefaultProcessApi(endpoint), authorizer, maxSpatialResolution = CellSize(10, 10),
       sampleType = FLOAT32)
 
     val Seq((_, layer)) = pyramidFactory.datacube_seq(
@@ -514,7 +514,7 @@ class PyramidFactoryTest {
 
       val endpoint = "https://services.sentinel-hub.com"
       val pyramidFactory = new PyramidFactory(collectionId = planetCollectionId, datasetId = planetCollectionId,
-        new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint), clientId, clientSecret,
+        new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint), authorizer,
         maxSpatialResolution = CellSize(3, 3), sampleType = FLOAT32)
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
@@ -565,7 +565,7 @@ class PyramidFactoryTest {
 
       val endpoint = "https://services.sentinel-hub.com"
       val pyramidFactory = new PyramidFactory(collectionId = planetCollectionId, datasetId = planetCollectionId,
-        new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint), clientId, clientSecret,
+        new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint), authorizer,
         maxSpatialResolution = CellSize(3, 3), sampleType = FLOAT32)
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
@@ -616,7 +616,7 @@ class PyramidFactoryTest {
 
       val endpoint = "https://services.sentinel-hub.com"
       val pyramidFactory = new PyramidFactory(collectionId = planetCollectionId, datasetId = planetCollectionId,
-        new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint), clientId, clientSecret,
+        new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint), authorizer,
         maxSpatialResolution = CellSize(3, 3), sampleType = FLOAT32)
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
@@ -645,9 +645,8 @@ class PyramidFactoryTest {
     val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
-    val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, "sentinel-2-l2a", "sentinel-2-l2a",
-      clientId, clientSecret, processingOptions = util.Collections.emptyMap[String, Any], sampleType = UINT16,
-      maxSpatialResolution = CellSize(10, 10), softErrors = false)
+    val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "sentinel-2-l2a", new DefaultCatalogApi(endpoint),
+      new DefaultProcessApi(endpoint), authorizer)
 
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
@@ -686,9 +685,8 @@ class PyramidFactoryTest {
     // from https://collections.eurodatacube.com/stac/mapzen-dem.json
     val maxSpatialResolution = CellSize(0.000277777777778, 0.000277777777778)
 
-    val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, collectionId = null, datasetId = "dem",
-      clientId, clientSecret, processingOptions = util.Collections.emptyMap[String, Any], sampleType = FLOAT32,
-      maxSpatialResolution, softErrors = false)
+    val pyramidFactory = new PyramidFactory(collectionId = null, datasetId = "dem", new DefaultCatalogApi(endpoint),
+      new DefaultProcessApi(endpoint), authorizer, sampleType = FLOAT32, maxSpatialResolution = maxSpatialResolution)
 
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
@@ -736,8 +734,8 @@ class PyramidFactoryTest {
         val catalogApiSpy = new CatalogApiSpy(endpoint)
         val processApiSpy = new ProcessApiSpy(endpoint)
 
-        val pyramidFactory = new PyramidFactory(collectionId, "sentinel-1-grd", catalogApiSpy, processApiSpy, clientId,
-          clientSecret, sampleType = FLOAT32, maxSpatialResolution = CellSize(10,10))
+        val pyramidFactory = new PyramidFactory(collectionId, "sentinel-1-grd", catalogApiSpy, processApiSpy,
+          authorizer, sampleType = FLOAT32)
 
         val pyramid = pyramidFactory.pyramid_seq(
           boundingBox.extent,
@@ -791,9 +789,8 @@ class PyramidFactoryTest {
       val boundingBox =
         ProjectedExtent(Extent(488960.0, 6159880.0, 491520.0, 6162440.0), CRS.fromEpsgCode(32632))
 
-      val pyramidFactory = PyramidFactory.withoutGuardedRateLimiting(endpoint, "sentinel-1-grd", "sentinel-1-grd",
-        clientId, clientSecret, processingOptions, sampleType = FLOAT32, maxSpatialResolution = CellSize(10, 10),
-        softErrors)
+      val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
+        new DefaultProcessApi(endpoint), authorizer, processingOptions, sampleType = FLOAT32, softErrors = softErrors)
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
