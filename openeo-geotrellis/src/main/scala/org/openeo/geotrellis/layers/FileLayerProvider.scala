@@ -229,9 +229,10 @@ object FileLayerProvider {
 
     //use spatialkeycount as heuristic to choose code path
     val spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
+    logger.debug(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
 
     var requestedRasterRegions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))]  =
-    if(spatialKeyCount < 200) {
+    if(spatialKeyCount < 1000) {
       val keys = sc.broadcast(requiredSpatialKeys.map(_._1).collect())
       filteredSources
         .flatMap { tiledLayoutSource =>
