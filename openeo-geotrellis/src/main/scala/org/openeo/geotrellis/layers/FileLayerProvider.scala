@@ -16,7 +16,7 @@ import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConsta
 import geotrellis.spark._
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.vector._
-import org.apache.spark.SparkContext
+import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.slf4j.LoggerFactory
@@ -227,8 +227,11 @@ object FileLayerProvider {
       case false => Option.empty
     }
 
+    //use spatialkeycount as heuristic to choose code path
+    val spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
+
     var requestedRasterRegions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))]  =
-    if(useSparsePartitioner) {
+    if(spatialKeyCount < 200) {
       val keys = sc.broadcast(requiredSpatialKeys.map(_._1).collect())
       filteredSources
         .flatMap { tiledLayoutSource =>
@@ -236,7 +239,7 @@ object FileLayerProvider {
             val spaceTimeKeys: Array[SpaceTimeKey] = keys.value.map(tiledLayoutSource.tileKeyTransform(_))
             spaceTimeKeys
               .map(key => (key, tiledLayoutSource.rasterRegionForKey(key))).filter(_._2.isDefined).map(t=>(t._1,t._2.get))
-              .filter({case(key, rasterRegion) => metadata.extent.intersects(key.spatialKey.extent(metadata.layout)) } )
+              .filter({case(key, rasterRegion) => metadata.extent.interiorIntersects(key.spatialKey.extent(metadata.layout)) } )
               .map { case (key, rasterRegion) => (key, (rasterRegion, tiledLayoutSource.source.name)) }
           }
         }
@@ -247,7 +250,7 @@ object FileLayerProvider {
           .flatMap { tiledLayoutSource =>
             tiledLayoutSource.keyedRasterRegions()
               //this filter step reduces the 'Shuffle Write' size of this stage, so it already
-              .filter({case(key, rasterRegion) => metadata.extent.intersects(key.spatialKey.extent(metadata.layout)) } )
+              .filter({case(key, rasterRegion) => metadata.extent.interiorIntersects(key.spatialKey.extent(metadata.layout)) } )
               .map { case (key, rasterRegion) => (key, (rasterRegion, tiledLayoutSource.source.name)) }
           }
 
@@ -275,17 +278,31 @@ object FileLayerProvider {
     createPartitioner(datacubeParams, requiredSpacetimeKeys, metadata)
   }
 
+
+
   def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpacetimeKeys: RDD[SpaceTimeKey],  metadata: TileLayerMetadata[SpaceTimeKey]): Some[SpacePartitioner[SpaceTimeKey]] = {
     // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
     val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(8)
     val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
-      val keys = requiredSpacetimeKeys.distinct().collect()
-      if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
-        val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
-        new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
-      } else {
-        val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
-        new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
+      val cached = requiredSpacetimeKeys.distinct().cache()
+      val spatialCount = requiredSpacetimeKeys.map(_.spatialKey).distinct().count()
+      val spatialBounds = metadata.bounds.get.toSpatial
+      val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
+      val isSparse = spatialCount < 0.5 * maxKeys
+      cached.unpersist(false)
+
+      if(isSparse) {
+        val keys = cached.collect()
+
+        if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
+          val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
+          new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
+        } else {
+          val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
+          new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
+        }
+      }else{
+        SpaceTimeByMonthPartitioner
       }
     }
     Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,
