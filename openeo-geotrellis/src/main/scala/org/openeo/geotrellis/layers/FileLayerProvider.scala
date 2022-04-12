@@ -18,6 +18,7 @@ import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.vector._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.rdd.RDD
+import org.openeo.geotrellis.layers.FileLayerProvider.{logger, readMultibandTileLayer}
 import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.slf4j.LoggerFactory
 
@@ -190,24 +191,32 @@ object FileLayerProvider {
     tiledLayoutSourceRDD
   }
 
-  def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon], polygons_crs: CRS, sc: SparkContext, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = Option.empty) = {
-    // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
-    var requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map {
+  def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon], polygons_crs: CRS, sc: SparkContext, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = Option.empty): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+    val polygonsRDD = sc.parallelize(polygons).map {
       _.reproject(polygons_crs, metadata.crs)
-    }.clipToGrid(metadata.layout).groupByKey()
+    }
+    // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
+    var requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
 
-    val spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
+    var spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
     logger.debug(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
 
     val retiledMetadata: TileLayerMetadata[SpaceTimeKey] =
-    if(datacubeParams.isDefined && datacubeParams.get.layoutScheme != "ZoomedLayoutScheme" && spatialKeyCount <= 1.1 * polygons.length && metadata.tileRows == 256) {
-      //it seems that polygons fit entirely within chunks, so chunks are too large
-      logger.debug(s"${metadata} resulted in ${spatialKeyCount} for ${polygons.length} trying to reduce tile size to 128.")
-      metadata.copy(layout =LayoutDefinition(metadata,128))
-    }else{
-      metadata
-    }
+      if (datacubeParams.isDefined && datacubeParams.get.layoutScheme != "ZoomedLayoutScheme" && spatialKeyCount <= 1.1 * polygons.length && metadata.tileRows == 256) {
+        //it seems that polygons fit entirely within chunks, so chunks are too large
+        logger.debug(s"${metadata} resulted in ${spatialKeyCount} for ${polygons.length} polygons, trying to reduce tile size to 128.")
+        val newLayout = LayoutDefinition(metadata, 128)
+        requiredSpatialKeys = polygonsRDD.clipToGrid(newLayout).groupByKey()
+        spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
+        metadata.copy(layout = newLayout)
+      } else {
+        metadata
+      }
+    tileSourcesToDataCube(rasterSources, metadata, requiredSpatialKeys, sc, cloudFilterStrategy, useSparsePartitioner, datacubeParams)
+  }
 
+  def tileSourcesToDataCube(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])], sc: SparkContext, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = Option.empty): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+    var localSpatialKeys = requiredSpatialKeys
     if(datacubeParams.exists(_.maskingCube.isDefined)) {
       val maskObject =  datacubeParams.get.maskingCube.get
       maskObject match {
@@ -217,11 +226,12 @@ object FileLayerProvider {
             if(logger.isDebugEnabled) {
               logger.debug(s"Spatial mask reduces the input to: ${maskSpatialKeys.count()} keys.")
             }
-            requiredSpatialKeys = requiredSpatialKeys.join(maskSpatialKeys).map(tuple => (tuple._1, tuple._2._1))
+            localSpatialKeys = requiredSpatialKeys.join(maskSpatialKeys).map(tuple => (tuple._1, tuple._2._1))
           }
         case _ =>
       }
     }
+    var spatialKeyCount = localSpatialKeys.countApproxDistinct()
 
     // Remove all source files that do not intersect with the 'interior' of the requested extent.
     // Note: A normal intersect would also include sources that exactly border the requested extent.
@@ -234,7 +244,7 @@ object FileLayerProvider {
 
     val partitioner = useSparsePartitioner match {
       case true => {
-        createPartitioner(datacubeParams, requiredSpatialKeys, filteredSources, retiledMetadata)
+        createPartitioner(datacubeParams, requiredSpatialKeys, filteredSources, metadata)
       }
       case false => Option.empty
     }
@@ -250,7 +260,7 @@ object FileLayerProvider {
             val spaceTimeKeys: Array[SpaceTimeKey] = keys.value.map(tiledLayoutSource.tileKeyTransform(_))
             spaceTimeKeys
               .map(key => (key, tiledLayoutSource.rasterRegionForKey(key))).filter(_._2.isDefined).map(t=>(t._1,t._2.get))
-              .filter({case(key, rasterRegion) => retiledMetadata.extent.interiorIntersects(key.spatialKey.extent(retiledMetadata.layout)) } )
+              .filter({case(key, rasterRegion) => metadata.extent.interiorIntersects(key.spatialKey.extent(metadata.layout)) } )
               .map { case (key, rasterRegion) => (key, (rasterRegion, tiledLayoutSource.source.name)) }
           }
         }
@@ -261,7 +271,7 @@ object FileLayerProvider {
           .flatMap { tiledLayoutSource =>
             tiledLayoutSource.keyedRasterRegions()
               //this filter step reduces the 'Shuffle Write' size of this stage, so it already
-              .filter({case(key, rasterRegion) => retiledMetadata.extent.interiorIntersects(key.spatialKey.extent(retiledMetadata.layout)) } )
+              .filter({case(key, rasterRegion) => metadata.extent.interiorIntersects(key.spatialKey.extent(metadata.layout)) } )
               .map { case (key, rasterRegion) => (key, (rasterRegion, tiledLayoutSource.source.name)) }
           }
 
@@ -278,7 +288,7 @@ object FileLayerProvider {
     requestedRasterRegions = DatacubeSupport.applyDataMask(datacubeParams,requestedRasterRegions)
 
     requestedRasterRegions.name = rasterSources.name
-    rasterRegionsToTiles(requestedRasterRegions, retiledMetadata, cloudFilterStrategy, partitioner)
+    rasterRegionsToTiles(requestedRasterRegions, metadata, cloudFilterStrategy, partitioner)
   }
 
 
@@ -547,9 +557,30 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }
     }
 
-    val rasterSources: RDD[LayoutTileSource[SpaceTimeKey]] = rasterSourceRDD(overlappingRasterSources, metadata, maxSpatialResolution, openSearchCollectionId)(sc)
+    val polygonsRDD = sc.parallelize(polygons).map {
+      _.reproject(polygons_crs, metadata.crs)
+    }
+    // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
+    var requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
+
+    var spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
+    logger.error(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
+
+    val retiledMetadata: TileLayerMetadata[SpaceTimeKey] =
+      if (datacubeParams.isDefined && datacubeParams.get.layoutScheme != "ZoomedLayoutScheme" && spatialKeyCount <= 1.1 * polygons.length && metadata.tileRows == 256) {
+        //it seems that polygons fit entirely within chunks, so chunks are too large
+        logger.error(s"${metadata} resulted in ${spatialKeyCount} for ${polygons.length} polygons, trying to reduce tile size to 128.")
+        val newLayout = LayoutDefinition(metadata, 128)
+        requiredSpatialKeys = polygonsRDD.clipToGrid(newLayout).groupByKey()
+        spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
+        metadata.copy(layout = newLayout)
+      } else {
+        metadata
+      }
+    val rasterSources: RDD[LayoutTileSource[SpaceTimeKey]] = rasterSourceRDD(overlappingRasterSources, retiledMetadata, maxSpatialResolution, openSearchCollectionId)(sc)
+
     rasterSources.name = s"FileCollection-${openSearchCollectionId}"
-    val cube = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc, maskStrategy.getOrElse(NoCloudFilterStrategy), datacubeParams=datacubeParams)
+    val cube = FileLayerProvider.tileSourcesToDataCube(rasterSources, retiledMetadata, requiredSpatialKeys, sc, maskStrategy.getOrElse(NoCloudFilterStrategy), datacubeParams=datacubeParams)
     logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner}")
     cube
   }

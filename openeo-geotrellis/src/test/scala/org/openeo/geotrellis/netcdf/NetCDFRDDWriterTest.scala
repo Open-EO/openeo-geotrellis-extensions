@@ -1,10 +1,11 @@
 package org.openeo.geotrellis.netcdf
 
 import com.azavea.gdal.GDALWarp
-import geotrellis.layer.SpatialKey
+import geotrellis.layer.{SpaceTimeKey, SpatialKey}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.gdal.GDALRasterSource
 import geotrellis.raster.{ByteArrayTile, CellType, FloatConstantNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, Raster, RasterExtent, UByteUserDefinedNoDataCellType, UShortCellType, isData}
+import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.util.SparkUtils
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.vector.io.json.GeoJson
@@ -14,7 +15,7 @@ import org.junit.Assert.{assertFalse, assertTrue}
 import org.junit._
 import org.junit.rules.TemporaryFolder
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
-import org.openeo.geotrelliscommon.{ByKeyPartitioner, DataCubeParameters}
+import org.openeo.geotrelliscommon.{ByKeyPartitioner, DataCubeParameters, SpaceTimeByMonthPartitioner}
 import ucar.nc2.dataset.NetcdfDataset
 
 import java.time.LocalTime.MIDNIGHT
@@ -72,6 +73,11 @@ class NetCDFRDDWriterTest {
     dcParams.layoutScheme = "FloatingLayoutScheme"
 
     val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date.plusDays(20), bbox,polygonsUTM31.polygons,utm31,14, sc = sc,Some(dcParams))
+    val partitioner = layer.partitioner.get
+    assert(partitioner.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
+    val index: PartitionerIndex[SpaceTimeKey] = partitioner.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+    assert(index == SpaceTimeByMonthPartitioner)
+    assert(layer.metadata.tileCols == 128)
 
     val sampleNames = polygons.polygons.indices.map(_.toString)
     val sampleNameList = new util.ArrayList[String]()
