@@ -196,6 +196,18 @@ object FileLayerProvider {
       _.reproject(polygons_crs, metadata.crs)
     }.clipToGrid(metadata.layout).groupByKey()
 
+    val spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
+    logger.debug(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
+
+    val retiledMetadata: TileLayerMetadata[SpaceTimeKey] =
+    if(datacubeParams.isDefined && datacubeParams.get.layoutScheme != "ZoomedLayoutScheme" && spatialKeyCount <= 1.1 * polygons.length && metadata.tileRows == 256) {
+      //it seems that polygons fit entirely within chunks, so chunks are too large
+      logger.debug(s"${metadata} resulted in ${spatialKeyCount} for ${polygons.length} trying to reduce tile size to 128.")
+      metadata.copy(layout =LayoutDefinition(metadata,128))
+    }else{
+      metadata
+    }
+
     if(datacubeParams.exists(_.maskingCube.isDefined)) {
       val maskObject =  datacubeParams.get.maskingCube.get
       maskObject match {
@@ -222,14 +234,12 @@ object FileLayerProvider {
 
     val partitioner = useSparsePartitioner match {
       case true => {
-        createPartitioner(datacubeParams, requiredSpatialKeys, filteredSources, metadata)
+        createPartitioner(datacubeParams, requiredSpatialKeys, filteredSources, retiledMetadata)
       }
       case false => Option.empty
     }
 
     //use spatialkeycount as heuristic to choose code path
-    val spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
-    logger.debug(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
 
     var requestedRasterRegions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))]  =
     if(spatialKeyCount < 1000) {
@@ -240,7 +250,7 @@ object FileLayerProvider {
             val spaceTimeKeys: Array[SpaceTimeKey] = keys.value.map(tiledLayoutSource.tileKeyTransform(_))
             spaceTimeKeys
               .map(key => (key, tiledLayoutSource.rasterRegionForKey(key))).filter(_._2.isDefined).map(t=>(t._1,t._2.get))
-              .filter({case(key, rasterRegion) => metadata.extent.interiorIntersects(key.spatialKey.extent(metadata.layout)) } )
+              .filter({case(key, rasterRegion) => retiledMetadata.extent.interiorIntersects(key.spatialKey.extent(retiledMetadata.layout)) } )
               .map { case (key, rasterRegion) => (key, (rasterRegion, tiledLayoutSource.source.name)) }
           }
         }
@@ -251,7 +261,7 @@ object FileLayerProvider {
           .flatMap { tiledLayoutSource =>
             tiledLayoutSource.keyedRasterRegions()
               //this filter step reduces the 'Shuffle Write' size of this stage, so it already
-              .filter({case(key, rasterRegion) => metadata.extent.interiorIntersects(key.spatialKey.extent(metadata.layout)) } )
+              .filter({case(key, rasterRegion) => retiledMetadata.extent.interiorIntersects(key.spatialKey.extent(retiledMetadata.layout)) } )
               .map { case (key, rasterRegion) => (key, (rasterRegion, tiledLayoutSource.source.name)) }
           }
 
@@ -268,7 +278,7 @@ object FileLayerProvider {
     requestedRasterRegions = DatacubeSupport.applyDataMask(datacubeParams,requestedRasterRegions)
 
     requestedRasterRegions.name = rasterSources.name
-    rasterRegionsToTiles(requestedRasterRegions, metadata, cloudFilterStrategy, partitioner)
+    rasterRegionsToTiles(requestedRasterRegions, retiledMetadata, cloudFilterStrategy, partitioner)
   }
 
 
