@@ -152,6 +152,14 @@ object LayerFixtures {
     new ContextRDD(layer,layer.metadata)
   }
 
+  def sentinel2B04LayerSparse = {
+    val cube = sentinel2B04Layer
+    val keys = cube.map(_._1).distinct().collect()
+    implicit val newIndex = new SparseSpaceTimePartitioner(keys.map(SparseSpaceTimePartitioner.toIndex(_, 0)), 0, Some(keys.toArray))
+    val partitioner = new SpacePartitioner[SpaceTimeKey](cube.metadata.bounds)(implicitly,implicitly,newIndex)
+    new ContextRDD(cube.partitionBy(partitioner),cube.metadata)
+  }
+
   def rgbLayerProvider =
     new FileLayerProvider(
       openSearch = client,
