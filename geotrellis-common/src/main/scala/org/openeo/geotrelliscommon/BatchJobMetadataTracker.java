@@ -14,6 +14,10 @@ public abstract class BatchJobMetadataTracker implements Serializable {
     public static void setGlobalTracking(boolean enable){
         forceTracking = Optional.of(enable);
     }
+
+    public static void clearGlobalTracker() {
+        defaultTracker = new SparkBatchJobMetadataTracker();
+    }
     private static Map<String, SparkBatchJobMetadataTracker> trackers = new ConcurrentHashMap<>();
     private static SparkBatchJobMetadataTracker defaultTracker = new SparkBatchJobMetadataTracker();
     private static BatchJobMetadataTracker dummyTracker = new BatchJobMetadataTracker() {

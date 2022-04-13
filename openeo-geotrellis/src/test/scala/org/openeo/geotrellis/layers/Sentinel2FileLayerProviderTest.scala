@@ -21,7 +21,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.util.SizeEstimator
 import org.junit.Assert._
-import org.junit.{AfterClass, BeforeClass, Ignore, Test}
+import org.junit._
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
@@ -60,6 +60,11 @@ object Sentinel2FileLayerProviderTest {
 class Sentinel2FileLayerProviderTest extends RasterMatchers {
   import Sentinel2FileLayerProviderTest._
 
+  @Before
+  def clearTracker(): Unit = {
+    BatchJobMetadataTracker.clearGlobalTracker()
+  }
+
   @Test
   def polygonalMultiplePolygon(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
@@ -89,6 +94,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
   @Test
   def polygonalMean(): Unit = {
+
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
     val bbox = ProjectedExtent(Extent(1.90283, 50.9579, 1.97116, 51.0034), LatLng)
 

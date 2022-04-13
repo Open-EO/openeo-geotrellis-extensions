@@ -12,7 +12,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.{SparkConf, SparkContext, SparkException}
 import org.junit.Assert.{assertEquals, assertTrue, fail}
-import org.junit.{AfterClass, BeforeClass, Ignore, Test}
+import org.junit._
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
 
@@ -84,7 +84,10 @@ class PyramidFactoryTest {
 
   private val geoTiffOptions = GeoTiffOptions(DeflateCompression(BEST_COMPRESSION))
 
-
+  @Before
+  def clearTracker(): Unit = {
+    BatchJobMetadataTracker.clearGlobalTracker()
+  }
 
   @Test
   def testGamma0(): Unit = {
@@ -137,7 +140,7 @@ class PyramidFactoryTest {
     assertEquals(expected, actual)
     val pu = BatchJobMetadataTracker.tracker("").asDict().get(BatchJobMetadataTracker.SH_PU).asInstanceOf[Double]
 
-    //assertTrue(s"PU: ${pu} not between 0.1 and 0.3",pu > 0.1 && pu < 0.3)
+    assertTrue(s"PU: ${pu} not between 0.1 and 0.3",pu > 0.1 && pu < 0.3)
   }
 
   @Test
