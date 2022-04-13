@@ -12,9 +12,9 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.{SparkConf, SparkContext, SparkException}
 import org.junit.Assert.{assertEquals, assertTrue, fail}
-import org.junit.{Ignore, Test}
-import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
-import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType, UINT16}
+import org.junit.{AfterClass, BeforeClass, Ignore, Test}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, SparseSpaceTimePartitioner}
+import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
 
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
@@ -65,6 +65,14 @@ object PyramidFactoryTest {
 
     def getTileCount: Long = getTileCounter.value
   }
+
+  @BeforeClass def tracking(): Unit ={
+    BatchJobMetadataTracker.setGlobalTracking(true)
+  }
+
+  @AfterClass def trackingOff(): Unit ={
+    BatchJobMetadataTracker.setGlobalTracking(false)
+  }
 }
 
 class PyramidFactoryTest {
@@ -75,6 +83,8 @@ class PyramidFactoryTest {
   private val authorizer = new MemoizedAuthApiAccessTokenAuthorizer(clientId, clientSecret)
 
   private val geoTiffOptions = GeoTiffOptions(DeflateCompression(BEST_COMPRESSION))
+
+
 
   @Test
   def testGamma0(): Unit = {
@@ -125,6 +135,8 @@ class PyramidFactoryTest {
       "sentinel2-L2A", date, Seq("B08", "B04", "B03"))
 
     assertEquals(expected, actual)
+    val pu = BatchJobMetadataTracker.tracker("").asDict().get(BatchJobMetadataTracker.SH_PU).asInstanceOf[Double]
+    assertTrue(pu > 0.1 && pu < 0.3)
   }
 
   @Test
