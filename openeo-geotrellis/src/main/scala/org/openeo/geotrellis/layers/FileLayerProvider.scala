@@ -197,20 +197,6 @@ object FileLayerProvider {
     // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
     var requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
 
-    var spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
-    logger.debug(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
-
-    val retiledMetadata: TileLayerMetadata[SpaceTimeKey] =
-      if (datacubeParams.isDefined && datacubeParams.get.layoutScheme != "ZoomedLayoutScheme" && spatialKeyCount <= 1.1 * polygons.length && metadata.tileRows == 256) {
-        //it seems that polygons fit entirely within chunks, so chunks are too large
-        logger.debug(s"${metadata} resulted in ${spatialKeyCount} for ${polygons.length} polygons, trying to reduce tile size to 128.")
-        val newLayout = LayoutDefinition(metadata, 128)
-        requiredSpatialKeys = polygonsRDD.clipToGrid(newLayout).groupByKey()
-        spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
-        metadata.copy(layout = newLayout)
-      } else {
-        metadata
-      }
     tileSourcesToDataCube(rasterSources, metadata, requiredSpatialKeys, sc, cloudFilterStrategy, useSparsePartitioner, datacubeParams)
   }
 
@@ -572,7 +558,8 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         val newLayout = LayoutDefinition(metadata, 128)
         requiredSpatialKeys = polygonsRDD.clipToGrid(newLayout).groupByKey()
         spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
-        metadata.copy(layout = newLayout)
+        val gridBounds = newLayout.mapTransform.extentToBounds(metadata.extent)
+        metadata.copy(layout = newLayout,bounds = KeyBounds(SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from), SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to)))
       } else {
         metadata
       }
