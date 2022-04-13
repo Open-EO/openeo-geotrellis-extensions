@@ -193,7 +193,7 @@ class OpenEOProcesses extends Serializable {
     groupedOnTime
   }
 
-  private def findPartitionerKeys(datacube: MultibandTileLayerRDD[SpaceTimeKey]) = {
+  def findPartitionerKeys(datacube: MultibandTileLayerRDD[SpaceTimeKey]) = {
     val keys: Option[Array[SpaceTimeKey]] = if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
       val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
       if (index.isInstanceOf[SparseSpaceTimePartitioner]) {
@@ -339,7 +339,7 @@ class OpenEOProcesses extends Serializable {
 
     val index: PartitionerIndex[SpaceTimeKey] =
       if(keys.isDefined) {
-        new SparseSpaceTimePartitioner(theNewKeys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, 0,Some(theNewKeys))
+        new SparseSpaceTimePartitioner(theNewKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4,Some(theNewKeys))
       }else{
         SpaceTimeByMonthPartitioner
       }

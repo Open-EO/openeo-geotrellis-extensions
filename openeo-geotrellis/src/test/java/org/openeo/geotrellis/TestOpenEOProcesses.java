@@ -17,6 +17,7 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
+import scala.Option;
 import scala.Tuple2;
 import scala.collection.JavaConversions;
 import scala.collection.JavaConverters;
@@ -206,12 +207,30 @@ public class TestOpenEOProcesses {
 
     }
 
+
     @Test
     public void testCompositeAndInterpolate() {
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 = LayerFixtures.sentinel2B04Layer();
+        compositeAndInterpolate(datacube1);
+    }
 
+    @Test
+    public void testCompositeAndInterpolateSparse() {
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 = LayerFixtures.sentinel2B04LayerSparse();
+        compositeAndInterpolate(datacube1);
+    }
+
+    private void compositeAndInterpolate(ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1) {
         RDD<Tuple2<SpaceTimeKey, MultibandTile>> compositedCube = composite(datacube1);
 
+        List<SpaceTimeKey> keys = compositedCube.toJavaRDD().map(v1 -> v1._1).collect();
+        Option<SpaceTimeKey[]> partitionerKeys = new OpenEOProcesses().findPartitionerKeys(compositedCube);
+        if (partitionerKeys.isDefined()) {
+            assertArrayEquals(keys.toArray(),Arrays.stream(partitionerKeys.get()).toArray());
+        }
+        
+        //Partitioner p = compositedCube.partitioner().get();
+        //keys.forEach(spaceTimeKey -> System.out.println("p.getPartition(spaceTimeKey) = " + p.getPartition(spaceTimeKey)) );
 
         OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createArrayInterpolateLinear();
         RDD<Tuple2<SpaceTimeKey, MultibandTile>> result = new OpenEOProcesses().applyTimeDimension(compositedCube, processBuilder, new HashMap<>());
@@ -221,7 +240,6 @@ public class TestOpenEOProcesses {
 
         int noData = Integer.MIN_VALUE;
         assertArrayEquals(new int[]{noData,noData,noData,noData,290,317,346,375,405},interpolatedPixel);
-
     }
 
     @Test
