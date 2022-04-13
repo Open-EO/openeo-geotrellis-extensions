@@ -2,6 +2,7 @@ package org.openeo.geotrelliscommon;
 
 import java.io.Serializable;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -51,6 +52,8 @@ public abstract class BatchJobMetadataTracker implements Serializable {
     public abstract void registerDoubleCounter(String name);
 
     public abstract void add(String name, double value);
+
+    public void addInputProducts(String collection, List<String> productIds){}
 
     public abstract Map<String, Object> asDict();
 }

@@ -6,12 +6,16 @@ import org.apache.spark.util.DoubleAccumulator;
 import org.apache.spark.util.LongAccumulator;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class SparkBatchJobMetadataTracker extends BatchJobMetadataTracker {
 
     private Map<String, AccumulatorV2<Long, Long>> counters = new HashMap<>();
     private Map<String, AccumulatorV2<Double, Double>> doubleCounters = new HashMap<>();
+    private Map<String, List<String>> inputProducts = new HashMap<>();
 
     @Override
     public void registerCounter(String name) {
@@ -35,6 +39,11 @@ public class SparkBatchJobMetadataTracker extends BatchJobMetadataTracker {
     }
 
     @Override
+    public void addInputProducts(String collection, List<String> productIds) {
+        inputProducts.merge(collection, productIds,(v1, v2) -> Stream.concat(v1.stream(),v2.stream()).collect(Collectors.toList()));
+    }
+
+    @Override
     public Map<String, Object> asDict() {
         Map<String, Object> result = new HashMap<>();
         doubleCounters.forEach((key, value) -> {
@@ -43,6 +52,8 @@ public class SparkBatchJobMetadataTracker extends BatchJobMetadataTracker {
         counters.forEach((key, value) -> {
             result.put(key, value.value());
         });
+        //needs to go under 'derived-from links
+        result.put("links", inputProducts);
         return result;
     }
 }

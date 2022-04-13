@@ -16,10 +16,9 @@ import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConsta
 import geotrellis.spark._
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.vector._
-import org.apache.spark.{Partitioner, SparkContext}
+import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrellis.layers.FileLayerProvider.{logger, readMultibandTileLayer}
-import org.openeo.geotrelliscommon.{CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.slf4j.LoggerFactory
 
 import java.io.IOException
@@ -664,12 +663,13 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
   def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int): Seq[RasterSource] = {
     require(zoom >= 0) // TODO: remove zoom and sc parameters
 
-    val overlappingFeatures = openSearch.getProducts(
+    val overlappingFeatures: Seq[Feature] = openSearch.getProducts(
       collectionId = openSearchCollectionId,
       (from.toLocalDate, to.toLocalDate), boundingBox,
       attributeValues, correlationId, ""
     )
 
+    BatchJobMetadataTracker.tracker("").addInputProducts(openSearchCollectionId,overlappingFeatures.map(_.id).asJava)
 
     val crs = bestCRS(boundingBox,layoutScheme)
     val reprojectedBoundingBox: ProjectedExtent = targetBoundingBox(boundingBox, layoutScheme)
