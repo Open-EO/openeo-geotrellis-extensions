@@ -335,10 +335,11 @@ class OpenEOProcesses extends Serializable {
     }
 
     val allPossibleSpacetime =  allPossibleKeys.flatMap(x => labelsDates.map(y => (SpaceTimeKey(x, TemporalKey(y)),null)))
+    val theNewKeys = allPossibleSpacetime.map(_._1).toArray
 
     val index: PartitionerIndex[SpaceTimeKey] =
       if(keys.isDefined) {
-        new SparseSpaceTimePartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, 0,keys)
+        new SparseSpaceTimePartitioner(theNewKeys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, 0,Some(theNewKeys))
       }else{
         SpaceTimeByMonthPartitioner
       }
