@@ -47,17 +47,20 @@ object PyramidFactory {
           deriveDate(date_regex.r)(path.toString)))
     }, deriveDate(date_regex.r), lat_lon)
 
-  def from_disk(timestamped_paths: util.Map[String, String]): PyramidFactory = {
+  def from_disk(timestamped_paths: util.Map[String, String]): PyramidFactory = // file path -> timestamp
+    from_uris(timestamped_uris = timestamped_paths)
+
+  def from_uris(timestamped_uris: util.Map[String, String]): PyramidFactory = { // uri -> timestamp
     val sc = SparkContext.getOrCreate()
 
-    val timestampedPaths = timestamped_paths.asScala
+    val timestampedUris = timestamped_uris.asScala
       .mapValues { timestamp => ZonedDateTime.parse(timestamp) }
       .toMap
 
-    val broadcastedTimestampedPaths = sc.broadcast(timestampedPaths)
+    val broadcastedTimestampedPaths = sc.broadcast(timestampedUris)
 
     new PyramidFactory(
-      rasterSources = timestampedPaths
+      rasterSources = timestampedUris
         .map { case (path, timestamp) => GeoTiffRasterSource(path) -> timestamp }
         .toSeq,
       extractDateFromPath = broadcastedTimestampedPaths.value, latLng = false)
