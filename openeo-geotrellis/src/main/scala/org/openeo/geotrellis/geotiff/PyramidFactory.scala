@@ -164,7 +164,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
         new MultibandCompositeRasterSource(sourcesListWithBandIds, boundingBox.crs, Predef.Map("date" -> date.toString))
       }
 
-    val resultRDD = rasterSourceRDD(overlappingRasterSources.seq,boundingBox,from,to, params)
+    val resultRDD = rasterSourceRDD(overlappingRasterSources.seq,boundingBox,from,to, params,zoom=zoom)
     new OpenEORasterCube[SpaceTimeKey](resultRDD,resultRDD.metadata, OpenEORasterCubeMetadata())
   }
 
@@ -181,13 +181,17 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
     val sources = sc.parallelize(rasterSources).cache()
     val summary = RasterSummary.fromRDD(sources, keyExtractor.getMetadata)
 
-    val scheme = if(params.layoutScheme=="ZoomedLayoutScheme"){
-      ZoomedLayoutScheme(targetCrs)
+    val (scheme,theZoom) = if(params.layoutScheme=="ZoomedLayoutScheme"){
+      if(zoom<0) {
+        (ZoomedLayoutScheme(targetCrs),maxZoom)
+      }else{
+        (ZoomedLayoutScheme(targetCrs),zoom)
+      }
     }else{
-      FloatingLayoutScheme(params.tileSize)
+      (FloatingLayoutScheme(params.tileSize),zoom)
     }
 
-    val layerMetadata = DatacubeSupport.layerMetadata(boundingBox,from,to,zoom,summary.cellType,scheme,summary.cellSize,params.globalExtent)
+    val layerMetadata = DatacubeSupport.layerMetadata(boundingBox,from,to,theZoom,summary.cellType,scheme,summary.cellSize,params.globalExtent)
     val sourceRDD = FileLayerProvider.rasterSourceRDD(rasterSources,layerMetadata,summary.cellSize,"Geotiff collection")
     val filteredSources: RDD[LayoutTileSource[SpaceTimeKey]] = sourceRDD.filter({ tiledLayoutSource =>
       tiledLayoutSource.source.extent.interiorIntersects(tiledLayoutSource.layout.extent)
