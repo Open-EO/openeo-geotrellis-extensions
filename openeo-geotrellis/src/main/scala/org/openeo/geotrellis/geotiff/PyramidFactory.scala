@@ -119,7 +119,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
   private lazy val reprojectedRasterSources =
     rasterSources.map { case (rasterSource, date) => (rasterSource.reproject(targetCrs), date) }
 
-  private lazy val maxZoom = reprojectedRasterSources.headOption match {
+  private lazy val maxZoom = rasterSources.headOption.map { case (rasterSource, date) => (rasterSource.reproject(targetCrs), date) } match {
     case Some((rasterSource, _)) => ZoomedLayoutScheme(targetCrs).zoom(rasterSource.extent.center.getX, rasterSource.extent.center.getY, rasterSource.cellSize)
     case None => throw new IllegalStateException("no raster sources found")
   }
@@ -173,7 +173,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
     boundingBox: ProjectedExtent,
     from: ZonedDateTime, to: ZonedDateTime,
     params: DataCubeParameters,
-    zoom:Int = maxZoom
+    zoom:Int = -1
   )(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     val extractDateFromPath = this.extractDateFromPath
     val keyExtractor = TemporalKeyExtractor.fromPath { case GeoTiffPath(value) => extractDateFromPath(value) }
@@ -210,7 +210,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
     if (latLng) // TODO: drop the workaround for what look like negative SpatialKeys?
       Seq(0 -> layer(boundingBox, from, to))
     else {
-      Seq(0 -> layer(rasterSources, boundingBox, from, to, dataCubeParameters,maxZoom))
+      Seq(0 -> layer(rasterSources, boundingBox, from, to, dataCubeParameters,-1))
     }
 
   }
