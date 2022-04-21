@@ -14,6 +14,7 @@ import geotrellis.vector._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.SparkContext
+import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.layers.{FileLayerProvider, MultibandCompositeRasterSource}
 import org.openeo.geotrellis.{ProjectedPolygons, bucketRegion, s3Client}
 import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, OpenEORasterCube, OpenEORasterCubeMetadata}
@@ -146,11 +147,8 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
   }
 
   private def layer(rasterSources: Seq[(RasterSource, ZonedDateTime)], boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, params: DataCubeParameters, zoom: Int)(implicit sc: SparkContext): OpenEORasterCube[SpaceTimeKey] = {
-    val overlappingRasterSources = rasterSources
+    val overlappingRasterSources = rasterSources.par
       .filter { case (rasterSource, date) =>
-        // FIXME: this means the driver will (partially) read the geotiff instead of the executor - on the other hand, e.g. an AccumuloRDDReader will interpret a LayerQuery both in the driver (to determine Accumulo ranges) and the executors
-        // FIXME: what's the advantage of an AttributeStore.query over comparing extents?
-        val overlaps = rasterSource.extent intersects boundingBox.extent
 
         // FIXME: this is also done in the driver while a RasterSource carries a URI so an executor can do it himself
         val withinDateRange =
@@ -159,14 +157,14 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
           else if (to == null) !(date isBefore from)
           else !(date isBefore from) && !(date isAfter to)
 
-        overlaps && withinDateRange
+        withinDateRange
       }
       .map { case (rasterSource, date) =>
         val sourcesListWithBandIds = NonEmptyList.of((rasterSource, 0 until rasterSource.bandCount))
         new MultibandCompositeRasterSource(sourcesListWithBandIds, boundingBox.crs, Predef.Map("date" -> date.toString))
       }
 
-    val resultRDD = rasterSourceRDD(overlappingRasterSources,boundingBox,from,to, params)
+    val resultRDD = rasterSourceRDD(overlappingRasterSources.seq,boundingBox,from,to, params)
     new OpenEORasterCube[SpaceTimeKey](resultRDD,resultRDD.metadata, OpenEORasterCubeMetadata())
   }
 
@@ -191,7 +189,10 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
 
     val layerMetadata = DatacubeSupport.layerMetadata(boundingBox,from,to,zoom,summary.cellType,scheme,summary.cellSize,params.globalExtent)
     val sourceRDD = FileLayerProvider.rasterSourceRDD(rasterSources,layerMetadata,summary.cellSize,"Geotiff collection")
-    FileLayerProvider.readMultibandTileLayer(sourceRDD,layerMetadata,Array(MultiPolygon(toPolygon(boundingBox.extent))),boundingBox.crs,sc,datacubeParams = Some(params))
+    val filteredSources: RDD[LayoutTileSource[SpaceTimeKey]] = sourceRDD.filter({ tiledLayoutSource =>
+      tiledLayoutSource.source.extent.interiorIntersects(tiledLayoutSource.layout.extent)
+    })
+    FileLayerProvider.readMultibandTileLayer(filteredSources,layerMetadata,Array(MultiPolygon(toPolygon(boundingBox.extent))),boundingBox.crs,sc,datacubeParams = Some(params))
 
   }
 
