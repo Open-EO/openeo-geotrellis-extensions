@@ -1,11 +1,11 @@
 package org.openeo.geotrellis.layers
 
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
-
 import com.azavea.gdal.GDALWarp
-import geotrellis.layer.{KeyBounds, TileLayerMetadata}
+import geotrellis.layer.{KeyBounds, LayoutDefinition, LayoutTileSource, TileLayerMetadata, TileToLayoutOps}
 import geotrellis.proj4.LatLng
-import geotrellis.raster.UByteUserDefinedNoDataCellType
+import geotrellis.raster.{GridExtent, RasterExtent, TileLayout, UByteUserDefinedNoDataCellType}
+import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.spark._
@@ -13,8 +13,9 @@ import geotrellis.spark.summary.polygonal._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.{AfterClass, Test}
-import org.openeo.geotrellis.LocalSparkContext
+import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
 import org.openeo.geotrellis.TestImplicits._
+import org.openeo.geotrelliscommon.DataCubeParameters
 
 object GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
   @AfterClass
@@ -25,7 +26,7 @@ class GlobalNetCdfFileLayerProviderTest {
   import GlobalNetCdfFileLayerProviderTest._
 
   private def layerProvider = new GlobalNetCdfFileLayerProvider(
-    dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/*/*/*/*.nc",
+    dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/2017/*/*/*.nc",
     bandName = "LAI",
     dateRegex = raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored
   )
@@ -41,6 +42,22 @@ class GlobalNetCdfFileLayerProviderTest {
       .toSpatial(date)
       .writeGeoTiff("/tmp/lai300_georgia2.tif")
   }
+
+  @Test
+  def readDataCube(): Unit = {
+    val date = LocalDate.of(2017, 1, 10).atStartOfDay(ZoneId.of("UTC"))
+    val boundingBox = ProjectedExtent(Extent(-86.30859375, 29.84064389983441, -80.33203125, 35.53222622770337), LatLng)
+
+    val parameters = new DataCubeParameters()
+    parameters.layoutScheme = "FloatingLayoutScheme"
+
+    val layer = layerProvider.readMultibandTileLayer(date, date, ProjectedPolygons.fromExtent(boundingBox.extent,"EPSG:4326") , layerProvider.maxZoom, sc,Option(parameters)).cache()
+
+    layer
+      .toSpatial(date)
+      .writeGeoTiff("/tmp/lai300_georgia2.tif")
+  }
+
 
   @Test
   def loadMetadata(): Unit = {
