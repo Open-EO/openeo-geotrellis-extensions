@@ -26,7 +26,7 @@ class GlobalNetCdfFileLayerProviderTest {
   import GlobalNetCdfFileLayerProviderTest._
 
   private def layerProvider = new GlobalNetCdfFileLayerProvider(
-    dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/2017/*/*/*.nc",
+    dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/*/*/*/*.nc",
     bandName = "LAI",
     dateRegex = raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored
   )
@@ -71,8 +71,8 @@ class GlobalNetCdfFileLayerProviderTest {
 
     val years = dates.map(_.getYear).distinct
 
-    assertTrue(years contains 2014)
-    assertTrue(years contains 2020)
+    assertTrue("year 2014 is missing", years contains 2014)
+    assertTrue("year 2020 is missing", years contains 2020)
   }
 
   @Test
