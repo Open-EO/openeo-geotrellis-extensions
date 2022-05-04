@@ -73,7 +73,11 @@ class WriteRDDToGeotiffTest {
     val tiff = GeoTiff.readSingleband(filename)
     assertTrue(tiff.options.colorMap.isDefined)
     assertEquals("Band Name",tiff.tags.bandTags(0).get("BAND").get)
+    assertEquals(layoutCols * layoutRows,tiff.imageData.segmentBytes.length)
+    assertEquals(8*256,tiff.imageData.segmentLayout.totalCols)
     assertEquals(3,tiff.overviews.size)
+    assertEquals(2,tiff.overviews(1).imageData.segmentBytes.length)
+    assertEquals(2*256,tiff.overviews(1).imageData.segmentLayout.totalCols)
     val output = tiff.raster.tile
     assertArrayEquals(imageTile.toArray(),output.toArray())
   }
