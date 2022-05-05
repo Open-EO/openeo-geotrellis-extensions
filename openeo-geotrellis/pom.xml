@@ -183,6 +183,12 @@
             <version>1.0.4</version>
             <scope>compile</scope>
         </dependency>
+        <dependency>
+            <groupId>ai.catboost</groupId>
+            <artifactId>catboost-prediction</artifactId>
+            <version>1.0.4</version>
+            <scope>compile</scope>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
