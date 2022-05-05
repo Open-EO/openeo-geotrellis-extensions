@@ -7,12 +7,9 @@ import geotrellis.raster.{ArrayTile, ByteUserDefinedNoDataCellType, CellType, Di
 import org.apache.commons.math3.exception.NotANumberException
 import org.apache.commons.math3.stat.descriptive.rank.Percentile
 import org.apache.commons.math3.stat.ranking.NaNStrategy
-import org.apache.spark.SparkContext
-import org.apache.spark.ml.linalg.{SQLDataTypes, Vectors}
+import org.apache.spark.ml
 import org.apache.spark.mllib.linalg
 import org.apache.spark.mllib.tree.model.RandomForestModel
-import org.apache.spark.sql.types.{StructField, StructType}
-import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase}
 import org.slf4j.LoggerFactory
 import spire.math.UShort
@@ -920,46 +917,18 @@ class OpenEOProcessScriptBuilder {
 
         },true)
       }else{
-
-        // 2. Convert Seq[Tile] to Dataframe.
-        val newCellType = rs.map(_.cellType).reduce(_.union(_))
-        val Dimensions(cols, rows) = rs.head.dimensions
-        val evalData = mutable.Buffer[Row]()
-        cfor(0)(_ < rows, _ + 1) { row =>
-          cfor(0)(_ < cols, _ + 1) { col =>
-            val features = new Array[Double](layerCount)
-            cfor(0)(_ < layerCount, _ + 1) { i =>
-              features(i) = rs(i).getDouble(col, row)
-            }
-            evalData.append(Row(Vectors.dense(features)))
-          }
-        }
-        val spark = SparkSession.builder.config(SparkContext.getOrCreate().getConf).getOrCreate()
-        val srcDataSchema = Seq(StructField("features", SQLDataTypes.VectorType))
-        val evalDf = spark.createDataFrame(spark.sparkContext.parallelize(evalData), StructType(srcDataSchema))
-
-        // 3. Generate predictions.
         val model = context("context").asInstanceOf[CatBoostClassificationModel]
-        val predictions: DataFrame = model.transform(evalDf)
 
-        // 4. Convert DataFrame back to Seq[Tile].
-        val tile = ArrayTile.alloc(newCellType, cols, rows)
-        val predIter: util.Iterator[Row] = predictions.toLocalIterator()
-        cfor(0)(_ < rows, _ + 1) { row =>
-          cfor(0)(_ < cols, _ + 1) { col =>
-            if (!predIter.hasNext) {
-              throw new IllegalStateException("Not enough predictions to fill all pixels.")
-            }
-            // Note: predIter.next() = [features, rawPrediction, probability, prediction]
-            tile.setDouble(col, row, predIter.next().get(3) match {
-              case d: Double => d
-              case o => throw new IllegalStateException(s"Predictions are not in Double format: $o")
-            })
-          }
-        }
-        Seq(tile)
+        def sigmoid(x: Double) = 1. / (1 + Math.pow(Math.E, -x))
+        multibandReduce(MultibandTile(rs),ts => {
+          val featureArray: Array[Double] = ts.map(_.doubleValue()).toArray
+          val numericalFeatures = ml.linalg.Vectors.dense(featureArray)
+          val rawPrediction = model.predictRaw(numericalFeatures)
+          val sigmoids: Array[Double] = rawPrediction.toArray.map(sigmoid)
+          val theClass = sigmoids.indices.maxBy(sigmoids)
+          theClass
+        },true)
       }
-
     }
     // Return our operator in a composed function.
     val storedArgs = contextStack.head
