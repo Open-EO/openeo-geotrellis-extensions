@@ -534,7 +534,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
           (_, sclBandIndex) <- openSearchLinkTitles.zipWithIndex.find {
             case (linkTitle, _) => linkTitle.contains("SCENECLASSIFICATION") || linkTitle.contains("SCL")
           }
-        } yield new SCLConvolutionFilterStrategy(sclBandIndex)
+        } yield new SCLConvolutionFilterStrategy(sclBandIndex,datacubeParams.get.maskingStrategyParameters)
       }
       else if (maskMethod == "mask_l1c") {
         overlappingRasterSources = GDALCloudRasterSource.filterRasterSources(overlappingRasterSources, maskParams)
