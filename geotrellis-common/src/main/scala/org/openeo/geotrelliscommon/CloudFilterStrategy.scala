@@ -34,13 +34,13 @@ object SCLConvolutionFilterStrategy{
   val DEFAULT_KERNEL1 = 17
   val DEFAULT_KERNEL2 = 201
 
-  def defaultMaskingParams = {
+  def defaultMaskingParams: util.HashMap[String, Object] = {
     val map = new util.HashMap[String,Object]()
     map.put("mask1_values",defaultMask1)
     map.put("mask2_values",defaultMask2)
 
-    map.put("kernel1_size",DEFAULT_KERNEL1)
-    map.put("kernel2_size",DEFAULT_KERNEL2)
+    map.put("kernel1_size",DEFAULT_KERNEL1.asInstanceOf[Object])
+    map.put("kernel2_size",DEFAULT_KERNEL2.asInstanceOf[Object])
     map
   }
 }
@@ -59,8 +59,8 @@ class SCLConvolutionFilterStrategy(val sclBandIndex: Int = 0,val maskingParams:u
     k.tile.convert(DoubleConstantNoDataCellType).localDivide(k.tile.toArray().sum)
   }
 
-  private val kernel1 = kernel(maskingParams.getOrDefault("kernel1_size",DEFAULT_KERNEL1).asInstanceOf[Int])
-  private val kernel2 = kernel(maskingParams.getOrDefault("kernel2_size",DEFAULT_KERNEL2).asInstanceOf[Int])
+  private val kernel1 = kernel(maskingParams.getOrDefault("kernel1_size",DEFAULT_KERNEL1.asInstanceOf[Object]).asInstanceOf[Int])
+  private val kernel2 = kernel(maskingParams.getOrDefault("kernel2_size",DEFAULT_KERNEL2.asInstanceOf[Object]).asInstanceOf[Int])
 
   override def loadMasked(maskTileLoader: MaskTileLoader): Option[MultibandTile] = {
     val bufferSize = (kernel2.cols/2).floor.intValue()
