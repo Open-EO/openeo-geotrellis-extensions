@@ -14,7 +14,7 @@ import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.FileLayerProvider
 import org.openeo.geotrelliscommon.DatacubeSupport.layerMetadata
-import org.openeo.geotrelliscommon.{DataCubeParameters, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, SpaceTimeByMonthPartitioner}
 
 import java.net.URL
 import java.time.ZonedDateTime
@@ -76,7 +76,7 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
       ProjectedExtent(tuple._2.bbox,LatLng).reproject(metadata.crs).intersects(keyExtent)
     })
 
-    val partitioner = FileLayerProvider.createPartitioner(None,spatialRDD.map(_._1),metadata)
+    val partitioner = DatacubeSupport.createPartitioner(None,spatialRDD.map(_._1),metadata)
     /**
      * Note that keys in spatialRDD are not necessarily unique, because one date can have multiple Sentinel-1 products
      */

@@ -4,6 +4,7 @@ import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, Layo
 import geotrellis.proj4.CRS
 import geotrellis.raster.{CellSize, CellType}
 import geotrellis.spark.MultibandTileLayerRDD
+import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.rdd.RDD
 import org.slf4j.LoggerFactory
@@ -101,6 +102,36 @@ object DatacubeSupport {
       projectedExtent.crs,
       KeyBounds(SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from), SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to))
     )
+  }
+
+
+  def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpacetimeKeys: RDD[SpaceTimeKey],  metadata: TileLayerMetadata[SpaceTimeKey]): Some[SpacePartitioner[SpaceTimeKey]] = {
+    // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
+    val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(8)
+    val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
+      val cached = requiredSpacetimeKeys.distinct().cache()
+      val spatialCount = requiredSpacetimeKeys.map(_.spatialKey).distinct().count()
+      val spatialBounds = metadata.bounds.get.toSpatial
+      val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
+      val isSparse = spatialCount < 0.5 * maxKeys
+      cached.unpersist(false)
+
+      if(isSparse) {
+        val keys = cached.collect()
+
+        if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
+          val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
+          new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
+        } else {
+          val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
+          new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
+        }
+      }else{
+        SpaceTimeByMonthPartitioner
+      }
+    }
+    Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,
+      ClassTag(classOf[SpaceTimeKey]), partitionerIndex))
   }
 
   def applyDataMask[T](datacubeParams:Option[DataCubeParameters], rdd:RDD[(SpaceTimeKey,T)])(implicit vt: ClassTag[T]): RDD[(SpaceTimeKey,T)] = {

@@ -271,22 +271,11 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 .toSeq
             }
 
-            logger.info(s"Created Sentinelhub datacube with ${overlappingKeys.size} keys and metadata ${metadata}")
+            val requiredKeysRdd = sc.parallelize(overlappingKeys)
+            val partitioner = DatacubeSupport.createPartitioner(Some(dataCubeParameters), requiredKeysRdd, metadata)
+            logger.info(s"Created Sentinelhub datacube with ${overlappingKeys.size} keys and metadata ${metadata} and ${partitioner.get}")
 
-            val reduction: Int = dataCubeParameters.partitionerIndexReduction
-            val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
-              if (dataCubeParameters.partitionerTemporalResolution != "ByDay") {
-                val indices = overlappingKeys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted.toArray
-                new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(overlappingKeys.toArray))
-              } else {
-                val indices = overlappingKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted.toArray
-                new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(overlappingKeys.toArray))
-              }
-            }
-            val partitioner = SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), partitionerIndex)
-
-            var keysRdd = sc.parallelize(overlappingKeys.map((_, Option.empty)))
-              .partitionBy(partitioner)
+            var keysRdd = requiredKeysRdd.map((_,Option.empty)).partitionBy(partitioner.get)
 
             keysRdd = DatacubeSupport.applyDataMask(Some(dataCubeParameters),keysRdd)
 

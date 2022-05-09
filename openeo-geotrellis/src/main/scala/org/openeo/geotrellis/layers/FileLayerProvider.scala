@@ -281,39 +281,11 @@ object FileLayerProvider {
     val requiredSpacetimeKeys: RDD[SpaceTimeKey] = filteredSources.flatMap(_.keys).map {
       tuple => (tuple.spatialKey, tuple)
     }.rightOuterJoin(requiredSpatialKeys).flatMap(_._2._1.toList)
-    createPartitioner(datacubeParams, requiredSpacetimeKeys, metadata)
+    DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys, metadata)
   }
 
 
 
-  def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpacetimeKeys: RDD[SpaceTimeKey],  metadata: TileLayerMetadata[SpaceTimeKey]): Some[SpacePartitioner[SpaceTimeKey]] = {
-    // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
-    val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(8)
-    val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
-      val cached = requiredSpacetimeKeys.distinct().cache()
-      val spatialCount = requiredSpacetimeKeys.map(_.spatialKey).distinct().count()
-      val spatialBounds = metadata.bounds.get.toSpatial
-      val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
-      val isSparse = spatialCount < 0.5 * maxKeys
-      cached.unpersist(false)
-
-      if(isSparse) {
-        val keys = cached.collect()
-
-        if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
-          val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
-          new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
-        } else {
-          val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
-          new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
-        }
-      }else{
-        SpaceTimeByMonthPartitioner
-      }
-    }
-    Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,
-      ClassTag(classOf[SpaceTimeKey]), partitionerIndex))
-  }
 
   private def rasterRegionsToTiles(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))], metadata: TileLayerMetadata[SpaceTimeKey], cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, partitionerOption: Option[SpacePartitioner[SpaceTimeKey]] = Option.empty) = {
     val partitioner = partitionerOption.getOrElse(SpacePartitioner(metadata.bounds))
