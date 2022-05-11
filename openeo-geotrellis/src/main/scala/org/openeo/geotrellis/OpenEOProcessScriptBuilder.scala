@@ -630,7 +630,7 @@ class OpenEOProcessScriptBuilder {
       case "array_create" => arrayCreateFunction(arguments)
       case "predict_random_forest" if hasData => predictRandomForestFunction(arguments)
       case "predict_catboost" if hasData => predictCatBoostFunction(arguments)
-      case "predict_catboost_probabilities" if hasData => predictCatBoostProbabilitiesFunction(arguments)
+      case "predict_probabilities" if hasData => predictCatBoostProbabilitiesFunction(arguments)
       case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
     }
 

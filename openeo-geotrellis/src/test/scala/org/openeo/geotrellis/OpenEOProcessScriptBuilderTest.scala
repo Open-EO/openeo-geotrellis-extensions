@@ -96,7 +96,7 @@ class OpenEOProcessScriptBuilderTest {
       }
     }
     val tiles = mutable.Buffer[Tile](tile0, tile1, tile2)
-    val result = predictWithDefaultCatBoostClassifier(tiles, random, "predict_catboost_probabilities")
+    val result = predictWithDefaultCatBoostClassifier(tiles, random, "predict_probabilities")
     // Result = Vector[3] =? Should be Vector[4]
     // result[0] = ArrayTile(4,4,float32) with 16 probabilities => Correct.
     assertEquals(FloatCellType.withDefaultNoData, result.apply(0).cellType)
