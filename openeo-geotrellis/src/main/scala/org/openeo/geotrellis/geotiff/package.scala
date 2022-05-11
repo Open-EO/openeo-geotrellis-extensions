@@ -8,7 +8,7 @@ import geotrellis.raster.io.geotiff._
 import geotrellis.raster.io.geotiff.compression.{Compression, DeflateCompression}
 import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.render.IndexedColorMap
-import geotrellis.raster.resample.NearestNeighbor
+import geotrellis.raster.resample.{NearestNeighbor, Mode,Average,Max,Min,Median,Bilinear}
 import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
@@ -39,7 +39,7 @@ import java.net.URI
 import java.nio.file.Paths
 import java.time.Duration
 import java.time.format.DateTimeFormatter
-import java.util.{List => JList, ArrayList, Collections, Map}
+import java.util.{ArrayList, Collections, Map, List => JList}
 import scala.collection.JavaConverters._
 import scala.reflect._
 
@@ -218,6 +218,16 @@ package object geotiff {
     val overviews =
     if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
       //create overviews
+      val method = formatOptions.resampleMethod match {
+        case "near" => NearestNeighbor
+        case "mode" => Mode
+        case "average" => Average
+        case "bilinear" => Bilinear
+        case "max" => Max
+        case "min" => Min
+        case "med" => Median
+        case _ => NearestNeighbor
+      }
       val levels = LocalLayoutScheme.inferLayoutLevel(preprocessedRdd.metadata)
 
       if(levels>1) {
@@ -226,7 +236,7 @@ package object geotiff {
         var nextOverviewLevel: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preprocessedRdd
         var nextZoom = -1
         val overviews = (1 to levels).reverse.map( level=>{
-          var zoom_rdd = Pyramid.up(nextOverviewLevel,scheme,level)
+          var zoom_rdd = Pyramid.up(nextOverviewLevel,scheme,level,Pyramid.Options(resampleMethod = method))
           nextOverviewLevel = zoom_rdd._2
           val overViewGridBounds = nextOverviewLevel.metadata.gridBoundsFor(croppedExtent, clamp = true).toGridType[Int]
           val ( overViewTiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, overViewSegmentCount: Int) = getCompressedTiles(nextOverviewLevel,overViewGridBounds, compression)
