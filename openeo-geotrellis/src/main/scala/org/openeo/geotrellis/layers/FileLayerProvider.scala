@@ -410,10 +410,10 @@ object FileLayerProvider {
           loadedPartitions
 
         }.filter { case (_, tile) => tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
-          .map(t => (t._1,t._2.get)).iterator,true).mapPartitions(p=>{
-          logger.info("Reset GDAL WARP Cache")
+          .map(t => (t._1,t._2.get)).iterator,true)/*.mapPartitions(p=>{
+          //logger.info("Reset GDAL WARP Cache")
           GDALWarp.init(32)
-        p},true)
+        p},true)*/
 
 
     val cRDD = ContextRDD(tiledRDD, metadata)
