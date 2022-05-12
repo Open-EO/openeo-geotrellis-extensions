@@ -3,7 +3,7 @@ package org.openeo.geotrellis.layers
 import com.google.common.cache.{CacheBuilder, CacheLoader}
 import geotrellis.layer.{Boundable, KeyExtractor, SpaceTimeKey, SpatialKey, TemporalKeyExtractor, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.{MultibandTile, RasterRegion, RasterSource, SourceName, SourcePath}
+import geotrellis.raster.{MultibandTile, RasterExtent, RasterRegion, RasterSource, SourceName, SourcePath}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.store.hadoop.util.HdfsUtils
@@ -16,6 +16,7 @@ import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport}
 
+import java.io.IOException
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.concurrent.TimeUnit.HOURS
 import scala.util.matching.Regex
@@ -42,7 +43,11 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
 
   lazy val maxZoom: Int = {
     val (_, newestRasterSource) = queryAll().last
-    layoutScheme.levelFor(newestRasterSource.extent, newestRasterSource.cellSize).zoom
+    try{
+      layoutScheme.levelFor(newestRasterSource.extent, newestRasterSource.cellSize).zoom
+    }  catch {
+      case e: Exception => throw new IOException(s"Error while reading extent of: ${newestRasterSource.name.toString}", e)
+    }
   }
 
   protected def dataGlob: String
