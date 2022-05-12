@@ -23,13 +23,14 @@ class JsonLayoutTest {
     val jsonLayout: Layout = new JsonLayout
 
     val logger = Logger.getLogger(getClass)
-    val timestamp = 1638526627000L
+    val timestamp = 1638526627123L
     val message = "It was the blorst of times."
 
     val loggingEvent = new LoggingEvent(null, logger, timestamp, Level.INFO, message, null)
     val logLine = jsonLayout.format(loggingEvent)
 
     assertTrue(s"$logLine doesn't end with a newline", logLine.endsWith(System.lineSeparator()))
+    assertTrue(s"""$logLine uses scientific notation for "created"""", logLine contains "1638526627.123")
 
     print(logLine)
     val logEntry = decode[Map[String, Json]](logLine).valueOr(throw _)
@@ -39,6 +40,6 @@ class JsonLayoutTest {
     logEntry("process").asNumber.flatMap(_.toInt).get
     assertEquals("INFO", logEntry("levelname").asString.get)
     assertEquals(message, logEntry("message").asString.get)
-    assertEquals(timestamp / 1000, logEntry("created").asNumber.flatMap(_.toLong).get)
+    assertEquals(1638526627.123, logEntry("created").asNumber.map(_.toDouble).get, 0.001)
   }
 }
