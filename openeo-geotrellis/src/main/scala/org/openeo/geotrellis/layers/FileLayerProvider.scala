@@ -3,6 +3,7 @@ package org.openeo.geotrellis.layers
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Feature
 import cats.data.NonEmptyList
+import com.azavea.gdal.GDALWarp
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
@@ -140,8 +141,12 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 
 object FileLayerProvider {
 
-
   private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
+
+  {
+    logger.info("Setting GdalWarp cache size to 32.")
+    GDALWarp.init(32)
+  }
 
   // important: make sure to implement object equality for CacheKey's members
   private case class CacheKey(openSearch: OpenSearchClient, openSearchCollectionId: String, rootPath: Path,
@@ -405,7 +410,11 @@ object FileLayerProvider {
           loadedPartitions
 
         }.filter { case (_, tile) => tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
-          .map(t => (t._1,t._2.get)).iterator,true)
+          .map(t => (t._1,t._2.get)).iterator,true).mapPartitions(p=>{
+          logger.info("Reset GDAL WARP Cache")
+          GDALWarp.init(32)
+        p},true)
+
 
     val cRDD = ContextRDD(tiledRDD, metadata)
     cRDD.name = rasterRegionRDD.name
