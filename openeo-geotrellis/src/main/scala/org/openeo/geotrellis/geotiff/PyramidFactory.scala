@@ -2,7 +2,7 @@ package org.openeo.geotrellis.geotiff
 
 import cats.data.NonEmptyList
 import geotrellis.layer._
-import geotrellis.proj4.{CRS, LatLng, WebMercator}
+import geotrellis.proj4.CRS
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource}
 import geotrellis.raster.{CellType, InterpretAsTargetCellType, MultibandTile, RasterSource}
 import geotrellis.spark._
@@ -46,7 +46,7 @@ object PyramidFactory {
       HdfsUtils.listFiles(path, new Configuration)
         .map(path => (GeoTiffRasterSource(path.toString, parseTargetCellType(interpret_as_cell_type)),
           deriveDate(date_regex.r)(path.toString)))
-    }, deriveDate(date_regex.r), lat_lon)
+    }, deriveDate(date_regex.r), if (lat_lon) 4326 else 3857)
 
   def from_disk(timestamped_paths: util.Map[String, String]): PyramidFactory = // file path -> timestamp
     from_uris(timestamped_uris = timestamped_paths)
@@ -64,7 +64,7 @@ object PyramidFactory {
       rasterSources = timestampedUris
         .map { case (path, timestamp) => GeoTiffRasterSource(path) -> timestamp }
         .toSeq,
-      extractDateFromPath = broadcastedTimestampedPaths.value, latLng = false)
+      extractDateFromPath = broadcastedTimestampedPaths.value, default_epsg = 3857)
   }
 
   def from_s3(s3_uri: String, key_regex: String, date_regex: String, recursive: Boolean,
@@ -98,7 +98,7 @@ object PyramidFactory {
           (GeoTiffRasterSource(uri.toString, parseTargetCellType(interpret_as_cell_type)),
             deriveDate(date_regex.r)(uri.getKey))
         ).toSeq
-    }, deriveDate(date_regex.r), lat_lon)
+    }, deriveDate(date_regex.r), if (lat_lon) 4326 else 3857)
 
   private def deriveDate(date: Regex)(path: String): ZonedDateTime = {
     path match {
@@ -113,21 +113,21 @@ object PyramidFactory {
 }
 
 class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime)],
-                              extractDateFromPath: String => ZonedDateTime, latLng: Boolean) {
-  private val targetCrs = if (latLng) LatLng else WebMercator
+                              extractDateFromPath: String => ZonedDateTime, default_epsg: Int) {
+  private val defaultCrs = CRS.fromEpsgCode(default_epsg)
 
-  private lazy val reprojectedRasterSources =
+  private def reprojectedRasterSources(targetCrs: CRS): Seq[(RasterSource, ZonedDateTime)] =
     rasterSources.map { case (rasterSource, date) => (rasterSource.reproject(targetCrs), date) }
 
-  private lazy val maxZoom = rasterSources.headOption.map { case (rasterSource, date) => (rasterSource.reproject(targetCrs), date) } match {
-    case Some((rasterSource, _)) => ZoomedLayoutScheme(targetCrs).zoom(rasterSource.extent.center.getX, rasterSource.extent.center.getY, rasterSource.cellSize)
+  private lazy val maxZoom = rasterSources.headOption.map { case (rasterSource, date) => (rasterSource.reproject(defaultCrs), date) } match {
+    case Some((rasterSource, _)) => ZoomedLayoutScheme(defaultCrs).zoom(rasterSource.extent.center.getX, rasterSource.extent.center.getY, rasterSource.cellSize)
     case None => throw new IllegalStateException("no raster sources found")
   }
 
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
 
-    val projectedExtent = if (bbox != null) ProjectedExtent(bbox, CRS.fromName(bbox_srs)) else ProjectedExtent(targetCrs.worldExtent, targetCrs)
+    val projectedExtent = if (bbox != null) ProjectedExtent(bbox, CRS.fromName(bbox_srs)) else ProjectedExtent(defaultCrs.worldExtent, defaultCrs)
     val from = if (from_date != null) ZonedDateTime.parse(from_date) else null
     val to = if (to_date != null) ZonedDateTime.parse(to_date) else null
 
@@ -137,13 +137,16 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
   }
 
   def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime)(implicit sc: SparkContext): Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val layers = for (zoom <- maxZoom to 0 by -1) yield zoom -> layer(boundingBox, from, to, zoom)
+    val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(defaultCrs), defaultCrs)
+    val reprojectedRasterSources = this.reprojectedRasterSources(defaultCrs)
+
+    val layers = for (zoom <- maxZoom to 0 by -1) yield zoom -> layer(reprojectedRasterSources, reprojectedBoundingBox, from, to, new DataCubeParameters, zoom = zoom)
     Pyramid(layers.toMap)
   }
 
-  def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom, parameters: DataCubeParameters = new DataCubeParameters)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(targetCrs), targetCrs)
-    layer(reprojectedRasterSources, reprojectedBoundingBox, from, to, parameters, zoom = zoom)
+  def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom)(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(defaultCrs), defaultCrs)
+    layer(reprojectedRasterSources(defaultCrs), reprojectedBoundingBox, from, to, new DataCubeParameters, zoom = zoom)
   }
 
   private def layer(rasterSources: Seq[(RasterSource, ZonedDateTime)], boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, params: DataCubeParameters, zoom: Int)(implicit sc: SparkContext): OpenEORasterCube[SpaceTimeKey] = {
@@ -183,9 +186,9 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
 
     val (scheme,theZoom) = if(params.layoutScheme=="ZoomedLayoutScheme"){
       if(zoom<0) {
-        (ZoomedLayoutScheme(targetCrs),maxZoom)
+        (ZoomedLayoutScheme(defaultCrs),maxZoom)
       }else{
-        (ZoomedLayoutScheme(targetCrs),zoom)
+        (ZoomedLayoutScheme(defaultCrs),zoom)
       }
     }else{
       (FloatingLayoutScheme(params.tileSize),zoom)
@@ -200,8 +203,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
 
   }
 
-
-  def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
+  def datacube_seq(polygons: ProjectedPolygons, from_date: String, to_date: String,
                    metadata_properties: util.Map[String, Any], correlationId: String, dataCubeParameters: DataCubeParameters):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     // TODO: restore support for null from_date/to_date
@@ -211,18 +213,11 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
     val from = if (from_date != null) ZonedDateTime.parse(from_date) else null
     val to = if (to_date != null) ZonedDateTime.parse(to_date) else null
 
-    if (latLng) // TODO: drop the workaround for what look like negative SpatialKeys?
-      Seq(0 -> layer(boundingBox, from, to))
-    else {
-      Seq(0 -> layer(rasterSources, boundingBox, from, to, dataCubeParameters,-1))
-    }
-
+    Seq(0 -> layer(reprojectedRasterSources(boundingBox.crs), boundingBox, from, to, dataCubeParameters, zoom = -1))
   }
 
   def datacube_seq(polygons: ProjectedPolygons, from_date: String, to_date: String):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     datacube_seq(polygons, from_date, to_date,null,"",new DataCubeParameters)
   }
-
-
 }
