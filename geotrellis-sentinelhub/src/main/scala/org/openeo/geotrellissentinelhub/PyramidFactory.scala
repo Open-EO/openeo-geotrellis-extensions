@@ -4,12 +4,12 @@ import geotrellis.layer.{SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.{CellSize, MultibandTile, Raster}
 import geotrellis.spark._
-import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -18,7 +18,6 @@ import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import scala.collection.JavaConverters._
-import scala.reflect.ClassTag
 
 object PyramidFactory {
   private val logger: Logger = LoggerFactory.getLogger(classOf[PyramidFactory])
@@ -88,16 +87,12 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
     val partitioner = SpacePartitioner(metadata.bounds)
     assert(partitioner.index == SpaceTimeByMonthPartitioner)
 
-    val tracker = BatchJobMetadataTracker.tracker("")
-    tracker.registerDoubleCounter(BatchJobMetadataTracker.SH_PU)
-
     val tilesRdd = sc.parallelize(overlappingKeys, numSlices = (overlappingKeys.size / maxKeysPerPartition) max 1)
       .map { key =>
         val width = layout.tileLayout.tileCols
         val height = layout.tileLayout.tileRows
 
         awaitRateLimitingGuardDelay(bandNames, width, height)
-        tracker.add(BatchJobMetadataTracker.SH_PU,math.max(0.001,width*height*bandNames.size/(512*512*3)))
 
         val tile = authorized { accessToken =>
           processApi.getTile(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs),
@@ -178,9 +173,6 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
       )
       val layout = metadata.layout
 
-      val tracker = BatchJobMetadataTracker.tracker("")
-      tracker.registerDoubleCounter(BatchJobMetadataTracker.SH_PU)
-
       val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = {
         //noinspection ComparingUnrelatedTypes
         val maskClouds = dataCubeParameters.maskingStrategyParameters.get("method") == "mask_scl_dilation"
@@ -188,7 +180,6 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
         def loadMasked(spatialKey: SpatialKey, dateTime: ZonedDateTime): Option[MultibandTile] = try {
           def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile = {
             awaitRateLimitingGuardDelay(bandNames, width, height)
-            tracker.add(BatchJobMetadataTracker.SH_PU,math.max(0.001,width*height*bandNames.size/(512*512*3)))
 
             authorized { accessToken =>
               processApi.getTile(datasetId, projectedExtent, dateTime, width, height, bandNames,

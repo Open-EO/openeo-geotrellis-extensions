@@ -5,6 +5,7 @@ import geotrellis.raster.MultibandTile
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
 import geotrellis.vector.ProjectedExtent
 import org.apache.commons.io.IOUtils
+import org.openeo.geotrelliscommon.BatchJobMetadataTracker
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
 import org.slf4j.{Logger, LoggerFactory}
 import scalaj.http.Http
@@ -117,8 +118,15 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
 
     val response = withRetries(context = s"getTile $datasetId $date") {
       request.exec(parser = (code: Int, header: Map[String, IndexedSeq[String]], in: InputStream) =>
-        if (code == 200)
+        if (code == 200) {
+          val tracker = BatchJobMetadataTracker.tracker("")
+          val pUnitsSpent = header
+            .get("x-processingunits-spent").flatMap(_.headOption)
+            .getOrElse(math.max(0.001,width*height*bandNames.size/(512.0*512.0*3.0)).toString).toDouble
+          tracker.registerDoubleCounter(BatchJobMetadataTracker.SH_PU)
+          tracker.add(BatchJobMetadataTracker.SH_PU, pUnitsSpent)
           GeoTiffReader.readMultiband(IOUtils.toByteArray(in))
+        }
         else {
           val textBody = Source.fromInputStream(in, "utf-8").mkString
           throw SentinelHubException(request, jsonData, code,
