@@ -1,16 +1,16 @@
 package org.openeo.geotrellis
 
 import java.io.File
-
 import ar.com.hjg.pngj.{ImageInfo, ImageLineHelper, ImageLineInt, PngWriter}
 import geotrellis.layer.SpatialKey
+import geotrellis.raster.render.RGBA
 import geotrellis.raster.{MultibandTile, UByteCellType}
 import geotrellis.spark._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.openeo.geotrellis.geotiff.SRDD
 
 package object png {
-  def saveStitched(srdd: SRDD, path: String, cropBounds: Extent): Unit = {
+  def saveStitched(srdd: SRDD, path: String, cropBounds: Extent, options: PngOptions): Unit = {
     val tilesByRow = Option(cropBounds).foldLeft(srdd)(_ crop _)
         .groupBy { case (SpatialKey(_, row), _) => row }
 
@@ -25,12 +25,27 @@ package object png {
 
     val materialized = scanLines.toArray
 
+    val isIndexed = options != null && options.colorMap.isDefined
     val combinedImageInfo = {
       val src = materialized.head.imgInfo
-      new ImageInfo(src.cols, materialized.length, src.bitDepth, src.alpha, src.greyscale, src.indexed)
+      new ImageInfo(src.cols, materialized.length, src.bitDepth, src.alpha, src.greyscale && !isIndexed, src.greyscale && isIndexed)
     }
 
     val pngWriter = new PngWriter(new File(path), combinedImageInfo)
+
+
+    if(combinedImageInfo.indexed) {
+      val colorMap = options.colorMap.get
+      val paletteChunk = pngWriter.getMetadata.createPLTEChunk
+      paletteChunk.setNentries(colorMap.colors.size)
+      var counter = 0
+      for (color <- colorMap.colors) {
+        val rgb = RGBA(color)
+        paletteChunk.setEntry(counter,rgb.red,rgb.green,rgb.blue)
+        counter = counter + 1
+      }
+
+    }
 
     try {
       materialized foreach pngWriter.writeRow
@@ -38,6 +53,7 @@ package object png {
     } finally pngWriter.close()
   }
 
+  def saveStitched(srdd: SRDD, path: String, cropBounds: Extent): Unit = saveStitched(srdd, path, cropBounds, options=null)
   def saveStitched(srdd: SRDD, path: String): Unit = saveStitched(srdd, path, cropBounds = null)
 
   private def toScanLines(horizontalTiles: Iterable[(SpatialKey, MultibandTile)]): Iterable[ImageLineInt] = {
