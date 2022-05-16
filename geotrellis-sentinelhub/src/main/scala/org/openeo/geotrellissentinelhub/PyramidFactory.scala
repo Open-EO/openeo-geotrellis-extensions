@@ -177,6 +177,9 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
       )
       val layout = metadata.layout
 
+      val tracker = BatchJobMetadataTracker.tracker("")
+      tracker.registerDoubleCounter(BatchJobMetadataTracker.SH_PU)
+
       val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = {
         //noinspection ComparingUnrelatedTypes
         val maskClouds = dataCubeParameters.maskingStrategyParameters.get("method") == "mask_scl_dilation"
@@ -185,10 +188,11 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
           def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile = {
             awaitRateLimitingGuardDelay(bandNames, width, height)
 
-            val (tile, _) = authorized { accessToken =>
+            val (tile, processingUnitsSpent) = authorized { accessToken =>
               processApi.getTile(datasetId, projectedExtent, dateTime, width, height, bandNames,
                 sampleType, Criteria.toDataFilters(metadata_properties), processingOptions, accessToken)
             }
+            tracker.add(BatchJobMetadataTracker.SH_PU, processingUnitsSpent)
             tile
           }
 
