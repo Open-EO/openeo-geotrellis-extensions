@@ -9,7 +9,7 @@ import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -87,6 +87,9 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
     val partitioner = SpacePartitioner(metadata.bounds)
     assert(partitioner.index == SpaceTimeByMonthPartitioner)
 
+    val tracker = BatchJobMetadataTracker.tracker("")
+    tracker.registerDoubleCounter(BatchJobMetadataTracker.SH_PU)
+
     val tilesRdd = sc.parallelize(overlappingKeys, numSlices = (overlappingKeys.size / maxKeysPerPartition) max 1)
       .map { key =>
         val width = layout.tileLayout.tileCols
@@ -94,11 +97,12 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
         awaitRateLimitingGuardDelay(bandNames, width, height)
 
-        val tile = authorized { accessToken =>
+        val (tile, processingUnitsSpent) = authorized { accessToken =>
           processApi.getTile(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs),
             key.temporalKey, width, height, bandNames, sampleType, Criteria.toDataFilters(metadataProperties),
             processingOptions, accessToken)
         }
+        tracker.add(BatchJobMetadataTracker.SH_PU, processingUnitsSpent)
 
         (key, tile)
       }
@@ -181,10 +185,11 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
           def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile = {
             awaitRateLimitingGuardDelay(bandNames, width, height)
 
-            authorized { accessToken =>
+            val (tile, _) = authorized { accessToken =>
               processApi.getTile(datasetId, projectedExtent, dateTime, width, height, bandNames,
                 sampleType, Criteria.toDataFilters(metadata_properties), processingOptions, accessToken)
             }
+            tile
           }
 
           val keyExtent = spatialKey.extent(layout)

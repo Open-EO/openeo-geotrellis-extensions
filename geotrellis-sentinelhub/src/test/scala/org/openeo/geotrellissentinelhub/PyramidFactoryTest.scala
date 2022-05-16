@@ -57,7 +57,7 @@ object PyramidFactoryTest {
     override def getTile(datasetId: String, projectedExtent: ProjectedExtent, date: ZonedDateTime, width: Int,
                          height: Int, bandNames: Seq[String], sampleType: SampleType,
                          additionalDataFilters: util.Map[String, Any], processingOptions: util.Map[String, Any],
-                         accessToken: String): MultibandTile = {
+                         accessToken: String): (MultibandTile, Double) = {
       getTileCounter.add(1)
       processApi.getTile(datasetId, projectedExtent, date, width, height, bandNames, sampleType,
         additionalDataFilters, processingOptions, accessToken)
