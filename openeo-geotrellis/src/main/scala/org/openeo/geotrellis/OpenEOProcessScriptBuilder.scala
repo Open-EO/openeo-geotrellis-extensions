@@ -578,6 +578,7 @@ class OpenEOProcessScriptBuilder {
       case "power" => xyFunction(Pow.apply,xArgName = "base",yArgName = "p")
       case "normalized_difference" if hasXY => xyFunction((x, y) => Divide(Subtract(x, y), Add(x, y)))
       case "clip" => clipFunction(arguments)
+      case "int" => intFunction(arguments)
       // Statistics
       case "max" if hasData && !ignoreNoData => reduceFunction("data", Max.apply)
       case "max" if hasData && ignoreNoData => reduceFunction("data", MaxIgnoreNoData.apply)
@@ -1062,6 +1063,17 @@ class OpenEOProcessScriptBuilder {
         else
           x
       }))
+    }
+    clipFunction
+  }
+
+  private def intFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val inputFunction = storedArgs("x")
+
+    val clipFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
+      val input = evaluateToTiles(inputFunction, context, tiles).map(_.convert(FloatConstantNoDataCellType))
+      input.map(_.mapIfSetDouble(_.toInt))
     }
     clipFunction
   }
