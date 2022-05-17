@@ -1,6 +1,5 @@
 package org.openeo.geotrellis
 
-import java.io.File
 import ar.com.hjg.pngj.{ImageInfo, ImageLineHelper, ImageLineInt, PngWriter}
 import geotrellis.layer.SpatialKey
 import geotrellis.raster.render.RGBA
@@ -8,6 +7,8 @@ import geotrellis.raster.{MultibandTile, UByteCellType}
 import geotrellis.spark._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.openeo.geotrellis.geotiff.SRDD
+
+import java.io.File
 
 package object png {
   def saveStitched(srdd: SRDD, path: String, cropBounds: Extent, options: PngOptions): Unit = {
@@ -53,6 +54,7 @@ package object png {
     } finally pngWriter.close()
   }
 
+  def saveStitched(srdd: SRDD, path: String, options: PngOptions): Unit = saveStitched(srdd, path, cropBounds = null, options)
   def saveStitched(srdd: SRDD, path: String, cropBounds: Extent): Unit = saveStitched(srdd, path, cropBounds, options=null)
   def saveStitched(srdd: SRDD, path: String): Unit = saveStitched(srdd, path, cropBounds = null)
 
