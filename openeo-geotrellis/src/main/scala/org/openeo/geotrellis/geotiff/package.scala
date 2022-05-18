@@ -101,10 +101,6 @@ package object geotiff {
     val croppedExtent: Extent = preProcessResult._2
     val preprocessedRdd: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = preProcessResult._3
 
-    val keyBounds = preprocessedRdd.metadata.bounds
-    val maxKey = keyBounds.get.maxKey.getComponent[SpatialKey]
-    val minKey = keyBounds.get.minKey.getComponent[SpatialKey]
-
     val tileLayout = preprocessedRdd.metadata.tileLayout
 
     val totalCols = math.ceil(gridBounds.width.toDouble / tileLayout.tileCols).toInt
@@ -124,8 +120,8 @@ package object geotiff {
       (key, multibandTile.bands.map {
         tile =>
           bandIndex += 1
-          val layoutCol = key.getComponent[SpatialKey]._1 - minKey._1
-          val layoutRow = key.getComponent[SpatialKey]._2 - minKey._2
+          val layoutCol = key.getComponent[SpatialKey]._1
+          val layoutRow = key.getComponent[SpatialKey]._2
           val bandSegmentOffset = bandSegmentCount * bandIndex
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
           //tiff format seems to require that we provide 'full' tiles
@@ -270,9 +266,6 @@ package object geotiff {
   }
 
   private def getCompressedTiles[K: SpatialComponent : Boundable : ClassTag](preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]],gridBounds: GridBounds[Int], compression: Compression) = {
-    val keyBounds = preprocessedRdd.metadata.bounds
-    val minKey = keyBounds.get.minKey.getComponent[SpatialKey]
-
     val tileLayout = preprocessedRdd.metadata.tileLayout
 
     val totalCols = math.ceil(gridBounds.width.toDouble / tileLayout.tileCols).toInt
@@ -300,8 +293,8 @@ package object geotiff {
       multibandTile.bands.map {
         tile => {
           bandIndex += 1
-          val layoutCol = key.getComponent[SpatialKey]._1 - minKey._1
-          val layoutRow = key.getComponent[SpatialKey]._2 - minKey._2
+          val layoutCol = key.getComponent[SpatialKey]._1
+          val layoutRow = key.getComponent[SpatialKey]._2
           val bandSegmentOffset = bandSegmentCount * bandIndex
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
 
