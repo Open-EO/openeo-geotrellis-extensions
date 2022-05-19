@@ -973,6 +973,95 @@ public class TestOpenEOProcessScriptBuilder {
         assertTileEquals(tile1, res);
     }
 
+    @DisplayName("Test array_find process")
+    @Test
+    public void testArrayFind() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.emptyMap();
+        builder.expressionStart("array_find", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.argumentStart("value");
+        Map<String, Object> valueArgs = Collections.singletonMap("index",1);
+        builder.expressionStart("array_element", valueArgs);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.argumentStart("index");
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_element",valueArgs);
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_find",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
+        ByteArrayTile expectedResult = ByteConstantNoDataArrayTile.fill((byte) 1, 4, 4);
+        assertTileEquals(expectedResult, result.head());
+
+
+    }
+
+    @DisplayName("Test array_find process reverse")
+    @Test
+    public void testArrayFindReverse() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.singletonMap("reverse",true);
+        builder.expressionStart("array_find", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.argumentStart("value");
+        Map<String, Object> valueArgs = Collections.singletonMap("index",1);
+        builder.expressionStart("array_element", valueArgs);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.argumentStart("index");
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_element",valueArgs);
+        builder.argumentEnd();
+        builder.constantArgument("reverse",true);
+
+        builder.expressionEnd("array_find",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1,tile1)));
+        ByteArrayTile expectedResult = ByteConstantNoDataArrayTile.fill((byte) 2, 4, 4);
+        assertTileEquals(expectedResult, result.head());
+
+
+    }
+
+    @DisplayName("Test array_find process no match")
+    @Test
+    public void testArrayFindNoMatch() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.emptyMap();
+        builder.expressionStart("array_find", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.constantArgument("value",100);
+
+        builder.expressionEnd("array_find",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+
+
+        Tile emptyResult = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1))).head();
+        assertTrue(emptyResult.isNoDataTile());
+    }
+
     @DisplayName("Test array_modify process: insert")
     @Test
     public void testArrayModifyInsert() {
