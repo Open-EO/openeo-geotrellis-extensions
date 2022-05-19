@@ -357,6 +357,42 @@ class OpenEOProcessScriptBuilder {
     unaryFunction(argName, (tiles: Seq[Tile]) => operator(tiles))
   }
 
+
+  private def arrayFind(arguments:java.util.Map[String,Object]) : OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val value = storedArgs.get("value").getOrElse(throw new IllegalArgumentException("If process expects a value argument. These arguments were found: " + arguments.keys.mkString(", ")))
+    val data = storedArgs.get("data").getOrElse(throw new IllegalArgumentException("If process expects an data argument. These arguments were found: " + arguments.keys.mkString(", ")))
+
+    val arrayfindProcess = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
+      val value_input: Seq[Tile] = evaluateToTiles(value, context, tiles)
+      val data_input: Seq[Tile] = evaluateToTiles(data, context, tiles)
+      if(value_input.size!=1)
+        throw new IllegalArgumentException("The value argument of the array_find function should resolve to exactly one input.")
+      val the_value = value_input.head
+      val tile = MultibandTile(data_input)
+      val mutableResult:MutableArrayTile = tile.bands(0).mutable
+      var i = 0
+      cfor(0)(_ < tile.cols, _ + 1) { col =>
+        cfor(0)(_ < tile.rows, _ + 1) { row =>
+          val bandValues = new ArrayBuffer[Double](tile.bandCount)
+          cfor(0)(_ < tile.bandCount, _ + 1) { band =>
+            val d = tile.bands(band).getDouble(col, row)
+            bandValues.append(d)
+          }
+          if(!bandValues.isEmpty) {
+            val resultValues = bandValues.indexOf(the_value.getDouble(col,row))
+            mutableResult.setDouble(col, row,resultValues)
+          }
+          i += 1
+        }
+      }
+      Seq(mutableResult)
+
+    }
+
+    arrayfindProcess
+  }
+
   private def mapListFunction(listArgName: String, mapArgName:String, operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
     val storedArgs = contextStack.head
     val mapFunction: Option[OpenEOProcess] = storedArgs.get(mapArgName)
@@ -624,6 +660,7 @@ class OpenEOProcessScriptBuilder {
       case "array_element" => arrayElementFunction(arguments)
       case "array_modify" => arrayModifyFunction(arguments)
       case "array_interpolate_linear" => applyListFunction("data",linearInterpolation)
+      case "array_find" => arrayFind(arguments)
       case "linear_scale_range" => linearScaleRangeFunction(arguments)
       case "quantiles" => quantilesFunction(arguments,ignoreNoData)
       case "array_concat" => arrayConcatFunction(arguments)
