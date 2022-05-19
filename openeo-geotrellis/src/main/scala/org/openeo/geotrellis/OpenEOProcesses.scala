@@ -605,9 +605,15 @@ class OpenEOProcesses extends Serializable {
       val binaryOp = tileBinaryOp.getOrElse(operator, throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, tileBinaryOp.keys.toString())))
       return new ContextRDD(rdd.mapValues({case (l,r) =>
         if(l.bandCount != r.bandCount){
+          if(l.bandCount==0) {
+            r
+          }else if(r.bandCount==0) {
+            l
+          }
           throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.bandCount, r.bandCount))
+        }else{
+          MultibandTile(l.bands.zip(r.bands).map(t => binaryOp.apply(if(swapOperands){Seq(t._2, t._1)} else Seq(t._1, t._2))))
         }
-        MultibandTile(l.bands.zip(r.bands).map(t => binaryOp.apply(if(swapOperands){Seq(t._2, t._1)} else Seq(t._1, t._2))))
 
       }), leftCube.metadata)
     }
