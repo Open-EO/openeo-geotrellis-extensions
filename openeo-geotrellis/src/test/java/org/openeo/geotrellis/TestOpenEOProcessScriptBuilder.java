@@ -1328,6 +1328,30 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(-3.0,even_input.apply(0).get(0,0));
     }
 
+    @DisplayName("Test sd process")
+    @Test
+    public void testStandardDeviation() {
+        Tile tile0 = FloatConstantNoDataArrayTile.fill((byte)1.0, 4, 4);
+        Tile tile1 = FloatConstantNoDataArrayTile.fill((byte)3.0, 4, 4);
+        Tile tile2 = FloatConstantNoDataArrayTile.fill((byte)-10.0, 4, 4);
+        Tile tile3 = FloatConstantNoDataArrayTile.fill((byte)19.0, 4, 4);
+        Tile nodataTile = FloatConstantNoDataArrayTile.empty(4, 4);
+
+        Seq<Tile> result = createStandardDeviation(null).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
+        assertEquals(FloatConstantNoDataArrayTile.empty(0, 0).cellType(), result.apply(0).cellType());
+
+        assertEquals(9.261029243469238,result.apply(0).getDouble(0,0));
+
+        Seq<Tile> result_nodata = createStandardDeviation(false).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)));
+        assertTrue(result_nodata.apply(0).isNoDataTile());
+
+        Seq<Tile> input1 = createStandardDeviation(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(), tile3)));
+        assertEquals(20.50609588623047, input1.apply(0).getDouble(0,0));
+
+        Seq<Tile> input2 = createStandardDeviation(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(),tile1, nodataTile)));
+        assertEquals(9.192388534545898, input2.apply(0).getDouble(0,0));
+    }
+
     @DisplayName("Test quantiles process")
     @Test
     public void testQuantiles() {
@@ -1551,10 +1575,28 @@ public class TestOpenEOProcessScriptBuilder {
             builder.constantArgument("ignore_nodata",ignoreNoData.booleanValue());
         }
 
-
         builder.expressionEnd("median",arguments);
         return builder;
     }
+
+    static OpenEOProcessScriptBuilder createStandardDeviation(Boolean ignoreNoData) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = new HashMap<>();
+        if (ignoreNoData != null) arguments.put("ignore_nodata", ignoreNoData.booleanValue());
+        arguments.put("data", "dummy");
+        builder.expressionStart("sd", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+
+        if (ignoreNoData != null) {
+            builder.constantArgument("ignore_nodata",ignoreNoData.booleanValue());
+        }
+
+        builder.expressionEnd("sd",arguments);
+        return builder;
+    }
+
 
     static OpenEOProcessScriptBuilder createQuantiles(Boolean ignoreNoData, int qValue) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();

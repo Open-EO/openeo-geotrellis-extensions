@@ -212,6 +212,52 @@ object OpenEOProcessScriptBuilder{
     multibandReduce(MultibandTile(tiles),ts => {if(ts.exists(_.isNaN)) Double.NaN else medianOfDoubles(ts)},false)
   }
 
+  private def varianceWithNoData(rs: Seq[Tile]): Tile = {
+    rs.assertEqualDimensions()
+
+    val layerCount = rs.length
+    if (layerCount == 0) sys.error(s"Can't compute variance of empty sequence.")
+    else {
+      val newCellType = rs.map(_.cellType).reduce(_.union(_))
+      val Dimensions(cols, rows) = rs(0).dimensions
+      val tile = ArrayTile.alloc(newCellType, cols, rows)
+
+      cfor(0)(_ < rows, _ + 1) { row =>
+        cfor(0)(_ < cols, _ + 1) { col =>
+          var count = 0
+          var mean = 0.0
+          var m2 = 0.0
+          var noDataPixel = false
+
+          breakable {
+            cfor(0)(_ < layerCount, _ + 1) { i =>
+              val v = rs(i).getDouble(col, row)
+              if (isData(v)) {
+                count += 1
+                val delta = v - mean
+                mean += delta / count
+                m2 += delta * (v - mean)
+              } else {
+                noDataPixel = true
+                break
+              }
+            }
+          }
+
+          if (newCellType.isFloatingPoint) {
+            if (count > 1 && !noDataPixel) tile.setDouble(col, row, m2 / (count - 1))
+            else tile.setDouble(col, row, Double.NaN)
+          } else {
+            if (count > 1 && !noDataPixel) tile.set(col, row, (m2 / (count - 1)).round.toInt)
+            else tile.set(col, row, NODATA)
+          }
+        }
+      }
+
+      tile
+    }
+  }
+
   private def linearInterpolation(tiles:Seq[Tile]) : Seq[Tile] = {
 
     multibandMap(MultibandTile(tiles),ts => {
@@ -622,10 +668,12 @@ class OpenEOProcessScriptBuilder {
       case "min" if hasData && ignoreNoData => reduceFunction("data", MinIgnoreNoData.apply)
         //TODO take ignorenodata into account!
       case "mean" if hasData => reduceListFunction("data", Mean.apply)
-      case "variance" if hasData => reduceListFunction("data", Variance.apply)
-      case "sd" if hasData => reduceListFunction("data", Sqrt.apply _ compose Variance.apply)
+      case "variance" if hasData && !ignoreNoData => reduceListFunction("data", varianceWithNoData)
+      case "variance" if hasData && ignoreNoData => reduceListFunction("data", Variance.apply)
+      case "sd" if hasData && !ignoreNoData => reduceListFunction("data", Sqrt.apply _ compose varianceWithNoData)
+      case "sd" if hasData && ignoreNoData => reduceListFunction("data", Sqrt.apply _ compose Variance.apply)
       case "median" if ignoreNoData => applyListFunction("data",median)
-      case "median" => applyListFunction("data",medianWithNodata)
+      case "median" => applyListFunction("data", medianWithNodata)
       case "count" if hasTrueCondition => applyListFunction("data", countAll)
       case "count" if hasConditionExpression => mapListFunction("data", "condition", countCondition)
       case "count" => applyListFunction("data", countValid)
