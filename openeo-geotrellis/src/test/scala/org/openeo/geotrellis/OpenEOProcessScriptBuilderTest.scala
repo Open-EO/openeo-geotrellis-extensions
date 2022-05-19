@@ -15,7 +15,7 @@ import scala.collection.{Seq, mutable}
 
 class OpenEOProcessScriptBuilderTest {
 
-  private def predictWithDefaultCatBoostClassifier(tiles: mutable.Buffer[Tile], random: Random): Seq[Tile] = {
+  private def predictWithDefaultCatBoostClassifier(tiles: mutable.Buffer[Tile], random: Random, predict_expression: String = "predict_catboost"): Seq[Tile] = {
     val spark = SparkSession.builder()
       .master("local[1]")
       .appName("CatBoostClassifierTest")
@@ -45,13 +45,13 @@ class OpenEOProcessScriptBuilderTest {
     val arguments = new util.HashMap[String, AnyRef]
     arguments.put("model", new util.HashMap[String, String]() {{put("from_parameter", "context")}})
     arguments.put("data", "dummy")
-    builder.expressionStart("predict_catboost", arguments)
+    builder.expressionStart(predict_expression, arguments)
 
     builder.argumentStart("data")
     builder.fromParameter("data")
     builder.argumentEnd()
 
-    builder.expressionEnd("predict_catboost", arguments)
+    builder.expressionEnd(predict_expression, arguments)
 
     val context = Map[String,Any]("context" -> model)
     val result = builder.generateFunction(context).apply(tiles)
@@ -80,5 +80,30 @@ class OpenEOProcessScriptBuilderTest {
     assertEquals(2, result.head.get(0, 2))
     assertEquals(0, result.head.get(3, 2))
     assertEquals(2, result.head.get(3, 3))
+  }
+
+  @Test
+  def testPredictCatBoostProbabilities(): Unit = {
+    val random = new Random(42)
+    val tile0 = FloatArrayTile.empty(4, 4)
+    val tile1 = FloatArrayTile.empty(4, 4)
+    val tile2 = FloatArrayTile.empty(4, 4)
+    for (col <- 0 until 4) {
+      for (row <- 0 until 4) {
+        tile0.setDouble(col, row, random.nextDouble * 10)
+        tile1.setDouble(col, row, random.nextDouble * 10)
+        tile2.setDouble(col, row, random.nextDouble * 10)
+      }
+    }
+    val tiles = mutable.Buffer[Tile](tile0, tile1, tile2)
+    val result = predictWithDefaultCatBoostClassifier(tiles, random, "predict_probabilities")
+    // Result = Vector[3] =? Should be Vector[4]
+    // result[0] = ArrayTile(4,4,float32) with 16 probabilities => Correct.
+    assertEquals(FloatCellType.withDefaultNoData, result.apply(0).cellType)
+    assertEquals(3, result.map(t => t.getDouble(0,0)).zipWithIndex.maxBy(_._1)._2)
+    assertEquals(0, result.map(t => t.getDouble(0,1)).zipWithIndex.maxBy(_._1)._2)
+    assertEquals(2, result.map(t => t.getDouble(0,2)).zipWithIndex.maxBy(_._1)._2)
+    assertEquals(0, result.map(t => t.getDouble(3,2)).zipWithIndex.maxBy(_._1)._2)
+    assertEquals(2, result.map(t => t.getDouble(3,3)).zipWithIndex.maxBy(_._1)._2)
   }
 }

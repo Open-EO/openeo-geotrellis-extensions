@@ -631,6 +631,7 @@ class OpenEOProcessScriptBuilder {
       case "array_create" => arrayCreateFunction(arguments)
       case "predict_random_forest" if hasData => predictRandomForestFunction(arguments)
       case "predict_catboost" if hasData => predictCatBoostFunction(arguments)
+      case "predict_probabilities" if hasData => predictCatBoostProbabilitiesFunction(arguments)
       case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
     }
 
@@ -806,16 +807,7 @@ class OpenEOProcessScriptBuilder {
   }
 
   private def predictRandomForestFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
-    // TODO: Currently we explicitly check for 'model': {'from_parameter': 'context'} as it is never dereferenced.
-    // Later this should be dereferenced correctly in fromParameter() so we can access the model via 'arguments'.
-    // For now we will pass the model via the Map[String, Any] input of OpenEOProcess.
-    val modelArgument = arguments.getOrDefault("model", null)
-    if (!modelArgument.isInstanceOf[java.util.Map[String, Object]])
-      throw new IllegalArgumentException(s"The 'model' argument should contain {'from_parameter': 'context'}, but got: $modelArgument.")
-    val fromParamArgument = modelArgument.asInstanceOf[java.util.Map[String, Object]].getOrElse("from_parameter", null)
-    if (!fromParamArgument.isInstanceOf[String] || fromParamArgument.asInstanceOf[String] != "context")
-      throw new IllegalArgumentException(s"The from_parameter argument in 'model' should refer to 'context', but got: $fromParamArgument.")
-
+    checkMlArguments(arguments)
     val operator = (rs: Seq[Tile], context: Map[String, Any]) => {
       val modelCheck = context.getOrElse("context", null)
       if (!modelCheck.isInstanceOf[RandomForestModel])
@@ -882,16 +874,7 @@ class OpenEOProcessScriptBuilder {
   }
 
   private def predictCatBoostFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
-    // TODO: Currently we explicitly check for 'model': {'from_parameter': 'context'} as it is never dereferenced.
-    // Later this should be dereferenced correctly in fromParameter() so we can access the model via 'arguments'.
-    // For now we will pass the model via the Map[String, Any] input of OpenEOProcess.
-    val modelArgument = arguments.getOrDefault("model", null)
-    if (!modelArgument.isInstanceOf[java.util.Map[String, Object]])
-      throw new IllegalArgumentException(s"The 'model' argument should contain {'from_parameter': 'context'}, but got: $modelArgument.")
-    val fromParamArgument = modelArgument.asInstanceOf[java.util.Map[String, Object]].getOrElse("from_parameter", null)
-    if (!fromParamArgument.isInstanceOf[String] || fromParamArgument.asInstanceOf[String] != "context")
-      throw new IllegalArgumentException(s"The from_parameter argument in 'model' should refer to 'context', but got: $fromParamArgument.")
-
+    checkMlArguments(arguments)
     // This operator reduces all layers in rs down to one layer using CatboostModel.predict().
     // For each cell it creates a feature vector from the layers and then generates one prediction for that vector.
     val operator = (rs: Seq[Tile], context: Map[String, Any]) => {
@@ -938,6 +921,48 @@ class OpenEOProcessScriptBuilder {
       operator(inputFunction.get(context)(tiles), context)
     }
     composed
+  }
+
+  private def predictCatBoostProbabilitiesFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
+    checkMlArguments(arguments)
+    // This operator reduces all layers in rs down to one layer using CatboostModel.predict().
+    // For each cell it creates a feature vector from the layers and then generates one prediction for that vector.
+    val operator = (rs: Seq[Tile], context: Map[String, Any]) => {
+      val modelCheck = context.getOrElse("context", null)
+      if (!modelCheck.isInstanceOf[CatBoostClassificationModel] && !modelCheck.isInstanceOf[CatBoostModel])
+        throw new IllegalArgumentException(
+          s"The 'model' argument should contain a valid Catboost model, but got: $modelCheck.")
+      rs.assertEqualDimensions()
+      val layerCount = rs.length
+      if (layerCount == 0) sys.error(s"No features provided for predict_catboost.")
+
+      val model = context("context").asInstanceOf[CatBoostClassificationModel]
+      multibandMapToNewTiles(MultibandTile(rs),ts => {
+        val featureArray: Array[Double] = ts.map(_.doubleValue()).toArray
+        val numericalFeatures = ml.linalg.Vectors.dense(featureArray)
+        val probabilityPrediction = model.predictProbability(numericalFeatures)
+        probabilityPrediction.toArray
+      })
+    }
+    // Return our operator in a composed function.
+    val storedArgs = contextStack.head
+    val inputFunction: Option[OpenEOProcess] = storedArgs.get("data")
+    def composed(context: Map[String, Any])(tiles: Seq[Tile]): Seq[Tile] = {
+      operator(inputFunction.get(context)(tiles), context)
+    }
+    composed
+  }
+
+  private def checkMlArguments(arguments: util.Map[String, Object]) = {
+    // TODO: Currently we explicitly check for 'model': {'from_parameter': 'context'} as it is never dereferenced.
+    // Later this should be dereferenced correctly in fromParameter() so we can access the model via 'arguments'.
+    // For now we will pass the model via the Map[String, Any] input of OpenEOProcess.
+    val modelArgument = arguments.getOrDefault("model", null)
+    if (!modelArgument.isInstanceOf[util.Map[String, Object]])
+      throw new IllegalArgumentException(s"The 'model' argument should contain {'from_parameter': 'context'}, but got: $modelArgument.")
+    val fromParamArgument = modelArgument.asInstanceOf[util.Map[String, Object]].getOrElse("from_parameter", null)
+    if (!fromParamArgument.isInstanceOf[String] || fromParamArgument.asInstanceOf[String] != "context")
+      throw new IllegalArgumentException(s"The from_parameter argument in 'model' should refer to 'context', but got: $fromParamArgument.")
   }
 
   private def firstFunctionIgnoreNoData(tiles:Seq[Tile]) : Seq[Tile] = {
