@@ -409,6 +409,8 @@ class OpenEOProcessScriptBuilder {
     val value = storedArgs.get("value").getOrElse(throw new IllegalArgumentException("If process expects a value argument. These arguments were found: " + arguments.keys.mkString(", ")))
     val data = storedArgs.get("data").getOrElse(throw new IllegalArgumentException("If process expects an data argument. These arguments were found: " + arguments.keys.mkString(", ")))
 
+    val reverse = (arguments.getOrDefault("reverse",Boolean.box(false).asInstanceOf[Object]) == Boolean.box(true) || arguments.getOrDefault("reverse",None) == "true" )
+
     val arrayfindProcess = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
       val value_input: Seq[Tile] = evaluateToTiles(value, context, tiles)
       val data_input: Seq[Tile] = evaluateToTiles(data, context, tiles)
@@ -416,7 +418,7 @@ class OpenEOProcessScriptBuilder {
         throw new IllegalArgumentException("The value argument of the array_find function should resolve to exactly one input.")
       val the_value = value_input.head
       val tile = MultibandTile(data_input)
-      val mutableResult:MutableArrayTile = tile.bands(0).mutable
+      val mutableResult:MutableArrayTile = ArrayTile.empty(tile.cellType,tile.cols,tile.rows)
       var i = 0
       cfor(0)(_ < tile.cols, _ + 1) { col =>
         cfor(0)(_ < tile.rows, _ + 1) { row =>
@@ -426,8 +428,9 @@ class OpenEOProcessScriptBuilder {
             bandValues.append(d)
           }
           if(!bandValues.isEmpty) {
-            val resultValues = bandValues.indexOf(the_value.getDouble(col,row))
-            mutableResult.setDouble(col, row,resultValues)
+            val resultValues = if(!reverse) bandValues.indexOf(the_value.getDouble(col,row)) else bandValues.lastIndexOf(the_value.getDouble(col,row))
+            if(resultValues>=0)
+              mutableResult.setDouble(col, row,resultValues)
           }
           i += 1
         }
