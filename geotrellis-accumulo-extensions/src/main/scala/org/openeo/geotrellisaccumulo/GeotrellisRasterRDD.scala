@@ -1,20 +1,20 @@
 package org.openeo.geotrellisaccumulo
 
-import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata}
+import geotrellis.layer.{Boundable, Bounds, Metadata}
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.KryoWrapper
 import geotrellis.store.accumulo.AccumuloKeyEncoder
 import geotrellis.store.avro.codecs.KeyValueRecordCodec
 import geotrellis.store.avro.{AvroEncoder, AvroRecordCodec}
 import geotrellis.store.index.KeyIndex
+import geotrellis.util.Component
+import io.circe.Decoder
 import org.apache.accumulo.core.client.mapreduce.impl.BatchInputSplit
 import org.apache.accumulo.core.data
 import org.apache.accumulo.core.data.Key
 import org.apache.avro.Schema
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{Partition, SparkContext, TaskContext}
-import org.openeo.geotrellisaccumulo
-import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
 import java.util
 import scala.collection.JavaConverters._
@@ -22,14 +22,18 @@ import scala.collection.mutable
 import scala.reflect.ClassTag
 import scala.util.control.Breaks._
 
-class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[SpaceTimeKey],writerSchema:Schema,parent:GeotrellisAccumuloRDD,val metadata: TileLayerMetadata[SpaceTimeKey], sc : SparkContext) extends RDD[(SpaceTimeKey, V)](sc,Nil) with Metadata[TileLayerMetadata[SpaceTimeKey]] {
+class GeotrellisRasterRDD[
+  K: AvroRecordCodec: Boundable: Decoder: ClassTag,
+  V : AvroRecordCodec: ClassTag,
+  M: Decoder: Component[*, Bounds[K]]
+](keyIndex: KeyIndex[K], writerSchema: Schema, parent: GeotrellisAccumuloRDD, override val metadata: M, sc : SparkContext, part: SpacePartitioner[K], decodeIndexKey: BigInt => K) extends RDD[(K, V)](sc,Nil) with Metadata[M] {
 
-  val codec = KryoWrapper(KeyValueRecordCodec[SpaceTimeKey, V])
-  val jsonSchema = writerSchema.toString
+  private val codec = KryoWrapper(KeyValueRecordCodec[K, V])
+  private val jsonSchema = writerSchema.toString
 
-  override val partitioner: Option[org.apache.spark.Partitioner] = Some(SpacePartitioner(metadata.bounds))
+  override val partitioner: Option[SpacePartitioner[K]] = Some(part)
 
-  override def compute(split: Partition, context: TaskContext): Iterator[(SpaceTimeKey, V)] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[(K, V)] = {
     if(!split.isInstanceOf[NewHadoopPartition]) {
       return Iterator.empty
     }
@@ -47,15 +51,15 @@ class GeotrellisRasterRDD[V : AvroRecordCodec: ClassTag](keyIndex:KeyIndex[Space
 
   override protected def getPartitions: Array[Partition] = {
     val myPartitions: Array[Partition] = parent.getPartitions
-    val myRegions = partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].regions
+    val myRegions = partitioner.get.regions
 
     var splitsForRegions = mutable.Seq[BatchInputSplit]()
     var currentStart = 0
     println("Required input data is computed, this can take a while!")
     val start = System.currentTimeMillis()
     for (region <- myRegions) {
-      val startKey = geotrellisaccumulo.decodeIndexKey(region)
-      val endKey = geotrellisaccumulo.decodeIndexKey(region + 1)
+      val startKey = decodeIndexKey(region)
+      val endKey = decodeIndexKey(region + 1)
       val start = new Key(AccumuloKeyEncoder.index2RowId(keyIndex.toIndex(startKey)))
       val end = new Key(AccumuloKeyEncoder.index2RowId(keyIndex.toIndex(endKey)))
       // assert(region+1==geotrellisaccumulo.SpaceTimeByMonthPartitioner.toIndex(endKey))

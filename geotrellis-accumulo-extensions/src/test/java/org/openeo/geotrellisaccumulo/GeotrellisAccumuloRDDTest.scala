@@ -1,10 +1,10 @@
 package org.openeo.geotrellisaccumulo
 
 import java.time.{LocalDate, ZoneId}
-
 import geotrellis.layer.{SpaceTimeKey, TileLayerMetadata}
 import geotrellis.raster.MultibandTile
 import geotrellis.spark.pyramid.Pyramid
+import geotrellis.store.LayerQuery
 import geotrellis.vector.Extent
 import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
@@ -37,7 +37,7 @@ class GeotrellisAccumuloRDDTest  extends FlatSpec with Matchers{
 
     val accumuloTileLayerRepository = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
     accumuloTileLayerRepository.pyramid(layername,bbox,"EPSG:4326")
-    val rdd = accumuloTileLayerRepository.rdd[MultibandTile](layername)
+    val rdd = accumuloTileLayerRepository.rdd[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]](layername, new LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]](), decodeIndexKey)
 
     println(rdd)
     val partitions = rdd.partitions

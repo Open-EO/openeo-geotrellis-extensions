@@ -1,9 +1,8 @@
 package org.openeo.geotrellisaccumulo
 
 import java.time.ZonedDateTime
-
 import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
-import geotrellis.layer.{Bounds, EmptyBounds, KeyBounds, Metadata, SpaceTimeKey, TileLayerMetadata}
+import geotrellis.layer.{Boundable, Bounds, EmptyBounds, KeyBounds, Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.{MultibandTile, Tile}
 import geotrellis.spark._
@@ -13,6 +12,8 @@ import geotrellis.store.avro.AvroRecordCodec
 import geotrellis.store.{LayerQuery, _}
 import geotrellis.util._
 import geotrellis.vector._
+import _root_.io.circe._
+import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import org.apache.accumulo.core.client.mapreduce.InputFormatBase
 import org.apache.accumulo.core.data.{Range => AccumuloRange}
 import org.apache.accumulo.core.util.{Pair => AccumuloPair}
@@ -20,6 +21,7 @@ import org.apache.hadoop.io.Text
 import org.apache.hadoop.mapreduce.Job
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable
@@ -53,7 +55,11 @@ object PyramidFactory {
       KerberizedAccumuloInstance(zooKeeper,instanceName)
     }
 
-    def rdd[V : AvroRecordCodec: ClassTag](layerName:String,zoom:Int=0,tileQuery: LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]] = new LayerQuery[SpaceTimeKey,TileLayerMetadata[SpaceTimeKey]]() ): RDD[(SpaceTimeKey, V)] with Metadata[TileLayerMetadata[SpaceTimeKey]] ={
+    def rdd[
+      K: AvroRecordCodec: Boundable: Decoder: ClassTag,
+      V : AvroRecordCodec: ClassTag,
+      M: Decoder: Component[*, Bounds[K]]: ClassTag
+    ](layerName: String, tileQuery: LayerQuery[K, M], decodeIndexKey: BigInt => K, zoom: Int = 0)(implicit index: PartitionerIndex[K]): RDD[(K, V)] with Metadata[M] ={
       implicit val sc = SparkContext.getOrCreate()
       val id = LayerId(layerName, zoom)
 
@@ -61,25 +67,25 @@ object PyramidFactory {
       if (!attributeStore.layerExists(id)) throw new LayerNotFoundError(id)
 
       val LayerAttributes(header, metadata, keyIndex, writerSchema) = try {
-        attributeStore.readLayerAttributes[AccumuloLayerHeader, TileLayerMetadata[SpaceTimeKey], SpaceTimeKey](id)
+        attributeStore.readLayerAttributes[AccumuloLayerHeader, M, K](id)
       } catch {
         case e: AttributeNotFoundError => throw new LayerReadError(id).initCause(e)
       }
 
       val queryKeyBounds = tileQuery(metadata)
-      val layerBounds = metadata.getComponent[Bounds[SpaceTimeKey]]
-      val layerMetadata = metadata.setComponent[Bounds[SpaceTimeKey]](queryKeyBounds.foldLeft(EmptyBounds: Bounds[SpaceTimeKey])(_ combine _))
+      val layerBounds = metadata.getComponent[Bounds[K]]
+      val layerMetadata = metadata.setComponent[Bounds[K]](queryKeyBounds.foldLeft(EmptyBounds: Bounds[K])(_ combine _))
 
       val table = header.tileTable
 
-      val decompose: KeyBounds[SpaceTimeKey] => Seq[AccumuloRange] =
+      val decompose: KeyBounds[K] => Seq[AccumuloRange] =
         if(queryKeyBounds.size == 1 && queryKeyBounds.head.contains(layerBounds)) {
           // This query is asking for all the keys of the layer;
           // avoid a heavy set of accumulo ranges by not setting any at all,
           // which equates to a full request.
           { _ => Seq(new AccumuloRange()) }
         } else {
-          (bounds: KeyBounds[SpaceTimeKey]) => {
+          (bounds: KeyBounds[K]) => {
             keyIndex.indexRanges(bounds).map { case (min, max) =>
               new AccumuloRange(new Text(AccumuloKeyEncoder.long2Bytes(min)), new Text(AccumuloKeyEncoder.long2Bytes(max)))
             }
@@ -102,13 +108,13 @@ object PyramidFactory {
       val configuration = job.getConfiguration
       val rdd = new GeotrellisAccumuloRDD(sc,configuration,splitRanges)
 
-      return new GeotrellisRasterRDD[V](keyIndex,writerSchema,rdd,layerMetadata,sc)
+      new GeotrellisRasterRDD[K, V, M](keyIndex, writerSchema, rdd, layerMetadata, sc, SpacePartitioner(layerMetadata.getComponent[Bounds[K]]), decodeIndexKey)
     }
 
     def pyramid_seq(layerName:String,bbox: Extent, bbox_srs: String,startDate: String, endDate:String ): immutable.Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = {
       val start = if(startDate!=null ) Some(ZonedDateTime.parse(startDate)) else Option.empty
       val end = if(endDate!=null) Some(ZonedDateTime.parse(endDate)) else Option.empty
-      return pyramid_seq(layerName,bbox,bbox_srs,start,end)
+      pyramid_seq(layerName,bbox,bbox_srs,start,end)
     }
 
     def pyramid_seq(layerName: String, polygons: Array[MultiPolygon], polygons_crs: CRS, startDate: String, endDate: String): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
@@ -151,9 +157,9 @@ object PyramidFactory {
       val pyramid = for (z <- maxLevel to minLevel by -1) yield {
         header.valueClass match {
           case "geotrellis.raster.Tile" =>
-            (z, rdd[Tile](layerName, z, query).withContext(_.mapValues(MultibandTile(_))))
+            (z, rdd[SpaceTimeKey, Tile, TileLayerMetadata[SpaceTimeKey]](layerName, query, decodeIndexKey, z).withContext(_.mapValues(MultibandTile(_))))
           case "geotrellis.raster.MultibandTile" =>
-            (z, rdd[MultibandTile](layerName, z, query))
+            (z, rdd[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]](layerName,query, decodeIndexKey, z))
         }
       }
 
@@ -172,14 +178,15 @@ object PyramidFactory {
       val result: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
         header.valueClass match {
           case "geotrellis.raster.Tile" =>
-            rdd[Tile](layerName, level, query).withContext(_.mapValues {
+            rdd[SpaceTimeKey, Tile, TileLayerMetadata[SpaceTimeKey]](layerName, query, decodeIndexKey, level).withContext(_.mapValues {
               MultibandTile(_)
             })
           case "geotrellis.raster.MultibandTile" =>
-            rdd[MultibandTile](layerName, level, query)
+            rdd[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]](layerName, query, decodeIndexKey, level)
         }
       }
-      return new ContextRDD(result,result.metadata)
+
+      new ContextRDD(result,result.metadata)
     }
 
     def createQuery(attributeStore: AccumuloAttributeStore, id: LayerId, bbox: Extent, bbox_srs: String, startDate: Option[ZonedDateTime], endDate: Option[ZonedDateTime]): LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]] = {
@@ -212,18 +219,17 @@ object PyramidFactory {
 
       implicit val sc = SparkContext.getOrCreate()
 
-      return {
-        val seq = for (z <- maxLevel to minLevel by -1) yield {
-          header.valueClass match {
-            case "geotrellis.raster.Tile" =>
-              (z, rdd[Tile](layerName, z,query).withContext(_.mapValues{MultibandTile(_)}))
-            case "geotrellis.raster.MultibandTile" =>
-              (z, rdd[MultibandTile](layerName, z,query))
-          }
-
+      val seq = for (z <- maxLevel to minLevel by -1) yield {
+        header.valueClass match {
+          case "geotrellis.raster.Tile" =>
+            (z, rdd[SpaceTimeKey, Tile, TileLayerMetadata[SpaceTimeKey]](layerName, query, decodeIndexKey, z).withContext(_.mapValues{MultibandTile(_)}))
+          case "geotrellis.raster.MultibandTile" =>
+            (z, rdd[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]](layerName, query, decodeIndexKey, z))
         }
-        return seq
+
       }
+
+      seq
 
 
 
