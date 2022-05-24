@@ -112,7 +112,8 @@ class CreoPyramidFactory(productPaths: Seq[String], bands: Seq[String]) extends 
 
     val rasterSources = FileLayerProvider.rasterSourceRDD(overlappingRasterSources, metadata, maxSpatialResolution, "Creo")(sc)
 
-    FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc)
+    FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc,
+      retainNoDataTiles = false)
   }
 
   private def loadRasterSources(crs: CRS) = {

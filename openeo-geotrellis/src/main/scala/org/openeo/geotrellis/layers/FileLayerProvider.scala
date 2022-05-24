@@ -195,17 +195,17 @@ object FileLayerProvider {
     tiledLayoutSourceRDD
   }
 
-  def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon], polygons_crs: CRS, sc: SparkContext, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = Option.empty): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+  def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon], polygons_crs: CRS, sc: SparkContext, retainNoDataTiles: Boolean, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = None): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
     val polygonsRDD = sc.parallelize(polygons).map {
       _.reproject(polygons_crs, metadata.crs)
     }
     // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
     var requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
 
-    tileSourcesToDataCube(rasterSources, metadata, requiredSpatialKeys, sc, cloudFilterStrategy, useSparsePartitioner, datacubeParams)
+    tileSourcesToDataCube(rasterSources, metadata, requiredSpatialKeys, sc, retainNoDataTiles, cloudFilterStrategy, useSparsePartitioner, datacubeParams)
   }
 
-  def tileSourcesToDataCube(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])], sc: SparkContext, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = Option.empty): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+  private def tileSourcesToDataCube(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])], sc: SparkContext, retainNoDataTiles: Boolean, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = None): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
     var localSpatialKeys = requiredSpatialKeys
     if(datacubeParams.exists(_.maskingCube.isDefined)) {
       val maskObject =  datacubeParams.get.maskingCube.get
@@ -278,7 +278,7 @@ object FileLayerProvider {
     requestedRasterRegions = DatacubeSupport.applyDataMask(datacubeParams,requestedRasterRegions)
 
     requestedRasterRegions.name = rasterSources.name
-    rasterRegionsToTiles(requestedRasterRegions, metadata, cloudFilterStrategy, partitioner)
+    rasterRegionsToTiles(requestedRasterRegions, metadata, retainNoDataTiles, cloudFilterStrategy, partitioner)
   }
 
 
@@ -292,7 +292,7 @@ object FileLayerProvider {
 
 
 
-  private def rasterRegionsToTiles(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))], metadata: TileLayerMetadata[SpaceTimeKey], cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, partitionerOption: Option[SpacePartitioner[SpaceTimeKey]] = Option.empty) = {
+  private def rasterRegionsToTiles(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))], metadata: TileLayerMetadata[SpaceTimeKey], retainNoDataTiles: Boolean, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, partitionerOption: Option[SpacePartitioner[SpaceTimeKey]] = None) = {
     val partitioner = partitionerOption.getOrElse(SpacePartitioner(metadata.bounds))
     val totalChunksAcc = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
     val loadingTimeAcc = rasterRegionRDD.sparkContext.doubleAccumulator("SecondsPerChunk_" + rasterRegionRDD.name)
@@ -300,7 +300,6 @@ object FileLayerProvider {
       rasterRegionRDD
         .groupByKey(partitioner)
         .mapPartitions(partitionIterator => {
-
           var totalPixelsPartition = 0
 
           val startTime = System.currentTimeMillis()
@@ -308,112 +307,109 @@ object FileLayerProvider {
           val loadedPartitions = partitionIterator.toParArray.map(tuple => {
             val allRegions = tuple._2.toSeq
 
-          val filteredRegions =
-          if(allRegions.size<2 || cloudFilterStrategy == NoCloudFilterStrategy) {
-            allRegions
-          }else{
-            val regionsWithDistance = allRegions.map(r=>{
-              val bounds = r._1.asInstanceOf[GridBoundsRasterRegion].bounds
-              val rasterBounds = r._1.asInstanceOf[GridBoundsRasterRegion].source.gridExtent
-              val minDistanceToTheEdge: Long = Seq(bounds.colMin.abs,bounds.rowMin.abs,Math.abs(rasterBounds.cols - bounds.colMax),Math.abs(rasterBounds.rows - bounds.rowMax)).min
-              (minDistanceToTheEdge,r)
-            })
-            val largestDistanceToTheEdgeOfTheRaster = regionsWithDistance.map(_._1).max
-            regionsWithDistance.filter(_._1 == largestDistanceToTheEdgeOfTheRaster).map(_._2)
-          }
+            val filteredRegions =
+              if (allRegions.size < 2 || cloudFilterStrategy == NoCloudFilterStrategy) {
+                allRegions
+              } else {
+                val regionsWithDistance = allRegions.map(r => {
+                  val bounds = r._1.asInstanceOf[GridBoundsRasterRegion].bounds
+                  val rasterBounds = r._1.asInstanceOf[GridBoundsRasterRegion].source.gridExtent
+                  val minDistanceToTheEdge: Long = Seq(bounds.colMin.abs, bounds.rowMin.abs, Math.abs(rasterBounds.cols - bounds.colMax), Math.abs(rasterBounds.rows - bounds.rowMax)).min
+                  (minDistanceToTheEdge, r)
+                })
+                val largestDistanceToTheEdgeOfTheRaster = regionsWithDistance.map(_._1).max
+                regionsWithDistance.filter(_._1 == largestDistanceToTheEdgeOfTheRaster).map(_._2)
+              }
 
-          val tilesForRegion = filteredRegions
-            .flatMap { case (rasterRegion, sourcePath: SourcePath) =>
-              val result: Option[(MultibandTile, SourcePath)] = cloudFilterStrategy match {
-                case l1cFilterStrategy: L1CCloudFilterStrategy =>
-                  if (GDALCloudRasterSource.isRegionFullyClouded(rasterRegion, metadata.crs, metadata.layout, l1cFilterStrategy.bufferInMeters)) {
-                    // Do not read the tile data at all.
-                    Option.empty
-                  } else {
-                    // Simply mask out the clouds.
+            val tilesForRegion = filteredRegions
+              .flatMap { case (rasterRegion, sourcePath: SourcePath) =>
+                val result: Option[(MultibandTile, SourcePath)] = cloudFilterStrategy match {
+                  case l1cFilterStrategy: L1CCloudFilterStrategy =>
+                    if (GDALCloudRasterSource.isRegionFullyClouded(rasterRegion, metadata.crs, metadata.layout, l1cFilterStrategy.bufferInMeters)) {
+                      // Do not read the tile data at all.
+                      Option.empty
+                    } else {
+                      // Simply mask out the clouds.
+                      cloudFilterStrategy.loadMasked(new MaskTileLoader {
+                        override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = Option.empty
+
+                        override def loadData: Option[MultibandTile] = {
+                          val tile: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
+                          if (tile.isDefined) {
+                            val compositeRasterSource = rasterRegion.asInstanceOf[GridBoundsRasterRegion].source.asInstanceOf[BandCompositeRasterSource]
+                            val cloudRasterSource = compositeRasterSource.sources.head.asInstanceOf[GDALCloudRasterSource]
+                            val cloudPolygons: Seq[Polygon] = cloudRasterSource.getMergedPolygons(l1cFilterStrategy.bufferInMeters)
+                            val cloudPolygon = MultiPolygon(cloudPolygons).reproject(cloudRasterSource.crs, metadata.crs)
+                            val cloudTile = Rasterizer.rasterizeWithValue(cloudPolygon, RasterExtent(rasterRegion.extent, tile.get.cols, tile.get.rows), 1)
+                            val cloudMultibandTile = MultibandTile(List.fill(tile.get.bandCount)(cloudTile))
+                            val maskedTile = tile.get.localMask(cloudMultibandTile, 1, 0).convert(tile.get.cellType)
+                            Some(maskedTile)
+                          } else Option.empty
+                        }
+                      }).map((_, sourcePath))
+                    }
+                  case _ =>
                     cloudFilterStrategy.loadMasked(new MaskTileLoader {
-                      override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = Option.empty
+                      override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = {
+                        val gridBoundsRasterRegion = rasterRegion.asInstanceOf[GridBoundsRasterRegion]
+                        val bufferedGridBounds = gridBoundsRasterRegion.bounds.buffer(bufferInPixels, bufferInPixels, clamp = false)
 
-                      override def loadData: Option[MultibandTile] = {
-                        val tile: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
-                        if (tile.isDefined) {
-                          val compositeRasterSource = rasterRegion.asInstanceOf[GridBoundsRasterRegion].source.asInstanceOf[BandCompositeRasterSource]
-                          val cloudRasterSource = compositeRasterSource.sources.head.asInstanceOf[GDALCloudRasterSource]
-                          val cloudPolygons: Seq[Polygon] = cloudRasterSource.getMergedPolygons(l1cFilterStrategy.bufferInMeters)
-                          val cloudPolygon = MultiPolygon(cloudPolygons).reproject(cloudRasterSource.crs, metadata.crs)
-                          val cloudTile = Rasterizer.rasterizeWithValue(cloudPolygon, RasterExtent(rasterRegion.extent, tile.get.cols, tile.get.rows), 1)
-                          val cloudMultibandTile = MultibandTile(List.fill(tile.get.bandCount)(cloudTile))
-                          val maskedTile = tile.get.localMask(cloudMultibandTile, 1, 0).convert(tile.get.cellType)
-                          Some(maskedTile)
-                        } else Option.empty
-                      }
-                    }).map((_, sourcePath))
-                  }
-                case _ =>
-                  cloudFilterStrategy.loadMasked(new MaskTileLoader {
-                    override def loadMask(bufferInPixels: Int, sclBandIndex: Int): Option[Raster[MultibandTile]] = {
-                      val gridBoundsRasterRegion = rasterRegion.asInstanceOf[GridBoundsRasterRegion]
-                      val bufferedGridBounds = gridBoundsRasterRegion.bounds.buffer(bufferInPixels, bufferInPixels, clamp = false)
+                        val maskOption = gridBoundsRasterRegion.source.read(bufferedGridBounds, Seq(sclBandIndex))
 
-                      val maskOption = gridBoundsRasterRegion.source.read(bufferedGridBounds, Seq(sclBandIndex))
+                        maskOption.map { mask =>
+                          val expectedTileSize = gridBoundsRasterRegion.cols + 2 * bufferInPixels
 
-                      maskOption.map { mask =>
-                        val expectedTileSize = gridBoundsRasterRegion.cols + 2 * bufferInPixels
+                          if (mask.cols == expectedTileSize && mask.rows == expectedTileSize) mask // an optimization really
+                          else { // raster can be smaller than requested extent
+                            val emptyBufferedRaster: Raster[MultibandTile] = {
+                              val bufferedExtent = gridBoundsRasterRegion.source.gridExtent.extentFor(bufferedGridBounds, clamp = false)
 
-                        if (mask.cols == expectedTileSize && mask.rows == expectedTileSize) mask // an optimization really
-                        else { // raster can be smaller than requested extent
-                          val emptyBufferedRaster: Raster[MultibandTile] = {
-                            val bufferedExtent = gridBoundsRasterRegion.source.gridExtent.extentFor(bufferedGridBounds, clamp = false)
+                              // warning: convoluted way of creating a NODATA tile
+                              val arbitraryNoDataCellType = FloatConstantNoDataCellType
+                              val emptyBufferedTile =
+                                FloatConstantTile(arbitraryNoDataCellType.noDataValue, cols = expectedTileSize, rows = expectedTileSize, arbitraryNoDataCellType)
+                                  .toArrayTile() // TODO: not materializing messes up the NODATA value
+                                  .convert(mask.cellType)
 
-                            // warning: convoluted way of creating a NODATA tile
-                            val arbitraryNoDataCellType = FloatConstantNoDataCellType
-                            val emptyBufferedTile =
-                              FloatConstantTile(arbitraryNoDataCellType.noDataValue, cols = expectedTileSize, rows = expectedTileSize, arbitraryNoDataCellType)
-                                .toArrayTile() // TODO: not materializing messes up the NODATA value
-                                .convert(mask.cellType)
+                              Raster(MultibandTile(emptyBufferedTile), bufferedExtent)
+                            }
 
-                            Raster(MultibandTile(emptyBufferedTile), bufferedExtent)
+                            emptyBufferedRaster merge mask
                           }
-
-                          emptyBufferedRaster merge mask
                         }
                       }
-                    }
 
-                    override def loadData: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
-                  }).map((_, sourcePath))
+                      override def loadData: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
+                    }).map((_, sourcePath))
+                }
+                if (result.isDefined) {
+                  val mbTile = result.get._1
+                  val totalPixels = mbTile.rows * mbTile.cols * mbTile.bandCount
+                  totalPixelsPartition += totalPixels
+                  totalChunksAcc.add(totalPixels / (256 * 256))
+                }
+                result
               }
-              if(result.isDefined){
-                val mbTile = result.get._1
-                val totalPixels = mbTile.rows * mbTile.cols * mbTile.bandCount
-                totalPixelsPartition += totalPixels
-                totalChunksAcc.add(totalPixels/(256*256))
+              .sortWith { case ((leftMultibandTile, leftSourcePath), (rightMultibandTile, rightSourcePath)) =>
+                if (leftMultibandTile.band(0).isInstanceOf[PaddedTile] && !rightMultibandTile.band(0).isInstanceOf[PaddedTile]) true
+                else if (!leftMultibandTile.band(0).isInstanceOf[PaddedTile] && rightMultibandTile.band(0).isInstanceOf[PaddedTile]) false
+                else leftSourcePath.value < rightSourcePath.value
               }
-              result
-            }
-            .sortWith { case ((leftMultibandTile, leftSourcePath), (rightMultibandTile, rightSourcePath)) =>
-              if (leftMultibandTile.band(0).isInstanceOf[PaddedTile] && !rightMultibandTile.band(0).isInstanceOf[PaddedTile]) true
-              else if (!leftMultibandTile.band(0).isInstanceOf[PaddedTile] && rightMultibandTile.band(0).isInstanceOf[PaddedTile]) false
-              else leftSourcePath.value < rightSourcePath.value
-            }
-            .map { case (multibandTile, _) => multibandTile }
-            .reduceOption(_ merge _)
-            (tuple._1,tilesForRegion)
-        }
-
-          )
+              .map { case (multibandTile, _) => multibandTile }
+              .reduceOption(_ merge _)
+            (tuple._1, tilesForRegion)
+          })
           val durationMillis = System.currentTimeMillis() - startTime
-          if(totalPixelsPartition>0) {
-            val secondsPerChunk = (durationMillis/1000.0)/(totalPixelsPartition/(256*256))
+          if (totalPixelsPartition > 0) {
+            val secondsPerChunk = (durationMillis / 1000.0) / (totalPixelsPartition / (256 * 256))
             loadingTimeAcc.add(secondsPerChunk)
           }
           loadedPartitions
 
-        }.filter { case (_, tile) => tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
-          .map(t => (t._1,t._2.get)).iterator,true)/*.mapPartitions(p=>{
-          //logger.info("Reset GDAL WARP Cache")
-          GDALWarp.init(32)
-        p},true)*/
+        }
+          .filter { case (_, tile) => retainNoDataTiles || tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
+          .map(t => (t._1,t._2.get)).iterator,
+          preservesPartitioning = true)
 
 
     val cRDD = ContextRDD(tiledRDD, metadata)
@@ -436,7 +432,8 @@ object FileLayerProvider {
 
 class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
                         maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
-                        bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "", experimental: Boolean=false) extends LayerProvider {
+                        bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "", experimental: Boolean = false,
+                        retainNoDataTiles: Boolean = false) extends LayerProvider {
 
   import DatacubeSupport._
   import FileLayerProvider._
@@ -446,7 +443,6 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
   }
 
   private val _rootPath = if(rootPath != null) Paths.get(rootPath) else null
-  //private val openSearch: OpenSearch = OpenSearch(openSearchEndpoint)
 
   val openSearchLinkTitlesWithBandIds: Seq[(String, Seq[Int])] = {
     if(bandIds.size>0) {
@@ -475,12 +471,6 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     }
   }
-
-  def this(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, metadataProperties: Map[String, Any]) =
-    this(openSearch, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, maxSpatialResolution, pathDateExtractor, metadataProperties)
-
-  def this(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitle: String, rootPath: String, maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor) =
-    this(openSearch, openSearchCollectionId, NonEmptyList.one(openSearchLinkTitle), rootPath, maxSpatialResolution, pathDateExtractor)
 
   val maxZoom: Int = layoutScheme match {
     case z: ZoomedLayoutScheme => z.zoom(0, 0, maxSpatialResolution)
@@ -547,7 +537,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     val rasterSources: RDD[LayoutTileSource[SpaceTimeKey]] = rasterSourceRDD(overlappingRasterSources, retiledMetadata, maxSpatialResolution, openSearchCollectionId)(sc)
 
     rasterSources.name = s"FileCollection-${openSearchCollectionId}"
-    val cube = FileLayerProvider.tileSourcesToDataCube(rasterSources, retiledMetadata, requiredSpatialKeys, sc, maskStrategy.getOrElse(NoCloudFilterStrategy), datacubeParams=datacubeParams)
+    val cube = FileLayerProvider.tileSourcesToDataCube(rasterSources, retiledMetadata, requiredSpatialKeys, sc, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), datacubeParams=datacubeParams)
     logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner}")
     cube
   }
@@ -654,17 +644,6 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     overlappingRasterSources
 
-  }
-
-  private def rasterSourcesToTiles(tiledLayoutSourceRDD: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey]) = {
-    val rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = tiledLayoutSourceRDD.flatMap { tiledLayoutSource =>
-      tiledLayoutSource.keyedRasterRegions() map { case (key, rasterRegion) =>
-        (key, (rasterRegion, tiledLayoutSource.source.name))
-      }
-    }
-
-    rasterRegionRDD.name = openSearchCollectionId
-    rasterRegionsToTiles(rasterRegionRDD, metadata)
   }
 
   override def loadMetadata(sc: SparkContext): Option[(ProjectedExtent, Array[ZonedDateTime])] =

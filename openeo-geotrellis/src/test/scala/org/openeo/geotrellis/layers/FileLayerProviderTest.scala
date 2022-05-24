@@ -107,13 +107,13 @@ class FileLayerProviderTest {
     val polygons_crs = fullBbox.crs
 
     // Create the sparse Partitioner.
-    val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc, NoCloudFilterStrategy, useSparsePartitioner=true)
+    val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc, retainNoDataTiles = false, NoCloudFilterStrategy)
     val sparsePartitioner: SpacePartitioner[SpaceTimeKey] = sparseBaseLayer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]]
     assert(sparsePartitioner.index.getClass == classOf[SparseSpaceTimePartitioner])
     val sparsePartitionerIndex = sparsePartitioner.index.asInstanceOf[SparseSpaceTimePartitioner]
 
     // Create the default Space Partitioner.
-    val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc, NoCloudFilterStrategy, useSparsePartitioner=false)
+    val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc, retainNoDataTiles = false, NoCloudFilterStrategy, useSparsePartitioner=false)
     val defaultPartitioner: SpacePartitioner[SpaceTimeKey] = defaultBaseLayer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]]
     assert(defaultPartitioner.index == SpaceTimeByMonthPartitioner)
 
@@ -160,9 +160,11 @@ class FileLayerProviderTest {
     val polygons1 = MultiPolygon(bbox1.extent.toPolygon())
     val (rasterSources1, metadata1) = _getSentinel5PRasterSources(bbox1, date, zoom)
     val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
-                                                                   bbox1.crs, sc, NoCloudFilterStrategy)
+                                                                   bbox1.crs, sc, retainNoDataTiles = false,
+                                                                   NoCloudFilterStrategy)
     val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
-                                                                    bbox1.crs, sc, NoCloudFilterStrategy,
+                                                                    bbox1.crs, sc, retainNoDataTiles = false,
+                                                                    NoCloudFilterStrategy,
                                                                     useSparsePartitioner = false)
 
     // Create the second RDD.
@@ -170,9 +172,11 @@ class FileLayerProviderTest {
     val polygons2 = MultiPolygon(bbox2.extent.toPolygon())
     val (rasterSources2, metadata2) = _getSentinel5PRasterSources(bbox1, date, zoom)
     val sparseBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources2, metadata2, Array(polygons2),
-                                                                    bbox2.crs, sc, NoCloudFilterStrategy)
+                                                                    bbox2.crs, sc, retainNoDataTiles = false,
+                                                                    NoCloudFilterStrategy)
     val defaultBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources2, metadata2, Array(polygons2),
-                                                                     bbox2.crs, sc, NoCloudFilterStrategy,
+                                                                     bbox2.crs, sc, retainNoDataTiles = false,
+                                                                     NoCloudFilterStrategy,
                                                                      useSparsePartitioner = false)
 
     // Merge both RDDs.
@@ -193,9 +197,11 @@ class FileLayerProviderTest {
     val polygons = MultiPolygon(bbox.extent.toPolygon())
     val (rasterSources, metadata) = _getSentinel5PRasterSources(bbox, date, 8)
     val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(polygons),
-                                                                   bbox.crs, sc, NoCloudFilterStrategy)
+                                                                   bbox.crs, sc, retainNoDataTiles = false,
+                                                                   NoCloudFilterStrategy)
     val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(polygons),
-                                                                    bbox.crs, sc, NoCloudFilterStrategy,
+                                                                    bbox.crs, sc, retainNoDataTiles = false,
+                                                                    NoCloudFilterStrategy,
                                                                     useSparsePartitioner = false)
 
     // Create the masked layers.

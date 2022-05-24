@@ -196,7 +196,9 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
     val filteredSources: RDD[LayoutTileSource[SpaceTimeKey]] = sourceRDD.filter({ tiledLayoutSource =>
       tiledLayoutSource.source.extent.interiorIntersects(tiledLayoutSource.layout.extent)
     })
-    FileLayerProvider.readMultibandTileLayer(filteredSources,layerMetadata,Array(MultiPolygon(toPolygon(boundingBox.extent))),boundingBox.crs,sc,datacubeParams = Some(params))
+    FileLayerProvider.readMultibandTileLayer(filteredSources, layerMetadata,
+      Array(MultiPolygon(toPolygon(boundingBox.extent))), boundingBox.crs, sc, retainNoDataTiles = false,
+      datacubeParams = Some(params))
 
   }
 
