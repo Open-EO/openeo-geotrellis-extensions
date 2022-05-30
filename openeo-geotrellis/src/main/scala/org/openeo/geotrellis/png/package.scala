@@ -18,13 +18,17 @@ package object png {
     val scanLinesByRow = tilesByRow
       .mapValues(toScanLines)
 
-    val scanLines = scanLinesByRow
+    val cached = scanLinesByRow
       .sortByKey()
       .values
-      .cache()
+      .cache
+    cached.name = s"PNG-RDD ${path}"
+    val scanLines = cached
       .toLocalIterator.flatten
 
     val materialized = scanLines.toArray
+
+    cached.unpersist(blocking = false)
 
     val isIndexed = options != null && options.colorMap.isDefined
     val combinedImageInfo = {

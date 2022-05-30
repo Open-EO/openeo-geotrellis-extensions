@@ -115,6 +115,7 @@ object NetCDFRDDWriter {
         }
       }
     }
+    cachedRDD.unpersist(blocking=false)
 
 
     if(netcdfFile!=null) {
@@ -196,6 +197,7 @@ object NetCDFRDDWriter {
   private def cacheAndRepartition[K](rdd: MultibandTileLayerRDD[K]) = {
     val cachedRDD = rdd.persist(StorageLevel.MEMORY_AND_DISK)
     val count = cachedRDD.count()
+    cachedRDD.name = s"netCDF RDD ${count} elements"
     logger.info(s"Writing NetCDF from rdd with : ${count} elements and ${rdd.getNumPartitions} partitions.")
     val elementsPartitionRatio = count / rdd.getNumPartitions
     val shuffledRDD =
