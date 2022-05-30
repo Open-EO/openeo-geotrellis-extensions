@@ -171,7 +171,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
       val scheme = FloatingLayoutScheme(256)
 
       val multiple_polygons_flag = polygons.length > 1
-      val metadata = DatacubeSupport.layerMetadata(
+      var metadata = DatacubeSupport.layerMetadata(
         boundingBox, from, to, 0, sampleType.cellType, scheme, maxSpatialResolution,
         dataCubeParameters.globalExtent, multiple_polygons_flag
       )
@@ -252,7 +252,6 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             DatacubeSupport.applyDataMask(Some(dataCubeParameters), tilesRdd)
           } else {
-            val overlappingKeys = {
               val multiPolygon = simplify(polygons)
 
               val features = authorized { accessToken =>
@@ -260,20 +259,24 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                   from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
               }
 
-              val intersectingFeatureKeys = for {
-                (_, Feature(geom, datetime)) <- features.toSet
-                date = datetime.toLocalDate.atStartOfDay(UTC)
-                reprojectedGeom = geom.reproject(LatLng, boundingBox.crs)
-                SpatialKey(col, row) <- layout.mapTransform.keysForGeometry(reprojectedGeom intersection multiPolygon)
-              } yield SpaceTimeKey(col, row, date)
+            val polygonsRDD = sc.parallelize(features.values.toSeq).map(_.reproject(LatLng, boundingBox.crs)).map(f => Feature(f intersection multiPolygon, f.data.toLocalDate.atStartOfDay(UTC)))
+            var requiredSpatialKeysForFeatures: RDD[(SpatialKey, Iterable[Feature[Geometry, ZonedDateTime]])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
 
-              intersectingFeatureKeys
-                .toSeq
+            val spatialKeyCount = requiredSpatialKeysForFeatures.map(_._1).countApproxDistinct()
+            logger.info(s"Sentinelhub datacube requires approximately ${spatialKeyCount} spatial keys.")
+
+            val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, from, to, polygons, Option(dataCubeParameters), spatialKeyCount)
+            metadata = retiledMetadata.getOrElse(metadata)
+
+            if (retiledMetadata.isDefined) {
+              requiredSpatialKeysForFeatures = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
             }
 
-            val requiredKeysRdd = sc.parallelize(overlappingKeys)
+            val requiredKeysRdd = requiredSpatialKeysForFeatures.flatMap(tuple=> tuple._2.map(feature => SpaceTimeKey(tuple._1.col,tuple._1.row,feature.data)))
+
             val partitioner = DatacubeSupport.createPartitioner(Some(dataCubeParameters), requiredKeysRdd, metadata)
-            logger.info(s"Created Sentinelhub datacube with ${overlappingKeys.size} keys and metadata ${metadata} and ${partitioner.get}")
+            logger.info(s"Created Sentinelhub datacube with ${requiredKeysRdd.countApproxDistinct()} keys and metadata ${metadata} and ${partitioner.get}")
+
 
             var keysRdd = requiredKeysRdd.map((_,Option.empty)).partitionBy(partitioner.get)
 

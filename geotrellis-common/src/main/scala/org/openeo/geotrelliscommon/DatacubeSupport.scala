@@ -5,7 +5,7 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.{CellSize, CellType}
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.rdd.RDD
 import org.slf4j.LoggerFactory
 
@@ -102,6 +102,20 @@ object DatacubeSupport {
       projectedExtent.crs,
       KeyBounds(SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from), SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to))
     )
+  }
+
+  def optimizeChunkSize(metadata: TileLayerMetadata[SpaceTimeKey], from: ZonedDateTime, to: ZonedDateTime, polygons: Array[MultiPolygon], datacubeParams: Option[DataCubeParameters], spatialKeyCount: Long) = {
+    if (datacubeParams.isDefined && datacubeParams.get.layoutScheme != "ZoomedLayoutScheme" && spatialKeyCount <= 1.1 * polygons.length && metadata.tileRows == 256) {
+      //it seems that polygons fit entirely within chunks, so chunks are too large
+      logger.info(s"${metadata} resulted in ${spatialKeyCount} for ${polygons.length} polygons, trying to reduce tile size to 128.")
+      val newLayout = LayoutDefinition(metadata, 128)
+
+      //spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
+      val gridBounds = newLayout.mapTransform.extentToBounds(metadata.extent)
+      Some(metadata.copy(layout = newLayout, bounds = KeyBounds(SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from), SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to))))
+    } else {
+      None
+    }
   }
 
 

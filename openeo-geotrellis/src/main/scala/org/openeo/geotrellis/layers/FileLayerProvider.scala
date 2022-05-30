@@ -522,22 +522,15 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     var spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
     logger.error(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
 
-    val retiledMetadata: TileLayerMetadata[SpaceTimeKey] =
-      if (datacubeParams.isDefined && datacubeParams.get.layoutScheme != "ZoomedLayoutScheme" && spatialKeyCount <= 1.1 * polygons.length && metadata.tileRows == 256) {
-        //it seems that polygons fit entirely within chunks, so chunks are too large
-        logger.error(s"${metadata} resulted in ${spatialKeyCount} for ${polygons.length} polygons, trying to reduce tile size to 128.")
-        val newLayout = LayoutDefinition(metadata, 128)
-        requiredSpatialKeys = polygonsRDD.clipToGrid(newLayout).groupByKey()
-        spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
-        val gridBounds = newLayout.mapTransform.extentToBounds(metadata.extent)
-        metadata.copy(layout = newLayout,bounds = KeyBounds(SpaceTimeKey(gridBounds.colMin, gridBounds.rowMin, from), SpaceTimeKey(gridBounds.colMax, gridBounds.rowMax, to)))
-      } else {
-        metadata
-      }
-    val rasterSources: RDD[LayoutTileSource[SpaceTimeKey]] = rasterSourceRDD(overlappingRasterSources, retiledMetadata, maxSpatialResolution, openSearchCollectionId)(sc)
+    val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, from, to, polygons, datacubeParams, spatialKeyCount)
+
+    if (retiledMetadata.isDefined) {
+      requiredSpatialKeys = polygonsRDD.clipToGrid(retiledMetadata.get).groupByKey()
+    }
+    val rasterSources: RDD[LayoutTileSource[SpaceTimeKey]] = rasterSourceRDD(overlappingRasterSources, retiledMetadata.getOrElse(metadata), maxSpatialResolution, openSearchCollectionId)(sc)
 
     rasterSources.name = s"FileCollection-${openSearchCollectionId}"
-    val cube = FileLayerProvider.tileSourcesToDataCube(rasterSources, retiledMetadata, requiredSpatialKeys, sc, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), datacubeParams=datacubeParams)
+    val cube = FileLayerProvider.tileSourcesToDataCube(rasterSources, retiledMetadata.getOrElse(metadata), requiredSpatialKeys, sc, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), datacubeParams=datacubeParams)
     logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner}")
     cube
   }
