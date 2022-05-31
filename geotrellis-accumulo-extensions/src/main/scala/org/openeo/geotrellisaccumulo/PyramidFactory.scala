@@ -1,14 +1,13 @@
 package org.openeo.geotrellisaccumulo
 
 import java.time.ZonedDateTime
-
 import be.vito.eodata.geopysparkextensions.KerberizedAccumuloInstance
 import geotrellis.layer.{Bounds, EmptyBounds, KeyBounds, Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.{MultibandTile, Tile}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
-import geotrellis.store.accumulo.{AccumuloAttributeStore, AccumuloKeyEncoder, AccumuloLayerHeader}
+import geotrellis.store.accumulo.{AccumuloAttributeStore, AccumuloInstance, AccumuloKeyEncoder, AccumuloLayerHeader}
 import geotrellis.store.avro.AvroRecordCodec
 import geotrellis.store.{LayerQuery, _}
 import geotrellis.util._
@@ -31,7 +30,9 @@ object PyramidFactory {
 
 }
 
-  class PyramidFactory(instanceName: String, zooKeeper: String) {
+class PyramidFactory(accumuloInstance: => AccumuloInstance) {
+
+  def this(instanceName: String, zooKeeper: String) = this(KerberizedAccumuloInstance(zooKeeper, instanceName))
 
     var splitRanges: Boolean = false
 
@@ -47,10 +48,6 @@ object PyramidFactory {
           (layerIds.minBy(_.zoom).zoom, layerIds.maxBy(_.zoom).zoom)
         }
       )
-    }
-
-    private def accumuloInstance = {
-      KerberizedAccumuloInstance(zooKeeper,instanceName)
     }
 
     def rdd[V : AvroRecordCodec: ClassTag](layerName:String,zoom:Int=0,tileQuery: LayerQuery[SpaceTimeKey, TileLayerMetadata[SpaceTimeKey]] = new LayerQuery[SpaceTimeKey,TileLayerMetadata[SpaceTimeKey]]() ): RDD[(SpaceTimeKey, V)] with Metadata[TileLayerMetadata[SpaceTimeKey]] ={

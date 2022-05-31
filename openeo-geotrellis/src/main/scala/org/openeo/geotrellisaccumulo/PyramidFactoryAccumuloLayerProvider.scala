@@ -63,9 +63,11 @@ class PyramidFactoryAccumuloLayerProvider(val layerName: String)(implicit accumu
       .build(
         new CacheLoader[Integer, (PyramidFactory, TileLayerMetadata[SpaceTimeKey])] {
           def load(zoom: Integer): (PyramidFactory, TileLayerMetadata[SpaceTimeKey]) = {
-            val pyramidFactory = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
+            val accumuloInstance = accumuloSupplier()
 
-            val attributeStore = AccumuloAttributeStore(accumuloSupplier())
+            val pyramidFactory = new PyramidFactory(accumuloInstance)
+
+            val attributeStore = AccumuloAttributeStore(accumuloInstance)
             val layerId = attributeStore.baseLayer(layerName, suggestedZoom = zoom)
             val metadata = attributeStore.readMetadata[TileLayerMetadata[SpaceTimeKey]](layerId)
 
