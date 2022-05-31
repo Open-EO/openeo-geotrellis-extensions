@@ -12,10 +12,11 @@ import geotrellis.store.s3.AmazonS3URI
 import geotrellis.util._
 import geotrellis.vector._
 import org.apache.spark.SparkContext
+import org.apache.spark.rdd.RDD
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
-import org.openeo.geotrellis.geotiff.getCreoS3Client
+import org.openeo.geotrellis.geotiff.{getCreoS3Client, preProcess}
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
@@ -134,11 +135,13 @@ object NetCDFRDDWriter {
                        zLevel:Int
                  ): java.util.List[String] = {
 
-    val extent = rdd.metadata.apply(rdd.metadata.tileBounds)
+    val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd,Option.empty)
+    val extent = preProcessResult._2
+    val preProcessedRdd = preProcessResult._3
 
-    val rasterExtent = RasterExtent(extent = extent, cellSize = rdd.metadata.cellSize)
+    val rasterExtent = RasterExtent(extent = extent, cellSize = preProcessedRdd.metadata.cellSize)
 
-    val cachedRDD: RDD[(SpaceTimeKey, MultibandTile)] = cacheAndRepartition(rdd)
+    val cachedRDD: RDD[(SpaceTimeKey, MultibandTile)] = cacheAndRepartition(preProcessedRdd)
 
     val dates = cachedRDD.keys.map(k => Duration.between(fixedTimeOffset, k.time).toDays.toInt).distinct().collect().sorted.toList
 
@@ -157,14 +160,14 @@ object NetCDFRDDWriter {
       var timeDimIndex = dates.indexOf(timeOffset)
 
       if(netcdfFile == null){
-        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, bandNames, rdd.metadata.crs, cellType,dimensionNames,attributes,zLevel)
+        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, bandNames, preProcessedRdd.metadata.crs, cellType,dimensionNames,attributes,zLevel)
       }
       val multibandTile = tuple._2
 
       for (bandIndex <- bandNames.asScala.indices) {
 
         if(bandIndex < multibandTile.bandCount){
-          val gridExtent = rasterExtent.gridBoundsFor(tuple._1.spatialKey.extent(rdd.metadata))
+          val gridExtent = rasterExtent.gridBoundsFor(tuple._1.spatialKey.extent(preProcessedRdd.metadata))
           val origin: Array[Int] = scala.Array(timeDimIndex.toInt, gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
           val variable = bandNames.get(bandIndex)
 
@@ -563,8 +566,6 @@ object NetCDFRDDWriter {
 
     val xValues = for (x <- 0 until rasterExtent.cols) yield rasterExtent.extent.xmin + x * rasterExtent.cellwidth + rasterExtent.cellwidth / 2.0
     val yValues = for (y <- 0 until rasterExtent.rows) yield rasterExtent.extent.ymax - y * rasterExtent.cellheight - rasterExtent.cellheight / 2.0
-
-    write1DValues(netcdfFile, xValues, X)
 
     //Write values to variable
 
