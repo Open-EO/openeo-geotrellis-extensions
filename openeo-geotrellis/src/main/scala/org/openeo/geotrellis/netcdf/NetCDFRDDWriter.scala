@@ -124,11 +124,12 @@ object NetCDFRDDWriter {
     val cachedRDD: RDD[(K, MultibandTile)] = cacheAndRepartition(preProcessedRdd)
 
     val dates =
-    if(rdd.metadata.isInstanceOf[TileLayerMetadata[SpaceTimeKey]]) {
-      cachedRDD.keys.map(k => Duration.between(fixedTimeOffset, k.asInstanceOf[SpaceTimeKey].time).toDays.toInt).distinct().collect().sorted.toList
-    }else{
-      null
-    }
+      cachedRDD.keys.flatMap {
+        case key: SpaceTimeKey => Some(Duration.between(fixedTimeOffset, key.time).toDays.toInt)
+        case _ =>
+          None
+      }.distinct().collect().sorted.toList
+
 
     val intermediatePath =
       if (path.startsWith("s3:/")) {
@@ -142,7 +143,7 @@ object NetCDFRDDWriter {
 
       val cellType = tuple._2.cellType
       val timeDimIndex =
-        if(dates!=null){
+        if(dates.nonEmpty){
           val timeOffset = Duration.between(fixedTimeOffset, tuple._1.asInstanceOf[SpaceTimeKey].time).toDays.toInt
           dates.indexOf(timeOffset)
         }else{
@@ -151,7 +152,7 @@ object NetCDFRDDWriter {
 
 
       if(netcdfFile == null){
-        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, bandNames, preProcessedRdd.metadata.crs, cellType,dimensionNames,attributes,zLevel,writeTimeDimension = dates!=null)
+        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, bandNames, preProcessedRdd.metadata.crs, cellType,dimensionNames,attributes,zLevel,writeTimeDimension = dates.nonEmpty)
       }
       val multibandTile = tuple._2
 
@@ -187,7 +188,7 @@ object NetCDFRDDWriter {
       }
     }
 
-    if(dates!=null) {
+    if(dates.nonEmpty) {
       val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
       writeTime(timeDimName, netcdfFile, dates)
     }
