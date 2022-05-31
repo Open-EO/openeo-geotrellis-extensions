@@ -24,28 +24,29 @@ class PyramidFactoryAccumuloLayerProvider(val layerName: String)(implicit accumu
     readLayer(from, to, boundingBox, zoom, sc)
 
   private def readLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent = null, zoom: Int, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val (pyramidFactory, metadata) = readCache.getUnchecked(zoom)
+    val (pyramidFactory, metadata) = readCache.get(zoom)
 
     PixelRateValidator(boundingBox, from, to, metadata, sc)
 
-    boundingBox.crs.toString()
-
-    val (extent, srs) = if (boundingBox != null) {
-      if (boundingBox.crs.epsgCode.isDefined) {
-        (boundingBox.extent, s"EPSG:${boundingBox.crs.epsgCode.get}")
-      } else {
-        (boundingBox.reproject(LatLng), "EPSG:4326")
+    val (extent, srs) =
+      if (boundingBox == null) (LatLng.worldExtent, "EPSG:4326")
+      else boundingBox.crs.epsgCode match {
+        case Some(epsgCode) => (boundingBox.extent, s"EPSG:$epsgCode")
+        case _ => (boundingBox.reproject(LatLng), "EPSG:4326")
       }
-    } else {
-      (LatLng.worldExtent, "EPSG:4326")
-    }
 
-    val pyramidSeq = pyramidFactory.pyramid_seq(layerName, extent, srs, Some(from), Some(to))
-    pyramidSeq.find(_._1 == zoom).getOrElse(pyramidSeq.sortBy(_._1).reverse.head)._2
+    val pyramid = pyramidFactory.pyramid_seq(layerName, extent, srs, Some(from), Some(to))
+
+    val (_, layer) = pyramid
+      .find { case (z, _) => z == zoom }
+      .getOrElse(pyramid.maxBy { case (z, _) => z })
+
+    layer
   }
 
   override def readMetadata(zoom: Int, sc: SparkContext): TileLayerMetadata[SpaceTimeKey] = {
-    readCache.getUnchecked(zoom)._2
+    val (_, metadata) = readCache.get(zoom)
+    metadata
   }
 
   override def loadMetadata(sc: SparkContext): Option[(ProjectedExtent, Array[ZonedDateTime])] =
