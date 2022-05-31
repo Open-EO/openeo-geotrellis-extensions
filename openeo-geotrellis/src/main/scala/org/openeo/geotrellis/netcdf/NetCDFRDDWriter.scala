@@ -76,55 +76,7 @@ object NetCDFRDDWriter {
                        attributes: java.util.Map[String,String],
                        zLevel:Int
                       ): java.util.List[String] = {
-
-
-    val extent = rdd.metadata.apply(rdd.metadata.tileBounds)
-
-    val rasterExtent = RasterExtent(extent = extent, cellSize = rdd.metadata.cellSize)
-
-    var netcdfFile: NetcdfFileWriter = null
-    val cachedRDD: RDD[(SpatialKey, MultibandTile)] = cacheAndRepartition(rdd)
-    for(tuple <- cachedRDD.toLocalIterator){
-      val cellType = tuple._2.cellType
-
-      if(netcdfFile == null){
-        netcdfFile = setupNetCDF(path, rasterExtent, null, bandNames, rdd.metadata.crs, cellType,dimensionNames,attributes,zLevel,writeTimeDimension = false)
-      }
-      val multibandTile = tuple._2
-
-      for (bandIndex <- bandNames.asScala.indices) {
-        val gridExtent = rasterExtent.gridBoundsFor(tuple._1.extent(rdd.metadata))
-        if(gridExtent.colMax >= rasterExtent.cols || gridExtent.rowMax >= rasterExtent.rows){
-          logger.warn("Can not write tile beyond raster bounds: " + gridExtent)
-        }else{
-          val origin: Array[Int] = scala.Array(gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
-          val variable = bandNames.get(bandIndex)
-
-          var tile = multibandTile.band(bandIndex)
-          if(gridExtent.width < tile.cols || gridExtent.height < tile.rows){
-            tile = tile.crop(gridExtent.width,gridExtent.height,raster.CropOptions(force=true))
-            logger.warn(s"Cropping output tile to avoid going out of variable (${variable}) bounds ${gridExtent}.")
-          }
-          try{
-            writeTile(variable, origin, tile, netcdfFile)
-          }catch {
-            case t: IOException => {
-              logger.error("Failed to write subtile: " + gridExtent + " to variable: " + variable + " with shape: " + netcdfFile.findVariable(variable).getShape.mkString("Array(", ", ", ")"),t)
-            }
-            case t: Throwable =>  throw t
-          }
-        }
-      }
-    }
-    cachedRDD.unpersist(blocking=false)
-
-
-    if(netcdfFile!=null) {
-      netcdfFile.close()
-    }else{
-      logger.error(s"The resulting netCDF at ${path} with bands ${bandNames} is empty, this is probably not intended?")
-    }
-    return Collections.singletonList(path)
+    saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, zLevel)
   }
 
   def saveSingleNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey],
@@ -135,15 +87,31 @@ object NetCDFRDDWriter {
                        zLevel:Int
                  ): java.util.List[String] = {
 
-    val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd,Option.empty)
+    saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, zLevel)
+  }
+
+  def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K],
+                       path: String,
+                       bandNames: ArrayList[String],
+                       dimensionNames: java.util.Map[String,String],
+                       attributes: java.util.Map[String,String],
+                       zLevel:Int
+                      ): java.util.List[String] = {
+
+    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,Option.empty)
     val extent = preProcessResult._2
     val preProcessedRdd = preProcessResult._3
 
     val rasterExtent = RasterExtent(extent = extent, cellSize = preProcessedRdd.metadata.cellSize)
 
-    val cachedRDD: RDD[(SpaceTimeKey, MultibandTile)] = cacheAndRepartition(preProcessedRdd)
+    val cachedRDD: RDD[(K, MultibandTile)] = cacheAndRepartition(preProcessedRdd)
 
-    val dates = cachedRDD.keys.map(k => Duration.between(fixedTimeOffset, k.time).toDays.toInt).distinct().collect().sorted.toList
+    val dates =
+    if(rdd.metadata.isInstanceOf[Metadata[TileLayerMetadata[SpaceTimeKey]]]) {
+      cachedRDD.keys.map(k => Duration.between(fixedTimeOffset, k.asInstanceOf[SpaceTimeKey].time).toDays.toInt).distinct().collect().sorted.toList
+    }else{
+      null
+    }
 
     val intermediatePath =
       if (path.startsWith("s3:/")) {
@@ -156,22 +124,32 @@ object NetCDFRDDWriter {
     for(tuple <- cachedRDD.toLocalIterator){
 
       val cellType = tuple._2.cellType
-      val timeOffset = Duration.between(fixedTimeOffset, tuple._1.time).toDays.toInt
-      var timeDimIndex = dates.indexOf(timeOffset)
+      val timeDimIndex =
+        if(dates!=null){
+          val timeOffset = Duration.between(fixedTimeOffset, tuple._1.asInstanceOf[SpaceTimeKey].time).toDays.toInt
+          dates.indexOf(timeOffset)
+        }else{
+          -1
+        }
+
 
       if(netcdfFile == null){
-        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, bandNames, preProcessedRdd.metadata.crs, cellType,dimensionNames,attributes,zLevel)
+        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, bandNames, preProcessedRdd.metadata.crs, cellType,dimensionNames,attributes,zLevel,writeTimeDimension = dates!=null)
       }
       val multibandTile = tuple._2
 
       for (bandIndex <- bandNames.asScala.indices) {
 
         if(bandIndex < multibandTile.bandCount){
-          val gridExtent = rasterExtent.gridBoundsFor(tuple._1.spatialKey.extent(preProcessedRdd.metadata))
+          val gridExtent = rasterExtent.gridBoundsFor(tuple._1.getComponent[SpatialKey].extent(preProcessedRdd.metadata))
           if(gridExtent.colMax >= rasterExtent.cols || gridExtent.rowMax >= rasterExtent.rows){
             logger.warn("Can not write tile beyond raster bounds: " + gridExtent)
           }else{
-            val origin: Array[Int] = scala.Array(timeDimIndex.toInt, gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
+            val origin: Array[Int] = if(timeDimIndex>=0){
+              scala.Array(timeDimIndex.toInt, gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
+            }else{
+              scala.Array( gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
+            }
             val variable = bandNames.get(bandIndex)
 
             var tile = multibandTile.band(bandIndex)
@@ -192,8 +170,11 @@ object NetCDFRDDWriter {
       }
     }
 
-    val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
-    writeTime(timeDimName, netcdfFile, dates)
+    if(dates!=null) {
+      val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
+      writeTime(timeDimName, netcdfFile, dates)
+    }
+
 
     netcdfFile.close()
     cachedRDD.unpersist(blocking = false)
