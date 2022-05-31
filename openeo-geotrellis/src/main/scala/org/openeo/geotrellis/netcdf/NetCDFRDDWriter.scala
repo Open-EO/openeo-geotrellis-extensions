@@ -69,6 +69,18 @@ object NetCDFRDDWriter {
     override def iterator: Iterator[(K, V)] = tiles.iterator
   }
 
+  def writeRasters(rdd:Object,path:String,options:NetCDFOptions): java.util.List[String] = {
+
+    rdd match {
+      case rdd1: MultibandTileLayerRDD[SpatialKey] =>
+        saveSingleNetCDFGeneric(rdd1, path, options)
+      case rdd2: MultibandTileLayerRDD[SpaceTimeKey] =>
+        saveSingleNetCDFGeneric(rdd2, path, options)
+      case _ => throw new IllegalArgumentException("Unsupported rdd type to write to netCDF: ${rdd}")
+    }
+
+  }
+
   def saveSingleNetCDFSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
                        path: String,
                        bandNames: ArrayList[String],
@@ -90,15 +102,20 @@ object NetCDFRDDWriter {
     saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, zLevel)
   }
 
+  def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], path:String, options:NetCDFOptions): java.util.List[String] = {
+    saveSingleNetCDFGeneric(rdd,path,options.bandNames.orNull,options.dimensionNames.orNull,options.attributes.orNull,options.zLevel,options.cropBounds)
+  }
+
   def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K],
                        path: String,
                        bandNames: ArrayList[String],
                        dimensionNames: java.util.Map[String,String],
                        attributes: java.util.Map[String,String],
-                       zLevel:Int
+                       zLevel:Int,
+                       cropBounds:Option[Extent]= None
                       ): java.util.List[String] = {
 
-    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,Option.empty)
+    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
     val extent = preProcessResult._2
     val preProcessedRdd = preProcessResult._3
 
@@ -107,7 +124,7 @@ object NetCDFRDDWriter {
     val cachedRDD: RDD[(K, MultibandTile)] = cacheAndRepartition(preProcessedRdd)
 
     val dates =
-    if(rdd.metadata.isInstanceOf[Metadata[TileLayerMetadata[SpaceTimeKey]]]) {
+    if(rdd.metadata.isInstanceOf[TileLayerMetadata[SpaceTimeKey]]) {
       cachedRDD.keys.map(k => Duration.between(fixedTimeOffset, k.asInstanceOf[SpaceTimeKey].time).toDays.toInt).distinct().collect().sorted.toList
     }else{
       null
