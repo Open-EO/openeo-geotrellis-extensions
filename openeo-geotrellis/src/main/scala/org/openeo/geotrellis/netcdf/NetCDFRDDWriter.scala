@@ -168,18 +168,26 @@ object NetCDFRDDWriter {
 
         if(bandIndex < multibandTile.bandCount){
           val gridExtent = rasterExtent.gridBoundsFor(tuple._1.spatialKey.extent(preProcessedRdd.metadata))
-          val origin: Array[Int] = scala.Array(timeDimIndex.toInt, gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
-          val variable = bandNames.get(bandIndex)
+          if(gridExtent.colMax >= rasterExtent.cols || gridExtent.rowMax >= rasterExtent.rows){
+            logger.warn("Can not write tile beyond raster bounds: " + gridExtent)
+          }else{
+            val origin: Array[Int] = scala.Array(timeDimIndex.toInt, gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
+            val variable = bandNames.get(bandIndex)
 
-          val tile = multibandTile.band(bandIndex)
-          try{
-            writeTile(variable, origin, tile, netcdfFile)
-          }catch {
-          case t: IOException => {
-            logger.error("Failed to write subtile: " + gridExtent + " to variable: " + variable + " with shape: " + netcdfFile.findVariable(variable).getShape.mkString("Array(", ", ", ")"),t)
+            var tile = multibandTile.band(bandIndex)
+            if(gridExtent.width < tile.cols || gridExtent.height < tile.rows){
+              tile = tile.crop(gridExtent.width,gridExtent.height,raster.CropOptions(force=true))
+              logger.warn(s"Cropping output tile to avoid going out of variable (${variable}) bounds ${gridExtent}.")
+            }
+            try{
+              writeTile(variable, origin, tile, netcdfFile)
+            }catch {
+              case t: IOException => {
+                logger.error("Failed to write subtile: " + gridExtent + " to variable: " + variable + " with shape: " + netcdfFile.findVariable(variable).getShape.mkString("Array(", ", ", ")"),t)
+              }
+              case t: Throwable =>  throw t
+            }
           }
-          case t: Throwable =>  throw t
-        }
         }
       }
     }
