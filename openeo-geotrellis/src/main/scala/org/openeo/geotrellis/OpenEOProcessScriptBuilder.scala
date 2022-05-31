@@ -839,7 +839,7 @@ class OpenEOProcessScriptBuilder {
       val values: Seq[Tile] = evaluateToTiles(valuesFunction, context, tiles)
       if(length == null) {
         //in this case, we need to insert
-        data.take(index.asInstanceOf[Integer]) ++ values ++ data.drop(index.asInstanceOf[Integer])
+        unifyCellType(data.take(index.asInstanceOf[Integer]) ++ values ++ data.drop(index.asInstanceOf[Integer]))
       }else{
         throw new UnsupportedOperationException("Geotrellis backend only supports inserting in array-modify")
       }
@@ -856,7 +856,7 @@ class OpenEOProcessScriptBuilder {
     val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
       val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
       val values: Seq[Tile] = evaluateToTiles(valueFunction, context, tiles)
-      data ++ values
+      unifyCellType(data ++ values)
     }
     bandFunction
   }
@@ -871,15 +871,19 @@ class OpenEOProcessScriptBuilder {
       val array2 = evaluateToTiles(array2Function, context, tiles)
 
       val combined = array1 ++ array2
-      if(combined.size>0) {
-        val unionCelltype = combined.map(_.cellType).reduce(_.union(_))
-        combined.map(_.convert(unionCelltype))
-      }else{
-        combined
-      }
+      unifyCellType(combined)
 
     }
     bandFunction
+  }
+
+  private def unifyCellType(combined: Seq[Tile]) = {
+    if (combined.size > 0) {
+      val unionCelltype = combined.map(_.cellType).reduce(_.union(_))
+      combined.map(_.convert(unionCelltype))
+    } else {
+      combined
+    }
   }
 
   private def arrayCreateFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
