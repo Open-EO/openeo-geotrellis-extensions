@@ -352,6 +352,16 @@ object OpenEOProcessScriptBuilder{
       else if( isNoData(z2) ) z1
       else math.max(z1, z2)
   }
+
+
+  private def unifyCellType(combined: Seq[Tile]) = {
+    if (combined.nonEmpty) {
+      val unionCelltype = combined.map(_.cellType).reduce(_.union(_))
+      combined.map(_.convert(unionCelltype))
+    } else {
+      combined
+    }
+  }
 }
 /**
   * Builder to help converting an OpenEO process graph into a transformation of Geotrellis tiles.
@@ -877,14 +887,6 @@ class OpenEOProcessScriptBuilder {
     bandFunction
   }
 
-  private def unifyCellType(combined: Seq[Tile]) = {
-    if (combined.size > 0) {
-      val unionCelltype = combined.map(_.cellType).reduce(_.union(_))
-      combined.map(_.convert(unionCelltype))
-    } else {
-      combined
-    }
-  }
 
   private def arrayCreateFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
     val storedArgs = contextStack.head
