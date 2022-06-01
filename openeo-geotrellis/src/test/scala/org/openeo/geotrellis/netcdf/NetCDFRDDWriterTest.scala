@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.netcdf
 
 import com.azavea.gdal.GDALWarp
-import geotrellis.layer.{SpaceTimeKey, SpatialKey}
+import geotrellis.layer.{SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.gdal.GDALRasterSource
 import geotrellis.raster.{ByteArrayTile, CellType, FloatConstantNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, Raster, RasterExtent, UByteUserDefinedNoDataCellType, UShortCellType, isData}
@@ -251,7 +251,9 @@ class NetCDFRDDWriterTest {
 
     val (layer,refTile) = LayerFixtures.aSpacetimeTileLayerRdd(20,20,nbDates = 10)
 
-    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSingleNetCDF(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")),null,null,6)
+    val options = new NetCDFOptions
+    options.setBandNames(new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")))
+    val sampleFilenames: util.List[String] = NetCDFRDDWriter.writeRasters(layer,"/tmp/stitched.nc",options)
     val expectedPaths = List("/tmp/stitched.nc")
 
     Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))

@@ -72,10 +72,10 @@ object NetCDFRDDWriter {
   def writeRasters(rdd:Object,path:String,options:NetCDFOptions): java.util.List[String] = {
 
     rdd match {
-      case rdd1: MultibandTileLayerRDD[SpatialKey] =>
-        saveSingleNetCDFGeneric(rdd1, path, options)
-      case rdd2: MultibandTileLayerRDD[SpaceTimeKey] =>
-        saveSingleNetCDFGeneric(rdd2, path, options)
+      case rdd1 if rdd.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        saveSingleNetCDFGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], path, options)
+      case rdd2 if rdd.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]  =>
+        saveSingleNetCDFGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], path, options)
       case _ => throw new IllegalArgumentException("Unsupported rdd type to write to netCDF: ${rdd}")
     }
 
