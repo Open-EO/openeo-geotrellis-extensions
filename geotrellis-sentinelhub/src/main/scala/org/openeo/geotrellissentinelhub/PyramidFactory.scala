@@ -168,7 +168,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
       // TODO: call into AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
 
-      val scheme = FloatingLayoutScheme(256)
+      val scheme = FloatingLayoutScheme(dataCubeParameters.tileSize)
 
       val multiple_polygons_flag = polygons.length > 1
       var metadata = DatacubeSupport.layerMetadata(
@@ -265,7 +265,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             val spatialKeyCount = requiredSpatialKeysForFeatures.map(_._1).countApproxDistinct()
             logger.info(s"Sentinelhub datacube requires approximately ${spatialKeyCount} spatial keys.")
 
-            val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, from, to, polygons, Option(dataCubeParameters), spatialKeyCount)
+            val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = None//DatacubeSupport.optimizeChunkSize(metadata, polygons, Option(dataCubeParameters), spatialKeyCount)
             metadata = retiledMetadata.getOrElse(metadata)
 
             if (retiledMetadata.isDefined) {

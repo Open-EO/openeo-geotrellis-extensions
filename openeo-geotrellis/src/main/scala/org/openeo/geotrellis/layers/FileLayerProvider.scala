@@ -522,7 +522,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     var spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
     logger.error(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
 
-    val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, from, to, polygons, datacubeParams, spatialKeyCount)
+    val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, polygons, datacubeParams, spatialKeyCount)
 
     if (retiledMetadata.isDefined) {
       requiredSpatialKeys = polygonsRDD.clipToGrid(retiledMetadata.get).groupByKey()
