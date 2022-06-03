@@ -193,8 +193,11 @@ object NetCDFRDDWriter {
       writeTime(timeDimName, netcdfFile, dates)
     }
 
-
-    netcdfFile.close()
+    if(netcdfFile!=null) {
+      netcdfFile.close()
+    }else{
+      logger.error(s"No netCDF written to ${path}, the datacube was empty.")
+    }
     cachedRDD.unpersist(blocking = false)
     if (path.startsWith("s3:/")) {
       uploadToS3(path, intermediatePath)
