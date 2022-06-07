@@ -835,7 +835,24 @@ class OpenEOProcesses extends Serializable {
   }
 
   def crop_spatial(datacube:MultibandTileLayerRDD[SpatialKey], bounds:Extent):MultibandTileLayerRDD[SpatialKey]={
-    datacube.crop(bounds,Options(force=false))
+    datacube.crop(bounds,Options(force=false,clamp=true))
   }
+
+  def crop_spacetime(datacube:MultibandTileLayerRDD[SpaceTimeKey], bounds:Extent):MultibandTileLayerRDD[SpaceTimeKey]={
+    datacube.crop(bounds,Options(force=false,clamp=true))
+  }
+
+  def crop(datacube:Object, bounds:Extent):Object ={
+    datacube match {
+      case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        crop_spatial(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]],bounds)
+      case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]  =>
+        crop_spacetime(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]],bounds)
+      case _ => throw new IllegalArgumentException("Unsupported rdd type to crop: ${rdd}")
+    }
+
+  }
+
+
 
 }
