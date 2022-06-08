@@ -854,5 +854,44 @@ class OpenEOProcesses extends Serializable {
   }
 
 
+  def crop_metadata_generic[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K],bounds:Extent):MultibandTileLayerRDD[K] = {
+    //taking intersection avoids that we enlarge the extent, and go out of reach for current partitioner, also makes sense that multiple spatial filters take intersection
+    val maybeIntersection = datacube.metadata.extent.intersection(bounds)
+    val intersection =
+    if(!maybeIntersection.isDefined) {
+      logger.warn("Intersection between the current extent and extent provided by spatial filtering operation is empty!")
+      bounds
+    }else{
+      maybeIntersection.get
+    }
+
+    val newBounds = datacube.metadata.extentToBounds(intersection)
+    val updatedMetadata = datacube.metadata.copy(extent = intersection, bounds = datacube.metadata.bounds.get.setSpatialBounds(newBounds))
+    ContextRDD(datacube.rdd.filter(t=>{
+      val key: SpatialKey = t._1.getComponent[SpatialKey]
+      newBounds.contains(key.col,key.row)
+    }),updatedMetadata)
+  }
+
+  /**
+   * Crop a datacube by only cropping metadata and filtering keys that are out of range.
+   * This is a less expensive operation than actually cropping all tiles, or regridding, which can be applied by the output format if needed..
+   *
+   * @param datacube
+   * @param bounds
+   * @return
+   */
+  def crop_metadata(datacube:Object, bounds:Extent):Object ={
+    datacube match {
+      case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        crop_metadata_generic(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]],bounds)
+      case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]  =>
+        crop_metadata_generic(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]],bounds)
+      case _ => throw new IllegalArgumentException("Unsupported rdd type to crop: ${rdd}")
+    }
+
+  }
+
+
 
 }
