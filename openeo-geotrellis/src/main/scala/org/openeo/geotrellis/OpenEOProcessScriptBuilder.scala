@@ -24,6 +24,13 @@ import scala.collection.{immutable, mutable}
 import scala.util.Try
 import scala.util.control.Breaks.{break, breakable}
 
+object Exp extends Serializable {
+  /** Take the square root each value in a raster. */
+  def apply(r: Tile) =
+    r.dualMap { z: Int => if(isNoData(z) || z < 0) NODATA else math.exp(z).toInt }
+    { z: Double =>math.exp(z) }
+}
+
 object OpenEOProcessScriptBuilder{
 
   private val logger = LoggerFactory.getLogger(classOf[OpenEOProcessScriptBuilder])
@@ -671,6 +678,7 @@ class OpenEOProcessScriptBuilder {
       case "divide" if hasXY => xyFunction(Divide.apply)
       case "divide" if hasData => reduceFunction("data", Divide.apply) // legacy 0.4 style
       case "power" => xyFunction(Pow.apply,xArgName = "base",yArgName = "p")
+      case "exp" => mapFunction("p", Exp.apply)
       case "normalized_difference" if hasXY => xyFunction((x, y) => Divide(Subtract(x, y), Add(x, y)))
       case "clip" => clipFunction(arguments)
       case "int" => intFunction(arguments)
