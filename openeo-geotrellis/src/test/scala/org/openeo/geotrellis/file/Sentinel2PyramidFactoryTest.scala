@@ -58,7 +58,7 @@ class Sentinel2PyramidFactoryTest {
         val correlation_id = ""
 
         val factory = new Sentinel2PyramidFactory(
-            openSearchEndpoint = "http://oscars-dev.vgt.vito.be/",
+            openSearchEndpoint = "https://services.terrascope.be/catalogue",
             openSearchCollectionId = "urn:eop:VITO:COP_DEM_GLO_30M_COG",
             openSearchLinkTitles = singletonList("DEM"),
             rootPath = "/data/MTDA/DEM/COP_DEM_30M_COG",

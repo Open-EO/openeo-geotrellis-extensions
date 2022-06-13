@@ -1,30 +1,37 @@
 package org.openeo.geotrellis
 
 import geotrellis.layer.SpatialKey._
-import geotrellis.layer._
+import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata, _}
 import geotrellis.proj4.CRS
 import geotrellis.raster._
 import geotrellis.raster.buffer.{BufferSizes, BufferedTile}
+import geotrellis.raster.crop.Crop
 import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
+import geotrellis.raster.rasterize.Rasterizer
+import geotrellis.spark.join.SpatialJoin
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
+import geotrellis.vector.Extent.toPolygon
+import geotrellis.vector._
 import geotrellis.vector.io.json.JsonFeatureCollection
-import geotrellis.vector.{Extent, PolygonFeature}
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.focal._
-import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
+import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner}
 import org.slf4j.LoggerFactory
 
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
 import java.time.{Instant, ZonedDateTime}
+import java.util
 import scala.collection.JavaConverters._
 import scala.collection.{JavaConverters, immutable, mutable}
 import scala.reflect._
@@ -81,6 +88,10 @@ class OpenEOProcesses extends Serializable {
     "xor" -> Xor
   )
 
+  def wrapCube[K](datacube:MultibandTileLayerRDD[K]): OpenEORasterCube[K] = {
+    return new OpenEORasterCube[K](datacube,datacube.metadata,new OpenEORasterCubeMetadata(Seq.empty))
+  }
+
   def applyProcess[K](datacube:MultibandTileLayerRDD[K], process:String): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]= {
     val proc = unaryProcesses(process)
     return ContextRDD(
@@ -101,6 +112,13 @@ class OpenEOProcesses extends Serializable {
    * @return
    */
   def applyTimeDimension(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpaceTimeKey] = {
+    val index: Option[PartitionerIndex[SpaceTimeKey]] =
+    if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
+       Some(datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index)
+    }else{
+      None
+    }
+    logger.info(s"Applying callback on time dimension of cube with partitioner: ${datacube.partitioner.getOrElse("no partitioner")} - index: ${index.getOrElse("no index")} and metadata ${datacube.metadata}")
     val function = scriptBuilder.generateFunction(context.asScala.toMap)
     val rdd =  groupOnTimeDimension(datacube).flatMap{ tiles => {
       val values = tiles._2
@@ -118,7 +136,12 @@ class OpenEOProcesses extends Serializable {
       resultMap.map(tuple => (tuple._1,MultibandTile(tuple._2)))
 
     }}
-    ContextRDD(rdd,datacube.metadata)
+
+    if(datacube.partitioner.isDefined) {
+      ContextRDD(rdd.partitionBy(datacube.partitioner.get),datacube.metadata)
+    }else{
+      ContextRDD(rdd,datacube.metadata)
+    }
   }
 
 
@@ -154,11 +177,121 @@ class OpenEOProcesses extends Serializable {
 
   private def groupOnTimeDimension(datacube: MultibandTileLayerRDD[SpaceTimeKey]) = {
     val targetBounds = datacube.metadata.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]].toSpatial
-    implicit val index = ByTileSpatialPartitioner
+
+    val keys: _root_.scala.Option[_root_.scala.Array[_root_.geotrellis.layer.SpaceTimeKey]] = findPartitionerKeys(datacube)
+
+    implicit val index =
+      if(keys.isDefined) {
+        new SparseSpatialPartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, 0,keys.map(_.map(_.spatialKey)))
+      }else{
+        ByTileSpatialPartitioner
+      }
+
     val partitioner: Partitioner = new SpacePartitioner(targetBounds)
 
     val groupedOnTime = datacube.groupBy[SpatialKey]((t: (SpaceTimeKey, MultibandTile)) => t._1.spatialKey, partitioner)
     groupedOnTime
+  }
+
+  def findPartitionerKeys(datacube: MultibandTileLayerRDD[SpaceTimeKey]) = {
+    val keys: Option[Array[SpaceTimeKey]] = if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
+      val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+      if (index.isInstanceOf[SparseSpaceTimePartitioner]) {
+        index.asInstanceOf[SparseSpaceTimePartitioner].theKeys
+      } else if (index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
+        index.asInstanceOf[SparseSpaceOnlyPartitioner].theKeys
+      } else {
+        Option.empty
+      }
+    } else {
+      Option.empty
+    }
+    keys
+  }
+
+  /**
+   * @param datacube The datacube to be masked. The celltype is assumed to be Float with NoDataHandling.
+   * @param projectedPolygons A list of polygons to mask the original datacube with.
+   * @param maskValue The value used for any cell outside of the polygon.
+   *                  This allows for a distinction between NoData cells within the polygon,
+   *                  and areas outside of it.
+   * @return A new RDD with a list of masked tiles for every polygon in projectedPolygons.
+   */
+  def groupAndMaskByGeometry(datacube: MultibandTileLayerRDD[SpaceTimeKey],
+                             projectedPolygons: ProjectedPolygons,
+                             maskValue: java.lang.Double
+                            ): RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] = {
+    val useNoDataMask = maskValue == null
+    val polygonsBC: Broadcast[List[MultiPolygon]] = SparkContext.getOrCreate().broadcast(projectedPolygons.polygons.toList)
+    val layout = datacube.metadata.layout
+
+    val groupedAndMaskedByPolygon: RDD[(MultiPolygon, Iterable[(SpaceTimeKey, MultibandTile)])] = datacube.flatMap {
+      case (key, tile: MultibandTile) =>
+        val tileExtentAsPolygon: Polygon = toPolygon(layout.mapTransform(key.getComponent[SpatialKey]))
+        // Filter the polygons that lie in this tile.
+        val polygonsInTile: Seq[MultiPolygon] = polygonsBC.value.filter(polygon => tileExtentAsPolygon.intersects(polygon))
+        // Mask this tile for every polygon.
+        polygonsInTile.map { polygon =>
+            val tileExtent: Extent = layout.mapTransform(key)
+            val maskedTile = tile.mask(tileExtent, polygon)
+            ((polygon), (key, maskedTile))
+        }
+    }.groupByKey()
+
+    // For every polygon, stitch all tiles with the same date together into one tile,
+    // then crop this tile using the polygon.
+    val tilePerDateGroupedByPolygon: RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])] = groupedAndMaskedByPolygon.map {
+      case (polygon, values) =>
+        val valuesGroupedByDate: Map[ZonedDateTime, Iterable[(SpaceTimeKey, MultibandTile)]] = values.groupBy(_._1.time)
+        // For every date, make one tile by stitching tiles together.
+        val tilePerDate: Iterable[(Extent, Long, MultibandTile)] = valuesGroupedByDate.map {
+          case (key, maskedTiles) =>
+            // 1. Stitch.
+            val tiles: Iterable[(SpatialKey, MultibandTile)] = maskedTiles.map(tile => (tile._1.spatialKey, tile._2))
+            val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).stitch()
+            // 2. Crop.
+            // Take the smallest grid-aligned extent that covers the polygon.
+            // Clamp = false: ensures that tiles within the extent that do not exist in the raster show up as NoData.
+            val alignedExtent = raster.rasterExtent.createAlignedGridExtent(polygon.extent).extent
+            val cropOptions = Crop.Options(clamp = false, force = true)
+            val croppedRaster: Raster[MultibandTile] = raster.crop(alignedExtent, cropOptions)
+            // 3. Finally, mask out the polygon.
+            val maskedTile = croppedRaster.tile.mapBands { (_index, t) =>
+              if (!t.cellType.isFloatingPoint)
+                throw new IllegalArgumentException("groupAndMaskByGeometry only supports floating point cell types.")
+              val re = croppedRaster.rasterExtent
+              if (useNoDataMask) {
+                t.mask(re.extent, polygon)
+              }
+              else {
+                val cellType = t.cellType.asInstanceOf[FloatCells with NoDataHandling]
+                val result = FloatArrayTile.fill(maskValue.floatValue(), t.cols, t.rows, cellType)
+                val options = Rasterizer.Options.DEFAULT
+                polygon.foreach(re, options)({ (col: Int, row: Int) =>
+                  result.setDouble(col, row, t.getDouble(col, row))
+                })
+                result
+              }
+            }
+            (croppedRaster.extent, maskedTiles.head._1.instant, maskedTile)
+        }.toList
+        (polygon, tilePerDate)
+    }
+
+    tilePerDateGroupedByPolygon
+  }
+
+  def mergeGroupedByGeometry(tiles: RDD[(MultiPolygon, Iterable[(Extent, Long, MultibandTile)])], metadata: TileLayerMetadata[SpaceTimeKey]): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val keyedByTemporalExtent: RDD[(TemporalProjectedExtent, MultibandTile)] = tiles.flatMap {
+      case (_polygon, polygonTiles: Iterable[(Extent, Long, MultibandTile)]) =>
+        polygonTiles.map(tile => {
+          val projectedExtent: ProjectedExtent = ProjectedExtent(tile._1, metadata.crs)
+          val multibandTile: MultibandTile = tile._3
+          (TemporalProjectedExtent(projectedExtent, tile._2), multibandTile)
+        })
+    }
+    val keyedBySpatialKey: RDD[(SpaceTimeKey, MultibandTile)] = keyedByTemporalExtent.tileToLayout(metadata)
+    ContextRDD(keyedBySpatialKey, metadata)
   }
 
   private def firstTile(tiles: Iterable[MultibandTile]) = {
@@ -191,11 +324,28 @@ class OpenEOProcesses extends Serializable {
     val periodsToLabels: Seq[(Iterable[Instant], String)] = timePeriods.zip(labels.asScala)
     val function = scriptBuilder.generateFunction(context.asScala.toMap)
 
-    val allPossibleKeys: immutable.Seq[SpatialKey] = datacube.metadata.tileBounds
-      .coordsIter
-      .map { case (x, y) => SpatialKey(x, y) }
-      .toList
+    val keys = findPartitionerKeys(datacube)
+    val allPossibleKeys: immutable.Seq[SpatialKey] = if(keys.isDefined) {
+      keys.get.map(_.spatialKey).distinct.toList
+    } else{
+      datacube.metadata.tileBounds
+        .coordsIter
+        .map { case (x, y) => SpatialKey(x, y) }
+        .toList
+    }
+
     val allPossibleSpacetime =  allPossibleKeys.flatMap(x => labelsDates.map(y => (SpaceTimeKey(x, TemporalKey(y)),null)))
+    val theNewKeys = allPossibleSpacetime.map(_._1).toArray
+
+    val index: PartitionerIndex[SpaceTimeKey] =
+      if(keys.isDefined) {
+        new SparseSpaceTimePartitioner(theNewKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4,Some(theNewKeys))
+      }else{
+        SpaceTimeByMonthPartitioner
+      }
+
+    logger.info(s"aggregate_temporal results in ${allPossibleSpacetime.size} keys, using partitioner index: ${index}" )
+    val partitioner: SpacePartitioner[SpaceTimeKey] = SpacePartitioner[SpaceTimeKey](datacube.metadata.bounds)(implicitly,implicitly, index)
 
     val allKeysRDD: RDD[(SpaceTimeKey, Null)] = SparkContext.getOrCreate().parallelize(allPossibleSpacetime)
     val tilesByInterval: RDD[(SpaceTimeKey, MultibandTile)] = datacube.flatMap(tuple => {
@@ -210,7 +360,7 @@ class OpenEOProcesses extends Serializable {
       }).map(t => t._2).map(ZonedDateTime.parse(_))
 
       labelsForKey.map(l => (SpaceTimeKey(spatialKey,TemporalKey(l)),tuple._2))
-    }).groupByKey().mapValues( tiles => {
+    }).groupByKey(partitioner).mapValues( tiles => {
       val aTile = firstTile(tiles)
 
       val resultTiles: mutable.ArrayBuffer[Tile] = mutable.ArrayBuffer[Tile]()
@@ -228,17 +378,21 @@ class OpenEOProcesses extends Serializable {
     val cellType = datacube.metadata.cellType
 
     //ArrayMultibandTile.empty(datacube.metadata.cellType,1,0,0)
-    val filledRDD: RDD[(SpaceTimeKey, MultibandTile)] = tilesByInterval.rightOuterJoin(allKeysRDD).mapValues(_._1.getOrElse(new EmptyMultibandTile(cols,rows,cellType)))
+    val filledRDD: RDD[(SpaceTimeKey, MultibandTile)] = tilesByInterval.rightOuterJoin(allKeysRDD,partitioner).mapValues(_._1.getOrElse(new EmptyMultibandTile(cols,rows,cellType)))
     return ContextRDD(filledRDD, datacube.metadata)
 
   }
 
-  def mapBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]= {
-    mapBandsGeneric(datacube,scriptBuilder)
+  def mapBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder, context: java.util.Map[String,Any] = new util.HashMap[String, Any]()): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]= {
+    mapBandsGeneric(datacube,scriptBuilder,context)
   }
 
-  def mapBandsGeneric[K:ClassTag](datacube:MultibandTileLayerRDD[K], scriptBuilder:OpenEOProcessScriptBuilder): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
-    val function = scriptBuilder.generateFunction()
+  def mapBandsGeneric[K:ClassTag](datacube:MultibandTileLayerRDD[K], scriptBuilder:OpenEOProcessScriptBuilder, context: java.util.Map[String,Any]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
+    val function = if (context.isEmpty) {
+      scriptBuilder.generateFunction()
+    } else {
+      scriptBuilder.generateFunction(context.asScala.toMap)
+    }
     return datacube.withContext(new org.apache.spark.rdd.PairRDDFunctions[K,MultibandTile](_).mapValues(tile => {
       if (!tile.isInstanceOf[EmptyMultibandTile]) {
         val resultTiles = function(tile.bands)
@@ -288,6 +442,14 @@ class OpenEOProcesses extends Serializable {
     datacube.partitionBy( SpacePartitioner(keyBounds))
   }
 
+  def applySparseSpacetimePartitioner(datacube: RDD[(SpaceTimeKey, MultibandTile)],  keys: util.List[SpaceTimeKey],indexReduction:Int): RDD[(SpaceTimeKey, MultibandTile)] = {
+    val scalaKeys = keys.asScala
+    implicit val newIndex: PartitionerIndex[SpaceTimeKey] = new SparseSpaceTimePartitioner(scalaKeys.map(SparseSpaceTimePartitioner.toIndex(_,indexReduction)).distinct.sorted.toArray,indexReduction,theKeys = Some(scalaKeys.toArray) )
+    val bounds = KeyBounds(scalaKeys.min,scalaKeys.max)
+    val partitioner = SpacePartitioner[SpaceTimeKey](bounds)(implicitly,implicitly,newIndex)
+    datacube.partitionBy( partitioner)
+  }
+
   private def outerJoin[K: Boundable: PartitionerIndex: ClassTag,
     M: GetComponent[*, Bounds[K]],
     M1: GetComponent[*, Bounds[K]]
@@ -296,7 +458,33 @@ class OpenEOProcesses extends Serializable {
     val kbLeft: Bounds[K] = leftCube.metadata.getComponent[Bounds[K]]
     val kbRight: Bounds[K] = rightCube.metadata.getComponent[Bounds[K]]
     val kb: Bounds[K] = kbLeft.combine(kbRight)
-    val part = SpacePartitioner(kb)
+    val part =if( leftCube.partitioner.isDefined && rightCube.partitioner.isDefined && leftCube.partitioner.get.isInstanceOf[SpacePartitioner[K]] && rightCube.partitioner.get.isInstanceOf[SpacePartitioner[K]]) {
+      val leftPart = leftCube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
+      val rightPart = rightCube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
+      logger.info(s"Merging cubes with spatial indices: ${leftPart.index} - ${rightPart.index}")
+      if(leftPart.index == rightPart.index && leftPart.index.isInstanceOf[SparseSpaceTimePartitioner]) {
+        val newIndices: Array[BigInt] = (leftPart.index.asInstanceOf[SparseSpaceTimePartitioner].indices ++ rightPart.index.asInstanceOf[SparseSpaceTimePartitioner].indices).distinct.sorted
+        implicit val newIndex: PartitionerIndex[K] = new SparseSpaceTimePartitioner(newIndices,leftPart.index.asInstanceOf[SparseSpaceTimePartitioner].indexReduction).asInstanceOf[PartitionerIndex[K]]
+        SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
+      }else if(leftPart.index == rightPart.index && leftPart.index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
+        val newIndices: Array[BigInt] = (leftPart.index.asInstanceOf[SparseSpaceOnlyPartitioner].indices ++ rightPart.index.asInstanceOf[SparseSpaceOnlyPartitioner].indices).distinct.sorted
+        implicit val newIndex: PartitionerIndex[K] = new SparseSpaceOnlyPartitioner(newIndices,leftPart.index.asInstanceOf[SparseSpaceOnlyPartitioner].indexReduction).asInstanceOf[PartitionerIndex[K]]
+        SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
+      }
+      else if(leftPart.index == rightPart.index && leftPart.index == ByTileSpatialPartitioner ) {
+        leftPart
+      }
+      else if(leftPart.index == rightPart.index  && leftPart.index.isInstanceOf[SparseSpatialPartitioner] ) {
+        val newIndices: Array[BigInt] = (leftPart.index.asInstanceOf[SparseSpatialPartitioner].indices ++ rightPart.index.asInstanceOf[SparseSpatialPartitioner].indices).distinct.sorted
+        implicit val newIndex: PartitionerIndex[K] = new SparseSpatialPartitioner(newIndices,leftPart.index.asInstanceOf[SparseSpatialPartitioner].indexReduction).asInstanceOf[PartitionerIndex[K]]
+        SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
+      }
+      else{
+        SpacePartitioner[K](kb)
+      }
+    } else {
+      SpacePartitioner[K](kb)
+    }
 
     val joinRdd =
       new CoGroupedRDD[K](List(part(leftCube), part(rightCube)), part)
@@ -317,20 +505,26 @@ class OpenEOProcesses extends Serializable {
    */
   def RDDBandCount[K](cube: MultibandTileLayerRDD[K]): Int = {
     // For performance reasons we only check a small subset of tile band counts
-    println("Computing number of bands in cube: " + cube.metadata)
-    val counts = cube.take(10).map({ case (k, t) => t.bandCount }).distinct
+    if(cube.isInstanceOf[OpenEORasterCube[K]] && cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount >0 ) {
+      val count = cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount
+      logger.info(s"Computed band count ${count} from metadata of ${cube}")
+      return count
+    }else{
+      logger.info(s"Computing number of bands in cube: ${cube.metadata}")
+      val counts = cube.take(10).map({ case (k, t) => t.bandCount }).distinct
 
-    if(counts.size==0){
-      if(cube.isEmpty())
-        println("This cube is empty, no band count.")
-      else
-        println("This cube is not empty, but could not determine band count.")
-      return 1
+      if(counts.size==0){
+        if(cube.isEmpty())
+          logger.info("This cube is empty, no band count.")
+        else
+          logger.info("This cube is not empty, but could not determine band count.")
+        return 1
+      }
+      if (counts.size != 1) {
+        throw new IllegalArgumentException("Cube doesn't have single consistent band count across tiles: [%s]".format(counts.mkString(", ")))
+      }
+      counts(0)
     }
-    if (counts.size != 1) {
-      throw new IllegalArgumentException("Cube doesn't have single consistent band count across tiles: [%s]".format(counts.mkString(", ")))
-    }
-    counts(0)
   }
 
   def filterNegativeSpatialKeys(data: (Int, MultibandTileLayerRDD[SpaceTimeKey])):(Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
@@ -354,7 +548,7 @@ class OpenEOProcesses extends Serializable {
   def filterNegativeSpatialKeys[K: SpatialComponent: ClassTag
   ](data: MultibandTileLayerRDD[K]):MultibandTileLayerRDD[K] = {
     val filtered = data.filter( tuple => {
-      val sKey = tuple._1.getComponent[SpatialKey]()
+      val sKey = tuple._1.getComponent[SpatialKey]
       if(sKey.col<0 || sKey.row<0){
         logger.debug("Preemptively filtering negative spatial key: " + sKey)
         false
@@ -372,7 +566,12 @@ class OpenEOProcesses extends Serializable {
   }
 
   def resampleCubeSpatial(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey], method:ResampleMethod): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
-    filterNegativeSpatialKeys(data.reproject(target.metadata.crs,target.metadata.layout,16,method,target.partitioner))
+    if(target.metadata.crs.equals(data.metadata.crs) && target.metadata.layout.equals(data.metadata.layout)) {
+      logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
+      (0,data)
+    }else{
+      filterNegativeSpatialKeys(data.reproject(target.metadata.crs,target.metadata.layout,16,method,target.partitioner))
+    }
   }
 
   def resampleCubeSpatial_spacetime(data: MultibandTileLayerRDD[SpaceTimeKey],crs:CRS,layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
@@ -393,15 +592,31 @@ class OpenEOProcesses extends Serializable {
 
   def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String, swapOperands:Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](leftCube, rightCube)
-    val binaryOp = tileBinaryOp.getOrElse(operator, throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, tileBinaryOp.keys.toString())))
+    if(operator == null) {
+      return new ContextRDD(rdd.mapValues({case (l,r) =>
+        if(swapOperands) {
+          MultibandTile(r.bands ++ l.bands)
+        }else{
+          MultibandTile(l.bands ++ r.bands)
+        }
+      }), leftCube.metadata)
+    }else{
 
-    return new ContextRDD(rdd.mapValues({case (l,r) =>
-      if(l.bandCount != r.bandCount){
-        throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.bandCount, r.bandCount))
-      }
-      MultibandTile(l.bands.zip(r.bands).map(t => binaryOp.apply(if(swapOperands){Seq(t._2, t._1)} else Seq(t._1, t._2))))
+      val binaryOp = tileBinaryOp.getOrElse(operator, throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, tileBinaryOp.keys.toString())))
+      return new ContextRDD(rdd.mapValues({case (l,r) =>
+        if(l.bandCount != r.bandCount){
+          if(l.bandCount==0) {
+            r
+          }else if(r.bandCount==0) {
+            l
+          }
+          throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.bandCount, r.bandCount))
+        }else{
+          MultibandTile(l.bands.zip(r.bands).map(t => binaryOp.apply(if(swapOperands){Seq(t._2, t._1)} else Seq(t._1, t._2))))
+        }
 
-    }), leftCube.metadata)
+      }), leftCube.metadata)
+    }
   }
 
   def mergeSpatialCubes(leftCube: MultibandTileLayerRDD[SpatialKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String): ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = {
@@ -432,15 +647,21 @@ class OpenEOProcesses extends Serializable {
   }
 
   private def combine_bands[K](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], leftCube: MultibandTileLayerRDD[K], rightCube: MultibandTileLayerRDD[K], updatedMetadata: TileLayerMetadata[K])(implicit kt: ClassTag[K], ord: Ordering[K] = null) = {
-    leftCube.sparkContext.setJobDescription("Merge cubes: get bandcount")
+    leftCube.sparkContext.setJobDescription(s"Merge cubes: get bandcount ${leftCube.name}")
     val leftBandCount = RDDBandCount(leftCube)
+    leftCube.sparkContext.setJobDescription(s"Merge cubes: get bandcount ${rightCube.name}")
     val rightBandCount = RDDBandCount(rightCube)
     leftCube.sparkContext.clearJobGroup()
     // Concatenation band counts are allowed to differ, but all resulting multiband tiles should have the same count
     new ContextRDD(joined.mapValues({
       case (None, Some(r)) => MultibandTile(Vector.fill(leftBandCount)(ArrayTile.empty(r.cellType, r.cols, r.rows)) ++ r.bands)
       case (Some(l), None) => MultibandTile(l.bands ++ Vector.fill(rightBandCount)(ArrayTile.empty(l.cellType, l.cols, l.rows)))
-      case (Some(l), Some(r)) => MultibandTile(l.bands ++ r.bands)
+      case (Some(l), Some(r)) => {
+        if(l.bandCount!=leftBandCount || r.bandCount != rightBandCount){
+          throw new IllegalArgumentException(s"The number of bands in the metadata ${leftBandCount}/${rightBandCount} does not match the actual band count in the cubes (left/right): ${l.bandCount}/${r.bandCount}. You can fix this by explicitly specifying correct band labels.")
+        }
+        MultibandTile(l.bands ++ r.bands)
+      }
     }), updatedMetadata)
   }
 
@@ -451,8 +672,8 @@ class OpenEOProcesses extends Serializable {
     val binaryOp = tileBinaryOp.getOrElse(operator, throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, tileBinaryOp.keys.toString())))
 
     new ContextRDD(joinedRDD.mapValues({ case (l, r) =>
-      if (r.isEmpty) l.get
-      else if (l.isEmpty) r.get
+      if (r.isEmpty || r.get.bandCount==0) l.get
+      else if (l.isEmpty || l.get.bandCount==0) r.get
       else {
         if (l.get.bandCount != r.get.bandCount) {
           throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.get.bandCount, r.get.bandCount))
@@ -527,7 +748,16 @@ class OpenEOProcesses extends Serializable {
   }
 
   def rasterMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], mask: MultibandTileLayerRDD[SpaceTimeKey], replacement: java.lang.Double): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val joined = datacube.spatialLeftOuterJoin(mask)
+    rasterMaskGeneric(datacube,mask,replacement).convert(datacube.metadata.cellType)
+  }
+
+  def rasterMask_spatial_spatial(datacube: MultibandTileLayerRDD[SpatialKey], mask: MultibandTileLayerRDD[SpatialKey], replacement: java.lang.Double): MultibandTileLayerRDD[SpatialKey] = {
+    rasterMaskGeneric(datacube,mask,replacement).convert(datacube.metadata.cellType)
+  }
+
+  def rasterMaskGeneric[K: Boundable: PartitionerIndex: ClassTag,M: GetComponent[*, Bounds[K]]]
+  (datacube: RDD[(K,MultibandTile)] with Metadata[M], mask: RDD[(K,MultibandTile)] with Metadata[M], replacement: java.lang.Double): RDD[(K,MultibandTile)] with Metadata[M] = {
+    val joined = SpatialJoin.leftOuterJoin(datacube, mask)
     val replacementInt: Int = if (replacement == null) NODATA else replacement.intValue()
     val replacementDouble: Double = if (replacement == null) doubleNODATA else replacement
     val masked = joined.mapValues(t => {
@@ -548,7 +778,7 @@ class OpenEOProcesses extends Serializable {
 
     })
 
-    new ContextRDD(masked, datacube.metadata).convert(datacube.metadata.cellType)
+    new ContextRDD(masked, datacube.metadata)
   }
 
   /**
@@ -605,7 +835,63 @@ class OpenEOProcesses extends Serializable {
   }
 
   def crop_spatial(datacube:MultibandTileLayerRDD[SpatialKey], bounds:Extent):MultibandTileLayerRDD[SpatialKey]={
-    datacube.crop(bounds,Options(force=false))
+    datacube.crop(bounds,Options(force=false,clamp=true))
   }
+
+  def crop_spacetime(datacube:MultibandTileLayerRDD[SpaceTimeKey], bounds:Extent):MultibandTileLayerRDD[SpaceTimeKey]={
+    datacube.crop(bounds,Options(force=false,clamp=true))
+  }
+
+  def crop(datacube:Object, bounds:Extent):Object ={
+    datacube match {
+      case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        crop_spatial(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]],bounds)
+      case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]  =>
+        crop_spacetime(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]],bounds)
+      case _ => throw new IllegalArgumentException("Unsupported rdd type to crop: ${rdd}")
+    }
+
+  }
+
+
+  def crop_metadata_generic[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K],bounds:Extent):MultibandTileLayerRDD[K] = {
+    //taking intersection avoids that we enlarge the extent, and go out of reach for current partitioner, also makes sense that multiple spatial filters take intersection
+    val maybeIntersection = datacube.metadata.extent.intersection(bounds)
+    val intersection =
+    if(!maybeIntersection.isDefined) {
+      logger.warn("Intersection between the current extent and extent provided by spatial filtering operation is empty!")
+      bounds
+    }else{
+      maybeIntersection.get
+    }
+
+    val newBounds = datacube.metadata.extentToBounds(intersection)
+    val updatedMetadata = datacube.metadata.copy(extent = intersection, bounds = datacube.metadata.bounds.get.setSpatialBounds(newBounds))
+    ContextRDD(datacube.rdd.filter(t=>{
+      val key: SpatialKey = t._1.getComponent[SpatialKey]
+      newBounds.contains(key.col,key.row)
+    }),updatedMetadata)
+  }
+
+  /**
+   * Crop a datacube by only cropping metadata and filtering keys that are out of range.
+   * This is a less expensive operation than actually cropping all tiles, or regridding, which can be applied by the output format if needed..
+   *
+   * @param datacube
+   * @param bounds
+   * @return
+   */
+  def crop_metadata(datacube:Object, bounds:Extent):Object ={
+    datacube match {
+      case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        crop_metadata_generic(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]],bounds)
+      case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]  =>
+        crop_metadata_generic(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]],bounds)
+      case _ => throw new IllegalArgumentException("Unsupported rdd type to crop: ${rdd}")
+    }
+
+  }
+
+
 
 }

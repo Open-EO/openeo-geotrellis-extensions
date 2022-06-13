@@ -3,8 +3,8 @@ package org.openeo.geotrelliss3
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
-
 import org.junit.{Ignore, Test}
+import org.junit.Assume.{assumeFalse => skipTestIf}
 
 class CatalogTest {
 
@@ -13,19 +13,27 @@ class CatalogTest {
   val date = ZonedDateTime.of(LocalDate.of(2020, 3, 1), MIDNIGHT, UTC)
 
   @Test
-  def testQueryOnePage() {
-    val results = catalog.query(date, date, ulx = 0, uly = 70, brx = 40, bry = 20)
-    val count = catalog.count(date, date, ulx = 0, uly = 70, brx = 40, bry = 20)
+  def testQueryOnePage(): Unit = {
+    try {
+      val results = catalog.query(date, date, ulx = 0, uly = 70, brx = 40, bry = 20)
+      val count = catalog.count(date, date, ulx = 0, uly = 70, brx = 40, bry = 20)
 
-    assert(results.length == count)
+      assert(results.length == count)
+    } catch {
+      case CatalogException(message, _) => skipTestIf(message, message contains "Bad Gateway")
+    }
   }
 
   @Test
-  def testQueryMultiplePages() {
-    val results = catalog.query(date, date, ulx = 0, uly = 70, brx = 80, bry = 20)
-    val count = catalog.count(date, date, ulx = 0, uly = 70, brx = 80, bry = 20)
+  def testQueryMultiplePages(): Unit = {
+    try {
+      val results = catalog.query(date, date, ulx = 0, uly = 70, brx = 80, bry = 20)
+      val count = catalog.count(date, date, ulx = 0, uly = 70, brx = 80, bry = 20)
 
-    assert(results.length == count)
+      assert(results.length == count)
+    } catch {
+      case CatalogException(message, _) => skipTestIf(message, message contains "Bad Gateway")
+    }
   }
 
   @Ignore

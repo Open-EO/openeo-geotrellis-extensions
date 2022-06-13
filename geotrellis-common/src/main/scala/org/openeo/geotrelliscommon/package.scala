@@ -2,10 +2,17 @@ package org.openeo
 
 import geotrellis.layer.{SpaceTimeKey, SpatialKey}
 import geotrellis.spark.partition.PartitionerIndex
+import org.apache.spark.Partitioner
 import org.locationtech.sfcurve.zorder.{Z2, ZRange}
 import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 
 package object geotrelliscommon {
+
+  class ByKeyPartitioner[K](splits: Array[K]) extends Partitioner {
+    override def numPartitions: Int = splits.length
+
+    override def getPartition(key: Any): Int = splits.indexOf(key)
+  }
 
   /**
    * Spatial partitioner with only 1 tile per partition: for tiles with lots of bands!
@@ -32,21 +39,84 @@ package object geotrelliscommon {
     def toIndex(key: SpaceTimeKey, indexReduction:Int = 8): BigInt = keyIndex.toIndex(key) >> indexReduction
   }
 
-  class SparseSpaceTimePartitioner (val indices: Array[BigInt], val indexReduction:Int = 8) extends PartitionerIndex[SpaceTimeKey] {
+  class SparseSpaceTimePartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpaceTimeKey]] = Option.empty) extends PartitionerIndex[SpaceTimeKey] {
 
     def toIndex(key: SpaceTimeKey): BigInt = SparseSpaceTimePartitioner.toIndex(key, indexReduction)
 
     def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
       indices.map(i => (i,i))
     }
+
+
+    def canEqual(other: Any): Boolean = other.isInstanceOf[SparseSpaceTimePartitioner]
+
+    /**
+     * This equals method does not compare the indices, so makes the decision of equality only depend on the region indices it generates.
+     * The merge operation and use of geotrellis.spark.partition.ReorderedSpaceRDD depends on this
+     * @param other
+     * @return
+     */
+    override def equals(other: Any): Boolean = other match {
+      case that: SparseSpaceTimePartitioner =>
+        (that canEqual this) &&
+          indexReduction == that.indexReduction
+      case _ => false
+    }
+
+    override def hashCode(): Int = {
+      val state = Seq(indexReduction)
+      state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
+    }
+
+
+    override def toString = s"SparseSpaceTimePartitioner ${indices.length} ${theKeys.isDefined}"
   }
 
-  class SparseSpaceOnlyPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8) extends PartitionerIndex[SpaceTimeKey] {
+  class SparseSpaceOnlyPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpaceTimeKey]] = Option.empty ) extends PartitionerIndex[SpaceTimeKey] {
 
     def toIndex(key: SpaceTimeKey): BigInt = SparseSpaceOnlyPartitioner.toIndex(key, indexReduction)
 
     def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
       indices.map(i => (i,i))
+    }
+
+
+    def canEqual(other: Any): Boolean = other.isInstanceOf[SparseSpaceOnlyPartitioner]
+
+    override def equals(other: Any): Boolean = other match {
+      case that: SparseSpaceOnlyPartitioner =>
+        (that canEqual this) &&
+          indexReduction == that.indexReduction
+      case _ => false
+    }
+
+    override def hashCode(): Int = {
+      val state = Seq( indexReduction)
+      state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
+    }
+  }
+
+  class SparseSpatialPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpatialKey]] = Option.empty ) extends PartitionerIndex[SpatialKey] {
+
+    def toIndex(key: SpatialKey): BigInt = Z2(key.col,key.row).z >> indexReduction
+
+    def indexRanges(keyRange: (SpatialKey, SpatialKey)): Seq[(BigInt, BigInt)] = {
+      indices.map(i => (i,i))
+    }
+
+
+    def canEqual(other: Any): Boolean = other.isInstanceOf[SparseSpatialPartitioner]
+
+    override def equals(other: Any): Boolean = other match {
+      case that: SparseSpatialPartitioner =>
+        (that canEqual this) &&
+          indexReduction == that.indexReduction
+      case _ => false
+    }
+
+    override def hashCode(): Int = {
+      val state = Seq( indexReduction)
+      state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
     }
   }
 

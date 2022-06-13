@@ -55,10 +55,10 @@ class PyramidFactoryTest {
   @Test
   def singleBandGeoTiffFromDiskForSingleDate(): Unit = {
     val from = ZonedDateTime.of(LocalDate.of(2019, 4, 24), MIDNIGHT, UTC)
-    val to = from
+    val to = from.plusDays(1)
 
     singleBandGeoTiffFromDisk(
-      globPattern = "/data/MTDA/CGS_S2/CGS_S2_FAPAR/2019/04/24/*/*/10M/*_FAPAR_10M_V102.tif", from, to)
+      globPattern = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2019/04/24/*/10M/*_FAPAR_10M_V200.tif", from, to)
   }
 
   @Test
@@ -67,22 +67,24 @@ class PyramidFactoryTest {
     val to = from plusDays 2
 
     singleBandGeoTiffFromDisk(
-      globPattern = "file:/data/MTDA/CGS_S2/CGS_S2_FAPAR/2019/04/2[34567]/*/*/10M/*_FAPAR_10M_V102.tif", from, to)
+      globPattern = "file:/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2019/04/2[34567]/*/10M/*_FAPAR_10M_V200.tif", from, to)
   }
 
   @Test
   def singleBandGeoTiffFromDiskForSingleFixedDate(): Unit = {
-    val singlePath = "file:/data/MTDA/CGS_S2/CGS_S2_FAPAR/2019/04/24/S2B_20190424T143759Z_19HCC_CGS_V102_000/S2B_20190424T143759Z_19HCC_FAPAR_V102/10M/S2B_20190424T143759Z_19HCC_FAPAR_10M_V102.tif"
+    val singlePath = "file:/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2019/04/24/S2B_20190424T143759_19HCC_FAPAR_V200/20M/S2B_20190424T143759_19HCC_FAPAR_20M_V200.tif"
     val singleDate = LocalDate.of(2019, 4, 24).atStartOfDay(UTC)
 
     val pyramidFactory = PyramidFactory.from_disk(
       timestamped_paths = util.Collections.singletonMap(singlePath, singleDate format ISO_OFFSET_DATE_TIME)
     )
 
-    val pyramid = pyramidFactory.pyramid_seq(bbox = null, bbox_srs = null, from_date = null, to_date = null)
+    val boundingBox = ProjectedExtent(Extent(-70.12, -34.38, -70.06, -34.34), LatLng)
+    val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, bbox_srs = s"EPSG:${boundingBox.crs.epsgCode.get}",
+      from_date = singleDate.toString, to_date = singleDate.plusDays(1).toString)
 
     val (maxZoom, baseLayer) = pyramid.maxBy { case (zoom, _) => zoom }
-    assertEquals(14, maxZoom)
+    assertEquals(13, maxZoom)
 
     baseLayer.cache()
 
@@ -93,6 +95,48 @@ class PyramidFactoryTest {
       .distinct().collect()
 
     assertArrayEquals(Array[Object](singleDate), uniqueTimestamps.asInstanceOf[Array[Object]])
+
+    saveLayerAsGeoTiff(pyramid, boundingBox, maxZoom)
+  }
+
+  @Test
+  def loadResultGeoTiffFromDiskForSingleFixedDate(): Unit = {
+    val singlePath = "file:/data/projects/OpenEO/automated_test_files/load_result_openEO_2019-09-22Z.tif"
+    val singleDate = LocalDate.of(2019, 9, 22).atStartOfDay(UTC)
+
+    val pyramidFactory = PyramidFactory.from_disk(
+      timestamped_paths = util.Collections.singletonMap(singlePath, singleDate format ISO_OFFSET_DATE_TIME)
+    )
+
+    val smallerBoundingBox = ProjectedExtent(Extent(2.6951, 51.1160, 2.7822, 51.1672), LatLng)
+
+    val dataCubeParameters = new org.openeo.geotrelliscommon.DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+
+    val pyramid = pyramidFactory.datacube_seq(
+      ProjectedPolygons.reproject(
+        ProjectedPolygons.fromExtent(smallerBoundingBox.extent, s"EPSG:${smallerBoundingBox.crs.epsgCode.get}"), 32631),
+      from_date = "1970-01-01T00:00:00+00:00",
+      to_date = "2070-01-01T00:00:00+00:00",
+      metadata_properties = null,
+      correlationId = null,
+      dataCubeParameters
+    )
+
+    val Seq((maxZoom, baseLayer)) = pyramid
+    assertEquals(0, maxZoom)
+
+    baseLayer.cache()
+
+    assertFalse("base layer contains no tiles!", baseLayer.isEmpty())
+
+    val uniqueTimestamps = baseLayer.keys
+      .map(_.time)
+      .distinct().collect()
+
+    assertArrayEquals(Array[Object](singleDate), uniqueTimestamps.asInstanceOf[Array[Object]])
+
+    saveLayerAsGeoTiff(pyramid, smallerBoundingBox, maxZoom)
   }
 
   private def singleBandGeoTiffFromDisk(globPattern: String, from: ZonedDateTime, to: ZonedDateTime): Unit = {

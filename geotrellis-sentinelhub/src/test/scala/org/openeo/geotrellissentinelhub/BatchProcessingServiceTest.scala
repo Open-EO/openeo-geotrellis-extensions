@@ -7,15 +7,16 @@ import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.rules.TemporaryFolder
 import org.junit.{Ignore, Rule, Test}
 
-import java.util.{Arrays, Collections, UUID}
+import java.util.{Arrays, Collections, Map => JMap, UUID}
 import java.time.LocalTime
 import scala.annotation.meta.getter
 import scala.collection.JavaConverters._
 
 class BatchProcessingServiceTest {
   private val endpoint = "https://services.sentinel-hub.com" // TODO: this depends on the dataset
+  private val authorizer = new MemoizedAuthApiAccessTokenAuthorizer(Utils.clientId, Utils.clientSecret)
   private val batchProcessingService = new BatchProcessingService(endpoint, bucketName = "openeo-sentinelhub",
-    Utils.clientId, Utils.clientSecret)
+    authorizer)
 
   @(Rule @getter)
   val temporaryFolder = new TemporaryFolder
@@ -33,7 +34,7 @@ class BatchProcessingServiceTest {
       to_date = "2019-10-10T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV"),
       SampleType.FLOAT32,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Collections.emptyMap[String, Any]
     )
 
@@ -64,7 +65,7 @@ class BatchProcessingServiceTest {
       to_date = "2021-04-03T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV"),
       SampleType.FLOAT32,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Collections.emptyMap[String, Any]
     )
 
@@ -87,7 +88,7 @@ class BatchProcessingServiceTest {
       to_date = "2019-10-10T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV"),
       SampleType.FLOAT32,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Collections.emptyMap[String, Any],
       subfolder
     )
@@ -107,7 +108,26 @@ class BatchProcessingServiceTest {
       to_date = "2019-10-12T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV"),
       SampleType.FLOAT32,
-      metadata_properties = Collections.singletonMap("orbitDirection", "ASCENDING"),
+      metadata_properties = Collections.singletonMap("orbitDirection", Collections.singletonMap("eq", "ASCENDING")),
+      processing_options = Collections.emptyMap[String, Any]
+    )
+
+    println(awaitDone(Seq(batchRequestId)))
+  }
+
+  @Ignore
+  @Test
+  def startBatchProcessForEoCloudCover(): Unit = {
+    val batchRequestId = batchProcessingService.start_batch_process(
+      collection_id = "sentinel-2-l2a",
+      dataset_id = "sentinel-2-l2a",
+      bbox = Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206),
+      bbox_srs = "EPSG:4326",
+      from_date = "2019-09-21T00:00:00+00:00",
+      to_date = "2019-09-21T00:00:00+00:00",
+      band_names = Arrays.asList("B04", "B03", "B02"),
+      SampleType.UINT16,
+      metadata_properties = Collections.singletonMap("eo:cloud_cover", Collections.singletonMap("lte", 20)),
       processing_options = Collections.emptyMap[String, Any]
     )
 
@@ -126,7 +146,7 @@ class BatchProcessingServiceTest {
       to_date = "2019-09-21T00:00:00+00:00",
       band_names = Arrays.asList("B04", "B03", "B02"),
       SampleType.UINT16,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Collections.emptyMap[String, Any]
     )
 
@@ -137,7 +157,7 @@ class BatchProcessingServiceTest {
   @Test
   def startBatchProcessForModis(): Unit = {
     val batchProcessingService = new BatchProcessingService(endpoint = "https://services-uswest2.sentinel-hub.com",
-      bucketName = "openeo-sentinelhub-uswest2", Utils.clientId, Utils.clientSecret)
+      bucketName = "openeo-sentinelhub-uswest2", authorizer)
 
     val batchRequestId = batchProcessingService.start_batch_process(
       collection_id = "modis",
@@ -148,7 +168,29 @@ class BatchProcessingServiceTest {
       to_date = "2019-10-01T00:00:00+00:00",
       band_names = Arrays.asList("B01", "B02"),
       SampleType.UINT16,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
+      processing_options = Collections.emptyMap[String, Any]
+    )
+
+    println(awaitDone(Seq(batchRequestId), batchProcessingService))
+  }
+
+  @Ignore
+  @Test
+  def startBatchProcessForMapzenDem(): Unit = {
+    val batchProcessingService = new BatchProcessingService(endpoint = "https://services-uswest2.sentinel-hub.com",
+      bucketName = "openeo-sentinelhub-uswest2", authorizer)
+
+    val batchRequestId = batchProcessingService.start_batch_process(
+      collection_id = null,
+      dataset_id = "dem",
+      bbox = Extent(2.59003, 51.069, 2.8949, 51.2206),
+      bbox_srs = "EPSG:4326",
+      from_date = "2020-01-01T00:00:00+00:00",
+      to_date = "2020-01-01T00:00:00+00:00",
+      band_names = Arrays.asList("DEM"),
+      SampleType.FLOAT32,
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Collections.emptyMap[String, Any]
     )
 
@@ -173,7 +215,7 @@ class BatchProcessingServiceTest {
       to_date = "2019-09-21T00:00:00+00:00",
       band_names = Arrays.asList("B04", "B03", "B02"),
       SampleType.UINT16,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Collections.emptyMap[String, Any],
       subfolder,
       collectingFolder.toAbsolutePath.toString
@@ -235,8 +277,69 @@ class BatchProcessingServiceTest {
       to_date = "2019-09-21T00:00:00+00:00",
       band_names = Arrays.asList("B04", "B03", "B02"),
       SampleType.UINT16,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Collections.emptyMap[String, Any],
+      subfolder,
+      collectingFolder.toAbsolutePath.toString
+    )
+
+    if (batchRequestId != null) println(awaitDone(Seq(batchRequestId)))
+  }
+
+  @Ignore
+  @Test
+  def startLargePolygonCachedBatchProcessForSentinel1(): Unit = {
+    val subfolder = UUID.randomUUID().toString
+
+    println(s"subfolder: $subfolder")
+
+    val malawiPolygon = GeoJson.parse[Polygon](
+      """
+        |{
+        |  "type":"Polygon",
+        |  "coordinates":[
+        |    [
+        |      [
+        |        33.15374754008658,
+        |        -13.579730951495556
+        |      ],
+        |      [
+        |        33.15374754008658,
+        |        -12.523064670912134
+        |      ],
+        |      [
+        |        33.961499361964435,
+        |        -12.523064670912134
+        |      ],
+        |      [
+        |        33.961499361964435,
+        |        -13.579730951495556
+        |      ],
+        |      [
+        |        33.15374754008658,
+        |        -13.579730951495556
+        |      ]
+        |    ]
+        |  ]
+        |}""".stripMargin)
+
+    val polygons: Array[MultiPolygon] = Array(MultiPolygon(malawiPolygon))
+    val polygonsCrs = LatLng
+
+    val batchRequestId = batchProcessingService.start_batch_process_cached(
+      collection_id = "sentinel-1-grd",
+      dataset_id = "sentinel-1-grd",
+      polygons,
+      polygonsCrs,
+      from_date = "2020-11-25T00:00:00+00:00",
+      to_date = "2020-11-25T00:00:00+00:00",
+      band_names = Arrays.asList("VH"/*, "VV"*/),
+      SampleType.FLOAT32,
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
+      processing_options = Map(
+        "backCoeff" -> "GAMMA0_TERRAIN",
+        "orthorectify" -> true
+      ).asJava,
       subfolder,
       collectingFolder.toAbsolutePath.toString
     )
@@ -266,7 +369,7 @@ class BatchProcessingServiceTest {
       to_date = "2021-02-17T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV", "dataMask", "localIncidenceAngle"),
       dem_instance = null,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       subfolder = requestGroupId,
       requestGroupId
     )
@@ -296,7 +399,7 @@ class BatchProcessingServiceTest {
       to_date = "2021-02-17T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV", "dataMask", "localIncidenceAngle"),
       dem_instance = null,
-      metadata_properties = Collections.singletonMap("orbitDirection", "DESCENDING"),
+      metadata_properties = Collections.singletonMap("orbitDirection", Collections.singletonMap("eq", "DESCENDING")),
       subfolder = requestGroupId,
       requestGroupId
     )
@@ -332,7 +435,7 @@ class BatchProcessingServiceTest {
       to_date = "2020-11-05T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV"),
       SampleType.FLOAT32,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Collections.emptyMap[String, Any]
     )
 
@@ -361,7 +464,7 @@ class BatchProcessingServiceTest {
       to_date = "2020-11-05T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV"),
       dem_instance = null,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       subfolder = requestGroupId,
       requestGroupId
     )
@@ -382,8 +485,28 @@ class BatchProcessingServiceTest {
       to_date = "2021-12-06T00:00:00+00:00",
       band_names = Arrays.asList("B8A", "B11", "B05"),
       SampleType.FLOAT32,
-      metadata_properties = Collections.emptyMap[String, Any],
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
       processing_options = Collections.emptyMap[String, Any]
+    )
+  }
+
+  @Ignore("not implemented yet")
+  @Test(expected = classOf[BatchProcessingService.NoSuchFeaturesException])
+  def startCard4LBatchProcessesForXXX(): Unit = {
+    val requestGroupId = UUID.randomUUID().toString
+
+    batchProcessingService.start_card4l_batch_processes(
+      collection_id = "sentinel-1-grd",
+      dataset_id = "sentinel-1-grd",
+      bbox = Extent(11.016694, 46.538743, 11.28595, 46.745225),
+      bbox_srs = "EPSG:4326",
+      from_date = "2018-07-01T00:00:00+00:00",
+      to_date = "2018-07-03T00:00:00+00:00",
+      band_names = Arrays.asList("VV", "VH", "HV", "HH"),
+      dem_instance = "COPERNICUS_30",
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
+      subfolder = requestGroupId,
+      requestGroupId
     )
   }
 

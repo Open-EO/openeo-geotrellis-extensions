@@ -21,11 +21,11 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.util.SizeEstimator
 import org.junit.Assert._
-import org.junit.{AfterClass, BeforeClass, Ignore, Test}
+import org.junit._
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
-import org.openeo.geotrelliscommon.DataCubeParameters
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters}
 
 import java.net.URI
 import java.time.LocalTime.MIDNIGHT
@@ -42,15 +42,28 @@ object Sentinel2FileLayerProviderTest {
   private val pathDateExtractor = SplitYearMonthDayPathDateExtractor
 
   @BeforeClass
-  def setupSpark(): Unit = sc = SparkUtils.createLocalSparkContext("local[*]",
+  def setupSpark(): Unit = sc = SparkUtils.createLocalSparkContext("local[1]",
     appName = Sentinel2FileLayerProviderTest.getClass.getName)
 
   @AfterClass
   def tearDownSpark(): Unit = sc.stop()
+
+  @BeforeClass def tracking(): Unit ={
+    BatchJobMetadataTracker.setGlobalTracking(true)
+  }
+
+  @AfterClass def trackingOff(): Unit ={
+    BatchJobMetadataTracker.setGlobalTracking(false)
+  }
 }
 
 class Sentinel2FileLayerProviderTest extends RasterMatchers {
   import Sentinel2FileLayerProviderTest._
+
+  @Before
+  def clearTracker(): Unit = {
+    BatchJobMetadataTracker.clearGlobalTracker()
+  }
 
   @Test
   def polygonalMultiplePolygon(): Unit = {
@@ -81,6 +94,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
   @Test
   def polygonalMean(): Unit = {
+
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
     val bbox = ProjectedExtent(Extent(1.90283, 50.9579, 1.97116, 51.0034), LatLng)
 
@@ -98,6 +112,9 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
     val qgisZonalStatisticsPluginResult = 48.7280433452766
     assertEquals(qgisZonalStatisticsPluginResult, value.mean, 0.1)
+    val inputs = BatchJobMetadataTracker.tracker("").asDict().get("links")
+
+    assertEquals(2,inputs.asInstanceOf[util.Map[String,util.List[String]]].get("urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2").size())
   }
 
   @Test

@@ -2,6 +2,7 @@ package org.openeo.geotrellissentinelhub
 
 import CirceException.decode
 import cats.syntax.either._
+import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.proj4.{CRS, LatLng}
 import io.circe.Json
 import io.circe.generic.auto._
@@ -13,19 +14,62 @@ import scalaj.http.{Http, HttpOptions, HttpRequest}
 import java.net.URI
 import java.time.format.DateTimeFormatter.{ISO_INSTANT, ISO_OFFSET_DATE_TIME}
 import java.time.{ZoneId, ZonedDateTime}
+import java.util
 import scala.collection.immutable.HashMap
+import scala.collection.JavaConverters._
 
 trait CatalogApi {
   def dateTimes(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
-                accessToken: String, queryProperties: collection.Map[String, String] = Map()): Seq[ZonedDateTime]
+                accessToken: String,
+                queryProperties: util.Map[String, util.Map[String, Any]] = util.Collections.emptyMap()): Seq[ZonedDateTime] = {
+    val geometry = boundingBox.extent.toPolygon()
+    val geometryCrs = boundingBox.crs
+
+    dateTimes(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
+  }
+
+  def dateTimes(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
+                accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]): Seq[ZonedDateTime]
 
   def searchCard4L(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
-                   accessToken: String, queryProperties: collection.Map[String, String] = Map()):
+                   accessToken: String,
+                   queryProperties: util.Map[String, util.Map[String, Any]] = util.Collections.emptyMap()):
+  Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
+    val geometry = boundingBox.extent.toPolygon()
+    val geometryCrs = boundingBox.crs
+
+    searchCard4L(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
+  }
+
+  def searchCard4L(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
+                   accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
+  Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
+    require(collectionId == "sentinel-1-grd", """only collection "sentinel-1-grd" is supported""")
+
+    val requiredProperties = HashMap(
+      "sar:instrument_mode" -> Map("eq" -> ("IW": Any)).asJava,
+      "resolution" -> Map("eq" -> ("HIGH": Any)).asJava,
+      "polarization" -> Map("eq" -> ("DV": Any)).asJava
+    )
+
+    val allProperties = requiredProperties.merged(HashMap(queryProperties.asScala.toSeq: _*)) {
+      case (requiredProperty @ (property, requiredValue), (_, overriddenValue)) =>
+        if (overriddenValue == requiredValue) requiredProperty
+        else throw new IllegalArgumentException(
+          s"cannot override property $property value $requiredValue with $overriddenValue")
+    }
+
+    search(collectionId, geometry, geometryCrs, from, to, accessToken, allProperties.asJava)
+  }
+
+  def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
+                   accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
   Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]]
 }
 
 object DefaultCatalogApi {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[DefaultCatalogApi])
+  private val maxLimit = 100
 
   private case class PagingContext(limit: Int, returned: Int, next: Option[Int])
   private case class PagedFeatureCollection(features: List[Json], context: PagingContext)
@@ -38,24 +82,17 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
   import DefaultCatalogApi._
 
   private val catalogEndpoint = URI.create(endpoint).resolve("/api/v1/catalog")
-
-  def dateTimes(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
-                accessToken: String, queryProperties: collection.Map[String, String] = Map()): Seq[ZonedDateTime] = {
-    val geometry = boundingBox.extent.toPolygon()
-    val geometryCrs = boundingBox.crs
-
-    dateTimes(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
-  }
+  private val objectMapper = new ObjectMapper
 
   // TODO: search distinct dates (https://docs.sentinel-hub.com/api/latest/api/catalog/examples/#search-with-distinct)?
-  def dateTimes(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
-                accessToken: String, queryProperties: collection.Map[String, String]): Seq[ZonedDateTime] = {
+  override def dateTimes(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
+                accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]): Seq[ZonedDateTime] = {
     val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
     val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
 
     val query = this.query(queryProperties)
 
-    def getFeatureCollectionPage(nextToken: Option[Int]): PagedFeatureCollection =
+    def getFeatureCollectionPage(limit: Int, nextToken: Option[Int]): PagedFeatureCollection =
       withRetries(context = s"dateTimes $collectionId nextToken $nextToken") {
         val requestBody =
           s"""
@@ -64,6 +101,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
              |    "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
              |    "collections": ["$collectionId"],
              |    "query": $query,
+             |    "limit": $limit,
              |    "next": ${nextToken.orNull}
              |}""".stripMargin
 
@@ -81,8 +119,8 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
           .valueOr(throw _)
     }
 
-    def getDateTimes(nextToken: Option[Int]): Seq[ZonedDateTime] = {
-      val page = getFeatureCollectionPage(nextToken)
+    def getDateTimes(limit: Int, nextToken: Option[Int]): Seq[ZonedDateTime] = {
+      val page = getFeatureCollectionPage(limit, nextToken)
 
       val dateTimes = for {
         feature <- page.features.flatMap(_.asObject)
@@ -92,50 +130,24 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
 
       page.context.next match {
         case None => dateTimes
-        case nextToken => dateTimes ++ getDateTimes(nextToken)
+        case nextToken => dateTimes ++ getDateTimes(page.context.limit, nextToken)
       }
     }
 
-    getDateTimes(nextToken = None)
+    getDateTimes(maxLimit, nextToken = None)
   }
 
-  def searchCard4L(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
-                   accessToken: String, queryProperties: collection.Map[String, String] = Map()):
-  Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
-    val geometry = boundingBox.extent.toPolygon()
-    val geometryCrs = boundingBox.crs
-
-    searchCard4L(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
-  }
-
-  def searchCard4L(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
-                   accessToken: String, queryProperties: collection.Map[String, String]):
+  override def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
+                      to: ZonedDateTime, accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
   Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] =
-    withRetries(context = s"searchCard4L $collectionId") {
-      require(collectionId == "sentinel-1-grd", """only collection "sentinel-1-grd" is supported""")
-
+    withRetries(context = s"search $collectionId") {
       // TODO: reduce code duplication with dateTimes()
       val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
       val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
 
-      val query = {
-        val requiredProperties = HashMap(
-          "sar:instrument_mode" -> "IW",
-          "resolution" -> "HIGH",
-          "polarization" -> "DV"
-        )
+      val query = this.query(queryProperties)
 
-        val allProperties = requiredProperties.merged(HashMap(queryProperties.toSeq: _*)) {
-          case (requiredProperty @ (property, requiredValue), (_, overriddenValue)) =>
-            if (overriddenValue == requiredValue) requiredProperty
-            else throw new IllegalArgumentException(
-              s"cannot override property $property value $requiredValue with $overriddenValue")
-        }
-
-        this.query(allProperties)
-      }
-
-      def getFeatureCollectionPage(nextToken: Option[Int]): PagedJsonFeatureCollectionMap = {
+      def getFeatureCollectionPage(limit: Int, nextToken: Option[Int]): PagedJsonFeatureCollectionMap = {
         val requestBody =
           s"""
              |{
@@ -143,8 +155,11 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
              |  "collections": ["$collectionId"],
              |  "query": $query,
              |  "intersects": ${geometry.reproject(geometryCrs, LatLng).toGeoJson()},
+             |  "limit": $limit,
              |  "next": ${nextToken.orNull}
              |}""".stripMargin
+
+        logger.debug(s"JSON data for Sentinel Hub Catalog API: $requestBody")
 
         val request = http(s"$catalogEndpoint/search", accessToken)
           .headers("Content-Type" -> "application/json")
@@ -158,11 +173,11 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
           .valueOr(throw _)
       }
 
-      def getFeatures(nextToken: Option[Int]): Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
-        val page = getFeatureCollectionPage(nextToken)
+      def getFeatures(limit: Int, nextToken: Option[Int]): Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
+        val page = getFeatureCollectionPage(limit, nextToken)
 
         // it is assumed the returned geometries are in LatLng
-        val features = page.getAllMultiPolygonFeatures[Json]
+        val features = page.getAllFeatures[Feature[Geometry, Json]]
           .mapValues(feature =>
             feature.mapData { properties =>
               val Some(datetime) = for {
@@ -176,11 +191,11 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
 
         page.context.next match {
           case None => features
-          case nextToken => features ++ getFeatures(nextToken)
+          case nextToken => features ++ getFeatures(page.context.limit, nextToken)
         }
       }
 
-      getFeatures(nextToken = None)
+      getFeatures(maxLimit, nextToken = None)
   }
 
   private def http(url: String, accessToken: String): HttpRequest =
@@ -188,8 +203,26 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
       .option(HttpOptions.followRedirects(true))
       .headers("Authorization" -> s"Bearer $accessToken")
 
-  private def query(queryProperties: collection.Map[String, String]): String =
-    queryProperties
-      .map { case (key, value) => s""""$key": {"eq": "$value"}"""}
-      .mkString("{", ", ", "}")
+  private def query(queryProperties: util.Map[String, util.Map[String, Any]]): String =
+    objectMapper.writeValueAsString(queryProperties)
+}
+
+/**
+ * For lack of a better name, a CatalogApi implementation that returns features that exactly cover the input date range
+ * and geometry; it simplifies working with data that is not available in the real Catalog API like the Mapzen DEM.
+ */
+class MadeToMeasureCatalogApi extends CatalogApi {
+  override def dateTimes(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
+                         to: ZonedDateTime, accessToken: String,
+                         queryProperties: util.Map[String, util.Map[String, Any]]): Seq[ZonedDateTime] =
+    sequentialDays(from, to)
+
+  override def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
+                      to: ZonedDateTime, accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
+  Map[String, Feature[Geometry, ZonedDateTime]] = {
+    val features = for ((timestamp, index) <- sequentialDays(from, to).zipWithIndex)
+      yield index.toString -> Feature(geometry.reproject(geometryCrs, LatLng), timestamp)
+
+    features.toMap
+  }
 }

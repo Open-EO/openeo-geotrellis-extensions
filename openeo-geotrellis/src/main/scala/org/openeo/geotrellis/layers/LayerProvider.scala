@@ -1,7 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import java.time.ZonedDateTime
-
 import geotrellis.layer._
 import geotrellis.proj4.CRS
 import geotrellis.raster.rasterize.Rasterizer
@@ -13,14 +11,19 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 
+import java.time.ZonedDateTime
+
 object LayerProvider{
   def createMaskLayer(features: Seq[Feature[MultiPolygon, Double]], crs: CRS, metadata: TileLayerMetadata[SpaceTimeKey], sc: SparkContext): RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition] = {
 
-    val reprojected: RDD[MultiPolygonFeature[Double]] = sc.parallelize(features).map(_.reproject(crs, metadata.crs))
+    val rddCount = math.max(10,features.size / 100)
+    val reprojected: RDD[MultiPolygonFeature[Double]] = sc.parallelize(features,rddCount).map(_.reproject(crs, metadata.crs))
     val envelope = reprojected.map(_.geom.extent).reduce{_.combine(_)}
 
     val partitioner = {
       val gridBounds = metadata.mapTransform(envelope)
+      //negative spatial keys means going out of bounds of
+      val nonNegativeBounds = gridBounds.copy(colMin = math.max(0,gridBounds.colMin),rowMin = math.max(0,gridBounds.rowMin))
 
       implicit val spatialPartitioner = new PartitionerIndex[SpatialKey] {
         private def toZ(key: SpatialKey): Z2 = Z2(key.col >> 3, key.row >> 3)
@@ -31,7 +34,7 @@ object LayerProvider{
           Z2.zranges(toZ(keyRange._1), toZ(keyRange._2))
       }
 
-      SpacePartitioner(KeyBounds(gridBounds))
+      SpacePartitioner(KeyBounds(nonNegativeBounds))
     }
 
     // note: this rasterizes the mask to the resolution of the data. This means that very small polygons that lie

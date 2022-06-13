@@ -12,9 +12,14 @@ class GTiffOptions extends Serializable {
   var colorMap: Option[ColorMap] = Option.empty
   var tags: Tags = Tags.empty
   var overviews:String = "OFF"
+  var resampleMethod:String = "near"
 
   def setColorMap(colors: util.ArrayList[Int]): Unit = {
     colorMap = Some(new IndexedColorMap(colors.asScala))
+  }
+
+  def setResampleMethod(method:String): Unit = {
+    resampleMethod = method
   }
 
   def setColorMap(colors: ColorMap): Unit = {

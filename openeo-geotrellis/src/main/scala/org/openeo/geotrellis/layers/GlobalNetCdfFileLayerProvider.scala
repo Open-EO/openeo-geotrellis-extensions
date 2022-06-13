@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.layers
 
 import geotrellis.raster.RasterSource
-import geotrellis.raster.gdal.GDALRasterSource
+import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 
 import java.time.ZonedDateTime
 import scala.util.matching.Regex
@@ -19,6 +19,6 @@ class GlobalNetCdfFileLayerProvider(override protected val dataGlob: String, ban
     datedPaths
       .toArray
       .sortWith { case ((d1, _), (d2, _)) => d1 isBefore d2 }
-      .map { case (date, path) => date -> GDALRasterSource(s"""NETCDF:"$path":$bandName""") }
+      .map { case (date, path) => date -> GDALRasterSource(s"""NETCDF:"$path":$bandName""",GDALWarpOptions(alignTargetPixels = false)) }
   }
 }

@@ -1,10 +1,15 @@
 package org.openeo.geotrellis
 
+import ai.catboost.CatBoostModel
+import ai.catboost.spark.CatBoostClassificationModel
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{ArrayTile, ByteUserDefinedNoDataCellType, CellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isNoData}
+import geotrellis.raster.{ArrayTile, ByteUserDefinedNoDataCellType, CellType, Dimensions, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isData, isNoData}
 import org.apache.commons.math3.exception.NotANumberException
 import org.apache.commons.math3.stat.descriptive.rank.Percentile
 import org.apache.commons.math3.stat.ranking.NaNStrategy
+import org.apache.spark.ml
+import org.apache.spark.mllib.linalg
+import org.apache.spark.mllib.tree.model.RandomForestModel
 import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase}
 import org.slf4j.LoggerFactory
 import spire.math.UShort
@@ -17,6 +22,14 @@ import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.collection.{immutable, mutable}
 import scala.util.Try
+import scala.util.control.Breaks.{break, breakable}
+
+object Exp extends Serializable {
+  /** Take the square root each value in a raster. */
+  def apply(r: Tile) =
+    r.dualMap { z: Int => if(isNoData(z) || z < 0) NODATA else math.exp(z).toInt }
+    { z: Double =>math.exp(z) }
+}
 
 object OpenEOProcessScriptBuilder{
 
@@ -206,6 +219,52 @@ object OpenEOProcessScriptBuilder{
     multibandReduce(MultibandTile(tiles),ts => {if(ts.exists(_.isNaN)) Double.NaN else medianOfDoubles(ts)},false)
   }
 
+  private def varianceWithNoData(rs: Seq[Tile]): Tile = {
+    rs.assertEqualDimensions()
+
+    val layerCount = rs.length
+    if (layerCount == 0) sys.error(s"Can't compute variance of empty sequence.")
+    else {
+      val newCellType = rs.map(_.cellType).reduce(_.union(_))
+      val Dimensions(cols, rows) = rs(0).dimensions
+      val tile = ArrayTile.alloc(newCellType, cols, rows)
+
+      cfor(0)(_ < rows, _ + 1) { row =>
+        cfor(0)(_ < cols, _ + 1) { col =>
+          var count = 0
+          var mean = 0.0
+          var m2 = 0.0
+          var noDataPixel = false
+
+          breakable {
+            cfor(0)(_ < layerCount, _ + 1) { i =>
+              val v = rs(i).getDouble(col, row)
+              if (isData(v)) {
+                count += 1
+                val delta = v - mean
+                mean += delta / count
+                m2 += delta * (v - mean)
+              } else {
+                noDataPixel = true
+                break
+              }
+            }
+          }
+
+          if (newCellType.isFloatingPoint) {
+            if (count > 1 && !noDataPixel) tile.setDouble(col, row, m2 / (count - 1))
+            else tile.setDouble(col, row, Double.NaN)
+          } else {
+            if (count > 1 && !noDataPixel) tile.set(col, row, (m2 / (count - 1)).round.toInt)
+            else tile.set(col, row, NODATA)
+          }
+        }
+      }
+
+      tile
+    }
+  }
+
   private def linearInterpolation(tiles:Seq[Tile]) : Seq[Tile] = {
 
     multibandMap(MultibandTile(tiles),ts => {
@@ -254,6 +313,25 @@ object OpenEOProcessScriptBuilder{
     multibandReduce(MultibandTile(tiles).convert(IntConstantNoDataCellType), ts => ts.count(_ != 0), ignoreNoData = false)
   }
 
+  def getQuantilesProbabilities(arguments: util.Map[String, Object]): Seq[Double] = {
+    val qRaw = arguments.get("q")
+    val probabilities: Seq[Double] =
+      if (qRaw == null) {
+        arguments.get("probabilities") match {
+          case doubles: util.List[Double] =>
+            doubles.asScala.toArray.toSeq
+          case doubles: Array[Double] =>
+            doubles.asInstanceOf[Array[Double]].toSeq
+          case any => throw new IllegalArgumentException(s"Unsupported probabilities parameter in quantiles: ${any} ")
+        }
+      } else {
+        val q = qRaw.asInstanceOf[Int].toDouble
+
+        (1 to (q.intValue() - 1)).map(d => d.doubleValue() / q)
+      }
+    return probabilities
+  }
+
   object MinIgnoreNoData extends LocalTileBinaryOp {
     def combine(z1:Int,z2:Int) =
       if( isNoData(z1) && isNoData(z2)) NODATA
@@ -280,6 +358,16 @@ object OpenEOProcessScriptBuilder{
       else if( isNoData(z1) ) z2
       else if( isNoData(z2) ) z1
       else math.max(z1, z2)
+  }
+
+
+  private def unifyCellType(combined: Seq[Tile]) = {
+    if (combined.nonEmpty) {
+      val unionCelltype = combined.map(_.cellType).reduce(_.union(_))
+      combined.map(_.convert(unionCelltype))
+    } else {
+      combined
+    }
   }
 }
 /**
@@ -330,6 +418,45 @@ class OpenEOProcessScriptBuilder {
 
   private def applyListFunction(argName: String, operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
     unaryFunction(argName, (tiles: Seq[Tile]) => operator(tiles))
+  }
+
+
+  private def arrayFind(arguments:java.util.Map[String,Object]) : OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val value = storedArgs.get("value").getOrElse(throw new IllegalArgumentException("If process expects a value argument. These arguments were found: " + arguments.keys.mkString(", ")))
+    val data = storedArgs.get("data").getOrElse(throw new IllegalArgumentException("If process expects an data argument. These arguments were found: " + arguments.keys.mkString(", ")))
+
+    val reverse = (arguments.getOrDefault("reverse",Boolean.box(false).asInstanceOf[Object]) == Boolean.box(true) || arguments.getOrDefault("reverse",None) == "true" )
+
+    val arrayfindProcess = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
+      val value_input: Seq[Tile] = evaluateToTiles(value, context, tiles)
+      val data_input: Seq[Tile] = evaluateToTiles(data, context, tiles)
+      if(value_input.size!=1)
+        throw new IllegalArgumentException("The value argument of the array_find function should resolve to exactly one input.")
+      val the_value = value_input.head
+      val tile = MultibandTile(data_input)
+      val mutableResult:MutableArrayTile = ArrayTile.empty(tile.cellType,tile.cols,tile.rows)
+      var i = 0
+      cfor(0)(_ < tile.cols, _ + 1) { col =>
+        cfor(0)(_ < tile.rows, _ + 1) { row =>
+          val bandValues = new ArrayBuffer[Double](tile.bandCount)
+          cfor(0)(_ < tile.bandCount, _ + 1) { band =>
+            val d = tile.bands(band).getDouble(col, row)
+            bandValues.append(d)
+          }
+          if(!bandValues.isEmpty) {
+            val resultValues = if(!reverse) bandValues.indexOf(the_value.getDouble(col,row)) else bandValues.lastIndexOf(the_value.getDouble(col,row))
+            if(resultValues>=0)
+              mutableResult.setDouble(col, row,resultValues)
+          }
+          i += 1
+        }
+      }
+      Seq(mutableResult)
+
+    }
+
+    arrayfindProcess
   }
 
   private def mapListFunction(listArgName: String, mapArgName:String, operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
@@ -527,6 +654,7 @@ class OpenEOProcessScriptBuilder {
       case "lt" if hasXY => xyFunction(Less.apply,convertBitCells = false)
       case "gte" if hasXY => xyFunction(GreaterOrEqual.apply,convertBitCells = false)
       case "lte" if hasXY => xyFunction(LessOrEqual.apply,convertBitCells = false)
+      case "between" if hasX => betweenFunction(arguments)
       case "eq" if hasXY => xyFunction(Equal.apply,convertBitCells = false)
       case "neq" if hasXY => xyFunction(Unequal.apply,convertBitCells = false)
       // Boolean operators
@@ -550,8 +678,10 @@ class OpenEOProcessScriptBuilder {
       case "divide" if hasXY => xyFunction(Divide.apply)
       case "divide" if hasData => reduceFunction("data", Divide.apply) // legacy 0.4 style
       case "power" => xyFunction(Pow.apply,xArgName = "base",yArgName = "p")
+      case "exp" => mapFunction("p", Exp.apply)
       case "normalized_difference" if hasXY => xyFunction((x, y) => Divide(Subtract(x, y), Add(x, y)))
       case "clip" => clipFunction(arguments)
+      case "int" => intFunction(arguments)
       // Statistics
       case "max" if hasData && !ignoreNoData => reduceFunction("data", Max.apply)
       case "max" if hasData && ignoreNoData => reduceFunction("data", MaxIgnoreNoData.apply)
@@ -559,10 +689,12 @@ class OpenEOProcessScriptBuilder {
       case "min" if hasData && ignoreNoData => reduceFunction("data", MinIgnoreNoData.apply)
         //TODO take ignorenodata into account!
       case "mean" if hasData => reduceListFunction("data", Mean.apply)
-      case "variance" if hasData => reduceListFunction("data", Variance.apply)
-      case "sd" if hasData => reduceListFunction("data", Sqrt.apply _ compose Variance.apply)
+      case "variance" if hasData && !ignoreNoData => reduceListFunction("data", varianceWithNoData)
+      case "variance" if hasData && ignoreNoData => reduceListFunction("data", Variance.apply)
+      case "sd" if hasData && !ignoreNoData => reduceListFunction("data", Sqrt.apply _ compose varianceWithNoData)
+      case "sd" if hasData && ignoreNoData => reduceListFunction("data", Sqrt.apply _ compose Variance.apply)
       case "median" if ignoreNoData => applyListFunction("data",median)
-      case "median" => applyListFunction("data",medianWithNodata)
+      case "median" => applyListFunction("data", medianWithNodata)
       case "count" if hasTrueCondition => applyListFunction("data", countAll)
       case "count" if hasConditionExpression => mapListFunction("data", "condition", countCondition)
       case "count" => applyListFunction("data", countValid)
@@ -592,13 +724,20 @@ class OpenEOProcessScriptBuilder {
       case "first" => applyListFunction("data", firstFunctionWithNodata)
       case "last" if ignoreNoData => applyListFunction("data", lastFunctionIgnoreNoData)
       case "last" => applyListFunction("data", lastFunctionWithNoData)
+      case "is_nodata" if hasX => mapFunction("x", Undefined.apply)
+      case "is_nan" if hasX => mapFunction("x", Undefined.apply)
       case "array_element" => arrayElementFunction(arguments)
       case "array_modify" => arrayModifyFunction(arguments)
       case "array_interpolate_linear" => applyListFunction("data",linearInterpolation)
+      case "array_find" => arrayFind(arguments)
       case "linear_scale_range" => linearScaleRangeFunction(arguments)
       case "quantiles" => quantilesFunction(arguments,ignoreNoData)
       case "array_concat" => arrayConcatFunction(arguments)
+      case "array_append" => arrayAppendFunction(arguments)
       case "array_create" => arrayCreateFunction(arguments)
+      case "predict_random_forest" if hasData => predictRandomForestFunction(arguments)
+      case "predict_catboost" if hasData => predictCatBoostFunction(arguments)
+      case "predict_probabilities" if hasData => predictCatBoostProbabilitiesFunction(arguments)
       case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
     }
 
@@ -669,21 +808,7 @@ class OpenEOProcessScriptBuilder {
   private def quantilesFunction(arguments:java.util.Map[String,Object], ignoreNoData:Boolean = true): OpenEOProcess = {
     val storedArgs = contextStack.head
     val inputFunction = storedArgs.get("data").get
-    val qRaw = arguments.get("q")
-    val probabilities: Seq[Double] =
-      if(qRaw==null) {
-        arguments.get("probabilities") match {
-          case doubles: util.List[Double] =>
-            doubles.asScala.toArray.toSeq
-          case doubles: Array[Double] =>
-            doubles.asInstanceOf[Array[Double]].toSeq
-          case any => throw new IllegalArgumentException(s"Unsupported probabilities parameter in quantiles: ${any} " )
-        }
-      }else{
-        val q = qRaw.asInstanceOf[Int].toDouble
-
-        (1 to (q.intValue() - 1)).map(d => d.doubleValue() / q)
-      }
+    val probabilities = getQuantilesProbabilities(arguments)
 
 
     val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
@@ -711,6 +836,7 @@ class OpenEOProcessScriptBuilder {
     bandFunction
   }
 
+
   private def arrayModifyFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
     val storedArgs = contextStack.head
     val inputFunction = storedArgs.get("data").get
@@ -731,11 +857,24 @@ class OpenEOProcessScriptBuilder {
       val values: Seq[Tile] = evaluateToTiles(valuesFunction, context, tiles)
       if(length == null) {
         //in this case, we need to insert
-        data.take(index.asInstanceOf[Integer]) ++ values ++ data.drop(index.asInstanceOf[Integer])
+        unifyCellType(data.take(index.asInstanceOf[Integer]) ++ values ++ data.drop(index.asInstanceOf[Integer]))
       }else{
         throw new UnsupportedOperationException("Geotrellis backend only supports inserting in array-modify")
       }
 
+    }
+    bandFunction
+  }
+
+  private def arrayAppendFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val inputFunction = storedArgs.get("data").get
+    val valueFunction = storedArgs.get("value").get
+
+    val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
+      val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
+      val values: Seq[Tile] = evaluateToTiles(valueFunction, context, tiles)
+      unifyCellType(data ++ values)
     }
     bandFunction
   }
@@ -750,16 +889,12 @@ class OpenEOProcessScriptBuilder {
       val array2 = evaluateToTiles(array2Function, context, tiles)
 
       val combined = array1 ++ array2
-      if(combined.size>0) {
-        val unionCelltype = combined.map(_.cellType).reduce(_.union(_))
-        combined.map(_.convert(unionCelltype))
-      }else{
-        combined
-      }
+      unifyCellType(combined)
 
     }
     bandFunction
   }
+
 
   private def arrayCreateFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
     val storedArgs = contextStack.head
@@ -771,6 +906,165 @@ class OpenEOProcessScriptBuilder {
       Seq.fill(repeat)(data).flatten
     }
     bandFunction
+  }
+
+  private def predictRandomForestFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
+    checkMlArguments(arguments)
+    val operator = (rs: Seq[Tile], context: Map[String, Any]) => {
+      val modelCheck = context.getOrElse("context", null)
+      if (!modelCheck.isInstanceOf[RandomForestModel])
+        throw new IllegalArgumentException(
+          s"The 'model' argument should contain a valid random forest model, but got: $modelCheck.")
+      val model = context("context").asInstanceOf[RandomForestModel]
+
+      rs.assertEqualDimensions()
+      val layerCount = rs.length
+      if (layerCount == 0) sys.error(s"No features provided for predict_random_forest.")
+      else {
+        val newCellType = rs.map(_.cellType).reduce(_.union(_))
+        val Dimensions(cols, rows) = rs.head.dimensions
+        val tile = ArrayTile.alloc(newCellType, cols, rows)
+        var numberOfNoValuePredictions = 0;
+
+        cfor(0)(_ < rows, _ + 1) { row =>
+          cfor(0)(_ < cols, _ + 1) { col =>
+            val features = new Array[Double](layerCount)
+            var featureIsNoData = false;
+            breakable {
+              cfor(0)(_ < layerCount, _ + 1) { i =>
+                val v = rs(i).getDouble(col, row)
+                if (isData(v)) {
+                  features(i) = v
+                } else {
+                  // SoftError: Use NoData value as prediction.
+                  featureIsNoData = true;
+                  numberOfNoValuePredictions += 1;
+                  tile.setDouble(col, row, v)
+                  break
+                }
+              }
+            }
+            if (!featureIsNoData) {
+              try {
+                val featuresVector = linalg.Vectors.dense(features)
+                val prediction = model.predict(featuresVector)
+                tile.setDouble(col, row, prediction)
+              }
+              catch {
+                case e: ArrayIndexOutOfBoundsException =>
+                  throw new IllegalArgumentException(s"The data to predict only contains ${layerCount} features per row, " +
+                    s"but the model was trained on more features.")
+              }
+            }
+          }
+        }
+        if (numberOfNoValuePredictions != 0) {
+          println(s"PredictRandomForest Warning! " +
+            s"${numberOfNoValuePredictions}/${rows*cols} cells contained at least one NoData feature. " +
+            s"The prediction for those cells has been set to NoData.")
+        }
+        Seq(tile)
+      }
+    }
+
+    val storedArgs = contextStack.head
+    val inputFunction: Option[OpenEOProcess] = storedArgs.get("data")
+    def composed(context: Map[String, Any])(tiles: Seq[Tile]): Seq[Tile] = {
+      operator(inputFunction.get(context)(tiles), context)
+    }
+    composed
+  }
+
+  private def predictCatBoostFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
+    checkMlArguments(arguments)
+    // This operator reduces all layers in rs down to one layer using CatboostModel.predict().
+    // For each cell it creates a feature vector from the layers and then generates one prediction for that vector.
+    val operator = (rs: Seq[Tile], context: Map[String, Any]) => {
+      // 1. Checks.
+      val modelCheck = context.getOrElse("context", null)
+      if (!modelCheck.isInstanceOf[CatBoostClassificationModel] && !modelCheck.isInstanceOf[CatBoostModel])
+        throw new IllegalArgumentException(
+          s"The 'model' argument should contain a valid Catboost model, but got: $modelCheck.")
+      rs.assertEqualDimensions()
+      val layerCount = rs.length
+      if (layerCount == 0) sys.error(s"No features provided for predict_catboost.")
+
+      if(context("context").isInstanceOf[CatBoostModel]){
+
+        val model = context("context").asInstanceOf[CatBoostModel]
+
+        def sigmoid(x: Double) = 1. / (1 + Math.pow(Math.E, -x))
+        multibandReduce(MultibandTile(rs),ts => {
+          val numericalFeatures = ts.map(_.floatValue()).toArray
+          val rawPrediction = model.predict(numericalFeatures,null.asInstanceOf[Array[Int]])
+          val sigmoids: Array[Double] = rawPrediction.copyRowMajorPredictions().map(sigmoid)
+          val theClass = sigmoids.indices.maxBy(sigmoids)
+          theClass
+
+        },true)
+      }else{
+        val model = context("context").asInstanceOf[CatBoostClassificationModel]
+
+        def sigmoid(x: Double) = 1. / (1 + Math.pow(Math.E, -x))
+        multibandReduce(MultibandTile(rs),ts => {
+          val featureArray: Array[Double] = ts.map(_.doubleValue()).toArray
+          val numericalFeatures = ml.linalg.Vectors.dense(featureArray)
+          val rawPrediction = model.predictRaw(numericalFeatures)
+          val sigmoids: Array[Double] = rawPrediction.toArray.map(sigmoid)
+          val theClass = sigmoids.indices.maxBy(sigmoids)
+          theClass
+        },true)
+      }
+    }
+    // Return our operator in a composed function.
+    val storedArgs = contextStack.head
+    val inputFunction: Option[OpenEOProcess] = storedArgs.get("data")
+    def composed(context: Map[String, Any])(tiles: Seq[Tile]): Seq[Tile] = {
+      operator(inputFunction.get(context)(tiles), context)
+    }
+    composed
+  }
+
+  private def predictCatBoostProbabilitiesFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
+    checkMlArguments(arguments)
+    // This operator reduces all layers in rs down to one layer using CatboostModel.predict().
+    // For each cell it creates a feature vector from the layers and then generates one prediction for that vector.
+    val operator = (rs: Seq[Tile], context: Map[String, Any]) => {
+      val modelCheck = context.getOrElse("context", null)
+      if (!modelCheck.isInstanceOf[CatBoostClassificationModel] && !modelCheck.isInstanceOf[CatBoostModel])
+        throw new IllegalArgumentException(
+          s"The 'model' argument should contain a valid Catboost model, but got: $modelCheck.")
+      rs.assertEqualDimensions()
+      val layerCount = rs.length
+      if (layerCount == 0) sys.error(s"No features provided for predict_catboost.")
+
+      val model = context("context").asInstanceOf[CatBoostClassificationModel]
+      multibandMapToNewTiles(MultibandTile(rs),ts => {
+        val featureArray: Array[Double] = ts.map(_.doubleValue()).toArray
+        val numericalFeatures = ml.linalg.Vectors.dense(featureArray)
+        val probabilityPrediction = model.predictProbability(numericalFeatures)
+        probabilityPrediction.toArray
+      })
+    }
+    // Return our operator in a composed function.
+    val storedArgs = contextStack.head
+    val inputFunction: Option[OpenEOProcess] = storedArgs.get("data")
+    def composed(context: Map[String, Any])(tiles: Seq[Tile]): Seq[Tile] = {
+      operator(inputFunction.get(context)(tiles), context)
+    }
+    composed
+  }
+
+  private def checkMlArguments(arguments: util.Map[String, Object]) = {
+    // TODO: Currently we explicitly check for 'model': {'from_parameter': 'context'} as it is never dereferenced.
+    // Later this should be dereferenced correctly in fromParameter() so we can access the model via 'arguments'.
+    // For now we will pass the model via the Map[String, Any] input of OpenEOProcess.
+    val modelArgument = arguments.getOrDefault("model", null)
+    if (!modelArgument.isInstanceOf[util.Map[String, Object]])
+      throw new IllegalArgumentException(s"The 'model' argument should contain {'from_parameter': 'context'}, but got: $modelArgument.")
+    val fromParamArgument = modelArgument.asInstanceOf[util.Map[String, Object]].getOrElse("from_parameter", null)
+    if (!fromParamArgument.isInstanceOf[String] || fromParamArgument.asInstanceOf[String] != "context")
+      throw new IllegalArgumentException(s"The from_parameter argument in 'model' should refer to 'context', but got: $fromParamArgument.")
   }
 
   private def firstFunctionIgnoreNoData(tiles:Seq[Tile]) : Seq[Tile] = {
@@ -842,6 +1136,37 @@ class OpenEOProcessScriptBuilder {
     bandFunction
   }
 
+  private def betweenFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val inputFunction = storedArgs.get("x").get
+    val min = arguments.getOrDefault("min",null)
+    val max = arguments.getOrDefault("max",null)
+    val excludeMax = arguments.getOrDefault("exclude_max",Boolean.box(false))
+    if(min == null) {
+      throw new IllegalArgumentException("Missing 'min' argument in between.")
+    }
+    if(max == null) {
+      throw new IllegalArgumentException("Missing 'max' argument in between.")
+    }
+
+    val minDouble = min.asInstanceOf[Number].doubleValue()
+    val maxDouble = max.asInstanceOf[Number].doubleValue()
+    val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
+      val input: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
+      input.map(tile => {
+        val greater = GreaterOrEqual(tile, minDouble)
+        val smallerThanMax = if(excludeMax.asInstanceOf[Boolean]) {
+          Less(tile,maxDouble)
+        }else{
+          LessOrEqual(tile,maxDouble)
+        }
+        And(greater,smallerThanMax)
+      })
+
+    }
+    bandFunction
+  }
+
   private def clipFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
     val storedArgs = contextStack.head
     val inputFunction = storedArgs("x")
@@ -865,6 +1190,17 @@ class OpenEOProcessScriptBuilder {
         else
           x
       }))
+    }
+    clipFunction
+  }
+
+  private def intFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
+    val storedArgs = contextStack.head
+    val inputFunction = storedArgs("x")
+
+    val clipFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
+      val input = evaluateToTiles(inputFunction, context, tiles).map(_.convert(FloatConstantNoDataCellType))
+      input.map(_.mapIfSetDouble(_.toInt))
     }
     clipFunction
   }

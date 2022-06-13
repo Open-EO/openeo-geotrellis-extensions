@@ -1,20 +1,21 @@
 package org.openeo.geotrellis
 
+import geotrellis.layer._
+import geotrellis.proj4.CRS
+import geotrellis.raster.histogram.Histogram
+import geotrellis.raster.summary.Statistics
+import geotrellis.spark._
+import geotrellis.vector._
+import org.apache.spark.SparkContext
+import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK_SER
+import org.openeo.geotrellis.aggregate_polygon.intern._
+import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder, intern}
+import org.slf4j.{Logger, LoggerFactory}
+
 import java.io.File
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
-
-import geotrellis.layer._
-import geotrellis.raster.histogram.Histogram
-import geotrellis.raster.summary.Statistics
-import geotrellis.spark._
-import org.apache.spark.SparkContext
-import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK_SER
-import org.openeo.geotrellis.aggregate_polygon.intern._
-import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, intern}
-import org.slf4j.{Logger, LoggerFactory}
-
 import scala.collection.JavaConverters._
 
 
@@ -84,6 +85,67 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
       computeStatsGeotrellis.computeAverageTimeSeries(datacube.persist(MEMORY_AND_DISK_SER), polygons.polygons, polygons.crs, startDate, endDate, statisticsWriter, unusedCancellationContext, sc)
     finally
       statisticsWriter.close()
+  }
+
+  /**
+   * Writes means to an UTF-8 encoded JSON file.
+   */
+  def compute_generic_timeseries_from_datacube(reducer:String, datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, output_file: String): Unit = {
+    val builder = new SparkAggregateScriptBuilder
+    builder.expressionEnd(reducer,new util.HashMap[String,Object]())
+    this.compute_generic_timeseries_from_datacube(builder,datacube, polygons, output_file)
+  }
+
+  /**
+   * Writes means to an UTF-8 encoded JSON file.
+   */
+  def compute_generic_timeseries_from_datacube(scriptBuilder:SparkAggregateScriptBuilder, datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, output_file: String): Unit = {
+    val computeStatsGeotrellis = new AggregatePolygonProcess()
+
+    val splitPolygons = splitOverlappingPolygons(polygons.polygons)
+
+    val bandCount = new OpenEOProcesses().RDDBandCount(datacube)
+    computeStatsGeotrellis.aggregateSpatialGeneric(scriptBuilder, datacube.persist(MEMORY_AND_DISK_SER),splitPolygons, polygons.crs, bandCount,output_file)
+
+  }
+
+  def compute_generic_timeseries_from_datacube(reducer: String, datacube: MultibandTileLayerRDD[SpaceTimeKey],
+                                               geometry_wkts: JList[String], geometries_srs: String,
+                                               output_dir: String): Unit = {
+    val builder = new SparkAggregateScriptBuilder
+    builder.expressionEnd(reducer, new util.HashMap[String, Object])
+    compute_generic_timeseries_from_datacube(builder, datacube, geometry_wkts, geometries_srs, output_dir)
+  }
+
+  def compute_generic_timeseries_from_datacube(scriptBuilder: SparkAggregateScriptBuilder,
+                                               datacube: MultibandTileLayerRDD[SpaceTimeKey],
+                                               geometry_wkts: JList[String], geometries_srs: String,
+                                               output_dir: String): Unit = {
+    val geometries = geometry_wkts.asScala.map(_.parseWKT())
+    val geometriesCrs = CRS.fromName(geometries_srs)
+
+    new AggregatePolygonProcess().aggregateSpatialForGeometry(scriptBuilder, datacube, geometries, geometriesCrs,
+      bandCount = new OpenEOProcesses().RDDBandCount(datacube), output_dir)
+  }
+
+  def compute_generic_timeseries_from_spatial_datacube(reducer: String,
+                                                       datacube: MultibandTileLayerRDD[SpatialKey],
+                                                       geometry_wkts: JList[String], geometries_srs: String,
+                                                       output_dir: String): Unit = {
+    val builder = new SparkAggregateScriptBuilder
+    builder.expressionEnd(reducer, new util.HashMap[String, Object])
+    compute_generic_timeseries_from_spatial_datacube(builder, datacube, geometry_wkts, geometries_srs, output_dir)
+  }
+
+  def compute_generic_timeseries_from_spatial_datacube(scriptBuilder: SparkAggregateScriptBuilder,
+                                                       datacube: MultibandTileLayerRDD[SpatialKey],
+                                                       geometry_wkts: JList[String], geometries_srs: String,
+                                                       output_dir: String): Unit = {
+    val geometries = geometry_wkts.asScala.map(_.parseWKT())
+    val geometriesCrs = CRS.fromName(geometries_srs)
+
+    new AggregatePolygonProcess().aggregateSpatialForGeometryWithSpatialCube(scriptBuilder, datacube, geometries,
+      geometriesCrs, bandCount = new OpenEOProcesses().RDDBandCount(datacube), output_dir)
   }
 
   def compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,

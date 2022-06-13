@@ -17,6 +17,7 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
+import scala.Option;
 import scala.Tuple2;
 import scala.collection.JavaConversions;
 import scala.collection.JavaConverters;
@@ -71,7 +72,7 @@ public class TestOpenEOProcesses {
         Tile tile1 = new DoubleConstantTile(1.0,256,256, (DoubleCells) CellType$.MODULE$.fromName("float64"));
         RDD<Tuple2<SpatialKey, MultibandTile>> datacube = TileLayerRDDBuilders$.MODULE$.createMultibandTileLayerRDD(SparkContext.getOrCreate(), new ArrayMultibandTile(new Tile[]{tile0,tile1}), new TileLayout(1, 1, 256, 256));
         ClassTag<SpatialKey> tag = scala.reflect.ClassTag$.MODULE$.apply(SpatialKey.class);
-        RDD<Tuple2<SpatialKey, MultibandTile>> ndviDatacube = new OpenEOProcesses().<SpatialKey>mapBandsGeneric(datacube, processBuilder,tag);
+        RDD<Tuple2<SpatialKey, MultibandTile>> ndviDatacube = new OpenEOProcesses().<SpatialKey>mapBandsGeneric(datacube, processBuilder, new HashMap<>(), tag);
         List<Tuple2<SpatialKey, MultibandTile>> result = ndviDatacube.toJavaRDD().collect();
         System.out.println("result = " + result);
         assertEquals(1, result.get(0)._2().bandCount());
@@ -206,12 +207,30 @@ public class TestOpenEOProcesses {
 
     }
 
+
     @Test
     public void testCompositeAndInterpolate() {
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 = LayerFixtures.sentinel2B04Layer();
+        compositeAndInterpolate(datacube1);
+    }
 
+    @Test
+    public void testCompositeAndInterpolateSparse() {
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 = LayerFixtures.sentinel2B04LayerSparse();
+        compositeAndInterpolate(datacube1);
+    }
+
+    private void compositeAndInterpolate(ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1) {
         RDD<Tuple2<SpaceTimeKey, MultibandTile>> compositedCube = composite(datacube1);
 
+        List<SpaceTimeKey> keys = compositedCube.toJavaRDD().map(v1 -> v1._1).collect();
+        Option<SpaceTimeKey[]> partitionerKeys = new OpenEOProcesses().findPartitionerKeys(compositedCube);
+        if (partitionerKeys.isDefined()) {
+            assertArrayEquals(keys.toArray(),Arrays.stream(partitionerKeys.get()).toArray());
+        }
+        
+        //Partitioner p = compositedCube.partitioner().get();
+        //keys.forEach(spaceTimeKey -> System.out.println("p.getPartition(spaceTimeKey) = " + p.getPartition(spaceTimeKey)) );
 
         OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createArrayInterpolateLinear();
         RDD<Tuple2<SpaceTimeKey, MultibandTile>> result = new OpenEOProcesses().applyTimeDimension(compositedCube, processBuilder, new HashMap<>());
@@ -221,7 +240,6 @@ public class TestOpenEOProcesses {
 
         int noData = Integer.MIN_VALUE;
         assertArrayEquals(new int[]{noData,noData,noData,noData,290,317,346,375,405},interpolatedPixel);
-
     }
 
     @Test

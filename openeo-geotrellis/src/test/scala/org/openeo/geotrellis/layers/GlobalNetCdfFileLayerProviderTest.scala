@@ -1,20 +1,22 @@
 package org.openeo.geotrellis.layers
 
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
-
 import com.azavea.gdal.GDALWarp
-import geotrellis.layer.{KeyBounds, TileLayerMetadata}
+import geotrellis.layer.{KeyBounds, LayoutDefinition, LayoutTileSource, TileLayerMetadata, TileToLayoutOps}
 import geotrellis.proj4.LatLng
-import geotrellis.raster.UByteUserDefinedNoDataCellType
+import geotrellis.raster.{GridExtent, RasterExtent, RasterSource, TileLayout, UByteUserDefinedNoDataCellType}
+import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.vector.{Extent, ProjectedExtent}
+import org.apache.hadoop.fs.Path
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.{AfterClass, Test}
-import org.openeo.geotrellis.LocalSparkContext
+import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
 import org.openeo.geotrellis.TestImplicits._
+import org.openeo.geotrelliscommon.DataCubeParameters
 
 object GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
   @AfterClass
@@ -30,6 +32,29 @@ class GlobalNetCdfFileLayerProviderTest {
     dateRegex = raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored
   )
 
+  class MockGlobalNetCdf extends GlobalNetCdfFileLayerProvider(dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/*/*/*/*.nc",
+    bandName = "LAI",
+    dateRegex = raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored) {
+    override protected def paths: List[Path] = List(
+      new Path("/data/MTDA/BIOPAR/BioPar_FAPAR_V2_Global/2005/20050228/c_gls_FAPAR_200502280000_GLOBE_VGT_V2.0.1/c_gls_FAPAR_200502280000_GLOBE_VGT_V2.0.1.nc"),
+      new Path("/data/MTDA/BIOPAR/BioPar_FAPAR_V2_Global/2015/20150630/c_gls_FAPAR-RT6_201506300000_GLOBE_PROBAV_V2.0.2/c_gls_FAPAR-RT6_201506300000_GLOBE_PROBAV_V2.0.2.nc"),
+      new Path("/data/MTDA/BIOPAR/BioPar_FAPAR_V2_Global/2015/20150630/c_gls_FAPAR-RT6_201506300000_GLOBE_PROBAV_V2.0.1/c_gls_FAPAR-RT6_201506300000_GLOBE_PROBAV_V2.0.1.nc"),
+      new Path("/data/MTDA/BIOPAR/BioPar_FAPAR_V2_Global/2020/20200110/c_gls_FAPAR-RT2_202001100000_GLOBE_PROBAV_V2.0.1/c_gls_FAPAR-RT2_202001100000_GLOBE_PROBAV_V2.0.1.nc"),
+      new Path("/data/MTDA/BIOPAR/BioPar_FAPAR_V2_Global/2020/20200110/c_gls_FAPAR-RT6_202001100000_GLOBE_PROBAV_V2.0.1/c_gls_FAPAR-RT6_202001100000_GLOBE_PROBAV_V2.0.1.nc")
+
+    )
+
+    override def queryAll(): Array[(ZonedDateTime, RasterSource)] = super.queryAll()
+  }
+
+  @Test
+  def testHeterogenousPaths(): Unit = {
+    val provider = new MockGlobalNetCdf
+
+    val sources = provider.queryAll()
+    assertEquals(3,sources.length)
+  }
+
   @Test
   def readTileLayer(): Unit = {
     val date = LocalDate.of(2017, 1, 10).atStartOfDay(ZoneId.of("UTC"))
@@ -43,6 +68,22 @@ class GlobalNetCdfFileLayerProviderTest {
   }
 
   @Test
+  def readDataCube(): Unit = {
+    val date = LocalDate.of(2017, 1, 10).atStartOfDay(ZoneId.of("UTC"))
+    val boundingBox = ProjectedExtent(Extent(-86.30859375, 29.84064389983441, -80.33203125, 35.53222622770337), LatLng)
+
+    val parameters = new DataCubeParameters()
+    parameters.layoutScheme = "FloatingLayoutScheme"
+
+    val layer = layerProvider.readMultibandTileLayer(date, date, ProjectedPolygons.fromExtent(boundingBox.extent,"EPSG:4326") , layerProvider.maxZoom, sc,Option(parameters)).cache()
+
+    layer
+      .toSpatial(date)
+      .writeGeoTiff("/tmp/lai300_georgia2.tif")
+  }
+
+
+  @Test
   def loadMetadata(): Unit = {
     val Some((ProjectedExtent(Extent(xmin, ymin, xmax, ymax), crs), dates)) = layerProvider.loadMetadata(sc)
 
@@ -54,8 +95,8 @@ class GlobalNetCdfFileLayerProviderTest {
 
     val years = dates.map(_.getYear).distinct
 
-    assertTrue(years contains 2014)
-    assertTrue(years contains 2020)
+    assertTrue("year 2014 is missing", years contains 2014)
+    assertTrue("year 2020 is missing", years contains 2020)
   }
 
   @Test

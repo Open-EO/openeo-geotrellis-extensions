@@ -2,10 +2,9 @@ package org.openeo
 
 import _root_.io.circe.{Decoder, Encoder, HCursor, Json}
 import _root_.io.circe.Decoder.Result
-import cats.syntax.either._
 import geotrellis.vector._
-import net.jodah.failsafe.event.ExecutionAttemptedEvent
-import net.jodah.failsafe.function.{CheckedConsumer, CheckedSupplier}
+import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
+import net.jodah.failsafe.function.CheckedSupplier
 import net.jodah.failsafe.{Failsafe, FailsafeExecutor, RetryPolicy}
 import org.locationtech.jts.geom.Polygonal
 import org.slf4j.Logger
@@ -31,10 +30,12 @@ package object geotrellissentinelhub {
         case SentinelHubException(_, 429, _) => true
         case SentinelHubException(_, 400, responseBody) if responseBody.contains("Request body should be non-empty.")
           || responseBody.contains("Missing grant_type parameter") => true
-        case SentinelHubException(_, statusCode, _) if statusCode >= 500 => true
+        case SentinelHubException(_, 404, _) if context.startsWith("startBatchProcess") => true // hack, needs work
+        case SentinelHubException(_, statusCode, responseBody) if statusCode >= 500
+          && !responseBody.contains("newLimit > capacity") && !responseBody.contains("Illegal request to https") => true
         case _: SocketTimeoutException => true
         case _: CirceException => true
-        case _ => false
+        case e => logger.error(s"Not attempting to retry unrecoverable error in context: $context", e); false
       }
 
       new RetryPolicy[R]
@@ -42,10 +43,13 @@ package object geotrellissentinelhub {
         .withBackoff(1, 1000, SECONDS) // should not reach maxDelay because of maxAttempts 5
         .withJitter(0.5)
         .withMaxAttempts(5)
-        .onFailedAttempt(new CheckedConsumer[ExecutionAttemptedEvent[R]] {
-          override def accept(t: ExecutionAttemptedEvent[R]): Unit = {
-            logger.warn(s"Attempt ${t.getAttemptCount} failed: $context -> ${t.getLastFailure.getMessage}")
-          }
+        .onFailedAttempt((attempt: ExecutionAttemptedEvent[R]) => {
+          val e = attempt.getLastFailure
+          logger.warn(s"Attempt ${attempt.getAttemptCount} failed in context: $context", e)
+        })
+        .onFailure((execution: ExecutionCompletedEvent[R]) => {
+          val e = execution.getFailure
+          logger.error(s"Failed after ${execution.getAttemptCount} attempt(s) in context: $context", e)
         })
     }
 
@@ -55,18 +59,6 @@ package object geotrellissentinelhub {
     failsafe.get(new CheckedSupplier[R] {
       override def get(): R = fn
     })
-  }
-
-  // TODO: merge this "one time retry policy" with withRetries() and move the retries from the APIs to the services?
-  def authorized[R](clientId: String, clientSecret: String)(fn: String => R): R = {
-    def accessToken: String = AccessTokenCache.get(clientId, clientSecret)
-
-    try fn(accessToken)
-    catch {
-      case SentinelHubException(_, 401, _) =>
-        AccessTokenCache.invalidate(clientId, clientSecret)
-        fn(accessToken)
-    }
   }
 
   /**
@@ -154,9 +146,16 @@ package object geotrellissentinelhub {
       polygon <- multiPolygon.polygons
     } yield Polygon(polygon.getExteriorRing)
 
-  private def dissolve(polygons: Seq[Polygon]): Geometry with Polygonal =
+  private[geotrellissentinelhub] def dissolve(polygons: Seq[Polygon]): Geometry with Polygonal =
     GeometryCollection(polygons).union().asInstanceOf[Geometry with Polygonal]
 
   private[geotrellissentinelhub] def simplify(multiPolygons: Array[MultiPolygon]): Geometry with Polygonal =
     dissolve(polygonExteriors(multiPolygons))
+
+  private[geotrellissentinelhub] def sequentialDays(from: ZonedDateTime, to: ZonedDateTime): Stream[ZonedDateTime] = {
+    def sequentialDays0(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDays0(from plusDays 1)
+
+    sequentialDays0(from)
+      .takeWhile(date => !(date isAfter to))
+  }
 }

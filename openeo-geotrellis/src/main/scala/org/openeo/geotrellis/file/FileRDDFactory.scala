@@ -4,16 +4,17 @@ import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.{Feature, Link}
 import be.vito.eodata.gwcgeotrellis.opensearch.backends.{CreodiasClient, OscarsClient}
 import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLayerMetadata}
+import geotrellis.proj4.LatLng
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType}
 import geotrellis.spark._
-import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrellis.layers.FileLayerProvider
 import org.openeo.geotrelliscommon.DatacubeSupport.layerMetadata
-import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
+import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, SpaceTimeByMonthPartitioner}
 
 import java.net.URL
 import java.time.ZonedDateTime
@@ -45,7 +46,7 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
   }
 
 
-  def loadSpatialFeatureRDD(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int, tileSize: Int = 256): ContextRDD[SpaceTimeKey, Feature, TileLayerMetadata[SpaceTimeKey]] = {
+  def loadSpatialFeatureRDD(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters): ContextRDD[SpaceTimeKey, Feature, TileLayerMetadata[SpaceTimeKey]] = {
     val sc = SparkContext.getOrCreate()
 
     val from = ZonedDateTime.parse(from_date)
@@ -60,28 +61,35 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
     //construct layer metadata
     //hardcoded celltype of float: assuming we will generate floats in further processing
     //use a floating layout scheme, so we will process data in original utm projection and 10m resolution
-    val metadata: TileLayerMetadata[SpaceTimeKey] = layerMetadata(boundingBox, from, to, 0, FloatConstantNoDataCellType, FloatingLayoutScheme(tileSize), maxSpatialResolution)
+    val multiple_polygons_flag = polygons.polygons.length > 1
+    val metadata: TileLayerMetadata[SpaceTimeKey] = layerMetadata(
+      boundingBox, from, to, 0, FloatConstantNoDataCellType, FloatingLayoutScheme(tileSize),
+      maxSpatialResolution, Option(dataCubeParameters).flatMap(_.globalExtent) ,multiple_polygons_flag = multiple_polygons_flag
+    )
 
     //construct Spatial Keys that we want to load
     val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons.polygons).map{_.reproject(polygons.crs,metadata.crs)}.clipToGrid(metadata.layout).groupByKey()
     val productsRDD = sc.parallelize(productMetadata)
-    val spatialRDD: RDD[(SpaceTimeKey, Feature)] = requiredKeys.keys.cartesian(productsRDD).map{ case (key,value) => (SpaceTimeKey(key.col,key.row,value.nominalDate),value)}
+    val spatialRDD: RDD[(SpaceTimeKey, Feature)] = requiredKeys.keys.cartesian(productsRDD).map{ case (key,value) => (SpaceTimeKey(key.col,key.row,value.nominalDate),value)}.filter(tuple =>{
 
+      val keyExtent = metadata.mapTransform.keyToExtent(tuple._1.spatialKey)
+      ProjectedExtent(tuple._2.bbox,LatLng).reproject(metadata.crs).intersects(keyExtent)
+    })
+
+    val partitioner = DatacubeSupport.createPartitioner(None,spatialRDD.map(_._1),metadata)
     /**
      * Note that keys in spatialRDD are not necessarily unique, because one date can have multiple Sentinel-1 products
-     * Further possible improvements:
-     * already filter out spatialkeys that do not match the feature extent
      */
-    return new ContextRDD(spatialRDD.partitionBy(SpacePartitioner(metadata.bounds)),metadata)
+    return new ContextRDD(spatialRDD.partitionBy(partitioner.get),metadata)
   }
 
   /**
    * Variant of `loadSpatialFeatureRDD` that allows working with the data in JavaRDD format in PySpark context:
    * (e.g. oscars response is JSON-serialized)
    */
-  def loadSpatialFeatureJsonRDD(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int, tileSize: Int = 256): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey]) = {
+  def loadSpatialFeatureJsonRDD(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters = null): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey]) = {
     import org.openeo.geotrellis.file.FileRDDFactory.{jsonObject, toJson}
-    val crdd = loadSpatialFeatureRDD(polygons, from_date, to_date, zoom, tileSize)
+    val crdd = loadSpatialFeatureRDD(polygons, from_date, to_date, zoom, tileSize, dataCubeParameters)
     val jrdd = crdd.map { case (key, feature) => jsonObject(
       "key" -> toJson(key),
       "key_extent" -> toJson(crdd.metadata.mapTransform.keyToExtent(key)),

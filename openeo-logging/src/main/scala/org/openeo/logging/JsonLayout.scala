@@ -1,9 +1,10 @@
-package org.openeo.geotrelliscommon
+package org.openeo.logging
 
-import org.apache.log4j.Layout
-import org.apache.log4j.spi.LoggingEvent
+import io.circe.{Encoder, Json, JsonNumber}
 import io.circe.syntax._
+import org.apache.log4j.Layout
 import org.apache.log4j.spi.LocationInfo.NA
+import org.apache.log4j.spi.LoggingEvent
 
 import java.io.IOException
 import java.lang.management.ManagementFactory
@@ -22,6 +23,9 @@ object JsonLayout {
 
   private lazy val userId = Option(System.getenv("OPENEO_USER_ID"))
   private lazy val batchJobId = Option(System.getenv("OPENEO_BATCH_JOB_ID"))
+
+  private implicit val encodeDouble: Encoder[Double] = (d: Double) =>
+    Json.fromJsonNumber(JsonNumber.fromDecimalStringUnsafe(f"$d%.3f"))
 }
 
 class JsonLayout extends Layout {
@@ -29,7 +33,7 @@ class JsonLayout extends Layout {
 
   override def format(event: LoggingEvent): String = {
     val baseLogEntry = Map(
-      "created" -> (event.getTimeStamp / 1000).asJson,
+      "created" -> (event.getTimeStamp / 1000.0).asJson,
       "name" -> event.getLoggerName.asJson,
       "filename" -> event.getLocationInformation.getFileName.asJson,
       "levelname" -> event.getLevel.toString.asJson,
@@ -57,7 +61,7 @@ class JsonLayout extends Layout {
     }
 
     withBatchJobId
-      .asJson.noSpaces
+      .asJson.noSpaces + System.lineSeparator()
   }
 
   override def ignoresThrowable(): Boolean = false

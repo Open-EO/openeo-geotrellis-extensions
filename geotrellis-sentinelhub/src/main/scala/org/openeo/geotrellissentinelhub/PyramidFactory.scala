@@ -1,15 +1,15 @@
 package org.openeo.geotrellissentinelhub
 
 import geotrellis.layer.{SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
-import geotrellis.proj4.{CRS, WebMercator}
+import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.{CellSize, MultibandTile, Raster}
 import geotrellis.spark._
-import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -17,81 +17,78 @@ import java.time.ZoneOffset.UTC
 import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
 import java.util.concurrent.TimeUnit.MILLISECONDS
-import scala.annotation.meta.param
 import scala.collection.JavaConverters._
-import scala.reflect.ClassTag
 
 object PyramidFactory {
   private val logger: Logger = LoggerFactory.getLogger(classOf[PyramidFactory])
+
 
   private val maxKeysPerPartition = 20
 
   // convenience methods for Python client
   def withGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
                               clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
-                              maxSpatialResolution: CellSize): PyramidFactory =
+                              maxSpatialResolution: CellSize, softErrors: Boolean): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
-      clientId, clientSecret, processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution)
+      new MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
+      processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution, softErrors)
 
   def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
                                  clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
-                                 maxSpatialResolution: CellSize): PyramidFactory =
+                                 maxSpatialResolution: CellSize, softErrors: Boolean): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
-      clientId, clientSecret, processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution)
-
-  @deprecated("call withGuardedRateLimiting instead")
-  def rateLimited(endpoint: String, collectionId: String, datasetId: String, clientId: String, clientSecret: String,
-                  processingOptions: util.Map[String, Any], sampleType: SampleType,
-                  maxSpatialResolution: CellSize): PyramidFactory =
-    withGuardedRateLimiting(endpoint, collectionId, datasetId, clientId, clientSecret, processingOptions, sampleType,
-      maxSpatialResolution)
-
-  @deprecated("include a maxSpatialResolution")
-  def rateLimited(endpoint: String, collectionId: String, datasetId: String, clientId: String, clientSecret: String,
-                  processingOptions: util.Map[String, Any], sampleType: SampleType): PyramidFactory =
-    rateLimited(endpoint, collectionId, datasetId, clientId, clientSecret, processingOptions, sampleType, CellSize(10,10))
-
-  @deprecated("include a collectionId")
-  def rateLimited(endpoint: String, datasetId: String, clientId: String, clientSecret: String,
-                  processingOptions: util.Map[String, Any], sampleType: SampleType): PyramidFactory =
-    rateLimited(endpoint, collectionId = null, datasetId, clientId, clientSecret, processingOptions, sampleType)
+      new MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
+      processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, softErrors = softErrors)
 }
 
-class PyramidFactory(collectionId: String, datasetId: String, @(transient @param) catalogApi: CatalogApi,
-                     processApi: ProcessApi, clientId: String, clientSecret: String,
+class PyramidFactory(collectionId: String, datasetId: String, catalogApi: CatalogApi, processApi: ProcessApi,
+                     authorizer: Authorizer,
                      processingOptions: util.Map[String, Any] = util.Collections.emptyMap[String, Any],
                      sampleType: SampleType = UINT16,
                      rateLimitingGuard: RateLimitingGuard = NoRateLimitingGuard,
-                     maxSpatialResolution: CellSize = CellSize(10,10)) extends Serializable {
+                     maxSpatialResolution: CellSize = CellSize(10,10), softErrors: Boolean = false) extends Serializable {
   import PyramidFactory._
+
+  @transient private val _catalogApi = if (collectionId == null) new MadeToMeasureCatalogApi else catalogApi
 
   private val maxZoom = 14
 
-  private def authorized[R](fn: String => R): R =
-    org.openeo.geotrellissentinelhub.authorized[R](clientId, clientSecret)(fn)
+  private def authorized[R](fn: String => R): R = authorizer.authorized(fn)
 
   private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom,
-                    bandNames: Seq[String], metadataProperties: util.Map[String, Any],
-                    dates: Seq[ZonedDateTime])(implicit sc: SparkContext):
+                    bandNames: Seq[String], metadataProperties: util.Map[String, util.Map[String, Any]],
+                    features: collection.Map[String, Feature[Geometry, ZonedDateTime]])(implicit sc: SparkContext):
   MultibandTileLayerRDD[SpaceTimeKey] = {
     require(zoom >= 0)
     require(zoom <= maxZoom)
 
     val targetCrs: CRS = WebMercator
-    val reprojectedBoundingBox = boundingBox.reproject(targetCrs)
+    val reprojectedBoundingBox = ProjectedExtent(boundingBox.reproject(targetCrs), targetCrs)
 
     val scheme = ZoomedLayoutScheme(targetCrs)
-    val metadata: TileLayerMetadata[SpaceTimeKey] = DatacubeSupport.layerMetadata(ProjectedExtent(reprojectedBoundingBox,targetCrs),from,to,zoom,sampleType.cellType,scheme,maxSpatialResolution)
+    val metadata: TileLayerMetadata[SpaceTimeKey] =
+      DatacubeSupport.layerMetadata(reprojectedBoundingBox,from,to,zoom,sampleType.cellType,scheme,maxSpatialResolution)
     val layout = metadata.layout
 
-    val overlappingKeys = for {
-      date <- dates
-      spatialKey <- layout.mapTransform.keysForGeometry(reprojectedBoundingBox.toPolygon())
-    } yield SpaceTimeKey(spatialKey, date)
+    val reprojectedGeometry = reprojectedBoundingBox.extent.toPolygon()
 
+    val overlappingKeys = {
+      val intersectingFeatureKeys = for {
+        (_, Feature(geom, datetime)) <- features.toSet
+        date = datetime.toLocalDate.atStartOfDay(UTC)
+        reprojectedGeom = geom.reproject(LatLng, reprojectedBoundingBox.crs)
+        SpatialKey(col, row) <- layout.mapTransform.keysForGeometry(reprojectedGeom intersection reprojectedGeometry)
+      } yield SpaceTimeKey(col, row, date)
+
+      intersectingFeatureKeys
+        .toSeq
+    }
 
     val partitioner = SpacePartitioner(metadata.bounds)
     assert(partitioner.index == SpaceTimeByMonthPartitioner)
+
+    val tracker = BatchJobMetadataTracker.tracker("")
+    tracker.registerDoubleCounter(BatchJobMetadataTracker.SH_PU)
 
     val tilesRdd = sc.parallelize(overlappingKeys, numSlices = (overlappingKeys.size / maxKeysPerPartition) max 1)
       .map { key =>
@@ -100,10 +97,12 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
 
         awaitRateLimitingGuardDelay(bandNames, width, height)
 
-        val tile = authorized { accessToken =>
+        val (tile, processingUnitsSpent) = authorized { accessToken =>
           processApi.getTile(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs),
-            key.temporalKey, width, height, bandNames, sampleType, metadataProperties, processingOptions, accessToken)
+            key.temporalKey, width, height, bandNames, sampleType, Criteria.toDataFilters(metadataProperties),
+            processingOptions, accessToken)
         }
+        tracker.add(BatchJobMetadataTracker.SH_PU, processingUnitsSpent)
 
         (key, tile)
       }
@@ -113,41 +112,29 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
     ContextRDD(tilesRdd, metadata)
   }
 
-  private def dates(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
-                    metadataProperties: util.Map[String, Any]): Seq[ZonedDateTime] = {
-    def sequentialDates(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDates(from plusDays 1)
-
-    def atEndOfDay(to: ZonedDateTime): ZonedDateTime = {
-      val endOfDay = OffsetTime.of(LocalTime.MAX, UTC)
-      to.toLocalDate.atTime(endOfDay).toZonedDateTime
-    }
-
-    if (collectionId == null)
-      sequentialDates(from)
-        .takeWhile(date => !(date isAfter to))
-    else authorized { accessToken =>
-      catalogApi
-        .dateTimes(collectionId, boundingBox, from, atEndOfDay(to), accessToken,
-          toQueryProperties(dataFilters = metadataProperties))
-        .map(_.toLocalDate.atStartOfDay(UTC))
-        .distinct // ProcessApi::getTile takes care of [day, day + 1] interval and mosaicking therein
-        .sorted
-    }
+  private def atEndOfDay(to: ZonedDateTime): ZonedDateTime = {
+    val endOfDay = OffsetTime.of(LocalTime.MAX, UTC)
+    to.toLocalDate.atTime(endOfDay).toZonedDateTime
   }
 
   def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, bandNames: Seq[String],
-              metadataProperties: util.Map[String, Any])(implicit sc: SparkContext):
+              metadataProperties: util.Map[String, util.Map[String, Any]])(implicit sc: SparkContext):
   Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val dates = this.dates(boundingBox, from, to, metadataProperties)
+    val (polygon, polygonCrs) = (boundingBox.extent.toPolygon(), boundingBox.crs)
+
+    val features = authorized { accessToken =>
+      _catalogApi.search(collectionId, polygon, polygonCrs,
+        from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadataProperties))
+    }
 
     val layers = for (zoom <- maxZoom to 0 by -1)
-      yield zoom -> layer(boundingBox, from, to, zoom, bandNames, metadataProperties, dates)
+      yield zoom -> layer(boundingBox, from, to, zoom, bandNames, metadataProperties, features)
 
     Pyramid(layers.toMap)
   }
 
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String, band_names: util.List[String],
-                  metadata_properties: util.Map[String, Any]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+                  metadata_properties: util.Map[String, util.Map[String, Any]]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
 
     val projectedExtent = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
@@ -160,12 +147,12 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
   }
 
   def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
-                   band_names: util.List[String], metadata_properties: util.Map[String, Any]):
+                   band_names: util.List[String], metadata_properties: util.Map[String, util.Map[String, Any]]):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = datacube_seq(polygons, polygons_crs, from_date, to_date,
     band_names, metadata_properties, new DataCubeParameters)
 
   def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
-                   band_names: util.List[String], metadata_properties: util.Map[String, Any],
+                   band_names: util.List[String], metadata_properties: util.Map[String, util.Map[String, Any]],
                    dataCubeParameters: DataCubeParameters):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     // TODO: use ProjectedPolygons type
@@ -181,31 +168,35 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
 
       // TODO: call into AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
 
-      val scheme = FloatingLayoutScheme(256)
+      val scheme = FloatingLayoutScheme(dataCubeParameters.tileSize)
 
-      val metadata = DatacubeSupport.layerMetadata(boundingBox,from,to,0,sampleType.cellType,scheme,maxSpatialResolution,dataCubeParameters.globalExtent)
+      val multiple_polygons_flag = polygons.length > 1
+      var metadata = DatacubeSupport.layerMetadata(
+        boundingBox, from, to, 0, sampleType.cellType, scheme, maxSpatialResolution,
+        dataCubeParameters.globalExtent, multiple_polygons_flag
+      )
       val layout = metadata.layout
 
-      val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = {
-        val overlappingKeys = for {
-          date <- dates(boundingBox, from, to, metadata_properties)
-          spatialKey <- layout.mapTransform.keysForGeometry(GeometryCollection(polygons))
-        } yield SpaceTimeKey(spatialKey, date)
+      val tracker = BatchJobMetadataTracker.tracker("")
+      tracker.registerDoubleCounter(BatchJobMetadataTracker.SH_PU)
 
+      val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = {
         //noinspection ComparingUnrelatedTypes
         val maskClouds = dataCubeParameters.maskingStrategyParameters.get("method") == "mask_scl_dilation"
 
-        def loadMasked(key: SpaceTimeKey): Option[MultibandTile] = {
+        def loadMasked(spatialKey: SpatialKey, dateTime: ZonedDateTime): Option[MultibandTile] = try {
           def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile = {
             awaitRateLimitingGuardDelay(bandNames, width, height)
 
-            authorized { accessToken =>
-              processApi.getTile(datasetId, projectedExtent, key.temporalKey, width, height, bandNames,
-                sampleType, metadata_properties, processingOptions, accessToken)
+            val (tile, processingUnitsSpent) = authorized { accessToken =>
+              processApi.getTile(datasetId, projectedExtent, dateTime, width, height, bandNames,
+                sampleType, Criteria.toDataFilters(metadata_properties), processingOptions, accessToken)
             }
+            tracker.add(BatchJobMetadataTracker.SH_PU, processingUnitsSpent)
+            tile
           }
 
-          val keyExtent = key.spatialKey.extent(layout)
+          val keyExtent = spatialKey.extent(layout)
 
           def dataTile: MultibandTile = getTile(band_names.asScala, ProjectedExtent(keyExtent, boundingBox.crs),
             width = layout.tileLayout.tileCols, height = layout.tileLayout.tileRows)
@@ -233,31 +224,79 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
               override def loadData: Option[MultibandTile] = Some(dataTile)
             })
           } else Some(dataTile)
+        } catch {
+          case e @ SentinelHubException(_, _, responseBody) if softErrors =>
+            logger.warn(s"ignoring soft error $responseBody", e)
+            None
         }
 
-        logger.info(s"Created Sentinelhub datacube with ${overlappingKeys.size} keys and metadata ${metadata}")
+        val tilesRdd =
+          if (datasetId == "dem") {
+            val overlappingKeys = layout.mapTransform.keysForGeometry(GeometryCollection(polygons)).toSeq
 
-        val reduction: Int = dataCubeParameters.partitionerIndexReduction
-        val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
-          if( dataCubeParameters.partitionerTemporalResolution!= "ByDay") {
-            val indices = overlappingKeys.map(SparseSpaceOnlyPartitioner.toIndex(_,indexReduction = reduction)).distinct.sorted.toArray
-            new SparseSpaceOnlyPartitioner(indices,reduction)
-          }else{
-            val indices = overlappingKeys.map(SparseSpaceTimePartitioner.toIndex(_,indexReduction = reduction)).distinct.sorted.toArray
-            new SparseSpaceTimePartitioner(indices,reduction)
+            val keysRdd = sc.parallelize(overlappingKeys)
+
+            val tilesRdd = keysRdd
+              .flatMap { spatialKey =>
+                // "dem" data doesn't have a time dimension so the actual timestamp doesn't matter
+                loadMasked(spatialKey, ZonedDateTime.of(1981, 4, 24, 2, 0, 0, 0, UTC))
+                  .map(tile => spatialKey -> tile)
+              }
+              .flatMap { case (spatialKey, tile) =>
+                if (!tile.bands.forall(_.isNoDataTile))
+                  sequentialDays(from, to)
+                    .map(day => SpaceTimeKey(spatialKey.col, spatialKey.row, day.toLocalDate.atStartOfDay(UTC)) -> tile)
+                else
+                  Stream.empty
+              }
+
+            DatacubeSupport.applyDataMask(Some(dataCubeParameters), tilesRdd)
+          } else {
+              val multiPolygon = simplify(polygons)
+
+              val features = authorized { accessToken =>
+                _catalogApi.search(collectionId, multiPolygon, polygons_crs,
+                  from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
+              }
+
+            val polygonsRDD = sc.parallelize(features.values.toSeq).map(_.reproject(LatLng, boundingBox.crs)).map(f => Feature(f intersection multiPolygon, f.data.toLocalDate.atStartOfDay(UTC)))
+            var requiredSpatialKeysForFeatures: RDD[(SpatialKey, Iterable[Feature[Geometry, ZonedDateTime]])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
+
+            val spatialKeyCount = requiredSpatialKeysForFeatures.map(_._1).countApproxDistinct()
+            logger.info(s"Sentinelhub datacube requires approximately ${spatialKeyCount} spatial keys.")
+
+            val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = None//DatacubeSupport.optimizeChunkSize(metadata, polygons, Option(dataCubeParameters), spatialKeyCount)
+            metadata = retiledMetadata.getOrElse(metadata)
+
+            if (retiledMetadata.isDefined) {
+              requiredSpatialKeysForFeatures = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
+            }
+
+            val requiredKeysRdd = requiredSpatialKeysForFeatures.flatMap(tuple=> tuple._2.map(feature => SpaceTimeKey(tuple._1.col,tuple._1.row,feature.data)))
+
+            val partitioner = DatacubeSupport.createPartitioner(Some(dataCubeParameters), requiredKeysRdd, metadata)
+            logger.info(s"Created Sentinelhub datacube with ${requiredKeysRdd.countApproxDistinct()} keys and metadata ${metadata} and ${partitioner.get}")
+
+
+            var keysRdd = requiredKeysRdd.map((_,Option.empty)).partitionBy(partitioner.get)
+
+            keysRdd = DatacubeSupport.applyDataMask(Some(dataCubeParameters),keysRdd)
+
+            val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = keysRdd
+              .mapPartitions(_.map { case (spaceTimeKey, _) => (spaceTimeKey, loadMasked(spaceTimeKey.spatialKey, spaceTimeKey.time)) }, preservesPartitioning = true)
+              .filter {case (_: SpaceTimeKey, tile: Option[MultibandTile]) => tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
+              .mapValues(t => t.get)
+
+            tilesRdd
           }
-        }
-        val partitioner = SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,ClassTag(classOf[SpaceTimeKey]), partitionerIndex)
 
-        val tilesRdd = for {
-          key <- sc.parallelize(overlappingKeys.map((_,Option.empty))).partitionBy(partitioner)
-          tile <- loadMasked(key._1)
-          if !tile.bands.forall(_.isNoDataTile)
-        } yield (key._1, tile)
+        tilesRdd.name = s"Sentinelhub-$collectionId"
         tilesRdd
       }
 
-      ContextRDD(tilesRdd, metadata)
+      val cRDD = ContextRDD(tilesRdd, metadata)
+      cRDD.name = tilesRdd.name
+      cRDD
     }
 
     Seq(0 -> cube)
@@ -273,8 +312,9 @@ class PyramidFactory(collectionId: String, datasetId: String, @(transient @param
       s1Orthorectification = false
     )
 
-    logger.debug(s"$rateLimitingGuard says to wait $delay")
+    if (logger.isDebugEnabled) logger.debug(s"$rateLimitingGuard says to wait $delay")
+    else if (!delay.isZero) logger.info(s"$rateLimitingGuard says to wait $delay")
+
     MILLISECONDS.sleep(delay.toMillis)
   }
-
 }

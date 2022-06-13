@@ -3,11 +3,13 @@ package org.openeo.geotrelliscommon
 import geotrellis.raster.mapalgebra.focal.Kernel
 import geotrellis.raster.{DoubleArrayTile, PaddedTile, Tile}
 import org.jtransforms.fft.DoubleFFT_2D
+import pl.edu.icm.jlargearrays.ConcurrencyUtils
 import spire.syntax.cfor._
 
 object FFTConvolve {
 
   private val fft_instD2D = new ThreadLocal[(Int, Int, DoubleFFT_2D)]
+  ConcurrencyUtils.setNumberOfThreads(1)
 
   private def getD2DInstance(rows: Int, columns: Int): DoubleFFT_2D = {
     val inst = fft_instD2D.get

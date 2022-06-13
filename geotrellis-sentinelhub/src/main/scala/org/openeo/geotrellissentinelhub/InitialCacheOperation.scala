@@ -13,20 +13,8 @@ import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.util
 import scala.collection.JavaConverters._
 
-object AbstractInitialCacheOperation {
-  // TODO: put this in a central place
-  private def sequentialDays(from: ZonedDateTime, to: ZonedDateTime): Stream[ZonedDateTime] = {
-    def sequentialDays0(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDays0(from plusDays 1)
-
-    sequentialDays0(from)
-      .takeWhile(date => !(date isAfter to))
-  }
-}
-
 // TODO: rename this
 abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
-  import AbstractInitialCacheOperation._
-
   // TODO: make this uri configurable
   protected val elasticsearchUri = "https://es-apps-dev.vgt.vito.be:443"
 
@@ -53,7 +41,7 @@ abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
 
   def startBatchProcess(collection_id: String, dataset_id: String, polygons: Array[MultiPolygon],
                         crs: CRS, from: ZonedDateTime, to: ZonedDateTime, band_names: util.List[String],
-                        sampleType: SampleType, metadata_properties: util.Map[String, Any],
+                        sampleType: SampleType, metadata_properties: util.Map[String, util.Map[String, Any]],
                         processing_options: util.Map[String, Any], bucketName: String, subfolder: String,
                         collecting_folder: String, batchProcessingService: BatchProcessingService): String = {
     // important: caching requires more strict processing options because specifying an option unknown to the cache
@@ -114,13 +102,13 @@ abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
     saveExtendedBatchProcessContext(bandNames, incompleteTiles, lower, upper, missingBandNames, processingOptions,
       bucketName, subfolder)
 
-    val multiPolygons = shrink(geometries = incompleteTiles.map { case (_, geometry) => geometry })
+    val multiPolygons = Array(simplify(gridGeometries = incompleteTiles.map { case (_, geometry) => geometry }))
     val multiPolygonsCrs = LatLng
 
     batchProcessingService.start_batch_process(
       collection_id,
       dataset_id,
-      multiPolygons.toArray,
+      multiPolygons,
       multiPolygonsCrs,
       from_date = ISO_OFFSET_DATE_TIME format lower,
       to_date = ISO_OFFSET_DATE_TIME format upper,
@@ -174,11 +162,21 @@ abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
   }
 
   // TODO: make it explicit that all grid tiles are MultiPolygons?
-  private def shrink(geometries: Seq[Geometry]): Seq[MultiPolygon] =
-    for {
-      geometry <- geometries
-      shrinkDistance = geometry.getEnvelopeInternal.getWidth * 0.05
-    } yield MultiPolygon(geometry.buffer(-shrinkDistance).asInstanceOf[Polygon])
+  private def simplify(gridGeometries: Seq[Geometry]): MultiPolygon = {
+    // make sure they dissolve properly
+    val growDistance = gridGeometries.head.getEnvelopeInternal.getWidth * 0.05
+    val quadrantSegments = -5 // TODO: what does this mean, exactly?
+    val slightlyOverlappingGridGeometries =
+      gridGeometries.map(_.buffer(growDistance, quadrantSegments).asInstanceOf[Polygon])
+
+    def shrink(gridGeometry: Polygon): Polygon =
+      gridGeometry.buffer(-growDistance * 3, quadrantSegments).asInstanceOf[Polygon]
+
+    dissolve(slightlyOverlappingGridGeometries) match {
+      case polygon: Polygon => MultiPolygon(shrink(polygon))
+      case multiPolygon: MultiPolygon => MultiPolygon(multiPolygon.polygons.map(shrink))
+    }
+  }
 }
 
 object Sentinel2L2AInitialCacheOperation {

@@ -1,16 +1,18 @@
 package org.openeo.geotrellis
 
-import java.time.ZonedDateTime
-import java.util
-
 import geotrellis.layer._
 import geotrellis.raster._
 import geotrellis.spark._
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.LayerFixtures._
+import org.openeo.geotrelliscommon.{OpenEORasterCube, OpenEORasterCubeMetadata, SparseSpaceTimePartitioner}
+
+import java.time.ZonedDateTime
+import java.util
 
 
 object MergeCubesSpec{
@@ -38,7 +40,8 @@ class MergeCubesSpec {
     zeroTile.set(0, 0, 1)
     zeroTile.set(0, 1, ByteConstantNoDataCellType.noDataValue)
     val tileLayerRDD: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = tileToSpaceTimeDataCube(zeroTile)
-    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().mergeCubes(tileLayerRDD, tileLayerRDD, null)
+    val wrappedRDD = new OpenEORasterCube[SpaceTimeKey](tileLayerRDD.rdd,tileLayerRDD.metadata,new OpenEORasterCubeMetadata(Seq("B01","B02")))
+    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = new OpenEOProcesses().mergeCubes(wrappedRDD, tileLayerRDD, null)
     val firstTile: MultibandTile = merged.toJavaRDD.take(1).get(0)._2
     System.out.println("firstTile = " + firstTile)
     assertEquals(4, firstTile.bandCount)
@@ -260,5 +263,19 @@ class MergeCubesSpec {
       case e: UnsupportedOperationException =>
 
     }
+  }
+
+  @Test def testMergeSparseRDD(): Unit = {
+    val idx1 = Seq( SpatialKey(3, 1), SpatialKey(7, 2))
+    val sparseLayer1 = LayerFixtures.aSparseSpacetimeTileLayerRdd(idx1)
+    val c1Keys = sparseLayer1.map(_._1.spatialKey).distinct().collect()
+    print(c1Keys)
+    val idx2 = Seq( SpatialKey(3, 1), SpatialKey(6, 2), SpatialKey(1, 3))
+    val sparseLayer2 = LayerFixtures.aSparseSpacetimeTileLayerRdd(idx2)
+    val merged = new OpenEOProcesses().mergeCubes(sparseLayer1,sparseLayer2,operator=null)
+    val localTiles = merged.collect()
+    assertTrue(merged.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
+    assertTrue(merged.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[SparseSpaceTimePartitioner])
+    assertEquals((idx1++idx2).toSet,localTiles.map(_._1.spatialKey).toSet)
   }
 }

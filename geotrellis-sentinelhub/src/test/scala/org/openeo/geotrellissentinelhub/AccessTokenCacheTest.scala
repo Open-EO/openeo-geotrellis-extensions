@@ -1,0 +1,3 @@
+package org.openeo.geotrellissentinelhub
+
+class AccessTokenCacheTest

@@ -3,7 +3,7 @@ package org.openeo.geotrellis.layers
 import com.google.common.cache.{CacheBuilder, CacheLoader}
 import geotrellis.layer.{Boundable, KeyExtractor, SpaceTimeKey, SpatialKey, TemporalKeyExtractor, TileLayerMetadata, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.{MultibandTile, RasterRegion, RasterSource, SourceName, SourcePath}
+import geotrellis.raster.{MultibandTile, RasterExtent, RasterRegion, RasterSource, SourceName, SourcePath}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.store.hadoop.util.HdfsUtils
@@ -16,6 +16,7 @@ import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport}
 
+import java.io.IOException
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.concurrent.TimeUnit.HOURS
 import scala.util.matching.Regex
@@ -42,7 +43,11 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
 
   lazy val maxZoom: Int = {
     val (_, newestRasterSource) = queryAll().last
-    layoutScheme.levelFor(newestRasterSource.extent, newestRasterSource.cellSize).zoom
+    try{
+      layoutScheme.levelFor(newestRasterSource.extent, newestRasterSource.cellSize).zoom
+    }  catch {
+      case e: Exception => throw new IOException(s"Error while reading extent of: ${newestRasterSource.name.toString}", e)
+    }
   }
 
   protected def dataGlob: String
@@ -119,7 +124,11 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
         layoutScheme
       }
 
-    val layerMetadata = DatacubeSupport.layerMetadata(ProjectedExtent(polygonsExtent,crs),from,to,zoom min maxZoom,cellType,theLayoutScheme,resolution,datacubeParams.flatMap(_.globalExtent))
+    val multiple_polygons_flag = polygons.length > 1
+    val layerMetadata = DatacubeSupport.layerMetadata(
+      ProjectedExtent(polygonsExtent,crs), from, to, zoom min maxZoom, cellType, theLayoutScheme,
+      resolution,datacubeParams.flatMap(_.globalExtent), multiple_polygons_flag
+    )
 
     val tiledLayoutSourceRDD =
       sources.map { rs =>
@@ -148,10 +157,18 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
       .mapValues { case (keyedRasterRegion, _) => keyedRasterRegion }
       .values
 
+    val thePartitioner: Partitioner = if(partitioner.isDefined) {
+      partitioner.get
+    }else if(datacubeParams.isDefined){
+      FileLayerProvider.createPartitioner(datacubeParams, requiredKeys, tiledLayoutSourceRDD, layerMetadata).get
+    }else{
+      SpacePartitioner(layerMetadata.bounds)
+    }
+
 
     val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] =
       filteredRdd
-        .groupByKey(partitioner.getOrElse(SpacePartitioner(layerMetadata.bounds)))
+        .groupByKey(thePartitioner)
         .mapValues { iter =>
           MultibandTile( // TODO: use our version? (see org.openeo.geotrellis.geotiff.PyramidFactory.tiledLayerRDD)
             iter.flatMap { _.raster.toSeq.flatMap { _.tile.bands } }

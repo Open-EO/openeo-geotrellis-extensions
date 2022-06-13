@@ -3,7 +3,6 @@ package org.openeo.geotrellis.aggregate_polygon
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit.DAYS
 import java.util.concurrent.TimeUnit.MINUTES
-
 import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileBounds, TileLayerMetadata}
 import geotrellis.proj4.CRS
 import geotrellis.raster._
@@ -14,6 +13,7 @@ import geotrellis.vector._
 import org.apache.spark.rdd.{PartitionPruningRDD, RDD}
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{RangePartitioner, SparkContext}
+import org.locationtech.jts.geom.TopologyException
 import org.openeo.geotrellis.aggregate_polygon.intern.PixelRateValidator.exceedsTreshold
 import org.openeo.geotrellis.aggregate_polygon.intern.polygonal._
 import org.openeo.geotrellis.layers.LayerProvider
@@ -446,18 +446,23 @@ package object intern {
               val jPolRemove = mutable.Set[MultiPolygonEq]()
               val jPolAdd = mutable.Set[MultiPolygonEq]()
               for (jPolPart <- jPolMap(jPol)) {
-                if (iPolPart.p.intersects(jPolPart.p)) {
-                  iPolPart.p.intersectionSafe(jPolPart.p).asMultiPolygon.foreach(int => {
-                    convertToMultiPolygon(iPolPart.p.difference(int)).foreach(dif => {
-                      iPolRemove += iPolPart
-                      iPolAdd += MultiPolygonEq(int) += MultiPolygonEq(dif)
+                try{
+                  if (iPolPart.p.intersects(jPolPart.p)) {
+                    iPolPart.p.intersectionSafe(jPolPart.p).asMultiPolygon.foreach(int => {
+                      convertToMultiPolygon(iPolPart.p.difference(int)).foreach(dif => {
+                        iPolRemove += iPolPart
+                        iPolAdd += MultiPolygonEq(int) += MultiPolygonEq(dif)
+                      })
+                      convertToMultiPolygon(jPolPart.p.difference(int)).foreach(dif => {
+                        jPolRemove += jPolPart
+                        jPolAdd += MultiPolygonEq(int) += MultiPolygonEq(dif)
+                      })
                     })
-                    convertToMultiPolygon(jPolPart.p.difference(int)).foreach(dif => {
-                      jPolRemove += jPolPart
-                      jPolAdd += MultiPolygonEq(int) += MultiPolygonEq(dif)
-                    })
-                  })
+                  }
+                }catch {
+                  case e: TopologyException => logger.error(s"A topology exception occurred while determining the intersection between two polygons: ${iPolPart.p.toGeoJson()} - ${jPolPart.p.toGeoJson()}. Processing will continue, but aggregate_spatial results may be inaccurate.",e)
                 }
+
               }
               jPolMap(jPol) --= jPolRemove
               jPolMap(jPol) ++= jPolAdd

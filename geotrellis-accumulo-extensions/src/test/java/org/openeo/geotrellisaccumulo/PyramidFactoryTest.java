@@ -1,6 +1,5 @@
 package org.openeo.geotrellisaccumulo;
 
-import be.vito.eodata.geopysparkextensions.AccumuloDelegationTokenProvider;
 import geotrellis.layer.SpaceTimeKey;
 import geotrellis.proj4.CRS;
 import geotrellis.proj4.LatLng$;
@@ -42,7 +41,7 @@ public class PyramidFactoryTest {
         //creating context may have screwed up security settings
         UserGroupInformation.setConfiguration(config);
         Credentials creds = new Credentials();
-        new AccumuloDelegationTokenProvider().obtainCredentials(config, conf, creds);
+        //new AccumuloDelegationTokenProvider().obtainCredentials(config, conf, creds);
         UserGroupInformation.getCurrentUser().addCredentials(creds);
     }
 

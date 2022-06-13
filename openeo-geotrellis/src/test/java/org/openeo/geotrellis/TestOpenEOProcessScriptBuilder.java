@@ -1,10 +1,19 @@
 package org.openeo.geotrellis;
 
 import geotrellis.raster.*;
+import org.apache.spark.SparkConf;
+import org.apache.spark.SparkContext;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.mllib.linalg.Vectors;
+import org.apache.spark.mllib.regression.LabeledPoint;
+import org.apache.spark.mllib.tree.RandomForest;
+import org.apache.spark.mllib.tree.model.RandomForestModel;
 import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
 import scala.Function1;
 import scala.Int;
+import scala.Tuple2;
 import scala.collection.JavaConversions;
 import scala.collection.JavaConverters;
 import scala.collection.Seq;
@@ -354,6 +363,50 @@ public class TestOpenEOProcessScriptBuilder {
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1)));
         Tile res = result.apply(0);
         assertTileEquals(fillBitArrayTile(4, 3, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1), res);
+    }
+
+
+
+
+    @Test
+    public void testLogicalBetweenBytes() {
+        Object min = (byte) 9;
+        Object max = (byte) 11;
+        int[] expected = {0, 1, 1, 1, 0};
+        testBetween(min, max, expected,null);
+    }
+
+    @Test
+    public void testLogicalBetweenDoubles() {
+        Object min = (Double) 10.;
+        Object max = (Double) 14.;
+        int[] expected = {0, 0, 1, 1, 1};
+        testBetween(min, max, expected, false);
+    }
+
+    @Test
+    public void testLogicalBetweenDoublesExclude() {
+        Object min = (Double) 10.;
+        Object max = (Double) 12.;
+        int[] expected = {0, 0, 1, 1, 0};
+        testBetween(min, max, expected, true);
+    }
+
+    private void testBetween(Object min, Object max, int[] expected, Object excludeMax) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> args = map4("x",null,"min", min, "max", max, "exclude_max",excludeMax);
+        builder.expressionStart("between", args);
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        //builder.constantArgument("min", (byte) 9);
+        //builder.constantArgument("max", (byte) 11);
+        builder.expressionEnd("between", args);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        Tile tile1 = fillByteArrayTile(4, 3, 8, 9, 10, 11, 12);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1)));
+        Tile res = result.apply(0);
+        assertTileEquals(fillBitArrayTile(4, 3, expected), res);
     }
 
     private void testLogicalOperatorWithExpressionsArray(String operator, int... expectedValues) {
@@ -836,6 +889,65 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(tile_timestep0.cellType(), multiple_input.apply(0).cellType());
     }
 
+    @DisplayName("Test exp process")
+    @Test
+    public void testExp() {
+        testUnary( "exp", "p",1, 33.0, 0.0, 0.0,Double.NaN,1.0,1.0,1.0,1.0);
+    }
+
+    @DisplayName("Test int process")
+    @Test
+    public void testInt() {
+        testUnary( "int", "x",0.0, 3.0, 0.0, -3.0,Double.NaN,0.0,0.0,0.0,0.0);
+    }
+
+    private void testUnary( String processName, String argName, double... expectedValues) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.emptyMap();
+        builder.expressionStart(processName, arguments);
+        builder.argumentStart(argName);
+        builder.argumentEnd();
+        builder.expressionEnd(processName,arguments);
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+
+        Seq<Tile> result1 = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(fillFloatArrayTile(3, 3, 0, 3.5, -0.4, -3.5, Double.NaN))));
+
+        assertTileEquals(fillFloatArrayTile(3, 3, expectedValues), result1.head());
+
+    }
+
+    @DisplayName("Test 'is_nodata' and 'is_nan' processes")
+    @Test
+    public void testIsNoDataAndIsNan() {
+        // IsNoData
+        OpenEOProcessScriptBuilder isNoDataBuilder = new OpenEOProcessScriptBuilder();
+        isNoDataBuilder.expressionStart("is_nodata", dummyMap("x"));
+        isNoDataBuilder.argumentStart("x");
+        isNoDataBuilder.argumentEnd();
+        isNoDataBuilder.expressionEnd("is_nodata", dummyMap("x"));
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = isNoDataBuilder.generateFunction();
+        FloatArrayTile tile0 = FloatConstantNoDataArrayTile.empty(3, 3);
+        tile0.setDouble(0,0, 5.0);
+        tile0.setDouble(2,1, 4.0);
+        tile0.setDouble(2,2, 17.0);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile0)));
+        Tile res = result.apply(0);
+        int expected_values[] = {0, 1, 1, 1, 1, 0, 1, 1, 0};
+
+        assertTileEquals(fillBitArrayTile(3, 3, expected_values), res);
+
+        // IsNan
+        OpenEOProcessScriptBuilder isNanBuilder = new OpenEOProcessScriptBuilder();
+        isNanBuilder.expressionStart("is_nan", dummyMap("x"));
+        isNanBuilder.argumentStart("x");
+        isNanBuilder.argumentEnd();
+        isNanBuilder.expressionEnd("is_nan", dummyMap("x"));
+        Seq<Tile> result2 = isNanBuilder.generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile0)));
+
+        assertTileEquals(fillBitArrayTile(3, 3, expected_values), result2.head());
+    }
+
     @DisplayName("Test array_element process")
     @Test
     public void testArrayElement() {
@@ -856,6 +968,95 @@ public class TestOpenEOProcessScriptBuilder {
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
         Tile res = result.apply(0);
         assertTileEquals(tile1, res);
+    }
+
+    @DisplayName("Test array_find process")
+    @Test
+    public void testArrayFind() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.emptyMap();
+        builder.expressionStart("array_find", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.argumentStart("value");
+        Map<String, Object> valueArgs = Collections.singletonMap("index",1);
+        builder.expressionStart("array_element", valueArgs);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.argumentStart("index");
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_element",valueArgs);
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_find",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
+        ByteArrayTile expectedResult = ByteConstantNoDataArrayTile.fill((byte) 1, 4, 4);
+        assertTileEquals(expectedResult, result.head());
+
+
+    }
+
+    @DisplayName("Test array_find process reverse")
+    @Test
+    public void testArrayFindReverse() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.singletonMap("reverse",true);
+        builder.expressionStart("array_find", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.argumentStart("value");
+        Map<String, Object> valueArgs = Collections.singletonMap("index",1);
+        builder.expressionStart("array_element", valueArgs);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.argumentStart("index");
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_element",valueArgs);
+        builder.argumentEnd();
+        builder.constantArgument("reverse",true);
+
+        builder.expressionEnd("array_find",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1,tile1)));
+        ByteArrayTile expectedResult = ByteConstantNoDataArrayTile.fill((byte) 2, 4, 4);
+        assertTileEquals(expectedResult, result.head());
+
+
+    }
+
+    @DisplayName("Test array_find process no match")
+    @Test
+    public void testArrayFindNoMatch() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.emptyMap();
+        builder.expressionStart("array_find", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.constantArgument("value",100);
+
+        builder.expressionEnd("array_find",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+
+
+        Tile emptyResult = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1))).head();
+        assertTrue(emptyResult.isNoDataTile());
     }
 
     @DisplayName("Test array_modify process: insert")
@@ -1124,6 +1325,30 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(-3.0,even_input.apply(0).get(0,0));
     }
 
+    @DisplayName("Test sd process")
+    @Test
+    public void testStandardDeviation() {
+        Tile tile0 = FloatConstantNoDataArrayTile.fill((byte)1.0, 4, 4);
+        Tile tile1 = FloatConstantNoDataArrayTile.fill((byte)3.0, 4, 4);
+        Tile tile2 = FloatConstantNoDataArrayTile.fill((byte)-10.0, 4, 4);
+        Tile tile3 = FloatConstantNoDataArrayTile.fill((byte)19.0, 4, 4);
+        Tile nodataTile = FloatConstantNoDataArrayTile.empty(4, 4);
+
+        Seq<Tile> result = createStandardDeviation(null).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
+        assertEquals(FloatConstantNoDataArrayTile.empty(0, 0).cellType(), result.apply(0).cellType());
+
+        assertEquals(9.261029243469238,result.apply(0).getDouble(0,0));
+
+        Seq<Tile> result_nodata = createStandardDeviation(false).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)));
+        assertTrue(result_nodata.apply(0).isNoDataTile());
+
+        Seq<Tile> input1 = createStandardDeviation(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(), tile3)));
+        assertEquals(20.50609588623047, input1.apply(0).getDouble(0,0));
+
+        Seq<Tile> input2 = createStandardDeviation(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(),tile1, nodataTile)));
+        assertEquals(9.192388534545898, input2.apply(0).getDouble(0,0));
+    }
+
     @DisplayName("Test quantiles process")
     @Test
     public void testQuantiles() {
@@ -1220,6 +1445,121 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(3, result4.apply(0).get(0, 0));
     }
 
+    private Seq<Tile> predictWithDefaultRandomForestClassifier(scala.collection.mutable.Buffer<Tile> tiles, Random random) {
+        SparkConf conf = new SparkConf();
+        conf.setAppName("OpenEOTest");
+        conf.setMaster("local[1]");
+        //conf.set("spark.driver.bindAddress", "127.0.0.1");
+        conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
+        SparkContext.getOrCreate(conf);
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+
+        JavaSparkContext sc = JavaSparkContext.fromSparkContext(SparkContext.getOrCreate());
+        List<LabeledPoint> labels = new ArrayList<>();
+        int numberOfLabels = 100;
+        for (int labelIndex = 0; labelIndex < numberOfLabels; labelIndex++) {
+            double[] featureValues = new double[3];
+            for (int featureIndex = 0; featureIndex < featureValues.length; featureIndex++) {
+                featureValues[featureIndex] = random.nextDouble() * 10;
+            }
+            org.apache.spark.mllib.linalg.Vector features = Vectors.dense(featureValues);
+            labels.add(new LabeledPoint(random.nextInt(10), features));
+        }
+
+        JavaRDD<LabeledPoint> trainingData = sc.parallelize(labels);
+        int numClasses = 10;
+        Map<Integer, Integer> categoricalFeaturesInfo = new HashMap<>();
+        int numTrees = 3;
+        String featureSubsetStrategy = "auto";
+        String impurity = "gini";
+        int maxDepth = 4;
+        int maxBins = 32;
+        int seed = 42;
+        RandomForestModel model = RandomForest.trainClassifier(
+            trainingData, numClasses, categoricalFeaturesInfo,
+            numTrees, featureSubsetStrategy, impurity, maxDepth, maxBins, seed
+        );
+        java.util.Map<String, Object> arguments = new HashMap<>();
+        arguments.put("model", new HashMap<String, String>() {{ put("from_parameter", "context"); }});
+        arguments.put("data", "dummy");
+        builder.expressionStart("predict_random_forest", arguments);
+
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+
+        builder.expressionEnd("predict_random_forest",arguments);
+
+        Map<String, Object> javaContext = new HashMap<String, Object>() {{ put("context", model); }};
+        List<Tuple2<String, Object>> contextTuples = javaContext.entrySet().stream()
+                .map(e -> Tuple2.apply(e.getKey(), e.getValue()))
+                .collect(Collectors.toList());
+        scala.collection.immutable.Map<String, Object> scalaContext = scala.collection.immutable.Map$.MODULE$.apply(JavaConversions.asScalaBuffer(contextTuples).toSeq());
+
+        Seq<Tile> result = builder
+                .generateFunction(scalaContext)
+                .apply(tiles.toSeq());
+        SparkContext.getOrCreate().stop();
+        return result;
+    }
+
+
+    @DisplayName("Test predict_random_forest")
+    @Test
+    public void testPredictRandomForest() {
+        Random random = new Random(42);
+
+        FloatArrayTile tile0 = FloatArrayTile.empty(4,4);
+        FloatArrayTile tile1 = FloatArrayTile.empty(4,4);
+        FloatArrayTile tile2 = FloatArrayTile.empty(4,4);
+        for (int col = 0; col < 4; col++) {
+            for (int row = 0; row < 4; row++) {
+                tile0.setDouble(col, row, (random.nextDouble() * 10));
+                tile1.setDouble(col, row, (random.nextDouble() * 10));
+                tile2.setDouble(col, row, (random.nextDouble() * 10));
+            }
+        }
+        scala.collection.mutable.Buffer<Tile> tiles = JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1, tile2));
+        Seq<Tile> result = predictWithDefaultRandomForestClassifier(tiles, random);
+        assertEquals(FloatCellType.withDefaultNoData(),result.apply(0).cellType());
+        assertEquals(8, result.apply(0).get(0,0));
+        assertEquals(4, result.apply(0).get(0,1));
+        assertEquals(4, result.apply(0).get(0,2));
+        assertEquals(1, result.apply(0).get(3,2));
+        assertEquals(9, result.apply(0).get(3,3));
+    }
+
+    @DisplayName("Test predict_random_forest with the wrong arguments.")
+    @Test
+    public void testPredictRandomForestWithWrongArguments() {
+        Random random = new Random(42);
+
+        // Not enough features.
+        FloatArrayTile tile0 = FloatArrayTile.empty(4,4);
+        FloatArrayTile tile1 = FloatArrayTile.empty(4,4);
+        for (int col = 0; col < 4; col++) {
+            for (int row = 0; row < 4; row++) {
+                tile0.setDouble(col, row, (random.nextDouble() * 10));
+                tile1.setDouble(col, row, (random.nextDouble() * 10));
+            }
+        }
+        scala.collection.mutable.Buffer<Tile> tiles = JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1));
+        assertThrows(IllegalArgumentException.class, () -> predictWithDefaultRandomForestClassifier(tiles, random));
+
+        // NoData cells.
+        FloatArrayTile emptyTile0 = FloatArrayTile.empty(4,4);
+        FloatArrayTile emptyTile1 = FloatArrayTile.empty(4,4);
+        FloatArrayTile emptyTile2 = FloatArrayTile.empty(4,4);
+        scala.collection.mutable.Buffer<Tile> emptyTiles = JavaConversions.asScalaBuffer(Arrays.asList(emptyTile0, emptyTile1, emptyTile2));
+        Seq<Tile> result = predictWithDefaultRandomForestClassifier(emptyTiles, random);
+        double noDataValue = emptyTile0.get(0,0);
+        assertEquals(noDataValue, result.apply(0).get(0,0));
+        assertEquals(noDataValue, result.apply(0).get(0,1));
+        assertEquals(noDataValue, result.apply(0).get(0,2));
+        assertEquals(noDataValue, result.apply(0).get(3,2));
+        assertEquals(noDataValue, result.apply(0).get(3,3));
+    }
+
     static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Map<String, Object> arguments = ignoreNoData!=null? Collections.singletonMap("ignore_nodata",ignoreNoData.booleanValue()) : Collections.emptyMap();
@@ -1232,10 +1572,28 @@ public class TestOpenEOProcessScriptBuilder {
             builder.constantArgument("ignore_nodata",ignoreNoData.booleanValue());
         }
 
-
         builder.expressionEnd("median",arguments);
         return builder;
     }
+
+    static OpenEOProcessScriptBuilder createStandardDeviation(Boolean ignoreNoData) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = new HashMap<>();
+        if (ignoreNoData != null) arguments.put("ignore_nodata", ignoreNoData.booleanValue());
+        arguments.put("data", "dummy");
+        builder.expressionStart("sd", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+
+        if (ignoreNoData != null) {
+            builder.constantArgument("ignore_nodata",ignoreNoData.booleanValue());
+        }
+
+        builder.expressionEnd("sd",arguments);
+        return builder;
+    }
+
 
     static OpenEOProcessScriptBuilder createQuantiles(Boolean ignoreNoData, int qValue) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
@@ -1474,6 +1832,14 @@ public class TestOpenEOProcessScriptBuilder {
         return tile;
     }
 
+    private static FloatArrayTile fillFloatArrayTile(int cols, int rows, double... values) {
+        FloatArrayTile tile = FloatArrayTile.ofDim(cols, rows);
+        for (int i = 0; i < Math.min(cols * rows, values.length); i++) {
+            tile.setDouble(i % cols, i / cols, values[i]);
+        }
+        return tile;
+    }
+
     private static Map<String, Object> dummyMap(String... keys) {
         Map<String, Object> m = new HashMap<String, Object>();
         for (String key : keys) {
@@ -1509,6 +1875,18 @@ public class TestOpenEOProcessScriptBuilder {
         m.put(k1, v1);
         m.put(k2, v2);
         m.put(k3, v3);
+        return m;
+    }
+
+    /**
+     * Build 4-item Map<String, Object>
+     */
+    private static Map<String, Object> map4(String k1, Object v1, String k2, Object v2, String k3, Object v3, String k4, Object v4) {
+        Map<String, Object> m = new HashMap<String, Object>(3);
+        m.put(k1, v1);
+        m.put(k2, v2);
+        m.put(k3, v3);
+        m.put(k4, v4);
         return m;
     }
 

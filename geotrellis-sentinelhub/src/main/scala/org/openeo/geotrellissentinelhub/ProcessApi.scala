@@ -20,7 +20,7 @@ import scala.io.Source
 trait ProcessApi {
   def getTile(datasetId: String, projectedExtent: ProjectedExtent, date: ZonedDateTime, width: Int, height: Int,
               bandNames: Seq[String], sampleType: SampleType, additionalDataFilters: util.Map[String, Any],
-              processingOptions: util.Map[String, Any], accessToken: String): MultibandTile
+              processingOptions: util.Map[String, Any], accessToken: String): (MultibandTile, Double)
 }
 
 object DefaultProcessApi {
@@ -34,7 +34,7 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
   override def getTile(datasetId: String, projectedExtent: ProjectedExtent, date: ZonedDateTime, width: Int,
                        height: Int, bandNames: Seq[String], sampleType: SampleType,
                        additionalDataFilters: util.Map[String, Any],
-                       processingOptions: util.Map[String, Any], accessToken: String): MultibandTile = {
+                       processingOptions: util.Map[String, Any], accessToken: String): (MultibandTile, Double) = {
     val ProjectedExtent(extent, crs) = projectedExtent
     val epsgCode = crs.epsgCode.getOrElse(s"unsupported crs $crs")
 
@@ -115,12 +115,15 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
       .timeout(connTimeoutMs = 1000, readTimeoutMs = 40000)
       .postData(jsonData)
 
-    logger.info(s"Executing request: ${request.urlBuilder(request)}")
-
-    val response = withRetries(context = s"POST $url $jsonData") {
+    var processingUnitsSpent = 0.0
+    val response = withRetries(context = s"getTile $datasetId $date") {
       request.exec(parser = (code: Int, header: Map[String, IndexedSeq[String]], in: InputStream) =>
-        if (code == 200)
+        if (code == 200) {
+          processingUnitsSpent += header
+            .get("x-processingunits-spent").flatMap(_.headOption)
+            .getOrElse(math.max(0.001,width*height*bandNames.size/(512.0*512.0*3.0)).toString).toDouble
           GeoTiffReader.readMultiband(IOUtils.toByteArray(in))
+        }
         else {
           val textBody = Source.fromInputStream(in, "utf-8").mkString
           throw SentinelHubException(request, jsonData, code,
@@ -129,10 +132,10 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
       )
     }
 
-    response.body.tile
+    (response.body.tile
       .toArrayTile()
       // unless handled differently, NODATA pîxels are 0 according to
       // https://docs.sentinel-hub.com/api/latest/user-guides/datamask/#datamask---handling-of-pixels-with-no-data
-      .mapBands { case (_, tile) => tile.withNoData(Some(0)) }
+      .mapBands { case (_, tile) => tile.withNoData(Some(0)) }, processingUnitsSpent)
  }
 }

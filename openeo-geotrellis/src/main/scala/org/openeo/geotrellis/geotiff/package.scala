@@ -8,18 +8,20 @@ import geotrellis.raster.io.geotiff._
 import geotrellis.raster.io.geotiff.compression.{Compression, DeflateCompression}
 import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.render.IndexedColorMap
-import geotrellis.raster.resample.NearestNeighbor
+import geotrellis.raster.resample.{NearestNeighbor, Mode,Average,Max,Min,Median,Bilinear}
 import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.store.s3._
 import geotrellis.util._
 import geotrellis.vector.{ProjectedExtent, _}
+import org.apache.commons.io.FilenameUtils
 import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.AccumulatorV2
 import org.openeo.geotrellis
+import org.openeo.geotrellis.stac.STACItem
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
@@ -27,21 +29,23 @@ import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.core.retry.RetryPolicy
 import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy
 import software.amazon.awssdk.core.retry.conditions.{OrRetryCondition, RetryCondition}
+import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import spire.syntax.cfor.cfor
 
 import java.net.URI
 import java.nio.file.Paths
 import java.time.Duration
 import java.time.format.DateTimeFormatter
-import java.util.{ArrayList, Collections, Map}
+import java.util.{ArrayList, Collections, Map, List => JList}
 import scala.collection.JavaConverters._
 import scala.reflect._
 
 package object geotiff {
 
-  private val logger = LoggerFactory.getLogger(classOf[OpenEOProcesses])
+  private val logger = LoggerFactory.getLogger(getClass)
 
   class SetAccumulator[T](var value: Set[T]) extends AccumulatorV2[T, Set[T]] {
     def this() = this(Set.empty[T])
@@ -63,16 +67,16 @@ package object geotiff {
   )
 
   // ~ SpatialTiledRasterLayer in GeoPySpark but supports compression
-  def saveStitched(rdd: SRDD, path: String, compression: Compression): Unit =
+  def saveStitched(rdd: SRDD, path: String, compression: Compression): Extent =
     saveStitched(rdd, path, None, None, compression)
 
-  def saveStitched(rdd: SRDD, path: String, cropBounds: Map[String, Double], compression: Compression): Unit =
+  def saveStitched(rdd: SRDD, path: String, cropBounds: Map[String, Double], compression: Compression): Extent =
     saveStitched(rdd, path, Some(cropBounds), None, compression)
 
-  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, compression: Compression): java.util.List[String] =
+  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, compression: Compression): java.util.List[(String, Extent)] =
     saveStitchedTileGrid(rdd, path, tileGrid, None, None, compression)
 
-  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, cropBounds: Map[String, Double], compression: Compression): java.util.List[String] =
+  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, cropBounds: Map[String, Double], compression: Compression): java.util.List[(String, Extent)] =
     saveStitchedTileGrid(rdd, path, tileGrid, Some(cropBounds), None, compression)
 
   def saveRDDTiled(rdd:MultibandTileLayerRDD[SpaceTimeKey], path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]):Unit = {
@@ -91,20 +95,18 @@ package object geotiff {
    * @param zLevel
    * @param cropBounds
    */
-  def saveRDDTemporal(rdd:MultibandTileLayerRDD[SpaceTimeKey], path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent], formatOptions:GTiffOptions = new GTiffOptions): java.util.List[(String, String)] = {
+  def saveRDDTemporal(rdd:MultibandTileLayerRDD[SpaceTimeKey], path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent], formatOptions:GTiffOptions = new GTiffOptions): java.util.List[(String, String, Extent)] = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
     val preprocessedRdd: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = preProcessResult._3
 
-    val keyBounds = preprocessedRdd.metadata.bounds
-    val maxKey = keyBounds.get.maxKey.getComponent[SpatialKey]
-    val minKey = keyBounds.get.minKey.getComponent[SpatialKey]
-
     val tileLayout = preprocessedRdd.metadata.tileLayout
 
-    val totalCols = maxKey.col - minKey.col + 1
-    val totalRows = maxKey.row - minKey.row + 1
+    val totalCols = math.ceil(gridBounds.width.toDouble / tileLayout.tileCols).toInt
+    val totalRows = math.ceil(gridBounds.height.toDouble / tileLayout.tileRows).toInt
+
+    logger.info(s"Write Geotiff per date ${croppedExtent}, ${gridBounds}, ${tileLayout}")
 
     val compression = Deflate(zLevel)
     val bandSegmentCount = totalCols * totalRows
@@ -118,8 +120,8 @@ package object geotiff {
       (key, multibandTile.bands.map {
         tile =>
           bandIndex += 1
-          val layoutCol = key.getComponent[SpatialKey]._1 - minKey._1
-          val layoutRow = key.getComponent[SpatialKey]._2 - minKey._2
+          val layoutCol = key.getComponent[SpatialKey]._1
+          val layoutRow = key.getComponent[SpatialKey]._2
           val bandSegmentOffset = bandSegmentCount * bandIndex
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
           //tiff format seems to require that we provide 'full' tiles
@@ -141,7 +143,7 @@ package object geotiff {
       val thePath = Paths.get(path).resolve(tuple._1._1).toString
       writeTiff( thePath  ,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, tileLayout, compression, cellTypes.head, detectedBandCount, segmentCount,formatOptions)
       val (_, timestamp) = tuple._1
-      (thePath, timestamp)
+      (thePath, timestamp, croppedExtent)
     }).collect().toList.asJava
 
   }
@@ -156,8 +158,13 @@ package object geotiff {
 
   def preProcess[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K],cropBounds:Option[Extent]): (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = {
     val re = rdd.metadata.toRasterExtent()
+    /**
+     * CLAMPING EP-4150
+     * Gridbounds are clamped to the actually available rasterextent, this means that we don't add empty data if somehow a cropping bounds is provided that is larger than the actual datacube.
+     * CroppedExtent needs to match exactly with whatever gridbounds that we got, so there we do not clamp. So even though we clamp when computing gridbounds, it can still have an extent that is larger than rasterextent!!!
+     */
     var gridBounds = re.gridBoundsFor(cropBounds.getOrElse(rdd.metadata.extent), clamp = true)
-    val croppedExtent = re.extentFor(gridBounds, clamp = true)
+    val croppedExtent = re.extentFor(gridBounds, clamp = false)
     val filtered = new OpenEOProcesses().filterEmptyTile(rdd)
     val preprocessedRdd = {
       if (gridBounds.colMin != 0 || gridBounds.rowMin != 0) {
@@ -202,11 +209,21 @@ package object geotiff {
     val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3
 
     val compression = Deflate(zLevel)
-    val ( tiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, segmentCount: Int) = getCompressedTiles(preprocessedRdd, compression)
+    val ( tiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, segmentCount: Int) = getCompressedTiles(preprocessedRdd, gridBounds, compression)
 
     val overviews =
     if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
       //create overviews
+      val method = formatOptions.resampleMethod match {
+        case "near" => NearestNeighbor
+        case "mode" => Mode
+        case "average" => Average
+        case "bilinear" => Bilinear
+        case "max" => Max
+        case "min" => Min
+        case "med" => Median
+        case _ => NearestNeighbor
+      }
       val levels = LocalLayoutScheme.inferLayoutLevel(preprocessedRdd.metadata)
 
       if(levels>1) {
@@ -215,10 +232,11 @@ package object geotiff {
         var nextOverviewLevel: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preprocessedRdd
         var nextZoom = -1
         val overviews = (1 to levels).reverse.map( level=>{
-          var zoom_rdd = Pyramid.up(nextOverviewLevel,scheme,level)
+          var zoom_rdd = Pyramid.up(nextOverviewLevel,scheme,level,Pyramid.Options(resampleMethod = method))
           nextOverviewLevel = zoom_rdd._2
-          val ( overViewTiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, overViewSegmentCount: Int) = getCompressedTiles(nextOverviewLevel, compression)
-          val overviewTiff = toTiff(overViewTiffs, nextOverviewLevel.metadata.gridBoundsFor(croppedExtent,clamp=true).toGridType[Int], nextOverviewLevel.metadata.tileLayout, compression, cellType, detectedBandCount, overViewSegmentCount)
+          val overViewGridBounds = nextOverviewLevel.metadata.gridBoundsFor(croppedExtent, clamp = true).toGridType[Int]
+          val ( overViewTiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, overViewSegmentCount: Int) = getCompressedTiles(nextOverviewLevel,overViewGridBounds, compression)
+          val overviewTiff = toTiff(overViewTiffs, overViewGridBounds, nextOverviewLevel.metadata.tileLayout, compression, cellType, detectedBandCount, overViewSegmentCount)
           overviewTiff
         })
 
@@ -238,19 +256,20 @@ package object geotiff {
     }else{
       Nil
     }
+
+    val stacItemPath = FilenameUtils.removeExtension(path) + "_item.json"
+    val metadata = new STACItem()
+    metadata.asset(path)
+    metadata.write(stacItemPath)
     writeTiff( path,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, preprocessedRdd.metadata.tileLayout, compression, cellType, detectedBandCount, segmentCount,formatOptions = formatOptions, overviews = overviews)
     return Collections.singletonList(path)
   }
 
-  private def getCompressedTiles[K: SpatialComponent : Boundable : ClassTag](preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]], compression: Compression) = {
-    val keyBounds = preprocessedRdd.metadata.bounds
-    val maxKey = keyBounds.get.maxKey.getComponent[SpatialKey]
-    val minKey = keyBounds.get.minKey.getComponent[SpatialKey]
-
+  private def getCompressedTiles[K: SpatialComponent : Boundable : ClassTag](preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]],gridBounds: GridBounds[Int], compression: Compression) = {
     val tileLayout = preprocessedRdd.metadata.tileLayout
 
-    val totalCols = maxKey.col - minKey.col + 1
-    val totalRows = maxKey.row - minKey.row + 1
+    val totalCols = math.ceil(gridBounds.width.toDouble / tileLayout.tileCols).toInt
+    val totalRows = math.ceil(gridBounds.height.toDouble / tileLayout.tileRows).toInt
 
     val cols = tileLayout.tileCols
     val rows = tileLayout.tileRows
@@ -274,8 +293,8 @@ package object geotiff {
       multibandTile.bands.map {
         tile => {
           bandIndex += 1
-          val layoutCol = key.getComponent[SpatialKey]._1 - minKey._1
-          val layoutRow = key.getComponent[SpatialKey]._2 - minKey._2
+          val layoutCol = key.getComponent[SpatialKey]._1
+          val layoutRow = key.getComponent[SpatialKey]._2
           val bandSegmentOffset = bandSegmentCount * bandIndex
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
 
@@ -335,7 +354,7 @@ package object geotiff {
 
           (name, extent, tileBounds)
         }.filter { case (_, _, tileBounds) =>
-          if (KeyBounds(tileBounds).includes(key.getComponent[SpatialKey]())) true else false
+          if (KeyBounds(tileBounds).includes(key.getComponent[SpatialKey])) true else false
         }.map { case (name, extent, tileBounds) =>
           val re = preprocessedRdd.metadata.toRasterExtent()
           val gridBounds = re.gridBoundsFor(extent, clamp = true)
@@ -347,11 +366,10 @@ package object geotiff {
         //The part below is probably wrong: each tile in a fixed tilegrid, will have it's own 'tilelayout', while here
         //we use the global tilelayout of the RDD.
         val keyBounds = KeyBounds(tileBounds)
-        val maxKey = keyBounds.get.maxKey.getComponent[SpatialKey]
         val minKey = keyBounds.get.minKey.getComponent[SpatialKey]
 
-        val totalCols = maxKey.col - minKey.col + 1
-        val totalRows = maxKey.row - minKey.row + 1
+        val totalCols = math.ceil(gridBounds.width.toDouble / tileLayout.tileCols).toInt
+        val totalRows = math.ceil(gridBounds.height.toDouble / tileLayout.tileRows).toInt
 
         val bandSegmentCount = totalCols * totalRows
         val someTile = tiles.head._2
@@ -404,7 +422,7 @@ package object geotiff {
       new GeoTiffOptions(colorSpace = theColorspace)
     }
 
-    val thegeotiff = new MultibandGeoTiff(tiffTile, croppedExtent, crs,formatOptions.tags,options,overviews = overviews.map(o=>MultibandGeoTiff(o,croppedExtent,crs,options = new GeoTiffOptions(subfileType = Some(ReducedImage)))))//.withOverviews(NearestNeighbor, List(4, 8, 16))
+    val thegeotiff = new MultibandGeoTiff(tiffTile, croppedExtent, crs,formatOptions.tags,options,overviews = overviews.map(o=>MultibandGeoTiff(o,croppedExtent,crs,options = options.copy(subfileType = Some(ReducedImage)))))//.withOverviews(NearestNeighbor, List(4, 8, 16))
 
     writeGeoTiff(thegeotiff, path)
   }
@@ -449,8 +467,7 @@ package object geotiff {
                     path: String,
                     cropBounds: Option[Map[String, Double]],
                     cropDimensions: Option[ArrayList[Int]],
-                    compression: Compression)
-  : Unit = {
+                    compression: Compression): Extent = {
     val contextRDD = ContextRDD(rdd, rdd.metadata)
 
     val stitched: Raster[MultibandTile] = contextRDD.stitch()
@@ -477,6 +494,7 @@ package object geotiff {
       .withOverviews(NearestNeighbor, List(4, 8, 16))
 
     writeGeoTiff(geoTiff, path)
+    adjusted.extent
   }
 
   def saveStitchedTileGrid(
@@ -486,7 +504,7 @@ package object geotiff {
                             cropBounds: Option[Map[String, Double]],
                             cropDimensions: Option[ArrayList[Int]],
                             compression: Compression)
-  : java.util.List[String] = {
+  : java.util.List[(String, Extent)] = {
     val features = TileGrid.computeFeaturesForTileGrid(tileGrid, ProjectedExtent(rdd.metadata.extent,rdd.metadata.crs))
 
     def newFilePath(path: String, tileId: String) = {
@@ -512,18 +530,18 @@ package object geotiff {
       .map { case ((name, extent), tiles) =>
         val filePath = newFilePath(path, name)
 
-        stitchAndWriteToTiff(tiles, filePath, layout, crs, extent, croppedExtent, cropDimensions, compression)
+        (stitchAndWriteToTiff(tiles, filePath, layout, crs, extent, croppedExtent, cropDimensions, compression), extent)
       }.collect()
       .toList.asJava
   }
 
-  private def stitchAndWriteToTiff(tiles: Iterable[(SpatialKey, MultibandTile)], filePath: String, layout: LayoutDefinition, crs: CRS, extent: Extent, croppedExtent: Option[Extent], cropDimensions: Option[java.util.ArrayList[Int]], compression: Compression) = {
+  private def stitchAndWriteToTiff(tiles: Iterable[(SpatialKey, MultibandTile)], filePath: String, layout: LayoutDefinition, crs: CRS, geometry: Geometry, croppedExtent: Option[Extent], cropDimensions: Option[java.util.ArrayList[Int]], compression: Compression) = {
     val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).stitch()
 
     val re = raster.rasterExtent
-    val alignedExtent = re.createAlignedGridExtent(extent).extent
+    val alignedExtent = re.createAlignedGridExtent(geometry.extent).extent
 
-    val stitched: Raster[MultibandTile] = raster.crop(alignedExtent)
+    val stitched: Raster[MultibandTile] = raster.mask(geometry).crop(alignedExtent)
 
     //TODO this additional cropping + resampling might not be needed, as a tile grid already defines a clear cropping
     val adjusted = {
@@ -551,19 +569,19 @@ package object geotiff {
   }
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                                   path: String,
+                  path: String,
                   polygons:ProjectedPolygons,
-                  sampleNames: ArrayList[String],
-                                   compression: Compression): java.util.List[(String, String)] = {
-    val features = sampleNames.asScala.toList.zip(polygons.polygons.map(_.extent))
+                  sampleNames: JList[String],
+                                   compression: Compression): JList[(String, String, Extent)] = {
+    val reprojected = ProjectedPolygons.reproject(polygons, rdd.metadata.crs)
+    val features = sampleNames.asScala.zip(reprojected.polygons)
     groupByFeatureAndWriteToTiff(rdd, Option.empty, features,path, Option.empty,compression)
-
 }
 
   def saveStitchedTileGridTemporal( rdd:MultibandTileLayerRDD[SpaceTimeKey],
                                     path:String,
                                     tileGrid: String,
-                                    compression: Compression) : java.util.List[(String, String)] =
+                                    compression: Compression) : java.util.List[(String, String, Extent)] =
     geotrellis.geotiff.saveStitchedTileGridTemporal(rdd,path,tileGrid, Option.empty, Option.empty, compression)
 
   def saveStitchedTileGridTemporal(
@@ -572,50 +590,61 @@ package object geotiff {
                             tileGrid: String,
                             cropBounds: Option[Map[String, Double]],
                             cropDimensions: Option[ArrayList[Int]],
-                            compression: Compression): java.util.List[(String, String)] = {
+                            compression: Compression): java.util.List[(String, String, Extent)] = {
     val features = TileGrid.computeFeaturesForTileGrid(tileGrid, ProjectedExtent(rdd.metadata.extent, rdd.metadata.crs))
+      .map { case (s, extent) => (s, extent.toPolygon()) }
     groupByFeatureAndWriteToTiff(rdd, cropBounds, features,path,cropDimensions, compression)
   }
 
-  private def groupByFeatureAndWriteToTiff(rdd: MultibandTileLayerRDD[SpaceTimeKey], cropBounds: Option[java.util.Map[String, Double]], features: List[(String, Extent)],path:String,cropDimensions: Option[ArrayList[Int]],
-                                           compression: Compression): java.util.List[(String, String)] = {
-    val featuresBC: Broadcast[List[(String, Extent)]] = SparkContext.getOrCreate().broadcast(features)
+  private def groupByFeatureAndWriteToTiff(rdd: MultibandTileLayerRDD[SpaceTimeKey], cropBounds: Option[java.util.Map[String, Double]], features: Seq[(String, Geometry)],path:String,cropDimensions: Option[ArrayList[Int]],
+                                           compression: Compression): java.util.List[(String, String, Extent)] = {
+    val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
 
     val croppedExtent = cropBounds.map(toExtent)
 
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
-    rdd.flatMap {
-      case (key, tile) => featuresBC.value.filter { case (_, extent) =>
-        val tileBounds = layout.mapTransform(extent)
 
-        if (KeyBounds(tileBounds).includes(key.spatialKey)) true else false
-      }.map { case (name, extent) =>
-        ((name, TemporalProjectedExtent(extent, crs, key.time)), (key.spatialKey, tile))
+    rdd
+      .flatMap { case (key, tile) => featuresBC.value
+        .filter { case (_, geometry) => layout.mapTransform.keysForGeometry(geometry) contains key.spatialKey }
+        .map { case (name, geometry) => ((name, (geometry, key.time)), (key.spatialKey, tile)) }
       }
-    }.groupByKey()
-      .map { case ((name, extent), tiles) =>
-
-        val filename = s"openEO_${DateTimeFormatter.ISO_DATE.format(extent.time)}_${name}.tif"
+      .groupByKey()
+      .map { case ((name, (geometry, time)), tiles) =>
+        val filename = s"openEO_${DateTimeFormatter.ISO_DATE.format(time)}_$name.tif"
         val filePath = Paths.get(path).resolve(filename).toString
-        val timestamp = extent.time format DateTimeFormatter.ISO_ZONED_DATE_TIME
-        (stitchAndWriteToTiff(tiles, filePath, layout, crs, extent.extent, croppedExtent, cropDimensions, compression),
-          timestamp)
-      }.collect()
+        val timestamp = time format DateTimeFormatter.ISO_ZONED_DATE_TIME
+        (stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression),
+          timestamp, geometry.extent)
+      }
+      .collect()
       .toList.asJava
   }
 
   private def writeGeoTiff(geoTiff: MultibandGeoTiff, path: String): String = {
-    if (path.startsWith("s3://")) {
-      val s3Uri = new AmazonS3URI(path)
-      geoTiff.write(s3Uri, getCreoS3Client())
+    if (path.startsWith("s3:/")) {
+      val correctS3Path = path.replaceFirst("s3:/(?!/)", "s3://")
+      val s3Uri = new AmazonS3URI(correctS3Path)
+
+      import java.nio.file.Files
+
+      val tempFile = Files.createTempFile(null, null)
+      geoTiff.write(tempFile.toString, optimizedOrder = true)
+      val objectRequest = PutObjectRequest.builder
+        .bucket(s3Uri.getBucket)
+        .key(s3Uri.getKey)
+        .build
+
+      getCreoS3Client().putObject(objectRequest, RequestBody.fromFile(tempFile))
+
     } else {
       geoTiff.write(path, optimizedOrder = true)
     }
     path
   }
 
-  private def getCreoS3Client(): S3Client = {
+  def getCreoS3Client(): S3Client = {
     val retryCondition =
       OrRetryCondition.create(
         RetryCondition.defaultRetryCondition(),

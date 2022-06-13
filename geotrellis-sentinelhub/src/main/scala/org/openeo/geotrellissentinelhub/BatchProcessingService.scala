@@ -13,16 +13,19 @@ object BatchProcessingService {
   case class NoSuchFeaturesException(message: String) extends IllegalArgumentException(message)
 }
 
-// TODO: snake_case for these arguments
-class BatchProcessingService(endpoint: String, val bucketName: String, clientId: String, clientSecret: String) {
+class BatchProcessingService(endpoint: String, val bucketName: String, authorizer: Authorizer) {
   import BatchProcessingService._
 
-  private def authorized[R](fn: String => R): R =
-    org.openeo.geotrellissentinelhub.authorized[R](clientId, clientSecret)(fn)
+  // convenience method for Python client
+  def this(endpoint: String, bucket_name: String, client_id: String, client_secret: String) =
+    this(endpoint, bucket_name,
+      new MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(client_id, client_secret))
+
+  private def authorized[R](fn: String => R): R = authorizer.authorized(fn)
 
   def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
                           to_date: String, band_names: util.List[String], sampleType: SampleType,
-                          metadata_properties: util.Map[String, Any],
+                          metadata_properties: util.Map[String, util.Map[String, Any]],
                           processing_options: util.Map[String, Any], subfolder: String): String = {
     val polygons = Array(MultiPolygon(bbox.toPolygon()))
     val polygonsCrs = CRS.fromName(bbox_srs)
@@ -33,7 +36,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
 
   def start_batch_process(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String, from_date: String,
                           to_date: String, band_names: util.List[String], sampleType: SampleType,
-                          metadata_properties: util.Map[String, Any],
+                          metadata_properties: util.Map[String, util.Map[String, Any]],
                           processing_options: util.Map[String, Any]): String = {
     start_batch_process(collection_id, dataset_id, bbox, bbox_srs, from_date, to_date, band_names, sampleType,
       metadata_properties, processing_options, subfolder = null)
@@ -41,14 +44,14 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
 
   def start_batch_process(collection_id: String, dataset_id: String, polygons: Array[MultiPolygon],
                           crs: CRS, from_date: String, to_date: String, band_names: util.List[String],
-                          sampleType: SampleType, metadata_properties: util.Map[String, Any],
+                          sampleType: SampleType, metadata_properties: util.Map[String, util.Map[String, Any]],
                           processing_options: util.Map[String, Any]): String =
     start_batch_process(collection_id, dataset_id, polygons, crs, from_date, to_date, band_names,
       sampleType, metadata_properties, processing_options, subfolder = null)
 
   def start_batch_process(collection_id: String, dataset_id: String, polygons: Array[MultiPolygon],
                           crs: CRS, from_date: String, to_date: String, band_names: util.List[String],
-                          sampleType: SampleType, metadata_properties: util.Map[String, Any],
+                          sampleType: SampleType, metadata_properties: util.Map[String, util.Map[String, Any]],
                           processing_options: util.Map[String, Any], subfolder: String): String = {
     // TODO: implement retries
     // workaround for bug where upper bound is considered inclusive in OpenEO
@@ -58,8 +61,9 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     val multiPolygonCrs = crs
 
     val dateTimes = authorized { accessToken =>
-      new DefaultCatalogApi(endpoint).dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
-        accessToken, toQueryProperties(dataFilters = metadata_properties))
+      val catalogApi = if (collection_id == null) new MadeToMeasureCatalogApi else new DefaultCatalogApi(endpoint)
+      catalogApi.dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
+        accessToken, Criteria.toQueryProperties(metadata_properties))
     }
 
     if (dateTimes.isEmpty)
@@ -80,7 +84,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
         dateTimes,
         band_names.asScala,
         sampleType,
-        additionalDataFilters = metadata_properties,
+        additionalDataFilters = Criteria.toDataFilters(metadata_properties),
         processing_options,
         bucketName,
         description = s"$dataset_id ${polygons.length} $from_date $to_date $band_names",
@@ -96,7 +100,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
 
   def start_batch_process_cached(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
                                  from_date: String, to_date: String, band_names: util.List[String],
-                                 sampleType: SampleType, metadata_properties: util.Map[String, Any],
+                                 sampleType: SampleType, metadata_properties: util.Map[String, util.Map[String, Any]],
                                  processing_options: util.Map[String, Any], subfolder: String,
                                  collecting_folder: String): String = {
     val polygons = Array(MultiPolygon(bbox.toPolygon()))
@@ -109,7 +113,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
   // TODO: move to the CachingService? What about the call to start_batch_process() then?
   def start_batch_process_cached(collection_id: String, dataset_id: String, polygons: Array[MultiPolygon],
                                  crs: CRS, from_date: String, to_date: String, band_names: util.List[String],
-                                 sampleType: SampleType, metadata_properties: util.Map[String, Any],
+                                 sampleType: SampleType, metadata_properties: util.Map[String, util.Map[String, Any]],
                                  processing_options: util.Map[String, Any], subfolder: String,
                                  collecting_folder: String): String = {
     require(metadata_properties.isEmpty, "metadata_properties are not supported yet")
@@ -139,8 +143,8 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
 
   def start_card4l_batch_processes(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
                                    from_date: String, to_date: String, band_names: util.List[String],
-                                   dem_instance: String, metadata_properties: util.Map[String, Any], subfolder: String,
-                                   request_group_id: String): util.List[String] = {
+                                   dem_instance: String, metadata_properties: util.Map[String, util.Map[String, Any]],
+                                   subfolder: String, request_group_id: String): util.List[String] = {
     val polygons = Array(MultiPolygon(bbox.toPolygon()))
     val polygonsCrs = CRS.fromName(bbox_srs)
 
@@ -150,8 +154,8 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
 
   def start_card4l_batch_processes(collection_id: String, dataset_id: String, polygons: Array[MultiPolygon],
                                    crs: CRS, from_date: String, to_date: String, band_names: util.List[String],
-                                   dem_instance: String, metadata_properties: util.Map[String, Any], subfolder: String,
-                                   request_group_id: String): util.List[String] = {
+                                   dem_instance: String, metadata_properties: util.Map[String, util.Map[String, Any]],
+                                   subfolder: String, request_group_id: String): util.List[String] = {
     // TODO: add error handling
     val geometry = simplify(polygons).reproject(crs, LatLng)
     val geometryCrs = LatLng
@@ -162,7 +166,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
     // original features that overlap in space and time
     val features = authorized { accessToken =>
       new DefaultCatalogApi(endpoint).searchCard4L(collection_id, geometry, geometryCrs, from, to,
-        accessToken, toQueryProperties(dataFilters = metadata_properties))
+        accessToken, Criteria.toQueryProperties(metadata_properties))
     }
 
     // their intersections with input polygons (all should be in LatLng)
@@ -185,7 +189,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, clientId:
             dataTakeId(id),
             card4lId = request_group_id,
             dem_instance,
-            additionalDataFilters = metadata_properties,
+            additionalDataFilters = Criteria.toDataFilters(metadata_properties),
             bucketName,
             subfolder,
             accessToken

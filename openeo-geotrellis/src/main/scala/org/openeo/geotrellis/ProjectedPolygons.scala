@@ -12,21 +12,26 @@ import java.net.{MalformedURLException, URL}
 import scala.collection.JavaConverters._
 import scala.io.Source
 
-case class ProjectedPolygons(polygons: Array[MultiPolygon], crs: CRS) {
+case class ProjectedPolygons(geometries: Array[Geometry], crs: CRS) {
   def areaInSquareMeters: Double = ProjectedPolygons.areaInSquareMeters(GeometryCollection(polygons), crs)
 
+  def polygons: Array[MultiPolygon] = geometries.filter(_.isInstanceOf[MultiPolygon]).map(_.asInstanceOf[MultiPolygon])
   def extent: ProjectedExtent = ProjectedExtent(polygons.toSeq.extent,crs)
 }
 
 object ProjectedPolygons {
   private type JList[T] = java.util.List[T]
 
+  def apply(polygons: Array[MultiPolygon], crs: CRS): ProjectedPolygons = {
+    ProjectedPolygons(polygons.toArray[Geometry], crs)
+  }
+
   def apply(polygons: Seq[Polygon], crs: String): ProjectedPolygons = {
-    ProjectedPolygons(polygons.map(MultiPolygon(_)).toArray, CRS.fromName(crs))
+    ProjectedPolygons(polygons.map(MultiPolygon(_)).toArray[Geometry], CRS.fromName(crs))
   }
 
   def fromWkt(polygon_wkts: JList[String], polygons_srs: String): ProjectedPolygons = {
-    val polygons = polygon_wkts.asScala.map(parsePolygonWkt).toArray
+    val polygons = polygon_wkts.asScala.map(parsePolygonWkt).toArray[Geometry]
     val crs: CRS = CRS.fromName(polygons_srs)
     ProjectedPolygons(polygons, crs)
   }
@@ -46,13 +51,13 @@ object ProjectedPolygons {
   }
 
   def reproject(projectedPolygons: ProjectedPolygons, targetCRS: CRS): ProjectedPolygons = {
-    ProjectedPolygons(projectedPolygons.polygons.map {
+    ProjectedPolygons(projectedPolygons.geometries.map {
       _.reproject(projectedPolygons.crs, targetCRS)
     }, targetCRS)
   }
 
   def fromExtent(extent:Extent, crs:String): ProjectedPolygons = {
-    ProjectedPolygons(Array(MultiPolygon(extent.toPolygon())),CRS.fromName(crs))
+    ProjectedPolygons(Array[Geometry](MultiPolygon(extent.toPolygon())),CRS.fromName(crs))
   }
 
   def fromVectorFile(vector_file: String): ProjectedPolygons = {
@@ -80,7 +85,7 @@ object ProjectedPolygons {
       val featureCount = ds.getCount(Query.ALL)
       require(featureCount < Int.MaxValue)
 
-      val simpleFeatures = new Array[MultiPolygon](featureCount.toInt)
+      val simpleFeatures = new Array[Geometry](featureCount.toInt)
 
       for (i <- simpleFeatures.indices) {
         val multiPolygon = ftItr.next().getAttribute(0) match {
@@ -126,7 +131,8 @@ object ProjectedPolygons {
         from(0)
       }
 
-      def asMultiPolygons(geometry: Geometry): Array[MultiPolygon] = geometry match {
+      def asMultiPolygons(geometry: Geometry): Array[Geometry] = geometry match {
+        case point: Point => Array(point)
         case polygon: Polygon => Array(MultiPolygon(polygon))
         case multiPolygon: MultiPolygon => Array(multiPolygon)
         case geometryCollection: GeometryCollection => children(geometryCollection).map {
@@ -149,6 +155,13 @@ object ProjectedPolygons {
     ProjectedPolygons(multiPolygons, LatLng)
   }
 
+  /**
+   * TODO: we had a very strange problem in a python unit test where this method was returning different results across multiple runs.
+   * This method seems top assume that the input is always in EPSG:4326
+   * @param geometry
+   * @param crs
+   * @return
+   */
   private def areaInSquareMeters(geometry: Geometry, crs: CRS): Double = {
     val bounds = geometry.extent
     val targetCrs = CRS.fromString(s"+proj=aea +lat_0=0 +lon_0=0 +lat_1=${bounds.ymin} +lat_2=${bounds.ymax} +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs")

@@ -17,7 +17,7 @@ import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrellis.{LayerFixtures, geotiff}
 
 import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
-import scala.collection.JavaConversions._
+import scala.collection.JavaConverters._
 
 object TileGridTest {
   private var sc: SparkContext = _
@@ -57,18 +57,20 @@ class TileGridTest {
       .toSpatial()
       .persist(DISK_ONLY)
 
-    val paths = geotiff.saveStitchedTileGrid(spatialLayer, "/tmp/testSaveStitched.tiff", "10km", DeflateCompression(6))
-    val expectedPaths = List("/tmp/testSaveStitched-31UDS_3_4.tiff", "/tmp/testSaveStitched-31UDS_2_4.tiff", "/tmp/testSaveStitched-31UDS_3_5.tiff", "/tmp/testSaveStitched-31UDS_2_5.tiff")
+    val tiles = geotiff.saveStitchedTileGrid(spatialLayer, "/tmp/testSaveStitched.tiff", "10km", DeflateCompression(6))
+    val expectedPaths = Set("/tmp/testSaveStitched-31UDS_3_4.tiff", "/tmp/testSaveStitched-31UDS_2_4.tiff", "/tmp/testSaveStitched-31UDS_3_5.tiff", "/tmp/testSaveStitched-31UDS_2_5.tiff")
 
-    Assert.assertEquals(paths.groupBy(identity), expectedPaths.groupBy(identity))
+    // TODO: check if extents (in the layer CRS) are 10000m wide/high (in UTM)
+    Assert.assertEquals(expectedPaths, tiles.asScala.map { case (path, _) => path }.toSet)
 
     val extent = bbox.reproject(spatialLayer.metadata.crs)
     val cropBounds = mapAsJavaMap(Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax))
 
-    val croppedPaths = geotiff.saveStitchedTileGrid(spatialLayer, "/tmp/testSaveStitched_cropped.tiff", "10km", cropBounds, DeflateCompression(6))
-    val expectedCroppedPaths = List("/tmp/testSaveStitched_cropped-31UDS_3_4.tiff", "/tmp/testSaveStitched_cropped-31UDS_2_4.tiff", "/tmp/testSaveStitched_cropped-31UDS_3_5.tiff", "/tmp/testSaveStitched_cropped-31UDS_2_5.tiff")
+    val croppedTiles = geotiff.saveStitchedTileGrid(spatialLayer, "/tmp/testSaveStitched_cropped.tiff", "10km", cropBounds, DeflateCompression(6))
+    val expectedCroppedPaths = Set("/tmp/testSaveStitched_cropped-31UDS_3_4.tiff", "/tmp/testSaveStitched_cropped-31UDS_2_4.tiff", "/tmp/testSaveStitched_cropped-31UDS_3_5.tiff", "/tmp/testSaveStitched_cropped-31UDS_2_5.tiff")
 
-    Assert.assertEquals(croppedPaths.groupBy(identity), expectedCroppedPaths.groupBy(identity))
+    // TODO: also check extents
+    Assert.assertEquals(expectedCroppedPaths, croppedTiles.asScala.map { case (path, _) => path }.toSet)
   }
 
 
@@ -77,9 +79,9 @@ class TileGridTest {
     val utm31 = CRS.fromEpsgCode(32631)
     val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31),utm31)
     val features = TileGrid.computeFeaturesForTileGrid("20km", bbox)
-    Assert.assertEquals(1,features.size)
-    Assert.assertEquals(features.get(0)._1,"31UDS_1_2")
-    val extent = features.get(0)._2
+    Assert.assertEquals(1, features.size)
+    Assert.assertEquals("31UDS_1_2", features.head._1)
+    val extent = features.head._2
 
     Assert.assertEquals(extent.xmin,420000.0,0.01)
     Assert.assertEquals(extent.ymin,5640000.0,0.01)
@@ -124,15 +126,15 @@ class TileGridTest {
 
     val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
 
-    val timedStampedPaths = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6))
-    val expectedTimestampedPaths = List(
+    val tiles = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6))
+    val expectedTiles = Set(
       ("/tmp/openEO_2020-04-05Z_31UDS_3_4.tif", isoFormattedDate),
       ("/tmp/openEO_2020-04-05Z_31UDS_2_4.tif", isoFormattedDate),
       ("/tmp/openEO_2020-04-05Z_31UDS_3_5.tif", isoFormattedDate),
       ("/tmp/openEO_2020-04-05Z_31UDS_2_5.tif", isoFormattedDate)
     )
 
-    Assert.assertEquals(timedStampedPaths.groupBy(identity), expectedTimestampedPaths.groupBy(identity))
+    Assert.assertEquals(expectedTiles, tiles.asScala.map { case (path, timestamp, _) => (path, timestamp) }.toSet)
 
   }
 

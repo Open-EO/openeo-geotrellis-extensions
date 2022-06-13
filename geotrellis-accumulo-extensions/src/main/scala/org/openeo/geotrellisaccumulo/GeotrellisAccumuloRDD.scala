@@ -33,11 +33,12 @@ import org.apache.hadoop.io.Writable
 import org.apache.hadoop.mapred.{JobConf, SplitLocationInfo}
 import org.apache.hadoop.mapreduce._
 import org.apache.hadoop.mapreduce.task.{JobContextImpl, TaskAttemptContextImpl}
+import org.apache.hadoop.security.UserGroupInformation
 import org.apache.hadoop.security.token.Token
 import org.apache.spark._
-import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
+import org.apache.spark.util.TaskCompletionListener
 
 class NewHadoopPartition(
     rddId: Int,
@@ -169,7 +170,8 @@ class GeotrellisAccumuloRDD(
     }
 
     val jobContext = new JobContextImpl(serialized_conf, jobId)
-    SparkHadoopUtil.get.addCredentials(jobContext.getConfiguration.asInstanceOf[JobConf])
+    val jobCreds = jobContext.getCredentials()
+    jobCreds.mergeAll(UserGroupInformation.getCurrentUser().getCredentials())
 
     val token = ConfiguratorBase.getAuthenticationToken(classOf[AccumuloInputFormat], jobContext.getConfiguration)
     if (token.isInstanceOf[DelegationTokenImpl]) {
@@ -207,7 +209,9 @@ class GeotrellisAccumuloRDD(
       reader.initialize(split.serializableHadoopSplit.value, hadoopAttemptContext)
 
       // Register an on-task-completion callback to close the input stream.
-      context.addTaskCompletionListener(context => close())
+      context.addTaskCompletionListener(new TaskCompletionListener {
+        override def onTaskCompletion(context: TaskContext): Unit = close()
+      })
       var havePair = false
       var finished = false
       var recordsSinceMetricsUpdate = 0
@@ -236,7 +240,7 @@ class GeotrellisAccumuloRDD(
         (reader.getCurrentKey, reader.getCurrentValue)
       }
 
-      private def close() {
+      private def close(): Unit = {
         if (reader != null) {
           // Close the reader and release it. Note: it's very important that we don't close the
           // reader more than once, since that exposes us to MAPREDUCE-5918 when running against

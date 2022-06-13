@@ -1,5 +1,7 @@
 package org.openeo.geotrelliscommon
 
+import scala.collection.JavaConverters._
+
 object OpenEORasterCubeMetadata{
 
   def apply(): OpenEORasterCubeMetadata ={
@@ -15,8 +17,10 @@ class OpenEORasterCubeMetadata(var bands: Seq[String]) extends Serializable {
   var inputProducts:Seq[be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Feature] = _
 
 
-  def setBandNames(names:Array[String]):Unit = {
-    bands = names.toSeq
+  def setBandNames(names:java.util.List[String]):Unit = {
+    bands = names.asScala
   }
+
+  def bandCount: Int = bands.size
 
 }

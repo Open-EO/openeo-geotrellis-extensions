@@ -1,30 +1,23 @@
 package org.openeo.geotrellissentinelhub
 
-import geotrellis.raster.io.geotiff.SinglebandGeoTiff
+import geotrellis.raster.io.geotiff.compression.DeflateCompression
+import geotrellis.raster.io.geotiff.{GeoTiffOptions, SinglebandGeoTiff, Tags}
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
 import geotrellis.vector.Geometry
 import org.apache.commons.io.FileUtils.deleteDirectory
 import org.openeo.geotrellissentinelhub.ElasticsearchCacheRepository.{Sentinel1GrdCacheEntry, Sentinel2L2aCacheEntry}
 import org.slf4j.LoggerFactory
 
-import java.net.URI
 import java.nio.file.{FileAlreadyExistsException, Files, Path, Paths}
 import java.time.format.DateTimeFormatter.BASIC_ISO_DATE
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.stream.Collectors.toList
+import java.util.zip.Deflater.BEST_COMPRESSION
 import scala.collection.JavaConverters._
 import scala.compat.java8.FunctionConverters._
 
 object CachingService {
   private val logger = LoggerFactory.getLogger(classOf[CachingService])
-
-  // TODO: put this in a central place
-  private def sequentialDays(from: ZonedDateTime, to: ZonedDateTime): Stream[ZonedDateTime] = {
-    def sequentialDays0(from: ZonedDateTime): Stream[ZonedDateTime] = from #:: sequentialDays0(from plusDays 1)
-
-    sequentialDays0(from)
-      .takeWhile(date => !(date isAfter to))
-  }
 }
 
 class CachingService {
@@ -239,8 +232,9 @@ class CachingService {
 
         for ((bandName, singleBandTile) <- bandNames zip multibandGeoTiff.tile.bands) {
           val outputFile = subdirectory(date, tileId).resolve(s"$bandName.tif")
+          val options = GeoTiffOptions(DeflateCompression(BEST_COMPRESSION))
 
-          SinglebandGeoTiff(singleBandTile, multibandGeoTiff.extent, multibandGeoTiff.crs)
+          SinglebandGeoTiff(singleBandTile, multibandGeoTiff.extent, multibandGeoTiff.crs, Tags.empty, options)
             .write(outputFile.toString)
 
           onDownloaded(tileId, LocalDate.parse(date, BASIC_ISO_DATE).atStartOfDay(ZoneId.of("UTC")), bandName)
@@ -361,7 +355,8 @@ class CachingService {
       }
 
       try {
-        val gdal_translate = Seq("gdal_translate", vrtFile.toString, outputFile.toString)
+        val gdal_translate = Seq("gdal_translate", "-co", "COMPRESS=DEFLATE", "-co", "ZLEVEL=9", "-co", "PREDICTOR=2",
+          vrtFile.toString, outputFile.toString)
         if (gdal_translate.! != 0) {
           throw new IllegalStateException(s"${gdal_translate mkString " "} returned non-zero exit status") // TODO: better error handling
         }
