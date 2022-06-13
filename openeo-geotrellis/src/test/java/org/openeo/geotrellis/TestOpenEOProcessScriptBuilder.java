@@ -889,34 +889,31 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(tile_timestep0.cellType(), multiple_input.apply(0).cellType());
     }
 
+    @DisplayName("Test exp process")
+    @Test
+    public void testExp() {
+        testUnary( "exp", "p",1, 33.0, 0.0, 0.0,Double.NaN,1.0,1.0,1.0,1.0);
+    }
+
     @DisplayName("Test int process")
     @Test
     public void testInt() {
+        testUnary( "int", "x",0.0, 3.0, 0.0, -3.0,Double.NaN,0.0,0.0,0.0,0.0);
+    }
+
+    private void testUnary( String processName, String argName, double... expectedValues) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Map<String, Object> arguments = Collections.emptyMap();
-        builder.expressionStart("int", arguments);
-        builder.argumentStart("x");
+        builder.expressionStart(processName, arguments);
+        builder.argumentStart(argName);
         builder.argumentEnd();
-        builder.expressionEnd("int",arguments);
+        builder.expressionEnd(processName,arguments);
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
 
-        Tile tile0 = FloatConstantNoDataArrayTile.fill(0, 4, 4);
-        Tile tile1 = FloatConstantNoDataArrayTile.fill(3.5f, 4, 4);
-        Tile tile2 = FloatConstantNoDataArrayTile.fill(-0.4f, 4, 4);
-        Tile tile3 = FloatConstantNoDataArrayTile.fill(-3.5f, 4, 4);
-        Tile nodataTile = FloatConstantNoDataArrayTile.empty(4, 4);
+        Seq<Tile> result1 = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(fillFloatArrayTile(3, 3, 0, 3.5, -0.4, -3.5, Double.NaN))));
 
-        Seq<Tile> result1 = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)));
+        assertTileEquals(fillFloatArrayTile(3, 3, expectedValues), result1.head());
 
-        assertTrue(result1.apply(0).isNoDataTile());
-        assertEquals(0, result1.apply(1).getDouble(0,0));
-        assertEquals(FloatConstantNoDataArrayTile.empty(0, 0).cellType(), result1.apply(1).cellType());
-        assertEquals(3.0f, result1.apply(2).getDouble(0,0));
-        assertEquals(FloatConstantNoDataArrayTile.empty(0, 0).cellType(), result1.apply(2).cellType());
-        assertEquals(0.0f, result1.apply(3).getDouble(0,0));
-        assertEquals(FloatConstantNoDataArrayTile.empty(0, 0).cellType(), result1.apply(3).cellType());
-        assertEquals(-3.0f, result1.apply(4).getDouble(0,0));
-        assertEquals(FloatConstantNoDataArrayTile.empty(0, 0).cellType(), result1.apply(4).cellType());
     }
 
     @DisplayName("Test 'is_nodata' and 'is_nan' processes")
@@ -1829,6 +1826,14 @@ public class TestOpenEOProcessScriptBuilder {
 
     private static DoubleArrayTile fillDoubleArrayTile(int cols, int rows, double... values) {
         DoubleArrayTile tile = DoubleArrayTile.ofDim(cols, rows);
+        for (int i = 0; i < Math.min(cols * rows, values.length); i++) {
+            tile.setDouble(i % cols, i / cols, values[i]);
+        }
+        return tile;
+    }
+
+    private static FloatArrayTile fillFloatArrayTile(int cols, int rows, double... values) {
+        FloatArrayTile tile = FloatArrayTile.ofDim(cols, rows);
         for (int i = 0; i < Math.min(cols * rows, values.length); i++) {
             tile.setDouble(i % cols, i / cols, values[i]);
         }
