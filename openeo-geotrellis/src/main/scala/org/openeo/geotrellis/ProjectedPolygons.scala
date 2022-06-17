@@ -13,7 +13,14 @@ import scala.collection.JavaConverters._
 import scala.io.Source
 
 case class ProjectedPolygons(geometries: Array[Geometry], crs: CRS) {
-  def areaInSquareMeters: Double = ProjectedPolygons.areaInSquareMeters(GeometryCollection(polygons), crs)
+  def areaInSquareMeters: Double ={
+    if(polygons.nonEmpty) {
+      ProjectedPolygons.areaInSquareMeters(GeometryCollection(polygons), crs)
+    }else{
+      0.0
+    }
+
+  }
 
   def polygons: Array[MultiPolygon] = geometries.filter(_.isInstanceOf[MultiPolygon]).map(_.asInstanceOf[MultiPolygon])
   def extent: ProjectedExtent = ProjectedExtent(polygons.toSeq.extent,crs)
