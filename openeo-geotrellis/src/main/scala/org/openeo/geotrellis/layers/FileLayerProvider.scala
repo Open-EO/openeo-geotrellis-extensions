@@ -571,7 +571,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         if (cloudPath.isDefined) {
           Seq(GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType))
         }else{
-          Seq(GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/"), options = warpOptions, targetCellType = targetCellType))
+          Seq(GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType))
         }
       }else if(dataPath.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
