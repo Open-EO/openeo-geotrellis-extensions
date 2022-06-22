@@ -379,7 +379,15 @@ object FileLayerProvider {
                         }
                       }
 
-                      override def loadData: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
+                      override def loadData: Option[MultibandTile] = {
+                        val maybeTile = rasterRegion.raster.map(_.tile)
+                        if(maybeTile.isDefined && maybeTile.get.cellType.isInstanceOf[NoNoData]) {
+                          maybeTile.map(t=> t.convert(t.cellType.withDefaultNoData()))
+                        }else{
+                          maybeTile
+                        }
+
+                      }
                     }).map((_, sourcePath))
                 }
                 if (result.isDefined) {
@@ -488,7 +496,10 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     logger.info(s"Loading ${openSearchCollectionId} with params ${datacubeParams.getOrElse(new DataCubeParameters)} and bands ${openSearchLinkTitles.toList.mkString(";")}")
 
     var overlappingRasterSources: Seq[RasterSource] = loadRasterSourceRDD(boundingBox, from, to, zoom)
-    val commonCellType = overlappingRasterSources.head.cellType
+    var commonCellType = overlappingRasterSources.head.cellType
+    if(commonCellType.isInstanceOf[NoNoData]) {
+      commonCellType = commonCellType.withDefaultNoData()
+    }
     val multiple_polygons_flag = polygons.length > 1
     val metadata = layerMetadata(
       boundingBox, from, to, zoom min maxZoom, commonCellType, layoutScheme, maxSpatialResolution,
