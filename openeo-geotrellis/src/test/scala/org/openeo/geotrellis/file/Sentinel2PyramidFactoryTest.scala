@@ -128,7 +128,7 @@ class Sentinel2PyramidFactoryTest {
         val resourcePath = "org/openeo/geotrellis/file/testDemLayer/tile0_0.tiff"
         val refFile = Thread.currentThread().getContextClassLoader.getResource(resourcePath)
         val refTiff = GeoTiff.readMultiband(refFile.getPath)
-        assertArrayEquals(refTiff.toByteArray, actualTiffs.head.toByteArray)
+        assertArrayEquals(refTiff.raster.tile.band(0).toArrayDouble(), actualTiffs.head.raster.tile.band(0).toArrayDouble(),0.1)
     }
 
     @Test
