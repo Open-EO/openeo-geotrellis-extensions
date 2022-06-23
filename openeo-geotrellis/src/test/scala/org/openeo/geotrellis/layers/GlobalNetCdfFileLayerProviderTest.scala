@@ -20,6 +20,9 @@ import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrelliscommon.DataCubeParameters
 
+import java.util
+import scala.collection.JavaConverters.asScalaBuffer
+
 object GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
   @AfterClass
   def tearDown(): Unit = GDALWarp.deinit()
@@ -35,8 +38,10 @@ class GlobalNetCdfFileLayerProviderTest {
   )
 
 
-  private def layerProvider2 = new FileLayerProvider(new GlobalNetCDFSearchClient(dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/2017/20170110/*/*.nc","LAI", raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored),"BioPar_LAI300_V1_Global",
-    NonEmptyList.one("LAI"),
+  private val vars: util.List[String] = util.Arrays.asList("LAI", "NOBS")
+
+  private def layerProvider2 = new FileLayerProvider(new GlobalNetCDFSearchClient(dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/2017/20170110/*/*.nc",vars, raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored),"BioPar_LAI300_V1_Global",
+    NonEmptyList.fromList(asScalaBuffer(vars).toList).get,
     rootPath = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global",
     maxSpatialResolution = CellSize(0.002976190476204,0.002976190476190),
     new Sentinel5PPathDateExtractor(maxDepth = 3),

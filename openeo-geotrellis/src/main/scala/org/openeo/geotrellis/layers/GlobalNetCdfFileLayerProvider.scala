@@ -11,6 +11,8 @@ import org.apache.hadoop.fs.Path
 
 import java.net.URI
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util
+import scala.jdk.CollectionConverters.collectionAsScalaIterableConverter
 import scala.util.matching.Regex
 
 class GlobalNetCdfFileLayerProvider(override protected val dataGlob: String, bandName: String,
@@ -34,7 +36,7 @@ class GlobalNetCdfFileLayerProvider(override protected val dataGlob: String, ban
 
 
 // TODO: This Client should be moved to the gwc-geotrellis project when it's complete.
-class GlobalNetCDFSearchClient(val dataGlob: String, bandName: String, val dateRegex: Regex) extends OpenSearchClient {
+class GlobalNetCDFSearchClient(val dataGlob: String, val variables: util.List[String], val dateRegex: Regex) extends OpenSearchClient {
 
   protected def deriveDate(filename: String, date: Regex): ZonedDateTime = filename match {
     case date(year, month, day) => LocalDate.of(year.toInt, month.toInt, day.toInt).atStartOfDay(ZoneId.of("UTC"))
@@ -68,13 +70,13 @@ class GlobalNetCDFSearchClient(val dataGlob: String, bandName: String, val dateR
     // TODO: We're currently using RasterSources to get the extent which is duplicating work from the FileLayerProvider.
     // Find a way to get the extent without loading in RasterSources.
     val datedRasterSources: Array[(ZonedDateTime, String, GDALRasterSource)] = sortedDates
-      .map { case (date, path) => (date, path, GDALRasterSource(s"""NETCDF:"$path":$bandName""",GDALWarpOptions(alignTargetPixels = false))) }
+      .flatMap { case (date, path) => variables.asScala.map(v=>(date, path, GDALRasterSource(s"""NETCDF:"$path":$v""",GDALWarpOptions(alignTargetPixels = false)))) }
 
     // TODO: Extract Id from somewhere, currently it is "SomeId".
     // TODO: Extract resolution from somewhere, currently it is a random number.
     // TODO: Extract TileId from somewhere, currently it is the empty string.
     val features: Array[OpenSearchResponses.Feature] = datedRasterSources.map{ case (date: ZonedDateTime, path: String, source: GDALRasterSource) =>
-      OpenSearchResponses.Feature(s"${path}", source.extent, date, Array(Link(URI.create(s"""NETCDF:$path:$bandName"""), Some(bandName))), Some(5), Some(""))
+      OpenSearchResponses.Feature(s"${path}", source.extent, date, variables.asScala.map(v=>Link(URI.create(s"""NETCDF:$path:$v"""), Some(v))).toArray, Some(5), Some(""))
     }
 
     features.toSeq
