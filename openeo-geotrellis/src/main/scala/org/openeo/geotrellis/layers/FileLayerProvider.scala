@@ -577,8 +577,9 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     }
 
     def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
-      if(dataPath.endsWith(".jp2")) {
-        val warpOptions = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution), targetCRS=Some(targetExtent.crs))
+      if(dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
+        val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
+        val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(maxSpatialResolution), targetCRS=Some(targetExtent.crs))
         if (cloudPath.isDefined) {
           Seq(GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType))
         }else{
