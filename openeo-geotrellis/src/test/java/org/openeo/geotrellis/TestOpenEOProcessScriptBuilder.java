@@ -215,6 +215,8 @@ public class TestOpenEOProcessScriptBuilder {
 
         assertTileEquals(fillByteArrayTile(3, 3, 81, 100, 121, 144, 0, 0, 0, 0, 0), result.apply(0));
         assertTileEquals(fillByteArrayTile(3, 3, 25, 36, 49, 64, 0, 0, 0, 0, 0), result.apply(1));
+
+        assertEquals(FloatConstantNoDataCellType$.MODULE$, builder.getOutputCellType());
     }
 
     private void testLogicalComparisonWithConstant(String operator, int... expectedValues) {
@@ -227,6 +229,8 @@ public class TestOpenEOProcessScriptBuilder {
         builder.expressionEnd(operator, args);
 
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+
+        assertEquals(BitCellType$.MODULE$, builder.getOutputCellType());
         Tile tile = fillByteArrayTile(4, 3, 8, 9, 10, 11, 12);
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile)));
         assertEquals(1, result.length());
