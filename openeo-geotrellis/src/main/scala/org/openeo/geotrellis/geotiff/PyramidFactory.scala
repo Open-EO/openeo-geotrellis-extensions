@@ -101,9 +101,15 @@ object PyramidFactory {
     }, deriveDate(date_regex.r), lat_lon)
 
   private def deriveDate(date: Regex)(path: String): ZonedDateTime = {
-    path match {
-      case date(year, month, day) => ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), MIDNIGHT, ZoneId.of("UTC"))
+    try{
+      path match {
+        case date(year, month, day) => ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), MIDNIGHT, ZoneId.of("UTC"))
+      }
+    }catch {
+      case e: scala.MatchError => throw new IllegalArgumentException(s"load_disk_collection: Your regex to parse a date ${date.toString()} did not match one of the files found: ${path}")
+      case t: Exception => throw t
     }
+
   }
 
   private def parseTargetCellType(targetCellType: String): Option[InterpretAsTargetCellType] =
