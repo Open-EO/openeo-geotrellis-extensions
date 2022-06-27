@@ -18,6 +18,7 @@ import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.layers.{FileLayerProvider, MultibandCompositeRasterSource}
 import org.openeo.geotrellis.{ProjectedPolygons, bucketRegion, s3Client}
 import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, OpenEORasterCube, OpenEORasterCubeMetadata}
+import org.slf4j.LoggerFactory
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 
 import java.time.LocalTime.MIDNIGHT
@@ -27,6 +28,9 @@ import scala.collection.JavaConverters._
 import scala.util.matching.Regex
 
 object PyramidFactory {
+
+  private val logger = LoggerFactory.getLogger(classOf[PyramidFactory])
+
   def from_disk(glob_pattern: String, date_regex: String): PyramidFactory =
     from_disk(glob_pattern, date_regex, interpret_as_cell_type = null, lat_lon = false)
 
@@ -120,6 +124,7 @@ object PyramidFactory {
 
 class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime)],
                               extractDateFromPath: String => ZonedDateTime, latLng: Boolean) {
+  import PyramidFactory._
   private val targetCrs = if (latLng) LatLng else WebMercator
 
   private lazy val reprojectedRasterSources =
@@ -186,6 +191,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
 
     val sources = sc.parallelize(rasterSources).cache()
     val summary = RasterSummary.fromRDD(sources, keyExtractor.getMetadata)
+    
 
     val (scheme,theZoom) = if(params.layoutScheme=="ZoomedLayoutScheme"){
       if(zoom<0) {
@@ -197,7 +203,8 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
       (FloatingLayoutScheme(params.tileSize),zoom)
     }
 
-    val layerMetadata = DatacubeSupport.layerMetadata(boundingBox,from,to,theZoom,summary.cellType,scheme,summary.cellSize,params.globalExtent)
+    val layerMetadata = DatacubeSupport.layerMetadata(boundingBox,summary.bounds.get.minKey,summary.bounds.get.maxKey,theZoom,summary.cellType,scheme,summary.cellSize,params.globalExtent)
+    logger.info(s"Created user defined datacube with $layerMetadata")
     val sourceRDD = FileLayerProvider.rasterSourceRDD(rasterSources,layerMetadata,summary.cellSize,"Geotiff collection")
     val filteredSources: RDD[LayoutTileSource[SpaceTimeKey]] = sourceRDD.filter({ tiledLayoutSource =>
       tiledLayoutSource.source.extent.interiorIntersects(tiledLayoutSource.layout.extent)
