@@ -645,7 +645,7 @@ class OpenEOProcessScriptBuilder {
     val hasData = arguments.containsKey("data")
     val ignoreNoData = !(arguments.getOrDefault("ignore_nodata",Boolean.box(true).asInstanceOf[Object]) == Boolean.box(false) || arguments.getOrDefault("ignore_nodata",None) == "false" )
     val hasTrueCondition = Try(arguments.get("condition").toString.toBoolean).getOrElse(false)
-    val hasConditionExpression = arguments.get("condition") != null && !arguments.get("condition").isInstanceOf[Boolean.type]
+    val hasConditionExpression = arguments.get("condition") != null && !arguments.get("condition").isInstanceOf[Boolean]
 
     val operation: OpenEOProcess = operator match {
       case "if" => ifProcess(arguments)
