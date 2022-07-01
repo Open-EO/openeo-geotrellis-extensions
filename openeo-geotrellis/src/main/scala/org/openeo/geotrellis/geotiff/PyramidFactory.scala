@@ -168,11 +168,13 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
           else if (to == null) !(date isBefore from)
           else !(date isBefore from) && !(date isAfter to)
 
-        withinDateRange
+        val withinBBox = rasterSource.extent.intersects(boundingBox.reproject(rasterSource.crs))
+        withinDateRange && withinBBox
       }
       .map { case (rasterSource, date) =>
         val sourcesListWithBandIds = NonEmptyList.of((rasterSource, 0 until rasterSource.bandCount))
-        new MultibandCompositeRasterSource(sourcesListWithBandIds, boundingBox.crs, Predef.Map("date" -> date.toString))
+        val crs = if(params.layoutScheme=="FloatingLayoutScheme") rasterSource.crs else boundingBox.crs
+        new MultibandCompositeRasterSource(sourcesListWithBandIds, crs, Predef.Map("date" -> date.toString))
       }
 
     val resultRDD = rasterSourceRDD(overlappingRasterSources.seq,boundingBox,from,to, params,zoom=zoom)
@@ -203,14 +205,21 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
       (FloatingLayoutScheme(params.tileSize),zoom)
     }
 
-    val layerMetadata = DatacubeSupport.layerMetadata(boundingBox,summary.bounds.get.minKey,summary.bounds.get.maxKey,theZoom,summary.cellType,scheme,summary.cellSize,params.globalExtent)
+    val theBoundingBox = if(scheme.isInstanceOf[FloatingLayoutScheme]) {
+      ProjectedExtent(boundingBox.reproject(summary.crs),summary.crs)
+    }else{
+      boundingBox
+    }
+
+
+    val layerMetadata = DatacubeSupport.layerMetadata(theBoundingBox,summary.bounds.get.minKey,summary.bounds.get.maxKey,theZoom,summary.cellType,scheme,summary.cellSize,params.globalExtent)
     logger.info(s"Created user defined datacube with $layerMetadata")
     val sourceRDD = FileLayerProvider.rasterSourceRDD(rasterSources,layerMetadata,summary.cellSize,"Geotiff collection")
     val filteredSources: RDD[LayoutTileSource[SpaceTimeKey]] = sourceRDD.filter({ tiledLayoutSource =>
       tiledLayoutSource.source.extent.interiorIntersects(tiledLayoutSource.layout.extent)
     })
     FileLayerProvider.readMultibandTileLayer(filteredSources, layerMetadata,
-      Array(MultiPolygon(toPolygon(boundingBox.extent))), boundingBox.crs, sc, retainNoDataTiles = false,
+      Array(MultiPolygon(toPolygon(theBoundingBox.extent))), theBoundingBox.crs, sc, retainNoDataTiles = false,
       datacubeParams = Some(params))
 
   }
