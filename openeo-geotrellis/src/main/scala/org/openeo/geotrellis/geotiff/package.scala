@@ -8,7 +8,7 @@ import geotrellis.raster.io.geotiff._
 import geotrellis.raster.io.geotiff.compression.{Compression, DeflateCompression}
 import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.render.IndexedColorMap
-import geotrellis.raster.resample.{NearestNeighbor, Mode,Average,Max,Min,Median,Bilinear}
+import geotrellis.raster.resample._
 import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
@@ -19,6 +19,7 @@ import org.apache.commons.io.FilenameUtils
 import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
+import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.AccumulatorV2
 import org.openeo.geotrellis
 import org.openeo.geotrellis.stac.STACItem
@@ -206,63 +207,69 @@ package object geotiff {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
-    val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3
+    val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3.persist(StorageLevel.MEMORY_AND_DISK)
 
-    val compression = Deflate(zLevel)
-    val ( tiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, segmentCount: Int) = getCompressedTiles(preprocessedRdd, gridBounds, compression)
+    try{
+      val compression = Deflate(zLevel)
+      val ( tiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, segmentCount: Int) = getCompressedTiles(preprocessedRdd, gridBounds, compression)
 
-    val overviews =
-    if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
-      //create overviews
-      val method = formatOptions.resampleMethod match {
-        case "near" => NearestNeighbor
-        case "mode" => Mode
-        case "average" => Average
-        case "bilinear" => Bilinear
-        case "max" => Max
-        case "min" => Min
-        case "med" => Median
-        case _ => NearestNeighbor
-      }
-      val levels = LocalLayoutScheme.inferLayoutLevel(preprocessedRdd.metadata)
+      val overviews =
+        if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
+          //create overviews
+          val method = formatOptions.resampleMethod match {
+            case "near" => NearestNeighbor
+            case "mode" => Mode
+            case "average" => Average
+            case "bilinear" => Bilinear
+            case "max" => Max
+            case "min" => Min
+            case "med" => Median
+            case _ => NearestNeighbor
+          }
+          val levels = LocalLayoutScheme.inferLayoutLevel(preprocessedRdd.metadata)
 
-      if(levels>1) {
-        val scheme = new PowerOfTwoLocalLayoutScheme()
+          if(levels>1) {
+            val scheme = new PowerOfTwoLocalLayoutScheme()
 
-        var nextOverviewLevel: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preprocessedRdd
-        var nextZoom = -1
-        val overviews = (1 to levels).reverse.map( level=>{
-          var zoom_rdd = Pyramid.up(nextOverviewLevel,scheme,level,Pyramid.Options(resampleMethod = method))
-          nextOverviewLevel = zoom_rdd._2
-          val overViewGridBounds = nextOverviewLevel.metadata.gridBoundsFor(croppedExtent, clamp = true).toGridType[Int]
-          val ( overViewTiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, overViewSegmentCount: Int) = getCompressedTiles(nextOverviewLevel,overViewGridBounds, compression)
-          val overviewTiff = toTiff(overViewTiffs, overViewGridBounds, nextOverviewLevel.metadata.tileLayout, compression, cellType, detectedBandCount, overViewSegmentCount)
-          overviewTiff
-        })
+            var nextOverviewLevel: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preprocessedRdd
+            var nextZoom = -1
+            val overviews = (1 to levels).reverse.map( level=>{
+              var zoom_rdd = Pyramid.up(nextOverviewLevel,scheme,level,Pyramid.Options(resampleMethod = method))
+              nextOverviewLevel = zoom_rdd._2
+              val overViewGridBounds = nextOverviewLevel.metadata.gridBoundsFor(croppedExtent, clamp = true).toGridType[Int]
+              val ( overViewTiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, overViewSegmentCount: Int) = getCompressedTiles(nextOverviewLevel,overViewGridBounds, compression)
+              val overviewTiff = toTiff(overViewTiffs, overViewGridBounds, nextOverviewLevel.metadata.tileLayout, compression, cellType, detectedBandCount, overViewSegmentCount)
+              overviewTiff
+            })
 
-        overviews.toList
+            overviews.toList
 
-        /*if(levels>2) {
-          val (lowerZoom,lowerOverviewLevel) = Pyramid.up(nextOverviewLevel,scheme,nextZoom)
-          val stitched: Option[Raster[MultibandTile]] = lowerOverviewLevel.withContext(_.map(t=>(t._1.getComponent[SpatialKey](),t._2))).sparseStitch()
-          List(overviewTiff,GeoTiffMultibandTile(stitched.get.tile))
-        }else{*/
-          //List(overviewTiff)
-        //}
-      }else{
-        Nil
-      }
+            /*if(levels>2) {
+              val (lowerZoom,lowerOverviewLevel) = Pyramid.up(nextOverviewLevel,scheme,nextZoom)
+              val stitched: Option[Raster[MultibandTile]] = lowerOverviewLevel.withContext(_.map(t=>(t._1.getComponent[SpatialKey](),t._2))).sparseStitch()
+              List(overviewTiff,GeoTiffMultibandTile(stitched.get.tile))
+            }else{*/
+            //List(overviewTiff)
+            //}
+          }else{
+            Nil
+          }
 
-    }else{
-      Nil
+        }else{
+          Nil
+        }
+      val stacItemPath = FilenameUtils.removeExtension(path) + "_item.json"
+      val metadata = new STACItem()
+      metadata.asset(path)
+      metadata.write(stacItemPath)
+      writeTiff( path,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, preprocessedRdd.metadata.tileLayout, compression, cellType, detectedBandCount, segmentCount,formatOptions = formatOptions, overviews = overviews)
+      return Collections.singletonList(path)
+    }finally {
+      preprocessedRdd.unpersist()
     }
 
-    val stacItemPath = FilenameUtils.removeExtension(path) + "_item.json"
-    val metadata = new STACItem()
-    metadata.asset(path)
-    metadata.write(stacItemPath)
-    writeTiff( path,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, preprocessedRdd.metadata.tileLayout, compression, cellType, detectedBandCount, segmentCount,formatOptions = formatOptions, overviews = overviews)
-    return Collections.singletonList(path)
+
+
   }
 
   private def getCompressedTiles[K: SpatialComponent : Boundable : ClassTag](preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]],gridBounds: GridBounds[Int], compression: Compression) = {
