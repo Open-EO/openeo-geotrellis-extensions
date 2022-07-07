@@ -175,10 +175,12 @@ class NetCDFRDDWriterTest {
     //assert(raster1.extent.height == 2 * 2560.0)
     //assert(raster2.extent.width == 2560.0)
     //assert(raster2.extent.height == 2560.0)
+    val bands = raster1.tile.bands.filter(!_.isNoDataTile)
+    assert(bands.size==4)
 
     for(bandIndex:Int <- 0 until 4) {
       // Ensure there is data within the polygon on this band.
-      assert(raster1.tile.band(bandIndex).mask(raster1.extent, polygon1_nativecrs).toArray().exists(p => p != -2147483648))
+      assert(bands(bandIndex).mask(raster1.extent, polygon1_nativecrs).toArray().exists(p => p != -2147483648))
     }
   }
 
