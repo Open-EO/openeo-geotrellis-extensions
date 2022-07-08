@@ -9,13 +9,14 @@ import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
+import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
-import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -206,7 +207,7 @@ object FileLayerProvider {
     tileSourcesToDataCube(rasterSources, metadata, requiredSpatialKeys, sc, retainNoDataTiles, cloudFilterStrategy, useSparsePartitioner, datacubeParams)
   }
 
-  private def tileSourcesToDataCube(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])], sc: SparkContext, retainNoDataTiles: Boolean, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = None): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+  private def tileSourcesToDataCube(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])], sc: SparkContext, retainNoDataTiles: Boolean, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = None, inputFeatures: Option[Seq[Feature]] = None): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
     var localSpatialKeys = requiredSpatialKeys
     if(datacubeParams.exists(_.maskingCube.isDefined)) {
       val maskObject =  datacubeParams.get.maskingCube.get
@@ -235,7 +236,14 @@ object FileLayerProvider {
 
     val partitioner = useSparsePartitioner match {
       case true => {
-        createPartitioner(datacubeParams, requiredSpatialKeys, filteredSources, metadata)
+        if(inputFeatures.isDefined) {
+          //using metadata inside features is a much faster way of determining Spacetime keys
+          val geometicFeatures = inputFeatures.get.map(f=> geotrellis.vector.Feature(f.geometry.getOrElse(f.bbox.toPolygon()),f))
+          val requiredSpacetimeKeys: RDD[(SpaceTimeKey)] = sc.parallelize(geometicFeatures,math.max(1,geometicFeatures.size/100)).map(_.reproject(LatLng,metadata.crs)).clipToGrid(metadata).map(t=>SpaceTimeKey(t._1,TemporalKey(t._2.data.nominalDate)))
+          DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys, metadata)
+        }else{
+          createPartitioner(datacubeParams, localSpatialKeys, filteredSources, metadata)
+        }
       }
       case false => Option.empty
     }
@@ -486,7 +494,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     case _ => 14
   }
 
-  private val compositeRasterSource: (Feature, NonEmptyList[(RasterSource, Seq[Int])], CRS, Map[String, String]) => BandCompositeRasterSource = {
+  private val compositeRasterSource: (Feature, NonEmptyList[(RasterSource, Seq[Int])], CRS, Map[String, String]) => (BandCompositeRasterSource,Feature) = {
     (feature, sources, crs, attributes) =>
       {
         val gridExtent = if(feature.tileID.isDefined && feature.crs.isDefined && feature.crs.get == crs && experimental) {
@@ -495,8 +503,8 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         }else{
           None
         }
-        if (bandIds.isEmpty) new BandCompositeRasterSource(sources.map(_._1), crs, attributes,predefinedExtent = gridExtent)
-        else new MultibandCompositeRasterSource(sources, crs, attributes)
+        if (bandIds.isEmpty) (new BandCompositeRasterSource(sources.map(_._1), crs, attributes,predefinedExtent = gridExtent),feature)
+        else (new MultibandCompositeRasterSource(sources, crs, attributes),feature)
       }
   }
 
@@ -504,8 +512,8 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     logger.info(s"Loading ${openSearchCollectionId} with params ${datacubeParams.getOrElse(new DataCubeParameters)} and bands ${openSearchLinkTitles.toList.mkString(";")}")
 
-    var overlappingRasterSources: Seq[RasterSource] = loadRasterSourceRDD(boundingBox, from, to, zoom)
-    var commonCellType = overlappingRasterSources.head.cellType
+    var overlappingRasterSources: Seq[(RasterSource,Feature)] = loadRasterSourceRDD(boundingBox, from, to, zoom)
+    var commonCellType = overlappingRasterSources.head._1.cellType
     if(commonCellType.isInstanceOf[NoNoData]) {
       commonCellType = commonCellType.withDefaultNoData()
     }
@@ -528,7 +536,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         } yield new SCLConvolutionFilterStrategy(sclBandIndex,datacubeParams.get.maskingStrategyParameters)
       }
       else if (maskMethod == "mask_l1c") {
-        overlappingRasterSources = GDALCloudRasterSource.filterRasterSources(overlappingRasterSources, maskParams)
+        overlappingRasterSources = GDALCloudRasterSource.filterRasterSources(overlappingRasterSources.map(_._1), maskParams)
         maskStrategy = Some(new L1CCloudFilterStrategy(GDALCloudRasterSource.getDilationDistance(maskParams.asScala.toMap)))
       }
     }
@@ -547,10 +555,10 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     if (retiledMetadata.isDefined) {
       requiredSpatialKeys = polygonsRDD.clipToGrid(retiledMetadata.get).groupByKey()
     }
-    val rasterSources: RDD[LayoutTileSource[SpaceTimeKey]] = rasterSourceRDD(overlappingRasterSources, retiledMetadata.getOrElse(metadata), maxSpatialResolution, openSearchCollectionId)(sc)
+    val rasterSources: RDD[LayoutTileSource[SpaceTimeKey]] = rasterSourceRDD(overlappingRasterSources.map(_._1), retiledMetadata.getOrElse(metadata), maxSpatialResolution, openSearchCollectionId)(sc)
 
     rasterSources.name = s"FileCollection-${openSearchCollectionId}"
-    val cube = FileLayerProvider.tileSourcesToDataCube(rasterSources, retiledMetadata.getOrElse(metadata), requiredSpatialKeys, sc, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), datacubeParams=datacubeParams)
+    val cube = FileLayerProvider.tileSourcesToDataCube(rasterSources, retiledMetadata.getOrElse(metadata), requiredSpatialKeys, sc, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), datacubeParams=datacubeParams, inputFeatures = Some(overlappingRasterSources.map(_._2)))
     logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner}")
     cube
   }
@@ -632,7 +640,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     rasterSources.flatMap(rs_b => rs_b._1.map(rs => (rs,rs_b._2))).toList
   }
 
-  def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int): Seq[RasterSource] = {
+  def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int): Seq[(RasterSource,Feature)] = {
     require(zoom >= 0) // TODO: remove zoom and sc parameters
 
     val overlappingFeatures: Seq[Feature] = openSearch.getProducts(

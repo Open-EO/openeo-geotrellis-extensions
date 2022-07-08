@@ -124,25 +124,29 @@ object DatacubeSupport {
     val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(8)
     val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
       val cached = requiredSpacetimeKeys.distinct().cache()
-      val spatialCount = requiredSpacetimeKeys.map(_.spatialKey).countApproxDistinct()
+      val spatialCount = cached.map(_.spatialKey).countApproxDistinct()
       val spatialBounds = metadata.bounds.get.toSpatial
       val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
       val isSparse = spatialCount < 0.5 * maxKeys
-      cached.unpersist(false)
 
-      if(isSparse) {
-        val keys = cached.collect()
+      try{
+        if(isSparse) {
+          val keys = cached.collect()
 
-        if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
-          val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
-          new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
-        } else {
-          val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
-          new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
+          if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
+            val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
+            new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
+          } else {
+            val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
+            new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
+          }
+        }else{
+          SpaceTimeByMonthPartitioner
         }
-      }else{
-        SpaceTimeByMonthPartitioner
+      }finally {
+        cached.unpersist(false)
       }
+
     }
     Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,
       ClassTag(classOf[SpaceTimeKey]), partitionerIndex))

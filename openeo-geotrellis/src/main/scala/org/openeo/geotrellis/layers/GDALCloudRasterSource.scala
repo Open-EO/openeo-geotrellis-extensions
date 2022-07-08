@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.layers
 
+import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Feature
 import geotrellis.layer.{LayoutDefinition, SpaceTimeKey}
 import geotrellis.proj4.CRS
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
@@ -22,12 +23,12 @@ object GDALCloudRasterSource {
     maskParams.getOrElse("dilation_distance", "250").toString.toInt
   }
 
-  def filterRasterSources(rasterSources: Seq[RasterSource],
-                          maskParams: util.Map[String, Object]): Seq[RasterSource] = {
+  def filterRasterSources(rasterSources: Seq[(RasterSource,Feature)],
+                          maskParams: util.Map[String, Object]): Seq[(RasterSource,Feature)] = {
     val dilationDistance =  getDilationDistance(maskParams.asScala.toMap)
     // Filter out the entire BandCompositeRasterSource if it is fully clouded.
     val filteredSources = rasterSources.filter(compositeSource => {
-      val rasterSource = compositeSource.asInstanceOf[BandCompositeRasterSource].sources.head
+      val rasterSource = compositeSource._1.asInstanceOf[BandCompositeRasterSource].sources.head
       rasterSource match {
         case rs: GDALCloudRasterSource =>
           // Filter out rasterSources that are fully clouded.
