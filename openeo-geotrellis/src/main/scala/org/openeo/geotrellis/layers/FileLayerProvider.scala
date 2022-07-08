@@ -536,7 +536,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         } yield new SCLConvolutionFilterStrategy(sclBandIndex,datacubeParams.get.maskingStrategyParameters)
       }
       else if (maskMethod == "mask_l1c") {
-        overlappingRasterSources = GDALCloudRasterSource.filterRasterSources(overlappingRasterSources.map(_._1), maskParams)
+        overlappingRasterSources = GDALCloudRasterSource.filterRasterSources(overlappingRasterSources, maskParams)
         maskStrategy = Some(new L1CCloudFilterStrategy(GDALCloudRasterSource.getDilationDistance(maskParams.asScala.toMap)))
       }
     }
