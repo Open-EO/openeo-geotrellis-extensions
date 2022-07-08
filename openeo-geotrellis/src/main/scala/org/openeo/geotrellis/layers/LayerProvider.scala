@@ -6,10 +6,10 @@ import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.{IntConstantNoDataCellType, Tile}
 import geotrellis.spark._
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
-import geotrellis.store.index.zcurve.Z2
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.locationtech.sfcurve.zorder.{Z2, ZRange}
 
 import java.time.ZonedDateTime
 
@@ -31,7 +31,7 @@ object LayerProvider{
         def toIndex(key: SpatialKey): BigInt = toZ(key).z
 
         def indexRanges(keyRange: (SpatialKey, SpatialKey)): Seq[(BigInt, BigInt)] =
-          Z2.zranges(toZ(keyRange._1), toZ(keyRange._2))
+          Z2.zranges(Array(ZRange(toZ(keyRange._1), toZ(keyRange._2))), maxRecurse = Some(100)).map(r => (BigInt(r.lower), BigInt(r.upper)))
       }
 
       SpacePartitioner(KeyBounds(nonNegativeBounds))

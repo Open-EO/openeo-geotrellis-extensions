@@ -1,10 +1,12 @@
 package org.openeo.geotrellis.layers
 
+import cats.data.NonEmptyList
+
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import com.azavea.gdal.GDALWarp
-import geotrellis.layer.{KeyBounds, LayoutDefinition, LayoutTileSource, TileLayerMetadata, TileToLayoutOps}
+import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutTileSource, TileLayerMetadata, TileToLayoutOps}
 import geotrellis.proj4.LatLng
-import geotrellis.raster.{GridExtent, RasterExtent, RasterSource, TileLayout, UByteUserDefinedNoDataCellType}
+import geotrellis.raster.{CellSize, GridExtent, RasterExtent, RasterSource, TileLayout, UByteUserDefinedNoDataCellType}
 import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
@@ -17,6 +19,9 @@ import org.junit.{AfterClass, Test}
 import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrelliscommon.DataCubeParameters
+
+import java.util
+import scala.collection.JavaConverters.asScalaBuffer
 
 object GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
   @AfterClass
@@ -31,6 +36,16 @@ class GlobalNetCdfFileLayerProviderTest {
     bandName = "LAI",
     dateRegex = raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored
   )
+
+
+  private val vars: util.List[String] = util.Arrays.asList("LAI", "NOBS")
+
+  private def layerProvider2 = new FileLayerProvider(new GlobalNetCDFSearchClient(dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/2017/20170110/*/*.nc",vars, raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored),"BioPar_LAI300_V1_Global",
+    NonEmptyList.fromList(asScalaBuffer(vars).toList).get,
+    rootPath = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global",
+    maxSpatialResolution = CellSize(0.002976190476204,0.002976190476190),
+    new Sentinel5PPathDateExtractor(maxDepth = 3),
+    layoutScheme = FloatingLayoutScheme(256))
 
   class MockGlobalNetCdf extends GlobalNetCdfFileLayerProvider(dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/*/*/*/*.nc",
     bandName = "LAI",
@@ -76,6 +91,22 @@ class GlobalNetCdfFileLayerProviderTest {
     parameters.layoutScheme = "FloatingLayoutScheme"
 
     val layer = layerProvider.readMultibandTileLayer(date, date, ProjectedPolygons.fromExtent(boundingBox.extent,"EPSG:4326") , layerProvider.maxZoom, sc,Option(parameters)).cache()
+
+    layer
+      .toSpatial(date)
+      .writeGeoTiff("/tmp/lai300_georgia2.tif")
+  }
+
+  @Test
+  def readDataCubeWithClient(): Unit = {
+    val date = LocalDate.of(2017, 1, 10).atStartOfDay(ZoneId.of("UTC"))
+    val boundingBox = ProjectedExtent(Extent(-86.30859375, 29.84064389983441, -80.33203125, 35.53222622770337), LatLng)
+
+    val parameters = new DataCubeParameters()
+    parameters.layoutScheme = "FloatingLayoutScheme"
+
+    val polygons = ProjectedPolygons.fromExtent(boundingBox.extent, "EPSG:4326")
+    val layer = layerProvider2.readMultibandTileLayer(date, date, boundingBox, polygons.polygons, polygons.crs , layerProvider.maxZoom, sc,Option(parameters)).cache()
 
     layer
       .toSpatial(date)

@@ -13,13 +13,14 @@ import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrellis.tile_grid.TileGrid
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.slf4j.LoggerFactory
 
 import java.io.IOException
@@ -35,7 +36,7 @@ import scala.util.matching.Regex
 
 // TODO: are these attributes typically propagated as RasterSources are transformed? Maybe we should find another way to
 //  attach e.g. a date to a RasterSource.
-class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource], override val crs: CRS, override val attributes: Map[String, String] = Map.empty)
+class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource], override val crs: CRS, override val attributes: Map[String, String] = Map.empty, predefinedExtent: Option[GridExtent[Long]] = None)
   extends MosaicRasterSource { // TODO: don't inherit?
 
   protected def reprojectedSources: NonEmptyList[RasterSource] = sources map { _.reproject(crs) }
@@ -44,7 +45,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     selectedBands map { _.reproject(crs)}
   }
 
-  override def gridExtent: GridExtent[Long] = {
+  override def gridExtent: GridExtent[Long] = predefinedExtent.getOrElse{
     try {
       sources.head.gridExtent
     }  catch {
@@ -379,7 +380,15 @@ object FileLayerProvider {
                         }
                       }
 
-                      override def loadData: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
+                      override def loadData: Option[MultibandTile] = {
+                        val maybeTile = rasterRegion.raster.map(_.tile)
+                        if(maybeTile.isDefined && maybeTile.get.cellType.isInstanceOf[NoNoData]) {
+                          maybeTile.map(t=> t.convert(t.cellType.withDefaultNoData()))
+                        }else{
+                          maybeTile
+                        }
+
+                      }
                     }).map((_, sourcePath))
                 }
                 if (result.isDefined) {
@@ -477,10 +486,18 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     case _ => 14
   }
 
-  private val compositeRasterSource: (NonEmptyList[(RasterSource, Seq[Int])], CRS, Map[String, String]) => BandCompositeRasterSource = {
-    (sources, crs, attributes) =>
-      if (bandIds.isEmpty) new BandCompositeRasterSource(sources.map(_._1), crs, attributes)
-      else new MultibandCompositeRasterSource(sources, crs, attributes)
+  private val compositeRasterSource: (Feature, NonEmptyList[(RasterSource, Seq[Int])], CRS, Map[String, String]) => BandCompositeRasterSource = {
+    (feature, sources, crs, attributes) =>
+      {
+        val gridExtent = if(feature.tileID.isDefined && feature.crs.isDefined && feature.crs.get == crs && experimental) {
+          val tiles = TileGrid.computeFeaturesForTileGrid("100km", ProjectedExtent(ProjectedExtent(feature.bbox, LatLng).reproject(feature.crs.get),feature.crs.get)).filter(_._1.contains(feature.tileID.get))
+          tiles.headOption.map(t=>GridExtent[Long](t._2.expandToInclude(t._2.xmax+9800,t._2.ymin-9800),CellSize(10,10)) )
+        }else{
+          None
+        }
+        if (bandIds.isEmpty) new BandCompositeRasterSource(sources.map(_._1), crs, attributes,predefinedExtent = gridExtent)
+        else new MultibandCompositeRasterSource(sources, crs, attributes)
+      }
   }
 
   def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): MultibandTileLayerRDD[SpaceTimeKey] = {
@@ -488,7 +505,10 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     logger.info(s"Loading ${openSearchCollectionId} with params ${datacubeParams.getOrElse(new DataCubeParameters)} and bands ${openSearchLinkTitles.toList.mkString(";")}")
 
     var overlappingRasterSources: Seq[RasterSource] = loadRasterSourceRDD(boundingBox, from, to, zoom)
-    val commonCellType = overlappingRasterSources.head.cellType
+    var commonCellType = overlappingRasterSources.head.cellType
+    if(commonCellType.isInstanceOf[NoNoData]) {
+      commonCellType = commonCellType.withDefaultNoData()
+    }
     val multiple_polygons_flag = polygons.length > 1
     val metadata = layerMetadata(
       boundingBox, from, to, zoom min maxZoom, commonCellType, layoutScheme, maxSpatialResolution,
@@ -566,12 +586,13 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     }
 
     def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
-      if(dataPath.endsWith(".jp2")) {
-        val warpOptions = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution), targetCRS=Some(targetExtent.crs))
+      if(dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
+        val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
+        val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(maxSpatialResolution), targetCRS=Some(targetExtent.crs))
         if (cloudPath.isDefined) {
           Seq(GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType))
         }else{
-          Seq(GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/"), options = warpOptions, targetCellType = targetCellType))
+          Seq(GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType))
         }
       }else if(dataPath.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
@@ -628,7 +649,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       feature <- overlappingFeatures
       rasterSources = deriveRasterSources(feature,reprojectedBoundingBox)
       if rasterSources.nonEmpty
-    } yield compositeRasterSource(NonEmptyList(rasterSources.head, rasterSources.tail), crs, Predef.Map("date"->feature.nominalDate.toString))
+    } yield compositeRasterSource(feature,NonEmptyList(rasterSources.head, rasterSources.tail), crs, Predef.Map("date"->feature.nominalDate.toString))
 
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
     //  into account; it's more efficient to filter out the redundant ones

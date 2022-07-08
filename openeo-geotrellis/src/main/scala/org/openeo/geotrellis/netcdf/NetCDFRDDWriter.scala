@@ -12,7 +12,6 @@ import geotrellis.store.s3.AmazonS3URI
 import geotrellis.util._
 import geotrellis.vector._
 import org.apache.spark.SparkContext
-import org.apache.spark.rdd.RDD
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
@@ -320,7 +319,8 @@ object NetCDFRDDWriter {
     val sampleNames = featuresBC.value.map { case (sampleName, _) => sampleName }
     logger.info(s"Grouping result by ${featuresBC.value.size} features to write netCDFs.")
     val filtered = new OpenEOProcesses().filterEmptyTile(rdd)
-    logger.info(s"Filtered out ${rdd.count() - filtered.count()} empty tiles. ${rdd.count()} -> ${filtered.count()}")
+    //the logging below is rather expensive
+    //logger.info(s"Filtered out ${rdd.count() - filtered.count()} empty tiles. ${rdd.count()} -> ${filtered.count()}")
     val groupedByInstant = filtered.flatMap {
       case (key, tile) => featuresBC.value.filter { case (_, geometry) =>
         layout.mapTransform.keysForGeometry(geometry) contains key.spatialKey

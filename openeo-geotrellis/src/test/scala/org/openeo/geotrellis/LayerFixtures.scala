@@ -125,7 +125,7 @@ object LayerFixtures {
       maxSpatialResolution,
       pathDateExtractor,
       layoutScheme = FloatingLayoutScheme(256),
-      experimental = true
+      experimental = false
     )
 
   lazy val b04RasterSource =GeoTiffRasterSource("https://artifactory.vgt.vito.be/testdata-public/S2_B04_timeseries.tiff")

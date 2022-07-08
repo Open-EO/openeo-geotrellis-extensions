@@ -18,6 +18,7 @@ import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.layers.{FileLayerProvider, MultibandCompositeRasterSource}
 import org.openeo.geotrellis.{ProjectedPolygons, bucketRegion, s3Client}
 import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, OpenEORasterCube, OpenEORasterCubeMetadata}
+import org.slf4j.LoggerFactory
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 
 import java.time.LocalTime.MIDNIGHT
@@ -27,6 +28,9 @@ import scala.collection.JavaConverters._
 import scala.util.matching.Regex
 
 object PyramidFactory {
+
+  private val logger = LoggerFactory.getLogger(classOf[PyramidFactory])
+
   def from_disk(glob_pattern: String, date_regex: String): PyramidFactory =
     from_disk(glob_pattern, date_regex, interpret_as_cell_type = null, lat_lon = false)
 
@@ -101,9 +105,15 @@ object PyramidFactory {
     }, deriveDate(date_regex.r), lat_lon)
 
   private def deriveDate(date: Regex)(path: String): ZonedDateTime = {
-    path match {
-      case date(year, month, day) => ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), MIDNIGHT, ZoneId.of("UTC"))
+    try{
+      path match {
+        case date(year, month, day) => ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), MIDNIGHT, ZoneId.of("UTC"))
+      }
+    }catch {
+      case e: scala.MatchError => throw new IllegalArgumentException(s"load_disk_collection: Your regex to parse a date ${date.toString()} did not match one of the files found: ${path}")
+      case t: Exception => throw t
     }
+
   }
 
   private def parseTargetCellType(targetCellType: String): Option[InterpretAsTargetCellType] =
@@ -114,6 +124,7 @@ object PyramidFactory {
 
 class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime)],
                               extractDateFromPath: String => ZonedDateTime, latLng: Boolean) {
+  import PyramidFactory._
   private val targetCrs = if (latLng) LatLng else WebMercator
 
   private lazy val reprojectedRasterSources =
@@ -157,13 +168,20 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
           else if (to == null) !(date isBefore from)
           else !(date isBefore from) && !(date isAfter to)
 
-        withinDateRange
+        val withinBBox = rasterSource.extent.intersects(boundingBox.reproject(rasterSource.crs))
+        withinDateRange && withinBBox
       }
       .map { case (rasterSource, date) =>
         val sourcesListWithBandIds = NonEmptyList.of((rasterSource, 0 until rasterSource.bandCount))
-        new MultibandCompositeRasterSource(sourcesListWithBandIds, boundingBox.crs, Predef.Map("date" -> date.toString))
+        val crs = if(params.layoutScheme=="FloatingLayoutScheme") rasterSource.crs else boundingBox.crs
+        new MultibandCompositeRasterSource(sourcesListWithBandIds, crs, Predef.Map("date" -> date.toString))
       }
 
+    if(overlappingRasterSources.isEmpty) {
+      //Here we should either throw a clear exception, or log a warning and return empty cube?
+      throw new IllegalArgumentException(s"No valid sources found for ${boundingBox} and ${from} - ${to}. Found ${rasterSources.length} input sources.")
+      //return new OpenEORasterCube[SpaceTimeKey](sc.emptyRDD[(SpaceTimeKey, MultibandTile)],new TileLayerMetadata[SpaceTimeKey](), OpenEORasterCubeMetadata())
+    }
     val resultRDD = rasterSourceRDD(overlappingRasterSources.seq,boundingBox,from,to, params,zoom=zoom)
     new OpenEORasterCube[SpaceTimeKey](resultRDD,resultRDD.metadata, OpenEORasterCubeMetadata())
   }
@@ -180,6 +198,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
 
     val sources = sc.parallelize(rasterSources).cache()
     val summary = RasterSummary.fromRDD(sources, keyExtractor.getMetadata)
+    
 
     val (scheme,theZoom) = if(params.layoutScheme=="ZoomedLayoutScheme"){
       if(zoom<0) {
@@ -191,13 +210,21 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
       (FloatingLayoutScheme(params.tileSize),zoom)
     }
 
-    val layerMetadata = DatacubeSupport.layerMetadata(boundingBox,from,to,theZoom,summary.cellType,scheme,summary.cellSize,params.globalExtent)
+    val theBoundingBox = if(scheme.isInstanceOf[FloatingLayoutScheme]) {
+      ProjectedExtent(boundingBox.reproject(summary.crs),summary.crs)
+    }else{
+      boundingBox
+    }
+
+
+    val layerMetadata = DatacubeSupport.layerMetadata(theBoundingBox,summary.bounds.get.minKey,summary.bounds.get.maxKey,theZoom,summary.cellType,scheme,summary.cellSize,params.globalExtent)
+    logger.info(s"Created user defined datacube with $layerMetadata")
     val sourceRDD = FileLayerProvider.rasterSourceRDD(rasterSources,layerMetadata,summary.cellSize,"Geotiff collection")
     val filteredSources: RDD[LayoutTileSource[SpaceTimeKey]] = sourceRDD.filter({ tiledLayoutSource =>
       tiledLayoutSource.source.extent.interiorIntersects(tiledLayoutSource.layout.extent)
     })
     FileLayerProvider.readMultibandTileLayer(filteredSources, layerMetadata,
-      Array(MultiPolygon(toPolygon(boundingBox.extent))), boundingBox.crs, sc, retainNoDataTiles = false,
+      Array(MultiPolygon(toPolygon(theBoundingBox.extent))), theBoundingBox.crs, sc, retainNoDataTiles = false,
       datacubeParams = Some(params))
 
   }

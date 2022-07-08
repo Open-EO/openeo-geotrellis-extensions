@@ -1,12 +1,14 @@
 package org.openeo.geotrellis.file
 
-import geotrellis.layer.{Metadata, SpatialKey, TileLayerMetadata}
-import geotrellis.proj4.CRS
+import geotrellis.layer.{LayoutTileSource, Metadata, SpaceTimeKey, SpatialKey, TemporalKeyExtractor, TileLayerMetadata}
+import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.proj4.util.UTM
+import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiff, GeoTiffOptions, MultibandGeoTiff, Tags}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
-import geotrellis.raster.{CellSize, MultibandTile}
+import geotrellis.raster.{CellSize, GridBounds, MultibandTile, Raster, RasterMetadata, TargetCellType}
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
@@ -15,13 +17,16 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
+import org.openeo.geotrellis.layers.FileLayerProvider.{logger, rasterSourceRDD}
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
-import org.openeo.geotrelliscommon.DataCubeParameters
+import org.openeo.geotrelliscommon.DatacubeSupport.layerMetadata
+import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport}
 
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
-import java.time.{LocalDate, ZonedDateTime}
+import java.time.temporal.ChronoUnit
+import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util.Collections.{emptyMap, singletonList}
 import scala.collection.mutable.ListBuffer
 
@@ -42,6 +47,47 @@ object Sentinel2PyramidFactoryTest {
 }
 
 class Sentinel2PyramidFactoryTest {
+
+    //@Test
+    def testS2INCDLayer(): Unit = {
+        val boundingBox: ProjectedExtent = ProjectedExtent(Extent(-5.0, 37.0, -4.0, 38.0), LatLng)
+        var utmCrs : CRS = null
+        val utmBoundingBox = {
+            val center = boundingBox.extent.center
+            utmCrs = UTM.getZoneCrs(lon = center.getX, lat = center.getY)
+            ProjectedExtent(boundingBox.reproject(utmCrs), utmCrs)
+        }
+
+        val localFromDate = LocalDate.of(2020, 12, 27)
+        val localToDate = LocalDate.of(2020, 12, 28)
+        val ZonedFromDate = ZonedDateTime.of(localFromDate, MIDNIGHT, UTC)
+        val zonedToDate = ZonedDateTime.of(localToDate, MIDNIGHT, UTC)
+
+        val projected_polygons_native_crs = ProjectedPolygons.fromExtent(utmBoundingBox.extent, utmBoundingBox.crs.toString())
+        val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format ZonedFromDate
+        val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format zonedToDate
+        val correlation_id = ""
+        val factory = new Sentinel2PyramidFactory(
+            openSearchEndpoint = "https://resto.c-scale.zcu.cz",
+            openSearchCollectionId = "S2",
+            openSearchLinkTitles = singletonList("B02"),
+            rootPath = null,
+            maxSpatialResolution = CellSize(10, 10) // TODO: cube:dimensions has stepsize 10 but B01 has gsd 60m.
+        )
+
+        val metadata_properties = emptyMap[String, Any]()
+        val datacubeParams = new DataCubeParameters()
+        datacubeParams.tileSize = 256
+        datacubeParams.layoutScheme = "FloatingLayoutScheme"
+        val baseLayer = factory.datacube_seq(
+            projected_polygons_native_crs,
+            from_date, to_date, metadata_properties, correlation_id, datacubeParams
+        ).maxBy { case (zoom, _) => zoom }._2
+
+        val actualTiffs = baseLayer.toSpatial().toGeoTiffs(Tags.empty,GeoTiffOptions(DeflateCompression)).collect().toList.map(t => t._2)
+        assert(actualTiffs.length == 1)
+        actualTiffs.head.write("s2incd_01.tiff", true)
+    }
 
     @Test
     def testDemLayer(): Unit = {
@@ -82,7 +128,7 @@ class Sentinel2PyramidFactoryTest {
         val resourcePath = "org/openeo/geotrellis/file/testDemLayer/tile0_0.tiff"
         val refFile = Thread.currentThread().getContextClassLoader.getResource(resourcePath)
         val refTiff = GeoTiff.readMultiband(refFile.getPath)
-        assertArrayEquals(refTiff.toByteArray, actualTiffs.head.toByteArray)
+        assertArrayEquals(refTiff.raster.tile.band(0).toArrayDouble(), actualTiffs.head.raster.tile.band(0).toArrayDouble(),0.1)
     }
 
     @Test

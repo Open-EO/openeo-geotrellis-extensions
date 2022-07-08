@@ -124,7 +124,7 @@ object DatacubeSupport {
     val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(8)
     val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
       val cached = requiredSpacetimeKeys.distinct().cache()
-      val spatialCount = requiredSpacetimeKeys.map(_.spatialKey).distinct().count()
+      val spatialCount = requiredSpacetimeKeys.map(_.spatialKey).countApproxDistinct()
       val spatialBounds = metadata.bounds.get.toSpatial
       val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
       val isSparse = spatialCount < 0.5 * maxKeys
