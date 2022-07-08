@@ -177,6 +177,11 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
         new MultibandCompositeRasterSource(sourcesListWithBandIds, crs, Predef.Map("date" -> date.toString))
       }
 
+    if(overlappingRasterSources.isEmpty) {
+      //Here we should either throw a clear exception, or log a warning and return empty cube?
+      throw new IllegalArgumentException(s"No valid sources found for ${boundingBox} and ${from} - ${to}. Found ${rasterSources.length} input sources.")
+      //return new OpenEORasterCube[SpaceTimeKey](sc.emptyRDD[(SpaceTimeKey, MultibandTile)],new TileLayerMetadata[SpaceTimeKey](), OpenEORasterCubeMetadata())
+    }
     val resultRDD = rasterSourceRDD(overlappingRasterSources.seq,boundingBox,from,to, params,zoom=zoom)
     new OpenEORasterCube[SpaceTimeKey](resultRDD,resultRDD.metadata, OpenEORasterCubeMetadata())
   }
