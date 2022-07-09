@@ -207,6 +207,14 @@ object FileLayerProvider {
     tileSourcesToDataCube(rasterSources, metadata, requiredSpatialKeys, sc, retainNoDataTiles, cloudFilterStrategy, useSparsePartitioner, datacubeParams)
   }
 
+  private def checkLatLon(extent:Extent):Boolean = {
+    if(extent.xmin < -181 || extent.xmax > 181 || extent.ymin < -92 || extent.ymax > 92) {
+      false
+    }else{
+      true
+    }
+  }
+
   private def tileSourcesToDataCube(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])], sc: SparkContext, retainNoDataTiles: Boolean, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = None, inputFeatures: Option[Seq[Feature]] = None): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
     var localSpatialKeys = requiredSpatialKeys
     if(datacubeParams.exists(_.maskingCube.isDefined)) {
@@ -238,6 +246,10 @@ object FileLayerProvider {
       case true => {
         if(inputFeatures.isDefined) {
           //using metadata inside features is a much faster way of determining Spacetime keys
+          inputFeatures.get.foreach(f=>{
+            val extent = f.geometry.getOrElse(f.bbox.toPolygon()).extent
+            if(!checkLatLon(extent)) throw  new IllegalArgumentException(s"Geometry or Bounding box provided by the catalog has to be in EPSG:4326, but got ${extent} for catalog entry ${f}")
+          })
           val geometicFeatures = inputFeatures.get.map(f=> geotrellis.vector.Feature(f.geometry.getOrElse(f.bbox.toPolygon()),f))
           val requiredSpacetimeKeys: RDD[(SpaceTimeKey)] = sc.parallelize(geometicFeatures,math.max(1,geometicFeatures.size/100)).map(_.reproject(LatLng,metadata.crs)).clipToGrid(metadata).map(t=>SpaceTimeKey(t._1,TemporalKey(t._2.data.nominalDate)))
           DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys, metadata)
