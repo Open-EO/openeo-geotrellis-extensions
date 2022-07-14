@@ -591,6 +591,7 @@ class OpenEOProcesses extends Serializable {
   }
 
   def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String, swapOperands:Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    checkMetadataCompatible(leftCube.metadata,rightCube.metadata)
     val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](leftCube, rightCube)
     if(operator == null) {
       return new ContextRDD(rdd.mapValues({case (l,r) =>
@@ -619,7 +620,17 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
+  def checkMetadataCompatible[K](left:TileLayerMetadata[K],right:TileLayerMetadata[K]): Unit = {
+    if(!left.layout.equals(right.layout)) {
+      throw new IllegalArgumentException(s"merge_cubes: Merging cubes with incompatible layout, please use resample_cube_spatial to align layouts. LayoutLeft: ${left.layout} Layout (right): ${right.layout}")
+    }
+    if(!left.crs.equals(right.crs)) {
+      throw new IllegalArgumentException(s"merge_cubes: Merging cubes with incompatible CRS, please use resample_cube_spatial to align coordinate systems. LayoutLeft: ${left.crs} Layout (right): ${right.crs}")
+    }
+  }
+
   def mergeSpatialCubes(leftCube: MultibandTileLayerRDD[SpatialKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String): ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = {
+    checkMetadataCompatible(leftCube.metadata,rightCube.metadata)
     val joined = outerJoin(leftCube,rightCube)
     val outputCellType = leftCube.metadata.cellType.union(rightCube.metadata.cellType)
     val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(rightCube.metadata.extent),cellType = outputCellType)
@@ -627,6 +638,7 @@ class OpenEOProcesses extends Serializable {
   }
 
   def mergeCubes(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey], operator:String): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    checkMetadataCompatible(leftCube.metadata,rightCube.metadata)
     val joined = outerJoin(leftCube,rightCube)
     val outputCellType = leftCube.metadata.cellType.union(rightCube.metadata.cellType)
 
