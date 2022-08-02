@@ -620,7 +620,7 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
-  def checkMetadataCompatible[K](left:TileLayerMetadata[K],right:TileLayerMetadata[K]): Unit = {
+  def checkMetadataCompatible[_](left:TileLayerMetadata[_],right:TileLayerMetadata[_]): Unit = {
     if(!left.layout.equals(right.layout)) {
       throw new IllegalArgumentException(s"merge_cubes: Merging cubes with incompatible layout, please use resample_cube_spatial to align layouts. LayoutLeft: ${left.layout} Layout (right): ${right.layout}")
     }
