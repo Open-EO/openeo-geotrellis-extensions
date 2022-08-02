@@ -1,6 +1,6 @@
 package org.openeo.geotrellis
 
-import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
+import org.openeo.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer.{Bounds, FloatingLayoutScheme, KeyBounds, LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.proj4.LatLng

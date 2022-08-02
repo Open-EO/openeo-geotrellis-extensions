@@ -14,7 +14,7 @@ object OpenEORasterCubeMetadata{
  * @param bands
  */
 class OpenEORasterCubeMetadata(var bands: Seq[String]) extends Serializable {
-  var inputProducts:Seq[be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Feature] = _
+  var inputProducts:Seq[org.openeo.opensearch.OpenSearchResponses.Feature] = _
 
 
   def setBandNames(names:java.util.List[String]):Unit = {

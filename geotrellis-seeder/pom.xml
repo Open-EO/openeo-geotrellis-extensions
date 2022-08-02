@@ -43,6 +43,11 @@
             </exclusions>
         </dependency>
         <dependency>
+            <groupId>org.openeo</groupId>
+            <artifactId>openeo-opensearch-client</artifactId>
+            <version>${openeo-opensearch-client.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
             <artifactId>geotrellis-s3-spark_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>

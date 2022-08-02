@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.layers
 
-import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
-import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Feature
+import org.openeo.opensearch.OpenSearchClient
+import org.openeo.opensearch.OpenSearchResponses.Feature
 import cats.data.NonEmptyList
 import com.azavea.gdal.GDALWarp
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}

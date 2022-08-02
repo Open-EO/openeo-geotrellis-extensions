@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.layers
 
-import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Link
-import be.vito.eodata.gwcgeotrellis.opensearch.{OpenSearchClient, OpenSearchResponses}
+import org.openeo.opensearch.OpenSearchResponses.Link
+import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}

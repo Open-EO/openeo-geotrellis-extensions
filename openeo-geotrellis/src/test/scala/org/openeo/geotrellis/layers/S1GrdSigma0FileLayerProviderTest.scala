@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.layers
 
 // import org.openeo.geotrellis.TestImplicits._
-import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
+import org.openeo.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer.SpatialKey
 import geotrellis.proj4.CRS

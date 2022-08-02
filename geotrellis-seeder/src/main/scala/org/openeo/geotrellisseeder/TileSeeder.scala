@@ -4,8 +4,8 @@ import be.vito.eodata.biopar.EOProduct
 import be.vito.eodata.catalog.CatalogClient
 import be.vito.eodata.gwcgeotrellis.colormap
 import be.vito.eodata.gwcgeotrellis.geotrellis.TileFetcher
-import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
 import be.vito.eodata.gwcgeotrellis.s3.S3ClientConfigurator
+import org.openeo.opensearch.OpenSearchClient
 import com.beust.jcommander.JCommander
 import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.layer.{KeyBounds, LayoutDefinition, Metadata, SpatialKey, TileLayerMetadata, _}

@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.layers
 
-import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Link
-import be.vito.eodata.gwcgeotrellis.opensearch.{OpenSearchClient, OpenSearchResponses}
+import org.openeo.opensearch.OpenSearchResponses.Link
+import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import geotrellis.raster.RasterSource
 import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
 import geotrellis.store.hadoop.util.HdfsUtils
@@ -76,7 +76,7 @@ class GlobalNetCDFSearchClient(val dataGlob: String, val variables: util.List[St
     // TODO: Extract resolution from somewhere, currently it is a random number.
     // TODO: Extract TileId from somewhere, currently it is the empty string.
     val features: Array[OpenSearchResponses.Feature] = datedRasterSources.map{ case (date: ZonedDateTime, path: String, source: GDALRasterSource) =>
-      OpenSearchResponses.Feature(s"${path}", source.extent, date, variables.asScala.map(v=>Link(URI.create(s"""NETCDF:$path:$v"""), Some(v))).toArray, Some(5), Some(""))
+      OpenSearchResponses.Feature(s"${path}", source.extent, date, variables.asScala.map(v=>Link(URI.create(s"""NETCDF:$path:$v"""), Some(v))).toArray, Some(source.gridExtent.cellSize.width.toInt), None)
     }
 
     features.toSeq

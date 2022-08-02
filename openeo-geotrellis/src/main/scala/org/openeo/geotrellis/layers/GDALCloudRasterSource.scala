@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.layers
 
-import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.Feature
+import org.openeo.opensearch.OpenSearchResponses.Feature
 import geotrellis.layer.{LayoutDefinition, SpaceTimeKey}
 import geotrellis.proj4.CRS
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion

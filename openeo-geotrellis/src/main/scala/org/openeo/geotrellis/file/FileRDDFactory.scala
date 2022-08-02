@@ -1,8 +1,8 @@
 package org.openeo.geotrellis.file
 
-import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
-import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.{Feature, Link}
-import be.vito.eodata.gwcgeotrellis.opensearch.backends.{CreodiasClient, OscarsClient}
+import org.openeo.opensearch.OpenSearchClient
+import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
+import org.openeo.opensearch.backends.{CreodiasClient, OscarsClient}
 import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType}

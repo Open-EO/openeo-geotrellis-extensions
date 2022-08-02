@@ -1,7 +1,7 @@
 package org.openeo.geotrelliss3
 
-import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchResponses.{FeatureCollection, Link}
-import be.vito.eodata.gwcgeotrellis.opensearch.{OpenSearchClient, OpenSearchResponses}
+import org.openeo.opensearch.OpenSearchResponses.{FeatureCollection, Link}
+import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.{GeoTiff, MultibandGeoTiff}
 import geotrellis.raster.{CellSize, Raster, ShortConstantNoDataCellType, UShortConstantNoDataCellType}

@@ -140,15 +140,9 @@
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>be.vito.eodata.gwc-geotrellis</groupId>
-            <artifactId>gwc-geotrellis-core</artifactId>
-            <version>${gwc-geotrellis.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>*</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-            </exclusions>
+            <groupId>org.openeo</groupId>
+            <artifactId>openeo-opensearch-client</artifactId>
+            <version>${openeo-opensearch-client.version}</version>
         </dependency>
         <dependency>
             <groupId>edu.ucar</groupId>

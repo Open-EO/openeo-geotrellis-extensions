@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.file
 
-import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
+import org.openeo.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer.FloatingLayoutScheme
 import geotrellis.raster.CellSize

@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.png
 
-import be.vito.eodata.gwcgeotrellis.opensearch.OpenSearchClient
+import org.openeo.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.proj4.LatLng
 import geotrellis.raster.{ByteArrayTile, CellSize, ColorMaps, ColorRamps, MultibandTile, TileLayout}
