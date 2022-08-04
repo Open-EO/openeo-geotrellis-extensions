@@ -234,7 +234,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
           if (datasetId == "dem") {
             val overlappingKeys = layout.mapTransform.keysForGeometry(GeometryCollection(polygons)).toSeq
 
-            val keysRdd = sc.parallelize(overlappingKeys)
+            val keysRdd = sc.parallelize(overlappingKeys,math.max(1,overlappingKeys.size/100))
 
             val tilesRdd = keysRdd
               .flatMap { spatialKey =>
@@ -259,7 +259,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                   from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
               }
 
-            val polygonsRDD = sc.parallelize(features.values.toSeq).map(_.reproject(LatLng, boundingBox.crs)).map(f => Feature(f intersection multiPolygon, f.data.toLocalDate.atStartOfDay(UTC)))
+            val polygonsRDD = sc.parallelize(features.values.toSeq,math.max(1,features.size/100)).map(_.reproject(LatLng, boundingBox.crs)).map(f => Feature(f intersection multiPolygon, f.data.toLocalDate.atStartOfDay(UTC)))
             var requiredSpatialKeysForFeatures: RDD[(SpatialKey, Iterable[Feature[Geometry, ZonedDateTime]])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
 
             val spatialKeyCount = requiredSpatialKeysForFeatures.map(_._1).countApproxDistinct()
