@@ -72,11 +72,7 @@
       <version>3.1</version>
       <classifier>with-dependencies</classifier>
     </dependency>
-    <dependency>
-      <groupId>org.openeo</groupId>
-      <artifactId>openeo-opensearch-client</artifactId>
-      <version>${openeo-opensearch-client.version}</version>
-    </dependency>
+
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-log4j12</artifactId>
