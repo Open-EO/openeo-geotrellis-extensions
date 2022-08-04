@@ -15,6 +15,11 @@
   <name>geotrellis-common</name>
 
   <dependencies>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-all</artifactId>
+      <version>4.1.68.Final</version>
+    </dependency>
     <!--https://issues.apache.org/jira/browse/SPARK-22128-->
     <dependency>
       <groupId>com.thoughtworks.paranamer</groupId>
@@ -72,7 +77,11 @@
       <version>3.1</version>
       <classifier>with-dependencies</classifier>
     </dependency>
-
+    <dependency>
+      <groupId>org.openeo</groupId>
+      <artifactId>openeo-opensearch-client</artifactId>
+      <version>${openeo-opensearch-client.version}</version>
+    </dependency>
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-log4j12</artifactId>

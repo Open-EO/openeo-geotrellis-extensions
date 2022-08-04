@@ -183,11 +183,6 @@
             <version>1.0.4</version>
             <scope>compile</scope>
         </dependency>
-        <dependency>
-            <groupId>org.openeo</groupId>
-            <artifactId>openeo-opensearch-client</artifactId>
-            <version>${openeo-opensearch-client.version}</version>
-        </dependency>
     </dependencies>
     <build>
         <plugins>
