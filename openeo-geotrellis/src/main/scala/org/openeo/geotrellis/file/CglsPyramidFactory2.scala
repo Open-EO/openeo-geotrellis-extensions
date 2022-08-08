@@ -1,10 +1,8 @@
 package org.openeo.geotrellis.file
 
 import org.openeo.opensearch.OpenSearchClient
-import cats.data.NonEmptyList
-import geotrellis.layer.FloatingLayoutScheme
 import geotrellis.raster.CellSize
-import org.openeo.geotrellis.layers.{GlobalNetCDFSearchClient, GlobalNetCdfFileLayerProvider, Sentinel5PPathDateExtractor}
+import org.openeo.opensearch.backends.GlobalNetCDFSearchClient
 
 import java.util
 
