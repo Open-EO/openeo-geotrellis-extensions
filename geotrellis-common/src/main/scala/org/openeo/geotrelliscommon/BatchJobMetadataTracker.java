@@ -9,6 +9,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public abstract class BatchJobMetadataTracker implements Serializable {
     public static String SH_PU = "Sentinelhub_Processing_Units";
+    public static String SH_TILE_REQUESTS = "Sentinelhub_Tile_Requests";
+    public static String SH_FAILED_TILE_REQUESTS = "Sentinelhub_Failed_Tile_Requests";
 
     private static Optional<Boolean> forceTracking = Optional.empty();
     public static void setGlobalTracking(boolean enable){
@@ -29,6 +31,11 @@ public abstract class BatchJobMetadataTracker implements Serializable {
 
         @Override
         public void registerDoubleCounter(String name) {
+
+        }
+
+        @Override
+        public void add(String name, long value) {
 
         }
 
@@ -54,6 +61,8 @@ public abstract class BatchJobMetadataTracker implements Serializable {
     public abstract void registerCounter(String name);
 
     public abstract void registerDoubleCounter(String name);
+
+    public abstract void add(String name, long value);
 
     public abstract void add(String name, double value);
 

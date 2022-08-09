@@ -13,6 +13,7 @@ import geotrellis.vector._
 import org.apache.spark.{SparkConf, SparkContext, SparkException}
 import org.junit.Assert.{assertEquals, assertTrue, fail}
 import org.junit._
+import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{SH_FAILED_TILE_REQUESTS, SH_PU, SH_TILE_REQUESTS}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
 
@@ -138,7 +139,7 @@ class PyramidFactoryTest {
       "sentinel2-L2A", date, Seq("B08", "B04", "B03"))
 
     assertEquals(expected, actual)
-    val pu = BatchJobMetadataTracker.tracker("").asDict().get(BatchJobMetadataTracker.SH_PU).asInstanceOf[Double]
+    val pu = BatchJobMetadataTracker.tracker("").asDict().get(SH_PU).asInstanceOf[Double]
 
     assertTrue(s"PU: ${pu} not between 44 and 46",pu > 44 && pu < 46)
   }
@@ -150,7 +151,7 @@ class PyramidFactoryTest {
     val endpoint = "https://services-uswest2.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
-   val actual = testLayer(new PyramidFactory("landsat-ot-l1", "landsat-ot-l1", new DefaultCatalogApi(endpoint),
+    val actual = testLayer(new PyramidFactory("landsat-ot-l1", "landsat-ot-l1", new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint), authorizer, maxSpatialResolution = CellSize(10, 10)), "landsat8",
       date, Seq("B10", "B11"))
 
@@ -336,6 +337,13 @@ class PyramidFactoryTest {
       tif.write(s"/tmp/utm.tif")
 
       assertEquals(expected, actual)
+
+      val trackedMetadata = BatchJobMetadataTracker.tracker("").asDict()
+      val numRequests = trackedMetadata.get(SH_TILE_REQUESTS).asInstanceOf[Long]
+      val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
+
+      assertTrue(s"expected at least one tile request but got $numRequests instead", numRequests > 0)
+      assertTrue(s"unexpected number of failed tile requests: $numFailedRequests", numFailedRequests >= 0)
     } finally sc.stop()
   }
 
@@ -789,6 +797,13 @@ class PyramidFactoryTest {
 
       assertEquals(rasterWithoutCatalog, rasterWithCatalog)
       assertEquals(expected, rasterWithoutCatalog)
+
+      val trackedMetadata = BatchJobMetadataTracker.tracker("").asDict()
+      val numRequests = trackedMetadata.get(SH_TILE_REQUESTS).asInstanceOf[Long]
+      val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
+
+      assertEquals("unexpected number of tile requests", 900 + 180, numRequests)
+      assertTrue(s"unexpected number of failed tile requests: $numFailedRequests", numFailedRequests >= 0)
     } finally sc.stop()
   }
 
@@ -806,7 +821,8 @@ class PyramidFactoryTest {
         ProjectedExtent(Extent(488960.0, 6159880.0, 491520.0, 6162440.0), CRS.fromEpsgCode(32632))
 
       val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
-        new DefaultProcessApi(endpoint), authorizer, processingOptions, sampleType = FLOAT32, softErrors = softErrors)
+        new DefaultProcessApi(endpoint), authorizer, processingOptions, sampleType = FLOAT32,
+        maxSoftErrorsRatio = if (softErrors) 1.0 else 0.0)
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
@@ -832,6 +848,13 @@ class PyramidFactoryTest {
       }
 
       provokeNonTransientError(softErrors = true) // shouldn't throw
+
+      val trackedMetadata = BatchJobMetadataTracker.tracker("").asDict()
+      val numRequests = trackedMetadata.get(SH_TILE_REQUESTS).asInstanceOf[Long]
+      val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
+
+      assertTrue(s"expected at least one tile request but got $numRequests instead", numRequests > 0)
+      assertTrue(s"expected at least one failed tile request but got $numFailedRequests instead", numFailedRequests > 0)
     } finally sc.stop()
   }
 }

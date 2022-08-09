@@ -34,6 +34,11 @@ public class SparkBatchJobMetadataTracker extends BatchJobMetadataTracker {
     }
 
     @Override
+    public void add(String name, long value) {
+        counters.get(name).add(value);
+    }
+
+    @Override
     public void add(String name, double value) {
         doubleCounters.get(name).add(value);
     }
