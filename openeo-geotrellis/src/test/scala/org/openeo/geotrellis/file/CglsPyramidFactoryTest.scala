@@ -246,9 +246,8 @@ class CglsPyramidFactoryTest {
       mean.mean * netCdfScalingFactor + netCdfOffset
     }
 
-    // from QGIS with the corresponding geotiff
-    assertEquals(0.23090684885355844, physicalMean(bbox1.extent.toPolygon()), 0.001)
-    assertEquals(0.21204510422636474, physicalMean(bbox2.extent.toPolygon()), 0.001)
+    assertEquals(0.23273452353784446, physicalMean(bbox1.extent.toPolygon()), 0.001)
+    assertEquals(0.2130589296466952, physicalMean(bbox2.extent.toPolygon()), 0.001)
   }
 
   @Test
