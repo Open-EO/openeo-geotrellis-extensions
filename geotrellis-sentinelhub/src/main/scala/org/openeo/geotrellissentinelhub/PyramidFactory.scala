@@ -176,6 +176,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
         dataCubeParameters.globalExtent, multiple_polygons_flag
       )
       val layout = metadata.layout
+      logger.info(s"Creating Sentinelhub datacube ${collectionId} with metadata ${metadata}")
 
       val tracker = BatchJobMetadataTracker.tracker("")
       tracker.registerDoubleCounter(BatchJobMetadataTracker.SH_PU)
@@ -259,6 +260,8 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                   from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
               }
 
+            tracker.addInputProducts(collectionId,features.keys.toList.asJava)
+
             val polygonsRDD = sc.parallelize(features.values.toSeq,math.max(1,features.size/10)).map(_.reproject(LatLng, boundingBox.crs)).map(f => Feature(f intersection multiPolygon, f.data.toLocalDate.atStartOfDay(UTC)))
             var requiredSpatialKeysForFeatures: RDD[(SpatialKey, Iterable[Feature[Geometry, ZonedDateTime]])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
 
@@ -275,7 +278,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             val requiredKeysRdd = requiredSpatialKeysForFeatures.flatMap(tuple=> tuple._2.map(feature => SpaceTimeKey(tuple._1.col,tuple._1.row,feature.data)))
 
             val partitioner = DatacubeSupport.createPartitioner(Some(dataCubeParameters), requiredKeysRdd, metadata)
-            logger.info(s"Created Sentinelhub datacube with ${requiredKeysRdd.countApproxDistinct()} keys and metadata ${metadata} and ${partitioner.get}")
+            logger.info(s"Created Sentinelhub datacube ${collectionId} with ${requiredKeysRdd.countApproxDistinct()} keys and metadata ${metadata} and ${partitioner.get}")
 
 
             var keysRdd = requiredKeysRdd.map((_,Option.empty)).partitionBy(partitioner.get)
