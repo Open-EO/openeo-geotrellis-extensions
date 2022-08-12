@@ -843,7 +843,7 @@ class PyramidFactoryTest {
         fail("should have thrown a SentinelHubException")
       } catch {
         case e: SparkException =>
-          val SentinelHubException(_, 400, responseBody) = e.getRootCause
+          val SentinelHubException(_, 400, _, responseBody) = e.getRootCause
           assertTrue(responseBody, responseBody contains "not present in Sentinel 1 tile")
       }
 

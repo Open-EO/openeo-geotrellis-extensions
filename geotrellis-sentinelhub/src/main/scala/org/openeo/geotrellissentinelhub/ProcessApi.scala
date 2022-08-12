@@ -2,19 +2,24 @@ package org.openeo.geotrellissentinelhub
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.raster.MultibandTile
+import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.raster.io.geotiff.reader.GeoTiffReader
 import geotrellis.vector.ProjectedExtent
+import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent, ExecutionScheduledEvent}
+import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy}
 import org.apache.commons.io.IOUtils
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
 import org.slf4j.{Logger, LoggerFactory}
-import scalaj.http.Http
+import scalaj.http.{Http, HttpResponse}
 
 import java.io.InputStream
-import java.net.URI
-import java.time.ZonedDateTime
+import java.net.{SocketTimeoutException, URI}
+import java.time.{Duration, ZonedDateTime}
 import java.time.format.DateTimeFormatter.ISO_INSTANT
+import java.time.temporal.ChronoUnit.SECONDS
 import java.util
-import scala.collection.JavaConverters.{mapAsJavaMapConverter, mapAsScalaMapConverter}
+import scala.collection.JavaConverters._
+import scala.compat.java8.FunctionConverters._
 import scala.io.Source
 
 trait ProcessApi {
@@ -27,9 +32,63 @@ object DefaultProcessApi {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[DefaultProcessApi])
 }
 
-class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
+class DefaultProcessApi(endpoint: String, respectRetryAfterHeader: Boolean = true) extends ProcessApi with Serializable {
   // TODO: clean up JSON construction/parsing
   import DefaultProcessApi._
+
+  private def withRetryAfterRetries(context: String)(fn: => HttpResponse[MultibandGeoTiff])(implicit logger: Logger): HttpResponse[MultibandGeoTiff] = {
+    val retryable: Throwable => Boolean = {
+      case SentinelHubException(_, 400, _, responseBody) if responseBody.contains("Request body should be non-empty.") => true
+      case SentinelHubException(_, statusCode, _, responseBody) if statusCode >= 500
+        && !responseBody.contains("newLimit > capacity") && !responseBody.contains("Illegal request to https") => true
+      case _: SocketTimeoutException => true
+      case _: CirceException => true
+      case e => logger.error(s"Not attempting to retry unrecoverable error in context: $context", e); false
+    }
+
+    val shakyConnectionRetryPolicy = new RetryPolicy[HttpResponse[MultibandGeoTiff]]()
+      .handleIf(retryable.asJava)
+      .withBackoff(1, 1000, SECONDS) // should not reach maxDelay because of maxAttempts 5
+      .withJitter(0.5)
+      .withMaxAttempts(5)
+      .onFailedAttempt((attempt: ExecutionAttemptedEvent[HttpResponse[MultibandGeoTiff]]) => {
+        val e = attempt.getLastFailure
+        logger.warn(s"Attempt ${attempt.getAttemptCount} failed in context: $context", e)
+      })
+      .onFailure((execution: ExecutionCompletedEvent[HttpResponse[MultibandGeoTiff]]) => {
+        val e = execution.getFailure
+        logger.error(s"Failed after ${execution.getAttemptCount} attempt(s) in context: $context", e)
+      })
+
+    val isRateLimitingResponse: Throwable => Boolean = {
+      case SentinelHubException(_, 429, _, _) => true
+      case _ => false
+    }
+
+    val rateLimitingRetryPolicy = new RetryPolicy[HttpResponse[MultibandGeoTiff]]()
+      .handleIf(isRateLimitingResponse.asJava)
+      .withMaxAttempts(5)
+      .withDelay((_: HttpResponse[MultibandGeoTiff], sentinelHubException: SentinelHubException, _: ExecutionContext) => {
+        val retryAfterHeader = "retry-after"
+
+        val retryAfterSeconds = sentinelHubException
+          .responseHeaders
+          .find { case (header, _) => header equalsIgnoreCase retryAfterHeader }
+          .map { case (_, values) => values.head.toLong }
+          .getOrElse(throw new IllegalStateException(
+            s"""missing expected header "$retryAfterHeader" (case-insensitive);""" +
+              s" actual headers are: ${sentinelHubException.responseHeaders.keys mkString ", "}"))
+
+        Duration.ofSeconds(retryAfterSeconds)
+      })
+      .onRetryScheduled((retry: ExecutionScheduledEvent[HttpResponse[MultibandGeoTiff]]) => {
+        logger.debug(s"Scheduled retry within ${retry.getDelay} because of 429 response in context: $context")
+      })
+
+    Failsafe
+      .`with`(util.Arrays.asList(shakyConnectionRetryPolicy, rateLimitingRetryPolicy))
+      .get(() => fn)
+  }
 
   override def getTile(datasetId: String, projectedExtent: ProjectedExtent, date: ZonedDateTime, width: Int,
                        height: Int, bandNames: Seq[String], sampleType: SampleType,
@@ -115,19 +174,26 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
       .timeout(connTimeoutMs = 1000, readTimeoutMs = 40000)
       .postData(jsonData)
 
+
+    val context = s"getTile $datasetId $date"
+
+    val withRetries =
+      if (respectRetryAfterHeader) this.withRetryAfterRetries(context) _
+      else org.openeo.geotrellissentinelhub.withRetries[HttpResponse[MultibandGeoTiff]](context) _
+
     var processingUnitsSpent = 0.0
-    val response = withRetries(context = s"getTile $datasetId $date") {
-      request.exec(parser = (code: Int, header: Map[String, IndexedSeq[String]], in: InputStream) =>
+
+    val response = withRetries {
+      request.exec(parser = (code: Int, headers: Map[String, IndexedSeq[String]], in: InputStream) =>
         if (code == 200) {
-          processingUnitsSpent += header
+          processingUnitsSpent += headers
             .get("x-processingunits-spent").flatMap(_.headOption)
             .getOrElse(math.max(0.001,width*height*bandNames.size/(512.0*512.0*3.0)).toString).toDouble
           GeoTiffReader.readMultiband(IOUtils.toByteArray(in))
         }
         else {
           val textBody = Source.fromInputStream(in, "utf-8").mkString
-          throw SentinelHubException(request, jsonData, code,
-            statusLine = header.get("Status").flatMap(_.headOption).getOrElse("UNKNOWN"), textBody)
+          throw SentinelHubException(request, jsonData, code, headers, textBody)
         }
       )
     }

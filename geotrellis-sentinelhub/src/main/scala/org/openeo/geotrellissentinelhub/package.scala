@@ -4,8 +4,7 @@ import _root_.io.circe.{Decoder, Encoder, HCursor, Json}
 import _root_.io.circe.Decoder.Result
 import geotrellis.vector._
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
-import net.jodah.failsafe.function.CheckedSupplier
-import net.jodah.failsafe.{Failsafe, FailsafeExecutor, RetryPolicy}
+import net.jodah.failsafe.{Failsafe, RetryPolicy}
 import org.locationtech.jts.geom.Polygonal
 import org.slf4j.Logger
 import software.amazon.awssdk.core.sync.ResponseTransformer
@@ -19,6 +18,7 @@ import java.nio.file.Path
 import java.time.temporal.ChronoUnit.SECONDS
 import java.time.{Instant, ZoneOffset, ZonedDateTime}
 import java.util
+import java.util.Collections
 import scala.collection.JavaConverters._
 import scala.compat.java8.FunctionConverters._
 
@@ -27,11 +27,11 @@ package object geotrellissentinelhub {
     val retryPolicy = {
       val retryable: Throwable => Boolean = {
         // exceptions like ClassCastException, MatchError etc. thrown from this predicate are swallowed by Failsafe :/
-        case SentinelHubException(_, 429, _) => true
-        case SentinelHubException(_, 400, responseBody) if responseBody.contains("Request body should be non-empty.")
+        case SentinelHubException(_, 429, _, _) => true
+        case SentinelHubException(_, 400, _, responseBody) if responseBody.contains("Request body should be non-empty.")
           || responseBody.contains("Missing grant_type parameter") => true
-        case SentinelHubException(_, 404, _) if context.startsWith("startBatchProcess") => true // hack, needs work
-        case SentinelHubException(_, statusCode, responseBody) if statusCode >= 500
+        case SentinelHubException(_, 404, _, _) if context.startsWith("startBatchProcess") => true // hack, needs work
+        case SentinelHubException(_, statusCode, _, responseBody) if statusCode >= 500
           && !responseBody.contains("newLimit > capacity") && !responseBody.contains("Illegal request to https") => true
         case _: SocketTimeoutException => true
         case _: CirceException => true
@@ -53,12 +53,9 @@ package object geotrellissentinelhub {
         })
     }
 
-    val failsafe: FailsafeExecutor[R] = Failsafe
-      .`with`(retryPolicy)
-
-    failsafe.get(new CheckedSupplier[R] {
-      override def get(): R = fn
-    })
+    Failsafe
+      .`with`(Collections.singletonList(retryPolicy))
+      .get(() => fn)
   }
 
   /**

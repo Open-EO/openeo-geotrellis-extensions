@@ -45,7 +45,7 @@ class MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(clien
 
     try fn(accessToken)
     catch {
-      case SentinelHubException(_, 401, _) =>
+      case SentinelHubException(_, 401, _, _) =>
         AccessTokenCache.invalidate(clientId, clientSecret)
         fn(accessToken)
     }
@@ -68,7 +68,7 @@ class MemoizedAuthApiAccessTokenAuthorizer(clientId: String, clientSecret: Strin
 
     try fn(accessToken)
     catch {
-      case SentinelHubException(_, 401, _) =>
+      case SentinelHubException(_, 401, _, _) =>
         AccessTokenCache.invalidate(clientId, clientSecret)
         fn(accessToken)
     }

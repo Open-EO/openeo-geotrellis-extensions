@@ -4,11 +4,12 @@ import scalaj.http.{HttpRequest, HttpResponse}
 
 object SentinelHubException {
   def apply(request: HttpRequest, requestBody: String, textResponse: HttpResponse[String]): SentinelHubException =
-    this(request, requestBody, textResponse.code, textResponse.statusLine, textResponse.body)
+    this(request, requestBody, textResponse.code, textResponse.headers, textResponse.body)
 
-  def apply[R](request: HttpRequest, requestBody: String, statusCode: Int, statusLine: String,
+  def apply(request: HttpRequest, requestBody: String, statusCode: Int, responseHeaders: collection.Map[String, Seq[String]],
             responseBody: String): SentinelHubException = {
     val queryString = request.urlBuilder(request)
+    val statusLine = responseHeaders.get("Status").flatMap(_.headOption).getOrElse("UNKNOWN")
 
     val message: String = {
       s"""Sentinel Hub returned an error
@@ -16,9 +17,10 @@ object SentinelHubException {
          |request: ${request.method} $queryString with body: $requestBody""".stripMargin
     }
 
-    SentinelHubException(message, statusCode, responseBody)
+    SentinelHubException(message, statusCode, responseHeaders, responseBody)
   }
 }
 
-case class SentinelHubException(private val message: String, statusCode: Int, responseBody: String)
+case class SentinelHubException(private val message: String, statusCode: Int,
+                                responseHeaders: collection.Map[String, Seq[String]], responseBody: String)
   extends RuntimeException(message)

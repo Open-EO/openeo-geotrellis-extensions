@@ -36,7 +36,8 @@ object PyramidFactory {
   def withGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
                               clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
                               maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
-    new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
+    new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
+      new DefaultProcessApi(endpoint, respectRetryAfterHeader = false),
       new MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
       processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution, maxSoftErrorsRatio)
 
@@ -49,7 +50,8 @@ object PyramidFactory {
   def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
                                  clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
                                  maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
-    new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
+    new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
+      new DefaultProcessApi(endpoint),
       new MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
       processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
 }
@@ -124,7 +126,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
           Some(key -> tile)
         } catch {
-          case e @ SentinelHubException(_, _, responseBody) =>
+          case e @ SentinelHubException(_, _, _, responseBody) =>
             tracker.add(SH_FAILED_TILE_REQUESTS, 1)
 
             val trackedMetadata = tracker.asDict()
@@ -261,7 +263,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             })
           } else Some(dataTile)
         } catch {
-          case e @ SentinelHubException(_, _, responseBody) =>
+          case e @ SentinelHubException(_, _, _, responseBody) =>
             tracker.add(SH_FAILED_TILE_REQUESTS, 1)
 
             val trackedMetadata = tracker.asDict()
