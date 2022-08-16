@@ -64,6 +64,9 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                      maxSpatialResolution: CellSize = CellSize(10,10), maxSoftErrorsRatio: Double = 0.0) extends Serializable {
   import PyramidFactory._
 
+  require(maxSoftErrorsRatio >= 0.0 && maxSoftErrorsRatio <= 1.0,
+    s"maxSoftErrorsRatio $maxSoftErrorsRatio out of range [0.0, 1.0]")
+
   @transient private val _catalogApi = if (collectionId == null) new MadeToMeasureCatalogApi else catalogApi
 
   private val maxZoom = 14
