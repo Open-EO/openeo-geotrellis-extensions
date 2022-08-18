@@ -4,6 +4,7 @@ import CirceException.decode
 import cats.syntax.either._
 import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.proj4.CRS
+import io.circe.{Decoder, HCursor}
 import io.circe.generic.auto._
 import io.circe.syntax._
 import geotrellis.vector._
@@ -12,7 +13,7 @@ import org.slf4j.{Logger, LoggerFactory}
 import scalaj.http.{Http, HttpOptions, HttpRequest, HttpResponse}
 
 import java.net.URI
-import java.time.ZonedDateTime
+import java.time.{Duration, ZonedDateTime}
 import java.time.format.DateTimeFormatter.{BASIC_ISO_DATE, ISO_INSTANT}
 import java.util
 import scala.collection.JavaConverters._
@@ -21,7 +22,23 @@ object BatchProcessingApi {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[BatchProcessingApi])
 
   private[geotrellissentinelhub] case class CreateBatchProcessResponse(id: String)
-  private[geotrellissentinelhub] case class GetBatchProcessResponse(status: String)
+  private[geotrellissentinelhub] case class GetBatchProcessResponse(id: String, status: String,
+                                                                    valueEstimate: Option[BigDecimal],
+                                                                    timeRange: Option[(ZonedDateTime, ZonedDateTime)]) {
+    def temporalIntervalInDays: Option[Double] = timeRange
+      .map { case (from, to) => Duration.between(from, to).toNanos.toDouble / Duration.ofDays(1).toNanos }
+  }
+
+  private implicit val decodeGetBatchProcessResponse: Decoder[GetBatchProcessResponse] = (c: HCursor) =>
+    for {
+      id <- c.downField("id").as[String]
+      status <- c.downField("status").as[String]
+      valueEstimate <- c.downField("valueEstimate").as[Option[BigDecimal]]
+      timeRangeCursor = c.downField("processRequest").downField("input").downField("data").downN(0).downField("dataFilter")
+        .downField("timeRange")
+      from <- timeRangeCursor.downField("from").as[ZonedDateTime](Decoder.decodeZonedDateTime)
+      to <- timeRangeCursor.downField("to").as[ZonedDateTime](Decoder.decodeZonedDateTime)
+    } yield GetBatchProcessResponse(id, status, valueEstimate, Some(from, to))
 }
 
 class BatchProcessingApi(endpoint: String) {

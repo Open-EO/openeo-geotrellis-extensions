@@ -11,6 +11,7 @@ import scala.collection.JavaConverters._
 
 object BatchProcessingService {
   case class NoSuchFeaturesException(message: String) extends IllegalArgumentException(message)
+  case class BatchProcess(id: String, status: String, processing_units_spent: java.math.BigDecimal)
 }
 
 class BatchProcessingService(endpoint: String, val bucketName: String, authorizer: Authorizer) {
@@ -135,6 +136,24 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
 
   def get_batch_process_status(batch_request_id: String): String = authorized { accessToken =>
     new BatchProcessingApi(endpoint).getBatchProcess(batch_request_id, accessToken).status
+  }
+
+  def get_batch_process(batch_request_id: String): BatchProcess = authorized { accessToken =>
+    val response = new BatchProcessingApi(endpoint).getBatchProcess(batch_request_id, accessToken)
+
+    // eventually this should just return the exact value that the API gives us; until then it's an approximation and
+    // small deviations are of no consequence but we already install a return type of BigDecimal
+    val defaultTemporalInterval = 3
+    val actualPuToEstimateRatio = 1.0 / 3
+    val estimateSecureFactor = actualPuToEstimateRatio * 2
+    val temporalInterval = response.temporalIntervalInDays
+      .map(_.ceil.toInt)
+      .getOrElse(defaultTemporalInterval)
+
+    val slightlyMoreAccurateProcessingUnitsSpent: Option[BigDecimal] = response.valueEstimate
+      .map(_ * estimateSecureFactor * defaultTemporalInterval / temporalInterval)
+
+    BatchProcess(response.id, response.status, slightlyMoreAccurateProcessingUnitsSpent.map(_.bigDecimal).orNull)
   }
 
   def restart_partially_failed_batch_process(batch_request_id: String): Unit = authorized { accessToken =>

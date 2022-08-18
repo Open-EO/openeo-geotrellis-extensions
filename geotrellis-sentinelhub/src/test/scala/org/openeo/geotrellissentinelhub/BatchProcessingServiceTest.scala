@@ -355,6 +355,15 @@ class BatchProcessingServiceTest {
     assertEquals("DONE", status)
   }
 
+  @Test
+  def getBatchProcess(): Unit = {
+    val batch_process =
+      batchProcessingService.get_batch_process(batch_request_id = "dd43f448-d582-40c5-9288-ae7a9c07ecbe")
+
+    assertEquals("DONE", batch_process.status)
+    assertEquals(91.55273710348410, batch_process.processing_units_spent.doubleValue(), 0.0001)
+  }
+
   @Ignore
   @Test
   def startCard4LBatchProcesses(): Unit = {

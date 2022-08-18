@@ -44,9 +44,14 @@ class BatchProcessingApiTest {
 
   @Test
   def getBatchProcess(): Unit = {
-    val batchProcess = batchProcessingApi.getBatchProcess("479cca6e-53d5-4477-ac5b-2c0ba8d3beba", accessToken)
+    val batchProcess = batchProcessingApi.getBatchProcess("dd43f448-d582-40c5-9288-ae7a9c07ecbe", accessToken)
 
     assertEquals("DONE", batchProcess.status)
+    assertEquals(Some(BigDecimal("45.77636855174205")), batchProcess.valueEstimate)
+    assertEquals(
+      Some((ZonedDateTime.parse("2019-10-10T06:06:11Z"), ZonedDateTime.parse("2019-10-10T06:06:15Z"))),
+      batchProcess.timeRange)
+    assertEquals(4.0 / (24 * 60 * 60), batchProcess.temporalIntervalInDays.get, 0.000000001)
   }
 
   @Ignore
