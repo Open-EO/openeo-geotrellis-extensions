@@ -136,10 +136,16 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             val numRequests = trackedMetadata.get(SH_TILE_REQUESTS).asInstanceOf[Long]
             val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
 
-            if (numFailedRequests.toDouble / numRequests <= maxSoftErrorsRatio) {
-              logger.warn(s"ignoring soft error $responseBody", e)
+            val errorsRatio = numFailedRequests.toDouble / numRequests
+            if (errorsRatio <= maxSoftErrorsRatio) {
+              logger.warn(s"ignoring soft error $responseBody;" +
+                s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio <= $maxSoftErrorsRatio", e)
               None
-            } else throw e
+            } else {
+              logger.warn(s"propagating hard error $responseBody;" +
+                s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio > $maxSoftErrorsRatio", e)
+              throw e
+            }
         }
       }
       .filter(_._2.bands.exists(b => !b.isNoDataTile))
@@ -273,10 +279,16 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             val numRequests = trackedMetadata.get(SH_TILE_REQUESTS).asInstanceOf[Long]
             val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
 
-            if (numFailedRequests.toDouble / numRequests <= maxSoftErrorsRatio) {
-              logger.warn(s"ignoring soft error $responseBody", e)
+            val errorsRatio = numFailedRequests.toDouble / numRequests
+            if (errorsRatio <= maxSoftErrorsRatio) {
+              logger.warn(s"ignoring soft error $responseBody;" +
+                s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio <= $maxSoftErrorsRatio", e)
               None
-            } else throw e
+            } else {
+              logger.warn(s"propagating hard error $responseBody;" +
+                s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio > $maxSoftErrorsRatio", e)
+              throw e
+            }
         }
 
         val tilesRdd =
