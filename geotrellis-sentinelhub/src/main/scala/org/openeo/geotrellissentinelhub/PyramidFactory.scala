@@ -30,30 +30,18 @@ object PyramidFactory {
   def withGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
                               clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
                               maxSpatialResolution: CellSize, softErrors: Boolean): PyramidFactory =
-    withGuardedRateLimiting(endpoint, collectionId, datasetId, clientId, clientSecret, processingOptions, sampleType,
-      maxSpatialResolution, maxSoftErrorsRatio = if (softErrors) 1.0 else 0.0)
-
-  def withGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
-                              clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
-                              maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint, respectRetryAfterHeader = false),
       new MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
-      processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution, maxSoftErrorsRatio)
+      processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution, softErrors)
 
   def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
                                  clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
                                  maxSpatialResolution: CellSize, softErrors: Boolean): PyramidFactory =
-    withoutGuardedRateLimiting(endpoint, collectionId, datasetId, clientId, clientSecret, processingOptions, sampleType,
-      maxSpatialResolution, maxSoftErrorsRatio = if (softErrors) 1.0 else 0.0)
-
-  def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
-                                 clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
-                                 maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint),
       new MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
-      processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
+      processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, softErrors = softErrors)
 }
 
 class PyramidFactory(collectionId: String, datasetId: String, catalogApi: CatalogApi, processApi: ProcessApi,
@@ -61,11 +49,8 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                      processingOptions: util.Map[String, Any] = util.Collections.emptyMap[String, Any],
                      sampleType: SampleType = UINT16,
                      rateLimitingGuard: RateLimitingGuard = NoRateLimitingGuard,
-                     maxSpatialResolution: CellSize = CellSize(10,10), maxSoftErrorsRatio: Double = 0.0) extends Serializable {
+                     maxSpatialResolution: CellSize = CellSize(10,10), softErrors: Boolean = false) extends Serializable {
   import PyramidFactory._
-
-  require(maxSoftErrorsRatio >= 0.0 && maxSoftErrorsRatio <= 1.0,
-    s"maxSoftErrorsRatio $maxSoftErrorsRatio out of range [0.0, 1.0]")
 
   @transient private val _catalogApi = if (collectionId == null) new MadeToMeasureCatalogApi else catalogApi
 
@@ -129,23 +114,11 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
           Some(key -> tile)
         } catch {
-          case e @ SentinelHubException(_, _, _, responseBody) =>
+          case e @ SentinelHubException(_, _, _, responseBody) if softErrors =>
             tracker.add(SH_FAILED_TILE_REQUESTS, 1)
 
-            val trackedMetadata = tracker.asDict()
-            val numRequests = trackedMetadata.get(SH_TILE_REQUESTS).asInstanceOf[Long]
-            val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
-
-            val errorsRatio = numFailedRequests.toDouble / numRequests
-            if (errorsRatio <= maxSoftErrorsRatio) {
-              logger.warn(s"ignoring soft error $responseBody;" +
-                s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio <= $maxSoftErrorsRatio", e)
-              None
-            } else {
-              logger.warn(s"propagating hard error $responseBody;" +
-                s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio > $maxSoftErrorsRatio", e)
-              throw e
-            }
+            logger.warn(s"ignoring soft error $responseBody", e)
+            None
         }
       }
       .filter(_._2.bands.exists(b => !b.isNoDataTile))
@@ -272,23 +245,11 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             })
           } else Some(dataTile)
         } catch {
-          case e @ SentinelHubException(_, _, _, responseBody) =>
+          case e @ SentinelHubException(_, _, _, responseBody) if softErrors =>
             tracker.add(SH_FAILED_TILE_REQUESTS, 1)
 
-            val trackedMetadata = tracker.asDict()
-            val numRequests = trackedMetadata.get(SH_TILE_REQUESTS).asInstanceOf[Long]
-            val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
-
-            val errorsRatio = numFailedRequests.toDouble / numRequests
-            if (errorsRatio <= maxSoftErrorsRatio) {
-              logger.warn(s"ignoring soft error $responseBody;" +
-                s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio <= $maxSoftErrorsRatio", e)
-              None
-            } else {
-              logger.warn(s"propagating hard error $responseBody;" +
-                s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio > $maxSoftErrorsRatio", e)
-              throw e
-            }
+            logger.warn(s"ignoring soft error $responseBody", e)
+            None
         }
 
         val tilesRdd =

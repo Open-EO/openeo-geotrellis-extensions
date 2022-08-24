@@ -821,8 +821,7 @@ class PyramidFactoryTest {
         ProjectedExtent(Extent(488960.0, 6159880.0, 491520.0, 6162440.0), CRS.fromEpsgCode(32632))
 
       val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
-        new DefaultProcessApi(endpoint), authorizer, processingOptions, sampleType = FLOAT32,
-        maxSoftErrorsRatio = if (softErrors) 1.0 else 0.0)
+        new DefaultProcessApi(endpoint), authorizer, processingOptions, sampleType = FLOAT32, softErrors = softErrors)
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
