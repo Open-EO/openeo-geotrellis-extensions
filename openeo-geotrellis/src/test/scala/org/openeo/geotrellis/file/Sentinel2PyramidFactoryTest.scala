@@ -134,7 +134,7 @@ class Sentinel2PyramidFactoryTest {
     @Test
     def testStatsFromPyramid(): Unit = {
         val bbox = ProjectedExtent(Extent(373863.50, 5212258.22, 378241.73, 5216244.73), CRS.fromEpsgCode(32631))
-        val localDate = LocalDate.of(2019, 10, 11)
+        val localDate = LocalDate.of(2022, 8, 1)
         val spatialLayer = createLayerForDate(bbox, localDate)
 
         checkStatsResult("testStatsFromPyramid", bbox, spatialLayer)
@@ -143,7 +143,7 @@ class Sentinel2PyramidFactoryTest {
     @Test
     def testStatsFromNativeUTM(): Unit = {
         val bbox = ProjectedExtent(Extent(373863.50, 5212258.22, 378241.73, 5216244.73), CRS.fromEpsgCode(32631))
-        val localDate = LocalDate.of(2019, 10, 11)
+        val localDate = LocalDate.of(2022, 8, 1)
         val spatialLayer = createLayerForDate(bbox, localDate,pyramid = false)
 
         checkStatsResult("testStatsFromNativeUTM", bbox, spatialLayer)
@@ -158,7 +158,7 @@ class Sentinel2PyramidFactoryTest {
             case Summary(values) => values.head.mean
         }
 
-        val qgisZonalStaticsPluginResult = 4.510951226022072
+        val qgisZonalStaticsPluginResult = 8.874901011878574
         assertEquals(qgisZonalStaticsPluginResult, singleBandMean, 0.005)
     }
 
