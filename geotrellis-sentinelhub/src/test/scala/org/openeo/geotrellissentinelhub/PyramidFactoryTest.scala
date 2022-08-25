@@ -13,7 +13,7 @@ import geotrellis.vector._
 import org.apache.spark.{SparkConf, SparkContext, SparkException}
 import org.junit.Assert.{assertEquals, assertTrue, fail}
 import org.junit._
-import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{SH_FAILED_TILE_REQUESTS, SH_PU, SH_TILE_REQUESTS}
+import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{SH_FAILED_TILE_REQUESTS, SH_PU}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
 
@@ -339,10 +339,8 @@ class PyramidFactoryTest {
       assertEquals(expected, actual)
 
       val trackedMetadata = BatchJobMetadataTracker.tracker("").asDict()
-      val numRequests = trackedMetadata.get(SH_TILE_REQUESTS).asInstanceOf[Long]
       val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
 
-      assertTrue(s"expected at least one tile request but got $numRequests instead", numRequests > 0)
       assertTrue(s"unexpected number of failed tile requests: $numFailedRequests", numFailedRequests >= 0)
     } finally sc.stop()
   }
@@ -799,10 +797,8 @@ class PyramidFactoryTest {
       assertEquals(expected, rasterWithoutCatalog)
 
       val trackedMetadata = BatchJobMetadataTracker.tracker("").asDict()
-      val numRequests = trackedMetadata.get(SH_TILE_REQUESTS).asInstanceOf[Long]
       val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
 
-      assertEquals("unexpected number of tile requests", 900 + 180, numRequests)
       assertTrue(s"unexpected number of failed tile requests: $numFailedRequests", numFailedRequests >= 0)
     } finally sc.stop()
   }
@@ -821,7 +817,8 @@ class PyramidFactoryTest {
         ProjectedExtent(Extent(488960.0, 6159880.0, 491520.0, 6162440.0), CRS.fromEpsgCode(32632))
 
       val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
-        new DefaultProcessApi(endpoint), authorizer, processingOptions, sampleType = FLOAT32, softErrors = softErrors)
+        new DefaultProcessApi(endpoint), authorizer, processingOptions, sampleType = FLOAT32,
+        maxSoftErrorsRatio = if (softErrors) 1.0 else 0.0)
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
@@ -849,10 +846,8 @@ class PyramidFactoryTest {
       provokeNonTransientError(softErrors = true) // shouldn't throw
 
       val trackedMetadata = BatchJobMetadataTracker.tracker("").asDict()
-      val numRequests = trackedMetadata.get(SH_TILE_REQUESTS).asInstanceOf[Long]
       val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
 
-      assertTrue(s"expected at least one tile request but got $numRequests instead", numRequests > 0)
       assertTrue(s"expected at least one failed tile request but got $numFailedRequests instead", numFailedRequests > 0)
     } finally sc.stop()
   }

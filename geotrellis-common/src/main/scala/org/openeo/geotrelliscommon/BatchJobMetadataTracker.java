@@ -9,7 +9,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public abstract class BatchJobMetadataTracker implements Serializable {
     public static String SH_PU = "Sentinelhub_Processing_Units";
-    public static String SH_TILE_REQUESTS = "Sentinelhub_Tile_Requests";
     public static String SH_FAILED_TILE_REQUESTS = "Sentinelhub_Failed_Tile_Requests";
 
     private static Optional<Boolean> forceTracking = Optional.empty();

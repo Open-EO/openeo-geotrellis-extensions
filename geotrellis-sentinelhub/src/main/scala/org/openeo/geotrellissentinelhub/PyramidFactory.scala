@@ -9,7 +9,7 @@ import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{SH_FAILED_TILE_REQUESTS, SH_PU, SH_TILE_REQUESTS}
+import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{SH_FAILED_TILE_REQUESTS, SH_PU}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 import org.slf4j.{Logger, LoggerFactory}
@@ -30,18 +30,30 @@ object PyramidFactory {
   def withGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
                               clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
                               maxSpatialResolution: CellSize, softErrors: Boolean): PyramidFactory =
+    withGuardedRateLimiting(endpoint, collectionId, datasetId, clientId, clientSecret, processingOptions, sampleType,
+      maxSpatialResolution, maxSoftErrorsRatio = if (softErrors) 1.0 else 0.0)
+
+  def withGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
+                              clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
+                              maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint, respectRetryAfterHeader = false),
       new MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
-      processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution, softErrors)
+      processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution, maxSoftErrorsRatio)
 
   def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
                                  clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
                                  maxSpatialResolution: CellSize, softErrors: Boolean): PyramidFactory =
+    withoutGuardedRateLimiting(endpoint, collectionId, datasetId, clientId, clientSecret, processingOptions, sampleType,
+      maxSpatialResolution, maxSoftErrorsRatio = if (softErrors) 1.0 else 0.0)
+
+  def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
+                                 clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
+                                 maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint),
       new MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
-      processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, softErrors = softErrors)
+      processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
 }
 
 class PyramidFactory(collectionId: String, datasetId: String, catalogApi: CatalogApi, processApi: ProcessApi,
@@ -49,8 +61,11 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                      processingOptions: util.Map[String, Any] = util.Collections.emptyMap[String, Any],
                      sampleType: SampleType = UINT16,
                      rateLimitingGuard: RateLimitingGuard = NoRateLimitingGuard,
-                     maxSpatialResolution: CellSize = CellSize(10,10), softErrors: Boolean = false) extends Serializable {
+                     maxSpatialResolution: CellSize = CellSize(10,10), maxSoftErrorsRatio: Double = 0.0) extends Serializable {
   import PyramidFactory._
+
+  require(maxSoftErrorsRatio >= 0.0 && maxSoftErrorsRatio <= 1.0,
+    s"maxSoftErrorsRatio $maxSoftErrorsRatio out of range [0.0, 1.0]")
 
   @transient private val _catalogApi = if (collectionId == null) new MadeToMeasureCatalogApi else catalogApi
 
@@ -92,9 +107,9 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
     val tracker = BatchJobMetadataTracker.tracker("")
     tracker.registerDoubleCounter(SH_PU)
-    tracker.registerCounter(SH_TILE_REQUESTS)
     tracker.registerCounter(SH_FAILED_TILE_REQUESTS)
 
+    val numRequests = overlappingKeys.size
     val tilesRdd = sc.parallelize(overlappingKeys, numSlices = (overlappingKeys.size / maxKeysPerPartition) max 1)
       .flatMap { key =>
         val width = layout.tileLayout.tileCols
@@ -104,8 +119,6 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
         try {
           val (tile, processingUnitsSpent) = authorized { accessToken =>
-            tracker.add(SH_TILE_REQUESTS, 1)
-
             processApi.getTile(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs),
               key.temporalKey, width, height, bandNames, sampleType, Criteria.toDataFilters(metadataProperties),
               processingOptions, accessToken)
@@ -114,11 +127,22 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
           Some(key -> tile)
         } catch {
-          case e @ SentinelHubException(_, _, _, responseBody) if softErrors =>
+          case e @ SentinelHubException(_, _, _, responseBody) =>
             tracker.add(SH_FAILED_TILE_REQUESTS, 1)
 
-            logger.warn(s"ignoring soft error $responseBody", e)
-            None
+            val trackedMetadata = tracker.asDict()
+            val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
+
+            val errorsRatio = numFailedRequests.toDouble / numRequests
+            if (errorsRatio <= maxSoftErrorsRatio) {
+              logger.warn(s"ignoring soft error $responseBody;" +
+                s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio <= $maxSoftErrorsRatio", e)
+              None
+            } else {
+              logger.warn(s"propagating hard error $responseBody;" +
+                s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio > $maxSoftErrorsRatio", e)
+              throw e
+            }
         }
       }
       .filter(_._2.bands.exists(b => !b.isNoDataTile))
@@ -195,20 +219,17 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
       val tracker = BatchJobMetadataTracker.tracker("")
       tracker.registerDoubleCounter(SH_PU)
-      tracker.registerCounter(SH_TILE_REQUESTS)
       tracker.registerCounter(SH_FAILED_TILE_REQUESTS)
 
       val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = {
         //noinspection ComparingUnrelatedTypes
         val maskClouds = dataCubeParameters.maskingStrategyParameters.get("method") == "mask_scl_dilation"
 
-        def loadMasked(spatialKey: SpatialKey, dateTime: ZonedDateTime): Option[MultibandTile] = try {
+        def loadMasked(spatialKey: SpatialKey, dateTime: ZonedDateTime, numRequests: Long): Option[MultibandTile] = try {
           def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile = {
             awaitRateLimitingGuardDelay(bandNames, width, height)
 
             val (tile, processingUnitsSpent) = authorized { accessToken =>
-              tracker.add(SH_TILE_REQUESTS, 1)
-
               processApi.getTile(datasetId, projectedExtent, dateTime, width, height, bandNames,
                 sampleType, Criteria.toDataFilters(metadata_properties), processingOptions, accessToken)
             }
@@ -245,23 +266,35 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             })
           } else Some(dataTile)
         } catch {
-          case e @ SentinelHubException(_, _, _, responseBody) if softErrors =>
+          case e @ SentinelHubException(_, _, _, responseBody) =>
             tracker.add(SH_FAILED_TILE_REQUESTS, 1)
 
-            logger.warn(s"ignoring soft error $responseBody", e)
-            None
+            val trackedMetadata = tracker.asDict()
+            val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
+
+            val errorsRatio = numFailedRequests.toDouble / numRequests
+            if (errorsRatio <= maxSoftErrorsRatio) {
+              logger.warn(s"ignoring soft error $responseBody;" +
+                s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio <= $maxSoftErrorsRatio", e)
+              None
+            } else {
+              logger.warn(s"propagating hard error $responseBody;" +
+                s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio > $maxSoftErrorsRatio", e)
+              throw e
+            }
         }
 
         val tilesRdd =
           if (datasetId == "dem") {
             val overlappingKeys = layout.mapTransform.keysForGeometry(GeometryCollection(polygons)).toSeq
 
-            val keysRdd = sc.parallelize(overlappingKeys,math.max(1,overlappingKeys.size/10))
+            val numRequests = overlappingKeys.size
+            val keysRdd = sc.parallelize(overlappingKeys, math.max(1, overlappingKeys.size / 10))
 
             val tilesRdd = keysRdd
               .flatMap { spatialKey =>
                 // "dem" data doesn't have a time dimension so the actual timestamp doesn't matter
-                loadMasked(spatialKey, ZonedDateTime.of(1981, 4, 24, 2, 0, 0, 0, UTC))
+                loadMasked(spatialKey, ZonedDateTime.of(1981, 4, 24, 2, 0, 0, 0, UTC), numRequests)
                   .map(tile => spatialKey -> tile)
               }
               .flatMap { case (spatialKey, tile) =>
@@ -304,10 +337,11 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             var keysRdd = requiredKeysRdd.map((_,Option.empty)).partitionBy(partitioner.get)
 
-            keysRdd = DatacubeSupport.applyDataMask(Some(dataCubeParameters),keysRdd)
+            keysRdd = DatacubeSupport.applyDataMask(Some(dataCubeParameters), keysRdd)
+            val numRequests = keysRdd.cache().count()
 
             val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = keysRdd
-              .mapPartitions(_.map { case (spaceTimeKey, _) => (spaceTimeKey, loadMasked(spaceTimeKey.spatialKey, spaceTimeKey.time)) }, preservesPartitioning = true)
+              .mapPartitions(_.map { case (spaceTimeKey, _) => (spaceTimeKey, loadMasked(spaceTimeKey.spatialKey, spaceTimeKey.time, numRequests)) }, preservesPartitioning = true)
               .filter {case (_: SpaceTimeKey, tile: Option[MultibandTile]) => tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
               .mapValues(t => t.get)
 
