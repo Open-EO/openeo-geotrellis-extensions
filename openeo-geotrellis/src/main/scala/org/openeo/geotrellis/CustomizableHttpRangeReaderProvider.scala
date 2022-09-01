@@ -7,7 +7,7 @@ import org.openeo.geotrelliscommon.CirceException.decode
 import org.slf4j.{Logger, LoggerFactory}
 import scalaj.http.Http
 
-import java.io.FileNotFoundException
+import java.io.{File, FileNotFoundException}
 import java.net.URI
 import scala.io.Source
 
@@ -36,8 +36,9 @@ class CustomizableHttpRangeReaderProvider extends RangeReaderProvider {
       try decode[Map[Host, Credentials]](source.mkString).valueOr(throw _)
       finally source.close()
     } catch {
-      case e: FileNotFoundException => logger.warn("JSON file with HTTP credentials not found; setting system " +
-        s"property $HttpCredentialsFileSystemProperty allows for a custom location", e)
+      case e: FileNotFoundException =>
+        logger.warn(s"JSON file with HTTP credentials not found at ${credentialsFile.getCanonicalPath}; setting " +
+          s"system property $HttpCredentialsFileSystemProperty allows for a custom location", e)
         Map()
     }
   }
@@ -47,8 +48,10 @@ object CustomizableHttpRangeReaderProvider {
   private val logger: Logger = LoggerFactory.getLogger(classOf[CustomizableHttpRangeReaderProvider])
 
   private final val HttpCredentialsFileSystemProperty = "http.credentials.file"
-  private val credentialsFile =
-    Option(System.getProperty(HttpCredentialsFileSystemProperty)).getOrElse("./http_credentials.json")
+  private val credentialsFile = {
+    val path = Option(System.getProperty(HttpCredentialsFileSystemProperty)).getOrElse("./http_credentials.json")
+    new File(path)
+  }
 
   private case class Credentials(username: String, password: String)
 }
