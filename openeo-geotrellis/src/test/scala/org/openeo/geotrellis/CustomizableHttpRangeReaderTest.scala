@@ -8,11 +8,8 @@ import org.junit.{Ignore, Test}
 
 import java.net.URI
 
-@Ignore("needs credentials + Terrascope URL doesn't support byte ranges")
+@Ignore("requires a file with Terrascope credentials")
 class CustomizableHttpRangeReaderTest {
-  // private val geoTiffUri = new URI("http://127.0.0.1:8080/S2A_20200105T071301_39RVH_LAI_20M_V200.tif")
-
-  // java.lang.IllegalArgumentException: requirement failed: Server doesn't support ranged byte reads
   private val geoTiffUri = new URI("https://services.terrascope.be/download/Sentinel2/LAI_V2/2020/01/05/S2A_20200105T071301_39RVH_LAI_V200/20M/S2A_20200105T071301_39RVH_LAI_20M_V200.tif")
 
   @Test

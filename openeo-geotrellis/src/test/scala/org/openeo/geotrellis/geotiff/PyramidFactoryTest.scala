@@ -485,7 +485,7 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, reprojectedBoundingBox, zoom = maxZoom)
   }
 
-  @Ignore("needs credentials + Terrascope URL doesn't support byte ranges")
+  @Ignore("requires a file with Terrascope credentials")
   @Test
   def authorizedGeoTiffFromUri(): Unit = {
     val singleDate = LocalDate.of(2020, 1, 5).atStartOfDay(UTC) format ISO_OFFSET_DATE_TIME
