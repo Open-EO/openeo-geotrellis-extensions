@@ -1,6 +1,6 @@
 package org.openeo.geotrellissentinelhub
 
-import CirceException.decode
+import org.openeo.geotrelliscommon.CirceException.decode
 import cats.syntax.either._
 import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.proj4.{CRS, LatLng}

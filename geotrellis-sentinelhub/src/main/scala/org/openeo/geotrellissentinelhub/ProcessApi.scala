@@ -8,6 +8,7 @@ import geotrellis.vector.ProjectedExtent
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent, ExecutionScheduledEvent}
 import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy}
 import org.apache.commons.io.IOUtils
+import org.openeo.geotrelliscommon.CirceException
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
 import org.slf4j.{Logger, LoggerFactory}
 import scalaj.http.{Http, HttpResponse}

@@ -6,7 +6,8 @@ import io.circe.{DecodingFailure, ParsingFailure}
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.Test
 import org.openeo.geotrellissentinelhub.BatchProcessingApi.GetBatchProcessResponse
-import org.openeo.geotrellissentinelhub.CirceException.decode
+import org.openeo.geotrelliscommon.CirceException
+import org.openeo.geotrelliscommon.CirceException.decode
 import org.slf4j.LoggerFactory
 
 class CirceExceptionTest {

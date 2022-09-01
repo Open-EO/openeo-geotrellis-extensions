@@ -6,6 +6,7 @@ import geotrellis.vector._
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
 import net.jodah.failsafe.{Failsafe, RetryPolicy}
 import org.locationtech.jts.geom.Polygonal
+import org.openeo.geotrelliscommon.CirceException
 import org.slf4j.Logger
 import software.amazon.awssdk.core.sync.ResponseTransformer
 import software.amazon.awssdk.regions.Region

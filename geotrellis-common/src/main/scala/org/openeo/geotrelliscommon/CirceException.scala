@@ -1,4 +1,4 @@
-package org.openeo.geotrellissentinelhub
+package org.openeo.geotrelliscommon
 
 import io.circe.{Decoder, DecodingFailure, ParsingFailure}
 import io.circe.parser.{decode => circeDecode}

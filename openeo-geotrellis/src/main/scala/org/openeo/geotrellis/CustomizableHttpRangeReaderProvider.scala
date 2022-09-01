@@ -3,7 +3,7 @@ package org.openeo.geotrellis
 import cats.syntax.either._
 import geotrellis.util.{RangeReader, RangeReaderProvider}
 import io.circe.generic.auto._
-import io.circe.parser.decode
+import org.openeo.geotrelliscommon.CirceException.decode
 import org.slf4j.{Logger, LoggerFactory}
 import scalaj.http.Http
 
