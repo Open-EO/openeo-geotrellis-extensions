@@ -485,6 +485,31 @@ class PyramidFactoryTest {
     saveLayerAsGeoTiff(pyramid, reprojectedBoundingBox, zoom = maxZoom)
   }
 
+  @Ignore("needs credentials + Terrascope URL doesn't support byte ranges")
+  @Test
+  def authorizedGeoTiffFromUri(): Unit = {
+    val singleDate = LocalDate.of(2020, 1, 5).atStartOfDay(UTC) format ISO_OFFSET_DATE_TIME
+
+    val timestampedUris = util.Collections.singletonMap(
+      "https://services.terrascope.be/download/Sentinel2/LAI_V2/2020/01/05/S2A_20200105T071301_39RVH_LAI_V200/20M/S2A_20200105T071301_39RVH_LAI_20M_V200.tif", singleDate)
+
+    val boundingBox = ProjectedExtent(
+      Extent(444068.6374407583498396, 2741875.7612559241242707, 449191.1196682464797050, 2747715.3909952607937157),
+      CRS.fromEpsgCode(32639))
+
+    val pyramidFactory = PyramidFactory.from_uris(timestampedUris)
+
+    val dataCubeParameters = new org.openeo.geotrelliscommon.DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+
+    val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
+    val pyramid = pyramidFactory.datacube_seq(ProjectedPolygons.fromExtent(boundingBox.extent, srs),
+      from_date = singleDate, to_date = singleDate, metadata_properties = null, correlationId = null, dataCubeParameters)
+
+    val Seq((maxZoom, _)) = pyramid
+    saveLayerAsGeoTiff(pyramid, boundingBox, zoom = maxZoom)
+  }
+
   @Ignore("doesn't work, the S3Client instance is not propagated as RasterSources are manipulated")
   @Test
   def anonymousInnerClass(): Unit = {

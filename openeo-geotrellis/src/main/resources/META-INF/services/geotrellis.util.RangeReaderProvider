@@ -1,1 +1,2 @@
 org.openeo.geotrellis.MultiClientRangeReaderProvider
+org.openeo.geotrellis.CustomizableHttpRangeReaderProvider
