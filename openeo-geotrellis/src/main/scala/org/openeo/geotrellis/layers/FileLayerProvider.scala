@@ -1,7 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import org.openeo.opensearch.OpenSearchClient
-import org.openeo.opensearch.OpenSearchResponses.Feature
 import cats.data.NonEmptyList
 import com.azavea.gdal.GDALWarp
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
@@ -9,7 +7,6 @@ import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
-import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
@@ -22,6 +19,8 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
+import org.openeo.opensearch.OpenSearchClient
+import org.openeo.opensearch.OpenSearchResponses.Feature
 import org.slf4j.LoggerFactory
 
 import java.io.IOException
@@ -32,7 +31,6 @@ import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
 import scala.collection.immutable
-import scala.reflect.ClassTag
 import scala.util.matching.Regex
 
 // TODO: are these attributes typically propagated as RasterSources are transformed? Maybe we should find another way to
@@ -244,7 +242,18 @@ object FileLayerProvider {
 
     val partitioner = useSparsePartitioner match {
       case true => {
-        createPartitioner(datacubeParams, requiredSpatialKeys, filteredSources, metadata)
+        if(inputFeatures.isDefined) {
+          //using metadata inside features is a much faster way of determining Spacetime keys
+          inputFeatures.get.foreach(f=>{
+            val extent = f.geometry.getOrElse(f.bbox.toPolygon()).extent
+            if(!checkLatLon(extent)) throw  new IllegalArgumentException(s"Geometry or Bounding box provided by the catalog has to be in EPSG:4326, but got ${extent} for catalog entry ${f}")
+          })
+          val geometricFeatures = inputFeatures.get.map(f=> geotrellis.vector.Feature(f.geometry.getOrElse(f.bbox.toPolygon()),f))
+          val requiredSpacetimeKeys: RDD[(SpaceTimeKey)] = sc.parallelize(geometricFeatures,math.max(1,geometricFeatures.size)).map(_.reproject(LatLng,metadata.crs)).clipToGrid(metadata).map(t=>SpaceTimeKey(t._1,TemporalKey(t._2.data.nominalDate)))
+          DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys, metadata)
+        }else{
+          createPartitioner(datacubeParams, localSpatialKeys, filteredSources, metadata)
+        }
       }
       case false => Option.empty
     }
@@ -281,7 +290,7 @@ object FileLayerProvider {
           .map { tuple => (tuple._1.spatialKey, tuple) }
           //for sparse keys, this takes a silly amount of time and memory. Just broadcasting spatialkeys and filtering on that may be a lot easier...
           //stage boundary, first stage of data loading ends here!
-          .rightOuterJoin(requiredSpatialKeys).flatMap { t => t._2._1.toList }
+          .join[Any](requiredSpatialKeys.map(t=>(t._1,null))).map { t => t._2._1 }
 
     }
 
