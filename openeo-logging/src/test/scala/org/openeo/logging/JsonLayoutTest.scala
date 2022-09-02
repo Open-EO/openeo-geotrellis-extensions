@@ -51,4 +51,30 @@ class JsonLayoutTest {
     assertEquals("JsonLayoutTest.scala", logEntry("filename").asString.get)
     assertEquals(33, logEntry("lineno").asNumber.flatMap(_.toInt).get)
   }
+
+
+  @Test
+  def testLevelnameIsAlignedWithPythonLogging(): Unit = {
+    def loggingEvent(level: Level) = {
+      val logger = Logger.getLogger(getClass)
+      val timestamp = 1662106067123L
+      val message = level.toString.toLowerCase
+
+      new LoggingEvent(null, logger, timestamp, level, message, null)
+    }
+
+    def testLevelname(inputLevel: Level, outputLevelname: String) {
+      val logLine = jsonLayout.format(loggingEvent(inputLevel))
+      val logEntry = decode[Map[String, Json]](logLine).valueOr(throw _)
+
+      assertEquals(outputLevelname, logEntry("levelname").asString.get)
+    }
+
+    testLevelname(Level.FATAL, "CRITICAL")
+    testLevelname(Level.ERROR, "ERROR")
+    testLevelname(Level.WARN, "WARNING")
+    testLevelname(Level.INFO, "INFO")
+    testLevelname(Level.DEBUG, "DEBUG")
+    testLevelname(Level.TRACE, "DEBUG")
+  }
 }

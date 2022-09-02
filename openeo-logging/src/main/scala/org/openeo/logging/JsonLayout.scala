@@ -2,7 +2,7 @@ package org.openeo.logging
 
 import io.circe.{Encoder, Json, JsonNumber}
 import io.circe.syntax._
-import org.apache.log4j.Layout
+import org.apache.log4j.{Layout, Level}
 import org.apache.log4j.spi.LocationInfo.NA
 import org.apache.log4j.spi.LoggingEvent
 
@@ -32,11 +32,18 @@ class JsonLayout extends Layout {
   import JsonLayout._
 
   override def format(event: LoggingEvent): String = {
+    def pythonLevel(level: Level): String = level match {
+      case Level.FATAL => "CRITICAL"
+      case Level.WARN => "WARNING"
+      case Level.TRACE => "DEBUG"
+      case _ => level.toString
+    }
+
     val baseLogEntry = Map(
       "created" -> (event.getTimeStamp / 1000.0).asJson,
       "name" -> event.getLoggerName.asJson,
       "filename" -> event.getLocationInformation.getFileName.asJson,
-      "levelname" -> event.getLevel.toString.asJson,
+      "levelname" -> pythonLevel(event.getLevel).asJson,
       "message" -> event.getRenderedMessage.asJson
     )
 
