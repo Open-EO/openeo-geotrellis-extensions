@@ -290,7 +290,7 @@ object FileLayerProvider {
           .map { tuple => (tuple._1.spatialKey, tuple) }
           //for sparse keys, this takes a silly amount of time and memory. Just broadcasting spatialkeys and filtering on that may be a lot easier...
           //stage boundary, first stage of data loading ends here!
-          .join[Any](requiredSpatialKeys.map(t=>(t._1,null))).map { t => t._2._1 }
+          .join[Null](requiredSpatialKeys.map(t=>(t._1,null))).map { t => t._2._1 }
 
     }
 
