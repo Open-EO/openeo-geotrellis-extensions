@@ -45,11 +45,11 @@ class S3Service {
   }
 
   // previously batch processes wrote to s3://<bucket_name>/<batch_request_id> while the new ones write to
-  // s3://<bucket_name>/<request_group_id> because they comprise multiple batch process requests
-  def download_stac_data(bucket_name: String, request_group_id: String, target_dir: String,
+  // s3://<bucket_name>/<request_group_uuid> because they comprise multiple batch process requests
+  def download_stac_data(bucket_name: String, request_group_uuid: String, target_dir: String,
                          metadata_poll_interval_secs: Int = 10,
                          max_metadata_delay_secs: Int = 600): Unit = S3.withClient { s3Client =>
-    def keys: Seq[String] = S3.listObjectIdentifiers(s3Client, bucket_name, prefix = request_group_id).iterator
+    def keys: Seq[String] = S3.listObjectIdentifiers(s3Client, bucket_name, prefix = request_group_uuid).iterator
       .map(_.key())
       .toSeq
 
@@ -70,6 +70,8 @@ class S3Service {
     while (System.currentTimeMillis() < endMillis) {
       val stacMetadataKeys = keys
         .filter(_.endsWith("_metadata.json"))
+
+      logger.debug(s"STAC metadata in s3://$bucket_name with prefix $request_group_uuid: found ${stacMetadataKeys.size} of ${tiffKeys.size}")
 
       val allStacMetadataAvailable = stacMetadataKeys.size == tiffKeys.size
 

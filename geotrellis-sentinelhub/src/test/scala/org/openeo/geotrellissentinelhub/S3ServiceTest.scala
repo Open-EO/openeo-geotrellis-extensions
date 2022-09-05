@@ -31,7 +31,7 @@ class S3ServiceTest {
 
     s3Service.download_stac_data(
       bucketName,
-      request_group_id = "e89517fe-390d-4109-b3cc-4e4d514ebe2b",
+      request_group_uuid = "e89517fe-390d-4109-b3cc-4e4d514ebe2b",
       target_dir = tempDir.getAbsolutePath
     )
 
@@ -49,7 +49,7 @@ class S3ServiceTest {
 
     s3Service.download_stac_data(
       bucketName,
-      request_group_id = "a6b90672-495a-4e6c-8729-fcbd8e6ff82f",
+      request_group_uuid = "a6b90672-495a-4e6c-8729-fcbd8e6ff82f",
       target_dir = tempDir.getAbsolutePath,
       max_metadata_delay_secs = 30
     )
@@ -63,7 +63,7 @@ class S3ServiceTest {
     def download(): Unit = {
       s3Service.download_stac_data(
         bucketName,
-        request_group_id = "e89517fe-390d-4109-b3cc-4e4d514ebe2b",
+        request_group_uuid = "e89517fe-390d-4109-b3cc-4e4d514ebe2b",
         target_dir = tempDir.getAbsolutePath
       )
     }

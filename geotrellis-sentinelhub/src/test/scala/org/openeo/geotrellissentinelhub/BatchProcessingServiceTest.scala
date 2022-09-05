@@ -367,7 +367,7 @@ class BatchProcessingServiceTest {
   @Ignore
   @Test
   def startCard4LBatchProcesses(): Unit = {
-    val requestGroupId = UUID.randomUUID().toString
+    val requestGroupUuid = UUID.randomUUID().toString
 
     val batchRequestIds = batchProcessingService.start_card4l_batch_processes(
       collection_id = "sentinel-1-grd",
@@ -379,17 +379,17 @@ class BatchProcessingServiceTest {
       band_names = Arrays.asList("VH", "VV", "dataMask", "localIncidenceAngle"),
       dem_instance = null,
       metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
-      subfolder = requestGroupId,
-      requestGroupId
+      subfolder = requestGroupUuid,
+      requestGroupUuid
     )
 
-    println(s"batch process(es) $batchRequestIds will write to ${batchProcessingService.bucketName}/$requestGroupId")
+    println(s"batch process(es) $batchRequestIds will write to ${batchProcessingService.bucketName}/$requestGroupUuid")
 
     println(awaitDone(batchRequestIds.asScala))
 
     new S3Service().download_stac_data(
       batchProcessingService.bucketName,
-      requestGroupId,
+      requestGroupUuid,
       target_dir = "/tmp/saved_stac"
     )
   }
@@ -397,7 +397,7 @@ class BatchProcessingServiceTest {
   @Ignore
   @Test
   def startCard4LBatchProcessesForOrbitDirection(): Unit = {
-    val requestGroupId = UUID.randomUUID().toString
+    val requestGroupUuid = UUID.randomUUID().toString
 
     val batchRequestIds = batchProcessingService.start_card4l_batch_processes(
       collection_id = "sentinel-1-grd",
@@ -409,17 +409,17 @@ class BatchProcessingServiceTest {
       band_names = Arrays.asList("VH", "VV", "dataMask", "localIncidenceAngle"),
       dem_instance = null,
       metadata_properties = Collections.singletonMap("orbitDirection", Collections.singletonMap("eq", "DESCENDING")),
-      subfolder = requestGroupId,
-      requestGroupId
+      subfolder = requestGroupUuid,
+      requestGroupUuid
     )
 
-    println(s"batch process(es) $batchRequestIds will write to ${batchProcessingService.bucketName}/$requestGroupId")
+    println(s"batch process(es) $batchRequestIds will write to ${batchProcessingService.bucketName}/$requestGroupUuid")
 
     println(awaitDone(batchRequestIds.asScala))
 
     new S3Service().download_stac_data(
       batchProcessingService.bucketName,
-      requestGroupId,
+      requestGroupUuid,
       target_dir = "/tmp/saved_stac"
     )
   }
@@ -454,7 +454,7 @@ class BatchProcessingServiceTest {
   @Ignore
   @Test
   def startCard4LBatchProcessesForSparsePolygons(): Unit = {
-    val requestGroupId = UUID.randomUUID().toString
+    val requestGroupUuid = UUID.randomUUID().toString
 
     val bboxLeft = Extent(3.841524124145508, 51.10796801619954, 3.842382431030273, 51.10850690517489)
     val bboxRight = Extent(7.5948143005371085, 51.475449262310086, 7.595586776733398, 51.47598385555211)
@@ -474,11 +474,11 @@ class BatchProcessingServiceTest {
       band_names = Arrays.asList("VH", "VV"),
       dem_instance = null,
       metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
-      subfolder = requestGroupId,
-      requestGroupId
+      subfolder = requestGroupUuid,
+      requestGroupUuid
     )
 
-    println(s"batch process(es) $batchRequestIds will write to ${batchProcessingService.bucketName}/$requestGroupId")
+    println(s"batch process(es) $batchRequestIds will write to ${batchProcessingService.bucketName}/$requestGroupUuid")
 
     println(awaitDone(batchRequestIds.asScala))
   }
@@ -502,7 +502,7 @@ class BatchProcessingServiceTest {
   @Ignore("not implemented yet")
   @Test(expected = classOf[BatchProcessingService.NoSuchFeaturesException])
   def startCard4LBatchProcessesForXXX(): Unit = {
-    val requestGroupId = UUID.randomUUID().toString
+    val requestGroupUuid = UUID.randomUUID().toString
 
     batchProcessingService.start_card4l_batch_processes(
       collection_id = "sentinel-1-grd",
@@ -514,8 +514,8 @@ class BatchProcessingServiceTest {
       band_names = Arrays.asList("VV", "VH", "HV", "HH"),
       dem_instance = "COPERNICUS_30",
       metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
-      subfolder = requestGroupId,
-      requestGroupId
+      subfolder = requestGroupUuid,
+      requestGroupUuid
     )
   }
 

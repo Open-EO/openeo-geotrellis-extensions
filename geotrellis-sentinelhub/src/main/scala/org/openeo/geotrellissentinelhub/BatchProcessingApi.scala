@@ -16,6 +16,7 @@ import java.net.URI
 import java.time.{Duration, ZonedDateTime}
 import java.time.format.DateTimeFormatter.{BASIC_ISO_DATE, ISO_INSTANT}
 import java.util
+import java.util.UUID
 import scala.collection.JavaConverters._
 
 object BatchProcessingApi {
@@ -261,7 +262,7 @@ class BatchProcessingApi(endpoint: String) {
   }
 
   def createCard4LBatchProcess(datasetId: String, bounds: Geometry, dateTime: ZonedDateTime, bandNames: Seq[String],
-                               dataTakeId: String, card4lId: String, demInstance: String,
+                               dataTakeId: String, card4lId: UUID, demInstance: String,
                                additionalDataFilters: util.Map[String, Any], bucketName: String,
                                subFolder: String, accessToken: String): CreateBatchProcessResponse =
     withRetries(context = s"createCard4LBatchProcess $datasetId") {

@@ -97,7 +97,7 @@ class BatchProcessingApiTest {
         |}
         |""".stripMargin.parseGeoJson[Polygon]()
 
-    val card4lId = UUID.randomUUID().toString
+    val card4lId = UUID.randomUUID()
 
     val batchProcess = batchProcessingApi.createCard4LBatchProcess(
       datasetId = "sentinel-1-grd",
@@ -109,7 +109,7 @@ class BatchProcessingApiTest {
       demInstance = null,
       additionalDataFilters = Collections.emptyMap[String, Any],
       bucketName,
-      subFolder = card4lId,
+      subFolder = card4lId.toString,
       accessToken
     )
 

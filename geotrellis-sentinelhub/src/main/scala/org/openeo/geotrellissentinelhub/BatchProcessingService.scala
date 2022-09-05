@@ -3,13 +3,18 @@ package org.openeo.geotrellissentinelhub
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.vector._
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
+import org.slf4j.LoggerFactory
 
 import java.time.ZoneOffset.UTC
 import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
+import java.util.UUID
 import scala.collection.JavaConverters._
+import scala.collection.mutable
 
 object BatchProcessingService {
+  private val logger = LoggerFactory.getLogger(classOf[BatchProcessingService])
+
   case class NoSuchFeaturesException(message: String) extends IllegalArgumentException(message)
   case class BatchProcess(id: String, status: String, processing_units_spent: java.math.BigDecimal)
 }
@@ -163,19 +168,21 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
   def start_card4l_batch_processes(collection_id: String, dataset_id: String, bbox: Extent, bbox_srs: String,
                                    from_date: String, to_date: String, band_names: util.List[String],
                                    dem_instance: String, metadata_properties: util.Map[String, util.Map[String, Any]],
-                                   subfolder: String, request_group_id: String): util.List[String] = {
+                                   subfolder: String, request_group_uuid: String): util.List[String] = {
     val polygons = Array(MultiPolygon(bbox.toPolygon()))
     val polygonsCrs = CRS.fromName(bbox_srs)
 
     start_card4l_batch_processes(collection_id, dataset_id, polygons, polygonsCrs, from_date, to_date, band_names,
-      dem_instance, metadata_properties, subfolder, request_group_id)
+      dem_instance, metadata_properties, subfolder, request_group_uuid)
   }
 
   def start_card4l_batch_processes(collection_id: String, dataset_id: String, polygons: Array[MultiPolygon],
                                    crs: CRS, from_date: String, to_date: String, band_names: util.List[String],
                                    dem_instance: String, metadata_properties: util.Map[String, util.Map[String, Any]],
-                                   subfolder: String, request_group_id: String): util.List[String] = {
+                                   subfolder: String, request_group_uuid: String): util.List[String] = {
     // TODO: add error handling
+    val card4lId = fixUuid(request_group_uuid) // TODO: remove workaround for invalid UUID
+
     val geometry = simplify(polygons).reproject(crs, LatLng)
     val geometryCrs = LatLng
 
@@ -206,7 +213,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
             dateTime = datetime,
             band_names.asScala,
             dataTakeId(id),
-            card4lId = request_group_id,
+            card4lId,
             dem_instance,
             additionalDataFilters = Criteria.toDataFilters(metadata_properties),
             bucketName,
@@ -220,6 +227,23 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
     }
 
     batchRequestIds.toIndexedSeq.asJava
+  }
+
+  private def fixUuid(id: String): UUID = {
+    try UUID.fromString(id)
+    catch {
+      case _: IllegalArgumentException =>
+        logger.warn(s"invalid UUID $id, maybe hyphens will work")
+
+        val withHyphens = new mutable.StringBuilder(id)
+          .insert(20, '-')
+          .insert(16, '-')
+          .insert(12, '-')
+          .insert( 8, '-')
+          .result()
+
+        UUID.fromString(withHyphens)
+    }
   }
 
   private def dataTakeId(featureId: String): String = {
