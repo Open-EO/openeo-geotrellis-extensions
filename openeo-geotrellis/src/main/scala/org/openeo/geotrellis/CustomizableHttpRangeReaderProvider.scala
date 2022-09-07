@@ -14,8 +14,6 @@ import scala.io.Source
 class CustomizableHttpRangeReaderProvider extends RangeReaderProvider {
   import CustomizableHttpRangeReaderProvider._
 
-  private type Host = String
-
   override def canProcess(uri: URI): Boolean = {
     val scheme = uri.getScheme
 
@@ -28,29 +26,38 @@ class CustomizableHttpRangeReaderProvider extends RangeReaderProvider {
     val request = Http(uri.toString).auth(username, password)
     new CustomizableHttpRangeReader(request, useHeadRequest = true)
   }
+}
 
-  @transient private lazy val credentialsFromFile: Map[Host, Credentials] = {
+object CustomizableHttpRangeReaderProvider {
+  private type Host = String
+
+  private val logger: Logger = LoggerFactory.getLogger(classOf[CustomizableHttpRangeReaderProvider])
+
+  private final val HttpCredentialsFileSystemProperty = "http.credentials.file"
+
+  private lazy val credentialsFromFile: Map[Host, Credentials] = {
+    val credentialsFile = {
+      val path = Option(System.getProperty(HttpCredentialsFileSystemProperty)).getOrElse("./http_credentials.json")
+      new File(path)
+    }
+
     try {
       val source = Source.fromFile(credentialsFile)
 
-      try decode[Map[Host, Credentials]](source.mkString).valueOr(throw _)
-      finally source.close()
+      try {
+        val credentials = decode[Map[Host, Credentials]](source.mkString).valueOr(throw _)
+
+        logger.info(s"${credentialsFile.getCanonicalPath} contains HTTP credentials for " +
+          s"${credentials.map { case (host, Credentials(username, _)) => s"$username@$host" } mkString ", "}")
+
+        credentials
+      } finally source.close()
     } catch {
       case e: FileNotFoundException =>
         logger.warn(s"JSON file with HTTP credentials not found at ${credentialsFile.getCanonicalPath}; setting " +
           s"system property $HttpCredentialsFileSystemProperty allows for a custom location", e)
         Map()
     }
-  }
-}
-
-object CustomizableHttpRangeReaderProvider {
-  private val logger: Logger = LoggerFactory.getLogger(classOf[CustomizableHttpRangeReaderProvider])
-
-  private final val HttpCredentialsFileSystemProperty = "http.credentials.file"
-  private val credentialsFile = {
-    val path = Option(System.getProperty(HttpCredentialsFileSystemProperty)).getOrElse("./http_credentials.json")
-    new File(path)
   }
 
   private case class Credentials(username: String, password: String)
