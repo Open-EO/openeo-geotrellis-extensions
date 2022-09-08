@@ -18,12 +18,16 @@ class CustomizableHttpRangeReaderProvider extends RangeReaderProvider {
     val scheme = uri.getScheme
 
     if (scheme == null) false
-    else Seq("http", "https").contains(scheme.toLowerCase) && credentialsFromFile.keySet.contains(uri.getHost)
+    else Seq("http", "https").contains(scheme.toLowerCase)
   }
 
   override def rangeReader(uri: URI): RangeReader = {
-    val Credentials(username, password) = credentialsFromFile(uri.getHost)
-    val request = Http(uri.toString).auth(username, password)
+    val credentials = credentialsFromFile.get(uri.getHost)
+
+    val request = credentials.foldLeft(Http(uri.toString)) { case (http, Credentials(username, password)) =>
+      http.auth(username, password)
+    }
+
     new CustomizableHttpRangeReader(request, useHeadRequest = true)
   }
 }

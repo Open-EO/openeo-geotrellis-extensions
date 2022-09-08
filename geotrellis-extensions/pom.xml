@@ -178,6 +178,12 @@
                                         <exclude>META-INF/services/geotrellis.util.RangeReaderProvider</exclude>
                                     </excludes>
                                 </filter>
+                                <filter>
+                                    <artifact>org.locationtech.geotrellis:geotrellis-util_${scala.binary.version}</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/services/geotrellis.util.RangeReaderProvider</exclude>
+                                    </excludes>
+                                </filter>
                             </filters>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
