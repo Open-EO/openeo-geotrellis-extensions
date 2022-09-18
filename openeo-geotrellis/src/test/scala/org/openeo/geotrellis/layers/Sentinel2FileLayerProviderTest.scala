@@ -1,7 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import org.openeo.opensearch.OpenSearchResponses.Link
-import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
@@ -26,6 +24,8 @@ import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters}
+import org.openeo.opensearch.OpenSearchResponses.Link
+import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 
 import java.net.URI
 import java.time.LocalTime.MIDNIGHT
@@ -380,7 +380,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
     val referenceTile = GeoTiffRasterSource("https://artifactory.vgt.vito.be/testdata-public/dilation_masked.tif").read().get
     val actualTile = GeoTiffRasterSource("/tmp/masked.tif").read().get
-    assertRastersEqual(referenceTile,actualTile)
+    assertRastersEqual(referenceTile,actualTile,160.0)
   }
 
   @Test
