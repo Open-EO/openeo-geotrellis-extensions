@@ -617,14 +617,20 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         SentinelXMLMetadataRasterSource(new URL(vsisToHttpsCreo(dataPath)),bands)
       }
       else {
-        if( feature.crs.isEmpty || feature.crs.get == null || feature.crs.get.equals(targetExtent.crs)) {
+        if( feature.crs.isDefined && feature.crs.get != null && feature.crs.get.equals(targetExtent.crs)) {
+          // when we don't know the feature (input) CRS, it seems that we assume it is the same as target extent???
           if(experimental) {
             Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
           }else{
             Seq(GeoTiffResampleRasterSource(GeoTiffPath(dataPath), alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None))
           }
         }else{
-          Seq(GeoTiffReprojectRasterSource(GeoTiffPath(dataPath), targetExtent.crs, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType = targetCellType))
+          if(experimental) {
+            val warpOptions = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution), targetCRS=Some(targetExtent.crs))
+            Seq(GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType))
+          }else{
+            Seq(GeoTiffReprojectRasterSource(GeoTiffPath(dataPath), targetExtent.crs, alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType = targetCellType))
+          }
         }
       }
     }
