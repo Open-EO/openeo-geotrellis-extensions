@@ -1,16 +1,12 @@
 package org.openeo.geotrellis.geotiff
 
-import java.time.LocalTime.MIDNIGHT
-import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-import java.time.{LocalDate, ZoneId, ZonedDateTime}
-
 import cats.data.NonEmptyList
-import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme}
+import geotrellis.layer.{SpaceTimeKey, TemporalKeyExtractor, ZoomedLayoutScheme}
 import geotrellis.proj4.LatLng
-import geotrellis.raster.RasterSource
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
+import geotrellis.raster.{CellSize, RasterSource}
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.vector.{Extent, MultiPolygon, Polygon, ProjectedExtent}
@@ -19,10 +15,15 @@ import org.apache.spark.rdd.RDD
 import org.junit.Assert.assertEquals
 import org.junit.{Ignore, Test}
 import org.openeo.geotrellis.TestImplicits._
-import org.openeo.geotrellis.file.AgEra5PyramidFactory
+import org.openeo.geotrellis.file.AgEra5PyramidFactory2
 import org.openeo.geotrellis.layers.BandCompositeRasterSource
 import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
+import org.openeo.geotrelliscommon.DataCubeParameters
 
+import java.time.LocalTime.MIDNIGHT
+import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
+import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util
 import scala.collection.JavaConverters._
 import scala.util.matching.Regex
 
@@ -87,12 +88,27 @@ class AgEra5PyramidFactoryTest {
     spatialLayer.writeGeoTiff(s"/tmp/agEra5_3_bands.tif", projectedExtent)
   }
 
+  def physicalMean(baseLayer: MultibandTileLayerRDD[SpaceTimeKey] ,polygon: Polygon, at: ZonedDateTime, bandIndex: Int): Double = {
+    val spatialLayer = baseLayer
+      .toSpatial(at)
+      .cache()
+
+    val Summary(bandMeans) = spatialLayer
+      .polygonalSummaryValue(polygon, MeanVisitor)
+
+    val scalingFactor = 0.01
+    val offset = 0
+
+    bandMeans(bandIndex).mean * scalingFactor + offset
+  }
+
   @Test
   def sparsePolygons(): Unit = {
-    val pyramidFactory = new AgEra5PyramidFactory(
+    val pyramidFactory = new AgEra5PyramidFactory2(
       dataGlob = "/data/MEP/ECMWF/AgERA5/2020/202004*/AgERA5_dewpoint-temperature_*.tif",
       bandFileMarkers = Seq("dewpoint-temperature", "precipitation-flux", "solar-radiation-flux").asJava,
-      dateRegex = raw".+_(\d{4})(\d{2})(\d{2})\.tif"
+      dateRegex = raw".+_(\d{4})(\d{2})(\d{2})\.tif",
+      maxSpatialResolution = CellSize(0.1,0.1)
     )
 
     val from = LocalDate.of(2020, 4, 1).atStartOfDay(ZoneId.of("UTC"))
@@ -107,28 +123,53 @@ class AgEra5PyramidFactoryTest {
 
     val projectedPolygons = ProjectedPolygons(multiPolygons, bboxCrs)
 
-    val Seq((_, baseLayer)) = pyramidFactory.datacube_seq(projectedPolygons,
-      from_date = ISO_OFFSET_DATE_TIME format from, to_date = ISO_OFFSET_DATE_TIME format to)
+    val params = new DataCubeParameters()
+
+    val Seq((_, baseLayer: MultibandTileLayerRDD[SpaceTimeKey])) = pyramidFactory.datacube_seq(projectedPolygons,
+      from_date = ISO_OFFSET_DATE_TIME format from, to_date = ISO_OFFSET_DATE_TIME format to, new util.HashMap(), "", params)
 
     baseLayer.cache()
 
     assert(baseLayer.metadata.crs == bboxCrs)
 
-    def physicalMean(polygon: Polygon, at: ZonedDateTime, bandIndex: Int): Double = {
-      val spatialLayer = baseLayer
-        .toSpatial(at)
-        .cache()
+    assertEquals(275.93, physicalMean(baseLayer,bbox1.extent.toPolygon(), from, bandIndex = 0), 0.03)
+    assertEquals(0.19, physicalMean(baseLayer,bbox2.extent.toPolygon(), to, bandIndex = 1), 0.03)
+  }
 
-      val Summary(bandMeans) = spatialLayer
-        .polygonalSummaryValue(polygon, MeanVisitor)
+  @Test
+  def smallPolygon(): Unit = {
+    val pyramidFactory = new AgEra5PyramidFactory2(
+      dataGlob = "/data/MEP/ECMWF/AgERA5/2020/202004*/AgERA5_dewpoint-temperature_*.tif",
+      bandFileMarkers = Seq("dewpoint-temperature", "precipitation-flux", "solar-radiation-flux").asJava,
+      dateRegex = raw".+_(\d{4})(\d{2})(\d{2})\.tif",
+      maxSpatialResolution = CellSize(10,10)
+    )
 
-      val scalingFactor = 0.01
-      val offset = 0
+    val from = LocalDate.of(2020, 4, 1).atStartOfDay(ZoneId.of("UTC"))
+    val to = from plusWeeks 1
 
-      bandMeans(bandIndex).mean * scalingFactor + offset
-    }
+    val bbox1 = Extent(5.15183, 51.18192, 5.153381, 51.184696)
 
-    assertEquals(275.93, physicalMean(bbox1.extent.toPolygon(), from, bandIndex = 0), 0.03)
-    assertEquals(0.19, physicalMean(bbox2.extent.toPolygon(), to, bandIndex = 1), 0.03)
+    val bboxCrs = LatLng
+
+    val multiPolygons = Array(bbox1)
+      .map(extent => MultiPolygon(extent.toPolygon()))
+
+    val projectedPolygons = ProjectedPolygons(multiPolygons, bboxCrs)
+
+    val params = new DataCubeParameters()
+    params.layoutScheme = "FloatingLayoutScheme"
+    params.setGlobalExtent(bbox1.xmin,bbox1.ymin,bbox1.xmax,bbox1.ymax,"EPSG:4326")
+
+
+    val Seq((_, baseLayer)) = pyramidFactory.datacube_seq(ProjectedPolygons.reproject(projectedPolygons,32631),
+      from_date = ISO_OFFSET_DATE_TIME format from, to_date = ISO_OFFSET_DATE_TIME format to, new util.HashMap(), "", params)
+
+    baseLayer.cache()
+    baseLayer.toSpatial(from).writeGeoTiff(s"/tmp/agEra5_3_bands.tif", ProjectedExtent(baseLayer.metadata.extent,baseLayer.metadata.crs))
+    assert(baseLayer.metadata.crs.epsgCode.get == 32631)
+
+    assertEquals(270.95, physicalMean(baseLayer, bbox1.extent.reproject(LatLng,baseLayer.metadata.crs).toPolygon(), from, bandIndex = 0), 0.03)
+
   }
 }
