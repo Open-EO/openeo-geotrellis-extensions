@@ -6,7 +6,7 @@ import org.openeo.opensearch.backends.Agera5SearchClient
 
 import java.util
 
-class AgEra5PyramidFactory2(dataGlob: String, bandFileMarkers: util.List[String], dateRegex: String, maxSpatialResolution: CellSize) extends Sentinel2PyramidFactory("http://dummy.endpoint.com","", bandFileMarkers, "", maxSpatialResolution: CellSize,experimental = true) {
+class AgEra5PyramidFactory2(dataGlob: String, bandFileMarkers: util.List[String], dateRegex: String, maxSpatialResolution: CellSize) extends Sentinel2PyramidFactory("http://dummy.endpoint.com","", bandFileMarkers, "", maxSpatialResolution: CellSize,experimental = false) {
   override def createOpenSearch: OpenSearchClient = {
     new Agera5SearchClient(dataGlob, bandFileMarkers, dateRegex.r.unanchored)
   }

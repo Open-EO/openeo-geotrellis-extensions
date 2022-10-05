@@ -11,7 +11,7 @@ import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
@@ -144,7 +144,6 @@ object FileLayerProvider {
   private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
 
   {
-    logger.info("Setting GdalWarp cache size to 32.")
     GDALWarp.init(32)
   }
 
@@ -594,10 +593,10 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
   private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent): List[(RasterSource, Seq[Int])] = {
     def expandToCellSize(extent: Extent, cellSize: CellSize): Extent =
-      extent.expandBy(deltaX = (cellSize.width - extent.width) / 2, deltaY = (cellSize.height - extent.height) / 2)
+      extent.expandBy(deltaX = math.max((cellSize.width - extent.width) / 2,0.0), deltaY = math.max((cellSize.height - extent.height) / 2,0.0))
 
-    val re = RasterExtent(expandToCellSize(targetExtent.extent, maxSpatialResolution), maxSpatialResolution).alignTargetPixels
-    val alignment = TargetAlignment(re)
+    val re = RasterExtent(expandToCellSize(targetExtent.extent,maxSpatialResolution), maxSpatialResolution).alignTargetPixels
+    val alignment = TargetRegion(re)
 
     def vsisToHttpsCreo(path: String): String = {
       path.replace("/vsicurl/", "").replace("/vsis3/eodata", "https://finder.creodias.eu/files")
@@ -622,7 +621,8 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
           if(experimental) {
             Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution)), targetCellType = targetCellType))
           }else{
-            Seq(GeoTiffResampleRasterSource(GeoTiffPath(dataPath), alignment, NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None))
+            //here we can use 'TargetAlignment' because there is no reprojection of the extent. It would be better if we could also use 'TargetRegion', but that breaks the handling of overlap
+            Seq(GeoTiffResampleRasterSource(GeoTiffPath(dataPath), TargetAlignment(re), NearestNeighbor, OverviewStrategy.DEFAULT, targetCellType, None))
           }
         }else{
           if(experimental) {
