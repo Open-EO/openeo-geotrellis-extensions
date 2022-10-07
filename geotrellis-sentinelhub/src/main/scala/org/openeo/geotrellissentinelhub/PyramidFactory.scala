@@ -248,7 +248,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 bandName.contains("SCENECLASSIFICATION") || bandName.contains("SCL")
               }
 
-              if (sclBandIndex >= 0) new SCLConvolutionFilterStrategy(sclBandIndex)
+              if (sclBandIndex >= 0) new SCLConvolutionFilterStrategy(sclBandIndex,dataCubeParameters.maskingStrategyParameters)
               else NoCloudFilterStrategy
             }
 
