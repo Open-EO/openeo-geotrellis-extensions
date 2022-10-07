@@ -2,10 +2,9 @@ package org.openeo.geotrelliscommon
 
 import geotrellis.raster.mapalgebra.focal.Kernel
 import geotrellis.raster.{DoubleConstantNoDataCellType, MultibandTile, NODATA, Raster, Tile, UByteUserDefinedNoDataCellType}
-import org.openeo.geotrelliscommon.SCLConvolutionFilterStrategy.{DEFAULT_KERNEL1, DEFAULT_KERNEL2, defaultMask1, defaultMask2, defaultMaskingParams}
+import org.openeo.geotrelliscommon.SCLConvolutionFilterStrategy._
 
 import java.util
-import java.util.Collections
 
 trait CloudFilterStrategy extends Serializable {
   def loadMasked(maskTileLoader: MaskTileLoader): Option[MultibandTile]
@@ -70,7 +69,7 @@ class SCLConvolutionFilterStrategy(val sclBandIndex: Int = 0,val maskingParams:u
       val maskTile = cloudRaster.get.tile.band(0)
 
       var allMasked = true
-      val mask1Values = maskingParams.getOrDefault("mask1_values",defaultMask1).asInstanceOf[Array[Int]]
+      val mask1Values = maskingParams.getOrDefault("mask1_values",defaultMask1).asInstanceOf[util.List[Int]]
       val binaryMask = maskTile.map(value => {
         if (mask1Values.contains(value)) {
           allMasked = false
@@ -114,7 +113,7 @@ class SCLConvolutionFilterStrategy(val sclBandIndex: Int = 0,val maskingParams:u
 
 
         if (!allMasked) {
-          val mask2Values = maskingParams.getOrDefault("mask2_values",defaultMask2).asInstanceOf[Array[Int]]
+          val mask2Values = maskingParams.getOrDefault("mask2_values",defaultMask2).asInstanceOf[util.List[Int]]
           //convolution1.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("conv1.png")
           val binaryMask2 = maskTile.map(value => {
             if (mask2Values.contains(value)) {
