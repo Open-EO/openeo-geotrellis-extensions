@@ -28,8 +28,8 @@ object NoCloudFilterStrategy extends CloudFilterStrategy {
 
 object SCLConvolutionFilterStrategy{
 
-  private val defaultMask1 = Array(2, 4, 5, 6, 7)
-  private val defaultMask2 = Array(3,8,9,10,11)
+  private val defaultMask1 = util.Arrays.asList(2, 4, 5, 6, 7)
+  private val defaultMask2 = util.Arrays.asList(3,8,9,10,11)
   val DEFAULT_KERNEL1 = 17
   val DEFAULT_KERNEL2 = 201
 
