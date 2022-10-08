@@ -6,7 +6,7 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import java.util
 import java.util.Collections
 
-class DataCubeParameters {
+class DataCubeParameters extends Serializable {
   var tileSize: Int = 256
   var maskingStrategyParameters: util.Map[String, Object] = Collections.emptyMap()
   var layoutScheme: String = "ZoomedLayoutScheme"

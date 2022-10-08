@@ -221,9 +221,11 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
       tracker.registerDoubleCounter(SH_PU)
       tracker.registerCounter(SH_FAILED_TILE_REQUESTS)
 
+      val maskingStrategyParameters = dataCubeParameters.maskingStrategyParameters
+
       val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = {
         //noinspection ComparingUnrelatedTypes
-        val maskClouds = dataCubeParameters.maskingStrategyParameters.get("method") == "mask_scl_dilation"
+        val maskClouds = maskingStrategyParameters.get("method") == "mask_scl_dilation"
 
         def loadMasked(spatialKey: SpatialKey, dateTime: ZonedDateTime, numRequests: Long): Option[MultibandTile] = try {
           def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile = {
@@ -248,7 +250,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 bandName.contains("SCENECLASSIFICATION") || bandName.contains("SCL")
               }
 
-              if (sclBandIndex >= 0) new SCLConvolutionFilterStrategy(sclBandIndex,dataCubeParameters.maskingStrategyParameters)
+              if (sclBandIndex >= 0) new SCLConvolutionFilterStrategy(sclBandIndex,maskingStrategyParameters)
               else NoCloudFilterStrategy
             }
 
