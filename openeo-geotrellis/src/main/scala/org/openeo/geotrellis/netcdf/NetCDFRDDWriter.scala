@@ -158,6 +158,7 @@ object NetCDFRDDWriter {
       for (bandIndex <- bandNames.asScala.indices) {
 
         if(bandIndex < multibandTile.bandCount){
+          //gridBoundsFor considers the south/east border as _exclusive_ which means a row of pixels can get dropped
           val gridExtent = rasterExtent.gridBoundsFor(tuple._1.getComponent[SpatialKey].extent(preProcessedRdd.metadata))
           if(gridExtent.colMax >= rasterExtent.cols || gridExtent.rowMax >= rasterExtent.rows){
             logger.warn("Can not write tile beyond raster bounds: " + gridExtent)
@@ -171,8 +172,7 @@ object NetCDFRDDWriter {
 
             var tile = multibandTile.band(bandIndex)
 
-
-             if(gridExtent.colMin + tile.cols > rasterExtent.cols || gridExtent.rowMin + tile.rows > rasterExtent.rows){
+            if(gridExtent.colMin + tile.cols > rasterExtent.cols || gridExtent.rowMin + tile.rows > rasterExtent.rows){
               tile = tile.crop(rasterExtent.cols-gridExtent.colMin,rasterExtent.rows-gridExtent.rowMin,raster.CropOptions(force=true))
               logger.warn(s"Cropping output tile to avoid going out of variable (${variable}) bounds ${gridExtent}.")
             }
