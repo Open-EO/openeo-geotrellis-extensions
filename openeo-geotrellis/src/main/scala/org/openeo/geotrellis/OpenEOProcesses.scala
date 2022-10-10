@@ -594,13 +594,16 @@ class OpenEOProcesses extends Serializable {
     checkMetadataCompatible(leftCube.metadata,rightCube.metadata)
     val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](leftCube, rightCube)
     if(operator == null) {
+      val outputCellType = leftCube.metadata.cellType.union(rightCube.metadata.cellType)
+      //TODO: what if extent of joined cube is larger than left cube?
+      val updatedMetadata = leftCube.metadata.copy(cellType = outputCellType)
       return new ContextRDD(rdd.mapValues({case (l,r) =>
         if(swapOperands) {
-          MultibandTile(r.bands ++ l.bands)
+          MultibandTile(r.convert(updatedMetadata.cellType).bands ++ l.convert(updatedMetadata.cellType).bands)
         }else{
-          MultibandTile(l.bands ++ r.bands)
+          MultibandTile(l.convert(updatedMetadata.cellType).bands ++ r.convert(updatedMetadata.cellType).bands)
         }
-      }), leftCube.metadata)
+      }), updatedMetadata)
     }else{
 
       val binaryOp = tileBinaryOp.getOrElse(operator, throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, tileBinaryOp.keys.toString())))
