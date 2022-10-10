@@ -12,7 +12,7 @@ import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrellis.file.Sentinel2PyramidFactory
+import org.openeo.geotrellis.file.{CglsPyramidFactory2, Sentinel2PyramidFactory}
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellisaccumulo.PyramidFactory
 import org.openeo.geotrelliscommon.SparseSpaceTimePartitioner
@@ -230,5 +230,13 @@ object LayerFixtures {
 
 
   }
+
+
+  val cglsNDVI300 = new CglsPyramidFactory2(
+    dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2019/201906*/*/*.nc",
+    netcdfVariables = util.Arrays.asList("NDVI"),
+    dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+",
+    maxSpatialResolution = CellSize(0.002976190476204, 0.002976190476190)
+  )
 
 }

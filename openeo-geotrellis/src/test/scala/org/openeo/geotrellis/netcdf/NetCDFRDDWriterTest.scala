@@ -4,6 +4,8 @@ import com.azavea.gdal.GDALWarp
 import geotrellis.layer.{SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.gdal.GDALRasterSource
+import geotrellis.raster.geotiff.GeoTiffRasterSource
+import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.raster.{ByteArrayTile, CellType, FloatConstantNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, Raster, RasterExtent, UByteUserDefinedNoDataCellType, UShortCellType, isData}
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.util.SparkUtils
@@ -51,7 +53,7 @@ object NetCDFRDDWriterTest {
 }
 
 
-class NetCDFRDDWriterTest {
+class NetCDFRDDWriterTest extends RasterMatchers{
   import org.openeo.geotrellis.netcdf.NetCDFRDDWriterTest._
 
   @(Rule @getter)
@@ -293,6 +295,28 @@ class NetCDFRDDWriterTest {
     Assert.assertEquals(256,chunking.getValue(1))
     Assert.assertEquals("y",b04.getDimension(0).getShortName)
     Assert.assertEquals("x",b04.getDimension(1).getShortName)
+
+  }
+
+  @Test
+  def testWriteCGLS(): Unit = {
+
+    val boundingBox = ProjectedExtent(Extent(38.6, 5.7, 41.0, 9.15), LatLng)
+
+    val parameters = new DataCubeParameters()
+    parameters.layoutScheme = "FloatingLayoutScheme"
+
+    val layerProvider = LayerFixtures.cglsNDVI300
+    val polygons = ProjectedPolygons.fromExtent(boundingBox.extent, "EPSG:4326")
+    val layer = layerProvider.datacube(polygons.polygons,polygons.crs,"2019-06-01T10:08:02Z", "2019-06-01T10:08:02Z", util.Collections.emptyMap(), "",parameters).cache()
+
+    val options = new NetCDFOptions
+    options.setBandNames(new util.ArrayList(util.Arrays.asList("NDVI")))
+    val sampleFilenames: util.List[String] = NetCDFRDDWriter.writeRasters(layer,"/tmp/cgls_ndvi300.nc",options)
+
+    val referenceTile = GeoTiffRasterSource("https://artifactory.vgt.vito.be/testdata-public/cgls_ndvi300.tiff").read().get
+    val actualTile = GDALRasterSource("/tmp/cgls_ndvi300.nc").read().get
+    assertRastersEqual(referenceTile,actualTile,1.0)
 
   }
 
