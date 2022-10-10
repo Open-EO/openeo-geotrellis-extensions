@@ -170,8 +170,10 @@ object NetCDFRDDWriter {
             val variable = bandNames.get(bandIndex)
 
             var tile = multibandTile.band(bandIndex)
-            if(gridExtent.width < tile.cols || gridExtent.height < tile.rows){
-              tile = tile.crop(gridExtent.width,gridExtent.height,raster.CropOptions(force=true))
+
+
+             if(gridExtent.colMin + tile.cols > rasterExtent.cols || gridExtent.rowMin + tile.rows > rasterExtent.rows){
+              tile = tile.crop(rasterExtent.cols-gridExtent.colMin,rasterExtent.rows-gridExtent.rowMin,raster.CropOptions(force=true))
               logger.warn(s"Cropping output tile to avoid going out of variable (${variable}) bounds ${gridExtent}.")
             }
             try{
