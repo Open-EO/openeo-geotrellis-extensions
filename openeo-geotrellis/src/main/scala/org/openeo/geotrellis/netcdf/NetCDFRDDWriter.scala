@@ -501,25 +501,28 @@ object NetCDFRDDWriter {
 
     val xDimensions = new util.ArrayList[Dimension]
     xDimensions.add(xDimension)
-    val units = crs.proj4jCrs.getProjection.getUnits.name
-    val (x_unit,y_unit) = if(units == "degree") {
-      ("degrees_east","degrees_north")
-    }else{
-      ("m","m")
-    }
-    addNetcdfVariable(netcdfFile, xDimensions, X, DataType.DOUBLE, "projection_x_coordinate", "x coordinate of projection", x_unit, null)
-
 
     val yDimensions = new util.ArrayList[Dimension]
     yDimensions.add(yDimension)
-    addNetcdfVariable(netcdfFile, yDimensions, Y, DataType.DOUBLE, "projection_y_coordinate", "y coordinate of projection", y_unit, null)
+
+    val units = crs.proj4jCrs.getProjection.getUnits.name
+    if(units == "degree") {
+      addNetcdfVariable(netcdfFile, xDimensions, X, DataType.DOUBLE, "longitude", "longitude", "degrees_east", null)
+      addNetcdfVariable(netcdfFile, yDimensions, Y, DataType.DOUBLE, "latitude", "latitude", "degrees_north", null)
+    }else{
+
+      addNetcdfVariable(netcdfFile, xDimensions, X, DataType.DOUBLE, "projection_x_coordinate", "x coordinate of projection", "m", null)
+      addNetcdfVariable(netcdfFile, yDimensions, Y, DataType.DOUBLE, "projection_y_coordinate", "y coordinate of projection", "m", null)
+    }
+
+
 
 
     netcdfFile.addVariable("crs", DataType.CHAR, "")
     netcdfFile.addVariableAttribute("crs", "crs_wkt", crs.toWKT().get)
     netcdfFile.addVariableAttribute("crs", "spatial_ref", crs.toWKT().get) //this one is especially for gdal...
     //netcdfFile.addVariableAttribute("crs","GeoTransform", "some geotransform") // this is what old style gdal puts in there
-    //netcdfFile.addVariableAttribute("crs","grid_mapping_name","transverse_mercator")
+    //netcdfFile.addVariableAttribute("crs","grid_mapping_name","latitude_longitude")
     //netcdfFile.addVariableAttribute("crs","false_easting",crs.proj4jCrs.getProjection.getFalseEasting)
     //netcdfFile.addVariableAttribute("crs","false_northing",crs.proj4jCrs.getProjection.getFalseNorthing)
     //netcdfFile.addVariableAttribute("crs","earth_radius",crs.proj4jCrs.getProjection.getEquatorRadius)
@@ -562,7 +565,7 @@ object NetCDFRDDWriter {
 
     for (bandName <- bandNames.asScala) {
       val varName = bandName.replace("/","_")
-      addNetcdfVariable(netcdfFile, bandDimension, varName, netcdfType, null, varName, "", null, nodata.getOrElse(0), "y x")
+      addNetcdfVariable(netcdfFile, bandDimension, varName, netcdfType, null, varName, "", null, nodata.getOrElse(0), null)
       netcdfFile.addVariableAttribute(varName, "grid_mapping", "crs")
       if(rasterExtent.cols>256 && rasterExtent.rows>256){
         val chunking = new ArrayInt.D1(if(writeTimeDimension) 3 else 2,false)
