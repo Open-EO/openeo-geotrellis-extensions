@@ -478,7 +478,7 @@ object NetCDFRDDWriter {
 
     import java.util
 
-    netcdfFile.addGlobalAttribute("Conventions", "CF-1.8")
+    netcdfFile.addGlobalAttribute("Conventions", "CF-1.9")
     netcdfFile.addGlobalAttribute("institution", "openEO platform")
     if(attributes != null) {
       for(attr <- attributes.asScala) {
@@ -501,17 +501,24 @@ object NetCDFRDDWriter {
 
     val xDimensions = new util.ArrayList[Dimension]
     xDimensions.add(xDimension)
-    addNetcdfVariable(netcdfFile, xDimensions, X, DataType.DOUBLE, "projection_x_coordinate", "x coordinate", "degrees_east", "X")
+    val units = crs.proj4jCrs.getProjection.getUnits.name
+    val (x_unit,y_unit) = if(units == "degree") {
+      ("degrees_east","degrees_north")
+    }else{
+      ("m","m")
+    }
+    addNetcdfVariable(netcdfFile, xDimensions, X, DataType.DOUBLE, "projection_x_coordinate", "x coordinate of projection", x_unit, null)
 
 
     val yDimensions = new util.ArrayList[Dimension]
     yDimensions.add(yDimension)
-    addNetcdfVariable(netcdfFile, yDimensions, Y, DataType.DOUBLE, "projection_y_coordinate", "y coordinate", "degrees_north", "Y")
+    addNetcdfVariable(netcdfFile, yDimensions, Y, DataType.DOUBLE, "projection_y_coordinate", "y coordinate of projection", y_unit, null)
 
 
     netcdfFile.addVariable("crs", DataType.CHAR, "")
     netcdfFile.addVariableAttribute("crs", "crs_wkt", crs.toWKT().get)
     netcdfFile.addVariableAttribute("crs", "spatial_ref", crs.toWKT().get) //this one is especially for gdal...
+    //netcdfFile.addVariableAttribute("crs","GeoTransform", "some geotransform") // this is what old style gdal puts in there
     //netcdfFile.addVariableAttribute("crs","grid_mapping_name","transverse_mercator")
     //netcdfFile.addVariableAttribute("crs","false_easting",crs.proj4jCrs.getProjection.getFalseEasting)
     //netcdfFile.addVariableAttribute("crs","false_northing",crs.proj4jCrs.getProjection.getFalseNorthing)
@@ -602,7 +609,9 @@ object NetCDFRDDWriter {
     netcdfFile.addVariableAttribute(variableName, "standard_name", standardName)
     netcdfFile.addVariableAttribute(variableName, "long_name", longName)
     netcdfFile.addVariableAttribute(variableName, "units", units)
-    netcdfFile.addVariableAttribute(variableName, "axis", axis)
+    if(axis !=null) {
+      netcdfFile.addVariableAttribute(variableName, "axis", axis)
+    }
   }
 
   private def addNetcdfVariable(netcdfFile: NetcdfFileWriter, dimensions: util.ArrayList[Dimension], variableName: String, dataType: DataType, standardName: String, longName: String, units: String, axis: String, fillValue: Number, coordinates: String): Unit = {

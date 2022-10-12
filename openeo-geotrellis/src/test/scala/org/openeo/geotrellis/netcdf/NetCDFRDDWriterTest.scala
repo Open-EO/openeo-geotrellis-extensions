@@ -295,6 +295,9 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     Assert.assertEquals(256,chunking.getValue(1))
     Assert.assertEquals("y",b04.getDimension(0).getShortName)
     Assert.assertEquals("x",b04.getDimension(1).getShortName)
+    val crs = ds.findVariable("x")
+    val units = crs.findAttributeIgnoreCase("units")
+    Assert.assertEquals("degrees_east",units)
 
   }
 
