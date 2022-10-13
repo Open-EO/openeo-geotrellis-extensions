@@ -1,9 +1,5 @@
 package org.openeo.geotrellis.file
 
-import java.lang.Math.max
-import java.net.URI
-import java.time.ZonedDateTime
-
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
@@ -22,21 +18,33 @@ import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.OpenEOProcesses
 import org.openeo.geotrellis.file.AbstractPyramidFactory._
 
+import java.lang.Math.max
+import java.net.URI
+import java.time.ZonedDateTime
+
 object AbstractPyramidFactory {
   private val maxZoom = 14
 
 
-  def preparePolygons(polygons: Array[MultiPolygon], polygons_crs: CRS) = {
+  def preparePolygons(polygons: Array[MultiPolygon], polygons_crs: CRS, sc: SparkContext) = {
     // 500m buffer for kernel operations
     val bufferDistanceInMeters = 500.0
     val bufferDistance = Extent(0.0, 0.0, bufferDistanceInMeters, 1.0).reproject(WebMercator, polygons_crs).width
 
-    val intersectsPolygons: Array[MultiPolygon] = polygons
-      .map(polygon =>
-        polygon.buffer(bufferDistance) match {
-          case polygon: Polygon => MultiPolygon(polygon)
-          case multiPolygon: MultiPolygon => multiPolygon
-        })
+    def doBuffer(polygon:MultiPolygon): MultiPolygon = {
+      polygon.buffer(bufferDistance) match {
+        case polygon: Polygon => MultiPolygon(polygon)
+        case multiPolygon: MultiPolygon => multiPolygon
+      }
+    }
+
+    val intersectsPolygons: Array[MultiPolygon] =
+      if(polygons.length<=160) {
+        polygons.map(doBuffer)
+      }else{
+        sc.parallelize(polygons,polygons.length/100).map(doBuffer).collect()
+      }
+
     intersectsPolygons
   }
 

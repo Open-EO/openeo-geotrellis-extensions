@@ -1,6 +1,5 @@
 package org.openeo.geotrellis.file
 
-import org.openeo.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutScheme, SpaceTimeKey, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, WebMercator}
@@ -11,6 +10,7 @@ import org.apache.spark.SparkContext
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrelliscommon.DataCubeParameters
+import org.openeo.opensearch.OpenSearchClient
 
 import java.net.URL
 import java.time.ZonedDateTime
@@ -81,7 +81,7 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
     val from = ZonedDateTime.parse(from_date)
     val to = ZonedDateTime.parse(to_date)
 
-    val intersectsPolygons = AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
+    val intersectsPolygons = AbstractPyramidFactory.preparePolygons(polygons, polygons_crs,sc)
 
     val layerProvider = sentinel2FileLayerProvider(metadata_properties.asScala.toMap, correlationId)
 
@@ -144,7 +144,7 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
     val from = ZonedDateTime.parse(from_date)
     val to = ZonedDateTime.parse(to_date)
 
-    val intersectsPolygons = AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
+    val intersectsPolygons = AbstractPyramidFactory.preparePolygons(polygons, polygons_crs, sc)
 
     val layerProvider = sentinel2FileLayerProvider(metadata_properties.asScala.toMap, correlationId, FloatingLayoutScheme(dataCubeParameters.tileSize))
     layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, 0, sc,Some(dataCubeParameters))
