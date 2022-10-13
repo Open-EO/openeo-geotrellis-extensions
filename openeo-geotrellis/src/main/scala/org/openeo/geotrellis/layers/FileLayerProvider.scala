@@ -312,6 +312,7 @@ object FileLayerProvider {
 
   private def rasterRegionsToTiles(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))], metadata: TileLayerMetadata[SpaceTimeKey], retainNoDataTiles: Boolean, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, partitionerOption: Option[SpacePartitioner[SpaceTimeKey]] = None) = {
     val partitioner = partitionerOption.getOrElse(SpacePartitioner(metadata.bounds))
+    logger.info(s"Cube partitioner index: ${partitioner.index}")
     val totalChunksAcc = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
     val loadingTimeAcc = rasterRegionRDD.sparkContext.doubleAccumulator("SecondsPerChunk_" + rasterRegionRDD.name)
     val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] =
