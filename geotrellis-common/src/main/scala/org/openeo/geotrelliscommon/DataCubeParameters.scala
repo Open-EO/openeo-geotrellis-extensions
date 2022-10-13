@@ -1,6 +1,8 @@
 package org.openeo.geotrelliscommon
 
 import geotrellis.proj4.CRS
+import geotrellis.raster.ResampleMethod
+import geotrellis.raster.resample.NearestNeighbor
 import geotrellis.vector.{Extent, ProjectedExtent}
 
 import java.util
@@ -12,6 +14,7 @@ class DataCubeParameters extends Serializable {
   var layoutScheme: String = "ZoomedLayoutScheme"
   var partitionerTemporalResolution: String = "ByDay"
   var partitionerIndexReduction: Int = 8
+  var resampleMethod: ResampleMethod = NearestNeighbor
   var maskingCube: Option[Object] = Option.empty
   var globalExtent:Option[ProjectedExtent] = Option.empty
 
@@ -24,6 +27,10 @@ class DataCubeParameters extends Serializable {
 
   def setMaskingCube(aMaskingCube: Object): Unit = {
     maskingCube = Some(aMaskingCube)
+  }
+
+  def setResampleMethod(aMethod: ResampleMethod): Unit  = {
+    resampleMethod = aMethod
   }
 
   def setGlobalExtent(xmin:Double,ymin:Double,xmax:Double,ymax:Double,crs:String): Unit = {
