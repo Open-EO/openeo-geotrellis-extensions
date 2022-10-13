@@ -128,6 +128,7 @@ object DatacubeSupport {
       val spatialBounds = metadata.bounds.get.toSpatial
       val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
       val isSparse = spatialCount < 0.5 * maxKeys
+      logger.info(s"Datacube is sparse: $isSparse, requiring $spatialCount keys out of $maxKeys. ")
 
       try{
         if(isSparse) {
