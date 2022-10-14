@@ -233,7 +233,7 @@ object NetCDFRDDWriter {
     val shape = if(origin.length==3) scala.Array[Int](1, rows, cols) else scala.Array[Int]( rows, cols)
     val bandArray =
       geotrellisArrayTile match {
-        case t: BitArrayTile => ucar.ma2.Array.factory(DataType.BOOLEAN, shape, t.array)
+        case t: BitArrayTile => ucar.ma2.Array.factory(DataType.UBYTE, shape, t.convert(UByteUserDefinedNoDataCellType(255.byteValue())).asInstanceOf[UByteArrayTile].array)
         case t: ByteArrayTile => ucar.ma2.Array.factory(DataType.BYTE, shape, t.array)
         case t: UByteArrayTile => ucar.ma2.Array.factory(DataType.UBYTE, shape, t.array)
         case t: ShortArrayTile => ucar.ma2.Array.factory(DataType.SHORT, shape, t.array)
@@ -537,7 +537,7 @@ object NetCDFRDDWriter {
     bandDimension.add(xDimension)
 
     val (netcdfType:DataType,nodata:Option[Number]) = cellType match {
-      case BitCellType => (DataType.BOOLEAN,None)
+      case BitCellType => (DataType.UBYTE,None)
       case ByteCellType => (DataType.BYTE,None)
       case UByteCellType => (DataType.UBYTE,None)
       case ShortCellType => (DataType.SHORT,None)
