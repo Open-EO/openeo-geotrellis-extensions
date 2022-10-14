@@ -607,7 +607,20 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       extent.expandBy(deltaX = math.max((cellSize.width - extent.width) / 2,0.0), deltaY = math.max((cellSize.height - extent.height) / 2,0.0))
 
     val re = RasterExtent(expandToCellSize(targetExtent.extent,maxSpatialResolution), maxSpatialResolution).alignTargetPixels
-    val alignment = TargetRegion(re)
+
+    /**
+     * Benefit of targetregion: it can be valid in the target projection system
+     * Downside of targetregion: it is a virtual cropping of the raster, so we're not able to load data beyond targetExtent
+     *
+     */
+    val alignment =
+      if(feature.crs.isDefined && feature.crs.get.proj4jCrs.getProjection.getName == "utm") {
+        //this hack avoid virtual cropping for Sentinel-2 (utm), which breaks mask_scl_dilation
+        TargetAlignment(re)
+      }else{
+        TargetRegion(re)
+      }
+
 
     val resampleMethod = datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor)
 
