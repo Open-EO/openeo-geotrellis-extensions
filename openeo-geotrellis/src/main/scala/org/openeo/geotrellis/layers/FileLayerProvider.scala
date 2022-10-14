@@ -248,7 +248,10 @@ object FileLayerProvider {
             if(!checkLatLon(extent)) throw  new IllegalArgumentException(s"Geometry or Bounding box provided by the catalog has to be in EPSG:4326, but got ${extent} for catalog entry ${f}")
           })
           val geometricFeatures = inputFeatures.get.map(f=> geotrellis.vector.Feature(f.geometry.getOrElse(f.bbox.toPolygon()),f))
-          val requiredSpacetimeKeys: RDD[(SpaceTimeKey)] = sc.parallelize(geometricFeatures,math.max(1,geometricFeatures.size)).map(_.reproject(LatLng,metadata.crs)).clipToGrid(metadata).map(t=>SpaceTimeKey(t._1,TemporalKey(t._2.data.nominalDate)))
+          val griddedFeatures = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size)).map(_.reproject(LatLng, metadata.crs))
+            .clipToGrid(metadata)
+            .join(localSpatialKeys)
+          val requiredSpacetimeKeys: RDD[(SpaceTimeKey)] = griddedFeatures.map(t=>SpaceTimeKey(t._1,TemporalKey(t._2._1.data.nominalDate)))
           DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys, metadata)
         }else{
           createPartitioner(datacubeParams, localSpatialKeys, filteredSources, metadata)
