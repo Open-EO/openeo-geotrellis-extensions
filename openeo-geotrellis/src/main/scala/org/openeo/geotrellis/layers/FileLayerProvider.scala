@@ -314,7 +314,8 @@ object FileLayerProvider {
     val partitioner = partitionerOption.getOrElse(SpacePartitioner(metadata.bounds))
     logger.info(s"Cube partitioner index: ${partitioner.index}")
     val totalChunksAcc = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
-    BatchJobMetadataTracker.tracker("").registerCounter(PIXEL_COUNTER)
+    val tracker = BatchJobMetadataTracker.tracker("")
+    tracker.registerCounter(PIXEL_COUNTER)
     val loadingTimeAcc = rasterRegionRDD.sparkContext.doubleAccumulator("SecondsPerChunk_" + rasterRegionRDD.name)
     val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] =
       rasterRegionRDD
@@ -415,7 +416,7 @@ object FileLayerProvider {
                   val totalPixels = mbTile.rows * mbTile.cols * mbTile.bandCount
                   totalPixelsPartition += totalPixels
                   totalChunksAcc.add(totalPixels / (256 * 256))
-                  BatchJobMetadataTracker.tracker("").add(PIXEL_COUNTER,totalPixels)
+                  tracker.add(PIXEL_COUNTER,totalPixels)
                 }
                 result
               }
