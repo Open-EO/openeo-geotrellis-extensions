@@ -611,7 +611,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     val filteredSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = applySpatialMask(datacubeParams,griddedRasterSources)
 
 
-    var requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = filteredSources.map(t=>(SpaceTimeKey(t._1,TemporalKey(t._2.data._2.nominalDate)),t._2))
+    var requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = filteredSources.map(t=>(SpaceTimeKey(t._1,TemporalKey(t._2.data._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))),t._2))
     requiredSpacetimeKeys = DatacubeSupport.applyDataMask(datacubeParams,requiredSpacetimeKeys)
     //TODO: now resolve overlaps
 
