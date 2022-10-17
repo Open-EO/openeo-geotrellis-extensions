@@ -249,7 +249,7 @@ object FileLayerProvider {
           })
 
           //avoid computing keys that are anyway out of bounds, with some buffering to avoid throwing away too much
-          val boundsLatLng = ProjectedExtent(metadata.extent,metadata.crs).reproject(LatLng).buffer(0.00001).toPolygon()
+          val boundsLatLng = ProjectedExtent(metadata.extent,metadata.crs).reproject(LatLng).buffer(0.0001).toPolygon()
           val geometricFeatures = inputFeatures.get.map(f=> geotrellis.vector.Feature(f.geometry.getOrElse(f.bbox.toPolygon()),f))
           val keysForfeatures = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size)).map(_.mapGeom(_.intersection(boundsLatLng)).reproject(LatLng, metadata.crs))
             .clipToGrid(metadata)
