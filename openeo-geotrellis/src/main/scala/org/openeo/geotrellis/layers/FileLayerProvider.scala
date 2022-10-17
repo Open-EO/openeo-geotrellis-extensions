@@ -14,6 +14,7 @@ import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
+import geotrellis.vector
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -31,6 +32,7 @@ import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
 import scala.collection.immutable
+import scala.reflect.ClassTag
 import scala.util.matching.Regex
 
 // TODO: are these attributes typically propagated as RasterSources are transformed? Maybe we should find another way to
@@ -212,22 +214,27 @@ object FileLayerProvider {
     }
   }
 
-  private def tileSourcesToDataCube(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])], sc: SparkContext, retainNoDataTiles: Boolean, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = None, inputFeatures: Option[Seq[Feature]] = None): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
-    var localSpatialKeys = requiredSpatialKeys
-    if(datacubeParams.exists(_.maskingCube.isDefined)) {
-      val maskObject =  datacubeParams.get.maskingCube.get
+  def applySpatialMask[M](datacubeParams : Option[DataCubeParameters] , requiredSpatialKeys: RDD[(SpatialKey, M)])(implicit vt: ClassTag[M]): RDD[(SpatialKey, M)] = {
+    if (datacubeParams.exists(_.maskingCube.isDefined)) {
+      val maskObject = datacubeParams.get.maskingCube.get
       maskObject match {
         case theSpatialMask: MultibandTileLayerRDD[SpatialKey] =>
-          if(theSpatialMask.metadata.bounds.get._1.isInstanceOf[SpatialKey]) {
+          if (theSpatialMask.metadata.bounds.get._1.isInstanceOf[SpatialKey]) {
             val maskSpatialKeys = theSpatialMask.filter(_._2.band(0).toArray().exists(pixel => pixel == 0)).distinct()
-            if(logger.isDebugEnabled) {
-              logger.debug(s"Spatial mask reduces the input to: ${maskSpatialKeys.count()} keys.")
+            if (logger.isDebugEnabled) {
+              logger.debug(s"Spatial mask reduces the input to: ${maskSpatialKeys.countApproxDistinct()} keys.")
             }
-            localSpatialKeys = requiredSpatialKeys.join(maskSpatialKeys).map(tuple => (tuple._1, tuple._2._1))
+            return requiredSpatialKeys.join(maskSpatialKeys).map(tuple => (tuple._1, tuple._2._1))
           }
         case _ =>
       }
     }
+    return requiredSpatialKeys
+  }
+
+  private def tileSourcesToDataCube(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])], sc: SparkContext, retainNoDataTiles: Boolean, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = None, inputFeatures: Option[Seq[Feature]] = None): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+    val localSpatialKeys = applySpatialMask(datacubeParams,requiredSpatialKeys)
+
     var spatialKeyCount = localSpatialKeys.countApproxDistinct()
 
     // Remove all source files that do not intersect with the 'interior' of the requested extent.
@@ -243,19 +250,11 @@ object FileLayerProvider {
       case true => {
         if(inputFeatures.isDefined) {
           //using metadata inside features is a much faster way of determining Spacetime keys
-          inputFeatures.get.foreach(f=>{
-            val extent = f.geometry.getOrElse(f.bbox.toPolygon()).extent
-            if(!checkLatLon(extent)) throw  new IllegalArgumentException(s"Geometry or Bounding box provided by the catalog has to be in EPSG:4326, but got ${extent} for catalog entry ${f}")
-          })
-
-          //avoid computing keys that are anyway out of bounds, with some buffering to avoid throwing away too much
-          val boundsLatLng = ProjectedExtent(metadata.extent,metadata.crs).reproject(LatLng).buffer(0.0001).toPolygon()
-          val geometricFeatures = inputFeatures.get.map(f=> geotrellis.vector.Feature(f.geometry.getOrElse(f.bbox.toPolygon()),f))
-          val keysForfeatures = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size)).map(_.mapGeom(_.intersection(boundsLatLng)).reproject(LatLng, metadata.crs))
-            .clipToGrid(metadata)
+          val keysForfeatures: _root_.org.apache.spark.rdd.RDD[(_root_.geotrellis.layer.SpatialKey, _root_.geotrellis.vector.Feature[_root_.geotrellis.vector.Geometry, _root_.org.openeo.opensearch.OpenSearchResponses.Feature])] = productsToSpatialKeys(inputFeatures, metadata, sc)
           val griddedFeatures = keysForfeatures.join(localSpatialKeys)
 
           val requiredSpacetimeKeys: RDD[(SpaceTimeKey)] = griddedFeatures.map(t=>SpaceTimeKey(t._1,TemporalKey(t._2._1.data.nominalDate)))
+
           DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys, metadata)
         }else{
           createPartitioner(datacubeParams, localSpatialKeys, filteredSources, metadata)
@@ -306,6 +305,20 @@ object FileLayerProvider {
     rasterRegionsToTiles(requestedRasterRegions, metadata, retainNoDataTiles, cloudFilterStrategy, partitioner)
   }
 
+
+  private def productsToSpatialKeys(inputFeatures: Option[Seq[Feature]], metadata: TileLayerMetadata[SpaceTimeKey], sc: SparkContext) = {
+    inputFeatures.get.foreach(f => {
+      val extent = f.geometry.getOrElse(f.bbox.toPolygon()).extent
+      if (!checkLatLon(extent)) throw new IllegalArgumentException(s"Geometry or Bounding box provided by the catalog has to be in EPSG:4326, but got ${extent} for catalog entry ${f}")
+    })
+
+    //avoid computing keys that are anyway out of bounds, with some buffering to avoid throwing away too much
+    val boundsLatLng = ProjectedExtent(metadata.extent, metadata.crs).reproject(LatLng).buffer(0.0001).toPolygon()
+    val geometricFeatures = inputFeatures.get.map(f => geotrellis.vector.Feature(f.geometry.getOrElse(f.bbox.toPolygon()), f))
+    val keysForfeatures: RDD[(SpatialKey, vector.Feature[Geometry, Feature])] = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size)).map(_.mapGeom(_.intersection(boundsLatLng)).reproject(LatLng, metadata.crs))
+      .clipToGrid(metadata)
+    keysForfeatures
+  }
 
   def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])], filteredSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey]): Some[SpacePartitioner[SpaceTimeKey]] = {
     val requiredSpacetimeKeys: RDD[SpaceTimeKey] = filteredSources.flatMap(_.keys).map {
@@ -538,7 +551,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       commonCellType = commonCellType.withDefaultNoData()
     }
     val multiple_polygons_flag = polygons.length > 1
-    val metadata = layerMetadata(
+    var metadata = layerMetadata(
       boundingBox, from, to, zoom min maxZoom, commonCellType, layoutScheme, maxSpatialResolution,
       datacubeParams.flatMap(_.globalExtent), multiple_polygons_flag
     )
@@ -571,14 +584,52 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     logger.info(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
 
     val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, polygons, datacubeParams, spatialKeyCount)
+    metadata = retiledMetadata.getOrElse(metadata)
 
     if (retiledMetadata.isDefined) {
       requiredSpatialKeys = polygonsRDD.clipToGrid(retiledMetadata.get).groupByKey()
     }
-    val rasterSources: RDD[LayoutTileSource[SpaceTimeKey]] = rasterSourceRDD(overlappingRasterSources.map(_._1), retiledMetadata.getOrElse(metadata), maxSpatialResolution, openSearchCollectionId)(sc)
 
-    rasterSources.name = s"FileCollection-${openSearchCollectionId}"
-    val cube = FileLayerProvider.tileSourcesToDataCube(rasterSources, retiledMetadata.getOrElse(metadata), requiredSpatialKeys, sc, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), datacubeParams=datacubeParams, inputFeatures = Some(overlappingRasterSources.map(_._2)))
+    overlappingRasterSources.map(_._2).foreach(f => {
+      val extent = f.geometry.getOrElse(f.bbox.toPolygon()).extent
+      if (!checkLatLon(extent)) throw new IllegalArgumentException(s"Geometry or Bounding box provided by the catalog has to be in EPSG:4326, but got ${extent} for catalog entry ${f}")
+    })
+
+    //extra check on interior
+    overlappingRasterSources = overlappingRasterSources.filter({ t =>
+      t._1.extent.interiorIntersects(metadata.extent)
+    })
+
+    //avoid computing keys that are anyway out of bounds, with some buffering to avoid throwing away too much
+    val boundsLatLng = ProjectedExtent(metadata.extent, metadata.crs).reproject(LatLng).buffer(0.0001).toPolygon()
+    val geometricFeatures = overlappingRasterSources.map(f => geotrellis.vector.Feature(f._2.geometry.getOrElse(f._2.bbox.toPolygon()), f))
+    val keysForfeatures =  sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size)).map(_.mapGeom(_.intersection(boundsLatLng)).reproject(LatLng, metadata.crs)).clipToGrid(metadata).repartition(math.max(1,spatialKeyCount.toInt/10))
+
+
+    //rdd
+    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = keysForfeatures.join(requiredSpatialKeys).map(t=>(t._1,t._2._1))
+    val filteredSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = applySpatialMask(datacubeParams,griddedRasterSources)
+
+
+    var requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = filteredSources.map(t=>(SpaceTimeKey(t._1,TemporalKey(t._2.data._2.nominalDate)),t._2))
+    requiredSpacetimeKeys = DatacubeSupport.applyDataMask(datacubeParams,requiredSpacetimeKeys)
+    //TODO: now resolve overlaps
+
+    val partitioner = DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
+
+    var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1).flatMap(t=>{
+      val source = LayoutTileSource.spatial(t._1,metadata.layout)
+      t._2.map(key_feature=>{
+        (key_feature._1,(source.rasterRegionForKey(key_feature._1.spatialKey),key_feature._2.data._1.name))
+      }).filter(_._2._1.isDefined).map(t=>(t._1,(t._2._1.get,t._2._2)))
+
+    })
+
+    regions.name = s"FileCollection-${openSearchCollectionId}"
+
+    //convert to raster region
+    val cube= rasterRegionsToTiles(regions, metadata, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), partitioner)
+
     logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner}")
     cube
   }
