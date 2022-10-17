@@ -22,10 +22,17 @@ object BatchProcessingService {
 class BatchProcessingService(endpoint: String, val bucketName: String, authorizer: Authorizer) {
   import BatchProcessingService._
 
-  // convenience method for Python client
+  // convenience methods for Python client
   def this(endpoint: String, bucket_name: String, client_id: String, client_secret: String) =
     this(endpoint, bucket_name,
       new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(client_id, client_secret))
+
+  def this(endpoint: String, bucket_name: String, client_id: String, client_secret: String,
+           zookeeper_connection_string: String, zookeeper_access_token_path: String) =
+    this(endpoint, bucket_name,
+      new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(
+        zookeeper_connection_string, zookeeper_access_token_path,
+        client_id, client_secret))
 
   private def authorized[R](fn: String => R): R = authorizer.authorized(fn)
 
