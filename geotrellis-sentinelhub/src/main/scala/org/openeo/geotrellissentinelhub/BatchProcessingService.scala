@@ -25,7 +25,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
   // convenience method for Python client
   def this(endpoint: String, bucket_name: String, client_id: String, client_secret: String) =
     this(endpoint, bucket_name,
-      new MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(client_id, client_secret))
+      new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(client_id, client_secret))
 
   private def authorized[R](fn: String => R): R = authorizer.authorized(fn)
 

@@ -34,7 +34,8 @@ class TestSameStartEndDate {
 
     val endpoint = "https://services.sentinel-hub.com"
     val pyramid = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), new MemoizedAuthApiAccessTokenAuthorizer(clientId, clientSecret),
+      new DefaultProcessApi(endpoint),
+      new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
       rateLimitingGuard = NoRateLimitingGuard)
       .pyramid_seq(extent, bbox_srs, from, to, bandNames, metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]])
 
