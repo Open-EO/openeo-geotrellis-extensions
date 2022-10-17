@@ -27,12 +27,7 @@ object PyramidFactory {
   private val maxKeysPerPartition = 20
 
   // convenience methods for Python client
-  def withGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
-                              clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
-                              maxSpatialResolution: CellSize, softErrors: Boolean): PyramidFactory =
-    withGuardedRateLimiting(endpoint, collectionId, datasetId, clientId, clientSecret, processingOptions, sampleType,
-      maxSpatialResolution, maxSoftErrorsRatio = if (softErrors) 1.0 else 0.0)
-
+  @deprecated("syncer endpoint is no longer online")
   def withGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
                               clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
                               maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
@@ -41,11 +36,16 @@ object PyramidFactory {
       new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
       processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution, maxSoftErrorsRatio)
 
-  def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
-                                 clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
-                                 maxSpatialResolution: CellSize, softErrors: Boolean): PyramidFactory =
-    withoutGuardedRateLimiting(endpoint, collectionId, datasetId, clientId, clientSecret, processingOptions, sampleType,
-      maxSpatialResolution, maxSoftErrorsRatio = if (softErrors) 1.0 else 0.0)
+  def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String,
+                                 clientId: String, clientSecret: String,
+                                 zookeeperConnectionString: String, zookeeperAccessTokenPath: String,
+                                 processingOptions: util.Map[String, Any], sampleType: SampleType,
+                                 maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
+    new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
+      new DefaultProcessApi(endpoint),
+      new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(zookeeperConnectionString,
+        zookeeperAccessTokenPath, clientId, clientSecret),
+      processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
 
   def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
                                  clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,

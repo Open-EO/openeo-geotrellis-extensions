@@ -30,7 +30,7 @@ class MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(zookeeperCon
 
   def this(clientId: String, clientSecret: String) = this(
     zookeeperConnectionString = "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",
-    accessTokenPath = "/openeo/rlguard/access_token",
+    accessTokenPath = "/openeo/rlguard/access_token_default",
     clientId, clientSecret)
 
   private def zookeeperAccessToken: Option[AccessToken] = {
