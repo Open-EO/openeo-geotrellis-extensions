@@ -643,7 +643,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         if(filteredByCRS.nonEmpty) {
           filteredByCRS.map(distance_source => (key,distance_source._2))
         }else{
-          filteredByDistance.filter(_._1 == minimumDistance).map(distance_source => (key,distance_source._2))
+          filteredByDistance.filter(_._1 == largestDistanceToTheEdgeOfTheRaster).map(distance_source => (key,distance_source._2))
         }
       })
     }
