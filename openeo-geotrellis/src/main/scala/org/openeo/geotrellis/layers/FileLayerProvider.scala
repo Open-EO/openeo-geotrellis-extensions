@@ -557,6 +557,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     }
 
     var metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, from, to, commonCellType)
+    val isUTM = metadata.crs.proj4jCrs.getProjection.getName == "utm"
 
     // Handle maskingStrategyParameters.
     var maskStrategy : Option[CloudFilterStrategy] = None
@@ -615,11 +616,42 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     var requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = filteredSources.map(t=>(SpaceTimeKey(t._1,TemporalKey(t._2.data._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))),t._2))
     requiredSpacetimeKeys = DatacubeSupport.applyDataMask(datacubeParams,requiredSpacetimeKeys)
-    //TODO: now resolve overlaps
+
+    if(isUTM) {
+      //only for utm is just a safeguard to limit to sentine-1/2 for now
+      //try to resolve overlap before actually reqding the data
+      requiredSpacetimeKeys = requiredSpacetimeKeys.groupByKey().flatMap(t=>{
+
+        val key = t._1
+        val extent = metadata.keyToExtent(key.spatialKey)//.reproject(metadata.crs,LatLng)
+        val distances =t._2.map(source => {
+          (source.geom.reproject(LatLng,metadata.crs).distance(extent),source)
+        })
+        val largestDistanceToTheEdgeOfTheRaster = distances.map(_._1).max
+
+        /**
+         * In case of overlap, we want to select the extent that is either beyond a minimum distance from the edge of the raster
+         * Or, in case multiple sources satisfy the distance constraint, we prefer the one that has a CRS matching the target CRS
+         *
+         */
+
+        val minimumDistance = math.min(largestDistanceToTheEdgeOfTheRaster,metadata.cellSize.resolution * 300)
+        val filteredByDistance = distances.filter(_._1 >= minimumDistance)
+        val filteredByCRS = filteredByDistance.filter(_._2.data._2.crs.get == metadata.crs)
+        if(filteredByCRS.nonEmpty) {
+          filteredByCRS.map(distance_source => (key,distance_source._2))
+        }else{
+          filteredByDistance.filter(_._1 == minimumDistance).map(distance_source => (key,distance_source._2))
+        }
+      })
+    }
+
+
 
     val partitioner = DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
 
-    val noResampling = metadata.crs.proj4jCrs.getProjection.getName == "utm" && math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
+
+    val noResampling = isUTM && math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
     //resampling is still needed in case bounding boxes are not aligned with pixels
     // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
     var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1).flatMap(t=>{
