@@ -1,6 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import org.openeo.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer.{LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, LatLng}
@@ -249,6 +248,7 @@ class FileLayerProviderTest {
 
     assertEquals(0,minKey.col)
     assertEquals(0,minKey.row)
+    assertEquals(crs,result._2.crs)
 
     val ids = result._1.values.map(_.data._2.id).distinct().collect()
     //overlap filter has removed the other potential sources
