@@ -541,8 +541,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }
   }
 
-  def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): MultibandTileLayerRDD[SpaceTimeKey] = {
-
+  def readKeysToRasterSources(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): (RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], TileLayerMetadata[SpaceTimeKey], Option[CloudFilterStrategy]) = {
     val multiple_polygons_flag = polygons.length > 1
     val worldLayout: LayoutDefinition = DatacubeSupport.getLayout(layoutScheme, boundingBox, zoom min maxZoom, maxSpatialResolution, globalBounds = datacubeParams.flatMap(_.globalExtent), multiple_polygons_flag = multiple_polygons_flag)
     val reprojectedBoundingBox: ProjectedExtent = DatacubeSupport.targetBoundingBox(boundingBox, layoutScheme)
@@ -550,9 +549,9 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     logger.info(s"Loading ${openSearchCollectionId} with params ${datacubeParams.getOrElse(new DataCubeParameters)} and bands ${openSearchLinkTitles.toList.mkString(";")} initial layout: ${worldLayout}")
 
-    var overlappingRasterSources: Seq[(RasterSource,Feature)] = loadRasterSourceRDD(boundingBox, from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
+    var overlappingRasterSources: Seq[(RasterSource, Feature)] = loadRasterSourceRDD(boundingBox, from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
     var commonCellType = overlappingRasterSources.head._1.cellType
-    if(commonCellType.isInstanceOf[NoNoData]) {
+    if (commonCellType.isInstanceOf[NoNoData]) {
       commonCellType = commonCellType.withDefaultNoData()
     }
 
@@ -560,7 +559,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     val isUTM = metadata.crs.proj4jCrs.getProjection.getName == "utm"
 
     // Handle maskingStrategyParameters.
-    var maskStrategy : Option[CloudFilterStrategy] = None
+    var maskStrategy: Option[CloudFilterStrategy] = None
     if (datacubeParams.isDefined && datacubeParams.get.maskingStrategyParameters != null) {
       val maskParams = datacubeParams.get.maskingStrategyParameters
       val maskMethod = maskParams.getOrDefault("method", "").toString
@@ -569,7 +568,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
           (_, sclBandIndex) <- openSearchLinkTitles.zipWithIndex.find {
             case (linkTitle, _) => linkTitle.contains("SCENECLASSIFICATION") || linkTitle.contains("SCL")
           }
-        } yield new SCLConvolutionFilterStrategy(sclBandIndex,datacubeParams.get.maskingStrategyParameters)
+        } yield new SCLConvolutionFilterStrategy(sclBandIndex, datacubeParams.get.maskingStrategyParameters)
       }
       else if (maskMethod == "mask_l1c") {
         overlappingRasterSources = GDALCloudRasterSource.filterRasterSources(overlappingRasterSources, maskParams)
@@ -606,28 +605,28 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     //avoid computing keys that are anyway out of bounds, with some buffering to avoid throwing away too much
     val boundsLatLng = ProjectedExtent(metadata.extent, metadata.crs).reproject(LatLng).buffer(0.0001).toPolygon()
     val geometricFeatures = overlappingRasterSources.map(f => geotrellis.vector.Feature(f._2.geometry.getOrElse(f._2.bbox.toPolygon()), f))
-    val keysForfeatures =  sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size)).map(_.mapGeom(_.intersection(boundsLatLng)).reproject(LatLng, metadata.crs)).clipToGrid(metadata).repartition(math.max(1,spatialKeyCount.toInt/10))
+    val keysForfeatures = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size)).map(_.mapGeom(_.intersection(boundsLatLng)).reproject(LatLng, metadata.crs)).clipToGrid(metadata).repartition(math.max(1, spatialKeyCount.toInt / 10))
 
 
     //rdd
-    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = keysForfeatures.join(requiredSpatialKeys).map(t=>(t._1,t._2._1))
-    val filteredSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = applySpatialMask(datacubeParams,griddedRasterSources)
+    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = keysForfeatures.join(requiredSpatialKeys).map(t => (t._1, t._2._1))
+    val filteredSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = applySpatialMask(datacubeParams, griddedRasterSources)
 
 
-    var requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = filteredSources.map(t=>(SpaceTimeKey(t._1,TemporalKey(t._2.data._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))),t._2))
-    requiredSpacetimeKeys = DatacubeSupport.applyDataMask(datacubeParams,requiredSpacetimeKeys)
+    var requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = filteredSources.map(t => (SpaceTimeKey(t._1, TemporalKey(t._2.data._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))), t._2))
+    requiredSpacetimeKeys = DatacubeSupport.applyDataMask(datacubeParams, requiredSpacetimeKeys)
 
-    if(isUTM) {
+    if (isUTM) {
       //only for utm is just a safeguard to limit to sentine-1/2 for now
       //try to resolve overlap before actually reqding the data
-      requiredSpacetimeKeys = requiredSpacetimeKeys.groupByKey().flatMap(t=>{
+      requiredSpacetimeKeys = requiredSpacetimeKeys.groupByKey().flatMap(t => {
 
         val key = t._1
         val extent = metadata.keyToExtent(key.spatialKey)
-        val distances =t._2.map(source => {
-          val sourceExtent = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).extent.reproject(LatLng,metadata.crs)
+        val distances = t._2.map(source => {
+          val sourceExtent = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).extent.reproject(LatLng, metadata.crs)
           val minDistanceToTheEdge: Double = Seq((extent.xmin - sourceExtent.xmin).abs, (extent.ymin - sourceExtent.ymin).abs, Math.abs(extent.xmax - sourceExtent.xmax), Math.abs(extent.ymax - sourceExtent.ymax)).min
-          (minDistanceToTheEdge,source)
+          (minDistanceToTheEdge, source)
         })
         val largestDistanceToTheEdgeOfTheRaster = distances.map(_._1).max
 
@@ -637,18 +636,29 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
          *
          */
 
-        val minimumDistance = math.min(largestDistanceToTheEdgeOfTheRaster,metadata.cellSize.resolution * 300)
+        val minimumDistance = math.min(largestDistanceToTheEdgeOfTheRaster, metadata.cellSize.resolution * 300)
         val filteredByDistance = distances.filter(_._1 >= minimumDistance)
         val filteredByCRS = filteredByDistance.filter(_._2.data._2.crs.get == metadata.crs)
-        if(filteredByCRS.nonEmpty) {
-          filteredByCRS.map(distance_source => (key,distance_source._2))
-        }else{
-          filteredByDistance.filter(_._1 == largestDistanceToTheEdgeOfTheRaster).map(distance_source => (key,distance_source._2))
+        if (filteredByCRS.nonEmpty) {
+          filteredByCRS.map(distance_source => (key, distance_source._2))
+        } else {
+          filteredByDistance.filter(_._1 == largestDistanceToTheEdgeOfTheRaster).map(distance_source => (key, distance_source._2))
         }
       })
     }
+    (requiredSpacetimeKeys,metadata,  maskStrategy)
+  }
+
+  def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): MultibandTileLayerRDD[SpaceTimeKey] = {
 
 
+
+    val readKeysToRasterSourcesResult = readKeysToRasterSources(from,to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams)
+
+    var maskStrategy: Option[CloudFilterStrategy] = readKeysToRasterSourcesResult._3
+    val metadata = readKeysToRasterSourcesResult._2
+    val requiredSpacetimeKeys = readKeysToRasterSourcesResult._1
+    val isUTM = metadata.crs.proj4jCrs.getProjection.getName == "utm"
 
     val partitioner = DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
 

@@ -3,10 +3,10 @@ package org.openeo.geotrellis.layers
 import org.openeo.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer.{LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata, ZoomedLayoutScheme}
-import geotrellis.proj4.LatLng
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
-import geotrellis.raster.{CellSize, RasterSource}
+import geotrellis.raster.{CellSize, RasterSource, UByteUserDefinedNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.summary.polygonal._
@@ -16,11 +16,14 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.junit.Assert.{assertEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.{AfterClass, BeforeClass, Test}
+import org.openeo.geotrellis.LayerFixtures
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrelliscommon.DatacubeSupport._
-import org.openeo.geotrelliscommon.{NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{DataCubeParameters, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.opensearch.OpenSearchClient
 
 import java.net.URL
+import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 
 object FileLayerProviderTest {
@@ -215,5 +218,42 @@ class FileLayerProviderTest {
 
     assert(defaultMaskedLayerKeys.nonEmpty)
     assertEquals(defaultMaskedLayerKeys, sparseMaskedLayerKeys)
+  }
+
+  @Test
+  def overlapsFilterTest(): Unit = {
+    val date = LocalDate.of(2019, 6, 27).atStartOfDay(UTC)
+
+    val crs = CRS.fromEpsgCode(32632)
+    // a mix of 31UGS and 32ULB
+    val boundingBox = ProjectedExtent(Extent(344110.000, 5600770.000, 351420.000, 5608770.000), crs)
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.globalExtent = Some(boundingBox)
+
+    val result = LayerFixtures.sentinel2TocLayerProviderUTM20M.readKeysToRasterSources(
+      from = date,
+      to = date,
+      boundingBox,
+      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
+      polygons_crs = crs,
+      zoom = 0,
+      sc,
+      Some(dataCubeParameters)
+    )
+    val minKey = result._2.bounds.get.minKey
+
+    val cols = math.ceil((boundingBox.extent.width / 10.0)/256.0)
+    val rows = math.ceil((boundingBox.extent.height / 10.0)/256.0)
+
+    assertEquals(0,minKey.col)
+    assertEquals(0,minKey.row)
+
+    val ids = result._1.values.map(_.data._2.id).distinct().collect()
+    //overlap filter has removed the other potential sources
+    assertEquals(1,ids.length)
+    assertEquals("urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20190627T104029_32ULB_TOC_V200",ids(0))
+    assertEquals(cols*rows,result._1.count(),0.1)
   }
 }
