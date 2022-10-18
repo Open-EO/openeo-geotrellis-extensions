@@ -543,18 +543,20 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
   def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): MultibandTileLayerRDD[SpaceTimeKey] = {
 
-    logger.info(s"Loading ${openSearchCollectionId} with params ${datacubeParams.getOrElse(new DataCubeParameters)} and bands ${openSearchLinkTitles.toList.mkString(";")}")
+    val multiple_polygons_flag = polygons.length > 1
+    val worldLayout: LayoutDefinition = DatacubeSupport.getLayout(layoutScheme, boundingBox, zoom min maxZoom, maxSpatialResolution, globalBounds = datacubeParams.flatMap(_.globalExtent), multiple_polygons_flag = multiple_polygons_flag)
+    val reprojectedBoundingBox: ProjectedExtent = DatacubeSupport.targetBoundingBox(boundingBox, layoutScheme)
 
-    var overlappingRasterSources: Seq[(RasterSource,Feature)] = loadRasterSourceRDD(boundingBox, from, to, zoom, datacubeParams)
+
+    logger.info(s"Loading ${openSearchCollectionId} with params ${datacubeParams.getOrElse(new DataCubeParameters)} and bands ${openSearchLinkTitles.toList.mkString(";")} initial layout: ${worldLayout}")
+
+    var overlappingRasterSources: Seq[(RasterSource,Feature)] = loadRasterSourceRDD(boundingBox, from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
     var commonCellType = overlappingRasterSources.head._1.cellType
     if(commonCellType.isInstanceOf[NoNoData]) {
       commonCellType = commonCellType.withDefaultNoData()
     }
-    val multiple_polygons_flag = polygons.length > 1
-    var metadata = layerMetadata(
-      boundingBox, from, to, zoom min maxZoom, commonCellType, layoutScheme, maxSpatialResolution,
-      datacubeParams.flatMap(_.globalExtent), multiple_polygons_flag
-    )
+
+    var metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, from, to, commonCellType)
 
     // Handle maskingStrategyParameters.
     var maskStrategy : Option[CloudFilterStrategy] = None
@@ -617,13 +619,9 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     val partitioner = DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
 
-    val noResampling = metadata.crs.proj4jCrs.getProjection.getName == "utm" && math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
+
     var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1).flatMap(t=>{
-      val source = if (noResampling) {
-        LayoutTileSource(t._1, metadata.layout, identity)
-      } else{
-        t._1.tileToLayout(metadata.layout)
-      }
+      val source = LayoutTileSource(t._1, metadata.layout, identity)
 
       t._2.map(key_feature=>{
         (key_feature._1,(source.rasterRegionForKey(key_feature._1.spatialKey),key_feature._2.data._1.name))
@@ -659,11 +657,12 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     case _ => href.toString
   }
 
-  private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty): List[(RasterSource, Seq[Int])] = {
+  private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): List[(RasterSource, Seq[Int])] = {
     def expandToCellSize(extent: Extent, cellSize: CellSize): Extent =
       extent.expandBy(deltaX = math.max((cellSize.width - extent.width) / 2,0.0), deltaY = math.max((cellSize.height - extent.height) / 2,0.0))
 
-    val re = RasterExtent(expandToCellSize(targetExtent.extent,maxSpatialResolution), maxSpatialResolution).alignTargetPixels
+    val theResolution = targetResolution.getOrElse(maxSpatialResolution)
+    val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution).alignTargetPixels
 
     /**
      * Benefit of targetregion: it can be valid in the target projection system
@@ -688,7 +687,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
       if(dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
         val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
-        val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(maxSpatialResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod))
+        val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod))
         if (cloudPath.isDefined) {
           Seq(GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType))
         }else{
@@ -702,14 +701,14 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         if( feature.crs.isDefined && feature.crs.get != null && feature.crs.get.equals(targetExtent.crs)) {
           // when we don't know the feature (input) CRS, it seems that we assume it is the same as target extent???
           if(experimental) {
-            Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution), resampleMethod=Some(resampleMethod)), targetCellType = targetCellType))
+            Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(theResolution), resampleMethod=Some(resampleMethod)), targetCellType = targetCellType))
           }else{
             //here we can use 'TargetAlignment' because there is no reprojection of the extent. It would be better if we could also use 'TargetRegion', but that breaks the handling of overlap
             Seq(GeoTiffResampleRasterSource(GeoTiffPath(dataPath), TargetAlignment(re), resampleMethod, OverviewStrategy.DEFAULT, targetCellType, None))
           }
         }else{
           if(experimental) {
-            val warpOptions = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(maxSpatialResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod))
+            val warpOptions = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod))
             Seq(GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType))
           }else{
 
@@ -740,7 +739,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     rasterSources.flatMap(rs_b => rs_b._1.map(rs => (rs,rs_b._2))).toList
   }
 
-  def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int,datacubeParams : Option[DataCubeParameters] = Option.empty): Seq[(RasterSource,Feature)] = {
+  def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int,datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Seq[(RasterSource,Feature)] = {
     require(zoom >= 0) // TODO: remove zoom and sc parameters
 
     val overlappingFeatures: Seq[Feature] = openSearch.getProducts(
@@ -755,7 +754,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     val reprojectedBoundingBox: ProjectedExtent = targetBoundingBox(boundingBox, layoutScheme)
     val overlappingRasterSources = for {
       feature <- overlappingFeatures
-      rasterSources = deriveRasterSources(feature,reprojectedBoundingBox, datacubeParams)
+      rasterSources = deriveRasterSources(feature,reprojectedBoundingBox, datacubeParams,targetResolution)
       if rasterSources.nonEmpty
     } yield compositeRasterSource(feature,NonEmptyList(rasterSources.head, rasterSources.tail), crs, Predef.Map("date"->feature.nominalDate.toString))
 
