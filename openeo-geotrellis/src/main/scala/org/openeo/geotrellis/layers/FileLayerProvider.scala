@@ -617,8 +617,14 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     val partitioner = DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
 
+    val noResampling = metadata.crs.proj4jCrs.getProjection.getName == "utm" && math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
     var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1).flatMap(t=>{
-      val source = LayoutTileSource.spatial(t._1,metadata.layout)
+      val source = if (noResampling) {
+        LayoutTileSource(t._1, metadata.layout, identity)
+      } else{
+        t._1.tileToLayout(metadata.layout)
+      }
+
       t._2.map(key_feature=>{
         (key_feature._1,(source.rasterRegionForKey(key_feature._1.spatialKey),key_feature._2.data._1.name))
       }).filter(_._2._1.isDefined).map(t=>(t._1,(t._2._1.get,t._2._2)))
