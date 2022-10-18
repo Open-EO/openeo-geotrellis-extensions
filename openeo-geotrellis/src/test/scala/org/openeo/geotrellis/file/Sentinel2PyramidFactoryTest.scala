@@ -1,14 +1,13 @@
 package org.openeo.geotrellis.file
 
-import geotrellis.layer.{LayoutTileSource, Metadata, SpaceTimeKey, SpatialKey, TemporalKeyExtractor, TileLayerMetadata}
-import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.layer.{Metadata, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.util.UTM
-import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
-import geotrellis.raster.io.geotiff.{GeoTiff, GeoTiffOptions, MultibandGeoTiff, Tags}
+import geotrellis.raster.io.geotiff.{GeoTiff, GeoTiffOptions, Tags}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
-import geotrellis.raster.{CellSize, GridBounds, MultibandTile, Raster, RasterMetadata, TargetCellType}
+import geotrellis.raster.{CellSize, MultibandTile}
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
@@ -17,18 +16,14 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
-import org.openeo.geotrellis.layers.FileLayerProvider.{logger, rasterSourceRDD}
-import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
-import org.openeo.geotrelliscommon.DatacubeSupport.layerMetadata
-import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport}
+import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrelliscommon.DataCubeParameters
 
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
-import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
+import java.time.{LocalDate, ZonedDateTime}
 import java.util.Collections.{emptyMap, singletonList}
-import scala.collection.mutable.ListBuffer
 
 object Sentinel2PyramidFactoryTest {
     private var sc: SparkContext = _
@@ -92,7 +87,7 @@ class Sentinel2PyramidFactoryTest {
     @Test
     def testDemLayer(): Unit = {
         val localFromDate = LocalDate.of(2010, 1, 1)
-        val localToDate = LocalDate.of(2012, 1, 1)
+        val localToDate = LocalDate.of(2014, 1, 1)
         val ZonedFromDate = ZonedDateTime.of(localFromDate, MIDNIGHT, UTC)
         val zonedToDate = ZonedDateTime.of(localToDate, MIDNIGHT, UTC)
 
@@ -121,8 +116,13 @@ class Sentinel2PyramidFactoryTest {
         ).maxBy { case (zoom, _) => zoom }._2
 
         // Compare actual with reference tile.
-        val actualTiffs = baseLayer.toSpatial().toGeoTiffs(Tags.empty,GeoTiffOptions(DeflateCompression)).collect().toList.map(t => t._2)
-        assert(actualTiffs.length == 1)
+        //saveRDDTemporal(baseLayer,"/tmp")
+
+        val dates = baseLayer.keys.map(_.time).distinct().collect()
+
+        val actualTiffs = baseLayer.toSpatial(dates.apply(0)).toGeoTiffs(Tags.empty,GeoTiffOptions(DeflateCompression)).collect().toList.map(t => t._2)
+        println(dates.mkString("Array(", ", ", ")"))
+        assertEquals(2, actualTiffs.length )
         //actualTiffs.head.write("/tmp/tile0_0.tiff", true)
 
         val resourcePath = "org/openeo/geotrellis/file/testDemLayer/tile0_0.tiff"
