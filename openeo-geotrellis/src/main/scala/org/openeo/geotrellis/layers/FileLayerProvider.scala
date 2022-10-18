@@ -623,9 +623,11 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       requiredSpacetimeKeys = requiredSpacetimeKeys.groupByKey().flatMap(t=>{
 
         val key = t._1
-        val extent = metadata.keyToExtent(key.spatialKey)//.reproject(metadata.crs,LatLng)
+        val extent = metadata.keyToExtent(key.spatialKey)
         val distances =t._2.map(source => {
-          (source.geom.reproject(LatLng,metadata.crs).distance(extent),source)
+          val sourceExtent = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).extent.reproject(LatLng,metadata.crs)
+          val minDistanceToTheEdge: Double = Seq((extent.xmin - sourceExtent.xmin).abs, (extent.ymin - sourceExtent.ymin).abs, Math.abs(extent.xmax - sourceExtent.xmax), Math.abs(extent.ymax - sourceExtent.ymax)).min
+          (minDistanceToTheEdge,source)
         })
         val largestDistanceToTheEdgeOfTheRaster = distances.map(_._1).max
 
