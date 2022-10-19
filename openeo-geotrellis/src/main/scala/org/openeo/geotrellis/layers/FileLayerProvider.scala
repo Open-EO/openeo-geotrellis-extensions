@@ -638,7 +638,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
         val minimumDistance = math.min(largestDistanceToTheEdgeOfTheRaster, metadata.cellSize.resolution * 300)
         val filteredByDistance = distances.filter(_._1 >= minimumDistance)
-        val filteredByCRS = filteredByDistance.filter(_._2.data._2.crs.get == metadata.crs)
+        val filteredByCRS = filteredByDistance.filter(d => d._2.data._2.crs.isDefined && d._2.data._2.crs.get == metadata.crs)
         if (filteredByCRS.nonEmpty) {
           filteredByCRS.map(distance_source => (key, distance_source._2))
         } else {
