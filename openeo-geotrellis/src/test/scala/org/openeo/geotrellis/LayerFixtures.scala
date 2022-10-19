@@ -1,6 +1,5 @@
 package org.openeo.geotrellis
 
-import org.openeo.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer.{Bounds, FloatingLayoutScheme, KeyBounds, LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.proj4.LatLng
@@ -16,6 +15,7 @@ import org.openeo.geotrellis.file.{CglsPyramidFactory2, Sentinel2PyramidFactory}
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellisaccumulo.PyramidFactory
 import org.openeo.geotrelliscommon.SparseSpaceTimePartitioner
+import org.openeo.opensearch.OpenSearchClient
 
 import java.awt.image.DataBufferByte
 import java.net.URL
@@ -121,6 +121,18 @@ object LayerFixtures {
       client,
       "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"),
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+      maxSpatialResolution,
+      pathDateExtractor,
+      layoutScheme = FloatingLayoutScheme(256),
+      experimental = false
+    )
+
+  def sentinel2TocLayerProviderUTM20M =
+    new FileLayerProvider(
+      client,
+      "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+      openSearchLinkTitles = NonEmptyList.of("TOC-B11_20M", "SCENECLASSIFICATION_20M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
       maxSpatialResolution,
       pathDateExtractor,
