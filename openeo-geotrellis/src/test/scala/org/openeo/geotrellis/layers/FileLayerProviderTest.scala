@@ -256,4 +256,50 @@ class FileLayerProviderTest {
     assertEquals("urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20190627T104029_32ULB_TOC_V200",ids(0))
     assertEquals(cols*rows,result._1.count(),0.1)
   }
+
+  @Test
+  def sentinel1LoadTest(): Unit = {
+    LayerFixtures.sentinel1Sigma0LayerProviderUTM
+
+    val date = LocalDate.of(2022, 9, 13).atStartOfDay(UTC)
+
+    val crs = CRS.fromEpsgCode(32631)
+    // a mix of 31UGS and 32ULB
+    val boundingBox = ProjectedExtent(Extent(5.085980189812683,51.0353667302808,5.146073667675196,51.05305736567695).reproject(LatLng,crs),crs )
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.globalExtent = Some(boundingBox)
+
+    val result = LayerFixtures.sentinel1Sigma0LayerProviderUTM.readKeysToRasterSources(
+      from = date,
+      to = date,
+      boundingBox,
+      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
+      polygons_crs = crs,
+      zoom = 0,
+      sc,
+      Some(dataCubeParameters)
+    )
+
+    val minKey = result._2.bounds.get.minKey
+
+    val cols = math.ceil((boundingBox.extent.width / 10.0)/256.0)
+    val rows = math.ceil((boundingBox.extent.height / 10.0)/256.0)
+
+    assertEquals(0,minKey.col)
+    assertEquals(0,minKey.row)
+    assertEquals(crs,result._2.crs)
+
+    val cube = result._1
+    val ids = cube.values.map(_.data._2.id).distinct().collect()
+    val count = cube.count()
+    //overlap filter has removed the other potential sources
+    assertEquals(2,ids.length)
+    assertEquals("urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20220913T055845_DESCENDING_110_2A71_V110",ids(0))
+    assertEquals("urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20220913T055910_DESCENDING_110_4192_V110",ids(1))
+    //the cube only covers 2 tiles, but we have 2 source products, so times 2
+    assertEquals(2*cols*rows,count,0.1)
+    println(s"Count: $count")
+  }
 }

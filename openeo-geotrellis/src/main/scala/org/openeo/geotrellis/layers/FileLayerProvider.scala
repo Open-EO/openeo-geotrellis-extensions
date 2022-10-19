@@ -621,29 +621,43 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       //try to resolve overlap before actually reqding the data
       requiredSpacetimeKeys = requiredSpacetimeKeys.groupByKey().flatMap(t => {
 
-        val key = t._1
-        val extent = metadata.keyToExtent(key.spatialKey)
-        val distances = t._2.map(source => {
-          val sourceExtent = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).extent.reproject(LatLng, metadata.crs)
-          val minDistanceToTheEdge: Double = Seq((extent.xmin - sourceExtent.xmin).abs, (extent.ymin - sourceExtent.ymin).abs, Math.abs(extent.xmax - sourceExtent.xmax), Math.abs(extent.ymax - sourceExtent.ymax)).min
-          (minDistanceToTheEdge, source)
-        })
-        val largestDistanceToTheEdgeOfTheRaster = distances.map(_._1).max
+        def return_original = t._2.map(source => (t._1,source))
+        if( t._2.size <= 1) {
+          return_original
+        }else{
+          val key = t._1
+          val extent = metadata.keyToExtent(key.spatialKey)
+          val distances = t._2.map(source => {
+            val sourceExtent = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).extent.reproject(LatLng, metadata.crs)
+            //try to detect tiles that are on the edge of the footprint
+            val sourcePolygonBuffered = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).reproject(LatLng, metadata.crs).buffer(-math.max(extent.width,extent.height))
+            val distanceToFootprint = extent.distance(sourcePolygonBuffered)
+            val minDistanceToTheEdge: Double = Seq((extent.xmin - sourceExtent.xmin).abs, (extent.ymin - sourceExtent.ymin).abs, Math.abs(extent.xmax - sourceExtent.xmax), Math.abs(extent.ymax - sourceExtent.ymax)).min
+            ((minDistanceToTheEdge,distanceToFootprint), source)
+          })
+          val largestDistanceToTheEdgeOfTheRaster = distances.map(_._1._1).max
+          val smallestDistanceToFootprint = distances.map(_._1._2).min
+          if(smallestDistanceToFootprint > 0) {
+            return_original
+          }else{
 
-        /**
-         * In case of overlap, we want to select the extent that is either beyond a minimum distance from the edge of the raster
-         * Or, in case multiple sources satisfy the distance constraint, we prefer the one that has a CRS matching the target CRS
-         *
-         */
+            /**
+             * In case of overlap, we want to select the extent that is either fully inside the footprint
+             * Or, in case multiple sources satisfy the distance constraint, we prefer the one that has a CRS matching the target CRS
+             *
+             */
 
-        val minimumDistance = math.min(largestDistanceToTheEdgeOfTheRaster, metadata.cellSize.resolution * 300)
-        val filteredByDistance = distances.filter(_._1 >= minimumDistance)
-        val filteredByCRS = filteredByDistance.filter(d => d._2.data._2.crs.isDefined && d._2.data._2.crs.get == metadata.crs)
-        if (filteredByCRS.nonEmpty) {
-          filteredByCRS.map(distance_source => (key, distance_source._2))
-        } else {
-          filteredByDistance.filter(_._1 == largestDistanceToTheEdgeOfTheRaster).map(distance_source => (key, distance_source._2))
+            val filteredByDistance = distances.filter(_._1._2 > 0)
+            val filteredByCRS = filteredByDistance.filter(d => d._2.data._2.crs.isDefined && d._2.data._2.crs.get == metadata.crs)
+            if (filteredByCRS.nonEmpty) {
+              filteredByCRS.map(distance_source => (key, distance_source._2))
+            } else {
+              filteredByDistance.filter(_._1._1 == largestDistanceToTheEdgeOfTheRaster).map(distance_source => (key, distance_source._2))
+            }
+
+          }
         }
+
       })
     }
     (requiredSpacetimeKeys,metadata,  maskStrategy)

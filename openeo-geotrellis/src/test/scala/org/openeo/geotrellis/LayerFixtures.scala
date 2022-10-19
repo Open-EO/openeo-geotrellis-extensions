@@ -104,6 +104,18 @@ object LayerFixtures {
     srs = "EPSG:4326"
   )
 
+  def sentinel1Sigma0LayerProviderUTM =
+    new FileLayerProvider(
+      client,
+      "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+      openSearchLinkTitles = NonEmptyList.of("VV"),
+      rootPath = "/bogus",
+      maxSpatialResolution,
+      pathDateExtractor,
+      layoutScheme = FloatingLayoutScheme(256),
+      experimental = false
+    )
+
   def s2_fapar(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent)=accumuloDataCube("S2_FAPAR_PYRAMID_20200408", from_date, to_date, bbox, "EPSG:4326")
 
   def sceneClassificationV200PyramidFactory = new Sentinel2PyramidFactory(
