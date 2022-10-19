@@ -15,7 +15,7 @@ class GdalCloudRasterSourceTest {
 
     val dilationDistance = 10000
     val mergedPolygons: Seq[Polygon] = source.getMergedPolygons(dilationDistance)
-    val bufferedPolygons = source.readCloudFile().map(p => p.buffer(dilationDistance).asInstanceOf[Polygon]).toBuffer
+    val bufferedPolygons = source.readCloudFile().par.map(p => p.buffer(dilationDistance).asInstanceOf[Polygon]).toBuffer
 
     assert(mergedPolygons.extent.area == bufferedPolygons.extent.area)
     assert(mergedPolygons.extent == bufferedPolygons.extent)

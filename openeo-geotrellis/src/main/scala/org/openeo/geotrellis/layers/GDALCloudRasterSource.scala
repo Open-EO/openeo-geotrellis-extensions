@@ -1,12 +1,12 @@
 package org.openeo.geotrellis.layers
 
-import org.openeo.opensearch.OpenSearchResponses.Feature
 import geotrellis.layer.{LayoutDefinition, SpaceTimeKey}
 import geotrellis.proj4.CRS
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.{RasterRegion, RasterSource, TargetCellType}
 import geotrellis.vector.{Extent, MultiPolygon, Polygon}
+import org.openeo.opensearch.OpenSearchResponses.Feature
 
 import java.util
 import scala.collection.JavaConverters._
@@ -101,7 +101,7 @@ class GDALCloudRasterSource(
   def getMergedPolygons(dilationDistance: Double): Seq[Polygon] = {
     if (mergedCloudPolygons.isEmpty && readCloudFile().nonEmpty) {
       // Dilate and merge polygons.
-      val bufferedPolygons = readCloudFile().map(p => p.buffer(dilationDistance).asInstanceOf[Polygon]).toBuffer
+      val bufferedPolygons = readCloudFile().par.map(p => p.buffer(dilationDistance).asInstanceOf[Polygon]).toBuffer
 
       def mergeIntersectingPolygons(polygon: Polygon): Polygon = {
         val intersectingPolygons = bufferedPolygons.filter(p => p.intersects(polygon))
