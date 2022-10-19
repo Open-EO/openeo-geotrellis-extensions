@@ -647,7 +647,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
              *
              */
 
-            val filteredByDistance = distances.filter(_._1._2 > 0)
+            val filteredByDistance = distances.filter(_._1._2 == 0)
             val filteredByCRS = filteredByDistance.filter(d => d._2.data._2.crs.isDefined && d._2.data._2.crs.get == metadata.crs)
             if (filteredByCRS.nonEmpty) {
               filteredByCRS.map(distance_source => (key, distance_source._2))
