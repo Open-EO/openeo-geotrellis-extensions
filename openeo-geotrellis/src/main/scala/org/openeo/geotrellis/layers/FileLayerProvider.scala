@@ -628,9 +628,9 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
           val key = t._1
           val extent = metadata.keyToExtent(key.spatialKey)
           val distances = t._2.map(source => {
-            val sourceExtent = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).extent.reproject(LatLng, metadata.crs)
+            val sourceExtent = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).reproject(LatLng, metadata.crs).extent
             //try to detect tiles that are on the edge of the footprint
-            val sourcePolygonBuffered = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).reproject(LatLng, metadata.crs).buffer(-math.max(extent.width,extent.height))
+            val sourcePolygonBuffered = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).reproject(LatLng, metadata.crs).buffer(-1.1*math.max(extent.width,extent.height))
             val distanceToFootprint = extent.distance(sourcePolygonBuffered)
             val minDistanceToTheEdge: Double = Seq((extent.xmin - sourceExtent.xmin).abs, (extent.ymin - sourceExtent.ymin).abs, Math.abs(extent.xmax - sourceExtent.xmax), Math.abs(extent.ymax - sourceExtent.ymax)).min
             ((minDistanceToTheEdge,distanceToFootprint), source)
