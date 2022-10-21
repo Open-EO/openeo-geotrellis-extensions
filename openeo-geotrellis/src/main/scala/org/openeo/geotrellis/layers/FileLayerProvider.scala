@@ -616,7 +616,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     val keysForfeatures = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size))
       .map(feature => {
 
-        val productCRSOrDefault = feature.data._2.crs.getOrElse(feature.data._1.crs)
+        val productCRSOrDefault = feature.data._2.crs.getOrElse(targetCRS)
         feature.mapGeom(_.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault,0.01)).reproject(productCRSOrDefault,targetCRS))
       })
       .clipToGrid(metadata).repartition(math.max(1, spatialKeyCount.toInt / 10))
