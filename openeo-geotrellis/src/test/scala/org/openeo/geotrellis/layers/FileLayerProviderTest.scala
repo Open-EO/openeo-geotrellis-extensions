@@ -258,11 +258,8 @@ class FileLayerProviderTest {
     assertEquals(cols*rows,result._1.count(),0.1)
   }
 
-  @Test
-  def testEdgeOfLargeFootPrint():Unit = {
-
-    val myFeatureJSON =
-      """
+  val myFeatureJSON =
+    """
       |{
       | "totalResults": 1,
       |    "startIndex": 1,
@@ -276,16 +273,21 @@ class FileLayerProviderTest {
       |            	{"date":"2020-03-15T05:58:49.458Z","identifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110","available":"2020-09-09T14:07:35Z","parentIdentifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1","productInformation":{"processingCenter":"VITO","productVersion":"V110","timeliness":"Fast-24h","processingDate":"2020-03-15T10:23:40.698Z","productType":"SIGMA0","availabilityTime":"2020-09-09T14:07:35Z"},"links":{"related":[],"data":[{"length":1642877038,"type":"image/tiff","title":"VH","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_VH.tif"},{"length":1638893250,"type":"image/tiff","title":"VV","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_VV.tif"},{"length":105791005,"type":"image/tiff","title":"angle","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_angle.tif"}],"previews":[{"href":"https://services.terrascope.be/wms/v2?SERVICE=WMS&REQUEST=getMap&VERSION=1.3.0&CRS=EPSG:3857&SRS=EPSG:3857&LAYERS=CGS_S1_GRD_SIGMA0&TIME=2020-03-15&BBOX=153588.3920034059,6361726.342578137,609272.5011758554,6694913.752846391&WIDTH=80&HEIGHT=80&FORMAT=image/png&TRANSPARENT=true","type":"image/png","title":"WMS","category":"QUICKLOOK"}],"alternates":[{"length":38284,"type":"application/vnd.iso.19139+xml","title":"Inspire metadata","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110.xml"}]},"published":"2020-09-09T14:07:35Z","title":"S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110","updated":"2020-03-15T10:23:40.698Z","acquisitionInformation":[{"acquisitionParameters":{"operationalMode":"IW","polarisationMode":"D","acquisitionType":"NOMINAL","relativeOrbitNumber":110,"polarisationChannels":"VV, VH","beginningDateTime":"2020-03-15T05:58:49.458Z","orbitDirection":"DESCENDING","endingDateTime":"2020-03-15T05:59:14.456Z","orbitNumber":31682},"platform":{"platformShortName":"SENTINEL-1","platformSerialIdentifier":"S1A"}}],"status":"ARCHIVED"}
       |         }]}""".stripMargin
 
-    val sentinel1Product =  FeatureCollection.parse(myFeatureJSON)
+  val sentinel1Product =  FeatureCollection.parse(myFeatureJSON, isUTM = true)
 
-    class MockOpenSearch extends OpenSearchClient {
-      override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
-        val start = dateRange.get._1
-        sentinel1Product.features
-      }
-      override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
-      override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+  class MockOpenSearch extends OpenSearchClient {
+    override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
+      val start = dateRange.get._1
+      sentinel1Product.features
     }
+    override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
+    override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+  }
+
+  @Test
+  def testEdgeOfLargeFootPrint():Unit = {
+
+
 
     //val layout = LayoutDefinition(Extent(505110.0, 5676980.0, 515350.0, 5682100.0),TileLayout(1024,512,256,256))
     val date = LocalDate.of(2020, 3, 15).atStartOfDay(UTC)
@@ -343,31 +345,6 @@ class FileLayerProviderTest {
   @Test
   def testEdgeOfLargeFootPrintLatLon():Unit = {
 
-    val myFeatureJSON =
-      """
-        |{
-        | "totalResults": 1,
-        |    "startIndex": 1,
-        |    "itemsPerPage": 1,
-        |  "features": [{
-        |            "type": "Feature",
-        |            "id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110",
-        |            "geometry": {"coordinates":[[[4.995008,49.509308],[5.473188,51.003036],[1.742552,51.41433],[1.379708,49.918747],[4.995008,49.509308]]],"type":"Polygon"},
-        |            "bbox": [1.379708,49.509308,5.473188,51.41433],
-        |            "properties":
-        |            	{"date":"2020-03-15T05:58:49.458Z","identifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110","available":"2020-09-09T14:07:35Z","parentIdentifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1","productInformation":{"processingCenter":"VITO","productVersion":"V110","timeliness":"Fast-24h","processingDate":"2020-03-15T10:23:40.698Z","productType":"SIGMA0","availabilityTime":"2020-09-09T14:07:35Z"},"links":{"related":[],"data":[{"length":1642877038,"type":"image/tiff","title":"VH","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_VH.tif"},{"length":1638893250,"type":"image/tiff","title":"VV","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_VV.tif"},{"length":105791005,"type":"image/tiff","title":"angle","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_angle.tif"}],"previews":[{"href":"https://services.terrascope.be/wms/v2?SERVICE=WMS&REQUEST=getMap&VERSION=1.3.0&CRS=EPSG:3857&SRS=EPSG:3857&LAYERS=CGS_S1_GRD_SIGMA0&TIME=2020-03-15&BBOX=153588.3920034059,6361726.342578137,609272.5011758554,6694913.752846391&WIDTH=80&HEIGHT=80&FORMAT=image/png&TRANSPARENT=true","type":"image/png","title":"WMS","category":"QUICKLOOK"}],"alternates":[{"length":38284,"type":"application/vnd.iso.19139+xml","title":"Inspire metadata","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110.xml"}]},"published":"2020-09-09T14:07:35Z","title":"S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110","updated":"2020-03-15T10:23:40.698Z","acquisitionInformation":[{"acquisitionParameters":{"operationalMode":"IW","polarisationMode":"D","acquisitionType":"NOMINAL","relativeOrbitNumber":110,"polarisationChannels":"VV, VH","beginningDateTime":"2020-03-15T05:58:49.458Z","orbitDirection":"DESCENDING","endingDateTime":"2020-03-15T05:59:14.456Z","orbitNumber":31682},"platform":{"platformShortName":"SENTINEL-1","platformSerialIdentifier":"S1A"}}],"status":"ARCHIVED"}
-        |         }]}""".stripMargin
-
-    val sentinel1Product =  FeatureCollection.parse(myFeatureJSON)
-
-    class MockOpenSearch extends OpenSearchClient {
-      override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
-        val start = dateRange.get._1
-        sentinel1Product.features
-      }
-      override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
-      override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
-    }
 
     //val layout = LayoutDefinition(Extent(505110.0, 5676980.0, 515350.0, 5682100.0),TileLayout(1024,512,256,256))
     val date = LocalDate.of(2020, 3, 15).atStartOfDay(UTC)

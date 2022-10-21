@@ -49,7 +49,8 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
   )
 
   def createOpenSearch = {
-    OpenSearchClient(openSearchEndpointUrl)
+    //TODO configure use of utm in layercatalog?
+    OpenSearchClient(openSearchEndpointUrl, isUTM = maxSpatialResolution == CellSize(10.0,10.0))
   }
 
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String,
