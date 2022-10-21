@@ -123,30 +123,28 @@ object DatacubeSupport {
     // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
     val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(8)
     val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
-      val cached = requiredSpacetimeKeys.distinct().cache()
+      val cached = requiredSpacetimeKeys.distinct()
       val spatialCount = cached.map(_.spatialKey).countApproxDistinct()
       val spatialBounds = metadata.bounds.get.toSpatial
       val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
       val isSparse = spatialCount < 0.5 * maxKeys
       logger.info(s"Datacube is sparse: $isSparse, requiring $spatialCount keys out of $maxKeys. ")
 
-      try{
-        if(isSparse) {
-          val keys = cached.collect()
 
-          if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
-            val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
-            new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
-          } else {
-            val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
-            new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
-          }
-        }else{
-          SpaceTimeByMonthPartitioner
+      if(isSparse) {
+        val keys = cached.collect()
+
+        if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
+          val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
+          new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
+        } else {
+          val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
+          new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
         }
-      }finally {
-        cached.unpersist(false)
+      }else{
+        SpaceTimeByMonthPartitioner
       }
+
 
     }
     Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,

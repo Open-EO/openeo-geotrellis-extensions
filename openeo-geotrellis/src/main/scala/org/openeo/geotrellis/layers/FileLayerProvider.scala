@@ -541,6 +541,14 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }
   }
 
+  def determineCelltype(overlappingRasterSources: Seq[(RasterSource, Feature)]): CellType = {
+    var commonCellType = overlappingRasterSources.head._1.cellType
+    if (commonCellType.isInstanceOf[NoNoData]) {
+      commonCellType = commonCellType.withDefaultNoData()
+    }
+    commonCellType
+  }
+
   def readKeysToRasterSources(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): (RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], TileLayerMetadata[SpaceTimeKey], Option[CloudFilterStrategy]) = {
     val multiple_polygons_flag = polygons.length > 1
     val worldLayout: LayoutDefinition = DatacubeSupport.getLayout(layoutScheme, boundingBox, zoom min maxZoom, maxSpatialResolution, globalBounds = datacubeParams.flatMap(_.globalExtent), multiple_polygons_flag = multiple_polygons_flag)
@@ -550,13 +558,12 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     logger.info(s"Loading ${openSearchCollectionId} with params ${datacubeParams.getOrElse(new DataCubeParameters)} and bands ${openSearchLinkTitles.toList.mkString(";")} initial layout: ${worldLayout}")
 
     var overlappingRasterSources: Seq[(RasterSource, Feature)] = loadRasterSourceRDD(boundingBox, from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
-    var commonCellType = overlappingRasterSources.head._1.cellType
-    if (commonCellType.isInstanceOf[NoNoData]) {
-      commonCellType = commonCellType.withDefaultNoData()
-    }
+
+    var commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
     var metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, from, to, commonCellType)
-    val isUTM = metadata.crs.proj4jCrs.getProjection.getName == "utm"
+    val targetCRS = metadata.crs
+    val isUTM = targetCRS.proj4jCrs.getProjection.getName == "utm"
 
     // Handle maskingStrategyParameters.
     var maskStrategy: Option[CloudFilterStrategy] = None
@@ -577,7 +584,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     }
 
     val polygonsRDD = sc.parallelize(polygons).map {
-      _.reproject(polygons_crs, metadata.crs)
+      _.reproject(polygons_crs, targetCRS)
     }
     // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
     var requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
@@ -598,14 +605,15 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     })
 
     //extra check on interior
+    val cubeExtent = metadata.extent
     overlappingRasterSources = overlappingRasterSources.filter({ t =>
-      t._1.extent.interiorIntersects(metadata.extent)
+      t._1.extent.interiorIntersects(cubeExtent)
     })
 
     //avoid computing keys that are anyway out of bounds, with some buffering to avoid throwing away too much
-    val boundsLatLng = ProjectedExtent(metadata.extent, metadata.crs).reproject(LatLng).buffer(0.0001).toPolygon()
+
     val geometricFeatures = overlappingRasterSources.map(f => geotrellis.vector.Feature(f._2.geometry.getOrElse(f._2.bbox.toPolygon()), f))
-    val keysForfeatures = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size)).map(_.mapGeom(_.intersection(boundsLatLng)).reproject(LatLng, metadata.crs)).clipToGrid(metadata).repartition(math.max(1, spatialKeyCount.toInt / 10))
+    val keysForfeatures = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size)).map(_.mapGeom(_.reproject(LatLng, targetCRS).intersection(cubeExtent.toPolygon()))).clipToGrid(metadata).repartition(math.max(1, spatialKeyCount.toInt / 10))
 
 
     //rdd
@@ -628,9 +636,9 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
           val key = t._1
           val extent = metadata.keyToExtent(key.spatialKey)
           val distances = t._2.map(source => {
-            val sourceExtent = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).reproject(LatLng, metadata.crs).extent
+            val sourceExtent = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).reproject(LatLng, targetCRS).extent
             //try to detect tiles that are on the edge of the footprint
-            val sourcePolygonBuffered = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).reproject(LatLng, metadata.crs).buffer(-1.1*math.max(extent.width,extent.height))
+            val sourcePolygonBuffered = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).reproject(LatLng, targetCRS).buffer(-1.1*math.max(extent.width,extent.height))
             val distanceToFootprint = extent.distance(sourcePolygonBuffered)
             val minDistanceToTheEdge: Double = Seq((extent.xmin - sourceExtent.xmin).abs, (extent.ymin - sourceExtent.ymin).abs, Math.abs(extent.xmax - sourceExtent.xmax), Math.abs(extent.ymax - sourceExtent.ymax)).min
             ((minDistanceToTheEdge,distanceToFootprint), source)
@@ -648,7 +656,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
              */
 
             val filteredByDistance = distances.filter(_._1._2 == 0)
-            val filteredByCRS = filteredByDistance.filter(d => d._2.data._2.crs.isDefined && d._2.data._2.crs.get == metadata.crs)
+            val filteredByCRS = filteredByDistance.filter(d => d._2.data._2.crs.isDefined && d._2.data._2.crs.get == targetCRS)
             if (filteredByCRS.nonEmpty) {
               filteredByCRS.map(distance_source => (key, distance_source._2))
             } else {
@@ -671,35 +679,39 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     var maskStrategy: Option[CloudFilterStrategy] = readKeysToRasterSourcesResult._3
     val metadata = readKeysToRasterSourcesResult._2
-    val requiredSpacetimeKeys = readKeysToRasterSourcesResult._1
+    val requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = readKeysToRasterSourcesResult._1.persist()
     val isUTM = metadata.crs.proj4jCrs.getProjection.getName == "utm"
 
-    val partitioner = DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
+    try{
+      val partitioner = DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
+
+      val noResampling = isUTM && math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
+      //resampling is still needed in case bounding boxes are not aligned with pixels
+      // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
+      var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1).flatMap(t=>{
+        val source = if (noResampling) {
+          LayoutTileSource(t._1, metadata.layout, identity)
+        } else{
+          t._1.tileToLayout(metadata.layout)
+        }
+
+        t._2.map(key_feature=>{
+          (key_feature._1,(source.rasterRegionForKey(key_feature._1.spatialKey),key_feature._2.data._1.name))
+        }).filter(_._2._1.isDefined).map(t=>(t._1,(t._2._1.get,t._2._2)))
+
+      })
+
+      regions.name = s"FileCollection-${openSearchCollectionId}"
+
+      //convert to raster region
+      val cube= rasterRegionsToTiles(regions, metadata, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), partitioner)
+      logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner}")
+      cube
+    }finally{
+      requiredSpacetimeKeys.unpersist(false)
+    }
 
 
-    val noResampling = isUTM && math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
-    //resampling is still needed in case bounding boxes are not aligned with pixels
-    // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
-    var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1).flatMap(t=>{
-      val source = if (noResampling) {
-        LayoutTileSource(t._1, metadata.layout, identity)
-      } else{
-        t._1.tileToLayout(metadata.layout)
-      }
-
-      t._2.map(key_feature=>{
-        (key_feature._1,(source.rasterRegionForKey(key_feature._1.spatialKey),key_feature._2.data._1.name))
-      }).filter(_._2._1.isDefined).map(t=>(t._1,(t._2._1.get,t._2._2)))
-
-    })
-
-    regions.name = s"FileCollection-${openSearchCollectionId}"
-
-    //convert to raster region
-    val cube= rasterRegionsToTiles(regions, metadata, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), partitioner)
-
-    logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner}")
-    cube
   }
 
   override def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, zoom: Int = maxZoom, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
