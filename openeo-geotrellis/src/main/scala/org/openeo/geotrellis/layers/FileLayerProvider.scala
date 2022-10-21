@@ -613,7 +613,13 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     //avoid computing keys that are anyway out of bounds, with some buffering to avoid throwing away too much
 
     val geometricFeatures = overlappingRasterSources.map(f => geotrellis.vector.Feature(f._2.geometry.getOrElse(f._2.bbox.toPolygon()), f))
-    val keysForfeatures = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size)).map(_.mapGeom(_.reproject(LatLng, targetCRS).intersection(cubeExtent.toPolygon()))).clipToGrid(metadata).repartition(math.max(1, spatialKeyCount.toInt / 10))
+    val keysForfeatures = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size))
+      .map(feature => {
+
+        val productCRSOrDefault = feature.data._2.crs.getOrElse(feature.data._1.crs)
+        feature.mapGeom(_.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault,0.01)).reproject(productCRSOrDefault,targetCRS))
+      })
+      .clipToGrid(metadata).repartition(math.max(1, spatialKeyCount.toInt / 10))
 
 
     //rdd
@@ -746,7 +752,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
      *
      */
     val alignment =
-      if(feature.crs.isDefined && feature.crs.get.proj4jCrs.getProjection.getName == "utm") {
+      if(feature.crs.isDefined && feature.crs.get.proj4jCrs.getProjection.getName == "utm" && datacubeParams.map(_.maskingStrategyParameters.getOrDefault("method", "")).contains("mask_scl_dilation")) {
         //this hack avoid virtual cropping for Sentinel-2 (utm), which breaks mask_scl_dilation
         TargetAlignment(re)
       }else{
