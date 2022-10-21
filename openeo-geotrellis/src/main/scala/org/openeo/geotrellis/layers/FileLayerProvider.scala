@@ -785,8 +785,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
           if(experimental) {
             Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(theResolution), resampleMethod=Some(resampleMethod)), targetCellType = targetCellType))
           }else{
-            //here we can use 'TargetAlignment' because there is no reprojection of the extent. It would be better if we could also use 'TargetRegion', but that breaks the handling of overlap
-            Seq(GeoTiffResampleRasterSource(GeoTiffPath(dataPath), TargetAlignment(re), resampleMethod, OverviewStrategy.DEFAULT, targetCellType, None))
+            Seq(GeoTiffResampleRasterSource(GeoTiffPath(dataPath), alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType, None))
           }
         }else{
           if(experimental) {
