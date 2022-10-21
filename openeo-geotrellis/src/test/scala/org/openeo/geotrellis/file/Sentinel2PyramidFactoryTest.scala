@@ -122,7 +122,7 @@ class Sentinel2PyramidFactoryTest {
 
         val actualTiffs = baseLayer.toSpatial(dates.apply(0)).toGeoTiffs(Tags.empty,GeoTiffOptions(DeflateCompression)).collect().toList.map(t => t._2)
         println(dates.mkString("Array(", ", ", ")"))
-        assertEquals(2, actualTiffs.length )
+        assertEquals(1, actualTiffs.length )
         //actualTiffs.head.write("/tmp/tile0_0.tiff", true)
 
         val resourcePath = "org/openeo/geotrellis/file/testDemLayer/tile0_0.tiff"
