@@ -623,14 +623,14 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
           try{
             val intersection = productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
             if(intersection.isValid && intersection.getArea > 0.0) {
-              intersection
+              intersection.reproject(productCRSOrDefault,targetCRS)
             }else{
               emptyPoint
             }
           }catch {
             case e: Exception => logger.warn("Exception while determining intersection.",e); emptyPoint
           }
-          
+
         } )
       }).filter(!_.geom.equals(emptyPoint) )
       .clipToGrid(metadata).repartition(math.max(1, spatialKeyCount.toInt / 10))
