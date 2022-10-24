@@ -17,6 +17,8 @@ class DataCubeParameters extends Serializable {
   var resampleMethod: ResampleMethod = NearestNeighbor
   var maskingCube: Option[Object] = Option.empty
   var globalExtent:Option[ProjectedExtent] = Option.empty
+  var pixelBufferX:Double = 0.0
+  var pixelBufferY:Double = 0.0
 
   override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube)"
 
@@ -35,6 +37,11 @@ class DataCubeParameters extends Serializable {
 
   def setGlobalExtent(xmin:Double,ymin:Double,xmax:Double,ymax:Double,crs:String): Unit = {
     globalExtent = Some(ProjectedExtent(Extent(xmin,ymin,xmax,ymax),CRS.fromName(crs)))
+  }
+
+  def setPixelBuffer(x:Double, y:Double):Unit = {
+    pixelBufferX = x
+    pixelBufferY = y
   }
 
 }
