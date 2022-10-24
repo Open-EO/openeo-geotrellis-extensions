@@ -590,8 +590,15 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
     var requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
 
-    var spatialKeyCount = requiredSpatialKeys.map(_._1).countApproxDistinct()
+    var spatialKeyCount: Long =
+      if(polygons.length == 1) {
+        //special case for single bbox request
+        metadata.layout.layoutRows * metadata.layout.layoutCols
+      } else{
+        requiredSpatialKeys.map(_._1).countApproxDistinct()
+      }
     logger.info(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
+
 
     val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, polygons, datacubeParams, spatialKeyCount)
     metadata = retiledMetadata.getOrElse(metadata)
