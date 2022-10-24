@@ -18,6 +18,7 @@ import geotrellis.vector
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.opensearch.OpenSearchClient
@@ -613,12 +614,25 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     //avoid computing keys that are anyway out of bounds, with some buffering to avoid throwing away too much
 
     val geometricFeatures = overlappingRasterSources.map(f => geotrellis.vector.Feature(f._2.geometry.getOrElse(f._2.bbox.toPolygon()), f))
+    val emptyPoint = Point(0.0,0.0)
     val keysForfeatures = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size))
-      .map(feature => {
+      .map(eoProductFeature => {
 
-        val productCRSOrDefault = feature.data._2.crs.getOrElse(targetCRS)
-        feature.mapGeom(_.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault,0.01)).reproject(productCRSOrDefault,targetCRS))
-      })
+        val productCRSOrDefault = eoProductFeature.data._2.crs.getOrElse(targetCRS)
+        eoProductFeature.mapGeom(productGeometry => {
+          try{
+            val intersection = productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
+            if(intersection.isValid && intersection.getArea > 0.0) {
+              intersection
+            }else{
+              emptyPoint
+            }
+          }catch {
+            case e: Exception => logger.warn("Exception while determining intersection.",e); emptyPoint
+          }
+          
+        } )
+      }).filter(!_.geom.equals(emptyPoint) )
       .clipToGrid(metadata).repartition(math.max(1, spatialKeyCount.toInt / 10))
 
 
