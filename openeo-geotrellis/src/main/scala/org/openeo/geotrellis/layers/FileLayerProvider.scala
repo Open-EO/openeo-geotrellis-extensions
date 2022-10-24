@@ -593,7 +593,8 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     var spatialKeyCount: Long =
       if(polygons.length == 1) {
         //special case for single bbox request
-        metadata.layout.layoutRows * metadata.layout.layoutCols
+        val spatialBounds = metadata.bounds.get.toSpatial
+        (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
       } else{
         requiredSpatialKeys.map(_._1).countApproxDistinct()
       }
