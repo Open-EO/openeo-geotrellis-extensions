@@ -139,16 +139,23 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
                metadata_properties: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String,dataCubeParameters: DataCubeParameters=new DataCubeParameters()):
   MultibandTileLayerRDD[SpaceTimeKey] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
-    val bbox = polygons.toSeq.extent
 
-    val boundingBox = ProjectedExtent(bbox, polygons_crs)
     val from = ZonedDateTime.parse(from_date)
     val to = ZonedDateTime.parse(to_date)
 
-    val intersectsPolygons = AbstractPyramidFactory.preparePolygons(polygons, polygons_crs, sc)
+    val buffer = math.max(dataCubeParameters.pixelBufferY, dataCubeParameters.pixelBufferY)
+    val intersectsPolygons: Array[MultiPolygon]=
+      if(buffer >0) {
+        AbstractPyramidFactory.preparePolygons(polygons, polygons_crs, sc,bufferSize = buffer * maxSpatialResolution.resolution)
+      }else{
+        polygons
+      }
 
+    val bbox = polygons.toSeq.extent
+
+    val boundingBox = ProjectedExtent(bbox, polygons_crs)
     val layerProvider = sentinel2FileLayerProvider(metadata_properties.asScala.toMap, correlationId, FloatingLayoutScheme(dataCubeParameters.tileSize))
-    layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, 0, sc,Some(dataCubeParameters))
+    layerProvider.readMultibandTileLayer(from, to, boundingBox, intersectsPolygons, polygons_crs, 0, sc, Some(dataCubeParameters))
   }
 
 

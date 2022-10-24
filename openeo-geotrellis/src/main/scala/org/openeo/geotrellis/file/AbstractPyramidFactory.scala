@@ -26,10 +26,16 @@ object AbstractPyramidFactory {
   private val maxZoom = 14
 
 
-  def preparePolygons(polygons: Array[MultiPolygon], polygons_crs: CRS, sc: SparkContext) = {
+  def preparePolygons(polygons: Array[MultiPolygon], polygons_crs: CRS, sc: SparkContext, bufferSize:Double = Double.NaN) = {
     // 500m buffer for kernel operations
     val bufferDistanceInMeters = 500.0
-    val bufferDistance = Extent(0.0, 0.0, bufferDistanceInMeters, 1.0).reproject(WebMercator, polygons_crs).width
+    val bufferDistance =
+      if(bufferSize.isNaN) {
+        Extent(0.0, 0.0, bufferDistanceInMeters, 1.0).reproject(WebMercator, polygons_crs).width
+      } else{
+        bufferSize
+      }
+
 
     def doBuffer(polygon:MultiPolygon): MultiPolygon = {
       polygon.buffer(bufferDistance) match {
