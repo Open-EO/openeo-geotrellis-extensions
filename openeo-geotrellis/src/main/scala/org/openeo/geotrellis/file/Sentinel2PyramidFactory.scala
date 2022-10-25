@@ -143,7 +143,7 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
     val from = ZonedDateTime.parse(from_date)
     val to = ZonedDateTime.parse(to_date)
 
-    val buffer = math.max(dataCubeParameters.pixelBufferY, dataCubeParameters.pixelBufferY)
+    val buffer = math.max(dataCubeParameters.pixelBufferX, dataCubeParameters.pixelBufferY)
     val intersectsPolygons: Array[MultiPolygon]=
       if(buffer >0) {
         AbstractPyramidFactory.preparePolygons(polygons, polygons_crs, sc,bufferSize = buffer * maxSpatialResolution.resolution)
@@ -151,9 +151,7 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
         polygons
       }
 
-    val bbox = polygons.toSeq.extent
-
-    val boundingBox = ProjectedExtent(bbox, polygons_crs)
+    val boundingBox = ProjectedExtent(intersectsPolygons.toSeq.extent, polygons_crs)
     val layerProvider = sentinel2FileLayerProvider(metadata_properties.asScala.toMap, correlationId, FloatingLayoutScheme(dataCubeParameters.tileSize))
     layerProvider.readMultibandTileLayer(from, to, boundingBox, intersectsPolygons, polygons_crs, 0, sc, Some(dataCubeParameters))
   }
