@@ -1,14 +1,16 @@
 package org.openeo.geotrellis.file
 
-import org.openeo.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{CellSize, MultibandTile}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector._
 import org.apache.spark.SparkContext
+import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.{FileLayerProvider, ProbaVPathDateExtractor}
+import org.openeo.geotrelliscommon.DataCubeParameters
+import org.openeo.opensearch.OpenSearchClient
 
 import java.net.URL
 import java.time.ZonedDateTime
@@ -97,6 +99,25 @@ class ProbaVPyramidFactory(openSearchEndpoint: String, openSearchCollectionId: S
         else band_indices.asScala map Band.apply
 
     bands.zipWithIndex.sortBy(_._1.fileMarker).zipWithIndex
+  }
+
+  def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
+                   metadata_properties: util.Map[String, Any], correlationId: String, dataCubeParameters: DataCubeParameters, band_indices: java.util.List[Int]):
+  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+
+    implicit val sc: SparkContext = SparkContext.getOrCreate()
+
+    val from = ZonedDateTime.parse(from_date)
+    val to = ZonedDateTime.parse(to_date)
+
+    val bands: Seq[((Band.Value, Int), Int)] = bandsFromIndices(band_indices)
+    val layerProvider = probaVOpenSearchPyramidFactory(bands.map(_._1._1), correlationId)
+
+    val polygons_crs = polygons.crs
+
+    val boundingBox = ProjectedExtent(polygons.polygons.toSeq.extent, polygons_crs)
+    val cube = layerProvider.readMultibandTileLayer(from, to, boundingBox, polygons.polygons, polygons_crs, 0, sc, Some(dataCubeParameters))
+    Seq((0,cube))
   }
 
 }
