@@ -45,12 +45,13 @@ object DatacubeSupport {
           val p = boundingBox.crs.proj4jCrs.getProjection
           if (p.getName == "utm") {
             if(globalBounds.isDefined) {
-              var reprojected = globalBounds.get.reproject(boundingBox.crs)
+              var reprojected: Extent = globalBounds.get.reproject(boundingBox.crs)
               if (multiple_polygons_flag) {
                 reprojected = globalBounds.get.extent.buffer(0.1).reprojectAsPolygon(globalBounds.get.crs, boundingBox.crs, 0.01).getEnvelopeInternal
               }
               if (!reprojected.covers(boundingBox.extent)) {
                 logger.error(f"Trying to construct a datacube with a bounds ${boundingBox.extent} that is not entirely inside the global bounds: ${reprojected}. ")
+                reprojected = reprojected.expandToInclude(boundingBox.extent)
               }
               val x = maxSpatialResolution.width
               val y = maxSpatialResolution.height
