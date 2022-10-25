@@ -401,6 +401,69 @@ class FileLayerProviderTest {
   }
 
   @Test
+  def testBufferingOnTheEdge():Unit = {
+
+    //val layout = LayoutDefinition(Extent(505110.0, 5676980.0, 515350.0, 5682100.0),TileLayout(1024,512,256,256))
+    val date = LocalDate.of(2020, 3, 15).atStartOfDay(UTC)
+
+    val crs = CRS.fromEpsgCode(32631)
+    // a mix of 31UGS and 32ULB
+    val boundingBox = ProjectedExtent(Extent(505110.0, 5676980.0, 515350.0, 5682100.0),crs )
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.globalExtent = Some(boundingBox)
+    val buffer = 100
+    dataCubeParameters.pixelBufferY = buffer
+    dataCubeParameters.pixelBufferX = buffer
+
+    val flp = new FileLayerProvider(
+      new MockOpenSearch(),
+      "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+      openSearchLinkTitles = NonEmptyList.of("VV"),
+      rootPath = "/bogus",
+      CellSize(10.0,10.0),
+      SplitYearMonthDayPathDateExtractor,
+      layoutScheme = FloatingLayoutScheme(256),
+      experimental = false
+    ){
+      //avoids having to actually read the product
+      override def determineCelltype(overlappingRasterSources: Seq[(RasterSource, OpenSearchResponses.Feature)]): CellType = FloatConstantNoDataCellType
+    }
+
+    val result = flp.readKeysToRasterSources(
+      from = date,
+      to = date,
+      boundingBox,
+      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
+      polygons_crs = crs,
+      zoom = 0,
+      sc,
+      Some(dataCubeParameters)
+    )
+
+    val minKey = result._2.bounds.get.minKey
+
+    val cols = math.ceil(((boundingBox.extent.width + 20.0*buffer) / 10.0)/256.0)
+    val rows = math.ceil(((boundingBox.extent.height + 20.0*buffer) / 10.0)/256.0)
+
+    val cube = result._1
+    //val ids = cube.values.map(_.data._2.id).distinct().collect()
+    //val count = cube.count()
+    val all = cube.collect()
+
+    assertEquals(0,minKey.col)
+    assertEquals(0,minKey.row)
+    assertEquals(crs,result._2.crs)
+    assertEquals(12,all.length)
+    //assertEquals((cols*rows).toInt,all.length)
+
+    assertEquals(505110.0 - 1000.0, result._2.extent.xmin,0.01)
+    assertEquals(515350.0 + buffer*10.0, result._2.extent.xmax,0.01)
+    assertEquals(5676980.0 - 1000.0, result._2.extent.ymin,0.01)
+  }
+
+  @Test
   def sentinel1LoadTest(): Unit = {
     LayerFixtures.sentinel1Sigma0LayerProviderUTM
 
@@ -444,5 +507,39 @@ class FileLayerProviderTest {
     //the cube only covers 2 tiles, but we have 2 source products, so times 2
     assertEquals(2*cols*rows,count,0.1)
     println(s"Count: $count")
+  }
+
+  @Test
+  def testSinglePoint(): Unit = {
+    val date = LocalDate.of(2019, 9, 25).atStartOfDay(UTC)
+    val endDate = LocalDate.of(2019, 9, 30).atStartOfDay(UTC)
+
+    val crs = CRS.fromEpsgCode(32631)
+    // a mix of 31UGS and 32ULB
+
+    val boundingBox = ProjectedExtent(Extent(2.7355, 51.1281, 2.7355, 51.1281).reproject(LatLng,crs), crs)
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.globalExtent = Some(boundingBox)
+
+    val result = LayerFixtures.sentinel2TocLayerProviderUTM20M.readKeysToRasterSources(
+      from = date,
+      to = endDate,
+      boundingBox,
+      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
+      polygons_crs = crs,
+      zoom = 0,
+      sc,
+      Some(dataCubeParameters)
+    )
+    val minKey = result._2.bounds.get.minKey
+
+    val cols = math.ceil((boundingBox.extent.width / 10.0)/256.0)
+    val rows = math.ceil((boundingBox.extent.height / 10.0)/256.0)
+
+    assertEquals(0,minKey.col)
+    assertEquals(0,minKey.row)
+    assertEquals(crs,result._2.crs)
   }
 }

@@ -19,6 +19,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.jts.geom.Geometry
+import org.openeo.geotrellis.file.AbstractPyramidFactory
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.opensearch.OpenSearchClient
@@ -552,13 +553,23 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
   def readKeysToRasterSources(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): (RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], TileLayerMetadata[SpaceTimeKey], Option[CloudFilterStrategy]) = {
     val multiple_polygons_flag = polygons.length > 1
-    val worldLayout: LayoutDefinition = DatacubeSupport.getLayout(layoutScheme, boundingBox, zoom min maxZoom, maxSpatialResolution, globalBounds = datacubeParams.flatMap(_.globalExtent), multiple_polygons_flag = multiple_polygons_flag)
-    val reprojectedBoundingBox: ProjectedExtent = DatacubeSupport.targetBoundingBox(boundingBox, layoutScheme)
+
+    val buffer = math.max(datacubeParams.map(_.pixelBufferX).getOrElse(0.0), datacubeParams.map(_.pixelBufferY).getOrElse(0.0))
+    val bufferedPolygons: Array[MultiPolygon]=
+      if(buffer >0) {
+        AbstractPyramidFactory.preparePolygons(polygons, polygons_crs, sc,bufferSize = buffer * maxSpatialResolution.resolution)
+      }else{
+        polygons
+      }
+
+    val fullBBox = ProjectedExtent(bufferedPolygons.toSeq.extent,polygons_crs)
+    val worldLayout: LayoutDefinition = DatacubeSupport.getLayout(layoutScheme, fullBBox, zoom min maxZoom, maxSpatialResolution, globalBounds = datacubeParams.flatMap(_.globalExtent), multiple_polygons_flag = multiple_polygons_flag)
+    val reprojectedBoundingBox: ProjectedExtent = DatacubeSupport.targetBoundingBox(fullBBox, layoutScheme)
 
 
     logger.info(s"Loading ${openSearchCollectionId} with params ${datacubeParams.getOrElse(new DataCubeParameters)} and bands ${openSearchLinkTitles.toList.mkString(";")} initial layout: ${worldLayout}")
 
-    var overlappingRasterSources: Seq[(RasterSource, Feature)] = loadRasterSourceRDD(boundingBox, from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
+    var overlappingRasterSources: Seq[(RasterSource, Feature)] = loadRasterSourceRDD(fullBBox, from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
 
     var commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
@@ -584,7 +595,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }
     }
 
-    val polygonsRDD = sc.parallelize(polygons).map {
+    val polygonsRDD = sc.parallelize(bufferedPolygons).map {
       _.reproject(polygons_crs, targetCRS)
     }
     // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
@@ -601,7 +612,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     logger.info(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
 
 
-    val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, polygons, datacubeParams, spatialKeyCount)
+    val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, bufferedPolygons, datacubeParams, spatialKeyCount)
     metadata = retiledMetadata.getOrElse(metadata)
 
     if (retiledMetadata.isDefined) {
