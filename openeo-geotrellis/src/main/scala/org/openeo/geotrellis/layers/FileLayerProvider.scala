@@ -581,7 +581,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     var overlappingRasterSources: Seq[(RasterSource, Feature)] = loadRasterSourceRDD(fullBBox, from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
 
-    val dates = overlappingRasterSources.map(_._2.nominalDate)
+    val dates = overlappingRasterSources.map(_._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))
 
     var commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
