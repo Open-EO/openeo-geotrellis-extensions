@@ -571,9 +571,11 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     var overlappingRasterSources: Seq[(RasterSource, Feature)] = loadRasterSourceRDD(fullBBox, from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
 
+    val dates = overlappingRasterSources.map(_._2.nominalDate)
+
     var commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
-    var metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, from, to, commonCellType)
+    var metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, dates.minBy(_.toEpochSecond), dates.maxBy(_.toEpochSecond), commonCellType)
     val targetCRS = metadata.crs
     val isUTM = targetCRS.proj4jCrs.getProjection.getName == "utm"
 
