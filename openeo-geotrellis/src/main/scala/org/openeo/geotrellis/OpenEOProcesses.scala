@@ -341,7 +341,16 @@ class OpenEOProcesses extends Serializable {
       if(keys.isDefined) {
         new SparseSpaceTimePartitioner(theNewKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4,Some(theNewKeys))
       }else{
-        SpaceTimeByMonthPartitioner
+        if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
+          val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+          if (index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
+            index//a space only partitioner does not care about time, so can be reused as-is
+          } else {
+            SpaceTimeByMonthPartitioner
+          }
+        }else{
+          SpaceTimeByMonthPartitioner
+        }
       }
 
     logger.info(s"aggregate_temporal results in ${allPossibleSpacetime.size} keys, using partitioner index: ${index}" )
