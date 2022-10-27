@@ -120,22 +120,34 @@ class OpenEOProcesses extends Serializable {
     }
     logger.info(s"Applying callback on time dimension of cube with partitioner: ${datacube.partitioner.getOrElse("no partitioner")} - index: ${index.getOrElse("no index")} and metadata ${datacube.metadata}")
     val function = scriptBuilder.generateFunction(context.asScala.toMap)
-    val rdd =  groupOnTimeDimension(datacube).flatMap{ tiles => {
-      val values = tiles._2
+
+    val applyToTimeseries: Iterable[(SpaceTimeKey,MultibandTile)] => mutable.Map[SpaceTimeKey, MultibandTile] = values => {
+      //val values = tiles._2
       val aTile = firstTile(values.map(_._2))
       val labels = values.map(_._1).toList.sortBy(_.instant)
       val resultMap: mutable.Map[SpaceTimeKey,mutable.ListBuffer[Tile]] = mutable.Map()
-      for( b <- 0 until aTile.bandCount){
+      for (b <- 0 until aTile.bandCount) {
 
         val temporalTile = timeseriesForBand(b, values)
         val resultTiles = function(temporalTile.bands)
-        var resultLabels: Iterable[(SpaceTimeKey,Tile)] = labels.zip(resultTiles)
+        var resultLabels: Iterable[(SpaceTimeKey, Tile)] = labels.zip(resultTiles)
         resultLabels.foreach(result => resultMap.getOrElseUpdate(result._1, mutable.ListBuffer()).append(result._2))
 
       }
-      resultMap.map(tuple => (tuple._1,MultibandTile(tuple._2)))
+      resultMap.map(tuple => (tuple._1, MultibandTile(tuple._2)))
 
-    }}
+    }
+
+    val rdd =
+    if(index.isDefined && index.get.isInstanceOf[SparseSpaceOnlyPartitioner]) {
+      datacube.mapPartitions(p => {
+        val bySpatialKey: Map[SpatialKey, Seq[(SpaceTimeKey, MultibandTile)]] = p.toSeq.groupBy(_._1.spatialKey)
+        bySpatialKey.mapValues( applyToTimeseries).flatMap(_._2).iterator
+      }, preservesPartitioning = true)
+    }else{
+      groupOnTimeDimension(datacube).flatMap{t => applyToTimeseries(t._2)}
+    }
+
 
     if(datacube.partitioner.isDefined) {
       ContextRDD(rdd.partitionBy(datacube.partitioner.get),datacube.metadata)
