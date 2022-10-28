@@ -20,7 +20,7 @@ class DataCubeParameters extends Serializable {
   var pixelBufferX:Double = 0.0
   var pixelBufferY:Double = 0.0
 
-  override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube)"
+  override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube, $resampleMethod, $pixelBufferX, $pixelBufferY)"
 
   def setPartitionerIndexReduction(reduction:Int): Unit = partitionerIndexReduction = reduction
   def setPartitionerTemporalResolution(res:String): Unit = partitionerTemporalResolution = res
