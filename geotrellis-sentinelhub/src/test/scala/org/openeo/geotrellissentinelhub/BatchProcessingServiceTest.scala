@@ -537,4 +537,28 @@ class BatchProcessingServiceTest {
 
     throw new AssertionError
   }
+
+  @Ignore
+  @Test
+  def startBatchProcessForColombia(): Unit = {
+    val colombia = """{"type":"Polygon","coordinates":[[[-74.5,4.6],[-74.5,4.9],[-73.0,4.9],[-73.0,4.6],[-74.5,4.6]]]}"""
+    // val smaller = """{"type":"Polygon","coordinates":[[[-73.609772,4.69551],[-73.609772,4.766678],[-73.488922,4.766678],[-73.488922,4.69551],[-73.609772,4.69551]]]}"""
+
+    val polygon = GeoJson.parse[Polygon](colombia)
+
+    val batchRequestId = batchProcessingService.start_batch_process(
+      collection_id = "sentinel-2-l2a",
+      dataset_id = "sentinel-2-l2a",
+      bbox = polygon.extent,
+      bbox_srs = "EPSG:4326",
+      from_date = "2021-04-28T00:00:00+00:00",
+      to_date = "2021-05-08T00:00:00+00:00",
+      band_names = Arrays.asList("B04"),
+      SampleType.UINT16,
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
+      processing_options = Collections.emptyMap[String, Any]
+    )
+
+    println(awaitDone(Seq(batchRequestId)))
+  }
 }

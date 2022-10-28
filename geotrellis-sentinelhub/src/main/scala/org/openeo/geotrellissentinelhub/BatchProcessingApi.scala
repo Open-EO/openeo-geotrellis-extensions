@@ -108,8 +108,7 @@ class BatchProcessingApi(endpoint: String) {
           "timeRange" -> Map(
             "from" -> ISO_INSTANT.format(from),
             "to" -> ISO_INSTANT.format(to)
-          ).asJava,
-          "mosaickingOrder" -> "leastRecent"
+          ).asJava
         )
 
         additionalDataFilters.asScala
@@ -180,8 +179,8 @@ class BatchProcessingApi(endpoint: String) {
           |}""".stripMargin
     }
 
-    val evaluatePixelReturnProperties = identifiers.zipWithIndex map { case (identifier, i) =>
-      s"$identifier: bandValues(samples, $i)"
+    val evaluatePixelReturnProperties = identifiers map { identifier =>
+      s"""$identifier: bandValues(samples, scenes, "$identifier")"""
     }
 
     val quotedBandNames = bandNames.map(bandName => s""""$bandName"""")
@@ -196,22 +195,32 @@ class BatchProcessingApi(endpoint: String) {
     s"""|//VERSION=3
         |function setup() {
         |    return {
-        |        input: [{
-        |          "bands": [${quotedBandNames mkString ", "}]
-        |        }],
+        |        input: [${quotedBandNames mkString ","}],
         |        output: [${outputs mkString ",\n"}],
         |        mosaicking: "ORBIT"
         |    };
         |}
         |
-        |function evaluatePixel(samples) {
+        |function evaluatePixel(samples, scenes) {
         |    return {
         |        ${evaluatePixelReturnProperties mkString ",\n"}
         |    };
         |}
         |
-        |function bandValues(samples, sampleIndex) {
-        |    return sampleIndex < samples.length ? [${bandValues mkString ", "}] : [${noDataValues mkString ", "}]
+        |function bandValues(samples, scenes, identifier) {
+        |    function asIdentifier(orbit) {
+        |        let year = orbit.dateFrom.substr(0, 4)
+        |        let month = orbit.dateFrom.substr(5, 2)
+        |        let day = orbit.dateFrom.substr(8, 2)
+        |        return `_$${year}$${month}$${day}`
+        |    }
+        |
+        |    function indexOfIdentifier() {
+        |        return scenes.orbits.findIndex(orbit => asIdentifier(orbit) === identifier)
+        |    }
+        |
+        |    let sampleIndex = indexOfIdentifier()
+        |    return sampleIndex >= 0 ? [${bandValues mkString ","}] : [${noDataValues mkString ","}]
         |}
         |""".stripMargin
   }
