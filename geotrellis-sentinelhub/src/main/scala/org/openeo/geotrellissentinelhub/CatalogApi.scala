@@ -69,7 +69,8 @@ trait CatalogApi {
 
 object DefaultCatalogApi {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[DefaultCatalogApi])
-  private val maxLimit = 100
+
+  private final val maxLimit = 100 // as per the docs
 
   private case class PagingContext(limit: Int, returned: Int, next: Option[Int])
   private case class PagedFeatureCollection(features: List[Json], context: PagingContext)
@@ -134,7 +135,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
       }
     }
 
-    getDateTimes(maxLimit, nextToken = None)
+    getDateTimes(limit = maxLimit, nextToken = None)
   }
 
   override def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
@@ -195,7 +196,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
         }
       }
 
-      getFeatures(maxLimit, nextToken = None)
+      getFeatures(limit = maxLimit, nextToken = None)
   }
 
   private def http(url: String, accessToken: String): HttpRequest =

@@ -2,7 +2,7 @@ package org.openeo.logging
 
 import io.circe.{Encoder, Json, JsonNumber}
 import io.circe.syntax._
-import org.apache.log4j.{Layout, Level}
+import org.apache.log4j.{Layout, Level, MDC}
 import org.apache.log4j.spi.LocationInfo.NA
 import org.apache.log4j.spi.LoggingEvent
 
@@ -11,6 +11,13 @@ import java.lang.management.ManagementFactory
 import java.nio.file.Paths
 
 object JsonLayout {
+  private final val sparkPropagatablePrefix = "mdc."
+  private def addPrefix(mdcKey: String): String = sparkPropagatablePrefix + mdcKey
+  private def dropPrefix(prefixedMdcKey: String) = prefixedMdcKey.drop(sparkPropagatablePrefix.length)
+
+  final val UserId = addPrefix("user_id")
+  final val JobId = addPrefix("job_id")
+
   private lazy val pid =
     try Some(ManagementFactory.getRuntimeMXBean.getName.split("@")(0).toInt)
     catch {
@@ -21,8 +28,7 @@ object JsonLayout {
         }
     }
 
-  private lazy val userId = Option(System.getenv("OPENEO_USER_ID"))
-  private lazy val batchJobId = Option(System.getenv("OPENEO_BATCH_JOB_ID"))
+  private def mdcValue[R <: AnyRef](key: String): Option[R] = Option(MDC.get(key).asInstanceOf[R])
 
   private implicit val encodeDouble: Encoder[Double] = (d: Double) =>
     Json.fromJsonNumber(JsonNumber.fromDecimalStringUnsafe(f"$d%.3f"))
@@ -59,15 +65,12 @@ class JsonLayout extends Layout {
       case (logEntry, stackTrace) => logEntry + ("exc_info" -> stackTrace.mkString("\n").asJson)
     }
 
-    val withPossibleUserId = userId.foldLeft(withPossibleException) { case (logEntry, id) =>
-      logEntry + ("user_id" -> id.asJson)
-    }
+    val extraStringProperties = for {
+      prefixedMdcKey <- Seq(UserId, JobId)
+      value <- mdcValue[String](prefixedMdcKey)
+    } yield dropPrefix(prefixedMdcKey) -> value.asJson
 
-    val withBatchJobId = batchJobId.foldLeft(withPossibleUserId) { case (logEntry, id) =>
-      logEntry + ("job_id" -> id.asJson)
-    }
-
-    withBatchJobId
+    (withPossibleException ++ extraStringProperties.toMap)
       .asJson.noSpaces + System.lineSeparator()
   }
 

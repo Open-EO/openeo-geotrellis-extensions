@@ -6,11 +6,20 @@ import io.circe.parser.decode
 import org.apache.log4j.spi.{LocationInfo, LoggingEvent}
 import org.apache.log4j.{Layout, Level, Logger}
 import org.junit.Assert.{assertEquals, assertTrue}
-import org.junit.Test
-import org.slf4j.LoggerFactory
+import org.junit.{After, Before, Test}
+import org.slf4j.{LoggerFactory, MDC}
 
 class JsonLayoutTest {
   private val jsonLayout: Layout = new JsonLayout
+
+  @Before
+  def initializeMdc(): Unit = {
+    MDC.put(JsonLayout.UserId, "vdboschj")
+    MDC.put(JsonLayout.JobId, "j-abc123")
+  }
+
+  @After
+  def clearMdc(): Unit = MDC.clear()
 
   @Test
   def testLogger(): Unit = {
@@ -50,6 +59,8 @@ class JsonLayoutTest {
     assertEquals(1638526627.123, logEntry("created").asNumber.map(_.toDouble).get, 0.001)
     assertEquals("JsonLayoutTest.scala", logEntry("filename").asString.get)
     assertEquals(33, logEntry("lineno").asNumber.flatMap(_.toInt).get)
+    assertEquals("vdboschj", logEntry("user_id").asString.get)
+    assertEquals("j-abc123", logEntry("job_id").asString.get)
   }
 
 
@@ -63,7 +74,7 @@ class JsonLayoutTest {
       new LoggingEvent(null, logger, timestamp, level, message, null)
     }
 
-    def testLevelname(inputLevel: Level, outputLevelname: String) {
+    def testLevelname(inputLevel: Level, outputLevelname: String): Unit = {
       val logLine = jsonLayout.format(loggingEvent(inputLevel))
       val logEntry = decode[Map[String, Json]](logLine).valueOr(throw _)
 
