@@ -363,7 +363,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
     val referenceTile = GeoTiffRasterSource("https://artifactory.vgt.vito.be/testdata-public/dilation_masked.tif").read().get
     val actualTile = GeoTiffRasterSource("/tmp/masked.tif").read().get
-    assertRastersEqual(referenceTile,actualTile)
+    assertRastersEqual(referenceTile,actualTile,160.0)
   }
 
   @Test
