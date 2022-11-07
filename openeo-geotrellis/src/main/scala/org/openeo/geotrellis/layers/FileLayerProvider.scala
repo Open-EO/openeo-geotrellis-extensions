@@ -743,7 +743,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         val source = if (noResampling) {
           LayoutTileSource(t._1, metadata.layout, identity)
         } else{
-          t._1.tileToLayout(metadata.layout)
+          t._1.tileToLayout(metadata.layout, datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor))
         }
 
         t._2.map(key_feature=>{
