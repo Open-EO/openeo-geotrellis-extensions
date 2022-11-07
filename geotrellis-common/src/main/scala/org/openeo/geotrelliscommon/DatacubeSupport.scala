@@ -130,7 +130,7 @@ object DatacubeSupport {
 
   def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpacetimeKeys: RDD[SpaceTimeKey],  metadata: TileLayerMetadata[SpaceTimeKey]): Some[SpacePartitioner[SpaceTimeKey]] = {
     // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
-    val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(8)
+    val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
     val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
       val cached = requiredSpacetimeKeys.distinct()
       val spatialCount = cached.map(_.spatialKey).countApproxDistinct()
@@ -154,7 +154,7 @@ object DatacubeSupport {
         if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
           val indices = cached.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
           new SparseSpaceOnlyPartitioner(indices, reduction)
-        }else if (reduction != 8) {
+        }else if (reduction != SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION) {
           val indices = cached.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
           new SparseSpaceTimePartitioner(indices, reduction)
         }

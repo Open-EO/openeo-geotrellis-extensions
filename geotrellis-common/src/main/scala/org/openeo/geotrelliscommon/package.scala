@@ -125,12 +125,14 @@ package object geotrelliscommon {
     val keyIndex = SfCurveZSpaceTimeKeyIndex.byDay(null)
     //private def toZ(key: SpaceTimeKey): Z3 = Z3(key.col , key.row , 31*13*key.time.getYear + 31*key.time.getMonthValue + key.time.getDayOfMonth-1)
 
-    def toIndex(key: SpaceTimeKey): BigInt = keyIndex.toIndex(key) >> 8
+    val DEFAULT_INDEX_REDUCTION = 7
+
+    def toIndex(key: SpaceTimeKey): BigInt = keyIndex.toIndex(key) >> DEFAULT_INDEX_REDUCTION
 
     def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
       val originalRanges = keyIndex.indexRanges(keyRange)
 
-      val mappedRanges = originalRanges.map(range => (range._1 >> 8,(range._2 >> 8) ))
+      val mappedRanges = originalRanges.map(range => (range._1 >> DEFAULT_INDEX_REDUCTION,(range._2 >> DEFAULT_INDEX_REDUCTION) ))
 
       val distinct = mappedRanges.distinct
       var previousEnd: BigInt = null
