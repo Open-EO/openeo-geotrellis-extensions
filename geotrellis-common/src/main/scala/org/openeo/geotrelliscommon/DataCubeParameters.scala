@@ -13,7 +13,7 @@ class DataCubeParameters extends Serializable {
   var maskingStrategyParameters: util.Map[String, Object] = Collections.emptyMap()
   var layoutScheme: String = "ZoomedLayoutScheme"
   var partitionerTemporalResolution: String = "ByDay"
-  var partitionerIndexReduction: Int = 8
+  var partitionerIndexReduction: Int = SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION
   var resampleMethod: ResampleMethod = NearestNeighbor
   var maskingCube: Option[Object] = Option.empty
   var globalExtent:Option[ProjectedExtent] = Option.empty
