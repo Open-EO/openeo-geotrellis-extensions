@@ -1,19 +1,18 @@
 package org.openeo
 
-import java.time.{Instant, ZoneOffset, ZonedDateTime}
-
 import _root_.geotrellis.layer._
 import _root_.geotrellis.raster.MultibandTile
-import _root_.geotrellis.spark.partition.PartitionerIndex
 import _root_.geotrellis.spark.pyramid.Pyramid
-import _root_.geotrellis.store.index.zcurve.{Z3, ZSpaceTimeKeyIndex}
+import _root_.geotrellis.store.index.zcurve.Z3
 import geotrellis.store.accumulo.{AccumuloAttributeStore, AccumuloLayerHeader}
 import geotrellis.store.{AttributeStore, LayerId}
 import geotrellis.vector.io.json.GeoJson
 import geotrellis.vector.{Geometry, GeometryCollection, MultiPolygon, Point, Polygon}
 import io.circe._
 import org.apache.spark.rdd.RDD
+import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
 
+import java.time.{Instant, ZoneOffset, ZonedDateTime}
 import scala.collection.JavaConverters.mapAsScalaMapConverter
 
 package object geotrellisaccumulo {
@@ -24,7 +23,7 @@ package object geotrellisaccumulo {
     }
 
   def decodeIndexKey(region:BigInt):SpaceTimeKey = {
-    val (x,y,t) = new Z3(region.longValue() << 8 ).decode
+    val (x,y,t) = new Z3(region.longValue() << SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION ).decode
 
     new SpaceTimeKey(x,y,t*1000L * 60 * 60 * 24 )
   }
