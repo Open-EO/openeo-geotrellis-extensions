@@ -334,16 +334,15 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             val requiredKeysRdd = requiredSpatialKeysForFeatures.flatMap(tuple=> tuple._2.map(feature => SpaceTimeKey(tuple._1.col,tuple._1.row,feature.data)))
 
             val partitioner = DatacubeSupport.createPartitioner(Some(dataCubeParameters), requiredKeysRdd, metadata)
-            logger.info(s"Created Sentinelhub datacube ${collectionId} with ${requiredKeysRdd.countApproxDistinct()} keys and metadata ${metadata} and ${partitioner.get}")
-
+            val approxRequests = requiredKeysRdd.countApproxDistinct()
+            logger.info(s"Created Sentinelhub datacube ${collectionId} with $approxRequests keys and metadata ${metadata} and ${partitioner.get}")
 
             var keysRdd = requiredKeysRdd.map((_,Option.empty)).partitionBy(partitioner.get)
 
             keysRdd = DatacubeSupport.applyDataMask(Some(dataCubeParameters), keysRdd)
-            val numRequests = keysRdd.cache().count()
 
             val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = keysRdd
-              .mapPartitions(_.map { case (spaceTimeKey, _) => (spaceTimeKey, loadMasked(spaceTimeKey.spatialKey, spaceTimeKey.time, numRequests)) }, preservesPartitioning = true)
+              .mapPartitions(_.map { case (spaceTimeKey, _) => (spaceTimeKey, loadMasked(spaceTimeKey.spatialKey, spaceTimeKey.time, approxRequests)) }, preservesPartitioning = true)
               .filter {case (_: SpaceTimeKey, tile: Option[MultibandTile]) => tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
               .mapValues(t => t.get)
 
