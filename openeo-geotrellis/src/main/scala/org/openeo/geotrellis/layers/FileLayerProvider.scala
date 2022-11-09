@@ -834,7 +834,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
           }
         }else{
           if(experimental) {
-            val warpOptions = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod))
+            val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod),te = Some(targetExtent.extent))
             Seq(GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType))
           }else{
 
