@@ -16,6 +16,7 @@ object JsonLayout {
   private def dropPrefix(prefixedMdcKey: String) = prefixedMdcKey.drop(sparkPropagatablePrefix.length)
 
   final val UserId = addPrefix("user_id")
+  final val RequestId = addPrefix("req_id")
   final val JobId = addPrefix("job_id")
 
   private lazy val pid =
@@ -66,7 +67,7 @@ class JsonLayout extends Layout {
     }
 
     val extraStringProperties = for {
-      prefixedMdcKey <- Seq(UserId, JobId)
+      prefixedMdcKey <- Seq(UserId, RequestId, JobId)
       value <- mdcValue[String](prefixedMdcKey)
     } yield dropPrefix(prefixedMdcKey) -> value.asJson
 

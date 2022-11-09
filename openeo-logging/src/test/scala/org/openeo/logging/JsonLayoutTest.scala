@@ -15,6 +15,7 @@ class JsonLayoutTest {
   @Before
   def initializeMdc(): Unit = {
     MDC.put(JsonLayout.UserId, "vdboschj")
+    MDC.put(JsonLayout.RequestId, "r-def456")
     MDC.put(JsonLayout.JobId, "j-abc123")
   }
 
@@ -60,6 +61,7 @@ class JsonLayoutTest {
     assertEquals("JsonLayoutTest.scala", logEntry("filename").asString.get)
     assertEquals(33, logEntry("lineno").asNumber.flatMap(_.toInt).get)
     assertEquals("vdboschj", logEntry("user_id").asString.get)
+    assertEquals("r-def456", logEntry("req_id").asString.get)
     assertEquals("j-abc123", logEntry("job_id").asString.get)
   }
 
