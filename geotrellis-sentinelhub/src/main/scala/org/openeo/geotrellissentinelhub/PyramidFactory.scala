@@ -309,7 +309,12 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             DatacubeSupport.applyDataMask(Some(dataCubeParameters), tilesRdd)
           } else {
-              val multiPolygon = simplify(polygons)
+              val multiPolygon:Geometry = if(polygons.length <=2000){
+                simplify(polygons)
+              }else{
+                //shub catalog can not handle huge amount of polygons, so just use bbox
+                boundingBox.extent.toPolygon()
+              }
 
               val features = authorized { accessToken =>
                 _catalogApi.search(collectionId, multiPolygon, polygons_crs,
