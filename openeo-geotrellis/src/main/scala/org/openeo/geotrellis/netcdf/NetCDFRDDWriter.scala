@@ -519,8 +519,11 @@ object NetCDFRDDWriter {
 
 
     netcdfFile.addVariable("crs", DataType.CHAR, "")
-    netcdfFile.addVariableAttribute("crs", "crs_wkt", crs.toWKT().get)
-    netcdfFile.addVariableAttribute("crs", "spatial_ref", crs.toWKT().get) //this one is especially for gdal...
+    val maybeWKT = crs.toWKT()
+    if(maybeWKT.isDefined) {
+      netcdfFile.addVariableAttribute("crs", "crs_wkt", maybeWKT.get)
+      netcdfFile.addVariableAttribute("crs", "spatial_ref", maybeWKT.get) //this one is especially for gdal...
+    }
     //netcdfFile.addVariableAttribute("crs","GeoTransform", "some geotransform") // this is what old style gdal puts in there
     //netcdfFile.addVariableAttribute("crs","grid_mapping_name","latitude_longitude")
     //netcdfFile.addVariableAttribute("crs","false_easting",crs.proj4jCrs.getProjection.getFalseEasting)
