@@ -141,7 +141,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
   override def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
                       to: ZonedDateTime, accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
   Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] =
-    withRetries(context = s"search $collectionId") {
+    withRetries(context = s"search $collectionId from $from to $to for ${geometry.getNumGeometries} geometries") {
       // TODO: reduce code duplication with dateTimes()
       val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
       val upper = to.withZoneSameInstant(ZoneId.of("UTC"))

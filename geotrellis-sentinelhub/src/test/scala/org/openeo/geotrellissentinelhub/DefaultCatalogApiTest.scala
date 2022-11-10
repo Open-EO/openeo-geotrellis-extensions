@@ -1,12 +1,13 @@
 package org.openeo.geotrellissentinelhub
 
 import geotrellis.proj4.LatLng
+import geotrellis.shapefile.ShapeFileReader
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.Assert.{assertEquals, assertTrue}
-import org.junit.Test
+import org.junit.{Ignore, Test}
 
 import java.time.{LocalDate, ZoneId}
-import java.util.Collections.singletonMap
+import java.util.Collections.{emptyMap, singletonMap}
 
 class DefaultCatalogApiTest {
   private val endpoint = "https://services.sentinel-hub.com"
@@ -104,4 +105,32 @@ class DefaultCatalogApiTest {
         accessToken,
         queryProperties = singletonMap("someUnknownProperty", singletonMap("eq", "???"))
       )
+
+  @Ignore("not to be run automatically")
+  @Test
+  def debugReadTimedOut(): Unit = {
+    val geometries = ShapeFileReader
+      .readMultiPolygonFeatures("/data/users/Public/deroob/Fields_to_extract/Fields_to_extract_2021_30SVH_RAW_0.shp")
+      .map(_.geom)
+
+    assert(geometries.nonEmpty, "no MultiPolygons found in shapefile")
+
+    val multiPolygon = simplify(geometries.toArray)
+    println(s"simplified ${geometries.map(_.getNumGeometries).sum} polygons to ${multiPolygon.getNumGeometries}")
+
+    val from = LocalDate.of(2020, 7, 1).minusDays(90).atStartOfDay(utc)
+    val to = from plusWeeks 1 /*LocalDate.of(2022, 7, 1).plusDays(90).atStartOfDay(utc)*/
+
+    val features = catalogApi.search(
+      collectionId = "sentinel-1-grd",
+      multiPolygon,
+      LatLng,
+      from,
+      to,
+      accessToken,
+      queryProperties = emptyMap()
+    )
+
+    print(features.size)
+  }
 }

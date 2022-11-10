@@ -1,5 +1,6 @@
 package org.openeo.geotrellissentinelhub
 
+import org.apache.commons.lang.StringUtils.abbreviate
 import scalaj.http.{HttpRequest, HttpResponse}
 
 object SentinelHubException {
@@ -14,7 +15,7 @@ object SentinelHubException {
     val message: String = {
       s"""Sentinel Hub returned an error
          |response: $statusLine with body: $responseBody
-         |request: ${request.method} $queryString with body: $requestBody""".stripMargin
+         |request: ${request.method} $queryString with (possibly abbreviated) body: ${abbreviate(requestBody, 20000)}""".stripMargin
     }
 
     SentinelHubException(message, statusCode, responseHeaders, responseBody)
