@@ -561,7 +561,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     commonCellType
   }
 
-  def readKeysToRasterSources(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): (RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], TileLayerMetadata[SpaceTimeKey], Option[CloudFilterStrategy]) = {
+  def readKeysToRasterSources(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): (RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], TileLayerMetadata[SpaceTimeKey], Option[CloudFilterStrategy], Seq[(RasterSource, Feature)]) = {
     val multiple_polygons_flag = polygons.length > 1
 
     val buffer = math.max(datacubeParams.map(_.pixelBufferX).getOrElse(0.0), datacubeParams.map(_.pixelBufferY).getOrElse(0.0))
@@ -719,12 +719,10 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
       })
     }
-    (requiredSpacetimeKeys,metadata,  maskStrategy)
+    (requiredSpacetimeKeys,metadata,  maskStrategy,overlappingRasterSources)
   }
 
   def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): MultibandTileLayerRDD[SpaceTimeKey] = {
-
-
 
     val readKeysToRasterSourcesResult = readKeysToRasterSources(from,to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams)
 
@@ -739,7 +737,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       val noResampling = isUTM && math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
       //resampling is still needed in case bounding boxes are not aligned with pixels
       // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
-      var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1).flatMap(t=>{
+      var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1, readKeysToRasterSourcesResult._4.size).flatMap(t=>{
         val source = if (noResampling) {
           LayoutTileSource(t._1, metadata.layout, identity)
         } else{
