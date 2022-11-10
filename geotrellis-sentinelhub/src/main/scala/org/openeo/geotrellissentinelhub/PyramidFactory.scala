@@ -9,6 +9,7 @@ import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{SH_FAILED_TILE_REQUESTS, SH_PU}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
@@ -312,8 +313,17 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               val multiPolygon:Geometry = if(polygons.length <=2000){
                 simplify(polygons)
               }else{
-                //shub catalog can not handle huge amount of polygons, so just use bbox
-                boundingBox.extent.toPolygon()
+                val polygonsRDD: RDD[Polygon] = sc.parallelize(polygons,math.max(1,polygons.length/100))
+                // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
+                var requiredSpatialKeys = polygonsRDD.clipToGrid(metadata.layout)
+                val transform = metadata.mapTransform
+                val tilebounds = dissolve(requiredSpatialKeys.map(_._1).distinct().map(key=>transform.keyToExtent(key).toPolygon()).collect())
+                if(tilebounds.getNumGeometries > 500) {
+                  //shub catalog can not handle huge amount of polygons, so just use bbox
+                  boundingBox.extent.toPolygon()
+                } else{
+                  tilebounds
+                }
               }
 
               val features = authorized { accessToken =>
