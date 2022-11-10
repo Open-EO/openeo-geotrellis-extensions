@@ -83,7 +83,7 @@ class DefaultProcessApi(endpoint: String, respectRetryAfterHeader: Boolean = tru
         Duration.ofSeconds(retryAfterSeconds)
       })
       .onRetryScheduled((retry: ExecutionScheduledEvent[HttpResponse[MultibandGeoTiff]]) => {
-        logger.debug(s"Scheduled retry within ${retry.getDelay} because of 429 response in context: $context")
+        logger.warn(s"Scheduled retry within ${retry.getDelay} because of 429 response in context: $context")
       })
 
     Failsafe
