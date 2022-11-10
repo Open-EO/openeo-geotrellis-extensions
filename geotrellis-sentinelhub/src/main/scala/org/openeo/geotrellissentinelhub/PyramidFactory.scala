@@ -313,7 +313,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               val multiPolygon:Geometry = if(polygons.length <=2000){
                 simplify(polygons)
               }else{
-                val polygonsRDD: RDD[Polygon] = sc.parallelize(polygons,math.max(1,polygons.length/100))
+                val polygonsRDD = sc.parallelize(polygons,math.max(1,polygons.length/100))
                 // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
                 var requiredSpatialKeys = polygonsRDD.clipToGrid(metadata.layout)
                 val transform = metadata.mapTransform
