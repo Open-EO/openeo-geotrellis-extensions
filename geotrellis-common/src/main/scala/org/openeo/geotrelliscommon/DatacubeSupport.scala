@@ -179,7 +179,7 @@ object DatacubeSupport {
               logger.debug(s"Spacetime mask is used to reduce input.")
             }
             val theFilteredMask = spacetimeMask.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))
-            return rdd.join(theFilteredMask).map((tuple => (tuple._1, tuple._2._1)))
+            return rdd.join(theFilteredMask).mapValues(_._1)
           }
         case _ => return rdd
       }
