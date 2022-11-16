@@ -81,7 +81,7 @@ class PyramidFactoryTest {
 
   private val clientId = Utils.clientId
   private val clientSecret = Utils.clientSecret
-  private val authorizer = new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(
+  private val authorizer = new MemoizedAuthApiAccessTokenAuthorizer(
     clientId, clientSecret)
 
   private val geoTiffOptions = GeoTiffOptions(DeflateCompression(BEST_COMPRESSION))

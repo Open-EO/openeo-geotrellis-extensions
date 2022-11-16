@@ -15,10 +15,10 @@ class AccessTokenCacheTest {
 
     val initialAccessToken = AuthApi.AuthResponse("4cc3ss_tok3n", expires_in = Duration.ofSeconds(3))
 
-    AccessTokenCache.get(clientId, clientSecret) { _ => initialAccessToken }
+    AccessTokenCache.get(clientId, clientSecret) { (_, _) => initialAccessToken }
 
     // should still be valid
-    assertEquals(initialAccessToken.access_token, AccessTokenCache.get(clientId, clientSecret) { _ =>
+    assertEquals(initialAccessToken.access_token, AccessTokenCache.get(clientId, clientSecret) { (_, _) =>
       throw new Exception("should have returned the valid access token and not fetch a new one")
     })
 
@@ -26,7 +26,7 @@ class AccessTokenCacheTest {
 
     val newAccessToken = AuthApi.AuthResponse("n3w_4cc3ss_tok3n", expires_in = Duration.ofSeconds(3))
 
-    assertEquals(newAccessToken.access_token, AccessTokenCache.get(clientId, clientSecret) { _ =>
+    assertEquals(newAccessToken.access_token, AccessTokenCache.get(clientId, clientSecret) { (_, _) =>
       newAccessToken
     })
   }

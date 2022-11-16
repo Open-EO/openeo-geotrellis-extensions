@@ -54,7 +54,7 @@ class MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(zookeeperCon
 
   // TODO: reduce code duplication with MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer
   override def authorized[R](fn: String => R): R = {
-    def accessToken: String = AccessTokenCache.get(clientId, clientSecret) { case (clientId, clientSecret) =>
+    def accessToken: String = AccessTokenCache.get(clientId, clientSecret) { (clientId, clientSecret) =>
       val now = ZonedDateTime.now()
 
       zookeeperAccessToken
@@ -97,7 +97,7 @@ class MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(clien
   import MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer._
 
   override def authorized[R](fn: String => R): R = {
-    def accessToken: String = AccessTokenCache.get(clientId, clientSecret) { case (clientId, clientSecret) =>
+    def accessToken: String = AccessTokenCache.get(clientId, clientSecret) { (clientId, clientSecret) =>
       val now = ZonedDateTime.now()
 
       new RlGuardAdapter().accessToken
@@ -133,7 +133,7 @@ class MemoizedAuthApiAccessTokenAuthorizer(clientId: String, clientSecret: Strin
   import MemoizedAuthApiAccessTokenAuthorizer._
 
   override def authorized[R](fn: String => R): R = {
-    def accessToken: String = AccessTokenCache.get(clientId, clientSecret) { case (clientId, clientSecret) =>
+    def accessToken: String = AccessTokenCache.get(clientId, clientSecret) { (clientId, clientSecret) =>
       val freshAccessToken = new AuthApi().authenticate(clientId, clientSecret)
       logger.debug(s"Auth API access token for clientID $clientId expires within ${freshAccessToken.expires_in}")
       freshAccessToken
@@ -172,8 +172,11 @@ object AccessTokenCache {
       .build()
   }
 
-  private[geotrellissentinelhub] def get(clientId: String, clientSecret: String)(getAuthToken: ((String, String)) => AuthResponse): String =
-    cache.get((clientId, clientSecret), getAuthToken).access_token
+  private[geotrellissentinelhub] def get(clientId: String, clientSecret: String)(getAuthToken: (String, String) => AuthResponse): String = {
+    cache.get((clientId, clientSecret), { case (clientId, clientSecret) =>
+      getAuthToken(clientId, clientSecret)
+    }).access_token
+  }
 
   private[geotrellissentinelhub] def invalidate(clientId: String, clientSecret: String): Unit = cache.invalidate((clientId, clientSecret))
 }
