@@ -90,6 +90,15 @@ class CriteriaTest {
     assertEquals("""{"eo:cloud_cover":{"lte":20}}""", objectMapper.writeValueAsString(actual))
   }
 
+  @Test(expected=classOf[IllegalArgumentException])
+  def acceptOnlyLteQueryPropertiesForEoCloudCover(): Unit = {
+    val metadata_properties = Map(
+      "eo:cloud_cover" -> Map("eq" -> (20: Any)).asJava
+    ).asJava
+
+    Criteria.toQueryProperties(metadata_properties)
+  }
+
   @Test
   def dataFiltersForSatOrbitState(): Unit = {
     val metadata_properties = Map(
@@ -157,5 +166,14 @@ class CriteriaTest {
 
     assertEquals(expected, actual)
     assertEquals("""{"maxCloudCoverage":20}""", objectMapper.writeValueAsString(actual))
+  }
+
+  @Test(expected = classOf[IllegalArgumentException])
+  def acceptOnlyLteDataFiltersForEoCloudCover(): Unit = {
+    val metadata_properties = Map(
+      "eo:cloud_cover" -> Map("eq" -> (20: Any)).asJava
+    ).asJava
+
+    Criteria.toDataFilters(metadata_properties)
   }
 }

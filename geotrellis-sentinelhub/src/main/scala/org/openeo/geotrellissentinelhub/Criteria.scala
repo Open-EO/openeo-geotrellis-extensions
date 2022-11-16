@@ -9,6 +9,13 @@ object Criteria {
       (metadataProperty, criteria) <- metadata_properties.asScala
     } yield toQueryPropertyName(metadataProperty) -> toQueryCriteria(criteria)
 
+    queryProperties.get("eo:cloud_cover") match {
+      case Some(criterion) =>
+        if (criterion.size() > 1 || !criterion.containsKey("lte"))
+          throw new IllegalArgumentException(s"query property eo:cloud_cover only supports operator lte")
+      case _ =>
+    }
+
     queryProperties.asJava
   }
 
@@ -38,15 +45,18 @@ object Criteria {
       (operator, value) <- criteria.asScala
     } yield (metadataProperty, operator, value)
 
+    def abort(metadataProperty: String, operator: String, value: Any): Nothing =
+      throw new IllegalArgumentException(s"unsupported dataFilter $metadataProperty $operator $value")
+
     flattenedCriteria
       .map {
         case ("eo:cloud_cover", "lte", value) => "maxCloudCoverage" -> value
+        case (metadataProperty @ "eo:cloud_cover", operator, value) => abort(metadataProperty, operator, value)
         case ("sat:orbit_state", "eq", value) => "orbitDirection" -> value
         case ("sar:polarization", "eq", value) => "polarization" -> value
         case ("sar:instrument_mode", "eq", value) => "acquisitionMode" -> value
         case (metadataProperty, "eq", value) => metadataProperty -> value
-        case (metaDataProperty, operator, value) =>
-          throw new IllegalArgumentException(s"unsupported dataFilter $metaDataProperty $operator $value")
+        case (metadataProperty, operator, value) => abort(metadataProperty, operator, value)
       }
       .toMap.asJava
   }
