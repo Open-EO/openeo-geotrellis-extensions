@@ -31,13 +31,14 @@ trait ProcessApi {
 
 object DefaultProcessApi {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[DefaultProcessApi])
+  private final val processingUnitsSpentHeader = "x-processingunits-spent"
 }
 
 class DefaultProcessApi(endpoint: String, respectRetryAfterHeader: Boolean = true) extends ProcessApi with Serializable {
   // TODO: clean up JSON construction/parsing
   import DefaultProcessApi._
 
-  private def withRetryAfterRetries(context: String)(fn: => HttpResponse[MultibandGeoTiff])(implicit logger: Logger): HttpResponse[MultibandGeoTiff] = {
+  private def withRetryAfterRetries[R](context: String)(fn: => R)(implicit logger: Logger): R = {
     val retryable: Throwable => Boolean = {
       case SentinelHubException(_, 400, _, responseBody) if responseBody.contains("Request body should be non-empty.") => true
       case SentinelHubException(_, statusCode, _, responseBody) if statusCode >= 500
@@ -47,16 +48,16 @@ class DefaultProcessApi(endpoint: String, respectRetryAfterHeader: Boolean = tru
       case e => logger.error(s"Not attempting to retry unrecoverable error in context: $context", e); false
     }
 
-    val shakyConnectionRetryPolicy = new RetryPolicy[HttpResponse[MultibandGeoTiff]]()
+    val shakyConnectionRetryPolicy = new RetryPolicy[R]()
       .handleIf(retryable.asJava)
       .withBackoff(1, 1000, SECONDS) // should not reach maxDelay because of maxAttempts 5
       .withJitter(0.5)
       .withMaxAttempts(5)
-      .onFailedAttempt((attempt: ExecutionAttemptedEvent[HttpResponse[MultibandGeoTiff]]) => {
+      .onFailedAttempt((attempt: ExecutionAttemptedEvent[R]) => {
         val e = attempt.getLastFailure
         logger.warn(s"Attempt ${attempt.getAttemptCount} failed in context: $context", e)
       })
-      .onFailure((execution: ExecutionCompletedEvent[HttpResponse[MultibandGeoTiff]]) => {
+      .onFailure((execution: ExecutionCompletedEvent[R]) => {
         val e = execution.getFailure
         logger.error(s"Failed after ${execution.getAttemptCount} attempt(s) in context: $context", e)
       })
@@ -66,10 +67,10 @@ class DefaultProcessApi(endpoint: String, respectRetryAfterHeader: Boolean = tru
       case _ => false
     }
 
-    val rateLimitingRetryPolicy = new RetryPolicy[HttpResponse[MultibandGeoTiff]]()
+    val rateLimitingRetryPolicy = new RetryPolicy[R]()
       .handleIf(isRateLimitingResponse.asJava)
       .withMaxAttempts(5)
-      .withDelay((_: HttpResponse[MultibandGeoTiff], sentinelHubException: SentinelHubException, _: ExecutionContext) => {
+      .withDelay((_: R, sentinelHubException: SentinelHubException, _: ExecutionContext) => {
         val retryAfterHeader = "retry-after"
 
         val retryAfterSeconds = sentinelHubException
@@ -179,27 +180,37 @@ class DefaultProcessApi(endpoint: String, respectRetryAfterHeader: Boolean = tru
     val context = s"getTile $datasetId $date"
 
     val withRetries =
-      if (respectRetryAfterHeader) this.withRetryAfterRetries(context) _
-      else org.openeo.geotrellissentinelhub.withRetries[HttpResponse[MultibandGeoTiff]](context) _
-
-    var processingUnitsSpent = 0.0
+      if (respectRetryAfterHeader) this.withRetryAfterRetries[HttpResponse[(MultibandGeoTiff, Double)]](context) _
+      else org.openeo.geotrellissentinelhub.withRetries[HttpResponse[(MultibandGeoTiff, Double)]](context) _
 
     val response = withRetries {
       request.exec(parser = (code: Int, headers: Map[String, IndexedSeq[String]], in: InputStream) =>
         if (code == 200) {
-          processingUnitsSpent += headers
-            .get("x-processingunits-spent").flatMap(_.headOption)
-            .getOrElse(math.max(0.001,width*height*bandNames.size/(512.0*512.0*3.0)).toString).toDouble
-          GeoTiffReader.readMultiband(IOUtils.toByteArray(in))
-        }
-        else {
+          val processingUnitsSpent = headers
+            .get(processingUnitsSpentHeader)
+            .flatMap(_.headOption)
+            .map { pu =>
+              logger.debug(s"$processingUnitsSpentHeader: $pu")
+              pu.toDouble
+            }
+            .getOrElse {
+              // Definition of a Processing Unit: https://docs.sentinel-hub.com/api/latest/api/overview/processing-unit/
+              val pu = (width * height * bandNames.size / (512.0 * 512 * 3)) max 0.001
+              logger.warn(s"$processingUnitsSpentHeader is missing, calculated $pu PU")
+              pu
+            }
+
+          (GeoTiffReader.readMultiband(IOUtils.toByteArray(in)), processingUnitsSpent)
+        } else {
           val textBody = Source.fromInputStream(in, "utf-8").mkString
           throw SentinelHubException(request, jsonData, code, headers, textBody)
         }
       )
     }
 
-    (response.body.tile
+    val (multibandGeoTiff, processingUnitsSpent) = response.body
+
+    (multibandGeoTiff.tile
       .toArrayTile()
       // unless handled differently, NODATA pîxels are 0 according to
       // https://docs.sentinel-hub.com/api/latest/user-guides/datamask/#datamask---handling-of-pixels-with-no-data

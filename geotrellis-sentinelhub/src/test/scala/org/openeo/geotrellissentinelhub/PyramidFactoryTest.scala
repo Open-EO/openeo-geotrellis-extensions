@@ -142,7 +142,7 @@ class PyramidFactoryTest {
     assertEquals(expected, actual)
     val pu = BatchJobMetadataTracker.tracker("").asDict().get(SH_PU).asInstanceOf[Double]
 
-    assertTrue(s"PU: ${pu} not between 44 and 46",pu > 44 && pu < 46)
+    assertEquals(45.0, pu, 0.001)
   }
 
   @Test
