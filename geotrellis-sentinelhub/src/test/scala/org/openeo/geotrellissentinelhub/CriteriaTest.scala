@@ -100,6 +100,23 @@ class CriteriaTest {
   }
 
   @Test
+  def ignoreQueryPropertiesForProviderBackend(): Unit = {
+    val metadata_properties = Map(
+      "eo:cloud_cover" -> Map("lte" -> (20: Any)).asJava,
+      "provider:backend" -> Map("eq" -> ("vito": Any)).asJava
+    ).asJava
+
+    val expected = Map(
+      "eo:cloud_cover" -> Map("lte" -> 20).asJava
+    ).asJava
+
+    val actual = Criteria.toQueryProperties(metadata_properties)
+
+    assertEquals(expected, actual)
+    assertEquals("""{"eo:cloud_cover":{"lte":20}}""", objectMapper.writeValueAsString(actual))
+  }
+
+  @Test
   def dataFiltersForSatOrbitState(): Unit = {
     val metadata_properties = Map(
       "sat:orbit_state" -> Map("eq" -> ("descending": Any)).asJava
@@ -175,5 +192,20 @@ class CriteriaTest {
     ).asJava
 
     Criteria.toDataFilters(metadata_properties)
+  }
+
+  @Test
+  def ignoreDataFiltersForProviderBackend(): Unit = {
+    val metadata_properties = Map(
+      "eo:cloud_cover" -> Map("lte" -> (20: Any)).asJava,
+      "provider:backend" -> Map("eq" -> ("vito": Any)).asJava
+    ).asJava
+
+    val expected = Map("maxCloudCoverage" -> 20).asJava
+
+    val actual = Criteria.toDataFilters(metadata_properties)
+
+    assertEquals(expected, actual)
+    assertEquals("""{"maxCloudCoverage":20}""", objectMapper.writeValueAsString(actual))
   }
 }

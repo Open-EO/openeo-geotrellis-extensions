@@ -6,7 +6,7 @@ import scala.collection.JavaConverters._
 object Criteria {
   def toQueryProperties(metadata_properties: util.Map[String, util.Map[String, Any]]): util.Map[String, util.Map[String, Any]] = {
     val queryProperties = for {
-      (metadataProperty, criteria) <- metadata_properties.asScala
+      (metadataProperty, criteria) <- metadata_properties.asScala if metadataProperty != "provider:backend"
     } yield toQueryPropertyName(metadataProperty) -> toQueryCriteria(criteria)
 
     queryProperties.get("eo:cloud_cover") match {
@@ -41,7 +41,7 @@ object Criteria {
 
   def toDataFilters(metadata_properties: util.Map[String, util.Map[String, Any]]): util.Map[String, Any] = {
     val flattenedCriteria = for {
-      (metadataProperty, criteria) <- metadata_properties.asScala
+      (metadataProperty, criteria) <- metadata_properties.asScala if metadataProperty != "provider:backend"
       (operator, value) <- criteria.asScala
     } yield (metadataProperty, operator, value)
 
