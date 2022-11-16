@@ -27,16 +27,7 @@ object PyramidFactory {
 
   private val maxKeysPerPartition = 20
 
-  // convenience methods for Python client
-  @deprecated("syncer endpoint is no longer online")
-  def withGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
-                              clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
-                              maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
-    new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint, respectRetryAfterHeader = false),
-      new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
-      processingOptions, sampleType, new RlGuardAdapter, maxSpatialResolution, maxSoftErrorsRatio)
-
+  // convenience method for Python client
   def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String,
                                  clientId: String, clientSecret: String,
                                  zookeeperConnectionString: String, zookeeperAccessTokenPath: String,
@@ -46,14 +37,6 @@ object PyramidFactory {
       new DefaultProcessApi(endpoint),
       new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(zookeeperConnectionString,
         zookeeperAccessTokenPath, clientId, clientSecret),
-      processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
-
-  def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String, clientId: String,
-                                 clientSecret: String, processingOptions: util.Map[String, Any], sampleType: SampleType,
-                                 maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
-    new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint),
-      new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
       processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
 }
 
