@@ -217,7 +217,7 @@ object Sentinel1GrdInitialCacheOperation {
   private val logger = LoggerFactory.getLogger(classOf[Sentinel1GrdInitialCacheOperation])
 }
 
-class Sentinel1GrdInitialCacheOperation(dataset_id: String) extends AbstractInitialCacheOperation[Sentinel1GrdCacheEntry] {
+class Sentinel1GrdInitialCacheOperation(dataset_id: String, defaultDemInstance: String) extends AbstractInitialCacheOperation[Sentinel1GrdCacheEntry] {
   override protected def logger: Logger = Sentinel1GrdInitialCacheOperation.logger
 
   override protected def normalize(processingOptions: collection.Map[String, Any]): collection.Map[String, Any] = {
@@ -229,7 +229,7 @@ class Sentinel1GrdInitialCacheOperation(dataset_id: String) extends AbstractInit
       throw new IllegalArgumentException(s"processing_options for dataset $dataset_id must contain orthorectify"))
       .asInstanceOf[Boolean]
 
-    val demInstance = processingOptions.getOrElse("demInstance", "MAPZEN").asInstanceOf[String].toUpperCase
+    val demInstance = processingOptions.getOrElse("demInstance", defaultDemInstance).asInstanceOf[String].toUpperCase
 
     Map(
       "backCoeff" -> backCoeff,

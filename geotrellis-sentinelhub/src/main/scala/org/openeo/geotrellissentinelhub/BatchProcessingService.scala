@@ -6,7 +6,7 @@ import org.openeo.geotrellissentinelhub.SampleType.SampleType
 import org.slf4j.LoggerFactory
 
 import java.time.ZoneOffset.UTC
-import java.time.{LocalTime, OffsetTime, ZonedDateTime}
+import java.time.{LocalDate, LocalDateTime, LocalTime, OffsetTime, ZonedDateTime}
 import java.util
 import java.util.UUID
 import scala.collection.JavaConverters._
@@ -136,9 +136,13 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
     val cacheOperation =
       if (Set("sentinel-2-l2a", "S2L2A") contains dataset_id)
         new Sentinel2L2AInitialCacheOperation(dataset_id)
-      else if (Set("sentinel-1-grd", "S1GRD") contains dataset_id)
-        new Sentinel1GrdInitialCacheOperation(dataset_id)
-      else throw new IllegalArgumentException(
+      else if (Set("sentinel-1-grd", "S1GRD") contains dataset_id) {
+        // https://forum.sentinel-hub.com/t/sentinel-hub-december-2022-improvements/6198
+        val defaultDemInstance =
+          if (LocalDateTime.now() isBefore LocalDate.of(2022, 12, 5).atStartOfDay()) "MAPZEN"
+          else "COPERNICUS"
+        new Sentinel1GrdInitialCacheOperation(dataset_id, defaultDemInstance)
+      } else throw new IllegalArgumentException(
         """only datasets "sentinel-2-l2a" (previously "S2L2A") and
           | "sentinel-1-grd" (previously "S1GRD") are supported""".stripMargin)
 
