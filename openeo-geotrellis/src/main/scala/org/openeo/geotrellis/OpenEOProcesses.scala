@@ -369,7 +369,8 @@ class OpenEOProcesses extends Serializable {
     val partitioner: SpacePartitioner[SpaceTimeKey] = SpacePartitioner[SpaceTimeKey](datacube.metadata.bounds)(implicitly,implicitly, index)
 
     val allKeysRDD: RDD[(SpaceTimeKey, Null)] = SparkContext.getOrCreate().parallelize(allPossibleSpacetime)
-    val tilesByInterval: RDD[(SpaceTimeKey, MultibandTile)] = datacube.flatMap(tuple => {
+
+    def mapToNewKey(tuple: (SpaceTimeKey, MultibandTile)): Seq[(SpaceTimeKey, MultibandTile)] = {
       val instant = tuple._1.time.toInstant
       val spatialKey = tuple._1.spatialKey
       val labelsForKey = periodsToLabels.filter(p => {
@@ -380,19 +381,35 @@ class OpenEOProcesses extends Serializable {
         (leftBound.isBefore(instant) && rightBound.isAfter(instant)) || leftBound.equals(instant)
       }).map(t => t._2).map(ZonedDateTime.parse(_))
 
-      labelsForKey.map(l => (SpaceTimeKey(spatialKey,TemporalKey(l)),tuple._2))
-    }).groupByKey(partitioner).mapValues( tiles => {
-      val aTile = firstTile(tiles)
+      labelsForKey.map(l => (SpaceTimeKey(spatialKey, TemporalKey(l)), tuple._2))
+    }
 
+    def aggregateTiles(tiles: Iterable[MultibandTile]) = {
+
+      val aTile = firstTile(tiles)
       val resultTiles: mutable.ArrayBuffer[Tile] = mutable.ArrayBuffer[Tile]()
-      for( b <- 0 until aTile.bandCount){
+      for (b <- 0 until aTile.bandCount) {
         val temporalTile = MultibandTile(tiles.map(_.band(b)))
         val aggregatedTiles: Seq[Tile] = function(temporalTile.bands)
         resultTiles += aggregatedTiles.head
 
       }
       MultibandTile(resultTiles)
-    })
+
+    }
+
+    val tilesByInterval: RDD[(SpaceTimeKey, MultibandTile)] =
+    if(datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] && datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
+      datacube.mapPartitions(elements =>{
+        val byNewKey: Map[SpaceTimeKey, Stream[(SpaceTimeKey, MultibandTile)]] = elements.flatMap(mapToNewKey).toStream.groupBy(_._1)
+        byNewKey.mapValues(v=>aggregateTiles(v.map(_._2))).iterator
+      },preservesPartitioning = true)
+    }else{
+       datacube.flatMap(tuple => {
+        mapToNewKey(tuple)
+      }).groupByKey(partitioner).mapValues( aggregateTiles)
+    }
+
 
     val cols = datacube.metadata.tileLayout.tileCols
     val rows = datacube.metadata.tileLayout.tileRows
