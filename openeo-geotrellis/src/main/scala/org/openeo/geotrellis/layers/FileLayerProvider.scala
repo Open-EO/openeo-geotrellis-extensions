@@ -636,11 +636,12 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       if (!checkLatLon(extent)) throw new IllegalArgumentException(s"Geometry or Bounding box provided by the catalog has to be in EPSG:4326, but got ${extent} for catalog entry ${f}")
     })
 
-    //extra check on interior
     val cubeExtent = metadata.extent
+    //extra check on interior, disabled because it requires an (expensive) lookup of the extent
+    /*
     overlappingRasterSources = overlappingRasterSources.filter({ t =>
       t._1.extent.interiorIntersects(cubeExtent)
-    })
+    })*/
 
     //avoid computing keys that are anyway out of bounds, with some buffering to avoid throwing away too much
 
