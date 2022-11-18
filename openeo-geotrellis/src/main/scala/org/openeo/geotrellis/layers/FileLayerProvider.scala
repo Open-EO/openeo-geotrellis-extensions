@@ -610,8 +610,10 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     val polygonsRDD = sc.parallelize(bufferedPolygons).map {
       _.reproject(polygons_crs, targetCRS)
     }
+
+    val workingPartitioner = SpacePartitioner(metadata.bounds.get.toSpatial)
     // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
-    var requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
+    var requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey(workingPartitioner)
 
     var spatialKeyCount: Long =
       if(polygons.length == 1) {
@@ -628,7 +630,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     metadata = retiledMetadata.getOrElse(metadata)
 
     if (retiledMetadata.isDefined) {
-      requiredSpatialKeys = polygonsRDD.clipToGrid(retiledMetadata.get).groupByKey()
+      requiredSpatialKeys = polygonsRDD.clipToGrid(retiledMetadata.get).groupByKey(workingPartitioner)
     }
 
     overlappingRasterSources.map(_._2).foreach(f => {
@@ -665,11 +667,11 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
         } )
       }).filter(!_.geom.equals(emptyPoint) )
-      .clipToGrid(metadata).repartition(math.max(1, spatialKeyCount.toInt / 10))
+      .clipToGrid(metadata).partitionBy(workingPartitioner)
 
 
     //rdd
-    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = keysForfeatures.join(requiredSpatialKeys).map(t => (t._1, t._2._1))
+    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = keysForfeatures.join(requiredSpatialKeys,workingPartitioner).map(t => (t._1, t._2._1))
     val filteredSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = applySpatialMask(datacubeParams, griddedRasterSources)
 
 
