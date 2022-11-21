@@ -1,7 +1,7 @@
 package org.openeo.geotrelliscommon
 
 import geotrellis.raster.mapalgebra.focal.Kernel
-import geotrellis.raster.{DoubleConstantNoDataCellType, MultibandTile, NODATA, Raster, Tile, UByteUserDefinedNoDataCellType}
+import geotrellis.raster.{BitCellType, DoubleConstantNoDataCellType, MultibandTile, NODATA, Raster, Tile}
 import org.openeo.geotrelliscommon.SCLConvolutionFilterStrategy._
 
 import java.util
@@ -127,7 +127,8 @@ class SCLConvolutionFilterStrategy(val sclBandIndex: Int = 0,val maskingParams:u
           val convolution2 = FFTConvolve(binaryMask2, kernel2).crop(binaryMask2.cols - (tileSize + bufferSize), binaryMask2.rows - (tileSize + bufferSize), binaryMask2.cols - (bufferSize+1), binaryMask2.rows - (bufferSize+1))
           val mask2 = convolution2.localIf({ d: Double => d > 0.025 }, 1.0, 0.0)
           //convolution2.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("conv2.png")
-          val fullMask = convolution1.localOr(mask2).convert(UByteUserDefinedNoDataCellType(127.byteValue()))
+          //Use bit celltype because of: https://github.com/locationtech/geotrellis/issues/3488
+          val fullMask = convolution1.localOr(mask2).convert(BitCellType)
 
           allMasked = !fullMask.toArray().contains(0)
 
