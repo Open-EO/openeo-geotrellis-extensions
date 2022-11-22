@@ -12,6 +12,7 @@ import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.rasterize.Rasterizer
+import geotrellis.raster.resample.ResampleMethod
 import geotrellis.spark.join.SpatialJoin
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.{MultibandTileLayerRDD, _}
@@ -617,7 +618,10 @@ class OpenEOProcesses extends Serializable {
   }
 
   def resampleCubeSpatial_spacetime(data: MultibandTileLayerRDD[SpaceTimeKey],crs:CRS,layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
-    if(partitioner==null) {
+    if(crs.equals(data.metadata.crs) && layout.equals(data.metadata.layout)) {
+      logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
+      (0,data)
+    }else if(partitioner==null) {
       filterNegativeSpatialKeys(data.reproject(crs,layout,16,method,new SpacePartitioner(data.metadata.bounds)))
     }else{
       filterNegativeSpatialKeys(data.reproject(crs,layout,16,method,Option(partitioner)))
@@ -625,7 +629,10 @@ class OpenEOProcesses extends Serializable {
   }
 
   def resampleCubeSpatial_spatial(data: MultibandTileLayerRDD[SpatialKey],crs:CRS,layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpatialKey]) = {
-    if(partitioner==null) {
+    if(crs.equals(data.metadata.crs) && layout.equals(data.metadata.layout)) {
+      logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
+      (0,data)
+    }else if(partitioner==null) {
       filterNegativeSpatialKeys_spatial(data.reproject(crs,layout,16,method,new SpacePartitioner(data.metadata.bounds)))
     }else{
       filterNegativeSpatialKeys_spatial(data.reproject(crs,layout,16,method,Option(partitioner)))
@@ -633,6 +640,7 @@ class OpenEOProcesses extends Serializable {
   }
 
   def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String, swapOperands:Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,ResampleMethods.NearestNeighbor,rightCube.partitioner.orNull)
     checkMetadataCompatible(leftCube.metadata,rightCube.metadata)
     val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](leftCube, rightCube)
     if(operator == null) {
@@ -783,7 +791,8 @@ class OpenEOProcesses extends Serializable {
   }
 
   def rasterMask_spacetime_spatial(datacube: MultibandTileLayerRDD[SpaceTimeKey], mask: MultibandTileLayerRDD[SpatialKey], replacement: java.lang.Double): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val joined = new SpatialToSpacetimeJoinRdd[MultibandTile](datacube, mask)
+    val resampledMask = resampleCubeSpatial_spatial(mask, datacube.metadata.crs, datacube.metadata.layout, ResampleMethods.NearestNeighbor, mask.partitioner.orNull)._2
+    val joined = new SpatialToSpacetimeJoinRdd[MultibandTile](datacube, resampledMask)
 
     val replacementInt: Int = if (replacement == null) NODATA else replacement.intValue()
     val replacementDouble: Double = if (replacement == null) doubleNODATA else replacement
@@ -805,11 +814,13 @@ class OpenEOProcesses extends Serializable {
   }
 
   def rasterMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], mask: MultibandTileLayerRDD[SpaceTimeKey], replacement: java.lang.Double): MultibandTileLayerRDD[SpaceTimeKey] = {
-    rasterMaskGeneric(datacube,mask,replacement).convert(datacube.metadata.cellType)
+    val resampledMask = resampleCubeSpatial_spacetime(mask, datacube.metadata.crs, datacube.metadata.layout, ResampleMethods.NearestNeighbor, mask.partitioner.orNull)._2
+    rasterMaskGeneric(datacube,resampledMask,replacement).convert(datacube.metadata.cellType)
   }
 
   def rasterMask_spatial_spatial(datacube: MultibandTileLayerRDD[SpatialKey], mask: MultibandTileLayerRDD[SpatialKey], replacement: java.lang.Double): MultibandTileLayerRDD[SpatialKey] = {
-    rasterMaskGeneric(datacube,mask,replacement).convert(datacube.metadata.cellType)
+    val resampledMask = resampleCubeSpatial_spatial(mask, datacube.metadata.crs, datacube.metadata.layout, ResampleMethods.NearestNeighbor, mask.partitioner.orNull)._2
+    rasterMaskGeneric(datacube,resampledMask,replacement).convert(datacube.metadata.cellType)
   }
 
   def rasterMaskGeneric[K: Boundable: PartitionerIndex: ClassTag,M: GetComponent[*, Bounds[K]]]
