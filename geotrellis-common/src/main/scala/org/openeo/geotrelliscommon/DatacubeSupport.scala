@@ -3,7 +3,7 @@ package org.openeo.geotrelliscommon
 import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutLevel, LayoutScheme, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.CRS
 import geotrellis.raster.{CellSize, CellType}
-import geotrellis.spark.MultibandTileLayerRDD
+import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.rdd.RDD
@@ -169,7 +169,7 @@ object DatacubeSupport {
       ClassTag(classOf[SpaceTimeKey]), partitionerIndex))
   }
 
-  def applyDataMask[T](datacubeParams:Option[DataCubeParameters], rdd:RDD[(SpaceTimeKey,T)])(implicit vt: ClassTag[T]): RDD[(SpaceTimeKey,T)] = {
+  def applyDataMask[T](datacubeParams:Option[DataCubeParameters], rdd:RDD[(SpaceTimeKey,T)],metadata: TileLayerMetadata[SpaceTimeKey])(implicit vt: ClassTag[T]): RDD[(SpaceTimeKey,T)] = {
     if (datacubeParams.exists(_.maskingCube.isDefined)) {
       val maskObject = datacubeParams.get.maskingCube.get
       maskObject match {
@@ -178,8 +178,15 @@ object DatacubeSupport {
             if (logger.isDebugEnabled) {
               logger.debug(s"Spacetime mask is used to reduce input.")
             }
-            val theFilteredMask = spacetimeMask.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))
-            return rdd.join(theFilteredMask).mapValues(_._1)
+            val filtered = spacetimeMask.withContext{_.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))}
+            val alignedMask: MultibandTileLayerRDD[SpaceTimeKey] =
+            if(spacetimeMask.metadata.crs.equals(metadata.crs) && spacetimeMask.metadata.layout.equals(metadata.layout)) {
+              filtered
+            }else{
+              logger.debug(s"mask: automatically resampling mask to match datacube: ${spacetimeMask.metadata}")
+              filtered.reproject(metadata.crs,metadata.layout,16,rdd.partitioner)._2
+            }
+            return rdd.join(alignedMask).mapValues(_._1)
           }
         case _ => return rdd
       }

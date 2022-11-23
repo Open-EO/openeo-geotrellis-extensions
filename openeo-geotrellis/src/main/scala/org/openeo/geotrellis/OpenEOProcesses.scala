@@ -193,14 +193,14 @@ class OpenEOProcesses extends Serializable {
 
     val keys: _root_.scala.Option[_root_.scala.Array[_root_.geotrellis.layer.SpaceTimeKey]] = findPartitionerKeys(datacube)
 
-    implicit val index =
+    val index =
       if(keys.isDefined) {
         new SparseSpatialPartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, 0,keys.map(_.map(_.spatialKey)))
       }else{
         ByTileSpatialPartitioner
       }
 
-    val partitioner: Partitioner = new SpacePartitioner(targetBounds)
+    val partitioner: Partitioner = new SpacePartitioner(targetBounds)(implicitly,implicitly, index)
 
     val groupedOnTime = datacube.groupBy[SpatialKey]((t: (SpaceTimeKey, MultibandTile)) => t._1.spatialKey, partitioner)
     groupedOnTime

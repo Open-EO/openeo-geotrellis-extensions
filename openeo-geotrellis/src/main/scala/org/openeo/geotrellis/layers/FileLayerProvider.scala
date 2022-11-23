@@ -13,6 +13,7 @@ import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
+import geotrellis.spark.partition.PartitionerIndex.SpatialPartitioner
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector
 import geotrellis.vector._
@@ -217,13 +218,20 @@ object FileLayerProvider {
     }
   }
 
-  def applySpatialMask[M](datacubeParams : Option[DataCubeParameters] , requiredSpatialKeys: RDD[(SpatialKey, M)])(implicit vt: ClassTag[M]): RDD[(SpatialKey, M)] = {
+  def applySpatialMask[M](datacubeParams : Option[DataCubeParameters] , requiredSpatialKeys: RDD[(SpatialKey, M)],metadata:TileLayerMetadata[SpaceTimeKey])(implicit vt: ClassTag[M]): RDD[(SpatialKey, M)] = {
     if (datacubeParams.exists(_.maskingCube.isDefined)) {
       val maskObject = datacubeParams.get.maskingCube.get
       maskObject match {
         case theSpatialMask: MultibandTileLayerRDD[SpatialKey] =>
           if (theSpatialMask.metadata.bounds.get._1.isInstanceOf[SpatialKey]) {
-            val maskSpatialKeys = theSpatialMask.filter(_._2.band(0).toArray().exists(pixel => pixel == 0)).distinct()
+            val filtered = theSpatialMask.withContext{_.filter(_._2.band(0).toArray().exists(pixel => pixel == 0)).distinct()}
+            val maskSpatialKeys =
+              if(theSpatialMask.metadata.crs.equals(metadata.crs) && theSpatialMask.metadata.layout.equals(metadata.layout)) {
+                filtered
+              }else{
+                logger.debug(s"mask: automatically resampling mask to match datacube: ${theSpatialMask.metadata}")
+                filtered.reproject(metadata.crs,metadata.layout,16,requiredSpatialKeys.partitioner)._2
+              }
             if (logger.isDebugEnabled) {
               logger.debug(s"Spatial mask reduces the input to: ${maskSpatialKeys.countApproxDistinct()} keys.")
             }
@@ -236,7 +244,7 @@ object FileLayerProvider {
   }
 
   private def tileSourcesToDataCube(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])], sc: SparkContext, retainNoDataTiles: Boolean, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = None, inputFeatures: Option[Seq[Feature]] = None): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
-    val localSpatialKeys = applySpatialMask(datacubeParams,requiredSpatialKeys)
+    val localSpatialKeys = applySpatialMask(datacubeParams,requiredSpatialKeys,metadata)
 
     var spatialKeyCount = localSpatialKeys.countApproxDistinct()
 
@@ -302,7 +310,7 @@ object FileLayerProvider {
 
     }
 
-    requestedRasterRegions = DatacubeSupport.applyDataMask(datacubeParams,requestedRasterRegions)
+    requestedRasterRegions = DatacubeSupport.applyDataMask(datacubeParams,requestedRasterRegions,metadata)
 
     requestedRasterRegions.name = rasterSources.name
     rasterRegionsToTiles(requestedRasterRegions, metadata, retainNoDataTiles, cloudFilterStrategy, partitioner)
@@ -672,11 +680,11 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     //rdd
     val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = keysForfeatures.join(requiredSpatialKeys,workingPartitioner).map(t => (t._1, t._2._1))
-    val filteredSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = applySpatialMask(datacubeParams, griddedRasterSources)
+    val filteredSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = applySpatialMask(datacubeParams, griddedRasterSources,metadata)
 
 
     var requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = filteredSources.map(t => (SpaceTimeKey(t._1, TemporalKey(t._2.data._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))), t._2))
-    requiredSpacetimeKeys = DatacubeSupport.applyDataMask(datacubeParams, requiredSpacetimeKeys)
+    requiredSpacetimeKeys = DatacubeSupport.applyDataMask(datacubeParams, requiredSpacetimeKeys,metadata)
 
     if (isUTM) {
       //only for utm is just a safeguard to limit to sentine-1/2 for now
