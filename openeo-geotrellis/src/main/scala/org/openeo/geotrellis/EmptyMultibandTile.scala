@@ -33,7 +33,7 @@ object EmptyMultibandTile{
 
 }
 
-class EmptyMultibandTile(val cols:Int, val rows:Int, val cellType:CellType,val bandCount:Int = 0 ) extends MultibandTile with MacroMultibandCombiners {
+class EmptyMultibandTile(val cols:Int, val rows:Int, val cellType:CellType, val bandCount:Int = 0 ) extends MultibandTile with MacroMultibandCombiners {
 
   override def band(bandIndex: Int): Tile = EmptyMultibandTile.empty(cellType, cols, rows)
 

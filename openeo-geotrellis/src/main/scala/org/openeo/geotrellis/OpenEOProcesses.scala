@@ -180,6 +180,7 @@ class OpenEOProcesses extends Serializable {
       if(resultTile.size>0) {
         MultibandTile(resultTile)
       }else{
+        // Note: Is this code ever reached? aTile.bandCount is always > 0.
         new EmptyMultibandTile(aTile.cols,aTile.rows,aTile.cellType)
       }
 
@@ -411,15 +412,17 @@ class OpenEOProcesses extends Serializable {
       }).groupByKey(partitioner).mapValues( aggregateTiles)
     }
 
-
     val cols = datacube.metadata.tileLayout.tileCols
     val rows = datacube.metadata.tileLayout.tileRows
     val cellType = datacube.metadata.cellType
 
     //ArrayMultibandTile.empty(datacube.metadata.cellType,1,0,0)
-    val filledRDD: RDD[(SpaceTimeKey, MultibandTile)] = tilesByInterval.rightOuterJoin(allKeysRDD,partitioner).mapValues(_._1.getOrElse(new EmptyMultibandTile(cols,rows,cellType)))
+    val bandCount = datacube match {
+      case value: OpenEORasterCube[SpaceTimeKey] => value.openEOMetadata.bandCount
+      case _ => 0
+    }
+    val filledRDD: RDD[(SpaceTimeKey, MultibandTile)] = tilesByInterval.rightOuterJoin(allKeysRDD,partitioner).mapValues(_._1.getOrElse(new EmptyMultibandTile(cols, rows, cellType, bandCount)))
     return ContextRDD(filledRDD, datacube.metadata)
-
   }
 
   def mapBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder, context: java.util.Map[String,Any] = new util.HashMap[String, Any]()): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]= {
