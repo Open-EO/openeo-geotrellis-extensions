@@ -449,10 +449,6 @@ class OpenEOProcesses extends Serializable {
     return datacube.withContext(_.filter(!_._2.isInstanceOf[EmptyMultibandTile]))
   }
 
-  def filterEmptyTileTypeTag[K](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
-    return datacube.withContext(_.filter(!_._2.isInstanceOf[EmptyMultibandTile]))
-  }
-
   /**
    * Simple vectorize implementation
    * Rasters are combined to a max size of 5120, larger rasters are supported, but resulting features will not be merged
