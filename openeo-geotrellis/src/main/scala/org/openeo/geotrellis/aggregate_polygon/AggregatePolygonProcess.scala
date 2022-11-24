@@ -90,6 +90,14 @@ class AggregatePolygonProcess() {
     }
   }
 
+  def checkTileBandCount(tileBandCount:Int, expectedBandCount:Int): Int = {
+    // Note: EmptyMultibandTiles can have a bandCount of 0.
+    val bands = if (tileBandCount == 0) expectedBandCount else tileBandCount
+    if (bands != expectedBandCount) {
+      throw new IllegalArgumentException(s"Invalid band count, actual: $tileBandCount, expected: $expectedBandCount")
+    }
+    return bands
+  }
 
   def aggregateSpatialForGeometry(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], geometries: Seq[Geometry], crs: CRS, bandCount:Int, outputPath:String): Unit = {
     val sc = datacube.sparkContext
@@ -106,7 +114,7 @@ class AggregatePolygonProcess() {
     val pixelRDD: RDD[Row] = combinedRDD.flatMap {
       case (key: SpaceTimeKey, (tile: MultibandTile, geoms: Iterable[Feature[Geometry,Int]])) => {
         val result: ListBuffer[Row] = ListBuffer()
-        val bands = tile.bandCount
+        val bands = checkTileBandCount(tile.bandCount, bandCount)
 
         val options = raster.RasterizerOptions.DEFAULT
 
@@ -165,7 +173,7 @@ class AggregatePolygonProcess() {
     val pixelRDD: RDD[Row] = combinedRDD.flatMap {
       case (key: SpatialKey, (tile: MultibandTile, geoms: Iterable[Feature[Geometry, Int]])) =>
         val result: ListBuffer[Row] = ListBuffer()
-        val bands = tile.bandCount
+        val bands = checkTileBandCount(tile.bandCount, bandCount)
 
         val options = raster.RasterizerOptions.DEFAULT
 
@@ -247,7 +255,7 @@ class AggregatePolygonProcess() {
         case (key: SpaceTimeKey,( tile: MultibandTile,zones: Tile)) => {
           val rows  = tile.rows
           val cols  = tile.cols
-          val bands = tile.bandCount
+          val bands = checkTileBandCount(tile.bandCount, bandCount)
 
           val mapping = polygonMappingBC.value
           val date = java.sql.Timestamp.from(key.time.toInstant)
