@@ -28,6 +28,15 @@ object AggregatePolygonProcess {
   private val logger = LoggerFactory.getLogger(classOf[AggregatePolygonProcess])
 
   private type PolygonsWithIndexMapping = (Seq[MultiPolygon], Seq[Set[Int]])
+
+  def checkTileBandCount(tileBandCount:Int, expectedBandCount:Int): Int = {
+    // Note: EmptyMultibandTiles can have a bandCount of 0.
+    val bands = if (tileBandCount == 0) expectedBandCount else tileBandCount
+    if (bands != expectedBandCount) {
+      throw new IllegalArgumentException(s"Invalid band count, actual: $tileBandCount, expected: $expectedBandCount")
+    }
+    return bands
+  }
 }
 
 class AggregatePolygonProcess() {
@@ -88,15 +97,6 @@ class AggregatePolygonProcess() {
 
       statisticsCallback.onCompleted()
     }
-  }
-
-  def checkTileBandCount(tileBandCount:Int, expectedBandCount:Int): Int = {
-    // Note: EmptyMultibandTiles can have a bandCount of 0.
-    val bands = if (tileBandCount == 0) expectedBandCount else tileBandCount
-    if (bands != expectedBandCount) {
-      throw new IllegalArgumentException(s"Invalid band count, actual: $tileBandCount, expected: $expectedBandCount")
-    }
-    return bands
   }
 
   def aggregateSpatialForGeometry(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], geometries: Seq[Geometry], crs: CRS, bandCount:Int, outputPath:String): Unit = {
