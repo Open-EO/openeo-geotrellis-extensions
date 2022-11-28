@@ -457,7 +457,7 @@ class OpenEOProcesses extends Serializable {
    * @param datacube
    * @return
    */
-  def vectorize(datacube:MultibandTileLayerRDD[SpaceTimeKey]): Array[PolygonFeature[Int]] = {
+  def vectorize[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): (Array[PolygonFeature[Int]],CRS) = {
     val layout = datacube.metadata.layout
 
     //naive approach: combine tiles and hope that we don't exceed the max size
@@ -465,16 +465,23 @@ class OpenEOProcesses extends Serializable {
     val newCols = Math.min(256*20,layout.cols)
     val newRows = Math.min(256*20,layout.rows)
 
-    val singleBandLayer: TileLayerRDD[SpaceTimeKey] = datacube.withContext(_.mapValues(_.band(0)))
+    val singleBandLayer: TileLayerRDD[K] = datacube.withContext(_.mapValues(_.band(0)))
     val retiled = singleBandLayer.regrid(newCols.intValue(),newRows.intValue())
     val collectedFeatures = retiled.toRasters.mapValues(_.toVector()).flatMap(_._2).collect()
-    return collectedFeatures
+    return (collectedFeatures,datacube.metadata.crs)
   }
 
-  def vectorize(datacube:MultibandTileLayerRDD[SpaceTimeKey], outputFile:String): Unit = {
-    val features = this.vectorize(datacube)
+  def vectorize(datacube:Object, outputFile:String): Unit = {
+
+    val (features,crs) = datacube match {
+      case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        vectorize(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
+      case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]  =>
+        vectorize(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]])
+      case _ => throw new IllegalArgumentException("Unsupported rdd type to vectorize: ${rdd}")
+    }
     val json = JsonFeatureCollection(features).asJson
-    val epsg = "epsg:"+datacube.metadata.crs.epsgCode.get
+    val epsg = "epsg:"+ crs.epsgCode.get
     val crs_json = _root_.io.circe.parser.parse("""{"crs":{"type":"name","properties":{"name":"THE_CRS"}}}""".replace("THE_CRS",epsg))
     val jsonWithCRS = json.deepMerge(crs_json.right.get)
     Files.write(Paths.get(outputFile), jsonWithCRS.toString().getBytes(StandardCharsets.UTF_8))
