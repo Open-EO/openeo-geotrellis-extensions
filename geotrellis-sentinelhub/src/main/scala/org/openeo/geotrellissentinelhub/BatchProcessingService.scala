@@ -163,7 +163,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
     val actualPuToEstimateRatio = 1.0 / 3
     val estimateSecureFactor = actualPuToEstimateRatio * 2
     val temporalInterval = response.temporalIntervalInDays
-      .map(_.ceil.toInt)
+      .map(_.ceil.toInt max 1)
       .getOrElse(defaultTemporalInterval)
 
     val slightlyMoreAccurateProcessingUnitsSpent: Option[BigDecimal] = response.valueEstimate
