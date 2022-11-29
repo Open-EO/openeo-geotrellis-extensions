@@ -76,7 +76,14 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val selectedSources = reprojectedSources(bands)
     val singleBandRasters = selectedSources.toList.par
-      .map { _.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
+      .map  {source =>
+        try{
+          source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
+        }   catch {
+          case e: Exception => throw new IOException(s"Error while reading : ${source.name.toString}", e)
+        }
+
+      }
       .collect { case Some(raster) => raster }
 
     if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType)).seq), singleBandRasters.head.extent))
