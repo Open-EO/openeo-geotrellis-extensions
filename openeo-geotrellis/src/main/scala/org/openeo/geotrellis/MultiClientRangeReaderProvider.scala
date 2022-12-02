@@ -27,7 +27,13 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
 
     val theClient: S3Client =
       if (isCloudFerro)
-        if (s3Uri.getBucket.toLowerCase().equals("eodata")) s3Client(Region.of("RegionOne"), new URI(s3Endpoint))
+        if (s3Uri.getBucket.toLowerCase().equals("eodata")) {
+          var uri = new URI(s3Endpoint)
+          if(uri.getScheme == null) {
+            uri = URI.create("https://" + uri.toString)
+          }
+          s3Client(Region.of("RegionOne"), uri)
+        }
         else s3Client(Region.of("RegionOne"), swiftEndpoint)
       else s3Client(bucketRegion(s3Uri.getBucket))
 
