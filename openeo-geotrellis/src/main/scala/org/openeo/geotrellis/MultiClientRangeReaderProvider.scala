@@ -30,7 +30,7 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
         if (s3Uri.getBucket.toLowerCase().equals("eodata")) {
           var uri = new URI(s3Endpoint)
           if(uri.getScheme == null) {
-            uri = URI.create("https://" + uri.toString)
+            uri = URI.create("http://" + uri.toString)
           }
           s3Client(Region.of("RegionOne"), uri)
         }
