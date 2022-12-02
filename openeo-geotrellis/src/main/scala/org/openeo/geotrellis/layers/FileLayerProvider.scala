@@ -846,7 +846,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
           if(experimental) {
             Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(theResolution), resampleMethod=Some(resampleMethod)), targetCellType = targetCellType))
           }else{
-            Seq(GeoTiffResampleRasterSource(GeoTiffPath(dataPath), alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType, None))
+            Seq(GeoTiffResampleRasterSource(GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/")), alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType, None))
           }
         }else{
           if(experimental) {
@@ -854,7 +854,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
             Seq(GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType))
           }else{
 
-            Seq(GeoTiffReprojectRasterSource(GeoTiffPath(dataPath), targetExtent.crs, alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType = targetCellType))
+            Seq(GeoTiffReprojectRasterSource(GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/")), targetExtent.crs, alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType = targetCellType))
           }
         }
       }
