@@ -12,7 +12,7 @@ import geotrellis.raster.io.geotiff.{GeoTiffOptions, Tags}
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.resample.ResampleMethod
+import geotrellis.raster.resample.{NearestNeighbor, ResampleMethod}
 import geotrellis.spark.join.SpatialJoin
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.{MultibandTileLayerRDD, _}
@@ -697,12 +697,13 @@ class OpenEOProcesses extends Serializable {
   }
 
   def mergeCubes(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey], operator:String): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    checkMetadataCompatible(leftCube.metadata,rightCube.metadata)
-    val joined = outerJoin(leftCube,rightCube)
-    val outputCellType = leftCube.metadata.cellType.union(rightCube.metadata.cellType)
+    val resampled = resampleCubeSpatial(rightCube,leftCube,NearestNeighbor)._2
+    checkMetadataCompatible(leftCube.metadata,resampled.metadata)
+    val joined = outerJoin(leftCube,resampled)
+    val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
 
-    val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(rightCube.metadata.extent),cellType = outputCellType)
-    mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
+    val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(resampled.metadata.extent),cellType = outputCellType)
+    mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,resampled)
   }
 
   private def mergeCubesGeneric[K: Boundable: PartitionerIndex: ClassTag
