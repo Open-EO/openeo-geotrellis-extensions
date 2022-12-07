@@ -30,6 +30,8 @@ object SCLConvolutionFilterStrategy{
 
   private val defaultMask1 = util.Arrays.asList(2, 4, 5, 6, 7)
   private val defaultMask2 = util.Arrays.asList(3,8,9,10,11)
+
+  val DEFAULT_EROSION_KERNEL = 0
   val DEFAULT_KERNEL1 = 17
   val DEFAULT_KERNEL2 = 201
 
@@ -58,6 +60,16 @@ class SCLConvolutionFilterStrategy(val sclBandIndex: Int = 0,val maskingParams:u
     k.tile.convert(DoubleConstantNoDataCellType).localDivide(k.tile.toArray().sum)
   }
 
+  private def erosion_kernel(windowSize: Int): Option[Tile] = {
+    if(windowSize<=0) {
+      None
+    }else{
+      val k = Kernel.circle(windowSize,0,windowSize/2)
+      Some(k.tile)
+    }
+  }
+
+  private val erosionKernel = erosion_kernel(maskingParams.getOrDefault("erosion_kernel_size",DEFAULT_EROSION_KERNEL.asInstanceOf[Object]).asInstanceOf[Int])
   private val kernel1 = kernel(maskingParams.getOrDefault("kernel1_size",DEFAULT_KERNEL1.asInstanceOf[Object]).asInstanceOf[Int])
   private val kernel2 = kernel(maskingParams.getOrDefault("kernel2_size",DEFAULT_KERNEL2.asInstanceOf[Object]).asInstanceOf[Int])
 
@@ -69,16 +81,18 @@ class SCLConvolutionFilterStrategy(val sclBandIndex: Int = 0,val maskingParams:u
       val maskTile = cloudRaster.get.tile.band(0)
 
       var allMasked = true
+      var nothingMasked = true
       val mask1Values = maskingParams.getOrDefault("mask1_values",defaultMask1).asInstanceOf[util.List[Int]]
       val binaryMask = maskTile.map(value => {
         if (mask1Values.contains(value)) {
           allMasked = false
           0
         } else {
+          nothingMasked = false
           1
         }
       })
-      if (!allMasked) {
+      if (!allMasked && !nothingMasked) {
 
         /**
          * 0: nodata
@@ -97,9 +111,11 @@ class SCLConvolutionFilterStrategy(val sclBandIndex: Int = 0,val maskingParams:u
 
         val tileSize = binaryMask.cols - 2*bufferSize
 
+        val eroded = erode(binaryMask)
+
         //maskTile.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("mask.png")
         //binaryMask.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("bmask1.png")
-        val convolved = FFTConvolve(binaryMask, kernel1)
+        val convolved = FFTConvolve(eroded, kernel1)
         //first dilate, with a small kernel around everything that is not valid
         allMasked = true
         val convolution1 = convolved.crop(binaryMask.cols - (tileSize + bufferSize), binaryMask.rows - (tileSize + bufferSize), binaryMask.cols - (bufferSize+1), binaryMask.rows - (bufferSize+1)).localIf({ d: Double => {
@@ -123,8 +139,9 @@ class SCLConvolutionFilterStrategy(val sclBandIndex: Int = 0,val maskingParams:u
             }
           })
 
+          val eroded2 = erode(binaryMask2)
           //binaryMask2.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("bmask2.png")
-          val convolution2 = FFTConvolve(binaryMask2, kernel2).crop(binaryMask2.cols - (tileSize + bufferSize), binaryMask2.rows - (tileSize + bufferSize), binaryMask2.cols - (bufferSize+1), binaryMask2.rows - (bufferSize+1))
+          val convolution2 = FFTConvolve(eroded2, kernel2).crop(binaryMask2.cols - (tileSize + bufferSize), binaryMask2.rows - (tileSize + bufferSize), binaryMask2.cols - (bufferSize+1), binaryMask2.rows - (bufferSize+1))
           val mask2 = convolution2.localIf({ d: Double => d > 0.025 }, 1.0, 0.0)
           //convolution2.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("conv2.png")
           //Use bit celltype because of: https://github.com/locationtech/geotrellis/issues/3488
@@ -135,7 +152,20 @@ class SCLConvolutionFilterStrategy(val sclBandIndex: Int = 0,val maskingParams:u
           if (allMasked) None
           else maskTileLoader.loadData.map(_.mapBands((_, tile) => tile.localMask(fullMask, 1, NODATA)))
         } else None
-      } else None
+      } else if(nothingMasked){
+        maskTileLoader.loadData
+      }else None
     } else maskTileLoader.loadData
+  }
+
+  private def erode(binaryMask2: Tile) = {
+    if (erosionKernel.isDefined) {
+      val maskInvert = binaryMask2.localSubtract(1).localPow(2)
+      val eroded = FFTConvolve(maskInvert, erosionKernel.get)
+      val erodedInvert = eroded.localIf({ d: Double => d > 0.5 }, 0.0, 1.0)
+      erodedInvert
+    } else {
+      binaryMask2
+    }
   }
 }
