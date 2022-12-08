@@ -19,7 +19,10 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.util.SizeEstimator
 import org.junit.Assert._
-import org.junit._
+import org.junit.jupiter.api._
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments.arguments
+import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
@@ -33,6 +36,7 @@ import java.time.ZoneOffset.UTC
 import java.time._
 import java.util
 import java.util.Collections
+import java.util.stream.Stream
 import scala.collection.JavaConverters.mapAsJavaMapConverter
 
 object Sentinel2FileLayerProviderTest {
@@ -41,26 +45,29 @@ object Sentinel2FileLayerProviderTest {
   private val maxSpatialResolution = CellSize(10, 10)
   private val pathDateExtractor = SplitYearMonthDayPathDateExtractor
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit = sc = SparkUtils.createLocalSparkContext("local[1]",
     appName = Sentinel2FileLayerProviderTest.getClass.getName)
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 
-  @BeforeClass def tracking(): Unit ={
+  @BeforeAll def tracking(): Unit ={
     BatchJobMetadataTracker.setGlobalTracking(true)
   }
 
-  @AfterClass def trackingOff(): Unit ={
+  @AfterAll def trackingOff(): Unit ={
     BatchJobMetadataTracker.setGlobalTracking(false)
   }
+  def maskingParams: Stream[Arguments] = Stream.of(arguments(Collections.singletonMap("method", "mask_scl_dilation"),"https://artifactory.vgt.vito.be/testdata-public/dilation_masked.tif"), arguments(Map("method"->"mask_scl_dilation","erosion_kernel_size"->3,"kernel1_size"->0).asJava.asInstanceOf[util.Map[String,Object]],"https://artifactory.vgt.vito.be/testdata-public/masked_erosion.tif"))
+
 }
+
 
 class Sentinel2FileLayerProviderTest extends RasterMatchers {
   import Sentinel2FileLayerProviderTest._
 
-  @Before
+  @BeforeEach
   def clearTracker(): Unit = {
     BatchJobMetadataTracker.clearGlobalTracker()
   }
@@ -166,7 +173,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
   }
 
-  @Test(timeout = 20000) // generous timeout
+  @Timeout(2000)
+  @Test
   def loadMetadata(): Unit = {
     val Some((extent, dates)) = faparLayerProvider().loadMetadata(sc)
 
@@ -266,7 +274,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assertEquals(ShortUserDefinedNoDataCellType(32767),localData(0)._2.band(1).cellType)
   }
 
-  @Ignore("TODO: verify output")
+  @Disabled("TODO: verify output")
   @Test
   def filterByAttributeValue(): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
@@ -282,7 +290,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     spatialLayer.writeGeoTiff("/tmp/Sentinel2FileLayerProvider_10_UFS.tif", bbox)
   }
 
-  @Ignore("TODO: verify output")
+  @Disabled("TODO: verify output")
   @Test
   def testBlackStreak(): Unit = {
     import geotrellis.vector.io.json.GeoJson
@@ -348,15 +356,16 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assertEquals(utm32,spatialLayer.metadata.crs)
   }
 
-  @Test
-  def testMaskSclDilationOnS2TileEdge(): Unit = {
+  @ParameterizedTest
+  @MethodSource(Array("maskingParams"))
+  def testMaskSclDilationOnS2TileEdge(params:util.Map[String,Object],ref:String): Unit = {
     val date = LocalDate.of(2019, 3, 7).atStartOfDay(UTC)
 
     val crs = CRS.fromEpsgCode(32631)
     val boundingBox = ProjectedExtent(Extent(640860, 5676170, 666460, 5701770), crs)
 
     val dataCubeParameters = new DataCubeParameters
-    dataCubeParameters.maskingStrategyParameters = Collections.singletonMap("method", "mask_scl_dilation")
+    dataCubeParameters.maskingStrategyParameters = params
 
     val layer = tocLayerProviderUTM.readMultibandTileLayer(
       from = date,
@@ -378,10 +387,11 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       case _ => throw new IllegalStateException("nothing to sparse-stitch")
     }
 
-    val referenceTile = GeoTiffRasterSource("https://artifactory.vgt.vito.be/testdata-public/dilation_masked.tif").read().get
+    val referenceTile = GeoTiffRasterSource(ref).read().get
     val actualTile = GeoTiffRasterSource("/tmp/masked.tif").read().get
     assertRastersEqual(referenceTile,actualTile,160.0)
   }
+
 
   @Test
   def testMaskL1CRasterSourceFiltering(): Unit = {

@@ -55,9 +55,13 @@ class SCLConvolutionFilterStrategy(val sclBandIndex: Int = 0,val maskingParams:u
 
   val amplitude = 10000.0
 
-  private def kernel(windowSize: Int): Tile = {
-    val k = Kernel.gaussian(windowSize, windowSize / 6.0, amplitude)
-    k.tile.convert(DoubleConstantNoDataCellType).localDivide(k.tile.toArray().sum)
+  private def kernel(windowSize: Int): Option[Tile] = {
+    if(windowSize<=0) {
+      None
+    }else {
+      val k = Kernel.gaussian(windowSize, windowSize / 6.0, amplitude)
+      Some(k.tile.convert(DoubleConstantNoDataCellType).localDivide(k.tile.toArray().sum))
+    }
   }
 
   private def erosion_kernel(windowSize: Int): Option[Tile] = {
@@ -74,7 +78,7 @@ class SCLConvolutionFilterStrategy(val sclBandIndex: Int = 0,val maskingParams:u
   private val kernel2 = kernel(maskingParams.getOrDefault("kernel2_size",DEFAULT_KERNEL2.asInstanceOf[Object]).asInstanceOf[Int])
 
   override def loadMasked(maskTileLoader: MaskTileLoader): Option[MultibandTile] = {
-    val bufferSize = (kernel2.cols/2).floor.intValue()
+    val bufferSize = (kernel2.get.cols/2).floor.intValue()
     val cloudRaster = maskTileLoader.loadMask(bufferInPixels = bufferSize, sclBandIndex)
 
     if (cloudRaster.isDefined) {
@@ -92,12 +96,12 @@ class SCLConvolutionFilterStrategy(val sclBandIndex: Int = 0,val maskingParams:u
           1
         }
       })
-      if (!allMasked && !nothingMasked) {
+      if (!allMasked ) {
 
         /**
          * 0: nodata
          * 1: saturated
-         * 2: dark area
+         * 2: dark area or cast shadows??
          * 3 cloud shadow
          * 4 vegetatin
          * 5 no vegetation
@@ -111,41 +115,57 @@ class SCLConvolutionFilterStrategy(val sclBandIndex: Int = 0,val maskingParams:u
 
         val tileSize = binaryMask.cols - 2*bufferSize
 
-        val eroded = erode(binaryMask)
+        val convolution1 =
+        if(!nothingMasked && kernel1.isDefined) {
+          val eroded = erode(binaryMask)
 
-        //maskTile.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("mask.png")
-        //binaryMask.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("bmask1.png")
-        val convolved = FFTConvolve(eroded, kernel1)
-        //first dilate, with a small kernel around everything that is not valid
-        allMasked = true
-        val convolution1 = convolved.crop(binaryMask.cols - (tileSize + bufferSize), binaryMask.rows - (tileSize + bufferSize), binaryMask.cols - (bufferSize+1), binaryMask.rows - (bufferSize+1)).localIf({ d: Double => {
-          val res = d > 0.057
-          if (!res) {
-            allMasked = false
+          //maskTile.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("mask.png")
+          //binaryMask.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("bmask1.png")
+          val convolved = FFTConvolve(eroded, kernel1.get)
+          //first dilate, with a small kernel around everything that is not valid
+          allMasked = true
+          Some(convolved.crop(binaryMask.cols - (tileSize + bufferSize), binaryMask.rows - (tileSize + bufferSize), binaryMask.cols - (bufferSize+1), binaryMask.rows - (bufferSize+1)).localIf({ d: Double => {
+            val res = d > 0.057
+            if (!res) {
+              allMasked = false
+            }
+            res
           }
-          res
+          }, 1.0, 0.0))
+        }else{
+          if(nothingMasked){
+            None
+          }else{
+            Some(binaryMask.crop(binaryMask.cols - (tileSize + bufferSize), binaryMask.rows - (tileSize + bufferSize), binaryMask.cols - (bufferSize+1), binaryMask.rows - (bufferSize+1))) //kernel size is 0, but there is still a basic binary mask
+          }
+
         }
-        }, 1.0, 0.0)
 
 
         if (!allMasked) {
           val mask2Values = maskingParams.getOrDefault("mask2_values",defaultMask2).asInstanceOf[util.List[Int]]
           //convolution1.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("conv1.png")
+          allMasked = true
           val binaryMask2 = maskTile.map(value => {
             if (mask2Values.contains(value)) {
               1
             } else {
+              allMasked = false
               0
             }
           })
 
-          val eroded2 = erode(binaryMask2)
-          //binaryMask2.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("bmask2.png")
-          val convolution2 = FFTConvolve(eroded2, kernel2).crop(binaryMask2.cols - (tileSize + bufferSize), binaryMask2.rows - (tileSize + bufferSize), binaryMask2.cols - (bufferSize+1), binaryMask2.rows - (bufferSize+1))
-          val mask2 = convolution2.localIf({ d: Double => d > 0.025 }, 1.0, 0.0)
+          val mask2 = if(!allMasked){
+            val eroded2 = erode(binaryMask2)
+            //binaryMask2.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("bmask2.png")
+            val convolution2 = FFTConvolve(eroded2, kernel2.get).crop(binaryMask2.cols - (tileSize + bufferSize), binaryMask2.rows - (tileSize + bufferSize), binaryMask2.cols - (bufferSize+1), binaryMask2.rows - (bufferSize+1))
+            convolution2.localIf({ d: Double => d > 0.025 }, 1.0, 0.0)
+          } else{
+            binaryMask2.crop(binaryMask2.cols - (tileSize + bufferSize), binaryMask2.rows - (tileSize + bufferSize), binaryMask2.cols - (bufferSize+1), binaryMask2.rows - (bufferSize+1))
+          }
           //convolution2.convert(UByteConstantNoDataCellType).renderPng(ColorMaps.IGBP).write("conv2.png")
           //Use bit celltype because of: https://github.com/locationtech/geotrellis/issues/3488
-          val fullMask = convolution1.localOr(mask2).convert(BitCellType)
+          val fullMask = convolution1.map(_.localOr(mask2)).getOrElse(mask2).convert(BitCellType)
 
           allMasked = !fullMask.toArray().contains(0)
 
