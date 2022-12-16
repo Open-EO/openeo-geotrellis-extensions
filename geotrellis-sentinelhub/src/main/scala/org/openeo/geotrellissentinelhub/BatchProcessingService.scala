@@ -16,7 +16,8 @@ object BatchProcessingService {
   private val logger = LoggerFactory.getLogger(classOf[BatchProcessingService])
 
   case class NoSuchFeaturesException(message: String) extends IllegalArgumentException(message)
-  case class BatchProcess(id: String, status: String, processing_units_spent: java.math.BigDecimal)
+  case class BatchProcess(id: String, status: String, value_estimate: java.math.BigDecimal,
+                          @deprecated("incorrect, derive from value_estimate") processing_units_spent: java.math.BigDecimal)
 }
 
 class BatchProcessingService(endpoint: String, val bucketName: String, authorizer: Authorizer) {
@@ -169,7 +170,8 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
     val slightlyMoreAccurateProcessingUnitsSpent: Option[BigDecimal] = response.valueEstimate
       .map(_ * estimateSecureFactor * defaultTemporalInterval / temporalInterval)
 
-    BatchProcess(response.id, response.status, slightlyMoreAccurateProcessingUnitsSpent.map(_.bigDecimal).orNull)
+    BatchProcess(response.id, response.status, response.valueEstimate.map(_.bigDecimal).orNull,
+      slightlyMoreAccurateProcessingUnitsSpent.map(_.bigDecimal).orNull)
   }
 
   def restart_partially_failed_batch_process(batch_request_id: String): Unit = authorized { accessToken =>

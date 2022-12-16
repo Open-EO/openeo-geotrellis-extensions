@@ -361,7 +361,7 @@ class BatchProcessingServiceTest {
       batchProcessingService.get_batch_process(batch_request_id = "dd43f448-d582-40c5-9288-ae7a9c07ecbe")
 
     assertEquals("DONE", batch_process.status)
-    assertEquals(91.55273710348410, batch_process.processing_units_spent.doubleValue(), 0.0001)
+    assertEquals(45.77636855174205, batch_process.value_estimate.doubleValue(), 0.0001)
   }
 
   @Ignore
