@@ -293,26 +293,26 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             DatacubeSupport.applyDataMask(Some(dataCubeParameters), tilesRdd,metadata)
           } else {
-              val multiPolygon:Geometry = if(polygons.length <=2000){
-                simplify(polygons)
-              }else{
-                val polygonsRDD = sc.parallelize(polygons,math.max(1,polygons.length/100))
-                // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
-                var requiredSpatialKeys = polygonsRDD.clipToGrid(metadata.layout)
-                val transform = metadata.mapTransform
-                val tilebounds = dissolve(requiredSpatialKeys.map(_._1).distinct().map(key=>transform.keyToExtent(key).toPolygon()).collect())
-                if(tilebounds.getNumGeometries > 500) {
-                  //shub catalog can not handle huge amount of polygons, so just use bbox
-                  boundingBox.extent.toPolygon()
-                } else{
-                  tilebounds
-                }
+            val multiPolygon: Geometry = if (polygons.length <= 2000) {
+              simplify(polygons)
+            } else {
+              val polygonsRDD = sc.parallelize(polygons, math.max(1, polygons.length / 100))
+              // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
+              var requiredSpatialKeys = polygonsRDD.clipToGrid(metadata.layout)
+              val transform = metadata.mapTransform
+              val tilebounds = dissolve(requiredSpatialKeys.map(_._1).distinct().map(key => transform.keyToExtent(key).toPolygon()).collect())
+              if (tilebounds.getNumGeometries > 500) {
+                //shub catalog can not handle huge amount of polygons, so just use bbox
+                boundingBox.extent.toPolygon()
+              } else {
+                tilebounds
               }
+            }
 
-              val features = authorized { accessToken =>
-                _catalogApi.search(collectionId, multiPolygon, polygons_crs,
-                  from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
-              }
+            val features = authorized { accessToken =>
+              _catalogApi.search(collectionId, multiPolygon, polygons_crs,
+                from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
+            }
 
             tracker.addInputProducts(collectionId,features.keys.toList.asJava)
 
