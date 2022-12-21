@@ -319,8 +319,10 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             val polygonsRDD = sc.parallelize(features.values.toSeq,math.max(1,features.size/10)).map(_.reproject(LatLng, boundingBox.crs)).map(f => Feature(f intersection multiPolygon, f.data.toLocalDate.atStartOfDay(UTC)))
             var requiredSpatialKeysForFeatures: RDD[(SpatialKey, Iterable[Feature[Geometry, ZonedDateTime]])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
 
-            val spatialKeyCount = requiredSpatialKeysForFeatures.map(_._1).countApproxDistinct()
-            logger.info(s"Sentinelhub datacube requires approximately ${spatialKeyCount} spatial keys.")
+            if (logger.isInfoEnabled) {
+              val spatialKeyCount = requiredSpatialKeysForFeatures.map(_._1).countApproxDistinct()
+              logger.info(s"Sentinelhub datacube requires approximately ${spatialKeyCount} spatial keys.")
+            }
 
             val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = None//DatacubeSupport.optimizeChunkSize(metadata, polygons, Option(dataCubeParameters), spatialKeyCount)
             metadata = retiledMetadata.getOrElse(metadata)
