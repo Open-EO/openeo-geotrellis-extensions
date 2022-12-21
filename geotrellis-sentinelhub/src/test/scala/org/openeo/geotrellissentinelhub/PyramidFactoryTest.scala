@@ -852,4 +852,45 @@ class PyramidFactoryTest {
       assertTrue(s"expected at least one failed tile request but got $numFailedRequests instead", numFailedRequests > 0)
     } finally sc.stop()
   }
+
+  @Test
+  def testSentinel5PL2DuplicateRequests(): Unit = {
+    // mimics /home/bossie/Documents/VITO/applying mask increases PUs drastically #95/process_graph_without_mask_smaller.json
+    implicit val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      val boundingBox = ProjectedExtent(Extent(xmin = 6.1, ymin = 46.16, xmax = 6.11, ymax = 46.17), LatLng)
+      val date = ZonedDateTime.of(LocalDate.of(2018, 7, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+      val endpoint = "https://creodias.sentinel-hub.com"
+
+      val catalogApiSpy = new CatalogApiSpy(endpoint)
+      val processApiSpy = new ProcessApiSpy(endpoint)
+
+      val pyramidFactory = new PyramidFactory("sentinel-5p-l2", "sentinel-5p-l2", catalogApiSpy,
+        processApiSpy, authorizer, maxSpatialResolution = CellSize(0.054563492063483, 0.034722222222216),
+        sampleType = FLOAT32)
+
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
+        from_date = ISO_OFFSET_DATE_TIME format date,
+        to_date = ISO_OFFSET_DATE_TIME format date,
+        band_names = Seq("NO2").asJava,
+        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
+      )
+
+      val spatialLayer = layer
+        .toSpatial()
+        .cache()
+
+      val raster = spatialLayer.stitch().crop(boundingBox.extent)
+
+      val tif = MultibandGeoTiff(raster.tile, raster.extent, layer.metadata.crs, geoTiffOptions)
+      tif.write(s"/tmp/testSentinel5PL2Requests.tif")
+
+      assertEquals(1, catalogApiSpy.searchCount)
+      // TODO: assert that Catalog API does in fact return 10 near-identical features
+      assertEquals(1, processApiSpy.getTileCount)
+    } finally sc.stop()
+  }
 }
