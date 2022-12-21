@@ -314,17 +314,33 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
             }
 
-            tracker.addInputProducts(collectionId,features.keys.toList.asJava)
+            tracker.addInputProducts(collectionId, features.keys.toList.asJava)
 
-            val polygonsRDD = sc.parallelize(features.values.toSeq,math.max(1,features.size/10)).map(_.reproject(LatLng, boundingBox.crs)).map(f => Feature(f intersection multiPolygon, f.data.toLocalDate.atStartOfDay(UTC)))
-            val requiredSpatialKeysForFeatures: RDD[(SpatialKey, Iterable[Feature[Geometry, ZonedDateTime]])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
+            val polygonsRDD = sc.parallelize(features.values.toSeq, math.max(1,features.size / 10))
+              .map(_.reproject(LatLng, boundingBox.crs))
+              .map(f => Feature(f intersection multiPolygon, f.data.toLocalDate.atStartOfDay(UTC)))
+
+            val featuresByDay = polygonsRDD.groupBy(_.data)
+            val simplifiedGeometriesByDay = featuresByDay.map { case (date, features) =>
+              val multiPolygons = features
+                .map(_.geom)
+                .flatMap {
+                  case polygon: Polygon => Some(MultiPolygon(polygon))
+                  case multiPolygon: MultiPolygon => Some(multiPolygon)
+                  case _ => None
+                }
+
+              Feature(simplify(multiPolygons.toArray), date)
+            }
+
+            val requiredSpatialKeysForFeatures = simplifiedGeometriesByDay.clipToGrid(metadata.layout)
 
             if (logger.isInfoEnabled) {
               val spatialKeyCount = requiredSpatialKeysForFeatures.map(_._1).countApproxDistinct()
               logger.info(s"Sentinelhub datacube requires approximately ${spatialKeyCount} spatial keys.")
             }
 
-            val requiredKeysRdd = requiredSpatialKeysForFeatures.flatMap(tuple=> tuple._2.map(feature => SpaceTimeKey(tuple._1.col,tuple._1.row,feature.data)))
+            val requiredKeysRdd = requiredSpatialKeysForFeatures.map { case (SpatialKey(col, row), Feature(_, date)) => SpaceTimeKey(col, row, date)}
 
             val partitioner = DatacubeSupport.createPartitioner(Some(dataCubeParameters), requiredKeysRdd, metadata)
             val approxRequests = requiredKeysRdd.countApproxDistinct()
