@@ -194,7 +194,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
       val scheme = FloatingLayoutScheme(dataCubeParameters.tileSize)
 
       val multiple_polygons_flag = polygons.length > 1
-      var metadata = DatacubeSupport.layerMetadata(
+      val metadata = DatacubeSupport.layerMetadata(
         boundingBox, from, to, 0, sampleType.cellType, scheme, maxSpatialResolution,
         dataCubeParameters.globalExtent, multiple_polygons_flag
       )
@@ -317,18 +317,11 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             tracker.addInputProducts(collectionId,features.keys.toList.asJava)
 
             val polygonsRDD = sc.parallelize(features.values.toSeq,math.max(1,features.size/10)).map(_.reproject(LatLng, boundingBox.crs)).map(f => Feature(f intersection multiPolygon, f.data.toLocalDate.atStartOfDay(UTC)))
-            var requiredSpatialKeysForFeatures: RDD[(SpatialKey, Iterable[Feature[Geometry, ZonedDateTime]])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
+            val requiredSpatialKeysForFeatures: RDD[(SpatialKey, Iterable[Feature[Geometry, ZonedDateTime]])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
 
             if (logger.isInfoEnabled) {
               val spatialKeyCount = requiredSpatialKeysForFeatures.map(_._1).countApproxDistinct()
               logger.info(s"Sentinelhub datacube requires approximately ${spatialKeyCount} spatial keys.")
-            }
-
-            val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = None//DatacubeSupport.optimizeChunkSize(metadata, polygons, Option(dataCubeParameters), spatialKeyCount)
-            metadata = retiledMetadata.getOrElse(metadata)
-
-            if (retiledMetadata.isDefined) {
-              requiredSpatialKeysForFeatures = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
             }
 
             val requiredKeysRdd = requiredSpatialKeysForFeatures.flatMap(tuple=> tuple._2.map(feature => SpaceTimeKey(tuple._1.col,tuple._1.row,feature.data)))
