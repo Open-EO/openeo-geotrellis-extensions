@@ -75,9 +75,25 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
     val reprojectedGeometry = reprojectedBoundingBox.extent.toPolygon()
 
     val overlappingKeys = {
+      val intersectingFeaturesByDay = features.values
+        .map(feature => feature.mapData(_.toLocalDate.atStartOfDay(UTC)))
+        .groupBy(_.data)
+
+      val simplifiedIntersectingFeaturesByDay = intersectingFeaturesByDay
+        .map { case (date, features) =>
+          val multiPolygons = features
+            .map(_.geom)
+            .flatMap {
+              case polygon: Polygon => Some(MultiPolygon(polygon))
+              case multiPolygon: MultiPolygon => Some(multiPolygon)
+              case _ => None
+            }
+
+          Feature(simplify(multiPolygons), date)
+        }
+
       val intersectingFeatureKeys = for {
-        (_, Feature(geom, datetime)) <- features.toSet
-        date = datetime.toLocalDate.atStartOfDay(UTC)
+        Feature(geom, date) <- simplifiedIntersectingFeaturesByDay
         reprojectedGeom = geom.reproject(LatLng, reprojectedBoundingBox.crs)
         SpatialKey(col, row) <- layout.mapTransform.keysForGeometry(reprojectedGeom intersection reprojectedGeometry)
       } yield SpaceTimeKey(col, row, date)
