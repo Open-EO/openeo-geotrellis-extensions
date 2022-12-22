@@ -13,6 +13,10 @@ import geotrellis.vector._
 import org.apache.spark.{SparkConf, SparkContext, SparkException}
 import org.junit.Assert.{assertEquals, assertTrue, fail}
 import org.junit._
+import org.mockito.ArgumentMatchers.any
+import org.mockito.invocation.InvocationOnMock
+import org.mockito.stubbing.Answer
+import org.mockito.Mockito._
 import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{SH_FAILED_TILE_REQUESTS, SH_PU}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
@@ -73,6 +77,15 @@ object PyramidFactoryTest {
 
   @AfterClass def trackingOff(): Unit ={
     BatchJobMetadataTracker.setGlobalTracking(false)
+  }
+
+  private class SingleResultCaptor[R] extends Answer[R] {
+    var result: R = _
+
+    override def answer(invocation: InvocationOnMock): R = {
+      result = invocation.callRealMethod().asInstanceOf[R]
+      result
+    }
   }
 }
 
@@ -864,8 +877,13 @@ class PyramidFactoryTest {
 
       val endpoint = "https://creodias.sentinel-hub.com"
 
-      val catalogApiSpy = new CatalogApiSpy(endpoint)
+      val catalogApiSpy = spy(new DefaultCatalogApi(endpoint))
       val processApiSpy = new ProcessApiSpy(endpoint)
+
+      val catalogApiResultCaptor = new SingleResultCaptor[Map[String, Feature[Geometry, ZonedDateTime]]]
+
+      doAnswer(catalogApiResultCaptor).when(catalogApiSpy)
+        .search(any(), any(), any(), any(), any(), any(), any())
 
       val pyramidFactory = new PyramidFactory("sentinel-5p-l2", "sentinel-5p-l2", catalogApiSpy,
         processApiSpy, authorizer, maxSpatialResolution = CellSize(0.054563492063483, 0.034722222222216),
@@ -888,8 +906,8 @@ class PyramidFactoryTest {
       val tif = MultibandGeoTiff(raster.tile, raster.extent, layer.metadata.crs, geoTiffOptions)
       tif.write(s"/tmp/testSentinel5PL2Requests.tif")
 
-      assertEquals(1, catalogApiSpy.searchCount)
-      // TODO: assert that Catalog API does in fact return 10 near-identical features
+      verify(catalogApiSpy).search(any(), any(), any(), any(), any(), any(), any())
+      assertEquals(catalogApiResultCaptor.result.toString(), 10, catalogApiResultCaptor.result.size)
       assertEquals(1, processApiSpy.getTileCount)
     } finally sc.stop()
   }
