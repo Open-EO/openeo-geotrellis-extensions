@@ -316,12 +316,13 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             tracker.addInputProducts(collectionId, features.keys.toList.asJava)
 
-            val polygonsRDD = sc.parallelize(features.values.toSeq, math.max(1,features.size / 10))
-              .map(_.reproject(LatLng, boundingBox.crs))
-              .map(f => Feature(f intersection multiPolygon, f.data.toLocalDate.atStartOfDay(UTC)))
+            val featureIntersections = for {
+              feature <- sc.parallelize(features.values.toSeq, math.max(1, features.size / 10))
+              reprojectedFeature = feature.reproject(LatLng, boundingBox.crs)
+            } yield Feature(reprojectedFeature intersection multiPolygon, reprojectedFeature.data.toLocalDate.atStartOfDay(UTC))
 
-            val featuresByDay = polygonsRDD.groupBy(_.data)
-            val simplifiedGeometriesByDay = featuresByDay.map { case (date, features) =>
+            val featureIntersectionsByDay = featureIntersections.groupBy(_.data)
+            val simplifiedFeatureIntersectionsByDay = featureIntersectionsByDay.map { case (date, features) =>
               val multiPolygons = features
                 .map(_.geom)
                 .flatMap {
@@ -330,10 +331,10 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                   case _ => None
                 }
 
-              Feature(simplify(multiPolygons.toArray), date)
+              Feature(simplify(multiPolygons), date)
             }
 
-            val requiredSpatialKeysForFeatures = simplifiedGeometriesByDay.clipToGrid(metadata.layout)
+            val requiredSpatialKeysForFeatures = simplifiedFeatureIntersectionsByDay.clipToGrid(metadata.layout)
 
             if (logger.isInfoEnabled) {
               val spatialKeyCount = requiredSpatialKeysForFeatures.map(_._1).countApproxDistinct()
@@ -346,14 +347,12 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             val approxRequests = requiredKeysRdd.countApproxDistinct()
             logger.info(s"Created Sentinelhub datacube ${collectionId} with $approxRequests keys and metadata ${metadata} and ${partitioner.get}")
 
-            var keysRdd = requiredKeysRdd.map((_,Option.empty)).partitionBy(partitioner.get)
-
+            var keysRdd = requiredKeysRdd.map((_, None)).partitionBy(partitioner.get)
             keysRdd = DatacubeSupport.applyDataMask(Some(dataCubeParameters), keysRdd,metadata)
 
             val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = keysRdd
               .mapPartitions(_.map { case (spaceTimeKey, _) => (spaceTimeKey, loadMasked(spaceTimeKey.spatialKey, spaceTimeKey.time, approxRequests)) }, preservesPartitioning = true)
-              .filter {case (_: SpaceTimeKey, tile: Option[MultibandTile]) => tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
-              .mapValues(t => t.get)
+              .flatMapValues(_.filter(tile => !tile.bands.forall(_.isNoDataTile)))
 
             tilesRdd
           }

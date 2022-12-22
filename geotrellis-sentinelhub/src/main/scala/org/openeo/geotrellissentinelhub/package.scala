@@ -138,16 +138,16 @@ package object geotrellissentinelhub {
     else None
 
   // flattens n MultiPolygons into their polygon exteriors
-  private def polygonExteriors(multiPolygons: Array[MultiPolygon]): Seq[Polygon] =
+  private def polygonExteriors(multiPolygons: Iterable[MultiPolygon]): Iterable[Polygon] =
     for {
       multiPolygon <- multiPolygons
       polygon <- multiPolygon.polygons
     } yield Polygon(polygon.getExteriorRing)
 
-  private[geotrellissentinelhub] def dissolve(polygons: Seq[Polygon]): Geometry with Polygonal =
+  private[geotrellissentinelhub] def dissolve(polygons: Iterable[Polygon]): Geometry with Polygonal =
     GeometryCollection(polygons).union().asInstanceOf[Geometry with Polygonal]
 
-  private[geotrellissentinelhub] def simplify(multiPolygons: Array[MultiPolygon]): Geometry with Polygonal =
+  private[geotrellissentinelhub] def simplify(multiPolygons: Iterable[MultiPolygon]): Geometry with Polygonal =
     dissolve(polygonExteriors(multiPolygons))
 
   private[geotrellissentinelhub] def sequentialDays(from: ZonedDateTime, to: ZonedDateTime): Stream[ZonedDateTime] = {

@@ -115,7 +115,7 @@ class DefaultCatalogApiTest {
 
     assert(geometries.nonEmpty, "no MultiPolygons found in shapefile")
 
-    val multiPolygon = simplify(geometries.toArray)
+    val multiPolygon = simplify(geometries)
     println(s"simplified ${geometries.map(_.getNumGeometries).sum} polygons to ${multiPolygon.getNumGeometries}")
 
     val from = LocalDate.of(2020, 7, 1).minusDays(90).atStartOfDay(utc)
