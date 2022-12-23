@@ -6,13 +6,16 @@ import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, MultibandGeoTiff}
 import geotrellis.raster.{CellSize, HasNoData, MultibandTile, Raster}
+import geotrellis.shapefile.ShapeFileReader
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
+import org.apache.commons.io.FileUtils
 import org.apache.spark.{SparkConf, SparkContext, SparkException}
 import org.junit.Assert.{assertEquals, assertTrue, fail}
 import org.junit._
+import org.junit.rules.TemporaryFolder
 import org.mockito.ArgumentMatchers.any
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
@@ -21,6 +24,8 @@ import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{SH_FAILED_TILE_REQUE
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
 
+import java.io.File
+import java.net.URL
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
@@ -28,6 +33,7 @@ import java.util
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.Deflater.BEST_COMPRESSION
+import scala.annotation.meta.getter
 import scala.collection.JavaConverters._
 
 object PyramidFactoryTest {
@@ -91,6 +97,9 @@ object PyramidFactoryTest {
 
 class PyramidFactoryTest {
   import PyramidFactoryTest._
+
+  @(Rule@getter)
+  val temporaryFolder = new TemporaryFolder
 
   private val clientId = Utils.clientId
   private val clientSecret = Utils.clientSecret
@@ -910,5 +919,55 @@ class PyramidFactoryTest {
       assertEquals(catalogApiResultCaptor.result.toString(), 10, catalogApiResultCaptor.result.size)
       assertEquals(1, processApiSpy.getTileCount)
     } finally sc.stop()
+  }
+
+  @Test
+  def testLargeNumberOfInputPolygons(): Unit = {
+    import org.mockito.ArgumentMatchers.{eq => eqTo}
+
+    val tempDir = temporaryFolder.getRoot
+    val geometriesFileStem = "Fields_to_extract_2021_30SVH_RAW_0"
+
+    for (extension <- Seq("cpg", "dbf", "prj", "shp", "shx")) {
+      val geometriesFilename = s"$geometriesFileStem.$extension"
+      val geometriesUrl = new URL(s"https://artifactory.vgt.vito.be/testdata-public/parcels/$geometriesFilename")
+      FileUtils.copyURLToFile(geometriesUrl, new File(tempDir, geometriesFilename))
+    }
+
+    val endpoint = "https://services.sentinel-hub.com"
+
+    val geometriesFile = new File(tempDir, s"$geometriesFileStem.shp")
+    val geometriesCrs = LatLng
+
+    val geometries = ShapeFileReader
+      .readMultiPolygonFeatures(geometriesFile.getCanonicalPath)
+      .map(_.geom)
+
+    val from = LocalDate.of(2020, 7, 1).minusDays(90).atStartOfDay(ZoneOffset.UTC)
+    val to = from plusWeeks 1
+
+    assert(geometries.nonEmpty, s"no MultiPolygons found in $geometriesFile")
+
+    val catalogApiSpy = spy(new DefaultCatalogApi(endpoint))
+
+    val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", catalogApiSpy,
+      new DefaultProcessApi(endpoint), authorizer, sampleType = FLOAT32)
+
+    val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      // should fail while querying the Catalog API so no RDD evaluation is necessary/desired
+      pyramidFactory.datacube_seq(
+        polygons = geometries.toArray,
+        polygons_crs = geometriesCrs,
+        from_date = ISO_OFFSET_DATE_TIME format from,
+        to_date = ISO_OFFSET_DATE_TIME format to,
+        band_names = util.Arrays.asList("VH", "VV"),
+        metadata_properties = util.Collections.emptyMap()
+      )
+    } finally sc.stop()
+
+    verify(catalogApiSpy, atLeastOnce()).search(eqTo("sentinel-1-grd"), any(), eqTo(LatLng),
+      eqTo(from), eqTo(ZonedDateTime.parse("2020-04-09T23:59:59.999999999Z")), any(), eqTo(util.Collections.emptyMap()))
   }
 }
