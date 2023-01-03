@@ -755,18 +755,23 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       val noResampling = isUTM && math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
       //resampling is still needed in case bounding boxes are not aligned with pixels
       // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
-      var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1, readKeysToRasterSourcesResult._4.size).flatMap(t=>{
-        val source = if (noResampling) {
-          LayoutTileSource(t._1, metadata.layout, identity)
-        } else{
-          t._1.tileToLayout(metadata.layout, datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor))
-        }
+      var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.partitionBy(partitioner.get).mapPartitions(partition=>{
+        val bySource = partition.toMap.groupBy(_._2.data._1.name)
 
-        t._2.map(key_feature=>{
-          (key_feature._1,(source.rasterRegionForKey(key_feature._1.spatialKey),key_feature._2.data._1.name))
-        }).filter(_._2._1.isDefined).map(t=>(t._1,(t._2._1.get,t._2._2)))
+        bySource.flatMap(t=>{
+          val source = if (noResampling) {
+            LayoutTileSource(t._2.head._2.data._1, metadata.layout, identity)
+          } else{
+            t._2.head._2.data._1.tileToLayout(metadata.layout, datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor))
+          }
 
-      })
+          t._2.map(key_feature=>{
+            (key_feature._1,(source.rasterRegionForKey(key_feature._1.spatialKey),key_feature._2.data._1.name))
+          }).filter(_._2._1.isDefined).map(t=>(t._1,(t._2._1.get,t._2._2)))
+        }).iterator
+
+
+      },preservesPartitioning = true)
 
       regions.name = s"FileCollection-${openSearchCollectionId}"
 
