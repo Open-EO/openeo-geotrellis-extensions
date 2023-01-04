@@ -805,13 +805,21 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     case _ => href.toString
   }
 
-  private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): List[(RasterSource, Seq[Int])] = {
+  private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): (BandCompositeRasterSource, Feature) = {
     def expandToCellSize(extent: Extent, cellSize: CellSize): Extent =
       extent.expandBy(deltaX = math.max((cellSize.width - extent.width) / 2,0.0), deltaY = math.max((cellSize.height - extent.height) / 2,0.0))
 
     val theResolution = targetResolution.getOrElse(maxSpatialResolution)
     val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution).alignTargetPixels
 
+    val featureExtentInLayout: Option[GridExtent[Long]]=
+    if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
+      Some(RasterExtent(expandToCellSize(feature.rasterExtent.get.reproject(feature.crs.get,targetExtent.crs), theResolution), theResolution).alignTargetPixels.toGridType[Long])
+    }else{
+      None
+    }
+
+    var predefinedExtent: Option[GridExtent[Long]] = None
     /**
      * Benefit of targetregion: it can be valid in the target projection system
      * Downside of targetregion: it is a virtual cropping of the raster, so we're not able to load data beyond targetExtent
@@ -838,8 +846,9 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod))
         if (cloudPath.isDefined) {
           Seq(GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType))
-        }else{
-          Seq(GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType))
+        } else {
+          predefinedExtent = featureExtentInLayout
+          Seq(GDALRasterSource(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType))
         }
       }else if(dataPath.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
@@ -883,7 +892,13 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }
     } yield (rasterSource(path, cloudPath, targetCellType, targetExtent, bands), bands)
 
-    rasterSources.flatMap(rs_b => rs_b._1.map(rs => (rs,rs_b._2))).toList
+    val sources = NonEmptyList.fromListUnsafe(rasterSources.flatMap(rs_b => rs_b._1.map(rs => (rs, rs_b._2))).toList)
+
+    val attributes = Predef.Map("date" -> feature.nominalDate.toString)
+
+    if (bandIds.isEmpty) (new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent), feature)
+    else (new MultibandCompositeRasterSource(sources, targetExtent.crs, attributes), feature)
+
   }
 
   def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int,datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Seq[(RasterSource,Feature)] = {
@@ -897,13 +912,10 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     BatchJobMetadataTracker.tracker("").addInputProducts(openSearchCollectionId,overlappingFeatures.map(_.id).asJava)
 
-    val crs = bestCRS(boundingBox,layoutScheme)
     val reprojectedBoundingBox: ProjectedExtent = targetBoundingBox(boundingBox, layoutScheme)
     val overlappingRasterSources = for {
       feature <- overlappingFeatures
-      rasterSources = deriveRasterSources(feature,reprojectedBoundingBox, datacubeParams,targetResolution)
-      if rasterSources.nonEmpty
-    } yield compositeRasterSource(feature,NonEmptyList(rasterSources.head, rasterSources.tail), crs, Predef.Map("date"->feature.nominalDate.toString))
+    } yield  deriveRasterSources(feature,reprojectedBoundingBox, datacubeParams,targetResolution)
 
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
     //  into account; it's more efficient to filter out the redundant ones

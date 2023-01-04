@@ -19,7 +19,8 @@ import org.openeo.geotrellis.LayerFixtures
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{DataCubeParameters, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
-import org.openeo.opensearch.OpenSearchResponses.FeatureCollection
+import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection}
+import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 
 import java.net.URL
@@ -284,6 +285,303 @@ class FileLayerProviderTest {
     override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
   }
 
+  val myCreoFeatureJSON =
+    """
+      {
+      |  "type": "FeatureCollection",
+      |  "properties": {
+      |    "id": "35d62b97-2c19-56f8-bac1-bd5135ea044c",
+      |    "totalResults": 2,
+      |    "exactCount": true,
+      |    "startIndex": 1,
+      |    "itemsPerPage": 100,
+      |
+      |    "links": [
+      |      {
+      |        "rel": "self",
+      |        "type": "application/json",
+      |        "title": "self",
+      |        "href": "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?&box=-5.501993509841079%2C41.716232207553176%2C-5.2206261514227466%2C41.92935559222629&sortParam=startDate&sortOrder=ascending&page=1&maxRecords=100&status=0%7C34%7C37&dataset=ESA-DATASET&productType=L2A&startDate=2021-04-01T00%3A00%3A00Z&completionDate=2021-10-31T23%3A59%3A59.999999999Z"
+      |      },
+      |      {
+      |        "rel": "search",
+      |        "type": "application/opensearchdescription+xml",
+      |        "title": "OpenSearch Description Document",
+      |        "href": "https://finder.creodias.eu/resto/api/collections/Sentinel2/describe.xml"
+      |      },
+      |      {
+      |        "rel": "next",
+      |        "type": "application/json",
+      |        "title": "next",
+      |        "href": "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?&box=-5.501993509841079%2C41.716232207553176%2C-5.2206261514227466%2C41.92935559222629&sortParam=startDate&sortOrder=ascending&page=2&maxRecords=100&status=0%7C34%7C37&dataset=ESA-DATASET&productType=L2A&startDate=2021-04-01T00%3A00%3A00Z&completionDate=2021-10-31T23%3A59%3A59.999999999Z"
+      |      },
+      |      {
+      |        "rel": "last",
+      |        "type": "application/json",
+      |        "title": "last",
+      |        "href": "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?&box=-5.501993509841079%2C41.716232207553176%2C-5.2206261514227466%2C41.92935559222629&sortParam=startDate&sortOrder=ascending&page=3&maxRecords=100&status=0%7C34%7C37&dataset=ESA-DATASET&productType=L2A&startDate=2021-04-01T00%3A00%3A00Z&completionDate=2021-10-31T23%3A59%3A59.999999999Z"
+      |      }
+      |    ]
+      |  },
+      |  "features": [
+      |    {
+      |      "type": "Feature",
+      |      "id": "4a5f1c4b-494b-5f8f-a170-ac8d769e5cfb",
+      |      "geometry": {
+      |        "type": "Polygon",
+      |        "coordinates": [
+      |          [
+      |            [
+      |              -6.597992,
+      |              41.562119054
+      |            ],
+      |            [
+      |              -6.578247,
+      |              41.626124845
+      |            ],
+      |            [
+      |              -6.5322266,
+      |              41.773028035
+      |            ],
+      |            [
+      |              -6.4852905,
+      |              41.919850791
+      |            ],
+      |            [
+      |              -6.4388733,
+      |              42.066956737
+      |            ],
+      |            [
+      |              -6.390991,
+      |              42.213715835
+      |            ],
+      |            [
+      |              -6.3444214,
+      |              42.360855787
+      |            ],
+      |            [
+      |              -6.331024,
+      |              42.402868296
+      |            ],
+      |            [
+      |              -5.3124084,
+      |              42.429360872
+      |            ],
+      |            [
+      |              -5.2769775,
+      |              41.441212167
+      |            ],
+      |            [
+      |              -6.589264,
+      |              41.40772619
+      |            ],
+      |            [
+      |              -6.597992,
+      |              41.562119054
+      |            ]
+      |          ]
+      |        ]
+      |      },
+      |      "properties": {
+      |        "collection": "Sentinel2",
+      |        "status": 0,
+      |        "license": {
+      |          "licenseId": "unlicensed",
+      |          "hasToBeSigned": "never",
+      |          "grantedCountries": null,
+      |          "grantedOrganizationCountries": null,
+      |          "grantedFlags": null,
+      |          "viewService": "public",
+      |          "signatureQuota": -1,
+      |          "description": {
+      |            "shortName": "No license"
+      |          }
+      |        },
+      |        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A/2021/04/01/S2A_MSIL2A_20210401T110621_N0300_R137_T30TTM_20210401T141035.SAFE",
+      |        "parentIdentifier": null,
+      |        "title": "S2A_MSIL2A_20210401T110621_N0300_R137_T30TTM_20210401T141035.SAFE",
+      |        "description": null,
+      |        "organisationName": "ESA",
+      |        "startDate": "2021-04-01T11:06:21.024Z",
+      |        "completionDate": "2021-04-01T11:06:21.024Z",
+      |        "productType": "L2A",
+      |        "processingLevel": "LEVEL2A",
+      |        "platform": "S2A",
+      |        "instrument": "MSI",
+      |        "resolution": 60,
+      |        "sensorMode": "",
+      |        "orbitNumber": 30164,
+      |        "quicklook": null,
+      |        "thumbnail": "https://finder.creodias.eu/files/Sentinel-2/MSI/L2A/2021/04/01/S2A_MSIL2A_20210401T110621_N0300_R137_T30TTM_20210401T141035.SAFE/S2A_MSIL2A_20210401T110621_N0300_R137_T30TTM_20210401T141035-ql.jpg",
+      |        "updated": "2021-04-01T18:49:15.903195Z",
+      |        "published": "2021-04-01T18:49:15.903195Z",
+      |        "snowCover": 0,
+      |        "cloudCover": 69.467697,
+      |        "gmlgeometry": "<gml:Polygon srsName=\"EPSG:4326\"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>-6.597992,41.562119054439 -6.578247,41.626124844758 -6.5322266,41.773028035388 -6.4852905,41.919850790636 -6.4388733,42.06695673689 -6.390991,42.213715835021 -6.3444214,42.360855786794 -6.331024,42.402868295522 -5.3124084,42.429360872359 -5.2769775,41.441212166986 -6.589264,41.407726190111 -6.597992,41.562119054439</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>",
+      |        "centroid": {
+      |          "type": "Point",
+      |          "coordinates": [
+      |            -5.892901344,
+      |            41.897220387
+      |          ]
+      |        },
+      |        "orbitDirection": "descending",
+      |        "timeliness": null,
+      |        "relativeOrbitNumber": 137,
+      |        "processingBaseline": 3,
+      |        "missionTakeId": "GS2A_20210401T110621_030164_N03.00",
+      |        "services": {
+      |          "download": {
+      |            "url": "https://zipper.creodias.eu/download/4a5f1c4b-494b-5f8f-a170-ac8d769e5cfb",
+      |            "mimeType": "application/unknown",
+      |            "size": 932073644
+      |          }
+      |        },
+      |        "links": [
+      |          {
+      |            "rel": "self",
+      |            "type": "application/json",
+      |            "title": "GeoJSON link for 4a5f1c4b-494b-5f8f-a170-ac8d769e5cfb",
+      |            "href": "https://finder.creodias.eu/resto/collections/Sentinel2/4a5f1c4b-494b-5f8f-a170-ac8d769e5cfb.json?&lang=en"
+      |          }
+      |        ]
+      |      }
+      |    },
+      |    {
+      |      "type": "Feature",
+      |      "id": "ee728e84-04ad-5705-bee0-5de3c1059e1f",
+      |      "geometry": {
+      |        "type": "Polygon",
+      |        "coordinates": [
+      |          [
+      |            [
+      |              -6.6024475,
+      |              41.547733882
+      |            ],
+      |            [
+      |              -6.578247,
+      |              41.626124845
+      |            ],
+      |            [
+      |              -6.5322266,
+      |              41.773028035
+      |            ],
+      |            [
+      |              -6.4852905,
+      |              41.919850791
+      |            ],
+      |            [
+      |              -6.4388733,
+      |              42.066956737
+      |            ],
+      |            [
+      |              -6.390991,
+      |              42.213715835
+      |            ],
+      |            [
+      |              -6.3444214,
+      |              42.360855787
+      |            ],
+      |            [
+      |              -6.32547,
+      |              42.420318851
+      |            ],
+      |            [
+      |              -5.2368774,
+      |              42.390880662
+      |            ],
+      |            [
+      |              -5.2944336,
+      |              41.404034746
+      |            ],
+      |            [
+      |              -6.606537,
+      |              41.438846245
+      |            ],
+      |            [
+      |              -6.6024475,
+      |              41.547733882
+      |            ]
+      |          ]
+      |        ]
+      |      },
+      |      "properties": {
+      |        "collection": "Sentinel2",
+      |        "status": 0,
+      |        "license": {
+      |          "licenseId": "unlicensed",
+      |          "hasToBeSigned": "never",
+      |          "grantedCountries": null,
+      |          "grantedOrganizationCountries": null,
+      |          "grantedFlags": null,
+      |          "viewService": "public",
+      |          "signatureQuota": -1,
+      |          "description": {
+      |            "shortName": "No license"
+      |          }
+      |        },
+      |        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A/2021/04/01/S2A_MSIL2A_20210401T110621_N0300_R137_T29TQG_20210401T141035.SAFE",
+      |        "parentIdentifier": null,
+      |        "title": "S2A_MSIL2A_20210401T110621_N0300_R137_T29TQG_20210401T141035.SAFE",
+      |        "description": null,
+      |        "organisationName": "ESA",
+      |        "startDate": "2021-04-01T11:06:21.024Z",
+      |        "completionDate": "2021-04-01T11:06:21.024Z",
+      |        "productType": "L2A",
+      |        "processingLevel": "LEVEL2A",
+      |        "platform": "S2A",
+      |        "instrument": "MSI",
+      |        "resolution": 60,
+      |        "sensorMode": "",
+      |        "orbitNumber": 30164,
+      |        "quicklook": null,
+      |        "thumbnail": "https://finder.creodias.eu/files/Sentinel-2/MSI/L2A/2021/04/01/S2A_MSIL2A_20210401T110621_N0300_R137_T29TQG_20210401T141035.SAFE/S2A_MSIL2A_20210401T110621_N0300_R137_T29TQG_20210401T141035-ql.jpg",
+      |        "updated": "2021-04-01T18:47:18.613604Z",
+      |        "published": "2021-04-01T18:47:18.613604Z",
+      |        "snowCover": 0,
+      |        "cloudCover": 70.376396,
+      |        "gmlgeometry": "<gml:Polygon srsName=\"EPSG:4326\"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>-6.6024475,41.547733882318 -6.578247,41.626124844758 -6.5322266,41.773028035388 -6.4852905,41.919850790636 -6.4388733,42.06695673689 -6.390991,42.213715835021 -6.3444214,42.360855786794 -6.32547,42.420318851084 -5.2368774,42.390880662389 -5.2944336,41.40403474612 -6.606537,41.438846244795 -6.6024475,41.547733882318</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>",
+      |        "centroid": {
+      |          "type": "Point",
+      |          "coordinates": [
+      |            -5.875944976,
+      |            41.897187921
+      |          ]
+      |        },
+      |        "orbitDirection": "descending",
+      |        "timeliness": null,
+      |        "relativeOrbitNumber": 137,
+      |        "processingBaseline": 3,
+      |        "missionTakeId": "GS2A_20210401T110621_030164_N03.00",
+      |        "services": {
+      |          "download": {
+      |            "url": "https://zipper.creodias.eu/download/ee728e84-04ad-5705-bee0-5de3c1059e1f",
+      |            "mimeType": "application/unknown",
+      |            "size": 943720828
+      |          }
+      |        },
+      |        "links": [
+      |          {
+      |            "rel": "self",
+      |            "type": "application/json",
+      |            "title": "GeoJSON link for ee728e84-04ad-5705-bee0-5de3c1059e1f",
+      |            "href": "https://finder.creodias.eu/resto/collections/Sentinel2/ee728e84-04ad-5705-bee0-5de3c1059e1f.json?&lang=en"
+      |          }
+      |        ]
+      |      }
+      |    }]}""".stripMargin
+
+  val creoS2Products =  CreoFeatureCollection.parse(myCreoFeatureJSON)
+
+  class MockCreoOpenSearch extends OpenSearchClient {
+    override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
+      val start = dateRange.get._1
+      creoS2Products.features
+    }
+    override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
+    override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+  }
+
   @Test
   def testEdgeOfLargeFootPrint():Unit = {
 
@@ -541,5 +839,68 @@ class FileLayerProviderTest {
     assertEquals(0,minKey.col)
     assertEquals(0,minKey.row)
     assertEquals(crs,result._2.crs)
+  }
+
+  @Test
+  def testCreoNonNativeProjection():Unit = {
+
+
+    val date = LocalDate.of(2021, 4, 6).atStartOfDay(UTC)
+
+    val crs = CRS.fromEpsgCode(3035)
+    // a mix of 31UGS and 32ULB
+    val boundingBox = ProjectedExtent(Extent(3040000.0,2180000.0,3060000.0,2200000.0),crs )
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.tileSize = 1024
+
+    dataCubeParameters.globalExtent = Some(boundingBox)
+
+    val flp = new FileLayerProvider(
+      new MockCreoOpenSearch(),
+      "Sentinel2",
+      openSearchLinkTitles = NonEmptyList.of("B04"),
+      rootPath = "/bogus",
+      CellSize(10.0,10.0),
+      SplitYearMonthDayPathDateExtractor,
+      layoutScheme = FloatingLayoutScheme(1024),
+      experimental = false,
+      attributeValues = Map("productType"->"L2A")
+    ){
+      //avoids having to actually read the product
+      override def determineCelltype(overlappingRasterSources: Seq[(RasterSource, OpenSearchResponses.Feature)]): CellType = FloatConstantNoDataCellType
+    }
+
+    val result = flp.readKeysToRasterSources(
+      from = date,
+      to = date,
+      boundingBox,
+      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
+      polygons_crs = crs,
+      zoom = 0,
+      sc,
+      Some(dataCubeParameters)
+    )
+
+    val minKey = result._2.bounds.get.minKey
+
+    val cols = math.ceil((boundingBox.extent.width / 10.0)/1024.0)
+    val rows = math.ceil((boundingBox.extent.height / 10.0)/1024.0)
+
+    val cube = result._1
+    //val ids = cube.values.map(_.data._2.id).distinct().collect()
+    //val count = cube.count()
+    val all = cube.collect()
+
+    val tileSources = all.map(t=>(t._1,LayoutTileSource.spatial(t._2.data._1,result._2.layout).rasterRegionForKey(t._1.spatialKey).get))
+    val minKeySource = tileSources.toMap.get(minKey)
+    assertEquals(3040000.0,minKeySource.get.extent.xmin,0.1)
+    //the test should reach this point without requiring access to the actual files. If it fails because of not having creo mounts, something is wrong.
+    assertEquals(0,minKey.col)
+    assertEquals(0,minKey.row)
+    assertEquals(crs,result._2.crs)
+    assertEquals(8,all.length)
+    assertEquals((2*cols*rows).toInt,all.length)
   }
 }
