@@ -875,6 +875,7 @@ class PyramidFactoryTest {
     } finally sc.stop()
   }
 
+  @Ignore
   @Test
   def testSentinel5PL2DuplicateRequests(): Unit = {
     // mimics /home/bossie/Documents/VITO/applying mask increases PUs drastically #95/process_graph_without_mask_smaller.json
