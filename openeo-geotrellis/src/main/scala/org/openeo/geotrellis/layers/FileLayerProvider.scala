@@ -805,7 +805,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     case _ => href.toString
   }
 
-  private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): (BandCompositeRasterSource, Feature) = {
+  private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Option[(BandCompositeRasterSource, Feature)] = {
     def expandToCellSize(extent: Extent, cellSize: CellSize): Extent =
       extent.expandBy(deltaX = math.max((cellSize.width - extent.width) / 2,0.0), deltaY = math.max((cellSize.height - extent.height) / 2,0.0))
 
@@ -892,12 +892,17 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }
     } yield (rasterSource(path, cloudPath, targetCellType, targetExtent, bands), bands)
 
-    val sources = NonEmptyList.fromListUnsafe(rasterSources.flatMap(rs_b => rs_b._1.map(rs => (rs, rs_b._2))).toList)
+    if(rasterSources.isEmpty) {
+      return None
+    }else{
 
-    val attributes = Predef.Map("date" -> feature.nominalDate.toString)
+      val sources = NonEmptyList.fromListUnsafe(rasterSources.flatMap(rs_b => rs_b._1.map(rs => (rs, rs_b._2))).toList)
 
-    if (bandIds.isEmpty) (new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent), feature)
-    else (new MultibandCompositeRasterSource(sources, targetExtent.crs, attributes), feature)
+      val attributes = Predef.Map("date" -> feature.nominalDate.toString)
+
+      if (bandIds.isEmpty) return Some((new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent), feature))
+      else return Some((new MultibandCompositeRasterSource(sources, targetExtent.crs, attributes), feature))
+    }
 
   }
 
@@ -913,9 +918,9 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     BatchJobMetadataTracker.tracker("").addInputProducts(openSearchCollectionId,overlappingFeatures.map(_.id).asJava)
 
     val reprojectedBoundingBox: ProjectedExtent = targetBoundingBox(boundingBox, layoutScheme)
-    val overlappingRasterSources = for {
+    val overlappingRasterSources = (for {
       feature <- overlappingFeatures
-    } yield  deriveRasterSources(feature,reprojectedBoundingBox, datacubeParams,targetResolution)
+    } yield  deriveRasterSources(feature,reprojectedBoundingBox, datacubeParams,targetResolution)).flatMap(_.toList)
 
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
     //  into account; it's more efficient to filter out the redundant ones
