@@ -80,14 +80,18 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
         try{
           source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
         }   catch {
-          case e: Exception => throw new IOException(s"Error while reading : ${source.name.toString}", e)
+          case e: Exception => throw new IOException(s"Error while reading ${bounds} from: ${source.name.toString}", e)
         }
 
       }
       .collect { case Some(raster) => raster }
 
-    if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType)).seq), singleBandRasters.head.extent))
-    else None
+    try {
+      if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType)).seq), singleBandRasters.head.extent))
+      else None
+    }catch {
+      case e: Exception => throw new IOException(s"Error while reading ${bounds} from: ${selectedSources.head.name.toString}", e)
+    }
   }
 
   override def resample(
