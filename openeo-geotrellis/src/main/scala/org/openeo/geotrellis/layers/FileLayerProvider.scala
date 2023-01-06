@@ -87,7 +87,9 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       .collect { case Some(raster) => raster }
 
     try {
-      if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType)).seq), singleBandRasters.head.extent))
+      val intersection = singleBandRasters.map(_.extent).reduce((left,right) => left.intersection(right).get)
+      val croppedRasters = singleBandRasters.map(_.crop(intersection))
+      if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(croppedRasters.map(_.tile.convert(cellType)).seq), intersection))
       else None
     }catch {
       case e: Exception => throw new IOException(s"Error while reading ${bounds} from: ${selectedSources.head.name.toString}", e)
