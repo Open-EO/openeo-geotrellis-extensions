@@ -235,8 +235,8 @@ public class TestOpenEOProcesses {
         OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createArrayInterpolateLinear();
         RDD<Tuple2<SpaceTimeKey, MultibandTile>> result = new OpenEOProcesses().applyTimeDimension(compositedCube, processBuilder, new HashMap<>());
 
-        //int[] compositedPixel = OpenEOProcessesSpec.getPixel(compositedCube);
-        int[] interpolatedPixel = OpenEOProcessesSpec.getPixel(result);
+        //int[] compositedPixel = OpenEOProcessesTest.getPixel(compositedCube);
+        int[] interpolatedPixel = OpenEOProcessesTest.getPixel(result);
 
         int noData = Integer.MIN_VALUE;
         assertArrayEquals(new int[]{noData,noData,noData,noData,290,317,346,375,405},interpolatedPixel);
@@ -263,7 +263,7 @@ public class TestOpenEOProcesses {
         List<Integer> bandValues = getPixel(interpolatedTile);
         System.out.println("bandValues = " + bandValues);
 
-        int[] compositedPixel = OpenEOProcessesSpec.getPixel(compositedCube);
+        int[] compositedPixel = OpenEOProcessesTest.getPixel(compositedCube);
 
         DoubleStream doubleValues = Arrays.stream(compositedPixel)
                 .filter(a -> a != Integer.MIN_VALUE)
@@ -295,7 +295,7 @@ public class TestOpenEOProcesses {
         List<Integer> bandValues = getPixel(interpolatedTile);
         System.out.println("bandValues = " + bandValues);
 
-        int[] compositedPixel = OpenEOProcessesSpec.getPixel(compositedCube);
+        int[] compositedPixel = OpenEOProcessesTest.getPixel(compositedCube);
 
         assertArrayEquals(new Object[]{ 377, 261}, bandValues.toArray());
         assertArrayEquals(new Object[]{ compositedPixel[3], compositedPixel[8]}, bandValues.toArray());
