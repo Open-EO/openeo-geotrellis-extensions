@@ -223,16 +223,6 @@
                         <PROJ_LIB>/tmp_epod/gdal/data</PROJ_LIB>
                     </environmentVariables>
                     <reuseForks>false</reuseForks>
-                    <includes>
-                        <include>**/Test*.scala</include>
-                        <include>**/*Test.scala</include>
-                        <include>**/*Tests.scala</include>
-                        <include>**/*TestCase.scala</include>
-
-                        <include>**/Spec*.scala</include>
-                        <include>**/*Spec.scala</include>
-                        <include>**/*Specs.scala</include>
-                    </includes>
                 </configuration>
             </plugin>
             <plugin>

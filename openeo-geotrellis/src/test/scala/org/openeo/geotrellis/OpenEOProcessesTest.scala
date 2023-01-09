@@ -39,6 +39,7 @@ object OpenEOProcessesSpec{
 
   @BeforeClass
   def setUpSpark(): Unit = {
+    println("OpenEOProcessesSpec::setUpSpark()")
     sc = {
       val config = new HdfsConfiguration
       //config.set("hadoop.security.authentication", "kerberos")
