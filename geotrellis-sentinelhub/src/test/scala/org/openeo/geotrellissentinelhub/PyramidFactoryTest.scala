@@ -907,6 +907,9 @@ class PyramidFactoryTest {
         metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
       )
 
+      verify(catalogApiSpy).search(any(), any(), any(), any(), any(), any(), any())
+      assertEquals(catalogApiResultCaptor.result.toString(), 10, catalogApiResultCaptor.result.size)
+
       val spatialLayer = layer
         .toSpatial()
         .cache()
@@ -916,8 +919,6 @@ class PyramidFactoryTest {
       val tif = MultibandGeoTiff(raster.tile, raster.extent, layer.metadata.crs, geoTiffOptions)
       tif.write(s"/tmp/testSentinel5PL2Requests.tif")
 
-      verify(catalogApiSpy).search(any(), any(), any(), any(), any(), any(), any())
-      assertEquals(catalogApiResultCaptor.result.toString(), 10, catalogApiResultCaptor.result.size)
       assertEquals(1, processApiSpy.getTileCount)
     } finally sc.stop()
   }
