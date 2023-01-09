@@ -299,6 +299,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
   @Test
   def aggregateTemporalTest(): Unit = {
+    throw new Exception("Test if this test runs in CI.")
     val outDir = "/tmp/aggregateTemporalTest/"
     Files.createDirectories(Paths.get(outDir))
     List(
