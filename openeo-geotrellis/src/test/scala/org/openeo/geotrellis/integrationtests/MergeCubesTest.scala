@@ -54,7 +54,7 @@ class MergeCubesTest {
       projected_polygons,
       from_date,
       to_date,
-      util.Collections.emptyMap[String, Any](),
+      util.Collections.singletonMap[String, Any]("resolution", "10"),
       "correlationid",
       datacubeParams
     )
