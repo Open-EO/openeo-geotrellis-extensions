@@ -33,13 +33,13 @@ import java.time.format.DateTimeFormatter
 import java.util
 import scala.collection.JavaConverters._
 
-object OpenEOProcessesTest{
+object OpenEOProcessesSpec{
 
   private var sc: SparkContext = _
 
   @BeforeClass
   def setUpSpark(): Unit = {
-    println("OpenEOProcessesTest::setUpSpark()")
+    println("OpenEOProcessesSpec::setUpSpark()")
     sc = {
       val config = new HdfsConfiguration
       //config.set("hadoop.security.authentication", "kerberos")
@@ -67,7 +67,7 @@ object OpenEOProcessesTest{
 
 }
 
-class OpenEOProcessesTest extends RasterMatchers {
+class OpenEOProcessesSpec extends RasterMatchers {
 
   def time[R](block: => R): R = {
     val t0 = System.nanoTime()
@@ -136,7 +136,7 @@ class OpenEOProcessesTest extends RasterMatchers {
     maskTile.set(0, 1, 1)
     maskTile.set(0, 2, 1)
 
-    val mask = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesTest.sc, new Raster(new ArrayMultibandTile(Array[Tile](maskTile)),selectedBands.metadata.extent), selectedBands.metadata.tileLayout,selectedBands.metadata.crs)
+    val mask = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, new Raster(new ArrayMultibandTile(Array[Tile](maskTile)),selectedBands.metadata.extent), selectedBands.metadata.tileLayout,selectedBands.metadata.crs)
                   .withContext(_.mapValues(t => MultibandTile(maskTile)))
 
     val maskedCube: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().rasterMask_spacetime_spatial(selectedBands, mask, 123)
@@ -162,7 +162,7 @@ class OpenEOProcessesTest extends RasterMatchers {
   def applyMaskFFT(): Unit = {
     val tile: Tile = DoubleArrayTile.fill(1.0,1280, 1280)
     val tileSize = 256
-    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesTest.sc, new ArrayMultibandTile(Array[Tile](tile)), new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize))
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, new ArrayMultibandTile(Array[Tile](tile)), new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize))
     val kernel: Tile = DoubleArrayTile.fill(1.0,61, 61)
 
     val resultCube = new OpenEOProcesses().apply_kernel_spatial(datacube, kernel)
@@ -370,7 +370,7 @@ class OpenEOProcessesTest extends RasterMatchers {
     val targetTileSize = 302
     val layout = new TileLayout(1 + tile.cols / tileSize, 1 + tile.rows / tileSize, tileSize, tileSize)
     val targetLayout = new TileLayout((0.5*(1 + tile.cols / targetTileSize)).toInt, (0.5*(1 + tile.rows / targetTileSize)).toInt, targetTileSize, targetTileSize)
-    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesTest.sc, new ArrayMultibandTile(Array[Tile](tile)), layout)
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(OpenEOProcessesSpec.sc, new ArrayMultibandTile(Array[Tile](tile)), layout)
 
     val targetExtent = ProjectedExtent(Extent(-40,-40,40,40),LatLng).reproject(WebMercator)
     val resampled = new OpenEOProcesses().resampleCubeSpatial_spatial(datacube.withContext(_.repartition(10)),WebMercator,LayoutDefinition(targetExtent,targetLayout),ResampleMethod.DEFAULT,null)

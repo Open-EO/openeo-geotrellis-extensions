@@ -223,6 +223,16 @@
                         <PROJ_LIB>/tmp_epod/gdal/data</PROJ_LIB>
                     </environmentVariables>
                     <reuseForks>false</reuseForks>
+                    <includes>
+                        <include>**/Test*.*</include>
+                        <include>**/*Test.*</include>
+                        <include>**/*Tests.*</include>
+                        <include>**/*TestCase.*</include>
+
+                        <include>**/Spec*.*</include>
+                        <include>**/*Spec.*</include>
+                        <include>**/*Specs.*</include>
+                    </includes>
                 </configuration>
             </plugin>
             <plugin>
