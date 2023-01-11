@@ -762,7 +762,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       //resampling is still needed in case bounding boxes are not aligned with pixels
       // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
       var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.partitionBy(partitioner.get).mapPartitions(partition=>{
-        val bySource = partition.toMap.groupBy(_._2.data._1.name)
+        val bySource = partition.toList.groupBy(_._2.data._1.name)
 
         bySource.flatMap(t=>{
           val source = if (noResampling) {
