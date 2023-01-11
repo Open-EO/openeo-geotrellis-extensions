@@ -4,10 +4,11 @@ import cats.data.NonEmptyList
 import geotrellis.layer.{Bounds, FloatingLayoutScheme, KeyBounds, LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.geotiff.GeoTiffRasterSource
-import geotrellis.raster.{ArrayMultibandTile, ArrayTile, ByteArrayTile, CellSize, MultibandTile, Tile, TileLayout}
+import geotrellis.raster.{ArrayMultibandTile, ArrayTile, ByteArrayTile, CellSize, MultibandTile, Raster, Tile, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
+import geotrellis.layer._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -45,9 +46,11 @@ object LayerFixtures {
     return layer
   }
 
-  def buildSpatioTemporalDataCube(tiles: util.List[Tile], dates: Seq[String]): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+  def buildSpatioTemporalDataCube(tiles: util.List[Tile], dates: Seq[String], extent: Option[Extent] = None): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val mbTile = ArrayMultibandTile(tiles.asScala)
-    val cubeXYB: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, mbTile, new TileLayout(1, 1, tiles.get(0).cols.asInstanceOf[Integer], tiles.get(0).rows.asInstanceOf[Integer])).asInstanceOf[ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]]]
+    val raster = Raster[MultibandTile](mbTile, extent.getOrElse(TileLayerRDDBuilders.defaultCRS.worldExtent))
+    val cubeXYB: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] =
+      TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, raster, new TileLayout(1, 1, raster.cols.asInstanceOf[Integer], raster.rows.asInstanceOf[Integer])).asInstanceOf[ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]]]
     val times: Seq[ZonedDateTime] = dates.map(ZonedDateTime.parse(_))
     val cubeXYTB: RDD[(SpaceTimeKey,MultibandTile)] = cubeXYB.flatMap((pair: Tuple2[SpatialKey, MultibandTile]) => {
       times.map((time: ZonedDateTime) => (SpaceTimeKey(pair._1, TemporalKey(time)), pair._2))
@@ -70,13 +73,13 @@ object LayerFixtures {
     cubeXYB.withContext{_.mapValues(MultibandTile(_)).repartitionAndSortWithinPartitions(new SpacePartitioner(cubeXYB.metadata.bounds))}
   }
 
-  private[geotrellis] def tileToSpaceTimeDataCube(zeroTile: Tile): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+  private[geotrellis] def tileToSpaceTimeDataCube(zeroTile: Tile, extent: Option[Extent] = None): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val emptyTile = ArrayTile.empty(zeroTile.cellType, zeroTile.cols.asInstanceOf[Integer], zeroTile.rows.asInstanceOf[Integer])
     val minDate = "2017-01-01T00:00:00Z"
     val maxDate = "2018-01-15T00:00:00Z"
     val dates = Seq(minDate,"2017-01-15T00:00:00Z","2017-02-01T00:00:00Z",maxDate)
     val tiles = util.Arrays.asList(zeroTile, emptyTile)
-    buildSpatioTemporalDataCube(tiles,dates)
+    buildSpatioTemporalDataCube(tiles, dates, extent)
   }
 
   private def accumuloPyramidFactory = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
