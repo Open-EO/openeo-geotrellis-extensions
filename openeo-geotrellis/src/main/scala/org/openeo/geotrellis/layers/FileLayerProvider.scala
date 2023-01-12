@@ -575,11 +575,15 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
   }
 
   def determineCelltype(overlappingRasterSources: Seq[(RasterSource, Feature)]): CellType = {
-    var commonCellType = overlappingRasterSources.head._1.cellType
-    if (commonCellType.isInstanceOf[NoNoData]) {
-      commonCellType = commonCellType.withDefaultNoData()
+    try {
+      var commonCellType = overlappingRasterSources.head._1.cellType
+      if (commonCellType.isInstanceOf[NoNoData]) {
+        commonCellType = commonCellType.withDefaultNoData()
+      }
+      commonCellType
+    } catch {
+      case e: Exception => throw new IOException(s"Exception while determining data type of collection ${this.openSearchCollectionId} and item ${overlappingRasterSources.head._1.name}. Detailed message: ${e.getMessage}",e)
     }
-    commonCellType
   }
 
   def readKeysToRasterSources(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): (RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], TileLayerMetadata[SpaceTimeKey], Option[CloudFilterStrategy], Seq[(RasterSource, Feature)]) = {
