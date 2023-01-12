@@ -160,30 +160,14 @@ object LayerFixtures {
 
   lazy val b04Polygons = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/S2_B04_polygons.geojson").getPath)
 
-  sealed trait PixelType
-
-  final case class DoublePixelType() extends PixelType
-
-  final case class FloatPixelType() extends PixelType
-
-  final case class IntPixelType() extends PixelType
-
-  final case class ShortPixelType() extends PixelType
-
-  final case class BytePixelType() extends PixelType
-
-  final case class BitPixelType() extends PixelType
-
   /**
    * Creates a noisy data to test with.
    * BitPixelType is treated differently.
    * mean: 10
    * min: 5
    * max: 15
-   * @param pixelType
-   * @return
    */
-  def randomNoiseLayer(pixelType: PixelType = BytePixelType()): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+  def randomNoiseLayer(pixelType: PixelType = PixelType.Byte): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val startDate = ZonedDateTime.parse("2019-01-21T00:00:00Z")
     val rows = 256;
     val cols = 256;
@@ -192,12 +176,12 @@ object LayerFixtures {
 
     val timeSeries: Array[(SpaceTimeKey, MultibandTile)] = (1 to 4).map({ i =>
       val v = pixelType match {
-        case DoublePixelType() => DoubleArrayTile.apply((1 to cols * rows).map(_ => 5 + 10 * rand.nextDouble).toArray, cols, rows)
-        case FloatPixelType() => FloatArrayTile.apply((1 to cols * rows).map(_ => 5 + 10 * rand.nextFloat).toArray, cols, rows)
-        case IntPixelType() => IntArrayTile.apply((1 to cols * rows).map(_ => 5 + rand.nextInt(11)).toArray, cols, rows)
-        case ShortPixelType() => ShortArrayTile.apply((1 to cols * rows).map(_ => (5 + rand.nextInt(11)).toShort).toArray, cols, rows)
-        case BytePixelType() => ByteArrayTile.apply((1 to cols * rows).map(_ => (5 + rand.nextInt(11)).toByte).toArray, cols, rows)
-        case BitPixelType() =>
+        case PixelType.Double => DoubleArrayTile.apply((1 to cols * rows).map(_ => 5 + 10 * rand.nextDouble).toArray, cols, rows)
+        case PixelType.Float => FloatArrayTile.apply((1 to cols * rows).map(_ => 5 + 10 * rand.nextFloat).toArray, cols, rows)
+        case PixelType.Int => IntArrayTile.apply((1 to cols * rows).map(_ => 5 + rand.nextInt(11)).toArray, cols, rows)
+        case PixelType.Short => ShortArrayTile.apply((1 to cols * rows).map(_ => (5 + rand.nextInt(11)).toShort).toArray, cols, rows)
+        case PixelType.Byte => ByteArrayTile.apply((1 to cols * rows).map(_ => (5 + rand.nextInt(11)).toByte).toArray, cols, rows)
+        case PixelType.Bit =>
           val bytes = Array.fill[Byte](cols * rows / 8)(0)
           rand.nextBytes(bytes)
           BitArrayTile.apply(bytes, cols, rows)
