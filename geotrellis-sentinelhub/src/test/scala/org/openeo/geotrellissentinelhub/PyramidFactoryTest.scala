@@ -13,10 +13,11 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.commons.io.FileUtils
 import org.apache.spark.{SparkConf, SparkContext, SparkException}
-import org.junit.Assert.{assertEquals, assertTrue, fail}
+import org.hamcrest.{CustomMatcher, Matcher}
+import org.junit.Assert.{assertEquals, assertThat, assertTrue, fail}
 import org.junit._
 import org.junit.rules.TemporaryFolder
-import org.mockito.ArgumentMatchers.any
+import org.mockito.ArgumentMatchers.{any, eq => eqTo}
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
 import org.mockito.Mockito._
@@ -875,11 +876,56 @@ class PyramidFactoryTest {
     } finally sc.stop()
   }
 
-  @Ignore
   @Test
-  def testSentinel5PL2DuplicateRequests(): Unit = {
+  def testSentinel5PL2DuplicateRequestsDatacube_seq(): Unit = {
+    def layerFromDatacube_seq(pyramidFactory: PyramidFactory, boundingBox: ProjectedExtent, date: String,
+                              bandNames: Seq[String], metadata_properties: util.Map[String, util.Map[String, Any]]):
+    MultibandTileLayerRDD[SpaceTimeKey] = {
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
+        from_date = date,
+        to_date = date,
+        band_names = bandNames.asJava,
+        metadata_properties = metadata_properties
+      )
+
+      layer
+    }
+
+    // requires only a single tile request to cover the input extent
+    val expectedGetTileCount = 1
+
+    testSentinel5PL2DuplicateRequests(layerFromDatacube_seq, expectedGetTileCount,
+      "/tmp/testSentinel5PL2DuplicateRequestsDatacube_seq.tif")
+  }
+
+  @Test
+  def testSentinel5PL2DuplicateRequestsPyramid_seq(): Unit = {
+    def layerFromPyramid_seq(pyramidFactory: PyramidFactory, boundingBox: ProjectedExtent, date: String,
+                             bandNames: Seq[String], metadata_properties: util.Map[String, util.Map[String, Any]]):
+    MultibandTileLayerRDD[SpaceTimeKey] = {
+      val (_, baseLayer) = pyramidFactory.pyramid_seq(boundingBox.extent, s"EPSG:${boundingBox.crs.epsgCode.get}",
+        from_date = date,
+        to_date = date,
+        band_names = bandNames.asJava,
+        metadata_properties = metadata_properties
+      ).maxBy { case (zoom, _) => zoom }
+
+      baseLayer
+    }
+
+    // max-zoom ZoomedLayoutScheme(WebMercator) requires 4 tile requests to cover the input extent
+    val expectedGetTileCount = 4
+
+    testSentinel5PL2DuplicateRequests(layerFromPyramid_seq, expectedGetTileCount,
+      "/tmp/testSentinel5PL2DuplicateRequestsPyramid_seq.tif")
+  }
+
+  private def testSentinel5PL2DuplicateRequests(layerFromSeq: (PyramidFactory, ProjectedExtent, String, Seq[String],
+    util.Map[String, util.Map[String, Any]]) => MultibandTileLayerRDD[SpaceTimeKey], expectedGetTileCount: Int,
+                                                outputTiff: String): Unit = {
     // mimics /home/bossie/Documents/VITO/applying mask increases PUs drastically #95/process_graph_without_mask_smaller.json
-    implicit val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+    implicit val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
     try {
       val boundingBox = ProjectedExtent(Extent(xmin = 6.1, ymin = 46.16, xmax = 6.11, ymax = 46.17), LatLng)
@@ -899,33 +945,44 @@ class PyramidFactoryTest {
         processApiSpy, authorizer, maxSpatialResolution = CellSize(0.054563492063483, 0.034722222222216),
         sampleType = FLOAT32)
 
-      val Seq((_, layer)) = pyramidFactory.datacube_seq(
-        Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
-        from_date = ISO_OFFSET_DATE_TIME format date,
-        to_date = ISO_OFFSET_DATE_TIME format date,
-        band_names = Seq("NO2").asJava,
-        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
-      )
+      val layer = layerFromSeq(pyramidFactory, boundingBox, ISO_OFFSET_DATE_TIME format date, Seq("NO2"),
+        Collections.emptyMap[String, util.Map[String, Any]])
+
+      verify(catalogApiSpy).search(eqTo("sentinel-5p-l2"), eqTo(boundingBox.extent.toPolygon()), eqTo(LatLng),
+        from = eqTo(date), to = eqTo(ZonedDateTime.parse("2018-07-01T23:59:59.999999999Z")), accessToken = any(),
+        queryProperties = eqTo(util.Collections.emptyMap()))
+
+      def greaterThan(n: Int): Matcher[Int] = new CustomMatcher[Int](s"greater than $n") {
+        override def matches(item: Any): Boolean = item match {
+          case i: Int => i > n
+        }
+      }
+
+      assertThat(catalogApiResultCaptor.result.toString(), catalogApiResultCaptor.result.size, greaterThan(10))
+
+      for (Seq((leftId, Feature(leftGeom, _)), (rightId, Feature(rightGeom, _))) <- catalogApiResultCaptor.result.toSeq.sliding(2)) {
+        assert(leftId != rightId)
+        assertTrue(leftGeom intersects rightGeom)
+      }
 
       val spatialLayer = layer
         .toSpatial()
         .cache()
 
-      val raster = spatialLayer.stitch().crop(boundingBox.extent)
+      val raster = spatialLayer
+        .stitch()
+        .reproject(spatialLayer.metadata.crs, boundingBox.crs)
+        .crop(boundingBox.extent)
 
-      val tif = MultibandGeoTiff(raster.tile, raster.extent, layer.metadata.crs, geoTiffOptions)
-      tif.write(s"/tmp/testSentinel5PL2Requests.tif")
+      val tif = MultibandGeoTiff(raster.tile, raster.extent, boundingBox.crs, geoTiffOptions)
+      tif.write(outputTiff)
 
-      verify(catalogApiSpy).search(any(), any(), any(), any(), any(), any(), any())
-      assertEquals(catalogApiResultCaptor.result.toString(), 10, catalogApiResultCaptor.result.size)
-      assertEquals(1, processApiSpy.getTileCount)
+      assertEquals(expectedGetTileCount, processApiSpy.getTileCount)
     } finally sc.stop()
   }
 
   @Test
   def testLargeNumberOfInputPolygons(): Unit = {
-    import org.mockito.ArgumentMatchers.{eq => eqTo}
-
     val tempDir = temporaryFolder.getRoot
     val geometriesFileStem = "Fields_to_extract_2021_30SVH_RAW_0"
 
