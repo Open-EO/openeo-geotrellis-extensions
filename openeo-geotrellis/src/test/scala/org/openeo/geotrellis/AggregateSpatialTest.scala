@@ -40,12 +40,54 @@ object AggregateSpatialTest {
 
   }
 
-  def assertEqualTimeseriesStats(expected: Seq[Seq[Double]], actual: collection.Seq[collection.Seq[Double]]): Unit = {
+  def parseCSV(outDir: String, spatioTemporal: Boolean = true): Map[String, scala.Seq[scala.Seq[Double]]] = {
+    val stats = mutable.ListBuffer[(String, Int, scala.Seq[Double])]()
+
+    if (!Files.exists(Paths.get(outDir))) {
+      // Without this check, an empty collection would be returned.
+      throw new Exception("Path does not exist: " + outDir)
+    }
+
+    Files.list(Paths.get(outDir)).filter(_.toString.endsWith(".csv")).forEach(path => {
+      println(path)
+      val bufferedSource = Source.fromFile(path.toFile)
+
+      try {
+        for (line <- bufferedSource.getLines.drop(1)) { // skip the header
+          val includeTrailingEmptyStrings = -1
+          var columnValues = line.split(",", includeTrailingEmptyStrings).map(_.trim).toSeq
+
+          if (!spatioTemporal) {
+            columnValues = "no_timestamp" +: columnValues
+          }
+
+          def asDouble(s: String) = if (s == "") Double.NaN else s.toDouble
+
+          val timestamp +: geometry +: numbers = columnValues // pattern match against Seq(timestamp, geometry, numbers @ _*) doesn't work?
+          stats.append((timestamp, geometry.toInt, numbers.map(asDouble)))
+        }
+      }
+      finally bufferedSource.close()
+    })
+
+    val groupedStats = stats
+      .groupBy { case (timestamp, _, _) => timestamp }
+      .mapValues { timestampedValues =>
+        timestampedValues
+          .sortBy { case (_, geometry, _) => geometry }
+          .map { case (_, _, numbers) => numbers }
+      }
+
+    groupedStats.foreach(println)
+    groupedStats
+  }
+
+  def assertEqualTimeseriesStats(expected: scala.collection.Seq[scala.collection.Seq[Double]], actual: scala.collection.Seq[scala.collection.Seq[Double]], delta:Double=1e-6): Unit = {
     println(s"expected: $expected")
     println(s"actual: $actual")
     assertEquals("should have same polygon count", expected.length, actual.length)
     expected.indices.foreach { i =>
-      assertArrayEquals("should have same band stats", expected(i).toArray, actual(i).toArray, 1e-6)
+      assertArrayEquals("should have same band stats", expected(i).toArray, actual(i).toArray, delta)
     }
   }
 
@@ -231,42 +273,5 @@ class AggregateSpatialTest {
       Seq(10, 10.0, Double.NaN, Double.NaN), // geometry1
       Seq(10, 10.0, Double.NaN, Double.NaN)), // geometry2
       stats)
-  }
-
-  private def parseCSV(outDir: String, spatioTemporal: Boolean = true): Map[String, scala.Seq[scala.Seq[Double]]] = {
-    val stats = mutable.ListBuffer[(String, Int, scala.Seq[Double])]()
-
-    Files.list(Paths.get(outDir)).filter(_.toString.endsWith(".csv")).forEach(path => {
-      println(path)
-      val bufferedSource = Source.fromFile(path.toFile)
-
-      try {
-        for (line <- bufferedSource.getLines.drop(1)) { // skip the header
-          val includeTrailingEmptyStrings = -1
-          var columnValues = line.split(",", includeTrailingEmptyStrings).map(_.trim).toSeq
-
-          if (!spatioTemporal) {
-            columnValues = "no_timestamp" +: columnValues
-          }
-
-          def asDouble(s: String) = if (s == "") Double.NaN else s.toDouble
-
-          val timestamp +: geometry +: numbers = columnValues // pattern match against Seq(timestamp, geometry, numbers @ _*) doesn't work?
-          stats.append((timestamp, geometry.toInt, numbers.map(asDouble)))
-        }
-      }
-      finally bufferedSource.close()
-    })
-
-    val groupedStats = stats
-      .groupBy { case (timestamp, _, _) => timestamp }
-      .mapValues {timestampedValues =>
-        timestampedValues
-          .sortBy { case (_, geometry, _) => geometry }
-          .map { case (_, _, numbers) => numbers }
-      }
-
-    groupedStats.foreach(println)
-    groupedStats
   }
 }

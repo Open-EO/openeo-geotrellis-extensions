@@ -2,9 +2,9 @@ package org.openeo.geotrellis
 
 import cats.data.NonEmptyList
 import geotrellis.layer.{Bounds, FloatingLayoutScheme, KeyBounds, LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
-import geotrellis.proj4.LatLng
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
-import geotrellis.raster.{ArrayMultibandTile, ArrayTile, ByteArrayTile, CellSize, MultibandTile, Tile, TileLayout}
+import geotrellis.raster._
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
@@ -159,6 +159,54 @@ object LayerFixtures {
   }
 
   lazy val b04Polygons = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/S2_B04_polygons.geojson").getPath)
+
+  /**
+   * Creates a noisy data to test with.
+   * BitPixelType is treated differently.
+   * mean: 10
+   * min: 5
+   * max: 15
+   */
+  def randomNoiseLayer(pixelType: PixelType = PixelType.Byte): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    val startDate = ZonedDateTime.parse("2019-01-21T00:00:00Z")
+    val rows = 256;
+    val cols = 256;
+
+    val rand = new scala.util.Random(42) // Fixed seed to make test predictable
+
+    val timeSeries: Array[(SpaceTimeKey, MultibandTile)] = (1 to 4).map({ i =>
+      val v = pixelType match {
+        case PixelType.Double => DoubleArrayTile.apply((1 to cols * rows).map(_ => 5 + 10 * rand.nextDouble).toArray, cols, rows)
+        case PixelType.Float => FloatArrayTile.apply((1 to cols * rows).map(_ => 5 + 10 * rand.nextFloat).toArray, cols, rows)
+        case PixelType.Int => IntArrayTile.apply((1 to cols * rows).map(_ => 5 + rand.nextInt(11)).toArray, cols, rows)
+        case PixelType.Short => ShortArrayTile.apply((1 to cols * rows).map(_ => (5 + rand.nextInt(11)).toShort).toArray, cols, rows)
+        case PixelType.Byte => ByteArrayTile.apply((1 to cols * rows).map(_ => (5 + rand.nextInt(11)).toByte).toArray, cols, rows)
+        case PixelType.Bit =>
+          val bytes = Array.fill[Byte](cols * rows / 8)(0)
+          rand.nextBytes(bytes)
+          BitArrayTile.apply(bytes, cols, rows)
+        case _ => throw new IllegalStateException(s"pixelType $pixelType not supported")
+      }
+      (
+        SpaceTimeKey(0, 0, startDate.plusDays(i)),
+        MultibandTile(v.withNoData(Some(32767)))
+      )
+    }).toArray
+
+    val extent = Extent(0, 0, cols, rows)
+    val rdd = SparkContext.getOrCreate().parallelize(timeSeries)
+    val layer = ContextRDD(
+      rdd,
+      TileLayerMetadata(
+        timeSeries(0)._2.cellType,
+        LayoutDefinition(RasterExtent(extent, cols, rows), cols, rows),
+        extent,
+        CRS.fromEpsgCode(32631),
+        KeyBounds[SpaceTimeKey](timeSeries.head._1, timeSeries.last._1)
+      )
+    )
+    new ContextRDD(layer, layer.metadata)
+  }
 
   def sentinel2B04Layer = {
     val tiles = b04Raster.tile.bands
