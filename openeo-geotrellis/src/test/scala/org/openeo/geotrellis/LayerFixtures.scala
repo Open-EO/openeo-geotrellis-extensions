@@ -92,7 +92,7 @@ object LayerFixtures {
   private val maxSpatialResolution = CellSize(10, 10)
   private val pathDateExtractor = SplitYearMonthDayPathDateExtractor
   val opensearchEndpoint = "https://services.terrascope.be/catalogue"
-  val client: OpenSearchClient = OpenSearchClient(new URL("https://services.terrascope.be/catalogue"))
+  val client: OpenSearchClient = OpenSearchClient(new URL("https://services.terrascope.be/catalogue"),isUTM = true)
 
   def defaultExtent = Extent(xmin = 3.248235121238894, ymin = 50.9753557675801, xmax = 3.256396825072918, ymax = 50.98003212949561)
 
