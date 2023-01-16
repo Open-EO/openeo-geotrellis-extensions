@@ -49,8 +49,8 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
   )
 
   def createOpenSearch = {
-    //TODO configure use of utm in layercatalog?
-    OpenSearchClient(openSearchEndpointUrl, isUTM = maxSpatialResolution == CellSize(10.0,10.0))
+    //TODO configure use of utm in layercatalog? (https://github.com/Open-EO/openeo-geopyspark-driver/issues/219)
+    OpenSearchClient(openSearchEndpointUrl, isUTM = maxSpatialResolution == CellSize(10.0,10.0) && !openSearchCollectionId.contains("COHERENCE"))
   }
 
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String,

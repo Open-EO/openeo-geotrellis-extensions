@@ -18,37 +18,79 @@ import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
+import org.junit.jupiter.api.{AfterAll, BeforeAll}
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import org.junit.{AfterClass, BeforeClass, Test}
+import org.openeo.geotrellis.AggregateSpatialTest.{assertEqualTimeseriesStats, parseCSV}
+import org.openeo.geotrellis.aggregate_polygon.intern.splitOverlappingPolygons
+import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD}
 import org.openeo.geotrellisaccumulo.PyramidFactory
 
+import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.util
 import scala.collection.JavaConverters._
 
-object OpenEOProcessesSpec{
+object OpenEOProcessesSpec {
+  // Methods with attributes get called in a non-intuitive order:
+  // - BeforeAll
+  // - ParameterizedTest
+  // - AfterAll
+  // - BeforeClass
+  // - AfterClass
+  //
+  // This order feels arbitrary, so I made the code robust against order changes.
 
-  private var sc: SparkContext = _
+  private var _sc: Option[SparkContext] = None
 
-  @BeforeClass
-  def setUpSpark(): Unit = {
-    sc = {
+  private def sc: SparkContext = {
+    if (_sc.isEmpty) {
       val config = new HdfsConfiguration
       //config.set("hadoop.security.authentication", "kerberos")
       UserGroupInformation.setConfiguration(config)
 
-      val conf = new SparkConf().setMaster("local[2]")//.set("spark.driver.bindAddress", "127.0.0.1")
+      val conf = new SparkConf().setMaster("local[2]") //.set("spark.driver.bindAddress", "127.0.0.1")
         .set("spark.kryoserializer.buffer.max", "512m")
         .set("spark.rdd.compress", "true")
       //conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-      SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, conf)
+      _sc = Some(SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, conf))
     }
+    _sc.get
   }
 
+  @BeforeClass
+  def setUpSpark_BeforeClass(): Unit = sc
+
+  @BeforeAll
+  def setUpSpark_BeforeAll(): Unit = sc
+
+  var gotAfterAll = false
+
+  @AfterAll
+  def tearDownSpark_AfterAll(): Unit = {
+    gotAfterAll = true
+    maybeStopSpark()
+  }
+
+  var gotAfterClass = false
+
   @AfterClass
-  def tearDownSpark(): Unit = {
-    sc.stop()
+  def tearDownSpark_AfterClass(): Unit = {
+    gotAfterClass = true;
+    maybeStopSpark()
+  }
+
+  def maybeStopSpark(): Unit = {
+    if (gotAfterAll && gotAfterClass) {
+      if (_sc.isDefined) {
+        _sc.get.stop()
+        _sc = None
+      }
+    }
   }
 
   def getPixel(layer:MultibandTileLayerRDD[SpaceTimeKey]): Array[Int] = {
@@ -289,6 +331,62 @@ class OpenEOProcessesSpec extends RasterMatchers {
     GeoTiff(Raster(MultibandTile(filledResult),layer.metadata.extent),layer.metadata.crs).write("result.tiff",true)
 
 
+  }
+
+  @ParameterizedTest
+  @EnumSource(classOf[PixelType])
+  def aggregateTemporalTest(pixelType: PixelType): Unit = {
+    val outDir = "/tmp/aggregateTemporalTest/"
+    Files.createDirectories(Paths.get(outDir))
+    val layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType)
+    val bounds = layer.metadata.bounds
+    val middleDate = SpaceTimeKey(0, 0, (bounds.get.minKey.instant + bounds.get.maxKey.instant) / 2).time
+
+    // intervals is a list of start,end-pairs
+    val intervals = List(middleDate.plusYears(-1000), middleDate, middleDate, middleDate.plusYears(1000))
+      .map(DateTimeFormatter.ISO_INSTANT.format(_))
+    val labels = (intervals.indices.collect { case i if i % 2 == 0 => intervals(i) }).toList
+
+    val resultTiles: Array[MultibandTile] = new OpenEOProcesses().aggregateTemporal(layer,
+      intervals.asJava,
+      labels.asJava,
+      TestOpenEOProcessScriptBuilder.createMedian(true),
+      java.util.Collections.emptyMap()
+    ).values.collect()
+
+    val validTile = resultTiles.find(_ != null).get
+    val emptyTile = ArrayMultibandTile.empty(validTile.cellType, validTile.bandCount, validTile.cols, validTile.rows)
+    val filledResult = resultTiles.map { t => if (t != null) t.band(0) else emptyTile.band(0) }
+    pixelType match {
+      case PixelType.Double => assertEquals(64, validTile.band(0).cellType.bits); assertTrue(validTile.band(0).cellType.isFloatingPoint)
+      case PixelType.Float => assertEquals(32, validTile.band(0).cellType.bits); assertTrue(validTile.band(0).cellType.isFloatingPoint)
+      case PixelType.Int => assertEquals(32, validTile.band(0).cellType.bits); assertFalse(validTile.band(0).cellType.isFloatingPoint)
+      case PixelType.Short => assertEquals(16, validTile.band(0).cellType.bits); assertFalse(validTile.band(0).cellType.isFloatingPoint)
+      case PixelType.Byte => assertEquals(8, validTile.band(0).cellType.bits); assertFalse(validTile.band(0).cellType.isFloatingPoint)
+      case PixelType.Bit => assertEquals(1, validTile.band(0).cellType.bits); assertFalse(validTile.band(0).cellType.isFloatingPoint)
+      case _ => throw new IllegalStateException(s"pixelType $pixelType not supported")
+    }
+
+    GeoTiff(Raster(MultibandTile(filledResult), layer.metadata.extent), layer.metadata.crs)
+      .write(outDir + pixelType.getClass.getSimpleName + ".tiff", optimizedOrder = true)
+
+    val builder = new SparkAggregateScriptBuilder
+    val emptyMap = new util.HashMap[String, Object]()
+    builder.expressionEnd("min", emptyMap)
+    builder.expressionEnd("max", emptyMap)
+    builder.expressionEnd("mean", emptyMap)
+
+    val geometries = ProjectedPolygons.fromExtent(layer.metadata.extent, layer.metadata.crs.toString())
+    val splitPolygons = splitOverlappingPolygons(geometries.polygons)
+    val outDirSpacial = outDir + pixelType.getClass.getSimpleName
+    new AggregatePolygonProcess().aggregateSpatialGeneric(scriptBuilder = builder, datacube = layer, polygonsWithIndexMapping = splitPolygons,
+      geometries.crs, bandCount = new OpenEOProcesses().RDDBandCount(layer), outDirSpacial)
+
+    val groupedStats = parseCSV(outDirSpacial)
+    for ((_, stats) <- groupedStats) pixelType match {
+      case PixelType.Bit => assertEqualTimeseriesStats(Seq(Seq(0, 1, 0.5)), stats, 0.01)
+      case _ => assertEqualTimeseriesStats(Seq(Seq(5, 15, 10.0)), stats, 0.1)
+    }
   }
 
   @Test
