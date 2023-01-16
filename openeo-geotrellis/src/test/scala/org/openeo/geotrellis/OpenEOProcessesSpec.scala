@@ -26,7 +26,7 @@ import org.openeo.geotrellis.AggregateSpatialTest.{assertEqualTimeseriesStats, p
 import org.openeo.geotrellis.aggregate_polygon.intern.splitOverlappingPolygons
 import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
-import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD}
+import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD, saveRDDTileGrid}
 import org.openeo.geotrellisaccumulo.PyramidFactory
 
 import java.nio.file.{Files, Paths}
@@ -155,6 +155,8 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     val maskedCube: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().rasterMask(selectedBands, binaryMask, Double.NaN)
     val stitched = maskedCube.toSpatial().stitch()
+
+    MultibandGeoTiff(stitched, maskedCube.metadata.crs).write("applyMask.tif")
     print(stitched)
   }
 
