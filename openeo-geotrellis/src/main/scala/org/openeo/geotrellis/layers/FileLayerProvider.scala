@@ -175,7 +175,7 @@ object FileLayerProvider {
         // "java.lang.UnsatisfiedLinkError: C:\Users\...\gdalwarp_bindings.dll: Can't find dependent libraries"
         // Ignore GDAL init error so that tests that don't require it will be ok.
         // Tests that require it will still crash when it is not installed.
-        logger.info("'GDALWarp.init' threw error, but ignore for now. " + e)
+        logger.warn("GDAL library not found: " + e.getMessage)
     }
   }
 
