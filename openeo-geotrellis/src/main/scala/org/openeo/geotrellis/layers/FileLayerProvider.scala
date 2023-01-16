@@ -167,7 +167,16 @@ object FileLayerProvider {
   private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
 
   {
-    GDALWarp.init(32)
+    try {
+      GDALWarp.init(32)
+    } catch {
+      case e: java.lang.UnsatisfiedLinkError =>
+        // Error message probably looks like this:
+        // "java.lang.UnsatisfiedLinkError: C:\Users\...\gdalwarp_bindings.dll: Can't find dependent libraries"
+        // Ignore GDAL init error so that tests that don't require it will be ok.
+        // Tests that require it will still crash when it is not installed.
+        logger.info("'GDALWarp.init' threw error, but ignore for now. " + e)
+    }
   }
 
   // important: make sure to implement object equality for CacheKey's members
