@@ -147,8 +147,6 @@ class OpenEOProcessesSpec extends RasterMatchers {
       dates = Some(dates)
     )
 
-    saveRDDTemporal(dataCubeContextRDD, "./dataCubeContextRDD/")
-
     val size = 256
     val arr = ListBuffer[Byte]()
     for {
@@ -161,12 +159,11 @@ class OpenEOProcessesSpec extends RasterMatchers {
       }
     }
 
-    val specialTile = ByteArrayTile.apply(arr.toArray, size, size)
+    val specialTile = ByteConstantNoDataArrayTile.apply(arr.toArray, size, size)
     specialTile.set(0, 0, 1)
-    specialTile.set(0, 1, ByteConstantNoDataCellType.noDataValue)
+    specialTile.set(0, 1, specialTile.cellType.noDataValue)
     val tileLayerRDD = buildSpatioTemporalDataCube(List(specialTile).asJava, dates.map(_.toString), Some(extentTAP4326))
 
-    saveRDDTemporal(tileLayerRDD, "./tileLayerRDD/")
     val maskedCube: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().rasterMask(
       dataCubeContextRDD,
       tileLayerRDD,
@@ -405,7 +402,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val groupedStats = parseCSV(outDirSpacial)
     for ((_, stats) <- groupedStats) pixelType match {
       case PixelType.Bit => assertEqualTimeseriesStats(Seq(Seq(0, 1, 0.5)), stats, 0.01)
-      case _ => assertEqualTimeseriesStats(Seq(Seq(5, 15, 10.0)), stats, 0.1)
+      case _ => assertEqualTimeseriesStats(Seq(Seq(20, 120, 70.0)), stats, 0.5)
     }
   }
 

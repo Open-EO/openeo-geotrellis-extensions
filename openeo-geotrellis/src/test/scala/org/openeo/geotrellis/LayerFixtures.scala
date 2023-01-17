@@ -185,11 +185,12 @@ object LayerFixtures {
 
     val timeSeries: Array[(SpaceTimeKey, MultibandTile)] = datesGet.map({ date =>
       val v = pixelType match {
-        case PixelType.Double => DoubleArrayTile.apply((1 to cols * rows).map(_ => 5 + 10 * rand.nextDouble).toArray, cols, rows)
-        case PixelType.Float => FloatArrayTile.apply((1 to cols * rows).map(_ => 5 + 10 * rand.nextFloat).toArray, cols, rows)
-        case PixelType.Int => IntArrayTile.apply((1 to cols * rows).map(_ => 5 + rand.nextInt(11)).toArray, cols, rows)
-        case PixelType.Short => ShortArrayTile.apply((1 to cols * rows).map(_ => (5 + rand.nextInt(11)).toShort).toArray, cols, rows)
-        case PixelType.Byte => ByteArrayTile.apply((1 to cols * rows).map(_ => (5 + rand.nextInt(11)).toByte).toArray, cols, rows)
+        // Uses values in the 0-127 range, so that windows thumbnails show something visible
+        case PixelType.Double => DoubleArrayTile.apply((1 to cols * rows).map(_ => 20 + 100 * rand.nextDouble).toArray, cols, rows)
+        case PixelType.Float => FloatArrayTile.apply((1 to cols * rows).map(_ => 20 + 100 * rand.nextFloat).toArray, cols, rows)
+        case PixelType.Int => IntArrayTile.apply((1 to cols * rows).map(_ => 20 + rand.nextInt(101)).toArray, cols, rows)
+        case PixelType.Short => ShortArrayTile.apply((1 to cols * rows).map(_ => (20 + rand.nextInt(101)).toShort).toArray, cols, rows)
+        case PixelType.Byte => ByteArrayTile.apply((1 to cols * rows).map(_ => (20 + rand.nextInt(101)).toByte).toArray, cols, rows)
         case PixelType.Bit =>
           val bytes = Array.fill[Byte](cols * rows / 8)(0)
           rand.nextBytes(bytes)
@@ -203,17 +204,14 @@ object LayerFixtures {
     }).toArray
 
     val rdd = SparkContext.getOrCreate().parallelize(timeSeries)
-    val layer = ContextRDD(
-      rdd,
-      TileLayerMetadata(
-        timeSeries(0)._2.cellType,
-        LayoutDefinition(RasterExtent(extent, cols, rows), cols, rows),
-        extent,
-        crs,
-        KeyBounds[SpaceTimeKey](timeSeries.head._1, timeSeries.last._1)
-      )
+    val metadata = TileLayerMetadata(
+      timeSeries(0)._2.cellType,
+      LayoutDefinition(RasterExtent(extent, cols, rows), cols, rows),
+      extent,
+      crs,
+      KeyBounds[SpaceTimeKey](timeSeries.head._1, timeSeries.last._1)
     )
-    new ContextRDD(layer, layer.metadata)
+    new ContextRDD(rdd, metadata)
   }
 
   def sentinel2B04Layer = {
@@ -260,12 +258,16 @@ object LayerFixtures {
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, MultibandTile(imageTile, secondBand, thirdBand), TileLayout(layoutCols, layoutRows, 256, 256), LatLng)
     print(tileLayerRDD.keys.collect())
+    // Remove some tiles at the left of the image:
     val filtered: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = tileLayerRDD.withContext {
       _.filter { case (key, tile) => (key.col > 0 && (key.col != 1 || key.row != 1)) }
     }
     (imageTile, filtered)
   }
 
+  /**
+   * Returned cube intentionally has missing Tiles.
+   */
   def aSpacetimeTileLayerRdd(layoutCols: Int, layoutRows: Int, nbDates:Int = 2, extent:Extent = defaultExtent): (RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], ByteArrayTile) = {
     val (imageTile: ByteArrayTile, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(
       layoutCols,
