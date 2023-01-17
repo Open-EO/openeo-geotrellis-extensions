@@ -238,7 +238,6 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     var layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 14,datacubeParams = Option.empty)
 
     val originalCount = layer.count()
-    mask = p.resampleCubeSpatial(mask,layer,ResampleMethod.DEFAULT)._2
     val parameters = new DataCubeParameters()
     parameters.maskingCube = Some(mask)
     layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 14,datacubeParams = Some(parameters))

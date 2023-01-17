@@ -46,7 +46,7 @@ object LayerFixtures {
     return layer
   }
 
-  def buildSpatioTemporalDataCube(tiles: util.List[Tile], dates: Seq[String], extent: Option[Extent] = None): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+  def buildSpatioTemporalDataCube(tiles: util.List[_ <: Tile], dates: Seq[String], extent: Option[Extent] = None): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val mbTile = ArrayMultibandTile(tiles.asScala)
     val raster = Raster[MultibandTile](mbTile, extent.getOrElse(TileLayerRDDBuilders.defaultCRS.worldExtent))
     val cubeXYB: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] =
@@ -170,14 +170,20 @@ object LayerFixtures {
    * min: 5
    * max: 15
    */
-  def randomNoiseLayer(pixelType: PixelType = PixelType.Byte): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val startDate = ZonedDateTime.parse("2019-01-21T00:00:00Z")
+  def randomNoiseLayer(pixelType: PixelType = PixelType.Byte,
+                       extent: Extent = defaultExtent,
+                       crs: CRS = CRS.fromEpsgCode(32631),
+                       dates: Option[List[ZonedDateTime]] = None,
+                      ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val rows = 256;
     val cols = 256;
 
     val rand = new scala.util.Random(42) // Fixed seed to make test predictable
 
-    val timeSeries: Array[(SpaceTimeKey, MultibandTile)] = (1 to 4).map({ i =>
+    val defaultStartDate = ZonedDateTime.parse("2019-01-21T00:00:00Z")
+    val datesGet = dates.getOrElse(0 to 4 map (defaultStartDate.plusDays(_)))
+
+    val timeSeries: Array[(SpaceTimeKey, MultibandTile)] = datesGet.map({ date =>
       val v = pixelType match {
         case PixelType.Double => DoubleArrayTile.apply((1 to cols * rows).map(_ => 5 + 10 * rand.nextDouble).toArray, cols, rows)
         case PixelType.Float => FloatArrayTile.apply((1 to cols * rows).map(_ => 5 + 10 * rand.nextFloat).toArray, cols, rows)
@@ -191,12 +197,11 @@ object LayerFixtures {
         case _ => throw new IllegalStateException(s"pixelType $pixelType not supported")
       }
       (
-        SpaceTimeKey(0, 0, startDate.plusDays(i)),
+        SpaceTimeKey(0, 0, date),
         MultibandTile(v.withNoData(Some(32767)))
       )
     }).toArray
 
-    val extent = Extent(0, 0, cols, rows)
     val rdd = SparkContext.getOrCreate().parallelize(timeSeries)
     val layer = ContextRDD(
       rdd,
@@ -204,7 +209,7 @@ object LayerFixtures {
         timeSeries(0)._2.cellType,
         LayoutDefinition(RasterExtent(extent, cols, rows), cols, rows),
         extent,
-        CRS.fromEpsgCode(32631),
+        crs,
         KeyBounds[SpaceTimeKey](timeSeries.head._1, timeSeries.last._1)
       )
     )
@@ -245,7 +250,7 @@ object LayerFixtures {
       pathDateExtractor = SplitYearMonthDayPathDateExtractor
     )
 
-  def createLayerWithGaps(layoutCols:Int,layoutRows:Int) = {
+  def createLayerWithGaps(layoutCols:Int,layoutRows:Int, extent:Extent = defaultExtent ) = {
 
     val intImage = createTextImage(layoutCols * 256, layoutRows * 256)
     val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
@@ -261,16 +266,26 @@ object LayerFixtures {
     (imageTile, filtered)
   }
 
-  def aSpacetimeTileLayerRdd(layoutCols: Int, layoutRows: Int, nbDates:Int = 2) = {
-    val (imageTile: ByteArrayTile, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(layoutCols, layoutRows)
+  def aSpacetimeTileLayerRdd(layoutCols: Int, layoutRows: Int, nbDates:Int = 2, extent:Extent = defaultExtent): (RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], ByteArrayTile) = {
+    val (imageTile: ByteArrayTile, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(
+      layoutCols,
+      layoutRows,
+      extent,
+    )
     val startDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
-    val temporal: RDD[(SpaceTimeKey, MultibandTile)] = filtered.flatMap(tuple => {
+    val temporal = filtered.flatMap(tuple => {
       (1 to nbDates).map(index => (SpaceTimeKey(tuple._1, TemporalKey( startDate.plusDays(index) )), tuple._2))
     }).repartition(layoutCols * layoutRows)
     val spatialM = filtered.metadata
     val newBounds = KeyBounds[SpaceTimeKey](SpaceTimeKey(spatialM.bounds.get._1,TemporalKey(0L)),SpaceTimeKey(spatialM.bounds.get._2,TemporalKey(0L)))
-    val temporalMetadata = new TileLayerMetadata[SpaceTimeKey](spatialM.cellType,spatialM.layout,spatialM.extent,spatialM.crs,newBounds)
-    (ContextRDD(temporal,temporalMetadata),imageTile)
+    val temporalMetadata = new TileLayerMetadata[SpaceTimeKey](
+      spatialM.cellType,
+      spatialM.layout,
+      spatialM.extent,
+      spatialM.crs,
+      newBounds,
+    )
+    (ContextRDD(temporal, temporalMetadata), imageTile)
   }
 
   def aSparseSpacetimeTileLayerRdd(desiredKeys:Seq[SpatialKey] = Seq(SpatialKey(0,0),SpatialKey(3,1),SpatialKey(7,2))): MultibandTileLayerRDD[SpaceTimeKey] = {

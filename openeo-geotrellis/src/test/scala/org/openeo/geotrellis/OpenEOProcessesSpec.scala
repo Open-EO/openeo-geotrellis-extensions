@@ -1,14 +1,14 @@
 package org.openeo.geotrellis
 
-import geotrellis.layer._
-import geotrellis.proj4.{LatLng, WebMercator}
+import geotrellis.layer.{SpaceTimeKey, _}
+import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.buffer.BufferedTile
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff._
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.resample.ResampleMethod
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ArrayMultibandTile, ByteConstantTile, DoubleArrayTile, FloatConstantTile, GridBounds, IntConstantNoDataCellType, MultibandTile, Raster, Tile, TileLayout}
+import geotrellis.raster.{stitch, _}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
@@ -23,10 +23,11 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.EnumSource
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.AggregateSpatialTest.{assertEqualTimeseriesStats, parseCSV}
+import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.aggregate_polygon.intern.splitOverlappingPolygons
 import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
-import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD, saveRDDTileGrid}
+import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD, saveRDDTemporal}
 import org.openeo.geotrellisaccumulo.PyramidFactory
 
 import java.nio.file.{Files, Paths}
@@ -34,16 +35,9 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
 import scala.collection.JavaConverters._
+import scala.collection.mutable.ListBuffer
 
-object OpenEOProcessesSpec {
-  // Methods with attributes get called in a non-intuitive order:
-  // - BeforeAll
-  // - ParameterizedTest
-  // - AfterAll
-  // - BeforeClass
-  // - AfterClass
-  //
-  // This order feels arbitrary, so I made the code robust against order changes.
+object OpenEOProcessesSpec{
 
   private var _sc: Option[SparkContext] = None
 
@@ -138,22 +132,46 @@ class OpenEOProcessesSpec extends RasterMatchers {
   /**
     * Test created in the frame of:
     * https://github.com/locationtech/geotrellis/issues/3168
-    */
+   */
   @Test
-  def applyMask() = {
-    val date = "2018-05-06T00:00:00Z"
+  def applyMask(): Unit = {
+    val date = ZonedDateTime.parse("2017-01-01T00:00:00Z").plusDays(1)
+    val dates = List(date)
+    val extentTAP4326 = Extent(5.07, 51.215, 5.08, 51.22)
+    // converted with http://bboxfinder.com/
+    val extentTAP3857 = Extent(564389 - 10, 6659413 - 10, 565503 + 10, 6660301 + 10)
 
-    val extent = Extent(3.4, 51.0, 3.5, 51.05)
-    val datacube= dataCube( date, date, extent, "EPSG:4326")
+    val dataCubeContextRDD: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(
+      extent = extentTAP3857,
+      crs = CRS.fromName("EPSG:3857"),
+      dates = Some(dates)
+    )
 
-    val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1)))
+    saveRDDTemporal(dataCubeContextRDD, "./dataCubeContextRDD/")
 
-    val mask = accumuloDataCube("S2_SCENECLASSIFICATION_PYRAMID_20200407", date, date, extent, "EPSG:4326")
-    val binaryMask = mask.withContext(_.mapValues( _.map(0)(pixel => if ( pixel == 5) 0 else 1)))
+    val size = 256
+    val arr = ListBuffer[Byte]()
+    for {
+      row <- 1 to size
+      col <- 1 to size
+    } {
+      // Make a small shape to make it easier to debug:
+      arr += {
+        if (row < math.sin(col / 10.0) * size / 3 + size / 2) 1.toByte else 0.toByte
+      }
+    }
 
-    print(binaryMask.partitioner)
+    val specialTile = ByteArrayTile.apply(arr.toArray, size, size)
+    specialTile.set(0, 0, 1)
+    specialTile.set(0, 1, ByteConstantNoDataCellType.noDataValue)
+    val tileLayerRDD = buildSpatioTemporalDataCube(List(specialTile).asJava, dates.map(_.toString), Some(extentTAP4326))
 
-    val maskedCube: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().rasterMask(selectedBands, binaryMask, Double.NaN)
+    saveRDDTemporal(tileLayerRDD, "./tileLayerRDD/")
+    val maskedCube: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().rasterMask(
+      dataCubeContextRDD,
+      tileLayerRDD,
+      Double.NaN,
+    )
     val stitched = maskedCube.toSpatial().stitch()
 
     MultibandGeoTiff(stitched, maskedCube.metadata.crs).write("applyMask.tif")
@@ -370,7 +388,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     }
 
     GeoTiff(Raster(MultibandTile(filledResult), layer.metadata.extent), layer.metadata.crs)
-      .write(outDir + pixelType.getClass.getSimpleName + ".tiff", optimizedOrder = true)
+      .write(outDir + pixelType + ".tiff", optimizedOrder = true)
 
     val builder = new SparkAggregateScriptBuilder
     val emptyMap = new util.HashMap[String, Object]()
@@ -380,7 +398,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     val geometries = ProjectedPolygons.fromExtent(layer.metadata.extent, layer.metadata.crs.toString())
     val splitPolygons = splitOverlappingPolygons(geometries.polygons)
-    val outDirSpacial = outDir + pixelType.getClass.getSimpleName
+    val outDirSpacial = outDir + pixelType
     new AggregatePolygonProcess().aggregateSpatialGeneric(scriptBuilder = builder, datacube = layer, polygonsWithIndexMapping = splitPolygons,
       geometries.crs, bandCount = new OpenEOProcesses().RDDBandCount(layer), outDirSpacial)
 
