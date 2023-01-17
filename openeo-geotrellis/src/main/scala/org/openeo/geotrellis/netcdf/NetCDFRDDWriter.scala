@@ -15,7 +15,8 @@ import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
-import org.openeo.geotrellis.geotiff.{getCreoS3Client, preProcess}
+import org.openeo.geotrellis.creo.CreoS3Utils
+import org.openeo.geotrellis.geotiff.preProcess
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
@@ -464,7 +465,7 @@ object NetCDFRDDWriter {
       .key(s3Uri.getKey)
       .build
 
-    getCreoS3Client().putObject(objectRequest, RequestBody.fromFile(Paths.get(localPath)))
+    CreoS3Utils.getCreoS3Client().putObject(objectRequest, RequestBody.fromFile(Paths.get(localPath)))
   }
 
   private[netcdf] def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime],
