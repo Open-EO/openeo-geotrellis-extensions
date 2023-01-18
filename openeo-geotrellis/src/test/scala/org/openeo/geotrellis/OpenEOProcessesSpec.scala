@@ -10,8 +10,11 @@ import geotrellis.raster.resample.ResampleMethod
 import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.raster.{ArrayMultibandTile, ByteConstantTile, DoubleArrayTile, FloatConstantTile, GridBounds, IntConstantNoDataCellType, MultibandTile, Raster, Tile, TileLayout}
 import geotrellis.spark._
+import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
+import geotrellis.spark.{MultibandTileLayerRDD, _}
+import geotrellis.util._
 import geotrellis.vector._
 import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
@@ -28,6 +31,8 @@ import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAg
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD}
 import org.openeo.geotrellisaccumulo.PyramidFactory
+import org.openeo.geotrelliscommon.SparseSpaceOnlyPartitioner
+import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
@@ -316,21 +321,54 @@ class OpenEOProcessesSpec extends RasterMatchers {
   }
 
   @Test
-  def medianComposite():Unit = {
+  def medianComposite(): Unit = {
+    val withoutPartitioner = medianCompositeImpl(false)
+    val withPartitioner = medianCompositeImpl(true)
+    // Measurements at 2022-01-18:
 
-    val layer:MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.sentinel2B04Layer
+    // [stagesCompleted]  | no #90 fix | #90 fix
+    // withoutPartitioner |      3     |    3
+    // withPartitioner    |      4     |    3
+
+    // [tasksCompleted]   | no #90 fix | #90 fix
+    // withoutPartitioner |    179     |   179
+    // withPartitioner    |     14     |     9
+
+    assertTrue(withoutPartitioner.getStagesCompleted == withPartitioner.getStagesCompleted)
+    assertTrue(withPartitioner.getTasksCompleted < 13) // might need to change threshold in the future
+  }
+
+  def medianCompositeImpl(usePartitioner: Boolean): GetInfoSparkListener = {
+    var layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.sentinel2B04Layer
+
+    if (usePartitioner) {
+      type K = SpaceTimeKey
+      val kb: Bounds[K] = layer.metadata.getComponent[Bounds[K]]
+      val newIndices: Array[BigInt] = Array[BigInt](0, 1, 2, 3, 4)
+      implicit val newIndex: PartitionerIndex[K] = new SparseSpaceOnlyPartitioner(newIndices, 8).asInstanceOf[PartitionerIndex[K]]
+      val p = SpacePartitioner[K](kb)
+
+      val tmp = layer.partitionBy(p)
+      layer = MultibandTileLayerRDD[SpaceTimeKey](tmp, layer.metadata)
+    }
 
     val startDate = ZonedDateTime.parse("2019-01-21T00:00:00Z")
     val intervals = Range(0,20).flatMap{r => Seq(startDate.plusDays(10L*r),startDate.plusDays(10L*(r+1)))}.map(DateTimeFormatter.ISO_INSTANT.format(_))
     val labels = Range(0,20).map{r => DateTimeFormatter.ISO_INSTANT.format(startDate.plusDays(10L*r))}
 
-    val resultTiles: Array[MultibandTile] = new OpenEOProcesses().aggregateTemporal(layer,intervals.asJava,labels.asJava,TestOpenEOProcessScriptBuilder.createMedian(true), java.util.Collections.emptyMap()).values.collect()
+    val listener = new GetInfoSparkListener()
+    val rdd = new OpenEOProcesses().aggregateTemporal(layer,intervals.asJava,labels.asJava,TestOpenEOProcessScriptBuilder.createMedian(true), java.util.Collections.emptyMap())
+
+    SparkContext.getOrCreate().addSparkListener(listener)
+    val resultTiles: Array[MultibandTile] = rdd.values.collect()
+    SparkContext.getOrCreate().removeSparkListener(listener)
+
     val validTile = resultTiles.find(_ !=null).get
     val emptyTile = ArrayMultibandTile.empty(validTile.cellType,validTile.bandCount,validTile.cols,validTile.rows)
     val filledResult = resultTiles.map{t => if(t != null) t.band(0) else emptyTile.band(0)}
     GeoTiff(Raster(MultibandTile(filledResult),layer.metadata.extent),layer.metadata.crs).write("result.tiff",true)
 
-
+    listener
   }
 
   @ParameterizedTest
