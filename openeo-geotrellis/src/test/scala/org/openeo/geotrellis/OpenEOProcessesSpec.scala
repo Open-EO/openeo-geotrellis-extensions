@@ -41,8 +41,16 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
 import scala.reflect.ClassTag
 
-object OpenEOProcessesSpec{
-
+object OpenEOProcessesSpec {
+  // Methods with attributes get called in a non-intuitive order:
+  // - BeforeAll
+  // - ParameterizedTest
+  // - AfterAll
+  // - BeforeClass
+  // - AfterClass
+  //
+  // This order feels arbitrary, so I made the code robust against order changes.
+  
   private var _sc: Option[SparkContext] = None
 
   private def sc: SparkContext = {
