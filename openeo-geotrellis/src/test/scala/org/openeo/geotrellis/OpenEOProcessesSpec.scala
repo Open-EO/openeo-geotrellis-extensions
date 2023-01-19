@@ -116,6 +116,25 @@ object OpenEOProcessesSpec {
     arguments(Some(Constant0Partitioner), Some(Constant1Partitioner)),
     arguments(Some(Constant0Partitioner), Some(Constant0Partitioner)),
   ))
+
+  private def getWavyMask: MutableArrayTile = {
+    val size = 256
+    val arr = ListBuffer[Byte]()
+    for {
+      row <- 1 to size
+      col <- 1 to size
+    } {
+      // Make a small shape to make it easier to debug:
+      arr += {
+        if (row < math.sin(col / 10.0) * size / 3 + size / 2) 1.toByte else 0.toByte
+      }
+    }
+
+    val tile = ByteConstantNoDataArrayTile.apply(arr.toArray, size, size)
+    tile.set(0, 0, 1)
+    tile.set(0, 1, tile.cellType.noDataValue)
+    tile
+  }
 }
 
 object Constant0Partitioner extends PartitionerIndex[SpaceTimeKey] {
@@ -200,22 +219,8 @@ class OpenEOProcessesSpec extends RasterMatchers {
       dates = Some(dates)
     )
 
-    val size = 256
-    val arr = ListBuffer[Byte]()
-    for {
-      row <- 1 to size
-      col <- 1 to size
-    } {
-      // Make a small shape to make it easier to debug:
-      arr += {
-        if (row < math.sin(col / 10.0) * size / 3 + size / 2) 1.toByte else 0.toByte
-      }
-    }
-
-    val specialTile = ByteConstantNoDataArrayTile.apply(arr.toArray, size, size)
-    specialTile.set(0, 0, 1)
-    specialTile.set(0, 1, specialTile.cellType.noDataValue)
-    var maskRDD = buildSpatioTemporalDataCube(List(specialTile).asJava, dates.map(_.toString), Some(extentTAP4326))
+    val maskTile = OpenEOProcessesSpec.getWavyMask
+    var maskRDD = buildSpatioTemporalDataCube(List(maskTile).asJava, dates.map(_.toString), Some(extentTAP4326))
 
     if (indexImage.isDefined) {
       val partitioner = SpacePartitioner(dataCubeContextRDD.metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), indexImage.get)
@@ -227,12 +232,46 @@ class OpenEOProcessesSpec extends RasterMatchers {
       maskRDD = new ContextRDD(maskRDD.partitionBy(partitioner), maskRDD.metadata)
     }
 
-    if (indexImage.isDefined && indexMask.isDefined) {
-      val dataCubeContextRDD_thread = dataCubeContextRDD.map(_ => Thread.currentThread().getId).collect()(0)
-      val maskRDD_thread = maskRDD.map(_ => Thread.currentThread().getId).collect()(0)
-      assertTrue(dataCubeContextRDD_thread != maskRDD_thread)
-    }
+    val dataCubeContextRDD_thread = dataCubeContextRDD.map(_ => Thread.currentThread().getId).collect()
+    val maskRDD_thread = maskRDD.map(_ => Thread.currentThread().getId).collect()
+    println("dataCubeContextRDD_thread: " + dataCubeContextRDD_thread.mkString)
+    println("maskRDD_thread: " + maskRDD_thread.mkString)
 
+    val maskedCube: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().rasterMask(
+      dataCubeContextRDD,
+      maskRDD,
+      Double.NaN,
+    )
+    val stitched = maskedCube.toSpatial().stitch()
+
+    val geotiff = MultibandGeoTiff(stitched, maskedCube.metadata.crs)
+    geotiff.write("applyMask.tif")
+
+    val refFile = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/applyMaskReference.tif")
+    val refTiff = GeoTiff.readMultiband(refFile.getPath)
+
+    val mse = MergeCubesSpec.simpleMeanSquaredError(geotiff.tile.band(0), refTiff.tile.band(0))
+    println("MSE = " + mse)
+    assertTrue(mse < 0.1)
+    print(stitched)
+  }
+
+  @Test
+  def applyMaskTiled(): Unit = {
+    val date = ZonedDateTime.parse("2017-01-01T00:00:00Z").plusDays(1)
+    val dates = List(date)
+    val extentTAP4326 = Extent(5.07, 51.215, 5.08, 51.22)
+
+    val dataCubeContextRDD: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(
+      extent = extentTAP4326,
+      crs = TileLayerRDDBuilders.defaultCRS,
+      dates = Some(dates)
+    )
+
+    val maskTile = OpenEOProcessesSpec.getWavyMask
+    val maskRDD = buildSpatioTemporalDataCube(List(maskTile).asJava, dates.map(_.toString), Some(extentTAP4326), 2)
+
+    // Mask should be automatically resampled and not crash.
     val maskedCube: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().rasterMask(
       dataCubeContextRDD,
       maskRDD,

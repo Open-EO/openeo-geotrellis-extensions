@@ -36,11 +36,8 @@ object MergeCubesSpec{
 
   @AfterClass
   def tearDownSpark(): Unit = sc.stop()
-}
 
-class MergeCubesSpec {
-
-  @Test def testMergeCubesBasicResample(): Unit = {
+  private def getDebugTile: MutableArrayTile = {
     val size = 256
     val arr = ListBuffer[Byte]()
     for {
@@ -53,45 +50,73 @@ class MergeCubesSpec {
       }
     }
 
-    Files.createDirectories(Paths.get("/tmp/MergeCubesSpec/"))
-    val specialTile: MutableArrayTile = ByteArrayTile.apply(arr.toArray, size, size)
-    specialTile.set(0, 0, 1)
-    specialTile.set(0, 1, ByteConstantNoDataCellType.noDataValue)
-    // Use smaller Extent to avoid errors when reprojecting
+    val tile = ByteConstantNoDataArrayTile.apply(arr.toArray, size, size)
+    tile.set(0, 0, 1)
+    tile.set(0, 1, tile.cellType.noDataValue)
+    tile
+  }
+
+  def simpleMeanSquaredError(tileA: Tile, tileB: Tile): Double = {
+    val diff = tileA.convert(DoubleConstantNoDataCellType).localSubtract(tileB.convert(DoubleConstantNoDataCellType))
+    // The geotrellis .map() fills the tile with '0' values instead of 'noDataValue', so avoid.
+    val diffArr = diff.toArrayDouble().filter(!isNoData(_))
+    val squared = diffArr.map(v => v * v)
+    squared.sum / squared.length
+  }
+}
+
+class MergeCubesSpec {
+
+  @Test def testMergeCubesCrsResample(): Unit = {
+    val path = "/tmp/testMergeCubesCrsResample/"
+    Files.createDirectories(Paths.get(path))
+    val specialTile = MergeCubesSpec.getDebugTile
+    // Avoid global extent to avoid errors when reprojecting
     val tileLayerRDD = tileToSpaceTimeDataCube(specialTile, Some(LayerFixtures.defaultExtent))
-    saveRDD(tileLayerRDD.toSpatial(tileLayerRDD.keys.collect().head.time), 1, "/tmp/MergeCubesSpec/tileLayerRDD.tiff")
+    saveRDD(tileLayerRDD.toSpatial(tileLayerRDD.keys.collect().head.time), 1, path + "tileLayerRDD.tiff")
     val newCrs = CRS.fromEpsgCode(32631)
     val extend = tileLayerRDD.metadata.layout.extent
     val extend_reproject = extend.reproject(tileLayerRDD.metadata.crs, newCrs)
-    val ld = LayoutDefinition(RasterExtent(extend_reproject, CellSize(extend_reproject.width / size, extend_reproject.height / size)), size)
-    val tileLayerRDD_reproject = tileLayerRDD.reproject(newCrs, ld)._2
-    saveRDD(tileLayerRDD_reproject.toSpatial(tileLayerRDD_reproject.keys.collect().head.time), 1, "/tmp/MergeCubesSpec/tileLayerRDD_reproject.tiff")
+    val ld = LayoutDefinition(RasterExtent(extend_reproject, CellSize(extend_reproject.width / specialTile.cols, extend_reproject.height / specialTile.rows)), specialTile.cols, specialTile.rows)
+    val tileLayerRDD_tiled = tileLayerRDD.reproject(newCrs, ld)._2
+    saveRDD(tileLayerRDD_tiled.toSpatial(tileLayerRDD_tiled.keys.collect().head.time), 1, path + "tileLayerRDD_tiled.tiff")
 
     val wrappedRDD = new OpenEORasterCube[SpaceTimeKey](tileLayerRDD.rdd, tileLayerRDD.metadata, new OpenEORasterCubeMetadata(Seq("B01", "B02")))
-    val merged = new OpenEOProcesses().mergeCubes(wrappedRDD, tileLayerRDD_reproject, null)
-    saveRDD(wrappedRDD.toSpatial(wrappedRDD.keys.collect().head.time), 1, "/tmp/MergeCubesSpec/wrappedRDD.tiff")
-    saveRDD(merged.toSpatial(merged.keys.collect().head.time), 1, "/tmp/MergeCubesSpec/merged.tiff")
+    val merged = new OpenEOProcesses().mergeCubes(wrappedRDD, tileLayerRDD_tiled, null)
+    saveRDD(wrappedRDD.toSpatial(wrappedRDD.keys.collect().head.time), 1, path + "wrappedRDD.tiff")
+    saveRDD(merged.toSpatial(merged.keys.collect().head.time), 1, path + "merged.tiff")
 
     val firstTile: MultibandTile = merged.toJavaRDD.take(1).get(0)._2
     assertEquals(4, firstTile.bandCount)
     assertEquals(specialTile, firstTile.band(0))
 
     // Due to resampling with interpolation, some artifacts may occur. So use fuzzy compare with MSE:
-    val mse = simpleMeanSquaredError(specialTile, firstTile.band(2))
+    val mse = MergeCubesSpec.simpleMeanSquaredError(specialTile, firstTile.band(2))
     println("MSE = " + mse)
     assertTrue(mse < 0.1)
   }
 
-  /**
-   * Does not take in to account empty pixels.
-   * Will need to use standard methods.
-   */
-  private def simpleMeanSquaredError(tileA: Tile, tileB: Tile): Double = {
-    val diff = tileA.convert(DoubleConstantNoDataCellType).localSubtract(tileB.convert(DoubleConstantNoDataCellType))
-    // The geotrellis .map() fills the tile with '0' values instead of 'noDataValue', so avoid.
-    val diffArr = diff.toArrayDouble().filter(!isNoData(_))
-    val squared = diffArr.map(v => v * v)
-    squared.sum / squared.length
+  @Test def testMergeCubesTiledResample(): Unit = {
+    val path = "/tmp/testMergeCubesTiledResample/"
+    Files.createDirectories(Paths.get(path))
+    val specialTile = MergeCubesSpec.getDebugTile
+    // Avoid global extent to avoid errors when reprojecting
+    val tileLayerRDD = tileToSpaceTimeDataCube(specialTile, Some(LayerFixtures.defaultExtent))
+    val tileLayerRDD_tiled = tileToSpaceTimeDataCube(specialTile, Some(LayerFixtures.defaultExtent), 2)
+
+    val wrappedRDD = new OpenEORasterCube[SpaceTimeKey](tileLayerRDD.rdd, tileLayerRDD.metadata, new OpenEORasterCubeMetadata(Seq("B01", "B02")))
+    val merged = new OpenEOProcesses().mergeCubes(wrappedRDD, tileLayerRDD_tiled, null)
+    saveRDD(wrappedRDD.toSpatial(wrappedRDD.keys.collect().head.time), 1, path + "wrappedRDD.tiff")
+    saveRDD(merged.toSpatial(merged.keys.collect().head.time), 1, path + "merged.tiff")
+
+    val firstTile: MultibandTile = merged.toJavaRDD.take(1).get(0)._2
+    assertEquals(4, firstTile.bandCount)
+    assertEquals(specialTile, firstTile.band(0))
+
+    // Due to resampling with interpolation, some artifacts may occur. So use fuzzy compare with MSE:
+    val mse = MergeCubesSpec.simpleMeanSquaredError(specialTile, firstTile.band(2))
+    println("MSE = " + mse)
+    assertTrue(mse < 0.1)
   }
 
   @Test def testSimpleMeanSquaredError(): Unit = {
@@ -109,7 +134,7 @@ class MergeCubesSpec {
     specialTile.set(0, 0, 99)
 
     val plainTile: MutableArrayTile = ByteArrayTile.fill(100.toByte, size, size)
-    val mse = simpleMeanSquaredError(specialTile, plainTile)
+    val mse = MergeCubesSpec.simpleMeanSquaredError(specialTile, plainTile)
     println("MSE = " + mse)
     assertTrue(mse < 0.1)
     assertTrue(mse > 0) // MSE could be 0, but here we expect something changed.
