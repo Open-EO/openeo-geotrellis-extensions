@@ -1,6 +1,7 @@
 package org.openeo.geotrellis
 
-import geotrellis.layer._
+import geotrellis.layer.{SpaceTimeKey, _}
+import geotrellis.proj4.CRS
 import geotrellis.raster._
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
@@ -9,18 +10,22 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.LayerFixtures._
+import org.openeo.geotrellis.geotiff.saveRDD
 import org.openeo.geotrelliscommon.{OpenEORasterCube, OpenEORasterCubeMetadata, SparseSpaceTimePartitioner}
 
+import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.util
+import scala.collection.mutable.ListBuffer
 
+import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder}
 
 object MergeCubesSpec{
 
   var sc: SparkContext = _
 
   @BeforeClass
-  def setupSpark() = {
+  def setupSpark(): Unit = {
     sc = {
       val conf = new SparkConf().setMaster("local[2]").setAppName(getClass.getSimpleName)
         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
@@ -30,10 +35,111 @@ object MergeCubesSpec{
   }
 
   @AfterClass
-  def tearDownSpark() = sc.stop()
+  def tearDownSpark(): Unit = sc.stop()
+
+  private def getDebugTile: MutableArrayTile = {
+    val size = 256
+    val arr = ListBuffer[Byte]()
+    for {
+      row <- 1 to size
+      col <- 1 to size
+    } {
+      // Make a small shape to make it easier to debug:
+      arr += {
+        if (row < size / 2) 100.toByte else (if (col < size / 3) 200.toByte else 0.toByte)
+      }
+    }
+
+    val tile = ByteConstantNoDataArrayTile.apply(arr.toArray, size, size)
+    tile.set(0, 0, 1)
+    tile.set(0, 1, tile.cellType.noDataValue)
+    tile
+  }
+
+  def simpleMeanSquaredError(tileA: Tile, tileB: Tile): Double = {
+    val diff = tileA.convert(DoubleConstantNoDataCellType).localSubtract(tileB.convert(DoubleConstantNoDataCellType))
+    // The geotrellis .map() fills the tile with '0' values instead of 'noDataValue', so avoid.
+    val diffArr = diff.toArrayDouble().filter(!isNoData(_))
+    val squared = diffArr.map(v => v * v)
+    squared.sum / squared.length
+  }
 }
 
 class MergeCubesSpec {
+
+  @Test def testMergeCubesCrsResample(): Unit = {
+    val path = "/tmp/testMergeCubesCrsResample/"
+    Files.createDirectories(Paths.get(path))
+    val specialTile = MergeCubesSpec.getDebugTile
+    // Avoid global extent to avoid errors when reprojecting
+    val tileLayerRDD = tileToSpaceTimeDataCube(specialTile, Some(LayerFixtures.defaultExtent))
+    saveRDD(tileLayerRDD.toSpatial(tileLayerRDD.keys.collect().head.time), 1, path + "tileLayerRDD.tiff")
+    val newCrs = CRS.fromEpsgCode(32631)
+    val extend = tileLayerRDD.metadata.layout.extent
+    val extend_reproject = extend.reproject(tileLayerRDD.metadata.crs, newCrs)
+    val ld = LayoutDefinition(RasterExtent(extend_reproject, CellSize(extend_reproject.width / specialTile.cols, extend_reproject.height / specialTile.rows)), specialTile.cols, specialTile.rows)
+    val tileLayerRDD_tiled = tileLayerRDD.reproject(newCrs, ld)._2
+    saveRDD(tileLayerRDD_tiled.toSpatial(tileLayerRDD_tiled.keys.collect().head.time), 1, path + "tileLayerRDD_tiled.tiff")
+
+    val wrappedRDD = new OpenEORasterCube[SpaceTimeKey](tileLayerRDD.rdd, tileLayerRDD.metadata, new OpenEORasterCubeMetadata(Seq("B01", "B02")))
+    val merged = new OpenEOProcesses().mergeCubes(wrappedRDD, tileLayerRDD_tiled, null)
+    saveRDD(wrappedRDD.toSpatial(wrappedRDD.keys.collect().head.time), 1, path + "wrappedRDD.tiff")
+    saveRDD(merged.toSpatial(merged.keys.collect().head.time), 1, path + "merged.tiff")
+
+    val firstTile: MultibandTile = merged.toJavaRDD.take(1).get(0)._2
+    assertEquals(4, firstTile.bandCount)
+    assertEquals(specialTile, firstTile.band(0))
+
+    // Due to resampling with interpolation, some artifacts may occur. So use fuzzy compare with MSE:
+    val mse = MergeCubesSpec.simpleMeanSquaredError(specialTile, firstTile.band(2))
+    println("MSE = " + mse)
+    assertTrue(mse < 0.1)
+  }
+
+  @Test def testMergeCubesTiledResample(): Unit = {
+    val path = "/tmp/testMergeCubesTiledResample/"
+    Files.createDirectories(Paths.get(path))
+    val specialTile = MergeCubesSpec.getDebugTile
+    // Avoid global extent to avoid errors when reprojecting
+    val tileLayerRDD = tileToSpaceTimeDataCube(specialTile, Some(LayerFixtures.defaultExtent))
+    val tileLayerRDD_tiled = tileToSpaceTimeDataCube(specialTile, Some(LayerFixtures.defaultExtent), 2)
+
+    val wrappedRDD = new OpenEORasterCube[SpaceTimeKey](tileLayerRDD.rdd, tileLayerRDD.metadata, new OpenEORasterCubeMetadata(Seq("B01", "B02")))
+    val merged = new OpenEOProcesses().mergeCubes(wrappedRDD, tileLayerRDD_tiled, null)
+    saveRDD(wrappedRDD.toSpatial(wrappedRDD.keys.collect().head.time), 1, path + "wrappedRDD.tiff")
+    saveRDD(merged.toSpatial(merged.keys.collect().head.time), 1, path + "merged.tiff")
+
+    val firstTile: MultibandTile = merged.toJavaRDD.take(1).get(0)._2
+    assertEquals(4, firstTile.bandCount)
+    assertEquals(specialTile, firstTile.band(0))
+
+    // Due to resampling with interpolation, some artifacts may occur. So use fuzzy compare with MSE:
+    val mse = MergeCubesSpec.simpleMeanSquaredError(specialTile, firstTile.band(2))
+    println("MSE = " + mse)
+    assertTrue(mse < 0.1)
+  }
+
+  @Test def testSimpleMeanSquaredError(): Unit = {
+    val size = 8
+    val arr = ListBuffer[Byte]()
+    for {
+      row <- 1 to size
+      col <- 1 to size
+    } {
+      arr += {
+        if (row < size / 2 && col < size / 2) ByteConstantNoDataCellType.noDataValue else 100.toByte
+      }
+    }
+    val specialTile: MutableArrayTile = ByteArrayTile.apply(arr.toArray, size, size)
+    specialTile.set(0, 0, 99)
+
+    val plainTile: MutableArrayTile = ByteArrayTile.fill(100.toByte, size, size)
+    val mse = MergeCubesSpec.simpleMeanSquaredError(specialTile, plainTile)
+    println("MSE = " + mse)
+    assertTrue(mse < 0.1)
+    assertTrue(mse > 0) // MSE could be 0, but here we expect something changed.
+  }
+
   @Test def testMergeCubesBasic(): Unit = {
     val celltype: DataType = CellType.fromName("int8raw").withDefaultNoData
     val zeroTile: MutableArrayTile = ByteArrayTile.fill(0.toByte, 256, 256)

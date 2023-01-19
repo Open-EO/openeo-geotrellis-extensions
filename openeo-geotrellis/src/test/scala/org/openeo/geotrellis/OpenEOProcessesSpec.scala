@@ -1,19 +1,18 @@
 package org.openeo.geotrellis
 
-import geotrellis.layer._
-import geotrellis.proj4.{LatLng, WebMercator}
+import geotrellis.layer.{SpaceTimeKey, _}
+import geotrellis.proj4.{CRS, LatLng, WebMercator}
+import geotrellis.raster._
 import geotrellis.raster.buffer.BufferedTile
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff._
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.resample.ResampleMethod
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ArrayMultibandTile, ByteConstantTile, DoubleArrayTile, FloatConstantTile, GridBounds, IntConstantNoDataCellType, MultibandTile, Raster, Tile, TileLayout}
-import geotrellis.spark._
+import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
-import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
 import geotrellis.vector._
 import org.apache.hadoop.hdfs.HdfsConfiguration
@@ -23,9 +22,11 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.jupiter.api.{AfterAll, BeforeAll}
 import org.junit.jupiter.params.ParameterizedTest
-import org.junit.jupiter.params.provider.EnumSource
+import org.junit.jupiter.params.provider.Arguments.arguments
+import org.junit.jupiter.params.provider.{Arguments, EnumSource, MethodSource}
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.AggregateSpatialTest.{assertEqualTimeseriesStats, parseCSV}
+import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.aggregate_polygon.intern.splitOverlappingPolygons
 import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
@@ -38,7 +39,10 @@ import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
+import java.util.Arrays
 import scala.collection.JavaConverters._
+import scala.collection.mutable.ListBuffer
+import scala.reflect.ClassTag
 
 object OpenEOProcessesSpec {
   // Methods with attributes get called in a non-intuitive order:
@@ -105,6 +109,62 @@ object OpenEOProcessesSpec {
     }).collect().sortBy(_._1.instant).map(_._2)
   }
 
+  def applyMaskParams: java.util.stream.Stream[Arguments] = Arrays.stream(Array(
+    arguments(None, None),
+    arguments(None, Some(Constant0Partitioner)),
+    arguments(Some(Constant0Partitioner), None),
+    arguments(Some(Constant0Partitioner), Some(Constant1Partitioner)),
+    arguments(Some(Constant0Partitioner), Some(Constant0Partitioner)),
+  ))
+
+  private def getWavyMask: MutableArrayTile = {
+    val size = 256
+    val arr = ListBuffer[Byte]()
+    for {
+      row <- 1 to size
+      col <- 1 to size
+    } {
+      // Make a small shape to make it easier to debug:
+      arr += {
+        if (row < math.sin(col / 10.0) * size / 3 + size / 2) 1.toByte else 0.toByte
+      }
+    }
+
+    val tile = ByteConstantNoDataArrayTile.apply(arr.toArray, size, size)
+    tile.set(0, 0, 1)
+    tile.set(0, 1, tile.cellType.noDataValue)
+    tile
+  }
+}
+
+object Constant0Partitioner extends PartitionerIndex[SpaceTimeKey] {
+  val constant = 0
+
+  def toIndex(key: SpaceTimeKey): BigInt = {
+    println("toIndex(" + key + ") returns: " + constant)
+    constant
+  }
+
+  def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
+    // Emile: Not sure what this function should do,
+    // but as there is only one partition that can get returned, this can't be wrong.
+    Seq((toIndex(keyRange._1), toIndex(keyRange._2)))
+  }
+}
+
+object Constant1Partitioner extends PartitionerIndex[SpaceTimeKey] {
+  val constant = 1
+
+  def toIndex(key: SpaceTimeKey): BigInt = {
+    println("toIndex(" + key + ") returns: " + constant)
+    constant
+  }
+
+  def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
+    // Emile: Not sure what this function should do,
+    // but as there is only one partition that can get returned, this can't be wrong.
+    Seq((toIndex(keyRange._1), toIndex(keyRange._2)))
+  }
 }
 
 class OpenEOProcessesSpec extends RasterMatchers {
@@ -143,23 +203,83 @@ class OpenEOProcessesSpec extends RasterMatchers {
   /**
     * Test created in the frame of:
     * https://github.com/locationtech/geotrellis/issues/3168
-    */
-  @Test
-  def applyMask() = {
-    val date = "2018-05-06T00:00:00Z"
+   */
+  @ParameterizedTest
+  @MethodSource(Array("applyMaskParams"))
+  def applyMask(indexImage: Option[PartitionerIndex[SpaceTimeKey]], indexMask: Option[PartitionerIndex[SpaceTimeKey]]): Unit = {
+    val date = ZonedDateTime.parse("2017-01-01T00:00:00Z").plusDays(1)
+    val dates = List(date)
+    val extentTAP4326 = Extent(5.07, 51.215, 5.08, 51.22)
+    // converted with http://bboxfinder.com/
+    val extentTAP3857 = Extent(564389 - 10, 6659413 - 10, 565503 + 10, 6660301 + 10)
 
-    val extent = Extent(3.4, 51.0, 3.5, 51.05)
-    val datacube= dataCube( date, date, extent, "EPSG:4326")
+    var dataCubeContextRDD: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(
+      extent = extentTAP3857,
+      crs = CRS.fromName("EPSG:3857"),
+      dates = Some(dates)
+    )
 
-    val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1)))
+    val maskTile = OpenEOProcessesSpec.getWavyMask
+    var maskRDD = buildSpatioTemporalDataCube(List(maskTile).asJava, dates.map(_.toString), Some(extentTAP4326))
 
-    val mask = accumuloDataCube("S2_SCENECLASSIFICATION_PYRAMID_20200407", date, date, extent, "EPSG:4326")
-    val binaryMask = mask.withContext(_.mapValues( _.map(0)(pixel => if ( pixel == 5) 0 else 1)))
+    if (indexImage.isDefined) {
+      val partitioner = SpacePartitioner(dataCubeContextRDD.metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), indexImage.get)
+      dataCubeContextRDD = new ContextRDD(dataCubeContextRDD.partitionBy(partitioner), dataCubeContextRDD.metadata)
+    }
 
-    print(binaryMask.partitioner)
+    if (indexMask.isDefined) {
+      val partitioner = SpacePartitioner(maskRDD.metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), indexMask.get)
+      maskRDD = new ContextRDD(maskRDD.partitionBy(partitioner), maskRDD.metadata)
+    }
 
-    val maskedCube: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().rasterMask(selectedBands, binaryMask, Double.NaN)
+    val dataCubeContextRDD_thread = dataCubeContextRDD.map(_ => Thread.currentThread().getId).collect()
+    val maskRDD_thread = maskRDD.map(_ => Thread.currentThread().getId).collect()
+    println("dataCubeContextRDD_thread: " + dataCubeContextRDD_thread.mkString)
+    println("maskRDD_thread: " + maskRDD_thread.mkString)
+
+    val maskedCube: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().rasterMask(
+      dataCubeContextRDD,
+      maskRDD,
+      Double.NaN,
+    )
     val stitched = maskedCube.toSpatial().stitch()
+
+    val geotiff = MultibandGeoTiff(stitched, maskedCube.metadata.crs)
+    geotiff.write("applyMask.tif")
+
+    val refFile = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/applyMaskReference.tif")
+    val refTiff = GeoTiff.readMultiband(refFile.getPath)
+
+    val mse = MergeCubesSpec.simpleMeanSquaredError(geotiff.tile.band(0), refTiff.tile.band(0))
+    println("MSE = " + mse)
+    assertTrue(mse < 0.1)
+    print(stitched)
+  }
+
+  @Test
+  def applyMaskTiled(): Unit = {
+    val date = ZonedDateTime.parse("2017-01-01T00:00:00Z").plusDays(1)
+    val dates = List(date)
+    val extentTAP4326 = Extent(5.07, 51.215, 5.08, 51.22)
+
+    val dataCubeContextRDD: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(
+      extent = extentTAP4326,
+      crs = TileLayerRDDBuilders.defaultCRS,
+      dates = Some(dates)
+    )
+
+    val maskTile = OpenEOProcessesSpec.getWavyMask
+    val maskRDD = buildSpatioTemporalDataCube(List(maskTile).asJava, dates.map(_.toString), Some(extentTAP4326), 2)
+
+    // Mask should be automatically resampled and not crash.
+    val maskedCube: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().rasterMask(
+      dataCubeContextRDD,
+      maskRDD,
+      Double.NaN,
+    )
+    val stitched = maskedCube.toSpatial().stitch()
+
+    MultibandGeoTiff(stitched, maskedCube.metadata.crs).write("applyMask.tif")
     print(stitched)
   }
 
@@ -324,6 +444,10 @@ class OpenEOProcessesSpec extends RasterMatchers {
   def medianComposite(): Unit = {
     val withoutPartitioner = medianCompositeImpl(false)
     val withPartitioner = medianCompositeImpl(true)
+    println("withoutPartitioner:")
+    withoutPartitioner.printStatus()
+    println("withPartitioner:")
+    withPartitioner.printStatus()
     // Measurements at 2022-01-18:
 
     // [stagesCompleted]  | no #90 fix | #90 fix
@@ -334,8 +458,12 @@ class OpenEOProcessesSpec extends RasterMatchers {
     // withoutPartitioner |    179     |   179
     // withPartitioner    |     14     |     9
 
-    assertTrue(withoutPartitioner.getStagesCompleted == withPartitioner.getStagesCompleted)
-    assertTrue(withPartitioner.getTasksCompleted < 13) // might need to change threshold in the future
+    assertEquals(withoutPartitioner.getStagesCompleted, withPartitioner.getStagesCompleted)
+    // might need to change threshold in the future:
+    assertTrue(
+      "withPartitioner.getTasksCompleted should be smaller than 13. Actually: " + withPartitioner.getTasksCompleted,
+      withPartitioner.getTasksCompleted < 13,
+    )
   }
 
   def medianCompositeImpl(usePartitioner: Boolean): GetInfoSparkListener = {
@@ -406,7 +534,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     }
 
     GeoTiff(Raster(MultibandTile(filledResult), layer.metadata.extent), layer.metadata.crs)
-      .write(outDir + pixelType.getClass.getSimpleName + ".tiff", optimizedOrder = true)
+      .write(outDir + pixelType + ".tiff", optimizedOrder = true)
 
     val builder = new SparkAggregateScriptBuilder
     val emptyMap = new util.HashMap[String, Object]()
@@ -416,14 +544,14 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     val geometries = ProjectedPolygons.fromExtent(layer.metadata.extent, layer.metadata.crs.toString())
     val splitPolygons = splitOverlappingPolygons(geometries.polygons)
-    val outDirSpacial = outDir + pixelType.getClass.getSimpleName
+    val outDirSpacial = outDir + pixelType
     new AggregatePolygonProcess().aggregateSpatialGeneric(scriptBuilder = builder, datacube = layer, polygonsWithIndexMapping = splitPolygons,
       geometries.crs, bandCount = new OpenEOProcesses().RDDBandCount(layer), outDirSpacial)
 
     val groupedStats = parseCSV(outDirSpacial)
     for ((_, stats) <- groupedStats) pixelType match {
       case PixelType.Bit => assertEqualTimeseriesStats(Seq(Seq(0, 1, 0.5)), stats, 0.01)
-      case _ => assertEqualTimeseriesStats(Seq(Seq(5, 15, 10.0)), stats, 0.1)
+      case _ => assertEqualTimeseriesStats(Seq(Seq(20, 120, 70.0)), stats, 0.5)
     }
   }
 

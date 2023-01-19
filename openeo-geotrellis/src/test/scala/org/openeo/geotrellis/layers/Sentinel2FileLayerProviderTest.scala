@@ -61,9 +61,7 @@ object Sentinel2FileLayerProviderTest {
   }
   def maskingParams: Stream[Arguments] = Arrays.stream(Array(
     arguments(Collections.singletonMap("method", "mask_scl_dilation"),"https://artifactory.vgt.vito.be/testdata-public/dilation_masked.tif"),
-    // TODO: Re-enable the following code line. It gives an error like this:
-    // "BAND 0 wasn't equal on col: 2418, row: 1388 (v1=3812.0, v2=3620.0) 3812.0 was not 3620.0 plus or minus 160.0"
-     arguments(Map("method"->"mask_scl_dilation","erosion_kernel_size"->3,"kernel1_size"->0).asJava.asInstanceOf[util.Map[String,Object]],"https://artifactory.vgt.vito.be/testdata-public/masked_erosion.tif")
+    arguments(Map("method"->"mask_scl_dilation","erosion_kernel_size"->3,"kernel1_size"->0).asJava.asInstanceOf[util.Map[String,Object]],"https://artifactory.vgt.vito.be/testdata-public/masked_erosion.tif")
   ))
 
 }
@@ -238,7 +236,6 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     var layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 14,datacubeParams = Option.empty)
 
     val originalCount = layer.count()
-    mask = p.resampleCubeSpatial(mask,layer,ResampleMethod.DEFAULT)._2
     val parameters = new DataCubeParameters()
     parameters.maskingCube = Some(mask)
     layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 14,datacubeParams = Some(parameters))
