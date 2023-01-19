@@ -22,6 +22,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.AccumulatorV2
 import org.openeo.geotrellis
+import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.stac.STACItem
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.slf4j.LoggerFactory
@@ -33,7 +34,7 @@ import software.amazon.awssdk.core.retry.conditions.{OrRetryCondition, RetryCond
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.PutObjectRequest
+import software.amazon.awssdk.services.s3.model.{Delete, DeleteObjectsRequest, ListObjectsRequest, ObjectIdentifier, PutObjectRequest}
 import spire.syntax.cfor.cfor
 
 import java.net.URI
@@ -643,7 +644,7 @@ package object geotiff {
         .key(s3Uri.getKey)
         .build
 
-      getCreoS3Client().putObject(objectRequest, RequestBody.fromFile(tempFile))
+      CreoS3Utils.getCreoS3Client().putObject(objectRequest, RequestBody.fromFile(tempFile))
 
     } else {
       geoTiff.write(path, optimizedOrder = true)
@@ -651,34 +652,6 @@ package object geotiff {
     path
   }
 
-  def getCreoS3Client(): S3Client = {
-    val retryCondition =
-      OrRetryCondition.create(
-        RetryCondition.defaultRetryCondition(),
-        RetryOnErrorCodeCondition.create("RequestTimeout")
-      )
-    val backoffStrategy =
-      FullJitterBackoffStrategy.builder()
-        .baseDelay(Duration.ofMillis(50))
-        .maxBackoffTime(Duration.ofMillis(15))
-        .build()
-    val retryPolicy =
-      RetryPolicy.defaultRetryPolicy()
-        .toBuilder()
-        .retryCondition(retryCondition)
-        .backoffStrategy(backoffStrategy)
-        .build()
-    val overrideConfig =
-      ClientOverrideConfiguration.builder()
-        .retryPolicy(retryPolicy)
-        .build()
-
-    val clientBuilder = S3Client.builder()
-      .overrideConfiguration(overrideConfig)
-      .region(Region.of("RegionOne"))
-
-    clientBuilder.endpointOverride(URI.create(System.getenv("SWIFT_URL"))).build()
-  }
 
   case class ContextSeq[K, V, M](tiles: Iterable[(K, V)], metadata: LayoutDefinition) extends Seq[(K, V)] with Metadata[LayoutDefinition] {
     override def length: Int = tiles.size

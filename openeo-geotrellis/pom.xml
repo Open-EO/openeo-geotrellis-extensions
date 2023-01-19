@@ -27,6 +27,17 @@
             <version>${parent.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.openeo</groupId>
+            <artifactId>geotrellis-s3-extensions</artifactId>
+            <version>${parent.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.scala-lang</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
             <groupId>org.geotools</groupId>
             <artifactId>gt-shapefile</artifactId>
             <version>${gt-version}</version>
