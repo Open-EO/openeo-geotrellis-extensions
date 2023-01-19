@@ -17,8 +17,7 @@ class GetInfoSparkListener extends SparkListener {
 
   def getTasksCompleted: Int = tasksCompleted.get()
 
-  override def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd): Unit = {
-    println("GetInfoSparkListener.onApplicationEnd(...)")
+  def printStatus(): Unit = {
     println("***************** Aggregate metrics *****************************")
     println("* jobsCompleted: " + jobsCompleted)
     println("* stagesCompleted: " + stagesCompleted)
@@ -29,19 +28,23 @@ class GetInfoSparkListener extends SparkListener {
     println("*****************************************************************")
   }
 
+  override def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd): Unit = {
+    println("GetInfoSparkListener.onApplicationEnd(...)")
+  }
+
   override def onJobEnd(jobEnd: SparkListenerJobEnd): Unit = {
-    println("GetInfoSparkListener.onJobEnd(...)")
-    jobsCompleted.incrementAndGet()
+    val newValue = jobsCompleted.incrementAndGet()
+    println("GetInfoSparkListener.onJobEnd(...) jobsCompleted: " + newValue)
   }
 
   override def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit = {
-    println("GetInfoSparkListener.onStageCompleted(...)")
-    stagesCompleted.incrementAndGet()
+    val newValue = stagesCompleted.incrementAndGet()
+    println("GetInfoSparkListener.onStageCompleted(...) stagesCompleted: " + newValue)
   }
 
   override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = {
-    println("GetInfoSparkListener.onTaskEnd(...)")
-    tasksCompleted.incrementAndGet()
+    val newValue = tasksCompleted.incrementAndGet()
+    println("GetInfoSparkListener.onTaskEnd(...) tasksCompleted: " + newValue)
     executorRuntime.addAndGet(taskEnd.taskMetrics.executorRunTime)
     recordsRead.addAndGet(taskEnd.taskMetrics.inputMetrics.recordsRead)
     recordsWritten.addAndGet(taskEnd.taskMetrics.outputMetrics.recordsWritten)

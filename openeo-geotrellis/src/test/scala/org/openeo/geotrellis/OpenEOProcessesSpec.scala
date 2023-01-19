@@ -444,6 +444,10 @@ class OpenEOProcessesSpec extends RasterMatchers {
   def medianComposite(): Unit = {
     val withoutPartitioner = medianCompositeImpl(false)
     val withPartitioner = medianCompositeImpl(true)
+    println("withoutPartitioner:")
+    withoutPartitioner.printStatus()
+    println("withPartitioner:")
+    withPartitioner.printStatus()
     // Measurements at 2022-01-18:
 
     // [stagesCompleted]  | no #90 fix | #90 fix
@@ -454,8 +458,12 @@ class OpenEOProcessesSpec extends RasterMatchers {
     // withoutPartitioner |    179     |   179
     // withPartitioner    |     14     |     9
 
-    assertTrue(withoutPartitioner.getStagesCompleted == withPartitioner.getStagesCompleted)
-    assertTrue(withPartitioner.getTasksCompleted < 13) // might need to change threshold in the future
+    assertEquals(withoutPartitioner.getStagesCompleted, withPartitioner.getStagesCompleted)
+    // might need to change threshold in the future:
+    assertTrue(
+      "withPartitioner.getTasksCompleted should be smaller than 13. Actually: " + withPartitioner.getTasksCompleted,
+      withPartitioner.getTasksCompleted < 13,
+    )
   }
 
   def medianCompositeImpl(usePartitioner: Boolean): GetInfoSparkListener = {
