@@ -13,10 +13,13 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.junit.Assert.{assertEquals, assertNotSame, assertSame, assertTrue}
-import org.junit.{AfterClass, BeforeClass, Test}
-import org.openeo.geotrellis.LayerFixtures
+import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
+import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
+import org.openeo.geotrellis.{LayerFixtures, geotiff}
 import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{DataCubeParameters, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection}
@@ -30,11 +33,11 @@ import java.time.{LocalDate, ZoneId, ZonedDateTime}
 object FileLayerProviderTest {
   private var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit =
     sc = SparkUtils.createLocalSparkContext("local[*]", appName = classOf[FileLayerProviderTest].getName)
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 }
 
@@ -71,8 +74,8 @@ class FileLayerProviderTest {
   def smallBoundingBox(): Unit = {
     val smallBbox = ProjectedExtent(Point(x = 4.9754, y = 50.3244).buffer(0.001).extent, LatLng)
 
-    assertTrue(s"${smallBbox.extent.width}", smallBbox.extent.width < 0.05)
-    assertTrue(s"${smallBbox.extent.height}", smallBbox.extent.height < 0.05)
+    assertTrue(smallBbox.extent.width < 0.05,s"${smallBbox.extent.width}")
+    assertTrue(smallBbox.extent.height < 0.05, s"${smallBbox.extent.height}")
 
     val date = LocalDate.of(2020, 1, 1).atStartOfDay(ZoneId.of("UTC"))
 
@@ -219,6 +222,30 @@ class FileLayerProviderTest {
 
     assert(defaultMaskedLayerKeys.nonEmpty)
     assertEquals(defaultMaskedLayerKeys, sparseMaskedLayerKeys)
+  }
+
+
+
+  @ParameterizedTest
+  @ValueSource(ints = Array(101,489,1589,69854))
+  def testOptimalLayoutScheme(size:Int): Unit = {
+
+    val crs = CRS.fromEpsgCode(32632)
+    val x = 344110.000
+    val y = 5600770.000
+    // a mix of 31UGS and 32ULB
+    val boundingBox = ProjectedExtent(Extent(x, y, x+size*10, y+size*10), crs)
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    val scheme = LayerFixtures.sentinel2TocLayerProviderUTM20M.selectLayoutScheme(boundingBox,false,Some(dataCubeParameters))
+    assertTrue(scheme.isInstanceOf[FloatingLayoutScheme])
+    val expected = size match {
+      case 69854 => 1024
+      case 1589 => 512
+      case _ => 256
+    }
+    assertEquals(expected,scheme.asInstanceOf[FloatingLayoutScheme].tileRows)
+
   }
 
   @Test

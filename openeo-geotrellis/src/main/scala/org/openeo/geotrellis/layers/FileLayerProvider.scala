@@ -611,7 +611,8 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }
 
     val fullBBox = ProjectedExtent(bufferedPolygons.toSeq.extent,polygons_crs)
-    val worldLayout: LayoutDefinition = DatacubeSupport.getLayout(layoutScheme, fullBBox, zoom min maxZoom, maxSpatialResolution, globalBounds = datacubeParams.flatMap(_.globalExtent), multiple_polygons_flag = multiple_polygons_flag)
+    val selectedLayoutScheme: LayoutScheme = selectLayoutScheme(fullBBox, multiple_polygons_flag, datacubeParams)
+    val worldLayout: LayoutDefinition = DatacubeSupport.getLayout(selectedLayoutScheme, fullBBox, zoom min maxZoom, maxSpatialResolution, globalBounds = datacubeParams.flatMap(_.globalExtent), multiple_polygons_flag = multiple_polygons_flag)
     val reprojectedBoundingBox: ProjectedExtent = DatacubeSupport.targetBoundingBox(fullBBox, layoutScheme)
 
 
@@ -763,7 +764,30 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     (requiredSpacetimeKeys,metadata,  maskStrategy,overlappingRasterSources)
   }
 
-  def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): MultibandTileLayerRDD[SpaceTimeKey] = {
+  def selectLayoutScheme(extent: ProjectedExtent, multiple_polygons_flag: Boolean, datacubeParams: Option[DataCubeParameters]) = {
+    val selectedLayoutScheme = if (layoutScheme.isInstanceOf[FloatingLayoutScheme]) {
+
+      val rasterExtent = RasterExtent(extent.extent, maxSpatialResolution)
+      val minTiles = math.min(math.floor(rasterExtent.rows / 256), math.floor(rasterExtent.cols / 256)).toInt
+      val tileSize = {
+        if (datacubeParams.isDefined && datacubeParams.get.tileSize != 256) {
+          datacubeParams.get.tileSize
+        } else if (!multiple_polygons_flag && minTiles >= 8) {
+          1024
+        } else if (!multiple_polygons_flag && minTiles >= 4) {
+          512
+        } else {
+          256
+        }
+      }
+      FloatingLayoutScheme(tileSize)
+    } else {
+      layoutScheme
+    }
+    selectedLayoutScheme
+  }
+
+  def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon], polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): MultibandTileLayerRDD[SpaceTimeKey] = {
 
     val readKeysToRasterSourcesResult = readKeysToRasterSources(from,to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams)
 
