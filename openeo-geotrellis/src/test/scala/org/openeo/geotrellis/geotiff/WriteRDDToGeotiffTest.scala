@@ -89,7 +89,7 @@ class WriteRDDToGeotiffTest {
     // This test is dependent on scala version
     println("Scala versionString: " + scala.util.Properties.versionString)
 
-    val m = Map(0.0 -> 0, 1.0 -> 1).mapValues(_ * 3) //.map(identity)
+    val m = Map(0.0 -> 100, 1.0 -> 101).mapValues(_ * 3) //.map(identity)
     val colormap = new DoubleColorMap(m, new Options(noDataColor = 42))
 
     val opts = new GTiffOptions()

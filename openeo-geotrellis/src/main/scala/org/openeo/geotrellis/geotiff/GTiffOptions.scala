@@ -27,7 +27,7 @@ class GTiffOptions extends Serializable {
   private def cleanDoubleColorMap(colormap: DoubleColorMap): DoubleColorMap = {
     val mCopy = colormap.breaksString.split(";").map(x => {
       val l = x.split(":");
-      Tuple2(l(0).toDouble, l(1).toInt)
+      Tuple2(l(0).toDouble, Integer.parseInt(l(1), 16))
     }).toMap
     new DoubleColorMap(mCopy, colormap.options)
   }
