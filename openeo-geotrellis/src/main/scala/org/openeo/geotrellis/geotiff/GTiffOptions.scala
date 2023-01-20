@@ -1,9 +1,8 @@
 package org.openeo.geotrellis.geotiff
 
 import java.util
-
 import geotrellis.raster.io.geotiff.Tags
-import geotrellis.raster.render.{ColorMap, IndexedColorMap}
+import geotrellis.raster.render.{ColorMap, DoubleColorMap, IndexedColorMap}
 
 import scala.collection.JavaConverters._
 
@@ -22,8 +21,22 @@ class GTiffOptions extends Serializable {
     resampleMethod = method
   }
 
+  /**
+   * Remove this hack after updating Scala beyond version 2.12.13
+   */
+  private def cleanDoubleColorMap(colormap: DoubleColorMap): DoubleColorMap = {
+    val mCopy = colormap.breaksString.split(";").map(x => {
+      val l = x.split(":");
+      Tuple2(l(0).toDouble, l(1).toInt)
+    }).toMap
+    new DoubleColorMap(mCopy, colormap.options)
+  }
+
   def setColorMap(colors: ColorMap): Unit = {
-    colorMap = Some(colors)
+    colorMap = Some(colors match {
+      case c: DoubleColorMap => cleanDoubleColorMap(c)
+      case _ => colors
+    })
   }
 
   def addHeadTag(tagName:String,value:String): Unit = {

@@ -4,12 +4,14 @@ import geotrellis.layer.{CRSWorldExtent, SpaceTimeKey, SpatialKey, ZoomedLayoutS
 import geotrellis.proj4.LatLng
 import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
+import geotrellis.raster.render.ColorMap.Options
+import geotrellis.raster.render.DoubleColorMap
 import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, ColorMaps, MultibandTile, Raster, Tile, TileLayout, isData}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector._
 import geotrellis.vector.io.json.GeoJson
-import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.{SparkConf, SparkContext, SparkEnv}
 import org.junit.Assert._
 import org.junit._
 import org.junit.rules.TemporaryFolder
@@ -82,6 +84,20 @@ class WriteRDDToGeotiffTest {
     assertArrayEquals(imageTile.toArray(),output.toArray())
   }
 
+  @Test
+  def testTiffOptionsSerializable(): Unit = {
+    // This test is dependent on scala version
+    println("Scala versionString: " + scala.util.Properties.versionString)
+
+    val m = Map(0.0 -> 0, 1.0 -> 1).mapValues(_ * 3) //.map(identity)
+    val colormap = new DoubleColorMap(m, new Options(noDataColor = 42))
+
+    val opts = new GTiffOptions()
+    opts.setColorMap(colormap)
+    SparkEnv.get.closureSerializer.newInstance().serialize(opts)
+    assertEquals(colormap.options.noDataColor, opts.colorMap.get.options.noDataColor)
+    assertEquals(colormap.mapDouble(0.5), opts.colorMap.get.mapDouble(0.5))
+  }
 
   @Test
   def testWriteRDD_apply_neighborhood(): Unit ={
