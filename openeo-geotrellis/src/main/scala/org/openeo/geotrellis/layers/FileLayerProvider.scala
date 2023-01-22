@@ -409,21 +409,7 @@ object FileLayerProvider {
     val loadedPartitions = partitionIterator.toParArray.map(tuple => {
       val allRegions = tuple._2.toSeq
 
-      val filteredRegions =
-        if (allRegions.size < 2 || cloudFilterStrategy == NoCloudFilterStrategy) {
-          allRegions
-        } else {
-          val regionsWithDistance = allRegions.map(r => {
-            val bounds = r._1.asInstanceOf[GridBoundsRasterRegion].bounds
-            val rasterBounds = r._1.asInstanceOf[GridBoundsRasterRegion].source.gridExtent
-            val minDistanceToTheEdge: Long = Seq(bounds.colMin.abs, bounds.rowMin.abs, Math.abs(rasterBounds.cols - bounds.colMax), Math.abs(rasterBounds.rows - bounds.rowMax)).min
-            (minDistanceToTheEdge, r)
-          })
-          val largestDistanceToTheEdgeOfTheRaster = regionsWithDistance.map(_._1).max
-          regionsWithDistance.filter(_._1 == largestDistanceToTheEdgeOfTheRaster).map(_._2)
-        }
-
-      val tilesForRegion = filteredRegions
+      val tilesForRegion = allRegions
         .flatMap { case (rasterRegion, sourcePath: SourcePath) =>
           val result: Option[(MultibandTile, SourcePath)] = cloudFilterStrategy match {
             case l1cFilterStrategy: L1CCloudFilterStrategy =>
