@@ -752,21 +752,24 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
   def selectLayoutScheme(extent: ProjectedExtent, multiple_polygons_flag: Boolean, datacubeParams: Option[DataCubeParameters]) = {
     val selectedLayoutScheme = if (layoutScheme.isInstanceOf[FloatingLayoutScheme]) {
-
-      val rasterExtent = RasterExtent(extent.extent, maxSpatialResolution)
-      val minTiles = math.min(math.floor(rasterExtent.rows / 256), math.floor(rasterExtent.cols / 256)).toInt
-      val tileSize = {
-        if (datacubeParams.isDefined && datacubeParams.get.tileSize != 256) {
-          datacubeParams.get.tileSize
-        } else if (!multiple_polygons_flag && minTiles >= 8) {
-          1024
-        } else if (!multiple_polygons_flag && minTiles >= 4) {
-          512
-        } else {
-          256
+      if( (extent.extent.width <= maxSpatialResolution.width) || (extent.extent.height <= maxSpatialResolution.height ) ){
+        FloatingLayoutScheme(32)
+      }else{val rasterExtent = RasterExtent(extent.extent, maxSpatialResolution)
+        val minTiles = math.min(math.floor(rasterExtent.rows / 256), math.floor(rasterExtent.cols / 256)).toInt
+        val tileSize = {
+          if (datacubeParams.isDefined && datacubeParams.get.tileSize != 256) {
+            datacubeParams.get.tileSize
+          } else if (!multiple_polygons_flag && minTiles >= 8) {
+            1024
+          } else if (!multiple_polygons_flag && minTiles >= 4) {
+            512
+          } else {
+            256
+          }
         }
+        FloatingLayoutScheme(tileSize)
       }
-      FloatingLayoutScheme(tileSize)
+
     } else {
       layoutScheme
     }
