@@ -67,7 +67,7 @@ object DatacubeSupport {
               }
             }
           } else {
-            val extent = boundingBox.extent
+            val extent = roundExtendToGridOutwards(boundingBox.extent, maxSpatialResolution)
             if(extent.width < maxSpatialResolution.width || extent.height < maxSpatialResolution.height) {
               Extent(extent.xmin,extent.ymin,Math.max(extent.xmax,extent.xmin + maxSpatialResolution.width),Math.max(extent.ymax,extent.ymin + maxSpatialResolution.height))
             }else{
@@ -80,6 +80,18 @@ object DatacubeSupport {
       }
     }
     worldLayout
+  }
+
+  /**
+   * This rounding will give an Extent that covers the original, and maybe a bit more.
+   */
+  private def roundExtendToGridOutwards(extent: Extent, cellSize: CellSize): Extent = {
+    Extent(
+      math.floor(extent.xmin / cellSize.width) * cellSize.width,
+      math.floor(extent.ymin / cellSize.height) * cellSize.height,
+      math.ceil(extent.xmax / cellSize.width) * cellSize.width,
+      math.ceil(extent.ymax / cellSize.height) * cellSize.height,
+    )
   }
 
   def layerMetadata(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, cellType: CellType,

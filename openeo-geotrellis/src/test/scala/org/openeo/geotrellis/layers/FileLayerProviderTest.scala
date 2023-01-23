@@ -925,7 +925,7 @@ class FileLayerProviderTest {
 
     val crs = CRS.fromEpsgCode(3035)
     // a mix of 31UGS and 32ULB
-    val boundingBox = ProjectedExtent(Extent(3040000.0,2180000.0,3060000.0,2200000.0),crs )
+    val boundingBox = ProjectedExtent(Extent(3040003.0,2180000.0,3060000.0,2200000.0),crs )
 
     val dataCubeParameters = new DataCubeParameters
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
