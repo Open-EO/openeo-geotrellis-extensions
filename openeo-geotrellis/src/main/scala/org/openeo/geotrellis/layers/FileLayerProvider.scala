@@ -764,9 +764,9 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         val tileSize = {
           if (datacubeParams.isDefined && datacubeParams.get.tileSize != 256) {
             datacubeParams.get.tileSize
-          } else if (experimental && !multiple_polygons_flag && minTiles >= 8) {
+          } else if ( experimental && !multiple_polygons_flag && minTiles >= 8) {
             1024
-          } else if (experimental && !multiple_polygons_flag && minTiles >= 4) {
+          } else if ( !multiple_polygons_flag && minTiles >= 4) {
             512
           } else {
             256

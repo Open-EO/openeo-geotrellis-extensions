@@ -289,7 +289,7 @@ class FileLayerProviderTest {
     val scheme = LayerFixtures.sentinel2TocLayerProviderUTM20M.selectLayoutScheme(boundingBox,false,Some(dataCubeParameters))
     assertTrue(scheme.isInstanceOf[FloatingLayoutScheme])
     val expected = size match {
-      case 69854 => 1024
+      case 69854 => 512 // 1024 if experimental flag set
       case 1589 => 512
       case _ => 256
     }
