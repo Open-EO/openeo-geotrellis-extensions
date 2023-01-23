@@ -5,7 +5,6 @@ import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.{GeoTiffReader, MultibandGeoTiff}
-import geotrellis.raster.resample.ResampleMethod
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
@@ -19,6 +18,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.util.SizeEstimator
 import org.junit.Assert._
+import org.junit.{AfterClass, BeforeClass}
 import org.junit.jupiter.api._
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
@@ -40,25 +40,68 @@ import java.util.stream.Stream
 import scala.collection.JavaConverters.mapAsJavaMapConverter
 
 object Sentinel2FileLayerProviderTest {
-  private var sc: SparkContext = _
   private val openSearchEndpoint = LayerFixtures.client
   private val maxSpatialResolution = CellSize(10, 10)
   private val pathDateExtractor = SplitYearMonthDayPathDateExtractor
 
+  // Methods with attributes get called in a non-intuitive order:
+  // - BeforeAll
+  // - ParameterizedTest
+  // - AfterAll
+  // - BeforeClass
+  // - AfterClass
+  //
+  // This order feels arbitrary, so I made the code robust against order changes.
+
+  private var _sc: Option[SparkContext] = None
+
+  private def sc: SparkContext = {
+    if (_sc.isEmpty) {
+      println("Creating SparkContext")
+
+      BatchJobMetadataTracker.setGlobalTracking(true)
+
+      val sc = SparkUtils.createLocalSparkContext("local[1]",
+        appName = Sentinel2FileLayerProviderTest.getClass.getName)
+      _sc = Some(sc)
+    }
+    _sc.get
+  }
+
+  @BeforeClass
+  def setUpSpark_BeforeClass(): Unit = sc
+
   @BeforeAll
-  def setupSpark(): Unit = sc = SparkUtils.createLocalSparkContext("local[1]",
-    appName = Sentinel2FileLayerProviderTest.getClass.getName)
+  def setUpSpark_BeforeAll(): Unit = sc
+
+  var gotAfterAll = false
 
   @AfterAll
-  def tearDownSpark(): Unit = sc.stop()
-
-  @BeforeAll def tracking(): Unit ={
-    BatchJobMetadataTracker.setGlobalTracking(true)
+  def tearDownSpark_AfterAll(): Unit = {
+    gotAfterAll = true
+    maybeStopSpark()
   }
 
-  @AfterAll def trackingOff(): Unit ={
-    BatchJobMetadataTracker.setGlobalTracking(false)
+  var gotAfterClass = false
+
+  @AfterClass
+  def tearDownSpark_AfterClass(): Unit = {
+    gotAfterClass = true;
+    maybeStopSpark()
   }
+
+  def maybeStopSpark(): Unit = {
+    if (gotAfterAll && gotAfterClass) {
+      if (_sc.isDefined) {
+        println("Stopping SparkContext...")
+        BatchJobMetadataTracker.setGlobalTracking(false)
+        _sc.get.stop()
+        _sc = None
+        println("Stopped SparkContext")
+      }
+    }
+  }
+
   def maskingParams: Stream[Arguments] = Arrays.stream(Array(
     arguments(Collections.singletonMap("method", "mask_scl_dilation"),"https://artifactory.vgt.vito.be/testdata-public/dilation_masked.tif"),
     arguments(Map("method"->"mask_scl_dilation","erosion_kernel_size"->3,"kernel1_size"->0).asJava.asInstanceOf[util.Map[String,Object]],"https://artifactory.vgt.vito.be/testdata-public/masked_erosion.tif")

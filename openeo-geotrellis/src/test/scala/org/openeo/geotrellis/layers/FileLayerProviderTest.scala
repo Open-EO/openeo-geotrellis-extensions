@@ -13,6 +13,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.junit.{AfterClass, BeforeClass}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
@@ -21,7 +22,7 @@ import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.{LayerFixtures, geotiff}
 import org.openeo.geotrelliscommon.DatacubeSupport._
-import org.openeo.geotrelliscommon.{DataCubeParameters, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection}
 import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
@@ -31,14 +32,62 @@ import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 
 object FileLayerProviderTest {
-  private var sc: SparkContext = _
+  // Methods with attributes get called in a non-intuitive order:
+  // - BeforeAll
+  // - ParameterizedTest
+  // - AfterAll
+  // - BeforeClass
+  // - AfterClass
+  //
+  // This order feels arbitrary, so I made the code robust against order changes.
+
+  private var _sc: Option[SparkContext] = None
+
+  private def sc: SparkContext = {
+    if (_sc.isEmpty) {
+      println("Creating SparkContext")
+
+      val sc = SparkUtils.createLocalSparkContext(
+        "local[*]",
+        appName = classOf[FileLayerProviderTest].getName
+      )
+      _sc = Some(sc)
+    }
+    _sc.get
+  }
+
+  @BeforeClass
+  def setUpSpark_BeforeClass(): Unit = sc
 
   @BeforeAll
-  def setupSpark(): Unit =
-    sc = SparkUtils.createLocalSparkContext("local[*]", appName = classOf[FileLayerProviderTest].getName)
+  def setUpSpark_BeforeAll(): Unit = sc
+
+  var gotAfterAll = false
 
   @AfterAll
-  def tearDownSpark(): Unit = sc.stop()
+  def tearDownSpark_AfterAll(): Unit = {
+    gotAfterAll = true
+    maybeStopSpark()
+  }
+
+  var gotAfterClass = false
+
+  @AfterClass
+  def tearDownSpark_AfterClass(): Unit = {
+    gotAfterClass = true;
+    maybeStopSpark()
+  }
+
+  def maybeStopSpark(): Unit = {
+    if (gotAfterAll && gotAfterClass) {
+      if (_sc.isDefined) {
+        println("Stopping SparkContext...")
+        _sc.get.stop()
+        _sc = None
+        println("Stopped SparkContext")
+      }
+    }
+  }
 }
 
 class FileLayerProviderTest {
