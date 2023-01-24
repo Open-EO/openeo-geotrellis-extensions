@@ -892,6 +892,7 @@ class FileLayerProviderTest {
     val crs = CRS.fromEpsgCode(32631)
     // a mix of 31UGS and 32ULB
 
+//    val boundingBox = ProjectedExtent(Extent(481100.0, 5663200.0, 481100.0, 5663200.0), crs) // TODO: This would cause a crash
     val boundingBox = ProjectedExtent(Extent(2.7355, 51.1281, 2.7355, 51.1281).reproject(LatLng,crs), crs)
 
     val dataCubeParameters = new DataCubeParameters

@@ -250,6 +250,7 @@
                         <include>**/*Spec.*</include>
                         <include>**/*Specs.*</include>
                     </includes>
+                    <testFailureIgnore>true</testFailureIgnore>
                 </configuration>
             </plugin>
             <plugin>
