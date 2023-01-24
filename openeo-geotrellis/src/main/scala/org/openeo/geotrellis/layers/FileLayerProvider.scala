@@ -604,7 +604,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     logger.info(s"Loading ${openSearchCollectionId} with params ${datacubeParams.getOrElse(new DataCubeParameters)} and bands ${openSearchLinkTitles.toList.mkString(";")} initial layout: ${worldLayout}")
 
-    var overlappingRasterSources: Seq[(RasterSource, Feature)] = loadRasterSourceRDD(ProjectedExtent(worldLayout.extent, polygons_crs), from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
+    var overlappingRasterSources: Seq[(RasterSource, Feature)] = loadRasterSourceRDD(fullBBox, from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
 
     val dates = overlappingRasterSources.map(_._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))
 
@@ -850,8 +850,14 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     val featureExtentInLayout: Option[GridExtent[Long]]=
     if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
-      val tmp = expandToCellSize(feature.rasterExtent.get.reproject(feature.crs.get,targetExtent.crs), theResolution)
-      val alignedToTargetExtent = RasterExtent(targetExtent.extent, theResolution).createAlignedRasterExtent(tmp)
+      val extentAligner = Extent(
+        targetExtent.extent.xmin,
+        targetExtent.extent.ymin,
+        math.max(targetExtent.extent.xmax, targetExtent.extent.xmin + theResolution.width),
+        math.max(targetExtent.extent.ymax, targetExtent.extent.ymin + theResolution.height),
+      )
+      val tmp = expandToCellSize(feature.rasterExtent.get.reproject(feature.crs.get, targetExtent.crs), theResolution)
+      val alignedToTargetExtent = RasterExtent(extentAligner, theResolution).createAlignedRasterExtent(tmp)
       Some(alignedToTargetExtent.toGridType[Long])
     }else{
       None
