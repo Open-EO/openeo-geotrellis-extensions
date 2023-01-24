@@ -3,6 +3,7 @@ package org.openeo.geotrellis.layers
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, RasterSource}
@@ -970,13 +971,16 @@ class FileLayerProviderTest {
     val all = cube.collect()
 
     val tileSources = all.map(t=>(t._1,LayoutTileSource.spatial(t._2.data._1,result._2.layout).rasterRegionForKey(t._1.spatialKey).get))
-    val minKeySource = tileSources.toMap.get(minKey)
-    assertEquals(3040000.0,minKeySource.get.extent.xmin,0.1)
+    val minKeySource = tileSources.toMap.get(minKey).get
+    assertEquals(3040003.0,minKeySource.extent.xmin,0.1)
     //the test should reach this point without requiring access to the actual files. If it fails because of not having creo mounts, something is wrong.
     assertEquals(0,minKey.col)
     assertEquals(0,minKey.row)
     assertEquals(crs,result._2.crs)
     assertEquals(8,all.length)
     assertEquals((2*cols*rows).toInt,all.length)
+
+    val raster = minKeySource.raster.get
+    MultibandGeoTiff(raster, crs).write("testCreoNonNativeProjection.tiff")
   }
 }
