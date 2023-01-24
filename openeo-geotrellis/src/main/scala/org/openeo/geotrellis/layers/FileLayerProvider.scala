@@ -882,7 +882,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       if(dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
         val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
         val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod),
-          te = featureExtentInLayout.map(_.extent), teCRS = Some(targetExtent.crs)
+//          te = featureExtentInLayout.map(_.extent), teCRS = Some(targetExtent.crs)
         )
         if (cloudPath.isDefined) {
           Seq(GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType))
