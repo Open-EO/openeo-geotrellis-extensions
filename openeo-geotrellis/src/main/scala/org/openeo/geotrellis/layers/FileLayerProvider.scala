@@ -850,7 +850,15 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     val featureExtentInLayout: Option[GridExtent[Long]]=
     if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
-      Some(RasterExtent(expandToCellSize(feature.rasterExtent.get.reproject(feature.crs.get,targetExtent.crs), theResolution), theResolution).alignTargetPixels.toGridType[Long])
+      val extentAligner = Extent(
+        targetExtent.extent.xmin,
+        targetExtent.extent.ymin,
+        math.max(targetExtent.extent.xmax, targetExtent.extent.xmin + theResolution.width),
+        math.max(targetExtent.extent.ymax, targetExtent.extent.ymin + theResolution.height),
+      )
+      val tmp = expandToCellSize(feature.rasterExtent.get.reproject(feature.crs.get, targetExtent.crs), theResolution)
+      val alignedToTargetExtent = RasterExtent(extentAligner, theResolution).createAlignedRasterExtent(tmp)
+      Some(alignedToTargetExtent.toGridType[Long])
     }else{
       None
     }
@@ -879,7 +887,9 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
       if(dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
         val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
-        val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod))
+        val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod),
+          te = featureExtentInLayout.map(_.extent), teCRS = Some(targetExtent.crs)
+        )
         if (cloudPath.isDefined) {
           Seq(GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType))
         } else {
