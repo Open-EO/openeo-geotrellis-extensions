@@ -25,7 +25,7 @@ object LayerProvider{
       //negative spatial keys means going out of bounds of
       val nonNegativeBounds = gridBounds.copy(colMin = math.max(0,gridBounds.colMin),rowMin = math.max(0,gridBounds.rowMin))
 
-      implicit val spatialPartitioner = new PartitionerIndex[SpatialKey] {
+      val spatialPartitioner: PartitionerIndex[SpatialKey] = new PartitionerIndex[SpatialKey] {
         private def toZ(key: SpatialKey): Z2 = Z2(key.col >> 3, key.row >> 3)
 
         def toIndex(key: SpatialKey): BigInt = toZ(key).z
@@ -34,7 +34,7 @@ object LayerProvider{
           Z2.zranges(Array(ZRange(toZ(keyRange._1), toZ(keyRange._2))), maxRecurse = Some(100)).map(r => (BigInt(r.lower), BigInt(r.upper)))
       }
 
-      SpacePartitioner(KeyBounds(nonNegativeBounds))
+      SpacePartitioner(KeyBounds(nonNegativeBounds))(implicitly,implicitly,spatialPartitioner)
     }
 
     // note: this rasterizes the mask to the resolution of the data. This means that very small polygons that lie
