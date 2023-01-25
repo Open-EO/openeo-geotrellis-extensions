@@ -980,8 +980,5 @@ class FileLayerProviderTest {
     assertEquals(crs,result._2.crs)
     assertEquals(8,all.length)
     assertEquals((2*cols*rows).toInt,all.length)
-
-    val raster = minKeySource.raster.get
-    MultibandGeoTiff(raster, LatLng).write("testCreoNonNativeProjection.tiff")
   }
 }
