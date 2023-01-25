@@ -89,7 +89,7 @@ class WriteRDDToGeotiffTest {
     // This test is dependent on scala version
     println("Scala versionString: " + scala.util.Properties.versionString)
 
-    val m = Map(0.0 -> 100, 1.0 -> 101).mapValues(_ * 3) //.map(identity)
+    val m = Map(0.0 -> 100, 1.0 -> 101, 2.0 -> -10, 3.0 -> 0).mapValues(_ * 3) //.map(identity)
     val colormap = new DoubleColorMap(m, new Options(noDataColor = 42))
 
     val opts = new GTiffOptions()
@@ -97,6 +97,48 @@ class WriteRDDToGeotiffTest {
     SparkEnv.get.closureSerializer.newInstance().serialize(opts)
     assertEquals(colormap.options.noDataColor, opts.colorMap.get.options.noDataColor)
     assertEquals(colormap.mapDouble(0.5), opts.colorMap.get.mapDouble(0.5))
+    assertEquals(-30, colormap.mapDouble(2.0))
+    assertEquals(-30, opts.colorMap.get.mapDouble(2.0))
+    assertEquals(colormap.breaksString, opts.colorMap.get.breaksString)
+  }
+
+  @Test
+  def testTiffOptionsSerializableMax(): Unit = {
+    // This test is dependent on scala version
+    println("Scala versionString: " + scala.util.Properties.versionString)
+
+    val m = Map(
+      0.0 -> 10,
+      2.0 -> Int.MinValue,
+      1.0 -> Int.MaxValue,
+      1.0 -> Int.MaxValue,
+      Double.NaN -> 20,
+      Double.NegativeInfinity -> 30,
+      Double.PositiveInfinity -> 40,
+      Double.MinPositiveValue -> 50,
+      -1.0 -> 60,
+    )
+    val colormap = new DoubleColorMap(m, new Options(noDataColor = 42424242))
+
+    val opts = new GTiffOptions()
+    opts.setColorMap(colormap)
+    SparkEnv.get.closureSerializer.newInstance().serialize(opts)
+    assertEquals(colormap.options.noDataColor, opts.colorMap.get.options.noDataColor)
+    assertEquals(colormap.mapDouble(-1), opts.colorMap.get.mapDouble(-1))
+    assertEquals(colormap.mapDouble(0.5), opts.colorMap.get.mapDouble(0.5))
+    assertEquals(colormap.mapDouble(1.0), opts.colorMap.get.mapDouble(1.0))
+    assertEquals(colormap.mapDouble(2.0), opts.colorMap.get.mapDouble(2.0))
+    assertEquals(colormap.mapDouble(Double.NaN), opts.colorMap.get.mapDouble(Double.NaN))
+    assertEquals(colormap.mapDouble(Double.NegativeInfinity), opts.colorMap.get.mapDouble(Double.NegativeInfinity))
+    assertEquals(colormap.mapDouble(Double.PositiveInfinity), opts.colorMap.get.mapDouble(Double.PositiveInfinity))
+    assertEquals(colormap.mapDouble(Double.MinPositiveValue), opts.colorMap.get.mapDouble(Double.MinPositiveValue))
+    assertEquals(colormap.breaksString, opts.colorMap.get.breaksString)
+    assertEquals(10, opts.colorMap.get.mapDouble(0))
+    assertEquals(Int.MaxValue, opts.colorMap.get.mapDouble(1))
+    assertEquals(Int.MinValue, opts.colorMap.get.mapDouble(2))
+    assertEquals(60, colormap.mapDouble(-1.0))
+    assertEquals(42424242, colormap.mapDouble(Double.NaN))
+    assertEquals(42424242, opts.colorMap.get.mapDouble(Double.NaN))
   }
 
   @Test

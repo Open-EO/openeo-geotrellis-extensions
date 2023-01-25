@@ -27,7 +27,9 @@ class GTiffOptions extends Serializable {
   private def cleanDoubleColorMap(colormap: DoubleColorMap): DoubleColorMap = {
     val mCopy = colormap.breaksString.split(";").map(x => {
       val l = x.split(":");
-      Tuple2(l(0).toDouble, Integer.parseInt(l(1), 16))
+      // parseUnsignedInt, because there is no minus sign in the hexadecimal representation.
+      // When casting an unsigned int to an int, it will correctly overflow
+      Tuple2(l(0).toDouble, Integer.parseUnsignedInt(l(1), 16))
     }).toMap
     new DoubleColorMap(mCopy, colormap.options)
   }
