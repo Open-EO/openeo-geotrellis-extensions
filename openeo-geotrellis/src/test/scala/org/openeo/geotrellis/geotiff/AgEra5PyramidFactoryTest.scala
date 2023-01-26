@@ -15,10 +15,10 @@ import org.apache.spark.rdd.RDD
 import org.junit.Assert.assertEquals
 import org.junit.{Ignore, Test}
 import org.openeo.geotrellis.TestImplicits._
-import org.openeo.geotrellis.file.AgEra5PyramidFactory2
 import org.openeo.geotrellis.layers.BandCompositeRasterSource
 import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
+import org.openeo.opensearch.OpenSearchClient
 
 import java.time.LocalTime.MIDNIGHT
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
@@ -104,10 +104,12 @@ class AgEra5PyramidFactoryTest {
 
   @Test
   def sparsePolygons(): Unit = {
-    val pyramidFactory = new AgEra5PyramidFactory2(
-      dataGlob = "/data/MEP/ECMWF/AgERA5/2020/202004*/AgERA5_dewpoint-temperature_*.tif",
-      bandFileMarkers = Seq("dewpoint-temperature", "precipitation-flux", "solar-radiation-flux").asJava,
-      dateRegex = raw".+_(\d{4})(\d{2})(\d{2})\.tif",
+    val dataGlob = "/data/MEP/ECMWF/AgERA5/2020/202004*/AgERA5_dewpoint-temperature_*.tif"
+    val dateRegex = raw".+_(\d{4})(\d{2})(\d{2})\.tif"
+    val bandFileMarkers = Seq("dewpoint-temperature", "precipitation-flux", "solar-radiation-flux").asJava
+    val openSearchClient = OpenSearchClient(dataGlob, false, dateRegex, bandFileMarkers, "agera5")
+    val pyramidFactory = new org.openeo.geotrellis.file.PyramidFactory(
+      openSearchClient, "", bandFileMarkers, "",
       maxSpatialResolution = CellSize(0.1,0.1)
     )
 
@@ -138,10 +140,12 @@ class AgEra5PyramidFactoryTest {
 
   @Test
   def smallPolygon(): Unit = {
-    val pyramidFactory = new AgEra5PyramidFactory2(
-      dataGlob = "/data/MEP/ECMWF/AgERA5/2020/202004*/AgERA5_dewpoint-temperature_*.tif",
-      bandFileMarkers = Seq("dewpoint-temperature", "precipitation-flux", "solar-radiation-flux").asJava,
-      dateRegex = raw".+_(\d{4})(\d{2})(\d{2})\.tif",
+    val dataGlob = "/data/MEP/ECMWF/AgERA5/2020/202004*/AgERA5_dewpoint-temperature_*.tif"
+    val dateRegex = raw".+_(\d{4})(\d{2})(\d{2})\.tif"
+    val bandFileMarkers = Seq("dewpoint-temperature", "precipitation-flux", "solar-radiation-flux").asJava
+    val openSearchClient = OpenSearchClient(dataGlob, false, dateRegex, bandFileMarkers, "agera5")
+    val pyramidFactory = new org.openeo.geotrellis.file.PyramidFactory(
+      openSearchClient, "", bandFileMarkers, "",
       maxSpatialResolution = CellSize(10,10)
     )
 
