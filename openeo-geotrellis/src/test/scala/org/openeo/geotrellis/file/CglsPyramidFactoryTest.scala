@@ -9,10 +9,11 @@ import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.vector._
-import org.junit.Assert.{assertArrayEquals, assertEquals, assertNotEquals}
+import org.junit.Assert.{assertEquals, assertNotEquals}
 import org.junit.{AfterClass, Test}
 import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
 import org.openeo.geotrellis.TestImplicits._
+import org.openeo.opensearch.OpenSearchClient
 
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, ZoneId}
@@ -165,10 +166,12 @@ class CglsPyramidFactoryTest {
 
   @Test
   def datacube_seqWithOpensearchClient(): Unit = {
-    val ndvi300PyramidFactory = new CglsPyramidFactory2(
-      dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2018/201806*/*/*.nc",
-      netcdfVariables = util.Arrays.asList("NDVI"),
-      dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+",
+    val dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2018/201806*/*/*.nc"
+    val dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+"
+    val netcdfVariables = util.Arrays.asList("NDVI")
+    val openSearchClient = OpenSearchClient(dataGlob, false, dateRegex, netcdfVariables, "cgls")
+    val ndvi300PyramidFactory = new PyramidFactory(
+      openSearchClient, "", netcdfVariables, "",
       maxSpatialResolution = CellSize(0.002976190476204, 0.002976190476190)
     )
 
@@ -203,10 +206,12 @@ class CglsPyramidFactoryTest {
 
   @Test
   def datacube_seqSparseWithOpensearchClient(): Unit = {
-    val ndvi300PyramidFactory = new CglsPyramidFactory2(
-      dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2018/201806*/*/*.nc",
-      netcdfVariables = util.Arrays.asList("NDVI"),
-      dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+",
+    val dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2018/201806*/*/*.nc"
+    val dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+"
+    val netcdfVariables = util.Arrays.asList("NDVI")
+    val openSearchClient = OpenSearchClient(dataGlob, false, dateRegex, netcdfVariables, "cgls")
+    val ndvi300PyramidFactory = new PyramidFactory(
+      openSearchClient, "", netcdfVariables, "",
       maxSpatialResolution = CellSize(0.002976190476204, 0.002976190476190)
     )
 
@@ -258,15 +263,16 @@ class CglsPyramidFactoryTest {
     dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+"
     )
 
-    val ndvi300PyramidFactory2 = new CglsPyramidFactory2(
-      dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2018/201806*/*/*.nc",
-      netcdfVariables = util.Arrays.asList("NDVI"),
-      dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+",
+    val dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2018/201806*/*/*.nc"
+    val dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+"
+    val netcdfVariables = util.Arrays.asList("NDVI")
+    val openSearchClient = OpenSearchClient(dataGlob, false, dateRegex, netcdfVariables, "cgls")
+    val ndvi300PyramidFactory2 = new PyramidFactory(
+      openSearchClient, "", netcdfVariables, "",
       maxSpatialResolution = CellSize(0.002976190476204, 0.002976190476190)
     )
 
     val date = LocalDate.of(2018, 6, 21).atStartOfDay(ZoneId.of("UTC"))
-
     val from_date = date format ISO_OFFSET_DATE_TIME
     val to_date = from_date
 
