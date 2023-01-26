@@ -18,7 +18,9 @@ import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrelliscommon.DataCubeParameters
+import org.openeo.opensearch.OpenSearchClient
 
+import java.net.URL
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
@@ -62,8 +64,10 @@ class Sentinel2PyramidFactoryTest {
         val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format ZonedFromDate
         val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format zonedToDate
         val correlation_id = ""
-        val factory = new Sentinel2PyramidFactory(
-            openSearchEndpoint = "https://resto.c-scale.zcu.cz",
+        val openSearchEndpoint = "https://resto.c-scale.zcu.cz"
+        val openSearchClient = OpenSearchClient(new URL(openSearchEndpoint), isUTM = true)
+        val factory = new PyramidFactory(
+            openSearchClient,
             openSearchCollectionId = "S2",
             openSearchLinkTitles = singletonList("B02"),
             rootPath = null,
@@ -98,8 +102,10 @@ class Sentinel2PyramidFactoryTest {
         val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format zonedToDate
         val correlation_id = ""
 
-        val factory = new Sentinel2PyramidFactory(
-            openSearchEndpoint = "https://services.terrascope.be/catalogue",
+        val openSearchEndpoint = "https://services.terrascope.be/catalogue"
+        val openSearchClient = OpenSearchClient(new URL(openSearchEndpoint), isUTM = false)
+        val factory = new PyramidFactory(
+            openSearchClient,
             openSearchCollectionId = "urn:eop:VITO:COP_DEM_GLO_30M_COG",
             openSearchLinkTitles = singletonList("DEM"),
             rootPath = "/data/MTDA/DEM/COP_DEM_30M_COG",
@@ -186,11 +192,15 @@ class Sentinel2PyramidFactoryTest {
         spatialLayer
     }
 
-    private def sceneClassificationV200PyramidFactory = new Sentinel2PyramidFactory(
-        openSearchEndpoint = "https://services.terrascope.be/catalogue",
-        openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
-        openSearchLinkTitles = singletonList("SCENECLASSIFICATION_20M"),
-        rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
-        maxSpatialResolution = CellSize(10, 10)
-    )
+    private def sceneClassificationV200PyramidFactory = {
+        val openSearchEndpoint = "https://services.terrascope.be/catalogue"
+        val openSearchClient = OpenSearchClient(new URL(openSearchEndpoint), isUTM = true)
+        new PyramidFactory(
+            openSearchClient,
+            openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+            openSearchLinkTitles = singletonList("SCENECLASSIFICATION_20M"),
+            rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+            maxSpatialResolution = CellSize(10, 10)
+        )
+    }
 }

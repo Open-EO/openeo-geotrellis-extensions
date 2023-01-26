@@ -17,26 +17,49 @@ import java.time.ZonedDateTime
 import java.util
 import scala.collection.JavaConverters._
 
-
 /**
- * Pyramid factory based on OpenSearch metadata lookup and file based access.
+ * Uses OpenSearch metadata lookup and file based access to create Pyramids.
+ * Pyramids are sequences of (zoom_level, MultibandTileLayerRDD) tuples.
+ * The sequence is ordered from highest to lowest zoom level,
+ * where higher zoom levels contain more pixels (= smaller cell size).
+ * https://geotrellis.readthedocs.io/en/latest/guide/core-concepts.html#pyramids
  *
+ * This factory works for most collection types: S1 (Sigma0/Coherence), S2, S5P, AgEra5, Cgls, etc.
+ *
+ * @param openSearchClient
  * @param openSearchCollectionId
  * @param openSearchLinkTitles
  * @param rootPath
+ * @param maxSpatialResolution The spatial resolution used at the highest zoom level. Its units depend on the CRS.
+ * @param experimental
  */
-// TODO: rename this to something more generic since it is also used for S1 (Sigma0/Coherence), S5P etc.
-class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId: String,
-                              openSearchLinkTitles: util.List[String], rootPath: String, maxSpatialResolution: CellSize, experimental:Boolean=false) {
+class PyramidFactory(openSearchClient: OpenSearchClient,
+                     openSearchCollectionId: String,
+                     openSearchLinkTitles: util.List[String],
+                     rootPath: String,
+                     maxSpatialResolution: CellSize,
+                     experimental: Boolean = false) {
   require(openSearchLinkTitles.size() > 0)
 
-  private val openSearchEndpointUrl = new URL(openSearchEndpoint)
   var crs: CRS = WebMercator
 
-  private def sentinel2FileLayerProvider(metadataProperties: Map[String, Any],
-                                         correlationId: String,
-                                         layoutScheme: LayoutScheme = ZoomedLayoutScheme(crs, 256)) = new FileLayerProvider(
-    createOpenSearch,
+  /**
+   * The FileLayerProvider used to generate layers from files.
+   *
+   * @param metadataProperties
+   * @param correlationId
+   * @param layoutScheme Mapping from zoom level to LayoutDefinition.
+   *                     The LayoutDefinition defines the number of tiles at this level and their size (#pixels).
+   *                     Normally, the number of tiles increases by a factor of 2 with each zoom level, while
+   *                     the size of each tile remains constant.
+   *                     In case of a ZoomedLayoutScheme, the entire crs extent is divided into tiles of the same size.
+   *                     In case of a FloatingLayoutScheme, only the provided extent is divided.
+   * @return
+   */
+  private def fileLayerProvider(metadataProperties: Map[String, Any],
+                               correlationId: String,
+                               layoutScheme: LayoutScheme = ZoomedLayoutScheme(crs, 256)) = new FileLayerProvider(
+    openSearchClient,
     openSearchCollectionId,
     NonEmptyList.fromListUnsafe(openSearchLinkTitles.asScala.toList),
     rootPath,
@@ -48,11 +71,6 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
     experimental = experimental
   )
 
-  def createOpenSearch = {
-    //TODO configure use of utm in layercatalog? (https://github.com/Open-EO/openeo-geopyspark-driver/issues/219)
-    OpenSearchClient(openSearchEndpointUrl, isUTM = maxSpatialResolution == CellSize(10.0,10.0) && !openSearchCollectionId.contains("COHERENCE"))
-  }
-
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String,
                   metadata_properties: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
@@ -62,7 +80,7 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
     val from = ZonedDateTime.parse(from_date)
     val to = ZonedDateTime.parse(to_date)
 
-    val layerProvider = sentinel2FileLayerProvider(metadata_properties.asScala.toMap, correlationId)
+    val layerProvider = fileLayerProvider(metadata_properties.asScala.toMap, correlationId)
 
     for (zoom <- layerProvider.maxZoom to 0 by -1)
       yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox, zoom, sc)
@@ -84,7 +102,7 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
 
     val intersectsPolygons = AbstractPyramidFactory.preparePolygons(polygons, polygons_crs,sc)
 
-    val layerProvider = sentinel2FileLayerProvider(metadata_properties.asScala.toMap, correlationId)
+    val layerProvider = fileLayerProvider(metadata_properties.asScala.toMap, correlationId)
 
     for (zoom <- layerProvider.maxZoom to 0 by -1)
       yield zoom -> layerProvider.readMultibandTileLayer(from, to, boundingBox,intersectsPolygons,polygons_crs, zoom, sc,Option.empty)
@@ -110,7 +128,7 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
                    metadata_properties: util.Map[String, Any], correlationId: String):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     val cube = datacube(polygons.polygons, polygons.crs, from_date, to_date, metadata_properties, correlationId,new DataCubeParameters())
-   Seq((0,cube))
+    Seq((0,cube))
   }
 
   /**
@@ -145,13 +163,12 @@ class Sentinel2PyramidFactory(openSearchEndpoint: String, openSearchCollectionId
 
 
     val boundingBox = ProjectedExtent(polygons.toSeq.extent, polygons_crs)
-    val layerProvider = sentinel2FileLayerProvider(metadata_properties.asScala.toMap, correlationId, FloatingLayoutScheme(dataCubeParameters.tileSize))
+    val layerProvider = fileLayerProvider(metadata_properties.asScala.toMap, correlationId, FloatingLayoutScheme(dataCubeParameters.tileSize))
     layerProvider.readMultibandTileLayer(from, to, boundingBox, polygons, polygons_crs, 0, sc, Some(dataCubeParameters))
   }
-
 
   def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int,
             metadataProperties: Map[String, Any] = Map(), correlationId: String)(implicit sc: SparkContext):
   MultibandTileLayerRDD[SpaceTimeKey] =
-    sentinel2FileLayerProvider(metadataProperties, correlationId).readMultibandTileLayer(from, to, boundingBox, zoom, sc)
+    fileLayerProvider(metadataProperties, correlationId).readMultibandTileLayer(from, to, boundingBox, zoom, sc)
 }
