@@ -38,7 +38,7 @@ object AggregateSpatialTest {
       UserGroupInformation.setConfiguration(config)
 
       val conf = new SparkConf().set("spark.driver.bindAddress", "127.0.0.1")
-      _sc = Some(SparkUtils.createLocalSparkContext(sparkMaster = "local[1, 1]", appName = getClass.getSimpleName, conf))
+      _sc = Some(SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, conf))
     }
     _sc.get
   }
