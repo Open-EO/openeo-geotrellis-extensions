@@ -1,23 +1,19 @@
 package org.openeo.geotrellis
 
 import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, TileLayerMetadata}
-import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.proj4.LatLng
 import geotrellis.raster.{ByteCells, ByteConstantTile, MultibandTile}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
-import geotrellis.vector.methods.ExtraGeometryMethods
 import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertArrayEquals, assertEquals}
-import org.junit.jupiter.api.{AfterAll, BeforeAll}
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.ComputeStatsGeotrellisAdapterTest.{polygon1, polygon2}
-import org.openeo.geotrellis.LayerFixtures.getClass
 import org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder
-import org.openeo.sparklisteners.{GetInfoSparkListener, LogErrorSparkListener}
 
 import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
@@ -29,49 +25,19 @@ import scala.io.Source
 
 object AggregateSpatialTest {
 
-  private var _sc: Option[SparkContext] = None
+  private var sc: SparkContext = _
 
-  private implicit def sc: SparkContext = {
-    if (_sc.isEmpty) {
+  @BeforeClass
+  def setUpSpark(): Unit = {
+    sc = {
       val config = new HdfsConfiguration
       config.set("hadoop.security.authentication", "kerberos")
       UserGroupInformation.setConfiguration(config)
 
       val conf = new SparkConf().set("spark.driver.bindAddress", "127.0.0.1")
-      _sc = Some(SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, conf))
+      SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, conf)
     }
-    _sc.get
-  }
 
-  @BeforeClass
-  def setUpSpark_BeforeClass(): Unit = sc
-
-  @BeforeAll
-  def setUpSpark_BeforeAll(): Unit = sc
-
-  var gotAfterAll = false
-
-  @AfterAll
-  def tearDownSpark_AfterAll(): Unit = {
-    gotAfterAll = true
-    maybeStopSpark()
-  }
-
-  var gotAfterClass = false
-
-  @AfterClass
-  def tearDownSpark_AfterClass(): Unit = {
-    gotAfterClass = true;
-    maybeStopSpark()
-  }
-
-  def maybeStopSpark(): Unit = {
-    if (gotAfterAll && gotAfterClass) {
-      if (_sc.isDefined) {
-        _sc.get.stop()
-        _sc = None
-      }
-    }
   }
 
   def parseCSV(outDir: String, spatioTemporal: Boolean = true): Map[String, scala.Seq[scala.Seq[Double]]] = {
@@ -124,6 +90,11 @@ object AggregateSpatialTest {
       assertArrayEquals("should have same band stats", expected(i).toArray, actual(i).toArray, delta)
     }
   }
+
+  @AfterClass
+  def tearDownSpark(): Unit = {
+    sc.stop()
+  }
 }
 
 class AggregateSpatialTest {
@@ -153,27 +124,6 @@ class AggregateSpatialTest {
     val cube = LayerFixtures.sentinel2B04Layer
     computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube("max",cube,LayerFixtures.b04Polygons,"/tmp/csvoutput")
   }
-
-//  @Test def errorTest(): Unit = {
-//    val data = Array((1, "a"), (2, "b"), (3, "c"), (4, "d"), (5, "e"))
-//    LogErrorSparkListener.assureListening
-//    var distData = sc.parallelize(data) // .partitionBy(new partition)
-//    println("distData.partitions.length: " + distData.partitions.length)
-//    val t0 = System.nanoTime()
-//    distData = distData.map(x => {
-//      val t1 = System.nanoTime()
-//      val difference = t1 - t0
-//      val willCrash = difference < 4000111000L
-//      println(x + " difference: " + difference.toString + " willCrash: " + willCrash)
-//      if (willCrash) {
-////        Thread.sleep(1000 * 5)
-//        throw new java.lang.Exception("Exception!")
-//      }
-//      (x._1, x._2 + "_mapped")
-//    })
-//    val d = distData.collect()
-//    println(d.mkString("Array(\n  ", ", \n  ", "\n)"))
-//  }
 
   @Test def multiple_statistics(): Unit = {
     val cube = LayerFixtures.sentinel2B04Layer
