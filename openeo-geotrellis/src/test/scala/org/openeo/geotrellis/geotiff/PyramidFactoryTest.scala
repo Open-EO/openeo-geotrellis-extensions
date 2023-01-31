@@ -72,14 +72,14 @@ class PyramidFactoryTest {
 
   @Test
   def singleBandGeoTiffFromDiskForSingleFixedDate(): Unit = {
-    val singlePath = "file:/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2019/04/24/S2B_20190424T143759_19HCC_FAPAR_V200/20M/S2B_20190424T143759_19HCC_FAPAR_20M_V200.tif"
-    val singleDate = LocalDate.of(2019, 4, 24).atStartOfDay(UTC)
+    val singlePath = "file:/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2/2023/01/03/S2B_20230103T110349_31UES_FAPAR_V210/20M/S2B_20230103T110349_31UES_FAPAR_20M_V210.tif"
+    val singleDate = LocalDate.of(2023, 1, 3).atStartOfDay(UTC)
 
     val pyramidFactory = PyramidFactory.from_disk(
       timestamped_paths = util.Collections.singletonMap(singlePath, singleDate format ISO_OFFSET_DATE_TIME)
     )
 
-    val boundingBox = ProjectedExtent(Extent(-70.12, -34.38, -70.06, -34.34), LatLng)
+    val boundingBox = ProjectedExtent(Extent(2.4049338007249337, 51.1138427546043772, 3.5035666132249341, 51.3147090015657454), LatLng)
     val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, bbox_srs = s"EPSG:${boundingBox.crs.epsgCode.get}",
       from_date = singleDate.toString, to_date = singleDate.plusDays(1).toString)
 
