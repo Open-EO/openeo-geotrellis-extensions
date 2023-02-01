@@ -11,10 +11,12 @@ import geotrellis.vector.Geometry
 import org.apache.spark.SparkContext
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
-import org.openeo.geotrellis.file.Sentinel2PyramidFactory
+import org.openeo.geotrellis.file.PyramidFactory
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
+import org.openeo.opensearch.OpenSearchClient
 
+import java.net.URL
 import java.util
 
 object MergeCubesTest {
@@ -81,19 +83,25 @@ class MergeCubesTest {
     bandMeans.map(_.mean)
   }
 
-  private def sigma0PyramidFactory = new Sentinel2PyramidFactory(
-    openSearchEndpoint,
-    openSearchCollectionId = "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
-    openSearchLinkTitles = util.Arrays.asList("VH", "VV", "angle"),
-    rootPath = "/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1",
-    maxSpatialResolution = CellSize(10, 10)
-  )
+  private def sigma0PyramidFactory = {
+    val openSearchClient = OpenSearchClient(new URL(openSearchEndpoint), isUTM = true)
+    new PyramidFactory(
+      openSearchClient,
+      openSearchCollectionId = "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+      openSearchLinkTitles = util.Arrays.asList("VH", "VV", "angle"),
+      rootPath = "/data/MTDA/CGS_S1/CGS_S1_GRD_SIGMA0_L1",
+      maxSpatialResolution = CellSize(10, 10)
+    )
+  }
 
-  private def faparPyramidFactory = new Sentinel2PyramidFactory(
-    openSearchEndpoint,
-    openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
-    openSearchLinkTitles = util.Collections.singletonList("FAPAR_10M"),
-    rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2",
-    maxSpatialResolution = CellSize(10, 10)
-  )
+  private def faparPyramidFactory = {
+    val openSearchClient = OpenSearchClient(new URL(openSearchEndpoint), isUTM = true)
+    new PyramidFactory(
+      openSearchClient,
+      openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
+      openSearchLinkTitles = util.Collections.singletonList("FAPAR_10M"),
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2",
+      maxSpatialResolution = CellSize(10, 10)
+    )
+  }
 }
