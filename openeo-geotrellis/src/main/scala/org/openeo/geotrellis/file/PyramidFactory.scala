@@ -44,7 +44,7 @@ class PyramidFactory(openSearchClient: OpenSearchClient,
   var crs: CRS = WebMercator
 
   /**
-   * The FileLayerProvider used to generate layers from files.
+   * The FileLayerProvider used to generate MultibandTileLayers from files.
    *
    * @param metadataProperties
    * @param correlationId
@@ -71,6 +71,59 @@ class PyramidFactory(openSearchClient: OpenSearchClient,
     experimental = experimental
   )
 
+  def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
+                   metadata_properties: util.Map[String, Any], correlationId: String):
+  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+    val cube = datacube(polygons.polygons, polygons.crs, from_date, to_date, metadata_properties, correlationId,new DataCubeParameters())
+    Seq((0,cube))
+  }
+
+  def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
+                   metadata_properties: util.Map[String, Any], correlationId: String, dataCubeParameters: DataCubeParameters):
+  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+    val cube = datacube(polygons.polygons, polygons.crs, from_date, to_date, metadata_properties, correlationId, dataCubeParameters)
+    Seq((0,cube))
+  }
+
+  def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
+                   metadata_properties: util.Map[String, Any]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] =
+    datacube_seq(polygons, from_date, to_date, metadata_properties, correlationId = "")
+
+  def datacube(polygons:ProjectedPolygons, from_date: String, to_date: String,
+               metadata_properties: util.Map[String, Any], correlationId: String): MultibandTileLayerRDD[SpaceTimeKey] =
+    datacube(polygons.polygons, polygons.crs, from_date, to_date, metadata_properties, correlationId)
+
+  /**
+   * Creates a MultibandTileLayerRDD from the given polygons (bbox) and time range.
+   */
+  def datacube(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
+               metadata_properties: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String,
+               dataCubeParameters: DataCubeParameters = new DataCubeParameters()):
+  MultibandTileLayerRDD[SpaceTimeKey] = {
+    implicit val sc: SparkContext = SparkContext.getOrCreate()
+
+    val from = ZonedDateTime.parse(from_date)
+    val to = ZonedDateTime.parse(to_date)
+
+
+    val boundingBox = ProjectedExtent(polygons.toSeq.extent, polygons_crs)
+    val layerProvider = fileLayerProvider(metadata_properties.asScala.toMap, correlationId, FloatingLayoutScheme(dataCubeParameters.tileSize))
+    layerProvider.readMultibandTileLayer(from, to, boundingBox, polygons, polygons_crs, 0, sc, Some(dataCubeParameters))
+  }
+
+  def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int,
+            metadataProperties: Map[String, Any] = Map(), correlationId: String)(implicit sc: SparkContext):
+  MultibandTileLayerRDD[SpaceTimeKey] =
+    fileLayerProvider(metadataProperties, correlationId).readMultibandTileLayer(from, to, boundingBox, zoom, sc)
+
+  /**
+   * Pyramid_seq is used for viewing services, which is an experimental feature that is not really used.
+   * (See GpsSecondaryServices in the Geopyspark Python Driver.)
+   * It uses a layout for the entire crs extent (ZoomedLayoutScheme),
+   * dividing it into tiles that have 256x256 pixels, each with their own SpatialKey.
+   *
+   * This method is called from Python (Py4j), which is sensitive to the signature.
+   */
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String,
                   metadata_properties: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
@@ -111,64 +164,4 @@ class PyramidFactory(openSearchClient: OpenSearchClient,
   def pyramid_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
                   metadata_properties: util.Map[String, Any]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] =
     pyramid_seq(polygons, polygons_crs, from_date, to_date, metadata_properties, correlationId = "")
-
-  def datacube(polygons:ProjectedPolygons, from_date: String, to_date: String,
-               metadata_properties: util.Map[String, Any], correlationId: String): MultibandTileLayerRDD[SpaceTimeKey] =
-    datacube(polygons.polygons, polygons.crs, from_date, to_date, metadata_properties, correlationId)
-
-  /**
-   * Same as #datacube, but return same structure as pyramid_seq
-   * @param polygons
-   * @param from_date
-   * @param to_date
-   * @param metadata_properties
-   * @return
-   */
-  def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
-                   metadata_properties: util.Map[String, Any], correlationId: String):
-  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
-    val cube = datacube(polygons.polygons, polygons.crs, from_date, to_date, metadata_properties, correlationId,new DataCubeParameters())
-    Seq((0,cube))
-  }
-
-  /**
-   * Same as #datacube, but return same structure as pyramid_seq.
-   * This method is called from Python (Py4j), which is sensitive to the signature.
-   * @param polygons
-   * @param from_date
-   * @param to_date
-   * @param metadata_properties
-   * @param correlationId
-   * @param dataCubeParameters
-   * @return
-   */
-  def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
-                   metadata_properties: util.Map[String, Any], correlationId: String, dataCubeParameters: DataCubeParameters):
-  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
-    val cube = datacube(polygons.polygons, polygons.crs, from_date, to_date, metadata_properties, correlationId, dataCubeParameters)
-    Seq((0,cube))
-  }
-
-  def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
-                   metadata_properties: util.Map[String, Any]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] =
-    datacube_seq(polygons, from_date, to_date, metadata_properties, correlationId = "")
-
-  def datacube(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
-               metadata_properties: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String,dataCubeParameters: DataCubeParameters=new DataCubeParameters()):
-  MultibandTileLayerRDD[SpaceTimeKey] = {
-    implicit val sc: SparkContext = SparkContext.getOrCreate()
-
-    val from = ZonedDateTime.parse(from_date)
-    val to = ZonedDateTime.parse(to_date)
-
-
-    val boundingBox = ProjectedExtent(polygons.toSeq.extent, polygons_crs)
-    val layerProvider = fileLayerProvider(metadata_properties.asScala.toMap, correlationId, FloatingLayoutScheme(dataCubeParameters.tileSize))
-    layerProvider.readMultibandTileLayer(from, to, boundingBox, polygons, polygons_crs, 0, sc, Some(dataCubeParameters))
-  }
-
-  def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int,
-            metadataProperties: Map[String, Any] = Map(), correlationId: String)(implicit sc: SparkContext):
-  MultibandTileLayerRDD[SpaceTimeKey] =
-    fileLayerProvider(metadataProperties, correlationId).readMultibandTileLayer(from, to, boundingBox, zoom, sc)
 }
