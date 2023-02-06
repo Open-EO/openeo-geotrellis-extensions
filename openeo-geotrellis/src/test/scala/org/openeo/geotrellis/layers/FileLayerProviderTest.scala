@@ -300,7 +300,7 @@ class FileLayerProviderTest {
 
   @Test
   def overlapsFilterTest(): Unit = {
-    val date = LocalDate.of(2019, 6, 27).atStartOfDay(UTC)
+    val date = LocalDate.of(2022, 7, 1).atStartOfDay(UTC)
 
     val crs = CRS.fromEpsgCode(32632)
     // a mix of 31UGS and 32ULB
@@ -332,7 +332,7 @@ class FileLayerProviderTest {
     val ids = result._1.values.map(_.data._2.id).distinct().collect()
     //overlap filter has removed the other potential sources
     assertEquals(1,ids.length)
-    assertEquals("urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20190627T104029_32ULB_TOC_V200",ids(0))
+    assertEquals("urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220701T103629_32ULB_TOC_V210",ids(0))
     assertEquals(cols*rows,result._1.count(),0.1)
   }
 
