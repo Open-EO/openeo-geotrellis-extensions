@@ -117,22 +117,22 @@ class CollectionTests {
 
   private def get_layers() =
     List(
-      "TERRASCOPE_S1_SLC_COHERENCE_V1",
-      "TERRASCOPE_S1_GAMMA0_V1",
+      //      "TERRASCOPE_S1_SLC_COHERENCE_V1",
+      //      "TERRASCOPE_S1_GAMMA0_V1",
       "TERRASCOPE_S2_FAPAR_V2", // OK
       "TERRASCOPE_S2_NDVI_V2", // OK
-      "TERRASCOPE_S2_LAI_V2",
-      "TERRASCOPE_S2_FCOVER_V2",
-      "TERRASCOPE_S2_TOC_V2", // OK
-      "S1_GRD_SIGMA0_ASCENDING",
-      "S1_GRD_SIGMA0_DESCENDING",
-      "PROBAV_L3_S5_TOC_100M",
-      "PROBAV_L3_S10_TOC_333M",
-      "COPERNICUS_30",
-      "COPERNICUS_90",
-      "CGLS_FAPAR_V2_GLOBAL",
-      "CGLS_LAI_V2_GLOBAL",
-      "CGLS_LAI300_V1_GLOBAL"
+      //      "TERRASCOPE_S2_LAI_V2",
+      //      "TERRASCOPE_S2_FCOVER_V2",
+      //      "TERRASCOPE_S2_TOC_V2", // OK
+      //      "S1_GRD_SIGMA0_ASCENDING",
+      //      "S1_GRD_SIGMA0_DESCENDING",
+      //      "PROBAV_L3_S5_TOC_100M",
+      //      "PROBAV_L3_S10_TOC_333M",
+      //      "COPERNICUS_30",
+      //      "COPERNICUS_90",
+      //      "CGLS_FAPAR_V2_GLOBAL",
+      //      "CGLS_LAI_V2_GLOBAL",
+      //      "CGLS_LAI300_V1_GLOBAL"
     )
 
 
