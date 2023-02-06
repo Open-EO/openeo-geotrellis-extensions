@@ -17,6 +17,7 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
 
