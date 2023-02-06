@@ -19,7 +19,7 @@ object LogErrorSparkListener {
     }
   }
 
-  private def removeListener() {
+  private def removeListener(): Unit = {
     if (listener.isDefined) {
       SparkContext.getOrCreate().removeSparkListener(listener.get)
       listener = None
@@ -56,7 +56,7 @@ class LogErrorSparkListener extends SparkListener {
 
     if (LogErrorSparkListener.listener.isDefined) {
       // Not sure if the spark context sometimes get stopped and started in the same JVM, but just in case...
-      println("Removing LogErrorSparkListener, if a SparkContext will be re-made in this JVM, a listener needs to be re-attached");
+      println("Removing LogErrorSparkListener, if a SparkContext will be re-made in this JVM, a listener needs to be re-attached")
       LogErrorSparkListener.removeListener()
     }
   }
@@ -73,7 +73,7 @@ class LogErrorSparkListener extends SparkListener {
     val newValue = stagesCompleted.incrementAndGet()
     println("LogErrorSparkListener.onStageCompleted(...) stagesCompleted: " + newValue)
     stageCompleted.stageInfo.failureReason foreach {
-      x => LogErrorSparkListener.logger.error(x)
+      x => LogErrorSparkListener.logger.error("LogErrorSparkListener.onStageCompleted(...) error: " + x)
     }
   }
 
@@ -81,7 +81,7 @@ class LogErrorSparkListener extends SparkListener {
     val newValue = tasksCompleted.incrementAndGet()
     println("LogErrorSparkListener.onTaskEnd(...) tasksCompleted: " + newValue)
     taskEnd.reason match {
-      case r: TaskFailedReason => LogErrorSparkListener.logger.error(r.toErrorString)
+      case r: TaskFailedReason => LogErrorSparkListener.logger.error("LogErrorSparkListener.onTaskEnd(...) error: " + r.toErrorString)
       case _ => // Ignore
     }
 

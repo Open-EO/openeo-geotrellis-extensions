@@ -12,7 +12,6 @@ import geotrellis.layer._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrellis.file.{CglsPyramidFactory2, Sentinel2PyramidFactory}
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellisaccumulo.PyramidFactory
 import org.openeo.geotrelliscommon.SparseSpaceTimePartitioner
@@ -32,9 +31,9 @@ import scala.reflect.ClassTag
 object LayerFixtures {
 
   def ClearNDVILayerForSingleDate()(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] ={
-
-    val factory = new Sentinel2PyramidFactory(
-      openSearchEndpoint = opensearchEndpoint,
+    val openSearchClient = OpenSearchClient(new URL(opensearchEndpoint), isUTM = true)
+    val factory = new org.openeo.geotrellis.file.PyramidFactory(
+      openSearchClient,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_NDVI_V2",
       openSearchLinkTitles = singletonList("NDVI_10M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/NDVI_V2",
@@ -121,16 +120,6 @@ object LayerFixtures {
     )
 
   def s2_fapar(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent)=accumuloDataCube("S2_FAPAR_PYRAMID_20200408", from_date, to_date, bbox, "EPSG:4326")
-
-  def sceneClassificationV200PyramidFactory = new Sentinel2PyramidFactory(
-    openSearchEndpoint = opensearchEndpoint,
-    openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
-    openSearchLinkTitles = singletonList("SCENECLASSIFICATION_20M"),
-    rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
-    maxSpatialResolution = CellSize(10, 10)
-  )
-
-  def s2_scl(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent) = sceneClassificationV200PyramidFactory.layer(ProjectedExtent(defaultExtent,LatLng),ZonedDateTime.parse(from_date),ZonedDateTime.parse(to_date),12, correlationId = "")(SparkContext.getOrCreate())
 
   def sentinel2TocLayerProviderUTM =
     new FileLayerProvider(
@@ -325,11 +314,17 @@ object LayerFixtures {
   }
 
 
-  val cglsNDVI300 = new CglsPyramidFactory2(
-    dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2019/201906*/*/*.nc",
-    netcdfVariables = util.Arrays.asList("NDVI"),
-    dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+",
-    maxSpatialResolution = CellSize(0.002976190476204, 0.002976190476190)
-  )
+  val cglsNDVI300 = {
+    val dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2019/201906*/*/*.nc"
+    val netcdfVariables = util.Arrays.asList("NDVI")
+    val dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+"
+    val openSearchClient = OpenSearchClient(dataGlob, isUTM = false, dateRegex, netcdfVariables, "cgls")
+    new org.openeo.geotrellis.file.PyramidFactory(
+      openSearchClient,
+      openSearchCollectionId = "", openSearchLinkTitles = netcdfVariables, "",
+      maxSpatialResolution = CellSize(0.002976190476204, 0.002976190476190),
+      experimental = false
+    )
+  }
 
 }

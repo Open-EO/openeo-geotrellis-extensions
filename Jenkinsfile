@@ -1,3 +1,5 @@
+@Library('lib')_
+
 def deployable_branches = ["master"]
 maven = 'Maven 3.5.4'
 
@@ -122,12 +124,9 @@ void build(tests = true){
                 }
             }
         }catch(err){
-            mail body: "project build error is here: ${env.BUILD_URL}" ,
-                    from: 'Jenkins@vgt.vito.be',
-                    replyTo: 'no-reply@vgt.vito.be',
-                    subject: 'openeo-geotrellis-extensions build failed',
-                    to: 'jeroen.dries@vito.be,jan.van.den.bosch@devoteam.com'
-            throw err
+          notification.fail()
+
+          throw err
         }
         finally {
             if (tests) {

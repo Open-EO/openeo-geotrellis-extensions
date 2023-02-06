@@ -26,20 +26,11 @@ import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.stac.STACItem
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.slf4j.LoggerFactory
-import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
-import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
-import software.amazon.awssdk.core.retry.RetryPolicy
-import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy
-import software.amazon.awssdk.core.retry.conditions.{OrRetryCondition, RetryCondition}
 import software.amazon.awssdk.core.sync.RequestBody
-import software.amazon.awssdk.regions.Region
-import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.{Delete, DeleteObjectsRequest, ListObjectsRequest, ObjectIdentifier, PutObjectRequest}
+import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import spire.syntax.cfor.cfor
 
-import java.net.URI
 import java.nio.file.Paths
-import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Collections, Map, List => JList}
 import scala.collection.JavaConverters._
@@ -645,11 +636,13 @@ package object geotiff {
         .build
 
       CreoS3Utils.getCreoS3Client().putObject(objectRequest, RequestBody.fromFile(tempFile))
+      correctS3Path
 
     } else {
       geoTiff.write(path, optimizedOrder = true)
+      path
     }
-    path
+
   }
 
 

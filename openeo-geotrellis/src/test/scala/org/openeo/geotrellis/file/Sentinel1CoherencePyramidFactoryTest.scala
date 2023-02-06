@@ -5,7 +5,6 @@ import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZonedDateTime}
 import java.util.Arrays.asList
-
 import geotrellis.proj4.LatLng
 import geotrellis.raster.CellSize
 import geotrellis.raster.summary.polygonal.PolygonalSummaryResult
@@ -18,6 +17,9 @@ import geotrellis.vector._
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertArrayEquals, assertEquals, assertTrue}
 import org.junit.{AfterClass, BeforeClass, Test}
+import org.openeo.opensearch.OpenSearchClient
+
+import java.net.URL
 
 object Sentinel1CoherencePyramidFactoryTest {
   private var sc: SparkContext = _
@@ -68,11 +70,15 @@ class Sentinel1CoherencePyramidFactoryTest {
     println(meanList.map(_.count))
   }
 
-  private def sentinel1CoherencePyramidFactory = new Sentinel2PyramidFactory(
-    openSearchEndpoint = "https://services.terrascope.be/catalogue",
-    openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S1_SLC_COHERENCE_V1",
-    openSearchLinkTitles = asList("VH", "VV"),
-    rootPath = "/data/MTDA/TERRASCOPE_Sentinel1/SLC_COHERENCE",
-    maxSpatialResolution = CellSize(10, 10)
-  )
+  private def sentinel1CoherencePyramidFactory = {
+    val openSearchEndpoint = "https://services.terrascope.be/catalogue"
+    val openSearchClient = OpenSearchClient(new URL(openSearchEndpoint), isUTM = false)
+    new PyramidFactory(
+      openSearchClient,
+      openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S1_SLC_COHERENCE_V1",
+      openSearchLinkTitles = asList("VH", "VV"),
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel1/SLC_COHERENCE",
+      maxSpatialResolution = CellSize(10, 10)
+    )
+  }
 }

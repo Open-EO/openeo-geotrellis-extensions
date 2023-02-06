@@ -13,7 +13,9 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.opensearch.OpenSearchClient
 
+import java.net.URL
 import java.time.LocalDate
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
@@ -55,8 +57,10 @@ class Sentinel5PPyramidFactoryTest {
 
     val projectedPolygons = ProjectedPolygons.fromExtent(bbox.extent, srs)
 
-    val dailyCOPyramidFactory = new Sentinel2PyramidFactory(
-      openSearchEndpoint = "https://services.terrascope.be/catalogue",
+    val openSearchEndpoint = "https://services.terrascope.be/catalogue"
+    val openSearchClient = OpenSearchClient(new URL(openSearchEndpoint), isUTM = false)
+    val dailyCOPyramidFactory = new PyramidFactory(
+      openSearchClient,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_CO_TD_V1",
       openSearchLinkTitles = singletonList("CO"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel5P/L3_CO_TD_V1",
