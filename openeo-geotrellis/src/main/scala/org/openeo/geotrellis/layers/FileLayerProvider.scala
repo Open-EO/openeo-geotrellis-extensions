@@ -28,15 +28,16 @@ import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.Feature
 import org.slf4j.LoggerFactory
 
-import java.io.IOException
+import java.io.{File, IOException}
 import java.net.{URI, URL}
-import java.nio.file.{Path, Paths}
+import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.time._
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
 import scala.collection.immutable
 import scala.reflect.ClassTag
+import scala.reflect.io.Directory
 import scala.util.matching.Regex
 
 // TODO: are these attributes typically propagated as RasterSources are transformed? Maybe we should find another way to

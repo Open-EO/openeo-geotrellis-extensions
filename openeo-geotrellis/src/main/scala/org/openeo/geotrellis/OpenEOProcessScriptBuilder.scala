@@ -720,6 +720,7 @@ class OpenEOProcessScriptBuilder {
       case "tan" if hasX => mapFunction("x", Tan.apply)
       case "tanh" if hasX => mapFunction("x", Tanh.apply)
       // Other
+      case "inspect" => inspectFunction(arguments)
       case "first" if ignoreNoData =>  applyListFunction("data", firstFunctionIgnoreNoData)
       case "first" => applyListFunction("data", firstFunctionWithNodata)
       case "last" if ignoreNoData => applyListFunction("data", lastFunctionIgnoreNoData)
@@ -755,6 +756,27 @@ class OpenEOProcessScriptBuilder {
     assert(expectedOperator.equals(operator))
     contextStack.pop()
     inputFunction = operation
+  }
+
+  private def inspectFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
+    val message = arguments.get("message").asInstanceOf[String]
+    val level = arguments.get("level").asInstanceOf[String]
+
+    val inspectFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
+      def log(message:String)={
+        level.toLowerCase match{
+          case "debug" => logger.debug(message)
+          case "warning" => logger.warn(message)
+          case "error" => logger.error(message)
+          case _ => logger.info(message)
+        }
+      }
+      if(message!="")
+        log(message)
+      log(tiles.map(_.asciiDraw()).mkString(""))
+      tiles
+    }
+    inspectFunction
   }
 
   private def linearScaleRangeFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {

@@ -25,6 +25,20 @@ object LogErrorSparkListener {
       listener = None
     }
   }
+
+  def extractPythonError(stackTrace: String): Option[String] = {
+    val tracaback = "Traceback (most recent call last):"
+    val idx = stackTrace.indexOf(tracaback)
+    if (idx < 0) {
+      return None
+    }
+    val s = stackTrace.substring(idx + tracaback.length)
+    val lines = s.split("\n")
+    val lineStart = lines.indexWhere(l => l.nonEmpty && !" \t".contains(l(0)))
+    var lineEnd = lines.indexWhere(l => l.startsWith("   at "), lineStart)
+    if (lineEnd == -1) lineEnd = lines.length - 1
+    Some(lines.slice(lineStart, lineEnd).mkString("\n").trim)
+  }
 }
 
 class LogErrorSparkListener extends SparkListener {
@@ -81,7 +95,9 @@ class LogErrorSparkListener extends SparkListener {
     val newValue = tasksCompleted.incrementAndGet()
     println("LogErrorSparkListener.onTaskEnd(...) tasksCompleted: " + newValue)
     taskEnd.reason match {
-      case r: TaskFailedReason => LogErrorSparkListener.logger.error("LogErrorSparkListener.onTaskEnd(...) error: " + r.toErrorString)
+      case r: TaskFailedReason => LogErrorSparkListener.extractPythonError(r.toErrorString).foreach(
+        m => LogErrorSparkListener.logger.error("LogErrorSparkListener.onTaskEnd(...) error: " + m)
+      )
       case _ => // Ignore
     }
 
