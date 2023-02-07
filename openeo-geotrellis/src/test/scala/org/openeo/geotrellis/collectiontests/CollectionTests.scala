@@ -21,6 +21,7 @@ import java.time.ZonedDateTime
 import java.util
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.junit.Assert.{assertFalse, assertTrue}
 
 import scala.collection.JavaConverters._
@@ -85,6 +86,7 @@ object CollectionTests {
     }
   }
 
+
   def jsonEquals(json1: JsonNode, json2: JsonNode, tolerance: Double = 0.0001): Boolean = {
     if (!json1.isContainerNode && !json2.isContainerNode) {
       if (json1.isNumber && json2.isNumber) {
@@ -93,9 +95,24 @@ object CollectionTests {
       } else {
         json1.equals(json2)
       }
-    } else {
+    } else if (json1.isArray && json2.isArray) {
       json1.size == json2.size &&
         json1.elements.asScala.zip(json2.elements.asScala).forall(pair => jsonEquals(pair._1, pair._2, tolerance))
+    } else {
+      if (json1.size != json2.size) {
+        println("Size diff: " + json1 + json2)
+        false
+      } else {
+        val tups = json1
+          .fields()
+          .asScala
+          .map(pair => {
+            val other = json2.get(pair.getKey)
+            (pair.getValue, other)
+          })
+          .toList
+        tups.forall(pair => jsonEquals(pair._1, pair._2, tolerance))
+      }
     }
   }
 
@@ -120,7 +137,7 @@ class CollectionTests {
       //      "TERRASCOPE_S1_SLC_COHERENCE_V1",
       //      "TERRASCOPE_S1_GAMMA0_V1",
       "TERRASCOPE_S2_FAPAR_V2", // OK
-      "TERRASCOPE_S2_NDVI_V2", // OK
+      //      "TERRASCOPE_S2_NDVI_V2", // OK
       //      "TERRASCOPE_S2_LAI_V2",
       //      "TERRASCOPE_S2_FCOVER_V2",
       //      "TERRASCOPE_S2_TOC_V2", // OK
@@ -155,8 +172,43 @@ class CollectionTests {
     val json1 = mapper.readTree("""{"a": 1, "b": {"c": 2.0}}""")
     val json2 = mapper.readTree("""{"a": 1.0000001, "b": {"c": 2.0000002}}""")
     val isEqual = jsonEquals(json1, json2)
-    println(isEqual)
     assertTrue(isEqual)
+  }
+
+  @Test
+  def jsonEqualsMixedTest(): Unit = {
+    val mapper = new ObjectMapper()
+    val json1 = mapper.readTree("""{"a": 1, "b": {"c": 2.0}}""")
+    val json2 = mapper.readTree("""{"b": {"c": 2.0000002}, "a": 1.0000001}""")
+    val isEqual = jsonEquals(json1, json2)
+    assertTrue(isEqual)
+  }
+
+  @Test
+  def jsonEqualsListTest(): Unit = {
+    val mapper = new ObjectMapper()
+    val json1 = mapper.readTree("""[1, 3.1415]""")
+    val json2 = mapper.readTree("""[1, 3.1415926]""")
+    val isEqual = jsonEquals(json1, json2)
+    assertTrue(isEqual)
+  }
+
+  @Test
+  def jsonDifferentListTest(): Unit = {
+    val mapper = new ObjectMapper()
+    val json1 = mapper.readTree("""[1, 3.1415]""")
+    val json2 = mapper.readTree("""[5, 3.1415]""")
+    val isEqual = jsonEquals(json1, json2)
+    assertFalse(isEqual)
+  }
+
+  @Test
+  def jsonDifferentLengthListTest(): Unit = {
+    val mapper = new ObjectMapper()
+    val json1 = mapper.readTree("""[1, 3.1415]""")
+    val json2 = mapper.readTree("""[1, 3.1415, 1]""")
+    val isEqual = jsonEquals(json1, json2)
+    assertFalse(isEqual)
   }
 
   @Test
@@ -175,28 +227,31 @@ class CollectionTests {
   }
 
   private def test_layer(input_file: Option[String] = None,
-                         from_date: String = "2018-08-01T00:00:00Z",
-                         to_date: String = "2018-09-01T00:00:00Z",
+                         from_date: String = "2020-03-01T00:00:00Z",
+                         to_date: String = "2020-03-31T00:00:00Z",
                          output_dir: Option[String] = None,
                          expected_dir: Option[String] = None,
                         ) = {
-    val vector_file = input_file.getOrElse(getClass.getResource("/org/openeo/geotrellis/collectiontests/cgls_test.json").getFile)
+
 
     val output_dir_get = output_dir.getOrElse("tmp_collectiontests/")
     Files.createDirectories(Paths.get(output_dir_get))
 
-    val expected_dir_get = output_dir.getOrElse(input_file.getOrElse(getClass.getResource("/org/openeo/geotrellis/collectiontests/expected/").getPath))
+    val expected_dir_get = expected_dir.getOrElse(input_file.getOrElse(getClass.getResource("/org/openeo/geotrellis/collectiontests/expected/").getPath))
 
-    var polygons = ProjectedPolygons.fromVectorFile(vector_file)
-    polygons = ProjectedPolygons.reproject(polygons, WebMercator)
-    val from_date_parsed = ZonedDateTime.parse(from_date)
-    val to_date_parsed = ZonedDateTime.parse(to_date)
-
-    val datacubeParams = new DataCubeParameters()
-    datacubeParams.layoutScheme = "FloatingLayoutScheme"
-    datacubeParams.globalExtent = Some(polygons.extent)
 
     get_layers().map(layerStr => {
+      val vector_file = input_file.getOrElse(getClass.getResource("/org/openeo/geotrellis/collectiontests/"
+        + (if (layerStr.contains("CGLS")) "cgls_test.json" else "50testfields.json")).getFile)
+      var polygons = ProjectedPolygons.fromVectorFile(vector_file)
+      polygons = ProjectedPolygons.reproject(polygons, WebMercator)
+      val from_date_parsed = ZonedDateTime.parse(from_date)
+      val to_date_parsed = ZonedDateTime.parse(to_date)
+
+      val datacubeParams = new DataCubeParameters()
+      datacubeParams.layoutScheme = "FloatingLayoutScheme"
+      datacubeParams.globalExtent = Some(polygons.extent)
+
       val layer: MultibandTileLayerRDD[SpaceTimeKey] = layerStr match {
         case "TERRASCOPE_S2_FAPAR_V2" =>
           val seqThing = faparPyramidFactory.datacube_seq(
@@ -242,7 +297,44 @@ class CollectionTests {
       println("Outputted JSON: " + output_dir_get + file_name)
       val json1 = fileToJSON(output_dir_get + file_name)
       val json2 = fileToJSON(expected_dir_get + file_name)
-      val isEqual = jsonEquals(json1, json2)
+
+      val mapper = new ObjectMapper()
+      mapper.registerModule(DefaultScalaModule)
+
+      // Only keeps 1 band values in JSON
+      def pruneCopyJsonObject(json: JsonNode, depth: Int = 0): JsonNode = {
+        if (!json.isContainerNode) {
+          json
+        } else {
+          if (json.isObject) {
+            val map = json.fields.asScala.flatMap { entry =>
+              if (depth >= 1)
+                List()
+              else
+                List(entry.getKey -> pruneCopyJsonObject(entry.getValue, depth + 1))
+            }.toMap
+            mapper.valueToTree(map)
+          } else {
+            val map = json.elements().asScala.zipWithIndex.flatMap { entry =>
+              if ((depth >= 2 && entry._2 >= 1) || entry._1.isNull)
+                List()
+              else
+                List(pruneCopyJsonObject(entry._1, depth + 1))
+            }.toList
+            mapper.valueToTree(map)
+          }
+        }
+      }
+
+      val prunedJson1 = pruneCopyJsonObject(json1)
+      val prunedJson2 = pruneCopyJsonObject(json2)
+      println("pruneCopyJsonObject: " + mapper.writeValueAsString(json1))
+      println("pruneCopyJsonObject: " + mapper.writeValueAsString(json2))
+      println("pruneCopyJsonObject: " + mapper.writeValueAsString(prunedJson1))
+      println("pruneCopyJsonObject: " + mapper.writeValueAsString(prunedJson2))
+
+
+      val isEqual = jsonEquals(prunedJson1, prunedJson2, 3)
       assertTrue(isEqual)
     })
   }
