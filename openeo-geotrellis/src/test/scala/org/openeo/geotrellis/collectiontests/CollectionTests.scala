@@ -135,7 +135,7 @@ object CollectionTests {
     arguments("TERRASCOPE_S2_NDVI_V2"), // Has layer
     //    arguments("TERRASCOPE_S2_LAI_V2"),
     //    arguments("TERRASCOPE_S2_FCOVER_V2"),
-    arguments("TERRASCOPE_S2_TOC_V2"), // Has layer
+    //    arguments("TERRASCOPE_S2_TOC_V2"), // Has layer. Took 55min in CI
     //    arguments("S1_GRD_SIGMA0_ASCENDING"),
     //    arguments("S1_GRD_SIGMA0_DESCENDING"),
     arguments("PROBAV_L3_S5_TOC_100M"), // Has layer
