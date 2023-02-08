@@ -2,7 +2,7 @@ package org.openeo.geotrellis.collectiontests
 
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import geotrellis.layer.SpaceTimeKey
-import geotrellis.proj4.WebMercator
+import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.CellSize
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.spark.util.SparkUtils
@@ -156,13 +156,15 @@ class CollectionTests {
 
   def faparPyramidFactory: PyramidFactory = {
     val openSearchClient = OpenSearchClient(new URL(opensearchEndpoint), isUTM = true)
-    new PyramidFactory(
+    val p = new PyramidFactory(
       openSearchClient,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
       openSearchLinkTitles = util.Collections.singletonList("FAPAR_10M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/FAPAR_V2",
       maxSpatialResolution = CellSize(10, 10)
     )
+    p.crs = CRS.fromEpsgCode(32631)
+    p
   }
 
   @Test
@@ -245,8 +247,9 @@ class CollectionTests {
     val vector_file = input_file.getOrElse(getClass.getResource("/org/openeo/geotrellis/collectiontests/"
       + (if (layerStr.contains("CGLS")) "cgls_test.json" else "50testfields.json")).getFile)
     var polygons = ProjectedPolygons.fromVectorFile(vector_file)
-    polygons = ProjectedPolygons.reproject(polygons, WebMercator) // LatLng gives slightly different rsults. Still not the same as the Python implmentation
-    val from_date_parsed = ZonedDateTime.parse(from_date)
+//    polygons = ProjectedPolygons.reproject(polygons, WebMercator) // LatLng gives slightly different rsults. Still not the same as the Python implmentation
+    polygons = ProjectedPolygons.reproject(polygons, CRS.fromEpsgCode(32631)) // LatLng gives slightly different rsults. Still not the same as the Python implmentation
+    val from_date_parsed = ZonedDateTime.parse(from_date);
     val to_date_parsed = ZonedDateTime.parse(to_date)
 
     val datacubeParams = new DataCubeParameters()
