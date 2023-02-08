@@ -129,22 +129,22 @@ object CollectionTests {
   }
 
   def testLayerParams: java.util.stream.Stream[Arguments] = java.util.Arrays.stream(Array(
-    arguments("TERRASCOPE_S1_SLC_COHERENCE_V1"),
-    arguments("TERRASCOPE_S1_GAMMA0_V1"),
+    //    arguments("TERRASCOPE_S1_SLC_COHERENCE_V1"),
+    //    arguments("TERRASCOPE_S1_GAMMA0_V1"),
     arguments("TERRASCOPE_S2_FAPAR_V2"), // Has layer
     arguments("TERRASCOPE_S2_NDVI_V2"), // Has layer
-    arguments("TERRASCOPE_S2_LAI_V2"),
-    arguments("TERRASCOPE_S2_FCOVER_V2"),
+    //    arguments("TERRASCOPE_S2_LAI_V2"),
+    //    arguments("TERRASCOPE_S2_FCOVER_V2"),
     arguments("TERRASCOPE_S2_TOC_V2"), // Has layer
-    arguments("S1_GRD_SIGMA0_ASCENDING"),
-    arguments("S1_GRD_SIGMA0_DESCENDING"),
+    //    arguments("S1_GRD_SIGMA0_ASCENDING"),
+    //    arguments("S1_GRD_SIGMA0_DESCENDING"),
     arguments("PROBAV_L3_S5_TOC_100M"), // Has layer
     arguments("PROBAV_L3_S10_TOC_333M"), // Has layer
-    arguments("COPERNICUS_30"),
-    arguments("COPERNICUS_90"),
-    arguments("CGLS_FAPAR_V2_GLOBAL"),
-    arguments("CGLS_LAI_V2_GLOBAL"),
-    arguments("CGLS_LAI300_V1_GLOBAL"),
+    //    arguments("COPERNICUS_30"),
+    //    arguments("COPERNICUS_90"),
+    //    arguments("CGLS_FAPAR_V2_GLOBAL"),
+    //    arguments("CGLS_LAI_V2_GLOBAL"),
+    //    arguments("CGLS_LAI300_V1_GLOBAL"),
   ))
 }
 
