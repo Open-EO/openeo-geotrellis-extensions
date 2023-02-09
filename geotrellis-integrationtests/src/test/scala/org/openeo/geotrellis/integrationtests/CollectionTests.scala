@@ -1,8 +1,8 @@
-package org.openeo.geotrellis.collectiontests
+package org.openeo.geotrellis.integrationtests
 
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import geotrellis.layer.SpaceTimeKey
-import geotrellis.proj4.{CRS, LatLng, WebMercator}
+import geotrellis.proj4.CRS
 import geotrellis.raster.CellSize
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.spark.util.SparkUtils
@@ -15,9 +15,8 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.junit.{AfterClass, BeforeClass, Test}
-import org.openeo.geotrellis.AggregateSpatialTest.assertEqualTimeseriesStats
-import org.openeo.geotrellis.file.{ProbaVPyramidFactoryTest, PyramidFactory}
-import org.openeo.geotrellis.{AggregateSpatialTest, ComputeStatsGeotrellisAdapterTest, LayerFixtures, ProjectedPolygons}
+import org.openeo.geotrellis._
+import org.openeo.geotrellis.file._
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
 
@@ -325,7 +324,7 @@ class CollectionTests {
       val groupedStats2 = AggregateSpatialTest.parseCSV(Paths.get(expected_dir, file_name).toString)
       groupedStats1.zip(groupedStats2).foreach(pair => {
         assertEquals(pair._1._1, pair._2._1)
-        assertEqualTimeseriesStats(pair._1._2, pair._2._2, 0.028)
+        AggregateSpatialTest.assertEqualTimeseriesStats(pair._1._2, pair._2._2, 0.028)
       })
       println(groupedStats1.mkString("\n"))
     } else {
