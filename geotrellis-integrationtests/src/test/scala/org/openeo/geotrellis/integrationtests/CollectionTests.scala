@@ -228,8 +228,9 @@ class CollectionTests {
   }
 
   /**
-   * This functin shares the same structure as the one of openeo-collection-tests,
-   * But for the moment has different expected results.
+   * This function shares the same structure as the one of
+   * https://git.vito.be/projects/BIGGEO/repos/openeo-collection-tests/browse
+   * But for the moment it has different expected results.
    */
   private def testLayerImpl(layerStr: String,
                             from_date: String = "2020-03-01T00:00:00Z",
@@ -237,9 +238,9 @@ class CollectionTests {
                            ): Unit = {
     val output_dir = new java.io.File("./tmp_collectiontests/").getCanonicalPath
     Files.createDirectories(Paths.get(output_dir))
-    val expected_dir = getClass.getResource("/org/openeo/geotrellis/collectiontests/expected/").getPath
+    val expected_dir = getClass.getResource("/org/openeo/geotrellis/integrationtests/collectiontests/expected/").getPath
 
-    val vector_file = getClass.getResource("/org/openeo/geotrellis/collectiontests/"
+    val vector_file = getClass.getResource("/org/openeo/geotrellis/integrationtests/collectiontests/"
       + (if (layerStr.contains("CGLS")) "cgls_test.json" else "50testfields.json")).getFile
     var polygons = ProjectedPolygons.fromVectorFile(vector_file)
     polygons = ProjectedPolygons.reproject(polygons, CRS.fromEpsgCode(32631))
@@ -252,7 +253,6 @@ class CollectionTests {
 
     val layer: MultibandTileLayerRDD[SpaceTimeKey] = layerStr match {
       case "TERRASCOPE_S2_FAPAR_V2" =>
-        // WebMercator
         val seqThing = faparPyramidFactory.datacube_seq(
           polygons,
           from_date,
@@ -264,7 +264,6 @@ class CollectionTests {
         val Seq((_, layer)) = seqThing
         layer
       case "TERRASCOPE_S2_NDVI_V2" =>
-        // WebMercator
         val seqThing = LayerFixtures.ClearNDVIPyramid().datacube_seq(
           polygons,
           from_date,
