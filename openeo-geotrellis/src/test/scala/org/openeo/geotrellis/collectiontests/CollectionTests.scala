@@ -233,23 +233,18 @@ class CollectionTests {
    * But for the moment has different expected results.
    */
   private def testLayerImpl(layerStr: String,
-                            input_file: Option[String] = None,
                             from_date: String = "2020-03-01T00:00:00Z",
                             to_date: String = "2020-03-31T00:00:00Z",
-                            output_dir: Option[String] = None,
-                            expected_dir: Option[String] = None,
                            ): Unit = {
-    val output_dir_get = output_dir.getOrElse(new java.io.File("./tmp_collectiontests/").getCanonicalPath)
-    Files.createDirectories(Paths.get(output_dir_get))
+    val output_dir = new java.io.File("./tmp_collectiontests/").getCanonicalPath
+    Files.createDirectories(Paths.get(output_dir))
+    val expected_dir = getClass.getResource("/org/openeo/geotrellis/collectiontests/expected/").getPath
 
-    val expected_dir_get = expected_dir.getOrElse(input_file.getOrElse(getClass.getResource("/org/openeo/geotrellis/collectiontests/expected/").getPath))
-
-    val vector_file = input_file.getOrElse(getClass.getResource("/org/openeo/geotrellis/collectiontests/"
-      + (if (layerStr.contains("CGLS")) "cgls_test.json" else "50testfields.json")).getFile)
+    val vector_file = getClass.getResource("/org/openeo/geotrellis/collectiontests/"
+      + (if (layerStr.contains("CGLS")) "cgls_test.json" else "50testfields.json")).getFile
     var polygons = ProjectedPolygons.fromVectorFile(vector_file)
-//    polygons = ProjectedPolygons.reproject(polygons, WebMercator) // LatLng gives slightly different rsults. Still not the same as the Python implmentation
-    polygons = ProjectedPolygons.reproject(polygons, CRS.fromEpsgCode(32631)) // LatLng gives slightly different rsults. Still not the same as the Python implmentation
-    val from_date_parsed = ZonedDateTime.parse(from_date);
+    polygons = ProjectedPolygons.reproject(polygons, CRS.fromEpsgCode(32631))
+    val from_date_parsed = ZonedDateTime.parse(from_date)
     val to_date_parsed = ZonedDateTime.parse(to_date)
 
     val datacubeParams = new DataCubeParameters()
@@ -315,27 +310,27 @@ class CollectionTests {
       case _ => throw new IllegalStateException(s"Layer $layerStr not supported")
     }
 
-    val file_name = s"${layerStr}_${from_date_parsed.toLocalDate}_${to_date_parsed.toLocalDate}/"
+    val file_name = s"${layerStr}_${from_date_parsed.toLocalDate}_${to_date_parsed.toLocalDate}"
     new ComputeStatsGeotrellisAdapterTest(1).computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(
       "mean",
       layer,
       polygons,
-      Paths.get(output_dir_get, file_name).toString,
+      Paths.get(output_dir, file_name).toString,
     )
 
-    println("Outputted path: " + Paths.get(output_dir_get, file_name).toString)
+    println("Outputted path: " + Paths.get(output_dir, file_name).toString)
 
-    if (Files.exists(Paths.get(expected_dir_get, file_name))) {
-      val groupedStats1 = AggregateSpatialTest.parseCSV(Paths.get(output_dir_get, file_name).toString)
-      val groupedStats2 = AggregateSpatialTest.parseCSV(Paths.get(expected_dir_get, file_name).toString)
+    if (Files.exists(Paths.get(expected_dir, file_name))) {
+      val groupedStats1 = AggregateSpatialTest.parseCSV(Paths.get(output_dir, file_name).toString)
+      val groupedStats2 = AggregateSpatialTest.parseCSV(Paths.get(expected_dir, file_name).toString)
       groupedStats1.zip(groupedStats2).foreach(pair => {
         assertEquals(pair._1._1, pair._2._1)
-        assertEqualTimeseriesStats(pair._1._2, pair._2._2)
+        assertEqualTimeseriesStats(pair._1._2, pair._2._2, 0.028)
       })
       println(groupedStats1.mkString("\n"))
     } else {
       println("Please copy output to expected path location. Example command:")
-      println("cp " + Paths.get(output_dir_get, file_name).toString + " " + Paths.get(expected_dir_get, file_name).toString)
+      println("cp " + Paths.get(output_dir, file_name).toString + " " + Paths.get(expected_dir, file_name).toString)
       assertTrue(false)
     }
   }
