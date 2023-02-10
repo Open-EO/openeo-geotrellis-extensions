@@ -55,12 +55,20 @@
                 <module>geotrellis-s3-extensions</module>
                 <module>geotrellis-sentinelhub</module>
                 <module>geotrellis-extensions</module>
-                <module>geotrellis-integrationtests</module>
                 <module>geotrellis-seeder</module>
                 <module>openeo-geotrellis</module>
                 <module>geotrellis-benchmarks</module>
                 <module>geotrellis-common</module>
                 <module>openeo-logging</module>
+            </modules>
+        </profile>
+        <profile>
+            <id>integrationtests</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+            <modules>
+                <module>geotrellis-integrationtests</module>
             </modules>
         </profile>
     </profiles>
