@@ -789,12 +789,11 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     var maskStrategy: Option[CloudFilterStrategy] = readKeysToRasterSourcesResult._3
     val metadata = readKeysToRasterSourcesResult._2
     val requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = readKeysToRasterSourcesResult._1.persist()
-    val isUTM = metadata.crs.proj4jCrs.getProjection.getName == "utm"
 
     try{
       val partitioner = DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
 
-      val noResampling = isUTM && math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
+      val noResampling = math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
       //resampling is still needed in case bounding boxes are not aligned with pixels
       // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
       var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1, readKeysToRasterSourcesResult._4.size).flatMap(t=>{
