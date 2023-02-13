@@ -30,19 +30,23 @@ import scala.reflect.ClassTag
 
 object LayerFixtures {
 
-  def ClearNDVILayerForSingleDate()(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] ={
+  def ClearNDVIPyramid(): file.PyramidFactory = {
     val openSearchClient = OpenSearchClient(new URL(opensearchEndpoint), isUTM = true)
-    val factory = new org.openeo.geotrellis.file.PyramidFactory(
+    new org.openeo.geotrellis.file.PyramidFactory(
       openSearchClient,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_NDVI_V2",
       openSearchLinkTitles = singletonList("NDVI_10M"),
       rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/NDVI_V2",
       maxSpatialResolution = CellSize(10, 10)
     )
+  }
+
+  def ClearNDVILayerForSingleDate()(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] ={
+    val factory = ClearNDVIPyramid()
     val dateWithClearPostelArea = ZonedDateTime.of(LocalDate.of(2020, 5, 5), MIDNIGHT, UTC)
     val bbox = ProjectedExtent(Extent(5.176178620365679,51.24922676145928,5.258576081303179,51.27449711952613), LatLng)
     val layer = factory.layer(bbox, dateWithClearPostelArea, dateWithClearPostelArea, 11, correlationId = "")
-    return layer
+    layer
   }
 
   def buildSpatioTemporalDataCube(tiles: util.List[_ <: Tile], dates: Seq[String], extent: Option[Extent] = None, tilingFactor:Int=1): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
