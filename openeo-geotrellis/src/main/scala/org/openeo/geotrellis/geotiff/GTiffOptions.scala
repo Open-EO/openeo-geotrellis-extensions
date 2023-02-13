@@ -8,10 +8,13 @@ import scala.collection.JavaConverters._
 
 class GTiffOptions extends Serializable {
 
+  var name:Option[String] = None
   var colorMap: Option[ColorMap] = Option.empty
   var tags: Tags = Tags.empty
   var overviews:String = "OFF"
   var resampleMethod:String = "near"
+
+  def setName(name: String): Unit = this.name = Some(name)
 
   def setColorMap(colors: util.ArrayList[Int]): Unit = {
     colorMap = Some(new IndexedColorMap(colors.asScala))
