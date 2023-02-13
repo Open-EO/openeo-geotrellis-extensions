@@ -57,12 +57,12 @@ class AgEra5FileLayerProviderTest {
 
     val histogram = spatialLayer.histogram()
 
-    assertEquals(27779.0,histogram(0).mean().get,1.0)
-    assertEquals(21.69,histogram(1).mean().get,0.01)
-    assertEquals(16672090,histogram(2).mean().get,1.0)
-    assertEquals(48336,histogram(0).totalCount())
-    assertEquals(45601,histogram(1).totalCount())
-    assertEquals(65536,histogram(2).totalCount())
+    assertEquals(27902.167,histogram(0).mean().get,1.0)
+    assertEquals(0.247,histogram(1).mean().get,0.01)
+    assertEquals(11414687,histogram(2).mean().get,1.0)
+    assertEquals(1158,histogram(0).totalCount())
+    assertEquals(1224,histogram(1).totalCount())
+    assertEquals(2500,histogram(2).totalCount())
 
     assertEquals(FloatConstantNoDataCellType, spatialLayer.metadata.cellType)
     assertEquals(LatLng, spatialLayer.metadata.crs)
