@@ -601,11 +601,12 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     val selectedLayoutScheme: LayoutScheme = selectLayoutScheme(fullBBox, multiple_polygons_flag, datacubeParams)
     val worldLayout: LayoutDefinition = DatacubeSupport.getLayout(selectedLayoutScheme, fullBBox, zoom min maxZoom, maxSpatialResolution, globalBounds = datacubeParams.flatMap(_.globalExtent), multiple_polygons_flag = multiple_polygons_flag)
     val reprojectedBoundingBox: ProjectedExtent = DatacubeSupport.targetBoundingBox(fullBBox, layoutScheme)
+    val alignedExtent = worldLayout.createAlignedRasterExtent(reprojectedBoundingBox.extent)
 
 
     logger.info(s"Loading ${openSearchCollectionId} with params ${datacubeParams.getOrElse(new DataCubeParameters)} and bands ${openSearchLinkTitles.toList.mkString(";")} initial layout: ${worldLayout}")
 
-    var overlappingRasterSources: Seq[(RasterSource, Feature)] = loadRasterSourceRDD(fullBBox, from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
+    var overlappingRasterSources: Seq[(RasterSource, Feature)] = loadRasterSourceRDD(ProjectedExtent(alignedExtent.extent,reprojectedBoundingBox.crs), from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
 
     val dates = overlappingRasterSources.map(_._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))
 
@@ -789,12 +790,11 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     var maskStrategy: Option[CloudFilterStrategy] = readKeysToRasterSourcesResult._3
     val metadata = readKeysToRasterSourcesResult._2
     val requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = readKeysToRasterSourcesResult._1.persist()
-    val isUTM = metadata.crs.proj4jCrs.getProjection.getName == "utm"
 
     try{
       val partitioner = DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
 
-      val noResampling = isUTM && math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
+      val noResampling = math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
       //resampling is still needed in case bounding boxes are not aligned with pixels
       // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
       var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1, readKeysToRasterSourcesResult._4.size).flatMap(t=>{
@@ -844,24 +844,23 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
   private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Option[(BandCompositeRasterSource, Feature)] = {
     def expandToCellSize(extent: Extent, cellSize: CellSize): Extent =
-      extent.expandBy(deltaX = math.max((cellSize.width - extent.width) / 2,0.0), deltaY = math.max((cellSize.height - extent.height) / 2,0.0))
+      Extent(
+        extent.xmin,
+        extent.ymin,
+        math.max(extent.xmax, extent.xmin + cellSize.width),
+        math.max(extent.ymax, extent.ymin + cellSize.height),
+      )
 
     val theResolution = targetResolution.getOrElse(maxSpatialResolution)
-    val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution).alignTargetPixels
+    val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
 
     val featureExtentInLayout: Option[GridExtent[Long]]=
     if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
-      val extentAligner = Extent(
-        targetExtent.extent.xmin,
-        targetExtent.extent.ymin,
-        math.max(targetExtent.extent.xmax, targetExtent.extent.xmin + theResolution.width),
-        math.max(targetExtent.extent.ymax, targetExtent.extent.ymin + theResolution.height),
-      )
       val tmp = expandToCellSize(feature.rasterExtent.get.reproject(feature.crs.get, targetExtent.crs), theResolution)
-      val alignedToTargetExtent = RasterExtent(extentAligner, theResolution).createAlignedRasterExtent(tmp)
+      val alignedToTargetExtent = re.createAlignedRasterExtent(tmp)
       Some(alignedToTargetExtent.toGridType[Long])
     }else{
-      None
+      Some(re.toGridType[Long])
     }
 
     var predefinedExtent: Option[GridExtent[Long]] = None

@@ -139,6 +139,7 @@ class Sentinel2PyramidFactoryTest {
         val metadata_properties = emptyMap[String, Any]()
         val datacubeParams = new DataCubeParameters()
         datacubeParams.tileSize = 256
+        datacubeParams.globalExtent = Some(ProjectedExtent(extent,LatLng))
         datacubeParams.layoutScheme = "FloatingLayoutScheme"
         val baseLayer = factory.datacube_seq(
             projected_polygons_native_crs,
