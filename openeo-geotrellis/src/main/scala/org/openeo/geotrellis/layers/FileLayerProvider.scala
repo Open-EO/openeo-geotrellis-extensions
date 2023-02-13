@@ -844,24 +844,23 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
   private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Option[(BandCompositeRasterSource, Feature)] = {
     def expandToCellSize(extent: Extent, cellSize: CellSize): Extent =
-      extent.expandBy(deltaX = math.max((cellSize.width - extent.width) / 2,0.0), deltaY = math.max((cellSize.height - extent.height) / 2,0.0))
+      Extent(
+        extent.xmin,
+        extent.ymin,
+        math.max(extent.xmax, extent.xmin + cellSize.width),
+        math.max(extent.ymax, extent.ymin + cellSize.height),
+      )
 
     val theResolution = targetResolution.getOrElse(maxSpatialResolution)
-    val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution).alignTargetPixels
+    val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
 
     val featureExtentInLayout: Option[GridExtent[Long]]=
     if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
-      val extentAligner = Extent(
-        targetExtent.extent.xmin,
-        targetExtent.extent.ymin,
-        math.max(targetExtent.extent.xmax, targetExtent.extent.xmin + theResolution.width),
-        math.max(targetExtent.extent.ymax, targetExtent.extent.ymin + theResolution.height),
-      )
       val tmp = expandToCellSize(feature.rasterExtent.get.reproject(feature.crs.get, targetExtent.crs), theResolution)
-      val alignedToTargetExtent = RasterExtent(extentAligner, theResolution).createAlignedRasterExtent(tmp)
+      val alignedToTargetExtent = re.createAlignedRasterExtent(tmp)
       Some(alignedToTargetExtent.toGridType[Long])
     }else{
-      None
+      Some(re.toGridType[Long])
     }
 
     var predefinedExtent: Option[GridExtent[Long]] = None
