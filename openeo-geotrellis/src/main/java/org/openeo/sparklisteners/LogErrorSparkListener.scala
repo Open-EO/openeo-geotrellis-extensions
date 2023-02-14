@@ -48,6 +48,7 @@ class LogErrorSparkListener extends SparkListener {
   private val executorRuntime = new AtomicLong(0L)
   private val recordsRead = new AtomicLong(0L)
   private val recordsWritten = new AtomicLong(0L)
+  private val debug = false
 
   def getStagesCompleted: Int = stagesCompleted.get()
 
@@ -65,7 +66,7 @@ class LogErrorSparkListener extends SparkListener {
   }
 
   override def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd): Unit = {
-    println("LogErrorSparkListener.onApplicationEnd(...)")
+    if (debug) println("LogErrorSparkListener.onApplicationEnd(...)")
     // No info to log from applicationEnd
 
     if (LogErrorSparkListener.listener.isDefined) {
@@ -77,7 +78,7 @@ class LogErrorSparkListener extends SparkListener {
 
   override def onJobEnd(jobEnd: SparkListenerJobEnd): Unit = {
     val newValue = jobsCompleted.incrementAndGet()
-    println("LogErrorSparkListener.onJobEnd(...) jobsCompleted: " + newValue)
+    if (debug) println("LogErrorSparkListener.onJobEnd(...) jobsCompleted: " + newValue)
     //    jobEnd.jobResult match {
     //      case j: JobFailed => LogErrorSparkListener.logger.error(j) // JobFailed is private in Spark API
     //    }
@@ -85,7 +86,7 @@ class LogErrorSparkListener extends SparkListener {
 
   override def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit = {
     val newValue = stagesCompleted.incrementAndGet()
-    println("LogErrorSparkListener.onStageCompleted(...) stagesCompleted: " + newValue)
+    if (debug) println("LogErrorSparkListener.onStageCompleted(...) stagesCompleted: " + newValue)
     stageCompleted.stageInfo.failureReason foreach {
       x => LogErrorSparkListener.logger.error("LogErrorSparkListener.onStageCompleted(...) error: " + x)
     }
@@ -93,10 +94,10 @@ class LogErrorSparkListener extends SparkListener {
 
   override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = {
     val newValue = tasksCompleted.incrementAndGet()
-    println("LogErrorSparkListener.onTaskEnd(...) tasksCompleted: " + newValue)
+    if (debug) println("LogErrorSparkListener.onTaskEnd(...) tasksCompleted: " + newValue)
     taskEnd.reason match {
       case r: TaskFailedReason => LogErrorSparkListener.extractPythonError(r.toErrorString).foreach(
-        m => LogErrorSparkListener.logger.error("LogErrorSparkListener.onTaskEnd(...) error: " + m)
+        m => LogErrorSparkListener.logger.warn("LogErrorSparkListener.onTaskEnd(...) error: " + m)
       )
       case _ => // Ignore
     }
