@@ -3,8 +3,8 @@ package org.openeo.geotrelliscommon
 import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutLevel, LayoutScheme, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.CRS
 import geotrellis.raster.{CellSize, CellType}
-import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
+import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.rdd.RDD
 import org.slf4j.LoggerFactory
@@ -43,20 +43,30 @@ object DatacubeSupport {
         //Giving the layout a deterministic extent simplifies merging of data with spatial partitioner
         val layoutExtent: Extent = {
           val p = boundingBox.crs.proj4jCrs.getProjection
-          if (p.getName == "utm") {
-            if(globalBounds.isDefined) {
-              var reprojected: Extent = globalBounds.get.reproject(boundingBox.crs)
-              if (multiple_polygons_flag) {
-                reprojected = globalBounds.get.extent.buffer(0.1).reprojectAsPolygon(globalBounds.get.crs, boundingBox.crs, 0.01).getEnvelopeInternal
-              }
-              if (!reprojected.covers(boundingBox.extent)) {
-                logger.error(f"Trying to construct a datacube with a bounds ${boundingBox.extent} that is not entirely inside the global bounds: ${reprojected}. ")
-                reprojected = reprojected.expandToInclude(boundingBox.extent)
-              }
+          if (globalBounds.isDefined) {
+            var reprojected: Extent = globalBounds.get.reproject(boundingBox.crs)
+            if (multiple_polygons_flag) {
+              reprojected = globalBounds.get.extent.buffer(0.1).reprojectAsPolygon(globalBounds.get.crs, boundingBox.crs, 0.01).getEnvelopeInternal
+            }
+            if (!reprojected.covers(boundingBox.extent)) {
+              logger.error(f"Trying to construct a datacube with a bounds ${boundingBox.extent} that is not entirely inside the global bounds: ${reprojected}. ")
+              reprojected = reprojected.expandToInclude(boundingBox.extent)
+            }
+            if (p.getName == "utm") {
+              //this forces utm projection to always round to 10m, which is fine for sentinel-2, but perhaps not generally desired?
               val x = maxSpatialResolution.width
               val y = maxSpatialResolution.height
-              Extent(x*Math.floor(reprojected.xmin/x),y*Math.floor(reprojected.ymin/y),x*Math.ceil(reprojected.xmax/x),y*Math.ceil(reprojected.ymax/y))
+              Extent(x * Math.floor(reprojected.xmin / x), y * Math.floor(reprojected.ymin / y), x * Math.ceil(reprojected.xmax / x), y * Math.ceil(reprojected.ymax / y))
             }else{
+              if (reprojected.width < maxSpatialResolution.width || reprojected.height < maxSpatialResolution.height) {
+                Extent(reprojected.xmin, reprojected.ymin, Math.max(reprojected.xmax, reprojected.xmin + maxSpatialResolution.width), Math.max(reprojected.ymax, reprojected.ymin + maxSpatialResolution.height))
+              } else {
+                reprojected
+              }
+            }
+
+          }else{
+            if (p.getName == "utm") {
               //for utm, we return an extent that goes beyond the utm zone bounds, to avoid negative spatial keys
               if (p.getSouthernHemisphere)
               //official extent: Extent(166021.4431, 1116915.0440, 833978.5569, 10000000.0000) -> round to 10m + extend
@@ -65,15 +75,16 @@ object DatacubeSupport {
                 //official extent: Extent(166021.4431, 0.0000, 833978.5569, 9329005.1825) -> round to 10m + extend
                 Extent(0.0, -1000000.0000, 833970.0 + 100000.0, 9329000.0 + 100000.0)
               }
-            }
-          } else {
-            val extent = boundingBox.extent
-            if(extent.width < maxSpatialResolution.width || extent.height < maxSpatialResolution.height) {
-              Extent(extent.xmin,extent.ymin,Math.max(extent.xmax,extent.xmin + maxSpatialResolution.width),Math.max(extent.ymax,extent.ymin + maxSpatialResolution.height))
-            }else{
-              extent
+            } else {
+              val extent = boundingBox.extent
+              if (extent.width < maxSpatialResolution.width || extent.height < maxSpatialResolution.height) {
+                Extent(extent.xmin, extent.ymin, Math.max(extent.xmax, extent.xmin + maxSpatialResolution.width), Math.max(extent.ymax, extent.ymin + maxSpatialResolution.height))
+              } else {
+                extent
+              }
             }
           }
+
         }
 
         scheme.levelFor(layoutExtent, maxSpatialResolution)

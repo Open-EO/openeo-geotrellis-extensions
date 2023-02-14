@@ -177,7 +177,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   }
 
 
-  private val computeStatsGeotrellisAdapter = new ComputeStatsGeotrellisAdapter(
+  val computeStatsGeotrellisAdapter = new ComputeStatsGeotrellisAdapter(
     zookeepers = "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",
     accumuloInstanceName = "hdp-accumulo-instance"
   )
