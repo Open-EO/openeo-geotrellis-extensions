@@ -108,7 +108,7 @@ void build(tests = true){
         if (!tests) {
             rtMaven.opts += ' -DskipTests=true'
         }
-        rtMaven.deployer.deployArtifacts = publishable_branches.contains(env.BRANCH_NAME)
+        rtMaven.deployer.deployArtifacts = publishable_branches.contains(env.BRANCH_NAME) || publishable_branches.contains(env.CHANGE_BRANCH)
         //use '--projects StatisticsMapReduce' in 'goals' to build specific module
         try {
             withCredentials([
