@@ -1,0 +1,42 @@
+{
+  "name": {
+    "$resolver": "logger",
+    "field": "name"
+  },
+  "levelname": {
+    "$resolver": "pattern",
+    "pattern": "%level{WARN=WARNING,FATAL=CRITICAL,TRACE=DEBUG}",
+    "stackTraceEnabled": false
+  },
+  "message": {
+    "$resolver": "message",
+    "stringified": true
+  },
+  "created": {
+    "$resolver": "timestamp",
+    "epoch": {
+      "unit": "secs"
+    }
+  },
+  "filename": {
+    "$resolver": "source",
+    "field": "fileName"
+  },
+  "lineno": {
+    "$resolver": "source",
+    "field": "lineNumber"
+  },
+  "exc_info": {
+    "$resolver": "exception",
+    "field": "stackTrace",
+    "stackTrace": {
+      "stringified": true
+    }
+  },
+  "mdc": {
+    "$resolver": "mdc",
+    "flatten": true,
+    "pattern": "mdc\\.(user_id|req_id|job_id)",
+    "replacement": "$1"
+  }
+}
