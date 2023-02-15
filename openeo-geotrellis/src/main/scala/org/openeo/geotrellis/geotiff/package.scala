@@ -123,7 +123,7 @@ package object geotiff {
           (index, (multibandTile.cellType, compressedBytes))
       })
     }.map(tuple => {
-      val filename = s"openEO_${DateTimeFormatter.ISO_DATE.format(tuple._1.time)}${if (formatOptions.name.isDefined) "_" + formatOptions.name.get else ""}.tif"
+      val filename = s"${formatOptions.filenamePrefix}_${DateTimeFormatter.ISO_DATE.format(tuple._1.time)}.tif"
       val timestamp = tuple._1.time format DateTimeFormatter.ISO_ZONED_DATE_TIME
       ((filename, timestamp), tuple._2)
     }).groupByKey().map((tuple: ((String, String), Iterable[Vector[(Int, (CellType, Array[Byte]))]])) => {
