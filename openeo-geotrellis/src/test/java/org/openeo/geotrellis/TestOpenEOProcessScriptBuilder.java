@@ -1564,6 +1564,31 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(noDataValue, result.apply(0).get(3,3));
     }
 
+    @DisplayName("Test inspect process")
+    @Test
+    public void testInspect() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = new HashMap<>();
+        arguments.put("message","test");
+        arguments.put("level", "error");
+
+        builder.expressionStart("inspect", arguments);
+
+        builder.constantArguments(arguments);
+        builder.argumentStart("data");
+        builder.argumentEnd();
+
+
+        builder.expressionEnd("inspect",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
+        Tile res = result.apply(0);
+        assertTileEquals(tile0, res);
+    }
+
     static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Map<String, Object> arguments = ignoreNoData!=null? Collections.singletonMap("ignore_nodata",ignoreNoData.booleanValue()) : Collections.emptyMap();

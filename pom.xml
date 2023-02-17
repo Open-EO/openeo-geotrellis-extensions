@@ -62,6 +62,15 @@
                 <module>openeo-logging</module>
             </modules>
         </profile>
+        <profile>
+            <id>integrationtests</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+            <modules>
+                <module>geotrellis-integrationtests</module>
+            </modules>
+        </profile>
     </profiles>
     <build>
         <pluginManagement>
