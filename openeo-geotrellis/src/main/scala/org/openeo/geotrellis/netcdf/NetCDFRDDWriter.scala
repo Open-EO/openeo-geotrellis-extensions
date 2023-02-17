@@ -250,11 +250,21 @@ object NetCDFRDDWriter {
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                   path: String,
+                  polygons: ProjectedPolygons,
+                  sampleNames: ArrayList[String],
+                  bandNames: ArrayList[String],
+                 ): java.util.List[String] =
+    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null)
+
+  // Overload to avoid: "multiple overloaded alternatives of method saveSamples define default arguments"
+  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                  path: String,
                   polygons:ProjectedPolygons,
                   sampleNames: ArrayList[String],
-                  bandNames: ArrayList[String]
+                  bandNames: ArrayList[String],
+                  filenamePrefix: Option[String],
                   ): java.util.List[String] =
-    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null)
+    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null, filenamePrefix)
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                   path: String,
@@ -262,13 +272,14 @@ object NetCDFRDDWriter {
                   sampleNames: ArrayList[String],
                   bandNames: ArrayList[String],
                   dimensionNames: java.util.Map[String,String],
-                  attributes: java.util.Map[String,String]
+                  attributes: java.util.Map[String,String],
+                  filenamePrefix: Option[String] = None,
                  ): java.util.List[String] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.zip(reprojected.polygons)
     logger.info(s"Using metadata: ${rdd.metadata}.")
     logger.info(s"Using features: ${features}.")
-    groupByFeatureAndWriteToNetCDF(rdd, features, path, bandNames, dimensionNames, attributes)
+    groupByFeatureAndWriteToNetCDF(rdd, features, path, bandNames, dimensionNames, attributes, filenamePrefix)
   }
 
   def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
@@ -277,25 +288,27 @@ object NetCDFRDDWriter {
                   sampleNames: ArrayList[String],
                   bandNames: ArrayList[String],
                   dimensionNames: java.util.Map[String,String],
-                  attributes: java.util.Map[String,String]
+                  attributes: java.util.Map[String,String],
+                  filenamePrefix: Option[String] = None,
                  ): java.util.List[String] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
-    groupByFeatureAndWriteToNetCDFSpatial(rdd,  features,path,bandNames,dimensionNames,attributes)
-
+    groupByFeatureAndWriteToNetCDFSpatial(rdd,  features,path,bandNames,dimensionNames,attributes, filenamePrefix)
   }
 
   private def groupByFeatureAndWriteToNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey], features: Seq[(String, Geometry)],
                                            path:String,bandNames: ArrayList[String],
                                            dimensionNames: java.util.Map[String,String],
-                                           attributes: java.util.Map[String,String]): util.List[String] = {
+                                           attributes: java.util.Map[String,String],
+                                           filenamePrefix: Option[String] = None,
+                                           ): util.List[String] = {
     val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
 
     val crs = rdd.metadata.crs
     val groupedBySample = stitchRDDBySample(rdd, featuresBC)
     logger.info(s"Writing ${groupedBySample.count()} samples to disk.")
     groupedBySample.map { case (name, tiles: Iterable[(Long, Raster[MultibandTile])]) =>
-        val outputAsPath: Path = getSamplePath(name, path)
+        val outputAsPath: Path = getSamplePath(name, path, filenamePrefix)
         val filePath = outputAsPath.toString
 
         // Sort by date before writing.
@@ -376,7 +389,9 @@ object NetCDFRDDWriter {
   private def groupByFeatureAndWriteToNetCDFSpatial(rdd: MultibandTileLayerRDD[SpatialKey], features: List[(String, Extent)],
                                            path:String, bandNames: ArrayList[String],
                                            dimensionNames: java.util.Map[String,String],
-                                           attributes: java.util.Map[String,String]) = {
+                                           attributes: java.util.Map[String,String],
+                                           filenamePrefix: Option[String],
+                                           ) = {
     val featuresBC: Broadcast[List[(String, Extent)]] = SparkContext.getOrCreate().broadcast(features)
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
@@ -384,7 +399,7 @@ object NetCDFRDDWriter {
     groupRDDBySample(rdd,featuresBC)
       .map { case ((name, extent), tiles) =>
 
-        val outputAsPath: Path = getSamplePath(name, path)
+        val outputAsPath: Path = getSamplePath(name, path, filenamePrefix)
         val sample: Raster[MultibandTile] = stitchAndCropTiles(tiles, extent, layout)
 
         try{
@@ -414,8 +429,8 @@ object NetCDFRDDWriter {
     }
   }
 
-  private def getSamplePath(sampleName: String, outputDirectory: String) = {
-    val filename = s"openEO_${sampleName}.nc"
+  private def getSamplePath(sampleName: String, outputDirectory: String, filenamePrefix: Option[String]) = {
+    val filename = s"${filenamePrefix.getOrElse("openEO")}_${sampleName}.nc"
     val outputAsPath = Paths.get(outputDirectory).resolve(filename)
     outputAsPath
   }

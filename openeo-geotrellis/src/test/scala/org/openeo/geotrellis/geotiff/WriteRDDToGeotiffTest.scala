@@ -24,6 +24,7 @@ import java.util.zip.Deflater._
 import scala.annotation.meta.getter
 import scala.collection.JavaConverters._
 import scala.io.Source
+import scala.reflect.io.Directory
 
 
 object WriteRDDToGeotiffTest{
@@ -293,23 +294,49 @@ class WriteRDDToGeotiffTest {
   }
 
   @Test
-  def testWriteMultibandTemporalRDDWithGaps(): Unit ={
+  def testWriteMultibandTemporalRDDWithGaps(): Unit = {
     val layoutCols = 8
     val layoutRows = 4
-    val (layer,imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
+    val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
 
+    val outDir = Paths.get("tmp/geotiffGaps/")
+    new Directory(outDir.toFile).deleteRecursively()
+    Files.createDirectories(outDir)
 
-    saveRDDTemporal(layer,"./")
-    val result = GeoTiff.readMultiband("./openEO_2017-01-02Z.tif").raster.tile
+    saveRDDTemporal(layer, outDir.toString)
+    val result = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z.tif").toString).raster.tile
 
     //crop away the area where data was removed, and check if rest of geotiff is still fine
     val croppedReference = imageTile.crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArrayTile()
 
     val croppedOutput = result.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256)
-    assertArrayEquals(croppedReference.toArray(),croppedOutput.toArray())
-    val result2 = GeoTiff.readMultiband("./openEO_2017-01-03Z.tif").raster.tile
-    assertArrayEquals(croppedReference.toArray(),result2.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArray())
+    assertArrayEquals(croppedReference.toArray(), croppedOutput.toArray())
+    val result2 = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z.tif").toString).raster.tile
+    assertArrayEquals(croppedReference.toArray(), result2.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArray())
+  }
 
+  @Test
+  def testWriteMultibandTemporalRDDWithGapsNamed(): Unit = {
+    val layoutCols = 8
+    val layoutRows = 4
+    val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
+
+    val outDir = Paths.get("tmp/geotiffGapsNamed/")
+    new Directory(outDir.toFile).deleteRecursively()
+    Files.createDirectories(outDir)
+
+    val opts = new GTiffOptions()
+    opts.setFilenamePrefix("testName")
+    saveRDDTemporal(layer, outDir.toString, formatOptions = opts)
+    val result = GeoTiff.readMultiband(outDir.resolve("testName_2017-01-02Z.tif").toString).raster.tile
+
+    //crop away the area where data was removed, and check if rest of geotiff is still fine
+    val croppedReference = imageTile.crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArrayTile()
+
+    val croppedOutput = result.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256)
+    assertArrayEquals(croppedReference.toArray(), croppedOutput.toArray())
+    val result2 = GeoTiff.readMultiband(outDir.resolve("testName_2017-01-03Z.tif").toString).raster.tile
+    assertArrayEquals(croppedReference.toArray(), result2.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArray())
   }
 
   @Test
@@ -333,15 +360,17 @@ class WriteRDDToGeotiffTest {
     val tiltedRectangle = ProjectedPolygons.fromVectorFile(geometriesPath)
 
     val sampleNames = tiltedRectangle.polygons.indices
-      .map(_.toString)
+      .map(_.toString + "-testName")
       .asJava
 
-    val targetDir = temporaryFolder.getRoot.toString
+    val outDir = Paths.get("tmp/geotiffSample/")
+    new Directory(outDir.toFile).deleteRecursively()
+    Files.createDirectories(outDir)
 
-    saveSamples(tileLayerRDD, targetDir, tiltedRectangle, sampleNames,
+    saveSamples(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
       DeflateCompression(BEST_COMPRESSION))
 
-    val Array(geoTiffPath) = Files.list(Paths.get(targetDir)).iterator().asScala.toArray // 1 date, 1 polygon
+    val Array(geoTiffPath) = Files.list(outDir).iterator().asScala.toArray // 1 date, 1 polygon
     val raster = GeoTiff.readMultiband(geoTiffPath.toString).raster.mapTile(_.band(0))
 
     val geometry = {

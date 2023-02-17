@@ -89,9 +89,10 @@ class NetCDFRDDWriterTest extends RasterMatchers{
 
     val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSamples(layer, targetDir, polygonsUTM31,
       sampleNameList, new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M",
-        "SCENECLASSIFICATION_20M")))
+        "SCENECLASSIFICATION_20M")),
+      Some("prefixTest"))
 
-    val expectedPaths = List(s"$targetDir/openEO_0.nc", s"$targetDir/openEO_1.nc")
+    val expectedPaths = List(s"$targetDir/prefixTest_0.nc", s"$targetDir/prefixTest_1.nc")
 
     Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
 
@@ -220,8 +221,17 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     val sampleNameList = new util.ArrayList[String]()
     sampleNames.foreach(sampleNameList.add)
 
-    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSamplesSpatial(localLayer,"/tmp",polygonsUTM31,sampleNameList, new util.ArrayList(util.Arrays.asList("B04", "B03", "B02")),null,null)
-    val expectedPaths = List("/tmp/openEO_0.nc", "/tmp/openEO_1.nc")
+    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSamplesSpatial(
+      localLayer,
+      "/tmp",
+      polygonsUTM31,
+      sampleNameList,
+      new util.ArrayList(util.Arrays.asList("B04", "B03", "B02")),
+      null,
+      null,
+      Some("prefixTest"),
+    )
+    val expectedPaths = List("/tmp/prefixTest_0.nc", "/tmp/prefixTest_1.nc")
 
     Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
   }

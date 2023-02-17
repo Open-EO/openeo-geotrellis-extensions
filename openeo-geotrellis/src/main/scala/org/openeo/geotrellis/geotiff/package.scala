@@ -123,7 +123,7 @@ package object geotiff {
           (index, (multibandTile.cellType, compressedBytes))
       })
     }.map(tuple => {
-      val filename = s"openEO_${DateTimeFormatter.ISO_DATE.format(tuple._1.time)}.tif"
+      val filename = s"${formatOptions.filenamePrefix}_${DateTimeFormatter.ISO_DATE.format(tuple._1.time)}.tif"
       val timestamp = tuple._1.time format DateTimeFormatter.ISO_ZONED_DATE_TIME
       ((filename, timestamp), tuple._2)
     }).groupByKey().map((tuple: ((String, String), Iterable[Vector[(Int, (CellType, Array[Byte]))]])) => {
@@ -569,34 +569,52 @@ package object geotiff {
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                   path: String,
-                  polygons:ProjectedPolygons,
+                  polygons: ProjectedPolygons,
                   sampleNames: JList[String],
-                                   compression: Compression): JList[(String, String, Extent)] = {
+                  compression: Compression,
+                  filenamePrefix: Option[String] = None,
+                 ): JList[(String, String, Extent)] = {
     val reprojected = ProjectedPolygons.reproject(polygons, rdd.metadata.crs)
     val features = sampleNames.asScala.zip(reprojected.polygons)
-    groupByFeatureAndWriteToTiff(rdd, Option.empty, features,path, Option.empty,compression)
-}
-
-  def saveStitchedTileGridTemporal( rdd:MultibandTileLayerRDD[SpaceTimeKey],
-                                    path:String,
-                                    tileGrid: String,
-                                    compression: Compression) : java.util.List[(String, String, Extent)] =
-    geotrellis.geotiff.saveStitchedTileGridTemporal(rdd,path,tileGrid, Option.empty, Option.empty, compression)
-
-  def saveStitchedTileGridTemporal(
-                                    rdd:MultibandTileLayerRDD[SpaceTimeKey],
-                                    path:String,
-                            tileGrid: String,
-                            cropBounds: Option[Map[String, Double]],
-                            cropDimensions: Option[ArrayList[Int]],
-                            compression: Compression): java.util.List[(String, String, Extent)] = {
-    val features = TileGrid.computeFeaturesForTileGrid(tileGrid, ProjectedExtent(rdd.metadata.extent, rdd.metadata.crs))
-      .map { case (s, extent) => (s, extent.toPolygon()) }
-    groupByFeatureAndWriteToTiff(rdd, cropBounds, features,path,cropDimensions, compression)
+    groupByFeatureAndWriteToTiff(rdd, Option.empty, features, path, Option.empty, compression, filenamePrefix)
   }
 
-  private def groupByFeatureAndWriteToTiff(rdd: MultibandTileLayerRDD[SpaceTimeKey], cropBounds: Option[java.util.Map[String, Double]], features: Seq[(String, Geometry)],path:String,cropDimensions: Option[ArrayList[Int]],
-                                           compression: Compression): java.util.List[(String, String, Extent)] = {
+  def saveStitchedTileGridTemporal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                                   path: String,
+                                   tileGrid: String,
+                                   compression: Compression,
+                                   filenamePrefix: Option[String],
+                                  ): java.util.List[(String, String, Extent)] =
+    geotrellis.geotiff.saveStitchedTileGridTemporal(rdd, path, tileGrid, Option.empty, Option.empty, compression, filenamePrefix)
+
+  def saveStitchedTileGridTemporal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                                   path: String,
+                                   tileGrid: String,
+                                   compression: Compression,
+                                  ): java.util.List[(String, String, Extent)] =
+    geotrellis.geotiff.saveStitchedTileGridTemporal(rdd, path, tileGrid, Option.empty, Option.empty, compression)
+
+  def saveStitchedTileGridTemporal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                                   path: String,
+                                   tileGrid: String,
+                                   cropBounds: Option[Map[String, Double]],
+                                   cropDimensions: Option[ArrayList[Int]],
+                                   compression: Compression,
+                                   filenamePrefix: Option[String] = None,
+                                  ): java.util.List[(String, String, Extent)] = {
+    val features = TileGrid.computeFeaturesForTileGrid(tileGrid, ProjectedExtent(rdd.metadata.extent, rdd.metadata.crs))
+      .map { case (s, extent) => (s, extent.toPolygon()) }
+    groupByFeatureAndWriteToTiff(rdd, cropBounds, features, path, cropDimensions, compression, filenamePrefix)
+  }
+
+  private def groupByFeatureAndWriteToTiff(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                                           cropBounds: Option[java.util.Map[String, Double]],
+                                           features: Seq[(String, Geometry)],
+                                           path: String,
+                                           cropDimensions: Option[ArrayList[Int]],
+                                           compression: Compression,
+                                           filenamePrefix: Option[String] = None,
+                                          ): java.util.List[(String, String, Extent)] = {
     val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
 
     val croppedExtent = cropBounds.map(toExtent)
@@ -611,7 +629,7 @@ package object geotiff {
       }
       .groupByKey()
       .map { case ((name, (geometry, time)), tiles) =>
-        val filename = s"openEO_${DateTimeFormatter.ISO_DATE.format(time)}_$name.tif"
+        val filename = s"${filenamePrefix.getOrElse("openEO")}_${DateTimeFormatter.ISO_DATE.format(time)}_$name.tif"
         val filePath = Paths.get(path).resolve(filename).toString
         val timestamp = time format DateTimeFormatter.ISO_ZONED_DATE_TIME
         (stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression),
