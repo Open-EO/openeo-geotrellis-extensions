@@ -268,12 +268,22 @@ object NetCDFRDDWriter {
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                   path: String,
+                  polygons: ProjectedPolygons,
+                  sampleNames: ArrayList[String],
+                  bandNames: ArrayList[String],
+                  dimensionNames: java.util.Map[String, String],
+                  attributes: java.util.Map[String, String],
+                 ): java.util.List[String] =
+    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames, attributes, None)
+
+  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                  path: String,
                   polygons:ProjectedPolygons,
                   sampleNames: ArrayList[String],
                   bandNames: ArrayList[String],
                   dimensionNames: java.util.Map[String,String],
                   attributes: java.util.Map[String,String],
-                  filenamePrefix: Option[String] = None,
+                  filenamePrefix: Option[String],
                  ): java.util.List[String] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.zip(reprojected.polygons)
