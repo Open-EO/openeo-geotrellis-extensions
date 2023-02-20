@@ -572,7 +572,15 @@ package object geotiff {
                   polygons: ProjectedPolygons,
                   sampleNames: JList[String],
                   compression: Compression,
-                  filenamePrefix: Option[String] = None,
+                 ): JList[(String, String, Extent)] =
+    saveSamples(rdd, path, polygons, sampleNames, compression, None)
+
+  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                  path: String,
+                  polygons: ProjectedPolygons,
+                  sampleNames: JList[String],
+                  compression: Compression,
+                  filenamePrefix: Option[String],
                  ): JList[(String, String, Extent)] = {
     val reprojected = ProjectedPolygons.reproject(polygons, rdd.metadata.crs)
     val features = sampleNames.asScala.zip(reprojected.polygons)
