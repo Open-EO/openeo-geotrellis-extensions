@@ -797,7 +797,10 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       val noResampling = math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
       //resampling is still needed in case bounding boxes are not aligned with pixels
       // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
-      var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1, readKeysToRasterSourcesResult._4.size).flatMap(t=>{
+      // TESTING WITH MANY PARTITIONS FOR https://github.com/Open-EO/openeo-geotrellis-extensions/issues/99
+      val tmp = requiredSpacetimeKeys.groupBy(_._2.data._1, readKeysToRasterSourcesResult._4.size * 100)
+      logger.warn("tmp.partitions: " + tmp.partitions.length + " readKeysToRasterSourcesResult._4.size: " + readKeysToRasterSourcesResult._4.size)
+      val regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = tmp.flatMap(t=>{
         val source = if (noResampling) {
           LayoutTileSource(t._1, metadata.layout, identity)
         } else{
@@ -884,7 +887,21 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       path.replace("/vsicurl/", "").replace("/vsis3/eodata", "https://finder.creodias.eu/files")
     }
 
-    def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
+    def rasterSource(dataPathARG:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
+
+
+      val dataPath = if (Files.exists(Paths.get("/dataCOPY/"))) {
+        val dataPath = dataPathARG.replace("/data/", "/dataCOPY/")
+        if (!Files.exists(Paths.get(dataPath))) {
+          println("COPY dataPath: " + dataPath)
+          Files.createDirectories(Paths.get(dataPath).getParent)
+          Files.copy(Paths.get(dataPathARG), Paths.get(dataPath))
+        }
+        dataPath
+      } else {
+        dataPathARG
+      }
+
       if(dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
         val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
         val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod),
