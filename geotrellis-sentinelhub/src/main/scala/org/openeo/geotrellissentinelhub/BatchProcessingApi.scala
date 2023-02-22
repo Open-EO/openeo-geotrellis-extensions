@@ -51,6 +51,7 @@ class BatchProcessingApi(endpoint: String) {
     Http(url)
       .option(HttpOptions.followRedirects(true))
       .headers("Authorization" -> s"Bearer $accessToken")
+      .timeout(connTimeoutMs = 10000, readTimeoutMs = 40000)
 
   def createBatchProcess(datasetId: String, boundingBox: ProjectedExtent, dateTimes: Seq[ZonedDateTime],
                          bandNames: Seq[String], sampleType: SampleType, additionalDataFilters: util.Map[String, Any],
