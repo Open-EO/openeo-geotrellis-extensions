@@ -31,19 +31,20 @@ class TestSameStartEndDate {
         .setAppName("TestSentinelHub")
         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
         .set("spark.kryoserializer.buffer.max", "1024m"))
+    try {
+      val endpoint = "https://services.sentinel-hub.com"
+      val pyramid = new PyramidFactory(collectionId = null, "sentinel-1-grd", new DefaultCatalogApi(endpoint),
+        new DefaultProcessApi(endpoint), clientId, clientSecret, rateLimitingGuard = NoRateLimitingGuard, maxSpatialResolution = CellSize(10, 10))
+        .pyramid_seq(extent, bbox_srs, from, to, bandNames, metadata_properties = Collections.emptyMap[String, Any])
 
-    val endpoint = "https://services.sentinel-hub.com"
-    val pyramid = new PyramidFactory(collectionId = null, "sentinel-1-grd", new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), clientId, clientSecret, rateLimitingGuard = NoRateLimitingGuard, maxSpatialResolution = CellSize(10,10))
-      .pyramid_seq(extent, bbox_srs, from, to, bandNames, metadata_properties = Collections.emptyMap[String, Any])
+      val (_, topLevelRdd) = pyramid.filter { case (zoom, _) => zoom == 14 }.head
 
-    val (_, topLevelRdd) = pyramid.filter { case (zoom, _) => zoom == 14 }.head
+      val results = topLevelRdd.collect()
 
-    val results = topLevelRdd.collect()
-
-    for {
-      (_, multibandTile) <- results
-      tile <- multibandTile.bands
-    } assert(tile.isNoDataTile)
+      for {
+        (_, multibandTile) <- results
+        tile <- multibandTile.bands
+      } assert(tile.isNoDataTile)
+    } finally sc.stop()
   }
 }
