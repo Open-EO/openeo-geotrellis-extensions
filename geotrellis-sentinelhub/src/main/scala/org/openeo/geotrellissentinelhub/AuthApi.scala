@@ -43,5 +43,8 @@ class AuthApi {
         .valueOr(throw _)
     }
 
-  private def http(url: String): HttpRequest = Http(url).option(HttpOptions.followRedirects(true))
+  private def http(url: String): HttpRequest =
+    Http(url)
+      .option(HttpOptions.followRedirects(true))
+      .timeout(connTimeoutMs = 10000, readTimeoutMs = 40000)
 }
