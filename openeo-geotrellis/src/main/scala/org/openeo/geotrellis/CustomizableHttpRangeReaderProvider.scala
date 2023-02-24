@@ -25,7 +25,8 @@ class CustomizableHttpRangeReaderProvider extends RangeReaderProvider {
     val credentials = credentialsFromFile.get(uri.getHost)
 
     val request = credentials.foldLeft(
-      Http(uri.toString).timeout(connTimeoutMs = 10000, readTimeoutMs = 40000)
+      Http(uri.toString)
+        .timeout(connTimeoutMs = 10000, readTimeoutMs = 40000)
     ) { case (http, Credentials(username, password)) =>
       http.auth(username, password)
     }
