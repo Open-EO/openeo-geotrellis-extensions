@@ -173,7 +173,7 @@ class DefaultProcessApi(endpoint: String, respectRetryAfterHeader: Boolean = tru
       .header("Content-Type", "application/json")
       .header("Authorization", s"Bearer $accessToken")
       .header("Accept", "*/*")
-      .timeout(connTimeoutMs = 1000, readTimeoutMs = 40000)
+      .timeout(connTimeoutMs = 10000, readTimeoutMs = 40000)
       .postData(jsonData)
 
 

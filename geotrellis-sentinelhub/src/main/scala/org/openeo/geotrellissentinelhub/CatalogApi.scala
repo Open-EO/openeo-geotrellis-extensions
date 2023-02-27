@@ -203,6 +203,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
     Http(url)
       .option(HttpOptions.followRedirects(true))
       .headers("Authorization" -> s"Bearer $accessToken")
+      .timeout(connTimeoutMs = 10000, readTimeoutMs = 40000)
 
   private def query(queryProperties: util.Map[String, util.Map[String, Any]]): String =
     objectMapper.writeValueAsString(queryProperties)
