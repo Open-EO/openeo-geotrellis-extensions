@@ -12,6 +12,9 @@ import java.time.Duration
 object AuthApi {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[AuthApi])
 
+  //noinspection ScalaUnusedSymbol
+  private implicit val decodeDuration: Decoder[Duration] = Decoder.decodeLong.map(Duration.ofSeconds)
+
   // TODO: snake case to camel case
   private[geotrellissentinelhub] case class AuthResponse(access_token: String, expires_in: Duration)
 }
@@ -36,8 +39,6 @@ class AuthApi {
 
       if (response.isError) throw SentinelHubException(getAuthToken,
         HttpConstants.toQs(safeParams, getAuthToken.charset), response)
-
-      implicit val decodeDuration: Decoder[Duration] = Decoder.decodeLong.map(Duration.ofSeconds)
 
       decode[AuthResponse](response.body)
         .valueOr(throw _)
