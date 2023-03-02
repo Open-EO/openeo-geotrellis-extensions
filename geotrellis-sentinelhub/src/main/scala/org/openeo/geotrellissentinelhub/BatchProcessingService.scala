@@ -14,8 +14,7 @@ import scala.collection.mutable
 
 object BatchProcessingService {
   private val logger = LoggerFactory.getLogger(classOf[BatchProcessingService])
-
-  case class NoSuchFeaturesException(message: String) extends IllegalArgumentException(message)
+  
   case class BatchProcess(id: String, status: String, value_estimate: java.math.BigDecimal,
                           @deprecated("incorrect, derive from value_estimate") processing_units_spent: java.math.BigDecimal)
 }

@@ -11,7 +11,8 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
-import org.apache.commons.io.FileUtils
+import geotrellis.vector.io.json.GeoJson
+import org.apache.commons.io.{FileUtils, IOUtils}
 import org.apache.spark.{SparkConf, SparkContext, SparkException}
 import org.hamcrest.{CustomMatcher, Matcher}
 import org.junit.Assert.{assertEquals, assertThat, assertTrue, fail}
@@ -1027,5 +1028,41 @@ class PyramidFactoryTest {
 
     verify(catalogApiSpy, atLeastOnce()).search(eqTo("sentinel-1-grd"), any(), eqTo(LatLng),
       eqTo(from), eqTo(ZonedDateTime.parse("2020-04-09T23:59:59.999999999Z")), any(), eqTo(util.Collections.emptyMap()))
+  }
+
+  @Test
+  def testIssue128(): Unit = {
+    val endpoint = "https://services.sentinel-hub.com"
+
+    val catalogApiSpy = spy(new DefaultCatalogApi(endpoint))
+
+    val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "sentinel-2-l2a", catalogApiSpy,
+      new DefaultProcessApi(endpoint), authorizer, sampleType = FLOAT32)
+
+    val polygons_crs = CRS.fromEpsgCode(32630)
+    val geojson = IOUtils.toString(getClass.getResource("/issue-128.geojson"))
+    var multiPolygon = MultiPolygon(GeoJson.parse[Polygon](geojson))
+    multiPolygon = multiPolygon.reproject(LatLng, polygons_crs)
+    val date = "2018-10-07T00:00:00+00:00"
+    val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      val datacubeParams = new DataCubeParameters()
+      datacubeParams.tileSize = 256
+      datacubeParams.layoutScheme = "FloatingLayoutScheme"
+      datacubeParams.partitionerIndexReduction = 7
+
+      // Should not throw error after #128 fix:
+      val ret = pyramidFactory.datacube_seq(
+        polygons = Array(multiPolygon),
+        polygons_crs = polygons_crs,
+        from_date = date,
+        to_date = date,
+        band_names = util.Arrays.asList("B03"),
+        metadata_properties = util.Collections.emptyMap(),
+        datacubeParams,
+      )
+      println(ret)
+    } finally sc.stop()
   }
 }

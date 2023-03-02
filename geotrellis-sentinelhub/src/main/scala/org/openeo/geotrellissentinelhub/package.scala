@@ -156,4 +156,6 @@ package object geotrellissentinelhub {
     sequentialDays0(from)
       .takeWhile(date => !(date isAfter to))
   }
+
+  case class NoSuchFeaturesException(message: String) extends IllegalArgumentException(message)
 }

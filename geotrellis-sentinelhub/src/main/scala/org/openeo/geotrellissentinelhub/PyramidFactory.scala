@@ -334,10 +334,31 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             tracker.addInputProducts(collectionId, features.keys.toList.asJava)
 
-            val featureIntersections = for {
-              feature <- sc.parallelize(features.values.toSeq, math.max(1, features.size / 10))
-              reprojectedFeature = feature.reproject(LatLng, boundingBox.crs)
-            } yield Feature(reprojectedFeature intersection multiPolygon, reprojectedFeature.data.toLocalDate.atStartOfDay(UTC))
+            val featuresRDD = sc.parallelize(features.values.toSeq, math.max(1, features.size / 10))
+            val featureIntersections = featuresRDD.flatMap(feature => {
+              val reprojectedFeature = feature.reproject(LatLng, boundingBox.crs)
+              // In test over England, there where up to 0.003 deviations on long line segments due to curvature change between CRS
+              val multiPolygonBuffered = multiPolygon
+                .reproject(polygons_crs, LatLng)
+                .buffer(0.006)
+                .reproject(LatLng, polygons_crs)
+              val intersect = reprojectedFeature intersection multiPolygonBuffered
+
+              if (intersect.isEmpty) {
+                logger.debug(s"shub returned a Feature that actually does not intersect with our requested polygons.")
+                Seq()
+              } else
+                Seq(Feature(intersect, reprojectedFeature.data.toLocalDate.atStartOfDay(UTC)))
+            })
+
+            if (featureIntersections.isEmpty()) {
+              throw NoSuchFeaturesException(message =
+                s"""no features found for criteria:
+                   |collection ID "$collectionId"
+                   |${polygons.length} polygon(s)
+                   |[$from_date, $to_date]
+                   |metadata properties $metadata_properties""".stripMargin)
+            }
 
             val featureIntersectionsByDay = featureIntersections.groupBy(_.data)
             val simplifiedFeatureIntersectionsByDay = featureIntersectionsByDay.map { case (date, features) =>
