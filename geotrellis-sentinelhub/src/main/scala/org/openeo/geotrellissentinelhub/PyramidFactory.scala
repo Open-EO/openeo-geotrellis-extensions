@@ -340,7 +340,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               // In test over England, there where up to 0.003 deviations on long line segments due to curvature change between CRS
               val multiPolygonBuffered = multiPolygon
                 .reproject(polygons_crs, LatLng)
-                .buffer(0.006)
+//                .buffer(0.006) TEMPORARY
                 .reproject(LatLng, polygons_crs)
               val intersect = reprojectedFeature intersection multiPolygonBuffered
 

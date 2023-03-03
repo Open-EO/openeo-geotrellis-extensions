@@ -385,7 +385,7 @@ class PyramidFactoryTest {
       val polygons = Array(upperLeftBoundingBox, lowerRightBoundingBox)
         .map(extent => MultiPolygon(extent.toPolygon()))
 
-      val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+      val date = ZonedDateTime.of(LocalDate.of(2019, 11, 10), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
       val (utmPolygons, utmCrs) = {
         val center = GeometryCollection(polygons).extent.center
@@ -527,7 +527,7 @@ class PyramidFactoryTest {
     val Seq((_, layer)) = pyramidFactory.datacube_seq(
       polygon, crs,
       from_date = ISO_OFFSET_DATE_TIME format date,
-      to_date = ISO_OFFSET_DATE_TIME format date.plusDays(10),
+      to_date = ISO_OFFSET_DATE_TIME format date,
       band_names = Seq("HV", "HH").asJava,
       metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]],
       // gives no results with "polarization" filter?
