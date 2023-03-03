@@ -376,10 +376,11 @@ class PyramidFactoryTest {
 
     try {
       // small (1 tile request) regions in the upper left and lower right corners of [2.59003, 51.069, 2.8949, 51.2206]
+      val size = 0.001
       val upperLeftBoundingBox =
-        Extent(xmin = 2.590670585632324, ymin = 51.219034670299344, xmax = 2.5927734375, ymax = 51.22005609157961)
+        Extent(xmin = 2.6, ymin = 51.219034670299344, xmax = 2.6 + size, ymax = 51.22005609157961)
       val lowerRightBoundingBox =
-        Extent(xmin = 2.888975143432617, ymin = 51.06977173805457, xmax = 2.8932666778564453, ymax = 51.07165938028684)
+        Extent(xmin = 2.888975143432617, ymin = 51.085, xmax = 2.8932666778564453, ymax = 51.085 + size)
 
       val polygons = Array(upperLeftBoundingBox, lowerRightBoundingBox)
         .map(extent => MultiPolygon(extent.toPolygon()))
@@ -526,9 +527,11 @@ class PyramidFactoryTest {
     val Seq((_, layer)) = pyramidFactory.datacube_seq(
       polygon, crs,
       from_date = ISO_OFFSET_DATE_TIME format date,
-      to_date = ISO_OFFSET_DATE_TIME format date,
+      to_date = ISO_OFFSET_DATE_TIME format date.plusDays(10),
       band_names = Seq("HV", "HH").asJava,
-      metadata_properties = Collections.singletonMap("polarization", Collections.singletonMap("eq", "DH"))
+      metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]],
+      // gives no results with "polarization" filter?
+      //metadata_properties = Collections.singletonMap("polarization", Collections.singletonMap("eq", "DH")),
     )
     layer
   }
@@ -882,12 +885,18 @@ class PyramidFactoryTest {
     def layerFromDatacube_seq(pyramidFactory: PyramidFactory, boundingBox: ProjectedExtent, date: String,
                               bandNames: Seq[String], metadata_properties: util.Map[String, util.Map[String, Any]]):
     MultibandTileLayerRDD[SpaceTimeKey] = {
+
+      val datacubeParams = new DataCubeParameters()
+      // To avoid the tile edge to move along with the extent. One specetime key would cover half Europe
+      datacubeParams.globalExtent = Some(ProjectedExtent(Extent(-30, 0, 30, 60), LatLng))
+
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
         from_date = date,
         to_date = date,
         band_names = bandNames.asJava,
-        metadata_properties = metadata_properties
+        metadata_properties = metadata_properties,
+        datacubeParams,
       )
 
       layer
