@@ -334,21 +334,28 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             tracker.addInputProducts(collectionId, features.keys.toList.asJava)
 
-            val featuresRDD = sc.parallelize(features.values.toSeq, math.max(1, features.size / 10))
-            val featureIntersections = featuresRDD.flatMap(feature => {
-              val reprojectedFeature = feature.reproject(LatLng, boundingBox.crs)
-              // In test over England, there where up to 0.003 deviations on long line segments due to curvature change between CRS
-              val multiPolygonBuffered = multiPolygon
-                .reproject(polygons_crs, LatLng)
-                .buffer(0.006)
-                .reproject(LatLng, polygons_crs)
-              val intersect = reprojectedFeature intersection multiPolygonBuffered
 
-              if (intersect.isEmpty) {
-                logger.debug(s"shub returned a Feature that actually does not intersect with our requested polygons.")
+            // In test over England, there where up to 0.003 deviations on long line segments due to curvature
+            // change between CRS. Here we convert that distance to the value in the polygon specific CRS.
+            val multiPolygonBuffered = {
+              val centroid = multiPolygon.getCentroid.reproject(polygons_crs, LatLng)
+              val derivationSegmentLatLng = LineString(centroid, Point(centroid.x, centroid.y + 0.006))
+              val derivationSegment = derivationSegmentLatLng.reproject(LatLng, polygons_crs)
+              val maxDerivationEstimate = derivationSegment.getLength
+              multiPolygon.buffer(maxDerivationEstimate)
+            }
+
+
+            val featuresRDD = sc.parallelize(features.toSeq, 1 max (features.size / 10))
+            val featureIntersections = featuresRDD.flatMap({ case (key, feature) =>
+              val reprojectedFeature = feature.reproject(LatLng, boundingBox.crs)
+              val intersection = reprojectedFeature intersection multiPolygonBuffered
+
+              if (intersection.isEmpty) {
+                logger.debug(s"shub returned a Feature that does not intersect with our requested polygons: " + key)
                 Seq()
               } else
-                Seq(Feature(intersect, reprojectedFeature.data.toLocalDate.atStartOfDay(UTC)))
+                Seq(Feature(intersection, reprojectedFeature.data.toLocalDate.atStartOfDay(UTC)))
             })
 
             if (featureIntersections.isEmpty()) {

@@ -1040,7 +1040,7 @@ class PyramidFactoryTest {
   }
 
   @Test
-  def testIssue128(): Unit = {
+  def testPolygonOnEdgeOfSentinelFeature(): Unit = {
     val endpoint = "https://services.sentinel-hub.com"
 
     val catalogApiSpy = spy(new DefaultCatalogApi(endpoint))
@@ -1048,10 +1048,11 @@ class PyramidFactoryTest {
     val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "sentinel-2-l2a", catalogApiSpy,
       new DefaultProcessApi(endpoint), authorizer, sampleType = FLOAT32)
 
+    // Would be nice to use 'ProjectedPolygons.fromVectorFile()' here
     val polygons_crs = CRS.fromEpsgCode(32630)
-    val geojson = IOUtils.toString(getClass.getResource("/issue-128.geojson"))
-    var multiPolygon = MultiPolygon(GeoJson.parse[Polygon](geojson))
-    multiPolygon = multiPolygon.reproject(LatLng, polygons_crs)
+    val geojson = IOUtils.toString(getClass.getResource("/testPolygonOnEdgeOfSentinelFeature.geojson"))
+    val multiPolygon = MultiPolygon(GeoJson.parse[Polygon](geojson))
+      .reproject(LatLng, polygons_crs)
     val date = "2018-10-07T00:00:00+00:00"
     val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
@@ -1061,7 +1062,9 @@ class PyramidFactoryTest {
       datacubeParams.layoutScheme = "FloatingLayoutScheme"
       datacubeParams.partitionerIndexReduction = 7
 
-      // Should not throw error after #128 fix:
+      // Should not throw any of the 2 following errors after #128 fix:
+      // - "Cannot create a polygon with exterior with fewer than 4 points: LINEARRING EMPTY"
+      // - "NoSuchFeaturesException: no features found for criteria: ..."
       val ret = pyramidFactory.datacube_seq(
         polygons = Array(multiPolygon),
         polygons_crs = polygons_crs,
