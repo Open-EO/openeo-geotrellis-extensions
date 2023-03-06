@@ -22,6 +22,7 @@ import org.mockito.ArgumentMatchers.{any, eq => eqTo}
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
 import org.mockito.Mockito._
+import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{SH_FAILED_TILE_REQUESTS, SH_PU}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
@@ -1047,10 +1048,10 @@ class PyramidFactoryTest {
       new DefaultProcessApi(endpoint), authorizer, sampleType = FLOAT32)
 
     // Would be nice to use 'ProjectedPolygons.fromVectorFile()' here
+    val url = getClass.getResource("/testPolygonOnEdgeOfSentinelFeature.geojson")
+    val projectedPolygons = ProjectedPolygons.fromVectorFile(url.toString)
     val polygons_crs = CRS.fromEpsgCode(32630)
-    val geojson = IOUtils.toString(getClass.getResource("/testPolygonOnEdgeOfSentinelFeature.geojson"))
-    val multiPolygon = MultiPolygon(GeoJson.parse[Polygon](geojson))
-      .reproject(LatLng, polygons_crs)
+    val multiPolygon = projectedPolygons.polygons.head.reproject(projectedPolygons.crs, polygons_crs)
     val date = "2018-10-07T00:00:00+00:00"
     val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 

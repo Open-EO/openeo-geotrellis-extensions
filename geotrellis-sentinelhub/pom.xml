@@ -12,6 +12,12 @@
     <artifactId>geotrellis-sentinelhub</artifactId>
     <dependencies>
         <dependency>
+            <groupId>org.openeo</groupId>
+            <artifactId>openeo-geotrellis</artifactId>
+            <version>${parent.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <!--https://github.com/typelevel/cats/issues/3628-->
             <groupId>org.typelevel</groupId>
             <artifactId>cats-kernel_${scala.binary.version}</artifactId>
