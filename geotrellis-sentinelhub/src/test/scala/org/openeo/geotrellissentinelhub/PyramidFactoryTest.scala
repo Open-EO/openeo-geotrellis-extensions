@@ -530,8 +530,6 @@ class PyramidFactoryTest {
       to_date = ISO_OFFSET_DATE_TIME format date,
       band_names = Seq("HV", "HH").asJava,
       metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]],
-      // gives no results with "polarization" filter?
-      //metadata_properties = Collections.singletonMap("polarization", Collections.singletonMap("eq", "DH")),
     )
     layer
   }
@@ -1043,9 +1041,9 @@ class PyramidFactoryTest {
   def testPolygonOnEdgeOfSentinelFeature(): Unit = {
     val endpoint = "https://services.sentinel-hub.com"
 
-    val catalogApiSpy = spy(new DefaultCatalogApi(endpoint))
+    val catalogApi = new DefaultCatalogApi(endpoint)
 
-    val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "sentinel-2-l2a", catalogApiSpy,
+    val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "sentinel-2-l2a", catalogApi,
       new DefaultProcessApi(endpoint), authorizer, sampleType = FLOAT32)
 
     // Would be nice to use 'ProjectedPolygons.fromVectorFile()' here

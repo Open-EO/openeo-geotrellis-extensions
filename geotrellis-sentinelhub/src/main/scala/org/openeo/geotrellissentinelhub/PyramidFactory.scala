@@ -353,9 +353,9 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
               if (intersection.isEmpty) {
                 logger.debug(s"shub returned a Feature that does not intersect with our requested polygons: " + key)
-                Seq()
+                None
               } else
-                Seq(Feature(intersection, reprojectedFeature.data.toLocalDate.atStartOfDay(UTC)))
+                Some(Feature(intersection, reprojectedFeature.data.toLocalDate.atStartOfDay(UTC)))
             })
 
             if (featureIntersections.isEmpty()) {
