@@ -80,6 +80,50 @@ object DefaultCatalogApi {
     extends JsonFeatureCollection(features)
   private case class PagedJsonFeatureCollectionMap(features: List[Json], context: PagingContext)
     extends JsonFeatureCollectionMap(features)
+
+
+  // This helper function is called below to grab the ID field for Map keys
+  private def getFeatureID(js: Json): String = {
+    val cursor = js.hcursor
+    val id = cursor.downField("id")
+    id.as[String] match {
+      case Right(i) => i
+      case _ =>
+        id.as[Int] match {
+          case Right(i) => i.toString
+          case _ => throw new RuntimeException("Feature expected to have \"ID\" field" + cursor.history)
+        }
+    }
+  }
+
+  private def getSelfUrl(js: Json): Option[String] = {
+    val cursor = js.hcursor
+    // for-statement seems perfect to do a lot of Option checking
+    for {
+      links <- cursor.downField("links").values
+
+      link <- links.find(j => (for {
+        json <- j.asObject
+        rel <- json.toMap.get("rel")
+        s <- rel.asString
+      } yield s == "self").getOrElse(false))
+
+      json <- link.asObject
+      href <- json.toMap.get("href")
+      href <- href.asString
+    } yield {
+      href
+    }
+  }
+
+  private def getDateTime(jProperties: Json): Option[ZonedDateTime] = {
+    for {
+      properties <- jProperties.asObject
+      json <- properties("datetime")
+      datetime <- json.asString
+    } yield ZonedDateTime.parse(datetime, ISO_OFFSET_DATE_TIME)
+  }
+
 }
 
 class DefaultCatalogApi(endpoint: String) extends CatalogApi {
@@ -177,49 +221,20 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
           .valueOr(throw _)
       }
 
-      // This helper function is called below to grab the ID field for Map keys
-      def getFeatureID(js: Json): String = {
-        val cursor = js.hcursor
-        val id = cursor.downField("id")
-        id.as[String] match {
-          case Right(i) => i
-          case _ => {
-            id.as[Int] match {
-              case Right(i) => i.toString
-              case _ => throw new RuntimeException("Feature expected to have \"ID\" field" + cursor.history)
-            }
-          }
-        }
-      }
-
-      def getSelfUrl(js: Json): Option[String] = {
-        val cursor = js.hcursor
-        for {
-          links <- cursor.downField("links").values
-        } yield {
-          val link = links.find(j => j.asObject.get.toMap("rel").asString.get == "self")
-          link.get.asObject.get.toMap("href").asString.get
-        }
-      }
 
       def getFeatures(limit: Int, nextToken: Option[Int]): Map[String, geotrellis.vector.Feature[Geometry, FeatureData]] = {
         val page = getFeatureCollectionPage(limit, nextToken)
 
-        type F = Feature[Geometry, Json]
         var features = Map[String, Feature[Geometry, FeatureData]]()
         // it is assumed the returned geometries are in LatLng
         page.features.foreach { fJson =>
+          type F = Feature[Geometry, Json]
           fJson.as[F].foreach(feature => {
             val key = getFeatureID(fJson)
             val newFeature = feature.mapData { properties =>
-              val Some(datetime) = for {
-                properties <- properties.asObject
-                json <- properties("datetime")
-                datetime <- json.asString
-              } yield ZonedDateTime.parse(datetime, ISO_OFFSET_DATE_TIME)
-
+              val Some(dateTime) = getDateTime(properties)
               val selfUrl = getSelfUrl(fJson)
-              FeatureData(datetime, selfUrl)
+              FeatureData(dateTime, selfUrl)
             }
             features += key -> newFeature
           })
