@@ -34,7 +34,7 @@ trait CatalogApi {
   def searchCard4L(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
                    accessToken: String,
                    queryProperties: util.Map[String, util.Map[String, Any]] = util.Collections.emptyMap()):
-  Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
+  Map[String, geotrellis.vector.Feature[Geometry, FeatureData]] = {
     val geometry = boundingBox.extent.toPolygon()
     val geometryCrs = boundingBox.crs
 
@@ -43,7 +43,7 @@ trait CatalogApi {
 
   def searchCard4L(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
                    accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
-  Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
+  Map[String, geotrellis.vector.Feature[Geometry, FeatureData]] = {
     require(collectionId == "sentinel-1-grd", """only collection "sentinel-1-grd" is supported""")
 
     val requiredProperties = HashMap(
@@ -64,8 +64,11 @@ trait CatalogApi {
 
   def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
                    accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
-  Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]]
+  Map[String, geotrellis.vector.Feature[Geometry, FeatureData]]
+
 }
+
+case class FeatureData(dateTime: ZonedDateTime, selfUrl: Option[String])
 
 object DefaultCatalogApi {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[DefaultCatalogApi])
@@ -140,7 +143,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
 
   override def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
                       to: ZonedDateTime, accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
-  Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] =
+  Map[String, geotrellis.vector.Feature[Geometry, FeatureData]] =
     withRetries(context = s"search $collectionId from $from to $to for ${geometry.getNumGeometries} geometries") {
       // TODO: reduce code duplication with dateTimes()
       val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
@@ -174,21 +177,53 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
           .valueOr(throw _)
       }
 
-      def getFeatures(limit: Int, nextToken: Option[Int]): Map[String, geotrellis.vector.Feature[Geometry, ZonedDateTime]] = {
+      // This helper function is called below to grab the ID field for Map keys
+      def getFeatureID(js: Json): String = {
+        val cursor = js.hcursor
+        val id = cursor.downField("id")
+        id.as[String] match {
+          case Right(i) => i
+          case _ => {
+            id.as[Int] match {
+              case Right(i) => i.toString
+              case _ => throw new RuntimeException("Feature expected to have \"ID\" field" + cursor.history)
+            }
+          }
+        }
+      }
+
+      def getSelfUrl(js: Json): Option[String] = {
+        val cursor = js.hcursor
+        for {
+          links <- cursor.downField("links").values
+        } yield {
+          val link = links.find(j => j.asObject.get.toMap("rel").asString.get == "self")
+          link.get.asObject.get.toMap("href").asString.get
+        }
+      }
+
+      def getFeatures(limit: Int, nextToken: Option[Int]): Map[String, geotrellis.vector.Feature[Geometry, FeatureData]] = {
         val page = getFeatureCollectionPage(limit, nextToken)
 
+        type F = Feature[Geometry, Json]
+        var features = Map[String, Feature[Geometry, FeatureData]]()
         // it is assumed the returned geometries are in LatLng
-        val features = page.getAllFeatures[Feature[Geometry, Json]]
-          .mapValues(feature =>
-            feature.mapData { properties =>
+        page.features.foreach { fJson =>
+          fJson.as[F].foreach(feature => {
+            val key = getFeatureID(fJson)
+            val newFeature = feature.mapData { properties =>
               val Some(datetime) = for {
                 properties <- properties.asObject
                 json <- properties("datetime")
                 datetime <- json.asString
               } yield ZonedDateTime.parse(datetime, ISO_OFFSET_DATE_TIME)
 
-              datetime
-            })
+              val selfUrl = getSelfUrl(fJson)
+              FeatureData(datetime, selfUrl)
+            }
+            features += key -> newFeature
+          })
+        }
 
         page.context.next match {
           case None => features
@@ -221,9 +256,9 @@ class MadeToMeasureCatalogApi extends CatalogApi {
 
   override def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
                       to: ZonedDateTime, accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
-  Map[String, Feature[Geometry, ZonedDateTime]] = {
+  Map[String, Feature[Geometry, FeatureData]] = {
     val features = for ((timestamp, index) <- sequentialDays(from, to).zipWithIndex)
-      yield index.toString -> Feature(geometry.reproject(geometryCrs, LatLng), timestamp)
+      yield index.toString -> Feature(geometry.reproject(geometryCrs, LatLng), FeatureData(timestamp, None))
 
     features.toMap
   }

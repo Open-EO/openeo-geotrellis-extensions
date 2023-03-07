@@ -59,7 +59,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
   private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom,
                     bandNames: Seq[String], metadataProperties: util.Map[String, util.Map[String, Any]],
-                    features: collection.Map[String, Feature[Geometry, ZonedDateTime]])(implicit sc: SparkContext):
+                    features: collection.Map[String, Feature[Geometry, FeatureData]])(implicit sc: SparkContext):
   MultibandTileLayerRDD[SpaceTimeKey] = {
     require(zoom >= 0)
     require(zoom <= maxZoom)
@@ -76,7 +76,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
     val overlappingKeys = {
       val intersectingFeaturesByDay = features.values
-        .map(feature => feature.mapData(_.toLocalDate.atStartOfDay(UTC)))
+        .map(feature => feature.mapData(_.dateTime.toLocalDate.atStartOfDay(UTC)))
         .groupBy(_.data)
 
       val simplifiedIntersectingFeaturesByDay = intersectingFeaturesByDay
@@ -332,12 +332,12 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
             }
 
-            tracker.addInputProducts(collectionId, features.keys.toList.asJava)
+            tracker.addInputProducts(collectionId, features.map(p => p._2.data.selfUrl.getOrElse(p._1)).toList.asJava)
 
             val featureIntersections = for {
               feature <- sc.parallelize(features.values.toSeq, math.max(1, features.size / 10))
               reprojectedFeature = feature.reproject(LatLng, boundingBox.crs)
-            } yield Feature(reprojectedFeature intersection multiPolygon, reprojectedFeature.data.toLocalDate.atStartOfDay(UTC))
+            } yield Feature(reprojectedFeature intersection multiPolygon, reprojectedFeature.data.dateTime.toLocalDate.atStartOfDay(UTC))
 
             val featureIntersectionsByDay = featureIntersections.groupBy(_.data)
             val simplifiedFeatureIntersectionsByDay = featureIntersectionsByDay.map { case (date, features) =>
