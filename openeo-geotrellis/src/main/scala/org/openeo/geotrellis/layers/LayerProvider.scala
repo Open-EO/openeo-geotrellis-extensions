@@ -26,7 +26,7 @@ object LayerProvider{
       val nonNegativeBounds = gridBounds.copy(colMin = math.max(0,gridBounds.colMin),rowMin = math.max(0,gridBounds.rowMin))
 
       val spatialPartitioner: PartitionerIndex[SpatialKey] = new PartitionerIndex[SpatialKey] {
-        private def toZ(key: SpatialKey): Z2 = Z2(key.col >> 3, key.row >> 3)
+        private def toZ(key: SpatialKey): Z2 = Z2(key.col >> 5, key.row >> 5)
 
         def toIndex(key: SpatialKey): BigInt = toZ(key).z
 
