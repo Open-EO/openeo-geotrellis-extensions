@@ -51,12 +51,12 @@ class DefaultCatalogApiTest {
       accessToken
     ) // gives you 3 features
 
-    val (id, Feature(geometry, datetime)) = features.head
+    val (id, Feature(geometry, featureData)) = features.head
 
     val intersection = geometry intersection bbox.extent.toPolygon
     println(intersection.toGeoJson())
 
-    val timeRange = Seq(datetime, datetime plusSeconds 1)
+    val timeRange = Seq(featureData.dateTime, featureData.dateTime plusSeconds 1)
 
     println(id)
 

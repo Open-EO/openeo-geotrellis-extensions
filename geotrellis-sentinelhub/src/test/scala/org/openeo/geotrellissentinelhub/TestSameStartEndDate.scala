@@ -9,6 +9,7 @@ import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters}
 
 import java.util
 import scala.collection.JavaConverters._
+import scala.collection.convert.Wrappers.SeqWrapper
 
 class TestSameStartEndDate {
 
@@ -86,8 +87,14 @@ class TestSameStartEndDate {
 
       val inputs = BatchJobMetadataTracker.tracker("").asDict()
       val links = inputs.get("links")
-      println(links)
-      // links should contain URL
+      links match {
+        case hm: util.HashMap[String, SeqWrapper[String]] =>
+          val seq = hm.get("sentinel-1-grd")
+          print(seq)
+          seq.forEach(s => assert(s.startsWith("http")))
+        case x =>
+          throw new RuntimeException("Problem: " + x)
+      }
 
     } finally sc.stop()
   }

@@ -54,7 +54,7 @@ object PyramidFactoryTest {
     override def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
                               to: ZonedDateTime, accessToken: String,
                               queryProperties: util.Map[String, util.Map[String, Any]]):
-    Map[String, Feature[Geometry, ZonedDateTime]] = {
+    Map[String, Feature[Geometry, FeatureData]] = {
       searchCounter.incrementAndGet()
       catalogApi.search(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
     }
