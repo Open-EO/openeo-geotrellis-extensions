@@ -10,7 +10,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.jts.geom.Geometry
-import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{SH_FAILED_TILE_REQUESTS, SH_PU}
+import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{ProductIdAndUrl, SH_FAILED_TILE_REQUESTS, SH_PU}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 import org.slf4j.{Logger, LoggerFactory}
@@ -332,7 +332,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
             }
 
-            tracker.addInputProducts(collectionId, features.map(p => p._2.data.selfUrl.getOrElse(p._1)).toList.asJava)
+            tracker.addInputProductsWithUrls(collectionId, features.map(p => new ProductIdAndUrl(p._1, p._2.data.selfUrl.orNull)).toList.asJava)
 
             val featureIntersections = for {
               feature <- sc.parallelize(features.values.toSeq, math.max(1, features.size / 10))

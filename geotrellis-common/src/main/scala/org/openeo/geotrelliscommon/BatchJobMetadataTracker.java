@@ -1,13 +1,29 @@
 package org.openeo.geotrelliscommon;
 
 import java.io.Serializable;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public abstract class BatchJobMetadataTracker implements Serializable {
+    public static class ProductIdAndUrl implements Serializable {
+        public ProductIdAndUrl(String id, String selfUrl) {
+            assert id != null;
+            this.id = id;
+            this.selfUrl = selfUrl;
+        }
+
+        private final String id;
+        private final String selfUrl;
+
+        public String getId() {
+            return id;
+        }
+
+        public String getSelfUrl() {
+            return selfUrl != null ? selfUrl : id;
+        }
+    }
+
     public static String SH_PU = "Sentinelhub_Processing_Units";
     public static String SH_FAILED_TILE_REQUESTS = "Sentinelhub_Failed_Tile_Requests";
 
@@ -65,7 +81,18 @@ public abstract class BatchJobMetadataTracker implements Serializable {
 
     public abstract void add(String name, double value);
 
-    public void addInputProducts(String collection, List<String> productIds){}
+    public void addInputProducts(String collection, List<String> productIds) {
+        List<ProductIdAndUrl> productIdAndUrls = new ArrayList<ProductIdAndUrl>();
+        for (String id : productIds) {
+            productIdAndUrls.add(new ProductIdAndUrl(id, null));
+        }
+        this.addInputProductsWithUrls(collection, productIdAndUrls);
+    }
+
+    /**
+     * Different name than 'addInputProducts' to avoid "both methods have same erasure" compiler error.
+     */
+    public void addInputProductsWithUrls(String collection, List<ProductIdAndUrl> productIdAndUrls){}
 
     public abstract Map<String, Object> asDict();
 }
