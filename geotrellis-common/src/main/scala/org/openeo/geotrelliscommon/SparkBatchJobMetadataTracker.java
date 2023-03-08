@@ -15,7 +15,7 @@ public class SparkBatchJobMetadataTracker extends BatchJobMetadataTracker {
 
     private Map<String, AccumulatorV2<Long, Long>> counters = new HashMap<>();
     private Map<String, AccumulatorV2<Double, Double>> doubleCounters = new HashMap<>();
-    private Map<String, List<String>> inputProducts = new HashMap<>();
+    private Map<String, List<ProductIdAndUrl>> inputProducts = new HashMap<>();
 
     @Override
     public void registerCounter(String name) {
@@ -44,8 +44,8 @@ public class SparkBatchJobMetadataTracker extends BatchJobMetadataTracker {
     }
 
     @Override
-    public void addInputProducts(String collection, List<String> productIds) {
-        inputProducts.merge(collection, productIds,(v1, v2) -> Stream.concat(v1.stream(),v2.stream()).collect(Collectors.toList()));
+    public void addInputProductsWithUrls(String collection, List<ProductIdAndUrl> productIdAndUrls) {
+        inputProducts.merge(collection, productIdAndUrls,(v1, v2) -> Stream.concat(v1.stream(),v2.stream()).collect(Collectors.toList()));
     }
 
     @Override
