@@ -168,7 +168,9 @@ package object geotiff {
         gridBounds = retiledRDD.metadata.toRasterExtent().gridBoundsFor(cropBounds.getOrElse(retiledRDD.metadata.extent), clamp = true)
         retiledRDD
       } else {
-        filtered.crop(croppedExtent, Options(force = false))
+        //exact cropping cropped the last line, so we buffer extent by a fraction of the resolution
+        val buffer = rdd.metadata.cellSize.resolution*0.001
+        filtered.crop(croppedExtent.buffer(buffer), Options(force = false))
       }
     }
     val tileLayout = rdd.metadata.tileLayout
