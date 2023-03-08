@@ -7,12 +7,14 @@ import geotrellis.raster.io.geotiff.{GeoTiff, SinglebandGeoTiff}
 import geotrellis.raster.resample.ResampleMethod
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
+import geotrellis.raster.{CellSize, GridBounds}
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.vector._
 import org.junit.Assert.assertEquals
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.{AfterClass, Test}
+import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
