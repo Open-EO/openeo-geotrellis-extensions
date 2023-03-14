@@ -988,7 +988,8 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
   override def readMetadata(zoom: Int, sc: SparkContext): TileLayerMetadata[SpaceTimeKey] = {
     val Some((projectedExtent, dates)) = loadMetadata(sc)
 
-    layerMetadata(projectedExtent,dates.head,dates.last,zoom, FloatConstantNoDataCellType, layoutScheme, maxSpatialResolution)
+    layerMetadata(projectedExtent, dates.head, dates.last, zoom min maxZoom, FloatConstantNoDataCellType, layoutScheme,
+      maxSpatialResolution)
   }
 
   override def collectMetadata(sc: SparkContext): (ProjectedExtent, Array[ZonedDateTime]) = loadMetadata(sc).get

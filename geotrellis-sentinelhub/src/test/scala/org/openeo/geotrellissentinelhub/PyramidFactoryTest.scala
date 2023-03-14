@@ -19,11 +19,13 @@ import org.junit.Assert.{assertEquals, assertThat, assertTrue, fail}
 import org.junit._
 import org.junit.rules.TemporaryFolder
 import org.mockito.ArgumentMatchers.{any, eq => eqTo}
+import org.mockito.Mockito._
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
 import org.mockito.Mockito._
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{SH_FAILED_TILE_REQUESTS, SH_PU}
+import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{ProductIdAndUrl, SH_FAILED_TILE_REQUESTS, SH_PU}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
 
@@ -38,6 +40,7 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.Deflater.BEST_COMPRESSION
 import scala.annotation.meta.getter
 import scala.collection.JavaConverters._
+import scala.collection.convert.Wrappers.SeqWrapper
 
 object PyramidFactoryTest {
   implicit class WithRootCause(e: Throwable) {
@@ -56,7 +59,7 @@ object PyramidFactoryTest {
     override def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime,
                               to: ZonedDateTime, accessToken: String,
                               queryProperties: util.Map[String, util.Map[String, Any]]):
-    Map[String, Feature[Geometry, ZonedDateTime]] = {
+    Map[String, Feature[Geometry, FeatureData]] = {
       searchCounter.incrementAndGet()
       catalogApi.search(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
     }
@@ -1074,6 +1077,53 @@ class PyramidFactoryTest {
         datacubeParams,
       )
       println(ret)
+    } finally sc.stop()
+  }
+
+  @Test
+  def testMetadata(): Unit = {
+    val extent = Extent(-55.8071, -6.7014, -55.7933, -6.6703)
+    BatchJobMetadataTracker.setGlobalTracking(true)
+    val from = "2019-06-01T00:00:00Z"
+    val to = "2019-06-11T00:00:00Z"
+    val bandNames = Seq("VV", "VH", "HV", "HH").asJava
+
+    implicit val sc: SparkContext = SparkContext.getOrCreate(
+      new SparkConf()
+        .setMaster("local[1]")
+        .setAppName("TestSentinelHub")
+        .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+        .set("spark.kryoserializer.buffer.max", "1024m"))
+    try {
+      val endpoint = "https://services.sentinel-hub.com"
+      val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
+        new DefaultProcessApi(endpoint),
+        new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
+        rateLimitingGuard = NoRateLimitingGuard)
+
+      val multiPolygons = Array(MultiPolygon(extent.toPolygon()))
+      val pyramid = pyramidFactory.datacube_seq(
+        multiPolygons,
+        CRS.fromEpsgCode(4326),
+        from,
+        to,
+        bandNames,
+        metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]],
+        new DataCubeParameters,
+      )
+      println(pyramid.length)
+
+      val inputs = BatchJobMetadataTracker.tracker("").asDict()
+      val links = inputs.get("links")
+      links match {
+        case hashMap: util.HashMap[String, SeqWrapper[ProductIdAndUrl]] =>
+          val seq = hashMap.get("sentinel-1-grd")
+          print(seq)
+          seq.forEach(s => assert(s.getSelfUrl.startsWith("http")))
+        case x =>
+          throw new RuntimeException("Problem: " + x)
+      }
+
     } finally sc.stop()
   }
 }

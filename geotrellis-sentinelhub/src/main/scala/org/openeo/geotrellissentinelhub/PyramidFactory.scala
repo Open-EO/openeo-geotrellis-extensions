@@ -10,7 +10,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.jts.geom.Geometry
-import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{SH_FAILED_TILE_REQUESTS, SH_PU}
+import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{ProductIdAndUrl, SH_FAILED_TILE_REQUESTS, SH_PU}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 import org.slf4j.{Logger, LoggerFactory}
@@ -59,7 +59,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
   private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom,
                     bandNames: Seq[String], metadataProperties: util.Map[String, util.Map[String, Any]],
-                    features: collection.Map[String, Feature[Geometry, ZonedDateTime]])(implicit sc: SparkContext):
+                    features: collection.Map[String, Feature[Geometry, FeatureData]])(implicit sc: SparkContext):
   MultibandTileLayerRDD[SpaceTimeKey] = {
     require(zoom >= 0)
     require(zoom <= maxZoom)
@@ -76,7 +76,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
     val overlappingKeys = {
       val intersectingFeaturesByDay = features.values
-        .map(feature => feature.mapData(_.toLocalDate.atStartOfDay(UTC)))
+        .map(feature => feature.mapData(_.dateTime.toLocalDate.atStartOfDay(UTC)))
         .groupBy(_.data)
 
       val simplifiedIntersectingFeaturesByDay = intersectingFeaturesByDay
@@ -332,7 +332,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
             }
 
-            tracker.addInputProducts(collectionId, features.keys.toList.asJava)
+            tracker.addInputProductsWithUrls(collectionId, features.map(p => new ProductIdAndUrl(p._1, p._2.data.selfUrl.orNull)).toList.asJava)
 
 
             // In test over England, there where up to 0.003 deviations on long line segments due to curvature
@@ -355,7 +355,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 logger.debug(s"shub returned a Feature that does not intersect with our requested polygons: " + key)
                 None
               } else
-                Some(Feature(intersection, reprojectedFeature.data.toLocalDate.atStartOfDay(UTC)))
+                Some(Feature(intersection, reprojectedFeature.data.dateTime.toLocalDate.atStartOfDay(UTC)))
             })
 
             if (featureIntersections.isEmpty()) {

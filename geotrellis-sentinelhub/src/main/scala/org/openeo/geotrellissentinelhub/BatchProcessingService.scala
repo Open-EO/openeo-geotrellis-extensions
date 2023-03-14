@@ -217,12 +217,12 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
     // TODO: the web tool creates one batch process, analyses it, polls until ANALYSIS_DONE, then creates the remaining
     //  processes and starts them all
     val batchRequestIds =
-      for ((id, Feature(intersection, datetime)) <- intersectionFeatures)
+      for ((id, Feature(intersection, featureData)) <- intersectionFeatures)
         yield authorized { accessToken =>
           batchProcessingApi.createCard4LBatchProcess(
             dataset_id,
             bounds = intersection,
-            dateTime = datetime,
+            dateTime = featureData.dateTime,
             band_names.asScala,
             dataTakeId(id),
             card4lId,
