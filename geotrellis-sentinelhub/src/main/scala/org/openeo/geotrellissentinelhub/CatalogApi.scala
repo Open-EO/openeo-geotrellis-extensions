@@ -81,20 +81,6 @@ object DefaultCatalogApi {
   private case class PagedJsonFeatureCollectionMap(features: List[Json], context: PagingContext)
     extends JsonFeatureCollectionMap(features)
 
-
-  // This helper function is called below to grab the ID field for Map keys
-  private def getFeatureID(js: Json): String = {
-    val cursor = js.hcursor
-    val id = cursor.downField("id")
-    id.as[String] match {
-      case Right(i) => i
-      case _ =>
-        id.as[Int]
-          .valueOr(throw new RuntimeException("Feature expected to have \"ID\" field" + cursor.history))
-          .toString
-    }
-  }
-
   private def getSelfUrl(js: Json): Option[String] = {
     val cursor = js.hcursor
     // for-statement seems perfect to do a lot of Option checking
@@ -225,17 +211,14 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
         val page = getFeatureCollectionPage(limit, nextToken)
 
         // it is assumed the returned geometries are in LatLng
-        val features: Map[String, Feature[Geometry, FeatureData]] = page.features.flatMap { featureJson =>
-          val key = getFeatureID(featureJson)
-          val selfUrl = getSelfUrl(featureJson)
-          type F = Feature[Geometry, Json]
-          for {
-            feature <- featureJson.as[F].right.toOption
-          } yield {
-            val newFeature = feature.mapData(data => FeatureData(getDateTime(data).get, selfUrl))
-            key -> newFeature
+        val features: Map[String, Feature[Geometry, FeatureData]] = page.getAll[Json]
+          .flatMap { case (id, featureJson) =>
+            val selfUrl = getSelfUrl(featureJson)
+            for {
+              feature <- featureJson.as[Feature[Geometry, Json]].toOption
+              Some(dateTime) = getDateTime(feature.data)
+            } yield id -> Feature(feature.geom, FeatureData(dateTime, selfUrl))
           }
-        }.toMap
 
         page.context.next match {
           case None => features
