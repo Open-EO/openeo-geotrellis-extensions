@@ -89,7 +89,9 @@ object DefaultCatalogApi {
     id.as[String] match {
       case Right(i) => i
       case _ =>
-        id.as[Int].valueOr(throw new RuntimeException("Feature expected to have \"ID\" field" + cursor.history)).toString
+        id.as[Int]
+          .valueOr(throw new RuntimeException("Feature expected to have \"ID\" field" + cursor.history))
+          .toString
     }
   }
 
