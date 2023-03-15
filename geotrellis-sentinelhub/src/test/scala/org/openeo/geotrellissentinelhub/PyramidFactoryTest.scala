@@ -23,7 +23,6 @@ import org.mockito.Mockito._
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
 import org.mockito.Mockito._
-import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{SH_FAILED_TILE_REQUESTS, SH_PU}
 import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{ProductIdAndUrl, SH_FAILED_TILE_REQUESTS, SH_PU}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, SparseSpaceTimePartitioner}
@@ -41,6 +40,7 @@ import java.util.zip.Deflater.BEST_COMPRESSION
 import scala.annotation.meta.getter
 import scala.collection.JavaConverters._
 import scala.collection.convert.Wrappers.SeqWrapper
+import scala.io.Source
 
 object PyramidFactoryTest {
   implicit class WithRootCause(e: Throwable) {
@@ -541,8 +541,6 @@ class PyramidFactoryTest {
   @Ignore("the actual collection ID is a secret")
   @Test
   def testPlanetScope(): Unit = {
-    import scala.io.Source
-
     val planetCollectionId = {
       val in = Source.fromFile("/tmp/african_script_contest_collection_id")
 
@@ -593,8 +591,6 @@ class PyramidFactoryTest {
   @Ignore("the actual collection ID is a secret")
   @Test
   def testPlanetScopeCatalogReturnsMultiPolygonFeatures(): Unit = {
-    import scala.io.Source
-
     val planetCollectionId = {
       val in = Source.fromFile("/tmp/african_script_contest_collection_id")
 
@@ -644,8 +640,6 @@ class PyramidFactoryTest {
   @Ignore("the actual collection ID is a secret")
   @Test
   def testPlanetScopeCatalogReturnsPolygonFeatures(): Unit = {
-    import scala.io.Source
-
     val planetCollectionId = {
       val in = Source.fromFile("/tmp/uc8_collection_id")
 
@@ -1050,11 +1044,13 @@ class PyramidFactoryTest {
     val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "sentinel-2-l2a", catalogApi,
       new DefaultProcessApi(endpoint), authorizer, sampleType = FLOAT32)
 
-    // Would be nice to use 'ProjectedPolygons.fromVectorFile()' here
-    val url = getClass.getResource("/testPolygonOnEdgeOfSentinelFeature.geojson")
-    val projectedPolygons = ProjectedPolygons.fromVectorFile(url.toString)
     val polygons_crs = CRS.fromEpsgCode(32630)
-    val multiPolygon = projectedPolygons.polygons.head.reproject(projectedPolygons.crs, polygons_crs)
+    val multiPolygon = {
+      val in = Source.fromURL(getClass.getResource("/testPolygonOnEdgeOfSentinelFeature.geojson"))
+      try MultiPolygon(GeoJson.parse[Polygon](in.mkString)).reproject(LatLng, polygons_crs)
+      finally in.close()
+    }
+
     val date = "2018-10-07T00:00:00+00:00"
     val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
