@@ -1047,9 +1047,7 @@ class PyramidFactoryTest {
     try {
       val endpoint = "https://services.sentinel-hub.com"
       val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
-        new DefaultProcessApi(endpoint),
-        new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
-        rateLimitingGuard = NoRateLimitingGuard)
+        new DefaultProcessApi(endpoint), authorizer)
 
       val multiPolygons = Array(MultiPolygon(extent.toPolygon()))
       val pyramid = pyramidFactory.datacube_seq(
@@ -1064,16 +1062,11 @@ class PyramidFactoryTest {
       println(pyramid.length)
 
       val inputs = BatchJobMetadataTracker.tracker("").asDict()
-      val links = inputs.get("links")
-      links match {
-        case hashMap: util.HashMap[String, SeqWrapper[ProductIdAndUrl]] =>
-          val seq = hashMap.get("sentinel-1-grd")
-          print(seq)
-          seq.forEach(s => assert(s.getSelfUrl.startsWith("http")))
-        case x =>
-          throw new RuntimeException("Problem: " + x)
-      }
+      val links = inputs.get("links").asInstanceOf[util.HashMap[String, util.List[ProductIdAndUrl]]]
 
+      println(links)
+
+      links.get("sentinel-1-grd").forEach(p => assertTrue(p.getSelfUrl, p.getSelfUrl.startsWith("http")))
     } finally sc.stop()
   }
 }
