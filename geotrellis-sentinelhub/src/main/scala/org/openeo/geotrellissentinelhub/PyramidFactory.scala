@@ -334,10 +334,40 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             tracker.addInputProductsWithUrls(collectionId, features.map(p => new ProductIdAndUrl(p._1, p._2.data.selfUrl.orNull)).toList.asJava)
 
-            val featureIntersections = for {
-              feature <- sc.parallelize(features.values.toSeq, math.max(1, features.size / 10))
-              reprojectedFeature = feature.reproject(LatLng, boundingBox.crs)
-            } yield Feature(reprojectedFeature intersection multiPolygon, reprojectedFeature.data.dateTime.toLocalDate.atStartOfDay(UTC))
+
+            // In test over England, there where up to 0.003 deviations on long line segments due to curvature
+            // change between CRS. Here we convert that distance to the value in the polygon specific CRS.
+            val multiPolygonBuffered = {
+              val centroid = multiPolygon.getCentroid.reproject(polygons_crs, LatLng)
+              val derivationSegmentLatLng = LineString(centroid, Point(centroid.x, centroid.y + 0.006))
+              val derivationSegment = derivationSegmentLatLng.reproject(LatLng, polygons_crs)
+              val maxDerivationEstimate = derivationSegment.getLength
+              multiPolygon.buffer(maxDerivationEstimate)
+            }
+
+
+            val featuresRDD = sc.parallelize(features.values.toSeq, 1 max (features.size / 10))
+            val featureIntersections = featuresRDD.flatMap { feature =>
+              val reprojectedFeature = feature.reproject(LatLng, boundingBox.crs)
+              val intersection = reprojectedFeature intersection multiPolygonBuffered
+
+              if (intersection.isEmpty) {
+                if (logger.isDebugEnabled) {
+                  logger.debug(s"shub returned a Feature that does not intersect with our requested polygons: ${feature.geom.toGeoJson()}")
+                }
+                None
+              } else
+                Some(Feature(intersection, reprojectedFeature.data.dateTime.toLocalDate.atStartOfDay(UTC)))
+            }
+
+            if (featureIntersections.isEmpty()) {
+              throw NoSuchFeaturesException(message =
+                s"""no features found for criteria:
+                   |collection ID "$collectionId"
+                   |${polygons.length} polygon(s)
+                   |[$from_date, $to_date]
+                   |metadata properties $metadata_properties""".stripMargin)
+            }
 
             val featureIntersectionsByDay = featureIntersections.groupBy(_.data)
             val simplifiedFeatureIntersectionsByDay = featureIntersectionsByDay.map { case (date, features) =>

@@ -11,7 +11,8 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
-import org.apache.commons.io.FileUtils
+import geotrellis.vector.io.json.GeoJson
+import org.apache.commons.io.{FileUtils, IOUtils}
 import org.apache.spark.{SparkConf, SparkContext, SparkException}
 import org.hamcrest.{CustomMatcher, Matcher}
 import org.junit.Assert.{assertEquals, assertThat, assertTrue, fail}
@@ -21,6 +22,8 @@ import org.mockito.ArgumentMatchers.{any, eq => eqTo}
 import org.mockito.Mockito._
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
+import org.mockito.Mockito._
+import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{SH_FAILED_TILE_REQUESTS, SH_PU}
 import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{ProductIdAndUrl, SH_FAILED_TILE_REQUESTS, SH_PU}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
@@ -37,6 +40,7 @@ import java.util.zip.Deflater.BEST_COMPRESSION
 import scala.annotation.meta.getter
 import scala.collection.JavaConverters._
 import scala.collection.convert.Wrappers.SeqWrapper
+import scala.io.Source
 
 object PyramidFactoryTest {
   implicit class WithRootCause(e: Throwable) {
@@ -376,15 +380,16 @@ class PyramidFactoryTest {
 
     try {
       // small (1 tile request) regions in the upper left and lower right corners of [2.59003, 51.069, 2.8949, 51.2206]
+      val size = 0.001
       val upperLeftBoundingBox =
-        Extent(xmin = 2.590670585632324, ymin = 51.219034670299344, xmax = 2.5927734375, ymax = 51.22005609157961)
+        Extent(xmin = 2.6, ymin = 51.219034670299344, xmax = 2.6 + size, ymax = 51.22005609157961)
       val lowerRightBoundingBox =
-        Extent(xmin = 2.888975143432617, ymin = 51.06977173805457, xmax = 2.8932666778564453, ymax = 51.07165938028684)
+        Extent(xmin = 2.888975143432617, ymin = 51.085, xmax = 2.8932666778564453, ymax = 51.085 + size)
 
       val polygons = Array(upperLeftBoundingBox, lowerRightBoundingBox)
         .map(extent => MultiPolygon(extent.toPolygon()))
 
-      val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+      val date = ZonedDateTime.of(LocalDate.of(2019, 11, 10), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
       val (utmPolygons, utmCrs) = {
         val center = GeometryCollection(polygons).extent.center
@@ -528,7 +533,7 @@ class PyramidFactoryTest {
       from_date = ISO_OFFSET_DATE_TIME format date,
       to_date = ISO_OFFSET_DATE_TIME format date,
       band_names = Seq("HV", "HH").asJava,
-      metadata_properties = Collections.singletonMap("polarization", Collections.singletonMap("eq", "DH"))
+      metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]],
     )
     layer
   }
@@ -536,8 +541,6 @@ class PyramidFactoryTest {
   @Ignore("the actual collection ID is a secret")
   @Test
   def testPlanetScope(): Unit = {
-    import scala.io.Source
-
     val planetCollectionId = {
       val in = Source.fromFile("/tmp/african_script_contest_collection_id")
 
@@ -588,8 +591,6 @@ class PyramidFactoryTest {
   @Ignore("the actual collection ID is a secret")
   @Test
   def testPlanetScopeCatalogReturnsMultiPolygonFeatures(): Unit = {
-    import scala.io.Source
-
     val planetCollectionId = {
       val in = Source.fromFile("/tmp/african_script_contest_collection_id")
 
@@ -639,8 +640,6 @@ class PyramidFactoryTest {
   @Ignore("the actual collection ID is a secret")
   @Test
   def testPlanetScopeCatalogReturnsPolygonFeatures(): Unit = {
-    import scala.io.Source
-
     val planetCollectionId = {
       val in = Source.fromFile("/tmp/uc8_collection_id")
 
@@ -882,12 +881,18 @@ class PyramidFactoryTest {
     def layerFromDatacube_seq(pyramidFactory: PyramidFactory, boundingBox: ProjectedExtent, date: String,
                               bandNames: Seq[String], metadata_properties: util.Map[String, util.Map[String, Any]]):
     MultibandTileLayerRDD[SpaceTimeKey] = {
+
+      val datacubeParams = new DataCubeParameters()
+      // To avoid the tile edge to move along with the extent. One specetime key would cover half Europe
+      datacubeParams.globalExtent = Some(ProjectedExtent(Extent(-30, 0, 30, 60), LatLng))
+
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
         from_date = date,
         to_date = date,
         band_names = bandNames.asJava,
-        metadata_properties = metadata_properties
+        metadata_properties = metadata_properties,
+        datacubeParams,
       )
 
       layer
@@ -1028,6 +1033,47 @@ class PyramidFactoryTest {
 
     verify(catalogApiSpy, atLeastOnce()).search(eqTo("sentinel-1-grd"), any(), eqTo(LatLng),
       eqTo(from), eqTo(ZonedDateTime.parse("2020-04-09T23:59:59.999999999Z")), any(), eqTo(util.Collections.emptyMap()))
+  }
+
+  @Test
+  def testPolygonOnEdgeOfSentinelFeature(): Unit = {
+    val endpoint = "https://services.sentinel-hub.com"
+
+    val catalogApi = new DefaultCatalogApi(endpoint)
+
+    val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "sentinel-2-l2a", catalogApi,
+      new DefaultProcessApi(endpoint), authorizer, sampleType = FLOAT32)
+
+    val polygons_crs = CRS.fromEpsgCode(32630)
+    val multiPolygon = {
+      val in = Source.fromURL(getClass.getResource("/testPolygonOnEdgeOfSentinelFeature.geojson"))
+      try MultiPolygon(GeoJson.parse[Polygon](in.mkString)).reproject(LatLng, polygons_crs)
+      finally in.close()
+    }
+
+    val date = "2018-10-07T00:00:00+00:00"
+    val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      val datacubeParams = new DataCubeParameters()
+      datacubeParams.tileSize = 256
+      datacubeParams.layoutScheme = "FloatingLayoutScheme"
+      datacubeParams.partitionerIndexReduction = 7
+
+      // Should not throw any of the 2 following errors after #128 fix:
+      // - "Cannot create a polygon with exterior with fewer than 4 points: LINEARRING EMPTY"
+      // - "NoSuchFeaturesException: no features found for criteria: ..."
+      val ret = pyramidFactory.datacube_seq(
+        polygons = Array(multiPolygon),
+        polygons_crs = polygons_crs,
+        from_date = date,
+        to_date = date,
+        band_names = util.Arrays.asList("B03"),
+        metadata_properties = util.Collections.emptyMap(),
+        datacubeParams,
+      )
+      println(ret)
+    } finally sc.stop()
   }
 
   @Test
