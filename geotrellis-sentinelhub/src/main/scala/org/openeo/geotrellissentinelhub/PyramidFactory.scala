@@ -332,7 +332,12 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
             }
 
-            tracker.addInputProductsWithUrls(collectionId, features.map(p => new ProductIdAndUrl(p._1, p._2.data.selfUrl.orNull)).toList.asJava)
+            tracker.addInputProductsWithUrls(
+              collectionId,
+              features.map {
+                case (id, Feature(_, FeatureData(_, selfUrl))) => new ProductIdAndUrl(id, selfUrl.orNull)
+              }.toList.asJava
+            )
 
 
             // In test over England, there where up to 0.003 deviations on long line segments due to curvature

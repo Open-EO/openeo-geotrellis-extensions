@@ -1,6 +1,5 @@
 package org.openeo.geotrellissentinelhub
 
-import org.openeo.geotrelliscommon.CirceException.decode
 import cats.syntax.either._
 import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.proj4.{CRS, LatLng}
@@ -8,6 +7,7 @@ import io.circe.Json
 import io.circe.generic.auto._
 import geotrellis.vector._
 import geotrellis.vector.io.json.{JsonFeatureCollection, JsonFeatureCollectionMap}
+import org.openeo.geotrelliscommon.CirceException.decode
 import org.slf4j.{Logger, LoggerFactory}
 import scalaj.http.{Http, HttpOptions, HttpRequest}
 
@@ -15,8 +15,8 @@ import java.net.URI
 import java.time.format.DateTimeFormatter.{ISO_INSTANT, ISO_OFFSET_DATE_TIME}
 import java.time.{ZoneId, ZonedDateTime}
 import java.util
-import scala.collection.immutable.HashMap
 import scala.collection.JavaConverters._
+import scala.collection.immutable.HashMap
 
 trait CatalogApi {
   def dateTimes(collectionId: String, boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime,
@@ -80,21 +80,6 @@ object DefaultCatalogApi {
     extends JsonFeatureCollection(features)
   private case class PagedJsonFeatureCollectionMap(features: List[Json], context: PagingContext)
     extends JsonFeatureCollectionMap(features)
-
-
-  // This helper function is called below to grab the ID field for Map keys
-  private def getFeatureID(js: Json): String = {
-    val cursor = js.hcursor
-    val id = cursor.downField("id")
-    id.as[String] match {
-      case Right(i) => i
-      case _ =>
-        id.as[Int] match {
-          case Right(i) => i.toString
-          case _ => throw new RuntimeException("Feature expected to have \"ID\" field" + cursor.history)
-        }
-    }
-  }
 
   private def getSelfUrl(js: Json): Option[String] = {
     val cursor = js.hcursor
@@ -225,20 +210,15 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
       def getFeatures(limit: Int, nextToken: Option[Int]): Map[String, geotrellis.vector.Feature[Geometry, FeatureData]] = {
         val page = getFeatureCollectionPage(limit, nextToken)
 
-        var features = Map[String, Feature[Geometry, FeatureData]]()
         // it is assumed the returned geometries are in LatLng
-        page.features.foreach { fJson =>
-          type F = Feature[Geometry, Json]
-          fJson.as[F].foreach(feature => {
-            val key = getFeatureID(fJson)
-            val newFeature = feature.mapData { properties =>
-              val Some(dateTime) = getDateTime(properties)
-              val selfUrl = getSelfUrl(fJson)
-              FeatureData(dateTime, selfUrl)
-            }
-            features += key -> newFeature
-          })
-        }
+        val features: Map[String, Feature[Geometry, FeatureData]] = page.getAll[Json]
+          .flatMap { case (id, featureJson) =>
+            val selfUrl = getSelfUrl(featureJson)
+            for {
+              feature <- featureJson.as[Feature[Geometry, Json]].toOption
+              Some(dateTime) = getDateTime(feature.data)
+            } yield id -> Feature(feature.geom, FeatureData(dateTime, selfUrl))
+          }
 
         page.context.next match {
           case None => features

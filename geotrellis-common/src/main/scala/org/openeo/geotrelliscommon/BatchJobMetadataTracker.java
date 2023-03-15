@@ -22,6 +22,11 @@ public abstract class BatchJobMetadataTracker implements Serializable {
         public String getSelfUrl() {
             return selfUrl != null ? selfUrl : id;
         }
+
+        @Override
+        public String toString() {
+            return String.format("%s: %s", id, selfUrl);
+        }
     }
 
     public static String SH_PU = "Sentinelhub_Processing_Units";
@@ -60,6 +65,9 @@ public abstract class BatchJobMetadataTracker implements Serializable {
         }
 
         @Override
+        public void addInputProductsWithUrls(String collection, List<ProductIdAndUrl> productIdAndUrls) {}
+
+        @Override
         public Map<String, Object> asDict() {
             return Collections.emptyMap();
         }
@@ -92,7 +100,7 @@ public abstract class BatchJobMetadataTracker implements Serializable {
     /**
      * Different name than 'addInputProducts' to avoid "both methods have same erasure" compiler error.
      */
-    public void addInputProductsWithUrls(String collection, List<ProductIdAndUrl> productIdAndUrls){}
+    public abstract void addInputProductsWithUrls(String collection, List<ProductIdAndUrl> productIdAndUrls);
 
     public abstract Map<String, Object> asDict();
 }
