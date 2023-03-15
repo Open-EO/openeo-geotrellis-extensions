@@ -346,17 +346,19 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             }
 
 
-            val featuresRDD = sc.parallelize(features.toSeq, 1 max (features.size / 10))
-            val featureIntersections = featuresRDD.flatMap({ case (key, feature) =>
+            val featuresRDD = sc.parallelize(features.values.toSeq, 1 max (features.size / 10))
+            val featureIntersections = featuresRDD.flatMap { feature =>
               val reprojectedFeature = feature.reproject(LatLng, boundingBox.crs)
               val intersection = reprojectedFeature intersection multiPolygonBuffered
 
               if (intersection.isEmpty) {
-                logger.debug(s"shub returned a Feature that does not intersect with our requested polygons: " + key)
+                if (logger.isDebugEnabled) {
+                  logger.debug(s"shub returned a Feature that does not intersect with our requested polygons: ${feature.geom.toGeoJson()}")
+                }
                 None
               } else
                 Some(Feature(intersection, reprojectedFeature.data.dateTime.toLocalDate.atStartOfDay(UTC)))
-            })
+            }
 
             if (featureIntersections.isEmpty()) {
               throw NoSuchFeaturesException(message =
