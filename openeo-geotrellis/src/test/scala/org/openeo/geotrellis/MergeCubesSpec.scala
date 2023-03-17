@@ -15,10 +15,10 @@ import org.openeo.geotrelliscommon.{OpenEORasterCube, OpenEORasterCubeMetadata, 
 
 import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util
+import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
-
-import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder}
 
 object MergeCubesSpec{
 
@@ -383,5 +383,33 @@ class MergeCubesSpec {
     assertTrue(merged.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
     assertTrue(merged.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[SparseSpaceTimePartitioner])
     assertEquals((idx1++idx2).toSet,localTiles.map(_._1.spatialKey).toSet)
+  }
+
+  @Test def testMergeComposites(): Unit = {
+    val band1: ByteArrayTile = ByteArrayTile.fill(2.toByte, 256, 256)
+    val band2: ByteArrayTile = ByteArrayTile.fill(3.toByte, 256, 256)
+    val band3: ByteArrayTile = ByteArrayTile.fill(5.toByte, 256, 256)
+    val band4: ByteArrayTile = ByteArrayTile.fill(8.toByte, 256, 256)
+    val cube1: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-03T00:00:00Z", "2020-02-02T00:00:00Z"))
+    val cube2: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = buildSpatioTemporalDataCube(util.Arrays.asList(band3, band4), Seq("2020-01-02T00:00:00Z", "2020-02-02T00:00:00Z"))
+
+    val startDate = ZonedDateTime.parse("2020-01-01T00:00:00Z")
+    val intervals = Range(0, 3).flatMap { r => Seq(startDate.plusDays(10L * r), startDate.plusDays(10L * (r + 1))) }.map(DateTimeFormatter.ISO_INSTANT.format(_))
+    val labels = Range(0, 3).map { r => DateTimeFormatter.ISO_INSTANT.format(startDate.plusDays(10L * r)) }
+
+    val p = new OpenEOProcesses()
+    val composite1 = p.aggregateTemporal(cube1,intervals.asJava,labels.asJava,TestOpenEOProcessScriptBuilder.createMedian(true), java.util.Collections.emptyMap())
+    val composite2 = p.aggregateTemporal(cube2,intervals.asJava,labels.asJava,TestOpenEOProcessScriptBuilder.createMedian(true), java.util.Collections.emptyMap())
+    val merged = p.mergeCubes(p.filterEmptyTile(composite1), p.filterEmptyTile(composite2), operator = null)
+    val expectedKey = SpaceTimeKey(0,0,1577836800000L)
+    val localTiles = merged.filter(_._1==expectedKey).collect()
+    val c1Tiles = composite1.filter(_._1==expectedKey).collect()
+    val c2Tiles = composite2.filter(_._1==expectedKey).collect()
+    assertEquals(1,localTiles.length)
+    assertEquals(1,c1Tiles.length)
+    assertEquals(1,c2Tiles.length)
+    assertEquals(localTiles(0)._2, MultibandTile(c1Tiles(0)._2.bands ++ c2Tiles(0)._2.bands))
+
+
   }
 }
