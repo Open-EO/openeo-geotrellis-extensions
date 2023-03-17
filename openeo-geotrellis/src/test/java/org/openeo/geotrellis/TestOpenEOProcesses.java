@@ -97,10 +97,14 @@ public class TestOpenEOProcesses {
         ByteArrayTile band1 = ByteArrayTile.fill((byte) -10, 256, 256);
         ByteArrayTile band2 = ByteArrayTile.fill((byte) 4, 256, 256);
         ByteArrayTile band3 = ByteArrayTile.fill((byte) 5, 256, 256);
-        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 =LayerFixtures.buildSingleBandSpatioTemporalDataCube(Arrays.asList(band1,ByteArrayTile.empty(256,256), band2,band3), JavaConversions.asScalaBuffer(Arrays.asList("2017-01-01T00:00:00Z", "2017-01-30T00:00:00Z","2017-01-30T00:00:00Z", "2017-03-30T00:00:00Z")));
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 =LayerFixtures.buildSingleBandSpatioTemporalDataCube(Arrays.asList(band1,ByteArrayTile.empty(256,256), band2,band3), JavaConversions.asScalaBuffer(Arrays.asList("2017-01-03T00:00:00Z", "2017-01-30T00:00:00Z","2017-01-30T00:00:00Z", "2017-03-30T00:00:00Z")));
         OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createMedian(true);
 
-        RDD<Tuple2<SpaceTimeKey, MultibandTile>> mappedRDD = new OpenEOProcesses().aggregateTemporal(datacube1, Arrays.asList("2017-01-01T00:00:00Z", "2017-01-30T00:00:00Z","2017-01-30T00:00:00Z", "2017-03-30T00:00:00Z"), Arrays.asList("2017-01-01T00:00:00Z","2017-01-15T00:00:00Z"),processBuilder, Collections.EMPTY_MAP);
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> mappedRDD = (ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>>) new OpenEOProcesses().aggregateTemporal(datacube1, Arrays.asList("2017-01-01T00:00:00Z", "2017-01-30T00:00:00Z","2017-01-30T00:00:00Z", "2017-03-30T00:00:00Z"), Arrays.asList("2017-01-01T00:00:00Z","2017-01-15T00:00:00Z"),processBuilder, Collections.EMPTY_MAP);
+
+        //bounds needs to be updated to reflect the new bounds
+        assertEquals(new KeyBounds<SpaceTimeKey>(new SpaceTimeKey(0,0,1483228800000L),new SpaceTimeKey(0,0,1484438400000L)),mappedRDD.metadata().bounds());
+        assertTrue(mappedRDD.partitioner().get() instanceof SpacePartitioner);
         Map<SpaceTimeKey, MultibandTile> map = JavaPairRDD$.MODULE$.fromJavaRDD(mappedRDD.toJavaRDD()).collectAsMap();
         //map.forEach(spaceTimeKey -> System.out.println("spaceTimeKey = " + spaceTimeKey._1.time()));
         System.out.println("map = " + map);
