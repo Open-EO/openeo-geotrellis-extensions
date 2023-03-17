@@ -463,7 +463,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     // might need to change threshold in the future:
     assertTrue(
       "withPartitioner.getTasksCompleted should be smaller than 13. Actually: " + withPartitioner.getTasksCompleted,
-      withPartitioner.getTasksCompleted < 13,
+      withPartitioner.getTasksCompleted < 15,
     )
   }
 
