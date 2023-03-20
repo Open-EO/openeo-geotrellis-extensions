@@ -72,7 +72,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
       val openSearchClient = OpenSearchClient(new URL(oscarsEndpoint.get))
       val products = if (date.isDefined) {
-        val attributeValues = Map(Seq(("productType", productType), ("accessedFrom", "S3")) ++ oscarsSearchFilters.getOrElse(Map()).toSeq: _*)
+        val attributeValues = Map(Seq(("productType", productType), ("accessedFrom", "S3-private")) ++ oscarsSearchFilters.getOrElse(Map()).toSeq: _*)
         openSearchClient.getProducts(oscarsCollection.get, date.map(d => (d, d)).get, ProjectedExtent(LatLng.worldExtent, LatLng), attributeValues, "", "")
       } else {
         //Divide world extent to get less then 10000 products per request
@@ -86,10 +86,10 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
       val paths = products.flatMap(_.links.filter(_.title.contains(productType)).map(_.href.toString))
 
-      val s3Path = """(s3://)(.*:)(.*)""".r.unanchored
+      val s3Path = """(s3://)(.*)""".r.unanchored
 
       val s3Paths = paths.flatMap {
-        case s3Path(prefix, _, key) => Some(s"$prefix$key")
+        case s3Path(prefix, key) => Some(s"$prefix$key")
         case _ => None
       }
 
