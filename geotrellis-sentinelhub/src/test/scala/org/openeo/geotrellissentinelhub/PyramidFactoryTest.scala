@@ -23,7 +23,7 @@ import org.mockito.Mockito._
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
 import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{ProductIdAndUrl, SH_FAILED_TILE_REQUESTS, SH_PU}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, ScopedMetadataTracker, SparseSpaceTimePartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
 
 import java.io.File
@@ -329,6 +329,8 @@ class PyramidFactoryTest {
     val expected = referenceRaster("utm.tif")
 
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+    val correlationId = "r-abc123"
+    def scopedMetadataTracker = ScopedMetadataTracker(scope = correlationId)(sc)
 
     try {
       val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
@@ -349,7 +351,9 @@ class PyramidFactoryTest {
         from_date = ISO_OFFSET_DATE_TIME format date,
         to_date = ISO_OFFSET_DATE_TIME format date,
         band_names = Seq("B08", "B04", "B03").asJava,
-        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
+        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
+        new DataCubeParameters,
+        correlationId
       )
 
       assertTrue(layer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
@@ -370,7 +374,13 @@ class PyramidFactoryTest {
       val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
 
       assertTrue(s"unexpected number of failed tile requests: $numFailedRequests", numFailedRequests >= 0)
-    } finally sc.stop()
+
+      assertTrue(s"PUs: ${scopedMetadataTracker.sentinelHubProcessingUnits}",
+        scopedMetadataTracker.sentinelHubProcessingUnits > 0)
+    } finally {
+      ScopedMetadataTracker.remove(scope = correlationId)
+      sc.stop()
+    }
   }
 
   @Test

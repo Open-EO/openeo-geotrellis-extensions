@@ -75,7 +75,7 @@ public abstract class BatchJobMetadataTracker implements Serializable {
 
     public static BatchJobMetadataTracker tracker(String id) {
         if((forceTracking.isPresent() && forceTracking.get()) || (!forceTracking.isPresent() && System.getenv().containsKey("OPENEO_BATCH_JOB_ID"))){
-            return trackers.getOrDefault(id, defaultTracker);
+            return trackers.getOrDefault(id, defaultTracker); // TODO: nothing is ever put into this map so will always return defaultTracker
         }else{
             return dummyTracker;
         }
