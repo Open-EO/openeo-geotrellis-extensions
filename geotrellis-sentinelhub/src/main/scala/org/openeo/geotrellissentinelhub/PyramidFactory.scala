@@ -1,6 +1,6 @@
 package org.openeo.geotrellissentinelhub
 
-import geotrellis.layer.{SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme, _}
+import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.{CellSize, MultibandTile, Raster}
 import geotrellis.spark._
@@ -11,7 +11,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{ProductIdAndUrl, SH_FAILED_TILE_REQUESTS, SH_PU}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, ScopedMetadataTracker, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -59,7 +59,8 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
   private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom,
                     bandNames: Seq[String], metadataProperties: util.Map[String, util.Map[String, Any]],
-                    features: collection.Map[String, Feature[Geometry, FeatureData]])(implicit sc: SparkContext):
+                    features: collection.Map[String, Feature[Geometry, FeatureData]],
+                    correlationId: String)(implicit sc: SparkContext):
   MultibandTileLayerRDD[SpaceTimeKey] = {
     require(zoom >= 0)
     require(zoom <= maxZoom)
@@ -109,6 +110,8 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
     tracker.registerDoubleCounter(SH_PU)
     tracker.registerCounter(SH_FAILED_TILE_REQUESTS)
 
+    val scopedMetadataTracker = ScopedMetadataTracker(scope = correlationId)
+
     val numRequests = overlappingKeys.size
     val tilesRdd = sc.parallelize(overlappingKeys, numSlices = (overlappingKeys.size / maxKeysPerPartition) max 1)
       .flatMap { key =>
@@ -124,6 +127,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               processingOptions, accessToken)
           }
           tracker.add(SH_PU, processingUnitsSpent)
+          scopedMetadataTracker.addSentinelHubProcessingUnits(processingUnitsSpent)
 
           Some(key -> tile)
         } catch {
@@ -157,7 +161,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
   }
 
   def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, bandNames: Seq[String],
-              metadataProperties: util.Map[String, util.Map[String, Any]])(implicit sc: SparkContext):
+              metadataProperties: util.Map[String, util.Map[String, Any]], correlationId: String)(implicit sc: SparkContext):
   Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val (polygon, polygonCrs) = (boundingBox.extent.toPolygon(), boundingBox.crs)
 
@@ -167,20 +171,21 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
     }
 
     val layers = for (zoom <- maxZoom to 0 by -1)
-      yield zoom -> layer(boundingBox, from, to, zoom, bandNames, metadataProperties, features)
+      yield zoom -> layer(boundingBox, from, to, zoom, bandNames, metadataProperties, features, correlationId)
 
     Pyramid(layers.toMap)
   }
 
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String, band_names: util.List[String],
-                  metadata_properties: util.Map[String, util.Map[String, Any]]): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+                  metadata_properties: util.Map[String, util.Map[String, Any]],
+                  correlationId: String = ""): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
 
     val projectedExtent = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
     val from = ZonedDateTime.parse(from_date)
     val to = ZonedDateTime.parse(to_date)
 
-    pyramid(projectedExtent, from, to, band_names.asScala, metadata_properties).levels.toSeq
+    pyramid(projectedExtent, from, to, band_names.asScala, metadata_properties, correlationId).levels.toSeq
       .sortBy { case (zoom, _) => zoom }
       .reverse
   }
@@ -192,7 +197,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
   def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
                    band_names: util.List[String], metadata_properties: util.Map[String, util.Map[String, Any]],
-                   dataCubeParameters: DataCubeParameters):
+                   dataCubeParameters: DataCubeParameters, correlationId: String = ""):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     // TODO: use ProjectedPolygons type
     // TODO: reduce code duplication with pyramid_seq()
@@ -221,6 +226,8 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
       tracker.registerDoubleCounter(SH_PU)
       tracker.registerCounter(SH_FAILED_TILE_REQUESTS)
 
+      val scopedMetadataTracker = ScopedMetadataTracker(scope = correlationId)
+
       val maskingStrategyParameters = dataCubeParameters.maskingStrategyParameters
 
       val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = {
@@ -236,6 +243,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 sampleType, Criteria.toDataFilters(metadata_properties), processingOptions, accessToken)
             }
             tracker.add(SH_PU, processingUnitsSpent)
+            scopedMetadataTracker.addSentinelHubProcessingUnits(processingUnitsSpent)
             tile
           }
 
