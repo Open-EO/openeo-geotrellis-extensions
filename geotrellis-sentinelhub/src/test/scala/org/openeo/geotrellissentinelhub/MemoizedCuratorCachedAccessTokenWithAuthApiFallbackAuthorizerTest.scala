@@ -14,7 +14,10 @@ class MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizerTest {
       sentinelHubClientId, sentinelHubClientSecret)
 
     def someAuthProtectedApiCall(accessToken: Option[String]): HttpResponse[String] = {
-      val request =  accessToken.foldLeft(Http("https://services.sentinel-hub.com/api/v1/batch/tilinggrids/")) {
+      val request =  accessToken.foldLeft(
+        Http("https://services.sentinel-hub.com/api/v1/batch/tilinggrids/")
+          .timeout(connTimeoutMs = 10000, readTimeoutMs = 40000)
+      ) {
         case (httpRequest, token) => httpRequest.header("Authorization", s"Bearer $token")
       }
 

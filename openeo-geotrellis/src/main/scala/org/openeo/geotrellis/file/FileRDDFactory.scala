@@ -117,7 +117,7 @@ object FileRDDFactory {
   }
 
   def creo(openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = ""): FileRDDFactory = {
-    val openSearch: OpenSearchClient = CreodiasClient
+    val openSearch: OpenSearchClient = CreodiasClient()
     new FileRDDFactory(openSearch, openSearchCollectionId, openSearchLinkTitles, attributeValues, correlationId = correlationId)
   }
 

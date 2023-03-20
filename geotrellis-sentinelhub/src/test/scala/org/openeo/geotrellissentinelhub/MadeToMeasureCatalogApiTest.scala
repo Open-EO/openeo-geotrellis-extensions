@@ -23,10 +23,11 @@ class MadeToMeasureCatalogApiTest {
   def search(): Unit = {
     val actualFeatures = catalogApi.search(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
 
+    val selfUrl = None
     val expectedFeatures = Map(
-      "0" -> Feature(geometry, from),
-      "1" -> Feature(geometry, from plusDays 1),
-      "2" -> Feature(geometry, from plusDays 2)
+      "0" -> Feature(geometry, FeatureData(from, selfUrl)),
+      "1" -> Feature(geometry, FeatureData(from plusDays 1, selfUrl)),
+      "2" -> Feature(geometry, FeatureData(from plusDays 2, selfUrl))
     )
 
     assertEquals(expectedFeatures, actualFeatures)

@@ -1,11 +1,69 @@
 package org.openeo.geotrellis
 
+import geotrellis.spark.util.SparkUtils
+import org.apache.spark.SparkContext
 import org.junit.Assert._
-import org.junit.Test
+import org.junit.jupiter.api.{AfterAll, BeforeAll}
+import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.sparklisteners.LogErrorSparkListener
 
 
+object ErrorTest {
+  // Methods with attributes get called in a non-intuitive order:
+  // - BeforeAll
+  // - Methods with @ParameterizedTest
+  // - AfterAll
+  // - BeforeClass
+  // - Methods with @Test
+  // - AfterClass
+  //
+  // This order feels arbitrary, so I made the code robust against order changes.
+
+  private var _sc: Option[SparkContext] = None
+
+  private implicit def sc: SparkContext = {
+    if (_sc.isEmpty) {
+      _sc = Some(SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName))
+    }
+    _sc.get
+  }
+
+  @BeforeClass
+  def setUpSpark_BeforeClass(): Unit = sc
+
+  @BeforeAll
+  def setUpSpark_BeforeAll(): Unit = sc
+
+  var gotAfterAll = false
+
+  @AfterAll
+  def tearDownSpark_AfterAll(): Unit = {
+    gotAfterAll = true
+    maybeStopSpark()
+  }
+
+  var gotAfterClass = false
+
+  @AfterClass
+  def tearDownSpark_AfterClass(): Unit = {
+    gotAfterClass = true
+    maybeStopSpark()
+  }
+
+  def maybeStopSpark(): Unit = {
+    if (gotAfterAll && gotAfterClass) {
+      if (_sc.isDefined) {
+        _sc.get.stop()
+        _sc = None
+      }
+    }
+  }
+}
+
 class ErrorTest {
+
+  import ErrorTest._
+
   private val inputMessage =
     """LogErrorSparkListener.onTaskEnd(...) error: org.apache.spark.api.python.PythonException: Traceback (most recent call last):
       |  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/worker.py", line 619, in main
@@ -95,5 +153,21 @@ class ErrorTest {
     // Should not crash
     val extracted = LogErrorSparkListener.extractPythonError("Traceback (most recent call last):")
     println(extracted)
+  }
+
+  @Test(expected = classOf[Exception])
+  def testError(): Unit = {
+    LogErrorSparkListener.assureListening
+
+    val data = sc.parallelize(Seq(1, 2, 3, 4, 5))
+    val result = data.map(x => {
+      if (x == 3) {
+        throw new Exception("Error: x == 3")
+      } else {
+        x * 2
+      }
+    })
+
+    result.collect().foreach(println)
   }
 }

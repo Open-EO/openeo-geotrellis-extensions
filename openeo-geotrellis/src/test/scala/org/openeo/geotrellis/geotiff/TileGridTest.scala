@@ -121,8 +121,7 @@ class TileGridTest {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
     val isoFormattedDate = date format ISO_ZONED_DATE_TIME
     val utm31 = CRS.fromEpsgCode(32631)
-    val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31),utm31)
-
+    val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31), utm31)
 
     val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
 
@@ -135,7 +134,26 @@ class TileGridTest {
     )
 
     Assert.assertEquals(expectedTiles, tiles.asScala.map { case (path, timestamp, _) => (path, timestamp) }.toSet)
+  }
 
+  @Test
+  def testSaveStitchWithTileGridsTemporalPrefix(): Unit = {
+    val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
+    val isoFormattedDate = date format ISO_ZONED_DATE_TIME
+    val utm31 = CRS.fromEpsgCode(32631)
+    val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31), utm31)
+
+    val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+
+    val tiles = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6), filenamePrefix = Some("testPrefix"))
+    val expectedTiles = Set(
+      ("/tmp/testPrefix_2020-04-05Z_31UDS_3_4.tif", isoFormattedDate),
+      ("/tmp/testPrefix_2020-04-05Z_31UDS_2_4.tif", isoFormattedDate),
+      ("/tmp/testPrefix_2020-04-05Z_31UDS_3_5.tif", isoFormattedDate),
+      ("/tmp/testPrefix_2020-04-05Z_31UDS_2_5.tif", isoFormattedDate)
+    )
+
+    Assert.assertEquals(expectedTiles, tiles.asScala.map { case (path, timestamp, _) => (path, timestamp) }.toSet)
   }
 
   @Test

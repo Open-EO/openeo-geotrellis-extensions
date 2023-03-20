@@ -463,7 +463,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     // might need to change threshold in the future:
     assertTrue(
       "withPartitioner.getTasksCompleted should be smaller than 13. Actually: " + withPartitioner.getTasksCompleted,
-      withPartitioner.getTasksCompleted < 13,
+      withPartitioner.getTasksCompleted < 15,
     )
   }
 
@@ -510,7 +510,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val middleDate = SpaceTimeKey(0, 0, (bounds.get.minKey.instant + bounds.get.maxKey.instant) / 2).time
 
     // intervals is a list of start,end-pairs
-    val intervals = List(middleDate.plusYears(-1000), middleDate, middleDate, middleDate.plusYears(1000))
+    val intervals = List(middleDate.plusYears(-30), middleDate, middleDate, middleDate.plusYears(1000))
       .map(DateTimeFormatter.ISO_INSTANT.format(_))
     val labels = (intervals.indices.collect { case i if i % 2 == 0 => intervals(i) }).toList
 

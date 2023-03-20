@@ -214,7 +214,7 @@ class OpenEOProcesses extends Serializable {
     groupedOnTime
   }
 
-  def findPartitionerKeys(datacube: MultibandTileLayerRDD[SpaceTimeKey]) = {
+  def findPartitionerKeys(datacube: MultibandTileLayerRDD[SpaceTimeKey]): Option[Array[SpaceTimeKey]] = {
     val keys: Option[Array[SpaceTimeKey]] = if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
       val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
       if (index.isInstanceOf[SparseSpaceTimePartitioner]) {
@@ -376,8 +376,10 @@ class OpenEOProcesses extends Serializable {
         }
       }
 
-    logger.info(s"aggregate_temporal results in ${allPossibleSpacetime.size} keys, using partitioner index: ${index}" )
-    val partitioner: SpacePartitioner[SpaceTimeKey] = SpacePartitioner[SpaceTimeKey](datacube.metadata.bounds)(implicitly,implicitly, index)
+    val allKeys = allPossibleSpacetime.map(_._1)
+    val newBounds = new KeyBounds(allKeys.min,allKeys.max)
+    logger.info(s"aggregate_temporal results in ${allPossibleSpacetime.size} keys, using partitioner index: ${index} with bounds ${newBounds}" )
+    val partitioner: SpacePartitioner[SpaceTimeKey] = SpacePartitioner[SpaceTimeKey](newBounds)(implicitly,implicitly, index)
 
     val allKeysRDD: RDD[(SpaceTimeKey, Null)] = SparkContext.getOrCreate().parallelize(allPossibleSpacetime)
 
@@ -431,7 +433,7 @@ class OpenEOProcesses extends Serializable {
       case _ => 0
     }
     val filledRDD: RDD[(SpaceTimeKey, MultibandTile)] = tilesByInterval.rightOuterJoin(allKeysRDD,partitioner).mapValues(_._1.getOrElse(new EmptyMultibandTile(cols, rows, cellType, bandCount)))
-    return ContextRDD(filledRDD, datacube.metadata)
+    return ContextRDD(filledRDD, datacube.metadata.copy(bounds = newBounds))
   }
 
   def mapBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder, context: java.util.Map[String,Any] = new util.HashMap[String, Any]()): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]= {

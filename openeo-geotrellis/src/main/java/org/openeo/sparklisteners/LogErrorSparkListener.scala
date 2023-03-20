@@ -102,8 +102,11 @@ class LogErrorSparkListener extends SparkListener {
       case _ => // Ignore
     }
 
-    executorRuntime.addAndGet(taskEnd.taskMetrics.executorRunTime)
-    recordsRead.addAndGet(taskEnd.taskMetrics.inputMetrics.recordsRead)
-    recordsWritten.addAndGet(taskEnd.taskMetrics.outputMetrics.recordsWritten)
+    // taskMetrics may be null if the task has failed
+    if (taskEnd.taskMetrics != null) {
+      executorRuntime.addAndGet(taskEnd.taskMetrics.executorRunTime)
+      recordsRead.addAndGet(taskEnd.taskMetrics.inputMetrics.recordsRead)
+      recordsWritten.addAndGet(taskEnd.taskMetrics.outputMetrics.recordsWritten)
+    }
   }
 }

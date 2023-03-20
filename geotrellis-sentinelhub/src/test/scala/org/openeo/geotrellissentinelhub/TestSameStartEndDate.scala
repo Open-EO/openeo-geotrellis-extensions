@@ -1,6 +1,5 @@
 package org.openeo.geotrellissentinelhub
 
-import geotrellis.raster.CellSize
 import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Test

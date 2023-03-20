@@ -14,8 +14,7 @@ import scala.collection.mutable
 
 object BatchProcessingService {
   private val logger = LoggerFactory.getLogger(classOf[BatchProcessingService])
-
-  case class NoSuchFeaturesException(message: String) extends IllegalArgumentException(message)
+  
   case class BatchProcess(id: String, status: String, value_estimate: java.math.BigDecimal,
                           @deprecated("incorrect, derive from value_estimate") processing_units_spent: java.math.BigDecimal)
 }
@@ -218,12 +217,12 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
     // TODO: the web tool creates one batch process, analyses it, polls until ANALYSIS_DONE, then creates the remaining
     //  processes and starts them all
     val batchRequestIds =
-      for ((id, Feature(intersection, datetime)) <- intersectionFeatures)
+      for ((id, Feature(intersection, featureData)) <- intersectionFeatures)
         yield authorized { accessToken =>
           batchProcessingApi.createCard4LBatchProcess(
             dataset_id,
             bounds = intersection,
-            dateTime = datetime,
+            dateTime = featureData.dateTime,
             band_names.asScala,
             dataTakeId(id),
             card4lId,

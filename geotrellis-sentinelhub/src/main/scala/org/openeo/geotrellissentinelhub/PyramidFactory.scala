@@ -10,7 +10,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.jts.geom.Geometry
-import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{SH_FAILED_TILE_REQUESTS, SH_PU}
+import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{ProductIdAndUrl, SH_FAILED_TILE_REQUESTS, SH_PU}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 import org.slf4j.{Logger, LoggerFactory}
@@ -59,7 +59,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
   private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom,
                     bandNames: Seq[String], metadataProperties: util.Map[String, util.Map[String, Any]],
-                    features: collection.Map[String, Feature[Geometry, ZonedDateTime]])(implicit sc: SparkContext):
+                    features: collection.Map[String, Feature[Geometry, FeatureData]])(implicit sc: SparkContext):
   MultibandTileLayerRDD[SpaceTimeKey] = {
     require(zoom >= 0)
     require(zoom <= maxZoom)
@@ -76,7 +76,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
     val overlappingKeys = {
       val intersectingFeaturesByDay = features.values
-        .map(feature => feature.mapData(_.toLocalDate.atStartOfDay(UTC)))
+        .map(feature => feature.mapData(_.dateTime.toLocalDate.atStartOfDay(UTC)))
         .groupBy(_.data)
 
       val simplifiedIntersectingFeaturesByDay = intersectingFeaturesByDay
@@ -332,12 +332,47 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
             }
 
-            tracker.addInputProducts(collectionId, features.keys.toList.asJava)
+            tracker.addInputProductsWithUrls(
+              collectionId,
+              features.map {
+                case (id, Feature(_, FeatureData(_, selfUrl))) => new ProductIdAndUrl(id, selfUrl.orNull)
+              }.toList.asJava
+            )
 
-            val featureIntersections = for {
-              feature <- sc.parallelize(features.values.toSeq, math.max(1, features.size / 10))
-              reprojectedFeature = feature.reproject(LatLng, boundingBox.crs)
-            } yield Feature(reprojectedFeature intersection multiPolygon, reprojectedFeature.data.toLocalDate.atStartOfDay(UTC))
+
+            // In test over England, there where up to 0.003 deviations on long line segments due to curvature
+            // change between CRS. Here we convert that distance to the value in the polygon specific CRS.
+            val multiPolygonBuffered = {
+              val centroid = multiPolygon.getCentroid.reproject(polygons_crs, LatLng)
+              val derivationSegmentLatLng = LineString(centroid, Point(centroid.x, centroid.y + 0.006))
+              val derivationSegment = derivationSegmentLatLng.reproject(LatLng, polygons_crs)
+              val maxDerivationEstimate = derivationSegment.getLength
+              multiPolygon.buffer(maxDerivationEstimate)
+            }
+
+
+            val featuresRDD = sc.parallelize(features.values.toSeq, 1 max (features.size / 10))
+            val featureIntersections = featuresRDD.flatMap { feature =>
+              val reprojectedFeature = feature.reproject(LatLng, boundingBox.crs)
+              val intersection = reprojectedFeature intersection multiPolygonBuffered
+
+              if (intersection.isEmpty) {
+                if (logger.isDebugEnabled) {
+                  logger.debug(s"shub returned a Feature that does not intersect with our requested polygons: ${feature.geom.toGeoJson()}")
+                }
+                None
+              } else
+                Some(Feature(intersection, reprojectedFeature.data.dateTime.toLocalDate.atStartOfDay(UTC)))
+            }
+
+            if (featureIntersections.isEmpty()) {
+              throw NoSuchFeaturesException(message =
+                s"""no features found for criteria:
+                   |collection ID "$collectionId"
+                   |${polygons.length} polygon(s)
+                   |[$from_date, $to_date]
+                   |metadata properties $metadata_properties""".stripMargin)
+            }
 
             val featureIntersectionsByDay = featureIntersections.groupBy(_.data)
             val simplifiedFeatureIntersectionsByDay = featureIntersectionsByDay.map { case (date, features) =>

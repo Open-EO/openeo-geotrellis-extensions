@@ -8,10 +8,13 @@ import scala.collection.JavaConverters._
 
 class GTiffOptions extends Serializable {
 
+  var filenamePrefix = "openEO" // Example using default prefix: "openEO_2017-01-02Z.tif"
   var colorMap: Option[ColorMap] = Option.empty
   var tags: Tags = Tags.empty
   var overviews:String = "OFF"
   var resampleMethod:String = "near"
+
+  def setFilenamePrefix(name: String): Unit = this.filenamePrefix = name
 
   def setColorMap(colors: util.ArrayList[Int]): Unit = {
     colorMap = Some(new IndexedColorMap(colors.asScala))

@@ -483,7 +483,7 @@ class BatchProcessingServiceTest {
     println(awaitDone(batchRequestIds.asScala))
   }
 
-  @Test(expected = classOf[BatchProcessingService.NoSuchFeaturesException])
+  @Test(expected = classOf[NoSuchFeaturesException])
   def startBatchProcessForPeculiarTimeInterval(): Unit = {
     batchProcessingService.start_batch_process(
       collection_id = "sentinel-2-l2a",
@@ -500,7 +500,7 @@ class BatchProcessingServiceTest {
   }
 
   @Ignore("not implemented yet")
-  @Test(expected = classOf[BatchProcessingService.NoSuchFeaturesException])
+  @Test(expected = classOf[NoSuchFeaturesException])
   def startCard4LBatchProcessesForXXX(): Unit = {
     val requestGroupUuid = UUID.randomUUID().toString
 
