@@ -179,8 +179,13 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
   }
 
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String, band_names: util.List[String],
+                  metadata_properties: util.Map[String, util.Map[String, Any]]):
+  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = pyramid_seq(bbox, bbox_srs, from_date, to_date, band_names,
+    metadata_properties, correlationId = "")
+
+  def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String, band_names: util.List[String],
                   metadata_properties: util.Map[String, util.Map[String, Any]],
-                  correlationId: String = ""): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+                  correlationId: String): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
 
     val projectedExtent = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
@@ -199,7 +204,13 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
   def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
                    band_names: util.List[String], metadata_properties: util.Map[String, util.Map[String, Any]],
-                   dataCubeParameters: DataCubeParameters, correlationId: String = ""):
+                   dataCubeParameters: DataCubeParameters):
+  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = datacube_seq(polygons, polygons_crs, from_date, to_date, band_names,
+    metadata_properties, dataCubeParameters, correlationId = "")
+
+  def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
+                   band_names: util.List[String], metadata_properties: util.Map[String, util.Map[String, Any]],
+                   dataCubeParameters: DataCubeParameters, correlationId: String):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     // TODO: use ProjectedPolygons type
     // TODO: reduce code duplication with pyramid_seq()
