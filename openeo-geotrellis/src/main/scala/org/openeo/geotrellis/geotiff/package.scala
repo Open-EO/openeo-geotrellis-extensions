@@ -290,12 +290,17 @@ package object geotiff {
       //Warning: for deflate compression, the segmentcount and index is not really used, making it stateless.
       //Not sure how this works out for other types of compression!!!
 
+      val layoutCol = key.getComponent[SpatialKey]._1
+      val layoutRow = key.getComponent[SpatialKey]._2
+      if (layoutCol >= totalCols || layoutRow >= totalRows || layoutCol < 0 && layoutRow < 0) {
+        // Might as well throw an error:
+        logger.warn(f"Unexpected key: (c=$layoutCol, r=$layoutRow) should be between (0,0) and (c=$totalCols, r=$totalRows)")
+      }
+
       val theCompressor = compression.createCompressor(multibandTile.bandCount)
       multibandTile.bands.map {
         tile => {
           bandIndex += 1
-          val layoutCol = key.getComponent[SpatialKey]._1
-          val layoutRow = key.getComponent[SpatialKey]._2
           val bandSegmentOffset = bandSegmentCount * bandIndex
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
 
