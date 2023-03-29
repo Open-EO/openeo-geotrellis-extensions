@@ -200,18 +200,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
     val cube: MultibandTileLayerRDD[SpaceTimeKey] = {
       implicit val sc: SparkContext = SparkContext.getOrCreate()
 
-      val boundingBoxExtent = polygons.toSeq.extent
-
-      // In test over England, there where up to 0.003 deviations on long line segments due to curvature
-      // change between CRS. Here we convert that distance to the value in the polygon specific CRS.
-      val maxDerivationEstimate = {
-        val centroid = boundingBoxExtent.getCentroid.reproject(polygons_crs, LatLng)
-        val derivationSegmentLatLng = LineString(centroid, Point(centroid.x, centroid.y + 0.006))
-        val derivationSegment = derivationSegmentLatLng.reproject(LatLng, polygons_crs)
-        derivationSegment.getLength
-      }
-
-      val boundingBox = ProjectedExtent(boundingBoxExtent.buffer(maxDerivationEstimate), polygons_crs)
+      val boundingBox = ProjectedExtent(polygons.toSeq.extent, polygons_crs)
 
       val from = ZonedDateTime.parse(from_date)
       val to = ZonedDateTime.parse(to_date)
@@ -350,7 +339,17 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               }.toList.asJava
             )
 
-            val multiPolygonBuffered = multiPolygon.buffer(maxDerivationEstimate)
+
+            // In test over England, there where up to 0.003 deviations on long line segments due to curvature
+            // change between CRS. Here we convert that distance to the value in the polygon specific CRS.
+            val multiPolygonBuffered = {
+              val centroid = multiPolygon.getCentroid.reproject(polygons_crs, LatLng)
+              val derivationSegmentLatLng = LineString(centroid, Point(centroid.x, centroid.y + 0.006))
+              val derivationSegment = derivationSegmentLatLng.reproject(LatLng, polygons_crs)
+              val maxDerivationEstimate = derivationSegment.getLength
+              multiPolygon.buffer(maxDerivationEstimate)
+            }
+
 
             val featuresRDD = sc.parallelize(features.values.toSeq, 1 max (features.size / 10))
             val featureIntersections = featuresRDD.flatMap { feature =>

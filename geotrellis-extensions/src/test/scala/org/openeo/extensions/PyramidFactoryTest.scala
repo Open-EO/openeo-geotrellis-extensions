@@ -1,3 +1,5 @@
+package org.openeo.extensions
+
 import geotrellis.proj4.CRS
 import geotrellis.raster.CellSize
 import geotrellis.raster.geotiff.GeoTiffRasterSource
@@ -5,12 +7,10 @@ import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.SparkContext
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.geotrellissentinelhub.{PyramidFactory, SampleType}
 
-import java.io.File
 import java.util.Collections
 import scala.collection.JavaConverters._
 
