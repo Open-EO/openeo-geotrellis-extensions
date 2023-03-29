@@ -8,7 +8,7 @@ class PackageTest {
   @Test
   def testTtlCache(): Unit = {
 
-    println("gdal-config --version    :    " + Process("gdal-config --version"))
+    println("gdal-config --version    return code: " + Process("gdal-config --version").!)
     val logs = collection.mutable.ArrayBuffer[Int]()
     val cache = new TtlCache[String, Int](ttl = 2)
 
