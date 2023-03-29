@@ -19,6 +19,7 @@ import java.time.format.DateTimeFormatter
 import java.util
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
+import scala.reflect.io.Directory
 
 object MergeCubesSpec{
 
@@ -69,6 +70,7 @@ class MergeCubesSpec {
 
   @Test def testMergeCubesCrsResample(): Unit = {
     val path = "/tmp/testMergeCubesCrsResample/"
+    new Directory(Paths.get(path).toFile).deleteRecursively()
     Files.createDirectories(Paths.get(path))
     val specialTile = MergeCubesSpec.getDebugTile
     // Avoid global extent to avoid errors when reprojecting
