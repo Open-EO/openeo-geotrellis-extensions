@@ -281,7 +281,7 @@ package object geotiff {
     val totalBandCount = preprocessedRdd.sparkContext.longAccumulator("TotalBandCount")
     val typeAccumulator = new SetAccumulator[CellType]()
     preprocessedRdd.sparkContext.register(typeAccumulator, "CellType")
-    val tmp = preprocessedRdd.flatMap { case (key: K, multibandTile: MultibandTile) => {
+    val tiffs: collection.Map[Int, Array[Byte]] = preprocessedRdd.flatMap { case (key: K, multibandTile: MultibandTile) => {
       var bandIndex = -1
       if (multibandTile.bandCount > 0) {
         totalBandCount.add(multibandTile.bandCount)
@@ -293,7 +293,6 @@ package object geotiff {
       val layoutCol = key.getComponent[SpatialKey]._1
       val layoutRow = key.getComponent[SpatialKey]._2
       if (layoutCol >= totalCols || layoutRow >= totalRows || layoutCol < 0 && layoutRow < 0) {
-        // Might as well throw an error:
         logger.warn(f"Unexpected key: (c=$layoutCol, r=$layoutRow) should be between (0,0) and (c=$totalCols, r=$totalRows)")
       }
 
@@ -318,8 +317,7 @@ package object geotiff {
 
       }
     }
-    }.collect()
-    val tiffs: collection.Map[Int, Array[Byte]] = tmp.groupBy(_._1).map(_._2.last)
+    }.collectAsMap()
 
 
     preprocessedRdd.sparkContext.clearJobGroup()
