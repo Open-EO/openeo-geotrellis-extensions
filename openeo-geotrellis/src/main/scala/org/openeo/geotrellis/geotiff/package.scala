@@ -168,9 +168,9 @@ package object geotiff {
         gridBounds = retiledRDD.metadata.toRasterExtent().gridBoundsFor(cropBounds.getOrElse(retiledRDD.metadata.extent), clamp = true)
         retiledRDD
       } else {
-        //exact cropping cropped the last line, so we buffer extent by a fraction of the resolution
-        val buffer = rdd.metadata.cellSize.resolution*0.001
-        filtered.crop(croppedExtent.buffer(buffer), Options(force = false))
+        // Buffering or not keeps the bottom line NaN.
+        // However, buffering could make SentinelHub tiles to become almost empty.
+        filtered.crop(croppedExtent, Options(force = false))
       }
     }
     val tileLayout = rdd.metadata.tileLayout
@@ -281,7 +281,7 @@ package object geotiff {
     val totalBandCount = preprocessedRdd.sparkContext.longAccumulator("TotalBandCount")
     val typeAccumulator = new SetAccumulator[CellType]()
     preprocessedRdd.sparkContext.register(typeAccumulator, "CellType")
-    val tiffs: collection.Map[Int, Array[Byte]] = preprocessedRdd.flatMap { case (key: K, multibandTile: MultibandTile) => {
+    val tmp = preprocessedRdd.flatMap { case (key: K, multibandTile: MultibandTile) => {
       var bandIndex = -1
       if (multibandTile.bandCount > 0) {
         totalBandCount.add(multibandTile.bandCount)
@@ -318,7 +318,8 @@ package object geotiff {
 
       }
     }
-    }.collectAsMap()
+    }.collect()
+    val tiffs: collection.Map[Int, Array[Byte]] = tmp.groupBy(_._1).map(_._2.last)
 
 
     preprocessedRdd.sparkContext.clearJobGroup()
