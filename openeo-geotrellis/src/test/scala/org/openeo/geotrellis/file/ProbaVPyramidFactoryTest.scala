@@ -20,8 +20,8 @@ import scala.collection.mutable.ArrayBuffer
 class ProbaVPyramidFactoryTest {
 
   val openSearchEndpoint = "https://services.terrascope.be/catalogue"
-  val pyramidFactoryS5 = new ProbaVPyramidFactory(openSearchEndpoint, "urn:ogc:def:EOP:VITO:PROBAV_S5-TOC_100M_V001", "/data/MTDA/TIFFDERIVED/PROBAV_L3_S5_TOC_100M",CellSize(0.000992063492063, 0.000992063492063))
-  val pyramidFactoryS10 =  new ProbaVPyramidFactory(openSearchEndpoint, "urn:ogc:def:EOP:VITO:PROBAV_S10-TOC_333M_V001", "/data/MTDA/TIFFDERIVED/PROBAV_L3_S10_TOC_333M",CellSize(0.000992063492063, 0.000992063492063))
+  val pyramidFactoryS5 = new ProbaVPyramidFactory(openSearchEndpoint, "urn:eop:VITO:PROBAV_S5_TOC_100M_COG_V2", "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S5_TOC_100M",CellSize(0.000992063492063, 0.000992063492063))
+  val pyramidFactoryS10 =  new ProbaVPyramidFactory(openSearchEndpoint, "urn:eop:VITO:PROBAV_S10_TOC_333M_COG_V2", "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S10_TOC_333M",CellSize(0.000992063492063, 0.000992063492063))
 
   @Ignore
   @Test
@@ -38,7 +38,7 @@ class ProbaVPyramidFactoryTest {
 
     try {
       val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
-      val bandIndices = ArrayBuffer(RED, NIR, BLUE).map(_.id).asJava
+      val bandIndices = ArrayBuffer(SWIRVAA, SZA, VNIRVAA, RED).map(_.id).asJava
 
       val pyramid = pyramidFactoryS5.pyramid_seq(boundingBox.extent, srs,
         DateTimeFormatter.ISO_OFFSET_DATE_TIME format from, DateTimeFormatter.ISO_OFFSET_DATE_TIME format to,
