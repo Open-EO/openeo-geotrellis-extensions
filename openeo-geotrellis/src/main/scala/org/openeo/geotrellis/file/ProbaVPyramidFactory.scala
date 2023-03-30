@@ -25,10 +25,10 @@ object ProbaVPyramidFactory {
     implicit def valueToVal(x: Value): Val = x.asInstanceOf[Val]
 
     val NDVI = Val("NDVI")
-    val RED = Val("RADIOMETRY:0")
-    val NIR = Val("RADIOMETRY:1")
-    val BLUE = Val("RADIOMETRY:2")
-    val SWIR = Val("RADIOMETRY:3")
+    val RED = Val("RED")
+    val NIR = Val("NIR")
+    val BLUE = Val("BLUE")
+    val SWIR = Val("SWIR")
     val SZA = Val("GEOMETRY:0")
     val SAA = Val("GEOMETRY:1")
     val SWIRVAA = Val("GEOMETRY:2")
