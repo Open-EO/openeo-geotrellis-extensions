@@ -134,9 +134,9 @@ package object geotiff {
 
       val segmentCount = (bandSegmentCount*detectedBandCount)
       val thePath = Paths.get(path).resolve(tuple._1._1).toString
-      writeTiff( thePath  ,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, tileLayout, compression, cellTypes.head, detectedBandCount, segmentCount,formatOptions)
+      val correctedPath = writeTiff( thePath  ,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, tileLayout, compression, cellTypes.head, detectedBandCount, segmentCount,formatOptions)
       val (_, timestamp) = tuple._1
-      (thePath, timestamp, croppedExtent)
+      (correctedPath, timestamp, croppedExtent)
     }).collect().toList.asJava
 
   }
