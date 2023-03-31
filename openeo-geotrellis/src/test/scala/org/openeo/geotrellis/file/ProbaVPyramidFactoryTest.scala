@@ -10,23 +10,22 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkConf
 import org.junit.{Assert, Ignore, Test}
-import org.openeo.geotrellis.file.ProbaVPyramidFactory.Band._
 
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
-import scala.collection.JavaConverters._
-import scala.collection.mutable.ArrayBuffer
+import java.util
 
 class ProbaVPyramidFactoryTest {
-
   val openSearchEndpoint = "https://services.terrascope.be/catalogue"
-  val pyramidFactoryS5 = new ProbaVPyramidFactory(openSearchEndpoint, "urn:eop:VITO:PROBAV_S5_TOC_100M_COG_V2", "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S5_TOC_100M",CellSize(0.000992063492063, 0.000992063492063))
-  val pyramidFactoryS10 =  new ProbaVPyramidFactory(openSearchEndpoint, "urn:eop:VITO:PROBAV_S10_TOC_333M_COG_V2", "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S10_TOC_333M",CellSize(0.000992063492063, 0.000992063492063))
+  val bands: util.List[String] = util.Arrays.asList("NDVI", "RED", "NIR", "BLUE", "SWIR", "SZA", "SAA", "SWIRVAA", "SWIRVZA", "VNIRVAA", "VNIRVZA", "SM")
+  val pyramidFactoryS5 = new ProbaVPyramidFactory(openSearchEndpoint, "urn:eop:VITO:PROBAV_S5_TOC_100M_COG_V2", bands,  "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S5_TOC_100M", CellSize(0.000992063492063, 0.000992063492063))
+  val pyramidFactoryS10 =  new ProbaVPyramidFactory(openSearchEndpoint, "urn:eop:VITO:PROBAV_S10_TOC_333M_COG_V2", bands, "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S10_TOC_333M", CellSize(0.000992063492063, 0.000992063492063))
+  val pyramidFactoryS10NDVI = new ProbaVPyramidFactory(openSearchEndpoint, "urn:eop:VITO:PROBAV_S10_TOC_NDVI_333M_COG_V2", util.Arrays.asList("NDVI"), "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S10_TOC_NDVI_333M", CellSize(0.000992063492063, 0.000992063492063))
 
   @Ignore
   @Test
   def writeS5GeoTiffs(): Unit = {
-    val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
+    val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.591, ymax = 51.080), LatLng)
     val from = ZonedDateTime.of(LocalDate.of(2020, 1, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC)
     val to = from plusDays 2
 
@@ -38,11 +37,9 @@ class ProbaVPyramidFactoryTest {
 
     try {
       val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
-      val bandIndices = ArrayBuffer(SWIRVAA, SZA, VNIRVAA, RED).map(_.id).asJava
 
       val pyramid = pyramidFactoryS5.pyramid_seq(boundingBox.extent, srs,
-        DateTimeFormatter.ISO_OFFSET_DATE_TIME format from, DateTimeFormatter.ISO_OFFSET_DATE_TIME format to,
-        bandIndices)
+        DateTimeFormatter.ISO_OFFSET_DATE_TIME format from, DateTimeFormatter.ISO_OFFSET_DATE_TIME format to)
 
       val baseLayer = pyramid
         .find { case (index, _) => index == 11 }
@@ -63,8 +60,6 @@ class ProbaVPyramidFactoryTest {
           .toSpatial(timestamp)
           .crop(boundingBox.reproject(baseLayer.metadata.crs))
           .stitch()
-
-        Assert.assertTrue(multibandTile.bandCount == bandIndices.size())
 
         MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs)
           .write(s"/tmp/stitched_S5_${DateTimeFormatter.ISO_LOCAL_DATE format timestamp}.tif")
@@ -88,11 +83,9 @@ class ProbaVPyramidFactoryTest {
 
     try {
       val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
-      val bandIndices = ArrayBuffer(NDVI, SWIR, NIR, SAA, SZA, SM).map(_.id).asJava
 
       val pyramid = pyramidFactoryS10.pyramid_seq(boundingBox.extent, srs,
-        DateTimeFormatter.ISO_OFFSET_DATE_TIME format from, DateTimeFormatter.ISO_OFFSET_DATE_TIME format to,
-        bandIndices)
+        DateTimeFormatter.ISO_OFFSET_DATE_TIME format from, DateTimeFormatter.ISO_OFFSET_DATE_TIME format to)
 
       val baseLayer = pyramid
         .find { case (index, _) => index == 9 }
@@ -108,8 +101,8 @@ class ProbaVPyramidFactoryTest {
       Assert.assertEquals("2019-08-01T00:00:00Z", timestamp)
       Assert.assertTrue(s"actual $bbox does not equal expected $cropBounds", bbox.equalsExact(cropBounds, 0.1))
       val tiff = GeoTiffReader.readMultiband(fileName)
-      Assert.assertEquals(LatLng,tiff.crs)
-      Assert.assertEquals(6,tiff.bandCount)
+      Assert.assertEquals(LatLng, tiff.crs)
+      Assert.assertEquals(bands.size(), tiff.bandCount)
     } finally {
       sc.stop()
     }

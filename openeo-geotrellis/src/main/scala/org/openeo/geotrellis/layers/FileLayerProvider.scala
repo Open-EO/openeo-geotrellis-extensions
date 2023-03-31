@@ -529,7 +529,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
   val openSearchLinkTitlesWithBandIds: Seq[(String, Seq[Int])] = {
     if(bandIds.size>0) {
-      //case 1: PROBA-V, files containing multiple bands, bandids parameter is used to indicate which bands to load
+      //case 1: PROBA-V, geotiff file containing multiple bands, bandids parameter is used to indicate which bands to load
       openSearchLinkTitles.toList.zipAll(bandIds, "", Seq(0))
     }else{
       //case 2: Sentinel-2 angle metadata: band number is encoded in the oscars link title directly, maybe proba could use this system as well...
