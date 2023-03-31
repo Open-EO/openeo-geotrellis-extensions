@@ -14,12 +14,22 @@ node ('devdmz') {
     }
 
     if(["master","develop"].contains(env.BRANCH_NAME)) {
+        steps {
+          script {
+            if(Jenkins.instance.getItemByFullName("openEO/openeo-integrationtests/master")){
+                utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
+            }else{
+                utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
+            }
+          }
+        }
         stage('Deploy to Dev') {
             //milestone ensures that previous builds that have reached this point are aborted
             milestone()           
 
         }
     }
+
 }
 
 if(deployable_branches.contains(env.BRANCH_NAME)){
