@@ -252,12 +252,19 @@ package object geotiff {
         }else{
           Nil
         }
-      val stacItemPath = FilenameUtils.removeExtension(path) + "_item.json"
+
+      val fixedPath =
+      if(path.endsWith("out")) {
+        path.substring(0,path.length-3) + "openEO.tif"
+      }else{
+        path
+      }
+      val stacItemPath = FilenameUtils.removeExtension(fixedPath) + "_item.json"
       val metadata = new STACItem()
-      metadata.asset(path)
+      metadata.asset(fixedPath)
       metadata.write(stacItemPath)
-      writeTiff( path,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, preprocessedRdd.metadata.tileLayout, compression, cellType, detectedBandCount, segmentCount,formatOptions = formatOptions, overviews = overviews)
-      return Collections.singletonList(path)
+      val finalPath = writeTiff( fixedPath,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, preprocessedRdd.metadata.tileLayout, compression, cellType, detectedBandCount, segmentCount,formatOptions = formatOptions, overviews = overviews)
+      return Collections.singletonList(finalPath)
     }finally {
       preprocessedRdd.unpersist()
     }
