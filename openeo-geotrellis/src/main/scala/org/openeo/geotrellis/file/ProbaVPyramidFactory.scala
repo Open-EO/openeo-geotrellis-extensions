@@ -55,7 +55,7 @@ class ProbaVPyramidFactory(openSearchEndpoint: String,
     val bandFileNameToSeq: Map[String, Seq[Int]] = bandFileNames.zip(bandIndices).groupBy(_._1).mapValues(_.map(_._2).toSeq)
     // [(Tiff file id, requested band indices)], in the original order of the requested bands.
     // E.g. [(NDVI: [0]), (GEOMETRY, [0,1,4,5]), ...)]pyramid_seq
-    val bandFileNamesWithIndices: List[(String, Seq[Int])] = bandFileNames.map(b => (b, bandFileNameToSeq(b))).toList
+    val bandFileNamesWithIndices: List[(String, Seq[Int])] = bandFileNames.distinct.map(b => (b, bandFileNameToSeq(b))).toList
     new FileLayerProvider(
         OpenSearchClient(openSearchEndpointUrl),
         openSearchCollectionId,
