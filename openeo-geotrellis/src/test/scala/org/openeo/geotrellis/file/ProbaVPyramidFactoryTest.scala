@@ -108,4 +108,44 @@ class ProbaVPyramidFactoryTest {
     }
   }
 
+  @Ignore
+  @Test
+  def writeS10NDVIGeoTiffs(): Unit = {
+    val boundingBox = ProjectedExtent(Extent(xmin = 2.5, ymin = 49.5, xmax = 2.55, ymax = 49.55), LatLng)
+    val from = ZonedDateTime.of(LocalDate.of(2019, 8, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+    val to = from plusDays 2
+
+    val sparkConf = new SparkConf()
+      .set("spark.kryoserializer.buffer.max", "512m")
+      .set("spark.rdd.compress", "true")
+
+    val sc = SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, sparkConf)
+
+    try {
+      val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
+
+      val pyramid = pyramidFactoryS10NDVI.pyramid_seq(boundingBox.extent, srs,
+        DateTimeFormatter.ISO_OFFSET_DATE_TIME format from, DateTimeFormatter.ISO_OFFSET_DATE_TIME format to)
+
+      val baseLayer = pyramid
+        .find { case (index, _) => index == 9 }
+        .map { case (_, layer) => layer }
+        .get.cache()
+
+      Assert.assertTrue(baseLayer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
+      println(s"got ${baseLayer.count()} tiles")
+      val cropBounds = boundingBox.reproject(baseLayer.metadata.crs)
+      val timestampedFiles = org.openeo.geotrellis.geotiff.saveRDDTemporal(baseLayer,"./",cropBounds = Some(cropBounds))
+      Assert.assertEquals(1, timestampedFiles.size())
+      val (fileName, timestamp, bbox) = timestampedFiles.get(0)
+      Assert.assertEquals("2019-08-01T00:00:00Z", timestamp)
+      Assert.assertTrue(s"actual $bbox does not equal expected $cropBounds", bbox.equalsExact(cropBounds, 0.1))
+      val tiff = GeoTiffReader.readMultiband(fileName)
+      Assert.assertEquals(LatLng, tiff.crs)
+      Assert.assertEquals(1, tiff.bandCount)
+    } finally {
+      sc.stop()
+    }
+  }
+
 }
