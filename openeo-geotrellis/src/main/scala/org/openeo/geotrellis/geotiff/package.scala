@@ -255,8 +255,9 @@ package object geotiff {
 
       val fixedPath =
       if(path.endsWith("out")) {
-        path.substring(0,path.length-3) + "openEO.tif"
+        path.substring(0,path.length-3) + formatOptions.filenamePrefix + ".tif"
       }else{
+        //what if this is a directory?
         path
       }
       val stacItemPath = FilenameUtils.removeExtension(fixedPath) + "_item.json"
