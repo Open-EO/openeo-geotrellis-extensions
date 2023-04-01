@@ -6,8 +6,18 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.CellSize
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.spark.util.SparkUtils
+import org.apache.hadoop.hdfs.HdfsConfiguration
+import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.{SparkConf, SparkContext}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
+import org.junit.jupiter.api._
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments.arguments
+import org.junit.jupiter.params.provider.{Arguments, MethodSource}
+import org.openeo.geotrellis.file.{ProbaVPyramidFactoryTest, PyramidFactory}
+import org.openeo.geotrellis.{AggregateSpatialTest, ComputeStatsGeotrellisAdapterTest, LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
+import org.openeo.opensearch.OpenSearchClient
 
 import java.net.URL
 import java.nio.file.{Files, Paths}
@@ -44,8 +54,6 @@ object CollectionTests {
     _sc.get
   }
 
-  @BeforeClass
-  def setUpSpark_BeforeClass(): Unit = sc
 
   @BeforeAll
   def setUpSpark_BeforeAll(): Unit = sc
@@ -59,12 +67,6 @@ object CollectionTests {
   }
 
   var gotAfterClass = false
-
-  @AfterClass
-  def tearDownSpark_AfterClass(): Unit = {
-    gotAfterClass = true
-    maybeStopSpark()
-  }
 
   def maybeStopSpark(): Unit = {
     if (gotAfterAll && gotAfterClass) {
