@@ -1,7 +1,7 @@
 package org.openeo.geotrelliscommon
 
 import geotrellis.raster.mapalgebra.focal.Kernel
-import geotrellis.raster.{BitCellType, DoubleConstantNoDataCellType, MultibandTile, NODATA, Raster, Tile}
+import geotrellis.raster.{BitCellType, DoubleConstantNoDataCellType, MultibandTile, NODATA, Raster, ShortConstantNoDataCellType, Tile}
 import org.openeo.geotrelliscommon.SCLConvolutionFilterStrategy._
 
 import java.util
@@ -82,7 +82,7 @@ class SCLConvolutionFilterStrategy(val sclBandIndex: Int = 0,val maskingParams:u
     val cloudRaster = maskTileLoader.loadMask(bufferInPixels = bufferSize, sclBandIndex)
 
     if (cloudRaster.isDefined) {
-      val maskTile = cloudRaster.get.tile.band(0)
+      val maskTile = cloudRaster.get.tile.band(0).convert(ShortConstantNoDataCellType)
 
       var allMasked = true
       var nothingMasked = true
