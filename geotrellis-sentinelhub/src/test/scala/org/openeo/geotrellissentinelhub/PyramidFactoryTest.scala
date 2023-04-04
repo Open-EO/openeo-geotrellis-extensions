@@ -12,7 +12,7 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import geotrellis.vector.io.json.GeoJson
-import org.apache.commons.io.{FileUtils, IOUtils}
+import org.apache.commons.io.FileUtils
 import org.apache.spark.{SparkConf, SparkContext, SparkException}
 import org.hamcrest.{CustomMatcher, Matcher}
 import org.junit.Assert.{assertEquals, assertThat, assertTrue, fail}
@@ -22,8 +22,6 @@ import org.mockito.ArgumentMatchers.{any, eq => eqTo}
 import org.mockito.Mockito._
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
-import org.mockito.Mockito._
-import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{SH_FAILED_TILE_REQUESTS, SH_PU}
 import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{ProductIdAndUrl, SH_FAILED_TILE_REQUESTS, SH_PU}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
@@ -39,7 +37,6 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.Deflater.BEST_COMPRESSION
 import scala.annotation.meta.getter
 import scala.collection.JavaConverters._
-import scala.collection.convert.Wrappers.SeqWrapper
 import scala.io.Source
 
 object PyramidFactoryTest {
@@ -230,13 +227,15 @@ class PyramidFactoryTest {
           CRS.fromEpsgCode(32631))
 
       val dataCubeParameters = new DataCubeParameters
-      dataCubeParameters.maskingStrategyParameters = util.Collections.singletonMap("method", "mask_scl_dilation")
+      dataCubeParameters.maskingStrategyParameters = new util.HashMap()
+      dataCubeParameters.maskingStrategyParameters.put("method", "mask_scl_dilation")
+      dataCubeParameters.maskingStrategyParameters.put("erosion_kernel_size", 1.asInstanceOf[Object])
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
         from_date = ISO_OFFSET_DATE_TIME format date,
         to_date = ISO_OFFSET_DATE_TIME format date,
-        band_names = Seq("B08", "B04", "B02", "SCL").asJava,
+        band_names = Seq("B08", "B04",  "SCL").asJava,
         metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
         dataCubeParameters
       )
