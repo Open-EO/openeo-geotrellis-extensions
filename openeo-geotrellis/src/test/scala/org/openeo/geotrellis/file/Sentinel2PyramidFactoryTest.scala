@@ -93,7 +93,7 @@ class Sentinel2PyramidFactoryTest {
     @Test
     def testSingleGeotiff():Unit = {
         val bandNames = Collections.singletonList("band")
-        val client = OpenSearchClient("https://s3-eu-west-1.amazonaws.com/download.agisoft.com/gtg/us_nga_egm96_15.tif",false,null,bandNames,globClientType = "globspatialonly")
+        val client = OpenSearchClient("https://s3-eu-west-1.amazonaws.com/download.agisoft.com/gtg/us_nga_egm96_15.tif",false,null,bandNames, clientType = "globspatialonly")
         val factory = new PyramidFactory(client,"",bandNames,null,CellSize(0.25,0.25))
 
         val localFromDate = LocalDate.of(2010, 1, 1)
