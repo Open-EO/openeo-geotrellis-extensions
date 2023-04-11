@@ -131,7 +131,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             tracker.add(SH_FAILED_TILE_REQUESTS, 1)
 
             val trackedMetadata = tracker.asDict()
-            val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
+            val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long] max 1
 
             val errorsRatio = numFailedRequests.toDouble / numRequests
             if (errorsRatio <= maxSoftErrorsRatio) {
@@ -272,7 +272,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             tracker.add(SH_FAILED_TILE_REQUESTS, 1)
 
             val trackedMetadata = tracker.asDict()
-            val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
+            val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long] max 1
 
             val errorsRatio = numFailedRequests.toDouble / numRequests
             if (errorsRatio <= maxSoftErrorsRatio) {
