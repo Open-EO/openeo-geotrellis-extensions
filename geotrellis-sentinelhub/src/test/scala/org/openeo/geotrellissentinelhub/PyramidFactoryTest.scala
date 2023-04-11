@@ -1114,4 +1114,49 @@ class PyramidFactoryTest {
       links.get("sentinel-1-grd").forEach(p => assertTrue(p.getSelfUrl, p.getSelfUrl.startsWith("http")))
     } finally sc.stop()
   }
+
+  @Test
+  def testErrorsFailResultRequest(): Unit = {
+    // /result calls don't do tracking (OPENEO_BATCH_JOB_ID is not set) and fail on every error (error ratio 0.0)
+    trackingOff()
+    val noSoftErrorsRatio = 0.0
+
+    implicit val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+
+    try {
+      val endpoint = "https://services.sentinel-hub.com"
+      val processingOptions =
+        Map("demInstance" -> "retteketet", "backCoeff" -> "GAMMA0_TERRAIN", "orthorectify" -> true).asJava
+
+      val boundingBoxCrs = CRS.fromEpsgCode(32630)
+      val boundingBox = ProjectedExtent(Extent(-0.20057735970203852, 53.24811471153172, -0.19884885496214083, 53.24840102826777)
+        .reproject(LatLng, boundingBoxCrs), boundingBoxCrs)
+
+      val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
+        new DefaultProcessApi(endpoint), authorizer, processingOptions, sampleType = FLOAT32,
+        maxSoftErrorsRatio = noSoftErrorsRatio)
+
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+        polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
+        polygons_crs = boundingBox.crs,
+        from_date = "2018-10-07T00:00:00Z",
+        to_date = "2018-10-07T00:00:00Z",
+        band_names = util.Arrays.asList("VV", "VH"),
+        metadata_properties = util.Collections.emptyMap()
+      )
+
+      layer.isEmpty() // force evaluation
+      fail("should have thrown a SentinelHubException")
+    } catch {
+      case e: SparkException =>
+        val SentinelHubException(_, 400, _, responseBody) = e.getRootCause
+        assertTrue(responseBody, responseBody contains "Invalid DEM instance: retteketet")
+    } finally sc.stop()
+
+    val trackedMetadata = BatchJobMetadataTracker.tracker("").asDict()
+    val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
+
+    assertEquals(s"expected exactly zero tracked failed tile requests but got $numFailedRequests instead",
+      0, numFailedRequests)
+  }
 }
