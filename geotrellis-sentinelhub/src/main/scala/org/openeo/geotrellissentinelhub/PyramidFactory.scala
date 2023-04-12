@@ -57,6 +57,25 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
   private def authorized[R](fn: String => R): R = authorizer.authorized(fn)
 
+  private def sentinelHubException[R](tracker: BatchJobMetadataTracker, numRequests: Long): PartialFunction[Throwable, Option[R]] = {
+    case e @ SentinelHubException(_, _, _, responseBody) =>
+      tracker.add(SH_FAILED_TILE_REQUESTS, 1)
+
+      // failed requests might not get tracked (think /result) but there's at least one because we're handling it!
+      val numFailedRequests = tracker.asDict().get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long] max 1
+
+      val errorsRatio = numFailedRequests.toDouble / numRequests
+      if (errorsRatio <= maxSoftErrorsRatio) {
+        logger.warn(s"ignoring soft error $responseBody;" +
+          s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio <= $maxSoftErrorsRatio", e)
+        None
+      } else {
+        logger.warn(s"propagating hard error $responseBody;" +
+          s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio > $maxSoftErrorsRatio", e)
+        throw e
+      }
+  }
+
   private def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int = maxZoom,
                     bandNames: Seq[String], metadataProperties: util.Map[String, util.Map[String, Any]],
                     features: collection.Map[String, Feature[Geometry, FeatureData]])(implicit sc: SparkContext):
@@ -118,34 +137,17 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
         awaitRateLimitingGuardDelay(bandNames, width, height)
 
         try {
-          val (tile, processingUnitsSpent) = authorized { accessToken =>
+          val (multibandTile, processingUnitsSpent) = authorized { accessToken =>
             processApi.getTile(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs),
               key.temporalKey, width, height, bandNames, sampleType, Criteria.toDataFilters(metadataProperties),
               processingOptions, accessToken)
           }
           tracker.add(SH_PU, processingUnitsSpent)
 
-          Some(key -> tile)
-        } catch {
-          case e @ SentinelHubException(_, _, _, responseBody) =>
-            tracker.add(SH_FAILED_TILE_REQUESTS, 1)
-
-            val trackedMetadata = tracker.asDict()
-            val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long] max 1
-
-            val errorsRatio = numFailedRequests.toDouble / numRequests
-            if (errorsRatio <= maxSoftErrorsRatio) {
-              logger.warn(s"ignoring soft error $responseBody;" +
-                s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio <= $maxSoftErrorsRatio", e)
-              None
-            } else {
-              logger.warn(s"propagating hard error $responseBody;" +
-                s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio > $maxSoftErrorsRatio", e)
-              throw e
-            }
-        }
+          Some(key -> multibandTile)
+        } catch sentinelHubException(tracker, numRequests)
       }
-      .filter(_._2.bands.exists(b => !b.isNoDataTile))
+      .filter { case (_, multibandTile) => multibandTile.bands.exists(tile => !tile.isNoDataTile) }
       .partitionBy(partitioner)
 
     ContextRDD(tilesRdd, metadata)
@@ -267,24 +269,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               override def loadData: Option[MultibandTile] = Some(dataTile)
             })
           } else Some(dataTile)
-        } catch {
-          case e @ SentinelHubException(_, _, _, responseBody) =>
-            tracker.add(SH_FAILED_TILE_REQUESTS, 1)
-
-            val trackedMetadata = tracker.asDict()
-            val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long] max 1
-
-            val errorsRatio = numFailedRequests.toDouble / numRequests
-            if (errorsRatio <= maxSoftErrorsRatio) {
-              logger.warn(s"ignoring soft error $responseBody;" +
-                s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio <= $maxSoftErrorsRatio", e)
-              None
-            } else {
-              logger.warn(s"propagating hard error $responseBody;" +
-                s" error/request ratio [$numFailedRequests/$numRequests] $errorsRatio > $maxSoftErrorsRatio", e)
-              throw e
-            }
-        }
+        } catch sentinelHubException(tracker, numRequests)
 
         val tilesRdd =
           if (datasetId == "dem") {
