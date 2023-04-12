@@ -1128,9 +1128,11 @@ class PyramidFactoryTest {
       val processingOptions =
         Map("demInstance" -> "retteketet", "backCoeff" -> "GAMMA0_TERRAIN", "orthorectify" -> true).asJava
 
-      val boundingBoxCrs = CRS.fromEpsgCode(32630)
-      val boundingBox = ProjectedExtent(Extent(-0.20057735970203852, 53.24811471153172, -0.19884885496214083, 53.24840102826777)
-        .reproject(LatLng, boundingBoxCrs), boundingBoxCrs)
+      val boundingBox = {
+        val extent = Extent(-0.20057735970203852, 53.24811471153172, -0.19884885496214083, 53.24840102826777)
+        val crs = UTM.getZoneCrs(extent.center.x, extent.center.y)
+        ProjectedExtent(extent.reproject(LatLng, crs), crs)
+      }
 
       val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
         new DefaultProcessApi(endpoint), authorizer, processingOptions, sampleType = FLOAT32,
