@@ -46,6 +46,7 @@ object WriteRDDToGeotiffTest{
 }
 
 class WriteRDDToGeotiffTest {
+  import WriteRDDToGeotiffTest._
 
   @(Rule @getter)
   val temporaryFolder = new TemporaryFolder
@@ -101,6 +102,11 @@ class WriteRDDToGeotiffTest {
     assertEquals(-30, colormap.mapDouble(2.0))
     assertEquals(-30, opts.colorMap.get.mapDouble(2.0))
     assertEquals(colormap.breaksString, opts.colorMap.get.breaksString)
+  }
+
+  @Test
+  def testTiffOptionsSerializable2(): Unit = {
+    org.openeo.geotrellis.geotiff.test(sc)
   }
 
   @Test

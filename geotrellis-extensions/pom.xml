@@ -212,11 +212,15 @@
                                     <shadedPattern>org.locationtech.geopyspark.shaded.org.apache.avro</shadedPattern>
                                 </relocation>
 <!-- Try disabling for https://github.com/Open-EO/openeo-geotrellis-extensions/issues/138 -->
-<!--                                <relocation>-->
-<!--                                    &lt;!&ndash;https://github.com/typelevel/cats/issues/3628&ndash;&gt;-->
-<!--                                    <pattern>cats.kernel</pattern>-->
-<!--                                    <shadedPattern>org.locationtech.geopyspark.shaded.cats.kernel</shadedPattern>-->
-<!--                                </relocation>-->
+                                <relocation>
+                                    <!--https://github.com/typelevel/cats/issues/3628-->
+                                    <pattern>cats.kernel</pattern>
+                                    <shadedPattern>org.locationtech.geopyspark.shaded.cats.kernel</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>spire</pattern>
+                                    <shadedPattern>org.locationtech.geopyspark.shaded.spire</shadedPattern>
+                                </relocation>
                             </relocations>
                             <filters>
                                 <filter>

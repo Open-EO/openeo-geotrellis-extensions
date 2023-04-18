@@ -37,6 +37,26 @@ import scala.collection.JavaConverters._
 import scala.reflect._
 
 package object geotiff {
+  def test(sc: SparkContext): Unit = {
+    //    val sc = SparkContext.getOrCreate
+    val mCopy = "0.0:aec7e8ff;1.0:d62728ff;2.0:f7b6d2ff;3.0:dbdb8dff;4.0:c7c7c7ff".split(";").map(x => {
+      val l = x.split(":");
+      // parseUnsignedInt, because there is no minus sign in the hexadecimal representation.
+      // When casting an unsigned int to an int, it will correctly overflow
+      Tuple2(l(0).toDouble, Integer.parseUnsignedInt(l(1), 16))
+    }).toMap
+    val colorMap = new _root_.geotrellis.raster.render.DoubleColorMap(mCopy)
+    val formatOptions = new GTiffOptions()
+    formatOptions.setColorMap(colorMap)
+
+    val data = sc.parallelize(Seq(1, 2, 3))
+    val result = data.map(x => {
+      println(formatOptions)
+      x
+    })
+    result.collect()
+    println("test done")
+  }
 
   private val logger = LoggerFactory.getLogger(getClass)
 
