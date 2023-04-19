@@ -858,7 +858,7 @@ class PyramidFactoryTest {
         polygons_crs = boundingBox.crs,
         from_date = "2016-11-10T00:00:00Z",
         to_date = "2016-11-10T00:00:00Z",
-        band_names = util.Arrays.asList("VH", "VV"),
+        band_names = util.Arrays.asList("VV"),
         metadata_properties = util.Collections.emptyMap()
       )
 
