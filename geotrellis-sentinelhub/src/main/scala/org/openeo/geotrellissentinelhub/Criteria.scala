@@ -72,11 +72,11 @@ object Criteria {
         case _ if bn.contains("VH") => Some("VH")
         case _ => None
       }
-      for {
-        p <- polarization
-      } {
-        logger.info("No polarization was specified, using one based on band selection: " + p)
-        filtersDict = filtersDict + ("polarization" -> p)
+      polarization match {
+        case Some(p) =>
+          logger.info("No polarization was specified, using one based on band selection: " + p)
+          filtersDict = filtersDict + ("polarization" -> p)
+        case None => logger.warn("No polarization was specified. This might give errors from Sentinelhub.")
       }
     }
     filtersDict.asJava
