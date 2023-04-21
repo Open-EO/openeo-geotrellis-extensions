@@ -97,7 +97,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
         dateTimes,
         band_names.asScala,
         sampleType,
-        additionalDataFilters = Criteria.toDataFilters(metadata_properties),
+        additionalDataFilters = Criteria.toDataFilters(metadata_properties, band_names.asScala),
         processing_options,
         bucketName,
         description = s"$dataset_id ${polygons.length} $from_date $to_date $band_names",
@@ -227,7 +227,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
             dataTakeId(id),
             card4lId,
             dem_instance,
-            additionalDataFilters = Criteria.toDataFilters(metadata_properties),
+            additionalDataFilters = Criteria.toDataFilters(metadata_properties, band_names.asScala),
             bucketName,
             subfolder,
             accessToken
