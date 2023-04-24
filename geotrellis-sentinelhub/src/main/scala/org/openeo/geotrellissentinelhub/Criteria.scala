@@ -63,20 +63,23 @@ object Criteria {
       }
       .toMap
     if (!filtersDict.contains("polarization")) {
-      // https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#available-bands-and-data
       val bn = band_names.toSet
-      val polarization: Option[String] = bn match {
-        case _ if bn.contains("HH") && bn.contains("HV") => Some("DH")
-        case _ if bn.contains("VV") && bn.contains("VH") => Some("DV")
-        case _ if bn.contains("HV") => Some("HV")
-        case _ if bn.contains("VH") => Some("VH")
-        case _ => None
-      }
-      polarization match {
-        case Some(p) =>
-          logger.info("No polarization was specified, using one based on band selection: " + p)
-          filtersDict = filtersDict + ("polarization" -> p)
-        case None => logger.warn("No polarization was specified. This might give errors from Sentinelhub.")
+      // https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#available-bands-and-data
+      // Only run when relevant bands are present
+      if (bn.contains("HH") || bn.contains("HV") || bn.contains("VV") || bn.contains("VH")) {
+        val polarization: Option[String] = bn match {
+          case _ if bn.contains("HH") && bn.contains("HV") => Some("DH")
+          case _ if bn.contains("VV") && bn.contains("VH") => Some("DV")
+          case _ if bn.contains("HV") => Some("HV")
+          case _ if bn.contains("VH") => Some("VH")
+          case _ => None
+        }
+        polarization match {
+          case Some(p) =>
+            logger.info("No polarization was specified, using one based on band selection: " + p)
+            filtersDict = filtersDict + ("polarization" -> p)
+          case None => logger.warn("No polarization was specified. This might give errors from Sentinelhub.")
+        }
       }
     }
     filtersDict.asJava
