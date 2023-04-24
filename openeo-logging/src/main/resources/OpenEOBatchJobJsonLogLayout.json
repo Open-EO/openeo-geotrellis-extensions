@@ -1,0 +1,46 @@
+{
+  "name": {
+    "$resolver": "logger",
+    "field": "name"
+  },
+  "levelname": {
+    "$resolver": "pattern",
+    "pattern": "%level{WARN=WARNING,FATAL=CRITICAL,TRACE=DEBUG}",
+    "stackTraceEnabled": false
+  },
+  "message": {
+    "$resolver": "message",
+    "stringified": true
+  },
+  "created": {
+    "$resolver": "timestamp",
+    "epoch": {
+      "unit": "secs"
+    }
+  },
+  "filename": {
+    "$resolver": "source",
+    "field": "fileName"
+  },
+  "lineno": {
+    "$resolver": "source",
+    "field": "lineNumber"
+  },
+  "exc_info": {
+    "$resolver": "exception",
+    "field": "stackTrace",
+    "stackTrace": {
+      "stringified": true
+    }
+  },
+  "user_id": {
+    "$resolver": "pattern",
+    "pattern": "${env:OPENEO_USER_ID}",
+    "stackTraceEnabled": false
+  },
+  "job_id": {
+    "$resolver": "pattern",
+    "pattern": "${env:OPENEO_BATCH_JOB_ID}",
+    "stackTraceEnabled": false
+  }
+}

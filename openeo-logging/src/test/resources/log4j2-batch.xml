@@ -1,0 +1,24 @@
+<Configuration>
+    <Appenders>
+        <Console name="stdout" target="SYSTEM_OUT">
+            <JsonTemplateLayout eventTemplateUri="classpath:OpenEOBatchJobJsonLogLayout.json"
+                                locationInfoEnabled="true"/>
+        </Console>
+        <Routing name="route">
+            <Routes pattern="$${ctx:logFile}">
+                <Route>
+                    <File name="file" fileName="${ctx:logFile}">
+                        <JsonTemplateLayout eventTemplateUri="classpath:OpenEOBatchJobJsonLogLayout.json"
+                                            locationInfoEnabled="true"/>
+                    </File>
+                </Route>
+            </Routes>
+        </Routing>
+    </Appenders>
+    <Loggers>
+        <Root level="all">
+            <AppenderRef ref="stdout"/>
+            <AppenderRef ref="route"/>
+        </Root>
+    </Loggers>
+</Configuration>

@@ -5,10 +5,12 @@ import io.circe.Json
 import io.circe.parser.decode
 import org.apache.logging.log4j.Level._
 import org.apache.logging.log4j.LogManager
+import org.apache.logging.log4j.core.LoggerContext
+import org.apache.logging.log4j.core.config.Configurator
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.rules.TemporaryFolder
-import org.junit.{After, Before, Rule, Test}
+import org.junit.{After, AfterClass, Before, BeforeClass, Rule, Test}
 import org.slf4j.{LoggerFactory, MDC}
 
 import java.io.File
@@ -16,7 +18,14 @@ import scala.annotation.meta.getter
 import scala.io.Source
 
 object OpenEOJsonLogLayoutTest {
+  private var loggerContext: LoggerContext = _
   private val logger = LoggerFactory.getLogger(classOf[OpenEOJsonLogLayoutTest])
+
+  @BeforeClass
+  def initializeLog4j(): Unit = loggerContext = Configurator.initialize(null, "classpath:log4j2-sync.xml")
+
+  @AfterClass
+  def shutDownLog4j(): Unit = Configurator.shutdown(loggerContext)
 }
 
 class OpenEOJsonLogLayoutTest {
@@ -27,8 +36,10 @@ class OpenEOJsonLogLayoutTest {
   private def tempLogFile: File = new File(temporaryFolder.getRoot, "openeo.log")
 
   @Before
+  def setupLogFile(): Unit = MDC.put("logFile", tempLogFile.getAbsolutePath)
+
+  @Before
   def setupLoggingContext(): Unit = {
-    MDC.put("logFile", tempLogFile.getAbsolutePath)
     MDC.put(JsonLayout.UserId, "vdboschj")
     MDC.put(JsonLayout.RequestId, "r-def456")
     MDC.put(JsonLayout.JobId, "j-abc123")
@@ -57,7 +68,7 @@ class OpenEOJsonLogLayoutTest {
       assertEquals(message, logEntry("message").asString.get)
       assertEquals(now, logEntry("created").asNumber.map(_.toDouble).get, 1.0)
       assertEquals("OpenEOJsonLogLayoutTest.scala", logEntry("filename").asString.get)
-      assertEquals(45, logEntry("lineno").asNumber.flatMap(_.toInt).get)
+      assertEquals(56, logEntry("lineno").asNumber.flatMap(_.toInt).get)
       val stackTrace = logEntry("exc_info").asString.get
       assertTrue(stackTrace.contains("java.lang.Exception: It was the blorst of times"))
       assertTrue(stackTrace.contains(getClass.getName))
@@ -86,7 +97,7 @@ class OpenEOJsonLogLayoutTest {
 
 
     val actualLevelNames = for {
-      logEntry <- logEntries(tempLogFile)
+      logEntry <- Helpers.logEntries(tempLogFile)
       levelname <- logEntry("levelname").asString
     } yield levelname
 
@@ -99,7 +110,7 @@ class OpenEOJsonLogLayoutTest {
   def testLoggingContextPropagationToExecutors(): Unit = {
     val logFile = tempLogFile
 
-    val sc = new SparkContext(master="local[*]", appName=getClass.getName, conf=new SparkConf())
+    val sc = new SparkContext(master="local[1]", appName=getClass.getName, conf=new SparkConf())
 
     try {
       val userId = MDC.get(JsonLayout.UserId) // the driver's user ID
@@ -114,21 +125,10 @@ class OpenEOJsonLogLayoutTest {
         .sum()
     } finally sc.stop()
 
-    val executorLogEntries = this.logEntries(logFile)
+    val executorLogEntries = Helpers.logEntries(logFile)
       .filter(logEntry => logEntry("message").asString contains "some executor log")
 
     assertTrue(s"${executorLogEntries.size}", executorLogEntries.nonEmpty)
     assertTrue(executorLogEntries.forall(logEntry => logEntry("user_id").asString contains "vdboschj"))
-  }
-
-  private def logEntries(logFile: File): Vector[Map[String, Json]] = {
-    val in = Source.fromFile(logFile)
-
-    try {
-      for {
-        line <- in.getLines().toVector
-        logEntry = decode[Map[String, Json]](line).valueOr(throw _)
-      } yield logEntry
-    } finally in.close()
   }
 }
