@@ -14,7 +14,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.junit.Assert.assertEquals
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.{AfterClass, BeforeClass, Ignore, Test}
 
 import java.net.URL
 import java.time.LocalTime.MIDNIGHT
@@ -32,6 +32,7 @@ object S1GrdSigma0FileLayerProviderTest {
   def tearDownSpark(): Unit = sc.stop()
 }
 
+@Ignore("2023-04-24, Emile: Activate again when used service works again.")
 class S1GrdSigma0FileLayerProviderTest {
   import S1GrdSigma0FileLayerProviderTest._
 
