@@ -1,7 +1,7 @@
 package org.openeo.sparklisteners
 
-import org.apache.spark.{SparkContext, TaskFailedReason}
 import org.apache.spark.scheduler._
+import org.apache.spark.{SparkContext, Success}
 import org.slf4j.LoggerFactory
 
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
@@ -11,6 +11,7 @@ object LogErrorSparkListener {
   private var listener: Option[LogErrorSparkListener] = None
 
   def assureListening(implicit sc: SparkContext): Unit = {
+    // Best to add class when building spark context: "--conf spark.extraListeners=org.openeo.sparklisteners=LogErrorSparkListener"
     if (listener.isEmpty) {
       // A JVM can only have one Spark listener at the same time.
       val l = new LogErrorSparkListener()
@@ -42,13 +43,18 @@ object LogErrorSparkListener {
 }
 
 class LogErrorSparkListener extends SparkListener {
+
+  import LogErrorSparkListener._
+
+  LogErrorSparkListener.listener = Some(this)
+
   private val jobsCompleted = new AtomicInteger(0)
   private val stagesCompleted = new AtomicInteger(0)
   private val tasksCompleted = new AtomicInteger(0)
   private val executorRuntime = new AtomicLong(0L)
   private val recordsRead = new AtomicLong(0L)
   private val recordsWritten = new AtomicLong(0L)
-  private val debug = false
+  private val debug = true
 
   def getStagesCompleted: Int = stagesCompleted.get()
 
@@ -78,28 +84,27 @@ class LogErrorSparkListener extends SparkListener {
 
   override def onJobEnd(jobEnd: SparkListenerJobEnd): Unit = {
     val newValue = jobsCompleted.incrementAndGet()
-    if (debug) println("LogErrorSparkListener.onJobEnd(...) jobsCompleted: " + newValue)
-    //    jobEnd.jobResult match {
-    //      case j: JobFailed => LogErrorSparkListener.logger.error(j) // JobFailed is private in Spark API
-    //    }
+    if (debug) println("LogErrorSparkListener.onJobEnd(...) jobsCompleted: " + newValue + " jobEnd.jobResult: " + jobEnd.jobResult)
+    jobEnd.jobResult.toString match {
+      case "JobFailed" => logger.error("Job error: " + jobEnd) // JobFailed is private in Spark API
+      case _ => // ignore
+    }
   }
 
   override def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit = {
     val newValue = stagesCompleted.incrementAndGet()
     if (debug) println("LogErrorSparkListener.onStageCompleted(...) stagesCompleted: " + newValue)
     stageCompleted.stageInfo.failureReason foreach {
-      x => LogErrorSparkListener.logger.error("LogErrorSparkListener.onStageCompleted(...) error: " + x)
+      x => logger.error("Stage error: " + x)
     }
   }
 
   override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = {
     val newValue = tasksCompleted.incrementAndGet()
-    if (debug) println("LogErrorSparkListener.onTaskEnd(...) tasksCompleted: " + newValue)
+    if (debug) println("LogErrorSparkListener.onTaskEnd(...) tasksCompleted: " + newValue + " taskEnd.reason: " + taskEnd.reason)
     taskEnd.reason match {
-      case r: TaskFailedReason => LogErrorSparkListener.extractPythonError(r.toErrorString).foreach(
-        m => LogErrorSparkListener.logger.warn("LogErrorSparkListener.onTaskEnd(...) error: " + m)
-      )
-      case _ => // Ignore
+      case Success => // Ignore
+      case r => logger.warn("Task error: " + r)
     }
 
     // taskMetrics may be null if the task has failed
