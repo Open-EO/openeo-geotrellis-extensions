@@ -14,7 +14,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.junit.{AfterClass, BeforeClass, Ignore}
+import org.junit.{AfterClass, BeforeClass}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
@@ -91,7 +91,6 @@ object FileLayerProviderTest {
   }
 }
 
-@Ignore("2023-04-24, Emile: Activate again when used service works again.")
 class FileLayerProviderTest {
   import FileLayerProviderTest._
 
