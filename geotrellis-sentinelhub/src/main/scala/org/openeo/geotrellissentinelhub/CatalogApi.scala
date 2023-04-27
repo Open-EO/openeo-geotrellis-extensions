@@ -114,7 +114,7 @@ object DefaultCatalogApi {
 class DefaultCatalogApi(endpoint: String) extends CatalogApi {
   import DefaultCatalogApi._
 
-  private val catalogEndpoint = URI.create(endpoint).resolve("/api/v1/catalog")
+  private val catalogEndpoint = URI.create(endpoint).resolve("/api/v1/catalog/1.0.0")
   private val objectMapper = new ObjectMapper
 
   // TODO: search distinct dates (https://docs.sentinel-hub.com/api/latest/api/catalog/examples/#search-with-distinct)?
@@ -186,7 +186,6 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
              |{
              |  "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
              |  "collections": ["$collectionId"],
-             |  "query": $query,
              |  "intersects": ${geometry.reproject(geometryCrs, LatLng).toGeoJson()},
              |  "limit": $limit,
              |  "next": ${nextToken.orNull}

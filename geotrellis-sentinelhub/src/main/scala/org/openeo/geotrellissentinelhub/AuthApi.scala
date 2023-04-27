@@ -29,7 +29,7 @@ class AuthApi {
         "client_id" -> clientId
       )
 
-      val getAuthToken = http("https://services.sentinel-hub.com/oauth/token")
+      val getAuthToken = http("https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token")
         .postForm(safeParams :+ ("client_secret" -> clientSecret))
 
       logger.debug(s"requesting new access token for client ID $clientId")

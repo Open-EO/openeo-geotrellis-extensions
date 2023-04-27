@@ -35,8 +35,7 @@ object PyramidFactory {
                                  maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint),
-      new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(zookeeperConnectionString,
-        zookeeperAccessTokenPath, clientId, clientSecret),
+      new MemoizedAuthApiAccessTokenAuthorizer(clientId, clientSecret),
       processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
 }
 
