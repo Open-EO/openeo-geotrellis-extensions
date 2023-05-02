@@ -8,6 +8,7 @@ import org.junit.{Ignore, Test}
 
 import java.time.{LocalDate, ZoneId}
 import java.util.Collections.{emptyMap, singletonMap}
+import scala.collection.JavaConverters._
 
 class DefaultCatalogApiTest {
   private val endpoint = "https://services.sentinel-hub.com"
@@ -35,6 +36,46 @@ class DefaultCatalogApiTest {
 
     val expectedDates = Seq(LocalDate.of(2020, 11, 5), LocalDate.of(2020, 11, 6))
     assertEquals(expectedDates, availableDates)
+  }
+
+  @Test
+  def dateTimesWithFilter(): Unit = {
+    val dateTimes = catalogApi.dateTimes(
+      collectionId = "sentinel-1-grd",
+      ProjectedExtent(Extent(16.162995875210488, 48.305237663134704, 16.198050293067634, 48.328618668560985), LatLng),
+      from = LocalDate.of(2020, 11, 5).atStartOfDay(utc),
+      to = LocalDate.of(2020, 11, 7).atStartOfDay(utc),
+      accessToken,
+      queryProperties = singletonMap("sat:orbit_state", singletonMap("eq", "ascending"))
+    )
+
+    println(dateTimes)
+
+    val availableDates = dateTimes
+      .sortWith(_ isBefore _)
+      .map(_.toLocalDate)
+      .distinct
+
+    val expectedDates = Seq(LocalDate.of(2020, 11, 6))
+    assertEquals(expectedDates, availableDates)
+  }
+
+  @Test
+  def searchWithFilter(): Unit = {
+    val features = catalogApi.search(
+      collectionId = "sentinel-1-grd",
+      geometry = Extent(16.162995875210488, 48.305237663134704, 16.198050293067634, 48.328618668560985).toPolygon(),
+      geometryCrs = LatLng,
+      from = LocalDate.of(2020, 11, 5).atStartOfDay(utc),
+      to = LocalDate.of(2020, 11, 7).atStartOfDay(utc),
+      accessToken,
+      queryProperties = Map(
+        "sat:orbit_state" -> singletonMap("eq", "ascending".asInstanceOf[Any]),
+        "s1:timeliness" -> singletonMap("eq", "NRT3h".asInstanceOf[Any])
+      ).asJava
+    )
+
+    assertEquals(1, features.size)
   }
 
   @Test
@@ -94,7 +135,7 @@ class DefaultCatalogApiTest {
 
       fail("should have thrown a SentinelHubException")
     } catch {
-      case SentinelHubException(_, 404, _, responseBody) if responseBody contains "Collection not found" => /* expected */
+      case SentinelHubException(_, 400, _, responseBody) if responseBody contains "Illegal collection" => /* expected */
     }
 
   @Test
