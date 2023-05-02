@@ -667,26 +667,6 @@ class FileLayerProviderTest {
     override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
   }
 
-  private def loadJsonResource(classPathResourceName: String, codec: Codec = Codec.UTF8): String = {
-    val fullPath = classPathResourceName
-    val jsonFile = Source.fromURL(getClass.getResource(fullPath))(codec)
-
-    try jsonFile.mkString
-    finally jsonFile.close()
-  }
-
-  class MockCreoOpenSearchSentinelOffset extends OpenSearchClient {
-    override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
-      val start = dateRange.get._1
-
-      CreoFeatureCollection.parse(loadJsonResource("/org/openeo/geotrellis/creodiasPixelValueOffsetNeeded.json")).features
-    }
-
-    override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
-
-    override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
-  }
-
   @Test
   @Ignore("2023-05-02, Emile: Activate again when used service works again.")
   def testEdgeOfLargeFootPrint():Unit = {
