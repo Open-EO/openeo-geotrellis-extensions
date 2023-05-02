@@ -3,7 +3,7 @@ package org.openeo.geotrellissentinelhub
 import geotrellis.proj4.LatLng
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.junit.Assert.{assertEquals, assertTrue}
+import org.junit.Assert.{assertEquals, assertTrue, fail}
 import org.junit.{Ignore, Test}
 
 import java.time.{LocalDate, ZoneId}
@@ -91,12 +91,15 @@ class DefaultCatalogApiTest {
         to = LocalDate.of(2020, 11, 7).atStartOfDay(utc),
         accessToken
       )
+
+      fail("should have thrown a SentinelHubException")
     } catch {
-      case e: SentinelHubException => assertTrue(e.getMessage, e.getMessage contains "Collection not found")
+      case SentinelHubException(_, 404, _, responseBody) if responseBody contains "Collection not found" => /* expected */
     }
 
-  @Test(expected = classOf[SentinelHubException])
+  @Test
   def searchCard4LWithUnknownQueryProperty(): Unit =
+    try {
       catalogApi.searchCard4L(
         collectionId = "sentinel-1-grd",
         ProjectedExtent(Extent(6.611, 45.665, 13.509, 51.253), LatLng),
@@ -105,6 +108,12 @@ class DefaultCatalogApiTest {
         accessToken,
         queryProperties = singletonMap("someUnknownProperty", singletonMap("eq", "???"))
       )
+
+      fail("should have thrown a SentinelHubException")
+    } catch {
+      case SentinelHubException(_, 400, _, responseBody)
+        if responseBody contains "Querying is not supported on property 'someUnknownProperty'" => /* expected */
+    }
 
   @Ignore("not to be run automatically")
   @Test
