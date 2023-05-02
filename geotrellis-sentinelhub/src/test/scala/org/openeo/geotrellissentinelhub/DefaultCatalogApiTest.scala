@@ -139,6 +139,25 @@ class DefaultCatalogApiTest {
     }
 
   @Test
+  def dateTimesForPeculiarTimeInterval(): Unit = {
+    try {
+      catalogApi.dateTimes(
+        collectionId = "sentinel-2-l2a",
+        boundingBox = ProjectedExtent(Extent(11.89, 41.58, 12.56, 42.2), LatLng),
+        from = LocalDate.of(2021, 12, 7).atStartOfDay(utc),
+        to = LocalDate.of(2021, 12, 6).atTime(23, 59, 59, 999999999).atZone(utc),
+        accessToken,
+        queryProperties = emptyMap()
+      )
+
+      fail("should have thrown a SentinelHubException")
+    } catch {
+      case SentinelHubException(_, 400, _, responseBody)
+        if responseBody contains "Cannot parse parameter `datetime`." => /* expected */
+    }
+  }
+
+  @Test
   def searchCard4LWithUnknownQueryProperty(): Unit =
     try {
       catalogApi.searchCard4L(

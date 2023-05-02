@@ -73,10 +73,13 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
     val multiPolygon = simplify(polygons)
     val multiPolygonCrs = crs
 
-    val dateTimes = authorized { accessToken =>
-      val catalogApi = if (collection_id == null) new MadeToMeasureCatalogApi else new DefaultCatalogApi(endpoint)
-      catalogApi.dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
-        accessToken, Criteria.toQueryProperties(metadata_properties))
+    val dateTimes = {
+      if (from isAfter to) Seq()
+      else authorized { accessToken =>
+        val catalogApi = if (collection_id == null) new MadeToMeasureCatalogApi else new DefaultCatalogApi(endpoint)
+        catalogApi.dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
+          accessToken, Criteria.toQueryProperties(metadata_properties))
+      }
     }
 
     if (dateTimes.isEmpty)
