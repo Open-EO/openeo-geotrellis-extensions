@@ -108,7 +108,6 @@ class FileLayerProviderTest {
     layoutScheme = sentinel5PLayoutScheme
   )
 
-  @Test
   @Ignore("2023-05-02, Emile: Activate again when used service works again.")
   def cache(): Unit = {
     // important: multiple instances like in openeo-geopyspark-driver
@@ -122,7 +121,6 @@ class FileLayerProviderTest {
     assertSame(metadataCall1, metadataCall2)
   }
 
-  @Test
   @Ignore("2023-05-02, Emile: Activate again when used service works again.")
   def smallBoundingBox(): Unit = {
     val smallBbox = ProjectedExtent(Point(x = 4.9754, y = 50.3244).buffer(0.001).extent, LatLng)
@@ -155,7 +153,6 @@ class FileLayerProviderTest {
     (rasterSources, metadata)
   }
 
-  @Test
   @Ignore("2023-05-02, Emile: Activate again when used service works again.")
   def sparsePartitionerTest(): Unit = {
     val bbox1 = ProjectedExtent(Extent(xmin = 0.0, ymin = 0.0, xmax = 30.0, ymax = 10.0), LatLng)
@@ -212,7 +209,6 @@ class FileLayerProviderTest {
     sparsePartitioner.regions.toSet.subsetOf(defaultPartitioner.regions.toSet)
   }
 
-  @Test
   @Ignore("2023-05-02, Emile: Activate again when used service works again.")
   def sparsePartitionerMergeTest(): Unit = {
     val zoom = 6
@@ -251,7 +247,6 @@ class FileLayerProviderTest {
     assertEquals(defaultMergedLayerKeys, sparseMergedLayerKeys)
   }
 
-  @Test
   @Ignore("2023-05-02, Emile: Activate again when used service works again.")
   def sparsePartitionerMaskTest(): Unit = {
     // Create the base layers.
@@ -305,7 +300,6 @@ class FileLayerProviderTest {
 
   }
 
-  @Test
   @Ignore("2023-05-02, Emile: Activate again when used service works again.")
   def overlapsFilterTest(): Unit = {
     val date = LocalDate.of(2022, 7, 1).atStartOfDay(UTC)
@@ -667,7 +661,6 @@ class FileLayerProviderTest {
     override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
   }
 
-  @Test
   @Ignore("2023-05-02, Emile: Activate again when used service works again.")
   def testEdgeOfLargeFootPrint():Unit = {
 
@@ -726,7 +719,6 @@ class FileLayerProviderTest {
     assertEquals((cols*rows).toInt,all.length)
   }
 
-  @Test
   @Ignore("2023-05-02, Emile: Activate again when used service works again.")
   def testEdgeOfLargeFootPrintLatLon():Unit = {
 
@@ -785,7 +777,6 @@ class FileLayerProviderTest {
     assertEquals((cols*rows).toInt,all.length)
   }
 
-  @Test
   @Ignore("2023-05-02, Emile: Activate again when used service works again.")
   def testBufferingOnTheEdge():Unit = {
 
@@ -849,7 +840,6 @@ class FileLayerProviderTest {
     assertEquals(5676980.0 - 1000.0, result._2.extent.ymin,0.01)
   }
 
-  @Test
   @Ignore("2023-05-02, Emile: Activate again when used service works again.")
   def sentinel1LoadTest(): Unit = {
     LayerFixtures.sentinel1Sigma0LayerProviderUTM
@@ -896,7 +886,6 @@ class FileLayerProviderTest {
     println(s"Count: $count")
   }
 
-  @Test
   @Ignore("2023-05-02, Emile: Activate again when used service works again.")
   def testSinglePoint(): Unit = {
     val date = LocalDate.of(2019, 9, 25).atStartOfDay(UTC)
@@ -932,7 +921,6 @@ class FileLayerProviderTest {
     assertEquals(crs,result._2.crs)
   }
 
-  @Test
   @Ignore("2023-05-02, Emile: Activate again when used service works again.")
   def testCreoNonNativeProjection():Unit = {
 
