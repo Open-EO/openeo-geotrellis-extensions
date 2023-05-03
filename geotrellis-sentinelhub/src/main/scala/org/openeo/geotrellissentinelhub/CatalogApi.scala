@@ -48,8 +48,8 @@ trait CatalogApi {
 
     val requiredProperties = HashMap(
       "sar:instrument_mode" -> Map("eq" -> ("IW": Any)).asJava,
-      "resolution" -> Map("eq" -> ("HIGH": Any)).asJava,
-      "polarization" -> Map("eq" -> ("DV": Any)).asJava
+      "s1:resolution" -> Map("eq" -> ("HIGH": Any)).asJava,
+      "s1:polarization" -> Map("eq" -> ("DV": Any)).asJava
     )
 
     val allProperties = requiredProperties.merged(HashMap(queryProperties.asScala.toSeq: _*)) {
@@ -74,6 +74,7 @@ object DefaultCatalogApi {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[DefaultCatalogApi])
 
   private final val maxLimit = 100 // as per the docs
+  private val filterFormatter = new Cql2TextFormatter
 
   private case class PagingContext(limit: Int, returned: Int, next: Option[Int])
   private case class PagedFeatureCollection(features: List[Json], context: PagingContext)
@@ -114,7 +115,7 @@ object DefaultCatalogApi {
 class DefaultCatalogApi(endpoint: String) extends CatalogApi {
   import DefaultCatalogApi._
 
-  private val catalogEndpoint = URI.create(endpoint).resolve("/api/v1/catalog")
+  private val catalogEndpoint = URI.create(endpoint).resolve("/api/v1/catalog/1.0.0")
   private val objectMapper = new ObjectMapper
 
   // TODO: search distinct dates (https://docs.sentinel-hub.com/api/latest/api/catalog/examples/#search-with-distinct)?
@@ -123,7 +124,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
     val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
     val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
 
-    val query = this.query(queryProperties)
+    val filter = this.filter(queryProperties)
 
     def getFeatureCollectionPage(limit: Int, nextToken: Option[Int]): PagedFeatureCollection =
       withRetries(context = s"dateTimes $collectionId nextToken $nextToken") {
@@ -133,7 +134,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
              |    "intersects": ${geometry.reproject(geometryCrs, LatLng).toGeoJson()},
              |    "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
              |    "collections": ["$collectionId"],
-             |    "query": $query,
+             |    "filter": $filter,
              |    "limit": $limit,
              |    "next": ${nextToken.orNull}
              |}""".stripMargin
@@ -178,7 +179,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
       val lower = from.withZoneSameInstant(ZoneId.of("UTC"))
       val upper = to.withZoneSameInstant(ZoneId.of("UTC"))
 
-      val query = this.query(queryProperties)
+      val filter = this.filter(queryProperties)
 
       def getFeatureCollectionPage(limit: Int, nextToken: Option[Int]): PagedJsonFeatureCollectionMap = {
         val requestBody =
@@ -186,7 +187,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
              |{
              |  "datetime": "${ISO_INSTANT format lower}/${ISO_INSTANT format upper}",
              |  "collections": ["$collectionId"],
-             |  "query": $query,
+             |  "filter": $filter,
              |  "intersects": ${geometry.reproject(geometryCrs, LatLng).toGeoJson()},
              |  "limit": $limit,
              |  "next": ${nextToken.orNull}
@@ -235,8 +236,10 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
       .headers("Authorization" -> s"Bearer $accessToken")
       .timeout(connTimeoutMs = 10000, readTimeoutMs = 40000)
 
-  private def query(queryProperties: util.Map[String, util.Map[String, Any]]): String =
-    objectMapper.writeValueAsString(queryProperties)
+  private def filter(queryProperties: util.Map[String, util.Map[String, Any]]): String = {
+    if (queryProperties.isEmpty) null
+    else objectMapper.writeValueAsString(filterFormatter.format(queryProperties))
+  }
 }
 
 /**
@@ -256,5 +259,32 @@ class MadeToMeasureCatalogApi extends CatalogApi {
       yield index.toString -> Feature(geometry.reproject(geometryCrs, LatLng), FeatureData(timestamp, None))
 
     features.toMap
+  }
+}
+
+class Cql2TextFormatter {
+  def format(queryProperties: util.Map[String, util.Map[String, Any]]): String = {
+    val cql2Texts = for {
+      (property, criteria) <- queryProperties.asScala
+      (operator, value) <- criteria.asScala
+    } yield formatCql2Text(property, operator, value)
+
+    cql2Texts mkString " and "
+  }
+
+  private def formatCql2Text(property: String, operator: String, value: Any): String = {
+    val cql2TextOperator = operator match {
+      case "eq" => "="
+      case "neq" => "<>"
+      case "lt" => "<"
+      case "lte" => "<="
+      case "gt" => ">"
+      case "gte" => ">="
+      case _ => throw new IllegalArgumentException(s"unsupported operator $operator")
+    }
+
+    val cql2TextValue = if (value.isInstanceOf[String]) s"'$value'" else value.toString
+
+    s"$property $cql2TextOperator $cql2TextValue"
   }
 }

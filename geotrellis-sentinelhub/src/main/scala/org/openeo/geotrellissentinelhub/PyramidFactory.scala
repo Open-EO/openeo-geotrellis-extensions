@@ -169,7 +169,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
     val features = authorized { accessToken =>
       _catalogApi.search(collectionId, polygon, polygonCrs,
-        from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadataProperties))
+        from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadataProperties, collectionId))
     }
 
     val layers = for (zoom <- maxZoom to 0 by -1)
@@ -333,7 +333,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             val features = authorized { accessToken =>
               _catalogApi.search(collectionId, multiPolygon, polygons_crs,
-                from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
+                from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties, collectionId))
             }
 
             tracker.addInputProductsWithUrls(
