@@ -70,8 +70,8 @@ class DefaultCatalogApiTest {
       to = LocalDate.of(2020, 11, 7).atStartOfDay(utc),
       accessToken,
       queryProperties = Map(
-        "sat:orbit_state" -> singletonMap("eq", "ascending".asInstanceOf[Any]),
-        "s1:timeliness" -> singletonMap("eq", "NRT3h".asInstanceOf[Any])
+        "sat:orbit_state" -> singletonMap("eq", "ascending": Any),
+        "s1:timeliness" -> singletonMap("eq", "NRT3h": Any)
       ).asJava
     )
 

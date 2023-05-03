@@ -78,7 +78,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
       else authorized { accessToken =>
         val catalogApi = if (collection_id == null) new MadeToMeasureCatalogApi else new DefaultCatalogApi(endpoint)
         catalogApi.dateTimes(collection_id, multiPolygon, multiPolygonCrs, from, to,
-          accessToken, Criteria.toQueryProperties(metadata_properties))
+          accessToken, Criteria.toQueryProperties(metadata_properties, collection_id))
       }
     }
 
@@ -207,7 +207,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
     // original features that overlap in space and time
     val features = authorized { accessToken =>
       new DefaultCatalogApi(endpoint).searchCard4L(collection_id, geometry, geometryCrs, from, to,
-        accessToken, Criteria.toQueryProperties(metadata_properties))
+        accessToken, Criteria.toQueryProperties(metadata_properties, collection_id))
     }
 
     // their intersections with input polygons (all should be in LatLng)
