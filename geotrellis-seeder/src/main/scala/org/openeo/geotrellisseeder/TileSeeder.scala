@@ -566,7 +566,7 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       }
       t.mapIfSet(z => {
         val newZ = (((z - oldMin) * dnew) / dold) + newMin
-        1 max newZ min 255
+        newMin max newZ min newMax
       })
     }
 
