@@ -74,6 +74,7 @@ object DefaultCatalogApi {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[DefaultCatalogApi])
 
   private final val maxLimit = 100 // as per the docs
+  private val filterFormatter = new Cql2TextFormatter
 
   private case class PagingContext(limit: Int, returned: Int, next: Option[Int])
   private case class PagedFeatureCollection(features: List[Json], context: PagingContext)
@@ -236,30 +237,8 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
       .timeout(connTimeoutMs = 10000, readTimeoutMs = 40000)
 
   private def filter(queryProperties: util.Map[String, util.Map[String, Any]]): String = {
-    if (queryProperties.isEmpty) null else {
-      def formatCql2Text(property: String, operator: String, value: Any): String = {
-        val cql2TextOperator = operator match {
-          case "eq" => "="
-          case "neq" => "<>"
-          case "lt" => "<"
-          case "lte" => "<="
-          case "gt" => ">"
-          case "gte" => ">="
-          case _ => throw new IllegalArgumentException(s"unsupported operator $operator")
-        }
-
-        val cql2TextValue = if (value.isInstanceOf[String]) s"'$value'" else value.toString
-
-        s"$property $cql2TextOperator $cql2TextValue"
-      }
-
-      val cql2Texts = for {
-        (property, criteria) <- queryProperties.asScala
-        (operator, value) <- criteria.asScala
-      } yield formatCql2Text(property, operator, value)
-
-      objectMapper.writeValueAsString(cql2Texts mkString " and ")
-    }
+    if (queryProperties.isEmpty) null
+    else objectMapper.writeValueAsString(filterFormatter.format(queryProperties))
   }
 }
 
@@ -280,5 +259,32 @@ class MadeToMeasureCatalogApi extends CatalogApi {
       yield index.toString -> Feature(geometry.reproject(geometryCrs, LatLng), FeatureData(timestamp, None))
 
     features.toMap
+  }
+}
+
+class Cql2TextFormatter {
+  def format(queryProperties: util.Map[String, util.Map[String, Any]]): String = {
+    val cql2Texts = for {
+      (property, criteria) <- queryProperties.asScala
+      (operator, value) <- criteria.asScala
+    } yield formatCql2Text(property, operator, value)
+
+    cql2Texts mkString " and "
+  }
+
+  private def formatCql2Text(property: String, operator: String, value: Any): String = {
+    val cql2TextOperator = operator match {
+      case "eq" => "="
+      case "neq" => "<>"
+      case "lt" => "<"
+      case "lte" => "<="
+      case "gt" => ">"
+      case "gte" => ">="
+      case _ => throw new IllegalArgumentException(s"unsupported operator $operator")
+    }
+
+    val cql2TextValue = if (value.isInstanceOf[String]) s"'$value'" else value.toString
+
+    s"$property $cql2TextOperator $cql2TextValue"
   }
 }
