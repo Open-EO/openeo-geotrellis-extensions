@@ -124,7 +124,7 @@ class CriteriaTest {
 
     val expected = Map("orbitDirection" -> "descending").asJava
 
-    assertEquals(expected, Criteria.toDataFilters(metadata_properties, Seq()))
+    assertEquals(expected, Criteria.toDataFilters(metadata_properties))
   }
 
   @Test
@@ -135,7 +135,7 @@ class CriteriaTest {
 
     val expected = Map("orbitDirection" -> "descending").asJava
 
-    assertEquals(expected, Criteria.toDataFilters(metadata_properties, Seq()))
+    assertEquals(expected, Criteria.toDataFilters(metadata_properties))
   }
 
   @Test
@@ -146,7 +146,7 @@ class CriteriaTest {
 
     val expected = Map("polarization" -> "DV").asJava
 
-    assertEquals(expected, Criteria.toDataFilters(metadata_properties, Seq()))
+    assertEquals(expected, Criteria.toDataFilters(metadata_properties))
   }
 
   @Test
@@ -157,7 +157,7 @@ class CriteriaTest {
 
     val expected = Map("polarization" -> "DV").asJava
 
-    assertEquals(expected, Criteria.toDataFilters(metadata_properties, Seq()))
+    assertEquals(expected, Criteria.toDataFilters(metadata_properties))
   }
 
   @Test
@@ -168,7 +168,7 @@ class CriteriaTest {
 
     val expected = Map("acquisitionMode" -> "IW").asJava
 
-    assertEquals(expected, Criteria.toDataFilters(metadata_properties, Seq()))
+    assertEquals(expected, Criteria.toDataFilters(metadata_properties))
   }
 
   @Test
@@ -179,7 +179,7 @@ class CriteriaTest {
 
     val expected = Map("maxCloudCoverage" -> 20).asJava
 
-    val actual = Criteria.toDataFilters(metadata_properties, Seq())
+    val actual = Criteria.toDataFilters(metadata_properties)
 
     assertEquals(expected, actual)
     assertEquals("""{"maxCloudCoverage":20}""", objectMapper.writeValueAsString(actual))
@@ -191,7 +191,7 @@ class CriteriaTest {
       "eo:cloud_cover" -> Map("eq" -> (20: Any)).asJava
     ).asJava
 
-    Criteria.toDataFilters(metadata_properties, Seq())
+    Criteria.toDataFilters(metadata_properties)
   }
 
   @Test
@@ -203,16 +203,9 @@ class CriteriaTest {
 
     val expected = Map("maxCloudCoverage" -> 20).asJava
 
-    val actual = Criteria.toDataFilters(metadata_properties, Seq())
+    val actual = Criteria.toDataFilters(metadata_properties)
 
     assertEquals(expected, actual)
     assertEquals("""{"maxCloudCoverage":20}""", objectMapper.writeValueAsString(actual))
-  }
-
-  @Test
-  def polarizationBasedOnBands(): Unit = {
-    val metadata_properties = new java.util.HashMap[String, java.util.Map[String, Any]]()
-    val expected = Map("polarization" -> "DV").asJava
-    assertEquals(expected, Criteria.toDataFilters(metadata_properties, Seq("VV", "VH", "randomBandName")))
   }
 }

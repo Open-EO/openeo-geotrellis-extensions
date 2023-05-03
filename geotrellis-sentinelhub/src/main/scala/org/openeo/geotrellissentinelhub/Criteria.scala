@@ -5,8 +5,6 @@ import java.util
 import scala.collection.JavaConverters._
 
 object Criteria {
-  private val logger = LoggerFactory.getLogger(Criteria.getClass)
-
   def toQueryProperties(metadata_properties: util.Map[String, util.Map[String, Any]]): util.Map[String, util.Map[String, Any]] = {
     val queryProperties = for {
       (metadataProperty, criteria) <- metadata_properties.asScala if metadataProperty != "provider:backend"
@@ -42,7 +40,7 @@ object Criteria {
     queryCriteria.asJava
   }
 
-  def toDataFilters(metadata_properties: util.Map[String, util.Map[String, Any]], band_names: Seq[String]): util.Map[String, Any] = {
+  def toDataFilters(metadata_properties: util.Map[String, util.Map[String, Any]]): util.Map[String, Any] = {
     val flattenedCriteria = for {
       (metadataProperty, criteria) <- metadata_properties.asScala if metadataProperty != "provider:backend"
       (operator, value) <- criteria.asScala
@@ -51,7 +49,7 @@ object Criteria {
     def abort(metadataProperty: String, operator: String, value: Any): Nothing =
       throw new IllegalArgumentException(s"unsupported dataFilter $metadataProperty $operator $value")
 
-    var filtersDict = flattenedCriteria
+    flattenedCriteria
       .map {
         case ("eo:cloud_cover", "lte", value) => "maxCloudCoverage" -> value
         case (metadataProperty @ "eo:cloud_cover", operator, value) => abort(metadataProperty, operator, value)
@@ -61,27 +59,6 @@ object Criteria {
         case (metadataProperty, "eq", value) => metadataProperty -> value
         case (metadataProperty, operator, value) => abort(metadataProperty, operator, value)
       }
-      .toMap
-    if (!filtersDict.contains("polarization")) {
-      val bn = band_names.toSet
-      // https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#available-bands-and-data
-      // Only run when relevant bands are present
-      if (bn.contains("HH") || bn.contains("HV") || bn.contains("VV") || bn.contains("VH")) {
-        val polarization: Option[String] = bn match {
-          case _ if bn.contains("HH") && bn.contains("HV") => Some("DH")
-          case _ if bn.contains("VV") && bn.contains("VH") => Some("DV")
-          case _ if bn.contains("HV") => Some("HV")
-          case _ if bn.contains("VH") => Some("VH")
-          case _ => None
-        }
-        polarization match {
-          case Some(p) =>
-            logger.info("No polarization was specified, using one based on band selection: " + p)
-            filtersDict = filtersDict + ("polarization" -> p)
-          case None => logger.warn("No polarization was specified. This might give errors from Sentinelhub.")
-        }
-      }
-    }
-    filtersDict.asJava
+      .toMap.asJava
   }
 }
