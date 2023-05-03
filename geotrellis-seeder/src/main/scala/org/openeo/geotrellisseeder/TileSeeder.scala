@@ -573,7 +573,8 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
 
     def normalize(bandIndex: Int, tile: Tile) = {
       val band = bands(bandIndex)
-      normalizeClip(tile, band.min, band.max, 1, 255)
+      val newMax = if (band.noData.get == 255) 254 else 255
+      normalizeClip(tile, band.min, band.max, 1, newMax)
         .convert(IntConstantNoDataCellType)
     }
 

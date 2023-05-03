@@ -141,7 +141,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
         try {
           val (multibandTile, processingUnitsSpent) = authorized { accessToken =>
             processApi.getTile(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs),
-              key.temporalKey, width, height, bandNames, sampleType, Criteria.toDataFilters(metadataProperties, bandNames),
+              key.temporalKey, width, height, bandNames, sampleType, Criteria.toDataFilters(metadataProperties),
               processingOptions, accessToken)
           }
           tracker.add(SH_PU, processingUnitsSpent)
@@ -168,7 +168,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
     val features = authorized { accessToken =>
       _catalogApi.search(collectionId, polygon, polygonCrs,
-        from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadataProperties))
+        from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadataProperties, collectionId))
     }
 
     val layers = for (zoom <- maxZoom to 0 by -1)
@@ -252,7 +252,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             val (tile, processingUnitsSpent) = authorized { accessToken =>
               processApi.getTile(datasetId, projectedExtent, dateTime, width, height, bandNames,
-                sampleType, Criteria.toDataFilters(metadata_properties, bandNames), processingOptions, accessToken)
+                sampleType, Criteria.toDataFilters(metadata_properties), processingOptions, accessToken)
             }
             tracker.add(SH_PU, processingUnitsSpent)
             scopedMetadataTracker.addSentinelHubProcessingUnits(processingUnitsSpent)
@@ -332,7 +332,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             val features = authorized { accessToken =>
               _catalogApi.search(collectionId, multiPolygon, polygons_crs,
-                from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
+                from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties, collectionId))
             }
 
             tracker.addInputProductsWithUrls(
