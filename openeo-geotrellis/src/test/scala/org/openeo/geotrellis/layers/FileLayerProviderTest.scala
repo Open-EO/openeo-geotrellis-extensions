@@ -19,9 +19,10 @@ import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
+import org.junit.{AfterClass, BeforeClass}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
-import org.openeo.geotrellis.{LayerFixtures, geotiff}
+import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection}
@@ -30,7 +31,10 @@ import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 
 import java.net.URL
 import java.time.ZoneOffset.UTC
+import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util.Collections
+import scala.collection.JavaConverters._
 
 object FileLayerProviderTest {
   // Methods with attributes get called in a non-intuitive order:
@@ -648,7 +652,7 @@ class FileLayerProviderTest {
       |      }
       |    }]}""".stripMargin
 
-  val creoS2Products =  CreoFeatureCollection.parse(myCreoFeatureJSON)
+  lazy val creoS2Products =  CreoFeatureCollection.parse(myCreoFeatureJSON)
 
   class MockCreoOpenSearch extends OpenSearchClient {
     override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
@@ -980,5 +984,41 @@ class FileLayerProviderTest {
     assertEquals(crs,result._2.crs)
     assertEquals(8,all.length)
     assertEquals((2*cols*rows).toInt,all.length)
+  }
+
+  @Test
+  def testPixelValueOffsetNeeded(): Unit = {
+    val bandNames = Collections.singletonList("B04")
+    val extentTAP4326 = Extent(5.07, 51.215, 5.08, 51.22)
+    val srs = "EPSG:4326"
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extentTAP4326, srs)
+    val projectedExtent = ProjectedExtent(extentTAP4326, projected_polygons_native_crs.crs)
+
+    val client = CreodiasClient()
+    val factory = new org.openeo.geotrellis.file.PyramidFactory(
+      client, "Sentinel2", bandNames,
+      null,
+      maxSpatialResolution = CellSize(9.999999999999593E-6, 9.999999999996123E-6),
+    )
+    factory.crs = projected_polygons_native_crs.crs
+
+    val localFromDate = LocalDate.of(2023, 4, 4)
+    val localToDate = LocalDate.of(2023, 4, 6)
+    val ZonedFromDate = ZonedDateTime.of(localFromDate, java.time.LocalTime.MIDNIGHT, UTC)
+    val zonedToDate = ZonedDateTime.of(localToDate, java.time.LocalTime.MIDNIGHT, UTC)
+
+    val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format ZonedFromDate
+    val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format zonedToDate
+
+    val dataCubeParameters = new DataCubeParameters()
+    dataCubeParameters.tileSize = 256
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    //    dataCubeParameters.globalExtent = Some(projectedExtent)
+
+    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
+      projected_polygons_native_crs,
+      from_date, to_date, Collections.emptyMap(), ""
+    )
+    cube.head._2.toSpatial().writeGeoTiff("tmp/l2_offseteda.tiff")
   }
 }
