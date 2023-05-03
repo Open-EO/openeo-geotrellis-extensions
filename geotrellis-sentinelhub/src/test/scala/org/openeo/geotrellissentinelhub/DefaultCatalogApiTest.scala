@@ -3,11 +3,12 @@ package org.openeo.geotrellissentinelhub
 import geotrellis.proj4.LatLng
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.junit.Assert.{assertEquals, assertTrue}
+import org.junit.Assert.{assertEquals, assertTrue, fail}
 import org.junit.{Ignore, Test}
 
 import java.time.{LocalDate, ZoneId}
 import java.util.Collections.{emptyMap, singletonMap}
+import scala.collection.JavaConverters._
 
 class DefaultCatalogApiTest {
   private val endpoint = "https://services.sentinel-hub.com"
@@ -35,6 +36,46 @@ class DefaultCatalogApiTest {
 
     val expectedDates = Seq(LocalDate.of(2020, 11, 5), LocalDate.of(2020, 11, 6))
     assertEquals(expectedDates, availableDates)
+  }
+
+  @Test
+  def dateTimesWithFilter(): Unit = {
+    val dateTimes = catalogApi.dateTimes(
+      collectionId = "sentinel-1-grd",
+      ProjectedExtent(Extent(16.162995875210488, 48.305237663134704, 16.198050293067634, 48.328618668560985), LatLng),
+      from = LocalDate.of(2020, 11, 5).atStartOfDay(utc),
+      to = LocalDate.of(2020, 11, 7).atStartOfDay(utc),
+      accessToken,
+      queryProperties = singletonMap("sat:orbit_state", singletonMap("eq", "ascending"))
+    )
+
+    println(dateTimes)
+
+    val availableDates = dateTimes
+      .sortWith(_ isBefore _)
+      .map(_.toLocalDate)
+      .distinct
+
+    val expectedDates = Seq(LocalDate.of(2020, 11, 6))
+    assertEquals(expectedDates, availableDates)
+  }
+
+  @Test
+  def searchWithFilter(): Unit = {
+    val features = catalogApi.search(
+      collectionId = "sentinel-1-grd",
+      geometry = Extent(16.162995875210488, 48.305237663134704, 16.198050293067634, 48.328618668560985).toPolygon(),
+      geometryCrs = LatLng,
+      from = LocalDate.of(2020, 11, 5).atStartOfDay(utc),
+      to = LocalDate.of(2020, 11, 7).atStartOfDay(utc),
+      accessToken,
+      queryProperties = Map(
+        "sat:orbit_state" -> singletonMap("eq", "ascending": Any),
+        "s1:timeliness" -> singletonMap("eq", "NRT3h": Any)
+      ).asJava
+    )
+
+    assertEquals(1, features.size)
   }
 
   @Test
@@ -91,12 +132,34 @@ class DefaultCatalogApiTest {
         to = LocalDate.of(2020, 11, 7).atStartOfDay(utc),
         accessToken
       )
+
+      fail("should have thrown a SentinelHubException")
     } catch {
-      case e: SentinelHubException => assertTrue(e.getMessage, e.getMessage contains "Collection not found")
+      case SentinelHubException(_, 400, _, responseBody) if responseBody contains "Illegal collection" => /* expected */
     }
 
-  @Test(expected = classOf[SentinelHubException])
+  @Test
+  def dateTimesForPeculiarTimeInterval(): Unit = {
+    try {
+      catalogApi.dateTimes(
+        collectionId = "sentinel-2-l2a",
+        boundingBox = ProjectedExtent(Extent(11.89, 41.58, 12.56, 42.2), LatLng),
+        from = LocalDate.of(2021, 12, 7).atStartOfDay(utc),
+        to = LocalDate.of(2021, 12, 6).atTime(23, 59, 59, 999999999).atZone(utc),
+        accessToken,
+        queryProperties = emptyMap()
+      )
+
+      fail("should have thrown a SentinelHubException")
+    } catch {
+      case SentinelHubException(_, 400, _, responseBody)
+        if responseBody contains "Cannot parse parameter `datetime`." => /* expected */
+    }
+  }
+
+  @Test
   def searchCard4LWithUnknownQueryProperty(): Unit =
+    try {
       catalogApi.searchCard4L(
         collectionId = "sentinel-1-grd",
         ProjectedExtent(Extent(6.611, 45.665, 13.509, 51.253), LatLng),
@@ -105,6 +168,12 @@ class DefaultCatalogApiTest {
         accessToken,
         queryProperties = singletonMap("someUnknownProperty", singletonMap("eq", "???"))
       )
+
+      fail("should have thrown a SentinelHubException")
+    } catch {
+      case SentinelHubException(_, 400, _, responseBody)
+        if responseBody contains "Querying is not supported on property 'someUnknownProperty'" => /* expected */
+    }
 
   @Ignore("not to be run automatically")
   @Test

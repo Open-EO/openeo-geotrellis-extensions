@@ -19,7 +19,7 @@ class CriteriaTest {
       "sat:orbit_state" -> Map("eq" -> "descending").asJava
     ).asJava
 
-    assertEquals(expected, Criteria.toQueryProperties(metadata_properties))
+    assertEquals(expected, Criteria.toQueryProperties(metadata_properties, collectionId = "sentinel-1-grd"))
   }
 
   @Test
@@ -32,7 +32,7 @@ class CriteriaTest {
       "sat:orbit_state" -> Map("eq" -> "descending").asJava
     ).asJava
 
-    assertEquals(expected, Criteria.toQueryProperties(metadata_properties))
+    assertEquals(expected, Criteria.toQueryProperties(metadata_properties, collectionId = "sentinel-1-grd"))
   }
 
   @Test
@@ -42,10 +42,10 @@ class CriteriaTest {
     ).asJava
 
     val expected = Map(
-      "polarization" -> Map("eq" -> "DV").asJava
+      "s1:polarization" -> Map("eq" -> "DV").asJava
     ).asJava
 
-    assertEquals(expected, Criteria.toQueryProperties(metadata_properties))
+    assertEquals(expected, Criteria.toQueryProperties(metadata_properties, collectionId = "sentinel-1-grd"))
   }
 
   @Test
@@ -55,10 +55,10 @@ class CriteriaTest {
     ).asJava
 
     val expected = Map(
-      "polarization" -> Map("eq" -> "DV").asJava
+      "s1:polarization" -> Map("eq" -> "DV").asJava
     ).asJava
 
-    assertEquals(expected, Criteria.toQueryProperties(metadata_properties))
+    assertEquals(expected, Criteria.toQueryProperties(metadata_properties, collectionId = "sentinel-1-grd"))
   }
 
   @Test
@@ -71,7 +71,7 @@ class CriteriaTest {
       "sar:instrument_mode" -> Map("eq" -> "IW").asJava
     ).asJava
 
-    assertEquals(expected, Criteria.toQueryProperties(metadata_properties))
+    assertEquals(expected, Criteria.toQueryProperties(metadata_properties, collectionId = "sentinel-1-grd"))
   }
 
   @Test
@@ -84,7 +84,7 @@ class CriteriaTest {
       "eo:cloud_cover" -> Map("lte" -> 20).asJava
     ).asJava
 
-    val actual = Criteria.toQueryProperties(metadata_properties)
+    val actual = Criteria.toQueryProperties(metadata_properties, collectionId = "sentinel-2-l2a")
 
     assertEquals(expected, actual)
     assertEquals("""{"eo:cloud_cover":{"lte":20}}""", objectMapper.writeValueAsString(actual))
@@ -96,7 +96,83 @@ class CriteriaTest {
       "eo:cloud_cover" -> Map("eq" -> (20: Any)).asJava
     ).asJava
 
-    Criteria.toQueryProperties(metadata_properties)
+    Criteria.toQueryProperties(metadata_properties, collectionId = "sentinel-2-l2a")
+  }
+
+
+  @Test
+  def queryPropertiesForTimelinessS1(): Unit = {
+    val metadata_properties = Map(
+      "timeliness" -> Map("eq" -> ("NRT3h": Any)).asJava
+    ).asJava
+
+    val expected = Map(
+      "s1:timeliness" -> Map("eq" -> "NRT3h").asJava
+    ).asJava
+
+    val actual = Criteria.toQueryProperties(metadata_properties, collectionId = "sentinel-1-grd")
+
+    assertEquals(expected, actual)
+  }
+
+  @Test
+  def queryPropertiesForTimelinessS5P(): Unit = {
+    val metadata_properties = Map(
+      "timeliness" -> Map("eq" -> ("OFFL": Any)).asJava
+    ).asJava
+
+    val expected = Map(
+      "s5p:timeliness" -> Map("eq" -> "OFFL").asJava
+    ).asJava
+
+    val actual = Criteria.toQueryProperties(metadata_properties, collectionId = "sentinel-5p-l2")
+
+    assertEquals(expected, actual)
+  }
+
+  @Test
+  def queryPropertiesForResolution(): Unit = {
+    val metadata_properties = Map(
+      "resolution" -> Map("eq" -> ("HIGH": Any)).asJava
+    ).asJava
+
+    val expected = Map(
+      "s1:resolution" -> Map("eq" -> "HIGH").asJava
+    ).asJava
+
+    val actual = Criteria.toQueryProperties(metadata_properties, collectionId = "sentinel-1-grd")
+
+    assertEquals(expected, actual)
+  }
+
+  @Test
+  def queryPropertiesForOrbitId(): Unit = {
+    val metadata_properties = Map(
+      "orbit_id" -> Map("eq" -> (0: Any)).asJava
+    ).asJava
+
+    val expected = Map(
+      "sat:absolute_orbit" -> Map("eq" -> 0).asJava
+    ).asJava
+
+    val actual = Criteria.toQueryProperties(metadata_properties, collectionId = "sentinel-5p-l2")
+
+    assertEquals(expected, actual)
+  }
+
+  @Test
+  def queryPropertiesForType(): Unit = {
+    val metadata_properties = Map(
+      "type" -> Map("eq" -> ("CO": Any)).asJava
+    ).asJava
+
+    val expected = Map(
+      "s5p:type" -> Map("eq" -> "CO").asJava
+    ).asJava
+
+    val actual = Criteria.toQueryProperties(metadata_properties, collectionId = "sentinel-5p-l2")
+
+    assertEquals(expected, actual)
   }
 
   @Test
@@ -110,7 +186,7 @@ class CriteriaTest {
       "eo:cloud_cover" -> Map("lte" -> 20).asJava
     ).asJava
 
-    val actual = Criteria.toQueryProperties(metadata_properties)
+    val actual = Criteria.toQueryProperties(metadata_properties, collectionId = "sentinel-1-grd")
 
     assertEquals(expected, actual)
     assertEquals("""{"eo:cloud_cover":{"lte":20}}""", objectMapper.writeValueAsString(actual))

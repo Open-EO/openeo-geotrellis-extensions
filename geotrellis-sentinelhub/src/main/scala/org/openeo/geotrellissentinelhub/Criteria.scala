@@ -5,10 +5,11 @@ import java.util
 import scala.collection.JavaConverters._
 
 object Criteria {
-  def toQueryProperties(metadata_properties: util.Map[String, util.Map[String, Any]]): util.Map[String, util.Map[String, Any]] = {
+  def toQueryProperties(metadata_properties: util.Map[String, util.Map[String, Any]],
+                        collectionId: String): util.Map[String, util.Map[String, Any]] = {
     val queryProperties = for {
       (metadataProperty, criteria) <- metadata_properties.asScala if metadataProperty != "provider:backend"
-    } yield toQueryPropertyName(metadataProperty) -> toQueryCriteria(criteria)
+    } yield toQueryPropertyName(metadataProperty, collectionId) -> toQueryCriteria(criteria)
 
     queryProperties.get("eo:cloud_cover") match {
       case Some(criterion) =>
@@ -20,11 +21,18 @@ object Criteria {
     queryProperties.asJava
   }
 
-  private def toQueryPropertyName(metadataPropertyName: String): String = metadataPropertyName match {
-    case "orbitDirection" => "sat:orbit_state"
-    case "sar:polarization" => "polarization"
-    case _ => metadataPropertyName
-  }
+  private def toQueryPropertyName(metadataPropertyName: String, collectionId: String): String =
+    (metadataPropertyName, collectionId) match {
+      case ("orbit_id", _) => "sat:absolute_orbit"
+      case ("orbitDirection", _) => "sat:orbit_state"
+      case ("polarization", "sentinel-1-grd") => "s1:polarization"
+      case ("resolution", "sentinel-1-grd") => "s1:resolution"
+      case ("sar:polarization", "sentinel-1-grd") => "s1:polarization"
+      case ("timeliness", "sentinel-1-grd") => "s1:timeliness"
+      case ("timeliness", "sentinel-5p-l2") => "s5p:timeliness"
+      case ("type", "sentinel-5p-l2") => "s5p:type"
+      case _ => metadataPropertyName
+    }
 
   private def toQueryCriteria(criteria: util.Map[String, Any]): util.Map[String, Any] = {
     val queryCriteria = criteria.asScala
