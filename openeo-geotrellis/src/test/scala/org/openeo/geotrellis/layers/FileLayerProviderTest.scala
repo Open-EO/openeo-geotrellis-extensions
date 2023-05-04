@@ -990,17 +990,18 @@ class FileLayerProviderTest {
   def testPixelValueOffsetNeeded(): Unit = {
     val bandNames = Collections.singletonList("B04")
     val extentTAP4326 = Extent(5.07, 51.215, 5.08, 51.22)
-    val srs = "EPSG:4326"
-    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extentTAP4326, srs)
-    val projectedExtent = ProjectedExtent(extentTAP4326, projected_polygons_native_crs.crs)
+    val extentTAP32631 = extentTAP4326.reproject(CRS.fromName("EPSG:4326" ), CRS.fromName("EPSG:32631" ))
+    val srs32631 = "EPSG:32631"
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extentTAP32631, srs32631)
+    val projectedExtent = ProjectedExtent(extentTAP32631, projected_polygons_native_crs.crs)
 
     val client = CreodiasClient()
     val factory = new org.openeo.geotrellis.file.PyramidFactory(
       client, "Sentinel2", bandNames,
       null,
-      maxSpatialResolution = CellSize(9.999999999999593E-6, 9.999999999996123E-6),
+      maxSpatialResolution = CellSize(10, 10),
     )
-    factory.crs = projected_polygons_native_crs.crs
+    factory.crs = CRS.fromName("EPSG:4326" ); //projected_polygons_native_crs.crs
 
     val localFromDate = LocalDate.of(2023, 4, 4)
     val localToDate = LocalDate.of(2023, 4, 6)
