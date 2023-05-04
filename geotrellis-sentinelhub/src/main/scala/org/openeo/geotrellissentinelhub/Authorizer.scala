@@ -136,12 +136,16 @@ object MemoizedAuthApiAccessTokenAuthorizer {
 /**
  * Supports access tokens cached in memory with Auth API fallback.
  */
-class MemoizedAuthApiAccessTokenAuthorizer(clientId: String, clientSecret: String) extends Authorizer {
+class MemoizedAuthApiAccessTokenAuthorizer(clientId: String, clientSecret: String, authApiUrl: String = null) extends Authorizer {
   import MemoizedAuthApiAccessTokenAuthorizer._
 
   override def authorized[R](fn: String => R): R = {
+    val authApi =
+      if (authApiUrl == null) new AuthApi
+      else new AuthApi(authApiUrl)
+
     def accessToken: String = AccessTokenCache.get(clientId, clientSecret) { (clientId, clientSecret) =>
-      val freshAccessToken = new AuthApi().authenticate(clientId, clientSecret)
+      val freshAccessToken = authApi.authenticate(clientId, clientSecret)
       logger.debug(s"Auth API access token for clientID $clientId expires within ${freshAccessToken.expires_in}")
       freshAccessToken
     }

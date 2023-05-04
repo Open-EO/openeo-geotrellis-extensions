@@ -48,6 +48,14 @@ object PyramidFactory {
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint), new FixedAccessTokenAuthorizer(accessToken),
       processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
+
+  def withCustomAuthApi(endpoint: String, collectionId: String, datasetId: String,
+                        authApiUrl: String, clientId: String, clientSecret: String,
+                        processingOptions: util.Map[String, Any], sampleType: SampleType,
+                        maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
+    new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
+      new MemoizedAuthApiAccessTokenAuthorizer(clientId, clientSecret, authApiUrl),
+      processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
 }
 
 class PyramidFactory(collectionId: String, datasetId: String, catalogApi: CatalogApi, processApi: ProcessApi,
