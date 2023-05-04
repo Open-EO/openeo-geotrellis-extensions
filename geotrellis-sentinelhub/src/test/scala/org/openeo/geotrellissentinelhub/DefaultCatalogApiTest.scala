@@ -203,6 +203,7 @@ class DefaultCatalogApiTest {
     println(features.size)
   }
 
+  @Ignore("test-drive CDSE Catalog API; not to be run automatically")
   @Test
   def testSearchCdseCatalog(): Unit = {
     val geometry = ProjectedExtent(Extent(5.027, 51.1974, 5.0438, 51.2213), LatLng)
