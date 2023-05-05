@@ -49,6 +49,7 @@ object PyramidFactory {
       new DefaultProcessApi(endpoint), new FixedAccessTokenAuthorizer(accessToken),
       processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
 
+  // CDSE setup with workaround for Keycloak access token not working yet
   def withCustomAuthApi(endpoint: String, collectionId: String, datasetId: String,
                         authApiUrl: String, clientId: String, clientSecret: String,
                         processingOptions: util.Map[String, Any], sampleType: SampleType,
