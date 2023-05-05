@@ -70,9 +70,12 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   override def bandCount: Int = sources.size
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
+    // TODO unsigned data - > signed data? Ignore nodata?
     val selectedSources = reprojectedSources(bands)
     val singleBandRasters = selectedSources.toList.par
-      .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
+      .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) =>
+        Raster(multibandTile.band(0).localAdd(pixelValueOffset), extent)
+      } }
       .collect { case Some(raster) => raster }
 
     if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile).seq), singleBandRasters.head.extent))
@@ -84,7 +87,9 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     val singleBandRasters = selectedSources.toList.par
       .map  {source =>
         try{
-          source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
+          source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) =>
+            Raster(multibandTile.band(0).localAdd(pixelValueOffset), extent)
+          }
         }   catch {
           case e: Exception => throw new IOException(s"Error while reading ${bounds} from: ${source.name.toString}", e)
         }
