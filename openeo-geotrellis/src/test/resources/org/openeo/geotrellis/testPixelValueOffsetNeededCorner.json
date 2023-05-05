@@ -30,7 +30,7 @@
         "rel": "self",
         "type": "application/json",
         "title": "self",
-        "href": "http://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?box=4.551038745771685%2C50.52193149391922%2C5.728989293152962%2C51.34991413206223&sortParam=startDate&sortOrder=ascending&page=1&maxRecords=100&status=0%7C34%7C37&dataset=ESA-DATASET&startDate=2023-04-04T00%3A00%3A00Z&completionDate=2023-04-06T23%3A59%3A59.999999999Z"
+        "href": "http://example.com"
       },
       {
         "rel": "search",
@@ -98,7 +98,7 @@
             "shortName": "No license"
           }
         },
-        "productIdentifier": "./S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE",
+        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE",
         "parentIdentifier": null,
         "title": "S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE",
         "description": null,

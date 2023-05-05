@@ -6,7 +6,7 @@ import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
-import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, RasterSource}
+import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, RasterSource, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.summary.polygonal._
@@ -1002,36 +1002,72 @@ class FileLayerProviderTest {
   }
 
   @Test
-  def testPixelValueOffsetNeeded(): Unit = {
+  def testPixelValueOffsetNeededCorner(): Unit = {
+    // This selection will go over a corner that has nodata pixels
+    val layer = testPixelValueOffsetNeeded(
+      "/org/openeo/geotrellis/testPixelValueOffsetNeededCorner.json",
+      Extent(703109 - 100, 5600100, 709000, 5610000 - 100),
+      LocalDate.of(2023, 4, 5),
+    )
+    val cubeSpatial = layer.toSpatial()
+    cubeSpatial.writeGeoTiff("tmp/testPixelValueOffsetNeededCorner.tiff")
+    val arr = cubeSpatial.collect().array
+    assertTrue(isNoData(arr(1)._2.toArrayTile().band(0).get(162, 250)))
+    assertEquals(224, arr(0)._2.toArrayTile().band(0).get(0, 0), 1)
+  }
+
+  @Test
+  def testPixelValueOffsetNeededDark(): Unit = {
+    // This will cover an area where pixels go under 0
+    val layer = testPixelValueOffsetNeeded(
+      "/org/openeo/geotrellis/testPixelValueOffsetNeededDark.json",
+      Extent(755380, 5622042, 756755, 5623482),
+      LocalDate.of(2023, 1, 17),
+    )
+    val cubeSpatial = layer.toSpatial()
+    cubeSpatial.writeGeoTiff("tmp/testPixelValueOffsetNeededDark.tiff")
+    val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
+
+//    1 until band.cols foreach (x => 1 until band.rows foreach (y => if (band.get(x, y) < -999)
+//      println("point (" + x + "," + y + ") " + band.get(x, y))
+//    ))
+    assertEquals(888, band.get(0, 0), 1)
+    assertEquals(-582, band.get(133, 151), 1)
+  }
+
+  def testPixelValueOffsetNeeded(
+                                  jsonPath: String,
+                                  extent: Extent,
+                                  localDate: LocalDate,
+                                ): MultibandTileLayerRDD[SpaceTimeKey] = {
     val bandNames = Collections.singletonList("B04")
-    //    val extent4326 = Extent(51.62, 4.4, 51.63, 4.42)
-    val extentTAP32631 = Extent(703109 - 100, 5600100, 709000, 5620000 - 100) // corner
-//    val extentTAP32631 = Extent(610000 - 100, 5600100, 690101, 5690000 - 100) // safe option
-    //    val extentTAP32631 = Extent(610000 - 100, 5600100, 690101, 5690000 - 100)
-    //    val extentTAP32631 = extent4326.reproject(CRS.fromName("EPSG:4326" ), CRS.fromName("EPSG:32631" ))
     val srs32631 = "EPSG:32631"
-    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extentTAP32631, srs32631)
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, srs32631)
 
-    val resourcePath = "/org/openeo/geotrellis/"
-    val fullPath = resourcePath + "Sentinel-2-L2A/creodiasPixelValueOffsetNeeded.json"
-
-    val fileSource = Source.fromURL(getClass.getResource(fullPath))
+    val jsonPathFull = getClass.getResource(jsonPath)
+    val fileSource = Source.fromURL(jsonPathFull)
     var txt = try fileSource.mkString
     finally fileSource.close()
-    val file = getClass.getResource(fullPath)
-    val basePath = new java.io.File(file.getFile).getParent
-    // Use artifactory to avoid havy git repo
-    val basePathArtifactory = "https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2023/04/05/"
-    val rest = "S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R10m/T31UFS_20230405T105031_B04_10m.jp2"
-    val jp2File = new File(basePath, rest)
-    if (!jp2File.exists()) {
-      println("Copy from artifactory to: " + jp2File)
-      FileUtils.copyURLToFile(new URL(basePathArtifactory + rest), jp2File)
+    val basePath = new java.io.File(jsonPathFull.getFile).getParent
+    // Use artifactory to avoid heavy git repo
+    val basePathArtifactory = "https://artifactory.vgt.vito.be/testdata-public"
+
+    for (rest <- Seq(
+      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/GRANULE/L2A_T31UGS_A030636_20230117T104258/IMG_DATA/R10m/T31UGS_20230117T104259_B04_10m.jp2",
+      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R10m/T31UFS_20230405T105031_B04_10m.jp2",
+    )) {
+      val jp2File = new File(basePath, rest)
+      if (!jp2File.exists()) {
+        println("Copy from artifactory to: " + jp2File)
+        FileUtils.copyURLToFile(new URL(basePathArtifactory + rest), jp2File)
+      }
     }
-    txt = txt.replace("\"./", "\"" + basePath + "/")
+    txt = txt.replace("\"/eodata/", "\"" + basePath + "/eodata/")
     val mockedFeatures = CreoFeatureCollection.parse(txt)
     val client = new MockOpenSearchFeatures(mockedFeatures.features)
-//    val client = CreodiasClient()
+    //    val client = CreodiasClient() // More difficult to capture a nodata piece
 
     val factory = new org.openeo.geotrellis.file.PyramidFactory(
       client, "Sentinel2", bandNames,
@@ -1040,29 +1076,21 @@ class FileLayerProviderTest {
     )
     factory.crs = projected_polygons_native_crs.crs
 
-    val localFromDate = LocalDate.of(2023, 4, 4)
-    val localToDate = LocalDate.of(2023, 4, 6)
+    val localFromDate = localDate
+    val localToDate = localDate.plusDays(1)
     val ZonedFromDate = ZonedDateTime.of(localFromDate, java.time.LocalTime.MIDNIGHT, UTC)
     val zonedToDate = ZonedDateTime.of(localToDate, java.time.LocalTime.MIDNIGHT, UTC)
-
     val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format ZonedFromDate
     val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format zonedToDate
 
     val dataCubeParameters = new DataCubeParameters()
     dataCubeParameters.tileSize = 256
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
-    //    dataCubeParameters.globalExtent = Some(projectedExtent)
 
     val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
       projected_polygons_native_crs,
       from_date, to_date, Collections.emptyMap(), ""
     )
-    val cubeSpatial = cube.head._2.toSpatial()
-    val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
-    cubeSpatial.writeGeoTiff("tmp/l2_offseteda.tiff")
-//
-//    assertEquals(751, band.get(0, 0), 1)
-//    assertEquals(778, band.get(1, 1), 1)
-//    assertEquals(370, band.get(100, 100), 1)
+    cube.head._2
   }
 }
