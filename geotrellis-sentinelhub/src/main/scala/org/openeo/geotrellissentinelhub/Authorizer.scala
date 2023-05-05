@@ -23,6 +23,9 @@ object MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer {
   private val logger = LoggerFactory.getLogger(classOf[MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer])
 }
 
+/**
+ * Supports access tokens cached in memory and Zookeeper (multiple) with Auth API fallback.
+ */
 class MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(zookeeperConnectionString: String,
                                                                     accessTokenPath: String,
                                                                     clientId: String, clientSecret: String) extends Authorizer {
@@ -88,7 +91,8 @@ object MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer {
 }
 
 /**
- Only supports single access token cached in Zookeeper: /openeo/rlguard/access_token
+ * Supports access tokens cached in memory and Zookeeper (a single one at /openeo/rlguard/access_token)
+ * with Auth API fallback.
  */
 @deprecated("use MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer instead")
 class MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId: String, clientSecret: String)
@@ -129,12 +133,19 @@ object MemoizedAuthApiAccessTokenAuthorizer {
   private val logger = LoggerFactory.getLogger(classOf[MemoizedAuthApiAccessTokenAuthorizer])
 }
 
-class MemoizedAuthApiAccessTokenAuthorizer(clientId: String, clientSecret: String) extends Authorizer {
+/**
+ * Supports access tokens cached in memory with Auth API fallback.
+ */
+class MemoizedAuthApiAccessTokenAuthorizer(clientId: String, clientSecret: String, authApiUrl: String = null) extends Authorizer {
   import MemoizedAuthApiAccessTokenAuthorizer._
 
   override def authorized[R](fn: String => R): R = {
+    val authApi =
+      if (authApiUrl == null) new AuthApi
+      else new AuthApi(authApiUrl)
+
     def accessToken: String = AccessTokenCache.get(clientId, clientSecret) { (clientId, clientSecret) =>
-      val freshAccessToken = new AuthApi().authenticate(clientId, clientSecret)
+      val freshAccessToken = authApi.authenticate(clientId, clientSecret)
       logger.debug(s"Auth API access token for clientID $clientId expires within ${freshAccessToken.expires_in}")
       freshAccessToken
     }
@@ -179,4 +190,11 @@ object AccessTokenCache {
   }
 
   private[geotrellissentinelhub] def invalidate(clientId: String, clientSecret: String): Unit = cache.invalidate((clientId, clientSecret))
+}
+
+/**
+ * Supports a particular access token; authentication has already been done elsewhere.
+ */
+class FixedAccessTokenAuthorizer(accessToken: String) extends Authorizer {
+  override def authorized[R](fn: String => R): R = fn(accessToken)
 }

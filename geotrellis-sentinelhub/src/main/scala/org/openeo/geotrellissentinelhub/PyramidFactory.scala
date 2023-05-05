@@ -27,7 +27,8 @@ object PyramidFactory {
 
   private val maxKeysPerPartition = 20
 
-  // convenience method for Python client
+  // convenience methods for Python client
+  // Terrascope setup with Zookeeper cache and default Auth API endpoint
   def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String,
                                  clientId: String, clientSecret: String,
                                  zookeeperConnectionString: String, zookeeperAccessTokenPath: String,
@@ -37,6 +38,24 @@ object PyramidFactory {
       new DefaultProcessApi(endpoint),
       new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(zookeeperConnectionString,
         zookeeperAccessTokenPath, clientId, clientSecret),
+      processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
+
+  // CDSE setup with user's Keycloak access token
+  def withFixedAccessToken(endpoint: String, collectionId: String, datasetId: String,
+                           accessToken: String,
+                           processingOptions: util.Map[String, Any], sampleType: SampleType,
+                           maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
+    new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
+      new DefaultProcessApi(endpoint), new FixedAccessTokenAuthorizer(accessToken),
+      processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
+
+  // CDSE setup with workaround for Keycloak access token not working yet
+  def withCustomAuthApi(endpoint: String, collectionId: String, datasetId: String,
+                        authApiUrl: String, clientId: String, clientSecret: String,
+                        processingOptions: util.Map[String, Any], sampleType: SampleType,
+                        maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
+    new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
+      new MemoizedAuthApiAccessTokenAuthorizer(clientId, clientSecret, authApiUrl),
       processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
 }
 
@@ -142,7 +161,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
         try {
           val (multibandTile, processingUnitsSpent) = authorized { accessToken =>
             processApi.getTile(datasetId, ProjectedExtent(key.spatialKey.extent(layout), targetCrs),
-              key.temporalKey, width, height, bandNames, sampleType, Criteria.toDataFilters(metadataProperties, bandNames),
+              key.temporalKey, width, height, bandNames, sampleType, Criteria.toDataFilters(metadataProperties),
               processingOptions, accessToken)
           }
           tracker.add(SH_PU, processingUnitsSpent)
@@ -169,7 +188,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
     val features = authorized { accessToken =>
       _catalogApi.search(collectionId, polygon, polygonCrs,
-        from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadataProperties))
+        from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadataProperties, collectionId))
     }
 
     val layers = for (zoom <- maxZoom to 0 by -1)
@@ -253,7 +272,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             val (tile, processingUnitsSpent) = authorized { accessToken =>
               processApi.getTile(datasetId, projectedExtent, dateTime, width, height, bandNames,
-                sampleType, Criteria.toDataFilters(metadata_properties, bandNames), processingOptions, accessToken)
+                sampleType, Criteria.toDataFilters(metadata_properties), processingOptions, accessToken)
             }
             tracker.add(SH_PU, processingUnitsSpent)
             scopedMetadataTracker.addSentinelHubProcessingUnits(processingUnitsSpent)
@@ -333,7 +352,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             val features = authorized { accessToken =>
               _catalogApi.search(collectionId, multiPolygon, polygons_crs,
-                from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties))
+                from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties, collectionId))
             }
 
             tracker.addInputProductsWithUrls(

@@ -316,7 +316,8 @@ object NetCDFRDDWriter {
 
     val crs = rdd.metadata.crs
     val groupedBySample = stitchRDDBySample(rdd, featuresBC)
-    logger.info(s"Writing ${groupedBySample.count()} samples to disk.")
+    //doing a count triggers full job execution, and there's already logging in previous block
+    //logger.info(s"Writing ${groupedBySample.keys.count()} samples to disk.")
     groupedBySample.map { case (name, tiles: Iterable[(Long, Raster[MultibandTile])]) =>
         val outputAsPath: Path = getSamplePath(name, path, filenamePrefix)
         val filePath = outputAsPath.toString

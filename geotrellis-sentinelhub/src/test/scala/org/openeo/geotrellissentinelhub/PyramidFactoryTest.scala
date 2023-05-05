@@ -1171,4 +1171,40 @@ class PyramidFactoryTest {
     assertEquals(s"expected exactly zero tracked failed tile requests but got $numFailedRequests instead",
       0, numFailedRequests)
   }
+
+  @Ignore("not to be run automatically")
+  @Test
+  def testFixedAccessToken(): Unit = {
+    val endpoint = "https://sh.dataspace.copernicus.eu"
+    val date = ZonedDateTime.of(LocalDate.of(2018, 8, 6), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+    val collectionId = "sentinel-3-olci"
+    val datasetId = collectionId
+    // get it from https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token
+    val accessToken = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJYVUh3VWZKaHVDVWo0X3k4ZF8xM0hxWXBYMFdwdDd2anhob2FPLUxzREZFIn0.eyJleHAiOjE2ODMxOTA4NjgsImlhdCI6MTY4MzE5MDI2OCwianRpIjoiNzdlY2VmZjUtZmM0My00NWNjLWIwNjYtNTUwN2YyNGQ0ZDQ1IiwiaXNzIjoiaHR0cHM6Ly9pZGVudGl0eS5kYXRhc3BhY2UuY29wZXJuaWN1cy5ldS9hdXRoL3JlYWxtcy9DRFNFIiwic3ViIjoiMjIyNjRjYWUtODA3Mi00MzUxLWIxYjYtZDMyYzE3M2VjZTc5IiwidHlwIjoiQmVhcmVyIiwiYXpwIjoic2gtMDVmOTM5YjUtODQ0NS00ZDVkLWIwNjAtMTk4OGI0N2Q2MzZhIiwic2NvcGUiOiJlbWFpbCBwcm9maWxlIHVzZXItY29udGV4dCIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwiY2xpZW50SWQiOiJzaC0wNWY5MzliNS04NDQ1LTRkNWQtYjA2MC0xOTg4YjQ3ZDYzNmEiLCJjbGllbnRIb3N0IjoiMTkzLjE5MC4xODkuMTIiLCJvcmdhbml6YXRpb25zIjpbImRlZmF1bHQtOTc2MGU1OWItNTY2ZC00MmQxLWI2NWItMzRlZDE4NzlkYThhIl0sInVzZXJfY29udGV4dF9pZCI6IjYxNjEyZmM4LWFkNjQtNDU1ZC04YTFmLTViZmFlZTUwNGNhMCIsImNvbnRleHRfcm9sZXMiOnt9LCJjb250ZXh0X2dyb3VwcyI6WyIvb3JnYW5pemF0aW9ucy9kZWZhdWx0LTk3NjBlNTliLTU2NmQtNDJkMS1iNjViLTM0ZWQxODc5ZGE4YS8iXSwicHJlZmVycmVkX3VzZXJuYW1lIjoic2VydmljZS1hY2NvdW50LXNoLTA1ZjkzOWI1LTg0NDUtNGQ1ZC1iMDYwLTE5ODhiNDdkNjM2YSIsInVzZXJfY29udGV4dCI6ImRlZmF1bHQtOTc2MGU1OWItNTY2ZC00MmQxLWI2NWItMzRlZDE4NzlkYThhIiwiY2xpZW50QWRkcmVzcyI6IjE5My4xOTAuMTg5LjEyIn0.YCHjgV436G5BgCw-c_TmG55a8HlsWnHc79wCrVJ2M0HHSnSdJXzbH3nVy06wbc2UMnzhH_7DeD1_PjSDSuixVVTXI45DUy1gk4tP9etiuzBOLC7sy01skIuUoDvYzeCPDX9g5VEXqcjFUqJx0ydhCX-ewDSuH2cjS5wd7WqMsUqrWkfRNCcyu8qFdzbIKiCznjnYD3Et1Dxef-7m2ZmnaqUr8Xvw77GXuKmr9aoplbAhvfc6vLp4ffwWvaQPwek2v81PV4cIS-8Il4YXapdTEuoZIhbJNczKQPHMut6-3XOu8UAXY19GexuqqATmZIAgJZLqNAmZItUHR_xVcnU8Mw"
+
+    val pyramidFactory = PyramidFactory.withFixedAccessToken(endpoint, collectionId, datasetId, accessToken,
+      processingOptions = Collections.emptyMap(), sampleType = FLOAT32,
+      maxSpatialResolution = CellSize(0.00297619047619, 0.00297619047619), maxSoftErrorsRatio = 0.0)
+
+    testLayer(pyramidFactory, "sentinel-3-olci", date, Seq("B02", "B17", "B19"))
+  }
+
+  @Ignore("not to be run automatically")
+  @Test
+  def testCustomAuthApi(): Unit = {
+    val endpoint = "https://sh.dataspace.copernicus.eu"
+    val date = ZonedDateTime.of(LocalDate.of(2018, 8, 6), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+    val collectionId = "sentinel-3-olci"
+    val datasetId = collectionId
+    val authApiUrl = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+    val clientId = "???"
+    val clientSecret = "!!!"
+
+    val pyramidFactory = PyramidFactory.withCustomAuthApi(endpoint, collectionId, datasetId,
+      authApiUrl, clientId, clientSecret,
+      processingOptions = Collections.emptyMap(), sampleType = FLOAT32,
+      maxSpatialResolution = CellSize(0.00297619047619, 0.00297619047619), maxSoftErrorsRatio = 0.0)
+
+    testLayer(pyramidFactory, "sentinel-3-olci", date, Seq("B02", "B17", "B19"))
+  }
 }

@@ -566,14 +566,14 @@ case class TileSeeder(zoomLevel: Int, verbose: Boolean, partitions: Option[Int] 
       }
       t.mapIfSet(z => {
         val newZ = (((z - oldMin) * dnew) / dold) + newMin
-        1 max newZ min 255
+        newMin max newZ min newMax
       })
     }
 
 
     def normalize(bandIndex: Int, tile: Tile) = {
       val band = bands(bandIndex)
-      val newMax = if (band.noData == 255) 254 else 255
+      val newMax = if (band.noData.get == 255) 254 else 255
       normalizeClip(tile, band.min, band.max, 1, newMax)
         .convert(IntConstantNoDataCellType)
     }
