@@ -91,7 +91,6 @@ object FileLayerProviderTest {
   }
 }
 
-@Test
 class FileLayerProviderTest {
   import FileLayerProviderTest._
 
@@ -279,7 +278,6 @@ class FileLayerProviderTest {
 
   @ParameterizedTest
   @ValueSource(ints = Array(101,489,1589,69854))
-  @Test
   def testOptimalLayoutScheme(size:Int): Unit = {
 
     val crs = CRS.fromEpsgCode(32632)
