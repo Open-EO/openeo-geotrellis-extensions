@@ -12,6 +12,7 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
+import org.apache.commons.io.FileUtils
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.junit.{AfterClass, BeforeClass}
@@ -29,12 +30,14 @@ import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, Feature
 import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 
+import java.io.File
 import java.net.URL
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.Collections
 import scala.collection.JavaConverters._
+import scala.io.Source
 
 object FileLayerProviderTest {
   // Methods with attributes get called in a non-intuitive order:
@@ -363,6 +366,16 @@ class FileLayerProviderTest {
       sentinel1Product.features
     }
     override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
+    override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+  }
+
+  class MockOpenSearchFeatures(mockedFeatures:Array[OpenSearchResponses.Feature]) extends OpenSearchClient {
+    override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
+      mockedFeatures
+    }
+
+    override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
+
     override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
   }
 
@@ -989,19 +1002,41 @@ class FileLayerProviderTest {
   @Test
   def testPixelValueOffsetNeeded(): Unit = {
     val bandNames = Collections.singletonList("B04")
-    val extentTAP4326 = Extent(5.07, 51.215, 5.08, 51.22)
-    val extentTAP32631 = extentTAP4326.reproject(CRS.fromName("EPSG:4326" ), CRS.fromName("EPSG:32631" ))
+    //    val extent4326 = Extent(51.62, 4.4, 51.63, 4.42)
+    val extentTAP32631 = Extent(703109 - 100, 5600100, 709000, 5620000 - 100) // corner
+//    val extentTAP32631 = Extent(610000 - 100, 5600100, 690101, 5690000 - 100) // safe option
+    //    val extentTAP32631 = Extent(610000 - 100, 5600100, 690101, 5690000 - 100)
+    //    val extentTAP32631 = extent4326.reproject(CRS.fromName("EPSG:4326" ), CRS.fromName("EPSG:32631" ))
     val srs32631 = "EPSG:32631"
     val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extentTAP32631, srs32631)
-    val projectedExtent = ProjectedExtent(extentTAP32631, projected_polygons_native_crs.crs)
 
-    val client = CreodiasClient()
+    val resourcePath = "/org/openeo/geotrellis/"
+    val fullPath = resourcePath + "Sentinel-2-L2A/creodiasPixelValueOffsetNeeded.json"
+
+    val fileSource = Source.fromURL(getClass.getResource(fullPath))
+    var txt = try fileSource.mkString
+    finally fileSource.close()
+    val file = getClass.getResource(fullPath)
+    val basePath = new java.io.File(file.getFile).getParent
+    // Use artifactory to avoid havy git repo
+    val basePathArtifactory = "https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L2A/2023/04/05/"
+    val rest = "S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R10m/T31UFS_20230405T105031_B04_10m.jp2"
+    val jp2File = new File(basePath, rest)
+    if (!jp2File.exists()) {
+      println("Copy from artifactory to: " + jp2File)
+      FileUtils.copyURLToFile(new URL(basePathArtifactory + rest), jp2File)
+    }
+    txt = txt.replace("\"./", "\"" + basePath + "/")
+    val mockedFeatures = CreoFeatureCollection.parse(txt)
+    val client = new MockOpenSearchFeatures(mockedFeatures.features)
+//    val client = CreodiasClient()
+
     val factory = new org.openeo.geotrellis.file.PyramidFactory(
       client, "Sentinel2", bandNames,
       null,
       maxSpatialResolution = CellSize(10, 10),
     )
-    factory.crs = CRS.fromName("EPSG:4326" ); //projected_polygons_native_crs.crs
+    factory.crs = projected_polygons_native_crs.crs
 
     val localFromDate = LocalDate.of(2023, 4, 4)
     val localToDate = LocalDate.of(2023, 4, 6)
@@ -1020,6 +1055,12 @@ class FileLayerProviderTest {
       projected_polygons_native_crs,
       from_date, to_date, Collections.emptyMap(), ""
     )
-    cube.head._2.toSpatial().writeGeoTiff("tmp/l2_offseteda.tiff")
+    val cubeSpatial = cube.head._2.toSpatial()
+    val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
+    cubeSpatial.writeGeoTiff("tmp/l2_offseteda.tiff")
+//
+//    assertEquals(751, band.get(0, 0), 1)
+//    assertEquals(778, band.get(1, 1), 1)
+//    assertEquals(370, band.get(100, 100), 1)
   }
 }

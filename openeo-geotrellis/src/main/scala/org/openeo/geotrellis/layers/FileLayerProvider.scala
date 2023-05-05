@@ -42,7 +42,12 @@ import scala.util.matching.Regex
 
 // TODO: are these attributes typically propagated as RasterSources are transformed? Maybe we should find another way to
 //  attach e.g. a date to a RasterSource.
-class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource], override val crs: CRS, override val attributes: Map[String, String] = Map.empty, predefinedExtent: Option[GridExtent[Long]] = None)
+class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource],
+                                override val crs: CRS,
+                                override val attributes: Map[String, String] = Map.empty,
+                                predefinedExtent: Option[GridExtent[Long]] = None,
+                                val pixelValueOffset: Double = 0.0,
+                               )
   extends MosaicRasterSource { // TODO: don't inherit?
 
   protected def reprojectedSources: NonEmptyList[RasterSource] = sources map { _.reproject(crs) }
@@ -106,15 +111,16 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                          method: ResampleMethod,
                          strategy: OverviewStrategy
                        ): RasterSource = new BandCompositeRasterSource(
-    reprojectedSources map { _.resample(resampleTarget, method, strategy) }, crs)
+    reprojectedSources map { _.resample(resampleTarget, method, strategy) }, crs, pixelValueOffset=pixelValueOffset)
 
   override def convert(targetCellType: TargetCellType): RasterSource =
-    new BandCompositeRasterSource(reprojectedSources map { _.convert(targetCellType) }, crs)
+    new BandCompositeRasterSource(reprojectedSources map { _.convert(targetCellType) }, crs, pixelValueOffset=pixelValueOffset)
 
   override def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
     new BandCompositeRasterSource(
       reprojectedSources map { _.reproject(targetCRS, resampleTarget, method, strategy) },
-      crs
+      crs,
+      pixelValueOffset=pixelValueOffset,
     )
 }
 
@@ -569,8 +575,8 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         }else{
           None
         }
-        if (bandIds.isEmpty) (new BandCompositeRasterSource(sources.map(_._1), crs, attributes,predefinedExtent = gridExtent),feature)
-        else (new MultibandCompositeRasterSource(sources, crs, attributes),feature)
+        if (bandIds.isEmpty) (new BandCompositeRasterSource(sources.map(_._1), crs, attributes,predefinedExtent = gridExtent, pixelValueOffset=feature.pixelValueOffset),feature)
+        else (new MultibandCompositeRasterSource(sources, crs, attributes),feature) // TODO?
       }
   }
 
@@ -946,7 +952,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
 
-      if (bandIds.isEmpty) return Some((new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent), feature))
+      if (bandIds.isEmpty) return Some((new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent, pixelValueOffset = feature.pixelValueOffset), feature))
       else return Some((new MultibandCompositeRasterSource(sources, targetExtent.crs, attributes), feature))
     }
 
