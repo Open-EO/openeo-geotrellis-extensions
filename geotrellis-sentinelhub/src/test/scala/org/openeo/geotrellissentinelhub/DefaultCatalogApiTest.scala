@@ -200,6 +200,27 @@ class DefaultCatalogApiTest {
       queryProperties = emptyMap()
     )
 
-    print(features.size)
+    println(features.size)
+  }
+
+  @Ignore("test-drive CDSE Catalog API; not to be run automatically")
+  @Test
+  def testSearchCdseCatalog(): Unit = {
+    val geometry = ProjectedExtent(Extent(5.027, 51.1974, 5.0438, 51.2213), LatLng)
+    val from = LocalDate.of(2018, 8, 6).atStartOfDay(utc)
+    val to = from plusDays 1
+
+    val accessToken = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJYVUh3VWZKaHVDVWo0X3k4ZF8xM0hxWXBYMFdwdDd2anhob2FPLUxzREZFIn0.eyJleHAiOjE2ODI1MTE1NDcsImlhdCI6MTY4MjUxMDk0NywianRpIjoiN2JkOGYxYmYtMDQ0Mi00M2IxLThmZDktODQxNzgwMTY4YjQ2IiwiaXNzIjoiaHR0cHM6Ly9pZGVudGl0eS5kYXRhc3BhY2UuY29wZXJuaWN1cy5ldS9hdXRoL3JlYWxtcy9DRFNFIiwic3ViIjoiMjIyNjRjYWUtODA3Mi00MzUxLWIxYjYtZDMyYzE3M2VjZTc5IiwidHlwIjoiQmVhcmVyIiwiYXpwIjoic2gtMDVmOTM5YjUtODQ0NS00ZDVkLWIwNjAtMTk4OGI0N2Q2MzZhIiwic2NvcGUiOiJlbWFpbCBwcm9maWxlIHVzZXItY29udGV4dCIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwiY2xpZW50SWQiOiJzaC0wNWY5MzliNS04NDQ1LTRkNWQtYjA2MC0xOTg4YjQ3ZDYzNmEiLCJjbGllbnRIb3N0IjoiMTkzLjE5MC4xODkuMTIiLCJvcmdhbml6YXRpb25zIjpbImRlZmF1bHQtOTc2MGU1OWItNTY2ZC00MmQxLWI2NWItMzRlZDE4NzlkYThhIl0sInVzZXJfY29udGV4dF9pZCI6IjYxNjEyZmM4LWFkNjQtNDU1ZC04YTFmLTViZmFlZTUwNGNhMCIsImNvbnRleHRfcm9sZXMiOnt9LCJjb250ZXh0X2dyb3VwcyI6WyIvb3JnYW5pemF0aW9ucy9kZWZhdWx0LTk3NjBlNTliLTU2NmQtNDJkMS1iNjViLTM0ZWQxODc5ZGE4YS8iXSwicHJlZmVycmVkX3VzZXJuYW1lIjoic2VydmljZS1hY2NvdW50LXNoLTA1ZjkzOWI1LTg0NDUtNGQ1ZC1iMDYwLTE5ODhiNDdkNjM2YSIsInVzZXJfY29udGV4dCI6ImRlZmF1bHQtOTc2MGU1OWItNTY2ZC00MmQxLWI2NWItMzRlZDE4NzlkYThhIiwiY2xpZW50QWRkcmVzcyI6IjE5My4xOTAuMTg5LjEyIn0.ep31ee3wvui5oGcgUVj1ZjX5o2cfIWizr74SGiUIjFBk1OxoqQ4Ec5PM6KH_ITPooW7cT-0374Op5lj-0tWUcI9hFYb2kNd5cAddlPCz3fzL7fICK9Je_D3D4inV5ua4rmQDXiPcwGDJx0T6UzrDNgX18iOc12tz_3QCVH3nXmQqmL7OhHF0jDrF4BfjQGZa7UUjctltAJl4n08GLgfhEfoj9bcrH2YBuFqt62OOWQvXvGcLBtCX6-soHrJcNut_bZLVZAuWm1TEEIVRKGzmwFPvt_UScY_8daFs6UDoAOAG6NqZipl73F4TYYyCV22gsEWqpoqUfoPUjM7jYwLPoA"
+
+    val cdseCatalog = new DefaultCatalogApi(endpoint = "https://sh.dataspace.copernicus.eu")
+    val features = cdseCatalog.search(
+      "sentinel-3-olci",
+      geometry.extent.toPolygon(), geometry.crs,
+      from, to,
+      accessToken,
+      queryProperties = emptyMap()
+    )
+
+    println(features.size)
   }
 }

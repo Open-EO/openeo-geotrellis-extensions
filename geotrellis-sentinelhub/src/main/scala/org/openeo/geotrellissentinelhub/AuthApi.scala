@@ -19,7 +19,7 @@ object AuthApi {
   private[geotrellissentinelhub] case class AuthResponse(access_token: String, expires_in: Duration)
 }
 
-class AuthApi {
+class AuthApi(url: String = "https://services.sentinel-hub.com/oauth/token") {
   import AuthApi._
 
   def authenticate(clientId: String, clientSecret: String): AuthResponse =
@@ -29,7 +29,7 @@ class AuthApi {
         "client_id" -> clientId
       )
 
-      val getAuthToken = http("https://services.sentinel-hub.com/oauth/token")
+      val getAuthToken = http(url)
         .postForm(safeParams :+ ("client_secret" -> clientSecret))
 
       logger.debug(s"requesting new access token for client ID $clientId")
