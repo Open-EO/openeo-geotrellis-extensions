@@ -46,10 +46,13 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                                 override val crs: CRS,
                                 override val attributes: Map[String, String] = Map.empty,
                                 predefinedExtent: Option[GridExtent[Long]] = None,
-                                val pixelValueOffset: Double = 0.0,
+                                val pixelValueOffset: Double = 666.0,
                                )
   extends MosaicRasterSource { // TODO: don't inherit?
 
+  if(pixelValueOffset == 666){
+    throw new Exception("BandCompositeRasterSource pixelValueOffset == 666")
+  }
   protected def reprojectedSources: NonEmptyList[RasterSource] = sources map { _.reproject(crs) }
   protected def reprojectedSources(bands: Seq[Int]): NonEmptyList[RasterSource] = {
     val selectedBands =  (NonEmptyList.fromList(bands.map(sources.toList).toList)).get
@@ -84,7 +87,6 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   override def bandCount: Int = sources.size
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    // TODO unsigned data - > signed data? Ignore nodata?
     val selectedSources = reprojectedSources(bands)
     val singleBandRasters = selectedSources.toList.par
       .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) =>
@@ -113,7 +115,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                     if (x == ubyteNODATA) byteNODATA else (x + pixelValueOffset).toByte), band.cols, band.rows)
                 case _ =>
                   // Not sure how to handle user defined nodata for example
-                  throw new IllegalArgumentException("Can cnot yet combine 'pixelValueOffset' and '" + band.getClass.getName + "'. See more: https://github.com/Open-EO/openeo-geotrellis-extensions/issues/144")
+                  throw new IllegalArgumentException("Can not yet combine 'pixelValueOffset' and '" + band.getClass.getName + "'. See more: https://github.com/Open-EO/openeo-geotrellis-extensions/issues/144")
               }
             }
             Raster(band, extent)
