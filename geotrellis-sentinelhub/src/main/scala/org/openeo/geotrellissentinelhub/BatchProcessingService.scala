@@ -141,9 +141,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
         new Sentinel2L2AInitialCacheOperation(dataset_id)
       else if (Set("sentinel-1-grd", "S1GRD") contains dataset_id) {
         // https://forum.sentinel-hub.com/t/sentinel-hub-december-2022-improvements/6198
-        val defaultDemInstance =
-          if (LocalDateTime.now() isBefore LocalDate.of(2022, 12, 5).atStartOfDay()) "MAPZEN"
-          else "COPERNICUS"
+        val defaultDemInstance = "COPERNICUS"
         new Sentinel1GrdInitialCacheOperation(dataset_id, defaultDemInstance)
       } else throw new IllegalArgumentException(
         """only datasets "sentinel-2-l2a" (previously "S2L2A") and
