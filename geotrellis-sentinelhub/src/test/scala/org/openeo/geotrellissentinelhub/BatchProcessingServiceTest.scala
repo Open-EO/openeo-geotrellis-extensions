@@ -350,7 +350,7 @@ class BatchProcessingServiceTest {
   @Test
   def getBatchProcessStatus(): Unit = {
     val status =
-      batchProcessingService.get_batch_process_status(batch_request_id = "7f3d98f2-4a9a-4fbe-adac-973f1cff5699")
+      batchProcessingService.get_batch_process(batch_request_id = "7f3d98f2-4a9a-4fbe-adac-973f1cff5699").status
 
     assertEquals("DONE", status)
   }
@@ -525,7 +525,7 @@ class BatchProcessingServiceTest {
 
     while (true) {
       SECONDS.sleep(10)
-      val statuses = batchRequestIds.map(id => id -> batchProcessingService.get_batch_process_status(id)).toMap
+      val statuses = batchRequestIds.map(id => id -> batchProcessingService.get_batch_process(id).status).toMap
       println(s"[${LocalTime.now()}] intermediary statuses: $statuses")
 
       val uniqueStatuses = statuses.values.toSet

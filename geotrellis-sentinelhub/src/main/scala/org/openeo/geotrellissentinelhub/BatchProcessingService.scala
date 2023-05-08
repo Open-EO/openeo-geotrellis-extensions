@@ -151,10 +151,6 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
       sampleType, metadata_properties, processing_options, bucketName, subfolder, collecting_folder, this)
   }
 
-  def get_batch_process_status(batch_request_id: String): String = authorized { accessToken =>
-    new BatchProcessingApi(endpoint).getBatchProcess(batch_request_id, accessToken).status
-  }
-
   def get_batch_process(batch_request_id: String): BatchProcess = authorized { accessToken =>
     val response = new BatchProcessingApi(endpoint).getBatchProcess(batch_request_id, accessToken)
 
