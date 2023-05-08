@@ -3,7 +3,6 @@ package org.openeo.geotrellis.layers
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, RasterSource, isNoData}
@@ -15,7 +14,6 @@ import geotrellis.vector._
 import org.apache.commons.io.FileUtils
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.junit.{AfterClass, BeforeClass}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
@@ -25,9 +23,8 @@ import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DatacubeSupport._
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{DataCubeParameters, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection}
-import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 
 import java.io.File
@@ -36,7 +33,6 @@ import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.Collections
-import scala.collection.JavaConverters._
 import scala.io.Source
 
 object FileLayerProviderTest {
@@ -47,7 +43,7 @@ object FileLayerProviderTest {
   // - BeforeClass
   // - AfterClass
   //
-  // This order feels arbitrary, so I made the code robust against order changes.
+  // This order is because of multiple Test framework versions, so I made the code robust against order changes.
 
   private var _sc: Option[SparkContext] = None
 
@@ -64,30 +60,36 @@ object FileLayerProviderTest {
     _sc.get
   }
 
-  @BeforeClass
-  def setUpSpark_BeforeClass(): Unit = sc
-
   @BeforeAll
-  def setUpSpark_BeforeAll(): Unit = sc
+  def setUpSpark_BeforeAll(): Unit = {
+    inAllBlock = true
+    sc
+  }
 
-  var gotAfterAll = false
+  var inAllBlock = false
 
   @AfterAll
   def tearDownSpark_AfterAll(): Unit = {
-    gotAfterAll = true
+    inAllBlock = false
     maybeStopSpark()
   }
 
-  var gotAfterClass = false
+  @BeforeClass
+  def setUpSpark_BeforeClass(): Unit = {
+    inClassBlock = true
+    sc
+  }
+
+  var inClassBlock = false
 
   @AfterClass
   def tearDownSpark_AfterClass(): Unit = {
-    gotAfterClass = true;
+    inClassBlock = false;
     maybeStopSpark()
   }
 
   def maybeStopSpark(): Unit = {
-    if (gotAfterAll && gotAfterClass) {
+    if (!inAllBlock && !inClassBlock) {
       if (_sc.isDefined) {
         println("Stopping SparkContext...")
         _sc.get.stop()
@@ -1026,9 +1028,10 @@ class FileLayerProviderTest {
     cubeSpatial.writeGeoTiff("tmp/testPixelValueOffsetNeededDark.tiff")
     val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
 
-//    1 until band.cols foreach (x => 1 until band.rows foreach (y => if (band.get(x, y) < -999)
-//      println("point (" + x + "," + y + ") " + band.get(x, y))
-//    ))
+    // Snippet to find relevant pixels to extend test case:
+    //    1 until band.cols foreach (x => 1 until band.rows foreach (y => if (band.get(x, y) < -999)
+    //      println("point (" + x + "," + y + ") " + band.get(x, y))
+    //    ))
     assertEquals(888, band.get(0, 0), 1)
     assertEquals(-582, band.get(133, 151), 1)
   }

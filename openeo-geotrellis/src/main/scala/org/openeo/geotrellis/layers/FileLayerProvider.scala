@@ -11,7 +11,7 @@ import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{ByteCellType, ByteConstantNoDataCellType, CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortCellType, ShortConstantNoDataCellType, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, UByteCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortConstantNoDataCellType, byteNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
+import geotrellis.raster.{ByteCellType, ByteConstantNoDataCellType, CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortCellType, ShortConstantNoDataCellType, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortConstantNoDataCellType, byteNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
 import geotrellis.spark._
 import geotrellis.spark.partition.PartitionerIndex.SpatialPartitioner
 import geotrellis.spark.partition.SpacePartitioner
@@ -46,13 +46,10 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                                 override val crs: CRS,
                                 override val attributes: Map[String, String] = Map.empty,
                                 predefinedExtent: Option[GridExtent[Long]] = None,
-                                val pixelValueOffset: Double = 666.0,
+                                pixelValueOffset: Double = 0,
                                )
   extends MosaicRasterSource { // TODO: don't inherit?
 
-  if(pixelValueOffset == 666){
-    throw new Exception("BandCompositeRasterSource pixelValueOffset == 666")
-  }
   protected def reprojectedSources: NonEmptyList[RasterSource] = sources map { _.reproject(crs) }
   protected def reprojectedSources(bands: Seq[Int]): NonEmptyList[RasterSource] = {
     val selectedBands =  (NonEmptyList.fromList(bands.map(sources.toList).toList)).get
@@ -86,11 +83,29 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   override def name: SourceName = sources.head.name
   override def bandCount: Int = sources.size
 
+  private def offsetBand(band: Tile): Tile = {
+    if (pixelValueOffset == 0) {
+      band
+    } else {
+      band match {
+        case b: geotrellis.raster.UShortArrayTile =>
+          geotrellis.raster.ShortConstantNoDataArrayTile(b.array.map(x =>
+            if (x == ushortNODATA) shortNODATA else (x + pixelValueOffset).toShort), band.cols, band.rows)
+        case b: geotrellis.raster.UByteArrayTile =>
+          geotrellis.raster.ByteConstantNoDataArrayTile(b.array.map(x =>
+            if (x == ubyteNODATA) byteNODATA else (x + pixelValueOffset).toByte), band.cols, band.rows)
+        case _ =>
+          // Not sure how to handle user defined nodata for example
+          throw new IllegalArgumentException("Can not yet combine 'pixelValueOffset' and '" + band.getClass.getName + "'. See more: https://github.com/Open-EO/openeo-geotrellis-extensions/issues/144")
+      }
+    }
+  }
+
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val selectedSources = reprojectedSources(bands)
     val singleBandRasters = selectedSources.toList.par
       .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) =>
-        Raster(multibandTile.band(0).localAdd(pixelValueOffset), extent)
+        Raster(offsetBand(multibandTile.band(0)), extent)
       } }
       .collect { case Some(raster) => raster }
 
@@ -104,21 +119,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       .map  {source =>
         try{
           source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) =>
-            var band = multibandTile.band(0)
-            if (pixelValueOffset != 0) {
-              band = band match {
-                case b: geotrellis.raster.UShortArrayTile =>
-                  geotrellis.raster.ShortConstantNoDataArrayTile(b.array.map(x =>
-                    if (x == ushortNODATA) shortNODATA else (x + pixelValueOffset).toShort), band.cols, band.rows)
-                case b: geotrellis.raster.UByteArrayTile =>
-                  geotrellis.raster.ByteConstantNoDataArrayTile(b.array.map(x =>
-                    if (x == ubyteNODATA) byteNODATA else (x + pixelValueOffset).toByte), band.cols, band.rows)
-                case _ =>
-                  // Not sure how to handle user defined nodata for example
-                  throw new IllegalArgumentException("Can not yet combine 'pixelValueOffset' and '" + band.getClass.getName + "'. See more: https://github.com/Open-EO/openeo-geotrellis-extensions/issues/144")
-              }
-            }
-            Raster(band, extent)
+            Raster(offsetBand(multibandTile.band(0)), extent)
           }
         }   catch {
           case e: Exception => throw new IOException(s"Error while reading ${bounds} from: ${source.name.toString}", e)
@@ -162,8 +163,12 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 // TODO: is this class necessary? Looks like a more general case of BandCompositeRasterSource so maybe the inheritance
 //  relationship should be reversed; or maybe the BandCompositeRasterSource could be made more general and accept
 //  multi-band RasterSources too.
-class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(RasterSource, Seq[Int])], override val crs: CRS, override val attributes: Map[String, String] = Map.empty)
-  extends BandCompositeRasterSource(sourcesListWithBandIds.map(_._1), crs, attributes) {
+class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(RasterSource, Seq[Int])],
+                                     override val crs: CRS,
+                                     override val attributes: Map[String, String] = Map.empty,
+                                     pixelValueOffset: Double = 0,
+                                    )
+  extends BandCompositeRasterSource(sourcesListWithBandIds.map(_._1), crs, attributes, pixelValueOffset = pixelValueOffset) {
 
   override def bandCount: Int = sourcesListWithBandIds.map(_._2.size).toList.sum
 
@@ -192,15 +197,16 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
                          method: ResampleMethod,
                          strategy: OverviewStrategy
                        ): RasterSource = new MultibandCompositeRasterSource(
-    sourcesWithBandIds map { case (source, bands) => (source.resample(resampleTarget, method, strategy), bands) }, crs)
+    sourcesWithBandIds map { case (source, bands) => (source.resample(resampleTarget, method, strategy), bands) }, crs, pixelValueOffset = pixelValueOffset)
 
   override def convert(targetCellType: TargetCellType): RasterSource =
-    new MultibandCompositeRasterSource(sourcesWithBandIds map { case (source, bands) => (source.convert(targetCellType), bands) }, crs)
+    new MultibandCompositeRasterSource(sourcesWithBandIds map { case (source, bands) => (source.convert(targetCellType), bands) }, crs, pixelValueOffset = pixelValueOffset)
 
   override def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
     new MultibandCompositeRasterSource(
       sourcesWithBandIds map { case (source, bands) => (source.reproject(targetCRS, resampleTarget, method, strategy), bands) },
-      crs
+      crs,
+      pixelValueOffset = pixelValueOffset,
     )
 }
 
@@ -611,7 +617,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
           None
         }
         if (bandIds.isEmpty) (new BandCompositeRasterSource(sources.map(_._1), crs, attributes,predefinedExtent = gridExtent, pixelValueOffset=feature.pixelValueOffset),feature)
-        else (new MultibandCompositeRasterSource(sources, crs, attributes),feature) // TODO?
+        else (new MultibandCompositeRasterSource(sources, crs, attributes, pixelValueOffset = feature.pixelValueOffset),feature)
       }
   }
 
@@ -988,7 +994,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
 
       if (bandIds.isEmpty) return Some((new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent, pixelValueOffset = feature.pixelValueOffset), feature))
-      else return Some((new MultibandCompositeRasterSource(sources, targetExtent.crs, attributes), feature))
+      else return Some((new MultibandCompositeRasterSource(sources, targetExtent.crs, attributes, pixelValueOffset = feature.pixelValueOffset), feature))
     }
 
   }
