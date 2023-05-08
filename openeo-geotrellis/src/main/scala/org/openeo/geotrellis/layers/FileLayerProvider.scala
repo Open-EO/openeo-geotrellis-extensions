@@ -102,16 +102,21 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       .map  {source =>
         try{
           source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) =>
-            val band = multibandTile.band(0)
-            val bandOffseted = band match {
-              case b: geotrellis.raster.UShortArrayTile =>
-                geotrellis.raster.ShortConstantNoDataArrayTile(b.array.map(x =>
-                  if (x == ushortNODATA) shortNODATA else (x + pixelValueOffset).toShort), band.cols, band.rows)
-              case b: geotrellis.raster.UByteArrayTile =>
-                geotrellis.raster.ByteConstantNoDataArrayTile(b.array.map(x =>
-                  if (x == ubyteNODATA) byteNODATA else (x + pixelValueOffset).toByte), band.cols, band.rows)
+            var band = multibandTile.band(0)
+            if (pixelValueOffset != 0) {
+              band = band match {
+                case b: geotrellis.raster.UShortArrayTile =>
+                  geotrellis.raster.ShortConstantNoDataArrayTile(b.array.map(x =>
+                    if (x == ushortNODATA) shortNODATA else (x + pixelValueOffset).toShort), band.cols, band.rows)
+                case b: geotrellis.raster.UByteArrayTile =>
+                  geotrellis.raster.ByteConstantNoDataArrayTile(b.array.map(x =>
+                    if (x == ubyteNODATA) byteNODATA else (x + pixelValueOffset).toByte), band.cols, band.rows)
+                case _ =>
+                  // Not sure how to handle user defined nodata for example
+                  throw new IllegalArgumentException("Can cnot yet combine 'pixelValueOffset' and '" + band.getClass.getName + "'. See more: https://github.com/Open-EO/openeo-geotrellis-extensions/issues/144")
+              }
             }
-            Raster(bandOffseted, extent)
+            Raster(band, extent)
           }
         }   catch {
           case e: Exception => throw new IOException(s"Error while reading ${bounds} from: ${source.name.toString}", e)
