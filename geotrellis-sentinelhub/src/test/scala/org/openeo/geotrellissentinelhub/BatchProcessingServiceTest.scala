@@ -538,7 +538,7 @@ class BatchProcessingServiceTest {
 
     while (true) {
       SECONDS.sleep(10)
-      val batchProcesses = batchRequestIds.map(id => batchProcessingService.get_batch_process(id))
+      val batchProcesses = batchRequestIds.map(batchProcessingService.get_batch_process)
       println(s"[${LocalTime.now()}] intermediary statuses: $batchProcesses")
 
       val uniqueStatuses = batchProcesses.map(_.status).toSet
