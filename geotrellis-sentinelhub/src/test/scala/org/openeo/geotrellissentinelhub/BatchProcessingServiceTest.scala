@@ -3,11 +3,12 @@ package org.openeo.geotrellissentinelhub
 import geotrellis.proj4.LatLng
 import geotrellis.vector.io.json.GeoJson
 import geotrellis.vector._
-import org.junit.Assert.{assertEquals, assertTrue}
+import org.junit.Assert.{assertEquals, assertNull, assertTrue}
 import org.junit.rules.TemporaryFolder
 import org.junit.{Ignore, Rule, Test}
+import org.openeo.geotrellissentinelhub.BatchProcessingService.BatchProcess
 
-import java.util.{Arrays, Collections, Map => JMap, UUID}
+import java.util.{Arrays, Collections, UUID, Map => JMap}
 import java.time.LocalTime
 import scala.annotation.meta.getter
 import scala.collection.JavaConverters._
@@ -362,6 +363,18 @@ class BatchProcessingServiceTest {
 
     assertEquals("DONE", batch_process.status)
     assertEquals(45.77636855174205, batch_process.value_estimate.doubleValue(), 0.0001)
+    assertNull(batch_process.errorMessage)
+  }
+
+  @Ignore("not to be run automatically; looks like FAILED batch processes are eventually deleted")
+  @Test
+  def getFailedBatchProcess(): Unit = {
+    val batch_process =
+      batchProcessingService.get_batch_process(batch_request_id = "66598165-2cf3-409f-b569-bfecef36b516")
+
+    assertEquals("FAILED", batch_process.status)
+    assertTrue(batch_process.errorMessage,
+      batch_process.errorMessage contains "Requested band 'HH' is not present in Sentinel 1 tile")
   }
 
   @Ignore
@@ -520,18 +533,18 @@ class BatchProcessingServiceTest {
   }
 
   private def awaitDone(batchRequestIds: Iterable[String],
-                        batchProcessingService: BatchProcessingService = this.batchProcessingService): Map[String, String] = {
+                        batchProcessingService: BatchProcessingService = this.batchProcessingService): Iterable[BatchProcess] = {
     import java.util.concurrent.TimeUnit._
 
     while (true) {
       SECONDS.sleep(10)
-      val statuses = batchRequestIds.map(id => id -> batchProcessingService.get_batch_process(id).status).toMap
-      println(s"[${LocalTime.now()}] intermediary statuses: $statuses")
+      val batchProcesses = batchRequestIds.map(id => batchProcessingService.get_batch_process(id))
+      println(s"[${LocalTime.now()}] intermediary statuses: $batchProcesses")
 
-      val uniqueStatuses = statuses.values.toSet
+      val uniqueStatuses = batchProcesses.map(_.status).toSet
 
       if (uniqueStatuses == Set("DONE") || uniqueStatuses.contains("FAILED")) {
-        return statuses
+        return batchProcesses
       }
     }
 
@@ -560,5 +573,53 @@ class BatchProcessingServiceTest {
     )
 
     println(awaitDone(Seq(batchRequestId)))
+  }
+
+  @Test
+  def startBatchProcessWithErrorDuringAnalysis(): Unit = {
+    val batchRequestId = batchProcessingService.start_batch_process(
+      collection_id = "sentinel-1-grd",
+      dataset_id = "sentinel-1-grd",
+      bbox = Extent(2.59003, 51.069, 2.8949, 51.2206),
+      bbox_srs = "EPSG:4326",
+      from_date = "2019-10-10T00:00:00+00:00",
+      to_date = "2019-10-10T00:00:00+00:00",
+      band_names = Arrays.asList("VH", "VV"),
+      SampleType.FLOAT32,
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
+      processing_options = Map(
+        "backCoeff" -> "GAMMA0_TERRAIN",
+        "orthorectify" -> true,
+        "demInstance" -> "retteketet"
+      ).asJava,
+    )
+
+    val batchProcess = awaitDone(Seq(batchRequestId)).head
+    assertEquals("FAILED", batchProcess.status)
+    assertTrue(batchProcess.errorMessage, batchProcess.errorMessage contains "Invalid DEM instance: retteketet")
+  }
+
+  @Test
+  def startBatchProcessWithErrorSentinel1BandMissing(): Unit = {
+    val batchRequestId = batchProcessingService.start_batch_process(
+      collection_id = "sentinel-1-grd",
+      dataset_id = "sentinel-1-grd",
+      bbox = Extent(576400.0, 5324640.0, 578960.0, 5327200.0),
+      bbox_srs = "EPSG:32633",
+      from_date = "2017-03-03T00:00:00+00:00",
+      to_date = "2017-03-03T00:00:00+00:00",
+      band_names = Arrays.asList("VV", "HH"),
+      SampleType.FLOAT32,
+      metadata_properties = Collections.emptyMap[String, JMap[String, Any]],
+      processing_options = Map(
+        "backCoeff" -> "GAMMA0_TERRAIN",
+        "orthorectify" -> true
+      ).asJava,
+    )
+
+    val batchProcess = awaitDone(Seq(batchRequestId)).head
+    assertEquals("FAILED", batchProcess.status)
+    assertTrue(batchProcess.errorMessage,
+      batchProcess.errorMessage contains "Requested band 'HH' is not present in Sentinel 1 tile")
   }
 }

@@ -15,7 +15,7 @@ import scala.collection.mutable
 object BatchProcessingService {
   private val logger = LoggerFactory.getLogger(classOf[BatchProcessingService])
   
-  case class BatchProcess(id: String, status: String, value_estimate: java.math.BigDecimal)
+  case class BatchProcess(id: String, status: String, value_estimate: java.math.BigDecimal, errorMessage: String)
 }
 
 class BatchProcessingService(endpoint: String, val bucketName: String, authorizer: Authorizer) {
@@ -152,7 +152,8 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
 
   def get_batch_process(batch_request_id: String): BatchProcess = authorized { accessToken =>
     val response = new BatchProcessingApi(endpoint).getBatchProcess(batch_request_id, accessToken)
-    BatchProcess(response.id, response.status, response.valueEstimate.map(_.bigDecimal).orNull)
+    BatchProcess(response.id, response.status, response.valueEstimate.map(_.bigDecimal).orNull,
+      response.errorMessage.orNull)
   }
 
   def restart_partially_failed_batch_process(batch_request_id: String): Unit = authorized { accessToken =>

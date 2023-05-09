@@ -25,7 +25,8 @@ object BatchProcessingApi {
   private[geotrellissentinelhub] case class CreateBatchProcessResponse(id: String)
   private[geotrellissentinelhub] case class GetBatchProcessResponse(id: String, status: String,
                                                                     valueEstimate: Option[BigDecimal],
-                                                                    timeRange: Option[(ZonedDateTime, ZonedDateTime)]) {
+                                                                    timeRange: Option[(ZonedDateTime, ZonedDateTime)],
+                                                                    errorMessage: Option[String]) {
     def temporalIntervalInDays: Option[Double] = timeRange
       .map { case (from, to) => Duration.between(from, to).toNanos.toDouble / Duration.ofDays(1).toNanos }
   }
@@ -35,11 +36,12 @@ object BatchProcessingApi {
       id <- c.downField("id").as[String]
       status <- c.downField("status").as[String]
       valueEstimate <- c.downField("valueEstimate").as[Option[BigDecimal]]
+      errorMessage <- c.downField("error").as[Option[String]]
       timeRangeCursor = c.downField("processRequest").downField("input").downField("data").downN(0).downField("dataFilter")
         .downField("timeRange")
       from <- timeRangeCursor.downField("from").as[ZonedDateTime](Decoder.decodeZonedDateTime)
       to <- timeRangeCursor.downField("to").as[ZonedDateTime](Decoder.decodeZonedDateTime)
-    } yield GetBatchProcessResponse(id, status, valueEstimate, Some(from, to))
+    } yield GetBatchProcessResponse(id, status, valueEstimate, Some(from, to), errorMessage)
 }
 
 class BatchProcessingApi(endpoint: String) {
