@@ -23,7 +23,7 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.file.AbstractPyramidFactory
 import org.openeo.geotrellis.tile_grid.TileGrid
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, retryForever}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.Feature
 import org.slf4j.LoggerFactory
@@ -50,7 +50,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     val selectedBands =  bands.map(sources.toList)
     selectedBands map { rs =>
       try{
-        rs.reproject(crs)
+        retryForever(Duration.ofSeconds(10),50)(rs.reproject(crs))
       }
       catch
       {
@@ -85,12 +85,12 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val selectedSources = reprojectedSources(bands)
     val singleBandRasters = selectedSources.par
-      .map  {source =>
+      .map  {retryForever(Duration.ofSeconds(10),50)( source =>
         try{
           source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
         }   catch {
           case e: Exception => throw new IOException(s"Error while reading ${bounds} from: ${source.name.toString}", e)
-        }
+        })
 
       }
       .collect { case Some(raster) => raster }
