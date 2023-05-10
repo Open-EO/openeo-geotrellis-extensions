@@ -875,9 +875,9 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
        *  this is why we take intersection
        */
       val targetExtentInLatLon = targetExtent.reproject(feature.crs.get)
-      val featureExtentInLatLn = feature.rasterExtent.get.reproject(feature.crs.get,LatLng)
-      val intersection = featureExtentInLatLn.intersection(targetExtentInLatLon).get.buffer(1.0)
+      val featureExtentInLatLon = feature.rasterExtent.get.reproject(feature.crs.get,LatLng)
 
+      val intersection = featureExtentInLatLon.intersection(targetExtentInLatLon).map(_.buffer(1.0)).getOrElse(featureExtentInLatLon)
       val tmp = expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), theResolution)
 
       val alignedToTargetExtent = re.createAlignedRasterExtent(tmp)
