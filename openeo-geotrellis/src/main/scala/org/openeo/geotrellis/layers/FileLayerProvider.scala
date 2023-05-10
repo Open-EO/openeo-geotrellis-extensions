@@ -867,7 +867,19 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     val featureExtentInLayout: Option[GridExtent[Long]]=
     if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
-      val tmp = expandToCellSize(feature.rasterExtent.get.reproject(feature.crs.get, targetExtent.crs), theResolution)
+
+      /**
+       * Several edge cases to cover:
+       *  - if feature extent is whole world, it may be invalid in target crs
+       *  - if feature is in utm, target extent may be invalid in feature crs
+       *  this is why we take intersection
+       */
+      val targetExtentInLatLon = targetExtent.reproject(feature.crs.get)
+      val featureExtentInLatLn = feature.rasterExtent.get.reproject(feature.crs.get,LatLng)
+      val intersection = featureExtentInLatLn.intersection(targetExtentInLatLon).get.buffer(1.0)
+
+      val tmp = expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), theResolution)
+
       val alignedToTargetExtent = re.createAlignedRasterExtent(tmp)
       Some(alignedToTargetExtent.toGridType[Long])
     }else{
