@@ -736,6 +736,7 @@ class OpenEOProcessScriptBuilder {
       case "array_concat" => arrayConcatFunction(arguments)
       case "array_append" => arrayAppendFunction(arguments)
       case "array_create" => arrayCreateFunction(arguments)
+      case "array_apply" => arrayApplyFunction(arguments)
       case "predict_random_forest" if hasData => predictRandomForestFunction(arguments)
       case "predict_catboost" if hasData => predictCatBoostFunction(arguments)
       case "predict_probabilities" if hasData => predictCatBoostProbabilitiesFunction(arguments)
@@ -902,6 +903,20 @@ class OpenEOProcessScriptBuilder {
       val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
       val values: Seq[Tile] = evaluateToTiles(valueFunction, context, tiles)
       unifyCellType(data ++ values)
+    }
+    bandFunction
+  }
+
+  private def arrayApplyFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
+    logger.warn("array_apply under development! Don't use yet")
+    val storedArgs = contextStack.head
+    val inputFunction = storedArgs("data")
+    val processFunction = storedArgs("process")
+
+    val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
+      val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
+      val mappedValues: Seq[Tile] = evaluateToTiles(processFunction, context, data)
+      mappedValues
     }
     bandFunction
   }
