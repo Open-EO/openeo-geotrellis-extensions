@@ -249,7 +249,7 @@ object FileLayerProvider {
   }
 
   private def checkLatLon(extent:Extent):Boolean = {
-    if(extent.xmin < -181 || extent.xmax > 181 || extent.ymin < -92 || extent.ymax > 92) {
+    if(extent.xmin < -360 || extent.xmax > 360 || extent.ymin < -92 || extent.ymax > 92) {
       false
     }else{
       true
