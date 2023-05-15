@@ -342,7 +342,7 @@ object NetCDFRDDWriter {
 
   private def stitchRDDBySample(rdd: MultibandTileLayerRDD[SpaceTimeKey], featuresBC: Broadcast[Seq[(String, Geometry)]]) = {
     val layout = rdd.metadata.layout
-
+    val crs = rdd.metadata.crs
     val sampleNames = featuresBC.value.map { case (sampleName, _) => sampleName }
     logger.info(s"Grouping result by ${featuresBC.value.size} features to write netCDFs.")
     val filtered = new OpenEOProcesses().filterEmptyTile(rdd)
@@ -354,12 +354,14 @@ object NetCDFRDDWriter {
       }.map { case (sampleName, geometry) =>
         val keyExtent = layout.mapTransform.keyToExtent(key.spatialKey)
         val sample = tile.mask(keyExtent, geometry)
-        ((sampleName, key.instant), (key.spatialKey, sample))
+        ((sampleName, key.instant), ((key.spatialKey, sample),geometry.extent))
       }
     }.groupByKey()
     val stitchedByInstant = groupedByInstant.map(sample => {
-        val tiles: Iterable[(SpatialKey, MultibandTile)] = sample._2
-        val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).stitch()
+        val tiles: Iterable[(SpatialKey, MultibandTile)] = sample._2.map(_._1)
+        val extent = sample._2.map(_._2).head
+        val raster = stitchAndCropTiles(tiles,ProjectedExtent(extent,crs),layout)
+
         (sample._1, raster)
       }
     )
