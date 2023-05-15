@@ -12,6 +12,7 @@ import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffReprojectRasterSource, Geo
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.{ByteCellType, ByteConstantNoDataCellType, CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortCellType, ShortConstantNoDataCellType, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortConstantNoDataCellType, byteNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.PartitionerIndex.SpatialPartitioner
 import geotrellis.spark.partition.SpacePartitioner
@@ -23,7 +24,7 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.file.AbstractPyramidFactory
 import org.openeo.geotrellis.tile_grid.TileGrid
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, retryForever}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.Feature
 import org.slf4j.LoggerFactory
@@ -51,9 +52,17 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   extends MosaicRasterSource { // TODO: don't inherit?
 
   protected def reprojectedSources: NonEmptyList[RasterSource] = sources map { _.reproject(crs) }
-  protected def reprojectedSources(bands: Seq[Int]): NonEmptyList[RasterSource] = {
-    val selectedBands =  (NonEmptyList.fromList(bands.map(sources.toList).toList)).get
-    selectedBands map { _.reproject(crs)}
+  protected def reprojectedSources(bands: Seq[Int]): Seq[RasterSource] = {
+    val selectedBands =  bands.map(sources.toList)
+    selectedBands map { rs =>
+      try{
+        retryForever(Duration.ofSeconds(10),50)(rs.reproject(crs))
+      }
+      catch
+      {
+        case e: Exception => throw new IOException(s"Error while reading: ${rs.name.toString}", e)
+      }
+    }
   }
 
   override def gridExtent: GridExtent[Long] = predefinedExtent.getOrElse{
@@ -103,10 +112,8 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val selectedSources = reprojectedSources(bands)
-    val singleBandRasters = selectedSources.toList.par
-      .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) =>
-        Raster(offsetBand(multibandTile.band(0)), extent)
-      } }
+    val singleBandRasters = selectedSources.par
+      .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(offsetBand(multibandTile.band(0)), extent) } }
       .collect { case Some(raster) => raster }
 
     if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile).seq), singleBandRasters.head.extent))
@@ -115,17 +122,18 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val selectedSources = reprojectedSources(bands)
-    val singleBandRasters = selectedSources.toList.par
-      .map  {source =>
-        try{
-          source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) =>
-            Raster(offsetBand(multibandTile.band(0)), extent)
-          }
-        }   catch {
-          case e: Exception => throw new IOException(s"Error while reading ${bounds} from: ${source.name.toString}", e)
-        }
 
+    def readBounds(source:RasterSource):Option[Raster[Tile]] = {
+
+      try {
+        source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(offsetBand(multibandTile.band(0)), extent) }
+      } catch {
+        case e: Exception => throw new IOException(s"Error while reading ${bounds} from: ${source.name.toString}", e)
       }
+    }
+
+    val singleBandRasters = selectedSources.par
+      .map(rs=> retryForever(Duration.ofSeconds(10),50)( readBounds(rs)))
       .collect { case Some(raster) => raster }
 
     try {
@@ -285,7 +293,7 @@ object FileLayerProvider {
   }
 
   private def checkLatLon(extent:Extent):Boolean = {
-    if(extent.xmin < -181 || extent.xmax > 181 || extent.ymin < -92 || extent.ymax > 92) {
+    if(extent.xmin < -360 || extent.xmax > 360 || extent.ymin < -92 || extent.ymax > 92) {
       false
     }else{
       true
@@ -903,7 +911,19 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     val featureExtentInLayout: Option[GridExtent[Long]]=
     if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
-      val tmp = expandToCellSize(feature.rasterExtent.get.reproject(feature.crs.get, targetExtent.crs), theResolution)
+
+      /**
+       * Several edge cases to cover:
+       *  - if feature extent is whole world, it may be invalid in target crs
+       *  - if feature is in utm, target extent may be invalid in feature crs
+       *  this is why we take intersection
+       */
+      val targetExtentInLatLon = targetExtent.reproject(feature.crs.get)
+      val featureExtentInLatLon = feature.rasterExtent.get.reproject(feature.crs.get,LatLng)
+
+      val intersection = featureExtentInLatLon.intersection(targetExtentInLatLon).map(_.buffer(1.0)).getOrElse(featureExtentInLatLon)
+      val tmp = expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), theResolution)
+
       val alignedToTargetExtent = re.createAlignedRasterExtent(tmp)
       Some(alignedToTargetExtent.toGridType[Long])
     }else{

@@ -15,8 +15,7 @@ import scala.collection.mutable
 object BatchProcessingService {
   private val logger = LoggerFactory.getLogger(classOf[BatchProcessingService])
   
-  case class BatchProcess(id: String, status: String, value_estimate: java.math.BigDecimal,
-                          @deprecated("incorrect, derive from value_estimate") processing_units_spent: java.math.BigDecimal)
+  case class BatchProcess(id: String, status: String, value_estimate: java.math.BigDecimal, errorMessage: String)
 }
 
 class BatchProcessingService(endpoint: String, val bucketName: String, authorizer: Authorizer) {
@@ -141,9 +140,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
         new Sentinel2L2AInitialCacheOperation(dataset_id)
       else if (Set("sentinel-1-grd", "S1GRD") contains dataset_id) {
         // https://forum.sentinel-hub.com/t/sentinel-hub-december-2022-improvements/6198
-        val defaultDemInstance =
-          if (LocalDateTime.now() isBefore LocalDate.of(2022, 12, 5).atStartOfDay()) "MAPZEN"
-          else "COPERNICUS"
+        val defaultDemInstance = "COPERNICUS"
         new Sentinel1GrdInitialCacheOperation(dataset_id, defaultDemInstance)
       } else throw new IllegalArgumentException(
         """only datasets "sentinel-2-l2a" (previously "S2L2A") and
@@ -153,27 +150,10 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
       sampleType, metadata_properties, processing_options, bucketName, subfolder, collecting_folder, this)
   }
 
-  def get_batch_process_status(batch_request_id: String): String = authorized { accessToken =>
-    new BatchProcessingApi(endpoint).getBatchProcess(batch_request_id, accessToken).status
-  }
-
   def get_batch_process(batch_request_id: String): BatchProcess = authorized { accessToken =>
     val response = new BatchProcessingApi(endpoint).getBatchProcess(batch_request_id, accessToken)
-
-    // eventually this should just return the exact value that the API gives us; until then it's an approximation and
-    // small deviations are of no consequence but we already install a return type of BigDecimal
-    val defaultTemporalInterval = 3
-    val actualPuToEstimateRatio = 1.0 / 3
-    val estimateSecureFactor = actualPuToEstimateRatio * 2
-    val temporalInterval = response.temporalIntervalInDays
-      .map(_.ceil.toInt max 1)
-      .getOrElse(defaultTemporalInterval)
-
-    val slightlyMoreAccurateProcessingUnitsSpent: Option[BigDecimal] = response.valueEstimate
-      .map(_ * estimateSecureFactor * defaultTemporalInterval / temporalInterval)
-
     BatchProcess(response.id, response.status, response.valueEstimate.map(_.bigDecimal).orNull,
-      slightlyMoreAccurateProcessingUnitsSpent.map(_.bigDecimal).orNull)
+      response.errorMessage.orNull)
   }
 
   def restart_partially_failed_batch_process(batch_request_id: String): Unit = authorized { accessToken =>

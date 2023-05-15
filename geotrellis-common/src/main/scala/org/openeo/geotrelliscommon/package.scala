@@ -158,4 +158,28 @@ package object geotrelliscommon {
     }
 
   }
+
+  import java.time.Duration
+  import java.util.concurrent.TimeUnit
+
+
+  def retryForever[R](delay: Duration, retries:Int=20)(f: => R): R = {
+    var lastException: Exception = null
+    var countDown = retries
+    while (countDown>0) {
+      try return f
+      catch {
+        case e: Exception =>
+          lastException = e
+          TimeUnit.SECONDS.sleep(delay.getSeconds)
+      }
+      countDown = countDown - 1
+    }
+
+
+    throw lastException
+  }
+
+
+
 }

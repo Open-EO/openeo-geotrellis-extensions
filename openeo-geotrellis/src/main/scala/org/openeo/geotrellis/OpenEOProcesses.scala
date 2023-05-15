@@ -26,7 +26,7 @@ import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MinIgnoreNoData}
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
-import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SCLConvolutionFilter}
 import org.openeo.sparklisteners.LogErrorSparkListener
 import org.slf4j.LoggerFactory
 
@@ -974,5 +974,17 @@ class OpenEOProcesses extends Serializable {
   }
 
 
+  def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val filter = new SCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
+    // Buffer each tile so that the dilation is consistent across tile boundaries.
+    val bufferInPixels: Int = filter.bufferInPixels
+    val bufferedRDD: RDD[(SpaceTimeKey, BufferedTile[MultibandTile])] = datacube.bufferTiles(bufferInPixels)
 
+    // Create mask.
+    val mask: RDD[(SpaceTimeKey, MultibandTile)] = bufferedRDD.mapValues((tile: BufferedTile[MultibandTile]) => {
+      val originalBounds = tile.targetArea
+      MultibandTile(filter.createMask(tile.tile).crop(originalBounds))
+    })
+    ContextRDD(mask, datacube.metadata)
+  }
 }

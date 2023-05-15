@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.layers
 
 import cats.data.NonEmptyList
-import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey}
+import geotrellis.layer.{FloatingLayoutScheme, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.{GeoTiffReader, MultibandGeoTiff}
@@ -9,13 +9,14 @@ import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, ShortUserDefinedNoDataCellType, UShortConstantNoDataArrayTile}
+import geotrellis.raster.{CellSize, MultibandTile, NODATA, ShortUserDefinedNoDataCellType, Tile, UShortConstantNoDataArrayTile}
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.spark.SparkContext
+import org.apache.spark.rdd.RDD
 import org.apache.spark.util.SizeEstimator
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass}
@@ -437,6 +438,53 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assertRastersEqual(referenceTile,actualTile,160.0)
   }
 
+  @Test
+  def testToSclDilationMaskOnS2TileEdge(): Unit = {
+    val ref = "https://artifactory.vgt.vito.be/testdata-public/toscldilationmask_masked_ref.tif"
+    val actual = "/tmp/toscldilationmask_masked_actual.tif"
+
+    // Create spatialLayer.
+    val date = LocalDate.of(2019, 3, 7).atStartOfDay(UTC)
+    val crs = CRS.fromEpsgCode(32631)
+    val boundingBox = ProjectedExtent(Extent(640860, 5676170, 666460, 5701770), crs)
+    val dataCubeParameters = new DataCubeParameters
+    // dataCubeParameters.tileSize = 2048 (This requires increased spark.kryoserializer.buffer.max)
+    val layer = tocLayerProviderUTM.readMultibandTileLayer(
+      from = date,
+      to = date,
+      boundingBox,
+      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
+      polygons_crs = crs,
+      zoom = 0,
+      sc,
+      Some(dataCubeParameters)
+    )
+    val spatialLayer: RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]] = layer.toSpatial(date)
+
+    // Create mask.
+    val sclLayer = MultibandTileLayerRDD(layer.mapValues(t => MultibandTile(Seq(t.band(3)))), layer.metadata)
+    val mask1Values = util.Arrays.asList(2, 4, 5, 6, 7)
+    val mask2Values = util.Arrays.asList(3, 8, 9, 10, 11)
+    val erosionKernelSize = 0
+    val kernel1Size = 17
+    val kernel2Size = 201
+    val mask: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().toSclDilationMask(sclLayer, erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
+    val spatialMask = mask.toSpatial(date)
+
+    // Apply Mask.
+    val maskedLayer: MultibandTileLayerRDD[SpatialKey] = new OpenEOProcesses().rasterMask_spatial_spatial(spatialLayer, spatialMask, NODATA)
+    val reprojectedBoundingBox = boundingBox.reproject(spatialLayer.metadata.crs)
+
+    // Compare results.
+    maskedLayer.sparseStitch(reprojectedBoundingBox) match {
+      case Some(stitched) => MultibandGeoTiff(stitched.crop(reprojectedBoundingBox), maskedLayer.metadata.crs).write(actual)
+      case _ => throw new IllegalStateException("nothing to sparse-stitch")
+    }
+
+    val referenceTile = GeoTiffRasterSource(ref).read().get
+    val actualTile = GeoTiffRasterSource(actual).read().get
+    assertRastersEqual(referenceTile, actualTile, 160.0)
+  }
 
   @Test
   def testMaskL1CRasterSourceFiltering(): Unit = {
