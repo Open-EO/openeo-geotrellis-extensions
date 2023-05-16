@@ -11,7 +11,7 @@ import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{ByteCellType, ByteConstantNoDataCellType, CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortCellType, ShortConstantNoDataCellType, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortConstantNoDataCellType, byteNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
+import geotrellis.raster.{ByteCellType, ByteConstantNoDataCellType, CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoDataHandling, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortCellType, ShortConstantNoDataCellType, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortConstantNoDataCellType, byteNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
 import geotrellis.spark._
 import geotrellis.spark.partition.PartitionerIndex.SpatialPartitioner
 import geotrellis.spark.partition.SpacePartitioner
@@ -93,21 +93,9 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   override def bandCount: Int = sources.size
 
   private def withOffset(bandTile: Tile): Tile = {
-    if (pixelValueOffset == 0) {
-      bandTile
-    } else {
-      bandTile match {
-        case b: geotrellis.raster.UShortArrayTile =>
-          geotrellis.raster.ShortConstantNoDataArrayTile(b.array.map(x =>
-            if (x == ushortNODATA) shortNODATA else (x + pixelValueOffset).toShort), bandTile.cols, bandTile.rows)
-        case b: geotrellis.raster.UByteArrayTile =>
-          geotrellis.raster.ByteConstantNoDataArrayTile(b.array.map(x =>
-            if (x == ubyteNODATA) byteNODATA else (x + pixelValueOffset).toByte), bandTile.cols, bandTile.rows)
-        case _ =>
-          // Not sure how to handle user defined nodata for example
-          throw new IllegalArgumentException("Can not yet combine 'pixelValueOffset' and '" + bandTile.getClass.getName + "'.")
-      }
-    }
+    if (pixelValueOffset == 0) bandTile
+    else if (cellType.isFloatingPoint) bandTile.convert(cellType).mapIfSetDouble(x => x + pixelValueOffset)
+    else bandTile.convert(cellType).mapIfSet(i => i + pixelValueOffset.toInt)
   }
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
@@ -525,7 +513,7 @@ object FileLayerProvider {
 
                 override def loadData: Option[MultibandTile] = {
                   val maybeTile = rasterRegion.raster.map(_.tile)
-                  if (maybeTile.isDefined && maybeTile.get.cellType.isInstanceOf[NoNoData]) {
+                  if (maybeTile.isDefined && maybeTile.get.cellType.isInstanceOf[NoDataHandling]) {
                     maybeTile.map(t => t.convert(t.cellType.withDefaultNoData()))
                   } else {
                     maybeTile
