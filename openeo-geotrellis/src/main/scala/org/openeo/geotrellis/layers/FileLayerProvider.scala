@@ -962,6 +962,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     } yield (rasterSource(path, cloudPath, targetCellType, targetExtent, bands), bands)
 
     if(rasterSources.isEmpty) {
+      logger.warn(s"Excluding item ${feature.id} with available assets ${feature.links.map(_.title).mkString("(", ", ", ")")}")
       return None
     }else{
 
