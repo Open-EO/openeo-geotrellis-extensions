@@ -1589,6 +1589,74 @@ public class TestOpenEOProcessScriptBuilder {
         assertTileEquals(tile0, res);
     }
 
+    static OpenEOProcessScriptBuilder createArrayApplyCos() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+
+        Map<String, Object> argumentsCos = new HashMap<>();
+        argumentsCos.put("x", Collections.singletonMap("from_parameter", "x"));
+        builder.expressionStart("cos", argumentsCos);
+
+        builder.argumentStart("x");
+        builder.fromParameter("x");
+        builder.argumentEnd();
+
+        builder.expressionEnd("cos", argumentsCos);
+        return builder;
+    }
+
+    static OpenEOProcessScriptBuilder createArrayApply() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+
+        Map<String, Object> arguments = new HashMap<>();
+        arguments.put("data", Collections.singletonMap("from_parameter", "x"));
+        arguments.put("process", "dummy");
+        builder.expressionStart("array_apply", arguments);
+
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+
+        builder.argumentStart("process");
+        {
+            // scope block, just for nice indentation
+            Map<String, Object> argumentsCos = new HashMap<>();
+            argumentsCos.put("x", Collections.singletonMap("from_parameter", "x"));
+            builder.expressionStart("cos", argumentsCos);
+
+            builder.argumentStart("x");
+            builder.fromParameter("x");
+            builder.argumentEnd();
+
+            builder.expressionEnd("cos", argumentsCos);
+        }
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_apply", arguments);
+        return builder;
+    }
+
+    @DisplayName("Test array_apply process")
+    @Test
+    public void testArrayApply() {
+        for (OpenEOProcessScriptBuilder builder : Arrays.asList(createArrayApplyCos(), createArrayApply())) {
+            Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+            Tile tile0 = FloatConstantNoDataArrayTile.fill(1, 4, 4);
+            Tile tile1 = FloatConstantNoDataArrayTile.fill(3, 4, 4);
+            Tile tile2 = FloatConstantNoDataArrayTile.fill(-1, 4, 4);
+            Tile tile3 = FloatConstantNoDataArrayTile.fill(1.9f, 4, 4);
+            Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
+
+            Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)));
+
+            assertTrue(result.apply(0).isNoDataTile());
+
+            assertEquals(Math.cos(tile0.getDouble(0, 0)), result.apply(1).getDouble(0, 0), 0.001);
+            assertEquals(Math.cos(tile1.getDouble(0, 0)), result.apply(2).getDouble(0, 0), 0.001);
+            assertEquals(Math.cos(tile2.getDouble(0, 0)), result.apply(3).getDouble(0, 0), 0.001);
+            assertEquals(Math.cos(tile3.getDouble(0, 0)), result.apply(4).getDouble(0, 0), 0.001);
+        }
+    }
+
     static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Map<String, Object> arguments = ignoreNoData!=null? Collections.singletonMap("ignore_nodata",ignoreNoData.booleanValue()) : Collections.emptyMap();

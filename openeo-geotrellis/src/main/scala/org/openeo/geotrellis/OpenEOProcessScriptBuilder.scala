@@ -959,7 +959,6 @@ class OpenEOProcessScriptBuilder {
   }
 
   private def arrayApplyFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
-    logger.warn("array_apply under development! Don't use yet")
     val storedArgs = contextStack.head
     val inputFunction = storedArgs("data")
     val processFunction = storedArgs("process")
