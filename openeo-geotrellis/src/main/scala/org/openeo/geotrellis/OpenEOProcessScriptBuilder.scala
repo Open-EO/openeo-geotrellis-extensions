@@ -265,6 +265,57 @@ object OpenEOProcessScriptBuilder{
     }
   }
 
+
+  private def firstFunctionIgnoreNoData(tiles: Seq[Tile]): Seq[Tile] = {
+    val tile = MultibandTile(tiles)
+    val mutableResult: MutableArrayTile = tiles.head.mutable.prototype(tile.cols, tile.rows)
+
+    def findFirstBandValue(col: Int, row: Int): Any = {
+      // Find the first band where the value is not NaN and use that as the value for this (col, row).
+      cfor(0)(_ < tile.bandCount, _ + 1) { band =>
+        val d = tile.bands(band).getDouble(col, row)
+        if (!d.isNaN) {
+          mutableResult.setDouble(col, row, d)
+          return None; // (col, row) value chosen, break out of band loop.
+        }
+      }
+    }
+
+    cfor(0)(_ < tile.cols, _ + 1) { col =>
+      cfor(0)(_ < tile.rows, _ + 1) { row =>
+        findFirstBandValue(col, row)
+      }
+    }
+    Seq(mutableResult.convert(tiles.head.cellType));
+  }
+
+  private def lastFunctionIgnoreNoData(tiles: Seq[Tile]): Seq[Tile] = {
+    val tile = MultibandTile(tiles)
+    val mutableResult: MutableArrayTile = tiles.head.mutable.prototype(tile.cols, tile.rows)
+
+    def findLastBandValue(col: Int, row: Int): Any = {
+      // Find the first band where the value is not NaN and use that as the value for this (col, row).
+      cfor(tile.bandCount - 1)(_ >= 0, _ - 1) { band =>
+        val d = tile.bands(band).getDouble(col, row)
+        if (!d.isNaN) {
+          mutableResult.setDouble(col, row, d)
+          return None; // (col, row) value chosen, break out of band loop.
+        }
+      }
+    }
+
+    cfor(0)(_ < tile.cols, _ + 1) { col =>
+      cfor(0)(_ < tile.rows, _ + 1) { row =>
+        findLastBandValue(col, row)
+      }
+    }
+    Seq(mutableResult.convert(tiles.head.cellType));
+  }
+
+  private def firstFunctionWithNodata(tiles: Seq[Tile]): Seq[Tile] = Seq(tiles.head)
+
+  private def lastFunctionWithNoData(tiles: Seq[Tile]): Seq[Tile] = Seq(tiles.last)
+
   private def linearInterpolation(tiles:Seq[Tile]) : Seq[Tile] = {
 
     multibandMap(MultibandTile(tiles),ts => {
@@ -1109,54 +1160,8 @@ class OpenEOProcessScriptBuilder {
       throw new IllegalArgumentException(s"The from_parameter argument in 'model' should refer to 'context', but got: $fromParamArgument.")
   }
 
-  private def firstFunctionIgnoreNoData(tiles:Seq[Tile]) : Seq[Tile] = {
-    val tile = MultibandTile(tiles)
-    val mutableResult: MutableArrayTile = tiles.head.mutable.prototype(tile.cols, tile.rows)
 
-    def findFirstBandValue(col: Int, row: Int): Any = {
-      // Find the first band where the value is not NaN and use that as the value for this (col, row).
-      cfor(0)(_ < tile.bandCount, _ + 1) { band =>
-        val d = tile.bands(band).getDouble(col, row)
-        if (!d.isNaN) {
-          mutableResult.setDouble(col, row, d)
-          return None; // (col, row) value chosen, break out of band loop.
-        }
-      }
-    }
 
-    cfor(0)(_ < tile.cols, _ + 1) { col =>
-      cfor(0)(_ < tile.rows, _ + 1) { row =>
-        findFirstBandValue(col, row)
-      }
-    }
-    Seq(mutableResult.convert(tiles.head.cellType));
-  }
-
-  private def lastFunctionIgnoreNoData(tiles:Seq[Tile]) : Seq[Tile] = {
-    val tile = MultibandTile(tiles)
-    val mutableResult: MutableArrayTile = tiles.head.mutable.prototype(tile.cols, tile.rows)
-
-    def findLastBandValue(col: Int, row: Int): Any = {
-      // Find the first band where the value is not NaN and use that as the value for this (col, row).
-      cfor(tile.bandCount-1)(_ >= 0, _ - 1) { band =>
-        val d = tile.bands(band).getDouble(col, row)
-        if (!d.isNaN) {
-          mutableResult.setDouble(col, row, d)
-          return None; // (col, row) value chosen, break out of band loop.
-        }
-      }
-    }
-
-    cfor(0)(_ < tile.cols, _ + 1) { col =>
-      cfor(0)(_ < tile.rows, _ + 1) { row =>
-        findLastBandValue(col, row)
-      }
-    }
-    Seq(mutableResult.convert(tiles.head.cellType));
-  }
-
-  private def firstFunctionWithNodata(tiles:Seq[Tile]) : Seq[Tile] = Seq(tiles.head)
-  private def lastFunctionWithNoData(tiles:Seq[Tile]) : Seq[Tile] = Seq(tiles.last)
 
   private def arrayElementFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
     val storedArgs = contextStack.head
