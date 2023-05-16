@@ -12,7 +12,6 @@ import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffReprojectRasterSource, Geo
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.{ByteCellType, ByteConstantNoDataCellType, CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortCellType, ShortConstantNoDataCellType, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortConstantNoDataCellType, byteNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.PartitionerIndex.SpatialPartitioner
 import geotrellis.spark.partition.SpacePartitioner
@@ -75,37 +74,38 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   }
 
   override def cellType: CellType = {
-    var _cellType = sources.map(_.cellType).reduceLeft(_ union _)
+    val commonCellType = sources.map(_.cellType).reduceLeft(_ union _)
     if (pixelValueOffset < 0) {
       // Big chance the value will go under 0, so type needs to be signed
-      _cellType = _cellType match {
+      commonCellType match {
         case UByteCellType => ByteCellType
         case UByteConstantNoDataCellType => ByteConstantNoDataCellType
         case UShortCellType => ShortCellType
         case UShortConstantNoDataCellType => ShortConstantNoDataCellType
-        case default => default // Was probably already signed
+        case _ => commonCellType // Was probably already signed
       }
+    } else {
+      commonCellType
     }
-    _cellType
   }
 
   override def name: SourceName = sources.head.name
   override def bandCount: Int = sources.size
 
-  private def offsetBand(band: Tile): Tile = {
+  private def withOffset(bandTile: Tile): Tile = {
     if (pixelValueOffset == 0) {
-      band
+      bandTile
     } else {
-      band match {
+      bandTile match {
         case b: geotrellis.raster.UShortArrayTile =>
           geotrellis.raster.ShortConstantNoDataArrayTile(b.array.map(x =>
-            if (x == ushortNODATA) shortNODATA else (x + pixelValueOffset).toShort), band.cols, band.rows)
+            if (x == ushortNODATA) shortNODATA else (x + pixelValueOffset).toShort), bandTile.cols, bandTile.rows)
         case b: geotrellis.raster.UByteArrayTile =>
           geotrellis.raster.ByteConstantNoDataArrayTile(b.array.map(x =>
-            if (x == ubyteNODATA) byteNODATA else (x + pixelValueOffset).toByte), band.cols, band.rows)
+            if (x == ubyteNODATA) byteNODATA else (x + pixelValueOffset).toByte), bandTile.cols, bandTile.rows)
         case _ =>
           // Not sure how to handle user defined nodata for example
-          throw new IllegalArgumentException("Can not yet combine 'pixelValueOffset' and '" + band.getClass.getName + "'. See more: https://github.com/Open-EO/openeo-geotrellis-extensions/issues/144")
+          throw new IllegalArgumentException("Can not yet combine 'pixelValueOffset' and '" + bandTile.getClass.getName + "'.")
       }
     }
   }
@@ -113,7 +113,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val selectedSources = reprojectedSources(bands)
     val singleBandRasters = selectedSources.par
-      .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(offsetBand(multibandTile.band(0)), extent) } }
+      .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(withOffset(multibandTile.band(0)), extent) } }
       .collect { case Some(raster) => raster }
 
     if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile).seq), singleBandRasters.head.extent))
@@ -126,7 +126,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     def readBounds(source:RasterSource):Option[Raster[Tile]] = {
 
       try {
-        source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(offsetBand(multibandTile.band(0)), extent) }
+        source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(withOffset(multibandTile.band(0)), extent) }
       } catch {
         case e: Exception => throw new IOException(s"Error while reading ${bounds} from: ${source.name.toString}", e)
       }

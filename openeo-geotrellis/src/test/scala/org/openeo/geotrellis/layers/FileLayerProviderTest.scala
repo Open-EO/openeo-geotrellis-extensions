@@ -1044,19 +1044,19 @@ class FileLayerProviderTest {
     // Use artifactory to avoid heavy git repo
     val basePathArtifactory = "https://artifactory.vgt.vito.be/testdata-public"
 
-//    for (rest <- Seq(
-//      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/manifest.safe",
-//      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/GRANULE/L2A_T31UGS_A030636_20230117T104258/IMG_DATA/R10m/T31UGS_20230117T104259_B04_10m.jp2",
-//      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/manifest.safe",
-//      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R10m/T31UFS_20230405T105031_B04_10m.jp2",
-//    )) {
-//      val jp2File = new File(basePath, rest)
-//      if (!jp2File.exists()) {
-//        println("Copy from artifactory to: " + jp2File)
-//        FileUtils.copyURLToFile(new URL(basePathArtifactory + rest), jp2File)
-//      }
-//    }
-    txt = txt.replace("\"/eodata/", "\"" + basePathArtifactory + "/eodata/")
+    for (rest <- Seq(
+      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/GRANULE/L2A_T31UGS_A030636_20230117T104258/IMG_DATA/R10m/T31UGS_20230117T104259_B04_10m.jp2",
+      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R10m/T31UFS_20230405T105031_B04_10m.jp2",
+    )) {
+      val jp2File = new File(basePath, rest)
+      if (!jp2File.exists()) {
+        println("Copy from artifactory to: " + jp2File)
+        FileUtils.copyURLToFile(new URL(basePathArtifactory + rest), jp2File)
+      }
+    }
+    txt = txt.replace("\"/eodata/", "\"" + basePath + "/eodata/")
     val mockedFeatures = CreoFeatureCollection.parse(txt)
     val client = new MockOpenSearchFeatures(mockedFeatures.features)
     //    val client = CreodiasClient() // More difficult to capture a nodata piece
