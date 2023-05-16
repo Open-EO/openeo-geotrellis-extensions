@@ -956,7 +956,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       //special case handling for data that does not declare nodata properly
       targetCellType = link.title match {
         case x if x.get.contains("SCENECLASSIFICATION_20M") =>  Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
-        case x if x.get.startsWith("IMG_DATA_Band_") =>  Some(ConvertTargetCellType(UShortConstantNoDataCellType))
+        case x if x.get.startsWith("IMG_DATA_") =>  Some(ConvertTargetCellType(UShortConstantNoDataCellType))
         case _ => None
       }
     } yield (rasterSource(path, cloudPath, targetCellType, targetExtent, bands), bands)
@@ -984,13 +984,13 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       attributeValues, correlationId, ""
     )
 
-    BatchJobMetadataTracker.tracker("").addInputProducts(openSearchCollectionId,overlappingFeatures.map(_.id).asJava)
 
     val reprojectedBoundingBox: ProjectedExtent = targetBoundingBox(boundingBox, layoutScheme)
     val overlappingRasterSources = (for {
       feature <- overlappingFeatures
     } yield  deriveRasterSources(feature,reprojectedBoundingBox, datacubeParams,targetResolution)).flatMap(_.toList)
 
+    BatchJobMetadataTracker.tracker("").addInputProducts(openSearchCollectionId,overlappingRasterSources.map(_._2.id).asJava)
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
     //  into account; it's more efficient to filter out the redundant ones
 
