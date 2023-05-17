@@ -41,6 +41,7 @@ object FileLayerProviderTest {
   // - ParameterizedTest
   // - AfterAll
   // - BeforeClass
+  // - Methods with @Test
   // - AfterClass
   //
   // This order is because of multiple Test framework versions, so I made the code robust against order changes.
@@ -62,6 +63,7 @@ object FileLayerProviderTest {
 
   @BeforeAll
   def setUpSpark_BeforeAll(): Unit = {
+    println("setUpSpark_BeforeAll()")
     inAllBlock = true
     sc
   }
@@ -70,12 +72,14 @@ object FileLayerProviderTest {
 
   @AfterAll
   def tearDownSpark_AfterAll(): Unit = {
+    println("tearDownSpark_AfterAll()")
     inAllBlock = false
     maybeStopSpark()
   }
 
   @BeforeClass
   def setUpSpark_BeforeClass(): Unit = {
+    println("setUpSpark_BeforeClass()")
     inClassBlock = true
     sc
   }
@@ -84,6 +88,7 @@ object FileLayerProviderTest {
 
   @AfterClass
   def tearDownSpark_AfterClass(): Unit = {
+    println("tearDownSpark_AfterClass()")
     inClassBlock = false;
     maybeStopSpark()
   }
@@ -118,6 +123,7 @@ class FileLayerProviderTest {
 
   @Test
   def cache(): Unit = {
+    println("@Test cache()")
     // important: multiple instances like in openeo-geopyspark-driver
     val layerProvider1 = sentinel5PFileLayerProvider
     val layerProvider2 = sentinel5PFileLayerProvider
@@ -288,6 +294,7 @@ class FileLayerProviderTest {
   @ParameterizedTest
   @ValueSource(ints = Array(101,489,1589,69854))
   def testOptimalLayoutScheme(size:Int): Unit = {
+    println("@ParameterizedTest testOptimalLayoutScheme()")
 
     val crs = CRS.fromEpsgCode(32632)
     val x = 344110.000
