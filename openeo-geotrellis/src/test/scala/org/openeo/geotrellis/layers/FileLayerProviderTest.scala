@@ -52,12 +52,8 @@ object FileLayerProviderTest {
 
   @BeforeAll
   def setUpSpark_BeforeAll(): Unit = {
-    println("setUpSpark_BeforeAll()")
-    inAllBlock = true
     sc
   }
-
-  var inAllBlock = false
 
   @AfterAll
   def tearDownSpark_AfterAll(): Unit = {
@@ -86,7 +82,6 @@ class FileLayerProviderTest {
 
   @Test
   def cache(): Unit = {
-    println("@Test cache()")
     // important: multiple instances like in openeo-geopyspark-driver
     val layerProvider1 = sentinel5PFileLayerProvider
     val layerProvider2 = sentinel5PFileLayerProvider
@@ -257,7 +252,6 @@ class FileLayerProviderTest {
   @ParameterizedTest
   @ValueSource(ints = Array(101,489,1589,69854))
   def testOptimalLayoutScheme(size:Int): Unit = {
-    println("@ParameterizedTest testOptimalLayoutScheme()")
 
     val crs = CRS.fromEpsgCode(32632)
     val x = 344110.000
@@ -989,10 +983,6 @@ class FileLayerProviderTest {
     cubeSpatial.writeGeoTiff("tmp/testPixelValueOffsetNeededDark.tiff")
     val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
 
-    // Snippet to find relevant pixels to extend test case:
-    //    1 until band.cols foreach (x => 1 until band.rows foreach (y => if (band.get(x, y) < -999)
-    //      println("point (" + x + "," + y + ") " + band.get(x, y))
-    //    ))
     assertEquals(888, band.get(0, 0), 1)
     assertEquals(-582, band.get(133, 151), 1)
   }
