@@ -508,7 +508,7 @@ object FileLayerProvider {
 
                 override def loadData: Option[MultibandTile] = {
                   val maybeTile = rasterRegion.raster.map(_.tile)
-                  if (maybeTile.isDefined && maybeTile.get.cellType.isInstanceOf[NoDataHandling]) {
+                  if (maybeTile.isDefined && maybeTile.get.cellType.isInstanceOf[NoNoData]) {
                     maybeTile.map(t => t.convert(t.cellType.withDefaultNoData()))
                   } else {
                     maybeTile
