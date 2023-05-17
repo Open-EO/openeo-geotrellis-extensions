@@ -10,6 +10,7 @@ import software.amazon.awssdk.core.retry.conditions.{OrRetryCondition, RetryCond
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
+import _root_.geotrellis.raster._
 
 import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
@@ -88,5 +89,33 @@ package object geotrellis {
       .toString
 
     Region.of(regionName)
+  }
+
+  def toSigned(cellType: CellType): CellType = {
+    cellType match {
+      case UByteCellType => ByteCellType
+      case UByteConstantNoDataCellType => ByteConstantNoDataCellType
+      case c: UByteUserDefinedNoDataCellType => ByteUserDefinedNoDataCellType(c.noDataValue)
+      case UShortCellType => ShortCellType
+      case UShortConstantNoDataCellType => ShortConstantNoDataCellType
+      case c: UShortUserDefinedNoDataCellType => ShortUserDefinedNoDataCellType(c.noDataValue)
+      case FloatConstantNoDataCellType => cellType
+      case ShortConstantNoDataCellType => cellType
+      case BitCellType => cellType
+      case ByteConstantNoDataCellType => cellType
+      case ByteCellType => cellType
+      case _: ByteUserDefinedNoDataCellType => cellType
+      case ShortCellType => cellType
+      case _: ShortUserDefinedNoDataCellType => cellType
+      case IntConstantNoDataCellType => cellType
+      case IntCellType => cellType
+      case _: IntUserDefinedNoDataCellType => cellType
+      case FloatCellType => cellType
+      case _: FloatUserDefinedNoDataCellType => cellType
+      case DoubleConstantNoDataCellType => cellType
+      case DoubleCellType => cellType
+      case _: DoubleUserDefinedNoDataCellType => cellType
+      case _ => throw new IllegalArgumentException("Can convert to unsigned equivalent: '" + cellType.getClass.getName + "'.")
+    }
   }
 }
