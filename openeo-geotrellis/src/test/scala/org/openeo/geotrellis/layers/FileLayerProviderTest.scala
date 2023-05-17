@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
-import org.junit.{AfterClass, BeforeClass}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
@@ -36,16 +35,6 @@ import java.util.Collections
 import scala.io.Source
 
 object FileLayerProviderTest {
-  // Methods with attributes get called in a non-intuitive order:
-  // - BeforeAll
-  // - ParameterizedTest
-  // - AfterAll
-  // - BeforeClass
-  // - Methods with @Test
-  // - AfterClass
-  //
-  // This order is because of multiple Test framework versions, so I made the code robust against order changes.
-
   private var _sc: Option[SparkContext] = None
 
   private def sc: SparkContext = {
@@ -72,35 +61,9 @@ object FileLayerProviderTest {
 
   @AfterAll
   def tearDownSpark_AfterAll(): Unit = {
-    println("tearDownSpark_AfterAll()")
-    inAllBlock = false
-    maybeStopSpark()
-  }
-
-  @BeforeClass
-  def setUpSpark_BeforeClass(): Unit = {
-    println("setUpSpark_BeforeClass()")
-    inClassBlock = true
-    sc
-  }
-
-  var inClassBlock = false
-
-  @AfterClass
-  def tearDownSpark_AfterClass(): Unit = {
-    println("tearDownSpark_AfterClass()")
-    inClassBlock = false;
-    maybeStopSpark()
-  }
-
-  def maybeStopSpark(): Unit = {
-    if (!inAllBlock && !inClassBlock) {
-      if (_sc.isDefined) {
-        println("Stopping SparkContext...")
-        _sc.get.stop()
-        _sc = None
-        println("Stopped SparkContext")
-      }
+    if (_sc.isDefined) {
+      _sc.get.stop()
+      _sc = None
     }
   }
 }
