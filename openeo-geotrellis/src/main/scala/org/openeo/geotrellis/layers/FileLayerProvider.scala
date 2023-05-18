@@ -943,6 +943,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }
     }
 
+    val expectedNumberOfBBands = openSearchLinkTitlesWithBandIds.size
     val rasterSources: immutable.Seq[(Seq[RasterSource], Seq[Int])] = for {
       (title, bands) <- openSearchLinkTitlesWithBandIds.toList
       link <- feature.links.find(_.title.exists(_.toUpperCase contains title.toUpperCase))
@@ -970,7 +971,13 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
 
-      if (bandIds.isEmpty) return Some((new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent), feature))
+      if (bandIds.isEmpty) {
+        if (expectedNumberOfBBands != sources.length) {
+          logger.warn(s"Did not find expected number of bands $expectedNumberOfBBands for feature ${feature.id} with links ${feature.links}")
+          return None
+        }
+        return Some((new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent), feature))
+      }
       else return Some((new MultibandCompositeRasterSource(sources, targetExtent.crs, attributes), feature))
     }
 
