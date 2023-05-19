@@ -973,7 +973,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
       if (bandIds.isEmpty) {
         if (expectedNumberOfBBands != sources.length) {
-          logger.warn(s"Did not find expected number of bands $expectedNumberOfBBands for feature ${feature.id} with links ${feature.links}")
+          logger.warn(s"Did not find expected number of bands $expectedNumberOfBBands for feature ${feature.id} with links ${feature.links.mkString("Array(", ", ", ")")}")
           return None
         }
         return Some((new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent), feature))
