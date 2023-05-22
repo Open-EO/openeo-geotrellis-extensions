@@ -168,7 +168,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assertEquals(qgisZonalStatisticsPluginResult, value.mean, 0.1)
     val inputs = BatchJobMetadataTracker.tracker("").asDict().get("links")
 
-    assertEquals(2,inputs.asInstanceOf[util.Map[String,util.List[String]]].get("urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2").size())
+    assertEquals(1,inputs.asInstanceOf[util.Map[String,util.List[String]]].get("urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2").size())
   }
 
   @Test

@@ -970,6 +970,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }
     }
 
+    val expectedNumberOfBBands = openSearchLinkTitlesWithBandIds.size
     val rasterSources: immutable.Seq[(Seq[RasterSource], Seq[Int])] = for {
       (title, bands) <- openSearchLinkTitlesWithBandIds.toList
       link <- feature.links.find(_.title.exists(_.toUpperCase contains title.toUpperCase))
@@ -983,12 +984,13 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       //special case handling for data that does not declare nodata properly
       targetCellType = link.title match {
         case x if x.get.contains("SCENECLASSIFICATION_20M") =>  Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
-        case x if x.get.startsWith("IMG_DATA_Band_") =>  Some(ConvertTargetCellType(UShortConstantNoDataCellType))
+        case x if x.get.startsWith("IMG_DATA_") =>  Some(ConvertTargetCellType(UShortConstantNoDataCellType))
         case _ => None
       }
     } yield (rasterSource(path, cloudPath, targetCellType, targetExtent, bands), bands)
 
     if(rasterSources.isEmpty) {
+      logger.warn(s"Excluding item ${feature.id} with available assets ${feature.links.map(_.title).mkString("(", ", ", ")")}")
       return None
     }else{
 
@@ -996,7 +998,13 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
 
-      if (bandIds.isEmpty) return Some((new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent, pixelValueOffset = feature.pixelValueOffset), feature))
+      if (bandIds.isEmpty) {
+        if (expectedNumberOfBBands != sources.length) {
+          logger.warn(s"Did not find expected number of bands $expectedNumberOfBBands for feature ${feature.id} with links ${feature.links.mkString("Array(", ", ", ")")}")
+          return None
+        }
+        return Some((new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent, pixelValueOffset = feature.pixelValueOffset), feature))
+      }
       else return Some((new MultibandCompositeRasterSource(sources, targetExtent.crs, attributes, pixelValueOffset = feature.pixelValueOffset), feature))
     }
 
@@ -1011,13 +1019,13 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       attributeValues, correlationId, ""
     )
 
-    BatchJobMetadataTracker.tracker("").addInputProducts(openSearchCollectionId,overlappingFeatures.map(_.id).asJava)
 
     val reprojectedBoundingBox: ProjectedExtent = targetBoundingBox(boundingBox, layoutScheme)
     val overlappingRasterSources = (for {
       feature <- overlappingFeatures
     } yield  deriveRasterSources(feature,reprojectedBoundingBox, datacubeParams,targetResolution)).flatMap(_.toList)
 
+    BatchJobMetadataTracker.tracker("").addInputProducts(openSearchCollectionId,overlappingRasterSources.map(_._2.id).asJava)
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
     //  into account; it's more efficient to filter out the redundant ones
 
