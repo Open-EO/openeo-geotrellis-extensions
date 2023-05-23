@@ -7,7 +7,7 @@
         <Routing name="route">
             <Routes pattern="$${ctx:logFile}">
                 <Route>
-                    <File name="file" fileName="${ctx:logFile}">
+                    <File name="file" fileName="${ctx:logFile:-/dev/null}">
                         <JsonTemplateLayout eventTemplateUri="classpath:OpenEOBatchJobJsonLogLayout.json"
                                             locationInfoEnabled="true"/>
                     </File>
