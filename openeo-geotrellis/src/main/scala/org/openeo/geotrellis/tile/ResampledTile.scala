@@ -36,9 +36,9 @@ case class ResampledTile(tile: Tile, sourceCols: Long, sourceRows: Long, targetC
 
   override def cellType: CellType = tile.cellType
 
-  override def cols: Int = (tile.cols * colsMultiplier).round.toInt
+  override def cols: Int = targetCols.toInt
 
-  override def rows: Int = (tile.rows * rowsMultiplier).round.toInt
+  override def rows: Int = targetRows.toInt
 
   override def mutable: MutableArrayTile = tile.resample(cols, rows).mutable
 
