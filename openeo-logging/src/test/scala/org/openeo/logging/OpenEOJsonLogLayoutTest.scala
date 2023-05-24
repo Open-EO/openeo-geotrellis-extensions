@@ -9,6 +9,7 @@ import org.apache.logging.log4j.core.LoggerContext
 import org.apache.logging.log4j.core.config.Configurator
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertEquals, assertTrue}
+import org.junit.contrib.java.lang.system.EnvironmentVariables
 import org.junit.rules.TemporaryFolder
 import org.junit.{After, AfterClass, Before, BeforeClass, Rule, Test}
 import org.slf4j.{LoggerFactory, MDC}
@@ -35,8 +36,11 @@ class OpenEOJsonLogLayoutTest {
   val temporaryFolder = new TemporaryFolder
   private def tempLogFile: File = new File(temporaryFolder.getRoot, "openeo.log")
 
+  @(Rule@getter)
+  val environmentVariables = new EnvironmentVariables
+
   @Before
-  def setupLogFile(): Unit = MDC.put("logFile", tempLogFile.getAbsolutePath)
+  def setupLogFile(): Unit = environmentVariables.set("LOG_FILE", tempLogFile.getAbsolutePath)
 
   @Before
   def setupLoggingContext(): Unit = {
@@ -68,7 +72,7 @@ class OpenEOJsonLogLayoutTest {
       assertEquals(message, logEntry("message").asString.get)
       assertEquals(now, logEntry("created").asNumber.map(_.toDouble).get, 1.0)
       assertEquals("OpenEOJsonLogLayoutTest.scala", logEntry("filename").asString.get)
-      assertEquals(56, logEntry("lineno").asNumber.flatMap(_.toInt).get)
+      assertEquals(60, logEntry("lineno").asNumber.flatMap(_.toInt).get) // brittle, I know
       val stackTrace = logEntry("exc_info").asString.get
       assertTrue(stackTrace.contains("java.lang.Exception: It was the blorst of times"))
       assertTrue(stackTrace.contains(getClass.getName))
@@ -118,7 +122,6 @@ class OpenEOJsonLogLayoutTest {
 
       sc.range(1, 100)
         .mapPartitions { is =>
-          MDC.put("logFile", logFile.getAbsolutePath)
           logger.info("some executor log")
           is
         }

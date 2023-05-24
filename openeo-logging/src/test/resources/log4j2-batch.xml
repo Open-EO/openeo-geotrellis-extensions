@@ -5,9 +5,9 @@
                                 locationInfoEnabled="true"/>
         </Console>
         <Routing name="route">
-            <Routes pattern="$${ctx:logFile}">
+            <Routes pattern="$${env:LOG_FILE}">
                 <Route>
-                    <File name="file" fileName="${ctx:logFile:-/dev/null}">
+                    <File name="file" fileName="${env:LOG_FILE}">
                         <JsonTemplateLayout eventTemplateUri="classpath:OpenEOBatchJobJsonLogLayout.json"
                                             locationInfoEnabled="true"/>
                     </File>
