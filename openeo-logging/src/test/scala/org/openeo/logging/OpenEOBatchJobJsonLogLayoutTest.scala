@@ -4,41 +4,20 @@ import org.apache.logging.log4j.core.LoggerContext
 import org.apache.logging.log4j.core.config.Configurator
 import org.apache.spark.SparkContext
 import org.junit.Assert.assertTrue
-import org.junit.{AfterClass, Before, BeforeClass, Test}
+import org.junit.contrib.java.lang.system.EnvironmentVariables
+import org.junit.rules.TemporaryFolder
+import org.junit._
 import org.slf4j.{LoggerFactory, MDC}
 
-import java.io.{File, FileWriter}
-import java.nio.file.{Files, Paths}
-import java.util.UUID
-import scala.io.Source
+import java.io.File
+import scala.annotation.meta.getter
 
 object OpenEOBatchJobJsonLogLayoutTest {
   private var loggerContext: LoggerContext = _
   private val logger = LoggerFactory.getLogger(classOf[OpenEOBatchJobJsonLogLayoutTest])
-  private lazy val temporaryFolder: String = {
-    val _temporaryFolder = new File("tmp/" + UUID.randomUUID().toString).getAbsolutePath
-    Files.createDirectories(Paths.get(_temporaryFolder))
-    _temporaryFolder
-  }
 
   @BeforeClass
-  def initializeLog4j(): Unit = loggerContext = {
-    // Do a hard replacement of variables in the XML to avoid influence of thread context
-    val origXmlPath = getClass.getResource("/log4j2-batch.xml").getPath
-    val newXmlPath = new File(temporaryFolder, "log4j2-batch-tmp.xml").toString
-
-    val fileSource = Source.fromFile(origXmlPath)
-    val origXmlString = try fileSource.mkString
-    finally fileSource.close()
-
-    val newXmlString = origXmlString.replace("${ctx:logFile}", new File(temporaryFolder, "openeo.log").toString)
-
-    val out = new FileWriter(newXmlPath)
-    try out.write(newXmlString)
-    finally out.close()
-
-    Configurator.initialize(null, newXmlPath)
-  }
+  def initializeLog4j(): Unit = loggerContext = Configurator.initialize(null, "classpath:log4j2-batch.xml")
 
   @AfterClass
   def shutDownLog4j(): Unit = Configurator.shutdown(loggerContext)
@@ -47,10 +26,16 @@ object OpenEOBatchJobJsonLogLayoutTest {
 class OpenEOBatchJobJsonLogLayoutTest {
   import OpenEOBatchJobJsonLogLayoutTest._
 
-  private def tempLogFile: File = new File(temporaryFolder, "openeo.log")
+  @(Rule @getter)
+  val temporaryFolder = new TemporaryFolder
+
+  private def tempLogFile: File = new File(temporaryFolder.getRoot, "openeo.log")
+
+  @(Rule @getter)
+  val environmentVariables = new EnvironmentVariables
 
   @Before
-  def setupLogFile(): Unit = MDC.put("logFile", tempLogFile.getAbsolutePath)
+  def setupLogFile(): Unit = environmentVariables.set("LOG_FILE", tempLogFile.getAbsolutePath)
 
   @Test
   def testJsonLogging(): Unit = {
@@ -90,7 +75,7 @@ class OpenEOBatchJobJsonLogLayoutTest {
   }
 
   @Test
-  def testError(): Unit = {
+  def testErrorLoggedFromDifferentThread(): Unit = {
     val sc = new SparkContext(master = "local[1]", appName = getClass.getName)
     val data = sc.parallelize(Seq(1, 2, 3, 4, 5))
     try {
