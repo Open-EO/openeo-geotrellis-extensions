@@ -95,27 +95,27 @@ package object geotrellis {
     cellType match {
       case UByteCellType => ByteCellType
       case UByteConstantNoDataCellType => ByteConstantNoDataCellType
-      case c: UByteUserDefinedNoDataCellType => ByteUserDefinedNoDataCellType(c.noDataValue)
+      case UByteUserDefinedNoDataCellType(noDataValue) => ByteUserDefinedNoDataCellType(noDataValue)
       case UShortCellType => ShortCellType
       case UShortConstantNoDataCellType => ShortConstantNoDataCellType
-      case c: UShortUserDefinedNoDataCellType => ShortUserDefinedNoDataCellType(c.noDataValue)
+      case UShortUserDefinedNoDataCellType(noDataValue) => ShortUserDefinedNoDataCellType(noDataValue)
       case FloatConstantNoDataCellType => cellType
       case ShortConstantNoDataCellType => cellType
       case BitCellType => cellType
       case ByteConstantNoDataCellType => cellType
       case ByteCellType => cellType
-      case _: ByteUserDefinedNoDataCellType => cellType
+      case ByteUserDefinedNoDataCellType(_) => cellType
       case ShortCellType => cellType
-      case _: ShortUserDefinedNoDataCellType => cellType
+      case ShortUserDefinedNoDataCellType(_) => cellType
       case IntConstantNoDataCellType => cellType
       case IntCellType => cellType
-      case _: IntUserDefinedNoDataCellType => cellType
+      case IntUserDefinedNoDataCellType(_) => cellType
       case FloatCellType => cellType
-      case _: FloatUserDefinedNoDataCellType => cellType
+      case FloatUserDefinedNoDataCellType(_) => cellType
       case DoubleConstantNoDataCellType => cellType
       case DoubleCellType => cellType
-      case _: DoubleUserDefinedNoDataCellType => cellType
-      case _ => throw new IllegalArgumentException("Can convert to unsigned equivalent: '" + cellType.getClass.getName + "'.")
+      case DoubleUserDefinedNoDataCellType(_) => cellType
+      case _ => throw new IllegalArgumentException("Cannot convert to unsigned equivalent: '" + cellType.getClass.getName + "'.")
     }
   }
 }
