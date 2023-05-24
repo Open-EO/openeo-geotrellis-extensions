@@ -9,9 +9,9 @@ import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
-import geotrellis.raster.io.geotiff.OverviewStrategy
+import geotrellis.raster.io.geotiff.{MultibandGeoTiff, OverviewStrategy}
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CroppedTile, DefaultTarget, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.PartitionerIndex.SpatialPartitioner
 import geotrellis.spark.partition.SpacePartitioner
@@ -22,7 +22,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.file.AbstractPyramidFactory
-import org.openeo.geotrellis.tile_grid.TileGrid
+import org.openeo.geotrellis.tile.{TileGrid, ResampledTile}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, retryForever}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.Feature
@@ -36,6 +36,8 @@ import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
 import scala.collection.immutable
+import scala.collection.parallel.ParSeq
+import scala.collection.parallel.mutable.ParArray
 import scala.reflect.ClassTag
 import scala.reflect.io.Directory
 import scala.util.matching.Regex
@@ -104,7 +106,16 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       }else{
         val intersection = singleBandRasters.map(_.extent).reduce((left,right) => left.intersection(right).get)
         val croppedRasters = singleBandRasters.map(_.crop(intersection))
-        if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(croppedRasters.map(_.tile.convert(cellType)).seq), intersection))
+        if (singleBandRasters.size == selectedSources.size) {
+          val convertedRasters: Seq[Tile] = croppedRasters.map {
+            case Raster(croppedTile: CroppedTile, extent) =>
+              croppedTile.sourceTile match {
+                case tile: ResampledTile => tile.cropAndConvert(croppedTile.gridBounds, cellType)
+                case _ => croppedTile.convert(cellType)
+              }
+          }.seq
+          Some(Raster(MultibandTile(convertedRasters), intersection))
+        }
         else None
       }
     }catch {
@@ -862,6 +873,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         math.max(extent.ymax, extent.ymin + cellSize.height),
       )
 
+    val noResampleOnRead = datacubeParams.exists(_.noResampleOnRead)
     val theResolution = targetResolution.getOrElse(maxSpatialResolution)
     val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
 
@@ -924,20 +936,43 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         SentinelXMLMetadataRasterSource(new URL(vsisToHttpsCreo(dataPath)),bands)
       }
       else {
+        def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {
+            // When noResampleOnRead is set, we retrieve the actual resolution from the dataPath.
+            // Note: This is only supported for S2 dataPaths.
+            // E.g. S2A_20190307T105021_31UFT_TOC-B05_20M_V200.tif = 20.0
+            val splitPath: Array[String] = dataPath.split("_")
+            val tiffResolution = splitPath(splitPath.length - 2).replace("M", "").toDouble
+            val tiffCellSize = CellSize(tiffResolution, tiffResolution)
+            val tiffRe = RasterExtent(expandToCellSize(projectedExtent.extent, tiffCellSize), tiffCellSize)
+            TargetRegion(tiffRe)
+        }
         if( feature.crs.isDefined && feature.crs.get != null && feature.crs.get.equals(targetExtent.crs)) {
           // when we don't know the feature (input) CRS, it seems that we assume it is the same as target extent???
           if(experimental) {
             Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(theResolution), resampleMethod=Some(resampleMethod)), targetCellType = targetCellType))
           }else{
-            Seq(GeoTiffResampleRasterSource(GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/")), alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType, None))
+            val geotiffPath = GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/"))
+            if (noResampleOnRead) {
+              val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)
+              val geotiffRasterSource = GeoTiffResampleRasterSource(geotiffPath, alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType, None)
+              Seq(new ResampledRasterSource(geotiffRasterSource, tiffAlignment.region.cellSize, theResolution))
+            } else {
+              Seq(GeoTiffResampleRasterSource(geotiffPath, alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType, None))
+            }
           }
         }else{
           if(experimental) {
             val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod),te = Some(targetExtent.extent))
             Seq(GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType))
           }else{
-
-            Seq(GeoTiffReprojectRasterSource(GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/")), targetExtent.crs, alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType = targetCellType))
+            val geotiffPath = GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/"))
+            if (noResampleOnRead) {
+              val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)
+              val geotiffRasterSource = GeoTiffReprojectRasterSource(geotiffPath, targetExtent.crs, tiffAlignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType = targetCellType)
+              Seq(new ResampledRasterSource(geotiffRasterSource, tiffAlignment.region.cellSize, theResolution))
+            } else {
+              Seq(GeoTiffReprojectRasterSource(geotiffPath, targetExtent.crs, alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType = targetCellType))
+            }
           }
         }
       }

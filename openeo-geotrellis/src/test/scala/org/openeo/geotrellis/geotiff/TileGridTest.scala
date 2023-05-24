@@ -13,7 +13,7 @@ import org.apache.spark.storage.StorageLevel.DISK_ONLY
 import org.junit._
 import org.openeo.geotrellis.LayerFixtures.rgbLayerProvider
 import org.openeo.geotrellis.png.PngTest
-import org.openeo.geotrellis.tile_grid.TileGrid
+import org.openeo.geotrellis.tile.TileGrid
 import org.openeo.geotrellis.{LayerFixtures, geotiff}
 
 import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME

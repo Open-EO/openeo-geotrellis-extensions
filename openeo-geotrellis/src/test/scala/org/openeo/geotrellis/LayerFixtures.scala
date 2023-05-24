@@ -137,6 +137,18 @@ object LayerFixtures {
       experimental = false
     )
 
+  def sentinel2TocLayerProviderUTMMultiResolution =
+    new FileLayerProvider(
+      client,
+      "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+      openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B05_20M"),
+      rootPath = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
+      maxSpatialResolution,
+      pathDateExtractor,
+      layoutScheme = FloatingLayoutScheme(256),
+      experimental = false
+    )
+
   def sentinel2TocLayerProviderUTM20M =
     new FileLayerProvider(
       client,
