@@ -393,7 +393,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 }
                 None
               } else
-                Some(Feature(intersection, reprojectedFeature.data.dateTime.toLocalDate.atStartOfDay(UTC)))
+                Some(Feature(intersection, feature.data.dateTime.toLocalDate.atStartOfDay(UTC)))
             }
 
             if (featureIntersections.isEmpty()) {
