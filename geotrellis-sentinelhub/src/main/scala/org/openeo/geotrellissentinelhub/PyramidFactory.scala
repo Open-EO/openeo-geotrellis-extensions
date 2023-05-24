@@ -382,18 +382,22 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               //feature geometry in lat lon may be invalid in target CRS, so we apply a first clipping
               val clippedFeature = feature.geom.intersection(targetExtentInLatLon).buffer(1.0).intersection(feature.geom)
               //correct reprojection requires densified geometry
-              val densifiedFeature = Densifier.densify(clippedFeature,0.1)
-
-              val reprojectedFeature = densifiedFeature.reproject(LatLng,boundingBox.crs)
-              val intersection = reprojectedFeature intersection multiPolygonBuffered
-
-              if (intersection.isEmpty) {
-                if (logger.isDebugEnabled) {
-                  logger.debug(s"shub returned a Feature that does not intersect with our requested polygons: ${feature.geom.toGeoJson()}")
-                }
+              if(clippedFeature.isEmpty) {
                 None
-              } else
-                Some(Feature(intersection, feature.data.dateTime.toLocalDate.atStartOfDay(UTC)))
+              }else{
+                val densifiedFeature = Densifier.densify(clippedFeature, 0.1)
+                val reprojectedFeature = densifiedFeature.reproject(LatLng, boundingBox.crs)
+                val intersection = reprojectedFeature intersection multiPolygonBuffered
+
+                if (intersection.isEmpty) {
+                  if (logger.isDebugEnabled) {
+                    logger.debug(s"shub returned a Feature that does not intersect with our requested polygons: ${feature.geom.toGeoJson()}")
+                  }
+                  None
+                } else
+                  Some(Feature(intersection, feature.data.dateTime.toLocalDate.atStartOfDay(UTC)))
+              }
+
             }
 
             if (featureIntersections.isEmpty()) {
