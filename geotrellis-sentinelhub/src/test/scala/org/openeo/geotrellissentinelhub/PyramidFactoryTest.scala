@@ -1024,7 +1024,7 @@ class PyramidFactoryTest {
     val catalogApiSpy = spy(new DefaultCatalogApi(endpoint))
 
     val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", catalogApiSpy,
-      new DefaultProcessApi(endpoint), authorizer, sampleType = FLOAT32)
+      new DefaultProcessApi(endpoint), authorizer, sampleType = FLOAT32, maxSpatialResolution = CellSize(0.0001,0.0001))
 
     val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
