@@ -992,7 +992,7 @@ class FileLayerProviderTest {
                                   extent: Extent,
                                   localDate: LocalDate,
                                 ): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val bandNames = Collections.singletonList("B04")
+    val bandNames = Collections.singletonList("IMG_DATA_Band_B04_10m_Tile1_Data")
     val srs32631 = "EPSG:32631"
     val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, srs32631)
 
