@@ -1,8 +1,5 @@
 package org.openeo.geotrellis.file
 
-import org.openeo.opensearch.OpenSearchClient
-import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
-import org.openeo.opensearch.backends.{CreodiasClient, OscarsClient}
 import geotrellis.layer.{FloatingLayoutScheme, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType}
@@ -12,9 +9,11 @@ import org.apache.spark.SparkContext
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
-import org.openeo.geotrellis.layers.FileLayerProvider
 import org.openeo.geotrelliscommon.DatacubeSupport.layerMetadata
-import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport}
+import org.openeo.opensearch.OpenSearchClient
+import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
+import org.openeo.opensearch.backends.{CreodiasClient, OscarsClient}
 
 import java.net.URL
 import java.time.ZonedDateTime
@@ -75,6 +74,7 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
       val keyExtent = metadata.mapTransform.keyToExtent(tuple._1.spatialKey)
       ProjectedExtent(tuple._2.bbox,LatLng).reproject(metadata.crs).intersects(keyExtent)
     })
+    BatchJobMetadataTracker.tracker("").addInputProducts(openSearchCollectionId,spatialRDD.map(_._2.id).distinct().collect().toList.asJava)
 
     val partitioner = DatacubeSupport.createPartitioner(None,spatialRDD.map(_._1),metadata)
     /**

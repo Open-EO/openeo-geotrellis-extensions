@@ -44,7 +44,7 @@ class BatchProcessingApiTest {
 
   @Test
   def getBatchProcess(): Unit = {
-    val batchProcess = batchProcessingApi.getBatchProcess("dd43f448-d582-40c5-9288-ae7a9c07ecbe", accessToken)
+    val batchProcess = batchProcessingApi.getBatchProcess("b330c22b-ec60-4a9a-80bd-ca8e5a246320", accessToken)
 
     assertEquals("DONE", batchProcess.status)
     assertEquals(Some(BigDecimal("45.77636855174205")), batchProcess.valueEstimate)

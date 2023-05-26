@@ -912,7 +912,7 @@ class FileLayerProviderTest {
     val flp = new FileLayerProvider(
       new MockCreoOpenSearch(),
       "Sentinel2",
-      openSearchLinkTitles = NonEmptyList.of("B04"),
+      openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_B04_10m_Tile1_Data"),
       rootPath = "/bogus",
       CellSize(10.0,10.0),
       SplitYearMonthDayPathDateExtractor,

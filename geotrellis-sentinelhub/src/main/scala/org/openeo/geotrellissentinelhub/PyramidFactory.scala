@@ -9,9 +9,10 @@ import geotrellis.spark.pyramid.Pyramid
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.locationtech.jts.densify.Densifier
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{ProductIdAndUrl, SH_FAILED_TILE_REQUESTS, SH_PU}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, ScopedMetadataTracker, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, ScopedMetadataTracker, SpaceTimeByMonthPartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -365,6 +366,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             // In test over England, there where up to 0.003 deviations on long line segments due to curvature
             // change between CRS. Here we convert that distance to the value in the polygon specific CRS.
+            //TODO we introduced densifier below, which may solve this problem without requiring this buffer
             val multiPolygonBuffered = {
               val centroid = multiPolygon.getCentroid.reproject(polygons_crs, LatLng)
               val derivationSegmentLatLng = LineString(centroid, Point(centroid.x, centroid.y + 0.006))
@@ -373,19 +375,29 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               multiPolygon.buffer(maxDerivationEstimate)
             }
 
-
+            val targetExtentInLatLon = dataCubeParameters.globalExtent.getOrElse(boundingBox).reproject(LatLng)
             val featuresRDD = sc.parallelize(features.values.toSeq, 1 max (features.size / 10))
             val featureIntersections = featuresRDD.flatMap { feature =>
-              val reprojectedFeature = feature.reproject(LatLng, boundingBox.crs)
-              val intersection = reprojectedFeature intersection multiPolygonBuffered
 
-              if (intersection.isEmpty) {
-                if (logger.isDebugEnabled) {
-                  logger.debug(s"shub returned a Feature that does not intersect with our requested polygons: ${feature.geom.toGeoJson()}")
-                }
+              //feature geometry in lat lon may be invalid in target CRS, so we apply a first clipping
+              val clippedFeature = feature.geom.intersection(targetExtentInLatLon).buffer(1.0).intersection(feature.geom)
+              //correct reprojection requires densified geometry
+              if(clippedFeature.isEmpty) {
                 None
-              } else
-                Some(Feature(intersection, reprojectedFeature.data.dateTime.toLocalDate.atStartOfDay(UTC)))
+              }else{
+                val densifiedFeature = Densifier.densify(clippedFeature, 0.1)
+                val reprojectedFeature = densifiedFeature.reproject(LatLng, boundingBox.crs)
+                val intersection = reprojectedFeature intersection multiPolygonBuffered
+
+                if (intersection.isEmpty) {
+                  if (logger.isDebugEnabled) {
+                    logger.debug(s"shub returned a Feature that does not intersect with our requested polygons: ${feature.geom.toGeoJson()}")
+                  }
+                  None
+                } else
+                  Some(Feature(intersection, feature.data.dateTime.toLocalDate.atStartOfDay(UTC)))
+              }
+
             }
 
             if (featureIntersections.isEmpty()) {

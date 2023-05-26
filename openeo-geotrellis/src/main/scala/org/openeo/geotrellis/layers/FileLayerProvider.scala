@@ -973,7 +973,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     val expectedNumberOfBBands = openSearchLinkTitlesWithBandIds.size
     val rasterSources: immutable.Seq[(Seq[RasterSource], Seq[Int])] = for {
       (title, bands) <- openSearchLinkTitlesWithBandIds.toList
-      link <- feature.links.find(_.title.exists(_.toUpperCase contains title.toUpperCase))
+      link <- feature.links.find(_.title.map(_.toUpperCase) contains title.toUpperCase)
       path = deriveFilePath(link.href)
       cloudPathOptions = (
         feature.links.find(_.title contains "FineCloudMask_Tile1_Data").map(_.href.toString),
