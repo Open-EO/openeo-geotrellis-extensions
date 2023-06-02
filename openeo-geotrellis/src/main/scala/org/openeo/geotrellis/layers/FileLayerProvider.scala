@@ -23,6 +23,7 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.file.AbstractPyramidFactory
 import org.openeo.geotrellis.tile_grid.TileGrid
+import org.openeo.geotrellis.toSigned
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, retryForever}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.Feature
@@ -42,7 +43,12 @@ import scala.util.matching.Regex
 
 // TODO: are these attributes typically propagated as RasterSources are transformed? Maybe we should find another way to
 //  attach e.g. a date to a RasterSource.
-class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource], override val crs: CRS, override val attributes: Map[String, String] = Map.empty, predefinedExtent: Option[GridExtent[Long]] = None)
+class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource],
+                                override val crs: CRS,
+                                override val attributes: Map[String, String] = Map.empty,
+                                predefinedExtent: Option[GridExtent[Long]] = None,
+                                pixelValueOffset: Double = 0,
+                               )
   extends MosaicRasterSource { // TODO: don't inherit?
 
   protected def reprojectedSources: NonEmptyList[RasterSource] = sources map { _.reproject(crs) }
@@ -67,15 +73,30 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     }
 
   }
-  override def cellType: CellType = sources.map(_.cellType).reduceLeft(_ union _)
+
+  override def cellType: CellType = {
+    val commonCellType = sources.map(_.cellType).reduceLeft(_ union _)
+    if (pixelValueOffset < 0) {
+      // Big chance the value will go under 0, so type needs to be signed
+      toSigned(commonCellType)
+    } else {
+      commonCellType
+    }
+  }
 
   override def name: SourceName = sources.head.name
   override def bandCount: Int = sources.size
 
+  private def withOffset(bandTile: Tile): Tile = {
+    if (pixelValueOffset == 0) bandTile
+    else if (cellType.isFloatingPoint) bandTile.convert(cellType).mapIfSetDouble(x => x + pixelValueOffset)
+    else bandTile.convert(cellType).mapIfSet(i => i + pixelValueOffset.toInt)
+  }
+
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val selectedSources = reprojectedSources(bands)
     val singleBandRasters = selectedSources.par
-      .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
+      .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(withOffset(multibandTile.band(0)), extent) } }
       .collect { case Some(raster) => raster }
 
     if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile).seq), singleBandRasters.head.extent))
@@ -88,7 +109,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     def readBounds(source:RasterSource):Option[Raster[Tile]] = {
 
       try {
-        source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
+        source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(withOffset(multibandTile.band(0)), extent) }
       } catch {
         case e: Exception => throw new IOException(s"Error while reading ${bounds} from: ${source.name.toString}", e)
       }
@@ -117,23 +138,28 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                          method: ResampleMethod,
                          strategy: OverviewStrategy
                        ): RasterSource = new BandCompositeRasterSource(
-    reprojectedSources map { _.resample(resampleTarget, method, strategy) }, crs)
+    reprojectedSources map { _.resample(resampleTarget, method, strategy) }, crs, pixelValueOffset=pixelValueOffset)
 
   override def convert(targetCellType: TargetCellType): RasterSource =
-    new BandCompositeRasterSource(reprojectedSources map { _.convert(targetCellType) }, crs)
+    new BandCompositeRasterSource(reprojectedSources map { _.convert(targetCellType) }, crs, pixelValueOffset=pixelValueOffset)
 
   override def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
     new BandCompositeRasterSource(
       reprojectedSources map { _.reproject(targetCRS, resampleTarget, method, strategy) },
-      crs
+      crs,
+      pixelValueOffset=pixelValueOffset,
     )
 }
 
 // TODO: is this class necessary? Looks like a more general case of BandCompositeRasterSource so maybe the inheritance
 //  relationship should be reversed; or maybe the BandCompositeRasterSource could be made more general and accept
 //  multi-band RasterSources too.
-class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(RasterSource, Seq[Int])], override val crs: CRS, override val attributes: Map[String, String] = Map.empty)
-  extends BandCompositeRasterSource(sourcesListWithBandIds.map(_._1), crs, attributes) {
+class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(RasterSource, Seq[Int])],
+                                     override val crs: CRS,
+                                     override val attributes: Map[String, String] = Map.empty,
+                                     pixelValueOffset: Double = 0,
+                                    )
+  extends BandCompositeRasterSource(sourcesListWithBandIds.map(_._1), crs, attributes, pixelValueOffset = pixelValueOffset) {
 
   override def bandCount: Int = sourcesListWithBandIds.map(_._2.size).toList.sum
 
@@ -162,15 +188,16 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
                          method: ResampleMethod,
                          strategy: OverviewStrategy
                        ): RasterSource = new MultibandCompositeRasterSource(
-    sourcesWithBandIds map { case (source, bands) => (source.resample(resampleTarget, method, strategy), bands) }, crs)
+    sourcesWithBandIds map { case (source, bands) => (source.resample(resampleTarget, method, strategy), bands) }, crs, pixelValueOffset = pixelValueOffset)
 
   override def convert(targetCellType: TargetCellType): RasterSource =
-    new MultibandCompositeRasterSource(sourcesWithBandIds map { case (source, bands) => (source.convert(targetCellType), bands) }, crs)
+    new MultibandCompositeRasterSource(sourcesWithBandIds map { case (source, bands) => (source.convert(targetCellType), bands) }, crs, pixelValueOffset = pixelValueOffset)
 
   override def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
     new MultibandCompositeRasterSource(
       sourcesWithBandIds map { case (source, bands) => (source.reproject(targetCRS, resampleTarget, method, strategy), bands) },
-      crs
+      crs,
+      pixelValueOffset = pixelValueOffset,
     )
 }
 
@@ -580,8 +607,8 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         }else{
           None
         }
-        if (bandIds.isEmpty) (new BandCompositeRasterSource(sources.map(_._1), crs, attributes,predefinedExtent = gridExtent),feature)
-        else (new MultibandCompositeRasterSource(sources, crs, attributes),feature)
+        if (bandIds.isEmpty) (new BandCompositeRasterSource(sources.map(_._1), crs, attributes,predefinedExtent = gridExtent, pixelValueOffset=feature.pixelValueOffset),feature)
+        else (new MultibandCompositeRasterSource(sources, crs, attributes, pixelValueOffset = feature.pixelValueOffset),feature)
       }
   }
 
@@ -976,9 +1003,9 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
           logger.warn(s"Did not find expected number of bands $expectedNumberOfBBands for feature ${feature.id} with links ${feature.links.mkString("Array(", ", ", ")")}")
           return None
         }
-        return Some((new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent), feature))
+        return Some((new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent, pixelValueOffset = feature.pixelValueOffset), feature))
       }
-      else return Some((new MultibandCompositeRasterSource(sources, targetExtent.crs, attributes), feature))
+      else return Some((new MultibandCompositeRasterSource(sources, targetExtent.crs, attributes, pixelValueOffset = feature.pixelValueOffset), feature))
     }
 
   }
