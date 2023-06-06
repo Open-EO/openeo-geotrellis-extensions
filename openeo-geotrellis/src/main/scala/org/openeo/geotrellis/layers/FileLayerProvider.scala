@@ -22,8 +22,8 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.file.AbstractPyramidFactory
-import org.openeo.geotrellis.tile.{TileGrid, ResampledTile}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, retryForever}
+import org.openeo.geotrellis.tile_grid.TileGrid
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, retryForever}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.Feature
 import org.slf4j.LoggerFactory

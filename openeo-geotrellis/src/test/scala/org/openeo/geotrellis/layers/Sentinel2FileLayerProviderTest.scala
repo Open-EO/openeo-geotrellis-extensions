@@ -27,9 +27,8 @@ import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
-import org.openeo.geotrellis.tile.ResampledTile
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, ResampledTile}
 import org.openeo.opensearch.OpenSearchResponses.Link
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 

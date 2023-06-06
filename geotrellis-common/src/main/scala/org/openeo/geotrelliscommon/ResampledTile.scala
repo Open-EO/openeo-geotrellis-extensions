@@ -1,4 +1,4 @@
-package org.openeo.geotrellis.tile
+package org.openeo.geotrelliscommon
 
 import geotrellis.macros.{DoubleTileMapper, DoubleTileVisitor, IntTileMapper, IntTileVisitor}
 import geotrellis.raster.crop.Crop

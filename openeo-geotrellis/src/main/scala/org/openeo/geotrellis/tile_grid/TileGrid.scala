@@ -1,4 +1,4 @@
-package org.openeo.geotrellis.tile
+package org.openeo.geotrellis.tile_grid
 
 import geotrellis.proj4.LatLng
 import geotrellis.proj4.util.UTM

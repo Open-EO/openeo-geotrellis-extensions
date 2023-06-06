@@ -4,7 +4,7 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.{CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType}
 import geotrellis.raster.io.geotiff.{MultibandGeoTiff, OverviewStrategy}
 import geotrellis.vector.Extent
-import org.openeo.geotrellis.tile.ResampledTile
+import org.openeo.geotrelliscommon.ResampledTile
 
 /** ResampledRasterSource
  * Read from a rasterSource as if it were at a different resolution.
