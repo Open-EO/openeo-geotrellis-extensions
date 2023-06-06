@@ -1,8 +1,7 @@
 package org.openeo.geotrelliscommon
 
 import geotrellis.macros.{DoubleTileMapper, DoubleTileVisitor, IntTileMapper, IntTileVisitor}
-import geotrellis.raster.crop.Crop
-import geotrellis.raster.{ArrayTile, CellType, ConstantTile, GridBounds, MutableArrayTile, Tile}
+import geotrellis.raster.{ArrayTile, CellType, GridBounds, MutableArrayTile, Tile}
 
 object ResampledTile {
   def apply(tile: Tile, sourceBounds: GridBounds[Long], targetBounds: GridBounds[Long]): ResampledTile = {
@@ -30,9 +29,9 @@ case class ResampledTile(tile: Tile, sourceCols: Long, sourceRows: Long, targetC
 
   override def withNoData(noDataValue: Option[Double]): Tile = withTile(tile.withNoData(noDataValue))
 
-  override def toArrayTile(): ArrayTile = tile.toArrayTile()
+  override def toArrayTile(): ArrayTile = tile.resample(cols, rows).toArrayTile()
 
-  override def toBytes(): Array[Byte] = tile.toBytes()
+  override def toBytes(): Array[Byte] = tile.resample(cols, rows).toBytes()
 
   override def cellType: CellType = tile.cellType
 
@@ -86,20 +85,20 @@ case class ResampledTile(tile: Tile, sourceCols: Long, sourceRows: Long, targetC
 
   override def foreachDouble(f: Double => Unit): Unit = tile.foreachDouble(f)
 
-  override def map(f: Int => Int): Tile = tile.map(f)
+  override def map(f: Int => Int): Tile = withTile(tile.map(f))
 
-  override def combine(r2: Tile)(f: (Int, Int) => Int): Tile = tile.combine(r2)(f)
+  override def combine(r2: Tile)(f: (Int, Int) => Int): Tile = withTile(tile.combine(r2)(f))
 
-  override def mapDouble(f: Double => Double): Tile = tile.mapDouble(f)
+  override def mapDouble(f: Double => Double): Tile = withTile(tile.mapDouble(f))
 
-  override def combineDouble(r2: Tile)(f: (Double, Double) => Double): Tile = tile.combineDouble(r2)(f)
+  override def combineDouble(r2: Tile)(f: (Double, Double) => Double): Tile = withTile(tile.combineDouble(r2)(f))
 
-  override def mapIntMapper(mapper: IntTileMapper): Tile = tile.mapIntMapper(mapper)
+  override def mapIntMapper(mapper: IntTileMapper): Tile = withTile(tile.mapIntMapper(mapper))
 
-  override def mapDoubleMapper(mapper: DoubleTileMapper): Tile = tile.mapDoubleMapper(mapper)
+  override def mapDoubleMapper(mapper: DoubleTileMapper): Tile = withTile(tile.mapDoubleMapper(mapper))
 
-  override def foreachIntVisitor(visitor: IntTileVisitor): Unit = tile.foreachIntVisitor(visitor)
+  override def foreachIntVisitor(visitor: IntTileVisitor): Unit = tile.resample(cols, rows).foreachIntVisitor(visitor)
 
-  override def foreachDoubleVisitor(visitor: DoubleTileVisitor): Unit = tile.foreachDoubleVisitor(visitor)
+  override def foreachDoubleVisitor(visitor: DoubleTileVisitor): Unit = tile.resample(cols, rows).foreachDoubleVisitor(visitor)
 
 }
