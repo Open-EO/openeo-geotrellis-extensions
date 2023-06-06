@@ -6,7 +6,7 @@ import geotrellis.raster.testkit.{RasterMatchers, TileBuilders}
 import org.scalatest.funspec.AnyFunSpec
 import org.scalatest.matchers.should.Matchers
 
-class ResampledTileTest  extends AnyFunSpec with Matchers with RasterMatchers with TileBuilders {
+class ResampledTileTest extends AnyFunSpec with Matchers {
 
   describe("Get should match the source tile with a constant scale factor for the rows and columns.") {
     val arr = Array(0.0, 1.0, -1.0, Double.NaN)
