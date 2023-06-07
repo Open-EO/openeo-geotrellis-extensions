@@ -45,4 +45,7 @@ class DataCubeParameters extends Serializable {
     pixelBufferY = y
   }
 
+  def setNoResampleOnRead(noResample:Boolean):Unit = {
+    noResampleOnRead = noResample
+  }
 }
