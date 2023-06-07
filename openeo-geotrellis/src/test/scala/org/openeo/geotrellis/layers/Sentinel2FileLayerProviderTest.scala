@@ -3,13 +3,14 @@ package org.openeo.geotrellis.layers
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
-import geotrellis.raster.geotiff.GeoTiffRasterSource
+import geotrellis.raster.geotiff.{GeoTiffRasterSource, GeoTiffReprojectRasterSource}
 import geotrellis.raster.io.geotiff.{GeoTiffReader, MultibandGeoTiff}
+import geotrellis.raster.resample.NearestNeighbor
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, MultibandTile, NODATA, ShortUserDefinedNoDataCellType, Tile, UShortConstantNoDataArrayTile}
+import geotrellis.raster.{CellSize, GridBounds, GridExtent, MultibandTile, NODATA, PaddedTile, Raster, RasterExtent, ShortUserDefinedNoDataCellType, TargetRegion, Tile, UShortConstantNoDataArrayTile}
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
@@ -27,7 +28,7 @@ import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, ResampledTile}
 import org.openeo.opensearch.OpenSearchResponses.Link
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 
@@ -362,6 +363,60 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val spatialLayer = layer.toSpatial(date)
 
     spatialLayer.writeGeoTiff("/tmp/testBlackStreak_left_GeoTiffRasterSource_ND0_notcropped_test.tif", bufferedBoundingBox)
+  }
+
+  @Test
+  def testS2UpsampledTilesFromLayer(): Unit = {
+    val date = LocalDate.of(2019, 3, 7).atStartOfDay(UTC)
+    val crs = CRS.fromEpsgCode(32631)
+    val boundingBox = ProjectedExtent(Extent(640860, 5676170, 666460, 5701770), crs)
+    val utm32 = CRS.fromEpsgCode(32632)
+    val bboxUTM32 = boundingBox.reproject(utm32)
+    val parameters = new DataCubeParameters
+    parameters.noResampleOnRead = true
+
+    val layer = LayerFixtures.sentinel2TocLayerProviderUTMMultiResolution.readMultibandTileLayer(
+      from = date,
+      to = date,
+      ProjectedExtent(bboxUTM32, utm32),
+      polygons = Array(MultiPolygon(bboxUTM32.toPolygon())),
+      polygons_crs = utm32,
+      zoom = 0,
+      sc,
+      Some(parameters)
+    )
+    val layerArray: Array[(SpaceTimeKey, MultibandTile)] = layer.collect()
+
+    // Ensure that ResampledTiles exist.
+    layerArray.foreach({ case (_, tile) =>
+      val tile20m = tile.band(1)
+      // Either PaddedTile or ResampledTile
+      tile20m match {
+        case paddedTile: PaddedTile => assert(paddedTile.chunk.isInstanceOf[ResampledTile])
+        case resTile: ResampledTile =>
+          assertEquals(0.5, resTile.sourceCols.toDouble / resTile.targetCols.toDouble, 0.01)
+          assertEquals(0.5, resTile.sourceRows.toDouble / resTile.targetRows.toDouble, 0.01)
+        case _ => assert(false)
+      }
+    })
+
+    val spatialLayer = layer.toSpatial(date).cache()
+    // spatialLayer.writeGeoTiff("/tmp/Sentinel2FileLayerProvider_resampledtiles.tif", boundingBox)
+
+    val bboxInside = ProjectedExtent(
+      Extent(
+        boundingBox.extent.xmin + 5000, boundingBox.extent.ymin + 5000,
+        boundingBox.extent.xmin + 10000, boundingBox.extent.ymin + 10000
+      ),
+      crs
+    )
+    val polygon = bboxInside.reprojectAsPolygon(spatialLayer.metadata.crs)
+    val summary = spatialLayer.polygonalSummaryValue(polygon, MeanVisitor)
+    assertTrue(summary.toOption.isDefined)
+    val meanList = summary.toOption.get
+
+    val meanListMeanActual = 6449.449605002506
+    assertEquals(meanListMeanActual, meanList.head.mean, 0.00001)
   }
 
   @Test
