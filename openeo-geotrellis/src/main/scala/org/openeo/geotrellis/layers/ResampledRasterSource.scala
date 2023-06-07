@@ -2,7 +2,7 @@ package org.openeo.geotrellis.layers
 
 import geotrellis.proj4.CRS
 import geotrellis.raster.{CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType}
-import geotrellis.raster.io.geotiff.{MultibandGeoTiff, OverviewStrategy}
+import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.vector.Extent
 import org.openeo.geotrelliscommon.ResampledTile
 
@@ -50,7 +50,8 @@ class ResampledRasterSource(
   }
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    rasterSource.read(extent, bands)
+    val bounds = gridExtent.gridBoundsFor(extent, clamp = false)
+    read(bounds, bands)
   }
 
   override def convert(targetCellType: TargetCellType): RasterSource = {
