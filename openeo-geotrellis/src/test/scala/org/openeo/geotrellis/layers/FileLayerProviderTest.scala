@@ -3,45 +3,38 @@ package org.openeo.geotrellis.layers
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
-import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, RasterSource}
+import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, RasterSource, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
+import org.apache.commons.io.FileUtils
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.junit.{AfterClass, BeforeClass}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
-import org.openeo.geotrellis.{LayerFixtures, geotiff}
+import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DatacubeSupport._
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{DataCubeParameters, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection}
-import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 
+import java.io.File
 import java.net.URL
 import java.time.ZoneOffset.UTC
+import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util.Collections
+import scala.io.Source
 
 object FileLayerProviderTest {
-  // Methods with attributes get called in a non-intuitive order:
-  // - BeforeAll
-  // - ParameterizedTest
-  // - AfterAll
-  // - BeforeClass
-  // - AfterClass
-  //
-  // This order feels arbitrary, so I made the code robust against order changes.
-
   private var _sc: Option[SparkContext] = None
 
   private def sc: SparkContext = {
@@ -57,36 +50,16 @@ object FileLayerProviderTest {
     _sc.get
   }
 
-  @BeforeClass
-  def setUpSpark_BeforeClass(): Unit = sc
-
   @BeforeAll
-  def setUpSpark_BeforeAll(): Unit = sc
-
-  var gotAfterAll = false
+  def setUpSpark_BeforeAll(): Unit = {
+    sc
+  }
 
   @AfterAll
   def tearDownSpark_AfterAll(): Unit = {
-    gotAfterAll = true
-    maybeStopSpark()
-  }
-
-  var gotAfterClass = false
-
-  @AfterClass
-  def tearDownSpark_AfterClass(): Unit = {
-    gotAfterClass = true;
-    maybeStopSpark()
-  }
-
-  def maybeStopSpark(): Unit = {
-    if (gotAfterAll && gotAfterClass) {
-      if (_sc.isDefined) {
-        println("Stopping SparkContext...")
-        _sc.get.stop()
-        _sc = None
-        println("Stopped SparkContext")
-      }
+    if (_sc.isDefined) {
+      _sc.get.stop()
+      _sc = None
     }
   }
 }
@@ -336,7 +309,7 @@ class FileLayerProviderTest {
     assertEquals(cols*rows,result._1.count(),0.1)
   }
 
-  val myFeatureJSON =
+  private val myFeatureJSON =
     """
       |{
       | "totalResults": 1,
@@ -351,14 +324,15 @@ class FileLayerProviderTest {
       |            	{"date":"2020-03-15T05:58:49.458Z","identifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110","available":"2020-09-09T14:07:35Z","parentIdentifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1","productInformation":{"processingCenter":"VITO","productVersion":"V110","timeliness":"Fast-24h","processingDate":"2020-03-15T10:23:40.698Z","productType":"SIGMA0","availabilityTime":"2020-09-09T14:07:35Z"},"links":{"related":[],"data":[{"length":1642877038,"type":"image/tiff","title":"VH","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_VH.tif"},{"length":1638893250,"type":"image/tiff","title":"VV","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_VV.tif"},{"length":105791005,"type":"image/tiff","title":"angle","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_angle.tif"}],"previews":[{"href":"https://services.terrascope.be/wms/v2?SERVICE=WMS&REQUEST=getMap&VERSION=1.3.0&CRS=EPSG:3857&SRS=EPSG:3857&LAYERS=CGS_S1_GRD_SIGMA0&TIME=2020-03-15&BBOX=153588.3920034059,6361726.342578137,609272.5011758554,6694913.752846391&WIDTH=80&HEIGHT=80&FORMAT=image/png&TRANSPARENT=true","type":"image/png","title":"WMS","category":"QUICKLOOK"}],"alternates":[{"length":38284,"type":"application/vnd.iso.19139+xml","title":"Inspire metadata","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110.xml"}]},"published":"2020-09-09T14:07:35Z","title":"S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110","updated":"2020-03-15T10:23:40.698Z","acquisitionInformation":[{"acquisitionParameters":{"operationalMode":"IW","polarisationMode":"D","acquisitionType":"NOMINAL","relativeOrbitNumber":110,"polarisationChannels":"VV, VH","beginningDateTime":"2020-03-15T05:58:49.458Z","orbitDirection":"DESCENDING","endingDateTime":"2020-03-15T05:59:14.456Z","orbitNumber":31682},"platform":{"platformShortName":"SENTINEL-1","platformSerialIdentifier":"S1A"}}],"status":"ARCHIVED"}
       |         }]}""".stripMargin
 
-  val sentinel1Product =  FeatureCollection.parse(myFeatureJSON, isUTM = true)
+  private val sentinel1Product =  FeatureCollection.parse(myFeatureJSON, isUTM = true)
 
-  class MockOpenSearch extends OpenSearchClient {
+  class MockOpenSearchFeatures(mockedFeatures:Array[OpenSearchResponses.Feature]) extends OpenSearchClient {
     override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
-      val start = dateRange.get._1
-      sentinel1Product.features
+      mockedFeatures
     }
+
     override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
+
     override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
   }
 
@@ -676,7 +650,7 @@ class FileLayerProviderTest {
     dataCubeParameters.globalExtent = Some(boundingBox)
 
     val flp = new FileLayerProvider(
-      new MockOpenSearch(),
+      new MockOpenSearchFeatures(sentinel1Product.features),
       "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
       openSearchLinkTitles = NonEmptyList.of("VV"),
       rootPath = "/bogus",
@@ -734,7 +708,7 @@ class FileLayerProviderTest {
 
     val res = 0.0001
     val flp = new FileLayerProvider(
-      new MockOpenSearch(),
+      new MockOpenSearchFeatures(sentinel1Product.features),
       "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
       openSearchLinkTitles = NonEmptyList.of("VV"),
       rootPath = "/bogus",
@@ -793,7 +767,7 @@ class FileLayerProviderTest {
     dataCubeParameters.pixelBufferX = buffer
 
     val flp = new FileLayerProvider(
-      new MockOpenSearch(),
+      new MockOpenSearchFeatures(sentinel1Product.features),
       "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
       openSearchLinkTitles = NonEmptyList.of("VV"),
       rootPath = "/bogus",
@@ -938,7 +912,7 @@ class FileLayerProviderTest {
     val flp = new FileLayerProvider(
       new MockCreoOpenSearch(),
       "Sentinel2",
-      openSearchLinkTitles = NonEmptyList.of("B04"),
+      openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_B04_10m_Tile1_Data"),
       rootPath = "/bogus",
       CellSize(10.0,10.0),
       SplitYearMonthDayPathDateExtractor,
@@ -980,5 +954,95 @@ class FileLayerProviderTest {
     assertEquals(crs,result._2.crs)
     assertEquals(8,all.length)
     assertEquals((2*cols*rows).toInt,all.length)
+  }
+
+  @Test
+  def testPixelValueOffsetNeededCorner(): Unit = {
+    // This selection will go over a corner that has nodata pixels
+    val layer = testPixelValueOffsetNeeded(
+      "/org/openeo/geotrellis/testPixelValueOffsetNeededCorner.json",
+      Extent(703109 - 100, 5600100, 709000, 5610000 - 100),
+      LocalDate.of(2023, 4, 5),
+    )
+    val cubeSpatial = layer.toSpatial()
+    cubeSpatial.writeGeoTiff("tmp/testPixelValueOffsetNeededCorner.tiff")
+    val arr = cubeSpatial.collect().array
+    assertTrue(isNoData(arr(1)._2.toArrayTile().band(0).get(162, 250)))
+    assertEquals(224, arr(0)._2.toArrayTile().band(0).get(0, 0), 1)
+  }
+
+  @Test
+  def testPixelValueOffsetNeededDark(): Unit = {
+    // This will cover an area where pixels go under 0
+    val layer = testPixelValueOffsetNeeded(
+      "/org/openeo/geotrellis/testPixelValueOffsetNeededDark.json",
+      Extent(755380, 5622042, 756755, 5623482),
+      LocalDate.of(2023, 1, 17),
+    )
+    val cubeSpatial = layer.toSpatial()
+    cubeSpatial.writeGeoTiff("tmp/testPixelValueOffsetNeededDark.tiff")
+    val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
+
+    assertEquals(888, band.get(0, 0), 1)
+    assertEquals(-582, band.get(133, 151), 1)
+  }
+
+  def testPixelValueOffsetNeeded(
+                                  jsonPath: String,
+                                  extent: Extent,
+                                  localDate: LocalDate,
+                                ): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val bandNames = Collections.singletonList("IMG_DATA_Band_B04_10m_Tile1_Data")
+    val srs32631 = "EPSG:32631"
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, srs32631)
+
+    val jsonPathFull = getClass.getResource(jsonPath)
+    val fileSource = Source.fromURL(jsonPathFull)
+    var txt = try fileSource.mkString
+    finally fileSource.close()
+    val basePath = new java.io.File(jsonPathFull.getFile).getParent
+    // Use artifactory to avoid heavy git repo
+    val basePathArtifactory = "https://artifactory.vgt.vito.be/testdata-public"
+
+    for (rest <- Seq(
+      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/GRANULE/L2A_T31UGS_A030636_20230117T104258/IMG_DATA/R10m/T31UGS_20230117T104259_B04_10m.jp2",
+      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R10m/T31UFS_20230405T105031_B04_10m.jp2",
+    )) {
+      val jp2File = new File(basePath, rest)
+      if (!jp2File.exists()) {
+        println("Copy from artifactory to: " + jp2File)
+        FileUtils.copyURLToFile(new URL(basePathArtifactory + rest), jp2File)
+      }
+    }
+    txt = txt.replace("\"/eodata/", "\"" + basePath + "/eodata/")
+    val mockedFeatures = CreoFeatureCollection.parse(txt)
+    val client = new MockOpenSearchFeatures(mockedFeatures.features)
+    //    val client = CreodiasClient() // More difficult to capture a nodata piece
+
+    val factory = new org.openeo.geotrellis.file.PyramidFactory(
+      client, "Sentinel2", bandNames,
+      null,
+      maxSpatialResolution = CellSize(10, 10),
+    )
+    factory.crs = projected_polygons_native_crs.crs
+
+    val localFromDate = localDate
+    val localToDate = localDate.plusDays(1)
+    val ZonedFromDate = ZonedDateTime.of(localFromDate, java.time.LocalTime.MIDNIGHT, UTC)
+    val zonedToDate = ZonedDateTime.of(localToDate, java.time.LocalTime.MIDNIGHT, UTC)
+    val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format ZonedFromDate
+    val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format zonedToDate
+
+    val dataCubeParameters = new DataCubeParameters()
+    dataCubeParameters.tileSize = 256
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+
+    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
+      projected_polygons_native_crs,
+      from_date, to_date, Collections.emptyMap(), ""
+    )
+    cube.head._2
   }
 }

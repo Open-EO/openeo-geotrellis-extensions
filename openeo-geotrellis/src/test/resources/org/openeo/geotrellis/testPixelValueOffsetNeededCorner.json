@@ -1,0 +1,152 @@
+{
+  "type": "FeatureCollection",
+  "properties": {
+    "id": "4f247422-06ea-5e7b-b035-4ec1c044e95b",
+    "totalResults": 8,
+    "exactCount": true,
+    "startIndex": 1,
+    "itemsPerPage": 1,
+    "query": {
+      "originalFilters": {
+        "collection": "Sentinel2",
+        "box": "4.551038745771685,50.52193149391922,5.728989293152962,51.34991413206223",
+        "sortParam": "startDate",
+        "sortOrder": "ascending",
+        "page": "1",
+        "maxRecords": "100"
+      },
+      "appliedFilters": {
+        "collection": "Sentinel2",
+        "box": "4.551038745771685,50.52193149391922,5.728989293152962,51.34991413206223",
+        "sortParam": "startDate",
+        "sortOrder": "ascending",
+        "page": "1",
+        "maxRecords": "100"
+      },
+      "processingTime": 0.53763459
+    },
+    "links": [
+      {
+        "rel": "self",
+        "type": "application/json",
+        "title": "self",
+        "href": "http://example.com"
+      },
+      {
+        "rel": "search",
+        "type": "application/opensearchdescription+xml",
+        "title": "OpenSearch Description Document",
+        "href": "http://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/describe.xml"
+      }
+    ]
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "id": "b6fc0a5b-eff5-44f4-a1d4-85d30ad31850",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              5.9683759787184,
+              50.6527812179787
+            ],
+            [
+              6.01702500852582,
+              51.4123426550669
+            ],
+            [
+              4.43887679440474,
+              51.4423523168539
+            ],
+            [
+              4.40871510963764,
+              50.4552721606619
+            ],
+            [
+              5.85597059154562,
+              50.4281297032349
+            ],
+            [
+              5.8769230901355,
+              50.470493862387
+            ],
+            [
+              5.94922503545542,
+              50.6144828810643
+            ],
+            [
+              5.9683759787184,
+              50.6527812179787
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "collection": "SENTINEL-2",
+        "status": "ONLINE",
+        "license": {
+          "licenseId": "unlicensed",
+          "hasToBeSigned": "never",
+          "grantedCountries": null,
+          "grantedOrganizationCountries": null,
+          "grantedFlags": null,
+          "viewService": "public",
+          "signatureQuota": -1,
+          "description": {
+            "shortName": "No license"
+          }
+        },
+        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE",
+        "parentIdentifier": null,
+        "title": "S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE",
+        "description": null,
+        "organisationName": null,
+        "startDate": "2023-04-05T10:50:31.024Z",
+        "completionDate": "2023-04-05T10:50:31.024Z",
+        "productType": "S2MSI2A",
+        "processingLevel": "S2MSI2A",
+        "platform": "S2A",
+        "instrument": "MSI",
+        "resolution": 0,
+        "sensorMode": null,
+        "orbitNumber": 40660,
+        "quicklook": null,
+        "thumbnail": "https://finder.creodias.eu/files/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253-ql.jpg",
+        "updated": "2023-04-05T18:08:53.637Z",
+        "published": "2023-04-05T18:08:53.637Z",
+        "snowCover": 0,
+        "cloudCover": 17.768165,
+        "gmlgeometry": "<gml:Polygon srsName=\"EPSG:4326\"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>5.9683759787184,50.6527812179787 6.01702500852582,51.4123426550669 4.43887679440474,51.4423523168539 4.40871510963764,50.4552721606619 5.85597059154562,50.4281297032349 5.8769230901355,50.470493862387 5.94922503545542,50.6144828810643 5.9683759787184,50.6527812179787</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>",
+        "centroid": {
+          "type": "Point",
+          "coordinates": [
+            5.19940974191335,
+            50.9389526955115
+          ]
+        },
+        "orbitDirection": null,
+        "timeliness": null,
+        "relativeOrbitNumber": 51,
+        "processingBaseline": 5.09,
+        "missionTakeId": "GS2A_20230405T105031_040660_N05.09",
+        "services": {
+          "download": {
+            "url": "https://zipper.creodias.eu/download/b6fc0a5b-eff5-44f4-a1d4-85d30ad31850",
+            "mimeType": "application/octet-stream",
+            "size": 1173373642
+          }
+        },
+        "links": [
+          {
+            "rel": "self",
+            "type": "application/json",
+            "title": "GeoJSON link for b6fc0a5b-eff5-44f4-a1d4-85d30ad31850",
+            "href": "http://catalogue.dataspace.copernicus.eu/resto/collections/SENTINEL-2/b6fc0a5b-eff5-44f4-a1d4-85d30ad31850.json"
+          }
+        ]
+      }
+    }
+  ]
+}

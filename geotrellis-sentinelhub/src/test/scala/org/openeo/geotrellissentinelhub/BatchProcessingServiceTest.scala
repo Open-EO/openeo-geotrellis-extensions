@@ -351,7 +351,7 @@ class BatchProcessingServiceTest {
   @Test
   def getBatchProcessStatus(): Unit = {
     val status =
-      batchProcessingService.get_batch_process(batch_request_id = "7f3d98f2-4a9a-4fbe-adac-973f1cff5699").status
+      batchProcessingService.get_batch_process(batch_request_id = "b330c22b-ec60-4a9a-80bd-ca8e5a246320").status
 
     assertEquals("DONE", status)
   }
@@ -359,7 +359,7 @@ class BatchProcessingServiceTest {
   @Test
   def getBatchProcess(): Unit = {
     val batch_process =
-      batchProcessingService.get_batch_process(batch_request_id = "dd43f448-d582-40c5-9288-ae7a9c07ecbe")
+      batchProcessingService.get_batch_process(batch_request_id = "b330c22b-ec60-4a9a-80bd-ca8e5a246320")
 
     assertEquals("DONE", batch_process.status)
     assertEquals(45.77636855174205, batch_process.value_estimate.doubleValue(), 0.0001)
