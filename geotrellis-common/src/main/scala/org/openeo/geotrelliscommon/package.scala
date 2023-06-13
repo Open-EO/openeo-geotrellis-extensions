@@ -1,7 +1,7 @@
 package org.openeo
 
-import geotrellis.layer.{SpaceTimeKey, SpatialKey}
-import geotrellis.spark.partition.PartitionerIndex
+import _root_.geotrellis.layer.{SpaceTimeKey, SpatialKey}
+import _root_.geotrellis.spark.partition.PartitionerIndex
 import org.apache.spark.Partitioner
 import org.locationtech.sfcurve.zorder.{Z2, ZRange}
 import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex

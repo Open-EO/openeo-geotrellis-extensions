@@ -2,7 +2,7 @@ package org.openeo.geotrelliscommon
 
 import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutLevel, LayoutScheme, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.CRS
-import geotrellis.raster.{CellSize, CellType}
+import geotrellis.raster.{CellSize, CellType, MultibandTile}
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
@@ -191,13 +191,18 @@ object DatacubeSupport {
             }
             val filtered = spacetimeMask.withContext{_.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))}
             val alignedMask: MultibandTileLayerRDD[SpaceTimeKey] =
-            if(spacetimeMask.metadata.crs.equals(metadata.crs) && spacetimeMask.metadata.layout.equals(metadata.layout)) {
-              filtered
-            }else{
-              logger.debug(s"mask: automatically resampling mask to match datacube: ${spacetimeMask.metadata}")
-              filtered.reproject(metadata.crs,metadata.layout,16,rdd.partitioner)._2
-            }
-            return rdd.join(alignedMask).mapValues(_._1)
+              if(spacetimeMask.metadata.crs.equals(metadata.crs) && spacetimeMask.metadata.layout.equals(metadata.layout)) {
+                filtered
+              }else{
+                logger.debug(s"mask: automatically resampling mask to match datacube: ${spacetimeMask.metadata}")
+                filtered.reproject(metadata.crs,metadata.layout,16,rdd.partitioner)._2
+              }
+
+            val rddFiltered = rdd.join(alignedMask).mapValues(_._1)
+            val spacetimeDataContextRDD = ContextRDD(rddFiltered.asInstanceOf[RDD[(SpaceTimeKey, MultibandTile)]], metadata)
+            // This masking is only applied from Python when replacement is not defined.
+            val maskedRdd = new _root_.org.openeo.geotrellis.OpenEOProcesses().rasterMaskGeneric(spacetimeDataContextRDD, alignedMask, null)
+            return maskedRdd.asInstanceOf[RDD[(SpaceTimeKey, T)]]
           }
         case _ => return rdd
       }
