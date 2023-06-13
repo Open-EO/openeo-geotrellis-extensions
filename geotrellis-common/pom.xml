@@ -81,11 +81,6 @@
       <artifactId>openeo-opensearch-client</artifactId>
       <version>${openeo-opensearch-client.version}</version>
     </dependency>
-    <dependency>
-      <groupId>org.openeo</groupId>
-      <artifactId>openeo-geotrellis</artifactId>
-      <version>${project.version}</version>
-    </dependency>
   </dependencies>
 
   <build>

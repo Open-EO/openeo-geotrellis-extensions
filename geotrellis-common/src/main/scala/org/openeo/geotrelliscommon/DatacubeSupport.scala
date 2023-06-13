@@ -1,10 +1,12 @@
 package org.openeo.geotrelliscommon
 
-import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutLevel, LayoutScheme, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme}
+import geotrellis.layer.{Boundable, Bounds, FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutLevel, LayoutScheme, Metadata, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.CRS
-import geotrellis.raster.{CellSize, CellType, MultibandTile}
+import geotrellis.raster.{CellSize, CellType, MultibandTile, NODATA, doubleNODATA, isData}
+import geotrellis.spark.join.SpatialJoin
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.{MultibandTileLayerRDD, _}
+import geotrellis.util.GetComponent
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.rdd.RDD
 import org.slf4j.LoggerFactory
@@ -180,6 +182,34 @@ object DatacubeSupport {
       ClassTag(classOf[SpaceTimeKey]), partitionerIndex))
   }
 
+
+  // TODO: Dedup this function
+  def rasterMaskGeneric[K: Boundable : PartitionerIndex : ClassTag, M: GetComponent[*, Bounds[K]]]
+  (datacube: RDD[(K, MultibandTile)] with Metadata[M], mask: RDD[(K, MultibandTile)] with Metadata[M], replacement: java.lang.Double): RDD[(K, MultibandTile)] with Metadata[M] = {
+    val joined = SpatialJoin.leftOuterJoin(datacube, mask)
+    val replacementInt: Int = if (replacement == null) NODATA else replacement.intValue()
+    val replacementDouble: Double = if (replacement == null) doubleNODATA else replacement
+    val masked = joined.mapValues(t => {
+      val dataTile = t._1
+      if (!t._2.isEmpty) {
+        val maskTile = t._2.get
+        var maskIndex = 0
+        dataTile.mapBands((index, tile) => {
+          if (dataTile.bandCount == maskTile.bandCount) {
+            maskIndex = index
+          }
+          tile.dualCombine(maskTile.band(maskIndex))((v1, v2) => if (v2 != 0 && isData(v1)) replacementInt else v1)((v1, v2) => if (v2 != 0.0 && isData(v1)) replacementDouble else v1)
+        })
+
+      } else {
+        dataTile
+      }
+
+    })
+
+    new ContextRDD(masked, datacube.metadata)
+  }
+
   def applyDataMask[T](datacubeParams:Option[DataCubeParameters], rdd:RDD[(SpaceTimeKey,T)],metadata: TileLayerMetadata[SpaceTimeKey])(implicit vt: ClassTag[T]): RDD[(SpaceTimeKey,T)] = {
     if (datacubeParams.exists(_.maskingCube.isDefined)) {
       val maskObject = datacubeParams.get.maskingCube.get
@@ -201,7 +231,7 @@ object DatacubeSupport {
             val rddFiltered = rdd.join(alignedMask).mapValues(_._1)
             val spacetimeDataContextRDD = ContextRDD(rddFiltered.asInstanceOf[RDD[(SpaceTimeKey, MultibandTile)]], metadata)
             // This masking is only applied from Python when replacement is not defined.
-            val maskedRdd = new _root_.org.openeo.geotrellis.OpenEOProcesses().rasterMaskGeneric(spacetimeDataContextRDD, alignedMask, null)
+            val maskedRdd = rasterMaskGeneric(spacetimeDataContextRDD, alignedMask, null)
             return maskedRdd.asInstanceOf[RDD[(SpaceTimeKey, T)]]
           }
         case _ => return rdd
