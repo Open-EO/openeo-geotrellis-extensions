@@ -210,7 +210,11 @@ object DatacubeSupport {
     new ContextRDD(masked, datacube.metadata)
   }
 
-  def applyDataMask[T](datacubeParams:Option[DataCubeParameters], rdd:RDD[(SpaceTimeKey,T)],metadata: TileLayerMetadata[SpaceTimeKey])(implicit vt: ClassTag[T]): RDD[(SpaceTimeKey,T)] = {
+  def applyDataMask[T<:MultibandTile](datacubeParams: Option[DataCubeParameters],
+                       rdd: RDD[(SpaceTimeKey, T)],
+                       metadata: TileLayerMetadata[SpaceTimeKey],
+                       pixelwiseMasking: Boolean = false,
+                      )(implicit vt: ClassTag[T]): RDD[(SpaceTimeKey, T)] = {
     if (datacubeParams.exists(_.maskingCube.isDefined)) {
       val maskObject = datacubeParams.get.maskingCube.get
       maskObject match {
@@ -229,14 +233,23 @@ object DatacubeSupport {
               }
 
             val rddFiltered = rdd.join(alignedMask).mapValues(_._1)
-            val spacetimeDataContextRDD = ContextRDD(rddFiltered.asInstanceOf[RDD[(SpaceTimeKey, MultibandTile)]], metadata)
-            // This masking is only applied from Python when replacement is not defined.
-            val maskedRdd = rasterMaskGeneric(spacetimeDataContextRDD, alignedMask, null)
-            return maskedRdd.asInstanceOf[RDD[(SpaceTimeKey, T)]]
+
+            if (pixelwiseMasking) {
+              // Type checking on generic RDDs does not work directly.
+              val spacetimeDataContextRDD = ContextRDD(rddFiltered.asInstanceOf[RDD[(SpaceTimeKey, MultibandTile)]], metadata)
+              // This masking is only applied from Python when replacement is not defined.
+              val maskedRdd = rasterMaskGeneric(spacetimeDataContextRDD, alignedMask, null)
+              maskedRdd.asInstanceOf[RDD[(SpaceTimeKey, T)]]
+            } else {
+              rddFiltered
+            }
+          } else {
+            rdd
           }
-        case _ => return rdd
+        case _ => rdd
       }
+    } else {
+      rdd
     }
-    return rdd
   }
 }

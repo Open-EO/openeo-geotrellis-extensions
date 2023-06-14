@@ -331,7 +331,8 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                   Stream.empty
               }
 
-            DatacubeSupport.applyDataMask(Some(dataCubeParameters), tilesRdd,metadata)
+            println("DatacubeSupport.applyDataMask(Some(dataCubeParameters), tilesRdd, metadata, pixelwiseMasking = true)")
+            DatacubeSupport.applyDataMask(Some(dataCubeParameters), tilesRdd, metadata, pixelwiseMasking = true)
           } else {
             val multiPolygon: Geometry = if (polygons.length <= 2000) {
               val simplified = simplify(polygons)
@@ -440,7 +441,8 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             var keysRddWithData = keysRdd
               .mapPartitions(_.map { case (spaceTimeKey, _) => (spaceTimeKey, loadMasked(spaceTimeKey.spatialKey, spaceTimeKey.time, approxRequests)) }, preservesPartitioning = true)
               .flatMapValues(_.toList)
-            keysRddWithData = DatacubeSupport.applyDataMask(Some(dataCubeParameters), keysRddWithData, metadata)
+            println("DatacubeSupport.applyDataMask(Some(dataCubeParameters), keysRddWithData, metadata, pixelwiseMasking = true)")
+            keysRddWithData = DatacubeSupport.applyDataMask(Some(dataCubeParameters), keysRddWithData, metadata, pixelwiseMasking = true)
 
             val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = keysRddWithData
               .filter(tile => !tile._2.bands.forall(_.isNoDataTile))
