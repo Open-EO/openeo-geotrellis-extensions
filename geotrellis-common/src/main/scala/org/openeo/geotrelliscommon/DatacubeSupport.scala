@@ -210,12 +210,13 @@ object DatacubeSupport {
     new ContextRDD(masked, datacube.metadata)
   }
 
-  def applyDataMask[T<:MultibandTile](datacubeParams: Option[DataCubeParameters],
-                       rdd: RDD[(SpaceTimeKey, T)],
-                       metadata: TileLayerMetadata[SpaceTimeKey],
-                       pixelwiseMasking: Boolean = false,
-                      )(implicit vt: ClassTag[T]): RDD[(SpaceTimeKey, T)] = {
+  def applyDataMask(datacubeParams: Option[DataCubeParameters],
+                    rdd: RDD[(SpaceTimeKey, MultibandTile)],
+                    metadata: TileLayerMetadata[SpaceTimeKey],
+                    pixelwiseMasking: Boolean = false,
+                   )(implicit vt: ClassTag[MultibandTile]): RDD[(SpaceTimeKey, MultibandTile)] = {
     if (datacubeParams.exists(_.maskingCube.isDefined)) {
+      println("Inside applyDataMask, with maskingCube.isDefined pixelwiseMasking:" + pixelwiseMasking)
       val maskObject = datacubeParams.get.maskingCube.get
       maskObject match {
         case spacetimeMask: MultibandTileLayerRDD[SpaceTimeKey] =>
@@ -232,16 +233,14 @@ object DatacubeSupport {
                 filtered.reproject(metadata.crs,metadata.layout,16,rdd.partitioner)._2
               }
 
-            val rddFiltered = rdd.join(alignedMask).mapValues(_._1)
-
             if (pixelwiseMasking) {
-              // Type checking on generic RDDs does not work directly.
-              val spacetimeDataContextRDD = ContextRDD(rddFiltered.asInstanceOf[RDD[(SpaceTimeKey, MultibandTile)]], metadata)
-              // This masking is only applied from Python when replacement is not defined.
+              val spacetimeDataContextRDD = ContextRDD(rdd, metadata)
+              // maskingCube is only set from Python when replacement is not defined
               val maskedRdd = rasterMaskGeneric(spacetimeDataContextRDD, alignedMask, null)
-              maskedRdd.asInstanceOf[RDD[(SpaceTimeKey, T)]]
+              maskedRdd
             } else {
-              rddFiltered
+              // Because we are working on Tiles here and not RasterSources, this operation can already download the pixel data:
+              rdd.join(alignedMask).mapValues(_._1)
             }
           } else {
             rdd
