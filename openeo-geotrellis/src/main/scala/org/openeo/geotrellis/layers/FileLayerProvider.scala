@@ -801,7 +801,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
             datacubeParams.get.tileSize
           } else if ( experimental && !multiple_polygons_flag && minTiles >= 8) {
             1024
-          } else if ( !multiple_polygons_flag && minTiles >= 2) {
+          } else if ( !multiple_polygons_flag && minTiles >= 4) {
             512
           } else {
             256
