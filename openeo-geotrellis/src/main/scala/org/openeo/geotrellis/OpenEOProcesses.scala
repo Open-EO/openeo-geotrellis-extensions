@@ -736,7 +736,15 @@ class OpenEOProcesses extends Serializable {
       case (Some(l), None) => MultibandTile(l.bands ++ Vector.fill(rightBandCount)(ArrayTile.empty(l.cellType, l.cols, l.rows)))
       case (Some(l), Some(r)) => {
         if(l.bandCount!=leftBandCount || r.bandCount != rightBandCount){
+          if (l.isInstanceOf[EmptyMultibandTile]) {
+            MultibandTile(Vector.fill(leftBandCount)(ArrayTile.empty(r.cellType, r.cols, r.rows)) ++ r.bands)
+          }
+          else if (r.isInstanceOf[EmptyMultibandTile]) {
+            MultibandTile(l.bands ++ Vector.fill(rightBandCount)(ArrayTile.empty(l.cellType, l.cols, l.rows)))
+          }
           throw new IllegalArgumentException(s"The number of bands in the metadata ${leftBandCount}/${rightBandCount} does not match the actual band count in the cubes (left/right): ${l.bandCount}/${r.bandCount}. You can fix this by explicitly specifying correct band labels.")
+        }else{
+          MultibandTile(l.bands ++ r.bands)
         }
         MultibandTile(l.bands ++ r.bands)
       }
