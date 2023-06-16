@@ -32,6 +32,7 @@ import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.Collections
+import scala.collection.JavaConverters._
 import scala.io.Source
 
 object FileLayerProviderTest {
@@ -989,8 +990,8 @@ class FileLayerProviderTest {
 
   def testPixelValueOffsetNeeded(
                                   jsonPath: String,
-                                  extent: Extent,
-                                  localDate: LocalDate,
+                                 extent: Extent,
+                                 localDate: LocalDate,
                                 ): MultibandTileLayerRDD[SpaceTimeKey] = {
     val bandNames = Collections.singletonList("IMG_DATA_Band_B04_10m_Tile1_Data")
     val srs32631 = "EPSG:32631"
@@ -1006,8 +1007,10 @@ class FileLayerProviderTest {
 
     for (rest <- Seq(
       "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/MTD_MSIL2A.xml",
       "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/GRANULE/L2A_T31UGS_A030636_20230117T104258/IMG_DATA/R10m/T31UGS_20230117T104259_B04_10m.jp2",
       "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/MTD_MSIL2A.xml",
       "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R10m/T31UFS_20230405T105031_B04_10m.jp2",
     )) {
       val jp2File = new File(basePath, rest)
