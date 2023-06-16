@@ -767,7 +767,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       zoom = 0,
       sc,
     )
-    val spatialMaskedLayer = maskedLayer.toSpatial(date.atStartOfDay(UTC))
+    val spatialMaskedLayer = maskedLayer.toSpatial()
     new File("tmp/testScl20m.tif").delete()
     spatialMaskedLayer.writeGeoTiff("tmp/testScl20m.tif", projExtent)
   }
@@ -798,7 +798,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       zoom = 0,
       sc,
     )
-    val spatialMaskedLayer = maskedLayer.toSpatial(date.atStartOfDay(UTC))
+    val spatialMaskedLayer = maskedLayer.toSpatial()
     new File("tmp/testScl60m.tif").delete()
     spatialMaskedLayer.writeGeoTiff("tmp/testScl26m.tif", projExtent)
   }
