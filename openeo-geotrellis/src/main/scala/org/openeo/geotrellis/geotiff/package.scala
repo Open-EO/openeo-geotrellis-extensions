@@ -30,7 +30,7 @@ import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import spire.syntax.cfor.cfor
 
-import java.nio.file.Paths
+import java.nio.file.{Path, Paths}
 import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Collections, Map, List => JList}
 import scala.collection.JavaConverters._
@@ -664,19 +664,12 @@ package object geotiff {
   private def writeGeoTiff(geoTiff: MultibandGeoTiff, path: String): String = {
     if (path.startsWith("s3:/")) {
       val correctS3Path = path.replaceFirst("s3:/(?!/)", "s3://")
-      val s3Uri = new AmazonS3URI(correctS3Path)
 
       import java.nio.file.Files
 
       val tempFile = Files.createTempFile(null, null)
       geoTiff.write(tempFile.toString, optimizedOrder = true)
-      val objectRequest = PutObjectRequest.builder
-        .bucket(s3Uri.getBucket)
-        .key(s3Uri.getKey)
-        .build
-
-      CreoS3Utils.getCreoS3Client().putObject(objectRequest, RequestBody.fromFile(tempFile))
-      correctS3Path
+      uploadToS3(tempFile, correctS3Path)
 
     } else {
       geoTiff.write(path, optimizedOrder = true)
@@ -685,6 +678,17 @@ package object geotiff {
 
   }
 
+
+  def uploadToS3(localFile: Path, s3Path: String) = {
+    val s3Uri = new AmazonS3URI(s3Path)
+    val objectRequest = PutObjectRequest.builder
+      .bucket(s3Uri.getBucket)
+      .key(s3Uri.getKey)
+      .build
+
+    CreoS3Utils.getCreoS3Client().putObject(objectRequest, RequestBody.fromFile(localFile))
+    s3Path
+  }
 
   case class ContextSeq[K, V, M](tiles: Iterable[(K, V)], metadata: LayoutDefinition) extends Seq[(K, V)] with Metadata[LayoutDefinition] {
     override def length: Int = tiles.size

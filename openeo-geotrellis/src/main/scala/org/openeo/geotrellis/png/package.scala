@@ -6,12 +6,13 @@ import geotrellis.raster.render.RGBA
 import geotrellis.raster.{MultibandTile, UByteCellType}
 import geotrellis.spark._
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.openeo.geotrellis.geotiff.SRDD
+import org.openeo.geotrellis.geotiff.{SRDD, uploadToS3}
 
 import java.io.File
+import java.nio.file.{Files, Paths}
 
 package object png {
-  def saveStitched(srdd: SRDD, path: String, cropBounds: Extent, options: PngOptions): Unit = {
+  def saveStitched(srdd: SRDD, path: String, cropBounds: Extent, options: PngOptions): String = {
     val tilesByRow = Option(cropBounds).foldLeft(srdd)(_ crop _)
         .groupBy { case (SpatialKey(_, row), _) => row }
 
@@ -36,6 +37,12 @@ package object png {
       new ImageInfo(src.cols, materialized.length, src.bitDepth, src.alpha, src.greyscale && !isIndexed, src.greyscale && isIndexed)
     }
 
+    val localPath=
+    if(path.toLowerCase.startsWith("s3:")) {
+      Files.createTempFile(null, null).toString
+    }else{
+      path
+    }
     val pngWriter = new PngWriter(new File(path), combinedImageInfo)
 
 
@@ -55,6 +62,13 @@ package object png {
     try {
       materialized foreach pngWriter.writeRow
       pngWriter.end()
+      if(path.toLowerCase.startsWith("s3:")) {
+        val correctS3Path = path.replaceFirst("s3:/(?!/)", "s3://")
+
+        uploadToS3(Paths.get(localPath), correctS3Path)
+      }else{
+        path
+      }
     } finally pngWriter.close()
   }
 
