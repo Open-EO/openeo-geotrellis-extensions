@@ -60,11 +60,13 @@ class ValueOffsetRasterSource(protected val rasterSource: RasterSource,
   override def metadata: RasterMetadata = rasterSource.metadata
 
   override protected def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource = {
-    rasterSource.reproject(targetCRS, resampleTarget, method, strategy)
+    val rs = rasterSource.reproject(targetCRS, resampleTarget, method, strategy)
+    new ValueOffsetRasterSource(rs, pixelValueOffset, targetCellType)
   }
 
   override def resample(resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource = {
-    rasterSource.resample(resampleTarget, method, strategy)
+    val rs = rasterSource.resample(resampleTarget, method, strategy)
+    new ValueOffsetRasterSource(rs, pixelValueOffset, targetCellType)
   }
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
@@ -72,7 +74,10 @@ class ValueOffsetRasterSource(protected val rasterSource: RasterSource,
     read(bounds, bands)
   }
 
-  override def convert(targetCellType: TargetCellType): RasterSource = rasterSource.convert(targetCellType)
+  override def convert(targetCellType: TargetCellType): RasterSource = {
+    val rs = rasterSource.convert(targetCellType)
+    new ValueOffsetRasterSource(rs, pixelValueOffset, Some(targetCellType))
+  }
 
   override def name: SourceName = rasterSource.name
 
