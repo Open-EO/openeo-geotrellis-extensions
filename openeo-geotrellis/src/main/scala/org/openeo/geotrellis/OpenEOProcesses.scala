@@ -736,7 +736,15 @@ class OpenEOProcesses extends Serializable {
       case (Some(l), None) => MultibandTile(l.bands ++ Vector.fill(rightBandCount)(ArrayTile.empty(l.cellType, l.cols, l.rows)))
       case (Some(l), Some(r)) => {
         if(l.bandCount!=leftBandCount || r.bandCount != rightBandCount){
+          if (l.isInstanceOf[EmptyMultibandTile]) {
+            MultibandTile(Vector.fill(leftBandCount)(ArrayTile.empty(r.cellType, r.cols, r.rows)) ++ r.bands)
+          }
+          else if (r.isInstanceOf[EmptyMultibandTile]) {
+            MultibandTile(l.bands ++ Vector.fill(rightBandCount)(ArrayTile.empty(l.cellType, l.cols, l.rows)))
+          }
           throw new IllegalArgumentException(s"The number of bands in the metadata ${leftBandCount}/${rightBandCount} does not match the actual band count in the cubes (left/right): ${l.bandCount}/${r.bandCount}. You can fix this by explicitly specifying correct band labels.")
+        }else{
+          MultibandTile(l.bands ++ r.bands)
         }
         MultibandTile(l.bands ++ r.bands)
       }
@@ -955,15 +963,15 @@ class OpenEOProcesses extends Serializable {
 
   def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int): MultibandTileLayerRDD[SpaceTimeKey] = {
     val filter = new SCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
-    // Buffer each tile so that the dilation is consistent across tile boundaries.
+    // Buffer each input tile so that the dilation is consistent across tile boundaries.
     val bufferInPixels: Int = filter.bufferInPixels
     val bufferedRDD: RDD[(SpaceTimeKey, BufferedTile[MultibandTile])] = datacube.bufferTiles(bufferInPixels)
-
     // Create mask.
     val mask: RDD[(SpaceTimeKey, MultibandTile)] = bufferedRDD.mapValues((tile: BufferedTile[MultibandTile]) => {
       val originalBounds = tile.targetArea
       MultibandTile(filter.createMask(tile.tile).crop(originalBounds))
     })
-    ContextRDD(mask, datacube.metadata)
+    val updatedMetadata = datacube.metadata.copy(cellType = BitCellType)
+    ContextRDD(mask, updatedMetadata)
   }
 }
