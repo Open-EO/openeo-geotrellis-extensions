@@ -990,8 +990,8 @@ class FileLayerProviderTest {
 
   def testPixelValueOffsetNeeded(
                                   jsonPath: String,
-                                 extent: Extent,
-                                 localDate: LocalDate,
+                                  extent: Extent,
+                                  localDate: LocalDate,
                                 ): MultibandTileLayerRDD[SpaceTimeKey] = {
     val bandNames = Collections.singletonList("IMG_DATA_Band_B04_10m_Tile1_Data")
     val srs32631 = "EPSG:32631"
