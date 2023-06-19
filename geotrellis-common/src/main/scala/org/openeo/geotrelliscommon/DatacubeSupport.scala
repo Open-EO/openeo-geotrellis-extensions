@@ -185,8 +185,17 @@ object DatacubeSupport {
 
   // TODO: Dedup this function
   def rasterMaskGeneric[K: Boundable : PartitionerIndex : ClassTag, M: GetComponent[*, Bounds[K]]]
-  (datacube: RDD[(K, MultibandTile)] with Metadata[M], mask: RDD[(K, MultibandTile)] with Metadata[M], replacement: java.lang.Double): RDD[(K, MultibandTile)] with Metadata[M] = {
-    val joined = SpatialJoin.leftOuterJoin(datacube, mask)
+  (datacube: RDD[(K, MultibandTile)] with Metadata[M],
+   mask: RDD[(K, MultibandTile)] with Metadata[M],
+   replacement: java.lang.Double,
+   ignoreKeysWithoutMask: Boolean = false,
+  ): RDD[(K, MultibandTile)] with Metadata[M] = {
+    val joined = if (ignoreKeysWithoutMask) {
+      val tmpRdd = SpatialJoin.join(datacube, mask).mapValues(v => (v._1, Option(v._2)))
+      ContextRDD(tmpRdd, datacube.metadata)
+    } else {
+      SpatialJoin.leftOuterJoin(datacube, mask)
+    }
     val replacementInt: Int = if (replacement == null) NODATA else replacement.intValue()
     val replacementDouble: Double = if (replacement == null) doubleNODATA else replacement
     val masked = joined.mapValues(t => {
@@ -236,8 +245,7 @@ object DatacubeSupport {
             if (pixelwiseMasking) {
               val spacetimeDataContextRDD = ContextRDD(rdd, metadata)
               // maskingCube is only set from Python when replacement is not defined
-              val maskedRdd = rasterMaskGeneric(spacetimeDataContextRDD, alignedMask, null)
-              maskedRdd
+              rasterMaskGeneric(spacetimeDataContextRDD, alignedMask, null, ignoreKeysWithoutMask = true)
             } else {
               // Because we are working on Tiles here and not RasterSources, this operation can already download the pixel data:
               rdd.join(alignedMask).mapValues(_._1)

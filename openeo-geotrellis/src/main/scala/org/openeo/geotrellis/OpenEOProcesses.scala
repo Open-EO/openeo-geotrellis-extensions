@@ -26,7 +26,7 @@ import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MinIgnoreNoData}
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
-import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SCLConvolutionFilter}
+import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner}
 import org.openeo.sparklisteners.LogErrorSparkListener
 import org.slf4j.LoggerFactory
 
@@ -838,28 +838,7 @@ class OpenEOProcesses extends Serializable {
 
   def rasterMaskGeneric[K: Boundable: PartitionerIndex: ClassTag,M: GetComponent[*, Bounds[K]]]
   (datacube: RDD[(K,MultibandTile)] with Metadata[M], mask: RDD[(K,MultibandTile)] with Metadata[M], replacement: java.lang.Double): RDD[(K,MultibandTile)] with Metadata[M] = {
-    val joined = SpatialJoin.leftOuterJoin(datacube, mask)
-    val replacementInt: Int = if (replacement == null) NODATA else replacement.intValue()
-    val replacementDouble: Double = if (replacement == null) doubleNODATA else replacement
-    val masked = joined.mapValues(t => {
-      val dataTile = t._1
-      if (!t._2.isEmpty) {
-        val maskTile = t._2.get
-        var maskIndex = 0
-        dataTile.mapBands((index,tile) =>{
-          if(dataTile.bandCount == maskTile.bandCount){
-            maskIndex = index
-          }
-          tile.dualCombine(maskTile.band(maskIndex))((v1,v2) => if (v2 != 0 && isData(v1)) replacementInt else v1)((v1,v2) => if (v2 != 0.0 && isData(v1)) replacementDouble else v1)
-        })
-
-      } else {
-        dataTile
-      }
-
-    })
-
-    new ContextRDD(masked, datacube.metadata)
+    DatacubeSupport.rasterMaskGeneric(datacube, mask, replacement)
   }
 
   /**
