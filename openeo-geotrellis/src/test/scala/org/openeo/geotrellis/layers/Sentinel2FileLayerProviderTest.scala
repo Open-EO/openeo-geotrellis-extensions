@@ -30,10 +30,8 @@ import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, ResampledTile}
 import org.openeo.opensearch.OpenSearchResponses.Link
-import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 
-import java.io.File
 import java.net.URI
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
@@ -740,66 +738,4 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       maxSpatialResolution,
       pathDateExtractor
     )
-
-  @Test
-  def testScl20m(): Unit = {
-    val date = LocalDate.parse("2021-10-11")
-    val extentTAP4326 = Extent(5.07, 51.215, 5.08, 51.22)
-    val projExtent = ProjectedExtent(extentTAP4326, LatLng)
-
-    val flp = new FileLayerProvider(
-      new CreodiasClient(),
-      openSearchCollectionId = "Sentinel2",
-      openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_SCL_20m_Tile1_Data"),
-      rootPath = "/bogus",
-      maxSpatialResolution = CellSize(20, 20),
-      pathDateExtractor,
-      attributeValues = Map(
-        "productType" -> "L2A",
-        // "processingBaseline" -> "",
-      )
-    )
-
-    val maskedLayer: MultibandTileLayerRDD[SpaceTimeKey] = flp.readMultibandTileLayer(
-      from = date.atStartOfDay(UTC),
-      to = date.plusDays(15).atStartOfDay(UTC),
-      boundingBox = projExtent,
-      zoom = 0,
-      sc,
-    )
-    val spatialMaskedLayer = maskedLayer.toSpatial()
-    new File("tmp/testScl20m.tif").delete()
-    spatialMaskedLayer.writeGeoTiff("tmp/testScl20m.tif", projExtent)
-  }
-
-  @Test
-  def testScl60m(): Unit = {
-    val date = LocalDate.parse("2021-10-11")
-    val extentTAP4326 = Extent(5.07, 51.215, 5.08, 51.22)
-    val projExtent = ProjectedExtent(extentTAP4326, LatLng)
-
-    val flp = new FileLayerProvider(
-      new CreodiasClient(),
-      openSearchCollectionId = "Sentinel2",
-      openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_SCL_60m_Tile1_Data"),
-      rootPath = "/bogus",
-      maxSpatialResolution = CellSize(60, 60),
-      pathDateExtractor,
-      attributeValues = Map(
-        "productType" -> "L2A",
-        // "processingBaseline" -> "",
-      )
-    )
-
-    val maskedLayer: MultibandTileLayerRDD[SpaceTimeKey] = flp.readMultibandTileLayer(
-      from = date.atStartOfDay(UTC),
-      to = date.plusDays(15).atStartOfDay(UTC),
-      boundingBox = projExtent,
-      zoom = 0,
-      sc,
-    )
-    val spatialMaskedLayer = maskedLayer.toSpatial()
-    new File("tmp/testScl60m.tif").delete()
-    spatialMaskedLayer.writeGeoTiff("tmp/testScl26m.tif", projExtent)
-  }
 }
