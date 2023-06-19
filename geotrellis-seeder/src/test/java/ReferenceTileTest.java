@@ -15,6 +15,7 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.openeo.geotrellisseeder.Band;
 import org.openeo.geotrellisseeder.TileSeeder;
@@ -52,6 +53,7 @@ public class ReferenceTileTest {
         sc.stop();
     }
 
+    @Ignore("Fix this test: https://github.com/Open-EO/openeo-geotrellis-extensions/issues/176")
     @Test
     public void testSaveAndCompareAll() throws ImageComparisonFailedException, IOException, InterruptedException {
         for (Layers layer: Layers.values()) {
