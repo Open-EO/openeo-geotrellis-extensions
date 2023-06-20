@@ -981,7 +981,6 @@ class OpenEOProcesses extends Serializable {
 
   }
 
-
   def toSclDilationMask(datacube: MultibandTileLayerRDD[SpaceTimeKey], erosionKernelSize: Int, mask1Values: util.List[Int], mask2Values: util.List[Int], kernel1Size: Int, kernel2Size: Int): MultibandTileLayerRDD[SpaceTimeKey] = {
     val filter = new SCLConvolutionFilter(erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
     // Buffer each input tile so that the dilation is consistent across tile boundaries.
@@ -994,5 +993,9 @@ class OpenEOProcesses extends Serializable {
     })
     val updatedMetadata = datacube.metadata.copy(cellType = BitCellType)
     ContextRDD(mask, updatedMetadata)
+  }
+
+  def mergeTiles(tiles: MultibandTileLayerRDD[SpaceTimeKey]): MultibandTileLayerRDD[SpaceTimeKey] = {
+    ContextRDD(tiles.groupByKey().mapValues { iter => iter.reduce { _ merge _ } }, tiles.metadata)
   }
 }
