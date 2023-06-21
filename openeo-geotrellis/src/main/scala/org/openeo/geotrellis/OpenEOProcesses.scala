@@ -26,8 +26,7 @@ import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MinIgnoreNoData}
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
-import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SCLConvolutionFilter}
-import org.openeo.sparklisteners.LogErrorSparkListener
+import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner}
 import org.slf4j.LoggerFactory
 
 import java.io.File
@@ -741,8 +740,9 @@ class OpenEOProcesses extends Serializable {
           }
           else if (r.isInstanceOf[EmptyMultibandTile]) {
             MultibandTile(l.bands ++ Vector.fill(rightBandCount)(ArrayTile.empty(l.cellType, l.cols, l.rows)))
+          }else{
+            throw new IllegalArgumentException(s"The number of bands in the metadata ${leftBandCount}/${rightBandCount} does not match the actual band count in the cubes (left/right): ${l.bandCount}/${r.bandCount}. You can fix this by explicitly specifying correct band labels.")
           }
-          throw new IllegalArgumentException(s"The number of bands in the metadata ${leftBandCount}/${rightBandCount} does not match the actual band count in the cubes (left/right): ${l.bandCount}/${r.bandCount}. You can fix this by explicitly specifying correct band labels.")
         }else{
           MultibandTile(l.bands ++ r.bands)
         }
