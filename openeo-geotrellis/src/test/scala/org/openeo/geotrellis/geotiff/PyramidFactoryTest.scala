@@ -409,7 +409,7 @@ class PyramidFactoryTest {
     val zoom = 10
 
     val data = PyramidFactory.from_disk(
-      glob_pattern = "/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/04/24/*/*/*_TOC-B02_10M_V102.tif",
+      glob_pattern = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/04/24/*/*_TOC-B02_10M_V2*.tif",
       date_regex = raw".*\/S2._(\d{4})(\d{2})(\d{2})T.*"
     ).layer(boundingBox, from, to, zoom).cache()
 
@@ -418,7 +418,7 @@ class PyramidFactoryTest {
     saveAsGeotiff(data, from, "/tmp/data.tif")
 
     val mask = PyramidFactory.from_disk(
-      glob_pattern = "/data/MTDA/CGS_S2/CGS_S2_RADIOMETRY/2019/04/24/*/*/*_SHADOWMASK_10M_V102.tif",
+      glob_pattern = "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2/2019/04/24/*/*_TOC-B03_10M_V2*.tif",
       date_regex = raw".*\/S2._(\d{4})(\d{2})(\d{2})T.*"
     ).layer(boundingBox, from, to, zoom).cache()
 
