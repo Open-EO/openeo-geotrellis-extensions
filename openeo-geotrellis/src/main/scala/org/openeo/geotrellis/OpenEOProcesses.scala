@@ -43,8 +43,8 @@ object OpenEOProcesses{
 
   private val logger = LoggerFactory.getLogger(classOf[OpenEOProcesses])
 
-  private def timeseriesForBand(b: Int, values: Iterable[(SpaceTimeKey, MultibandTile)]) = {
-    MultibandTile(values.toList.sortBy(_._1.instant).map(_._2.band(b)))
+  private def timeseriesForBand(b: Int, values: Iterable[(SpaceTimeKey, MultibandTile)],cellType: CellType) = {
+    MultibandTile(values.toList.sortBy(_._1.instant).map(_._2.band(b)).map(_.convert(cellType)))
   }
 
   private implicit def sc: SparkContext = SparkContext.getOrCreate()
@@ -124,7 +124,7 @@ class OpenEOProcesses extends Serializable {
     }
     logger.info(s"Applying callback on time dimension of cube with partitioner: ${datacube.partitioner.getOrElse("no partitioner")} - index: ${index.getOrElse("no index")} and metadata ${datacube.metadata}")
     val function = scriptBuilder.generateFunction(context.asScala.toMap)
-
+    val expectedCellType = datacube.metadata.cellType
     val applyToTimeseries: Iterable[(SpaceTimeKey,MultibandTile)] => mutable.Map[SpaceTimeKey, MultibandTile] = values => {
       //val values = tiles._2
       val aTile = firstTile(values.map(_._2))
@@ -132,7 +132,7 @@ class OpenEOProcesses extends Serializable {
       val resultMap: mutable.Map[SpaceTimeKey,mutable.ListBuffer[Tile]] = mutable.Map()
       for (b <- 0 until aTile.bandCount) {
 
-        val temporalTile = timeseriesForBand(b, values)
+        val temporalTile = timeseriesForBand(b, values, expectedCellType)
         val resultTiles = function(temporalTile.bands)
         var resultLabels: Iterable[(SpaceTimeKey, Tile)] = labels.zip(resultTiles)
         resultLabels.foreach(result => resultMap.getOrElseUpdate(result._1, mutable.ListBuffer()).append(result._2))
@@ -171,13 +171,14 @@ class OpenEOProcesses extends Serializable {
    * @return
    */
   def applyTimeDimensionTargetBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpatialKey] = {
+    val expectedCelltype = datacube.metadata.cellType
     val function = scriptBuilder.generateFunction(context.asScala.toMap)
     val groupedOnTime: RDD[(SpatialKey, Iterable[(SpaceTimeKey, MultibandTile)])] = groupOnTimeDimension(datacube)
     val resultRDD = groupedOnTime.mapValues{ tiles => {
       val aTile = firstTile(tiles.map(_._2))
       val resultTile = mutable.ListBuffer[Tile]()
       for( b <- 0 until aTile.bandCount){
-        val temporalTile = timeseriesForBand(b, tiles)
+        val temporalTile = timeseriesForBand(b, tiles,expectedCelltype)
         resultTile.appendAll(function(temporalTile.bands))
       }
       if(resultTile.size>0) {
