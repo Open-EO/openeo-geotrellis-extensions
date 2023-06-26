@@ -1002,7 +1002,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
       //special case handling for data that does not declare nodata properly
       targetCellType = link.title match {
-        case x if x.get.contains("SCENECLASSIFICATION_20M") =>  Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
+        case x if x.get.contains("SCENECLASSIFICATION_20M") || x.get.contains("Band_SCL_20m") =>  Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
         case x if x.get.startsWith("IMG_DATA_") =>  Some(ConvertTargetCellType(UShortConstantNoDataCellType))
         case _ => None
       }
