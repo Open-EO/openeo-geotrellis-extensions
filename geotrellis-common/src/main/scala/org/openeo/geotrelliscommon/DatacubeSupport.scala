@@ -183,7 +183,6 @@ object DatacubeSupport {
   }
 
 
-  // TODO: Dedup this function
   def rasterMaskGeneric[K: Boundable : PartitionerIndex : ClassTag, M: GetComponent[*, Bounds[K]]]
   (datacube: RDD[(K, MultibandTile)] with Metadata[M],
    mask: RDD[(K, MultibandTile)] with Metadata[M],
@@ -225,7 +224,6 @@ object DatacubeSupport {
                     pixelwiseMasking: Boolean = false,
                    )(implicit vt: ClassTag[MultibandTile]): RDD[(SpaceTimeKey, MultibandTile)] = {
     if (datacubeParams.exists(_.maskingCube.isDefined)) {
-      println("Inside applyDataMask, with maskingCube.isDefined pixelwiseMasking:" + pixelwiseMasking)
       val maskObject = datacubeParams.get.maskingCube.get
       maskObject match {
         case spacetimeMask: MultibandTileLayerRDD[SpaceTimeKey] =>
