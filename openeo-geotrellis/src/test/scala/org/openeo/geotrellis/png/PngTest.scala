@@ -95,7 +95,7 @@ class PngTest {
 
       val opts = new PngOptions
       opts.setColorMap(ColorRamps.BlueToRed.toColorMap((0 to 255).toArray))
-      saveStitched(singleBand, s"s3://$bucket/$key", null, opts)
+      saveStitched(singleBand, s"s3://$bucket/$key", cropBounds = null, opts)
     }
 
     val s3 = S3Mock(s3Port)
