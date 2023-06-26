@@ -44,7 +44,14 @@ object OpenEOProcesses{
   private val logger = LoggerFactory.getLogger(classOf[OpenEOProcesses])
 
   private def timeseriesForBand(b: Int, values: Iterable[(SpaceTimeKey, MultibandTile)],cellType: CellType) = {
-    MultibandTile(values.toList.sortBy(_._1.instant).map(_._2.band(b)).map(_.convert(cellType)))
+    MultibandTile(values.toList.sortBy(_._1.instant).map(_._2.band(b)).map( t => {
+      if(t.cellType != cellType){
+        t.convert(cellType)
+      }else{
+        t
+      }
+    }))
+
   }
 
   private implicit def sc: SparkContext = SparkContext.getOrCreate()
