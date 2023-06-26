@@ -43,7 +43,7 @@ package object png {
     }else{
       path
     }
-    val pngWriter = new PngWriter(new File(path), combinedImageInfo)
+    val pngWriter = new PngWriter(new File(localPath), combinedImageInfo)
 
 
     if(combinedImageInfo.indexed) {
