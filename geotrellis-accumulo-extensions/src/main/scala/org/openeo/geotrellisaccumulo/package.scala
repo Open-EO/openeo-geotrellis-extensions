@@ -4,10 +4,10 @@ import _root_.geotrellis.layer._
 import _root_.geotrellis.raster.MultibandTile
 import _root_.geotrellis.spark.pyramid.Pyramid
 import _root_.geotrellis.store.index.zcurve.Z3
-import _root_.geotrellis.store.accumulo.{AccumuloAttributeStore, AccumuloLayerHeader}
-import _root_.geotrellis.store.{AttributeStore, LayerId}
-import _root_.geotrellis.vector.io.json.GeoJson
-import _root_.geotrellis.vector.{Geometry, GeometryCollection, MultiPolygon, Point, Polygon}
+import geotrellis.store.accumulo.{AccumuloAttributeStore, AccumuloLayerHeader}
+import geotrellis.store.{AttributeStore, LayerId}
+import geotrellis.vector.io.json.GeoJson
+import geotrellis.vector.{Geometry, GeometryCollection, MultiPolygon, Point, Polygon}
 import io.circe._
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrelliscommon.SpaceTimeByMonthPartitioner
@@ -51,7 +51,7 @@ package object geotrellisaccumulo {
   @throws[ParsingFailure]("if the JSON is invalid")
   @throws[DecodingFailure]("if the JSON is valid but can't be decoded to the requested Geometry type")
   def parseGeometry(geometry: String): (String, Geometry) = {
-    import _root_.geotrellis.vector.io.json.GeometryFormats._
+    import geotrellis.vector.io.json.GeometryFormats._
 
     GeoJson.parse[Geometry](geometry) match {
       case geom: Point => ("Point", geom)

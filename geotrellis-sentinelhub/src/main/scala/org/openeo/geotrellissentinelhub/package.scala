@@ -2,7 +2,7 @@ package org.openeo
 
 import _root_.io.circe.{Decoder, Encoder, HCursor, Json}
 import _root_.io.circe.Decoder.Result
-import _root_.geotrellis.vector._
+import geotrellis.vector._
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
 import net.jodah.failsafe.{Failsafe, RetryPolicy}
 import org.locationtech.jts.geom.Polygonal
