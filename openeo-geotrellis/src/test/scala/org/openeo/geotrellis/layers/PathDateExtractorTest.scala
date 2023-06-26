@@ -1,10 +1,10 @@
 package org.openeo.geotrellis.layers
 
-import java.nio.file.Paths
-import java.time.{LocalDate, ZoneId}
-
 import org.junit.Assert.assertTrue
 import org.junit.Test
+
+import java.nio.file.Paths
+import java.time.{LocalDate, ZoneId}
 
 class PathDateExtractorTest {
 
@@ -42,7 +42,7 @@ class PathDateExtractorTest {
   def testProbaV(): Unit = {
     val pathDateExtractor = ProbaVPathDateExtractor
 
-    val dates = pathDateExtractor.extractDates(Paths.get("/data/MTDA/TIFFDERIVED/PROBAV_L3_S10_TOC_333M"))
+    val dates = pathDateExtractor.extractDates(Paths.get("/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S10_TOC_333M"))
     val expected = LocalDate.of(2014, 4, 11).atStartOfDay(ZoneId.of("UTC"))
 
     assertTrue(dates contains expected)
