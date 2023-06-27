@@ -927,7 +927,16 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     val resampleMethod = datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor)
 
     def vsisToHttpsCreo(path: String): String = {
-      path.replace("/vsicurl/", "").replace("/vsis3/eodata", "https://finder.creodias.eu/files")
+      if (path.startsWith("/vsicurl/")) path.replaceFirst("/vsicurl/", "")
+      else if (path.startsWith("/vsis3/eodata/"))
+        path.replaceFirst("/vsis3/eodata/", "https://finder.creodias.eu/files/")
+      else if (path.startsWith("/eodata/"))
+        path.replaceFirst("/eodata/", "https://zipper.creodias.eu/get-object?path=/")
+      else if (path.startsWith("http")) path
+      else {
+        logger.warn("unexpected path: " + path)
+        path
+      }
     }
 
     def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
