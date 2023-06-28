@@ -10,7 +10,7 @@ import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, GridBounds, GridExtent, MultibandTile, NODATA, PaddedTile, Raster, RasterExtent, ShortUserDefinedNoDataCellType, TargetRegion, Tile, UShortConstantNoDataArrayTile}
+import geotrellis.raster.{CellSize, GridBounds, GridExtent, MultibandTile, MutableArrayTile, NODATA, PaddedTile, Raster, RasterExtent, ShortConstantNoDataArrayTile, ShortUserDefinedNoDataCellType, TargetRegion, Tile, UShortConstantNoDataArrayTile}
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
@@ -668,8 +668,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     println("Dimensions went from " + referenceTile.dimensions + " to " + actualTile.dimensions)
     var maskedCellCounts = Array[Int]()
     for (bandIndex <- 0 to 2) {
-      val actualTileData = actualTile.tile.band(bandIndex).asInstanceOf[UShortConstantNoDataArrayTile].array
-      val referenceTileData = referenceTile.tile.band(bandIndex).asInstanceOf[UShortConstantNoDataArrayTile].array
+      val actualTileData = actualTile.tile.band(bandIndex).toArray()
+      val referenceTileData = referenceTile.tile.band(bandIndex).toArray()
       val actualTileNoZeroCells = actualTileData.zipWithIndex.filter(_._1 != 0)
       val referenceTileNoZeroCells = referenceTileData.zipWithIndex.filter(_._1 != 0)
       // Note: filtering out raster regions can cause the actual tile to have fewer dimensions.
