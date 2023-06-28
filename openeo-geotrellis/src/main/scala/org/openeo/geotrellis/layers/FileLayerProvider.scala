@@ -458,7 +458,11 @@ object FileLayerProvider {
                     val tile: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
                     if (tile.isDefined) {
                       val compositeRasterSource = rasterRegion.asInstanceOf[GridBoundsRasterRegion].source.asInstanceOf[BandCompositeRasterSource]
-                      val cloudRasterSource = compositeRasterSource.sources.head.asInstanceOf[GDALCloudRasterSource]
+                      val cloudRasterSource = (compositeRasterSource.sources.head match {
+                        case rsOffset: ValueOffsetRasterSource => rsOffset.rasterSource
+                        case rs => rs
+                      }).asInstanceOf[GDALCloudRasterSource]
+
                       val cloudPolygons: Seq[Polygon] = cloudRasterSource.getMergedPolygons(l1cFilterStrategy.bufferInMeters)
                       val cloudPolygon = MultiPolygon(cloudPolygons).reproject(cloudRasterSource.crs, crs)
                       val cloudTile = Rasterizer.rasterizeWithValue(cloudPolygon, RasterExtent(rasterRegion.extent, tile.get.cols, tile.get.rows), 1)

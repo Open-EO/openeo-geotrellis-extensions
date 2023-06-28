@@ -28,7 +28,7 @@ object ValueOffsetRasterSource {
   }
 }
 
-class ValueOffsetRasterSource(protected val rasterSource: RasterSource,
+class ValueOffsetRasterSource(val rasterSource: RasterSource,
                               pixelValueOffset: Double,
                               val targetCellType: Option[TargetCellType] = None, //
                              ) extends RasterSource {

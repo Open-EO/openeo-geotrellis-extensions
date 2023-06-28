@@ -61,8 +61,12 @@ object GDALCloudRasterSource {
   }
 
   def isRegionFullyClouded(rasterRegion: RasterRegion, layoutCrs: CRS, layout: LayoutDefinition, dilationDistance: Int): Boolean = {
-    val source = rasterRegion.asInstanceOf[GridBoundsRasterRegion].source.asInstanceOf[BandCompositeRasterSource].sources.head.asInstanceOf[GDALCloudRasterSource]
-    source match {
+    val compositeRasterSource = rasterRegion.asInstanceOf[GridBoundsRasterRegion].source.asInstanceOf[BandCompositeRasterSource]
+    val cloudRasterSource = (compositeRasterSource.sources.head match {
+      case rsOffset: ValueOffsetRasterSource => rsOffset.rasterSource
+      case rs => rs
+    }).asInstanceOf[GDALCloudRasterSource]
+    cloudRasterSource match {
       case rs: GDALCloudRasterSource =>
         val regionExtent = rasterRegion.extent.reproject(layoutCrs, rs.crs)
         // Filter out regions that are fully clouded.
