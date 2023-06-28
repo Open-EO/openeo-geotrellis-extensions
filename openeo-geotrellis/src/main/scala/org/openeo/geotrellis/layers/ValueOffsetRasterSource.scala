@@ -5,6 +5,7 @@ import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType, Tile}
 import geotrellis.vector.Extent
 import org.openeo.geotrellis.toSigned
+import org.slf4j.LoggerFactory
 
 /**
  * Same wrapping logic as in ResampledRasterSource
@@ -12,14 +13,18 @@ import org.openeo.geotrellis.toSigned
  * when the source is loaded.
  */
 object ValueOffsetRasterSource {
+  // Ignore trailing $'s in the class names for Scala objects
+  private val logger = LoggerFactory.getLogger(this.getClass.getName.stripSuffix("$"))
+
   /**
    * Only wraps the rasterSources when needed
    */
   def wrapRasterSources(rasterSources: Seq[RasterSource],
                         pixelValueOffset: Double,
+                        targetCellType: Option[TargetCellType] = None
                        ): Seq[RasterSource] = {
-    if (pixelValueOffset == 0) rasterSources
-    else rasterSources.map(rs => new ValueOffsetRasterSource(rs, pixelValueOffset))
+    if (pixelValueOffset == 0 && targetCellType.isEmpty) rasterSources
+    else rasterSources.map(rs => new ValueOffsetRasterSource(rs, pixelValueOffset, targetCellType))
   }
 }
 
@@ -28,13 +33,13 @@ class ValueOffsetRasterSource(protected val rasterSource: RasterSource,
                               val targetCellType: Option[TargetCellType] = None, //
                              ) extends RasterSource {
 
+  import ValueOffsetRasterSource._
+
   private def withOffset(bandTile: Tile): Tile = {
     if (pixelValueOffset == 0) bandTile
     else if (cellType.isFloatingPoint) bandTile.convert(cellType).mapIfSetDouble(x => x + pixelValueOffset)
     else bandTile.convert(cellType).mapIfSet(i => i + pixelValueOffset.toInt)
   }
-
-  //  override def targetCellType: Option[TargetCellType] = rasterSource.cellType // TODO
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val raster: Option[Raster[MultibandTile]] = rasterSource.read(bounds, bands)
@@ -48,12 +53,16 @@ class ValueOffsetRasterSource(protected val rasterSource: RasterSource,
   }
 
   override def cellType: CellType = {
-    val commonCellType = rasterSource.cellType
-    if (pixelValueOffset < 0) {
-      // Big chance the value will go under 0, so type needs to be signed
-      toSigned(commonCellType)
-    } else {
-      commonCellType
+    targetCellType match {
+      case Some(t) => t.cellType
+      case None =>
+        val originalCellType = rasterSource.cellType
+        if (pixelValueOffset < 0) {
+          if (toSigned(originalCellType) != originalCellType) {
+            logger.warn("Offset might cause integer underflow. Best to specify targetCellType explicitly.")
+          }
+        }
+        originalCellType
     }
   }
 
