@@ -4,6 +4,7 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType}
 import geotrellis.vector.Extent
+import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
 
 import java.net.URL
 import scala.xml.XML
@@ -16,8 +17,8 @@ object SentinelXMLMetadataRasterSource {
    * @param bands
    * @return
    */
-  def apply(path:URL, bands:Seq[Int]=Seq(0,1,2,3)): Seq[SentinelXMLMetadataRasterSource] = {
-    val xmlDoc = XML.load(path)
+  def apply(path:String, bands:Seq[Int]=Seq(0,1,2,3)): Seq[SentinelXMLMetadataRasterSource] = {
+    val xmlDoc = XML.load(CreoFeatureCollection.loadMetadata(path))
     val angles = xmlDoc \\ "Tile_Angles"
     val meanSun = angles \ "Mean_Sun_Angle"
     val mSZA = ( meanSun \ "ZENITH_ANGLE").text.toFloat

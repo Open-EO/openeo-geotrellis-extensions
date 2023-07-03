@@ -2,7 +2,8 @@ package org.openeo.geotrellis.layers
 
 import org.openeo.opensearch.OpenSearchClient
 import cats.data.NonEmptyList
-import geotrellis.proj4.LatLng
+import geotrellis.layer.SpaceTimeKey
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.CellSize
 import geotrellis.raster.summary.polygonal.PolygonalSummaryResult
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
@@ -14,6 +15,8 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
+import org.openeo.geotrelliscommon.DataCubeParameters
+import org.openeo.opensearch.backends.CreodiasClient
 
 import java.net.URL
 import java.time.LocalTime.MIDNIGHT

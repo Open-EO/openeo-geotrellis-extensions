@@ -25,11 +25,15 @@ import org.junit.jupiter.api._
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
+import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
+import org.openeo.geotrellis.layers.Sentinel1CoherenceFileLayerProviderTest.sc
+import org.openeo.geotrellis.{LayerFixtures, MergeCubesSpec, OpenEOProcessScriptBuilder, OpenEOProcesses}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, ResampledTile}
 import org.openeo.opensearch.OpenSearchResponses.Link
+import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 
 import java.net.URI
@@ -738,4 +742,57 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       maxSpatialResolution,
       pathDateExtractor
     )
+
+
+  @Test
+  def testScl20m(): Unit = {
+    //    HttpCache.enabled = true
+//    val pathDateExtractor = SplitYearMonthDayPathDateExtractor
+    val date = LocalDate.parse("2022-11-01")
+    //    val extentTAP4326 = Extent(5.07, 51.215, 5.08, 51.22)
+    //    val projExtent = ProjectedExtent(extentTAP4326, LatLng)
+    val extentTAP3857 = Extent(560000 - 10000, 6650000 - 10000, 560000 + 10000, 6660000 + 10000)
+    val projExtent = ProjectedExtent(extentTAP3857, CRS.fromName("EPSG:3857"))
+
+    // "IMG_DATA_Band_B01_60m_Tile1_Data",
+    val flp = new FileLayerProvider(
+      new CreodiasClient(),
+      openSearchCollectionId = "Sentinel2",
+      openSearchLinkTitles = NonEmptyList.of("S2_Level-1C_Tile1_Metadata##2"), // IMG_DATA_Band_60m_1_Tile1_Data
+      rootPath = "/eodata",
+//      maxSpatialResolution = CellSize(156543.03392804097, 156543.03392804097),
+      maxSpatialResolution = CellSize(10.0, 10.0),
+      pathDateExtractor,
+      attributeValues = Map(
+        //        "productType" -> "L2A",
+        "productType" -> "L1C",
+        // "processingBaseline" -> "",
+      ),
+      //      retainNoDataTiles = true,
+    )
+
+    val datacubeParams = new DataCubeParameters()
+    datacubeParams.tileSize = 256
+    datacubeParams.layoutScheme = "FloatingLayoutScheme"
+    val maskedLayer: MultibandTileLayerRDD[SpaceTimeKey] = flp.readMultibandTileLayer(
+      from = date.atStartOfDay(UTC),
+      to = date.plusDays(6).atStartOfDay(UTC),
+      boundingBox = projExtent,
+      polygons = Array(MultiPolygon(projExtent.extent.toPolygon())),
+      projExtent.crs,
+      zoom = 0,
+      sc,
+      datacubeParams = Some(datacubeParams)
+    )
+
+    //    val baseLayer = factory.datacube_seq(
+    //      projected_polygons_native_crs,
+    //      from_date, to_date, metadata_properties, correlation_id, datacubeParams
+    //    ).maxBy { case (zoom, _) => zoom }._2
+
+    assertNotEquals(0, maskedLayer.collect().length)
+    val spatialMaskedLayer = maskedLayer.toSpatial()
+    new java.io.File("tmp/testScl20m.tif").delete()
+        spatialMaskedLayer.writeGeoTiff("tmp/testScl20m.tif", projExtent)
+  }
 }
