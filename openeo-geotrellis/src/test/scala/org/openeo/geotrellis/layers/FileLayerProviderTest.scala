@@ -191,24 +191,24 @@ class FileLayerProviderTest {
     val polygons1 = MultiPolygon(bbox1.extent.toPolygon())
     val (rasterSources1, metadata1) = _getSentinel5PRasterSources(bbox1, date, zoom)
     val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
-                                                                   bbox1.crs, sc, retainNoDataTiles = false,
-                                                                   NoCloudFilterStrategy)
+      bbox1.crs, sc, retainNoDataTiles = false,
+      NoCloudFilterStrategy)
     val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
-                                                                    bbox1.crs, sc, retainNoDataTiles = false,
-                                                                    NoCloudFilterStrategy,
-                                                                    useSparsePartitioner = false)
+      bbox1.crs, sc, retainNoDataTiles = false,
+      NoCloudFilterStrategy,
+      useSparsePartitioner = false)
 
     // Create the second RDD.
     val bbox2 = ProjectedExtent(Extent(xmin = 58.0, ymin = 20.0, xmax = 62.0, ymax = 25.0), LatLng)
     val polygons2 = MultiPolygon(bbox2.extent.toPolygon())
     val (rasterSources2, metadata2) = _getSentinel5PRasterSources(bbox1, date, zoom)
     val sparseBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources2, metadata2, Array(polygons2),
-                                                                    bbox2.crs, sc, retainNoDataTiles = false,
-                                                                    NoCloudFilterStrategy)
+      bbox2.crs, sc, retainNoDataTiles = false,
+      NoCloudFilterStrategy)
     val defaultBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources2, metadata2, Array(polygons2),
-                                                                     bbox2.crs, sc, retainNoDataTiles = false,
-                                                                     NoCloudFilterStrategy,
-                                                                     useSparsePartitioner = false)
+      bbox2.crs, sc, retainNoDataTiles = false,
+      NoCloudFilterStrategy,
+      useSparsePartitioner = false)
 
     // Merge both RDDs.
     val defaultMergedLayer = defaultBaseLayer.merge(defaultBaseLayer2)
@@ -228,12 +228,12 @@ class FileLayerProviderTest {
     val polygons = MultiPolygon(bbox.extent.toPolygon())
     val (rasterSources, metadata) = _getSentinel5PRasterSources(bbox, date, 8)
     val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(polygons),
-                                                                   bbox.crs, sc, retainNoDataTiles = false,
-                                                                   NoCloudFilterStrategy)
+      bbox.crs, sc, retainNoDataTiles = false,
+      NoCloudFilterStrategy)
     val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(polygons),
-                                                                    bbox.crs, sc, retainNoDataTiles = false,
-                                                                    NoCloudFilterStrategy,
-                                                                    useSparsePartitioner = false)
+      bbox.crs, sc, retainNoDataTiles = false,
+      NoCloudFilterStrategy,
+      useSparsePartitioner = false)
 
     // Create the masked layers.
     val maskBbox = ProjectedExtent(Extent(xmin = 57.0, ymin = 30.0, xmax = 58.0, ymax = 35.0), LatLng)
@@ -284,7 +284,8 @@ class FileLayerProviderTest {
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
     dataCubeParameters.globalExtent = Some(boundingBox)
 
-    val result = LayerFixtures.sentinel2TocLayerProviderUTM20M.readKeysToRasterSources(
+    val flp = LayerFixtures.sentinel2TocLayerProviderUTM20M
+    val result = flp.readKeysToRasterSources(
       from = date,
       to = date,
       boundingBox,
@@ -296,8 +297,10 @@ class FileLayerProviderTest {
     )
     val minKey = result._2.bounds.get.minKey
 
-    val cols = math.ceil((boundingBox.extent.width / 10.0)/256.0)
-    val rows = math.ceil((boundingBox.extent.height / 10.0)/256.0)
+    val layout = flp.selectLayoutScheme(boundingBox, multiple_polygons_flag = false, Some(dataCubeParameters))
+      .asInstanceOf[FloatingLayoutScheme]
+    val cols = math.ceil((boundingBox.extent.width / 10.0) / layout.tileCols)
+    val rows = math.ceil((boundingBox.extent.height / 10.0) / layout.tileRows)
 
     assertEquals(0,minKey.col)
     assertEquals(0,minKey.row)
@@ -322,7 +325,7 @@ class FileLayerProviderTest {
       |            "geometry": {"coordinates":[[[4.995008,49.509308],[5.473188,51.003036],[1.742552,51.41433],[1.379708,49.918747],[4.995008,49.509308]]],"type":"Polygon"},
       |            "bbox": [1.379708,49.509308,5.473188,51.41433],
       |            "properties":
-      |            	{"date":"2020-03-15T05:58:49.458Z","identifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110","available":"2020-09-09T14:07:35Z","parentIdentifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1","productInformation":{"processingCenter":"VITO","productVersion":"V110","timeliness":"Fast-24h","processingDate":"2020-03-15T10:23:40.698Z","productType":"SIGMA0","availabilityTime":"2020-09-09T14:07:35Z"},"links":{"related":[],"data":[{"length":1642877038,"type":"image/tiff","title":"VH","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_VH.tif"},{"length":1638893250,"type":"image/tiff","title":"VV","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_VV.tif"},{"length":105791005,"type":"image/tiff","title":"angle","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_angle.tif"}],"previews":[{"href":"https://services.terrascope.be/wms/v2?SERVICE=WMS&REQUEST=getMap&VERSION=1.3.0&CRS=EPSG:3857&SRS=EPSG:3857&LAYERS=CGS_S1_GRD_SIGMA0&TIME=2020-03-15&BBOX=153588.3920034059,6361726.342578137,609272.5011758554,6694913.752846391&WIDTH=80&HEIGHT=80&FORMAT=image/png&TRANSPARENT=true","type":"image/png","title":"WMS","category":"QUICKLOOK"}],"alternates":[{"length":38284,"type":"application/vnd.iso.19139+xml","title":"Inspire metadata","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110.xml"}]},"published":"2020-09-09T14:07:35Z","title":"S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110","updated":"2020-03-15T10:23:40.698Z","acquisitionInformation":[{"acquisitionParameters":{"operationalMode":"IW","polarisationMode":"D","acquisitionType":"NOMINAL","relativeOrbitNumber":110,"polarisationChannels":"VV, VH","beginningDateTime":"2020-03-15T05:58:49.458Z","orbitDirection":"DESCENDING","endingDateTime":"2020-03-15T05:59:14.456Z","orbitNumber":31682},"platform":{"platformShortName":"SENTINEL-1","platformSerialIdentifier":"S1A"}}],"status":"ARCHIVED"}
+      |             {"date":"2020-03-15T05:58:49.458Z","identifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1:S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110","available":"2020-09-09T14:07:35Z","parentIdentifier":"urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1","productInformation":{"processingCenter":"VITO","productVersion":"V110","timeliness":"Fast-24h","processingDate":"2020-03-15T10:23:40.698Z","productType":"SIGMA0","availabilityTime":"2020-09-09T14:07:35Z"},"links":{"related":[],"data":[{"length":1642877038,"type":"image/tiff","title":"VH","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_VH.tif"},{"length":1638893250,"type":"image/tiff","title":"VV","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_VV.tif"},{"length":105791005,"type":"image/tiff","title":"angle","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110_angle.tif"}],"previews":[{"href":"https://services.terrascope.be/wms/v2?SERVICE=WMS&REQUEST=getMap&VERSION=1.3.0&CRS=EPSG:3857&SRS=EPSG:3857&LAYERS=CGS_S1_GRD_SIGMA0&TIME=2020-03-15&BBOX=153588.3920034059,6361726.342578137,609272.5011758554,6694913.752846391&WIDTH=80&HEIGHT=80&FORMAT=image/png&TRANSPARENT=true","type":"image/png","title":"WMS","category":"QUICKLOOK"}],"alternates":[{"length":38284,"type":"application/vnd.iso.19139+xml","title":"Inspire metadata","href":"https://services.terrascope.be/download/CGS_S1_GRD_SIGMA0_L1/2020/03/15/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110/S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110.xml"}]},"published":"2020-09-09T14:07:35Z","title":"S1A_IW_GRDH_SIGMA0_DV_20200315T055849_DESCENDING_110_22F3_V110","updated":"2020-03-15T10:23:40.698Z","acquisitionInformation":[{"acquisitionParameters":{"operationalMode":"IW","polarisationMode":"D","acquisitionType":"NOMINAL","relativeOrbitNumber":110,"polarisationChannels":"VV, VH","beginningDateTime":"2020-03-15T05:58:49.458Z","orbitDirection":"DESCENDING","endingDateTime":"2020-03-15T05:59:14.456Z","orbitNumber":31682},"platform":{"platformShortName":"SENTINEL-1","platformSerialIdentifier":"S1A"}}],"status":"ARCHIVED"}
       |         }]}""".stripMargin
 
   private val sentinel1Product =  FeatureCollection.parse(myFeatureJSON, isUTM = true)
@@ -677,8 +680,10 @@ class FileLayerProviderTest {
 
     val minKey = result._2.bounds.get.minKey
 
-    val cols = math.ceil((boundingBox.extent.width / 10.0)/256.0)
-    val rows = math.ceil((boundingBox.extent.height / 10.0)/256.0)
+    val layout = flp.selectLayoutScheme(boundingBox, multiple_polygons_flag = false, Some(dataCubeParameters))
+      .asInstanceOf[FloatingLayoutScheme]
+    val cols = math.ceil((boundingBox.extent.width / 10.0) / layout.tileCols)
+    val rows = math.ceil((boundingBox.extent.height / 10.0) / layout.tileRows)
 
     val cube = result._1
     //val ids = cube.values.map(_.data._2.id).distinct().collect()
@@ -688,7 +693,7 @@ class FileLayerProviderTest {
     assertEquals(0,minKey.col)
     assertEquals(0,minKey.row)
     assertEquals(crs,result._2.crs)
-    assertEquals(8,all.length)
+    assertTrue(1 <= all.length)
     assertEquals((cols*rows).toInt,all.length)
   }
 
@@ -794,8 +799,10 @@ class FileLayerProviderTest {
 
     val minKey = result._2.bounds.get.minKey
 
-    val cols = math.ceil(((boundingBox.extent.width + 20.0*buffer) / 10.0)/256.0)
-    val rows = math.ceil(((boundingBox.extent.height + 20.0*buffer) / 10.0)/256.0)
+    val layout = flp.selectLayoutScheme(boundingBox, multiple_polygons_flag = false, Some(dataCubeParameters))
+      .asInstanceOf[FloatingLayoutScheme]
+    val cols = math.ceil(((boundingBox.extent.width + 20.0*buffer) / 10.0)/layout.tileCols)
+    val rows = math.ceil(((boundingBox.extent.height + 20.0*buffer) / 10.0)/layout.tileRows)
 
     val cube = result._1
     //val ids = cube.values.map(_.data._2.id).distinct().collect()
@@ -805,8 +812,8 @@ class FileLayerProviderTest {
     assertEquals(0,minKey.col)
     assertEquals(0,minKey.row)
     assertEquals(crs,result._2.crs)
-    assertEquals(12,all.length)
-    //assertEquals((cols*rows).toInt,all.length)
+    assertTrue(1 <= all.length) // dependant on selectLayoutScheme
+    assertEquals((cols*rows).toInt,all.length)
 
     assertEquals(505110.0 - 1000.0, result._2.extent.xmin,0.01)
     assertEquals(515350.0 + buffer*10.0, result._2.extent.xmax,0.01)
@@ -867,7 +874,7 @@ class FileLayerProviderTest {
     val crs = CRS.fromEpsgCode(32631)
     // a mix of 31UGS and 32ULB
 
-//    val boundingBox = ProjectedExtent(Extent(481100.0, 5663200.0, 481100.0, 5663200.0), crs) // TODO: This would cause a crash
+    //    val boundingBox = ProjectedExtent(Extent(481100.0, 5663200.0, 481100.0, 5663200.0), crs) // TODO: This would cause a crash
     val boundingBox = ProjectedExtent(Extent(2.7355, 51.1281, 2.7355, 51.1281).reproject(LatLng,crs), crs)
 
     val dataCubeParameters = new DataCubeParameters
@@ -969,7 +976,7 @@ class FileLayerProviderTest {
     cubeSpatial.writeGeoTiff("tmp/testPixelValueOffsetNeededCorner.tiff")
     val arr = cubeSpatial.collect().array
     assertTrue(isNoData(arr(1)._2.toArrayTile().band(0).get(162, 250)))
-    assertEquals(224, arr(0)._2.toArrayTile().band(0).get(0, 0), 1)
+    assertEquals(172, arr(0)._2.toArrayTile().band(0).get(5, 5), 1)
   }
 
   @Test
