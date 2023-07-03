@@ -9,9 +9,9 @@ import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
-import geotrellis.raster.io.geotiff.{MultibandGeoTiff, OverviewStrategy}
+import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CroppedTile, DefaultTarget, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CroppedTile, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.partition.PartitionerIndex.SpatialPartitioner
 import geotrellis.spark.partition.SpacePartitioner
@@ -23,7 +23,6 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.file.AbstractPyramidFactory
 import org.openeo.geotrellis.tile_grid.TileGrid
-import org.openeo.geotrellis.toSigned
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, retryForever}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.Feature
@@ -464,7 +463,11 @@ object FileLayerProvider {
                     val tile: Option[MultibandTile] = rasterRegion.raster.map(_.tile)
                     if (tile.isDefined) {
                       val compositeRasterSource = rasterRegion.asInstanceOf[GridBoundsRasterRegion].source.asInstanceOf[BandCompositeRasterSource]
-                      val cloudRasterSource = compositeRasterSource.sources.head.asInstanceOf[GDALCloudRasterSource]
+                      val cloudRasterSource = (compositeRasterSource.sources.head match {
+                        case rsOffset: ValueOffsetRasterSource => rsOffset.rasterSource
+                        case rs => rs
+                      }).asInstanceOf[GDALCloudRasterSource]
+
                       val cloudPolygons: Seq[Polygon] = cloudRasterSource.getMergedPolygons(l1cFilterStrategy.bufferInMeters)
                       val cloudPolygon = MultiPolygon(cloudPolygons).reproject(cloudRasterSource.crs, crs)
                       val cloudTile = Rasterizer.rasterizeWithValue(cloudPolygon, RasterExtent(rasterRegion.extent, tile.get.cols, tile.get.rows), 1)
@@ -931,7 +934,16 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     val resampleMethod = datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor)
 
     def vsisToHttpsCreo(path: String): String = {
-      path.replace("/vsicurl/", "").replace("/vsis3/eodata", "https://finder.creodias.eu/files")
+      if (path.startsWith("/vsicurl/")) path.replaceFirst("/vsicurl/", "")
+      else if (path.startsWith("/vsis3/eodata/"))
+        path.replaceFirst("/vsis3/eodata/", "https://finder.creodias.eu/files/")
+      else if (path.startsWith("/eodata/"))
+        path.replaceFirst("/eodata/", "https://zipper.creodias.eu/get-object?path=/")
+      else if (path.startsWith("http")) path
+      else {
+        logger.warn("unexpected path: " + path)
+        path
+      }
     }
 
     def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
@@ -1006,15 +1018,23 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
       //special case handling for data that does not declare nodata properly
       targetCellType = link.title match {
-        case x if x.get.contains("SCENECLASSIFICATION_20M") =>  Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
-        case x if x.get.startsWith("IMG_DATA_") =>  Some(ConvertTargetCellType(UShortConstantNoDataCellType))
+        // An un-used band called "IMG_DATA_Band_SCL_60m_Tile1_Unit" exists, so not specifying the resulution in the if-check.
+        case x if x.get.contains("SCENECLASSIFICATION_20M") || x.get.contains("Band_SCL_") => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
+        case x if x.get.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(UShortConstantNoDataCellType))
         case _ => None
       }
+
       pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
-    } yield (
-      ValueOffsetRasterSource.wrapRasterSources(rasterSource(path, cloudPath, targetCellType, targetExtent, bands), pixelValueOffset),
-      bands
-    )
+      targetTargetCellType: Option[TargetCellType] = link.title match {
+        // Sentinel 2 bands can have negative values now.
+        case x if x.get.contains("SCENECLASSIFICATION_20M") || x.get.contains("Band_SCL_") => None
+        case x if x.get.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
+        case _ => None
+      }
+
+      rasterSourcesRaw = rasterSource(path, cloudPath, targetCellType, targetExtent, bands)
+      rasterSourcesWrapped = ValueOffsetRasterSource.wrapRasterSources(rasterSourcesRaw, pixelValueOffset, targetTargetCellType)
+    } yield (rasterSourcesWrapped, bands)
 
     if(rasterSources.isEmpty) {
       logger.warn(s"Excluding item ${feature.id} with available assets ${feature.links.map(_.title).mkString("(", ", ", ")")}")

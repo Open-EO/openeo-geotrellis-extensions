@@ -37,39 +37,33 @@ package object png {
       new ImageInfo(src.cols, materialized.length, src.bitDepth, src.alpha, src.greyscale && !isIndexed, src.greyscale && isIndexed)
     }
 
-    val localPath=
-    if(path.toLowerCase.startsWith("s3:")) {
-      Files.createTempFile(null, null).toString
-    }else{
-      path
-    }
-    val pngWriter = new PngWriter(new File(path), combinedImageInfo)
+    val s3Path = path.toLowerCase.startsWith("s3:")
 
-
-    if(combinedImageInfo.indexed) {
-      val colorMap = options.colorMap.get
-      val paletteChunk = pngWriter.getMetadata.createPLTEChunk
-      paletteChunk.setNentries(colorMap.colors.size)
-      var counter = 0
-      for (color <- colorMap.colors) {
-        val rgb = RGBA(color)
-        paletteChunk.setEntry(counter,rgb.red,rgb.green,rgb.blue)
-        counter = counter + 1
-      }
-
-    }
+    val localPath = if (s3Path) Files.createTempFile(null, null) else Paths.get(path)
 
     try {
-      materialized foreach pngWriter.writeRow
-      pngWriter.end()
-      if(path.toLowerCase.startsWith("s3:")) {
-        val correctS3Path = path.replaceFirst("s3:/(?!/)", "s3://")
+      val pngWriter = new PngWriter(localPath.toFile, combinedImageInfo)
+      try {
+        if (combinedImageInfo.indexed) {
+          val colorMap = options.colorMap.get
+          val paletteChunk = pngWriter.getMetadata.createPLTEChunk
+          paletteChunk.setNentries(colorMap.colors.size)
 
-        uploadToS3(Paths.get(localPath), correctS3Path)
-      }else{
-        path
-      }
-    } finally pngWriter.close()
+          for ((color, entry) <- colorMap.colors.zipWithIndex) {
+            val rgb = RGBA(color)
+            paletteChunk.setEntry(entry, rgb.red, rgb.green, rgb.blue)
+          }
+        }
+
+        materialized foreach pngWriter.writeRow
+        pngWriter.end()
+
+        if (s3Path) {
+          val correctS3Path = path.replaceFirst("(?i)s3:/(?!/)", "s3://")
+          uploadToS3(localPath, correctS3Path)
+        } else path
+      } finally pngWriter.close()
+    } finally if (s3Path) Files.delete(localPath)
   }
 
   def saveStitched(srdd: SRDD, path: String, options: PngOptions): Unit = saveStitched(srdd, path, cropBounds = null, options)
