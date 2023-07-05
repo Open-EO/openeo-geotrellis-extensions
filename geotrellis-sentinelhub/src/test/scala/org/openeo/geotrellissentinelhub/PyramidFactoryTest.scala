@@ -98,7 +98,6 @@ object PyramidFactoryTest {
   }
 }
 
-@Ignore("Ignore while this error is present: \"status\":429,\"reason\":\"Too Many Requests\",\"message\":\"You have exceeded your rate limit\",\"code\":\"RATE_LIMIT_EXCEEDED\"")
 class PyramidFactoryTest {
   import PyramidFactoryTest._
 
