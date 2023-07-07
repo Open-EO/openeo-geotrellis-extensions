@@ -8,14 +8,20 @@ import java.net.URI
 import scala.collection.JavaConverters._
 import java.time.ZonedDateTime
 import java.util
+import scala.collection.mutable
 
-class FixedFeatureOpenSearchClient(id: String, bbox: Extent, nominal_date: String, links: util.List[util.List[String]]) extends OpenSearchClient {
-  override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
+class FixedFeaturesOpenSearchClient extends OpenSearchClient {
+  private val features = mutable.Buffer[Feature]()
+
+  def addFeature(id: String, bbox: Extent, nominal_date: String, links: util.List[util.List[String]]): Unit = {
     val nominalDate = ZonedDateTime.parse(nominal_date)
+    val sLinks = links.asScala.map { titleHrefPair => Link(href = new URI(titleHrefPair.get(1)), title = Some(titleHrefPair.get(0))) }.toArray
 
-    val sLinks = links.asScala.map { titleHrefPair => Link(href = new URI(titleHrefPair.get(1)), title = Some(titleHrefPair.get(0)))}.toArray
-    Seq(Feature(id, this.bbox, nominalDate, sLinks, resolution = None))
+    features += Feature(id, bbox, nominalDate, sLinks, resolution = None)
   }
+
+  override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] =
+    features.toList
 
   override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, page: Int): OpenSearchResponses.FeatureCollection = ???
 
