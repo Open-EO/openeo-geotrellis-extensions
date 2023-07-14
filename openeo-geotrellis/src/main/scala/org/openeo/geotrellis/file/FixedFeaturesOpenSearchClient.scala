@@ -13,12 +13,18 @@ import scala.collection.mutable
 class FixedFeaturesOpenSearchClient extends OpenSearchClient {
   private val features = mutable.Buffer[Feature]()
 
-  def addFeature(id: String, bbox: Extent, nominal_date: String, links: util.List[util.List[String]]): Unit = {
+  def addFeature(id: String, bbox: Extent, nominal_date: String, links: util.List[util.List[String]]): Unit = { // href, title, band1, band2, ...
     val nominalDate = ZonedDateTime.parse(nominal_date)
-    val sLinks = links.asScala.map { titleHrefPair => Link(href = new URI(titleHrefPair.get(1)), title = Some(titleHrefPair.get(0))) }.toArray
+    val sLinks = links.asScala.map { values =>
+      val Seq(href, title, bands @ _*) = values.asScala
+      Link(href = new URI(href), title = Some(title), bandNames = Some(bands))
+    }.toArray
 
-    features += Feature(id, bbox, nominalDate, sLinks, resolution = None)
+    addFeature(id, bbox, nominalDate, sLinks)
   }
+
+  def addFeature(id: String, bbox: Extent, nominalDate: ZonedDateTime, links: Array[Link]): Unit =
+    features += Feature(id, bbox, nominalDate, links, resolution = None)
 
   override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] =
     features.toList

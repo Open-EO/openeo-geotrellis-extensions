@@ -16,12 +16,11 @@ import java.net.URL
 import java.time.ZonedDateTime
 import java.util
 import scala.collection.JavaConverters._
-import scala.collection.mutable
 
 object ProbaVPyramidFactory {
   // Mapping from band name to (geotiff file id, band index).
   // E.g. PROBAV_S10_TOC_X35Y12_20190801_333M_GEOMETRY_V201.TIFF contains the SWIRVZA band at index 3.
-  val bandToTiffFileName = mutable.LinkedHashMap(
+  val bandToTiffFileName = Map(
     "NDVI" -> ("NDVI", 0),
     "RED" -> ("RED", 0),
     "NIR" -> ("NIR", 0),
@@ -39,19 +38,19 @@ object ProbaVPyramidFactory {
 
 class ProbaVPyramidFactory(openSearchEndpoint: String,
                            openSearchCollectionId: String,
-                           openSearchLinkTitles: util.List[String],
+                           bands: util.List[String],
                            rootPath: String,
                            maxSpatialResolution: CellSize) extends Serializable {
-  require(openSearchLinkTitles.size() > 0)
+  require(bands.size() > 0)
 
   import ProbaVPyramidFactory._
 
   private val openSearchEndpointUrl = new URL(openSearchEndpoint)
-  private val bands = openSearchLinkTitles.asScala
+  private val _bands = bands.asScala
 
   private def fileLayerProvider(correlationId: String) = {
-    val bandFileNames = bands.map(b => bandToTiffFileName(b.toUpperCase())._1)
-    val bandIndices = bands.map(b => bandToTiffFileName(b.toUpperCase())._2)
+    val bandFileNames = _bands.map(b => bandToTiffFileName(b.toUpperCase())._1)
+    val bandIndices = _bands.map(b => bandToTiffFileName(b.toUpperCase())._2)
     val bandFileNameToSeq: Map[String, Seq[Int]] = bandFileNames.zip(bandIndices).groupBy(_._1).mapValues(_.map(_._2).toSeq)
     // [(Tiff file id, requested band indices)], in the original order of the requested bands.
     // E.g. [(NDVI: [0]), (GEOMETRY, [0,1,4,5]), ...)]pyramid_seq
