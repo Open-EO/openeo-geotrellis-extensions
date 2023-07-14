@@ -30,7 +30,7 @@
 
         <Logger name="org.openeo.geotrellis.ComputeStatsGeotrellisAdapter" level="debug" />
         <Logger name="org.openeo.opensearch.OpenSearchClient" level="debug" />
-        <Root level="info">
+        <Root level="warn">
             <AppenderRef ref="stdout" />
         </Root>
     </Loggers>

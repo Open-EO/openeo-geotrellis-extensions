@@ -17,9 +17,8 @@ object SentinelXMLMetadataRasterSource {
    * @param bands
    * @return
    */
-  def apply(path:URL, bands:Seq[Int]=Seq(0,1,2,3)): Seq[SentinelXMLMetadataRasterSource] = {
-    val xmlDoc = XML.load(path)
-//    val xmlDoc = XML.load(CreoFeatureCollection.loadMetadata(path))
+  def apply(path:String, bands:Seq[Int]=Seq(0,1,2,3)): Seq[SentinelXMLMetadataRasterSource] = {
+    val xmlDoc = XML.load(CreoFeatureCollection.loadMetadata(path))
     val angles = xmlDoc \\ "Tile_Angles"
     val meanSun = angles \ "Mean_Sun_Angle"
     val mSZA = ( meanSun \ "ZENITH_ANGLE").text.toFloat
