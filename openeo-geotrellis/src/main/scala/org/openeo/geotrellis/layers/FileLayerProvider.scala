@@ -956,7 +956,8 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         }
       }else if(dataPath.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
-        SentinelXMLMetadataRasterSource(dataPath, bands)
+        SentinelXMLMetadataRasterSource(new URL(vsisToHttpsCreo(dataPath)),bands)
+//        SentinelXMLMetadataRasterSource(dataPath, bands)
       }
       else {
         def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {
