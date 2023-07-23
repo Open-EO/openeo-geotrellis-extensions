@@ -702,10 +702,11 @@ class OpenEOProcesses extends Serializable {
   }
 
   def mergeSpatialCubes(leftCube: MultibandTileLayerRDD[SpatialKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String): ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = {
-    checkMetadataCompatible(leftCube.metadata,rightCube.metadata)
-    val joined = outerJoin(leftCube,rightCube)
-    val outputCellType = leftCube.metadata.cellType.union(rightCube.metadata.cellType)
-    val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(rightCube.metadata.extent),cellType = outputCellType)
+    val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,NearestNeighbor)._2
+    checkMetadataCompatible(leftCube.metadata,resampled.metadata)
+    val joined = outerJoin(leftCube,resampled)
+    val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
+    val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(resampled.metadata.extent),cellType = outputCellType)
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
