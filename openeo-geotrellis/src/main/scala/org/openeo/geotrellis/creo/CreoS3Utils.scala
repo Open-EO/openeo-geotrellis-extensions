@@ -1,5 +1,7 @@
 package org.openeo.geotrellis.creo
 
+import org.openeo.geotrelliss3.S3Utils
+import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.core.retry.RetryPolicy
@@ -7,7 +9,6 @@ import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy
 import software.amazon.awssdk.core.retry.conditions.{OrRetryCondition, RetryCondition}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
-import org.openeo.geotrelliss3.S3Utils
 
 import java.net.URI
 import java.time.Duration
@@ -40,7 +41,9 @@ object CreoS3Utils {
       .overrideConfiguration(overrideConfig)
       .region(Region.of("RegionOne"))
 
-    clientBuilder.endpointOverride(URI.create(System.getenv("SWIFT_URL"))).build()
+    val swiftAccess = sys.env.getOrElse("SWIFT_ACCESS_KEY_ID", sys.env.getOrElse("AWS_ACCESS_KEY_ID",""))
+    val swiftSecretAccess = sys.env.getOrElse("SWIFT_SECRET_ACCESS_KEY", sys.env.getOrElse("AWS_SECRET_ACCESS_KEY",""))
+    clientBuilder.endpointOverride(URI.create(sys.env("SWIFT_URL"))).credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(swiftAccess,swiftSecretAccess))).build()
   }
 
   def deleteCreoSubFolder(bucket_name: String, subfolder: String) = {
