@@ -20,7 +20,7 @@ import java.net.URI
 class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
   @transient lazy val swiftEndpoint = new URI(sys.env.getOrElse("SWIFT_URL", "https://s3.waw2-1.cloudferro.com"))
   @transient lazy val s3Endpoint = sys.env("AWS_S3_ENDPOINT")
-  @transient lazy val s3Https = sys.env.getOrElse("AWS_HTTPS","FALSE").toUpperCase.equals("TRUE")
+  @transient lazy val s3Https = sys.env.getOrElse("AWS_HTTPS","NO").toUpperCase.equals("YES")
 
   override def rangeReader(uri: URI): S3RangeReader = {
     val s3Uri = new AmazonS3URI(uri)
