@@ -974,6 +974,28 @@ public class TestOpenEOProcessScriptBuilder {
         assertTileEquals(tile1, res);
     }
 
+    @DisplayName("Test array_element by label process")
+    @Test
+    public void testArrayElementByLabel() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = Collections.singletonMap("label","B03");
+        builder.expressionStart("array_element", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+        builder.argumentStart("label");
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_element",arguments);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction(Collections.singletonMap("array_labels",Arrays.asList("B02","B03")));
+        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
+        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
+        Tile res = result.apply(0);
+        assertTileEquals(tile1, res);
+    }
+
     @DisplayName("Test array_find process")
     @Test
     public void testArrayFind() {
