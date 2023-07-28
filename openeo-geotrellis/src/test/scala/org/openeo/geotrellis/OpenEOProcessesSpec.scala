@@ -9,10 +9,10 @@ import geotrellis.raster.io.geotiff._
 import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.resample.ResampleMethod
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
+import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
 import geotrellis.vector._
 import org.apache.hadoop.hdfs.HdfsConfiguration
@@ -554,6 +554,38 @@ class OpenEOProcessesSpec extends RasterMatchers {
       case PixelType.Bit => assertEqualTimeseriesStats(Seq(Seq(0, 1, 0.5)), stats, 0.01)
       case _ => assertEqualTimeseriesStats(Seq(Seq(20, 120, 70.0)), stats, 0.5)
     }
+  }
+
+  @Test
+  def applyTemporalTest(): Unit = {
+    val outDir = "/tmp/aggregateTemporalTest/"
+    Files.createDirectories(Paths.get(outDir))
+    val pixelType = PixelType.Short
+    val layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType)
+    val bounds = layer.metadata.bounds
+    val middleDate = SpaceTimeKey(0, 0, (bounds.get.minKey.instant + bounds.get.maxKey.instant) / 2).time
+
+    // intervals is a list of start,end-pairs
+    val intervals = List(middleDate.plusYears(-30), middleDate, middleDate, middleDate.plusYears(1000))
+      .map(DateTimeFormatter.ISO_INSTANT.format(_))
+    val labels = (intervals.indices.collect { case i if i % 2 == 0 => intervals(i) }).toList
+
+    val resultTiles = new OpenEOProcesses().aggregateTemporal(layer,
+      intervals.asJava,
+      labels.asJava,
+      TestOpenEOProcessScriptBuilder.createRankComposite(),
+      java.util.Collections.emptyMap(),
+      reduce= false
+    )
+
+    def extract(cube: MultibandTileLayerRDD[SpaceTimeKey] ) = {
+      cube.map(t=>(t._1.time,t._2.band(0).get(0,0))).filter(_._1.isBefore(middleDate)).collect().sortBy(_._1.toEpochSecond)
+    }
+    val firstSeries = extract(resultTiles)
+    val originalSeries = extract(layer)
+    val max = originalSeries.map(_._2).max
+    firstSeries.zip(originalSeries).foreach(t=> if(t._2._2==max) assertTrue(t._1._2==1 ) else assertTrue(t._1._2==0 ))
+
   }
 
   @Test

@@ -1657,6 +1657,44 @@ public class TestOpenEOProcessScriptBuilder {
         return builder;
     }
 
+    static OpenEOProcessScriptBuilder createRankComposite() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+
+        Map<String, Object> arguments = new HashMap<>();
+        arguments.put("data", Collections.singletonMap("from_parameter", "x"));
+        arguments.put("process", "dummy");
+        builder.expressionStart("array_apply", arguments);
+
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+
+        builder.argumentStart("process");
+        {
+            // scope block, just for nice indentation
+            Map<String, Object> argumentsCos = new HashMap<>();
+            argumentsCos.put("x", Collections.singletonMap("from_parameter", "x"));
+            argumentsCos.put("y", "dummy");
+            builder.expressionStart("eq", argumentsCos);
+
+            builder.argumentStart("x");
+            builder.fromParameter("x");
+            builder.argumentEnd();
+            builder.argumentStart("y");
+            Map<String, Object> argsMax = Collections.singletonMap("data", Collections.singletonMap("from_parameter", "x"));
+            builder.expressionStart("max", argsMax);
+            builder.fromParameter("x");
+            builder.expressionEnd("max",argsMax);
+            builder.argumentEnd();
+
+            builder.expressionEnd("eq", argumentsCos);
+        }
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_apply", arguments);
+        return builder;
+    }
+
     @DisplayName("Test array_apply process")
     @Test
     public void testArrayApply() {
