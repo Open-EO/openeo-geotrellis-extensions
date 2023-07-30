@@ -1192,6 +1192,10 @@ class OpenEOProcessScriptBuilder {
         index.asInstanceOf[Integer]
       }
 
+      if(theActualIndex<0 && label !=null){
+        throw new IllegalArgumentException(s"array_element: Could not find label ${label}, these labels are available:${context("array_labels")}")
+      }
+
       if (input.size <= theActualIndex) {
         throw new IllegalArgumentException("Invalid band index " + index + ", only " + input.size + " bands available.")
       }
