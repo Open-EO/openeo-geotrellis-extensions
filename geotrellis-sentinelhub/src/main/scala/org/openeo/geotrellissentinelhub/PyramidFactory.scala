@@ -429,7 +429,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               logger.info(s"Sentinelhub datacube requires approximately ${spatialKeyCount} spatial keys.")
             }
 
-            val requiredKeysRdd = requiredSpatialKeysForFeatures.map { case (SpatialKey(col, row), Feature(_, date)) => SpaceTimeKey(col, row, date)}
+            val requiredKeysRdd = requiredSpatialKeysForFeatures.map { case (SpatialKey(col, row), Feature(_, date)) => SpaceTimeKey(col, row, date)}.filter(k=> k.col>=0&&k.row>=0)
 
             val partitioner = DatacubeSupport.createPartitioner(Some(dataCubeParameters), requiredKeysRdd, metadata)
             val approxRequests = requiredKeysRdd.countApproxDistinct()
