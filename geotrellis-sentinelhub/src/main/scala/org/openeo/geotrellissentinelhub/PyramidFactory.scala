@@ -331,7 +331,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                   Stream.empty
               }
 
-            DatacubeSupport.applyDataMask(Some(dataCubeParameters), tilesRdd,metadata)
+            DatacubeSupport.applyDataMask(Some(dataCubeParameters), tilesRdd, metadata, pixelwiseMasking = true)
           } else {
             val multiPolygon: Geometry = if (polygons.length <= 2000) {
               val simplified = simplify(polygons)
@@ -435,13 +435,15 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             val approxRequests = requiredKeysRdd.countApproxDistinct()
             logger.info(s"Created Sentinelhub datacube ${collectionId} with $approxRequests keys and metadata ${metadata} and ${partitioner.get}")
 
-            var keysRdd = requiredKeysRdd.map((_, None)).partitionBy(partitioner.get)
-            keysRdd = DatacubeSupport.applyDataMask(Some(dataCubeParameters), keysRdd,metadata)
+            val keysRdd = requiredKeysRdd.map((_, None)).partitionBy(partitioner.get)
 
-            val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = keysRdd
+            var keysRddWithData = keysRdd
               .mapPartitions(_.map { case (spaceTimeKey, _) => (spaceTimeKey, loadMasked(spaceTimeKey.spatialKey, spaceTimeKey.time, approxRequests)) }, preservesPartitioning = true)
-              .flatMapValues(_.filter(tile => !tile.bands.forall(_.isNoDataTile)))
+              .flatMapValues(_.toList)
+            keysRddWithData = DatacubeSupport.applyDataMask(Some(dataCubeParameters), keysRddWithData, metadata, pixelwiseMasking = true)
 
+            val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = keysRddWithData
+              .filter(tile => !tile._2.bands.forall(_.isNoDataTile))
             tilesRdd
           }
 

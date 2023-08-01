@@ -369,10 +369,8 @@ object FileLayerProvider {
 
     }
 
-    requestedRasterRegions = DatacubeSupport.applyDataMask(datacubeParams,requestedRasterRegions,metadata)
-
     requestedRasterRegions.name = rasterSources.name
-    rasterRegionsToTiles(requestedRasterRegions, metadata, retainNoDataTiles, cloudFilterStrategy, partitioner)
+    rasterRegionsToTiles(requestedRasterRegions, metadata, retainNoDataTiles, cloudFilterStrategy, partitioner, datacubeParams)
   }
 
 
@@ -400,7 +398,13 @@ object FileLayerProvider {
 
   private val PIXEL_COUNTER = "InputPixels"
 
-  private def rasterRegionsToTiles(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))], metadata: TileLayerMetadata[SpaceTimeKey], retainNoDataTiles: Boolean, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, partitionerOption: Option[SpacePartitioner[SpaceTimeKey]] = None) = {
+  private def rasterRegionsToTiles(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))],
+                                   metadata: TileLayerMetadata[SpaceTimeKey],
+                                   retainNoDataTiles: Boolean,
+                                   cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy,
+                                   partitionerOption: Option[SpacePartitioner[SpaceTimeKey]] = None,
+                                   datacubeParams : Option[DataCubeParameters] = None,
+                                  ) = {
     val partitioner = partitionerOption.getOrElse(SpacePartitioner(metadata.bounds))
     logger.info(s"Cube partitioner index: ${partitioner.index}")
     val totalChunksAcc: LongAccumulator = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
@@ -409,7 +413,7 @@ object FileLayerProvider {
     val loadingTimeAcc = rasterRegionRDD.sparkContext.doubleAccumulator("SecondsPerChunk_" + rasterRegionRDD.name)
     val crs = metadata.crs
     val layout = metadata.layout
-    val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] =
+    var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] =
       rasterRegionRDD
         .groupByKey(partitioner)
         .mapPartitions(partitionIterator => {
@@ -431,6 +435,7 @@ object FileLayerProvider {
           .map(t => (t._1,t._2.get)).iterator,
           preservesPartitioning = true)
 
+    tiledRDD = DatacubeSupport.applyDataMask(datacubeParams,tiledRDD,metadata, pixelwiseMasking = true)
 
     val cRDD = ContextRDD(tiledRDD, metadata)
     cRDD.name = rasterRegionRDD.name
@@ -739,7 +744,6 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
 
     var requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = filteredSources.map(t => (SpaceTimeKey(t._1, TemporalKey(t._2.data._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))), t._2))
-    requiredSpacetimeKeys = DatacubeSupport.applyDataMask(datacubeParams, requiredSpacetimeKeys,metadata)
 
     if (isUTM) {
       //only for utm is just a safeguard to limit to sentine-1/2 for now
@@ -849,7 +853,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       regions.name = s"FileCollection-${openSearchCollectionId}"
 
       //convert to raster region
-      val cube= rasterRegionsToTiles(regions, metadata, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), partitioner)
+      val cube= rasterRegionsToTiles(regions, metadata, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), partitioner, datacubeParams)
       logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner}")
       cube
     }finally{
