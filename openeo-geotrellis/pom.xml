@@ -156,6 +156,12 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>nl.jqno.equalsverifier</groupId>
+            <artifactId>equalsverifier</artifactId>
+            <version>3.15.1</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>mil.nga.geopackage</groupId>
             <artifactId>geopackage</artifactId>
             <version>5.0.0</version>

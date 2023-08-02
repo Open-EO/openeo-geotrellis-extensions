@@ -53,12 +53,14 @@ object ProbaVPathDateExtractor extends PathDateExtractor {
 }
 
 object Sentinel5PPathDateExtractor {
+  private val date = raw"(\d{4})(\d{2})(\d{2})".r.unanchored
+
   val Daily = new Sentinel5PPathDateExtractor(maxDepth = 3)
   val Monthly = new Sentinel5PPathDateExtractor(maxDepth = 2)
 }
 
 class Sentinel5PPathDateExtractor(override protected val maxDepth: Int) extends PathDateExtractor {
-  private val date = raw"(\d{4})(\d{2})(\d{2})".r.unanchored
+  import Sentinel5PPathDateExtractor._
 
   override def extractDate(rootPath: Path, child: Path): ZonedDateTime = {
     val relativePath = rootPath.relativize(child)
@@ -69,10 +71,10 @@ class Sentinel5PPathDateExtractor(override protected val maxDepth: Int) extends 
     }
   }
 
-  override def equals(other: Any): Boolean = other match {
+  override final def equals(other: Any): Boolean = other match {
     case that: Sentinel5PPathDateExtractor => this.maxDepth == that.maxDepth
     case _ => false
   }
 
-  override def hashCode(): Int = maxDepth.hashCode()
+  override final def hashCode(): Int = maxDepth.hashCode()
 }

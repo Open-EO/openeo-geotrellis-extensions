@@ -1,6 +1,7 @@
 package org.openeo.geotrellis.layers
 
-import org.junit.Assert.assertTrue
+import nl.jqno.equalsverifier.EqualsVerifier
+import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.Test
 
 import java.nio.file.Paths
@@ -66,5 +67,16 @@ class PathDateExtractorTest {
     val expected = LocalDate.of(2017, 4, 24).atStartOfDay(ZoneId.of("UTC"))
 
     assertTrue(dates contains expected)
+  }
+
+  @Test
+  def testSuitableAsCacheKey(): Unit = {
+    EqualsVerifier.forClass(classOf[Sentinel5PPathDateExtractor]).verify()
+
+    assertEquals(ProbaVPathDateExtractor, ProbaVPathDateExtractor)
+    assertEquals(ProbaVPathDateExtractor.hashCode(), ProbaVPathDateExtractor.hashCode())
+
+    assertEquals(SplitYearMonthDayPathDateExtractor, SplitYearMonthDayPathDateExtractor)
+    assertEquals(SplitYearMonthDayPathDateExtractor.hashCode(), SplitYearMonthDayPathDateExtractor.hashCode())
   }
 }
