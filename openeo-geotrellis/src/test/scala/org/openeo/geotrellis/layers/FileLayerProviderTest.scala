@@ -338,6 +338,9 @@ class FileLayerProviderTest {
     override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
 
     override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+
+    override def equals(that: Any): Boolean = this eq that.asInstanceOf[AnyRef]
+    override def hashCode(): Int = System.identityHashCode(this)
   }
 
   val myCreoFeatureJSON =
@@ -635,6 +638,9 @@ class FileLayerProviderTest {
     }
     override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
     override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+
+    override def equals(that: Any): Boolean = this eq that.asInstanceOf[AnyRef]
+    override def hashCode(): Int = System.identityHashCode(this)
   }
 
   @Test

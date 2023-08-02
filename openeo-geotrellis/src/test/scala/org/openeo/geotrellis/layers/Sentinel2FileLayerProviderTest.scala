@@ -552,7 +552,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
   @Test
   def testMaskL1CRasterSourceFiltering(): Unit = {
-    class MockOpenSearch extends OpenSearchClient {
+    object MockOpenSearch extends OpenSearchClient {
       override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
         val start = dateRange.get._1
         Seq(OpenSearchResponses.Feature(id="/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240.SAFE",bbox.extent,start, Array(
@@ -564,10 +564,13 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       }
       override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
       override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+
+      override def equals(that: Any): Boolean = this eq that.asInstanceOf[AnyRef]
+      override def hashCode(): Int = System.identityHashCode(this)
     }
 
     val creoL1CLayerProvider = new FileLayerProvider(
-      new MockOpenSearch,
+      MockOpenSearch,
       openSearchCollectionId = "Sentinel2",
       openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_10m_1_Tile1_Data"),
       rootPath = "/eodata",
@@ -603,7 +606,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val cloudPath = "https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/QI_DATA/MSK_CLOUDS_B00.gml"
     val metadataPath = "https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/MTD_TL.xml"
 
-    class MockOpenSearch extends OpenSearchClient {
+    object MockOpenSearch extends OpenSearchClient {
       override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
         val start = dateRange.get._1
         Seq(OpenSearchResponses.Feature(id="/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240.SAFE",bbox.reproject(LatLng).extent,start, Array(
@@ -617,10 +620,13 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       }
       override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
       override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+
+      override def equals(that: Any): Boolean = this eq that.asInstanceOf[AnyRef]
+      override def hashCode(): Int = System.identityHashCode(this)
     }
 
     val creoL1CLayerProvider = new FileLayerProvider(
-      new MockOpenSearch,
+      MockOpenSearch,
       openSearchCollectionId = "Sentinel2",
       openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_10m_1_Tile1_Data", "IMG_DATA_Band_10m_2_Tile1_Data", "IMG_DATA_Band_10m_3_Tile1_Data"),
       rootPath = "/eodata",
