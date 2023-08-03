@@ -1,10 +1,12 @@
 package org.openeo.geotrelliscommon
 
-import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutLevel, LayoutScheme, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme}
+import geotrellis.layer.{Boundable, Bounds, FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutLevel, LayoutScheme, Metadata, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.CRS
-import geotrellis.raster.{CellSize, CellType}
+import geotrellis.raster.{CellSize, CellType, MultibandTile, NODATA, doubleNODATA, isData}
+import geotrellis.spark.join.SpatialJoin
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.{MultibandTileLayerRDD, _}
+import geotrellis.util.GetComponent
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.rdd.RDD
 import org.slf4j.LoggerFactory
@@ -144,34 +146,38 @@ object DatacubeSupport {
     val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
     val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
       val cached = requiredSpacetimeKeys.cache()
-      val spatialCount = cached.map(_.spatialKey).countApproxDistinct()
       val spatialBounds = metadata.bounds.get.toSpatial
       val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
-      val isSparse = spatialCount < 0.5 * maxKeys
-      logger.info(s"Datacube is sparse: $isSparse, requiring $spatialCount keys out of $maxKeys. ")
 
+      if(maxKeys > 4) {
 
-      if(isSparse) {
-        val keys = cached.distinct().collect()
+        val spatialCount = cached.map(_.spatialKey).countApproxDistinct()
+        val isSparse: Boolean = spatialCount < 0.5 * maxKeys
+        logger.info(s"Datacube is sparse: $isSparse, requiring $spatialCount keys out of $maxKeys. ")
+        if (isSparse) {
+          val keys = cached.distinct().collect()
 
-        if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
-          val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
-          new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
+          if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
+            val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
+            new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
+          } else {
+            val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
+            new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
+          }
         } else {
-          val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
-          new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
+          if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
+            val indices = cached.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
+            new SparseSpaceOnlyPartitioner(indices, reduction)
+          } else if (reduction != SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION) {
+            val indices = cached.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
+            new SparseSpaceTimePartitioner(indices, reduction)
+          }
+          else {
+            new ConfigurableSpaceTimePartitioner(reduction)
+          }
         }
       }else{
-        if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
-          val indices = cached.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
-          new SparseSpaceOnlyPartitioner(indices, reduction)
-        }else if (reduction != SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION) {
-          val indices = cached.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
-          new SparseSpaceTimePartitioner(indices, reduction)
-        }
-        else{
-          SpaceTimeByMonthPartitioner
-        }
+        new ConfigurableSpaceTimePartitioner(reduction)
       }
 
 
@@ -180,7 +186,47 @@ object DatacubeSupport {
       ClassTag(classOf[SpaceTimeKey]), partitionerIndex))
   }
 
-  def applyDataMask[T](datacubeParams:Option[DataCubeParameters], rdd:RDD[(SpaceTimeKey,T)],metadata: TileLayerMetadata[SpaceTimeKey])(implicit vt: ClassTag[T]): RDD[(SpaceTimeKey,T)] = {
+
+  def rasterMaskGeneric[K: Boundable : PartitionerIndex : ClassTag, M: GetComponent[*, Bounds[K]]]
+  (datacube: RDD[(K, MultibandTile)] with Metadata[M],
+   mask: RDD[(K, MultibandTile)] with Metadata[M],
+   replacement: java.lang.Double,
+   ignoreKeysWithoutMask: Boolean = false,
+  ): RDD[(K, MultibandTile)] with Metadata[M] = {
+    val joined = if (ignoreKeysWithoutMask) {
+      val tmpRdd = SpatialJoin.join(datacube, mask).mapValues(v => (v._1, Option(v._2)))
+      ContextRDD(tmpRdd, datacube.metadata)
+    } else {
+      SpatialJoin.leftOuterJoin(datacube, mask)
+    }
+    val replacementInt: Int = if (replacement == null) NODATA else replacement.intValue()
+    val replacementDouble: Double = if (replacement == null) doubleNODATA else replacement
+    val masked = joined.mapValues(t => {
+      val dataTile = t._1
+      if (!t._2.isEmpty) {
+        val maskTile = t._2.get
+        var maskIndex = 0
+        dataTile.mapBands((index, tile) => {
+          if (dataTile.bandCount == maskTile.bandCount) {
+            maskIndex = index
+          }
+          tile.dualCombine(maskTile.band(maskIndex))((v1, v2) => if (v2 != 0 && isData(v1)) replacementInt else v1)((v1, v2) => if (v2 != 0.0 && isData(v1)) replacementDouble else v1)
+        })
+
+      } else {
+        dataTile
+      }
+
+    })
+
+    new ContextRDD(masked, datacube.metadata)
+  }
+
+  def applyDataMask(datacubeParams: Option[DataCubeParameters],
+                    rdd: RDD[(SpaceTimeKey, MultibandTile)],
+                    metadata: TileLayerMetadata[SpaceTimeKey],
+                    pixelwiseMasking: Boolean = false,
+                   )(implicit vt: ClassTag[MultibandTile]): RDD[(SpaceTimeKey, MultibandTile)] = {
     if (datacubeParams.exists(_.maskingCube.isDefined)) {
       val maskObject = datacubeParams.get.maskingCube.get
       maskObject match {
@@ -191,17 +237,28 @@ object DatacubeSupport {
             }
             val filtered = spacetimeMask.withContext{_.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))}
             val alignedMask: MultibandTileLayerRDD[SpaceTimeKey] =
-            if(spacetimeMask.metadata.crs.equals(metadata.crs) && spacetimeMask.metadata.layout.equals(metadata.layout)) {
-              filtered
-            }else{
-              logger.debug(s"mask: automatically resampling mask to match datacube: ${spacetimeMask.metadata}")
-              filtered.reproject(metadata.crs,metadata.layout,16,rdd.partitioner)._2
+              if(spacetimeMask.metadata.crs.equals(metadata.crs) && spacetimeMask.metadata.layout.equals(metadata.layout)) {
+                filtered
+              }else{
+                logger.debug(s"mask: automatically resampling mask to match datacube: ${spacetimeMask.metadata}")
+                filtered.reproject(metadata.crs,metadata.layout,16,rdd.partitioner)._2
+              }
+
+            if (pixelwiseMasking) {
+              val spacetimeDataContextRDD = ContextRDD(rdd, metadata)
+              // maskingCube is only set from Python when replacement is not defined
+              rasterMaskGeneric(spacetimeDataContextRDD, alignedMask, null, ignoreKeysWithoutMask = true)
+            } else {
+              // Because we are working on Tiles here and not RasterSources, this operation can already download the pixel data:
+              rdd.join(alignedMask).mapValues(_._1)
             }
-            return rdd.join(alignedMask).mapValues(_._1)
+          } else {
+            rdd
           }
-        case _ => return rdd
+        case _ => rdd
       }
+    } else {
+      rdd
     }
-    return rdd
   }
 }

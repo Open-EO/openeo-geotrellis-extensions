@@ -98,7 +98,6 @@ object PyramidFactoryTest {
   }
 }
 
-@Ignore("Ignore while this error is present: \"status\":429,\"reason\":\"Too Many Requests\",\"message\":\"You have exceeded your rate limit\",\"code\":\"RATE_LIMIT_EXCEEDED\"")
 class PyramidFactoryTest {
   import PyramidFactoryTest._
 
@@ -327,7 +326,6 @@ class PyramidFactoryTest {
 
   @Test
   def testUtm(): Unit = {
-    val expected = referenceRaster("utm.tif")
 
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
     val correlationId = "r-abc123"
@@ -347,20 +345,27 @@ class PyramidFactoryTest {
       val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "S2L2A", new DefaultCatalogApi(endpoint),
         new DefaultProcessApi(endpoint), authorizer, maxSpatialResolution = CellSize(10,10))
 
-      val Seq((_, layer)) = pyramidFactory.datacube_seq(
+      val parameters = new DataCubeParameters()
+      parameters.layoutScheme = "FloatingLayoutScheme"
+      parameters.globalExtent = Some(utmBoundingBox)
+
+      var Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
         from_date = ISO_OFFSET_DATE_TIME format date,
         to_date = ISO_OFFSET_DATE_TIME format date,
         band_names = Seq("B08", "B04", "B03").asJava,
         metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
-        new DataCubeParameters,
+        parameters,
         correlationId
       )
 
       assertTrue(layer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
 
       val spatialLayer = layer
-        .toSpatial()
+        .toSpatial().withContext{_.map(t=> {
+          assert(t._1.row>=0 && t._1.col>=0)
+          t
+        } )}
         .crop(utmBoundingBox.extent)
         .cache()
 
@@ -369,6 +374,7 @@ class PyramidFactoryTest {
       val tif = MultibandGeoTiff(multibandTile, extent, layer.metadata.crs, geoTiffOptions)
       tif.write(s"/tmp/utm.tif")
 
+      val expected = referenceRaster("utm.tif")
       assertEquals(expected, actual)
 
       val trackedMetadata = BatchJobMetadataTracker.tracker("").asDict()
@@ -436,7 +442,12 @@ class PyramidFactoryTest {
       assertEquals(s2Part.index,s1Part.index)
 
       val spatialLayer = layer
-        .toSpatial()
+        .toSpatial().withContext {
+        _.map(t => {
+          assert(t._1.row >= 0 && t._1.col >= 0)
+          t
+        })
+      }
         .cache()
 
       val utmPolygonsExtent = utmPolygons.toSeq.extent
@@ -492,7 +503,12 @@ class PyramidFactoryTest {
       )
 
       val spatialLayer = layer
-        .toSpatial()
+        .toSpatial().withContext {
+        _.map(t => {
+          assert(t._1.row >= 0 && t._1.col >= 0)
+          t
+        })
+      }
         .cache()
 
       val utmPolygonsExtent = utmPolygons.toSeq.extent

@@ -13,7 +13,6 @@ import geotrellis.raster.mapalgebra.focal.{Convolve, Kernel, TargetCell}
 import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.resample.{NearestNeighbor, ResampleMethod}
-import geotrellis.spark.join.SpatialJoin
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
@@ -26,7 +25,7 @@ import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MinIgnoreNoData}
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
-import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner}
 import org.slf4j.LoggerFactory
 
 import java.io.File
@@ -35,6 +34,7 @@ import java.nio.file.{Files, Paths}
 import java.time.{Instant, ZonedDateTime}
 import java.util
 import scala.collection.JavaConverters._
+import scala.collection.mutable.ListBuffer
 import scala.collection.{JavaConverters, immutable, mutable}
 import scala.reflect._
 
@@ -132,22 +132,7 @@ class OpenEOProcesses extends Serializable {
     logger.info(s"Applying callback on time dimension of cube with partitioner: ${datacube.partitioner.getOrElse("no partitioner")} - index: ${index.getOrElse("no index")} and metadata ${datacube.metadata}")
     val function = scriptBuilder.generateFunction(context.asScala.toMap)
     val expectedCellType = datacube.metadata.cellType
-    val applyToTimeseries: Iterable[(SpaceTimeKey,MultibandTile)] => mutable.Map[SpaceTimeKey, MultibandTile] = values => {
-      //val values = tiles._2
-      val aTile = firstTile(values.map(_._2))
-      val labels = values.map(_._1).toList.sortBy(_.instant)
-      val resultMap: mutable.Map[SpaceTimeKey,mutable.ListBuffer[Tile]] = mutable.Map()
-      for (b <- 0 until aTile.bandCount) {
-
-        val temporalTile = timeseriesForBand(b, values, expectedCellType)
-        val resultTiles = function(temporalTile.bands)
-        var resultLabels: Iterable[(SpaceTimeKey, Tile)] = labels.zip(resultTiles)
-        resultLabels.foreach(result => resultMap.getOrElseUpdate(result._1, mutable.ListBuffer()).append(result._2))
-
-      }
-      resultMap.map(tuple => (tuple._1, MultibandTile(tuple._2)))
-
-    }
+    val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => mutable.Map[SpaceTimeKey, MultibandTile] = createTemporalCallback(function, expectedCellType)
 
     val rdd =
     if(index.isDefined && index.get.isInstanceOf[SparseSpaceOnlyPartitioner]) {
@@ -168,6 +153,25 @@ class OpenEOProcesses extends Serializable {
   }
 
 
+  private def createTemporalCallback(function: Seq[Tile] => Seq[Tile], expectedCellType: CellType) = {
+    val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => mutable.Map[SpaceTimeKey, MultibandTile] = values => {
+      //val values = tiles._2
+      val aTile = firstTile(values.map(_._2))
+      val labels = values.map(_._1).toList.sortBy(_.instant)
+      val resultMap: mutable.Map[SpaceTimeKey, ListBuffer[Tile]] = mutable.Map()
+      for (b <- 0 until aTile.bandCount) {
+
+        val temporalTile = timeseriesForBand(b, values, expectedCellType)
+        val resultTiles = function(temporalTile.bands)
+        var resultLabels: Iterable[(SpaceTimeKey, Tile)] = labels.zip(resultTiles)
+        resultLabels.foreach(result => resultMap.getOrElseUpdate(result._1, mutable.ListBuffer()).append(result._2))
+
+      }
+      resultMap.map(tuple => (tuple._1, MultibandTile(tuple._2)))
+
+    }
+    applyToTimeseries
+  }
 
   /**
    * apply_dimension, over time dimension
@@ -344,6 +348,9 @@ class OpenEOProcesses extends Serializable {
   }
 
   def aggregateTemporal(datacube:MultibandTileLayerRDD[SpaceTimeKey], intervals:java.lang.Iterable[String],labels:java.lang.Iterable[String], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]) :MultibandTileLayerRDD[SpaceTimeKey] = {
+    return aggregateTemporal(datacube, intervals, labels, scriptBuilder, context,true)
+  }
+  def aggregateTemporal(datacube:MultibandTileLayerRDD[SpaceTimeKey], intervals:java.lang.Iterable[String],labels:java.lang.Iterable[String], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any], reduce:Boolean ) :MultibandTileLayerRDD[SpaceTimeKey] = {
     val timePeriods: Seq[Iterable[Instant]] = JavaConverters.iterableAsScalaIterableConverter(intervals).asScala.map(s => Instant.parse(s)).grouped(2).toList
     val labelsDates = labels.asScala.map(ZonedDateTime.parse(_))
     val periodsToLabels: Seq[(Iterable[Instant], String)] = timePeriods.zip(labels.asScala)
@@ -385,7 +392,7 @@ class OpenEOProcesses extends Serializable {
 
     val allKeysRDD: RDD[(SpaceTimeKey, Null)] = SparkContext.getOrCreate().parallelize(allPossibleSpacetime)
 
-    def mapToNewKey(tuple: (SpaceTimeKey, MultibandTile)): Seq[(SpaceTimeKey, MultibandTile)] = {
+    def mapToNewKey(tuple: (SpaceTimeKey, MultibandTile)): Seq[(SpaceTimeKey, (SpaceTimeKey,MultibandTile))] = {
       val instant = tuple._1.time.toInstant
       val spatialKey = tuple._1.spatialKey
       val labelsForKey = periodsToLabels.filter(p => {
@@ -396,15 +403,17 @@ class OpenEOProcesses extends Serializable {
         (leftBound.isBefore(instant) && rightBound.isAfter(instant)) || leftBound.equals(instant)
       }).map(t => t._2).map(ZonedDateTime.parse(_))
 
-      labelsForKey.map(l => (SpaceTimeKey(spatialKey, TemporalKey(l)), tuple._2))
+      labelsForKey.map(l => (SpaceTimeKey(spatialKey, TemporalKey(l)), tuple))
     }
 
-    def aggregateTiles(tiles: Iterable[MultibandTile]) = {
 
-      val aTile = firstTile(tiles)
+
+    def aggregateTiles(tiles: Iterable[(SpaceTimeKey,MultibandTile)]) = {
+
+      val aTile = firstTile(tiles.map(_._2))
       val resultTiles: mutable.ArrayBuffer[Tile] = mutable.ArrayBuffer[Tile]()
       for (b <- 0 until aTile.bandCount) {
-        val temporalTile = MultibandTile(tiles.map(_.band(b)))
+        val temporalTile = MultibandTile(tiles.map(_._2.band(b)))
         val aggregatedTiles: Seq[Tile] = function(temporalTile.bands)
         resultTiles += aggregatedTiles.head
 
@@ -413,17 +422,29 @@ class OpenEOProcesses extends Serializable {
 
     }
 
+    val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => mutable.Map[SpaceTimeKey, MultibandTile] = createTemporalCallback(function, datacube.metadata.cellType)
+
+
     val tilesByInterval: RDD[(SpaceTimeKey, MultibandTile)] =
-    if(datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] && datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
-      datacube.mapPartitions(elements =>{
-        val byNewKey: Map[SpaceTimeKey, Stream[(SpaceTimeKey, MultibandTile)]] = elements.flatMap(mapToNewKey).toStream.groupBy(_._1)
-        byNewKey.mapValues(v=>aggregateTiles(v.map(_._2))).iterator
-      },preservesPartitioning = true)
-    }else{
-       datacube.flatMap(tuple => {
-        mapToNewKey(tuple)
-      }).groupByKey(partitioner).mapValues( aggregateTiles)
-    }
+      if(reduce) {
+        if(datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] && datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
+          datacube.mapPartitions(elements =>{
+            val byNewKey= elements.flatMap(mapToNewKey).toStream.groupBy(_._1)
+            byNewKey.mapValues(v=>aggregateTiles(v.map(_._2))).iterator
+          },preservesPartitioning = true)
+        }else{
+          datacube.flatMap(tuple => {
+            mapToNewKey(tuple)
+          }).groupByKey(partitioner).mapValues( aggregateTiles)
+        }
+
+      }else{
+
+        datacube.flatMap(tuple => {
+          mapToNewKey(tuple)
+        }).groupByKey(partitioner).flatMap( t => applyToTimeseries(t._2))
+
+      }
 
     val cols = datacube.metadata.tileLayout.tileCols
     val rows = datacube.metadata.tileLayout.tileRows
@@ -434,7 +455,13 @@ class OpenEOProcesses extends Serializable {
       case value: OpenEORasterCube[SpaceTimeKey] => value.openEOMetadata.bandCount
       case _ => 0
     }
-    val filledRDD: RDD[(SpaceTimeKey, MultibandTile)] = tilesByInterval.rightOuterJoin(allKeysRDD,partitioner).mapValues(_._1.getOrElse(new EmptyMultibandTile(cols, rows, cellType, bandCount)))
+    val filledRDD: RDD[(SpaceTimeKey, MultibandTile)] = {
+      if(reduce) {
+        tilesByInterval.rightOuterJoin(allKeysRDD,partitioner).mapValues(_._1.getOrElse(new EmptyMultibandTile(cols, rows, cellType, bandCount)))
+      }else{
+        tilesByInterval
+      }
+    }
     return ContextRDD(filledRDD, datacube.metadata.copy(bounds = newBounds))
   }
 
@@ -702,10 +729,11 @@ class OpenEOProcesses extends Serializable {
   }
 
   def mergeSpatialCubes(leftCube: MultibandTileLayerRDD[SpatialKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String): ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = {
-    checkMetadataCompatible(leftCube.metadata,rightCube.metadata)
-    val joined = outerJoin(leftCube,rightCube)
-    val outputCellType = leftCube.metadata.cellType.union(rightCube.metadata.cellType)
-    val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(rightCube.metadata.extent),cellType = outputCellType)
+    val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,NearestNeighbor,leftCube.partitioner.orNull)._2
+    checkMetadataCompatible(leftCube.metadata,resampled.metadata)
+    val joined = outerJoin(leftCube,resampled)
+    val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
+    val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(resampled.metadata.extent),cellType = outputCellType)
     mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
@@ -785,7 +813,7 @@ class OpenEOProcesses extends Serializable {
   def retile(datacube: MultibandTileLayerRDD[SpaceTimeKey], sizeX:Int, sizeY:Int, overlapX:Int, overlapY:Int): MultibandTileLayerRDD[SpaceTimeKey] = {
     val regridded =
     if(sizeX >0 && sizeY > 0){
-      datacube.regrid(sizeX,sizeY)
+      RegridFixed(filterNegativeSpatialKeys(datacube),sizeX,sizeY)
     }else{
       datacube
     }
@@ -854,28 +882,7 @@ class OpenEOProcesses extends Serializable {
 
   def rasterMaskGeneric[K: Boundable: PartitionerIndex: ClassTag,M: GetComponent[*, Bounds[K]]]
   (datacube: RDD[(K,MultibandTile)] with Metadata[M], mask: RDD[(K,MultibandTile)] with Metadata[M], replacement: java.lang.Double): RDD[(K,MultibandTile)] with Metadata[M] = {
-    val joined = SpatialJoin.leftOuterJoin(datacube, mask)
-    val replacementInt: Int = if (replacement == null) NODATA else replacement.intValue()
-    val replacementDouble: Double = if (replacement == null) doubleNODATA else replacement
-    val masked = joined.mapValues(t => {
-      val dataTile = t._1
-      if (!t._2.isEmpty) {
-        val maskTile = t._2.get
-        var maskIndex = 0
-        dataTile.mapBands((index,tile) =>{
-          if(dataTile.bandCount == maskTile.bandCount){
-            maskIndex = index
-          }
-          tile.dualCombine(maskTile.band(maskIndex))((v1,v2) => if (v2 != 0 && isData(v1)) replacementInt else v1)((v1,v2) => if (v2 != 0.0 && isData(v1)) replacementDouble else v1)
-        })
-
-      } else {
-        dataTile
-      }
-
-    })
-
-    new ContextRDD(masked, datacube.metadata)
+    DatacubeSupport.rasterMaskGeneric(datacube, mask, replacement)
   }
 
   /**

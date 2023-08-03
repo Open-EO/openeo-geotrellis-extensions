@@ -5,9 +5,32 @@
         </Console>
     </Appenders>
     <Loggers>
+
+        <!-- Keep in sync with https://git.vito.be/projects/BIGGEO/repos/openeo-deploy/browse/mep/log4j2.xml -->
+        <Logger name="be.vito.eodata.ts.filters.SparkPoolRequestFilter" level="debug" />
+        <Logger name="org.apache.accumulo.core.client" level="debug" />
+        <Logger name="org.apache.curator" level="warn"/>
+        <Logger name="org.apache.hadoop" level="error"/>
+        <Logger name="org.apache.spark" level="error" />
+        <Logger name="org.apache.spark.deploy.yarn.ApplicationMaster" level="off"/> <!-- Ignore this: "User application exited with status 1" -->
+        <Logger name="org.apache.spark.executor.Executor" level="off" />
+        <Logger name="org.apache.spark.network.server.TransportRequestHandler" level="off"/> <!-- Ignore this: "Could not find CoarseGrainedScheduler." -->
+        <Logger name="org.apache.spark.scheduler.TaskSetManager" level="warn" />
+        <Logger name="org.apache.spark.storage.DiskBlockObjectWriter" level="off"/>
+        <Logger name="org.apache.zookeeper" level="warn"/>
+        <Logger name="org.apache.zookeeper.ClientCnxn" level="error"/> <!-- Ignore this: "Unable to read additional data from server sessionid 0x..., likely server has closed socket" -->
+        <Logger name="org.openeo" level="debug" />
+        <Logger name="org.openeo.geotrellissentinelhub" level="info" />
+        <Logger name="org.openeo.geotrellissentinelhub.AuthApi" level="debug" />
+        <Logger name="org.openeo.geotrellissentinelhub.CachingService" level="debug" />
+        <Logger name="org.openeo.geotrellissentinelhub.Sentinel1GrdInitialCacheOperation" level="debug" />
+        <Logger name="org.openeo.geotrellissentinelhub.Sentinel2L2AInitialCacheOperation" level="debug" />
+        <Logger name="org.sparkproject.jetty.server" level="warn"/>
+        <Logger name="ucar.nc2.jni.netcdf.Nc4Iosp" level="debug" />
+
         <Logger name="org.openeo.geotrellis.ComputeStatsGeotrellisAdapter" level="debug" />
         <Logger name="org.openeo.opensearch.OpenSearchClient" level="debug" />
-        <Root level="info">
+        <Root level="warn">
             <AppenderRef ref="stdout" />
         </Root>
     </Loggers>

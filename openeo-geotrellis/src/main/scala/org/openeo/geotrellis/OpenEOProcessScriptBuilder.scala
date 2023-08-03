@@ -441,6 +441,10 @@ class OpenEOProcessScriptBuilder {
     inputFunction(context)
   }
 
+  def generateFunction(context: util.Map[String, Any]): Seq[Tile] => Seq[Tile] = {
+    inputFunction(context.toMap)
+  }
+
   def generateFunction(): Seq[Tile] => Seq[Tile] = {
     wrapProcessWithDefaultContext(inputFunction)
   }
@@ -1166,18 +1170,36 @@ class OpenEOProcessScriptBuilder {
     val storedArgs = contextStack.head
     val inputFunction = storedArgs.get("data").get
     val index = arguments.getOrDefault("index",null)
-    if(index == null) {
-      throw new IllegalArgumentException("Missing 'index' argument in array_element.")
+    val label = arguments.getOrDefault("label",null)
+    if(index == null && label == null ) {
+      throw new IllegalArgumentException("Missing 'index' or 'label' argument in array_element.")
     }
-    if(!index.isInstanceOf[Integer]){
+    if(label == null && !index.isInstanceOf[Integer]){
       throw new IllegalArgumentException("The 'index' argument should be an integer, but got: " + index)
     }
-    val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
+    val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) => {
       val input: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
-      if(input.size <= index.asInstanceOf[Integer]) {
+      val theActualIndex: Int =
+      if (label != null) {
+        if(context.contains("array_labels")) {
+
+          context("array_labels").asInstanceOf[util.List[String]].indexOf(label)
+        }else{
+          throw new IllegalArgumentException("array_element: ArrayNotLabeled")
+        }
+      }
+      else{
+        index.asInstanceOf[Integer]
+      }
+
+      if(theActualIndex<0 && label !=null){
+        throw new IllegalArgumentException(s"array_element: Could not find label ${label}, these labels are available:${context("array_labels")}")
+      }
+
+      if (input.size <= theActualIndex) {
         throw new IllegalArgumentException("Invalid band index " + index + ", only " + input.size + " bands available.")
       }
-      Seq(input(index.asInstanceOf[Integer]))
+      Seq(input(theActualIndex))
     }
     bandFunction
   }

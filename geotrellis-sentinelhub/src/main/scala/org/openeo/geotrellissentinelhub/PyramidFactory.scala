@@ -331,7 +331,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                   Stream.empty
               }
 
-            DatacubeSupport.applyDataMask(Some(dataCubeParameters), tilesRdd,metadata)
+            DatacubeSupport.applyDataMask(Some(dataCubeParameters), tilesRdd, metadata, pixelwiseMasking = true)
           } else {
             val multiPolygon: Geometry = if (polygons.length <= 2000) {
               val simplified = simplify(polygons)
@@ -429,19 +429,21 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               logger.info(s"Sentinelhub datacube requires approximately ${spatialKeyCount} spatial keys.")
             }
 
-            val requiredKeysRdd = requiredSpatialKeysForFeatures.map { case (SpatialKey(col, row), Feature(_, date)) => SpaceTimeKey(col, row, date)}
+            val requiredKeysRdd = requiredSpatialKeysForFeatures.map { case (SpatialKey(col, row), Feature(_, date)) => SpaceTimeKey(col, row, date)}.filter(k=> k.col>=0&&k.row>=0)
 
             val partitioner = DatacubeSupport.createPartitioner(Some(dataCubeParameters), requiredKeysRdd, metadata)
             val approxRequests = requiredKeysRdd.countApproxDistinct()
             logger.info(s"Created Sentinelhub datacube ${collectionId} with $approxRequests keys and metadata ${metadata} and ${partitioner.get}")
 
-            var keysRdd = requiredKeysRdd.map((_, None)).partitionBy(partitioner.get)
-            keysRdd = DatacubeSupport.applyDataMask(Some(dataCubeParameters), keysRdd,metadata)
+            val keysRdd = requiredKeysRdd.map((_, None)).partitionBy(partitioner.get)
 
-            val tilesRdd: RDD[(SpaceTimeKey,MultibandTile)] = keysRdd
+            var keysRddWithData = keysRdd
               .mapPartitions(_.map { case (spaceTimeKey, _) => (spaceTimeKey, loadMasked(spaceTimeKey.spatialKey, spaceTimeKey.time, approxRequests)) }, preservesPartitioning = true)
-              .flatMapValues(_.filter(tile => !tile.bands.forall(_.isNoDataTile)))
+              .flatMapValues(_.toList)
+            keysRddWithData = DatacubeSupport.applyDataMask(Some(dataCubeParameters), keysRddWithData, metadata, pixelwiseMasking = true)
 
+            val tilesRdd: RDD[(SpaceTimeKey, MultibandTile)] = keysRddWithData
+              .filter(tile => !tile._2.bands.forall(_.isNoDataTile))
             tilesRdd
           }
 

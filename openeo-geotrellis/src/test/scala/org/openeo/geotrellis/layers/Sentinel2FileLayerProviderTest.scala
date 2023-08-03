@@ -3,14 +3,13 @@ package org.openeo.geotrellis.layers
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
-import geotrellis.raster.geotiff.{GeoTiffRasterSource, GeoTiffReprojectRasterSource}
-import geotrellis.raster.io.geotiff.{GeoTiffReader, MultibandGeoTiff}
-import geotrellis.raster.resample.NearestNeighbor
+import geotrellis.raster.geotiff.GeoTiffRasterSource
+import geotrellis.raster.io.geotiff.{GeoTiff, GeoTiffReader, MultibandGeoTiff}
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, GridBounds, GridExtent, MultibandTile, MutableArrayTile, NODATA, PaddedTile, Raster, RasterExtent, ShortConstantNoDataArrayTile, ShortUserDefinedNoDataCellType, TargetRegion, Tile, UShortConstantNoDataArrayTile}
+import geotrellis.raster.{CellSize, MultibandTile, NODATA, PaddedTile, ShortUserDefinedNoDataCellType}
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
@@ -20,14 +19,15 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.SizeEstimator
 import org.junit.Assert._
-import org.junit.{AfterClass, BeforeClass}
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api._
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
+import org.junit.{AfterClass, BeforeClass}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
-import org.openeo.geotrellis.{LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
+import org.openeo.geotrellis.{LayerFixtures, MergeCubesSpec, OpenEOProcessScriptBuilder, OpenEOProcesses}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, ResampledTile}
 import org.openeo.opensearch.OpenSearchResponses.Link
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
@@ -37,8 +37,8 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time._
 import java.util
-import java.util.{Arrays, Collections}
 import java.util.stream.Stream
+import java.util.{Arrays, Collections}
 import scala.collection.JavaConverters.mapAsJavaMapConverter
 
 object Sentinel2FileLayerProviderTest {
@@ -290,8 +290,17 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       .toSpatial(date)
       .cache()
 
-    spatialLayer.writeGeoTiff("/tmp/Sentinel2FileLayerProvider_multiband.tif", bbox)
+    spatialLayer.writeGeoTiff("tmp/Sentinel2FileLayerProvider_multiband.tif", bbox)
     assertNotEquals(originalCount,maskedCount)
+
+    val resultTiff = GeoTiff.readMultiband("tmp/Sentinel2FileLayerProvider_multiband.tif")
+
+    val refFile = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/Sentinel2FileLayerProvider_multiband_reference.tif")
+    val refTiff = GeoTiff.readMultiband(refFile.getPath)
+
+    val mse = MergeCubesSpec.simpleMeanSquaredError(resultTiff.tile.band(0), refTiff.tile.band(0))
+    println("MSE = " + mse)
+    assertTrue(mse < 0.1)
   }
 
 
@@ -543,7 +552,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
   @Test
   def testMaskL1CRasterSourceFiltering(): Unit = {
-    class MockOpenSearch extends OpenSearchClient {
+    object MockOpenSearch extends OpenSearchClient with IdentityEquals {
       override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
         val start = dateRange.get._1
         Seq(OpenSearchResponses.Feature(id="/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240.SAFE",bbox.extent,start, Array(
@@ -558,7 +567,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     }
 
     val creoL1CLayerProvider = new FileLayerProvider(
-      new MockOpenSearch,
+      MockOpenSearch,
       openSearchCollectionId = "Sentinel2",
       openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_10m_1_Tile1_Data"),
       rootPath = "/eodata",
@@ -594,7 +603,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val cloudPath = "https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/QI_DATA/MSK_CLOUDS_B00.gml"
     val metadataPath = "https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/MTD_TL.xml"
 
-    class MockOpenSearch extends OpenSearchClient {
+    object MockOpenSearch extends OpenSearchClient with IdentityEquals {
       override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
         val start = dateRange.get._1
         Seq(OpenSearchResponses.Feature(id="/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240.SAFE",bbox.reproject(LatLng).extent,start, Array(
@@ -611,7 +620,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     }
 
     val creoL1CLayerProvider = new FileLayerProvider(
-      new MockOpenSearch,
+      MockOpenSearch,
       openSearchCollectionId = "Sentinel2",
       openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_10m_1_Tile1_Data", "IMG_DATA_Band_10m_2_Tile1_Data", "IMG_DATA_Band_10m_3_Tile1_Data"),
       rootPath = "/eodata",

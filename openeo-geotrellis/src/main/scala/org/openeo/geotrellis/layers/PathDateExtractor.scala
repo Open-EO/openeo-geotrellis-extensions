@@ -7,6 +7,11 @@ import java.util.stream.Stream
 
 import scala.compat.java8.FunctionConverters._
 
+trait IdentityEquals { // TODO: move this somewhere else?
+  override def equals(that: Any): Boolean = this eq that.asInstanceOf[AnyRef]
+  override def hashCode(): Int = System.identityHashCode(this)
+}
+
 trait PathDateExtractor {
   protected def maxDepth: Int
   protected def extractDate(rootPath: Path, child: Path): ZonedDateTime
@@ -31,9 +36,12 @@ trait PathDateExtractor {
 
     dates
   }
+
+  override def equals(obj: Any): Boolean = throw new NotImplementedError("equals")
+  override def hashCode(): Int = throw new NotImplementedError("hashCode")
 }
 
-object SplitYearMonthDayPathDateExtractor extends PathDateExtractor {
+object SplitYearMonthDayPathDateExtractor extends PathDateExtractor with IdentityEquals {
   override protected val maxDepth = 3
 
   override def extractDate(rootPath: Path, child: Path): ZonedDateTime = {
@@ -43,7 +51,7 @@ object SplitYearMonthDayPathDateExtractor extends PathDateExtractor {
   }
 }
 
-object ProbaVPathDateExtractor extends PathDateExtractor {
+object ProbaVPathDateExtractor extends PathDateExtractor with IdentityEquals {
   override protected val maxDepth = 2
 
   override def extractDate(rootPath: Path, child: Path): ZonedDateTime = {
@@ -53,12 +61,14 @@ object ProbaVPathDateExtractor extends PathDateExtractor {
 }
 
 object Sentinel5PPathDateExtractor {
+  private val date = raw"(\d{4})(\d{2})(\d{2})".r.unanchored
+
   val Daily = new Sentinel5PPathDateExtractor(maxDepth = 3)
   val Monthly = new Sentinel5PPathDateExtractor(maxDepth = 2)
 }
 
 class Sentinel5PPathDateExtractor(override protected val maxDepth: Int) extends PathDateExtractor {
-  private val date = raw"(\d{4})(\d{2})(\d{2})".r.unanchored
+  import Sentinel5PPathDateExtractor._
 
   override def extractDate(rootPath: Path, child: Path): ZonedDateTime = {
     val relativePath = rootPath.relativize(child)
@@ -69,10 +79,10 @@ class Sentinel5PPathDateExtractor(override protected val maxDepth: Int) extends 
     }
   }
 
-  override def equals(other: Any): Boolean = other match {
+  override final def equals(other: Any): Boolean = other match {
     case that: Sentinel5PPathDateExtractor => this.maxDepth == that.maxDepth
     case _ => false
   }
 
-  override def hashCode(): Int = maxDepth.hashCode()
+  override final def hashCode(): Int = maxDepth.hashCode()
 }
