@@ -32,4 +32,14 @@ class FixedFeaturesOpenSearchClient extends OpenSearchClient {
   override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, page: Int): OpenSearchResponses.FeatureCollection = ???
 
   override def getCollections(correlationId: String): Seq[Feature] = ???
+
+  override def equals(other: Any): Boolean = other match {
+    case that: FixedFeaturesOpenSearchClient => features == that.features
+    case _ => false
+  }
+
+  override def hashCode(): Int = {
+    val state = Seq(features)
+    state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
+  }
 }
