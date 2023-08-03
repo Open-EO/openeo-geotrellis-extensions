@@ -564,6 +564,13 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       }
       override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
       override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+
+      override def hashCode(): Int = 0
+
+      override def equals(other: Any): Boolean = other match {
+        case that: MockOpenSearch => true
+        case _ => false
+      }
     }
 
     val creoL1CLayerProvider = new FileLayerProvider(
@@ -617,6 +624,13 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       }
       override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
       override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+
+      override def hashCode(): Int = 0
+
+      override def equals(other: Any): Boolean = other match {
+        case that: MockOpenSearch => true
+        case _ => false
+      }
     }
 
     val creoL1CLayerProvider = new FileLayerProvider(
