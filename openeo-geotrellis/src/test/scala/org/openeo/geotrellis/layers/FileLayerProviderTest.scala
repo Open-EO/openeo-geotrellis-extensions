@@ -65,6 +65,23 @@ object FileLayerProviderTest {
   }
 }
 
+class MockOpenSearchFeatures(val mockedFeatures: Array[OpenSearchResponses.Feature]) extends OpenSearchClient {
+  override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
+    mockedFeatures
+  }
+
+  override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
+
+  override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+
+  override def hashCode(): Int = mockedFeatures.hashCode()
+
+  override def equals(other: Any): Boolean = other match {
+    case that: MockOpenSearchFeatures => mockedFeatures sameElements that.mockedFeatures
+    case _ => false
+  }
+}
+
 class FileLayerProviderTest {
   import FileLayerProviderTest._
 
@@ -330,15 +347,7 @@ class FileLayerProviderTest {
 
   private val sentinel1Product =  FeatureCollection.parse(myFeatureJSON, isUTM = true)
 
-  class MockOpenSearchFeatures(mockedFeatures:Array[OpenSearchResponses.Feature]) extends OpenSearchClient with IdentityEquals {
-    override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
-      mockedFeatures
-    }
 
-    override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
-
-    override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
-  }
 
   val myCreoFeatureJSON =
     """

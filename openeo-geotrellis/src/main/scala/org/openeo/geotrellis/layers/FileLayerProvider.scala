@@ -835,12 +835,15 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       val partitioner = DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
 
       val noResampling = math.abs(metadata.layout.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * metadata.layout.cellSize.resolution
+      val reduction = if(noResampling) 5 else 1
       //resampling is still needed in case bounding boxes are not aligned with pixels
       // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
-      var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1, readKeysToRasterSourcesResult._4.size).flatMap(t=>{
+      var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1, math.max(1,readKeysToRasterSourcesResult._4.size/reduction)).flatMap(t=>{
         val source = if (noResampling) {
+          //fast path
           LayoutTileSource(t._1, metadata.layout, identity)
         } else{
+          //slow path
           t._1.tileToLayout(metadata.layout, datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor))
         }
 
