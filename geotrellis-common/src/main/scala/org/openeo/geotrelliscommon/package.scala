@@ -120,6 +120,42 @@ package object geotrelliscommon {
     }
   }
 
+  class ConfigurableSpaceTimePartitioner ( val indexReduction:Int = SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION )  extends PartitionerIndex[SpaceTimeKey] {
+
+    val keyIndex = SfCurveZSpaceTimeKeyIndex.byDay(null)
+
+    def toIndex(key: SpaceTimeKey): BigInt = keyIndex.toIndex(key) >> indexReduction
+
+    def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
+      val originalRanges = keyIndex.indexRanges(keyRange)
+
+      val mappedRanges = originalRanges.map(range => (range._1 >> indexReduction, (range._2 >> indexReduction)))
+
+      val distinct = mappedRanges.distinct
+      var previousEnd: BigInt = null
+
+      //filter out regions that only span 1 value, and are already included in another region, so basically duplicates
+      var lookAheadIndex = 0
+      val filtered = distinct.filter(range => {
+        lookAheadIndex += 1
+        try {
+          if (range._1 == previousEnd && range._1 == range._2) {
+            false
+          } else if (lookAheadIndex < distinct.size && range._1 == range._2 && distinct(lookAheadIndex)._1 == range._2) {
+            false
+          } else {
+            true
+          }
+        } finally {
+          previousEnd = range._2
+        }
+
+      })
+      return filtered
+    }
+
+  }
+
   implicit object SpaceTimeByMonthPartitioner extends PartitionerIndex[SpaceTimeKey] {
 
     val keyIndex = SfCurveZSpaceTimeKeyIndex.byDay(null)

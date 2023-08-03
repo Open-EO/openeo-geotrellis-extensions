@@ -146,34 +146,38 @@ object DatacubeSupport {
     val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
     val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
       val cached = requiredSpacetimeKeys.cache()
-      val spatialCount = cached.map(_.spatialKey).countApproxDistinct()
       val spatialBounds = metadata.bounds.get.toSpatial
       val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
-      val isSparse = spatialCount < 0.5 * maxKeys
-      logger.info(s"Datacube is sparse: $isSparse, requiring $spatialCount keys out of $maxKeys. ")
 
+      if(maxKeys > 4) {
 
-      if(isSparse) {
-        val keys = cached.distinct().collect()
+        val spatialCount = cached.map(_.spatialKey).countApproxDistinct()
+        val isSparse: Boolean = spatialCount < 0.5 * maxKeys
+        logger.info(s"Datacube is sparse: $isSparse, requiring $spatialCount keys out of $maxKeys. ")
+        if (isSparse) {
+          val keys = cached.distinct().collect()
 
-        if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
-          val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
-          new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
+          if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
+            val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
+            new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
+          } else {
+            val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
+            new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
+          }
         } else {
-          val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
-          new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
+          if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
+            val indices = cached.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
+            new SparseSpaceOnlyPartitioner(indices, reduction)
+          } else if (reduction != SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION) {
+            val indices = cached.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
+            new SparseSpaceTimePartitioner(indices, reduction)
+          }
+          else {
+            new ConfigurableSpaceTimePartitioner(reduction)
+          }
         }
       }else{
-        if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
-          val indices = cached.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
-          new SparseSpaceOnlyPartitioner(indices, reduction)
-        }else if (reduction != SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION) {
-          val indices = cached.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
-          new SparseSpaceTimePartitioner(indices, reduction)
-        }
-        else{
-          SpaceTimeByMonthPartitioner
-        }
+        new ConfigurableSpaceTimePartitioner(reduction)
       }
 
 
