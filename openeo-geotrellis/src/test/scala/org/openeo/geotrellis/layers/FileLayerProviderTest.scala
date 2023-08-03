@@ -338,6 +338,13 @@ class FileLayerProviderTest {
     override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
 
     override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+
+    override def hashCode(): Int = mockedFeatures.hashCode()
+
+    override def equals(other: Any): Boolean = other match {
+      case that: MockOpenSearchFeatures => this.mockedFeatures == that.mockedFeatures
+      case _ => false
+    }
   }
 
   val myCreoFeatureJSON =
@@ -635,6 +642,13 @@ class FileLayerProviderTest {
     }
     override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
     override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+
+    override def hashCode(): Int = creoS2Products.hashCode()
+
+    override def equals(other: Any): Boolean = other match {
+      case that: MockOpenSearchFeatures => true
+      case _ => false
+    }
   }
 
   @Test
