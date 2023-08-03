@@ -7,6 +7,11 @@ import java.util.stream.Stream
 
 import scala.compat.java8.FunctionConverters._
 
+trait IdentityEquals {
+  override def equals(that: Any): Boolean = this eq that.asInstanceOf[AnyRef]
+  override def hashCode(): Int = System.identityHashCode(this)
+}
+
 trait PathDateExtractor {
   protected def maxDepth: Int
   protected def extractDate(rootPath: Path, child: Path): ZonedDateTime
@@ -31,9 +36,12 @@ trait PathDateExtractor {
 
     dates
   }
+
+  override def equals(obj: Any): Boolean = throw new NotImplementedError("equals")
+  override def hashCode(): Int = throw new NotImplementedError("hashCode")
 }
 
-object SplitYearMonthDayPathDateExtractor extends PathDateExtractor {
+object SplitYearMonthDayPathDateExtractor extends PathDateExtractor with IdentityEquals {
   override protected val maxDepth = 3
 
   override def extractDate(rootPath: Path, child: Path): ZonedDateTime = {
@@ -43,7 +51,7 @@ object SplitYearMonthDayPathDateExtractor extends PathDateExtractor {
   }
 }
 
-object ProbaVPathDateExtractor extends PathDateExtractor {
+object ProbaVPathDateExtractor extends PathDateExtractor with IdentityEquals {
   override protected val maxDepth = 2
 
   override def extractDate(rootPath: Path, child: Path): ZonedDateTime = {
