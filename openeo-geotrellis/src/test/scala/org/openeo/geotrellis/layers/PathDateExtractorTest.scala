@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.layers
 
 import nl.jqno.equalsverifier.EqualsVerifier
-import org.junit.Assert.{assertEquals, assertTrue}
+import org.junit.Assert.{assertEquals, assertNotEquals, assertTrue}
 import org.junit.Test
 
 import java.nio.file.Paths
@@ -78,5 +78,18 @@ class PathDateExtractorTest {
 
     assertEquals(SplitYearMonthDayPathDateExtractor, SplitYearMonthDayPathDateExtractor)
     assertEquals(SplitYearMonthDayPathDateExtractor.hashCode(), SplitYearMonthDayPathDateExtractor.hashCode())
+  }
+
+  @Test
+  def testIdentityEquals(): Unit = {
+    class X extends IdentityEquals
+
+    val x1, x2 = new X
+
+    assertEquals(x1, x1)
+    assertEquals(x1.hashCode(), x1.hashCode())
+
+    assertNotEquals(x1, x2)
+    assertNotEquals(x1.hashCode(), x2.hashCode())
   }
 }

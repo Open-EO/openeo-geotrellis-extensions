@@ -330,7 +330,7 @@ class FileLayerProviderTest {
 
   private val sentinel1Product =  FeatureCollection.parse(myFeatureJSON, isUTM = true)
 
-  class MockOpenSearchFeatures(mockedFeatures:Array[OpenSearchResponses.Feature]) extends OpenSearchClient {
+  class MockOpenSearchFeatures(mockedFeatures:Array[OpenSearchResponses.Feature]) extends OpenSearchClient with IdentityEquals {
     override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
       mockedFeatures
     }
@@ -338,9 +338,6 @@ class FileLayerProviderTest {
     override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
 
     override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
-
-    override def equals(that: Any): Boolean = this eq that.asInstanceOf[AnyRef]
-    override def hashCode(): Int = System.identityHashCode(this)
   }
 
   val myCreoFeatureJSON =
@@ -631,16 +628,13 @@ class FileLayerProviderTest {
 
   private lazy val creoS2Products =  CreoFeatureCollection.parse(myCreoFeatureJSON)
 
-  class MockCreoOpenSearch extends OpenSearchClient {
+  object MockCreoOpenSearch extends OpenSearchClient with IdentityEquals {
     override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
       val start = dateRange.get._1
       creoS2Products.features
     }
     override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
     override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
-
-    override def equals(that: Any): Boolean = this eq that.asInstanceOf[AnyRef]
-    override def hashCode(): Int = System.identityHashCode(this)
   }
 
   @Test
@@ -924,7 +918,7 @@ class FileLayerProviderTest {
     dataCubeParameters.globalExtent = Some(boundingBox)
 
     val flp = new FileLayerProvider(
-      new MockCreoOpenSearch(),
+      MockCreoOpenSearch,
       "Sentinel2",
       openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_B04_10m_Tile1_Data"),
       rootPath = "/bogus",

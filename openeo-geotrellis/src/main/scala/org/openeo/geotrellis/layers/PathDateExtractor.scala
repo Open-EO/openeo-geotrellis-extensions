@@ -7,7 +7,7 @@ import java.util.stream.Stream
 
 import scala.compat.java8.FunctionConverters._
 
-trait IdentityEquals {
+trait IdentityEquals { // TODO: move this somewhere else?
   override def equals(that: Any): Boolean = this eq that.asInstanceOf[AnyRef]
   override def hashCode(): Int = System.identityHashCode(this)
 }
