@@ -342,7 +342,7 @@ class FileLayerProviderTest {
     override def hashCode(): Int = mockedFeatures.hashCode()
 
     override def equals(other: Any): Boolean = other match {
-      case that: MockOpenSearchFeatures => this.mockedFeatures == that.mockedFeatures
+      case that: MockOpenSearchFeatures => MockOpenSearchFeatures.this.mockedFeatures sameElements that.mockedFeatures
       case _ => false
     }
   }
