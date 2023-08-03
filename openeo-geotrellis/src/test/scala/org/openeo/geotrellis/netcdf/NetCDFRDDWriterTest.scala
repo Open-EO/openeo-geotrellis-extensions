@@ -17,7 +17,7 @@ import org.junit.Assert.{assertFalse, assertTrue}
 import org.junit._
 import org.junit.rules.TemporaryFolder
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
-import org.openeo.geotrelliscommon.{ByKeyPartitioner, DataCubeParameters, SpaceTimeByMonthPartitioner}
+import org.openeo.geotrelliscommon.{ByKeyPartitioner, ConfigurableSpaceTimePartitioner, DataCubeParameters}
 import ucar.nc2.dataset.NetcdfDataset
 
 import java.time.LocalTime.MIDNIGHT
@@ -78,7 +78,7 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     val partitioner = layer.partitioner.get
     assert(partitioner.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
     val index: PartitionerIndex[SpaceTimeKey] = partitioner.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
-    assert(index == SpaceTimeByMonthPartitioner)
+    assert(index.isInstanceOf[ConfigurableSpaceTimePartitioner])
     assert(layer.metadata.tileCols == 128)
 
     val sampleNames = polygons.polygons.indices.map(_.toString)
