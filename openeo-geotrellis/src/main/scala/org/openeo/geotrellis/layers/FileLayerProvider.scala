@@ -830,6 +830,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     var maskStrategy: Option[CloudFilterStrategy] = readKeysToRasterSourcesResult._3
     val metadata = readKeysToRasterSourcesResult._2
     val requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = readKeysToRasterSourcesResult._1.persist()
+    requiredSpacetimeKeys.setName(s"FileLayerProvider_keys_${this.openSearchCollectionId}_${from.toString}_${to.toString}")
 
     try{
       val partitioner = DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
