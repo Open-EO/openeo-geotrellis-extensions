@@ -2,7 +2,7 @@ package org.openeo.geotrellis.layers
 
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, StringName, TargetCellType}
+import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType}
 import geotrellis.vector.Extent
 import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
 
@@ -32,7 +32,7 @@ object SentinelXMLMetadataRasterSource {
     val extent = Extent(ulx, uly - (10 * 10980), ulx + (10 * 10980), uly)
     val gridExtent = GridExtent[Long](extent,CellSize(10,10))
     val allBands = Seq(mSAA,mSZA,mVAA,mVZA)
-    bands.map(b => allBands(b)).map(new SentinelXMLMetadataRasterSource(_, crs, gridExtent, StringName(path)))
+    bands.map(b => allBands(b)).map(new SentinelXMLMetadataRasterSource(_, crs, gridExtent, OpenEoSourcePath(path)))
 
   }
 }
@@ -40,7 +40,7 @@ object SentinelXMLMetadataRasterSource {
 class SentinelXMLMetadataRasterSource(value: Float,
                                       theCrs: CRS,
                                       theGridExtent: GridExtent[Long],
-                                      sourcePathName: StringName,
+                                      sourcePathName: OpenEoSourcePath,
                                      ) extends RasterSource {
 
   val targetCellType = None
