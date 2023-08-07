@@ -16,6 +16,7 @@ import geotrellis.spark._
 import geotrellis.spark.partition.PartitionerIndex.SpatialPartitioner
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector
+import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -654,6 +655,8 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     var commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
     var metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, dates.minBy(_.toEpochSecond), dates.maxBy(_.toEpochSecond), commonCellType)
+    val spatialBounds = metadata.bounds.get.toSpatial
+    val maxSpatialKeyCount = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
     val targetCRS = metadata.crs
     val isUTM = targetCRS.proj4jCrs.getProjection.getName == "utm"
 
@@ -675,31 +678,40 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }
     }
 
-    val polygonsRDD = sc.parallelize(bufferedPolygons).map {
-      _.reproject(polygons_crs, targetCRS)
-    }
-
     val workingPartitioner = SpacePartitioner(metadata.bounds.get.toSpatial)
-    // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
-    var requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey(workingPartitioner)
+    val requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] =
+      if(maxSpatialKeyCount<=2 && bufferedPolygons.length==1) {
+        //reduce complexity for small (synchronous) requests
+        val keys = metadata.keysForGeometry(toPolygon(metadata.extent))
+        sc.parallelize(keys.toSeq,1).map((_,null))
+      }else{
+        val polygonsRDD = sc.parallelize(bufferedPolygons, math.max(1, bufferedPolygons.length / 2)).map {
+          _.reproject(polygons_crs, targetCRS)
+        }
 
-    var spatialKeyCount: Long =
-      if(polygons.length == 1) {
-        //special case for single bbox request
-        val spatialBounds = metadata.bounds.get.toSpatial
-        (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
-      } else{
-        requiredSpatialKeys.map(_._1).countApproxDistinct()
+
+        // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
+        var requiredSpatialKeysLocal: RDD[(SpatialKey, Iterable[Geometry])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey(workingPartitioner)
+
+        var spatialKeyCount: Long =
+          if (polygons.length == 1) {
+            //special case for single bbox request
+            maxSpatialKeyCount
+          } else {
+            requiredSpatialKeysLocal.map(_._1).countApproxDistinct()
+          }
+        logger.info(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
+
+
+        val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, bufferedPolygons, datacubeParams, spatialKeyCount)
+        metadata = retiledMetadata.getOrElse(metadata)
+
+        if (retiledMetadata.isDefined) {
+          requiredSpatialKeysLocal = polygonsRDD.clipToGrid(retiledMetadata.get).groupByKey(workingPartitioner)
+        }
+        requiredSpatialKeysLocal
       }
-    logger.info(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
 
-
-    val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, bufferedPolygons, datacubeParams, spatialKeyCount)
-    metadata = retiledMetadata.getOrElse(metadata)
-
-    if (retiledMetadata.isDefined) {
-      requiredSpatialKeys = polygonsRDD.clipToGrid(retiledMetadata.get).groupByKey(workingPartitioner)
-    }
 
     overlappingRasterSources.map(_._2).foreach(f => {
       val extent = f.geometry.getOrElse(f.bbox.toPolygon()).extent
