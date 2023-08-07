@@ -542,6 +542,41 @@ object FileLayerProvider {
     (loadedPartitions,totalPixelsPartition)
   }
 
+  /**
+   * use static function for rdd construction to try and reduce task deserialization time
+   * @param sc
+   * @param keys
+   * @return
+   */
+  private def keysRDD(sc: SparkContext, keys: Set[SpatialKey]) = {
+    sc.parallelize(keys.toSeq, 1).map((_, null))
+  }
+
+  private def featuresRDD(geometricFeatures: Seq[vector.Feature[Geometry, (RasterSource, Feature)]], metadata: TileLayerMetadata[SpaceTimeKey], targetCRS: CRS, workingPartitioner: SpacePartitioner[SpatialKey], sc: SparkContext) = {
+    val emptyPoint = Point(0.0, 0.0)
+    val cubeExtent = metadata.extent
+    val keysForfeatures = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size))
+      .map(eoProductFeature => {
+
+        val productCRSOrDefault = eoProductFeature.data._2.crs.getOrElse(targetCRS)
+        eoProductFeature.mapGeom(productGeometry => {
+          try {
+            val intersection = productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
+            if (intersection.isValid && intersection.getArea > 0.0) {
+              intersection.reproject(productCRSOrDefault, targetCRS)
+            } else {
+              emptyPoint
+            }
+          } catch {
+            case e: Exception => logger.warn("Exception while determining intersection.", e); emptyPoint
+          }
+
+        })
+      }).filter(!_.geom.equals(emptyPoint))
+      .clipToGrid(metadata.layout).partitionBy(workingPartitioner)
+    keysForfeatures
+  }
+
   private val metadataCache =
     Caffeine.newBuilder()
       .refreshAfterWrite(15, TimeUnit.MINUTES)
@@ -683,7 +718,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       if(maxSpatialKeyCount<=2 && bufferedPolygons.length==1) {
         //reduce complexity for small (synchronous) requests
         val keys = metadata.keysForGeometry(toPolygon(metadata.extent))
-        sc.parallelize(keys.toSeq,1).map((_,null))
+        keysRDD(sc, keys)
       }else{
         val polygonsRDD = sc.parallelize(bufferedPolygons, math.max(1, bufferedPolygons.length / 2)).map {
           _.reproject(polygons_crs, targetCRS)
@@ -718,7 +753,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       if (!checkLatLon(extent)) throw new IllegalArgumentException(s"Geometry or Bounding box provided by the catalog has to be in EPSG:4326, but got ${extent} for catalog entry ${f}")
     })
 
-    val cubeExtent = metadata.extent
+
     //extra check on interior, disabled because it requires an (expensive) lookup of the extent
     /*
     overlappingRasterSources = overlappingRasterSources.filter({ t =>
@@ -728,26 +763,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     //avoid computing keys that are anyway out of bounds, with some buffering to avoid throwing away too much
 
     val geometricFeatures = overlappingRasterSources.map(f => geotrellis.vector.Feature(f._2.geometry.getOrElse(f._2.bbox.toPolygon()), f))
-    val emptyPoint = Point(0.0,0.0)
-    val keysForfeatures = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size))
-      .map(eoProductFeature => {
-
-        val productCRSOrDefault = eoProductFeature.data._2.crs.getOrElse(targetCRS)
-        eoProductFeature.mapGeom(productGeometry => {
-          try{
-            val intersection = productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
-            if(intersection.isValid && intersection.getArea > 0.0) {
-              intersection.reproject(productCRSOrDefault,targetCRS)
-            }else{
-              emptyPoint
-            }
-          }catch {
-            case e: Exception => logger.warn("Exception while determining intersection.",e); emptyPoint
-          }
-
-        } )
-      }).filter(!_.geom.equals(emptyPoint) )
-      .clipToGrid(metadata).partitionBy(workingPartitioner)
+    val keysForfeatures= featuresRDD(geometricFeatures, metadata, targetCRS, workingPartitioner, sc)
 
 
     //rdd
