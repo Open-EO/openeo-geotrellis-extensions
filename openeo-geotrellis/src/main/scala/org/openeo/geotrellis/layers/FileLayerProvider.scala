@@ -24,7 +24,7 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.file.AbstractPyramidFactory
 import org.openeo.geotrellis.tile_grid.TileGrid
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, retryForever}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, autoUtmEpsg, retryForever}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.Feature
 import org.slf4j.LoggerFactory
@@ -902,7 +902,16 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
   }
 
   override def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, zoom: Int = maxZoom, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
-    this.readMultibandTileLayer(from,to,boundingBox,Array(MultiPolygon(boundingBox.extent.toPolygon())),boundingBox.crs,zoom,sc,datacubeParams = Option.empty)
+    val targetBBox =
+    if(this.layoutScheme.isInstanceOf[FloatingLayoutScheme]) {
+      val center = boundingBox.extent.center.reproject(boundingBox.crs,LatLng)
+      val epsg = autoUtmEpsg(center.getX,center.getY)
+      val targetCRS = CRS.fromEpsgCode(epsg)
+      ProjectedExtent(boundingBox.reproject(targetCRS),targetCRS)
+    }else{
+      boundingBox
+    }
+    this.readMultibandTileLayer(from,to,targetBBox,Array(MultiPolygon(targetBBox.extent.toPolygon())),targetBBox.crs,zoom,sc,datacubeParams = Option.empty)
   }
 
 
