@@ -2,11 +2,10 @@ package org.openeo.geotrellis.layers
 
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, SourcePath, TargetCellType}
+import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType}
 import geotrellis.vector.Extent
 import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
 
-import java.net.URL
 import scala.xml.XML
 
 object SentinelXMLMetadataRasterSource {
@@ -37,9 +36,6 @@ object SentinelXMLMetadataRasterSource {
 
   }
 }
-
-// SourcePath is a trait, so we need to subclass it to instantiate.
-case class OpenEoSourcePath(value: String) extends SourcePath
 
 class SentinelXMLMetadataRasterSource(value: Float,
                                       theCrs: CRS,
