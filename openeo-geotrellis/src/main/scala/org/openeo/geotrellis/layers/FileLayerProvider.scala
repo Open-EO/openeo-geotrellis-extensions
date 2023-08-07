@@ -548,7 +548,7 @@ object FileLayerProvider {
    * @param keys
    * @return
    */
-  private def keysRDD(sc: SparkContext, keys: Set[SpatialKey]) = {
+  private def keysRDD(sc: SparkContext, keys: Set[SpatialKey]): RDD[(SpatialKey, Iterable[Geometry])] = {
     sc.parallelize(keys.toSeq, 1).map((_, null))
   }
 
