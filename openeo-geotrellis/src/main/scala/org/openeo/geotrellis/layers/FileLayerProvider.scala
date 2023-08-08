@@ -903,7 +903,8 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
   override def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, zoom: Int = maxZoom, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
     val targetBBox =
-    if(this.layoutScheme.isInstanceOf[FloatingLayoutScheme]) {
+    if(this.layoutScheme.isInstanceOf[FloatingLayoutScheme] && this.maxSpatialResolution.resolution > 2 && this.maxSpatialResolution.resolution < 200) {
+      //this check for utm is not good, ideally fileLayerProvider has access to collection metadata that contains information about native projection system
       val center = boundingBox.extent.center.reproject(boundingBox.crs,LatLng)
       val epsg = autoUtmEpsg(center.getX,center.getY)
       val targetCRS = CRS.fromEpsgCode(epsg)
