@@ -1,14 +1,16 @@
 package org.openeo.geotrellissentinelhub
 
-import org.slf4j.LoggerFactory
 import java.util
 import scala.collection.JavaConverters._
 
 object Criteria {
+  private def isPropagated(metadataProperty: String): Boolean =
+    !Seq("provider:backend", "federation:backends").contains(metadataProperty)
+
   def toQueryProperties(metadata_properties: util.Map[String, util.Map[String, Any]],
                         collectionId: String): util.Map[String, util.Map[String, Any]] = {
     val queryProperties = for {
-      (metadataProperty, criteria) <- metadata_properties.asScala if metadataProperty != "provider:backend"
+      (metadataProperty, criteria) <- metadata_properties.asScala if isPropagated(metadataProperty)
     } yield toQueryPropertyName(metadataProperty, collectionId) -> toQueryCriteria(criteria)
 
     queryProperties.get("eo:cloud_cover") match {
@@ -50,7 +52,7 @@ object Criteria {
 
   def toDataFilters(metadata_properties: util.Map[String, util.Map[String, Any]]): util.Map[String, Any] = {
     val flattenedCriteria = for {
-      (metadataProperty, criteria) <- metadata_properties.asScala if metadataProperty != "provider:backend"
+      (metadataProperty, criteria) <- metadata_properties.asScala if isPropagated(metadataProperty)
       (operator, value) <- criteria.asScala
     } yield (metadataProperty, operator, value)
 

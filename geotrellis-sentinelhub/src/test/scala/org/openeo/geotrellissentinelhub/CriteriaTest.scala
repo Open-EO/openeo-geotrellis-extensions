@@ -179,7 +179,8 @@ class CriteriaTest {
   def ignoreQueryPropertiesForProviderBackend(): Unit = {
     val metadata_properties = Map(
       "eo:cloud_cover" -> Map("lte" -> (20: Any)).asJava,
-      "provider:backend" -> Map("eq" -> ("vito": Any)).asJava
+      "provider:backend" -> Map("eq" -> ("vito": Any)).asJava,
+      "federation:backends" -> Map("eq" -> ("vito": Any)).asJava
     ).asJava
 
     val expected = Map(
@@ -274,7 +275,8 @@ class CriteriaTest {
   def ignoreDataFiltersForProviderBackend(): Unit = {
     val metadata_properties = Map(
       "eo:cloud_cover" -> Map("lte" -> (20: Any)).asJava,
-      "provider:backend" -> Map("eq" -> ("vito": Any)).asJava
+      "provider:backend" -> Map("eq" -> ("vito": Any)).asJava,
+      "federation:backends" -> Map("eq" -> ("vito": Any)).asJava
     ).asJava
 
     val expected = Map("maxCloudCoverage" -> 20).asJava
