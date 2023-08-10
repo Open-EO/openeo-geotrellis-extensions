@@ -65,7 +65,7 @@
         <profile>
             <id>integrationtests</id>
             <activation>
-                <activeByDefault>false</activeByDefault>
+                <activeByDefault>true</activeByDefault>
             </activation>
             <modules>
                 <module>geotrellis-integrationtests</module>
@@ -136,7 +136,7 @@
                             <version>0.10.3</version>
                         </compilerPlugin>
                     </compilerPlugins>
-                    <addScalacArgs>-target:11</addScalacArgs>
+                    <addScalacArgs>-target:jvm-11</addScalacArgs>
                 </configuration>
             </plugin>
             <plugin>
