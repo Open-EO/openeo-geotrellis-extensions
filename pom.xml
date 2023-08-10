@@ -79,8 +79,8 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.1</version>
                 <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
+                    <source>11</source>
+                    <target>11</target>
                     <encoding>UTF-8</encoding>
                 </configuration>
             </plugin>
@@ -136,7 +136,7 @@
                             <version>0.10.3</version>
                         </compilerPlugin>
                     </compilerPlugins>
-                    <addScalacArgs>-target:jvm-1.8</addScalacArgs>
+                    <addScalacArgs>-target:11</addScalacArgs>
                 </configuration>
             </plugin>
             <plugin>
