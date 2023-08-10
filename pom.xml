@@ -115,7 +115,7 @@
             <plugin>
                 <groupId>net.alchim31.maven</groupId>
                 <artifactId>scala-maven-plugin</artifactId>
-                <version>3.4.2</version>
+                <version>4.8.1</version>
                 <executions>
                     <execution>
                         <id>scala-compile-first</id>
@@ -136,7 +136,6 @@
                             <version>0.10.3</version>
                         </compilerPlugin>
                     </compilerPlugins>
-                    <addScalacArgs>-target:jvm-11</addScalacArgs>
                 </configuration>
             </plugin>
             <plugin>
