@@ -110,6 +110,10 @@ class GeotrellisAccumuloRDD(
   }
 
 
+  override def finalize(): Unit = {
+    confBroadcast.destroy()
+    super.finalize()
+  }
 
   override def getPartitions: Array[Partition] = {
     val inputFormat = new AccumuloInputFormat()

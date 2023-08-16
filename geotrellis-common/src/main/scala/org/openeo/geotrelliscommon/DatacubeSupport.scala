@@ -145,7 +145,7 @@ object DatacubeSupport {
     // The sparse partitioner will split the final RDD into a single partition for every SpaceTimeKey.
     val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
     val partitionerIndex: PartitionerIndex[SpaceTimeKey] = {
-      val cached = requiredSpacetimeKeys.cache()
+      val cached = requiredSpacetimeKeys//.cache() Caching seems to lead to memory leak
       val spatialBounds = metadata.bounds.get.toSpatial
       val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
 

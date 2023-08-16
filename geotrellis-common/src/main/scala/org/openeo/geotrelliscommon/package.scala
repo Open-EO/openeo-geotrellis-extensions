@@ -8,6 +8,19 @@ import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 
 package object geotrelliscommon {
 
+  def autoUtmEpsg(lon: Double, lat: Double): Int = {
+    val zone: Int = (math.floor((lon + 180.0) / 6.0) % 60).toInt + 1
+    //Use latitude to determine north / south
+    if( lat >= 0.0)
+      return (32600 + zone)
+    else{
+
+      return 32700 + zone
+    }
+  }
+
+
+
   class ByKeyPartitioner[K](splits: Array[K]) extends Partitioner {
     override def numPartitions: Int = splits.length
 

@@ -16,6 +16,7 @@ import geotrellis.spark._
 import geotrellis.spark.partition.PartitionerIndex.SpatialPartitioner
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector
+import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -23,7 +24,7 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient, ProbaVPyramidFactory}
 import org.openeo.geotrellis.tile_grid.TileGrid
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, retryForever}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, autoUtmEpsg, retryForever}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.LoggerFactory
@@ -541,6 +542,41 @@ object FileLayerProvider {
     (loadedPartitions,totalPixelsPartition)
   }
 
+  /**
+   * use static function for rdd construction to try and reduce task deserialization time
+   * @param sc
+   * @param keys
+   * @return
+   */
+  private def keysRDD(sc: SparkContext, keys: Set[SpatialKey]): RDD[(SpatialKey, Iterable[Geometry])] = {
+    sc.parallelize(keys.toSeq, 1).map((_, null))
+  }
+
+  private def featuresRDD(geometricFeatures: Seq[vector.Feature[Geometry, (RasterSource, Feature)]], metadata: TileLayerMetadata[SpaceTimeKey], targetCRS: CRS, workingPartitioner: SpacePartitioner[SpatialKey], sc: SparkContext) = {
+    val emptyPoint = Point(0.0, 0.0)
+    val cubeExtent = metadata.extent
+    val keysForfeatures = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size))
+      .map(eoProductFeature => {
+
+        val productCRSOrDefault = eoProductFeature.data._2.crs.getOrElse(targetCRS)
+        eoProductFeature.mapGeom(productGeometry => {
+          try {
+            val intersection = productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
+            if (intersection.isValid && intersection.getArea > 0.0) {
+              intersection.reproject(productCRSOrDefault, targetCRS)
+            } else {
+              emptyPoint
+            }
+          } catch {
+            case e: Exception => logger.warn("Exception while determining intersection.", e); emptyPoint
+          }
+
+        })
+      }).filter(!_.geom.equals(emptyPoint))
+      .clipToGrid(metadata.layout).partitionBy(workingPartitioner)
+    keysForfeatures
+  }
+
   private val metadataCache =
     Caffeine.newBuilder()
       .refreshAfterWrite(15, TimeUnit.MINUTES)
@@ -654,6 +690,8 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     var commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
     var metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, dates.minBy(_.toEpochSecond), dates.maxBy(_.toEpochSecond), commonCellType)
+    val spatialBounds = metadata.bounds.get.toSpatial
+    val maxSpatialKeyCount = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
     val targetCRS = metadata.crs
     val isUTM = targetCRS.proj4jCrs.getProjection.getName == "utm"
 
@@ -675,38 +713,47 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }
     }
 
-    val polygonsRDD = sc.parallelize(bufferedPolygons).map {
-      _.reproject(polygons_crs, targetCRS)
-    }
-
     val workingPartitioner = SpacePartitioner(metadata.bounds.get.toSpatial)
-    // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
-    var requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey(workingPartitioner)
+    val requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] =
+      if(maxSpatialKeyCount<=2 && bufferedPolygons.length==1) {
+        //reduce complexity for small (synchronous) requests
+        val keys = metadata.keysForGeometry(toPolygon(metadata.extent))
+        keysRDD(sc, keys)
+      }else{
+        val polygonsRDD = sc.parallelize(bufferedPolygons, math.max(1, bufferedPolygons.length / 2)).map {
+          _.reproject(polygons_crs, targetCRS)
+        }
 
-    var spatialKeyCount: Long =
-      if(polygons.length == 1) {
-        //special case for single bbox request
-        val spatialBounds = metadata.bounds.get.toSpatial
-        (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
-      } else{
-        requiredSpatialKeys.map(_._1).countApproxDistinct()
+
+        // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
+        var requiredSpatialKeysLocal: RDD[(SpatialKey, Iterable[Geometry])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey(workingPartitioner)
+
+        var spatialKeyCount: Long =
+          if (polygons.length == 1) {
+            //special case for single bbox request
+            maxSpatialKeyCount
+          } else {
+            requiredSpatialKeysLocal.map(_._1).countApproxDistinct()
+          }
+        logger.info(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
+
+
+        val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, bufferedPolygons, datacubeParams, spatialKeyCount)
+        metadata = retiledMetadata.getOrElse(metadata)
+
+        if (retiledMetadata.isDefined) {
+          requiredSpatialKeysLocal = polygonsRDD.clipToGrid(retiledMetadata.get).groupByKey(workingPartitioner)
+        }
+        requiredSpatialKeysLocal
       }
-    logger.info(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
 
-
-    val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, bufferedPolygons, datacubeParams, spatialKeyCount)
-    metadata = retiledMetadata.getOrElse(metadata)
-
-    if (retiledMetadata.isDefined) {
-      requiredSpatialKeys = polygonsRDD.clipToGrid(retiledMetadata.get).groupByKey(workingPartitioner)
-    }
 
     overlappingRasterSources.map(_._2).foreach(f => {
       val extent = f.geometry.getOrElse(f.bbox.toPolygon()).extent
       if (!checkLatLon(extent)) throw new IllegalArgumentException(s"Geometry or Bounding box provided by the catalog has to be in EPSG:4326, but got ${extent} for catalog entry ${f}")
     })
 
-    val cubeExtent = metadata.extent
+
     //extra check on interior, disabled because it requires an (expensive) lookup of the extent
     /*
     overlappingRasterSources = overlappingRasterSources.filter({ t =>
@@ -716,30 +763,17 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     //avoid computing keys that are anyway out of bounds, with some buffering to avoid throwing away too much
 
     val geometricFeatures = overlappingRasterSources.map(f => geotrellis.vector.Feature(f._2.geometry.getOrElse(f._2.bbox.toPolygon()), f))
-    val emptyPoint = Point(0.0,0.0)
-    val keysForfeatures = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size))
-      .map(eoProductFeature => {
-
-        val productCRSOrDefault = eoProductFeature.data._2.crs.getOrElse(targetCRS)
-        eoProductFeature.mapGeom(productGeometry => {
-          try{
-            val intersection = productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
-            if(intersection.isValid && intersection.getArea > 0.0) {
-              intersection.reproject(productCRSOrDefault,targetCRS)
-            }else{
-              emptyPoint
-            }
-          }catch {
-            case e: Exception => logger.warn("Exception while determining intersection.",e); emptyPoint
-          }
-
-        } )
-      }).filter(!_.geom.equals(emptyPoint) )
-      .clipToGrid(metadata).partitionBy(workingPartitioner)
+    val keysForfeatures= featuresRDD(geometricFeatures, metadata, targetCRS, workingPartitioner, sc)
 
 
     //rdd
-    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = keysForfeatures.join(requiredSpatialKeys,workingPartitioner).map(t => (t._1, t._2._1))
+    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = {
+      if(maxSpatialKeyCount >2) {
+        keysForfeatures.join(requiredSpatialKeys,workingPartitioner).map(t => (t._1, t._2._1))
+      }else{
+        keysForfeatures
+      }
+    }
     val filteredSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = applySpatialMask(datacubeParams, griddedRasterSources,metadata)
 
 
@@ -830,6 +864,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     var maskStrategy: Option[CloudFilterStrategy] = readKeysToRasterSourcesResult._3
     val metadata = readKeysToRasterSourcesResult._2
     val requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = readKeysToRasterSourcesResult._1.persist()
+    requiredSpacetimeKeys.setName(s"FileLayerProvider_keys_${this.openSearchCollectionId}_${from.toString}_${to.toString}")
 
     try{
       val partitioner = DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
@@ -867,7 +902,17 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
   }
 
   override def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, zoom: Int = maxZoom, sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
-    this.readMultibandTileLayer(from,to,boundingBox,Array(MultiPolygon(boundingBox.extent.toPolygon())),boundingBox.crs,zoom,sc,datacubeParams = Option.empty)
+    val targetBBox =
+    if(this.layoutScheme.isInstanceOf[FloatingLayoutScheme] && this.maxSpatialResolution.resolution > 2 && this.maxSpatialResolution.resolution < 200) {
+      //this check for utm is not good, ideally fileLayerProvider has access to collection metadata that contains information about native projection system
+      val center = boundingBox.extent.center.reproject(boundingBox.crs,LatLng)
+      val epsg = autoUtmEpsg(center.getX,center.getY)
+      val targetCRS = CRS.fromEpsgCode(epsg)
+      ProjectedExtent(boundingBox.reproject(targetCRS),targetCRS)
+    }else{
+      boundingBox
+    }
+    this.readMultibandTileLayer(from,to,targetBBox,Array(MultiPolygon(targetBBox.extent.toPolygon())),targetBBox.crs,zoom,sc,datacubeParams = Option.empty)
   }
 
 

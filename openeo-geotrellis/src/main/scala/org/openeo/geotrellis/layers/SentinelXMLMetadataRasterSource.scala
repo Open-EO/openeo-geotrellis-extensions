@@ -6,16 +6,12 @@ import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, Float
 import geotrellis.vector.Extent
 import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
 
-import java.net.URL
 import scala.xml.XML
 
 object SentinelXMLMetadataRasterSource {
 
   /**
    * Returns SAA,SZA,VAA,VZA selected by the bands argument.
-   * @param path
-   * @param bands
-   * @return
    */
   def apply(path:String, bands:Seq[Int]=Seq(0,1,2,3)): Seq[SentinelXMLMetadataRasterSource] = {
     val xmlDoc = XML.load(CreoFeatureCollection.loadMetadata(path))
@@ -33,16 +29,19 @@ object SentinelXMLMetadataRasterSource {
     val ulx = (position \ "ULX").text.toDouble
     val uly = (position \ "ULY").text.toDouble
     // TODO: Looking at the cloud locations in the accompanying cloud mask file
-    // TODO: It appears that the extent should be: (ulx, uly-(10*10980), ulx+(10*10980), uly)
-    val extent = Extent(ulx-(10*10980),uly-(10*10980),ulx,uly)
+    val extent = Extent(ulx, uly - (10 * 10980), ulx + (10 * 10980), uly)
     val gridExtent = GridExtent[Long](extent,CellSize(10,10))
     val allBands = Seq(mSAA,mSZA,mVAA,mVZA)
-    bands.map(b => allBands(b)).map(new SentinelXMLMetadataRasterSource(_,crs,gridExtent))
+    bands.map(b => allBands(b)).map(new SentinelXMLMetadataRasterSource(_, crs, gridExtent, OpenEoSourcePath(path)))
 
   }
 }
 
-class SentinelXMLMetadataRasterSource(value: Float, theCrs:CRS, theGridExtent:GridExtent[Long]) extends RasterSource{
+class SentinelXMLMetadataRasterSource(value: Float,
+                                      theCrs: CRS,
+                                      theGridExtent: GridExtent[Long],
+                                      sourcePathName: OpenEoSourcePath,
+                                     ) extends RasterSource {
 
   val targetCellType = None
   val gridSize = 23
@@ -59,13 +58,13 @@ class SentinelXMLMetadataRasterSource(value: Float, theCrs:CRS, theGridExtent:Gr
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-
-    Some(Raster(MultibandTile(FloatConstantTile(value,bounds.width.intValue(),bounds.height.intValue())),null))
+    val extent = gridExtent.extentFor(bounds, clamp = false)
+    Some(Raster(MultibandTile(FloatConstantTile(value, bounds.width.intValue(), bounds.height.intValue())), extent))
   }
 
   override def convert(targetCellType: TargetCellType): RasterSource = ???
 
-  override def name: SourceName = null
+  override def name: SourceName = sourcePathName
 
   override def crs: CRS = theCrs
 
