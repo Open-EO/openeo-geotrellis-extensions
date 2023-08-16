@@ -1010,12 +1010,11 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     val bandNames = openSearchLinkTitles.toList
 
-    def getBandAssetsByBandInfo(feature: Feature): Seq[(Link, Seq[Int])] = { // [(href, bandIndices)]
+    def getBandAssetsByBandInfo: Seq[(Link, Seq[Int])] = { // [(href, bandIndices)]
       def getBandAsset(bandName: String): (Link, Int) = { // (href, bandIndex)
         feature.links
-          // _.bandNames contains bandName
           .find(link => link.bandNames match {
-            case Some(assetBandNames) if assetBandNames contains bandName => true
+            case Some(assetBandNames) => assetBandNames contains bandName
             case _ => false
           }) // TODO: find alternative to contains + indexOf
           .map { link => (link, link.bandNames.get.indexOf(bandName)) }
@@ -1027,26 +1026,12 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         .map { case (link, bandIndex) => (link, Seq(bandIndex)) }
     }
 
-    def getProbaVBandAssets(feature: Feature): Seq[(Link, Seq[Int])] = {
-      // TODO: for each bandName in bandNames: determine the link title and band index
-      //  group band indices by link title
-      //  then fetch the href for this link title from the feature's links
-      val bandIndicesByLinkTitle = bandNames
-        .map(ProbaVPyramidFactory.bandToTiffFileName)
-        .groupBy { case (linkTitle, _) => linkTitle }
-        .mapValues(bandLocations => bandLocations.map { case (_, bandIndex) => bandIndex })
-
-      for {
-        (linkTitle, bandIndices) <- bandIndicesByLinkTitle.toSeq
-        link <- feature.links.find(_.title.map(_.toUpperCase) contains linkTitle.toUpperCase)
-      } yield (link, bandIndices)
-    }
-
-    def getBandAssetsByLinkTitle() : Seq[(Link, Seq[Int])] = for {
+    def getBandAssetsByLinkTitle : Seq[(Link, Seq[Int])] = for {
       (title, bandIndices) <- openSearchLinkTitlesWithBandIds.toList
       link <- feature.links.find(_.title.map(_.toUpperCase) contains title.toUpperCase)
     } yield (link, bandIndices)
 
+    // TODO: pass a strategy to FileLayerProvider instead (incl. one for the PROBA-V workaround)
     val byLinkTitle = !openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
 
     if (byLinkTitle) {
@@ -1055,7 +1040,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     val expectedNumberOfBBands = openSearchLinkTitlesWithBandIds.size
     val rasterSources: Seq[(Seq[RasterSource], Seq[Int])] = for {
-      (link, bandIndices) <- if (byLinkTitle) getBandAssetsByLinkTitle() else getBandAssetsByBandInfo(feature)
+      (link, bandIndices) <- if (byLinkTitle) getBandAssetsByLinkTitle else getBandAssetsByBandInfo
       path = deriveFilePath(link.href)
       cloudPathOptions = (
         feature.links.find(_.title contains "FineCloudMask_Tile1_Data").map(_.href.toString),
