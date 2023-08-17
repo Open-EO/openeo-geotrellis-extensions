@@ -57,6 +57,7 @@ package object geotrellis {
         .build()
     val overrideConfig =
       ClientOverrideConfiguration.builder()
+        //.putHeader("x-amz-request-payer", "requester")
         .retryPolicy(retryPolicy)
         .build()
 
@@ -79,6 +80,7 @@ package object geotrellis {
     bucketRegionCache.computeIfAbsent(bucketName, fetchBucketRegion.asJava)
 
   private val fetchBucketRegion: String => Region = bucketName => {
+    // might not be allowed unless owner of the bucket (403)
     val getBucketLocationRequest = GetBucketLocationRequest.builder()
       .bucket(bucketName)
       .build()

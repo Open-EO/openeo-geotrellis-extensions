@@ -22,11 +22,11 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
-import org.openeo.geotrellis.file.AbstractPyramidFactory
+import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient, ProbaVPyramidFactory}
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, autoUtmEpsg, retryForever}
 import org.openeo.opensearch.OpenSearchClient
-import org.openeo.opensearch.OpenSearchResponses.Feature
+import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.LoggerFactory
 
 import java.io.{File, IOException}
@@ -1053,10 +1053,39 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }
     }
 
-    val expectedNumberOfBBands = openSearchLinkTitlesWithBandIds.size
-    val rasterSources: immutable.Seq[(Seq[RasterSource], Seq[Int])] = for {
-      (title, bands) <- openSearchLinkTitlesWithBandIds.toList
+    val bandNames = openSearchLinkTitles.toList
+
+    def getBandAssetsByBandInfo: Seq[(Link, Seq[Int])] = { // [(href, bandIndices)]
+      def getBandAsset(bandName: String): (Link, Int) = { // (href, bandIndex)
+        feature.links
+          .find(link => link.bandNames match {
+            case Some(assetBandNames) => assetBandNames contains bandName
+            case _ => false
+          }) // TODO: find alternative to contains + indexOf
+          .map { link => (link, link.bandNames.get.indexOf(bandName)) }
+          .getOrElse(throw new IllegalArgumentException(s"band $bandName not found in ${feature.id}"))
+      }
+
+      bandNames
+        .map(getBandAsset)
+        .map { case (link, bandIndex) => (link, Seq(bandIndex)) }
+    }
+
+    def getBandAssetsByLinkTitle : Seq[(Link, Seq[Int])] = for {
+      (title, bandIndices) <- openSearchLinkTitlesWithBandIds.toList
       link <- feature.links.find(_.title.map(_.toUpperCase) contains title.toUpperCase)
+    } yield (link, bandIndices)
+
+    // TODO: pass a strategy to FileLayerProvider instead (incl. one for the PROBA-V workaround)
+    val byLinkTitle = !openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
+
+    if (byLinkTitle) {
+      logger.warn("matching feature assets by ID/link title; only single band assets are supported")
+    }
+
+    val expectedNumberOfBBands = openSearchLinkTitlesWithBandIds.size
+    val rasterSources: Seq[(Seq[RasterSource], Seq[Int])] = for {
+      (link, bandIndices) <- if (byLinkTitle) getBandAssetsByLinkTitle else getBandAssetsByBandInfo
       path = deriveFilePath(link.href)
       cloudPathOptions = (
         feature.links.find(_.title contains "FineCloudMask_Tile1_Data").map(_.href.toString),
@@ -1080,9 +1109,9 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         case _ => None
       }
 
-      rasterSourcesRaw = rasterSource(path, cloudPath, targetCellType, targetExtent, bands)
+      rasterSourcesRaw = rasterSource(path, cloudPath, targetCellType, targetExtent, bandIndices)
       rasterSourcesWrapped = ValueOffsetRasterSource.wrapRasterSources(rasterSourcesRaw, pixelValueOffset, targetTargetCellType)
-    } yield (rasterSourcesWrapped, bands)
+    } yield (rasterSourcesWrapped, bandIndices)
 
     if(rasterSources.isEmpty) {
       logger.warn(s"Excluding item ${feature.id} with available assets ${feature.links.map(_.title).mkString("(", ", ", ")")}")
@@ -1093,7 +1122,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
 
-      if (bandIds.isEmpty) {
+      if (byLinkTitle && bandIds.isEmpty) {
         if (expectedNumberOfBBands != sources.length) {
           logger.warn(s"Did not find expected number of bands $expectedNumberOfBBands for feature ${feature.id} with links ${feature.links.mkString("Array(", ", ", ")")}")
           return None
