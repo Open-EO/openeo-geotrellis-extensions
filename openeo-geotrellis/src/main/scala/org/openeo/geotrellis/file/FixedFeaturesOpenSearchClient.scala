@@ -20,7 +20,8 @@ class FixedFeaturesOpenSearchClient extends OpenSearchClient {
 
   private val features = mutable.Buffer[Feature]()
 
-  def addFeature(id: String, bbox: Extent, nominal_date: String, links: util.List[util.List[String]]): Unit = { // href, title, band1, band2, ...
+  //noinspection ScalaUnusedSymbol
+  def add_feature(id: String, bbox: Extent, nominal_date: String, links: util.List[util.List[String]]): Unit = { // href, title, band1, band2, ...
     val nominalDate = ZonedDateTime.parse(nominal_date)
     val sLinks = links.asScala.map { values =>
       val Seq(href, title, bands @ _*) = values.asScala
@@ -30,7 +31,7 @@ class FixedFeaturesOpenSearchClient extends OpenSearchClient {
     addFeature(id, bbox, nominalDate, sLinks)
   }
 
-  def addFeature(id: String, bbox: Extent, nominalDate: ZonedDateTime, links: Array[Link]): Unit = {
+  private def addFeature(id: String, bbox: Extent, nominalDate: ZonedDateTime, links: Array[Link]): Unit = {
     val feature = Feature(id, bbox, nominalDate, links, resolution = None)
     features += feature
     logger.debug(s"added $feature")
