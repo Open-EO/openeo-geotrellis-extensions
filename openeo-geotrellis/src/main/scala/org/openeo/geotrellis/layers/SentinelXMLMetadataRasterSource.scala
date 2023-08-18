@@ -13,7 +13,7 @@ object SentinelXMLMetadataRasterSource {
   /**
    * Returns SAA,SZA,VAA,VZA selected by the bands argument.
    */
-  def apply(path:String, bands:Seq[Int]=Seq(0,1,2,3), te:Option[Extent]): Seq[SentinelXMLMetadataRasterSource] = {
+  def apply(path:String, bands:Seq[Int]=Seq(0,1,2,3), te:Option[Extent] = None): Seq[SentinelXMLMetadataRasterSource] = {
     val xmlDoc = XML.load(CreoFeatureCollection.loadMetadata(path))
     val angles = xmlDoc \\ "Tile_Angles"
     val meanSun = angles \ "Mean_Sun_Angle"
