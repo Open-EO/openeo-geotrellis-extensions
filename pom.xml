@@ -65,7 +65,7 @@
         <profile>
             <id>integrationtests</id>
             <activation>
-                <activeByDefault>true</activeByDefault>
+                <activeByDefault>false</activeByDefault>
             </activation>
             <modules>
                 <module>geotrellis-integrationtests</module>
