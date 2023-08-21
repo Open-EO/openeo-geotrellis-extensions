@@ -13,7 +13,7 @@ object SentinelXMLMetadataRasterSource {
   /**
    * Returns SAA,SZA,VAA,VZA selected by the bands argument.
    */
-  def apply(path:String, bands:Seq[Int]=Seq(0,1,2,3)): Seq[SentinelXMLMetadataRasterSource] = {
+  def apply(path:String, bands:Seq[Int]=Seq(0,1,2,3), te:Option[Extent] = None): Seq[SentinelXMLMetadataRasterSource] = {
     val xmlDoc = XML.load(CreoFeatureCollection.loadMetadata(path))
     val angles = xmlDoc \\ "Tile_Angles"
     val meanSun = angles \ "Mean_Sun_Angle"
@@ -29,8 +29,9 @@ object SentinelXMLMetadataRasterSource {
     val ulx = (position \ "ULX").text.toDouble
     val uly = (position \ "ULY").text.toDouble
     // TODO: Looking at the cloud locations in the accompanying cloud mask file
-    val extent = Extent(ulx, uly - (10 * 10980), ulx + (10 * 10980), uly)
-    val gridExtent = GridExtent[Long](extent,CellSize(10,10))
+    val maxExtent = Extent(ulx, uly - (10 * 10980), ulx + (10 * 10980), uly)
+    val targetExtent = te.getOrElse(maxExtent)
+    val gridExtent = GridExtent[Long](targetExtent, CellSize(10, 10))
     val allBands = Seq(mSAA,mSZA,mVAA,mVZA)
     bands.map(b => allBands(b)).map(new SentinelXMLMetadataRasterSource(_, crs, gridExtent, OpenEoSourcePath(path)))
 
@@ -58,7 +59,7 @@ class SentinelXMLMetadataRasterSource(value: Float,
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    val extent = gridExtent.extentFor(bounds, clamp = false)
+    val extent = gridExtent.extentFor(bounds, clamp = true) // clamp=true gives same results as the intersection don in GDALRasterSource
     Some(Raster(MultibandTile(FloatConstantTile(value, bounds.width.intValue(), bounds.height.intValue())), extent))
   }
 
@@ -74,7 +75,7 @@ class SentinelXMLMetadataRasterSource(value: Float,
 
   override def gridExtent: GridExtent[Long] = theGridExtent
 
-  override def resolutions: List[CellSize] = List(CellSize(10,10))
+  override def resolutions: List[CellSize] = List(theGridExtent.cellSize)
 
   override def attributes: Map[String, String] = Map.empty[String,String]
 
