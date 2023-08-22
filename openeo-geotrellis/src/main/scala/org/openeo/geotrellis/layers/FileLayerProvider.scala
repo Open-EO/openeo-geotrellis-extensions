@@ -994,7 +994,45 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }
     }
 
-    def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
+    def rasterSource(dataPath1:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
+
+
+
+
+      val dataPathCopy = dataPath1.replace("/data/", "/dataCOPY/")
+      val dataPath2 = if (Files.exists(Paths.get(dataPathCopy))) {
+        dataPathCopy
+      } else if (Files.exists(Paths.get("/dataCOPY/"))
+        && Files.exists(Paths.get(dataPath1))) { // Don't attempt to copy "/bogus"
+        println("COPY dataPath: " + dataPathCopy)
+        Files.createDirectories(Paths.get(dataPathCopy).getParent)
+        val tmpBeforeAtomicMove = Paths.get(dataPathCopy + "_unconfirmed_download_" + java.util.UUID.randomUUID())
+        Files.copy(Paths.get(dataPath1), tmpBeforeAtomicMove)
+        Files.move(tmpBeforeAtomicMove, Paths.get(dataPathCopy))
+        dataPathCopy
+      } else {
+        dataPath1
+      }
+
+      val dataPath3 = dataPath2.replace("/vsis3/", "/")
+      val eodataPathCopy = dataPath3
+        .replace("/eodata/", "/eodataCOPY/")
+        .replace("/EODATA/", "/eodataCOPY/")
+      val dataPath = if (Files.exists(Paths.get(eodataPathCopy))) {
+        eodataPathCopy
+      } else if (Files.exists(Paths.get("/eodataCOPY/"))
+        && Files.exists(Paths.get(dataPath3))) { // Don't attempt to copy "/bogus"
+        println("COPY dataPath: " + eodataPathCopy)
+        Files.createDirectories(Paths.get(eodataPathCopy).getParent)
+        val tmpBeforeAtomicMove = Paths.get(eodataPathCopy + "_unconfirmed_download_" + java.util.UUID.randomUUID())
+        Files.copy(Paths.get(dataPath3), tmpBeforeAtomicMove)
+        Files.move(tmpBeforeAtomicMove, Paths.get(eodataPathCopy))
+        eodataPathCopy
+      } else {
+        dataPath2
+      }
+
+
       if(dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
         val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
         val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod),
@@ -1084,10 +1122,10 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       logger.warn("matching feature assets by ID/link title; only single band assets are supported")
     }
 
-    val expectedNumberOfBBandsOld = openSearchLinkTitlesWithBandIds.size
-    val expectedNumberOfBBands = openSearchLinkTitlesWithBandIds.map(_._2.length).sum
-    if (expectedNumberOfBBandsOld != expectedNumberOfBBands) {
-      logger.warn("expectedNumberOfBBandsOld != expectedNumberOfBBands. " + expectedNumberOfBBandsOld + ", " + expectedNumberOfBBands)
+    val expectedNumberOfBBands = openSearchLinkTitlesWithBandIds.size
+    val expectedNumberOfBBandsNew = openSearchLinkTitlesWithBandIds.map(_._2.length).sum
+    if (expectedNumberOfBBandsNew != expectedNumberOfBBands) {
+      logger.warn(s"expectedNumberOfBBandsNew ($expectedNumberOfBBandsNew) != expectedNumberOfBBands ($expectedNumberOfBBands)")
     }
 
     val rasterSources: Seq[(Seq[RasterSource], Seq[Int])] = for {
