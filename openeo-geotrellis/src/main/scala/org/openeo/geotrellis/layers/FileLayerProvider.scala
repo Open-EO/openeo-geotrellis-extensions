@@ -1084,10 +1084,11 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       logger.warn("matching feature assets by ID/link title; only single band assets are supported")
     }
 
-    val expectedNumberOfBBands = openSearchLinkTitlesWithBandIds.size
-    val expectedNumberOfBBandsNew = openSearchLinkTitlesWithBandIds.map(_._2.length).sum
-    if (expectedNumberOfBBandsNew != expectedNumberOfBBands) {
-      logger.warn(s"expectedNumberOfBBandsNew ($expectedNumberOfBBandsNew) != expectedNumberOfBBands ($expectedNumberOfBBands)")
+    val expectedNumberOfBBandsOld = openSearchLinkTitlesWithBandIds.size
+    val expectedNumberOfBBands = openSearchLinkTitlesWithBandIds.map(_._2.length).sum
+
+    if (expectedNumberOfBBandsOld != expectedNumberOfBBands) {
+      logger.warn(s"expectedNumberOfBBandsOld ($expectedNumberOfBBandsOld) != expectedNumberOfBBands ($expectedNumberOfBBands)")
     }
 
     val rasterSources: Seq[(Seq[RasterSource], Seq[Int])] = for {
