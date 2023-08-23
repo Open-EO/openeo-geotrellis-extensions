@@ -63,6 +63,7 @@ class STACItem {
       if (path.startsWith("s3:/")) {
         val correctS3Path = path.replaceFirst("s3:/(?!/)", "s3://")
         uploadToS3(tempFile, correctS3Path)
+        Files.delete(tempFile)
       } else {
         Files.move(tempFile, Paths.get(path))
       }
