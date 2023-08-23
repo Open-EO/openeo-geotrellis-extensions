@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.stac
 
+import org.openeo.geotrellis.geotiff.uploadToS3
 import org.slf4j.LoggerFactory
 
 import java.io.IOException
@@ -56,7 +57,16 @@ class STACItem {
          |""".stripMargin
     try {
 
-      Files.write(Paths.get(path),template.getBytes(Charset.forName("UTF-8")),StandardOpenOption.CREATE_NEW)
+      val tempFile = Files.createTempFile(null, null)
+      Files.write(Paths.get(path), template.getBytes(Charset.forName("UTF-8")), StandardOpenOption.CREATE_NEW)
+
+      if (path.startsWith("s3:/")) {
+        val correctS3Path = path.replaceFirst("s3:/(?!/)", "s3://")
+        uploadToS3(tempFile, correctS3Path)
+      } else {
+        Files.move(tempFile, Paths.get(path))
+      }
+
     } catch {
       case e: IOException => logger.warn("Failed to write STAC metadata.", e)
     }
