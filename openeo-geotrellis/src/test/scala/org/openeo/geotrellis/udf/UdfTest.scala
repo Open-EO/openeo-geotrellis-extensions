@@ -11,7 +11,7 @@ import geotrellis.vector.{Extent, MultiPolygon, Polygon}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.{AfterAll, BeforeAll}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrellis.geotiff.saveRDD
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 
@@ -76,10 +76,13 @@ class UdfTest extends RasterMatchers {
 
     val dates = _getDates()
     val datacube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = _createChunkPolygonDatacube(dates)
+    val currentRes = datacube.metadata.cellSize
     datacube.values.first().bands(0).foreach(e => assert(e == 0))
     val resultRDD = Udf.runUserCode(code, datacube, new util.ArrayList[String](), new util.HashMap[String, Any]())
-    assertEquals(resultRDD.metadata.layout.cellSize,CellSize(0.3,0.3))
+    assertEquals(resultRDD.metadata.layout.cellSize,CellSize(currentRes.width/2.0,currentRes.height/2.0))
+    assertEquals(datacube.metadata.cols*2,resultRDD.metadata.cols)
     resultRDD.values.first().bands(0).foreach(e => assert(e == 60))
+
   }
 
   def _getDates(): Seq[ZonedDateTime] = {

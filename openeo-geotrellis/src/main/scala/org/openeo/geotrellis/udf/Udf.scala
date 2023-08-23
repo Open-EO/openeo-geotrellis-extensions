@@ -295,7 +295,7 @@ object Udf {
     // and then slice it!
 
     val newLayout = {
-      if (code.contains("convert_dimensions")) {
+      if (code.contains("apply_metadata")) {
         val newResolution = 5.0 //TODO determine based on convert_dimensions
         val crsCode = layer.metadata.crs.epsgCode.get
         val stepSize = layer.metadata.layout.cellSize
@@ -316,7 +316,7 @@ object Udf {
             _setContextInPython(interp, context)
             interp.exec(code)
             interp.exec(cubeMetadata)
-            interp.exec("result_metadata = convert_dimensions(openeo.metadata.CollectionMetadata(metadata), context)")
+            interp.exec("result_metadata = apply_metadata(openeo.metadata.CollectionMetadata(metadata), context)")
             val targetResolutionX:Double = interp.getValue("result_metadata.get('x','step')").asInstanceOf[Double]
             val targetResolutionY:Double = interp.getValue("result_metadata.get('y','step')").asInstanceOf[Double]
             CellSize(targetResolutionX,targetResolutionY)
@@ -386,7 +386,9 @@ object Udf {
                 }
                 val dtype = interp.getValue("str(result_cube.get_array().values.dtype)").asInstanceOf[String]
                 _checkOutputDtype(dtype)
-                _checkOutputSpatialDimensions(resultDimensions, tileRows, tileCols)
+                if(newLayout.isEmpty)
+                  _checkOutputSpatialDimensions(resultDimensions, tileRows, tileCols)
+                println(cube.getData)
 
                 FloatBuffer.wrap(cube.getData)
             }
