@@ -297,7 +297,7 @@ class CollectionTests {
       case _ => throw new IllegalStateException(s"Layer $layerStr not supported")
     }
 
-    val file_name = s"${layerStr}_${from_date_parsed.toLocalDate}_${to_date_parsed.toLocalDate}"
+    val file_name = s"${layerStr}_${from_date_parsed.toLocalDate}_${to_date_parsed.minusDays(1).toLocalDate}"
     new ComputeStatsGeotrellisAdapterTest(1).computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(
       "mean",
       layer,
