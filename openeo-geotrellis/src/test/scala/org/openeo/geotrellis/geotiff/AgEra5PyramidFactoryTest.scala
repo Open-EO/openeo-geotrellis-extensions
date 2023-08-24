@@ -135,7 +135,7 @@ class AgEra5PyramidFactoryTest {
     assert(baseLayer.metadata.crs == bboxCrs)
 
     assertEquals(275.93, physicalMean(baseLayer,bbox1.extent.toPolygon(), from, bandIndex = 0), 0.03)
-    assertEquals(0.19, physicalMean(baseLayer,bbox2.extent.toPolygon(), to, bandIndex = 1), 0.03)
+    assertEquals(0.19, physicalMean(baseLayer,bbox2.extent.toPolygon(), to.minusDays(1), bandIndex = 1), 0.03)
   }
 
   @Test

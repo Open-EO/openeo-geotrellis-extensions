@@ -204,7 +204,7 @@ class GlobalNetCdfFileLayerProviderTest {
     }
 
     assertEquals(1.0106459861932706, mean(from), 0.001)
-    assertEquals(1.014475609832233, mean(to), 0.001)
+    assertEquals(1.014475609832233, mean(to.minusDays(1)), 0.001)
   }
 
   @Test
