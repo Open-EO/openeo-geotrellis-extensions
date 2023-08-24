@@ -189,7 +189,7 @@ class GlobalNetCdfFileLayerProviderTest {
   @Test
   def zonalMeanWithOpensearchClient(): Unit = {
     val from = LocalDate.of(2017, 1, 10).atStartOfDay(ZoneId.of("UTC"))
-    val to = LocalDate.of(2017, 1, 31).atStartOfDay(ZoneId.of("UTC"))
+    val to = LocalDate.of(2017, 2, 1).atStartOfDay(ZoneId.of("UTC"))
     val boundingBox = ProjectedExtent(Extent(-86.30859375, 29.84064389983441, -80.33203125, 35.53222622770337), LatLng)
 
     val layer = layerProvider2.readTileLayer(from, to, boundingBox, sc = sc).cache()

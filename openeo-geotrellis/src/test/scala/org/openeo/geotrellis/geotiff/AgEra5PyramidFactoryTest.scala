@@ -114,7 +114,7 @@ class AgEra5PyramidFactoryTest {
     )
 
     val from = LocalDate.of(2020, 4, 1).atStartOfDay(ZoneId.of("UTC"))
-    val to = from plusWeeks 1
+    val to = from plusWeeks 1 plusDays(1)
 
     val bbox1 = Extent(-9.0, 51.0, -1.0, 59.0)
     val bbox2 = Extent(1.0, 41.0, 9.0, 49.0)
