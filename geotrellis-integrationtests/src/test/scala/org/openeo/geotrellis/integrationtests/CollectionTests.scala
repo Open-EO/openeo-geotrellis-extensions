@@ -225,7 +225,7 @@ class CollectionTests {
    */
   private def testLayerImpl(layerStr: String,
                             from_date: String = "2020-03-01T00:00:00Z",
-                            to_date: String = "2020-03-31T00:00:00Z",
+                            to_date: String = "2020-04-01T00:00:00Z",
                            ): Unit = {
     val output_dir = new java.io.File("./tmp_collectiontests/").getCanonicalPath
     Files.createDirectories(Paths.get(output_dir))
@@ -236,7 +236,7 @@ class CollectionTests {
     var polygons = ProjectedPolygons.fromVectorFile(vector_file)
     polygons = ProjectedPolygons.reproject(polygons, CRS.fromEpsgCode(32631))
     val from_date_parsed = ZonedDateTime.parse(from_date)
-    val to_date_parsed = ZonedDateTime.parse(to_date) plusDays 1
+    val to_date_parsed = ZonedDateTime.parse(to_date)
 
     val datacubeParams = new DataCubeParameters()
     datacubeParams.layoutScheme = "FloatingLayoutScheme"
