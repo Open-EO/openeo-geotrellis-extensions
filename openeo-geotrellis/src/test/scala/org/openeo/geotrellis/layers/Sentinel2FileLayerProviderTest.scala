@@ -324,7 +324,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     println(SizeEstimator.estimate(localData))
     println((System.currentTimeMillis()-time)/1000)
     println(localData.map(_._1.time).mkString(";"))
-    assertEquals(18,localData.length)
+    assertEquals(17,localData.length)
     assertEquals(4,localData(0)._2.bandCount)
     assertFalse(localData(0)._2.band(0).isNoDataTile)
     assertEquals(ShortUserDefinedNoDataCellType(32767),localData(0)._2.band(1).cellType)

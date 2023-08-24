@@ -225,7 +225,7 @@ class CollectionTests {
    */
   private def testLayerImpl(layerStr: String,
                             from_date: String = "2020-03-01T00:00:00Z",
-                            to_date: String = "2020-03-31T00:00:00Z",
+                            to_date: String = "2020-04-01T00:00:00Z",
                            ): Unit = {
     val output_dir = new java.io.File("./tmp_collectiontests/").getCanonicalPath
     Files.createDirectories(Paths.get(output_dir))
@@ -297,7 +297,7 @@ class CollectionTests {
       case _ => throw new IllegalStateException(s"Layer $layerStr not supported")
     }
 
-    val file_name = s"${layerStr}_${from_date_parsed.toLocalDate}_${to_date_parsed.toLocalDate}"
+    val file_name = s"${layerStr}_${from_date_parsed.toLocalDate}_${to_date_parsed.minusDays(1).toLocalDate}"
     new ComputeStatsGeotrellisAdapterTest(1).computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(
       "mean",
       layer,
