@@ -236,7 +236,7 @@ class CollectionTests {
     var polygons = ProjectedPolygons.fromVectorFile(vector_file)
     polygons = ProjectedPolygons.reproject(polygons, CRS.fromEpsgCode(32631))
     val from_date_parsed = ZonedDateTime.parse(from_date)
-    val to_date_parsed = ZonedDateTime.parse(to_date)
+    val to_date_parsed = ZonedDateTime.parse(to_date) plusDays 1
 
     val datacubeParams = new DataCubeParameters()
     datacubeParams.layoutScheme = "FloatingLayoutScheme"
