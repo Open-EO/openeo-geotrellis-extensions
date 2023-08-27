@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.vector
 
-import geotrellis.layer.{KeyBounds, SpatialKey}
+import geotrellis.layer.{KeyBounds, LayoutDefinition, SpatialKey}
 import geotrellis.proj4.CRS
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.Extent
@@ -8,6 +8,8 @@ import org.apache.hadoop.hdfs.HdfsConfiguration
 import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.Assert.{assertArrayEquals, assertEquals, assertTrue}
+import org.openeo.geotrellis.LayerFixtures.sentinel2B04Layer
 
 object VectorCubeMethodsTest {
 
@@ -38,16 +40,16 @@ class VectorCubeMethodsTest {
 
   @Test def testVectorToRaster(): Unit = {
     val path = getClass.getResource("/org/openeo/geotrellis/geometries/input_vector_cube.geojson").getPath
-    val target_resolution = 1
-    val target_crs = "EPSG:4326"
-    val cube = VectorCubeMethods.vectorToRaster(path, target_resolution, target_crs)
-    assert(cube.metadata.crs == CRS.fromEpsgCode(4326))
-    assert(cube.metadata.layout.cellheight == 1.0)
-    assert(cube.metadata.layout.cellwidth == 1.0)
-    assert(cube.metadata.layout.cols == 256)
-    assert(cube.metadata.layout.rows == 256)
-    assert(cube.metadata.bounds == KeyBounds(SpatialKey(0, 0), SpatialKey(0, 0)))
-    assert(cube.metadata.layout.extent == Extent(1.0, -252.0, 257.0, 4.0))
+    val targetDataCube = sentinel2B04Layer
+    val cube = VectorCubeMethods.vectorToRaster(path, targetDataCube)
+    assertEquals(cube.metadata.crs, targetDataCube.metadata.crs)
+    assertTrue(cube.metadata.layout.cellheight == targetDataCube.metadata.layout.cellheight)
+    assertTrue(cube.metadata.layout.cellheight == targetDataCube.metadata.layout.cellheight)
+    assertEquals(cube.metadata.layout.cols, targetDataCube.metadata.layout.cols)
+    assertEquals(cube.metadata.layout.rows, targetDataCube.metadata.layout.rows)
+    assertEquals(cube.metadata.bounds, KeyBounds(SpatialKey(0, 0), SpatialKey(0, 0)))
+    val trueExtent = Extent(1.0, 100.0, 500.0, 400.0)
+    assertTrue(cube.metadata.extent == trueExtent)
   }
 
 }
