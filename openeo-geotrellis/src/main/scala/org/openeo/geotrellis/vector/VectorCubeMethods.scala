@@ -46,6 +46,8 @@ object VectorCubeMethods {
    */
   def vectorToRasterGeneric[K: SpatialComponent: ClassTag](path: String, targetDatacube: MultibandTileLayerRDD[K]): MultibandTileLayerRDD[SpatialKey] = {
     val sc = SparkContext.getOrCreate()
+    val target_resolution = targetDatacube.metadata.layout.cellSize.resolution
+    val target_crs: CRS = targetDatacube.metadata.crs
 
     val source = scala.io.Source.fromFile(path)
     val sourceString = try source.mkString finally source.close()
@@ -61,14 +63,13 @@ object VectorCubeMethods {
         }
       }).toArray[Double]
       // TODO: Add all properties as separate bands.
-      Feature(geometry, properties.head)
+      val reprojected = geometry.reproject(src=CRS.fromEpsgCode(4326), dest=target_crs)
+      Feature(reprojected, properties.head)
     })
 
     val featuresRDD: RDD[Feature[Geometry, Double]] = sc.parallelize(features)
     val extent = featuresRDD.map(_.geom.extent).reduce(_.combine(_))
     // TODO: Perhaps use layoutdefinition from target_datacube if provided.
-    val target_resolution = targetDatacube.metadata.layout.cellSize.resolution
-    val target_crs: CRS = targetDatacube.metadata.crs
     val layoutDefinition = LayoutDefinition(
       GridExtent[Long](extent, CellSize(target_resolution, target_resolution)),
       256

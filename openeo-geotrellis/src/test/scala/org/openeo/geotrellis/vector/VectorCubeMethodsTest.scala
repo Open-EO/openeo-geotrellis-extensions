@@ -42,14 +42,13 @@ class VectorCubeMethodsTest {
     val path = getClass.getResource("/org/openeo/geotrellis/geometries/input_vector_cube.geojson").getPath
     val targetDataCube = sentinel2B04Layer
     val cube = VectorCubeMethods.vectorToRaster(path, targetDataCube)
-    assertEquals(cube.metadata.crs, targetDataCube.metadata.crs)
-    assertTrue(cube.metadata.layout.cellheight == targetDataCube.metadata.layout.cellheight)
-    assertTrue(cube.metadata.layout.cellheight == targetDataCube.metadata.layout.cellheight)
-    assertEquals(cube.metadata.layout.cols, targetDataCube.metadata.layout.cols)
-    assertEquals(cube.metadata.layout.rows, targetDataCube.metadata.layout.rows)
-    assertEquals(cube.metadata.bounds, KeyBounds(SpatialKey(0, 0), SpatialKey(0, 0)))
-    val trueExtent = Extent(1.0, 100.0, 500.0, 400.0)
-    assertTrue(cube.metadata.extent == trueExtent)
+    assertEquals(targetDataCube.metadata.crs, cube.metadata.crs)
+    assertEquals(targetDataCube.metadata.cellheight.toInt, cube.metadata.cellheight.toInt)
+    assertEquals(targetDataCube.metadata.cellwidth.toInt, cube.metadata.cellwidth.toInt)
+    val expectedBounds = KeyBounds(SpatialKey(0,0),SpatialKey(173,129))
+    assertEquals(expectedBounds, cube.metadata.bounds)
+    val expectedExtent = Extent(277438.26352113695, 110530.15880237566, 722056.3830076031, 442397.8228986237)
+    assertEquals(expectedExtent, cube.metadata.extent)
   }
 
 }
