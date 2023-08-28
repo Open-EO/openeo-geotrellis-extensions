@@ -101,12 +101,13 @@ object VectorCubeMethods {
     val band: RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition] = fromKeyedFeature[Geometry](keyedFeatures, cellType, layoutDefinition, options)
     val datacube: RDD[(SpatialKey, MultibandTile)] = band.mapValues(tile => MultibandTile(tile))
 
+    val gridBounds = layoutDefinition.mapTransform.extentToBounds(extent)
     val metadata: TileLayerMetadata[SpatialKey] = TileLayerMetadata(
       cellType,
       layoutDefinition,
       extent,
       target_crs,
-      KeyBounds(SpatialKey(0, 0), SpatialKey(layoutDefinition.layoutCols - 1, layoutDefinition.layoutRows - 1))
+      KeyBounds(SpatialKey(gridBounds.colMin, gridBounds.rowMin), SpatialKey(gridBounds.colMax, gridBounds.rowMax))
     )
 
     MultibandTileLayerRDD(datacube, metadata)
