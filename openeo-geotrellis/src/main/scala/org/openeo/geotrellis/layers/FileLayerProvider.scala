@@ -29,9 +29,9 @@ import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.LoggerFactory
 
-import java.io.{File, IOException}
-import java.net.{URI, URL}
-import java.nio.file.{Files, Path, Paths, StandardCopyOption}
+import java.io.{IOException, Serializable}
+import java.net.URI
+import java.nio.file.{Path, Paths}
 import java.time._
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
@@ -42,6 +42,22 @@ import scala.collection.parallel.mutable.ParArray
 import scala.reflect.ClassTag
 import scala.reflect.io.Directory
 import scala.util.matching.Regex
+
+/**
+ * This class fixes a bug in the original LayoutTileSource
+ */
+private class LayoutTileSourceFixed[K: SpatialComponent](
+                                                          override val source: RasterSource,
+                                                          override val layout: LayoutDefinition,
+                                                          override val tileKeyTransform: SpatialKey => K
+                                                        ) extends LayoutTileSource[K](source, layout, tileKeyTransform) with Serializable {
+
+  override def sourceColOffset: Long = ((source.extent.xmin - layout.extent.xmin) / layout.cellwidth).round
+
+  override def sourceRowOffset: Long = ((layout.extent.ymax - source.extent.ymax) / layout.cellheight).round
+
+}
+
 
 // TODO: are these attributes typically propagated as RasterSources are transformed? Maybe we should find another way to
 //  attach e.g. a date to a RasterSource.
@@ -876,7 +892,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1, math.max(1,readKeysToRasterSourcesResult._4.size/reduction)).flatMap(t=>{
         val source = if (noResampling) {
           //fast path
-          LayoutTileSource(t._1, metadata.layout, identity)
+          new LayoutTileSourceFixed(t._1, layoutDefinition, identity)
         } else{
           //slow path
           t._1.tileToLayout(metadata.layout, datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor))
