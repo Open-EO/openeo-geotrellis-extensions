@@ -36,7 +36,8 @@ object Udf {
   private def _createSharedInterpreter(): SharedInterpreter = {
     if (!isInterpreterInitialized) {
       val config = new JepConfig()
-      //config.setRedirectOutputStreams(true)
+      config.redirectStdErr(System.err)
+      config.redirectStdout(System.out)
       SharedInterpreter.setConfig(config)
       isInterpreterInitialized = true
     }
