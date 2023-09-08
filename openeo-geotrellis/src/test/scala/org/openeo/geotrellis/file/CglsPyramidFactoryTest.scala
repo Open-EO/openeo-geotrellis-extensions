@@ -7,7 +7,8 @@ import geotrellis.raster.io.geotiff.{GeoTiff, SinglebandGeoTiff}
 import geotrellis.raster.resample.ResampleMethod
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
-import geotrellis.raster.{CellSize, GridBounds}
+import geotrellis.raster.testkit.RasterMatchers
+import geotrellis.raster.{CellSize, GridBounds, UByteConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.vector._
@@ -15,7 +16,8 @@ import org.junit.Assert.assertEquals
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.{AfterClass, Ignore, Test}
 import org.openeo.geotrellis.TestImplicits._
-import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
+import org.openeo.geotrellis.geotiff._
+import org.openeo.geotrellis.{LayerFixtures, LocalSparkContext, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
 
@@ -28,7 +30,50 @@ object CglsPyramidFactoryTest extends LocalSparkContext {
   def tearDown(): Unit = GDALWarp.deinit()
 }
 
-class CglsPyramidFactoryTest {
+class CglsPyramidFactoryTest extends RasterMatchers {
+
+  @Test
+  def readOriginalGrid(): Unit = {
+
+    val date = LocalDate.of(2009, 7, 10).atStartOfDay(ZoneId.of("UTC"))
+
+    val from_date = date format ISO_OFFSET_DATE_TIME
+    val to_date = from_date
+
+    val targetBounds = GridBounds(55L,103,55+73,103+111)
+    val res = LayerFixtures.CGLS1KMResolution
+    val refFile = LayerFixtures.cglsFAPARPath
+    val refRasterSource = GDALRasterSource("NETCDF:" + refFile)
+    val targetExtent = refRasterSource.gridExtent.extentFor(targetBounds)
+    val refRaster = refRasterSource.read(targetExtent).get.mapTile(_.convert(UByteConstantNoDataCellType))
+
+
+    //val x=1.8973214
+    //val y=49.3526786
+
+    val bbox = ProjectedExtent(targetExtent, LatLng)
+    val projectedPolygons = ProjectedPolygons.fromExtent(bbox.extent, s"EPSG:${bbox.crs.epsgCode.get}")
+
+
+    val params = new DataCubeParameters()
+    params.tileSize = 64
+    val Seq((_, baseLayer)) = LayerFixtures.cglsFAPAR1km.datacube_seq(projectedPolygons, from_date, to_date, new java.util.HashMap[String, Any](), "", params)
+
+    val spatialLayer = baseLayer
+      .toSpatial(date)
+      .cache()
+
+    val resultPath = "/tmp/fapar1km.tif"
+    //spatialLayer.writeGeoTiff(resultPath)
+    saveRDD(spatialLayer,1,resultPath,cropBounds=Some(bbox.extent))
+
+
+    GeoTiff(refRaster,LatLng).write("/tmp/refRaster.tif")
+    val actualTiff = GeoTiff.readMultiband(resultPath).raster
+    assertRastersEqual(actualTiff,refRaster)
+
+
+  }
 
   // @Test
   // TODO: pyramid_seq uses ZoomedLayoutScheme with WebMercator crs while actual crs of netcdf is 4326.

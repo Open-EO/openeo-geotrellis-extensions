@@ -19,6 +19,7 @@ import org.openeo.opensearch.OpenSearchClient
 
 import java.awt.image.DataBufferByte
 import java.net.URL
+import java.nio.file.Paths
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
@@ -327,6 +328,23 @@ object LayerFixtures {
     img.getData().getDataBuffer().asInstanceOf[DataBufferByte].getData()
 
 
+  }
+
+  val CGLS1KMResolution = CellSize(0.008928571428584, 0.008928571428584)
+  val cglsFAPARPath = Paths.get(Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/cgls_fapar_2009/c_gls_FAPAR_200907100000_GLOBE_VGT_V2.0.1.nc").toURI)
+  val cglsFAPAR1km = {
+
+    val dataGlob = cglsFAPARPath.getParent.resolve( "*.nc" ).toString
+    val netcdfVariables = util.Arrays.asList("FAPAR")
+    val dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+"
+    val openSearchClient = OpenSearchClient(dataGlob, isUTM = false, dateRegex, netcdfVariables, "cgls")
+
+    new org.openeo.geotrellis.file.PyramidFactory(
+      openSearchClient,
+      openSearchCollectionId = "", openSearchLinkTitles = netcdfVariables, "",
+      maxSpatialResolution = CGLS1KMResolution,
+      experimental = false
+    )
   }
 
 

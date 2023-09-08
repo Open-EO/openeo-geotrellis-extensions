@@ -9,7 +9,7 @@ import geotrellis.raster.io.geotiff.compression.{Compression, DeflateCompression
 import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.render.IndexedColorMap
 import geotrellis.raster.resample._
-import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
+import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.store.s3._
@@ -28,6 +28,7 @@ import org.openeo.geotrellis.tile_grid.TileGrid
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
+import spire.math.Integral
 import spire.syntax.cfor.cfor
 
 import java.nio.file.{Path, Paths}
@@ -149,6 +150,43 @@ package object geotiff {
     saveRDDGenericTileGrid(rdd,bandCount, path, tileGrid, zLevel, cropBounds)
   }
 
+  private def gridBoundsFor(re: RasterExtent, subExtent: Extent, clamp: Boolean = true): GridBounds[Int] = {
+    // West and North boundaries are a simple mapToGrid call.
+    val colMin: Int = re.mapXToGrid(subExtent.xmin)
+    val rowMin: Int = re.mapYToGrid(subExtent.ymax)
+
+    // If South East corner is on grid border lines, we want to still only include
+    // what is to the West and\or North of the point. However if the border point
+    // is not directly on a grid division, include the whole row and/or column that
+    // contains the point.
+    val colMax: Long = Integral[Long].fromLong {
+      val colMaxDouble = re.mapXToGridDouble(subExtent.xmax)
+
+      if (math.abs(colMaxDouble - GridExtent.floorWithTolerance(colMaxDouble)) < GridExtent.epsilon)
+        GridExtent.floorWithTolerance(colMaxDouble).toLong - 1L
+      else
+        GridExtent.floorWithTolerance(colMaxDouble).toLong
+    }
+
+    val rowMax: Long = Integral[Long].fromLong {
+      val rowMaxDouble = re.mapYToGridDouble(subExtent.ymin)
+
+      if (math.abs(rowMaxDouble - GridExtent.floorWithTolerance(rowMaxDouble)) < GridExtent.epsilon)
+        GridExtent.floorWithTolerance(rowMaxDouble).toLong - 1L
+      else
+        GridExtent.floorWithTolerance(rowMaxDouble).toLong
+    }
+
+    if (clamp)
+      GridBounds(
+        colMin = colMin.max(0).min(re.cols - 1).intValue(),
+        rowMin = rowMin.max(0).min(re.rows - 1).intValue(),
+        colMax = colMax.max(0).min(re.cols - 1).intValue(),
+        rowMax = rowMax.max(0).min(re.rows - 1).intValue())
+    else
+      GridBounds[Int](colMin, rowMin, colMax.toInt, rowMax.toInt)
+  }
+
   def preProcess[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K],cropBounds:Option[Extent]): (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = {
     val re = rdd.metadata.toRasterExtent()
     /**
@@ -156,7 +194,7 @@ package object geotiff {
      * Gridbounds are clamped to the actually available rasterextent, this means that we don't add empty data if somehow a cropping bounds is provided that is larger than the actual datacube.
      * CroppedExtent needs to match exactly with whatever gridbounds that we got, so there we do not clamp. So even though we clamp when computing gridbounds, it can still have an extent that is larger than rasterextent!!!
      */
-    var gridBounds = re.gridBoundsFor(cropBounds.getOrElse(rdd.metadata.extent), clamp = true)
+    var gridBounds = gridBoundsFor(re,cropBounds.getOrElse(rdd.metadata.extent), clamp = true)
     val croppedExtent = re.extentFor(gridBounds, clamp = false)
     val filtered = new OpenEOProcesses().filterEmptyTile(rdd)
     val preprocessedRdd = {
@@ -165,7 +203,7 @@ package object geotiff {
         val geotiffLayout: LayoutDefinition = LayoutDefinition(RasterExtent(croppedExtent, re.cellSize), rdd.metadata.tileCols,rdd.metadata.tileRows)
         val retiledRDD = filtered.reproject(rdd.metadata.crs, geotiffLayout)._2.crop(croppedExtent, Options(force = false))
 
-        gridBounds = retiledRDD.metadata.toRasterExtent().gridBoundsFor(cropBounds.getOrElse(retiledRDD.metadata.extent), clamp = true)
+        gridBounds = gridBoundsFor(retiledRDD.metadata.toRasterExtent(),cropBounds.getOrElse(retiledRDD.metadata.extent), clamp = true)
         retiledRDD
       } else {
         // Buffering or not keeps the bottom line NaN.
