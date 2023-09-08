@@ -43,7 +43,7 @@ class CglsPyramidFactoryTest extends RasterMatchers {
     val targetBounds = GridBounds(55L,103,55+73,103+111)
     val res = LayerFixtures.CGLS1KMResolution
     val refFile = LayerFixtures.cglsFAPARPath
-    val refRasterSource = GDALRasterSource("NETCDF:" + refFile)
+    val refRasterSource = GDALRasterSource("NETCDF:" + Paths.get(refFile))
     val targetExtent = refRasterSource.gridExtent.extentFor(targetBounds)
     val refRaster = refRasterSource.read(targetExtent).get.mapTile(_.convert(UByteConstantNoDataCellType))
 

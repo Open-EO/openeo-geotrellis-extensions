@@ -331,10 +331,13 @@ object LayerFixtures {
   }
 
   val CGLS1KMResolution = CellSize(0.008928571428584, 0.008928571428584)
-  val cglsFAPARPath = Paths.get(Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/cgls_fapar_2009/c_gls_FAPAR_200907100000_GLOBE_VGT_V2.0.1.nc").toURI)
-  val cglsFAPAR1km = {
+  val cglsFAPARPath = {
+    val uri = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/cgls_fapar_2009/c_gls_FAPAR_200907100000_GLOBE_VGT_V2.0.1.nc").toURI
+    uri
+  }
 
-    val dataGlob = cglsFAPARPath.getParent.resolve( "*.nc" ).toString
+  val cglsFAPAR1km = {
+    val dataGlob = cglsFAPARPath.resolve( "../*.nc" ).toString
     val netcdfVariables = util.Arrays.asList("FAPAR")
     val dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+"
     val openSearchClient = OpenSearchClient(dataGlob, isUTM = false, dateRegex, netcdfVariables, "cgls")
