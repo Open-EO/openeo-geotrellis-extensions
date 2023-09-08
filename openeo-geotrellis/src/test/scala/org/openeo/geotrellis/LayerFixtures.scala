@@ -1,14 +1,13 @@
 package org.openeo.geotrellis
 
 import cats.data.NonEmptyList
-import geotrellis.layer.{Bounds, FloatingLayoutScheme, KeyBounds, LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
+import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster._
+import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
-import geotrellis.layer._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -336,8 +335,8 @@ object LayerFixtures {
     uri
   }
 
-  val cglsFAPAR1km = {
-    val dataGlob = cglsFAPARPath.resolve( "../*.nc" ).toString
+  def cglsFAPAR1km = {
+    val dataGlob = Paths.get(cglsFAPARPath).getParent.resolve( "*.nc" ).toString
     val netcdfVariables = util.Arrays.asList("FAPAR")
     val dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+"
     val openSearchClient = OpenSearchClient(dataGlob, isUTM = false, dateRegex, netcdfVariables, "cgls")
