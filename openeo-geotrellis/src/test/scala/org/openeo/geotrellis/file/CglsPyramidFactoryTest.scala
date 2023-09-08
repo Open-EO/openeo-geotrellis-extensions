@@ -21,6 +21,7 @@ import org.openeo.geotrellis.{LayerFixtures, LocalSparkContext, ProjectedPolygon
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
 
+import java.nio.file.Paths
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, ZoneId}
 import java.util
