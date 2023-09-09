@@ -8,7 +8,7 @@ import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
-import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
+import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CroppedTile, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
@@ -1047,7 +1047,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
             val geotiffPath = GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/"))
             if (noResampleOnRead) {
               val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)
-              val geotiffRasterSource = GeoTiffResampleRasterSource(geotiffPath, alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType, None)
+              val geotiffRasterSource = GeoTiffRasterSource(geotiffPath, targetCellType)
               Seq(new ResampledRasterSource(geotiffRasterSource, tiffAlignment.region.cellSize, theResolution))
             } else {
               Seq(GeoTiffResampleRasterSource(geotiffPath, alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType, None))

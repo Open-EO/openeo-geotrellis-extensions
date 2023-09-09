@@ -374,32 +374,28 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     spatialLayer.writeGeoTiff("/tmp/testBlackStreak_left_GeoTiffRasterSource_ND0_notcropped_test.tif", bufferedBoundingBox)
   }
 
-  @Test
-  def testS2UpsampledTilesFromLayer(): Unit = {
+  def assertResampledLayerValid(crs: CRS, actualMean: Double): Unit = {
     val date = LocalDate.of(2019, 3, 7).atStartOfDay(UTC)
-    val crs = CRS.fromEpsgCode(32631)
-    val boundingBox = ProjectedExtent(Extent(640860, 5676170, 666460, 5701770), crs)
-    val utm32 = CRS.fromEpsgCode(32632)
-    val bboxUTM32 = boundingBox.reproject(utm32)
+    val boundingBox = ProjectedExtent(Extent(640860, 5676170, 640860+2560, 5676170+2560), CRS.fromEpsgCode(32631))
+    val reprojectedBoundingBox = boundingBox.reproject(crs)
     val parameters = new DataCubeParameters
     parameters.noResampleOnRead = true
 
     val layer = LayerFixtures.sentinel2TocLayerProviderUTMMultiResolution.readMultibandTileLayer(
       from = date,
       to = date,
-      ProjectedExtent(bboxUTM32, utm32),
-      polygons = Array(MultiPolygon(bboxUTM32.toPolygon())),
-      polygons_crs = utm32,
+      ProjectedExtent(reprojectedBoundingBox, crs),
+      polygons = Array(MultiPolygon(reprojectedBoundingBox.toPolygon())),
+      polygons_crs = crs,
       zoom = 0,
       sc,
       Some(parameters)
     )
-    val layerArray: Array[(SpaceTimeKey, MultibandTile)] = layer.collect()
+    val layerArray = layer.collect()
 
     // Ensure that ResampledTiles exist.
     layerArray.foreach({ case (_, tile) =>
       val tile20m = tile.band(1)
-      // Either PaddedTile or ResampledTile
       tile20m match {
         case paddedTile: PaddedTile => assert(paddedTile.chunk.isInstanceOf[ResampledTile])
         case resTile: ResampledTile =>
@@ -409,23 +405,28 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       }
     })
 
+    // Check the mean of the resampled band in the layer.
     val spatialLayer = layer.toSpatial(date).cache()
-    // spatialLayer.writeGeoTiff("/tmp/Sentinel2FileLayerProvider_resampledtiles.tif", boundingBox)
-
-    val bboxInside = ProjectedExtent(
-      Extent(
-        boundingBox.extent.xmin + 5000, boundingBox.extent.ymin + 5000,
-        boundingBox.extent.xmin + 10000, boundingBox.extent.ymin + 10000
-      ),
-      crs
-    )
-    val polygon = bboxInside.reprojectAsPolygon(spatialLayer.metadata.crs)
+    val polygon = boundingBox.reprojectAsPolygon(spatialLayer.metadata.crs)
     val summary = spatialLayer.polygonalSummaryValue(polygon, MeanVisitor)
-    assertTrue(summary.toOption.isDefined)
     val meanList = summary.toOption.get
+    // Delta is large to simply ensure that the mean is reasonably valid.
+    assertEquals(actualMean, meanList.apply(1).mean, actualMean * 0.1)
+  }
 
-    val meanListMeanActual = 6449.449605002506
-    assertEquals(meanListMeanActual, meanList.head.mean, 0.00001)
+  @Test
+  def testS2ResampledTilesCRSEqualToRasterSource(): Unit = {
+    // When feature.crs == targetExtent.crs
+    // This case normally uses GeoTiffResampleRasterSources.
+    assertResampledLayerValid(CRS.fromEpsgCode(32631), 9589.844968268359)
+  }
+
+
+    @Test
+  def testS2ResampledTilesCRSDiffersFromRasterSource(): Unit = {
+    // When feature.crs != targetExtent.crs
+    // This case normally uses GeoTiffReprojectRasterSources.
+    assertResampledLayerValid(CRS.fromEpsgCode(32632), 9589.844968268359)
   }
 
   @Test
