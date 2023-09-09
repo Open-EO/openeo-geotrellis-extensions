@@ -68,12 +68,14 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                                )
   extends MosaicRasterSource { // TODO: don't inherit?
 
+  protected def maxRetries = sys.env.getOrElse("GDALREAD_MAXRETRIES", "50").toInt
+
   protected def reprojectedSources: NonEmptyList[RasterSource] = sources map { _.reproject(crs) }
   protected def reprojectedSources(bands: Seq[Int]): Seq[RasterSource] = {
     val selectedBands =  bands.map(sources.toList)
     selectedBands map { rs =>
       try{
-        retryForever(Duration.ofSeconds(10),50)(rs.reproject(crs))
+        retryForever(Duration.ofSeconds(10),maxRetries)(rs.reproject(crs))
       }
       catch
       {
@@ -121,7 +123,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     }
 
     val singleBandRasters = selectedSources.par
-      .map(rs=> retryForever(Duration.ofSeconds(10),50)( readBounds(rs)))
+      .map(rs=> retryForever(Duration.ofSeconds(10),maxRetries)( readBounds(rs)))
       .collect { case Some(raster) => raster }
 
     try {
