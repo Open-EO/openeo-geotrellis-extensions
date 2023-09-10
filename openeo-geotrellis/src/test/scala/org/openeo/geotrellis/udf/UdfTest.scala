@@ -3,14 +3,15 @@ package org.openeo.geotrellis.udf
 import geotrellis.layer.{Bounds, KeyBounds, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata}
 import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ArrayMultibandTile, FloatArrayTile, MultibandTile, MutableArrayTile, Tile, TileLayout}
+import geotrellis.raster.{ArrayMultibandTile, CellSize, FloatArrayTile, MultibandTile, Tile, TileLayout}
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.util.SparkUtils
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, _}
 import geotrellis.vector.{Extent, MultiPolygon, Polygon}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.{AfterClass, BeforeClass}
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrellis.geotiff.saveRDD
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 
@@ -22,16 +23,16 @@ import scala.io.Source
 object UdfTest {
   private var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit = {
     val sparkConf = new SparkConf()
       .set("spark.kryoserializer.buffer.max", "512m")
       .set("spark.rdd.compress","true")
 
-    sc = SparkUtils.createLocalSparkContext("local[*]", classOf[UdfTest].getName, sparkConf)
+    sc = SparkUtils.createLocalSparkContext("local[1]", classOf[UdfTest].getName, sparkConf)
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 }
 
@@ -52,7 +53,7 @@ class UdfTest extends RasterMatchers {
     Supported CellTypes: Float
     Unsupported CellTypes: Bit, Byte, Ubyte, Short, UShort, Int, Float, Double
    */
-//  @Test
+  //@Test
   def testSimpleDatacubeOperationsFloat(): Unit = {
     val filename = "/org/openeo/geotrellis/udf/simple_datacube_operations.py"
     val source = Source.fromURL(getClass.getResource(filename))
@@ -64,6 +65,24 @@ class UdfTest extends RasterMatchers {
     datacube.values.first().bands(0).foreach(e => assert(e == 0))
     val resultRDD = Udf.runUserCode(code, datacube, new util.ArrayList[String](), new util.HashMap[String, Any]())
     resultRDD.values.first().bands(0).foreach(e => assert(e == 60))
+  }
+
+  //@Test
+  def testSuperResolution(): Unit = {
+    val filename = "/org/openeo/geotrellis/udf/modify_spatial_dimensions.py"
+    val source = Source.fromURL(getClass.getResource(filename))
+    val code = source.getLines.mkString("\n")
+    source.close()
+
+    val dates = _getDates()
+    val datacube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = _createChunkPolygonDatacube(dates)
+    val currentRes = datacube.metadata.cellSize
+    datacube.values.first().bands(0).foreach(e => assert(e == 0))
+    val resultRDD = Udf.runUserCode(code, datacube, new util.ArrayList[String](), new util.HashMap[String, Any]())
+    assertEquals(resultRDD.metadata.layout.cellSize,CellSize(currentRes.width/2.0,currentRes.height/2.0))
+    assertEquals(datacube.metadata.cols*2,resultRDD.metadata.cols)
+    resultRDD.values.first().bands(0).foreach(e => assert(e == 60))
+
   }
 
   def _getDates(): Seq[ZonedDateTime] = {

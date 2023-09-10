@@ -171,7 +171,7 @@
         <dependency>
             <groupId>black.ninia</groupId>
             <artifactId>jep</artifactId>
-            <version>3.9.1</version>
+            <version>4.1.1</version>
         </dependency>
         <dependency>
             <groupId>software.amazon.awssdk</groupId>

@@ -1,7 +1,8 @@
 package org.openeo.geotrellis.udf
 
 import geotrellis.layer.{LayoutDefinition, SpaceTimeKey, SpatialKey, TemporalProjectedExtent}
-import geotrellis.raster.{ArrayMultibandTile, FloatArrayTile, MultibandTile}
+import geotrellis.raster.resample.NearestNeighbor
+import geotrellis.raster.{ArrayMultibandTile, CellSize, FloatArrayTile, FloatConstantNoDataCellType, MultibandTile, RasterExtent}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import jep.{DirectNDArray, JepConfig, NDArray, SharedInterpreter}
@@ -35,7 +36,8 @@ object Udf {
   private def _createSharedInterpreter(): SharedInterpreter = {
     if (!isInterpreterInitialized) {
       val config = new JepConfig()
-      config.setRedirectOutputStreams(true)
+      config.redirectStdErr(System.err)
+      config.redirectStdout(System.out)
       SharedInterpreter.setConfig(config)
       isInterpreterInitialized = true
     }
@@ -292,11 +294,49 @@ object Udf {
 
     // TODO: AllocateDirect is an expensive operation, we should create one buffer for the entire partition
     // and then slice it!
+
+    val newLayout = {
+      if (code.contains("apply_metadata")) {
+        val newResolution = 5.0 //TODO determine based on convert_dimensions
+        val crsCode = layer.metadata.crs.epsgCode.get
+        val stepSize = layer.metadata.layout.cellSize
+        val cubeMetadata =
+          s"""
+            |import openeo.metadata
+            |metadata = {
+            |      "x": {"type": "spatial", "axis": "x", "step": ${stepSize.width}, "reference_system": $crsCode},
+            |      "y": {"type": "spatial", "axis": "y", "step": ${stepSize.height}, "reference_system": $crsCode},
+            |      "t": {"type": "temporal"}
+            |}
+            |
+            |""".stripMargin
+        val resultMetadata = layer.sparkContext.parallelize(Seq(1)).map(t=>{
+          val interp = _createSharedInterpreter()
+          try {
+            interp.exec(DEFAULT_IMPORTS)
+            _setContextInPython(interp, context)
+            interp.exec(code)
+            interp.exec(cubeMetadata)
+            interp.exec("result_metadata = apply_metadata(openeo.metadata.CollectionMetadata(metadata), context)")
+            val targetResolutionX:Double = interp.getValue("result_metadata.get('x','step')").asInstanceOf[Double]
+            val targetResolutionY:Double = interp.getValue("result_metadata.get('y','step')").asInstanceOf[Double]
+            CellSize(targetResolutionX,targetResolutionY)
+          } finally if (interp != null) interp.close()
+        }).collect()
+
+        Some(LayoutDefinition(RasterExtent(layer.metadata.layout.extent, resultMetadata.apply(0)), layer.metadata.layout.tileRows))
+      } else {
+        None
+      }
+
+    }
+    val oldLayout = layer.metadata.layout
+
     val result = layer.mapPartitions(iter => {
       // TODO: Start an interpreter for every partition
       // TODO: Currently this fails because per tile processing cannot access the interpreter
       // TODO: This is because every tile in a partition is handled in a separate thread.
-      iter.map(key_and_tile => {
+      iter.flatMap(key_and_tile => {
         val multiBandTile: MultibandTile = key_and_tile._2
         val tileRows = multiBandTile.bands(0).rows
         val tileCols = multiBandTile.bands(0).cols
@@ -332,24 +372,27 @@ object Udf {
           // Convert the result back to a MultibandTile.
           val resultDimensions = interp.getValue("result_cube.get_array().values.shape").asInstanceOf[java.util.List[Long]].asScala.toList.map(_.toInt)
           val resultCube = interp.getValue("result_cube.get_array().values")
-          var resultBuffer: FloatBuffer = null
-          resultCube match {
-            case cube: DirectNDArray[FloatBuffer] =>
-              // The datacube was modified inplace.
-              resultBuffer = cube.getData
-            case cube: NDArray[Array[Float]] =>
-              // UDF created a new datacube.
-              if (resultDimensions.length < 2) {
-                throw new IllegalArgumentException((
-                  "UDF returned a datacube that has less than 2 dimensions. " +
-                    "Actual dimensions: (%s).").format(resultDimensions.mkString(", "))
-                )
-              }
-              val dtype = interp.getValue("str(result_cube.get_array().values.dtype)").asInstanceOf[String]
-              _checkOutputDtype(dtype)
-              _checkOutputSpatialDimensions(resultDimensions, tileRows, tileCols)
-              resultBuffer = FloatBuffer.wrap(cube.getData)
-          }
+          val resultBuffer: FloatBuffer =
+            resultCube match {
+              case cube: DirectNDArray[FloatBuffer] =>
+                // The datacube was modified inplace.
+                cube.getData
+              case cube: NDArray[Array[Float]] =>
+                // UDF created a new datacube.
+                if (resultDimensions.length < 2) {
+                  throw new IllegalArgumentException((
+                    "UDF returned a datacube that has less than 2 dimensions. " +
+                      "Actual dimensions: (%s).").format(resultDimensions.mkString(", "))
+                  )
+                }
+                val dtype = interp.getValue("str(result_cube.get_array().values.dtype)").asInstanceOf[String]
+                _checkOutputDtype(dtype)
+                if(newLayout.isEmpty)
+                  _checkOutputSpatialDimensions(resultDimensions, tileRows, tileCols)
+                println(cube.getData)
+
+                FloatBuffer.wrap(cube.getData)
+            }
 
           // UDFs can
           //  * add/remove band coordinates but not rows, cols.
@@ -369,10 +412,28 @@ object Udf {
           resultMultiBandTile = _extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, tileSize, tileCols, tileRows)
         } finally if (interp != null) interp.close()
 
-        (key_and_tile._1, resultMultiBandTile)
-      })
-    }, preservesPartitioning = true)
+        if (newLayout.isDefined) {
+          var newExtent: Extent = key_and_tile._1.spatialKey.extent(oldLayout) //TODO: don't assume that extent stays the same, but determine extent of the output based on result XArray Coords
+          newLayout.get.mapTransform(newExtent)
+            .coordsIter
+            .map { spatialComponent =>
+              val outKey: SpatialKey = spatialComponent
 
-    ContextRDD(result, layer.metadata)
+              val newTile = multiBandTile.prototype(FloatConstantNoDataCellType, tileCols, tileRows)
+              (SpaceTimeKey(outKey,key_and_tile._1.time), newTile.merge(
+                newLayout.get.mapTransform.keyToExtent(outKey),
+                newExtent,
+                resultMultiBandTile,
+                NearestNeighbor
+              ))
+            }
+        }else{
+          Some((key_and_tile._1, resultMultiBandTile))
+        }
+
+      })
+    }, preservesPartitioning = newLayout.isEmpty)
+
+    ContextRDD(result, layer.metadata.copy(layout=newLayout.getOrElse(layer.metadata.layout)))
   }
 }
