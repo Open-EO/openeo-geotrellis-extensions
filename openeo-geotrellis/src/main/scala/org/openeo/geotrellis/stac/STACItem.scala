@@ -1,6 +1,7 @@
 package org.openeo.geotrellis.stac
 
 import org.openeo.geotrellis.geotiff.uploadToS3
+import org.openeo.geotrellis.getTempFile
 import org.slf4j.LoggerFactory
 
 import java.io.IOException
@@ -57,7 +58,7 @@ class STACItem {
          |""".stripMargin
     try {
 
-      val tempFile = Files.createTempFile(null, null)
+      val tempFile = getTempFile(null, ".json")
       Files.write(tempFile, template.getBytes(Charset.forName("UTF-8")), StandardOpenOption.CREATE_NEW)
 
       if (path.startsWith("s3:/")) {

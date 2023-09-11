@@ -13,6 +13,7 @@ import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
 import _root_.geotrellis.raster._
 
 import java.net.URI
+import java.nio.file.{Path, Paths}
 import java.util.concurrent.ConcurrentHashMap
 import scala.compat.java8.FunctionConverters._
 
@@ -119,5 +120,26 @@ package object geotrellis {
       case DoubleUserDefinedNoDataCellType(_) => cellType
       case _ => throw new IllegalArgumentException("Cannot convert to unsigned equivalent: '" + cellType.getClass.getName + "'.")
     }
+  }
+
+  /**
+   * Inspired on 'Files.createTempFile'
+   */
+  def getTempFile(prefix: String, suffix: String): Path = {
+    val prefixNonNull = if (prefix == null) "" else suffix
+    val suffixNonNull = if (suffix == null) ".tmp" else suffix
+    val tmpdirProp = sun.security.action.GetPropertyAction.privilegedGetProperty("java.io.tmpdir")
+    val tmpdir = Paths.get(tmpdirProp)
+    val random = new java.security.SecureRandom()
+
+    def generatePath(prefix: String, suffix: String, dir: Path) = {
+      val n = random.nextLong
+      val s = prefix + java.lang.Long.toUnsignedString(n) + suffix
+      val name = dir.getFileSystem.getPath(s)
+      if (name.getParent != null) throw new IllegalArgumentException("Invalid prefix or suffix")
+      else dir.resolve(name)
+    }
+
+    generatePath(prefixNonNull, suffixNonNull, tmpdir)
   }
 }
