@@ -1,8 +1,10 @@
 package org.openeo.geotrellissentinelhub
 
-import org.junit.Assert.fail
+import org.junit.Assert.{assertEquals, fail}
 import org.junit.Test
 import org.slf4j.{Logger, LoggerFactory}
+
+import java.time.{LocalDate, ZoneOffset}
 
 class PackageTest {
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass)
@@ -51,4 +53,19 @@ class PackageTest {
       val responseBody = """{"error":{"status":500,"reason":"Internal Server Error","message":"Illegal request to https://sentinel-s1-l1c.s3.amazonaws.com/GRD/2018/11/25/EW/DH/S1B_EW_GRDM_1SDH_20181125T043340_20181125T043419_013756_0197D4_BC1C/measurement/ew-vh.tiff. HTTP Status: 404.","code":"RENDERER_EXCEPTION"}}"""
       throw new SentinelHubException(message = responseBody, 500, responseHeaders = Map(), responseBody)
     }
+
+  @Test
+  def testSequentialDaysBoundsAreInclusive(): Unit = {
+    val from = LocalDate.of(2023, 1, 1).atStartOfDay(ZoneOffset.UTC)
+    val to = from plusDays 2
+
+    val expected = Seq(
+      from,
+      from plusDays 1,
+      from plusDays 2)
+
+    val actual = sequentialDays(from, to)
+
+    assertEquals(expected, actual)
+  }
 }

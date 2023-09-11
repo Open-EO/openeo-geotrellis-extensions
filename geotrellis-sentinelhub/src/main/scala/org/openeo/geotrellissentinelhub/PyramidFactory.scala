@@ -71,7 +71,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
   require(maxSoftErrorsRatio >= 0.0 && maxSoftErrorsRatio <= 1.0,
     s"maxSoftErrorsRatio $maxSoftErrorsRatio out of range [0.0, 1.0]")
 
-  @transient private val _catalogApi = if (collectionId == null) new MadeToMeasureCatalogApi else catalogApi
+  @transient private val _catalogApi: CatalogApi = if (collectionId == null) new MadeToMeasureCatalogApi else catalogApi
 
   private val maxZoom = 14
 
