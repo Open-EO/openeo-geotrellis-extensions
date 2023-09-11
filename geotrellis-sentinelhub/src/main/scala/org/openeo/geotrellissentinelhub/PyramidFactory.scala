@@ -234,6 +234,12 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     // TODO: use ProjectedPolygons type
     // TODO: reduce code duplication with pyramid_seq()
+    val expectedMetadataProperties = util.Collections.singletonMap("polarization",
+      util.Collections.singletonMap("in", util.Arrays.asList("VH", "DV")))
+
+    if (metadata_properties != expectedMetadataProperties)
+      throw new IllegalArgumentException(s"unexpected metadata_properties $metadata_properties")
+
 
     val cube: MultibandTileLayerRDD[SpaceTimeKey] = {
       implicit val sc: SparkContext = SparkContext.getOrCreate()
@@ -272,8 +278,14 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             awaitRateLimitingGuardDelay(bandNames, width, height)
 
             val (tile, processingUnitsSpent) = authorized { accessToken =>
+              val metadataProperties = util.Collections.singletonMap("polarization",
+                util.Collections.singletonMap("eq", "DV": Any)) // TODO: VH should not work, use "DV" instead (actually: returns a NODATA tile)
+
               processApi.getTile(datasetId, projectedExtent, dateTime, width, height, bandNames,
-                sampleType, Criteria.toDataFilters(metadata_properties), processingOptions, accessToken)
+                // TODO: are these dataFilters still necessary if we already used metadata_properties to get/restrict features from the catalog in the first place?
+                //  After all, the original behavior, before the introduction of auto-polarization, was to simply not pass a "polarization" dataFilter and just fetch the bands (VV, VH, ...): TBC
+                //  Probably: yes, because you'll want to get the data that you asked for in the first place (= metadata_properties)
+                sampleType, Criteria.toDataFilters(metadataProperties), processingOptions, accessToken)
             }
             tracker.add(SH_PU, processingUnitsSpent)
             scopedMetadataTracker.addSentinelHubProcessingUnits(processingUnitsSpent)
@@ -351,10 +363,29 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               }
             }
 
-            val features = authorized { accessToken =>
-              _catalogApi.search(collectionId, multiPolygon, polygons_crs,
-                from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties, collectionId))
+            // TODO: "in" in metadata_properties becomes a combination of a couple of separate "eq"s
+            //  _catalogApi.search() already returns a Map so duplicate features are automatically removed
+            //  Hard-coded for now.
+            // TODO: probably not a good idea; there's an implicit AND between criteria for a particular property,
+            //  not an OR, plus you can't have multiple "eq"s in a Map anyway.
+            val metadataProperties: Seq[util.Map[String, util.Map[String, Any]]] = {
+              val vhMetadataProperties = util.Collections.singletonMap("polarization",
+                util.Collections.singletonMap("eq", "VH": Any))
+
+              val dvMetadataProperties = util.Collections.singletonMap("polarization",
+                util.Collections.singletonMap("eq", "DV": Any))
+
+              Seq(vhMetadataProperties, dvMetadataProperties)
             }
+
+            val features = metadataProperties
+              .map { metadata_properties =>
+                authorized { accessToken =>
+                  _catalogApi.search(collectionId, multiPolygon, polygons_crs,
+                    from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties, collectionId))
+                }
+              }
+              .foldLeft(Map[String, Feature[Geometry, FeatureData]]())(_ ++ _)
 
             tracker.addInputProductsWithUrls(
               collectionId,

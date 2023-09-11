@@ -68,7 +68,24 @@ trait CatalogApi {
 
 }
 
-case class FeatureData(dateTime: ZonedDateTime, selfUrl: Option[String])
+object FeatureData {
+  private val dateTimeFormatter = ISO_OFFSET_DATE_TIME
+
+  def apply(dateTime: ZonedDateTime): FeatureData = new FeatureData(dateTime)
+}
+
+case class FeatureData(properties: Map[String, Json], selfUrl: Option[String] = None) {
+  def this(dateTime: ZonedDateTime) =
+    this(Map("datetime" -> Json.fromString(FeatureData.dateTimeFormatter format dateTime)))
+
+  def dateTime: ZonedDateTime = {
+    val Some(dateTime) = for {
+      datetime <- properties("datetime").asString
+    } yield ZonedDateTime.parse(datetime, FeatureData.dateTimeFormatter)
+
+    dateTime
+  }
+}
 
 object DefaultCatalogApi {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[DefaultCatalogApi])
@@ -101,15 +118,6 @@ object DefaultCatalogApi {
       href
     }
   }
-
-  private def getDateTime(jProperties: Json): Option[ZonedDateTime] = {
-    for {
-      properties <- jProperties.asObject
-      json <- properties("datetime")
-      datetime <- json.asString
-    } yield ZonedDateTime.parse(datetime, ISO_OFFSET_DATE_TIME)
-  }
-
 }
 
 class DefaultCatalogApi(endpoint: String) extends CatalogApi {
@@ -217,8 +225,8 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
             val selfUrl = getSelfUrl(featureJson)
             for {
               feature <- featureJson.as[Feature[Geometry, Json]].toOption
-              Some(dateTime) = getDateTime(feature.data)
-            } yield id -> Feature(feature.geom, FeatureData(dateTime, selfUrl))
+              properties <- feature.data.asObject
+            } yield id -> Feature(feature.geom, FeatureData(properties.toMap, selfUrl))
           }
 
         page.context.next match {
@@ -256,7 +264,8 @@ class MadeToMeasureCatalogApi extends CatalogApi {
                       to: ZonedDateTime, accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
   Map[String, Feature[Geometry, FeatureData]] = {
     val features = for ((timestamp, index) <- sequentialDays(from, to).zipWithIndex)
-      yield index.toString -> Feature(geometry.reproject(geometryCrs, LatLng), FeatureData(timestamp, None))
+      yield index.toString -> Feature(geometry.reproject(geometryCrs, LatLng),
+        FeatureData(Map("datetime" -> Json.fromString(timestamp format ISO_OFFSET_DATE_TIME)), None))
 
     features.toMap
   }

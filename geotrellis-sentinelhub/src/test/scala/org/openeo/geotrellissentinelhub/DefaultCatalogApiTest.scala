@@ -1,12 +1,13 @@
 package org.openeo.geotrellissentinelhub
 
-import geotrellis.proj4.LatLng
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.Assert.{assertEquals, assertTrue, fail}
 import org.junit.{Ignore, Test}
 
 import java.time.{LocalDate, ZoneId}
+import java.util
 import java.util.Collections.{emptyMap, singletonMap}
 import scala.collection.JavaConverters._
 
@@ -222,5 +223,49 @@ class DefaultCatalogApiTest {
     )
 
     println(features.size)
+  }
+
+  @Ignore("assert that the query returns a result for s1:polarization DV; not to be run automatically")
+  @Test
+  def debugSentinel1GrdPolarization(): Unit = {
+    // TODO: should be able to query for features that have s1:polarization=DV OR s1:polarization=VH
+    // https://docs.sentinel-hub.com/api/latest/api/catalog/#filter
+    // ideally with an IN or OR in CQL2 but that probably won't work yet
+
+    /*
+      s1:polarization = 'DV' // original
+      in ('VH', 'DV') // attempt 1: IN
+      (s1:polarization='VH') OR (s1:polarization='DV') // attempt 2: OR
+      {"op":"in","args":[{"property":"s1:polarization"},["VH","DV"]]} // attempt 3: cql2-json IN
+      {"op":"or","args":[{"op":"=","args":[{"property":"s1:polarization"},"VH"]},{"op":"=","args":[{"property":"s1:polarization"},"DV"]}]} // attempt 4: cql2-json OR
+      */
+
+    val catalog = new DefaultCatalogApi(endpoint)
+
+    val geometry = ProjectedExtent(
+      Extent(476547.5576501595, 5603835.302791991, 476646.7801780292, 5603978.859917298),
+      CRS.fromEpsgCode(32632))
+
+    val from = LocalDate.of(2023, 7, 3).atStartOfDay(utc)
+    val to = from plusDays 2
+
+    val specifyPolarization = true
+
+    // returns a single feature that has s1:polarization: DV
+    val queryProperties: util.Map[String, util.Map[String, Any]] =
+      if (specifyPolarization) singletonMap("s1:polarization", singletonMap("eq", "DV"))
+      else emptyMap()
+
+    val features = catalog.search(
+      "sentinel-1-grd",
+      geometry.extent.toPolygon(),
+      geometry.crs,
+      from,
+      to,
+      accessToken,
+      queryProperties = queryProperties
+    )
+
+    assertEquals(1, features.size)
   }
 }
