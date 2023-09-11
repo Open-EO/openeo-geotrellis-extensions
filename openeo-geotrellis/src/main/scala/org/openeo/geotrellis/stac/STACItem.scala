@@ -58,7 +58,7 @@ class STACItem {
     try {
 
       val tempFile = Files.createTempFile(null, null)
-      Files.write(Paths.get(path), template.getBytes(Charset.forName("UTF-8")), StandardOpenOption.CREATE_NEW)
+      Files.write(tempFile, template.getBytes(Charset.forName("UTF-8")), StandardOpenOption.CREATE_NEW)
 
       if (path.startsWith("s3:/")) {
         val correctS3Path = path.replaceFirst("s3:/(?!/)", "s3://")
