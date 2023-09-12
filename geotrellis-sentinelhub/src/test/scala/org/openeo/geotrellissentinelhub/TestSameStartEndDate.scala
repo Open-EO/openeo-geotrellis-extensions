@@ -20,7 +20,7 @@ class TestSameStartEndDate {
 
     val from = "2019-06-01T00:00:00Z"
 
-    val to = "2019-06-01T00:00:00Z"
+    val until = "2019-06-02T00:00:00Z"
 
     val bandNames = Seq("VV", "VH", "HV", "HH").asJava
 
@@ -36,7 +36,7 @@ class TestSameStartEndDate {
       new DefaultProcessApi(endpoint),
       new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
       rateLimitingGuard = NoRateLimitingGuard)
-      .pyramid_seq(extent, bbox_srs, from, to, bandNames, metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]])
+      .pyramid_seq(extent, bbox_srs, from, until, bandNames, metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]])
 
     val (_, topLevelRdd) = pyramid.filter { case (zoom, _) => zoom == 14 }.head
 
