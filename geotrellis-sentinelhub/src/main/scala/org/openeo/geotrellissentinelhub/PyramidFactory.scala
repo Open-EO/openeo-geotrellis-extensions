@@ -17,6 +17,7 @@ import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.time.ZoneOffset.UTC
+import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
 import java.util.concurrent.TimeUnit.MILLISECONDS
@@ -205,8 +206,8 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
     implicit val sc: SparkContext = SparkContext.getOrCreate()
 
     val projectedExtent = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
-    val from = ZonedDateTime.parse(from_datetime)
-    val until = ZonedDateTime.parse(until_datetime)
+    val from = ZonedDateTime.parse(from_datetime, ISO_OFFSET_DATE_TIME)
+    val until = ZonedDateTime.parse(until_datetime, ISO_OFFSET_DATE_TIME)
     val to = until minusNanos 1
 
     pyramid(projectedExtent, from, to, band_names.asScala, metadata_properties, correlationId).levels.toSeq
@@ -237,8 +238,8 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
       val boundingBox = ProjectedExtent(polygons.toSeq.extent, polygons_crs)
 
-      val from = ZonedDateTime.parse(from_datetime)
-      val until = ZonedDateTime.parse(until_datetime)
+      val from = ZonedDateTime.parse(from_datetime, ISO_OFFSET_DATE_TIME)
+      val until = ZonedDateTime.parse(until_datetime, ISO_OFFSET_DATE_TIME)
       val to = until minusNanos 1
 
       // TODO: call into AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
