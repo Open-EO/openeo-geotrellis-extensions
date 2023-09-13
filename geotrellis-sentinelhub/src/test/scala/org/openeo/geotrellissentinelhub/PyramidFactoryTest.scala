@@ -233,8 +233,8 @@ class PyramidFactoryTest {
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
-        from_date = ISO_OFFSET_DATE_TIME format date,
-        to_date = ISO_OFFSET_DATE_TIME format date,
+        from_datetime = ISO_OFFSET_DATE_TIME format date,
+        until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
         band_names = Seq("B08", "B04",  "SCL").asJava,
         metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
         dataCubeParameters
@@ -283,7 +283,7 @@ class PyramidFactoryTest {
     }
   }
 
-  private def testLayer(pyramidFactory: PyramidFactory, layer: String, date: ZonedDateTime, bandNames: Seq[String],
+  private def testLayer(pyramidFactory: PyramidFactory, layer: String, datetime: ZonedDateTime, bandNames: Seq[String],
                         test: MultibandTileLayerRDD[SpaceTimeKey] => Unit = _ => ()): Raster[MultibandTile] = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
 
@@ -296,8 +296,10 @@ class PyramidFactoryTest {
     try {
       val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
 
-      val isoDate = ISO_OFFSET_DATE_TIME format date
-      val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs, isoDate, isoDate, bandNames.asJava,
+      val isoFrom = ISO_OFFSET_DATE_TIME format datetime
+      val isoUntil = ISO_OFFSET_DATE_TIME format (datetime plusDays 1)
+
+      val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs, isoFrom, isoUntil, bandNames.asJava,
         metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]) // https://github.com/scala/bug/issues/8911
 
       val (zoom, baseLayer) = pyramid
@@ -315,7 +317,7 @@ class PyramidFactoryTest {
         .stitch()
 
       val tif = MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs, geoTiffOptions)
-      tif.write(s"/tmp/${layer}_${zoom}_${DateTimeFormatter.ISO_LOCAL_DATE format date}.tif")
+      tif.write(s"/tmp/${layer}_${zoom}_${DateTimeFormatter.ISO_LOCAL_DATE format datetime}.tif")
 
       raster
     } finally sc.stop()
@@ -349,10 +351,10 @@ class PyramidFactoryTest {
       parameters.layoutScheme = "FloatingLayoutScheme"
       parameters.globalExtent = Some(utmBoundingBox)
 
-      var Seq((_, layer)) = pyramidFactory.datacube_seq(
+      val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
-        from_date = ISO_OFFSET_DATE_TIME format date,
-        to_date = ISO_OFFSET_DATE_TIME format date,
+        from_datetime = ISO_OFFSET_DATE_TIME format date,
+        until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
         band_names = Seq("B08", "B04", "B03").asJava,
         metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
         parameters,
@@ -421,8 +423,8 @@ class PyramidFactoryTest {
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         utmPolygons, utmCrs,
-        from_date = ISO_OFFSET_DATE_TIME format date,
-        to_date = ISO_OFFSET_DATE_TIME format date,
+        from_datetime = ISO_OFFSET_DATE_TIME format date,
+        until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
         band_names = Seq("B08", "B04", "B03").asJava,
         metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
       )
@@ -496,8 +498,8 @@ class PyramidFactoryTest {
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         utmPolygons, utmCrs,
-        from_date = ISO_OFFSET_DATE_TIME format date,
-        to_date = ISO_OFFSET_DATE_TIME format date,
+        from_datetime = ISO_OFFSET_DATE_TIME format date,
+        until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
         band_names = Seq("VH", "VV").asJava,
         metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
       )
@@ -556,8 +558,8 @@ class PyramidFactoryTest {
 
     val Seq((_, layer)) = pyramidFactory.datacube_seq(
       polygon, crs,
-      from_date = ISO_OFFSET_DATE_TIME format date,
-      to_date = ISO_OFFSET_DATE_TIME format date,
+      from_datetime = ISO_OFFSET_DATE_TIME format date,
+      until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
       band_names = Seq("HV", "HH").asJava,
       metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]],
     )
@@ -595,8 +597,8 @@ class PyramidFactoryTest {
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
-        from_date = ISO_OFFSET_DATE_TIME format date,
-        to_date = ISO_OFFSET_DATE_TIME format date,
+        from_datetime = ISO_OFFSET_DATE_TIME format date,
+        until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
         band_names = Seq("B3", "B2", "B1").asJava,
         metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
       )
@@ -644,8 +646,8 @@ class PyramidFactoryTest {
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
-        from_date = ISO_OFFSET_DATE_TIME format date,
-        to_date = ISO_OFFSET_DATE_TIME format date,
+        from_datetime = ISO_OFFSET_DATE_TIME format date,
+        until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
         band_names = Seq("B2").asJava,
         metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
       )
@@ -693,8 +695,8 @@ class PyramidFactoryTest {
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
-        from_date = ISO_OFFSET_DATE_TIME format date,
-        to_date = ISO_OFFSET_DATE_TIME format date,
+        from_datetime = ISO_OFFSET_DATE_TIME format date,
+        until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
         band_names = Seq("B4").asJava,
         metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
       )
@@ -729,8 +731,8 @@ class PyramidFactoryTest {
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
-        from_date = ISO_OFFSET_DATE_TIME format date,
-        to_date = ISO_OFFSET_DATE_TIME format date,
+        from_datetime = ISO_OFFSET_DATE_TIME format date,
+        until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
         band_names = Seq("B04", "B03", "B02").asJava,
         metadata_properties = Collections.singletonMap("eo:cloud_cover", Collections.singletonMap("lte", 20))
       )
@@ -751,8 +753,8 @@ class PyramidFactoryTest {
   @Test
   def testMapzenDem(): Unit = {
     val endpoint = "https://services-uswest2.sentinel-hub.com"
-    val date = ZonedDateTime.now(ZoneOffset.UTC)
-    val to = date plusDays 100
+    val from = LocalDate.of(2023, 9, 12).atStartOfDay(ZoneOffset.UTC)
+    val until = from plusDays 100
 
     // from https://collections.eurodatacube.com/stac/mapzen-dem.json
     val maxSpatialResolution = CellSize(0.000277777777778, 0.000277777777778)
@@ -767,15 +769,25 @@ class PyramidFactoryTest {
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
-        from_date = ISO_OFFSET_DATE_TIME format date,
-        to_date = ISO_OFFSET_DATE_TIME format to,
+        from_datetime = ISO_OFFSET_DATE_TIME format from,
+        until_datetime = ISO_OFFSET_DATE_TIME format until,
         band_names = Seq("DEM").asJava,
         metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
       )
 
+      layer.cache()
+
+      val distinctDates = layer
+        .keys
+        .map(_.time)
+        .distinct()
+        .sortBy(identity)
+        .collect()
+
+      assertEquals(sequentialDays(from, from plusDays 99), distinctDates.toSeq)
+
       val spatialLayer = layer
-        .toSpatial(to.toLocalDate.atStartOfDay(ZoneOffset.UTC))
-        .cache()
+        .toSpatial(from.toLocalDate.atStartOfDay(ZoneOffset.UTC))
 
       val Raster(multibandTile, extent) = spatialLayer
         .crop(boundingBox.extent)
@@ -794,7 +806,7 @@ class PyramidFactoryTest {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
 
     val from = LocalDate.of(2021, 2, 3).atStartOfDay(ZoneOffset.UTC)
-    val to = LocalDate.of(2021, 2, 7).atStartOfDay(ZoneOffset.UTC)
+    val until = LocalDate.of(2021, 2, 8).atStartOfDay(ZoneOffset.UTC)
 
     val endpoint = "https://services.sentinel-hub.com"
 
@@ -813,7 +825,7 @@ class PyramidFactoryTest {
           boundingBox.extent,
           bbox_srs = s"EPSG:${boundingBox.crs.epsgCode.get}",
           ISO_OFFSET_DATE_TIME format from,
-          ISO_OFFSET_DATE_TIME format to,
+          ISO_OFFSET_DATE_TIME format until,
           band_names = Seq("VH", "VV").asJava,
           metadata_properties = Collections.singletonMap("orbitDirection", Collections.singletonMap("eq", "DESCENDING"))
         )
@@ -822,7 +834,7 @@ class PyramidFactoryTest {
           .maxBy { case (zoom, _) => zoom }
 
         val spatialLayer = baseLayer
-          .toSpatial(to)
+          .toSpatial(LocalDate.of(2021, 2, 7).atStartOfDay(ZoneOffset.UTC))
           .crop(boundingBox.reproject(baseLayer.metadata.crs))
           .cache()
 
@@ -873,8 +885,8 @@ class PyramidFactoryTest {
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
         polygons_crs = boundingBox.crs,
-        from_date = "2016-11-10T00:00:00Z",
-        to_date = "2016-11-10T00:00:00Z",
+        from_datetime = "2016-11-10T00:00:00Z",
+        until_datetime = "2016-11-11T00:00:00Z",
         band_names = util.Arrays.asList("VV"),
         metadata_properties = util.Collections.emptyMap()
       )
@@ -904,7 +916,7 @@ class PyramidFactoryTest {
 
   @Test
   def testSentinel5PL2DuplicateRequestsDatacube_seq(): Unit = {
-    def layerFromDatacube_seq(pyramidFactory: PyramidFactory, boundingBox: ProjectedExtent, date: String,
+    def layerFromDatacube_seq(pyramidFactory: PyramidFactory, boundingBox: ProjectedExtent, date: ZonedDateTime,
                               bandNames: Seq[String], metadata_properties: util.Map[String, util.Map[String, Any]]):
     MultibandTileLayerRDD[SpaceTimeKey] = {
 
@@ -914,8 +926,8 @@ class PyramidFactoryTest {
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
-        from_date = date,
-        to_date = date,
+        from_datetime = ISO_OFFSET_DATE_TIME format date,
+        until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
         band_names = bandNames.asJava,
         metadata_properties = metadata_properties,
         datacubeParams,
@@ -933,12 +945,12 @@ class PyramidFactoryTest {
 
   @Test
   def testSentinel5PL2DuplicateRequestsPyramid_seq(): Unit = {
-    def layerFromPyramid_seq(pyramidFactory: PyramidFactory, boundingBox: ProjectedExtent, date: String,
+    def layerFromPyramid_seq(pyramidFactory: PyramidFactory, boundingBox: ProjectedExtent, date: ZonedDateTime,
                              bandNames: Seq[String], metadata_properties: util.Map[String, util.Map[String, Any]]):
     MultibandTileLayerRDD[SpaceTimeKey] = {
       val (_, baseLayer) = pyramidFactory.pyramid_seq(boundingBox.extent, s"EPSG:${boundingBox.crs.epsgCode.get}",
-        from_date = date,
-        to_date = date,
+        from_datetime = ISO_OFFSET_DATE_TIME format date,
+        until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
         band_names = bandNames.asJava,
         metadata_properties = metadata_properties
       ).maxBy { case (zoom, _) => zoom }
@@ -953,9 +965,9 @@ class PyramidFactoryTest {
       "/tmp/testSentinel5PL2DuplicateRequestsPyramid_seq.tif")
   }
 
-  private def testSentinel5PL2DuplicateRequests(layerFromSeq: (PyramidFactory, ProjectedExtent, String, Seq[String],
-    util.Map[String, util.Map[String, Any]]) => MultibandTileLayerRDD[SpaceTimeKey], expectedGetTileCount: Int,
-                                                outputTiff: String): Unit = {
+  private def testSentinel5PL2DuplicateRequests(layerFromSeq: (PyramidFactory, ProjectedExtent, ZonedDateTime,
+    Seq[String], util.Map[String, util.Map[String, Any]]) => MultibandTileLayerRDD[SpaceTimeKey],
+                                                expectedGetTileCount: Int, outputTiff: String): Unit = {
     // mimics /home/bossie/Documents/VITO/applying mask increases PUs drastically #95/process_graph_without_mask_smaller.json
     implicit val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
@@ -977,7 +989,7 @@ class PyramidFactoryTest {
         processApiSpy, authorizer, maxSpatialResolution = CellSize(0.054563492063483, 0.034722222222216),
         sampleType = FLOAT32)
 
-      val layer = layerFromSeq(pyramidFactory, boundingBox, ISO_OFFSET_DATE_TIME format date, Seq("NO2"),
+      val layer = layerFromSeq(pyramidFactory, boundingBox, date, Seq("NO2"),
         Collections.emptyMap[String, util.Map[String, Any]])
 
       verify(catalogApiSpy).search(eqTo("sentinel-5p-l2"), eqTo(boundingBox.extent.toPolygon()), eqTo(LatLng),
@@ -1034,7 +1046,7 @@ class PyramidFactoryTest {
       .map(_.geom)
 
     val from = LocalDate.of(2020, 7, 1).minusDays(90).atStartOfDay(ZoneOffset.UTC)
-    val to = from plusWeeks 1
+    val until = from plusDays 8
 
     assert(geometries.nonEmpty, s"no MultiPolygons found in $geometriesFile")
 
@@ -1050,8 +1062,8 @@ class PyramidFactoryTest {
       pyramidFactory.datacube_seq(
         polygons = geometries.toArray,
         polygons_crs = geometriesCrs,
-        from_date = ISO_OFFSET_DATE_TIME format from,
-        to_date = ISO_OFFSET_DATE_TIME format to,
+        from_datetime = ISO_OFFSET_DATE_TIME format from,
+        until_datetime = ISO_OFFSET_DATE_TIME format until,
         band_names = util.Arrays.asList("VH", "VV"),
         metadata_properties = util.Collections.emptyMap()
       )
@@ -1077,7 +1089,8 @@ class PyramidFactoryTest {
       finally in.close()
     }
 
-    val date = "2018-10-07T00:00:00+00:00"
+    val from = "2018-10-07T00:00:00+00:00"
+    val until = "2018-10-08T00:00:00+00:00"
     val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
     try {
@@ -1092,8 +1105,8 @@ class PyramidFactoryTest {
       val ret = pyramidFactory.datacube_seq(
         polygons = Array(multiPolygon),
         polygons_crs = polygons_crs,
-        from_date = date,
-        to_date = date,
+        from_datetime = from,
+        until_datetime = until,
         band_names = util.Arrays.asList("B03"),
         metadata_properties = util.Collections.emptyMap(),
         datacubeParams,
@@ -1168,8 +1181,8 @@ class PyramidFactoryTest {
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
         polygons_crs = boundingBox.crs,
-        from_date = "2018-10-07T00:00:00Z",
-        to_date = "2018-10-07T00:00:00Z",
+        from_datetime = "2018-10-07T00:00:00Z",
+        until_datetime = "2018-10-08T00:00:00Z",
         band_names = util.Arrays.asList("VV", "VH"),
         metadata_properties = util.Collections.emptyMap()
       )

@@ -17,6 +17,7 @@ import org.openeo.geotrellissentinelhub.SampleType.{SampleType, UINT16}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.time.ZoneOffset.UTC
+import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
 import java.util.concurrent.TimeUnit.MILLISECONDS
@@ -71,7 +72,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
   require(maxSoftErrorsRatio >= 0.0 && maxSoftErrorsRatio <= 1.0,
     s"maxSoftErrorsRatio $maxSoftErrorsRatio out of range [0.0, 1.0]")
 
-  @transient private val _catalogApi = if (collectionId == null) new MadeToMeasureCatalogApi else catalogApi
+  @transient private val _catalogApi: CatalogApi = if (collectionId == null) new MadeToMeasureCatalogApi else catalogApi
 
   private val maxZoom = 14
 
@@ -177,19 +178,15 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
     ContextRDD(tilesRdd, metadata)
   }
 
-  private def atEndOfDay(to: ZonedDateTime): ZonedDateTime = {
-    val endOfDay = OffsetTime.of(LocalTime.MAX, UTC)
-    to.toLocalDate.atTime(endOfDay).toZonedDateTime
-  }
-
   def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, bandNames: Seq[String],
               metadataProperties: util.Map[String, util.Map[String, Any]], correlationId: String)(implicit sc: SparkContext):
   Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val (polygon, polygonCrs) = (boundingBox.extent.toPolygon(), boundingBox.crs)
 
+    // TODO: apply the "dem" optimization of datacube_seq to pyramid_seq as well
     val features = authorized { accessToken =>
       _catalogApi.search(collectionId, polygon, polygonCrs,
-        from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadataProperties, collectionId))
+        from, to, accessToken, Criteria.toQueryProperties(metadataProperties, collectionId))
     }
 
     val layers = for (zoom <- maxZoom to 0 by -1)
@@ -198,37 +195,38 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
     Pyramid(layers.toMap)
   }
 
-  def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String, band_names: util.List[String],
-                  metadata_properties: util.Map[String, util.Map[String, Any]]):
-  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = pyramid_seq(bbox, bbox_srs, from_date, to_date, band_names,
+  def pyramid_seq(bbox: Extent, bbox_srs: String, from_datetime: String, until_datetime: String,
+                  band_names: util.List[String], metadata_properties: util.Map[String, util.Map[String, Any]]):
+  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = pyramid_seq(bbox, bbox_srs, from_datetime, until_datetime, band_names,
     metadata_properties, correlationId = "")
 
-  def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String, band_names: util.List[String],
-                  metadata_properties: util.Map[String, util.Map[String, Any]],
+  def pyramid_seq(bbox: Extent, bbox_srs: String, from_datetime: String, until_datetime: String,
+                  band_names: util.List[String], metadata_properties: util.Map[String, util.Map[String, Any]],
                   correlationId: String): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     implicit val sc: SparkContext = SparkContext.getOrCreate()
 
     val projectedExtent = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
-    val from = ZonedDateTime.parse(from_date)
-    val to = ZonedDateTime.parse(to_date)
+    val from = ZonedDateTime.parse(from_datetime, ISO_OFFSET_DATE_TIME)
+    val until = ZonedDateTime.parse(until_datetime, ISO_OFFSET_DATE_TIME)
+    val to = until minusNanos 1
 
     pyramid(projectedExtent, from, to, band_names.asScala, metadata_properties, correlationId).levels.toSeq
       .sortBy { case (zoom, _) => zoom }
       .reverse
   }
 
-  def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
+  def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_datetime: String, until_datetime: String,
                    band_names: util.List[String], metadata_properties: util.Map[String, util.Map[String, Any]]):
-  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = datacube_seq(polygons, polygons_crs, from_date, to_date,
+  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = datacube_seq(polygons, polygons_crs, from_datetime, until_datetime,
     band_names, metadata_properties, new DataCubeParameters)
 
-  def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
+  def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_datetime: String, until_datetime: String,
                    band_names: util.List[String], metadata_properties: util.Map[String, util.Map[String, Any]],
                    dataCubeParameters: DataCubeParameters):
-  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = datacube_seq(polygons, polygons_crs, from_date, to_date, band_names,
-    metadata_properties, dataCubeParameters, correlationId = "")
+  Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = datacube_seq(polygons, polygons_crs, from_datetime, until_datetime,
+    band_names, metadata_properties, dataCubeParameters, correlationId = "")
 
-  def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_date: String, to_date: String,
+  def datacube_seq(polygons: Array[MultiPolygon], polygons_crs: CRS, from_datetime: String, until_datetime: String,
                    band_names: util.List[String], metadata_properties: util.Map[String, util.Map[String, Any]],
                    dataCubeParameters: DataCubeParameters, correlationId: String):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
@@ -240,8 +238,9 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
       val boundingBox = ProjectedExtent(polygons.toSeq.extent, polygons_crs)
 
-      val from = ZonedDateTime.parse(from_date)
-      val to = ZonedDateTime.parse(to_date)
+      val from = ZonedDateTime.parse(from_datetime, ISO_OFFSET_DATE_TIME)
+      val until = ZonedDateTime.parse(until_datetime, ISO_OFFSET_DATE_TIME)
+      val to = until minusNanos 1
 
       // TODO: call into AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
 
@@ -249,7 +248,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
       val multiple_polygons_flag = polygons.length > 1
       val metadata = DatacubeSupport.layerMetadata(
-        boundingBox, from, to, 0, sampleType.cellType, scheme, maxSpatialResolution,
+        boundingBox, from, to, 0, sampleType.cellType, scheme, maxSpatialResolution, // TODO: derive from and to from catalog features instead? (see FileLayerProvider)
         dataCubeParameters.globalExtent, multiple_polygons_flag
       )
       val layout = metadata.layout
@@ -312,12 +311,13 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
         val tilesRdd =
           if (datasetId == "dem") {
-            val overlappingKeys = layout.mapTransform.keysForGeometry(GeometryCollection(polygons)).toSeq
+            // optimization to avoid an unnecessary cartesian product of spatial keys and timestamps
+            val overlappingSpatialKeys = layout.mapTransform.keysForGeometry(GeometryCollection(polygons)).toSeq
 
-            val numRequests = overlappingKeys.size
-            val keysRdd = sc.parallelize(overlappingKeys, math.max(1, overlappingKeys.size / 10))
+            val numRequests = overlappingSpatialKeys.size
+            val spatialKeysRdd = sc.parallelize(overlappingSpatialKeys, math.max(1, overlappingSpatialKeys.size / 10))
 
-            val tilesRdd = keysRdd
+            val tilesRdd = spatialKeysRdd
               .flatMap { spatialKey =>
                 // "dem" data doesn't have a time dimension so the actual timestamp doesn't matter
                 loadMasked(spatialKey, ZonedDateTime.of(1981, 4, 24, 2, 0, 0, 0, UTC), numRequests)
@@ -353,7 +353,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
             val features = authorized { accessToken =>
               _catalogApi.search(collectionId, multiPolygon, polygons_crs,
-                from, atEndOfDay(to), accessToken, Criteria.toQueryProperties(metadata_properties, collectionId))
+                from, to, accessToken, Criteria.toQueryProperties(metadata_properties, collectionId))
             }
 
             tracker.addInputProductsWithUrls(
@@ -405,7 +405,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 s"""no features found for criteria:
                    |collection ID "$collectionId"
                    |${polygons.length} polygon(s)
-                   |[$from_date, $to_date]
+                   |[$from_datetime, $until_datetime)
                    |metadata properties $metadata_properties""".stripMargin)
             }
 

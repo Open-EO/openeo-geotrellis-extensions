@@ -46,8 +46,8 @@ class PyramidFactoryTest {
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         polygons = Array(polygons),
         polygons_crs = crs,
-        from_date = "2022-09-13T00:00:00+00:00",
-        to_date = "2022-09-20T00:00:00+00:00",
+        from_datetime = "2022-09-13T00:00:00+00:00",
+        until_datetime = "2022-09-21T00:00:00+00:00",
         band_names = Seq("B02", "B03").asJava,
         metadata_properties = Collections.emptyMap(),
         dataCubeParameters = dataCubeParameters,

@@ -28,6 +28,10 @@ trait CatalogApi {
     dateTimes(collectionId, geometry, geometryCrs, from, to, accessToken, queryProperties)
   }
 
+  /**
+   * @param from : start of the time interval, inclusive
+   * @param to   : end of the time interval, inclusive
+   */
   def dateTimes(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
                 accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]): Seq[ZonedDateTime]
 
@@ -62,6 +66,10 @@ trait CatalogApi {
     search(collectionId, geometry, geometryCrs, from, to, accessToken, allProperties.asJava)
   }
 
+  /**
+   * @param from : start of the time interval, inclusive
+   * @param to   : end of the time interval, inclusive
+   */
   def search(collectionId: String, geometry: Geometry, geometryCrs: CRS, from: ZonedDateTime, to: ZonedDateTime,
                    accessToken: String, queryProperties: util.Map[String, util.Map[String, Any]]):
   Map[String, geotrellis.vector.Feature[Geometry, FeatureData]]
@@ -182,6 +190,7 @@ class DefaultCatalogApi(endpoint: String) extends CatalogApi {
       val filter = this.filter(queryProperties)
 
       def getFeatureCollectionPage(limit: Int, nextToken: Option[Int]): PagedJsonFeatureCollectionMap = {
+        // lower and upper bounds of the "datetime" interval are inclusive
         val requestBody =
           s"""
              |{
