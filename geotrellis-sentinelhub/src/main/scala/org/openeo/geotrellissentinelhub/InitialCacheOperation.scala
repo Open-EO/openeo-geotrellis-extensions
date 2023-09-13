@@ -40,10 +40,12 @@ abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
                                                 bucketName: String, subfolder: String): Unit
 
   def startBatchProcess(collection_id: String, dataset_id: String, polygons: Array[MultiPolygon],
-                        crs: CRS, from: ZonedDateTime, to: ZonedDateTime, band_names: util.List[String],
+                        crs: CRS, from: ZonedDateTime, until: ZonedDateTime, band_names: util.List[String],
                         sampleType: SampleType, metadata_properties: util.Map[String, util.Map[String, Any]],
                         processing_options: util.Map[String, Any], bucketName: String, subfolder: String,
                         collecting_folder: String, batchProcessingService: BatchProcessingService): String = {
+    val to = until minusNanos 1
+
     // important: caching requires more strict processing options because specifying an option unknown to the cache
     // might return a cached result that does not match the option
     val processingOptions = normalize(processing_options.asScala)
@@ -110,8 +112,8 @@ abstract class AbstractInitialCacheOperation[C <: CacheEntry] {
       dataset_id,
       multiPolygons,
       multiPolygonsCrs,
-      from_date = ISO_OFFSET_DATE_TIME format lower,
-      to_date = ISO_OFFSET_DATE_TIME format upper,
+      from_datetime = ISO_OFFSET_DATE_TIME format lower,
+      until_datetime = ISO_OFFSET_DATE_TIME format upper,
       band_names = missingBandNames.asJava,
       sampleType,
       metadata_properties,
