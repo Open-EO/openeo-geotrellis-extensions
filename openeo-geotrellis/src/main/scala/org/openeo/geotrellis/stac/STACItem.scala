@@ -6,7 +6,7 @@ import org.slf4j.LoggerFactory
 
 import java.io.IOException
 import java.nio.charset.Charset
-import java.nio.file.{Files, Paths, StandardOpenOption}
+import java.nio.file.{Files, Paths, StandardCopyOption, StandardOpenOption}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID.randomUUID
@@ -66,7 +66,7 @@ class STACItem {
         uploadToS3(tempFile, correctS3Path)
         Files.delete(tempFile)
       } else {
-        Files.move(tempFile, Paths.get(path))
+        Files.move(tempFile, Paths.get(path), StandardCopyOption.REPLACE_EXISTING)
       }
 
     } catch {

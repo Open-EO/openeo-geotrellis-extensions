@@ -3,18 +3,14 @@ package org.openeo.geotrellissentinelhub
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.vector._
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
-import org.slf4j.LoggerFactory
 
 import java.time.ZoneOffset.UTC
-import java.time.{LocalDate, LocalDateTime, LocalTime, OffsetTime, ZonedDateTime}
+import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
 import java.util.UUID
 import scala.collection.JavaConverters._
-import scala.collection.mutable
 
 object BatchProcessingService {
-  private val logger = LoggerFactory.getLogger(classOf[BatchProcessingService])
-  
   case class BatchProcess(id: String, status: String, value_estimate: java.math.BigDecimal, errorMessage: String)
 }
 
@@ -176,7 +172,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
                                    dem_instance: String, metadata_properties: util.Map[String, util.Map[String, Any]],
                                    subfolder: String, request_group_uuid: String): util.List[String] = {
     // TODO: add error handling
-    val card4lId = fixUuid(request_group_uuid) // TODO: remove workaround for invalid UUID
+    val card4lId = UUID.fromString(request_group_uuid)
 
     val geometry = simplify(polygons).reproject(crs, LatLng)
     val geometryCrs = LatLng
@@ -222,23 +218,6 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
     }
 
     batchRequestIds.toIndexedSeq.asJava
-  }
-
-  private def fixUuid(id: String): UUID = {
-    try UUID.fromString(id)
-    catch {
-      case _: IllegalArgumentException =>
-        logger.warn(s"invalid UUID $id, maybe hyphens will work")
-
-        val withHyphens = new mutable.StringBuilder(id)
-          .insert(20, '-')
-          .insert(16, '-')
-          .insert(12, '-')
-          .insert( 8, '-')
-          .result()
-
-        UUID.fromString(withHyphens)
-    }
   }
 
   private def dataTakeId(featureId: String): String = {
