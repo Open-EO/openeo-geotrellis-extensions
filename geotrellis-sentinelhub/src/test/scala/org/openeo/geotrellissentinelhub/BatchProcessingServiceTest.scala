@@ -86,7 +86,7 @@ class BatchProcessingServiceTest {
       bbox = Extent(2.59003, 51.069, 2.8949, 51.2206),
       bbox_srs = "EPSG:4326",
       from_datetime = "2019-10-10T00:00:00+00:00",
-      until_datetime = "2019-10-10T00:00:00+00:00",
+      until_datetime = "2019-10-11T00:00:00+00:00",
       band_names = Arrays.asList("VH", "VV"),
       SampleType.FLOAT32,
       metadata_properties = Collections.emptyMap[String, JMap[String, Any]],

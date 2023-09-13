@@ -754,7 +754,7 @@ class PyramidFactoryTest {
   def testMapzenDem(): Unit = {
     val endpoint = "https://services-uswest2.sentinel-hub.com"
     val from = LocalDate.of(2023, 9, 12).atStartOfDay(ZoneOffset.UTC)
-    val until = from plusDays 3
+    val until = from plusDays 100
 
     // from https://collections.eurodatacube.com/stac/mapzen-dem.json
     val maxSpatialResolution = CellSize(0.000277777777778, 0.000277777777778)
@@ -784,7 +784,7 @@ class PyramidFactoryTest {
         .sortBy(identity)
         .collect()
 
-      assertEquals(Seq(from, from plusDays 1, from plusDays 2), distinctDates.toSeq)
+      assertEquals(sequentialDays(from, from plusDays 99), distinctDates.toSeq)
 
       val spatialLayer = layer
         .toSpatial(from.toLocalDate.atStartOfDay(ZoneOffset.UTC))
