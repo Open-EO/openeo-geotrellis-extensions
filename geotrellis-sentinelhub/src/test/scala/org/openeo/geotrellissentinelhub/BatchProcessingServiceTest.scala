@@ -26,13 +26,28 @@ class BatchProcessingServiceTest {
   @Ignore
   @Test
   def startBatchProcess(): Unit = {
+    startBatchProcess(
+      from_datetime = "2019-10-10T00:00:00+00:00",
+      until_datetime = "2019-10-11T00:00:00+00:00")
+  }
+
+  @Ignore
+  @Test
+  def startBatchProcessSameFromUntil(): Unit = {
+    startBatchProcess(
+      from_datetime = "2019-10-10T00:00:00+00:00",
+      until_datetime = "2019-10-10T00:00:00+00:00")
+  }
+
+  // TODO: use parameterized test
+  private def startBatchProcess(from_datetime: String, until_datetime: String): Unit = {
     val batchRequestId = batchProcessingService.start_batch_process(
       collection_id = "sentinel-1-grd",
       dataset_id = "sentinel-1-grd",
       bbox = Extent(2.59003, 51.069, 2.8949, 51.2206),
       bbox_srs = "EPSG:4326",
-      from_datetime = "2019-10-10T00:00:00+00:00",
-      until_datetime = "2019-10-11T00:00:00+00:00",
+      from_datetime,
+      until_datetime,
       band_names = Arrays.asList("VH", "VV"),
       SampleType.FLOAT32,
       metadata_properties = Collections.emptyMap[String, JMap[String, Any]],

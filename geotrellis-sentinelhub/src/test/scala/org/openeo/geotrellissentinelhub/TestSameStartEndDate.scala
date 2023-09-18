@@ -24,27 +24,29 @@ class TestSameStartEndDate {
 
     val bandNames = Seq("VV", "VH", "HV", "HH").asJava
 
-    implicit val sc = SparkContext.getOrCreate(
+    val sc = SparkContext.getOrCreate(
       new SparkConf()
         .setMaster("local[1]")
         .setAppName("TestSentinelHub")
         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
         .set("spark.kryoserializer.buffer.max", "1024m"))
 
-    val endpoint = "https://services.sentinel-hub.com"
-    val pyramid = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint),
-      new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
-      rateLimitingGuard = NoRateLimitingGuard)
-      .pyramid_seq(extent, bbox_srs, from, until, bandNames, metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]])
+    try {
+      val endpoint = "https://services.sentinel-hub.com"
+      val pyramid = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
+        new DefaultProcessApi(endpoint),
+        new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
+        rateLimitingGuard = NoRateLimitingGuard)
+        .pyramid_seq(extent, bbox_srs, from, until, bandNames, metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]])
 
-    val (_, topLevelRdd) = pyramid.filter { case (zoom, _) => zoom == 14 }.head
+      val (_, topLevelRdd) = pyramid.filter { case (zoom, _) => zoom == 14 }.head
 
-    val results = topLevelRdd.collect()
+      val results = topLevelRdd.collect()
 
-    for {
-      (_, multibandTile) <- results
-      tile <- multibandTile.bands
-    } assert(tile.isNoDataTile)
+      for {
+        (_, multibandTile) <- results
+        tile <- multibandTile.bands
+      } assert(tile.isNoDataTile)
+    } finally sc.stop()
   }
 }
