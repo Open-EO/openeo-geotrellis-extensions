@@ -178,6 +178,11 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
     ContextRDD(tilesRdd, metadata)
   }
 
+  private def atEndOfDay(to: ZonedDateTime): ZonedDateTime = {
+    val endOfDay = OffsetTime.of(LocalTime.MAX, UTC)
+    to.toLocalDate.atTime(endOfDay).toZonedDateTime
+  }
+
   def pyramid(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, bandNames: Seq[String],
               metadataProperties: util.Map[String, util.Map[String, Any]], correlationId: String)(implicit sc: SparkContext):
   Pyramid[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
@@ -208,7 +213,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
     val projectedExtent = ProjectedExtent(bbox, CRS.fromName(bbox_srs))
     val from = ZonedDateTime.parse(from_datetime, ISO_OFFSET_DATE_TIME)
     val until = ZonedDateTime.parse(until_datetime, ISO_OFFSET_DATE_TIME)
-    val to = until minusNanos 1
+    val to = if (from isEqual until) atEndOfDay(until) else until minusNanos 1
 
     pyramid(projectedExtent, from, to, band_names.asScala, metadata_properties, correlationId).levels.toSeq
       .sortBy { case (zoom, _) => zoom }
@@ -240,7 +245,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
       val from = ZonedDateTime.parse(from_datetime, ISO_OFFSET_DATE_TIME)
       val until = ZonedDateTime.parse(until_datetime, ISO_OFFSET_DATE_TIME)
-      val to = until minusNanos 1
+      val to = if (from isEqual until) atEndOfDay(until) else until minusNanos 1
 
       // TODO: call into AbstractPyramidFactory.preparePolygons(polygons, polygons_crs)
 

@@ -20,7 +20,7 @@ class TestSameStartEndDate {
 
     val from = "2019-06-01T00:00:00Z"
 
-    val until = "2019-06-02T00:00:00Z"
+    val until = "2019-06-01T00:00:00Z"
 
     val bandNames = Seq("VV", "VH", "HV", "HH").asJava
 
