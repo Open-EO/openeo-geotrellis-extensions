@@ -328,14 +328,27 @@ class PyramidFactoryTest {
 
   @Test
   def testUtm(): Unit = {
+    val from = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+    val until = from plusDays 1
+    testUtm(from, until)
+  }
 
+  @Test
+  def testUtmSameFromUntil(): Unit = {
+    // asserts original behaviour where end timestamp is considered inclusive
+    val from = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+    val until = from
+    testUtm(from, until)
+  }
+
+  // TODO: use parameterized test
+  private def testUtm(from: ZonedDateTime, until: ZonedDateTime): Unit = {
     val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
     val correlationId = "r-abc123"
     def scopedMetadataTracker = ScopedMetadataTracker(scope = correlationId)(sc)
 
     try {
       val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
-      val date = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
       val utmBoundingBox = {
         val center = boundingBox.extent.center
@@ -353,8 +366,8 @@ class PyramidFactoryTest {
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
-        from_datetime = ISO_OFFSET_DATE_TIME format date,
-        until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
+        from_datetime = ISO_OFFSET_DATE_TIME format from,
+        until_datetime = ISO_OFFSET_DATE_TIME format until,
         band_names = Seq("B08", "B04", "B03").asJava,
         metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
         parameters,
