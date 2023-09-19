@@ -353,7 +353,7 @@ object Udf {
           // Allocating a direct buffer is expensive.
           val buffer = ByteBuffer.allocateDirect(multiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
           multiBandTile.bands.foreach(tile => {
-            val tileFloats: Array[Float] = tile.asInstanceOf[FloatArrayTile].array
+            val tileFloats: Array[Float] = tile.toArrayDouble.map(_.toFloat)
             buffer.put(tileFloats, 0, tileFloats.length)
           })
           val directTile = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
