@@ -462,7 +462,8 @@ class OpenEOProcesses extends Serializable {
         tilesByInterval
       }
     }
-    return ContextRDD(filledRDD, datacube.metadata.copy(bounds = newBounds))
+    val metadata = if(reduce) datacube.metadata.copy(bounds = newBounds) else datacube.metadata
+    return ContextRDD(filledRDD, metadata)
   }
 
   def mapBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder, context: java.util.Map[String,Any] = new util.HashMap[String, Any]()): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]= {
