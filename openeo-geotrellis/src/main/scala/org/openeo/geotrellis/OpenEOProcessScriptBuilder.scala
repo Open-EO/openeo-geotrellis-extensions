@@ -424,7 +424,7 @@ object OpenEOProcessScriptBuilder{
 /**
   * Builder to help converting an OpenEO process graph into a transformation of Geotrellis tiles.
   */
-class OpenEOProcessScriptBuilder extends Serializable {
+class OpenEOProcessScriptBuilder {
 
   import OpenEOProcessScriptBuilder._
 
@@ -477,10 +477,6 @@ class OpenEOProcessScriptBuilder extends Serializable {
 
   private def getProcessArg(name:String):OpenEOProcess = {
     contextStack.head.getOrElse(name,throw new IllegalArgumentException(s"Process [${processStack.head}] expects a value argument. These arguments were found: " + contextStack.head.keys.mkString(", ") + s"function tree: ${processStack.reverse.mkString("->")}")).asInstanceOf[OpenEOProcess]
-  }
-
-  private def getStringArg(name: String): OpenEOProcess = {
-    contextStack.head.getOrElse(name, throw new IllegalArgumentException(s"Process [${processStack.head}] expects a value argument. These arguments were found: " + contextStack.head.keys.mkString(", ") + s"function tree: ${processStack.reverse.mkString("->")}")).asInstanceOf[OpenEOProcess]
   }
 
   private def optionalArg(name: String): OpenEOProcess = {
@@ -546,12 +542,6 @@ class OpenEOProcessScriptBuilder extends Serializable {
     val accept = getProcessArg("accept")
     val reject: OpenEOProcess = optionalArg("reject")
     ifElseProcess(value, accept, reject)
-  }
-
-  private def dateDifference(arguments: java.util.Map[String, Object]): OpenEOProcess = {
-    arguments.get()
-    val constantTileFunction:OpenEOProcess = wrapSimpleProcess(createConstantTileFunction(value))
-    constantTileFunction
   }
 
 
@@ -712,7 +702,6 @@ class OpenEOProcessScriptBuilder extends Serializable {
     val hasConditionExpression = arguments.get("condition") != null && !arguments.get("condition").isInstanceOf[Boolean]
 
     val operation: OpenEOProcess = operator match {
-      case "date_difference" => dateDifference(arguments)
       case "if" => ifProcess(arguments)
       // Comparison operators
       case "gt" if hasXY => xyFunction(Greater.apply,convertBitCells = false)
