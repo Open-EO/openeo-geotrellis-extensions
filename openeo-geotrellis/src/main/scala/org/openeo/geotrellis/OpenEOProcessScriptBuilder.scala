@@ -432,7 +432,7 @@ class OpenEOProcessScriptBuilder {
   val processStack: mutable.Stack[String] = new mutable.Stack[String]()
   val arrayElementStack: mutable.Stack[Integer] = new mutable.Stack[Integer]()
   val argNames: mutable.Stack[String] = new mutable.Stack[String]()
-  val contextStack: mutable.Stack[mutable.Map[String,OpenEOProcess]] = new mutable.Stack[mutable.Map[String, OpenEOProcess]]()
+  val contextStack: mutable.Stack[mutable.Map[String,Object]] = new mutable.Stack[mutable.Map[String, Object]]()
   var arrayCounter : Int =  0
   var inputFunction:  OpenEOProcess = null
   var resultingDataType: CellType = FloatConstantNoDataCellType
@@ -459,7 +459,7 @@ class OpenEOProcessScriptBuilder {
 
   private def unaryFunction(argName: String, operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
     val storedArgs = contextStack.head
-    val inputFunction: Option[OpenEOProcess] = storedArgs.get(argName)
+    val inputFunction: Option[OpenEOProcess] = storedArgs.get(argName).asInstanceOf[Option[OpenEOProcess]]
     composeFunctions(operator,inputFunction)
   }
 
@@ -475,11 +475,19 @@ class OpenEOProcessScriptBuilder {
     unaryFunction(argName, (tiles: Seq[Tile]) => operator(tiles))
   }
 
+  private def getProcessArg(name:String):OpenEOProcess = {
+    contextStack.head.getOrElse(name,throw new IllegalArgumentException(s"Process [${processStack.head}] expects a value argument. These arguments were found: " + contextStack.head.keys.mkString(", ") + s"function tree: ${processStack.reverse.mkString("->")}")).asInstanceOf[OpenEOProcess]
+  }
+
+  private def optionalArg(name: String): OpenEOProcess = {
+    contextStack.head.getOrElse(name, null).asInstanceOf[OpenEOProcess]
+  }
+
 
   private def arrayFind(arguments:java.util.Map[String,Object]) : OpenEOProcess = {
     val storedArgs = contextStack.head
-    val value = storedArgs.get("value").getOrElse(throw new IllegalArgumentException("If process expects a value argument. These arguments were found: " + arguments.keys.mkString(", ")))
-    val data = storedArgs.get("data").getOrElse(throw new IllegalArgumentException("If process expects an data argument. These arguments were found: " + arguments.keys.mkString(", ")))
+    val value = getProcessArg("value")
+    val data = getProcessArg("data")
 
     val reverse = (arguments.getOrDefault("reverse",Boolean.box(false).asInstanceOf[Object]) == Boolean.box(true) || arguments.getOrDefault("reverse",None) == "true" )
 
@@ -516,8 +524,8 @@ class OpenEOProcessScriptBuilder {
 
   private def mapListFunction(listArgName: String, mapArgName:String, operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
     val storedArgs = contextStack.head
-    val mapFunction: Option[OpenEOProcess] = storedArgs.get(mapArgName)
-    val listFunction: Option[OpenEOProcess] = storedArgs.get(listArgName)
+    val mapFunction: Option[OpenEOProcess] = storedArgs.get(mapArgName).asInstanceOf[Option[OpenEOProcess]]
+    val listFunction: Option[OpenEOProcess] = storedArgs.get(listArgName).asInstanceOf[Option[OpenEOProcess]]
 
     (context: Map[String,Any]) => (tiles: Seq[Tile]) => {
       val mapTiles = if (mapFunction.isDefined) mapFunction.get(context)(tiles) else tiles
@@ -530,25 +538,16 @@ class OpenEOProcessScriptBuilder {
   }
 
   private def ifProcess(arguments:java.util.Map[String,Object]): OpenEOProcess ={
-    val storedArgs = contextStack.head
-    val value = storedArgs.get("value").getOrElse(throw new IllegalArgumentException("If process expects a value argument. These arguments were found: " + arguments.keys.mkString(", ")))
-    val accept = storedArgs.get("accept").getOrElse(throw new IllegalArgumentException("If process expects an accept argument. These arguments were found: " + arguments.keys.mkString(", ")))
-    val reject: OpenEOProcess = storedArgs.get("reject").getOrElse(null)
+    val value = getProcessArg("value")
+    val accept = getProcessArg("accept")
+    val reject: OpenEOProcess = optionalArg("reject")
     ifElseProcess(value, accept, reject)
   }
 
 
   private def xyFunction(operator:(Tile,Tile) => Tile, xArgName:String = "x", yArgName:String = "y" ,convertBitCells: Boolean = true): OpenEOProcess = {
-    val storedArgs = contextStack.head
-    val processString = processStack.reverse.mkString("->")
-    if (!storedArgs.contains(xArgName)) {
-      throw new IllegalArgumentException("This function expects an '" + xArgName + "' argument, function tree: " + processString + ". These arguments were found: " + storedArgs.keys.mkString(", "))
-    }
-    if (!storedArgs.contains(yArgName)) {
-      throw new IllegalArgumentException("This function expects an '" + yArgName + "' argument, function tree: " + processString + ". These arguments were found: " + storedArgs.keys.mkString(", "))
-    }
-    val x_function: OpenEOProcess = storedArgs.get(xArgName).get
-    val y_function: OpenEOProcess = storedArgs.get(yArgName).get
+    val x_function: OpenEOProcess = getProcessArg(xArgName)
+    val y_function: OpenEOProcess = getProcessArg(yArgName)
     val bandFunction = (context: Map[String,Any]) => (tiles: Seq[Tile]) => {
 
       def convertBitCellsOp(aTile: Tile):Tile ={
@@ -567,7 +566,7 @@ class OpenEOProcessScriptBuilder {
       }else if(y_input.size == 1) {
         x_input.map(operator(_,y_input.head))
       }else{
-        throw new IllegalArgumentException("Incompatible numbers of tiles in this XY operation '"+processString+"' " + xArgName + " has:" + x_input.size +", "+yArgName+" has: " + y_input.size+ "\n We expect either equal counts, are one of them should be 1.")
+        throw new IllegalArgumentException(s"Incompatible numbers of tiles in this XY operation '${processStack.reverse.mkString("->")}' $xArgName has: ${x_input.size} , $yArgName has: ${y_input.size}\n We expect either equal counts, are one of them should be 1.")
       }
 
     }
@@ -602,7 +601,7 @@ class OpenEOProcessScriptBuilder {
       if(context.contains(parameterName)) {
         context.getOrElse(parameterName,tiles).asInstanceOf[Seq[Tile]]
       }else{
-        logger.debug("Parameter with name: " + parameterName  + "not found. Available parameters: " + context.keys.mkString(","))
+        logger.debug("Parameter with name: " + parameterName  + " not found. Available parameters: " + context.keys.mkString(","))
         tiles
       }
     }
@@ -624,7 +623,7 @@ class OpenEOProcessScriptBuilder {
     //save current arrayCounter
     arrayElementStack.push(arrayCounter)
     argNames.push(name)
-    contextStack.push(mutable.Map[String,OpenEOProcess]())
+    contextStack.push(mutable.Map[String,Object]())
     processStack.push("array")
     arrayCounter = 0
   }
@@ -672,7 +671,7 @@ class OpenEOProcessScriptBuilder {
     inputFunction = (context:Map[String,Any]) => (tiles:Seq[Tile]) => {
       var results = Seq[Tile]()
       for( i <- 0 until nbElements) {
-        val tileFunction = scope.get(i.toString).get
+        val tileFunction = scope.get(i.toString).get.asInstanceOf[OpenEOProcess]
         results = results ++ tileFunction(context)(tiles)
       }
       results
@@ -686,7 +685,7 @@ class OpenEOProcessScriptBuilder {
 
   def expressionStart(operator:String,arguments:java.util.Map[String,Object]): Unit = {
     processStack.push(operator)
-    contextStack.push(mutable.Map[String,OpenEOProcess]())
+    contextStack.push(mutable.Map[String,Object]())
   }
 
   def expressionEnd(operator:String,arguments:java.util.Map[String,Object]): Unit = {
@@ -836,14 +835,14 @@ class OpenEOProcessScriptBuilder {
   }
 
   private def linearScaleRangeFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
-    val storedArgs: mutable.Map[String, OpenEOProcess] = contextStack.head
+
     val inMin = arguments.get("inputMin").asInstanceOf[Number].doubleValue()
     val inMax = arguments.get("inputMax").asInstanceOf[Number].doubleValue()
     val outMinRaw = arguments.getOrDefault("outputMin", 0.0.asInstanceOf[Object])
     val outMin: Double = outMinRaw.asInstanceOf[Number].doubleValue()
     val outMaxRaw = arguments.getOrDefault("outputMax", 1.0.asInstanceOf[Object])
     val outMax:Double = outMaxRaw.asInstanceOf[Number].doubleValue()
-    val inputFunction = storedArgs.get("x").get
+    val inputFunction = getProcessArg("x")
     val output_range = outMax - outMin
     val doTypeCast = output_range > 1 && (!outMinRaw.isInstanceOf[Double] && !outMinRaw.isInstanceOf[Float]) && (!outMaxRaw.isInstanceOf[Double] && !outMaxRaw.isInstanceOf[Float])
     val targetType: Option[CellType] =
@@ -890,7 +889,7 @@ class OpenEOProcessScriptBuilder {
 
   private def quantilesFunction(arguments:java.util.Map[String,Object], ignoreNoData:Boolean = true): OpenEOProcess = {
     val storedArgs = contextStack.head
-    val inputFunction = storedArgs.get("data").get
+    val inputFunction = getProcessArg("data")
     val probabilities = getQuantilesProbabilities(arguments)
 
 
@@ -921,9 +920,8 @@ class OpenEOProcessScriptBuilder {
 
 
   private def arrayModifyFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
-    val storedArgs = contextStack.head
-    val inputFunction = storedArgs.get("data").get
-    val valuesFunction = storedArgs.get("values").get
+    val inputFunction = getProcessArg("data")
+    val valuesFunction = getProcessArg("values")
     val index = arguments.getOrDefault("index",null)
     val length = arguments.getOrDefault("length",null)
     if(index == null) {
@@ -950,9 +948,8 @@ class OpenEOProcessScriptBuilder {
   }
 
   private def arrayAppendFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
-    val storedArgs = contextStack.head
-    val inputFunction = storedArgs.get("data").get
-    val valueFunction = storedArgs.get("value").get
+        val inputFunction = getProcessArg("data")
+    val valueFunction = getProcessArg("value")
 
     val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) =>{
       val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
@@ -964,8 +961,8 @@ class OpenEOProcessScriptBuilder {
 
   private def arrayApplyFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
     val storedArgs = contextStack.head
-    val inputFunction = storedArgs("data")
-    val processFunction = storedArgs("process")
+    val inputFunction = getProcessArg("data")
+    val processFunction = getProcessArg("process")
 
     val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
       val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
@@ -976,9 +973,8 @@ class OpenEOProcessScriptBuilder {
   }
 
   private def arrayConcatFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
-    val storedArgs = contextStack.head
-    val array1Function = storedArgs("array1")
-    val array2Function = storedArgs("array2")
+    val array1Function = getProcessArg("array1")
+    val array2Function = getProcessArg("array2")
 
     val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
       val array1 = evaluateToTiles(array1Function, context, tiles)
@@ -993,8 +989,7 @@ class OpenEOProcessScriptBuilder {
 
 
   private def arrayCreateFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
-    val storedArgs = contextStack.head
-    val dataFunction:OpenEOProcess = storedArgs("data")
+    val dataFunction:OpenEOProcess = getProcessArg("data")
     val repeat: Int = arguments.getOrDefault("repeat", 1.asInstanceOf[Object]).asInstanceOf[Int]
 
     val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
@@ -1063,10 +1058,9 @@ class OpenEOProcessScriptBuilder {
       }
     }
 
-    val storedArgs = contextStack.head
-    val inputFunction: Option[OpenEOProcess] = storedArgs.get("data")
+    val inputFunction: OpenEOProcess = getProcessArg("data")
     def composed(context: Map[String, Any])(tiles: Seq[Tile]): Seq[Tile] = {
-      operator(inputFunction.get(context)(tiles), context)
+      operator(inputFunction(context)(tiles), context)
     }
     composed
   }
@@ -1114,9 +1108,9 @@ class OpenEOProcessScriptBuilder {
     }
     // Return our operator in a composed function.
     val storedArgs = contextStack.head
-    val inputFunction: Option[OpenEOProcess] = storedArgs.get("data")
+    val inputFunction: OpenEOProcess = getProcessArg("data")
     def composed(context: Map[String, Any])(tiles: Seq[Tile]): Seq[Tile] = {
-      operator(inputFunction.get(context)(tiles), context)
+      operator(inputFunction(context)(tiles), context)
     }
     composed
   }
@@ -1143,10 +1137,9 @@ class OpenEOProcessScriptBuilder {
       })
     }
     // Return our operator in a composed function.
-    val storedArgs = contextStack.head
-    val inputFunction: Option[OpenEOProcess] = storedArgs.get("data")
+    val inputFunction: OpenEOProcess = getProcessArg("data")
     def composed(context: Map[String, Any])(tiles: Seq[Tile]): Seq[Tile] = {
-      operator(inputFunction.get(context)(tiles), context)
+      operator(inputFunction(context)(tiles), context)
     }
     composed
   }
@@ -1167,8 +1160,8 @@ class OpenEOProcessScriptBuilder {
 
 
   private def arrayElementFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
-    val storedArgs = contextStack.head
-    val inputFunction = storedArgs.get("data").get
+
+    val inputFunction = getProcessArg("data")
     val index = arguments.getOrDefault("index",null)
     val label = arguments.getOrDefault("label",null)
     if(index == null && label == null ) {
@@ -1205,8 +1198,7 @@ class OpenEOProcessScriptBuilder {
   }
 
   private def betweenFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
-    val storedArgs = contextStack.head
-    val inputFunction = storedArgs.get("x").get
+    val inputFunction = getProcessArg("x")
     val min = arguments.getOrDefault("min",null)
     val max = arguments.getOrDefault("max",null)
     val excludeMax = arguments.getOrDefault("exclude_max",Boolean.box(false))
@@ -1236,8 +1228,7 @@ class OpenEOProcessScriptBuilder {
   }
 
   private def clipFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
-    val storedArgs = contextStack.head
-    val inputFunction = storedArgs("x")
+    val inputFunction = getProcessArg("x")
     val min = arguments.get("min").asInstanceOf[Number].doubleValue()
     val max = arguments.get("max").asInstanceOf[Number].doubleValue()
 
@@ -1263,8 +1254,8 @@ class OpenEOProcessScriptBuilder {
   }
 
   private def intFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
-    val storedArgs = contextStack.head
-    val inputFunction = storedArgs("x")
+
+    val inputFunction = getProcessArg("x")
 
     val clipFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
       val input = evaluateToTiles(inputFunction, context, tiles).map(_.convert(FloatConstantNoDataCellType))
