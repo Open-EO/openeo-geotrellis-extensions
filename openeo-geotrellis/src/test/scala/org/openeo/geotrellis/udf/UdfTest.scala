@@ -46,6 +46,8 @@ If you use the virtual environment venv (with JEP and Numpy installed):
   This will look for the shared library 'jep.so'. This is the compiled C code that binds Java and Python.
 2. PATH = .../venv/bin:$PATH
   This will ensure your virtual environment is used instead of your default python interpreter.
+  These modules are also required:
+  pip install numpy xarray openeo
 */
 class UdfTest extends RasterMatchers {
 
