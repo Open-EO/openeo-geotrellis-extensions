@@ -414,6 +414,8 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                    |metadata properties $metadata_properties""".stripMargin)
             }
 
+            // this optimization consists of dissolving geometries of overlapping features and will therefore lose
+            // per-feature information (currently there is none).
             val featureIntersectionsByDay = featureIntersections.groupBy(_.data)
             val simplifiedFeatureIntersectionsByDay = featureIntersectionsByDay.map { case (date, features) =>
               val multiPolygons = features
