@@ -436,6 +436,7 @@ class OpenEOProcessScriptBuilder {
   var arrayCounter : Int =  0
   var inputFunction:  OpenEOProcess = null
   var resultingDataType: CellType = FloatConstantNoDataCellType
+  val defaultDataParameterName:String = "data"
 
   def generateFunction(context: Map[String,Any] = Map.empty): Seq[Tile] => Seq[Tile] = {
     inputFunction(context)
@@ -598,11 +599,15 @@ class OpenEOProcessScriptBuilder {
   }
 
   def fromParameter(parameterName:String): Unit = {
+    val defaultName = defaultDataParameterName
     inputFunction = (context:Map[String,Any]) => (tiles: Seq[Tile]) => {
       if(context.contains(parameterName)) {
         context.getOrElse(parameterName,tiles).asInstanceOf[Seq[Tile]]
-      }else{
-        logger.debug("Parameter with name: " + parameterName  + " not found. Available parameters: " + context.keys.mkString(","))
+      }else if(parameterName == defaultName) {
+        tiles
+      }
+      else{
+        logger.debug(s"Parameter with name: $parameterName not found. Available parameters: ${context.keys.mkString(",")} or $defaultName")
         tiles
       }
     }
@@ -961,13 +966,16 @@ class OpenEOProcessScriptBuilder {
   }
 
   private def arrayApplyFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
-    val storedArgs = contextStack.head
     val inputFunction = getProcessArg("data")
     val processFunction = getProcessArg("process")
 
     val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
+      val labels = context.get("array_labels").asInstanceOf[Option[Seq[Any]]]
       val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
-      val mappedValues: Seq[Tile] = evaluateToTiles(processFunction, context, data)
+      val mappedValues = data.zipWithIndex.map{
+        case (e, i) => evaluateToTiles(processFunction, context + ("x" -> Seq(e))  + ("index" -> i) + ("data"-> data) + ("label" -> labels.map(_(i)).orNull), Seq(e)).head
+      }
+
       mappedValues
     }
     bandFunction

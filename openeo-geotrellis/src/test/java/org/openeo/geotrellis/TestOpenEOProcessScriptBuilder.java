@@ -1681,9 +1681,11 @@ public class TestOpenEOProcessScriptBuilder {
             builder.fromParameter("x");
             builder.argumentEnd();
             builder.argumentStart("y");
-            Map<String, Object> argsMax = Collections.singletonMap("data", Collections.singletonMap("from_parameter", "x"));
+            Map<String, Object> argsMax = Collections.singletonMap("data", Collections.singletonMap("from_parameter", "data"));
             builder.expressionStart("max", argsMax);
-            builder.fromParameter("x");
+            builder.argumentStart("data");
+            builder.fromParameter("data");//some overloading of "data" argument going on here
+            builder.argumentEnd();
             builder.expressionEnd("max",argsMax);
             builder.argumentEnd();
 
