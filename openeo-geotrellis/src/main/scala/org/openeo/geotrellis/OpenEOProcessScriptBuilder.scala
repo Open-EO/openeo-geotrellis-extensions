@@ -548,6 +548,7 @@ class OpenEOProcessScriptBuilder {
   private def xyFunction(operator:(Tile,Tile) => Tile, xArgName:String = "x", yArgName:String = "y" ,convertBitCells: Boolean = true): OpenEOProcess = {
     val x_function: OpenEOProcess = getProcessArg(xArgName)
     val y_function: OpenEOProcess = getProcessArg(yArgName)
+    val processString = processStack.reverse.mkString("->")
     val bandFunction = (context: Map[String,Any]) => (tiles: Seq[Tile]) => {
 
       def convertBitCellsOp(aTile: Tile):Tile ={
@@ -566,7 +567,7 @@ class OpenEOProcessScriptBuilder {
       }else if(y_input.size == 1) {
         x_input.map(operator(_,y_input.head))
       }else{
-        throw new IllegalArgumentException(s"Incompatible numbers of tiles in this XY operation '${processStack.reverse.mkString("->")}' $xArgName has: ${x_input.size} , $yArgName has: ${y_input.size}\n We expect either equal counts, are one of them should be 1.")
+        throw new IllegalArgumentException(s"Incompatible numbers of tiles in this XY operation '${processString}' $xArgName has: ${x_input.size} , $yArgName has: ${y_input.size}\n We expect either equal counts, are one of them should be 1.")
       }
 
     }
