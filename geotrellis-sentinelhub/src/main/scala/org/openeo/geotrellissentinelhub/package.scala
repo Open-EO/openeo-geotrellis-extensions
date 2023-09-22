@@ -32,8 +32,7 @@ package object geotrellissentinelhub {
         case SentinelHubException(_, 400, _, responseBody) if responseBody.contains("Request body should be non-empty.")
           || responseBody.contains("Missing grant_type parameter") => true
         case SentinelHubException(_, 404, _, _) if context.startsWith("startBatchProcess") => true // hack, needs work
-        case SentinelHubException(_, statusCode, _, responseBody) if statusCode >= 500
-          && !responseBody.contains("newLimit > capacity") && !responseBody.contains("Illegal request to https") => true
+        case SentinelHubException(_, statusCode, _, _) if statusCode >= 500 => true
         case _: SocketTimeoutException => true
         case _: CirceException => true
         case e => logger.error(s"Not attempting to retry unrecoverable error in context: $context", e); false

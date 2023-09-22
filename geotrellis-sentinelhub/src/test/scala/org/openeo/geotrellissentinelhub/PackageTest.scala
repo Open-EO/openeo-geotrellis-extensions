@@ -40,20 +40,6 @@ class PackageTest {
     }
   }
 
-  @Test(expected = classOf[SentinelHubException], timeout = 1000L)
-  def testCorruptTileRequestIsNotRetried(): Unit =
-    withRetries(context = "testCorruptTileRequestIsNotRetried") {
-      val responseBody = """{"error":{"status":500,"reason":"Internal Server Error","message":"java.util.concurrent.ExecutionException: java.lang.IllegalArgumentException: newLimit > capacity: (2808 > 2804)","code":"RENDERER_EXCEPTION"}}"""
-      throw new SentinelHubException(message = responseBody, 500, responseHeaders = Map(), responseBody)
-    }
-
-  @Test(expected = classOf[SentinelHubException], timeout = 1000L)
-  def testBandUnavailableRequestIsNotRetried(): Unit =
-    withRetries(context = "testBandUnavailableRequestIsNotRetried") {
-      val responseBody = """{"error":{"status":500,"reason":"Internal Server Error","message":"Illegal request to https://sentinel-s1-l1c.s3.amazonaws.com/GRD/2018/11/25/EW/DH/S1B_EW_GRDM_1SDH_20181125T043340_20181125T043419_013756_0197D4_BC1C/measurement/ew-vh.tiff. HTTP Status: 404.","code":"RENDERER_EXCEPTION"}}"""
-      throw new SentinelHubException(message = responseBody, 500, responseHeaders = Map(), responseBody)
-    }
-
   @Test
   def testSequentialDaysBoundsAreInclusive(): Unit = {
     val from = LocalDate.of(2023, 1, 1).atStartOfDay(ZoneOffset.UTC)
