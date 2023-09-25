@@ -1,18 +1,25 @@
 import xarray
 from openeo.udf import XarrayDataCube
 from openeo.udf.debug import inspect
-from openeo.metadata import CollectionMetadata
+from openeo.metadata import CollectionMetadata, SpatialDimension
 
-def apply_metadata(input_metadata:CollectionMetadata, context:dict) -> CollectionMetadata:
+def apply_metadata(metadata: CollectionMetadata,
+                   context: dict) -> CollectionMetadata:
+    """
+    Modify metadata according to up-sampling factor
+    """
+    new_dimensions = metadata._dimensions.copy()
+    for index, dim in enumerate(new_dimensions):
+        if isinstance(dim, SpatialDimension):
+            new_dim = SpatialDimension(name=dim.name,
+                                       extent=dim.extent,
+                                       crs=dim.crs,
+                                       step=dim.step / 2.0)
+            new_dimensions[index] = new_dim
 
-    xstep = input_metadata.get('x','step')
-    ystep = input_metadata.get('y','step')
-    new_metadata = {
-          "x": {"type": "spatial", "axis": "x", "step": xstep/2.0, "reference_system": 4326},
-          "y": {"type": "spatial", "axis": "y", "step": ystep/2.0, "reference_system": 4326},
-          "t": {"type": "temporal"}
-    }
-    return CollectionMetadata(new_metadata)
+    updated_metadata = metadata._clone_and_update(dimensions=new_dimensions)
+    # inspect(updated_metadata,"apply_metadata was invoked")
+    return updated_metadata
 
 def fancy_upsample_function(array: np.array, factor: int = 2) -> np.array:
     assert array.ndim == 3

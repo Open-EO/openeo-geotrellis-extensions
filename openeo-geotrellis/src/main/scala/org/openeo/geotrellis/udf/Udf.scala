@@ -307,9 +307,11 @@ object Udf {
           s"""
             |import openeo.metadata
             |metadata = {
+            |   "cube:dimensions": {
             |      "x": {"type": "spatial", "axis": "x", "step": ${stepSize.width}, "reference_system": $crsCode},
             |      "y": {"type": "spatial", "axis": "y", "step": ${stepSize.height}, "reference_system": $crsCode},
             |      "t": {"type": "temporal"}
+            |   }
             |}
             |
             |""".stripMargin
@@ -321,8 +323,8 @@ object Udf {
             interp.exec(code)
             interp.exec(cubeMetadata)
             interp.exec("result_metadata = apply_metadata(openeo.metadata.CollectionMetadata(metadata), context)")
-            val targetResolutionX:Double = interp.getValue("result_metadata.get('x','step')").asInstanceOf[Double]
-            val targetResolutionY:Double = interp.getValue("result_metadata.get('y','step')").asInstanceOf[Double]
+            val targetResolutionX:Double = interp.getValue("[d for d in result_metadata.spatial_dimensions if d.name == \"x\"][0].step").asInstanceOf[Double]
+            val targetResolutionY:Double = interp.getValue("[d for d in result_metadata.spatial_dimensions if d.name == \"y\"][0].step").asInstanceOf[Double]
             CellSize(targetResolutionX,targetResolutionY)
           } finally if (interp != null) interp.close()
         }).collect()

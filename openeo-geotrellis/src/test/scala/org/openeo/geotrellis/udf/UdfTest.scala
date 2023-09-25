@@ -81,10 +81,9 @@ class UdfTest extends RasterMatchers {
     val currentRes = datacube.metadata.cellSize
     datacube.values.first().bands(0).foreach(e => assert(e == 0))
     val resultRDD = Udf.runUserCode(code, datacube, new util.ArrayList[String](), new util.HashMap[String, Any]())
-    assertEquals(resultRDD.metadata.layout.cellSize,CellSize(currentRes.width/2.0,currentRes.height/2.0))
-    assertEquals(datacube.metadata.cols*2,resultRDD.metadata.cols)
+    assertEquals(CellSize(currentRes.width/2.0,currentRes.height/2.0), resultRDD.metadata.layout.cellSize)
+    assertEquals(datacube.metadata.cols*2, resultRDD.metadata.cols)
     resultRDD.values.first().bands(0).foreach(e => assert(e == 60))
-
   }
 
   def _getDates(): Seq[ZonedDateTime] = {
