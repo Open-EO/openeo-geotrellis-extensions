@@ -156,7 +156,7 @@ class OpenEOProcesses extends Serializable {
     }
     logger.info(s"Applying callback on time dimension of cube with partitioner: ${datacube.partitioner.getOrElse("no partitioner")} - index: ${index.getOrElse("no index")} and metadata ${datacube.metadata}")
     val expectedCellType = datacube.metadata.cellType
-    val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => mutable.Map[SpaceTimeKey, MultibandTile] = createTemporalCallback(scriptBuilder.inputFunction,context.asScala.toMap, expectedCellType)
+    val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => mutable.Map[SpaceTimeKey, MultibandTile] = createTemporalCallback(scriptBuilder.inputFunction.asInstanceOf[OpenEOProcess],context.asScala.toMap, expectedCellType)
 
     val rdd =
     if(index.isDefined && index.get.isInstanceOf[SparseSpaceOnlyPartitioner]) {
@@ -411,7 +411,7 @@ class OpenEOProcesses extends Serializable {
     }
 
 
-    val function = scriptBuilder.inputFunction
+    val function = scriptBuilder.inputFunction.asInstanceOf[OpenEOProcess]
     def aggregateTiles(tiles: Iterable[(SpaceTimeKey,MultibandTile)]) = {
       val theContext = context.asScala.toMap + ("array_labels"->tiles.map(_._1.time))
       val tilesFunction = function.apply(theContext)
