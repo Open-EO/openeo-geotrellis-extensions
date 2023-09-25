@@ -1674,13 +1674,22 @@ public class TestOpenEOProcessScriptBuilder {
             // scope block, just for nice indentation
             Map<String, Object> argumentsCos = new HashMap<>();
             argumentsCos.put("date1", Collections.singletonMap("from_parameter", "label"));
-            argumentsCos.put("date2", "2022-01-01T00:00:00Z");
+            //argumentsCos.put("date2", "2022-01-01T00:00:00Z");
             builder.expressionStart("date_difference", argumentsCos);
 
             builder.argumentStart("date1");
             builder.fromParameter("label");
             builder.argumentEnd();
             builder.argumentStart("date2");
+            Map<String, Object> argumentsReplace = new HashMap<>();
+            argumentsReplace.put("value",15);
+            argumentsReplace.put("component", "day");
+            argumentsReplace.put("date", Collections.singletonMap("from_parameter", "label"));
+            builder.expressionStart("date_replace_component", argumentsReplace);
+            builder.argumentStart("date");
+            builder.fromParameter("label");
+            builder.argumentEnd();
+            builder.expressionEnd("date_replace_component",argumentsReplace);
             //string constant is not yet transmitted
             builder.argumentEnd();
 
@@ -1768,9 +1777,9 @@ public class TestOpenEOProcessScriptBuilder {
 
             Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)));
 
-            assertEquals(-3, result.apply(0).get(0, 0));
-            assertEquals(-4, result.apply(1).get(0, 0));
-            assertEquals(2133, result.apply(2).get(0, 0));
+            assertEquals(11, result.apply(0).get(0, 0));
+            assertEquals(10, result.apply(1).get(0, 0));
+            assertEquals(-14, result.apply(2).get(0, 0));
 
         }
     }

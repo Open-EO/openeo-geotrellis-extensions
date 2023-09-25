@@ -577,9 +577,9 @@ class OpenEOProcessScriptBuilder {
           argument.asInstanceOf[String]
         } else if (argument.isInstanceOf[util.Map[String, Any]] && argument.asInstanceOf[util.Map[String, Any]].containsKey("from_parameter")) {
           val paramName = argument.asInstanceOf[util.Map[String, Any]].get("from_parameter").asInstanceOf[String]
-          context.getOrElse(paramName, throw new IllegalArgumentException(s"date_difference: Parameter $paramName not found in context: $context")).asInstanceOf[String]
+          context.getOrElse(paramName, throw new IllegalArgumentException(s"date_replace_component: Parameter $paramName not found in context: $context")).asInstanceOf[String]
         } else {
-          throw new IllegalArgumentException(s"date_difference got unexpected argument: $argument")
+          throw new IllegalArgumentException(s"date_replace_component got unexpected argument: $argument")
         }
       }
 
@@ -789,10 +789,9 @@ class OpenEOProcessScriptBuilder {
     val hasTrueCondition = Try(arguments.get("condition").toString.toBoolean).getOrElse(false)
     val hasConditionExpression = arguments.get("condition") != null && !arguments.get("condition").isInstanceOf[Boolean]
 
-
-
-    val operation: OpenEOProcess = operator match {
+    val operation = operator match {
       case "date_difference" => dateDifferenceProcess(arguments)
+      case "date_replace_component" => dateComponentReplace(arguments)
       case "if" => ifProcess(arguments)
       // Comparison operators
       case "gt" if hasXY => xyFunction(Greater.apply,convertBitCells = false)
