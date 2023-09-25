@@ -1,14 +1,11 @@
 package org.openeo.geotrellissentinelhub
 
-import geotrellis.proj4.LatLng
-import geotrellis.vector.{Extent, ProjectedExtent}
-import org.junit.Assert.{assertEquals, assertTrue}
+import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.openeo.geotrellissentinelhub.DefaultProcessApi.{Sentinel1BandNotPresentException, withRetryAfterRetries}
+import org.openeo.geotrellissentinelhub.DefaultProcessApi.withRetryAfterRetries
 import org.slf4j.{Logger, LoggerFactory}
 
-import java.time.{Duration, Instant, LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
-import java.util
+import java.time.{Duration, Instant}
 import scala.math.Ordered.orderingToOrdered
 
 object DefaultProcessApiTest {
@@ -24,12 +21,6 @@ object DefaultProcessApiTest {
 class DefaultProcessApiTest {
   import DefaultProcessApiTest._
 
-  private val clientId = Utils.clientId
-  private val clientSecret = Utils.clientSecret
-  private val authorizer = new MemoizedAuthApiAccessTokenAuthorizer(
-    clientId, clientSecret)
-
-  private val processApi = new DefaultProcessApi("https://services.sentinel-hub.com")
   private implicit val logger: Logger = LoggerFactory.getLogger(getClass)
 
   @Test(expected = classOf[SentinelHubException], timeout = 1000L)
@@ -72,22 +63,5 @@ class DefaultProcessApiTest {
     }
 
     assertTrue(delay >= retryAfter)
-  }
-
-  @Test(timeout = 3000)
-  def testSentinel1BandNotPresentException(): Unit = {
-    try {
-      authorizer.authorized { accessToken =>
-        processApi.getTile(datasetId = "sentinel-1-grd", ProjectedExtent(Extent(16.06, 48.06, 16.07, 48.07), LatLng),
-          ZonedDateTime.of(LocalDate.of(2017, 3, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC), width = 256, height = 256,
-          bandNames = Seq("VV", "HH"), sampleType = SampleType.FLOAT32,
-          additionalDataFilters = util.Collections.emptyMap(), processingOptions = util.Collections.emptyMap(),
-          accessToken)
-      }
-    } catch {
-      case e: Sentinel1BandNotPresentException =>
-        assertTrue(e.getMessage, e.getMessage contains "not present in Sentinel 1 tile")
-        assertEquals(e.bandName, "HH", e.bandName)
-    }
   }
 }

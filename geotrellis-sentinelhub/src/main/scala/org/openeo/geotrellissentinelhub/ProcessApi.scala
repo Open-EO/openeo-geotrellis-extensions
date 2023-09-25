@@ -1,7 +1,5 @@
 package org.openeo.geotrellissentinelhub
 
-import _root_.io.circe.generic.auto._
-import cats.syntax.either._
 import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.raster.MultibandTile
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
@@ -11,7 +9,6 @@ import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEven
 import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy}
 import org.apache.commons.io.IOUtils
 import org.openeo.geotrelliscommon.CirceException
-import org.openeo.geotrelliscommon.CirceException.decode
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
 import org.slf4j.{Logger, LoggerFactory}
 import scalaj.http.{Http, HttpResponse}
@@ -89,21 +86,6 @@ object DefaultProcessApi {
     Failsafe
       .`with`(util.Arrays.asList(shakyConnectionRetryPolicy, rateLimitingRetryPolicy))
       .get(() => fn)
-  }
-
-  private case class SentinelHubError(message: String)
-  private case class SentinelHubErrorResponse(error: SentinelHubError)
-
-  object Sentinel1BandNotPresentException {
-    private val bandNotPresentPattern = "Requested band '(.+)' is not present in Sentinel 1 tile .+".r
-  }
-
-  class Sentinel1BandNotPresentException(message: String) extends RuntimeException(message) {
-    import Sentinel1BandNotPresentException._
-
-    val bandName = message match {
-        case bandNotPresentPattern(bandName) => bandName
-    }
   }
 }
 
@@ -218,12 +200,6 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
           (GeoTiffReader.readMultiband(IOUtils.toByteArray(in)), processingUnitsSpent)
         } else {
           val textBody = Source.fromInputStream(in, "utf-8").mkString
-
-          if (code == 400 && textBody.contains("not present in Sentinel 1 tile")) {
-            val sentinelHubError = decode[SentinelHubErrorResponse](textBody).valueOr(throw _)
-            throw new Sentinel1BandNotPresentException(sentinelHubError.error.message)
-          }
-
           throw SentinelHubException(request, jsonData, code, headers, textBody)
         }
       )
