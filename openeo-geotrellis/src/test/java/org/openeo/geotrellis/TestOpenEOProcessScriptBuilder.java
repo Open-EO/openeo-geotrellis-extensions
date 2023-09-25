@@ -1657,6 +1657,42 @@ public class TestOpenEOProcessScriptBuilder {
         return builder;
     }
 
+    static OpenEOProcessScriptBuilder createArrayApplyDateDifference() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+
+        Map<String, Object> arguments = new HashMap<>();
+        arguments.put("data", Collections.singletonMap("from_parameter", "x"));
+        arguments.put("process", "dummy");
+        builder.expressionStart("array_apply", arguments);
+
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+
+        builder.argumentStart("process");
+        {
+            // scope block, just for nice indentation
+            Map<String, Object> argumentsCos = new HashMap<>();
+            argumentsCos.put("date1", Collections.singletonMap("from_parameter", "label"));
+            argumentsCos.put("date2", "2022-01-01T00:00:00Z");
+            builder.expressionStart("date_difference", argumentsCos);
+
+            builder.argumentStart("date1");
+            builder.fromParameter("label");
+            builder.argumentEnd();
+            builder.argumentStart("date2");
+            //string constant is not yet transmitted
+            builder.argumentEnd();
+
+
+            builder.expressionEnd("date_difference", argumentsCos);
+        }
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_apply", arguments);
+        return builder;
+    }
+
     static OpenEOProcessScriptBuilder createRankComposite() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
 
@@ -1716,6 +1752,26 @@ public class TestOpenEOProcessScriptBuilder {
             assertEquals(Math.cos(tile1.getDouble(0, 0)), result.apply(2).getDouble(0, 0), 0.001);
             assertEquals(Math.cos(tile2.getDouble(0, 0)), result.apply(3).getDouble(0, 0), 0.001);
             assertEquals(Math.cos(tile3.getDouble(0, 0)), result.apply(4).getDouble(0, 0), 0.001);
+        }
+    }
+
+    @DisplayName("Test array_apply with date difference process")
+    @Test
+    public void testArrayApplyDateDifference() {
+        for (OpenEOProcessScriptBuilder builder : Arrays.asList(createArrayApplyDateDifference())) {
+            Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction(Collections.singletonMap("array_labels",JavaConversions.asScalaBuffer(Arrays.asList("2022-01-04T00:00:00Z","2022-01-05T00:00:00Z","2016-02-29T00:00:00Z","2019-06-30T00:00:00Z","2030-12-31T00:00:00Z"))));
+            Tile tile0 = FloatConstantNoDataArrayTile.fill(1, 4, 4);
+            Tile tile1 = FloatConstantNoDataArrayTile.fill(3, 4, 4);
+            Tile tile2 = FloatConstantNoDataArrayTile.fill(-1, 4, 4);
+            Tile tile3 = FloatConstantNoDataArrayTile.fill(1.9f, 4, 4);
+            Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
+
+            Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)));
+
+            assertEquals(-3, result.apply(0).get(0, 0));
+            assertEquals(-4, result.apply(1).get(0, 0));
+            assertEquals(2133, result.apply(2).get(0, 0));
+
         }
     }
 

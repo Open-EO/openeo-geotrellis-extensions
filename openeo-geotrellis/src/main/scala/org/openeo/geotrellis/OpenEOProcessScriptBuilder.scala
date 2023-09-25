@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory
 import spire.math.UShort
 import spire.syntax.cfor.cfor
 
+import java.time.{Duration, ZonedDateTime}
 import java.util
 import scala.Double.NaN
 import scala.collection.JavaConversions.mapAsScalaMap
@@ -545,6 +546,28 @@ class OpenEOProcessScriptBuilder {
     ifElseProcess(value, accept, reject)
   }
 
+  private def dateDifferenceProcess(arguments: java.util.Map[String, Object]): OpenEOProcess = {
+    val date1 = arguments.get("date1")
+    val date2 = arguments.get("date2")
+
+
+    val dateDiffProcess = (context: Map[String, Any]) => {
+      def normalize(argument: Any): String = {
+        if( argument.isInstanceOf[String]) {
+          argument.asInstanceOf[String]
+        }else if(argument.isInstanceOf[util.Map[String,Any]] && argument.asInstanceOf[util.Map[String,Any]].containsKey("from_parameter")) {
+          val paramName = argument.asInstanceOf[util.Map[String,Any]].get("from_parameter").asInstanceOf[String]
+          context.getOrElse(paramName, throw new IllegalArgumentException(s"date_difference: Parameter $paramName not found in context: $context")).asInstanceOf[String]
+        }else{
+          throw new IllegalArgumentException(s"date_difference got unexpected argument: $argument")
+        }
+      }
+      val diff = Duration.between(ZonedDateTime.parse(normalize(date1)),ZonedDateTime.parse(normalize(date2))).toDays
+      createConstantTileFunction(diff)
+    }
+    dateDiffProcess
+  }
+
 
   private def xyFunction(operator:(Tile,Tile) => Tile, xArgName:String = "x", yArgName:String = "y" ,convertBitCells: Boolean = true): OpenEOProcess = {
     val x_function: OpenEOProcess = getProcessArg(xArgName)
@@ -602,7 +625,11 @@ class OpenEOProcessScriptBuilder {
     val defaultName = defaultDataParameterName
     inputFunction = (context:Map[String,Any]) => (tiles: Seq[Tile]) => {
       if(context.contains(parameterName)) {
-        context.getOrElse(parameterName,tiles).asInstanceOf[Seq[Tile]]
+        if(context.get(parameterName).isInstanceOf[Seq[Tile]]) {
+          context.getOrElse(parameterName,tiles).asInstanceOf[Seq[Tile]]
+        }else{
+          null
+        }
       }else if(parameterName == defaultName) {
         tiles
       }
@@ -708,6 +735,7 @@ class OpenEOProcessScriptBuilder {
     val hasConditionExpression = arguments.get("condition") != null && !arguments.get("condition").isInstanceOf[Boolean]
 
     val operation: OpenEOProcess = operator match {
+      case "date_difference" => dateDifferenceProcess(arguments)
       case "if" => ifProcess(arguments)
       // Comparison operators
       case "gt" if hasXY => xyFunction(Greater.apply,convertBitCells = false)
