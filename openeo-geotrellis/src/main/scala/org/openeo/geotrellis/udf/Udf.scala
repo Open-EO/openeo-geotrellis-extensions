@@ -8,6 +8,7 @@ import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import jep.{DirectNDArray, JepConfig, NDArray, SharedInterpreter}
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
+import org.slf4j.LoggerFactory
 
 import java.nio.{ByteBuffer, ByteOrder, FloatBuffer}
 import java.util
@@ -15,6 +16,8 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
 
 object Udf {
+
+  private val logger = LoggerFactory.getLogger("Python-Jep-Udf")
 
   private val SIZE_OF_FLOAT = 4
 
@@ -413,6 +416,7 @@ object Udf {
         } finally if (interp != null) interp.close()
 
         if (newLayout.isDefined) {
+          logger.info(s"UDF created this spatial layout for the raster data cube: $newLayout")
           var newExtent: Extent = key_and_tile._1.spatialKey.extent(oldLayout) //TODO: don't assume that extent stays the same, but determine extent of the output based on result XArray Coords
           newLayout.get.mapTransform(newExtent)
             .coordsIter
