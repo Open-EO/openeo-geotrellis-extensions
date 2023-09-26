@@ -32,13 +32,9 @@ trait ProcessApi {
 object DefaultProcessApi {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[DefaultProcessApi])
   private final val processingUnitsSpentHeader = "x-processingunits-spent"
-}
 
-class DefaultProcessApi(endpoint: String, respectRetryAfterHeader: Boolean = true) extends ProcessApi with Serializable {
-  // TODO: clean up JSON construction/parsing
-  import DefaultProcessApi._
-
-  private def withRetryAfterRetries[R](context: String)(fn: => R)(implicit logger: Logger): R = {
+  // TODO: made this package-private to be able to quickly test it
+  private[geotrellissentinelhub] def withRetryAfterRetries[R](context: String)(fn: => R)(implicit logger: Logger): R = {
     val retryable: Throwable => Boolean = {
       case SentinelHubException(_, 400, _, responseBody) if responseBody.contains("Request body should be non-empty.") => true
       case SentinelHubException(_, statusCode, _, responseBody) if statusCode >= 500
@@ -91,6 +87,11 @@ class DefaultProcessApi(endpoint: String, respectRetryAfterHeader: Boolean = tru
       .`with`(util.Arrays.asList(shakyConnectionRetryPolicy, rateLimitingRetryPolicy))
       .get(() => fn)
   }
+}
+
+class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
+  // TODO: clean up JSON construction/parsing
+  import DefaultProcessApi._
 
   override def getTile(datasetId: String, projectedExtent: ProjectedExtent, date: ZonedDateTime, width: Int,
                        height: Int, bandNames: Seq[String], sampleType: SampleType,
@@ -179,11 +180,7 @@ class DefaultProcessApi(endpoint: String, respectRetryAfterHeader: Boolean = tru
 
     val context = s"getTile $datasetId $date"
 
-    val withRetries =
-      if (respectRetryAfterHeader) this.withRetryAfterRetries[HttpResponse[(MultibandGeoTiff, Double)]](context) _
-      else org.openeo.geotrellissentinelhub.withRetries[HttpResponse[(MultibandGeoTiff, Double)]](context) _
-
-    val response = withRetries {
+    val response = withRetryAfterRetries(context) {
       request.exec(parser = (code: Int, headers: Map[String, IndexedSeq[String]], in: InputStream) =>
         if (code == 200) {
           val processingUnitsSpent = headers
