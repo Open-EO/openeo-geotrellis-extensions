@@ -4,7 +4,7 @@ import geotrellis.proj4.LatLng
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.Test
-import org.openeo.geotrellissentinelhub.DefaultProcessApi.{Sentinel1BandNotPresentException, withRetryAfterRetries}
+import org.openeo.geotrellissentinelhub.DefaultProcessApi.withRetryAfterRetries
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.time.{Duration, Instant, LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
@@ -87,7 +87,7 @@ class DefaultProcessApiTest {
     } catch {
       case e: Sentinel1BandNotPresentException =>
         assertTrue(e.getMessage, e.getMessage contains "not present in Sentinel 1 tile")
-        assertEquals(e.bandName, "HH", e.bandName)
+        assertEquals(e.missingBandName, "HH", e.missingBandName)
     }
   }
 }
