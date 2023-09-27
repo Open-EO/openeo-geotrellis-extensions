@@ -169,6 +169,45 @@ object Udf {
     interp.exec("context = pyjmap_to_dict(pyjmap_context)")
   }
 
+  private def callApplyMetadata(code: String,
+                                layer: MultibandTileLayerRDD[SpaceTimeKey],
+                                context: util.HashMap[String, Any]
+                               ): Option[LayoutDefinition] = {
+      if (code.contains("apply_metadata")) {
+        val crsCode = layer.metadata.crs.epsgCode.get
+        val stepSize = layer.metadata.layout.cellSize
+        val cubeMetadata =
+          s"""
+            |import openeo.metadata
+            |metadata = {
+            |   "cube:dimensions": {
+            |      "x": {"type": "spatial", "axis": "x", "step": ${stepSize.width}, "reference_system": $crsCode},
+            |      "y": {"type": "spatial", "axis": "y", "step": ${stepSize.height}, "reference_system": $crsCode},
+            |      "t": {"type": "temporal"}
+            |   }
+            |}
+            |
+            |""".stripMargin
+        val resultMetadata = layer.sparkContext.parallelize(Seq(1)).map(t=>{
+          val interp = createSharedInterpreter()
+          try {
+            interp.exec(DEFAULT_IMPORTS)
+            setContextInPython(interp, context)
+            interp.exec(code)
+            interp.exec(cubeMetadata)
+            interp.exec("result_metadata = apply_metadata(openeo.metadata.CollectionMetadata(metadata), context)")
+            val targetResolutionX:Double = interp.getValue("[d for d in result_metadata.spatial_dimensions if d.name == \"x\"][0].step").asInstanceOf[Double]
+            val targetResolutionY:Double = interp.getValue("[d for d in result_metadata.spatial_dimensions if d.name == \"y\"][0].step").asInstanceOf[Double]
+            CellSize(targetResolutionX,targetResolutionY)
+          } finally if (interp != null) interp.close()
+        }).collect()
+
+        Some(LayoutDefinition(RasterExtent(layer.metadata.layout.extent, resultMetadata.apply(0)), layer.metadata.layout.tileRows))
+      } else {
+        None
+      }
+  }
+
   private def checkOutputDtype(dtype: String): Unit = {
     if (!dtype.equals("float32"))
       throw new IllegalArgumentException("UDF returned a datacube that does not have dtype == np.float32.")
@@ -319,43 +358,7 @@ object Udf {
     // TODO: AllocateDirect is an expensive operation, we should create one buffer for the entire partition
     // and then slice it!
 
-    val newLayout = {
-      if (code.contains("apply_metadata")) {
-        val newResolution = 5.0 //TODO determine based on convert_dimensions
-        val crsCode = layer.metadata.crs.epsgCode.get
-        val stepSize = layer.metadata.layout.cellSize
-        val cubeMetadata =
-          s"""
-            |import openeo.metadata
-            |metadata = {
-            |   "cube:dimensions": {
-            |      "x": {"type": "spatial", "axis": "x", "step": ${stepSize.width}, "reference_system": $crsCode},
-            |      "y": {"type": "spatial", "axis": "y", "step": ${stepSize.height}, "reference_system": $crsCode},
-            |      "t": {"type": "temporal"}
-            |   }
-            |}
-            |
-            |""".stripMargin
-        val resultMetadata = layer.sparkContext.parallelize(Seq(1)).map(t=>{
-          val interp = _createSharedInterpreter()
-          try {
-            interp.exec(DEFAULT_IMPORTS)
-            _setContextInPython(interp, context)
-            interp.exec(code)
-            interp.exec(cubeMetadata)
-            interp.exec("result_metadata = apply_metadata(openeo.metadata.CollectionMetadata(metadata), context)")
-            val targetResolutionX:Double = interp.getValue("[d for d in result_metadata.spatial_dimensions if d.name == \"x\"][0].step").asInstanceOf[Double]
-            val targetResolutionY:Double = interp.getValue("[d for d in result_metadata.spatial_dimensions if d.name == \"y\"][0].step").asInstanceOf[Double]
-            CellSize(targetResolutionX,targetResolutionY)
-          } finally if (interp != null) interp.close()
-        }).collect()
-
-        Some(LayoutDefinition(RasterExtent(layer.metadata.layout.extent, resultMetadata.apply(0)), layer.metadata.layout.tileRows))
-      } else {
-        None
-      }
-
-    }
+    val newLayout: Option[LayoutDefinition] = callApplyMetadata(code, layer, context)
     val oldLayout = layer.metadata.layout
 
     val result: RDD[(SpaceTimeKey, MultibandTile)] = layer.mapPartitions(iter => {
@@ -489,6 +492,9 @@ object Udf {
     }).groupByKey(partitioner=partitioner)
 
     // Then run the UDF for every SpatialKey. Each key is a (t,bands,y,x) datacube.
+    val newLayout: Option[LayoutDefinition] = callApplyMetadata(code, layer, context)
+    val oldLayout = layer.metadata.layout
+
     val result: RDD[(SpaceTimeKey, MultibandTile)] = spatiallyGrouped.mapPartitions((iter: Iterator[(SpatialKey, Iterable[(SpaceTimeKey, MultibandTile)])]) => {
       iter.flatMap((groupedBySpatialKey: (SpatialKey, Iterable[(SpaceTimeKey, MultibandTile)])) => {
         val spatialKey = groupedBySpatialKey._1
