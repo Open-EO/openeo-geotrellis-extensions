@@ -50,7 +50,7 @@ object Udf {
 
   case class SpatialExtent(xmin : Double, val ymin : Double, val xmax : Double, ymax: Double, tileCols: Int, tileRows: Int)
 
-  private def _createSharedInterpreter(): SharedInterpreter = {
+  private def createSharedInterpreter(): SharedInterpreter = {
     if (!isInterpreterInitialized) {
       val config = new JepConfig()
       config.redirectStdErr(System.err)
@@ -61,7 +61,7 @@ object Udf {
     new SharedInterpreter
   }
 
-  private def _createExtentFromSpatialKey(layoutDefinition: LayoutDefinition,
+  private def createExtentFromSpatialKey(layoutDefinition: LayoutDefinition,
                                           key: SpatialKey
                                          ): SpatialExtent = {
     val ex = layoutDefinition.extent
@@ -96,7 +96,7 @@ object Udf {
    * @param bandCoordinates A list of band names to act as coordinates for the band dimension (if exists).
    * @param timeCoordinates A list of dates to act as coordinates for the time dimension (if exists).
    */
-  private def _setXarraydatacubeInPython(interp: SharedInterpreter,
+  private def setXarraydatacubeInPython(interp: SharedInterpreter,
                                          directTile: DirectNDArray[FloatBuffer],
                                          tileShape: List[Int],
                                          spatialExtent: SpatialExtent,
@@ -153,7 +153,7 @@ object Udf {
         |""".stripMargin)
   }
 
-  private def _setContextInPython(interp: SharedInterpreter, context: util.HashMap[String, Any]): Unit = {
+  private def setContextInPython(interp: SharedInterpreter, context: util.HashMap[String, Any]): Unit = {
     interp.exec(
       """def pyjmap_to_dict(pyjmap):
         |  new_dict = {}
@@ -169,12 +169,12 @@ object Udf {
     interp.exec("context = pyjmap_to_dict(pyjmap_context)")
   }
 
-  private def _checkOutputDtype(dtype: String): Unit = {
+  private def checkOutputDtype(dtype: String): Unit = {
     if (!dtype.equals("float32"))
       throw new IllegalArgumentException("UDF returned a datacube that does not have dtype == np.float32.")
   }
 
-  private def _checkOutputSpatialDimensions(resultDimensions: Seq[Int], tileRows: Int, tileCols: Int): Unit = {
+  private def checkOutputSpatialDimensions(resultDimensions: Seq[Int], tileRows: Int, tileCols: Int): Unit = {
     if (resultDimensions(resultDimensions.length - 2) != tileRows || resultDimensions.last != tileCols) {
       throw new IllegalArgumentException((
         "UDF returned a datacube that does not have the same rows and columns as the input cube. " +
@@ -184,7 +184,7 @@ object Udf {
     }
   }
 
-  private def _extractMultibandTileFromBuffer(resultBuffer: FloatBuffer, newNumberOfBands: Int,
+  private def extractMultibandTileFromBuffer(resultBuffer: FloatBuffer, newNumberOfBands: Int,
                                     tileSize: Int, tileCols: Int, tileRows: Int): MultibandTile = {
     val newBands = new ListBuffer[FloatArrayTile]()
     for (_b <- 1 to newNumberOfBands) {
@@ -233,7 +233,7 @@ object Udf {
         )
 
         val resultTiles = ListBuffer[(TemporalProjectedExtent, MultibandTile)]()
-        val interp: SharedInterpreter = _createSharedInterpreter
+        val interp: SharedInterpreter = createSharedInterpreter
         try {
           interp.exec(DEFAULT_IMPORTS)
 
@@ -246,9 +246,9 @@ object Udf {
           val directTile = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
 
           // Convert DirectNDArray to XarrayDatacube.
-          _setXarraydatacubeInPython(interp, directTile, tileShape, spatialExtent, bandNames, dates)
+          setXarraydatacubeInPython(interp, directTile, tileShape, spatialExtent, bandNames, dates)
           // Convert context from jep.PyJMap to dict.
-          _setContextInPython(interp, context)
+          setContextInPython(interp, context)
 
           // Execute the UDF in python.
           interp.exec("data = UdfData(proj={\"EPSG\": 900913}, datacube_list=[datacube], user_context=context)")
@@ -272,8 +272,8 @@ object Udf {
                 )
               }
               val dtype = interp.getValue("str(result_cube.get_array().values.dtype)").asInstanceOf[String]
-              _checkOutputDtype(dtype)
-              _checkOutputSpatialDimensions(resultDimensions, tileRows, tileCols)
+              checkOutputDtype(dtype)
+              checkOutputSpatialDimensions(resultDimensions, tileRows, tileCols)
               resultBuffer = FloatBuffer.wrap(cube.getData)
           }
 
@@ -288,7 +288,7 @@ object Udf {
           val newNumberOfBands = resultDimensions(1)
           resultBuffer.rewind()
           for (resultDate <- resultDates) {
-            val multibandTile = _extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, tileSize, tileCols, tileRows)
+            val multibandTile = extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, tileSize, tileCols, tileRows)
             val projectedExtent: ProjectedExtent = ProjectedExtent(polygonExtent, layer.metadata.crs)
             resultTiles += ((TemporalProjectedExtent(projectedExtent, resultDate), multibandTile))
           }
@@ -371,7 +371,7 @@ object Udf {
         val multiBandTileSize = multiBandTile.bandCount * tileSize
 
         var resultMultiBandTile = multiBandTile
-        val interp = _createSharedInterpreter()
+        val interp = createSharedInterpreter()
         try {
           interp.exec(DEFAULT_IMPORTS)
 
@@ -385,10 +385,10 @@ object Udf {
           val directTile = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
 
           // Setup the xarray datacube.
-          val spatialExtent = _createExtentFromSpatialKey(layer.metadata.layout, key_and_tile._1.spatialKey)
-          _setXarraydatacubeInPython(interp, directTile, tileShape, spatialExtent, bandNames)
+          val spatialExtent = createExtentFromSpatialKey(layer.metadata.layout, key_and_tile._1.spatialKey)
+          setXarraydatacubeInPython(interp, directTile, tileShape, spatialExtent, bandNames)
           // Convert context from jep.PyJMap to python dict.
-          _setContextInPython(interp, context)
+          setContextInPython(interp, context)
 
           // Execute the UDF in python.
           interp.exec("data = UdfData(proj={\"EPSG\": 900913}, datacube_list=[datacube], user_context=context)")
@@ -412,9 +412,9 @@ object Udf {
                   )
                 }
                 val dtype = interp.getValue("str(result_cube.get_array().values.dtype)").asInstanceOf[String]
-                _checkOutputDtype(dtype)
+                checkOutputDtype(dtype)
                 if(newLayout.isEmpty)
-                  _checkOutputSpatialDimensions(resultDimensions, tileRows, tileCols)
+                  checkOutputSpatialDimensions(resultDimensions, tileRows, tileCols)
                 println(cube.getData)
 
                 FloatBuffer.wrap(cube.getData)
@@ -435,7 +435,7 @@ object Udf {
               .asInstanceOf[Long].toInt
           }
           resultBuffer.rewind()
-          resultMultiBandTile = _extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, tileSize, tileCols, tileRows)
+          resultMultiBandTile = extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, tileSize, tileCols, tileRows)
         } finally if (interp != null) interp.close()
 
         if (newLayout.isDefined) {
@@ -501,7 +501,7 @@ object Udf {
 
         // Initialize spatial extent.
         // Only UDFs with DataSet as input use bands with different resolution, so we do not need to worry about it here.
-        val spatialExtent = _createExtentFromSpatialKey(layer.metadata.layout, spatialKey)
+        val spatialExtent = createExtentFromSpatialKey(layer.metadata.layout, spatialKey)
 
         val tileRows: Int = multibandTiles.head.bands(0).rows
         val tileCols: Int = multibandTiles.head.bands(0).cols
@@ -510,7 +510,7 @@ object Udf {
         val multiDateMultiBandTileSize = dates.size *  multibandTiles.head.bandCount * tileSize
 
         val resultTiles = ListBuffer[(SpaceTimeKey, MultibandTile)]()
-        val interp: SharedInterpreter = _createSharedInterpreter
+        val interp: SharedInterpreter = createSharedInterpreter
         try {
           interp.exec(DEFAULT_IMPORTS)
 
@@ -523,9 +523,9 @@ object Udf {
           val directTile = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
 
           // Convert DirectNDArray to XarrayDatacube with shape (t,bands,y,x).
-          _setXarraydatacubeInPython(interp, directTile, tileShape, spatialExtent, bandNames, dates)
+          setXarraydatacubeInPython(interp, directTile, tileShape, spatialExtent, bandNames, dates)
           // Convert context from jep.PyJMap to dict.
-          _setContextInPython(interp, context)
+          setContextInPython(interp, context)
 
           // Execute the UDF in python.
           interp.exec("data = UdfData(proj={\"EPSG\": 900913}, datacube_list=[datacube], user_context=context)")
@@ -549,8 +549,8 @@ object Udf {
                 )
               }
               val dtype = interp.getValue("str(result_cube.get_array().values.dtype)").asInstanceOf[String]
-              _checkOutputDtype(dtype)
-              _checkOutputSpatialDimensions(resultDimensions, tileRows, tileCols)
+              checkOutputDtype(dtype)
+              checkOutputSpatialDimensions(resultDimensions, tileRows, tileCols)
               resultBuffer = FloatBuffer.wrap(cube.getData)
           }
 
@@ -565,7 +565,7 @@ object Udf {
           val newNumberOfBands = resultDimensions(1)
           resultBuffer.rewind()
           for (resultDate: Long <- resultDates) {
-            val multibandTile = _extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, tileSize, tileCols, tileRows)
+            val multibandTile = extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, tileSize, tileCols, tileRows)
             val spaceTimeKey: SpaceTimeKey = SpaceTimeKey(spatialKey.col, spatialKey.row, resultDate)
             resultTiles += ((spaceTimeKey, multibandTile))
           }
