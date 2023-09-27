@@ -226,7 +226,7 @@ object Udf {
           // Convert multi-band tiles to one DirectNDArray with shape (#dates, #bands, #y-cells, #x-cells).
           val buffer = ByteBuffer.allocateDirect(multiDateMultiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
           multibandTiles.foreach(_.bands.foreach(tile => {
-            val tileFloats: Array[Float] =  tile.asInstanceOf[FloatArrayTile].array
+            val tileFloats: Array[Float] =  tile.toArrayDouble.map(_.toFloat)
             buffer.put(tileFloats, 0, tileFloats.length)
           }))
           val directTile = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
