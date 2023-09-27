@@ -284,6 +284,7 @@ object Udf {
             .asInstanceOf[java.util.ArrayList[Long]].asScala.transform(l => (l / scala.math.pow(10,6)).longValue)
 
           // UDFs can add/remove bands or dates from the original datacube but not rows, cols.
+          // ChunkPolygon UDFs cannot remove dimensions.
           val newNumberOfBands = resultDimensions(1)
           resultBuffer.rewind()
           for (resultDate <- resultDates) {
@@ -300,6 +301,12 @@ object Udf {
     ContextRDD(resultGroupedBySpaceTimeKey, layer.metadata)
   }
 
+
+  /**
+   * Iterate over every spacetimekey/tile in layer, convert it into a (bands,y,x) datacube, and run the UDF.
+   *
+   * @return The resulting MultibandTileLayerRDD.
+  */
   def runUserCode(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
                   bandNames: util.ArrayList[String], context: util.HashMap[String, Any]): MultibandTileLayerRDD[SpaceTimeKey] = {
     // TODO: Implement apply_timeseries, apply_hypercube.
@@ -351,7 +358,7 @@ object Udf {
     }
     val oldLayout = layer.metadata.layout
 
-    val result = layer.mapPartitions(iter => {
+    val result: RDD[(SpaceTimeKey, MultibandTile)] = layer.mapPartitions(iter => {
       // TODO: Start an interpreter for every partition
       // TODO: Currently this fails because per tile processing cannot access the interpreter
       // TODO: This is because every tile in a partition is handled in a separate thread.
