@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory
 import spire.math.UShort
 import spire.syntax.cfor.cfor
 
+import java.time.temporal.ChronoUnit
 import java.time.{Duration, ZonedDateTime}
 import java.util
 import scala.Double.NaN
@@ -422,6 +423,17 @@ object OpenEOProcessScriptBuilder{
       combined
     }
   }
+
+  def argumentToDate(argument: Any, context: Map[String, Any],process:String="unknown"): String = {
+    if (argument.isInstanceOf[String]) {
+      argument.asInstanceOf[String]
+    } else if (argument.isInstanceOf[util.Map[String, Any]] && argument.asInstanceOf[util.Map[String, Any]].containsKey("from_parameter")) {
+      val paramName = argument.asInstanceOf[util.Map[String, Any]].get("from_parameter").asInstanceOf[String]
+      context.getOrElse(paramName, throw new IllegalArgumentException(s"$process: Parameter $paramName not found in context: $context")).asInstanceOf[String]
+    } else {
+      throw new IllegalArgumentException(s"$process got unexpected argument: $argument")
+    }
+  }
 }
 /**
   * Builder to help converting an OpenEO process graph into a transformation of Geotrellis tiles.
@@ -487,13 +499,20 @@ class OpenEOProcessScriptBuilder {
     contextStack.head.getOrElse(name,throw new IllegalArgumentException(s"Process [${processStack.head}] expects a $name argument. These arguments were found: " + contextStack.head.keys.mkString(", ") + s"function tree: ${processStack.reverse.mkString("->")}")).asInstanceOf[OpenEOProcess]
   }
 
-  private def getAnyProcessArg(name: String,arguments: java.util.Map[String, Object]): AnyProcess = {
+  private def getAnyProcessArg(name: String,arguments: java.util.Map[String, Object],default:Any = null): AnyProcess = {
     if(arguments.get(name).isInstanceOf[String]) {
       val theArg:Any = arguments.get(name)
       (context: Map[String,Any]) => (inputArg: Any) => {
         theArg
       }
-    }else{
+    }else if(default!=null && !contextStack.head.contains(name)) {
+      (context: Map[String, Any]) =>
+        (inputArg: Any) => {
+          default
+        }
+    }
+    else{
+
       contextStack.head.getOrElse(name, throw new IllegalArgumentException(s"Process [${processStack.head}] expects a $name argument. These arguments were found: " + contextStack.head.keys.mkString(", ") + s"function tree: ${processStack.reverse.mkString("->")}")).asInstanceOf[AnyProcess]
     }
   }
@@ -563,7 +582,7 @@ class OpenEOProcessScriptBuilder {
     ifElseProcess(value, accept, reject)
   }
 
-  private def dateComponentReplace(arguments: java.util.Map[String, Object]): AnyProcess = {
+  private def dateReplaceComponent(arguments: java.util.Map[String, Object]): AnyProcess = {
     val date = arguments.get("date")
     val value = arguments.get("value")
     val component = arguments.get("component")
@@ -572,21 +591,23 @@ class OpenEOProcessScriptBuilder {
     }
 
     val dateProcess = (context: Map[String, Any]) => {
-      def normalize(argument: Any): String = {
-        if (argument.isInstanceOf[String]) {
-          argument.asInstanceOf[String]
-        } else if (argument.isInstanceOf[util.Map[String, Any]] && argument.asInstanceOf[util.Map[String, Any]].containsKey("from_parameter")) {
-          val paramName = argument.asInstanceOf[util.Map[String, Any]].get("from_parameter").asInstanceOf[String]
-          context.getOrElse(paramName, throw new IllegalArgumentException(s"date_replace_component: Parameter $paramName not found in context: $context")).asInstanceOf[String]
-        } else {
-          throw new IllegalArgumentException(s"date_replace_component got unexpected argument: $argument")
-        }
-      }
-
-      val parsedDate = ZonedDateTime.parse(normalize(date))
+      val parsedDate = ZonedDateTime.parse(argumentToDate(date,context,"date_replace_component"))
       val theFunction = (arg:Any) => {
-        if("day" == component) {
+        if ("second" == component) {
+          parsedDate.withSecond(value.asInstanceOf[Integer]).toString
+        }
+        else if ("minute" == component) {
+          parsedDate.withMinute(value.asInstanceOf[Integer]).toString
+        }
+        else if ("hour" == component) {
+          parsedDate.withHour(value.asInstanceOf[Integer]).toString
+        }
+        else if("day" == component) {
           parsedDate.withDayOfMonth(value.asInstanceOf[Integer]).toString
+        } else if ("month" == component) {
+          parsedDate.withMonth(value.asInstanceOf[Integer]).toString
+        } else if ("year" == component) {
+          parsedDate.withYear(value.asInstanceOf[Integer]).toString
         }else{
           throw new IllegalArgumentException(s"date_replace_component: unsupported component $component")
         }
@@ -599,22 +620,29 @@ class OpenEOProcessScriptBuilder {
   private def dateDifferenceProcess(arguments: java.util.Map[String, Object]): OpenEOProcess = {
     val date1: AnyProcess = getAnyProcessArg("date1",arguments)
     val date2 = getAnyProcessArg("date2",arguments)
-
+    val unit = getAnyProcessArg("unit",arguments,"second")
 
     val dateDiffProcess = (context: Map[String, Any]) => {
-      def normalize(argument: Any): String = {
-        if( argument.isInstanceOf[String]) {
-          argument.asInstanceOf[String]
-        }else if(argument.isInstanceOf[util.Map[String,Any]] && argument.asInstanceOf[util.Map[String,Any]].containsKey("from_parameter")) {
-          val paramName = argument.asInstanceOf[util.Map[String,Any]].get("from_parameter").asInstanceOf[String]
-          context.getOrElse(paramName, throw new IllegalArgumentException(s"date_difference: Parameter $paramName not found in context: $context")).asInstanceOf[String]
-        }else{
-          throw new IllegalArgumentException(s"date_difference got unexpected argument: $argument")
-        }
-      }
       val date1Evaluated = date1(context)(null)
       val date2Evaluated = date2(context)(null)
-      val diff = Duration.between(ZonedDateTime.parse(normalize(date1Evaluated)),ZonedDateTime.parse(normalize(date2Evaluated))).toDays
+      val parsedDate1 = ZonedDateTime.parse(argumentToDate(date1Evaluated, context, "date_difference"))
+      val parsedDate2 = ZonedDateTime.parse(argumentToDate(date2Evaluated, context, "date_difference"))
+      val duration = Duration.between(parsedDate1, parsedDate2)
+      val unitEvaluated = unit(context)(null)
+      var diff:Number =
+        unitEvaluated match {
+          case "year" => duration.toDays/365.0//the spec is not exact on how the fractional part is to be computed
+          case "month" => ChronoUnit.MONTHS.between(parsedDate1,parsedDate2)//the spec is not exact on how the fractional part is to be computed
+          case "day" => duration.toHours/24.0
+          case "hour" => duration.toMinutes/60.0
+          case "second" => duration.toSeconds
+          case _ => throw new IllegalArgumentException(s"date_difference: unsupported unit $unit")
+        }
+
+      if(diff.floatValue().isValidInt){
+        diff = diff.intValue()
+      }
+
       createConstantTileFunction(diff)
     }
     dateDiffProcess
@@ -791,7 +819,7 @@ class OpenEOProcessScriptBuilder {
 
     val operation = operator match {
       case "date_difference" => dateDifferenceProcess(arguments)
-      case "date_replace_component" => dateComponentReplace(arguments)
+      case "date_replace_component" => dateReplaceComponent(arguments)
       case "if" => ifProcess(arguments)
       // Comparison operators
       case "gt" if hasXY => xyFunction(Greater.apply,convertBitCells = false)
