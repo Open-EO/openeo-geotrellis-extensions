@@ -6,6 +6,7 @@ import geotrellis.raster.{ArrayMultibandTile, CellSize, FloatArrayTile, FloatCon
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import jep.{DirectNDArray, JepConfig, NDArray, SharedInterpreter}
+import org.apache.spark.Partitioner
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 import org.slf4j.LoggerFactory
@@ -14,6 +15,19 @@ import java.nio.{ByteBuffer, ByteOrder, FloatBuffer}
 import java.util
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
+
+
+class SpatialKeyPartitioner(numberOfPartitions: Int, rows: Int, minKeyCol: Int, minKeyRow: Int) extends Partitioner {
+  override def numPartitions: Int = numberOfPartitions
+
+  override def getPartition(key: Any): Int = {
+      key match {
+        case spatialKey: SpatialKey => rows * (spatialKey.col-minKeyCol) + (spatialKey.row-minKeyRow)
+        case _ => throw new IllegalStateException(s"SpatialKeyPartitioner was used to partition non-spatial keys.")
+      }
+  }
+}
+
 
 object Udf {
 
