@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.udf
 
-import geotrellis.layer.{LayoutDefinition, SpaceTimeKey, SpatialKey, TemporalProjectedExtent}
+import geotrellis.layer.{KeyBounds, LayoutDefinition, SpaceTimeKey, SpatialKey, TemporalProjectedExtent}
 import geotrellis.raster.resample.NearestNeighbor
 import geotrellis.raster.{ArrayMultibandTile, CellSize, FloatArrayTile, FloatConstantNoDataCellType, MultibandTile, RasterExtent}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
@@ -463,4 +463,119 @@ object Udf {
 
     ContextRDD(result, layer.metadata.copy(layout=newLayout.getOrElse(layer.metadata.layout)))
   }
+
+
+  /**
+   * First groups by SpatialKey, so every key has a list of dates/tiles.
+   * Then iterate over every SpatialKey, convert it into a (t,bands,y,x) datacube, and run the UDF.
+   *
+   * @return The resulting MultibandTileLayerRDD.
+  */
+  def runUserCodeSpatioTemporal(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
+                                bandNames: util.ArrayList[String], context: util.HashMap[String, Any]): MultibandTileLayerRDD[SpaceTimeKey] = {
+    if (bandNames.size() == 0) {
+      throw new IllegalArgumentException("runUserCodeSpatioTemporal currently does not support datacubes with no band dimension.")
+    }
+    // First group by SpatialKey.
+    val bounds: KeyBounds[SpaceTimeKey] = layer.metadata.bounds.get
+    val rows = bounds.maxKey.row - bounds.minKey.row + 1
+    val partitions = (bounds.maxKey.col - bounds.minKey.col + 1) * rows
+
+    val partitioner = new SpatialKeyPartitioner(partitions, rows, bounds.minKey.col, bounds.minKey.row)
+    val spatiallyGrouped: RDD[(SpatialKey, Iterable[(SpaceTimeKey, MultibandTile)])] = layer.map(t => {
+      val key: SpaceTimeKey = t._1
+      val value: MultibandTile = t._2
+      (key.spatialKey, (key, value))
+    }).groupByKey(partitioner=partitioner)
+
+    // Then run the UDF for every SpatialKey. Each key is a (t,bands,y,x) datacube.
+    val result: RDD[(SpaceTimeKey, MultibandTile)] = spatiallyGrouped.mapPartitions((iter: Iterator[(SpatialKey, Iterable[(SpaceTimeKey, MultibandTile)])]) => {
+      iter.flatMap((groupedBySpatialKey: (SpatialKey, Iterable[(SpaceTimeKey, MultibandTile)])) => {
+        val spatialKey = groupedBySpatialKey._1
+        val tiles = groupedBySpatialKey._2
+
+        // Sort tiles by date.
+        val sortedtiles = tiles.toList.sortBy(_._1.instant)
+        val dates: List[Long] = sortedtiles.map(_._1.instant)
+        val multibandTiles: Seq[MultibandTile] = sortedtiles.map(_._2)
+
+        // Initialize spatial extent.
+        // Only UDFs with DataSet as input use bands with different resolution, so we do not need to worry about it here.
+        val spatialExtent = _createExtentFromSpatialKey(layer.metadata.layout, spatialKey)
+
+        val tileRows: Int = multibandTiles.head.bands(0).rows
+        val tileCols: Int = multibandTiles.head.bands(0).cols
+        val tileShape = List(dates.size, multibandTiles.head.bandCount, tileRows, tileCols)
+        val tileSize = tileRows * tileCols
+        val multiDateMultiBandTileSize = dates.size *  multibandTiles.head.bandCount * tileSize
+
+        val resultTiles = ListBuffer[(SpaceTimeKey, MultibandTile)]()
+        val interp: SharedInterpreter = _createSharedInterpreter
+        try {
+          interp.exec(DEFAULT_IMPORTS)
+
+          // Convert multi-band tiles to one DirectNDArray with shape (#dates, #bands, #y-cells, #x-cells).
+          val buffer = ByteBuffer.allocateDirect(multiDateMultiBandTileSize * SIZE_OF_FLOAT).order(ByteOrder.nativeOrder()).asFloatBuffer()
+          multibandTiles.foreach(_.bands.foreach(tile => {
+            val tileFloats: Array[Float] =  tile.toArrayDouble.map(_.toFloat)
+            buffer.put(tileFloats, 0, tileFloats.length)
+          }))
+          val directTile = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
+
+          // Convert DirectNDArray to XarrayDatacube with shape (t,bands,y,x).
+          _setXarraydatacubeInPython(interp, directTile, tileShape, spatialExtent, bandNames, dates)
+          // Convert context from jep.PyJMap to dict.
+          _setContextInPython(interp, context)
+
+          // Execute the UDF in python.
+          interp.exec("data = UdfData(proj={\"EPSG\": 900913}, datacube_list=[datacube], user_context=context)")
+          interp.exec(code)
+          interp.exec("result_cube = apply_datacube(data.get_datacube_list()[0], data.user_context)")
+
+          // Convert the result back to a list of multi-band tiles.
+          val resultDimensions = interp.getValue("result_cube.get_array().values.shape").asInstanceOf[java.util.List[Long]].asScala.toList.map(_.toInt)
+          val resultCube = interp.getValue("result_cube.get_array().values")
+          var resultBuffer: FloatBuffer = null
+          resultCube match {
+            case cube: DirectNDArray[FloatBuffer] =>
+              // The datacube was modified inplace.
+              resultBuffer = cube.getData
+            case cube: NDArray[Array[Float]] =>
+              // UDF created a new datacube.
+              if (resultDimensions.length != 4) {
+                throw new IllegalArgumentException((
+                  "UDF returned a datacube that does not have dimensions (#dates, #bands, #rows, #cols). " +
+                    "Actual dimensions: (%s).").format(resultDimensions.mkString(", "))
+                )
+              }
+              val dtype = interp.getValue("str(result_cube.get_array().values.dtype)").asInstanceOf[String]
+              _checkOutputDtype(dtype)
+              _checkOutputSpatialDimensions(resultDimensions, tileRows, tileCols)
+              resultBuffer = FloatBuffer.wrap(cube.getData)
+          }
+
+          // Note: xarray instants are in nanoseconds, divide by 10**6 for milliseconds.
+          interp.exec("result_dates = result_cube.get_array().coords['t'].values.tolist()")
+          val resultDates = interp
+            .getValue("result_dates if isinstance(result_dates, list) else [result_dates]")
+            .asInstanceOf[java.util.ArrayList[Long]].asScala.transform(l => (l / scala.math.pow(10,6)).longValue)
+
+          // UDFs can add/remove bands or dates from the original datacube but not rows, cols.
+          // TODO: This function can be called by reduceDimensions, which means that time/band dimension can be removed.
+          val newNumberOfBands = resultDimensions(1)
+          resultBuffer.rewind()
+          for (resultDate: Long <- resultDates) {
+            val multibandTile = _extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, tileSize, tileCols, tileRows)
+            val spaceTimeKey: SpaceTimeKey = SpaceTimeKey(spatialKey.col, spatialKey.row, resultDate)
+            resultTiles += ((spaceTimeKey, multibandTile))
+          }
+        } finally { if (interp != null) interp.close() }
+        resultTiles
+      })
+    })
+
+    // TODO: Convert metadata if required.
+    ContextRDD(result, layer.metadata)
+  }
+
 }
