@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.udf
 
-import geotrellis.layer.{KeyBounds, LayoutDefinition, SpaceTimeKey, SpatialKey, TemporalProjectedExtent}
+import geotrellis.layer.{KeyBounds, LayoutDefinition, SpaceTimeKey, SpatialKey, TemporalProjectedExtent, TileBounds}
 import geotrellis.raster.resample.NearestNeighbor
 import geotrellis.raster.{ArrayMultibandTile, CellSize, FloatArrayTile, FloatConstantNoDataCellType, MultibandTile, RasterExtent}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
@@ -444,19 +444,23 @@ object Udf {
         if (newLayout.isDefined) {
           logger.info(s"UDF created this spatial layout for the raster data cube: $newLayout")
           var newExtent: Extent = key_and_tile._1.spatialKey.extent(oldLayout) //TODO: don't assume that extent stays the same, but determine extent of the output based on result XArray Coords
-          newLayout.get.mapTransform(newExtent)
+          // Convert newExtent to SpatialKeys, add NoData to tiles covered by SpatialKeys but not by newExtent.
+          val tileCoords: TileBounds = newLayout.get.mapTransform(newExtent)
+          val tiles: Iterator[(SpaceTimeKey, MultibandTile)] = tileCoords
             .coordsIter
             .map { spatialComponent =>
               val outKey: SpatialKey = spatialComponent
-
-              val newTile = multiBandTile.prototype(FloatConstantNoDataCellType, tileCols, tileRows)
-              (SpaceTimeKey(outKey,key_and_tile._1.time), newTile.merge(
+              val noDataTile = multiBandTile.prototype(FloatConstantNoDataCellType, tileCols, tileRows)
+              // Merge in data from resultMultiBandTile that overlaps with this SpatialKey.
+              val tileForKey = noDataTile.merge(
                 newLayout.get.mapTransform.keyToExtent(outKey),
                 newExtent,
                 resultMultiBandTile,
                 NearestNeighbor
-              ))
+              )
+              (SpaceTimeKey(outKey,key_and_tile._1.time), tileForKey)
             }
+          tiles
         }else{
           Some((key_and_tile._1, resultMultiBandTile))
         }
