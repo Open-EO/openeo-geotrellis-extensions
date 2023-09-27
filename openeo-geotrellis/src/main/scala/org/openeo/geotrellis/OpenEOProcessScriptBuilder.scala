@@ -15,6 +15,8 @@ import org.slf4j.LoggerFactory
 import spire.math.UShort
 import spire.syntax.cfor.cfor
 
+import java.time.temporal.ChronoUnit
+import java.time.{Duration, ZonedDateTime}
 import java.util
 import scala.Double.NaN
 import scala.collection.JavaConversions.mapAsScalaMap
@@ -36,6 +38,7 @@ object OpenEOProcessScriptBuilder{
   private val logger = LoggerFactory.getLogger(classOf[OpenEOProcessScriptBuilder])
 
   type OpenEOProcess =  Map[String,Any] => (Seq[Tile]  => Seq[Tile] )
+  type AnyProcess =  Map[String,Any] => (Any  => Any )
 
   private def wrapSimpleProcess(operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
     def wrapper(context:Map[String,Any])(tiles: Seq[Tile]): Seq[Tile] = operator(tiles)
@@ -420,6 +423,17 @@ object OpenEOProcessScriptBuilder{
       combined
     }
   }
+
+  def argumentToDate(argument: Any, context: Map[String, Any],process:String="unknown"): String = {
+    if (argument.isInstanceOf[String]) {
+      argument.asInstanceOf[String]
+    } else if (argument.isInstanceOf[util.Map[String, Any]] && argument.asInstanceOf[util.Map[String, Any]].containsKey("from_parameter")) {
+      val paramName = argument.asInstanceOf[util.Map[String, Any]].get("from_parameter").asInstanceOf[String]
+      context.getOrElse(paramName, throw new IllegalArgumentException(s"$process: Parameter $paramName not found in context: $context")).asInstanceOf[String]
+    } else {
+      throw new IllegalArgumentException(s"$process got unexpected argument: $argument")
+    }
+  }
 }
 /**
   * Builder to help converting an OpenEO process graph into a transformation of Geotrellis tiles.
@@ -434,19 +448,25 @@ class OpenEOProcessScriptBuilder {
   val argNames: mutable.Stack[String] = new mutable.Stack[String]()
   val contextStack: mutable.Stack[mutable.Map[String,Object]] = new mutable.Stack[mutable.Map[String, Object]]()
   var arrayCounter : Int =  0
-  var inputFunction:  OpenEOProcess = null
+  var inputFunction:  Object = null
+
   var resultingDataType: CellType = FloatConstantNoDataCellType
+  val defaultDataParameterName:String = "data"
 
   def generateFunction(context: Map[String,Any] = Map.empty): Seq[Tile] => Seq[Tile] = {
-    inputFunction(context)
+    if(inputFunction.isInstanceOf[OpenEOProcess]) {
+      inputFunction.asInstanceOf[OpenEOProcess](context)
+    }else{
+      throw new IllegalArgumentException(s"The openEO callback resulted into an unsupported function: $inputFunction")
+    }
   }
 
   def generateFunction(context: util.Map[String, Any]): Seq[Tile] => Seq[Tile] = {
-    inputFunction(context.toMap)
+    this.generateFunction(context.toMap)
   }
 
   def generateFunction(): Seq[Tile] => Seq[Tile] = {
-    wrapProcessWithDefaultContext(inputFunction)
+    wrapProcessWithDefaultContext(inputFunction.asInstanceOf[OpenEOProcess])
   }
 
   /**
@@ -476,7 +496,25 @@ class OpenEOProcessScriptBuilder {
   }
 
   private def getProcessArg(name:String):OpenEOProcess = {
-    contextStack.head.getOrElse(name,throw new IllegalArgumentException(s"Process [${processStack.head}] expects a value argument. These arguments were found: " + contextStack.head.keys.mkString(", ") + s"function tree: ${processStack.reverse.mkString("->")}")).asInstanceOf[OpenEOProcess]
+    contextStack.head.getOrElse(name,throw new IllegalArgumentException(s"Process [${processStack.head}] expects a $name argument. These arguments were found: " + contextStack.head.keys.mkString(", ") + s"function tree: ${processStack.reverse.mkString("->")}")).asInstanceOf[OpenEOProcess]
+  }
+
+  private def getAnyProcessArg(name: String,arguments: java.util.Map[String, Object],default:Any = null): AnyProcess = {
+    if(arguments.get(name).isInstanceOf[String]) {
+      val theArg:Any = arguments.get(name)
+      (context: Map[String,Any]) => (inputArg: Any) => {
+        theArg
+      }
+    }else if(default!=null && !contextStack.head.contains(name)) {
+      (context: Map[String, Any]) =>
+        (inputArg: Any) => {
+          default
+        }
+    }
+    else{
+
+      contextStack.head.getOrElse(name, throw new IllegalArgumentException(s"Process [${processStack.head}] expects a $name argument. These arguments were found: " + contextStack.head.keys.mkString(", ") + s"function tree: ${processStack.reverse.mkString("->")}")).asInstanceOf[AnyProcess]
+    }
   }
 
   private def optionalArg(name: String): OpenEOProcess = {
@@ -544,6 +582,72 @@ class OpenEOProcessScriptBuilder {
     ifElseProcess(value, accept, reject)
   }
 
+  private def dateReplaceComponent(arguments: java.util.Map[String, Object]): AnyProcess = {
+    val date = arguments.get("date")
+    val value = arguments.get("value")
+    val component = arguments.get("component")
+    if (!value.isInstanceOf[Integer]) {
+      throw new IllegalArgumentException("date_replace_component: The 'value' argument should be an integer, but got: " + value)
+    }
+
+    val dateProcess = (context: Map[String, Any]) => {
+      val parsedDate = ZonedDateTime.parse(argumentToDate(date,context,"date_replace_component"))
+      val theFunction = (arg:Any) => {
+        if ("second" == component) {
+          parsedDate.withSecond(value.asInstanceOf[Integer]).toString
+        }
+        else if ("minute" == component) {
+          parsedDate.withMinute(value.asInstanceOf[Integer]).toString
+        }
+        else if ("hour" == component) {
+          parsedDate.withHour(value.asInstanceOf[Integer]).toString
+        }
+        else if("day" == component) {
+          parsedDate.withDayOfMonth(value.asInstanceOf[Integer]).toString
+        } else if ("month" == component) {
+          parsedDate.withMonth(value.asInstanceOf[Integer]).toString
+        } else if ("year" == component) {
+          parsedDate.withYear(value.asInstanceOf[Integer]).toString
+        }else{
+          throw new IllegalArgumentException(s"date_replace_component: unsupported component $component")
+        }
+      }
+      theFunction
+    }
+    return dateProcess
+  }
+
+  private def dateDifferenceProcess(arguments: java.util.Map[String, Object]): OpenEOProcess = {
+    val date1: AnyProcess = getAnyProcessArg("date1",arguments)
+    val date2 = getAnyProcessArg("date2",arguments)
+    val unit = getAnyProcessArg("unit",arguments,"second")
+
+    val dateDiffProcess = (context: Map[String, Any]) => {
+      val date1Evaluated = date1(context)(null)
+      val date2Evaluated = date2(context)(null)
+      val parsedDate1 = ZonedDateTime.parse(argumentToDate(date1Evaluated, context, "date_difference"))
+      val parsedDate2 = ZonedDateTime.parse(argumentToDate(date2Evaluated, context, "date_difference"))
+      val duration = Duration.between(parsedDate1, parsedDate2)
+      val unitEvaluated = unit(context)(null)
+      var diff:Number =
+        unitEvaluated match {
+          case "year" => duration.toDays/365.0//the spec is not exact on how the fractional part is to be computed
+          case "month" => ChronoUnit.MONTHS.between(parsedDate1,parsedDate2)//the spec is not exact on how the fractional part is to be computed
+          case "day" => duration.toHours/24.0
+          case "hour" => duration.toMinutes/60.0
+          case "second" => duration.toSeconds
+          case _ => throw new IllegalArgumentException(s"date_difference: unsupported unit $unit")
+        }
+
+      if(diff.floatValue().isValidInt){
+        diff = diff.intValue()
+      }
+
+      createConstantTileFunction(diff)
+    }
+    dateDiffProcess
+  }
+
 
   private def xyFunction(operator:(Tile,Tile) => Tile, xArgName:String = "x", yArgName:String = "y" ,convertBitCells: Boolean = true): OpenEOProcess = {
     val x_function: OpenEOProcess = getProcessArg(xArgName)
@@ -598,11 +702,22 @@ class OpenEOProcessScriptBuilder {
   }
 
   def fromParameter(parameterName:String): Unit = {
+    val defaultName = defaultDataParameterName
     inputFunction = (context:Map[String,Any]) => (tiles: Seq[Tile]) => {
       if(context.contains(parameterName)) {
-        context.getOrElse(parameterName,tiles).asInstanceOf[Seq[Tile]]
-      }else{
-        logger.debug("Parameter with name: " + parameterName  + " not found. Available parameters: " + context.keys.mkString(","))
+        if(context(parameterName).isInstanceOf[Seq[Tile]]) {
+          context.getOrElse(parameterName,tiles).asInstanceOf[Seq[Tile]]
+        } else if(context(parameterName).isInstanceOf[String]){
+          context(parameterName)
+        }
+        else{
+          null
+        }
+      }else if(parameterName == defaultName) {
+        tiles
+      }
+      else{
+        logger.debug(s"Parameter with name: $parameterName not found. Available parameters: ${context.keys.mkString(",")} or $defaultName")
         tiles
       }
     }
@@ -702,7 +817,9 @@ class OpenEOProcessScriptBuilder {
     val hasTrueCondition = Try(arguments.get("condition").toString.toBoolean).getOrElse(false)
     val hasConditionExpression = arguments.get("condition") != null && !arguments.get("condition").isInstanceOf[Boolean]
 
-    val operation: OpenEOProcess = operator match {
+    val operation = operator match {
+      case "date_difference" => dateDifferenceProcess(arguments)
+      case "date_replace_component" => dateReplaceComponent(arguments)
       case "if" => ifProcess(arguments)
       // Comparison operators
       case "gt" if hasXY => xyFunction(Greater.apply,convertBitCells = false)
@@ -806,12 +923,13 @@ class OpenEOProcessScriptBuilder {
         resultingDataType = FloatConstantNoDataCellType
       }
     }
+    inputFunction = operation
 
 
     val expectedOperator = processStack.pop()
     assert(expectedOperator.equals(operator))
     contextStack.pop()
-    inputFunction = operation
+
   }
 
   private def inspectFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
@@ -961,13 +1079,16 @@ class OpenEOProcessScriptBuilder {
   }
 
   private def arrayApplyFunction(arguments: java.util.Map[String, Object]): OpenEOProcess = {
-    val storedArgs = contextStack.head
     val inputFunction = getProcessArg("data")
     val processFunction = getProcessArg("process")
 
     val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
+      val labels = context.get("array_labels").asInstanceOf[Option[Seq[Any]]]
       val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
-      val mappedValues: Seq[Tile] = evaluateToTiles(processFunction, context, data)
+      val mappedValues = data.zipWithIndex.map{
+        case (e, i) => evaluateToTiles(processFunction, context + ("x" -> Seq(e))  + ("index" -> i) + ("data"-> data) + ("label" -> labels.map(_(i)).orNull), Seq(e)).head
+      }
+
       mappedValues
     }
     bandFunction

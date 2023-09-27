@@ -9,8 +9,10 @@ import org.apache.spark.mllib.linalg.Vectors;
 import org.apache.spark.mllib.regression.LabeledPoint;
 import org.apache.spark.mllib.tree.RandomForest;
 import org.apache.spark.mllib.tree.model.RandomForestModel;
-import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import scala.Function1;
 import scala.Int;
 import scala.Tuple2;
@@ -1657,6 +1659,58 @@ public class TestOpenEOProcessScriptBuilder {
         return builder;
     }
 
+    static OpenEOProcessScriptBuilder createArrayApplyDateDifference(boolean fixedDate ) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+
+        Map<String, Object> arguments = new HashMap<>();
+        arguments.put("data", Collections.singletonMap("from_parameter", "x"));
+        arguments.put("process", "dummy");
+        builder.expressionStart("array_apply", arguments);
+
+        builder.argumentStart("data");
+        builder.fromParameter("data");
+        builder.argumentEnd();
+
+        builder.argumentStart("process");
+        {
+            // scope block, just for nice indentation
+            Map<String, Object> argumentsCos = new HashMap<>();
+            argumentsCos.put("date1", Collections.singletonMap("from_parameter", "label"));
+            argumentsCos.put("unit", "day");
+            if (fixedDate) {
+                argumentsCos.put("date2", "2022-01-02T00:00:00Z");
+            }
+
+            builder.expressionStart("date_difference", argumentsCos);
+
+            builder.argumentStart("date1");
+            builder.fromParameter("label");
+            builder.argumentEnd();
+            if (!fixedDate) {
+                builder.argumentStart("date2");
+                Map<String, Object> argumentsReplace = new HashMap<>();
+                argumentsReplace.put("value",15);
+                argumentsReplace.put("component", "day");
+                argumentsReplace.put("date", Collections.singletonMap("from_parameter", "label"));
+                builder.expressionStart("date_replace_component", argumentsReplace);
+                builder.argumentStart("date");
+                builder.fromParameter("label");
+                builder.argumentEnd();
+                builder.expressionEnd("date_replace_component",argumentsReplace);
+                //string constant is not yet transmitted
+                builder.argumentEnd();
+            }
+
+
+
+            builder.expressionEnd("date_difference", argumentsCos);
+        }
+        builder.argumentEnd();
+
+        builder.expressionEnd("array_apply", arguments);
+        return builder;
+    }
+
     static OpenEOProcessScriptBuilder createRankComposite() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
 
@@ -1681,9 +1735,11 @@ public class TestOpenEOProcessScriptBuilder {
             builder.fromParameter("x");
             builder.argumentEnd();
             builder.argumentStart("y");
-            Map<String, Object> argsMax = Collections.singletonMap("data", Collections.singletonMap("from_parameter", "x"));
+            Map<String, Object> argsMax = Collections.singletonMap("data", Collections.singletonMap("from_parameter", "data"));
             builder.expressionStart("max", argsMax);
-            builder.fromParameter("x");
+            builder.argumentStart("data");
+            builder.fromParameter("data");//some overloading of "data" argument going on here
+            builder.argumentEnd();
             builder.expressionEnd("max",argsMax);
             builder.argumentEnd();
 
@@ -1715,6 +1771,35 @@ public class TestOpenEOProcessScriptBuilder {
             assertEquals(Math.cos(tile2.getDouble(0, 0)), result.apply(3).getDouble(0, 0), 0.001);
             assertEquals(Math.cos(tile3.getDouble(0, 0)), result.apply(4).getDouble(0, 0), 0.001);
         }
+    }
+
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false,true})
+    @DisplayName("Test array_apply with date difference process")
+    public void testArrayApplyDateDifference(boolean fixedDate) {
+        OpenEOProcessScriptBuilder builder = createArrayApplyDateDifference(fixedDate);
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction(Collections.singletonMap("array_labels",JavaConversions.asScalaBuffer(Arrays.asList("2022-01-04T04:00:00Z","2022-01-05T00:00:00Z","2016-02-29T00:00:00Z","2019-06-15T00:00:00Z","2030-12-31T00:00:00Z"))));
+        Tile tile0 = FloatConstantNoDataArrayTile.fill(1, 4, 4);
+        Tile tile1 = FloatConstantNoDataArrayTile.fill(3, 4, 4);
+        Tile tile2 = FloatConstantNoDataArrayTile.fill(-1, 4, 4);
+        Tile tile3 = FloatConstantNoDataArrayTile.fill(1.9f, 4, 4);
+        Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
+
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)));
+
+        if (fixedDate) {
+            assertEquals(-2.16666, result.apply(0).getDouble(0, 0),0.001);
+            assertEquals(-3, result.apply(1).getDouble(0, 0));
+            assertEquals(2134, result.apply(2).getDouble(0, 0));
+            assertEquals(932, result.apply(3).getDouble(0, 0));
+        }else{
+            assertEquals(11, result.apply(0).getDouble(0, 0));
+            assertEquals(10, result.apply(1).getDouble(0, 0));
+            assertEquals(-14, result.apply(2).getDouble(0, 0));
+            assertEquals(0, result.apply(3).getDouble(0, 0));
+        }
+
     }
 
     static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
