@@ -580,12 +580,41 @@ object Udf {
             resultTiles += ((spaceTimeKey, multibandTile))
           }
         } finally { if (interp != null) interp.close() }
-        resultTiles
-      })
-    })
 
-    // TODO: Convert metadata if required.
-    ContextRDD(result, layer.metadata)
+        if (newLayout.isDefined) {
+          logger.info(s"UDF created this spatial layout for the raster data cube: $newLayout")
+          var newExtent: Extent = spatialKey.extent(oldLayout) //TODO: don't assume that extent stays the same, but determine extent of the output based on result XArray Coords
+          // Convert newExtent to SpatialKeys, add NoData to tiles covered by SpatialKeys but not by newExtent.
+          val tileCoords: TileBounds = newLayout.get.mapTransform(newExtent)
+          // Do this for every date in resultTiles.
+          val outputTiles: Seq[(SpaceTimeKey, MultibandTile)] = resultTiles.flatMap(resultTile => {
+            val date = resultTile._1.temporalKey
+            val multibandTile = resultTile._2 // Output of the UDF for this date, we will retile it to the new extent.
+            val newTiles: Iterator[(SpaceTimeKey, MultibandTile)] = tileCoords
+              .coordsIter
+              .map { spatialComponent =>
+                val outKey: SpatialKey = spatialComponent
+                val noDataTile: ArrayMultibandTile = multibandTile.prototype(FloatConstantNoDataCellType, tileCols, tileRows)
+                val keyExtent = newLayout.get.mapTransform.keyToExtent(outKey)
+                // Merge in data from resultMultiBandTile that overlaps with this SpatialKey.
+                val tileWithAddedNoData = noDataTile.merge(
+                    keyExtent,
+                    newExtent,
+                    multibandTile,
+                    NearestNeighbor
+                )
+                (SpaceTimeKey(outKey, date), tileWithAddedNoData)
+              }
+            newTiles
+          })
+          outputTiles
+        } else {
+          resultTiles
+        }
+      })
+    }, preservesPartitioning = newLayout.isEmpty)
+
+    ContextRDD(result, layer.metadata.copy(layout=newLayout.getOrElse(layer.metadata.layout)))
   }
 
 }
