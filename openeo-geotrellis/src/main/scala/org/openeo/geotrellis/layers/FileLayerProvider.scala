@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory
 
 import java.io.{IOException, Serializable}
 import java.net.URI
-import java.nio.file.{Path, Paths}
+import java.nio.file.{Files, Path, Paths}
 import java.time._
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
@@ -616,6 +616,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
   import DatacubeSupport._
   import FileLayerProvider._
 
+  println("maxSpatialResolution: " + maxSpatialResolution)
   if(experimental) {
     logger.warn("Experimental features enabled for: " + openSearchCollectionId)
   }
@@ -708,6 +709,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     var commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
     var metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, dates.minBy(_.toEpochSecond), dates.maxBy(_.toEpochSecond), commonCellType)
+    println("metadata.cellSize: " + metadata.cellSize)
     val spatialBounds = metadata.bounds.get.toSpatial
     val maxSpatialKeyCount = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
     val targetCRS = metadata.crs
@@ -758,7 +760,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
         val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, bufferedPolygons, datacubeParams, spatialKeyCount)
         metadata = retiledMetadata.getOrElse(metadata)
-
+        println("metadata.cellSize EXTRA!: " + metadata.cellSize)
         if (retiledMetadata.isDefined) {
           requiredSpatialKeysLocal = polygonsRDD.clipToGrid(retiledMetadata.get).groupByKey(workingPartitioner)
         }
@@ -888,13 +890,43 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       val partitioner = DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
 
       val layoutDefinition = metadata.layout
+      println("layoutDefinition.cellSize.resolution: " + layoutDefinition.cellSize.resolution)
+      println("maxSpatialResolution.resolution: " + maxSpatialResolution.resolution)
       val noResampling = math.abs(layoutDefinition.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * layoutDefinition.cellSize.resolution
-      val reduction = if(noResampling) 5 else 1
+      if (noResampling == false) {
+        // Test for suspicious code in DatacubeSupport.scala:92
+        logger.warn("RESOLUTION DIFFERENCE: layoutDefinition.cellSize.resolution <> maxSpatialResolution.resolution")
+      }else{
+        logger.info("RESOLUTION same. As expected")
+      }
+      val reduction = if (noResampling) 5 else 1
       //resampling is still needed in case bounding boxes are not aligned with pixels
       // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
-      var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1, math.max(1,readKeysToRasterSourcesResult._4.size/reduction)).flatMap(t=>{
+      val requiredSpacetimeKeysCollect = requiredSpacetimeKeys.keys.collect()
+      println("requiredSpacetimeKeys.keys.collect().head: " + requiredSpacetimeKeysCollect.head)
+      println("reduction: " + reduction)
+      println("noResampling: " + noResampling)
+      println("readKeysToRasterSourcesResult._4.size/reduction: " + (readKeysToRasterSourcesResult._4.size / reduction))
+      val groupByCollect = requiredSpacetimeKeys.groupBy(_._2.data._1, math.max(1, readKeysToRasterSourcesResult._4.size / reduction)).collect()
+      var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1, math.max(1, readKeysToRasterSourcesResult._4.size / reduction)).flatMap(t => {
         val source = if (noResampling) {
           //fast path
+          val a = t._1.gridExtent
+          val b = layoutDefinition
+          import geotrellis.util._
+          import org.scalactic._
+          import TripleEquals._
+          import Tolerance._
+
+          val epsX: Double = math.min(a.cellwidth, b.cellwidth) * 0.01
+          val epsY: Double = math.min(a.cellheight, b.cellheight) * 0.01
+
+          if ((a.cellwidth === b.cellwidth +- epsX) && (a.cellheight === b.cellheight +- epsY)) {
+            println(s"CellSize OK: ${a.cellSize}, ${b.cellSize}")
+          } else {
+            println(s"CellSize differs: ${a.cellSize}, ${b.cellSize}")
+          }
+
           new LayoutTileSourceFixed(t._1, layoutDefinition, identity)
         } else{
           //slow path
@@ -906,7 +938,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         }).filter(_._2._1.isDefined).map(t=>(t._1,(t._2._1.get,t._2._2)))
 
       })
-
+      regions.collect()
       regions.name = s"FileCollection-${openSearchCollectionId}"
 
       //convert to raster region
