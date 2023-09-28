@@ -434,6 +434,26 @@ object OpenEOProcessScriptBuilder{
       throw new IllegalArgumentException(s"$process got unexpected argument: $argument")
     }
   }
+
+  private def createConstantTileFunction(value: Number): Seq[Tile] => Seq[Tile] = {
+    val constantTileFunction: Seq[Tile] => Seq[Tile] = (tiles: Seq[Tile]) => {
+      if (tiles.isEmpty) {
+        tiles
+      } else {
+        val rows = tiles.head.rows
+        val cols = tiles.head.cols
+        value match {
+          case x: java.lang.Byte => Seq(UByteConstantTile(value.byteValue(), cols, rows))
+          case x: java.lang.Short => Seq(ShortConstantTile(value.byteValue(), cols, rows))
+          case x: Integer => Seq(IntConstantTile(value.intValue(), cols, rows))
+          case x: java.lang.Float => Seq(FloatConstantTile(value.floatValue(), cols, rows))
+          case _ => Seq(DoubleConstantTile(value.doubleValue(), cols, rows))
+        }
+      }
+
+    }
+    return constantTileFunction
+  }
 }
 /**
   * Builder to help converting an OpenEO process graph into a transformation of Geotrellis tiles.
@@ -751,25 +771,7 @@ class OpenEOProcessScriptBuilder {
     inputFunction = null
   }
 
-  private def createConstantTileFunction(value:Number): Seq[Tile] => Seq[Tile] = {
-    val constantTileFunction:Seq[Tile] => Seq[Tile] = (tiles:Seq[Tile]) => {
-      if(tiles.isEmpty) {
-        tiles
-      }else{
-        val rows= tiles.head.rows
-        val cols = tiles.head.cols
-        value match {
-          case x: java.lang.Byte => Seq(UByteConstantTile(value.byteValue(),cols,rows))
-          case x: java.lang.Short => Seq(ShortConstantTile(value.byteValue(),cols,rows))
-          case x: Integer => Seq(IntConstantTile(value.intValue(),cols,rows))
-          case x: java.lang.Float => Seq(FloatConstantTile(value.floatValue(),cols,rows))
-          case _ => Seq(DoubleConstantTile(value.doubleValue(),cols,rows))
-        }
-      }
 
-    }
-    return constantTileFunction
-  }
 
   def constantArrayElement(value: Number):Unit = {
     val constantTileFunction:OpenEOProcess = wrapSimpleProcess(createConstantTileFunction(value))
