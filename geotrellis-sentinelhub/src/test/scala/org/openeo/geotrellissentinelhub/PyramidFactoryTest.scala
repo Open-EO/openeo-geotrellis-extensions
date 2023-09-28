@@ -766,48 +766,64 @@ class PyramidFactoryTest {
   @Test
   def testMapzenDem(): Unit = {
     val endpoint = "https://services-uswest2.sentinel-hub.com"
-    val from = LocalDate.of(2023, 9, 12).atStartOfDay(ZoneOffset.UTC)
-    val until = from plusDays 100
 
     // from https://collections.eurodatacube.com/stac/mapzen-dem.json
     val maxSpatialResolution = CellSize(0.000277777777778, 0.000277777777778)
 
-    val pyramidFactory = new PyramidFactory(collectionId = null, datasetId = "dem", new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), authorizer, sampleType = FLOAT32, maxSpatialResolution = maxSpatialResolution)
-
-    val sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
+    implicit val sc: SparkContext = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
     try {
-      val boundingBox = ProjectedExtent(Extent(2.59003, 51.069, 2.8949, 51.2206), LatLng)
+      def assembleGeoTiff(numberOfDays: Int): Raster[MultibandTile] = {
+        val from = LocalDate.of(2023, 9, 12).atStartOfDay(ZoneOffset.UTC)
+        val until = from plusDays numberOfDays // excludes upper
 
-      val Seq((_, layer)) = pyramidFactory.datacube_seq(
-        Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
-        from_datetime = ISO_OFFSET_DATE_TIME format from,
-        until_datetime = ISO_OFFSET_DATE_TIME format until,
-        band_names = Seq("DEM").asJava,
-        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
-      )
+        val catalogApiSpy = new CatalogApiSpy(endpoint)
+        val processApiSpy = new ProcessApiSpy(endpoint)
 
-      layer.cache()
+        val pyramidFactory = new PyramidFactory(collectionId = null, datasetId = "dem", catalogApiSpy,
+          processApiSpy, authorizer, sampleType = FLOAT32, maxSpatialResolution = maxSpatialResolution)
 
-      val distinctDates = layer
-        .keys
-        .map(_.time)
-        .distinct()
-        .sortBy(identity)
-        .collect()
+        val boundingBox = ProjectedExtent(Extent(2.59003, 51.069, 2.8949, 51.2206), LatLng)
 
-      assertEquals(sequentialDays(from, from plusDays 99), distinctDates.toSeq)
+        val Seq((_, layer)) = pyramidFactory.datacube_seq(
+          Array(MultiPolygon(boundingBox.extent.toPolygon())), boundingBox.crs,
+          from_datetime = ISO_OFFSET_DATE_TIME format from,
+          until_datetime = ISO_OFFSET_DATE_TIME format until,
+          band_names = Seq("DEM").asJava,
+          metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
+        )
 
-      val spatialLayer = layer
-        .toSpatial(from.toLocalDate.atStartOfDay(ZoneOffset.UTC))
+        layer.cache()
 
-      val Raster(multibandTile, extent) = spatialLayer
-        .crop(boundingBox.extent)
-        .stitch()
+        val distinctDates = layer
+          .keys
+          .map(_.time)
+          .distinct()
+          .sortBy(identity)
+          .collect()
 
-      val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
-      tif.write(s"/tmp/testMapzenDem_to.tif")
+        assertEquals(sequentialDays(from, from plusDays (numberOfDays - 1)), distinctDates.toSeq) // includes upper
+
+        val spatialLayer = layer
+          .toSpatial(from.toLocalDate.atStartOfDay(ZoneOffset.UTC))
+
+        val raster @ Raster(multibandTile, extent) = spatialLayer
+          .crop(boundingBox.extent)
+          .stitch()
+
+        val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
+        tif.write(s"/tmp/testMapzenDem_${numberOfDays}_days.tif")
+
+        assertEquals(0, catalogApiSpy.searchCount) // doesn't use a catalog
+        assertEquals(15, processApiSpy.getTileCount) // independent of temporal extent
+
+        raster
+      }
+
+      val firstRasterFromSmallNumberOfDays = assembleGeoTiff(numberOfDays = 1)
+      val firstRasterFromLargeNumberOfDays = assembleGeoTiff(numberOfDays = 100)
+
+      assertEquals(firstRasterFromSmallNumberOfDays, firstRasterFromLargeNumberOfDays)
     } finally sc.stop()
   }
 
