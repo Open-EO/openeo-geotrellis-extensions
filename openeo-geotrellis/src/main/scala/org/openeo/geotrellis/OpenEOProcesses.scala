@@ -390,7 +390,9 @@ class OpenEOProcesses extends Serializable {
       }
 
     val allKeys = allPossibleSpacetime.map(_._1)
-    val newBounds = new KeyBounds(allKeys.min,allKeys.max)
+    val minKey = allKeys.reduce((a,b)=>SpaceTimeKey.Boundable.minBound(a,b))
+    val maxKey = allKeys.reduce((a,b)=>SpaceTimeKey.Boundable.maxBound(a,b))
+    val newBounds = new KeyBounds(minKey,maxKey)
     logger.info(s"aggregate_temporal results in ${allPossibleSpacetime.size} keys, using partitioner index: ${index} with bounds ${newBounds}" )
     val partitioner: SpacePartitioner[SpaceTimeKey] = SpacePartitioner[SpaceTimeKey](newBounds)(implicitly,implicitly, index)
 
