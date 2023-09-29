@@ -890,43 +890,13 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       val partitioner = DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
 
       val layoutDefinition = metadata.layout
-      println("layoutDefinition.cellSize.resolution: " + layoutDefinition.cellSize.resolution)
-      println("maxSpatialResolution.resolution: " + maxSpatialResolution.resolution)
       val noResampling = math.abs(layoutDefinition.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * layoutDefinition.cellSize.resolution
-      if (noResampling == false) {
-        // Test for suspicious code in DatacubeSupport.scala:92
-        logger.warn("RESOLUTION DIFFERENCE: layoutDefinition.cellSize.resolution <> maxSpatialResolution.resolution")
-      }else{
-        logger.info("RESOLUTION same. As expected")
-      }
       val reduction = if (noResampling) 5 else 1
       //resampling is still needed in case bounding boxes are not aligned with pixels
       // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
-      val requiredSpacetimeKeysCollect = requiredSpacetimeKeys.keys.collect()
-      println("requiredSpacetimeKeys.keys.collect().head: " + requiredSpacetimeKeysCollect.head)
-      println("reduction: " + reduction)
-      println("noResampling: " + noResampling)
-      println("readKeysToRasterSourcesResult._4.size/reduction: " + (readKeysToRasterSourcesResult._4.size / reduction))
-      val groupByCollect = requiredSpacetimeKeys.groupBy(_._2.data._1, math.max(1, readKeysToRasterSourcesResult._4.size / reduction)).collect()
       var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1, math.max(1, readKeysToRasterSourcesResult._4.size / reduction)).flatMap(t => {
         val source = if (noResampling) {
           //fast path
-          val a = t._1.gridExtent
-          val b = layoutDefinition
-          import geotrellis.util._
-          import org.scalactic._
-          import TripleEquals._
-          import Tolerance._
-
-          val epsX: Double = math.min(a.cellwidth, b.cellwidth) * 0.01
-          val epsY: Double = math.min(a.cellheight, b.cellheight) * 0.01
-
-          if ((a.cellwidth === b.cellwidth +- epsX) && (a.cellheight === b.cellheight +- epsY)) {
-            println(s"CellSize OK: ${a.cellSize}, ${b.cellSize}")
-          } else {
-            println(s"CellSize differs: ${a.cellSize}, ${b.cellSize}")
-          }
-
           new LayoutTileSourceFixed(t._1, layoutDefinition, identity)
         } else{
           //slow path
@@ -938,7 +908,6 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         }).filter(_._2._1.isDefined).map(t=>(t._1,(t._2._1.get,t._2._2)))
 
       })
-      regions.collect()
       regions.name = s"FileCollection-${openSearchCollectionId}"
 
       //convert to raster region
@@ -971,13 +940,19 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     // as oscars requests now use accessedFrom=MEP, we will normally always get file paths
     case "file" => // e.g. file:/data/MTDA_DEV/CGS_S2_DEV/FAPAR_V2/2020/03/19/S2A_20200319T032531_48SXD_FAPAR_V200/10M/S2A_20200319T032531_48SXD_FAPAR_10M_V200.tif
       href.getPath.replaceFirst("CGS_S2_DEV", "CGS_S2") // temporary workaround?
-    case "https" if( _rootPath !=null ) => // e.g. https://oscars-dev.vgt.vito.be/download/FAPAR_V2/2020/03/20/S2B_20200320T102639_33VVF_FAPAR_V200/10M/S2B_20200320T102639_33VVF_FAPAR_10M_V200.tif
-      val subPath = href.getPath
-        .split("/")
-        .drop(4) // the empty string at the front too
-        .mkString("/")
+    case "https" if( _rootPath !=null ) =>
+      val hrefString = href.toString
+      if (hrefString.contains("artifactory.vgt.vito.be/testdata-public")) {
+        hrefString
+      } else {
+        // e.g. https://oscars-dev.vgt.vito.be/download/FAPAR_V2/2020/03/20/S2B_20200320T102639_33VVF_FAPAR_V200/10M/S2B_20200320T102639_33VVF_FAPAR_10M_V200.tif
+        val subPath = href.getPath
+          .split("/")
+          .drop(4) // the empty string at the front too
+          .mkString("/")
 
-      (_rootPath resolve subPath).toString
+        (_rootPath resolve subPath).toString
+      }
     case _ => href.toString
   }
 

@@ -598,27 +598,69 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       ))
   }
 
+  val cloudPath = "https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/QI_DATA/MSK_CLOUDS_B00.gml"
+  val metadataPath = "https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/MTD_TL.xml"
+
+  object MockOpenSearch extends OpenSearchClient with IdentityEquals {
+    override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
+      val start = dateRange.get._1
+      Seq(OpenSearchResponses.Feature(id = "/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240.SAFE", bbox.reproject(LatLng).extent, start, Array(
+        Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B02.jp2"), Some("IMG_DATA_Band_10m_1_Tile1_Data")),
+        Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B03.jp2"), Some("IMG_DATA_Band_10m_2_Tile1_Data")),
+        Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B04.jp2"), Some("IMG_DATA_Band_10m_3_Tile1_Data")),
+        //Link(URI.create("/data/MTDA/CGS_S2/CGS_S2_L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B02.jp2"), Some("IMG_DATA_Band_10m_1_Tile1_Data")),
+        Link(URI.create(metadataPath), Some("S2_Level-1C_Tile1_Metadata")),
+        Link(URI.create(cloudPath), Some("FineCloudMask_Tile1_Data"))
+      ), Some(10)))
+    }
+
+    override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
+
+    override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+  }
+
+
+  @Test
+  def testL1CResolutionResample(): Unit = {
+    val creoL1CLayerProvider = new FileLayerProvider(
+      MockOpenSearch,
+      openSearchCollectionId = "Sentinel2",
+      openSearchLinkTitles = NonEmptyList.of(
+        "IMG_DATA_Band_10m_1_Tile1_Data", "IMG_DATA_Band_10m_2_Tile1_Data",
+        "IMG_DATA_Band_10m_3_Tile1_Data", "S2_Level-1C_Tile1_Metadata",
+      ),
+      rootPath = "/eodata",
+      CellSize(30, 30), // maxSpatialResolution
+      pathDateExtractor,
+      layoutScheme = FloatingLayoutScheme(tileSize = 256)
+    )
+
+    val date = ZonedDateTime.parse("2021-01-01T00:00:00+00:00")
+    val utm11NCrs = CRS.fromEpsgCode(32611)
+    val boundingBox = ProjectedExtent(Extent(499980 + 25000, 5200020 - 11000, 499980 + 26000, 5200020 - 10000), utm11NCrs)
+    val dataCubeParameters = new DataCubeParameters
+
+    // Create the tile to be tested with the mask_l1c masking strategy.
+    dataCubeParameters.maskingStrategyParameters = Map[String, Object](
+      "method" -> "mask_l1c",
+    ).asJava
+    val maskedLayer: MultibandTileLayerRDD[SpaceTimeKey] = creoL1CLayerProvider.readMultibandTileLayer(
+      from = date,
+      to = date,
+      boundingBox,
+      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
+      polygons_crs = utm11NCrs,
+      zoom = 0,
+      sc,
+      Some(dataCubeParameters)
+    )
+    val spatialMaskedLayer = maskedLayer.toSpatial(date)
+    spatialMaskedLayer.writeGeoTiff("test_L1C_tile_mask.tif", boundingBox)
+  }
+
   @Test
   def testL1CMultibandTileMask(): Unit = {
     val dilationDistance = 5
-    val cloudPath = "https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/QI_DATA/MSK_CLOUDS_B00.gml"
-    val metadataPath = "https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/MTD_TL.xml"
-
-    object MockOpenSearch extends OpenSearchClient with IdentityEquals {
-      override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
-        val start = dateRange.get._1
-        Seq(OpenSearchResponses.Feature(id="/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2A_MSIL1C_20210101T075331_N0209_R135_T35JPM_20210101T100240.SAFE",bbox.reproject(LatLng).extent,start, Array(
-          Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B02.jp2"), Some("IMG_DATA_Band_10m_1_Tile1_Data")),
-          Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B03.jp2"), Some("IMG_DATA_Band_10m_2_Tile1_Data")),
-          Link(URI.create("/vsicurl/https://artifactory.vgt.vito.be/testdata-public/eodata/Sentinel-2/MSI/L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B04.jp2"), Some("IMG_DATA_Band_10m_3_Tile1_Data")),
-          //Link(URI.create("/data/MTDA/CGS_S2/CGS_S2_L1C/2021/01/01/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401/S2B_MSIL1C_20210101T184759_N0209_R070_T11TNM_20210101T202401.SAFE/GRANULE/L1C_T11TNM_A019973_20210101T184756/IMG_DATA/T11TNM_20210101T184759_B02.jp2"), Some("IMG_DATA_Band_10m_1_Tile1_Data")),
-          Link(URI.create(metadataPath), Some("S2_Level-1C_Tile1_Metadata")),
-          Link(URI.create(cloudPath), Some("FineCloudMask_Tile1_Data"))
-          ),Some(10)))
-      }
-      override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
-      override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
-    }
 
     val creoL1CLayerProvider = new FileLayerProvider(
       MockOpenSearch,
