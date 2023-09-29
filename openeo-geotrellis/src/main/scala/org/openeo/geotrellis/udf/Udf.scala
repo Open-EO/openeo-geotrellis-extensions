@@ -375,6 +375,8 @@ object Udf {
         val multiBandTileSize = multiBandTile.bandCount * tileSize
 
         var resultMultiBandTile = multiBandTile
+        var newTileRows: Int = tileRows
+        var newTileCols: Int = tileCols
         val interp = createSharedInterpreter()
         try {
           interp.exec(DEFAULT_IMPORTS)
@@ -430,6 +432,8 @@ object Udf {
           //  * add/remove time coordinates (Since map returns one SpaceTimeKey and MultiBandTile)
           // TODO: This is how it is done in apply_tiles (python), check if this meets user requirements.
           val resultHasBandDimension = interp.getValue("'bands' in result_cube.get_array().dims").asInstanceOf[Boolean]
+          newTileRows = resultDimensions(resultDimensions.length - 2)
+          newTileCols = resultDimensions.last
 
           var newNumberOfBands = 1
           if (resultHasBandDimension) {
