@@ -533,6 +533,8 @@ object Udf {
         val tileSize = tileRows * tileCols
         val multiDateMultiBandTileSize = dates.size *  multibandTiles.head.bandCount * tileSize
 
+        var newTileRows: Int = tileRows
+        var newTileCols: Int = tileCols
         val resultTiles = ListBuffer[(SpaceTimeKey, MultibandTile)]()
         val interp: SharedInterpreter = createSharedInterpreter
         try {
@@ -574,7 +576,8 @@ object Udf {
               }
               val dtype = interp.getValue("str(result_cube.get_array().values.dtype)").asInstanceOf[String]
               checkOutputDtype(dtype)
-              checkOutputSpatialDimensions(resultDimensions, tileRows, tileCols)
+              if(newLayout.isEmpty)
+                checkOutputSpatialDimensions(resultDimensions, tileRows, tileCols)
               resultBuffer = FloatBuffer.wrap(cube.getData)
           }
 
@@ -587,9 +590,11 @@ object Udf {
           // UDFs can add/remove bands or dates from the original datacube but not rows, cols.
           // TODO: This function can be called by reduceDimensions, which means that time/band dimension can be removed.
           val newNumberOfBands = resultDimensions(1)
+          newTileRows = resultDimensions(resultDimensions.length - 2)
+          newTileCols = resultDimensions.last
           resultBuffer.rewind()
           for (resultDate: Long <- resultDates) {
-            val multibandTile = extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, tileRows, tileCols)
+            val multibandTile = extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, newTileRows, newTileCols)
             val spaceTimeKey: SpaceTimeKey = SpaceTimeKey(spatialKey.col, spatialKey.row, resultDate)
             resultTiles += ((spaceTimeKey, multibandTile))
           }
