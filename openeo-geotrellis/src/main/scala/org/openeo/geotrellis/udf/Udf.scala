@@ -415,17 +415,16 @@ object Udf {
                       "Actual dimensions: (%s).").format(resultDimensions.mkString(", "))
                   )
                 }
-                val dtype = interp.getValue("str(result_cube.get_array().values.dtype)").asInstanceOf[String]
-                checkOutputDtype(dtype)
                 if(newLayout.isEmpty)
                   checkOutputSpatialDimensions(resultDimensions, tileRows, tileCols)
-                println(cube.getData)
-
+                val dtype = interp.getValue("str(result_cube.get_array().values.dtype)").asInstanceOf[String]
+                checkOutputDtype(dtype)
                 FloatBuffer.wrap(cube.getData)
             }
 
           // UDFs can
-          //  * add/remove band coordinates but not rows, cols.
+          //  * add/remove band coordinates,
+          //  * add/remove row/col coordinates (Change in resolution)
           //  * remove the band or date dimension
           // UDFs can not
           //  * add/remove time coordinates (Since map returns one SpaceTimeKey and MultiBandTile)
@@ -445,7 +444,9 @@ object Udf {
         if (newLayout.isDefined) {
           logger.info(s"UDF created this spatial layout for the raster data cube: $newLayout")
           var newExtent: Extent = key_and_tile._1.spatialKey.extent(oldLayout) //TODO: don't assume that extent stays the same, but determine extent of the output based on result XArray Coords
-          // Convert newExtent to SpatialKeys, add NoData to tiles covered by SpatialKeys but not by newExtent.
+          // Convert newExtent to SpatialKeys, if resolution increased then this spreads out e.g.
+          // a 256x256 result tile back into 4 128x128 tiles.
+          // Tile shape should always stay the same, only the number of tiles changes when resolution changes.
           val tileCoords: TileBounds = newLayout.get.mapTransform(newExtent)
           val tiles: Iterator[(SpaceTimeKey, MultibandTile)] = tileCoords
             .coordsIter
@@ -462,7 +463,7 @@ object Udf {
               (SpaceTimeKey(outKey,key_and_tile._1.time), tileForKey)
             }
           tiles
-        }else{
+        } else {
           Some((key_and_tile._1, resultMultiBandTile))
         }
 
