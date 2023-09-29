@@ -224,7 +224,8 @@ object Udf {
   }
 
   private def extractMultibandTileFromBuffer(resultBuffer: FloatBuffer, newNumberOfBands: Int,
-                                    tileSize: Int, tileCols: Int, tileRows: Int): MultibandTile = {
+                                             tileRows: Int, tileCols: Int): MultibandTile = {
+    val tileSize = tileRows * tileCols
     val newBands = new ListBuffer[FloatArrayTile]()
     for (_b <- 1 to newNumberOfBands) {
       // Tile size remains the same because #cols and #rows are not changed by UDF.
@@ -327,7 +328,7 @@ object Udf {
           val newNumberOfBands = resultDimensions(1)
           resultBuffer.rewind()
           for (resultDate <- resultDates) {
-            val multibandTile = extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, tileSize, tileCols, tileRows)
+            val multibandTile = extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, tileRows, tileCols)
             val projectedExtent: ProjectedExtent = ProjectedExtent(polygonExtent, layer.metadata.crs)
             resultTiles += ((TemporalProjectedExtent(projectedExtent, resultDate), multibandTile))
           }
@@ -438,7 +439,7 @@ object Udf {
               .asInstanceOf[Long].toInt
           }
           resultBuffer.rewind()
-          resultMultiBandTile = extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, tileSize, tileCols, tileRows)
+          resultMultiBandTile = extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, newTileRows, newTileCols)
         } finally if (interp != null) interp.close()
 
         if (newLayout.isDefined) {
@@ -575,7 +576,7 @@ object Udf {
           val newNumberOfBands = resultDimensions(1)
           resultBuffer.rewind()
           for (resultDate: Long <- resultDates) {
-            val multibandTile = extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, tileSize, tileCols, tileRows)
+            val multibandTile = extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, tileRows, tileCols)
             val spaceTimeKey: SpaceTimeKey = SpaceTimeKey(spatialKey.col, spatialKey.row, resultDate)
             resultTiles += ((spaceTimeKey, multibandTile))
           }
