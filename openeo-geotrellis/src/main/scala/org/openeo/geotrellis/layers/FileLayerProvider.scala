@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory
 
 import java.io.{IOException, Serializable}
 import java.net.URI
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Path, Paths}
 import java.time._
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
@@ -758,6 +758,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
         val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, bufferedPolygons, datacubeParams, spatialKeyCount)
         metadata = retiledMetadata.getOrElse(metadata)
+
         if (retiledMetadata.isDefined) {
           requiredSpatialKeysLocal = polygonsRDD.clipToGrid(retiledMetadata.get).groupByKey(workingPartitioner)
         }
