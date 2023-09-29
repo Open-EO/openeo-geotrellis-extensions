@@ -1,8 +1,8 @@
 package org.openeo.geotrellis.udf
 
-import geotrellis.layer.{KeyBounds, LayoutDefinition, SpaceTimeKey, SpatialKey, TemporalProjectedExtent, TileBounds}
+import geotrellis.layer.{Bounds, KeyBounds, LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalProjectedExtent, TileBounds, TileLayerMetadata}
 import geotrellis.raster.resample.NearestNeighbor
-import geotrellis.raster.{ArrayMultibandTile, CellSize, FloatArrayTile, FloatConstantNoDataCellType, MultibandTile, RasterExtent}
+import geotrellis.raster.{ArrayMultibandTile, CellSize, FloatArrayTile, FloatConstantNoDataCellType, MultibandTile, RasterExtent, TileLayout}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import jep.{DirectNDArray, JepConfig, NDArray, SharedInterpreter}
@@ -474,7 +474,15 @@ object Udf {
       })
     }, preservesPartitioning = newLayout.isEmpty)
 
-    ContextRDD(result, layer.metadata.copy(layout=newLayout.getOrElse(layer.metadata.layout)))
+    if (newLayout.isDefined) {
+      val newLayoutVal = newLayout.get
+      val newTileBounds: TileBounds = newLayoutVal.mapTransform(newLayoutVal.extent)
+      val oldBounds = layer.metadata.bounds
+      val minSTK = SpaceTimeKey(newTileBounds.colMin, newTileBounds.rowMin, oldBounds.get.minKey.instant)
+      val maxSTK = SpaceTimeKey(newTileBounds.colMax, newTileBounds.rowMax, oldBounds.get.maxKey.instant)
+      return ContextRDD(result, layer.metadata.copy(layout=newLayoutVal, bounds=Bounds(minSTK, maxSTK)))  // TODO: Update extent
+    }
+    ContextRDD(result, layer.metadata)
   }
 
 
