@@ -616,7 +616,6 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
   import DatacubeSupport._
   import FileLayerProvider._
 
-  println("maxSpatialResolution: " + maxSpatialResolution)
   if(experimental) {
     logger.warn("Experimental features enabled for: " + openSearchCollectionId)
   }
@@ -709,7 +708,6 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     var commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
     var metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, dates.minBy(_.toEpochSecond), dates.maxBy(_.toEpochSecond), commonCellType)
-    println("metadata.cellSize: " + metadata.cellSize)
     val spatialBounds = metadata.bounds.get.toSpatial
     val maxSpatialKeyCount = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
     val targetCRS = metadata.crs
@@ -760,7 +758,6 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
         val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, bufferedPolygons, datacubeParams, spatialKeyCount)
         metadata = retiledMetadata.getOrElse(metadata)
-        println("metadata.cellSize EXTRA!: " + metadata.cellSize)
         if (retiledMetadata.isDefined) {
           requiredSpatialKeysLocal = polygonsRDD.clipToGrid(retiledMetadata.get).groupByKey(workingPartitioner)
         }
@@ -891,10 +888,10 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
       val layoutDefinition = metadata.layout
       val noResampling = math.abs(layoutDefinition.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * layoutDefinition.cellSize.resolution
-      val reduction = if (noResampling) 5 else 1
+      val reduction = if(noResampling) 5 else 1
       //resampling is still needed in case bounding boxes are not aligned with pixels
       // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
-      var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1, math.max(1, readKeysToRasterSourcesResult._4.size / reduction)).flatMap(t => {
+      var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1, math.max(1,readKeysToRasterSourcesResult._4.size/reduction)).flatMap(t=>{
         val source = if (noResampling) {
           //fast path
           new LayoutTileSourceFixed(t._1, layoutDefinition, identity)
@@ -908,6 +905,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         }).filter(_._2._1.isDefined).map(t=>(t._1,(t._2._1.get,t._2._2)))
 
       })
+
       regions.name = s"FileCollection-${openSearchCollectionId}"
 
       //convert to raster region
