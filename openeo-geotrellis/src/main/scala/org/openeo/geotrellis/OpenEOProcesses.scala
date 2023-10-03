@@ -31,6 +31,7 @@ import org.slf4j.LoggerFactory
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
+import java.time.format.DateTimeFormatter
 import java.time.{Instant, ZonedDateTime}
 import java.util
 import scala.collection.JavaConverters._
@@ -415,7 +416,7 @@ class OpenEOProcesses extends Serializable {
 
     val function = scriptBuilder.inputFunction.asInstanceOf[OpenEOProcess]
     def aggregateTiles(tiles: Iterable[(SpaceTimeKey,MultibandTile)]) = {
-      val theContext = context.asScala.toMap + ("array_labels"->tiles.map(_._1.time))
+      val theContext = context.asScala.toMap + ("array_labels"->tiles.map(_._1.time.format(DateTimeFormatter.ISO_INSTANT)))
       val tilesFunction = function.apply(theContext)
       val aTile = firstTile(tiles.map(_._2))
       val resultTiles: mutable.ArrayBuffer[Tile] = mutable.ArrayBuffer[Tile]()
