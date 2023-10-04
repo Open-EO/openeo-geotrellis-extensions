@@ -655,7 +655,7 @@ class OpenEOProcessScriptBuilder {
           case "month" => ChronoUnit.MONTHS.between(parsedDate1,parsedDate2)//the spec is not exact on how the fractional part is to be computed
           case "day" => duration.toHours/24.0
           case "hour" => duration.toMinutes/60.0
-          case "second" => duration.toSeconds
+          case "second" => duration.getSeconds
           case _ => throw new IllegalArgumentException(s"date_difference: unsupported unit $unit")
         }
 
