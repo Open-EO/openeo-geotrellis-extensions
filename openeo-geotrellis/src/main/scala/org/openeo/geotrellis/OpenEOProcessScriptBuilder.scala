@@ -15,7 +15,8 @@ import org.slf4j.LoggerFactory
 import spire.math.UShort
 import spire.syntax.cfor.cfor
 
-import java.time.temporal.ChronoUnit
+import java.time.format.DateTimeFormatter
+import java.time.temporal.{ChronoUnit, TemporalAccessor}
 import java.time.{Duration, ZonedDateTime}
 import java.util
 import scala.Double.NaN
@@ -429,7 +430,13 @@ object OpenEOProcessScriptBuilder{
       argument.asInstanceOf[String]
     } else if (argument.isInstanceOf[util.Map[String, Any]] && argument.asInstanceOf[util.Map[String, Any]].containsKey("from_parameter")) {
       val paramName = argument.asInstanceOf[util.Map[String, Any]].get("from_parameter").asInstanceOf[String]
-      context.getOrElse(paramName, throw new IllegalArgumentException(s"$process: Parameter $paramName not found in context: $context")).asInstanceOf[String]
+      val theParamValue = context.getOrElse(paramName, throw new IllegalArgumentException(s"$process: Parameter $paramName not found in context: $context"))
+      theParamValue match {
+        case accessor: TemporalAccessor =>
+          DateTimeFormatter.ISO_INSTANT.format(accessor)
+        case _ =>
+          theParamValue.asInstanceOf[String]
+      }
     } else {
       throw new IllegalArgumentException(s"$process got unexpected argument: $argument")
     }
