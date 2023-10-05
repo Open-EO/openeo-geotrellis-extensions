@@ -65,7 +65,7 @@ object OpenEOProcesses{
       //val values = tiles._2
       val aTile = firstTile(values.map(_._2))
       val labels = values.map(_._1).toList.sortBy(_.instant)
-      val theContext = context + ("array_labels"->labels.map(_.time))
+      val theContext = context + ("array_labels"->labels.map(_.time.format(DateTimeFormatter.ISO_INSTANT)))
       val resultMap: mutable.Map[SpaceTimeKey, ListBuffer[Tile]] = mutable.Map()
       val functionWithContext = function.apply(theContext)
       for (b <- 0 until aTile.bandCount) {

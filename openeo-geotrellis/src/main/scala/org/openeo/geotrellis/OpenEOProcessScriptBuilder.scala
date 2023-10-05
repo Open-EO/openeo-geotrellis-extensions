@@ -734,11 +734,9 @@ class OpenEOProcessScriptBuilder {
       if(context.contains(parameterName)) {
         if(context(parameterName).isInstanceOf[Seq[Tile]]) {
           context.getOrElse(parameterName,tiles).asInstanceOf[Seq[Tile]]
-        } else if(context(parameterName).isInstanceOf[String]){
-          context(parameterName)
         }
         else{
-          null
+          context(parameterName)
         }
       }else if(parameterName == defaultName) {
         tiles
