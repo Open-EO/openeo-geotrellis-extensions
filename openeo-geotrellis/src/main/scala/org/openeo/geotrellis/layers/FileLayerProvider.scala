@@ -1118,52 +1118,55 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     val rasterSources: Seq[(Seq[RasterSource], Seq[Int])] = for {
       (link, bandIndices) <- if (byLinkTitle) getBandAssetsByLinkTitle else getBandAssetsByBandInfo
-      path = deriveFilePath(link.href)
-      cloudPathOptions = (
-        feature.links.find(_.title contains "FineCloudMask_Tile1_Data").map(_.href.toString),
-        feature.links.find(_.title contains "S2_Level-1C_Tile1_Metadata").map(_.href.toString)
-      )
-      cloudPath = for(x <- cloudPathOptions._1; y <- cloudPathOptions._2) yield (x,y)
+    } yield {
+      val path = deriveFilePath(link.href)
+
+      val cloudPath = for {
+        cloudDataPath <- feature.links.find(_.title contains "FineCloudMask_Tile1_Data").map(_.href.toString)
+        metadataPath <- feature.links.find(_.title contains "S2_Level-1C_Tile1_Metadata").map(_.href.toString)
+      } yield (cloudDataPath, metadataPath)
 
       //special case handling for data that does not declare nodata properly
-      targetCellType = link.title match {
+      val targetCellType = link.title match {
         // An un-used band called "IMG_DATA_Band_SCL_60m_Tile1_Unit" exists, so not specifying the resulution in the if-check.
         case x if x.get.contains("SCENECLASSIFICATION_20M") || x.get.contains("Band_SCL_") => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
         case x if x.get.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(UShortConstantNoDataCellType))
         case _ => None
       }
 
-      pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
-      targetTargetCellType: Option[TargetCellType] = link.title match {
+      val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
+      val targetTargetCellType: Option[TargetCellType] = link.title match {
         // Sentinel 2 bands can have negative values now.
         case x if x.get.contains("SCENECLASSIFICATION_20M") || x.get.contains("Band_SCL_") => None
         case x if x.get.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
         case _ => None
       }
 
-      rasterSourcesRaw = rasterSource(path, cloudPath, targetCellType, targetExtent, bandIndices)
-      rasterSourcesWrapped = ValueOffsetRasterSource.wrapRasterSources(rasterSourcesRaw, pixelValueOffset, targetTargetCellType)
-    } yield (rasterSourcesWrapped, bandIndices)
+      val rasterSourcesRaw = rasterSource(path, cloudPath, targetCellType, targetExtent, bandIndices)
+      val rasterSourcesWrapped = ValueOffsetRasterSource.wrapRasterSources(rasterSourcesRaw, pixelValueOffset, targetTargetCellType)
 
-    if(rasterSources.isEmpty) {
+      (rasterSourcesWrapped, bandIndices)
+    }
+
+    if (rasterSources.isEmpty) {
       logger.warn(s"Excluding item ${feature.id} with available assets ${feature.links.map(_.title).mkString("(", ", ", ")")}")
-      return None
-    }else{
-
+      None
+    } else {
       val sources = NonEmptyList.fromListUnsafe(rasterSources.flatMap(rs_b => rs_b._1.map(rs => (rs, rs_b._2))).toList)
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
 
       if (byLinkTitle && bandIds.isEmpty) {
-        if (expectedNumberOfBBands != sources.length) {
-          logger.warn(s"Did not find expected number of bands $expectedNumberOfBBands for feature ${feature.id} with links ${feature.links.mkString("Array(", ", ", ")")}")
+        val actualNumberOfBands = sources.length
+
+        if (actualNumberOfBands != expectedNumberOfBBands) {
+          logger.warn(s"Did not find expected number of bands $expectedNumberOfBBands (actual: $actualNumberOfBands) for feature ${feature.id} with links ${feature.links.mkString("Array(", ", ", ")")}")
           return None
         }
-        return Some((new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent), feature))
-      }
-      else return Some((new MultibandCompositeRasterSource(sources, targetExtent.crs, attributes), feature))
-    }
 
+        Some((new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent), feature))
+      } else Some((new MultibandCompositeRasterSource(sources, targetExtent.crs, attributes), feature))
+    }
   }
 
   def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int,datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Seq[(RasterSource,Feature)] = {
