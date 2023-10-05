@@ -939,13 +939,19 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
     // as oscars requests now use accessedFrom=MEP, we will normally always get file paths
     case "file" => // e.g. file:/data/MTDA_DEV/CGS_S2_DEV/FAPAR_V2/2020/03/19/S2A_20200319T032531_48SXD_FAPAR_V200/10M/S2A_20200319T032531_48SXD_FAPAR_10M_V200.tif
       href.getPath.replaceFirst("CGS_S2_DEV", "CGS_S2") // temporary workaround?
-    case "https" if( _rootPath !=null ) => // e.g. https://oscars-dev.vgt.vito.be/download/FAPAR_V2/2020/03/20/S2B_20200320T102639_33VVF_FAPAR_V200/10M/S2B_20200320T102639_33VVF_FAPAR_10M_V200.tif
-      val subPath = href.getPath
-        .split("/")
-        .drop(4) // the empty string at the front too
-        .mkString("/")
+    case "https" if( _rootPath !=null ) =>
+      val hrefString = href.toString
+      if (hrefString.contains("artifactory.vgt.vito.be/testdata-public")) {
+        hrefString
+      } else {
+        // e.g. https://oscars-dev.vgt.vito.be/download/FAPAR_V2/2020/03/20/S2B_20200320T102639_33VVF_FAPAR_V200/10M/S2B_20200320T102639_33VVF_FAPAR_10M_V200.tif
+        val subPath = href.getPath
+          .split("/")
+          .drop(4) // the empty string at the front too
+          .mkString("/")
 
-      (_rootPath resolve subPath).toString
+        (_rootPath resolve subPath).toString
+      }
     case _ => href.toString
   }
 
@@ -1028,7 +1034,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }else if(dataPath.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
         val te = featureExtentInLayout.map(_.extent) // Can be bigger then original tile.
-        SentinelXMLMetadataRasterSource(dataPath, bands, te)
+        SentinelXMLMetadataRasterSource(dataPath, bands, te, Some(theResolution))
       }
       else {
         def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {

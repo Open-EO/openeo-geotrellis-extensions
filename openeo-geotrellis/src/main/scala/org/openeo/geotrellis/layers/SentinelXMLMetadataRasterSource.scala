@@ -13,7 +13,13 @@ object SentinelXMLMetadataRasterSource {
   /**
    * Returns SAA,SZA,VAA,VZA selected by the bands argument.
    */
-  def apply(path:String, bands:Seq[Int]=Seq(0,1,2,3), te:Option[Extent] = None): Seq[SentinelXMLMetadataRasterSource] = {
+  def apply(path: String,
+            bands: Seq[Int] = Seq(0, 1, 2, 3),
+            te: Option[Extent] = None,
+            cellSize: Option[CellSize] = None
+           ): Seq[SentinelXMLMetadataRasterSource] = {
+    val theResolution = cellSize.getOrElse(CellSize(10, 10))
+
     val xmlDoc = XML.load(CreoFeatureCollection.loadMetadata(path))
     val angles = xmlDoc \\ "Tile_Angles"
     val meanSun = angles \ "Mean_Sun_Angle"
@@ -29,10 +35,10 @@ object SentinelXMLMetadataRasterSource {
     val ulx = (position \ "ULX").text.toDouble
     val uly = (position \ "ULY").text.toDouble
     // TODO: Looking at the cloud locations in the accompanying cloud mask file
-    val maxExtent = Extent(ulx, uly - (10 * 10980), ulx + (10 * 10980), uly)
+    val maxExtent = Extent(ulx, uly - (theResolution.width * 10980), ulx + (theResolution.height * 10980), uly)
     val targetExtent = te.getOrElse(maxExtent)
-    val gridExtent = GridExtent[Long](targetExtent, CellSize(10, 10))
-    val allBands = Seq(mSAA,mSZA,mVAA,mVZA)
+    val gridExtent = GridExtent[Long](targetExtent, theResolution)
+    val allBands = Seq(mSAA, mSZA, mVAA, mVZA)
     bands.map(b => allBands(b)).map(new SentinelXMLMetadataRasterSource(_, crs, gridExtent, OpenEoSourcePath(path)))
 
   }
@@ -55,7 +61,11 @@ class SentinelXMLMetadataRasterSource(value: Float,
   override def resample(resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource = ???
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    Some(Raster(MultibandTile(FloatConstantTile(value,extent.width.intValue()/10,extent.height.intValue()/10)),extent))
+    Some(Raster(MultibandTile(FloatConstantTile(
+      value,
+      math.floor(extent.width.intValue() / theGridExtent.cellSize.width).toInt,
+      math.floor(extent.height.intValue() / theGridExtent.cellSize.height).toInt,
+    )), extent))
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
