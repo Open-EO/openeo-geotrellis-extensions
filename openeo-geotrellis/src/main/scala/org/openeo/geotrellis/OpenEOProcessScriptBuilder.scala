@@ -843,8 +843,10 @@ class OpenEOProcessScriptBuilder {
       case "not" if hasExpression => mapFunction("expression", Not.apply) // legacy 0.4 style
       case "and" if hasXY => xyFunction(And.apply,convertBitCells = false)
       case "and" if hasExpressions => reduceFunction("expressions", And.apply) // legacy 0.4 style
+      case "all"  => reduceFunction("data", And.apply)
       case "or" if hasXY => xyFunction(Or.apply,convertBitCells = false)
       case "or" if hasExpressions => reduceFunction("expressions", Or.apply) // legacy 0.4 style
+      case "any" => reduceFunction("data", Or.apply)
       case "xor" if hasXY => xyFunction(Xor.apply,convertBitCells = false)
       case "xor" if hasExpressions => reduceFunction("expressions", Xor.apply) // legacy 0.4 style
       // Mathematical operations
