@@ -22,7 +22,6 @@ class ProbaVPyramidFactoryTest {
   val pyramidFactoryS10 =  new ProbaVPyramidFactory(openSearchEndpoint, "urn:eop:VITO:PROBAV_S10_TOC_333M_COG_V2", bands, "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S10_TOC_333M", CellSize(0.000992063492063, 0.000992063492063))
   val pyramidFactoryS10NDVI = new ProbaVPyramidFactory(openSearchEndpoint, "urn:eop:VITO:PROBAV_S10_TOC_NDVI_333M_COG_V2", util.Arrays.asList("NDVI"), "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S10_TOC_NDVI_333M", CellSize(0.000992063492063, 0.000992063492063))
 
-  @Ignore
   @Test
   def writeS5GeoTiffs(): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.591, ymax = 51.080), LatLng)
@@ -108,7 +107,6 @@ class ProbaVPyramidFactoryTest {
     }
   }
 
-  @Ignore
   @Test
   def writeS10NDVIGeoTiffs(): Unit = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.5, ymin = 49.5, xmax = 2.55, ymax = 49.55), LatLng)
