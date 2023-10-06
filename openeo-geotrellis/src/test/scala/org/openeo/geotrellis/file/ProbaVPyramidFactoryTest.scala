@@ -3,14 +3,14 @@ package org.openeo.geotrellis.file
 import geotrellis.layer._
 import geotrellis.proj4.LatLng
 import geotrellis.raster.io.geotiff.{GeoTiffReader, MultibandGeoTiff}
-import geotrellis.raster.{CellSize, Raster}
+import geotrellis.raster.{CellSize, MultibandTile, Raster}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
-import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertNotEquals, assertTrue}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test}
 
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
@@ -132,5 +132,39 @@ class ProbaVPyramidFactoryTest {
     val tiff = GeoTiffReader.readMultiband(fileName)
     assertEquals(LatLng, tiff.crs)
     assertEquals(1, tiff.bandCount)
+  }
+
+  @Disabled("should be fixed")
+  @Test
+  def testResultReflectsBandsOrder(): Unit = {
+    def raster(bands: util.List[String]): Raster[MultibandTile] = {
+      val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.602, ymax = 51.080), LatLng)
+      val date = ZonedDateTime.of(LocalDate.of(2020, 1, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+      val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
+
+      val pyramid = pyramidFactoryS5(bands).pyramid_seq(boundingBox.extent, srs,
+        DateTimeFormatter.ISO_OFFSET_DATE_TIME format date, DateTimeFormatter.ISO_OFFSET_DATE_TIME format date)
+
+      val baseLayer = pyramid
+        .find { case (index, _) => index == 11 }
+        .map { case (_, layer) => layer }
+        .get.cache()
+
+      val raster@Raster(multibandTile, extent) = baseLayer
+        .toSpatial()
+        .crop(boundingBox.reproject(baseLayer.metadata.crs))
+        .stitch()
+
+      MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs)
+        .write(s"/tmp/stitched_S5_${DateTimeFormatter.ISO_LOCAL_DATE format date}_${String.join("_", bands)}.tif")
+
+      raster
+    }
+
+    val raster1 = raster(bands = util.Arrays.asList("SWIRVAA", "NDVI", "SWIRVZA"))
+    val raster2 = raster(bands = util.Arrays.asList("SWIRVAA", "SWIRVZA", "NDVI"))
+
+    assertNotEquals(raster1, raster2)
   }
 }
