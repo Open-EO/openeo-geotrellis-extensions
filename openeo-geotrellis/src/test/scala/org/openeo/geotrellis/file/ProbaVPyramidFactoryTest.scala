@@ -36,8 +36,8 @@ class ProbaVPyramidFactoryTest {
   private val openSearchEndpoint = "https://services.terrascope.be/catalogue"
   private val allTocBands: util.List[String] = util.Arrays.asList("NDVI", "RED", "NIR", "BLUE", "SWIR", "SZA", "SAA", "SWIRVAA", "SWIRVZA", "VNIRVAA", "VNIRVZA", "SM")
 
-  private def pyramidFactoryS5(bands: util.List[String] = allTocBands): ProbaVPyramidFactory = new ProbaVPyramidFactory(openSearchEndpoint, "urn:eop:VITO:PROBAV_S5_TOC_100M_COG_V2", bands, "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S5_TOC_100M", CellSize(0.000992063492063, 0.000992063492063))
-  private val pyramidFactoryS10 =  new ProbaVPyramidFactory(openSearchEndpoint, "urn:eop:VITO:PROBAV_S10_TOC_333M_COG_V2", allTocBands, "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S10_TOC_333M", CellSize(0.000992063492063, 0.000992063492063))
+  def pyramidFactoryS5(bands: util.List[String] = allTocBands): ProbaVPyramidFactory = new ProbaVPyramidFactory(openSearchEndpoint, "urn:eop:VITO:PROBAV_S5_TOC_100M_COG_V2", bands, "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S5_TOC_100M", CellSize(0.000992063492063, 0.000992063492063))
+  val pyramidFactoryS10 =  new ProbaVPyramidFactory(openSearchEndpoint, "urn:eop:VITO:PROBAV_S10_TOC_333M_COG_V2", allTocBands, "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S10_TOC_333M", CellSize(0.000992063492063, 0.000992063492063))
   private val pyramidFactoryS10NDVI = new ProbaVPyramidFactory(openSearchEndpoint, "urn:eop:VITO:PROBAV_S10_TOC_NDVI_333M_COG_V2", util.Arrays.asList("NDVI"), "/data/MTDA/PROBAV_C2/COG/PROBAV_L3_S10_TOC_NDVI_333M", CellSize(0.000992063492063, 0.000992063492063))
 
   @Test

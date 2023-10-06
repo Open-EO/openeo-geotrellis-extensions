@@ -273,7 +273,7 @@ class CollectionTests {
         sc
       )
       case "PROBAV_L3_S5_TOC_100M" =>
-        val seqThing = new ProbaVPyramidFactoryTest().pyramidFactoryS5.datacube_seq(
+        val seqThing = new ProbaVPyramidFactoryTest().pyramidFactoryS5().datacube_seq(
           polygons,
           from_date,
           to_date,
