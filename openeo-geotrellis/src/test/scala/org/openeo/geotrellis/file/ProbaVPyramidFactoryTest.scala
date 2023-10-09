@@ -144,7 +144,7 @@ class ProbaVPyramidFactoryTest {
     assertEquals(raster1.tile.band(2), raster2.tile.band(1))
   }
 
-  @Disabled("not sure what the right behavior should be but this looks wrong nonetheless")
+  @Disabled("not sure what the right behavior should be but there has to be some data")
   @Test
   def testRequestDuplicateBand(): Unit = {
     val raster = s5Raster(bands = util.Arrays.asList("NDVI", "NDVI"))
