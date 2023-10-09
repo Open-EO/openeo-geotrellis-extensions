@@ -9,8 +9,8 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertNotEquals, assertTrue}
-import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test}
+import org.junit.jupiter.api.Assertions.{assertEqualsassertTrue}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
@@ -134,7 +134,6 @@ class ProbaVPyramidFactoryTest {
     assertEquals(1, tiff.bandCount)
   }
 
-  @Disabled("should be fixed")
   @Test
   def testResultReflectsBandsOrder(): Unit = {
     def raster(bands: util.List[String]): Raster[MultibandTile] = {
@@ -146,10 +145,8 @@ class ProbaVPyramidFactoryTest {
       val pyramid = pyramidFactoryS5(bands).pyramid_seq(boundingBox.extent, srs,
         DateTimeFormatter.ISO_OFFSET_DATE_TIME format date, DateTimeFormatter.ISO_OFFSET_DATE_TIME format date)
 
-      val baseLayer = pyramid
+      val Some((_, baseLayer)) = pyramid
         .find { case (index, _) => index == 11 }
-        .map { case (_, layer) => layer }
-        .get.cache()
 
       val raster@Raster(multibandTile, extent) = baseLayer
         .toSpatial()
@@ -165,6 +162,8 @@ class ProbaVPyramidFactoryTest {
     val raster1 = raster(bands = util.Arrays.asList("SWIRVAA", "NDVI", "SWIRVZA"))
     val raster2 = raster(bands = util.Arrays.asList("SWIRVAA", "SWIRVZA", "NDVI"))
 
-    assertNotEquals(raster1, raster2)
+    assertEquals(raster1.tile.band(0), raster2.tile.band(0))
+    assertEquals(raster1.tile.band(1), raster2.tile.band(2))
+    assertEquals(raster1.tile.band(2), raster2.tile.band(1))
   }
 }

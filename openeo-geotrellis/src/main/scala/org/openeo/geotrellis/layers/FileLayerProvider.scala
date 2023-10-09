@@ -616,6 +616,8 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
   import DatacubeSupport._
   import FileLayerProvider._
 
+  assert(bandIds.isEmpty || bandIds.size == openSearchLinkTitles.size)
+
   if(experimental) {
     logger.warn("Experimental features enabled for: " + openSearchCollectionId)
   }
