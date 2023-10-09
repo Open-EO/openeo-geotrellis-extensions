@@ -3,7 +3,7 @@ package org.openeo.geotrellis.file
 import cats.data.NonEmptyList
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.{CellSize, MultibandTile}
+import geotrellis.raster.CellSize
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.vector._
 import org.apache.spark.SparkContext
@@ -20,7 +20,7 @@ import scala.collection.JavaConverters._
 object ProbaVPyramidFactory {
   // Mapping from band name to (geotiff file id, band index).
   // E.g. PROBAV_S10_TOC_X35Y12_20190801_333M_GEOMETRY_V201.TIFF contains the SWIRVZA band at index 3.
-  val bandToTiffFileName = Map(
+  private val bandNameToAssetBandIndex = Map(
     "NDVI" -> ("NDVI", 0),
     "RED" -> ("RED", 0),
     "NIR" -> ("NIR", 0),
@@ -38,34 +38,30 @@ object ProbaVPyramidFactory {
 
 class ProbaVPyramidFactory(openSearchEndpoint: String,
                            openSearchCollectionId: String,
-                           bands: util.List[String],
+                           bandNames: util.List[String],
                            rootPath: String,
                            maxSpatialResolution: CellSize) extends Serializable {
-  require(bands.size() > 0)
+  require(bandNames.size() > 0)
 
   import ProbaVPyramidFactory._
 
   private val openSearchEndpointUrl = new URL(openSearchEndpoint)
-  private val _bands = bands.asScala
+  private val _bandNames = bandNames.asScala
 
   private def fileLayerProvider(correlationId: String) = {
-    val bandFileNames = _bands.map(b => bandToTiffFileName(b.toUpperCase())._1)
-    val bandIndices = _bands.map(b => bandToTiffFileName(b.toUpperCase())._2)
-    val bandFileNameToSeq: Map[String, Seq[Int]] = bandFileNames.zip(bandIndices).groupBy(_._1).mapValues(_.map(_._2).toSeq)
-    // [(Tiff file id, requested band indices)], in the original order of the requested bands.
-    // E.g. [(NDVI: [0]), (GEOMETRY, [0,1,4,5]), ...)]pyramid_seq
-    val bandFileNamesWithIndices: List[(String, Seq[Int])] = bandFileNames.distinct.map(b => (b, bandFileNameToSeq(b))).toList
+    val (assetTitles, bandIndices) = _bandNames.map(bandNameToAssetBandIndex).unzip
+
     new FileLayerProvider(
         OpenSearchClient(openSearchEndpointUrl),
         openSearchCollectionId,
-        NonEmptyList.fromListUnsafe(bandFileNamesWithIndices.map(_._1)),
+        openSearchLinkTitles = NonEmptyList.of(assetTitles.head, assetTitles.tail: _*),
         rootPath,
         maxSpatialResolution = maxSpatialResolution,
         pathDateExtractor = ProbaVPathDateExtractor,
         layoutScheme = ZoomedLayoutScheme(LatLng, 256),
-        bandIds = bandFileNamesWithIndices.map(_._2),
-        correlationId = correlationId
-        )
+        bandIds = bandIndices.map(Seq(_)), // actually: bandIndices (TODO: is there a point to these inner Seqs?)
+        correlationId = correlationId,
+    )
   }
 
   def pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String,
