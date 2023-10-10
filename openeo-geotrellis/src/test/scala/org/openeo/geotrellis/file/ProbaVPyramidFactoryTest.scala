@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.file
 
 import geotrellis.layer._
-import geotrellis.proj4.LatLng
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.{GeoTiffReader, MultibandGeoTiff}
 import geotrellis.raster.{CellSize, MultibandTile, Raster}
 import geotrellis.spark._
@@ -10,8 +10,10 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
-import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test}
+import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 
+import java.nio.file.Path
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
@@ -136,28 +138,51 @@ class ProbaVPyramidFactoryTest {
 
   @Test
   def testResultReflectsBandsOrder(): Unit = {
-    val raster1 = s5Raster(bands = util.Arrays.asList("SWIRVAA", "NDVI", "SWIRVZA"))
-    val raster2 = s5Raster(bands = util.Arrays.asList("SWIRVAA", "SWIRVZA", "NDVI"))
+    val (raster1, _) = s5Raster(bands = util.Arrays.asList("SWIRVAA", "NDVI", "SWIRVZA"))
+    val (raster2, _) = s5Raster(bands = util.Arrays.asList("SWIRVAA", "SWIRVZA", "NDVI"))
 
     assertEquals(raster1.tile.band(0), raster2.tile.band(0))
     assertEquals(raster1.tile.band(1), raster2.tile.band(2))
     assertEquals(raster1.tile.band(2), raster2.tile.band(1))
   }
 
-  @Disabled("not sure what the right behavior should be but there has to be some data")
   @Test
   def testRequestDuplicateBand(): Unit = {
-    val raster = s5Raster(bands = util.Arrays.asList("NDVI", "NDVI"))
+    val (raster, _) = s5Raster(bands = util.Arrays.asList("NDVI", "NDVI"))
 
     assertTrue(raster.tile.bandCount > 0)
 
+    // not sure what the right behavior should be but one band with data and the other one without must be wrong
     for (bandIndex <- 0 until raster.tile.bandCount) {
       assertFalse(raster.tile.band(bandIndex).isNoDataTile)
     }
   }
 
-  private def s5Raster(bands: util.List[String]): Raster[MultibandTile] = {
-    val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.602, ymax = 51.080), LatLng)
+  @Test
+  def compareS5ReferenceImage(@TempDir tempDir: Path): Unit = {
+    val bandMix = util.Arrays.asList(
+      "SM", "NDVI", "VNIRVZA", "RED", "VNIRVAA", "NIR", "SWIRVZA", "BLUE", "SWIRVAA", "SWIR", "SAA", "SZA")
+
+    val (actualRaster, actualCrs) = s5Raster(bandMix)
+    val outputFile = tempDir.resolve("actual.tif")
+    MultibandGeoTiff(actualRaster, actualCrs).write(outputFile.toString)
+
+    // TODO: find a cleaner way to compare against a reference image
+    val (referenceRaster, referenceCrs) = this.referenceRaster("PROBAV_S5_20200101.tif")
+    val actualGeoTiff = MultibandGeoTiff(outputFile.toString)
+
+    assertEquals(referenceRaster, actualGeoTiff.raster.mapTile(_.toArrayTile()))
+    assertEquals(referenceCrs, actualGeoTiff.crs)
+  }
+
+  private def referenceRaster(name: String): (Raster[MultibandTile], CRS) = {
+    // TODO: get it from Artifactory instead?
+    val referenceGeoTiff = MultibandGeoTiff(s"/data/projects/OpenEO/automated_test_files/$name")
+    (referenceGeoTiff.raster.mapTile(_.toArrayTile()), referenceGeoTiff.crs)
+  }
+
+  private def s5Raster(bands: util.List[String]): (Raster[MultibandTile], CRS) = {
+    val boundingBox = ProjectedExtent(Extent(xmin = 2.56003, ymin = 51.039, xmax = 2.632, ymax = 51.110), LatLng)
     val date = ZonedDateTime.of(LocalDate.of(2020, 1, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
@@ -168,14 +193,13 @@ class ProbaVPyramidFactoryTest {
     val Some((_, baseLayer)) = pyramid
       .find { case (index, _) => index == 11 }
 
-    val raster@Raster(multibandTile, extent) = baseLayer
+    val crs = baseLayer.metadata.crs
+
+    val raster = baseLayer
       .toSpatial()
-      .crop(boundingBox.reproject(baseLayer.metadata.crs))
       .stitch()
+      .crop(boundingBox.reproject(crs))
 
-    MultibandGeoTiff(multibandTile, extent, baseLayer.metadata.crs)
-      .write(s"/tmp/stitched_S5_${DateTimeFormatter.ISO_LOCAL_DATE format date}_${String.join("_", bands)}.tif")
-
-    raster
+    (raster, crs)
   }
 }
