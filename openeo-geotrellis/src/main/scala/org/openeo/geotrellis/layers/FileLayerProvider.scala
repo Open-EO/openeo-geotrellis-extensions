@@ -638,17 +638,15 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
           (split(0),split(1).toInt)
         }
       })//.toList.groupBy(_._1).mapValues(_.map(t=>t._2).toSeq).toSeq
-      var previous = ""
-      splitted.foldLeft(List[Tuple2[String,Seq[Int]]]()){
-        case (head :: res, (linkTitle, bands)) if (linkTitle == previous) => {
-          (head._1,(bands +: head._2)) :: res
-        }
-        case (theList, notMatchingElement) => {
-          previous = notMatchingElement._1
-          (notMatchingElement._1,Seq(notMatchingElement._2)) :: theList
-        }
-      }.reverse
 
+      var previous = ""
+      splitted.foldLeft(Seq[(String, Seq[Int])]()) {
+        case (acc @ init :+ last, elem @ (linkTitle, bandIndex)) if linkTitle == previous =>
+          init :+ (last._1, last._2 :+ bandIndex)
+        case (acc, (linkTitle, bandIndex)) =>
+          previous = linkTitle
+          acc :+ (linkTitle, Seq(bandIndex))
+      }
     }
   }
 
