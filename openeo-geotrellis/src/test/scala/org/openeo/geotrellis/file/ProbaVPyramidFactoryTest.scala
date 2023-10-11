@@ -3,7 +3,7 @@ package org.openeo.geotrellis.file
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.{GeoTiffReader, MultibandGeoTiff}
-import geotrellis.raster.{CellSize, MultibandTile, Raster}
+import geotrellis.raster.{ArrayMultibandTile, CellSize, MultibandTile, Raster}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
@@ -166,16 +166,16 @@ class ProbaVPyramidFactoryTest {
     val (actualRaster, actualCrs) = s5Raster(bandMix)
     val outputFile = tempDir.resolve("actual.tif")
     MultibandGeoTiff(actualRaster, actualCrs).write(outputFile.toString)
+    val actualGeoTiff = MultibandGeoTiff(outputFile.toString)
 
     // TODO: find a cleaner way to compare against a reference image
     val (referenceRaster, referenceCrs) = this.referenceRaster("PROBAV_S5_20200101.tif")
-    val actualGeoTiff = MultibandGeoTiff(outputFile.toString)
 
     assertEquals(referenceRaster, actualGeoTiff.raster.mapTile(_.toArrayTile()))
     assertEquals(referenceCrs, actualGeoTiff.crs)
   }
 
-  private def referenceRaster(name: String): (Raster[MultibandTile], CRS) = {
+  private def referenceRaster(name: String): (Raster[ArrayMultibandTile], CRS) = {
     // TODO: get it from Artifactory instead?
     val referenceGeoTiff = MultibandGeoTiff(s"/data/projects/OpenEO/automated_test_files/$name")
     (referenceGeoTiff.raster.mapTile(_.toArrayTile()), referenceGeoTiff.crs)
