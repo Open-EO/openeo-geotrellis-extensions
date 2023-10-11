@@ -18,7 +18,10 @@ import java.nio.file.{Path, Paths}
 import java.util
 
 object CreoPyramidFactoryTest {
+  // see creo_layercatalog.json
+  private final val B04 = "IMG_DATA_Band_B04_10m_Tile1_Data"
   private final val B03 = "IMG_DATA_Band_B03_10m_Tile1_Data"
+  private final val B02 = "IMG_DATA_Band_B02_10m_Tile1_Data"
   private final val Saa = "S2_Level-2A_Tile1_Metadata##0"
   private final val Sza = "S2_Level-2A_Tile1_Metadata##1"
   private final val Vaa = "S2_Level-2A_Tile1_Metadata##2"
@@ -40,19 +43,18 @@ class CreoPyramidFactoryTest {
 
   @Test
   def testSentinel2L2a(): Unit = {
-    // see creo_layercatalog.json
     val openSearchLinkTitlesSets = Seq(
       util.Arrays.asList(
-        "S2_Level-2A_Tile1_Metadata##0",
-        //"IMG_DATA_Band_B04_10m_Tile1_Data",
-        //"IMG_DATA_Band_B03_10m_Tile1_Data",
-        //"IMG_DATA_Band_B02_10m_Tile1_Data",
-        "S2_Level-2A_Tile1_Metadata##2",
-        //"S2_Level-2A_Tile1_Metadata##3",
+        Saa,
+        //B04,
+        //B03,
+        //B02,
+        Vaa,
+        //Vza,
       ),
-      util.Collections.singletonList("S2_Level-2A_Tile1_Metadata##0"),
-      util.Collections.singletonList("S2_Level-2A_Tile1_Metadata##2"),
-      util.Collections.singletonList("S2_Level-2A_Tile1_Metadata##3"),
+      util.Collections.singletonList(Saa),
+      util.Collections.singletonList(Vaa),
+      util.Collections.singletonList(Vza),
     )
 
     for (openSearchLinkTitles <- openSearchLinkTitlesSets.slice(0, 1)) {
@@ -116,7 +118,7 @@ class CreoPyramidFactoryTest {
     val bandMix = util.Arrays.asList(Saa, Vaa, B03, Vza)
     // expected SAA: 165.931952115363 everywhere
     // expected VAA: 107.973307847137 everywhere
-    // expected B03: every value is 1000 less than the value in the source asset
+    // expected B03: every value is 1000 less than the value in the jp2 asset
     // expected VZA: 6.85674497180878 everywhere
 
     val (actualRaster, actualCrs) = sentinel2L2aRaster(bandMix)
