@@ -114,10 +114,10 @@ class CreoPyramidFactoryTest {
   @Test
   def compareS2L2aReferenceImage(@TempDir tempDir: Path): Unit = {
     val bandMix = util.Arrays.asList(Saa, Vaa, B03, Vza)
-    // expected SAA: 165.931952115363
-    // expected VAA: 107.973307847137
-    // TODO: B03 seems right but every pixel has an offset of -1000 wrt/ the source asset, is this expected?
-    // expected VZA: 6.85674497180878
+    // expected SAA: 165.931952115363 everywhere
+    // expected VAA: 107.973307847137 everywhere
+    // expected B03: every value is 1000 less than the value in the source asset
+    // expected VZA: 6.85674497180878 everywhere
 
     val (actualRaster, actualCrs) = sentinel2L2aRaster(bandMix)
     val outputFile = tempDir.resolve("actual.tif")
