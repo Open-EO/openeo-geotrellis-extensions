@@ -19,12 +19,12 @@ object ValueOffsetRasterSource {
   /**
    * Only wraps the rasterSources when needed
    */
-  def wrapRasterSources(rasterSources: Seq[RasterSource],
-                        pixelValueOffset: Double,
-                        targetCellType: Option[TargetCellType] = None
-                       ): Seq[RasterSource] = {
-    if (pixelValueOffset == 0 && targetCellType.isEmpty) rasterSources
-    else rasterSources.map(rs => new ValueOffsetRasterSource(rs, pixelValueOffset, targetCellType))
+  def wrapRasterSource(rasterSource: RasterSource,
+                       pixelValueOffset: Double,
+                       targetCellType: Option[TargetCellType] = None
+                      ): RasterSource = {
+    if (pixelValueOffset == 0 && targetCellType.isEmpty) rasterSource
+    else new ValueOffsetRasterSource(rasterSource, pixelValueOffset, targetCellType)
   }
 }
 

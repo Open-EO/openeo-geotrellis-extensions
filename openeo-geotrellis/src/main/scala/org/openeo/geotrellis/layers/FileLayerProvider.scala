@@ -1019,7 +1019,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }
     }
 
-    def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, bands : Seq[Int]): Seq[RasterSource] = {
+    def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, sentinelXmlAngleBandIndices: Seq[Int]): Seq[RasterSource] = {
       if(dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
         val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
         val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod),
@@ -1034,7 +1034,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }else if(dataPath.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
         val te = featureExtentInLayout.map(_.extent) // Can be bigger then original tile.
-        SentinelXMLMetadataRasterSource(dataPath, bands, te, Some(theResolution))
+        SentinelXMLMetadataRasterSource.forAngleBands(dataPath, sentinelXmlAngleBandIndices, te, Some(theResolution))
       }
       else {
         def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {
@@ -1116,48 +1116,47 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       logger.warn(s"expectedNumberOfBBandsOld ($expectedNumberOfBBandsOld) != expectedNumberOfBBands ($expectedNumberOfBBands)")
     }
 
-    val rasterSources: Seq[(Seq[RasterSource], Seq[Int])] = for {
+    val rasterSources: Seq[(RasterSource, Seq[Int])] = for {
       (link, bandIndices) <- if (byLinkTitle) getBandAssetsByLinkTitle else getBandAssetsByBandInfo
-    } yield {
-      val path = deriveFilePath(link.href)
+      path = deriveFilePath(link.href)
 
-      val cloudPath = for {
+      cloudPath = for {
         cloudDataPath <- feature.links.find(_.title contains "FineCloudMask_Tile1_Data").map(_.href.toString)
         metadataPath <- feature.links.find(_.title contains "S2_Level-1C_Tile1_Metadata").map(_.href.toString)
       } yield (cloudDataPath, metadataPath)
 
       //special case handling for data that does not declare nodata properly
-      val targetCellType = link.title match {
+      targetCellType = link.title match {
         // An un-used band called "IMG_DATA_Band_SCL_60m_Tile1_Unit" exists, so not specifying the resulution in the if-check.
         case x if x.get.contains("SCENECLASSIFICATION_20M") || x.get.contains("Band_SCL_") => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
         case x if x.get.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(UShortConstantNoDataCellType))
         case _ => None
       }
 
-      val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
-      val targetTargetCellType: Option[TargetCellType] = link.title match {
+      pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
+      targetTargetCellType: Option[TargetCellType] = link.title match {
         // Sentinel 2 bands can have negative values now.
         case x if x.get.contains("SCENECLASSIFICATION_20M") || x.get.contains("Band_SCL_") => None
         case x if x.get.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
         case _ => None
       }
 
-      val rasterSourcesRaw = rasterSource(path, cloudPath, targetCellType, targetExtent, bandIndices)
-      val rasterSourcesWrapped = ValueOffsetRasterSource.wrapRasterSources(rasterSourcesRaw, pixelValueOffset, targetTargetCellType)
-
-      (rasterSourcesWrapped, bandIndices)
+      rasterSourceRaw <- rasterSource(path, cloudPath, targetCellType, targetExtent, sentinelXmlAngleBandIndices = bandIndices)
+    } yield {
+      val rasterSourceWrapped = ValueOffsetRasterSource.wrapRasterSource(rasterSourceRaw, pixelValueOffset, targetTargetCellType)
+      (rasterSourceWrapped, bandIndices)
     }
 
     if (rasterSources.isEmpty) {
       logger.warn(s"Excluding item ${feature.id} with available assets ${feature.links.map(_.title).mkString("(", ", ", ")")}")
       None
     } else {
-      val sources = NonEmptyList.fromListUnsafe(rasterSources.flatMap(rs_b => rs_b._1.map(rs => (rs, rs_b._2))).toList)
+      val sources = NonEmptyList.fromListUnsafe(rasterSources.toList)
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
 
       if (byLinkTitle && bandIds.isEmpty) {
-        val actualNumberOfBands = sources.length
+        val actualNumberOfBands = rasterSources.map { case (_, bandIndices) => bandIndices.size }.sum
 
         if (actualNumberOfBands != expectedNumberOfBBands) {
           logger.warn(s"Did not find expected number of bands $expectedNumberOfBBands (actual: $actualNumberOfBands) for feature ${feature.id} with links ${feature.links.mkString("Array(", ", ", ")")}")

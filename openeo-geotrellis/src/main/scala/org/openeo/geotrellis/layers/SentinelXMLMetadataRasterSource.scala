@@ -13,14 +13,16 @@ object SentinelXMLMetadataRasterSource {
   /**
    * Returns SAA,SZA,VAA,VZA selected by the bands argument.
    */
-  def apply(path: String,
-            bands: Seq[Int] = Seq(0, 1, 2, 3),
-            te: Option[Extent] = None,
-            cellSize: Option[CellSize] = None
-           ): Seq[SentinelXMLMetadataRasterSource] = {
+  def forAngleBands(xlmPath: String,
+                    angleBandIndices: Seq[Int] = Seq(0, 1, 2, 3), // SAA, SZA, VAA, VZA
+                    te: Option[Extent] = None,
+                    cellSize: Option[CellSize] = None
+                ): Seq[SentinelXMLMetadataRasterSource] = {
+    require(angleBandIndices.forall(index => index >= 0 && index <= 3))
+
     val theResolution = cellSize.getOrElse(CellSize(10, 10))
 
-    val xmlDoc = XML.load(CreoFeatureCollection.loadMetadata(path))
+    val xmlDoc = XML.load(CreoFeatureCollection.loadMetadata(xlmPath))
     val angles = xmlDoc \\ "Tile_Angles"
     val meanSun = angles \ "Mean_Sun_Angle"
     val mSZA = ( meanSun \ "ZENITH_ANGLE").text.toFloat
@@ -38,13 +40,17 @@ object SentinelXMLMetadataRasterSource {
     val maxExtent = Extent(ulx, uly - (theResolution.width * 10980), ulx + (theResolution.height * 10980), uly)
     val targetExtent = te.getOrElse(maxExtent)
     val gridExtent = GridExtent[Long](targetExtent, theResolution)
-    val allBands = Seq(mSAA, mSZA, mVAA, mVZA)
-    bands.map(b => allBands(b)).map(new SentinelXMLMetadataRasterSource(_, crs, gridExtent, OpenEoSourcePath(path)))
 
+    val constantAngleBandValues = Seq(mSAA, mSZA, mVAA, mVZA)
+
+    for {
+      index <- angleBandIndices
+      angleBandValue = constantAngleBandValues(index)
+    } yield new SentinelXMLMetadataRasterSource(angleBandValue, crs, gridExtent, OpenEoSourcePath(xlmPath))
   }
 }
 
-class SentinelXMLMetadataRasterSource(value: Float,
+class SentinelXMLMetadataRasterSource(value: Float, // TODO: rename this to a more generic constant value RasterSource
                                       theCrs: CRS,
                                       theGridExtent: GridExtent[Long],
                                       sourcePathName: OpenEoSourcePath,
