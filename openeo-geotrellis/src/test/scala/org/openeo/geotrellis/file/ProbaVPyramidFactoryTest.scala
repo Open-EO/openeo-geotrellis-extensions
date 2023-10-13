@@ -54,7 +54,7 @@ class ProbaVPyramidFactoryTest {
       DateTimeFormatter.ISO_OFFSET_DATE_TIME format from, DateTimeFormatter.ISO_OFFSET_DATE_TIME format to)
 
     val baseLayer = pyramid
-      .find { case (index, _) => index == 11 }
+      .find { case (zoom, _) => zoom == 11 }
       .map { case (_, layer) => layer }
       .get.cache()
 
@@ -90,7 +90,7 @@ class ProbaVPyramidFactoryTest {
       DateTimeFormatter.ISO_OFFSET_DATE_TIME format from, DateTimeFormatter.ISO_OFFSET_DATE_TIME format to)
 
     val baseLayer = pyramid
-      .find { case (index, _) => index == 9 }
+      .find { case (zoom, _) => zoom == 9 }
       .map { case (_, layer) => layer }
       .get.cache()
 
@@ -119,7 +119,7 @@ class ProbaVPyramidFactoryTest {
       DateTimeFormatter.ISO_OFFSET_DATE_TIME format from, DateTimeFormatter.ISO_OFFSET_DATE_TIME format to)
 
     val baseLayer = pyramid
-      .find { case (index, _) => index == 9 }
+      .find { case (zoom, _) => zoom == 9 }
       .map { case (_, layer) => layer }
       .get.cache()
 
@@ -191,7 +191,7 @@ class ProbaVPyramidFactoryTest {
       DateTimeFormatter.ISO_OFFSET_DATE_TIME format date, DateTimeFormatter.ISO_OFFSET_DATE_TIME format date)
 
     val Some((_, baseLayer)) = pyramid
-      .find { case (index, _) => index == 11 }
+      .find { case (zoom, _) => zoom == 11 }
 
     val crs = baseLayer.metadata.crs
 
