@@ -624,29 +624,18 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
   private val _rootPath = if(rootPath != null) Paths.get(rootPath) else null
 
-  val openSearchLinkTitlesWithBandIds: Seq[(String, Seq[Int])] = {
-    if(bandIds.size>0) {
+  private val openSearchLinkTitlesWithBandId: Seq[(String, Int)] = {
+    if (bandIds.nonEmpty) {
       //case 1: PROBA-V, geotiff file containing multiple bands, bandids parameter is used to indicate which bands to load
-      openSearchLinkTitles.toList.zipAll(bandIds, "", Seq(0))
-    }else{
+      openSearchLinkTitles.toList.zip(bandIds.map(_.head))
+    } else {
       //case 2: Sentinel-2 angle metadata: band number is encoded in the oscars link title directly, maybe proba could use this system as well...
-      val splitted = openSearchLinkTitles.map(title => {
-        val split = title.split("##")
-        if (split.length == 1) {
-          (split(0), 0)
-        }else{
-          (split(0),split(1).toInt)
+      openSearchLinkTitles
+        .map { title =>
+          val Array(t, bandIndex @ _*) = title.split("##")
+          (t, if (bandIndex.nonEmpty) bandIndex.head.toInt else 0)
         }
-      })//.toList.groupBy(_._1).mapValues(_.map(t=>t._2).toSeq).toSeq
-
-      var previous = ""
-      splitted.foldLeft(Seq[(String, Seq[Int])]()) {
-        case (acc @ init :+ last, elem @ (linkTitle, bandIndex)) if linkTitle == previous =>
-          init :+ (last._1, last._2 :+ bandIndex)
-        case (acc, (linkTitle, bandIndex)) =>
-          previous = linkTitle
-          acc :+ (linkTitle, Seq(bandIndex))
-      }
+        .toList
     }
   }
 
@@ -1019,7 +1008,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }
     }
 
-    def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, sentinelXmlAngleBandIndices: Seq[Int]): Seq[RasterSource] = {
+    def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, sentinelXmlAngleBandIndex: Int): Seq[RasterSource] = {
       if(dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
         val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
         val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod),
@@ -1034,7 +1023,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       }else if(dataPath.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
         val te = featureExtentInLayout.map(_.extent) // Can be bigger then original tile.
-        SentinelXMLMetadataRasterSource.forAngleBands(dataPath, sentinelXmlAngleBandIndices, te, Some(theResolution))
+        SentinelXMLMetadataRasterSource.forAngleBands(dataPath, Seq(sentinelXmlAngleBandIndex), te, Some(theResolution))
       }
       else {
         def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {
@@ -1081,7 +1070,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     val bandNames = openSearchLinkTitles.toList
 
-    def getBandAssetsByBandInfo: Seq[(Link, Seq[Int])] = { // [(href, bandIndices)]
+    def getBandAssetsByBandInfo: Seq[(Link, Int)] = { // [(href, bandIndex)]
       def getBandAsset(bandName: String): (Link, Int) = { // (href, bandIndex)
         feature.links
           .find(link => link.bandNames match {
@@ -1094,13 +1083,13 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
       bandNames
         .map(getBandAsset)
-        .map { case (link, bandIndex) => (link, Seq(bandIndex)) }
+        .map { case (link, bandIndex) => (link, bandIndex) }
     }
 
-    def getBandAssetsByLinkTitle : Seq[(Link, Seq[Int])] = for {
-      (title, bandIndices) <- openSearchLinkTitlesWithBandIds.toList
-      link <- feature.links.find(_.title.map(_.toUpperCase) contains title.toUpperCase)
-    } yield (link, bandIndices)
+    def getBandAssetsByLinkTitle : Seq[(Link, Int)] = for {
+      (title, bandIndex) <- openSearchLinkTitlesWithBandId.toList
+      link <- feature.links.find(_.title.map(_.toUpperCase) contains title.toUpperCase).orElse(Some(null))
+    } yield (link, bandIndex)
 
     // TODO: pass a strategy to FileLayerProvider instead (incl. one for the PROBA-V workaround)
     val byLinkTitle = !openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
@@ -1109,42 +1098,48 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       logger.warn("matching feature assets by ID/link title; only single band assets are supported")
     }
 
-    val expectedNumberOfBBandsOld = openSearchLinkTitlesWithBandIds.size
-    val expectedNumberOfBBands = openSearchLinkTitlesWithBandIds.map(_._2.length).sum
+    val expectedNumberOfBBandsOld = openSearchLinkTitlesWithBandId.size
+    val expectedNumberOfBBands = openSearchLinkTitlesWithBandId.size
 
     if (expectedNumberOfBBandsOld != expectedNumberOfBBands) {
       logger.warn(s"expectedNumberOfBBandsOld ($expectedNumberOfBBandsOld) != expectedNumberOfBBands ($expectedNumberOfBBands)")
     }
 
-    val rasterSources: Seq[(RasterSource, Seq[Int])] = for {
-      (link, bandIndices) <- if (byLinkTitle) getBandAssetsByLinkTitle else getBandAssetsByBandInfo
-      path = deriveFilePath(link.href)
-
-      cloudPath = for {
-        cloudDataPath <- feature.links.find(_.title contains "FineCloudMask_Tile1_Data").map(_.href.toString)
-        metadataPath <- feature.links.find(_.title contains "S2_Level-1C_Tile1_Metadata").map(_.href.toString)
-      } yield (cloudDataPath, metadataPath)
-
-      //special case handling for data that does not declare nodata properly
-      targetCellType = link.title match {
-        // An un-used band called "IMG_DATA_Band_SCL_60m_Tile1_Unit" exists, so not specifying the resulution in the if-check.
-        case x if x.get.contains("SCENECLASSIFICATION_20M") || x.get.contains("Band_SCL_") => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
-        case x if x.get.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(UShortConstantNoDataCellType))
-        case _ => None
-      }
-
-      pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
-      targetTargetCellType: Option[TargetCellType] = link.title match {
-        // Sentinel 2 bands can have negative values now.
-        case x if x.get.contains("SCENECLASSIFICATION_20M") || x.get.contains("Band_SCL_") => None
-        case x if x.get.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
-        case _ => None
-      }
-
-      rasterSourceRaw <- rasterSource(path, cloudPath, targetCellType, targetExtent, sentinelXmlAngleBandIndices = bandIndices)
+    val rasterSources: Seq[(RasterSource, Int)] = for {
+      (link, bandIndex) <- if (byLinkTitle) getBandAssetsByLinkTitle else getBandAssetsByBandInfo
     } yield {
-      val rasterSourceWrapped = ValueOffsetRasterSource.wrapRasterSource(rasterSourceRaw, pixelValueOffset, targetTargetCellType)
-      (rasterSourceWrapped, bandIndices)
+      if (link != null) {
+        val path = deriveFilePath(link.href)
+
+        val cloudPath = for {
+          cloudDataPath <- feature.links.find(_.title contains "FineCloudMask_Tile1_Data").map(_.href.toString)
+          metadataPath <- feature.links.find(_.title contains "S2_Level-1C_Tile1_Metadata").map(_.href.toString)
+        } yield (cloudDataPath, metadataPath)
+
+        //special case handling for data that does not declare nodata properly
+        val targetCellType = link.title match {
+          // An un-used band called "IMG_DATA_Band_SCL_60m_Tile1_Unit" exists, so not specifying the resulution in the if-check.
+          case x if x.get.contains("SCENECLASSIFICATION_20M") || x.get.contains("Band_SCL_") => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
+          case x if x.get.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(UShortConstantNoDataCellType))
+          case _ => None
+        }
+
+        val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
+        val targetTargetCellType: Option[TargetCellType] = link.title match {
+          // Sentinel 2 bands can have negative values now.
+          case x if x.get.contains("SCENECLASSIFICATION_20M") || x.get.contains("Band_SCL_") => None
+          case x if x.get.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
+          case _ => None
+        }
+
+        val rasterSourceRaw = rasterSource(path, cloudPath, targetCellType, targetExtent, sentinelXmlAngleBandIndex = bandIndex).head
+        val rasterSourceWrapped = ValueOffsetRasterSource.wrapRasterSource(rasterSourceRaw, pixelValueOffset, targetTargetCellType)
+        (rasterSourceWrapped, bandIndex)
+      }
+      else {
+        // TODO: is a constant NaN value RasterSource; move this logic to BandCompositeRasterSource where it can derive NODATA cellType from child RasterSources?
+        (new SentinelXMLMetadataRasterSource(value = Float.NaN, targetExtent.crs, GridExtent[Long](targetExtent.extent, theResolution), OpenEoSourcePath("???")), bandIndex)
+      }
     }
 
     if (rasterSources.isEmpty) {
@@ -1156,7 +1151,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
 
       if (byLinkTitle && bandIds.isEmpty) {
-        val actualNumberOfBands = rasterSources.map { case (_, bandIndices) => bandIndices.size }.sum
+        val actualNumberOfBands = rasterSources.size
 
         if (actualNumberOfBands != expectedNumberOfBBands) {
           logger.warn(s"Did not find expected number of bands $expectedNumberOfBBands (actual: $actualNumberOfBands) for feature ${feature.id} with links ${feature.links.mkString("Array(", ", ", ")")}")
@@ -1164,7 +1159,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         }
 
         Some((new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent), feature))
-      } else Some((new MultibandCompositeRasterSource(sources, targetExtent.crs, attributes), feature))
+      } else Some((new MultibandCompositeRasterSource(sources.map { case (rasterSource, bandIndex) => (rasterSource, Seq(bandIndex))}, targetExtent.crs, attributes), feature))
     }
   }
 
@@ -1211,5 +1206,5 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
   override def collectMetadata(sc: SparkContext): (ProjectedExtent, Array[ZonedDateTime]) = loadMetadata(sc).get
 
   override def toString: String =
-    s"${getClass.getSimpleName}($openSearchCollectionId, ${openSearchLinkTitlesWithBandIds.map(_._1).toList.mkString("[", ", ", "]")}, $rootPath)"
+    s"${getClass.getSimpleName}($openSearchCollectionId, ${openSearchLinkTitlesWithBandId.map(_._1).toList.mkString("[", ", ", "]")}, $rootPath)"
 }
