@@ -12,7 +12,8 @@ class BandCompositeRasterSourceTest {
 
   // extent: 125.8323451450973920, -26.4635378273783921,
   //         128.0585356212979775, -24.4605616369025221
-  private val singleBandGeotiffPath = "/home/bossie/IdeaProjects/vito/openeo-geotrellis-extensions/openeo-geotrellis/src/test/resources/org/openeo/geotrellis/cgls_ndvi300.tif"
+  private val singleBandGeotiffPath =
+    Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/cgls_ndvi300.tif").getPath
 
   @Test
   def singleBandGeoTiffRasterSource(): Unit = {

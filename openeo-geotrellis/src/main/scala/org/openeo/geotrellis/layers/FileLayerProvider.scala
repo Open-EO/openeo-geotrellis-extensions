@@ -91,11 +91,12 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
   override def gridExtent: GridExtent[Long] = predefinedExtent.getOrElse{
     try {
-      sources.head.gridExtent
-    }  catch {
+      sources
+        .find(rs => rs != null)
+        .head.gridExtent
+    } catch {
       case e: Exception => throw new IOException(s"Error while reading extent of: ${sources.head.name.toString}", e)
     }
-
   }
 
   override def cellType: CellType = {
@@ -189,16 +190,22 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                          method: ResampleMethod,
                          strategy: OverviewStrategy
                        ): RasterSource = new BandCompositeRasterSource(
-    reprojectedSources map { _.resample(resampleTarget, method, strategy) }, crs)
+    reprojectedSources map {
+      case null => null
+      case rs => rs.resample(resampleTarget, method, strategy)
+    }, crs)
 
   override def convert(targetCellType: TargetCellType): RasterSource =
-    new BandCompositeRasterSource(reprojectedSources map { _.convert(targetCellType) }, crs)
+    new BandCompositeRasterSource(reprojectedSources map {
+      case null => null
+      case rs => rs.convert(targetCellType)
+    }, crs)
 
   override def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
-    new BandCompositeRasterSource(
-      reprojectedSources map { _.reproject(targetCRS, resampleTarget, method, strategy) },
-      crs,
-    )
+    new BandCompositeRasterSource(reprojectedSources map {
+      case null => null
+      case rs => rs.reproject(targetCRS, resampleTarget, method, strategy)
+    }, crs)
 }
 
 // TODO: is this class necessary? Looks like a more general case of BandCompositeRasterSource so maybe the inheritance
@@ -1175,11 +1182,17 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       else (null, -1)
     }
 
-    if (rasterSources.isEmpty) {
+    if (rasterSources.forall { case (rs, _) => rs == null}) {
       logger.warn(s"Excluding item ${feature.id} with available assets ${feature.links.map(_.title).mkString("(", ", ", ")")}")
       None
     } else {
-      val sources = NonEmptyList.fromListUnsafe(rasterSources.toList)
+      val sources = NonEmptyList.fromListUnsafe(rasterSources
+        .toList
+        .map {
+          case (null, bandIndex) => (NoDataRasterSource.get.resampleToRegion(rasterSources.head._1.gridExtent), bandIndex)  // TODO: enforce the presence of at least one actual RasterSource, which is not necessarily the first one
+          case rs => rs
+        }
+      )
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
 
