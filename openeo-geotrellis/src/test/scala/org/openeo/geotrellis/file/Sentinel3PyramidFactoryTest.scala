@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.file
 
-import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.proj4.LatLng
 import geotrellis.raster.CellSize
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.spark._
@@ -8,12 +8,15 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.Extent
 import org.apache.spark.SparkContext
 import org.junit.jupiter.api._
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.backends.OscarsClient
 
 import java.net.URL
 import java.util
+import java.util.stream.{Stream => JStream}
 
 object Sentinel3PyramidFactoryTest {
   private var sc: SparkContext = _
@@ -24,20 +27,22 @@ object Sentinel3PyramidFactoryTest {
 
   @AfterAll
   def tearDownSpark(): Unit = sc.stop()
+
+  def bands: JStream[Arguments] = JStream.of(
+    Arguments.of(util.Collections.singletonList("NDVI")),
+    Arguments.of(util.Arrays.asList("B0", "B2", "B3", "MIR", "og", "ag", "saa", "sm", "sza", "vaa", "vza", "wvg", "tg",
+      "NDVI", "TOA_NDVI"))
+  )
 }
 
 class Sentinel3PyramidFactoryTest {
 
-  @Test
-  def testTOA_NDVI(): Unit = {
-    val includeAllBands = true
-
+  @ParameterizedTest
+  @MethodSource(Array("bands"))
+  def testTOA_NDVI(bands: util.List[String]): Unit = {
     val openSearchClient = new OscarsClient(new URL("https://services.terrascope.be/catalogue"), isUTM = false)
 
     val date = "2020-07-01T00:00:00Z"
-    val bands =
-      if (includeAllBands) util.Arrays.asList("B0", "B2", "B3", "MIR", "og", "ag", "saa", "sm", "sza", "vaa", "vza", "wvg", "tg", "NDVI", "TOA_NDVI")
-      else util.Arrays.asList("NDVI")
 
     val pyramidFactory = new PyramidFactory(
       openSearchClient,
@@ -65,6 +70,7 @@ class Sentinel3PyramidFactoryTest {
       .stitch()
       .crop(requestedExtent)
 
+    // TODO: currently only visual inspection
     MultibandGeoTiff(raster, targetCrs).write(s"/tmp/testTOA_NDVI_${String.join("_", bands)}.tif")
   }
 }

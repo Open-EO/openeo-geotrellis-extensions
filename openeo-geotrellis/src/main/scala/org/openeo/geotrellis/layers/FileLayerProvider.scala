@@ -22,6 +22,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
+import org.openeo.geotrellis.EmptyMultibandTile
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient, ProbaVPyramidFactory}
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, autoUtmEpsg, retryForever}
@@ -68,19 +69,23 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                                )
   extends MosaicRasterSource { // TODO: don't inherit?
 
-  protected def maxRetries = sys.env.getOrElse("GDALREAD_MAXRETRIES", "10").toInt
+  private val maxRetries = sys.env.getOrElse("GDALREAD_MAXRETRIES", "10").toInt
 
-  protected def reprojectedSources: NonEmptyList[RasterSource] = sources map { _.reproject(crs) }
+  protected def reprojectedSources: NonEmptyList[RasterSource] = sources map {
+    case null => null
+    case rs => rs.reproject(crs)
+  }
+
   protected def reprojectedSources(bands: Seq[Int]): Seq[RasterSource] = {
-    val selectedBands =  bands.map(sources.toList)
-    selectedBands map { rs =>
-      try{
-        retryForever(Duration.ofSeconds(10),maxRetries)(rs.reproject(crs))
-      }
-      catch
-      {
-        case e: Exception => throw new IOException(s"Error while reading: ${rs.name.toString}", e)
-      }
+    val selectedBands = bands.map(sources.toList)
+
+    selectedBands map {
+      case null => null
+      case rs =>
+        try retryForever(Duration.ofSeconds(10), maxRetries)(rs.reproject(crs))
+        catch {
+          case e: Exception => throw new IOException(s"Error while reading: ${rs.name.toString}", e)
+        }
     }
   }
 
@@ -94,17 +99,41 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   }
 
   override def cellType: CellType = {
-    sources.map(_.cellType).reduceLeft(_ union _)
+    sources
+      .collect { case rs: RasterSource => rs.cellType }
+      .reduceLeft(_ union _)
   }
 
   override def name: SourceName = sources.head.name
   override def bandCount: Int = sources.size
 
+  private def noDataRaster(extent: Extent): Raster[Tile] = {
+    val cols = gridExtent.gridBoundsFor(extent).width.toInt
+    val rows = gridExtent.gridBoundsFor(extent).height.toInt
+    Raster(EmptyMultibandTile.empty(cellType, cols, rows), extent)
+  }
+
+  private def noDataRaster(gridBounds: GridBounds[Long]): Raster[Tile] = {
+    val cols = gridBounds.width.toInt
+    val rows = gridBounds.height.toInt
+    Raster(EmptyMultibandTile.empty(cellType, cols, rows), gridExtent.extentFor(gridBounds))
+  }
+
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val selectedSources = reprojectedSources(bands)
+
+    // TODO: clean this up
     val singleBandRasters = selectedSources.par
-      .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
-      .collect { case Some(raster) => raster }
+      .map {
+        case null => None
+        case rs => rs
+          .read(extent, Seq(0))
+          .map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
+      }
+      .map {
+        case Some(raster) => raster
+        case _ => noDataRaster(extent)
+      }
 
     if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile).seq), singleBandRasters.head.extent))
     else None
@@ -114,7 +143,6 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     val selectedSources = reprojectedSources(bands)
 
     def readBounds(source:RasterSource):Option[Raster[Tile]] = {
-
       try {
         source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
       } catch {
@@ -122,9 +150,16 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       }
     }
 
+    // TODO: clean this up
     val singleBandRasters = selectedSources.par
-      .map(rs=> retryForever(Duration.ofSeconds(10),maxRetries)( readBounds(rs)))
-      .collect { case Some(raster) => raster }
+      .map {
+        case null => None
+        case rs => retryForever(Duration.ofSeconds(10), maxRetries)(readBounds(rs))
+      }
+      .map {
+        case Some(raster) => raster
+        case _ => noDataRaster(bounds)
+      }
 
     try {
       if(singleBandRasters.isEmpty) {
@@ -1088,13 +1123,14 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
     def getBandAssetsByLinkTitle : Seq[(Link, Int)] = for {
       (title, bandIndex) <- openSearchLinkTitlesWithBandId.toList
-      link <- feature.links.find(_.title.map(_.toUpperCase) contains title.toUpperCase).orElse(Some(null))
+      link <- feature.links.find(_.title.map(_.toUpperCase) contains title.toUpperCase).orElse(Some(null)) // TODO: a sentinel value different from null or just refactor altogether?
     } yield (link, bandIndex)
 
     // TODO: pass a strategy to FileLayerProvider instead (incl. one for the PROBA-V workaround)
     val byLinkTitle = !openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
 
     if (byLinkTitle) {
+      // TODO: is this still applicable?
       logger.warn("matching feature assets by ID/link title; only single band assets are supported")
     }
 
@@ -1136,10 +1172,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         val rasterSourceWrapped = ValueOffsetRasterSource.wrapRasterSource(rasterSourceRaw, pixelValueOffset, targetTargetCellType)
         (rasterSourceWrapped, bandIndex)
       }
-      else {
-        // TODO: is a constant NaN value RasterSource; move this logic to BandCompositeRasterSource where it can derive NODATA cellType from child RasterSources?
-        (new SentinelXMLMetadataRasterSource(value = Float.NaN, targetExtent.crs, GridExtent[Long](targetExtent.extent, theResolution), OpenEoSourcePath("???")), bandIndex)
-      }
+      else (null, -1)
     }
 
     if (rasterSources.isEmpty) {
