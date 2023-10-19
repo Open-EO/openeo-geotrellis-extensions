@@ -1,12 +1,14 @@
 package org.openeo.geotrellis.file
 
-import geotrellis.proj4.LatLng
-import geotrellis.raster.CellSize
+import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.raster.{CellSize, MultibandTile, Raster, ShortUserDefinedNoDataCellType}
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
+import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.Extent
 import org.apache.spark.SparkContext
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api._
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
@@ -33,13 +35,38 @@ object Sentinel3PyramidFactoryTest {
     Arguments.of(util.Arrays.asList("B0", "B2", "B3", "MIR", "og", "ag", "saa", "sm", "sza", "vaa", "vza", "wvg", "tg",
       "NDVI", "TOA_NDVI"))
   )
+
+  def testIntroducingEmptyBandRetainsCellTypeArgumentsProvider: JStream[Arguments] = JStream.of(
+    Arguments.of(util.Arrays.asList("vaa", "B0", "NDVI"), java.lang.Boolean.FALSE),
+    Arguments.of(util.Arrays.asList("vaa", "B0", "NDVI", "TOA_NDVI"), java.lang.Boolean.TRUE),
+  )
 }
 
-class Sentinel3PyramidFactoryTest {
+class Sentinel3PyramidFactoryTest extends RasterMatchers {
 
+  @Disabled("only visual inspection")
   @ParameterizedTest
   @MethodSource(Array("bands"))
   def testTOA_NDVI(bands: util.List[String]): Unit = {
+    val (raster, crs) = sentinel3Raster(bands)
+    MultibandGeoTiff(raster, crs).write(s"/tmp/testTOA_NDVI_${String.join("_", bands)}.tif")
+  }
+
+  @Test
+  def compareReferenceImage(): Unit = {
+    val bandMix = util.Arrays.asList("MIR", "TOA_NDVI", "B2", "tg")
+
+    val (actualRaster, actualCrs) = sentinel3Raster(bandMix)
+
+    val referenceGeoTiff = MultibandGeoTiff("/data/projects/OpenEO/automated_test_files/Sentinel3_2020-07-01.tif")
+    val referenceCrs = referenceGeoTiff.crs
+    val referenceRaster = referenceGeoTiff.raster
+
+    assertEqual(referenceRaster, actualRaster)
+    assertEquals(referenceCrs, actualCrs)
+  }
+
+  private def sentinel3Raster(bands: util.List[String]): (Raster[MultibandTile], CRS) = {
     val openSearchClient = new OscarsClient(new URL("https://services.terrascope.be/catalogue"), isUTM = false)
 
     val date = "2020-07-01T00:00:00Z"
@@ -70,7 +97,14 @@ class Sentinel3PyramidFactoryTest {
       .stitch()
       .crop(requestedExtent)
 
-    // TODO: currently only visual inspection
-    MultibandGeoTiff(raster, targetCrs).write(s"/tmp/testTOA_NDVI_${String.join("_", bands)}.tif")
+    (raster, targetCrs)
+  }
+
+  @ParameterizedTest
+  @MethodSource(Array("testIntroducingEmptyBandRetainsCellTypeArgumentsProvider"))
+  def testIntroducingEmptyBandRetainsCellType(bands: util.List[String], resultContainsNoDataBand: Boolean): Unit = {
+    val (raster, _) = sentinel3Raster(bands)
+    assertEquals(ShortUserDefinedNoDataCellType(-10000), raster.cellType) // B0's cell type, the broadest, is int16 with NODATA -10000
+    assertEquals(resultContainsNoDataBand, raster.tile.bands.exists(_.isNoDataTile))
   }
 }
