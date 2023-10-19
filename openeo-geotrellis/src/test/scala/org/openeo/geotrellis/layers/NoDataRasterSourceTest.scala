@@ -2,7 +2,7 @@ package org.openeo.geotrellis.layers
 
 import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
-import geotrellis.raster.{FloatConstantNoDataCellType, GridBounds}
+import geotrellis.raster.{CellSize, FloatConstantNoDataCellType, GridBounds, GridExtent, RasterSource}
 import geotrellis.vector.Extent
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.Test
@@ -52,5 +52,24 @@ class NoDataRasterSourceTest {
     assertEquals(2, resampledRasterCroppedByGridBounds.rows)
 
     MultibandGeoTiff(resampledRasterCroppedByGridBounds, resampled.crs).write("/tmp/resampledRasterCroppedByGridBounds.tif")
+  }
+
+  @Test
+  def testExistingGridExtent(): Unit = {
+    val crs = LatLng
+    val gridExtent = GridExtent[Long](Extent(0.0, 50.0, 5.0, 55.0), cols = 100, rows = 100)
+    val noDataRasterSource: RasterSource = NoDataRasterSource.instance(gridExtent, crs)
+
+    assertEquals(Extent(0.0, 50.0, 5.0, 55.0), noDataRasterSource.extent)
+    assertEquals(100, noDataRasterSource.cols)
+    assertEquals(100, noDataRasterSource.rows)
+    assertEquals(List(CellSize(0.05, 0.05)), noDataRasterSource.resolutions)
+
+    val Some(raster) = noDataRasterSource.read(Extent(1.0, 51.0, 4.0, 54.0))
+    assertEquals(1, raster.tile.bandCount)
+    assertTrue(raster.tile.band(0).isNoDataTile)
+
+    assertEquals(60, raster.cols)
+    assertEquals(60, raster.rows)
   }
 }

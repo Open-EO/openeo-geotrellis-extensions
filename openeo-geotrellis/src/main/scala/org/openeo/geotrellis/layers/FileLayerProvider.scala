@@ -71,29 +71,22 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
   private val maxRetries = sys.env.getOrElse("GDALREAD_MAXRETRIES", "10").toInt
 
-  protected def reprojectedSources: NonEmptyList[RasterSource] = sources map {
-    case null => null
-    case rs => rs.reproject(crs)
-  }
+  protected def reprojectedSources: NonEmptyList[RasterSource] = sources map { _.reproject(crs) }
 
   protected def reprojectedSources(bands: Seq[Int]): Seq[RasterSource] = {
     val selectedBands = bands.map(sources.toList)
 
-    selectedBands map {
-      case null => null
-      case rs =>
-        try retryForever(Duration.ofSeconds(10), maxRetries)(rs.reproject(crs))
-        catch {
-          case e: Exception => throw new IOException(s"Error while reading: ${rs.name.toString}", e)
-        }
+    selectedBands map { rs =>
+      try retryForever(Duration.ofSeconds(10), maxRetries)(rs.reproject(crs))
+      catch {
+        case e: Exception => throw new IOException(s"Error while reading: ${rs.name.toString}", e)
+      }
     }
   }
 
-  override def gridExtent: GridExtent[Long] = predefinedExtent.getOrElse{
+  override def gridExtent: GridExtent[Long] = predefinedExtent.getOrElse {
     try {
-      sources
-        .find(rs => rs != null)
-        .head.gridExtent
+      sources.head.gridExtent
     } catch {
       case e: Exception => throw new IOException(s"Error while reading extent of: ${sources.head.name.toString}", e)
     }
@@ -123,18 +116,9 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val selectedSources = reprojectedSources(bands)
 
-    // TODO: clean this up
     val singleBandRasters = selectedSources.par
-      .map {
-        case null => None
-        case rs => rs
-          .read(extent, Seq(0))
-          .map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
-      }
-      .map {
-        case Some(raster) => raster
-        case _ => noDataRaster(extent)
-      }
+      .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
+      .collect { case Some(raster) => raster }
 
     if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile).seq), singleBandRasters.head.extent))
     else None
@@ -151,16 +135,9 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       }
     }
 
-    // TODO: clean this up
     val singleBandRasters = selectedSources.par
-      .map {
-        case null => None
-        case rs => retryForever(Duration.ofSeconds(10), maxRetries)(readBounds(rs))
-      }
-      .map {
-        case Some(raster) => raster
-        case _ => noDataRaster(bounds)
-      }
+      .map(rs => retryForever(Duration.ofSeconds(10), maxRetries)(readBounds(rs)))
+      .collect { case Some(raster) => raster }
 
     try {
       if(singleBandRasters.isEmpty) {
@@ -190,22 +167,14 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                          method: ResampleMethod,
                          strategy: OverviewStrategy
                        ): RasterSource = new BandCompositeRasterSource(
-    reprojectedSources map {
-      case null => null
-      case rs => rs.resample(resampleTarget, method, strategy)
-    }, crs)
+    reprojectedSources map { _.resample(resampleTarget, method, strategy) }, crs)
 
   override def convert(targetCellType: TargetCellType): RasterSource =
-    new BandCompositeRasterSource(reprojectedSources map {
-      case null => null
-      case rs => rs.convert(targetCellType)
-    }, crs)
+    new BandCompositeRasterSource(reprojectedSources map { _.convert(targetCellType) }, crs)
 
   override def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
-    new BandCompositeRasterSource(reprojectedSources map {
-      case null => null
-      case rs => rs.reproject(targetCRS, resampleTarget, method, strategy)
-    }, crs)
+    new BandCompositeRasterSource(reprojectedSources map { _.reproject(targetCRS, resampleTarget, method, strategy) },
+      crs)
 }
 
 // TODO: is this class necessary? Looks like a more general case of BandCompositeRasterSource so maybe the inheritance
@@ -1186,13 +1155,18 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       logger.warn(s"Excluding item ${feature.id} with available assets ${feature.links.map(_.title).mkString("(", ", ", ")")}")
       None
     } else {
-      val sources = NonEmptyList.fromListUnsafe(rasterSources
-        .toList
+      lazy val gridExtent = predefinedExtent
+        .orElse {
+          rasterSources
+            .find { case (rasterSource, _) => rasterSource != null }
+            .map { case (rasterSource, _) => rasterSource.gridExtent }
+        }.getOrElse(return None)
+
+      val sources = NonEmptyList.fromListUnsafe(rasterSources.toList)
         .map {
-          case (null, bandIndex) => (NoDataRasterSource.instance.resampleToRegion(rasterSources.head._1.gridExtent), bandIndex)  // TODO: enforce the presence of at least one actual RasterSource, which is not necessarily the first one
-          case rs => rs
+          case (null, bandIndex) => (NoDataRasterSource.instance(gridExtent, targetExtent.crs), bandIndex)
+          case rasterSource => rasterSource
         }
-      )
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
 
@@ -1204,7 +1178,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
           return None
         }
 
-        Some((new BandCompositeRasterSource(sources.map(_._1), targetExtent.crs, attributes, predefinedExtent = predefinedExtent), feature))
+        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource }, targetExtent.crs, attributes, predefinedExtent = predefinedExtent), feature))
       } else Some((new MultibandCompositeRasterSource(sources.map { case (rasterSource, bandIndex) => (rasterSource, Seq(bandIndex))}, targetExtent.crs, attributes), feature))
     }
   }

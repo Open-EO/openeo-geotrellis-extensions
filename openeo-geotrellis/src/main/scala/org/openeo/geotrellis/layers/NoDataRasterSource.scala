@@ -9,8 +9,11 @@ import geotrellis.vector.Extent
 object NoDataRasterSource {
   private val bandIndices: Seq[Int] = Seq(0)
 
-  def instance: NoDataRasterSource = new NoDataRasterSource(ByteConstantNoDataCellType,
-    GridExtent(LatLng.worldExtent, cols = 10, rows = 10), LatLng)
+  def instance(gridExtent: GridExtent[Long], crs: CRS): NoDataRasterSource =
+    new NoDataRasterSource(ByteConstantNoDataCellType, gridExtent, crs)
+
+  def instance: NoDataRasterSource =
+    instance(GridExtent(LatLng.worldExtent, cols = 10, rows = 10), LatLng)
 }
 
 class NoDataRasterSource(override val cellType: CellType, override val gridExtent: GridExtent[Long], override val crs: CRS) extends RasterSource {
