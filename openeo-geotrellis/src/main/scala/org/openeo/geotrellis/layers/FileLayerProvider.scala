@@ -1182,7 +1182,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       else (null, -1)
     }
 
-    if (rasterSources.forall { case (rs, _) => rs == null}) {
+    if (rasterSources.isEmpty) {
       logger.warn(s"Excluding item ${feature.id} with available assets ${feature.links.map(_.title).mkString("(", ", ", ")")}")
       None
     } else {
