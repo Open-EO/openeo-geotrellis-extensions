@@ -11,7 +11,7 @@ class NoDataRasterSourceTest {
 
   @Test
   def test(): Unit = {
-    val noDataRasterSource = AnotherNoDataRasterSource.instance
+    val noDataRasterSource = NoDataRasterSource.instance
     assertEquals(LatLng, noDataRasterSource.crs)
     val Some(noDataRaster) = noDataRasterSource.read()
     MultibandGeoTiff(noDataRaster, noDataRasterSource.crs).write("/tmp/noDataRaster.tif")

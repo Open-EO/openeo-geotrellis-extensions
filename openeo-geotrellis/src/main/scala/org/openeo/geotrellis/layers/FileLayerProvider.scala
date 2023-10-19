@@ -1189,7 +1189,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
       val sources = NonEmptyList.fromListUnsafe(rasterSources
         .toList
         .map {
-          case (null, bandIndex) => (AnotherNoDataRasterSource.instance.resampleToRegion(rasterSources.head._1.gridExtent), bandIndex)  // TODO: enforce the presence of at least one actual RasterSource, which is not necessarily the first one
+          case (null, bandIndex) => (NoDataRasterSource.instance.resampleToRegion(rasterSources.head._1.gridExtent), bandIndex)  // TODO: enforce the presence of at least one actual RasterSource, which is not necessarily the first one
           case rs => rs
         }
       )
