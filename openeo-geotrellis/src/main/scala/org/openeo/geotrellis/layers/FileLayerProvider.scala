@@ -92,26 +92,10 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     }
   }
 
-  override def cellType: CellType = {
-    sources
-      .collect { case rs: RasterSource => rs.cellType }
-      .reduceLeft(_ union _)
-  }
+  override def cellType: CellType = sources.map(_.cellType).reduceLeft(_ union _)
 
   override def name: SourceName = sources.head.name
   override def bandCount: Int = sources.size
-
-  private def noDataRaster(extent: Extent): Raster[Tile] = {
-    val cols = gridExtent.gridBoundsFor(extent).width.toInt
-    val rows = gridExtent.gridBoundsFor(extent).height.toInt
-    Raster(EmptyMultibandTile.empty(cellType, cols, rows), extent)
-  }
-
-  private def noDataRaster(gridBounds: GridBounds[Long]): Raster[Tile] = {
-    val cols = gridBounds.width.toInt
-    val rows = gridBounds.height.toInt
-    Raster(EmptyMultibandTile.empty(cellType, cols, rows), gridExtent.extentFor(gridBounds))
-  }
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val selectedSources = reprojectedSources(bands)
@@ -120,7 +104,8 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
       .collect { case Some(raster) => raster }
 
-    if (singleBandRasters.size == selectedSources.size) Some(Raster(MultibandTile(singleBandRasters.map(_.tile).seq), singleBandRasters.head.extent))
+    if (singleBandRasters.size == selectedSources.size)
+      Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType)).seq), singleBandRasters.head.extent))
     else None
   }
 

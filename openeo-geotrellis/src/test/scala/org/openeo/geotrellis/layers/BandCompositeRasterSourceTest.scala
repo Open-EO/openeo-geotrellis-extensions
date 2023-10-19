@@ -42,9 +42,11 @@ class BandCompositeRasterSourceTest {
   def emptyBand(): Unit = {
     val bbox = ProjectedExtent(Extent(126.0, -26.0, 127.0, -25.0), LatLng)
 
+    val geoTiffRasterSource = GeoTiffRasterSource(singleBandGeotiffPath)
+
     val rasterSources = NonEmptyList.of(
-      GeoTiffRasterSource(singleBandGeotiffPath),
-      null,
+      geoTiffRasterSource,
+      NoDataRasterSource.instance(geoTiffRasterSource.gridExtent, geoTiffRasterSource.crs)
     )
 
     val composite = new BandCompositeRasterSource(rasterSources, crs = bbox.crs)

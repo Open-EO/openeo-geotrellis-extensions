@@ -3,14 +3,14 @@ package org.openeo.geotrellis.layers
 import geotrellis.layer.CRSWorldExtent
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{ByteConstantNoDataCellType, ByteConstantTile, CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType, Tile, byteNODATA}
+import geotrellis.raster.{UByteConstantNoDataCellType, UByteConstantTile, CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType, Tile, ubyteNODATA}
 import geotrellis.vector.Extent
 
 object NoDataRasterSource {
   private val bandIndices: Seq[Int] = Seq(0)
 
   def instance(gridExtent: GridExtent[Long], crs: CRS): NoDataRasterSource =
-    new NoDataRasterSource(ByteConstantNoDataCellType, gridExtent, crs)
+    new NoDataRasterSource(UByteConstantNoDataCellType, gridExtent, crs)
 
   def instance: NoDataRasterSource =
     instance(GridExtent(LatLng.worldExtent, cols = 10, rows = 10), LatLng)
@@ -50,7 +50,7 @@ class NoDataRasterSource(override val cellType: CellType, override val gridExten
   }
 
   private def baseNoDataTile(cols: Int, rows: Int): Tile = {
-    val noDataTile = ByteConstantTile(byteNODATA, cols, rows)
+    val noDataTile = UByteConstantTile(ubyteNODATA, cols, rows)
     if (noDataTile.cellType == cellType) noDataTile else noDataTile.convert(cellType)
   }
 
