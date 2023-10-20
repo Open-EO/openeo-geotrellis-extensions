@@ -1,7 +1,6 @@
 package org.openeo.geotrellis.layers
 
 import geotrellis.proj4.{LatLng, WebMercator}
-import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType, GridBounds, GridExtent, RasterSource}
 import geotrellis.vector.Extent
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
@@ -9,49 +8,60 @@ import org.junit.jupiter.api.Test
 
 class NoDataRasterSourceTest {
 
+  private val noDataRasterSource = NoDataRasterSource.instance
+
   @Test
-  def test(): Unit = {
-    val noDataRasterSource = NoDataRasterSource.instance
+  def testGlobal(): Unit = {
     assertEquals(LatLng, noDataRasterSource.crs)
     val Some(noDataRaster) = noDataRasterSource.read()
-    MultibandGeoTiff(noDataRaster, noDataRasterSource.crs).write("/tmp/noDataRaster.tif")
     assertEquals(1, noDataRaster.tile.bandCount)
     assertTrue(noDataRaster.tile.band(0).isNoDataTile)
+  }
 
+  @Test
+  def readExtent(): Unit = {
     val Some(rasterCroppedByExtent) = noDataRasterSource.read(Extent(0.0, 50.0, 5.0, 55.0))
-    MultibandGeoTiff(rasterCroppedByExtent, noDataRasterSource.crs).write("/tmp/rasterCroppedByExtent.tif")
     assertEquals(Extent(0.0, 50.0, 5.0, 55.0), rasterCroppedByExtent.extent)
+  }
 
+  @Test
+  def readGridBounds(): Unit = {
     val Some(rasterCroppedByGridBounds) = noDataRasterSource.read(GridBounds[Long](0, 0, 0, 0))
-    MultibandGeoTiff(rasterCroppedByGridBounds, noDataRasterSource.crs).write("/tmp/rasterCroppedByGridBounds.tif")
     assertEquals(1, rasterCroppedByGridBounds.cols)
     assertEquals(1, rasterCroppedByGridBounds.rows)
+  }
 
+  @Test
+  def convert(): Unit = {
     val converted = noDataRasterSource.convert(FloatConstantNoDataCellType)
     assertEquals(LatLng, converted.crs)
     val Some(convertedRaster) = converted.read()
-    MultibandGeoTiff(convertedRaster, converted.crs).write("/tmp/convertedRaster.tif")
     assertEquals(FloatConstantNoDataCellType, convertedRaster.cellType)
     assertTrue(convertedRaster.tile.band(0).isNoDataTile)
+  }
 
+  @Test
+  def reproject(): Unit = {
     val reprojected = noDataRasterSource.reproject(targetCRS = WebMercator)
     assertEquals(WebMercator, reprojected.crs)
     val Some(reprojectedRaster) = reprojected.read()
-    MultibandGeoTiff(reprojectedRaster, reprojected.crs).write("/tmp/reprojectedRaster.tif")
-    assertEquals(WebMercator, reprojected.crs)
+  }
 
+  @Test
+  def resample(): Unit = {
     val resampled = noDataRasterSource.resample(targetCols = 100, targetRows = 100)
     assertEquals(LatLng, resampled.crs)
     val Some(resampledRaster) = resampled.read()
-    MultibandGeoTiff(resampledRaster, resampled.crs).write("/tmp/resampledRaster.tif")
     assertEquals(100, resampledRaster.cols)
     assertEquals(100, resampledRaster.rows)
+  }
 
+  @Test
+  def testReadResampledByGridBounds(): Unit = {
+    val resampled = noDataRasterSource.resample(targetCols = 100, targetRows = 100)
     val Some(resampledRasterCroppedByGridBounds) = resampled.read(GridBounds[Long](50, 50, 52, 51))
     assertEquals(3, resampledRasterCroppedByGridBounds.cols)
     assertEquals(2, resampledRasterCroppedByGridBounds.rows)
-
-    MultibandGeoTiff(resampledRasterCroppedByGridBounds, resampled.crs).write("/tmp/resampledRasterCroppedByGridBounds.tif")
   }
 
   @Test
@@ -71,5 +81,16 @@ class NoDataRasterSourceTest {
 
     assertEquals(60, raster.cols)
     assertEquals(60, raster.rows)
+  }
+
+  @Test
+  def testReprojectExistingGridExtent(): Unit = {
+    val crs = LatLng
+    val gridExtent = GridExtent[Long](Extent(0.0, 50.0, 5.0, 55.0), cols = 100, rows = 100)
+    val noDataRasterSource: RasterSource = NoDataRasterSource.instance(gridExtent, crs)
+
+    val reprojected = noDataRasterSource.reproject(WebMercator)
+    val Some(reprojectedRaster) = reprojected.read()
+    assertTrue(gridExtent.extent.equalsExact(reprojectedRaster.extent.reproject(reprojected.crs, crs), 0.1))
   }
 }
