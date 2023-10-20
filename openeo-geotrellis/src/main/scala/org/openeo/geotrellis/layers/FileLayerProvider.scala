@@ -1086,7 +1086,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     val bandNames = openSearchLinkTitles.toList
 
-    def getBandAssetsByBandInfo: Seq[(Link, Int)] = { // [(href, bandIndex)]
+    def getBandAssetsByBandInfo: Seq[Option[(Link, Int)]] = { // [Some((href, bandIndex))]
       def getBandAsset(bandName: String): (Link, Int) = { // (href, bandIndex)
         feature.links
           .find(link => link.bandNames match {
@@ -1099,13 +1099,13 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
       bandNames
         .map(getBandAsset)
-        .map { case (link, bandIndex) => (link, bandIndex) }
+        .map { case (link, bandIndex) => Some((link, bandIndex)) }
     }
 
-    def getBandAssetsByLinkTitle : Seq[(Link, Int)] = for {
+    def getBandAssetsByLinkTitle : Seq[Option[(Link, Int)]] = for {
       (title, bandIndex) <- openSearchLinkTitlesWithBandId.toList
-      link <- feature.links.find(_.title.map(_.toUpperCase) contains title.toUpperCase).orElse(Some(null)) // TODO: a sentinel value different from null or just refactor altogether?
-    } yield (link, bandIndex)
+      link = feature.links.find(_.title.map(_.toUpperCase) contains title.toUpperCase)
+    } yield link.map((_, bandIndex))
 
     // TODO: pass a strategy to FileLayerProvider instead (incl. one for the PROBA-V workaround)
     val byLinkTitle = !openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
@@ -1115,46 +1115,39 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       logger.warn("matching feature assets by ID/link title; only single band assets are supported")
     }
 
-    val expectedNumberOfBBandsOld = openSearchLinkTitlesWithBandId.size
-    val expectedNumberOfBBands = openSearchLinkTitlesWithBandId.size
+    val expectedNumberOfBands = openSearchLinkTitlesWithBandId.size
 
-    if (expectedNumberOfBBandsOld != expectedNumberOfBBands) {
-      logger.warn(s"expectedNumberOfBBandsOld ($expectedNumberOfBBandsOld) != expectedNumberOfBBands ($expectedNumberOfBBands)")
-    }
+    lazy val cloudPath = for {
+      cloudDataPath <- feature.links.find(_.title contains "FineCloudMask_Tile1_Data").map(_.href.toString)
+      metadataPath <- feature.links.find(_.title contains "S2_Level-1C_Tile1_Metadata").map(_.href.toString)
+    } yield (cloudDataPath, metadataPath)
 
-    val rasterSources: Seq[(RasterSource, Int)] = for {
-      (link, bandIndex) <- if (byLinkTitle) getBandAssetsByLinkTitle else getBandAssetsByBandInfo
-    } yield {
-      if (link != null) {
-        val path = deriveFilePath(link.href)
+    val rasterSources: Seq[Option[(RasterSource, Int)]] =
+      (if (byLinkTitle) getBandAssetsByLinkTitle else getBandAssetsByBandInfo).map {
+        case Some((link, bandIndex)) =>
+          val path = deriveFilePath(link.href)
 
-        val cloudPath = for {
-          cloudDataPath <- feature.links.find(_.title contains "FineCloudMask_Tile1_Data").map(_.href.toString)
-          metadataPath <- feature.links.find(_.title contains "S2_Level-1C_Tile1_Metadata").map(_.href.toString)
-        } yield (cloudDataPath, metadataPath)
+          //special case handling for data that does not declare nodata properly
+          val targetCellType = link.title match {
+            // An un-used band called "IMG_DATA_Band_SCL_60m_Tile1_Unit" exists, so not specifying the resulution in the if-check.
+            case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
+            case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(UShortConstantNoDataCellType))
+            case _ => None
+          }
 
-        //special case handling for data that does not declare nodata properly
-        val targetCellType = link.title match {
-          // An un-used band called "IMG_DATA_Band_SCL_60m_Tile1_Unit" exists, so not specifying the resulution in the if-check.
-          case x if x.get.contains("SCENECLASSIFICATION_20M") || x.get.contains("Band_SCL_") => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
-          case x if x.get.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(UShortConstantNoDataCellType))
-          case _ => None
-        }
+          val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
+          val targetTargetCellType: Option[TargetCellType] = link.title match {
+            // Sentinel 2 bands can have negative values now.
+            case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => None
+            case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
+            case _ => None
+          }
 
-        val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
-        val targetTargetCellType: Option[TargetCellType] = link.title match {
-          // Sentinel 2 bands can have negative values now.
-          case x if x.get.contains("SCENECLASSIFICATION_20M") || x.get.contains("Band_SCL_") => None
-          case x if x.get.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
-          case _ => None
-        }
-
-        val rasterSourceRaw = rasterSource(path, cloudPath, targetCellType, targetExtent, sentinelXmlAngleBandIndex = bandIndex)
-        val rasterSourceWrapped = ValueOffsetRasterSource.wrapRasterSource(rasterSourceRaw, pixelValueOffset, targetTargetCellType)
-        (rasterSourceWrapped, bandIndex)
+          val rasterSourceRaw = rasterSource(path, cloudPath, targetCellType, targetExtent, sentinelXmlAngleBandIndex = bandIndex)
+          val rasterSourceWrapped = ValueOffsetRasterSource.wrapRasterSource(rasterSourceRaw, pixelValueOffset, targetTargetCellType)
+          Some((rasterSourceWrapped, bandIndex))
+        case _ => None
       }
-      else (null, -1)
-    }
 
     if (rasterSources.isEmpty) {
       logger.warn(s"Excluding item ${feature.id} with available assets ${feature.links.map(_.title).mkString("(", ", ", ")")}")
@@ -1162,15 +1155,15 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     } else {
       lazy val gridExtent = predefinedExtent
         .orElse {
-          rasterSources
-            .find { case (rasterSource, _) => rasterSource != null }
-            .map { case (rasterSource, _) => rasterSource.gridExtent }
+          rasterSources.collectFirst {
+            case Some((rasterSource, _)) => rasterSource.gridExtent
+          }
         }.getOrElse(return None)
 
       val sources = NonEmptyList.fromListUnsafe(rasterSources.toList)
         .map {
-          case (null, bandIndex) => (NoDataRasterSource.instance(gridExtent, targetExtent.crs), bandIndex)
-          case rasterSource => rasterSource
+          case Some(rasterSource) => rasterSource
+          case _ => (NoDataRasterSource.instance(gridExtent, targetExtent.crs), 0)
         }
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
@@ -1178,8 +1171,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       if (byLinkTitle && bandIndices.isEmpty) {
         val actualNumberOfBands = rasterSources.size
 
-        if (actualNumberOfBands != expectedNumberOfBBands) {
-          logger.warn(s"Did not find expected number of bands $expectedNumberOfBBands (actual: $actualNumberOfBands) for feature ${feature.id} with links ${feature.links.mkString("Array(", ", ", ")")}")
+        if (actualNumberOfBands != expectedNumberOfBands) {
+          logger.warn(s"Did not find expected number of bands $expectedNumberOfBands (actual: $actualNumberOfBands) for feature ${feature.id} with links ${feature.links.mkString("Array(", ", ", ")")}")
           return None
         }
 
