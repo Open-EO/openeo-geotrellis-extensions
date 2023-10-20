@@ -1095,7 +1095,7 @@ class OpenEOProcessScriptBuilder {
       val labels = context.get("array_labels").asInstanceOf[Option[Seq[Any]]]
       val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
       val mappedValues = data.zipWithIndex.map{
-        case (e, i) => evaluateToTiles(processFunction, context + ("x" -> Seq(e))  + ("index" -> i) + ("data"-> data) + ("label" -> labels.map(_(i)).orNull), Seq(e)).head
+        case (e, i) => evaluateToTiles(processFunction, context + ("x" -> Seq(e))  + ("index" -> i) + ("data"-> data) + ("parent.data"-> tiles) + ("label" -> labels.map(_(i)).orNull), Seq(e)).head
       }
 
       mappedValues

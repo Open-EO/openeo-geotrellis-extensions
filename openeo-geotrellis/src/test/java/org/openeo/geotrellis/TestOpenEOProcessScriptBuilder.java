@@ -1802,6 +1802,138 @@ public class TestOpenEOProcessScriptBuilder {
 
     }
 
+    @Test
+    public void testBAP() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+
+        builder.expressionStart("array_apply", Collections.EMPTY_MAP);
+        builder.argumentStart("data");
+            builder.expressionStart("array_apply", Collections.EMPTY_MAP);
+            builder.argumentStart("data");
+            builder.fromParameter("data");
+            builder.argumentEnd();
+            builder.argumentStart("process");
+            builder.expressionStart("add", Collections.EMPTY_MAP);
+            builder.argumentStart("x");
+            builder.expressionStart("absolute", Collections.EMPTY_MAP);
+            builder.argumentStart("x");
+
+            builder.expressionStart("multiply", Collections.EMPTY_MAP);
+            builder.constantArgument("x", 15);
+            builder.argumentStart("y");
+            builder.fromParameter("x");
+            builder.argumentEnd();
+
+            builder.expressionEnd("multiply", map2("x",15,"y",Collections.singletonMap("from_parameter", "x")));
+            builder.argumentEnd();
+            Map<String, Object> absArgs = map1("x", "dummy");
+            builder.expressionEnd("absolute", absArgs);
+            builder.argumentEnd();
+            builder.argumentStart("y");
+            builder.expressionStart("absolute", absArgs);
+            builder.argumentStart("x");
+            builder.expressionStart("date_difference", Collections.EMPTY_MAP);
+            builder.argumentStart("date1");
+            builder.expressionStart("date_replace_component", Collections.EMPTY_MAP);
+            builder.argumentStart("date");
+            builder.fromParameter("label");
+            builder.argumentEnd();
+            builder.constantArgument("value", 15);
+            Map<String, Object> dateReplaceArgs = map3("component", "day", "date", fromParam("label"), "value", 15);
+            builder.expressionEnd("date_replace_component", dateReplaceArgs);
+            builder.argumentEnd();
+            builder.argumentStart("date2");
+            builder.fromParameter("label");
+            builder.argumentEnd();
+            builder.expressionEnd("date_difference", map3("date1", Collections.EMPTY_MAP, "date2", fromParam("label"), "unit", "day"));
+            builder.argumentEnd();
+            builder.expressionEnd("absolute", absArgs);
+            builder.argumentEnd();
+            builder.expressionEnd("add", map2("x", Collections.EMPTY_MAP, "y", Collections.EMPTY_MAP));
+            builder.argumentEnd();
+            builder.expressionEnd("array_apply", Collections.EMPTY_MAP);
+        builder.argumentEnd();
+        builder.argumentStart("process");
+        builder.expressionStart("neq",Collections.EMPTY_MAP);
+            builder.argumentStart("x");
+                builder.expressionStart("int", Collections.EMPTY_MAP);
+                builder.argumentStart("x");
+                builder.fromParameter("x");
+                builder.argumentEnd();
+                builder.expressionEnd("int", map1("x", fromParam( "x")));
+            builder.argumentEnd();
+            builder.argumentStart("y");
+                builder.expressionStart("int", Collections.EMPTY_MAP);
+                builder.argumentStart("x");
+                builder.expressionStart("min", Collections.EMPTY_MAP);
+                builder.argumentStart("data");
+                    builder.expressionStart("array_apply", Collections.EMPTY_MAP);
+                    builder.argumentStart("data");
+                    //this second "data" parameter now resolves to "data" of the first array apply instead of the original "data"
+                    builder.fromParameter("parent.data");
+                    builder.argumentEnd();
+                    builder.argumentStart("process");
+                    builder.expressionStart("add", Collections.EMPTY_MAP);
+                    builder.argumentStart("x");
+                    builder.expressionStart("absolute", absArgs);
+                    builder.argumentStart("x");
+                    builder.expressionStart("multiply", Collections.EMPTY_MAP);
+                    builder.constantArgument("x", 15);
+                    builder.argumentStart("y");
+                    builder.fromParameter("x");
+                    builder.argumentEnd();
+                    builder.expressionEnd("multiply",map2("x", 15, "y", fromParam("x")));
+                    builder.argumentEnd();
+                    builder.expressionEnd("absolute", absArgs);
+                    builder.argumentEnd();
+                    builder.argumentStart("y");
+                    builder.expressionStart("absolute", absArgs);
+                    builder.argumentStart("x");
+                    builder.expressionStart("date_difference", Collections.EMPTY_MAP);
+                    builder.argumentStart("date1");
+                    builder.expressionStart("date_replace_component", Collections.EMPTY_MAP);
+                    builder.argumentStart("date");
+                    builder.fromParameter("label");
+                    builder.argumentEnd();
+                    builder.constantArgument("value", 15);
+                    builder.expressionEnd("date_replace_component", dateReplaceArgs);
+                    builder.argumentEnd();
+                    builder.argumentStart("date2");
+                    builder.fromParameter("label");
+                    builder.argumentEnd();
+                    builder.expressionEnd("date_difference", map3("date1", Collections.EMPTY_MAP, "date2", fromParam("label"), "unit", "day"));
+                    builder.argumentEnd();
+                    builder.expressionEnd("absolute", absArgs);
+                    builder.argumentEnd();
+                    builder.expressionEnd("add", map2("x","dummy","y","dummy"));
+                    builder.argumentEnd();
+                    builder.expressionEnd("array_apply",Collections.EMPTY_MAP);
+                builder.argumentEnd();
+                builder.expressionEnd("min",map1("data","dummy"));
+                builder.argumentEnd();
+                builder.expressionEnd("int", Collections.EMPTY_MAP);
+            builder.argumentEnd();
+        builder.expressionEnd("neq", map2("x","dummy","y","dummy"));
+        builder.argumentEnd();
+        builder.expressionEnd("array_apply", Collections.EMPTY_MAP);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction(Collections.singletonMap("array_labels",JavaConversions.asScalaBuffer(Arrays.asList("2022-01-04T04:00:00Z","2022-01-05T00:00:00Z","2022-01-14T00:00:00Z","2022-01-16T00:00:00Z","2022-01-21T00:00:00Z"))));
+        Tile tile0 = FloatConstantNoDataArrayTile.fill(5, 1, 1);
+        Tile tile1 = FloatConstantNoDataArrayTile.fill(3, 1, 1);
+        Tile tile2 = FloatConstantNoDataArrayTile.fill(1, 1, 1);
+        Tile tile3 = FloatConstantNoDataArrayTile.fill(1.9f, 1, 1);
+        Tile nodataTile = ByteConstantNoDataArrayTile.empty(1, 1);
+
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)));
+        BitConstantTile trueTile = new BitConstantTile(true, 1, 1);
+        assertTileEquals(trueTile,result.apply(0));
+        assertTileEquals(trueTile,result.apply(1));
+        assertTileEquals(trueTile,result.apply(2));
+        assertTileEquals(new BitConstantTile(false,1,1),result.apply(3));
+        assertTileEquals(trueTile,result.apply(4));
+
+    }
+
     static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Map<String, Object> arguments = ignoreNoData!=null? Collections.singletonMap("ignore_nodata",ignoreNoData.booleanValue()) : Collections.emptyMap();
@@ -2097,6 +2229,10 @@ public class TestOpenEOProcessScriptBuilder {
         Map<String, Object> m = new HashMap<String, Object>(1);
         m.put(k, v);
         return m;
+    }
+
+    private static Map<String, Object> fromParam(String p) {
+        return Collections.singletonMap("from_parameter",p);
     }
 
     /**
