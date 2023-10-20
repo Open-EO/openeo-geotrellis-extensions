@@ -1024,22 +1024,22 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       }
     }
 
-    def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, sentinelXmlAngleBandIndex: Int): Seq[RasterSource] = {
+    def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, sentinelXmlAngleBandIndex: Int): RasterSource = {
       if(dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
         val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
         val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod),
           te = featureExtentInLayout.map(_.extent), teCRS = Some(targetExtent.crs)
         )
         if (cloudPath.isDefined) {
-          Seq(GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType))
+          GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType)
         } else {
           predefinedExtent = featureExtentInLayout
-          Seq(GDALRasterSource(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType))
+          GDALRasterSource(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType)
         }
       }else if(dataPath.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
         val te = featureExtentInLayout.map(_.extent) // Can be bigger then original tile.
-        SentinelXMLMetadataRasterSource.forAngleBands(dataPath, Seq(sentinelXmlAngleBandIndex), te, Some(theResolution))
+        SentinelXMLMetadataRasterSource.forAngleBands(dataPath, Seq(sentinelXmlAngleBandIndex), te, Some(theResolution)).head
       }
       else {
         def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {
@@ -1055,29 +1055,29 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         if( feature.crs.isDefined && feature.crs.get != null && feature.crs.get.equals(targetExtent.crs)) {
           // when we don't know the feature (input) CRS, it seems that we assume it is the same as target extent???
           if(experimental) {
-            Seq(GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(theResolution), resampleMethod=Some(resampleMethod)), targetCellType = targetCellType))
+            GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(theResolution), resampleMethod=Some(resampleMethod)), targetCellType = targetCellType)
           }else{
             val geotiffPath = GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/"))
             if (noResampleOnRead) {
               val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)
               val geotiffRasterSource = GeoTiffRasterSource(geotiffPath, targetCellType)
-              Seq(new ResampledRasterSource(geotiffRasterSource, tiffAlignment.region.cellSize, theResolution))
+              new ResampledRasterSource(geotiffRasterSource, tiffAlignment.region.cellSize, theResolution)
             } else {
-              Seq(GeoTiffResampleRasterSource(geotiffPath, alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType, None))
+              GeoTiffResampleRasterSource(geotiffPath, alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType, None)
             }
           }
         }else{
           if(experimental) {
             val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod),te = Some(targetExtent.extent))
-            Seq(GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType))
+            GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType)
           }else{
             val geotiffPath = GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/"))
             if (noResampleOnRead) {
               val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)
               val geotiffRasterSource = GeoTiffReprojectRasterSource(geotiffPath, targetExtent.crs, tiffAlignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType = targetCellType)
-              Seq(new ResampledRasterSource(geotiffRasterSource, tiffAlignment.region.cellSize, theResolution))
+              new ResampledRasterSource(geotiffRasterSource, tiffAlignment.region.cellSize, theResolution)
             } else {
-              Seq(GeoTiffReprojectRasterSource(geotiffPath, targetExtent.crs, alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType = targetCellType))
+              GeoTiffReprojectRasterSource(geotiffPath, targetExtent.crs, alignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType = targetCellType)
             }
           }
         }
@@ -1149,7 +1149,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           case _ => None
         }
 
-        val rasterSourceRaw = rasterSource(path, cloudPath, targetCellType, targetExtent, sentinelXmlAngleBandIndex = bandIndex).head
+        val rasterSourceRaw = rasterSource(path, cloudPath, targetCellType, targetExtent, sentinelXmlAngleBandIndex = bandIndex)
         val rasterSourceWrapped = ValueOffsetRasterSource.wrapRasterSource(rasterSourceRaw, pixelValueOffset, targetTargetCellType)
         (rasterSourceWrapped, bandIndex)
       }
