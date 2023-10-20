@@ -51,7 +51,7 @@ class ProbaVPyramidFactory(openSearchEndpoint: String,
   private def fileLayerProvider(correlationId: String) = {
     val (assetTitles, bandIndices) = _bandNames.map(bandNameToAssetBandIndex).unzip
 
-    new FileLayerProvider(
+    FileLayerProvider(
         OpenSearchClient(openSearchEndpointUrl),
         openSearchCollectionId,
         openSearchLinkTitles = NonEmptyList.of(assetTitles.head, assetTitles.tail: _*),
@@ -59,7 +59,7 @@ class ProbaVPyramidFactory(openSearchEndpoint: String,
         maxSpatialResolution = maxSpatialResolution,
         pathDateExtractor = ProbaVPathDateExtractor,
         layoutScheme = ZoomedLayoutScheme(LatLng, 256),
-        bandIds = bandIndices.map(Seq(_)),
+        bandIndices = bandIndices,
         correlationId = correlationId,
     )
   }

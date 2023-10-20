@@ -88,7 +88,7 @@ class FileLayerProviderTest {
   private def sentinel5PMaxSpatialResolution = CellSize(0.05, 0.05)
   private def sentinel5PLayoutScheme = ZoomedLayoutScheme(LatLng)
   private def sentinel5PCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1"
-  private def sentinel5PFileLayerProvider = new FileLayerProvider(
+  private def sentinel5PFileLayerProvider = FileLayerProvider(
     openSearch = OpenSearchClient(new URL("https://services.terrascope.be/catalogue")),
     openSearchCollectionId = sentinel5PCollectionId,
     NonEmptyList.one("NO2"),
@@ -672,7 +672,7 @@ class FileLayerProviderTest {
       layoutScheme = FloatingLayoutScheme(256),
       experimental = false
     ){
-      //avoids having to actually read the product
+      //avoids having to actually read the product TODO: improve this workaround
       override def determineCelltype(overlappingRasterSources: Seq[(RasterSource, OpenSearchResponses.Feature)]): CellType = FloatConstantNoDataCellType
     }
 

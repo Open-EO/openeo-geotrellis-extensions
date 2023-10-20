@@ -112,7 +112,7 @@ object LayerFixtures {
   )
 
   def sentinel1Sigma0LayerProviderUTM =
-    new FileLayerProvider(
+    FileLayerProvider(
       client,
       "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
       openSearchLinkTitles = NonEmptyList.of("VV"),
@@ -126,7 +126,7 @@ object LayerFixtures {
   def s2_fapar(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent)=accumuloDataCube("S2_FAPAR_PYRAMID_20200408", from_date, to_date, bbox, "EPSG:4326")
 
   def sentinel2TocLayerProviderUTM =
-    new FileLayerProvider(
+    FileLayerProvider(
       client,
       "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"),
@@ -138,7 +138,7 @@ object LayerFixtures {
     )
 
   def sentinel2TocLayerProviderUTMMultiResolution =
-    new FileLayerProvider(
+    FileLayerProvider(
       client,
       "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B05_20M"),
@@ -150,7 +150,7 @@ object LayerFixtures {
     )
 
   def sentinel2TocLayerProviderUTM20M =
-    new FileLayerProvider(
+    FileLayerProvider(
       client,
       "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B11_20M", "SCENECLASSIFICATION_20M"),
@@ -245,7 +245,7 @@ object LayerFixtures {
   }
 
   def rgbLayerProvider =
-    new FileLayerProvider(
+    FileLayerProvider(
       openSearch = client,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M"),

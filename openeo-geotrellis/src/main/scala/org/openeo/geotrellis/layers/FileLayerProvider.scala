@@ -624,7 +624,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
            bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "", experimental: Boolean = false,
            retainNoDataTiles: Boolean = false) = this(openSearch, openSearchCollectionId,
            openSearchLinkTitles = NonEmptyList.fromListUnsafe(for {
-             (title, bandIndices) <- openSearchLinkTitles.toList zip bandIds.toList
+             (title, bandIndices) <- openSearchLinkTitles.toList.zipAll(bandIds, thisElem = "", thatElem = Seq(0))
              _ <- bandIndices
            } yield title),
            rootPath, maxSpatialResolution, pathDateExtractor, attributeValues, layoutScheme,

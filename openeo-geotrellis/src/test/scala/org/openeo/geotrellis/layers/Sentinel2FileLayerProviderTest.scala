@@ -567,7 +567,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
     }
 
-    val creoL1CLayerProvider = new FileLayerProvider(
+    val creoL1CLayerProvider = FileLayerProvider(
       MockOpenSearch,
       openSearchCollectionId = "Sentinel2",
       openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_10m_1_Tile1_Data"),
@@ -622,7 +622,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
   @Test
   def testL1CResolutionResample(): Unit = {
-    val creoL1CLayerProvider = new FileLayerProvider(
+    val creoL1CLayerProvider = FileLayerProvider(
       MockOpenSearch,
       openSearchCollectionId = "Sentinel2",
       openSearchLinkTitles = NonEmptyList.of(
@@ -662,7 +662,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   def testL1CMultibandTileMask(): Unit = {
     val dilationDistance = 5
 
-    val creoL1CLayerProvider = new FileLayerProvider(
+    val creoL1CLayerProvider = FileLayerProvider(
       MockOpenSearch,
       openSearchCollectionId = "Sentinel2",
       openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_10m_1_Tile1_Data", "IMG_DATA_Band_10m_2_Tile1_Data", "IMG_DATA_Band_10m_3_Tile1_Data"),
@@ -748,7 +748,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   }
 
   private def faparLayerProvider(attributeValues: Map[String, Any] = Map("resolution" -> 10)) =
-    new FileLayerProvider(
+    FileLayerProvider(
       openSearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
       openSearchLinkTitles = NonEmptyList.of("FAPAR_10M"),
@@ -759,7 +759,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     )
 
   private def tocLayerProvider =
-    new FileLayerProvider(
+    FileLayerProvider(
       openSearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"),
@@ -771,7 +771,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   private def tocLayerProviderUTM = LayerFixtures.sentinel2TocLayerProviderUTM
 
   private def sceneclassificationLayerProviderUTM =
-    new FileLayerProvider(
+    FileLayerProvider(
       openSearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("SCENECLASSIFICATION_20M"),
@@ -782,7 +782,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     )
 
   private def sceneclassificationLayerProvider =
-    new FileLayerProvider(
+    FileLayerProvider(
       openSearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("SCENECLASSIFICATION_20M"),
