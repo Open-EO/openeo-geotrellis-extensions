@@ -226,6 +226,15 @@ object FileLayerProvider {
   private case class CacheKey(openSearch: OpenSearchClient, openSearchCollectionId: String, rootPath: Path,
                               pathDateExtractor: PathDateExtractor)
 
+  def apply(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
+            maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
+            bandIndices: Seq[Int] = Seq(), correlationId: String = "", experimental: Boolean = false,
+            retainNoDataTiles: Boolean = false): FileLayerProvider = new FileLayerProvider(
+    openSearch, openSearchCollectionId, openSearchLinkTitles, rootPath, maxSpatialResolution, pathDateExtractor,
+    attributeValues, layoutScheme, bandIndices, correlationId, experimental, retainNoDataTiles,
+    disambiguateConstructors = null
+  )
+
   private def extractDate(filename: String, date: Regex): ZonedDateTime = filename match {
     case date(year, month, day) =>
       ZonedDateTime.of(LocalDate.of(year.toInt, month.toInt, day.toInt), LocalTime.MIDNIGHT, ZoneId.of("UTC"))
@@ -599,15 +608,31 @@ object FileLayerProvider {
       })
 }
 
-class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
-                        maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
-                        bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "", experimental: Boolean = false,
-                        retainNoDataTiles: Boolean = false) extends LayerProvider {
+class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
+                        maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any], layoutScheme: LayoutScheme,
+                        bandIndices: Seq[Int], correlationId: String, experimental: Boolean,
+                        retainNoDataTiles: Boolean,
+                        disambiguateConstructors: Null) extends LayerProvider { // workaround for: constructors have the same type after erasure
 
   import DatacubeSupport._
   import FileLayerProvider._
 
-  assert(bandIds.isEmpty || bandIds.size == openSearchLinkTitles.size)
+  @deprecated("call a constructor/factory method with flattened bandIndices instead of nested bandIds")
+  // TODO: remove this eventually (e.g. after updating geotrellistimeseries)
+  def this(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
+           maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
+           bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "", experimental: Boolean = false,
+           retainNoDataTiles: Boolean = false) = this(openSearch, openSearchCollectionId,
+           openSearchLinkTitles = NonEmptyList.fromListUnsafe(for {
+             (title, bandIndices) <- openSearchLinkTitles.toList zip bandIds.toList
+             _ <- bandIndices
+           } yield title),
+           rootPath, maxSpatialResolution, pathDateExtractor, attributeValues, layoutScheme,
+           bandIndices = bandIds.flatten,
+           correlationId, experimental,
+           retainNoDataTiles, disambiguateConstructors = null)
+
+  assert(bandIndices.isEmpty || bandIndices.size == openSearchLinkTitles.size)
 
   if(experimental) {
     logger.warn("Experimental features enabled for: " + openSearchCollectionId)
@@ -616,9 +641,9 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
   private val _rootPath = if(rootPath != null) Paths.get(rootPath) else null
 
   private val openSearchLinkTitlesWithBandId: Seq[(String, Int)] = {
-    if (bandIds.nonEmpty) {
+    if (bandIndices.nonEmpty) {
       //case 1: PROBA-V, geotiff file containing multiple bands, bandids parameter is used to indicate which bands to load
-      openSearchLinkTitles.toList.zip(bandIds.map(_.head))
+      openSearchLinkTitles.toList zip bandIndices
     } else {
       //case 2: Sentinel-2 angle metadata: band number is encoded in the oscars link title directly, maybe proba could use this system as well...
       openSearchLinkTitles
@@ -644,7 +669,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
         }else{
           None
         }
-        if (bandIds.isEmpty) (new BandCompositeRasterSource(sources.map(_._1), crs, attributes,predefinedExtent = gridExtent),feature)
+        if (bandIndices.isEmpty) (new BandCompositeRasterSource(sources.map(_._1), crs, attributes,predefinedExtent = gridExtent),feature)
         else (new MultibandCompositeRasterSource(sources, crs, attributes),feature)
       }
   }
@@ -1150,7 +1175,7 @@ class FileLayerProvider(openSearch: OpenSearchClient, openSearchCollectionId: St
 
       val attributes = Predef.Map("date" -> feature.nominalDate.toString)
 
-      if (byLinkTitle && bandIds.isEmpty) {
+      if (byLinkTitle && bandIndices.isEmpty) {
         val actualNumberOfBands = rasterSources.size
 
         if (actualNumberOfBands != expectedNumberOfBBands) {

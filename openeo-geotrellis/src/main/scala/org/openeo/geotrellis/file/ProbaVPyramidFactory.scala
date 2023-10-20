@@ -59,7 +59,7 @@ class ProbaVPyramidFactory(openSearchEndpoint: String,
         maxSpatialResolution = maxSpatialResolution,
         pathDateExtractor = ProbaVPathDateExtractor,
         layoutScheme = ZoomedLayoutScheme(LatLng, 256),
-        bandIds = bandIndices.map(Seq(_)), // actually: bandIndices (TODO: is there a point to these inner Seqs?)
+        bandIds = bandIndices.map(Seq(_)),
         correlationId = correlationId,
     )
   }
