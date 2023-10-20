@@ -7,7 +7,7 @@ import geotrellis.raster.{UByteConstantNoDataCellType, UByteConstantTile, CellSi
 import geotrellis.vector.Extent
 
 object NoDataRasterSource {
-  private val bandIndices: Seq[Int] = Seq(0)
+  private val supportedBandIndices: Seq[Int] = Seq(0)
 
   def instance(gridExtent: GridExtent[Long], crs: CRS): NoDataRasterSource =
     new NoDataRasterSource(UByteConstantNoDataCellType, gridExtent, crs)
@@ -30,7 +30,7 @@ class NoDataRasterSource(override val cellType: CellType, override val gridExten
     new NoDataRasterSource(cellType, resampleTarget(gridExtent), crs)
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    require(bands == bandIndices)
+    require(bands == supportedBandIndices)
 
     extent.intersection(gridExtent.extent)
       .map { intersection =>
@@ -41,6 +41,8 @@ class NoDataRasterSource(override val cellType: CellType, override val gridExten
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
+    require(bands == supportedBandIndices)
+
     bounds.intersection(gridExtent.dimensions)
       .map { intersection =>
         val intersectionGridBounds = intersection.toGridType[Int]
@@ -49,21 +51,20 @@ class NoDataRasterSource(override val cellType: CellType, override val gridExten
       }
   }
 
-  private def baseNoDataTile(cols: Int, rows: Int): Tile = {
-    val noDataTile = UByteConstantTile(ubyteNODATA, cols, rows)
-    if (noDataTile.cellType == cellType) noDataTile else noDataTile.convert(cellType)
-  }
+  private def baseNoDataTile(cols: Int, rows: Int): Tile = UByteConstantTile(ubyteNODATA, cols, rows).convert(cellType)
 
   override def convert(targetCellType: TargetCellType): RasterSource =
     new NoDataRasterSource(targetCellType.cellType, gridExtent, crs)
 
-  override def name: SourceName = f"${getClass.getName}($gridExtent, $crs)"
+  override def name: SourceName = toString
 
-  override def bandCount: Int = bandIndices.size
+  override def bandCount: Int = supportedBandIndices.size
 
   override def resolutions: List[CellSize] = List(gridExtent.cellSize)
 
   override def attributes: Map[String, String] = Map()
 
   override def attributesForBand(band: Int): Map[String, String] = Map()
+
+  override def toString: String = f"${getClass.getName}($cellType, $gridExtent, $crs)"
 }
