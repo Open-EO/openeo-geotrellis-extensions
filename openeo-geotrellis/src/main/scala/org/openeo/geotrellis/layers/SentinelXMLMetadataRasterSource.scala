@@ -10,6 +10,15 @@ import scala.xml.XML
 
 object SentinelXMLMetadataRasterSource {
 
+  def forAngleBand(xlmPath: String,
+                   angleBandIndex: Int,
+                   targetExtent: Option[Extent] = None,
+                   cellSize: Option[CellSize] = None
+                  ): SentinelXMLMetadataRasterSource = {
+    // TODO: write forAngleBands in terms of forAngleBand instead
+    forAngleBands(xlmPath, Seq(angleBandIndex), targetExtent, cellSize).head
+  }
+
   /**
    * Returns SAA,SZA,VAA,VZA selected by the bands argument.
    */
@@ -50,7 +59,7 @@ object SentinelXMLMetadataRasterSource {
   }
 }
 
-class SentinelXMLMetadataRasterSource(value: Float, // TODO: rename this to a more generic constant value RasterSource
+class SentinelXMLMetadataRasterSource(value: Float, // TODO: rename this to a more generic constant value RasterSource?
                                       theCrs: CRS,
                                       theGridExtent: GridExtent[Long],
                                       sourcePathName: OpenEoSourcePath,

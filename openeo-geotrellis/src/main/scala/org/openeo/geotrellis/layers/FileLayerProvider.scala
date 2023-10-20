@@ -1039,7 +1039,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       }else if(dataPath.endsWith("MTD_TL.xml")) {
         //TODO EP-3611 parse angles
         val te = featureExtentInLayout.map(_.extent) // Can be bigger then original tile.
-        SentinelXMLMetadataRasterSource.forAngleBands(dataPath, Seq(sentinelXmlAngleBandIndex), te, Some(theResolution)).head
+        SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, te, Some(theResolution))
       }
       else {
         def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {
