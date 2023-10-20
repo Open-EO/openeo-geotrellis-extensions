@@ -22,8 +22,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
-import org.openeo.geotrellis.EmptyMultibandTile
-import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient, ProbaVPyramidFactory}
+import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, autoUtmEpsg, retryForever}
 import org.openeo.opensearch.OpenSearchClient
@@ -37,11 +36,7 @@ import java.time._
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
-import scala.collection.immutable
-import scala.collection.parallel.ParSeq
-import scala.collection.parallel.mutable.ParArray
 import scala.reflect.ClassTag
-import scala.reflect.io.Directory
 import scala.util.matching.Regex
 
 /**
