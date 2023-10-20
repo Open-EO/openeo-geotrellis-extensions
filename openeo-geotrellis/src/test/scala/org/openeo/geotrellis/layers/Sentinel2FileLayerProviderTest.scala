@@ -747,7 +747,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assert(maskedCellCounts.forall(_ == maskedCellCounts.head))
   }
 
-  private def faparLayerProvider(attributeValues: Map[String, Any] = Map("resolution" -> 10)) =
+  private def faparLayerProvider(attributeValues: Map[String, Any] = Map("resolution" -> 10 /* exclude 20m features like in layercatalog.json */)) =
     FileLayerProvider(
       openSearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
