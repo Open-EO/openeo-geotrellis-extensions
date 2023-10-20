@@ -30,12 +30,6 @@ object Sentinel3PyramidFactoryTest {
   @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 
-  def bands: JStream[Arguments] = JStream.of(
-    Arguments.of(util.Collections.singletonList("NDVI")),
-    Arguments.of(util.Arrays.asList("B0", "B2", "B3", "MIR", "og", "ag", "saa", "sm", "sza", "vaa", "vza", "wvg", "tg",
-      "NDVI", "TOA_NDVI"))
-  )
-
   def testIntroducingEmptyBandRetainsCellTypeArgumentsProvider: JStream[Arguments] = JStream.of(
     Arguments.of(util.Arrays.asList("vaa", "B0", "NDVI"), java.lang.Boolean.FALSE),
     Arguments.of(util.Arrays.asList("vaa", "B0", "NDVI", "TOA_NDVI"), java.lang.Boolean.TRUE),
@@ -45,9 +39,10 @@ object Sentinel3PyramidFactoryTest {
 class Sentinel3PyramidFactoryTest extends RasterMatchers {
 
   @Disabled("only visual inspection")
-  @ParameterizedTest
-  @MethodSource(Array("bands"))
-  def testTOA_NDVI(bands: util.List[String]): Unit = {
+  @Test
+  def testTOA_NDVI(): Unit = {
+    val bands = util.Arrays.asList("B0", "B2", "B3", "MIR", "og", "ag", "saa", "sm", "sza", "vaa", "vza", "wvg", "tg",
+      "NDVI", "TOA_NDVI")
     val (raster, crs) = sentinel3Raster(bands)
     MultibandGeoTiff(raster, crs).write(s"/tmp/testTOA_NDVI_${String.join("_", bands)}.tif")
   }
@@ -79,7 +74,6 @@ class Sentinel3PyramidFactoryTest extends RasterMatchers {
       maxSpatialResolution = CellSize(0.008928571428571, 0.008928571428571)
     )
 
-    //val requestedExtent = Extent(30.8074028236180268, 29.8337715247058242, 31.3766799320516760, 30.2494341753081706)
     val requestedExtent = Extent(9.603818023478027, 57.26817706195379, 10.732128254309856, 57.80985456431523)
     val targetCrs = LatLng
 
