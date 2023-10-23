@@ -23,14 +23,14 @@ class AgEra5FileLayerProviderTest {
 
   private val bands: util.List[String] = util.Arrays.asList("dewpoint-temperature", "precipitation-flux", "solar-radiation-flux")
 
-  private def layerProvider = new FileLayerProvider(new Agera5SearchClient(dataGlob = "/data/MEP/ECMWF/AgERA5/2020/20200424/AgERA5_dewpoint-temperature_*.tif", bands, raw".+_(\d{4})(\d{2})(\d{2})\.tif".r),"",
+  private def layerProvider = FileLayerProvider(new Agera5SearchClient(dataGlob = "/data/MEP/ECMWF/AgERA5/2020/20200424/AgERA5_dewpoint-temperature_*.tif", bands, raw".+_(\d{4})(\d{2})(\d{2})\.tif".r),"",
     NonEmptyList.fromList(asScalaBuffer(bands).toList).get,
     rootPath = "/data/MEP/ECMWF/AgERA5",
     maxSpatialResolution = CellSize(0.1, 0.1),
     new Sentinel5PPathDateExtractor(maxDepth = 3),
     layoutScheme = FloatingLayoutScheme(256), experimental = false)
 
-  private def layerProvider2 = new FileLayerProvider(new Agera5SearchClient(dataGlob = "/data/MEP/ECMWF/AgERA5/2020/20200424/AgERA5_dewpoint-temperature_*.tif", bands, raw".+_(\d{4})(\d{2})(\d{2})\.tif".r),"",
+  private def layerProvider2 = FileLayerProvider(new Agera5SearchClient(dataGlob = "/data/MEP/ECMWF/AgERA5/2020/20200424/AgERA5_dewpoint-temperature_*.tif", bands, raw".+_(\d{4})(\d{2})(\d{2})\.tif".r),"",
     NonEmptyList.fromList(asScalaBuffer(bands).toList).get,
     rootPath = "/data/MEP/ECMWF/AgERA5",
     maxSpatialResolution = CellSize(3000, 3000),

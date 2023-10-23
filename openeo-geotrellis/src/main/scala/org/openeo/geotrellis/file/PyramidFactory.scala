@@ -58,7 +58,7 @@ class PyramidFactory(openSearchClient: OpenSearchClient,
    */
   private def fileLayerProvider(metadataProperties: Map[String, Any],
                                correlationId: String,
-                               layoutScheme: LayoutScheme = ZoomedLayoutScheme(crs, 256)) = new FileLayerProvider(
+                               layoutScheme: LayoutScheme = ZoomedLayoutScheme(crs, 256)) = FileLayerProvider(
     openSearchClient,
     openSearchCollectionId,
     NonEmptyList.fromListUnsafe(openSearchLinkTitles.asScala.toList),

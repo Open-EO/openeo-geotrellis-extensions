@@ -55,7 +55,7 @@ class S1GrdSigma0FileLayerProviderTest {
     assertEquals(33460.7361532273, angleMean.mean, 1)
   }
 
-  private def sigma0LayerProvider = new FileLayerProvider(
+  private def sigma0LayerProvider = FileLayerProvider(
     openSearch = OpenSearchClient(new URL("https://services.terrascope.be/catalogue")),
     openSearchCollectionId = "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
     openSearchLinkTitles = NonEmptyList.of("VH", "VV", "angle"),

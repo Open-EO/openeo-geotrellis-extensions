@@ -40,7 +40,7 @@ class GlobalNetCdfFileLayerProviderTest {
 
   private val vars: util.List[String] = util.Arrays.asList("LAI", "NOBS")
 
-  private def layerProvider2 = new FileLayerProvider(new GlobalNetCDFSearchClient(dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/*/*/*/*.nc",vars, raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored),"BioPar_LAI300_V1_Global",
+  private def layerProvider2 = FileLayerProvider(new GlobalNetCDFSearchClient(dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/*/*/*/*.nc",vars, raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored),"BioPar_LAI300_V1_Global",
     NonEmptyList.fromList(asScalaBuffer(vars).toList).get,
     rootPath = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global",
     maxSpatialResolution = CellSize(0.002976190476204,0.002976190476190),
@@ -215,7 +215,7 @@ class GlobalNetCdfFileLayerProviderTest {
     val parameters = new DataCubeParameters()
     parameters.layoutScheme = "FloatingLayoutScheme"
 
-    val layerProvider2WithOneBand = new FileLayerProvider(new GlobalNetCDFSearchClient(dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/2017/20170110/*/*.nc",vars, raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored),"BioPar_LAI300_V1_Global",
+    val layerProvider2WithOneBand = FileLayerProvider(new GlobalNetCDFSearchClient(dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/2017/20170110/*/*.nc",vars, raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored),"BioPar_LAI300_V1_Global",
       NonEmptyList.of("LAI"),
       rootPath = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global",
       maxSpatialResolution = CellSize(0.002976190476204,0.002976190476190),
