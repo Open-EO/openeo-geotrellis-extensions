@@ -610,7 +610,7 @@ class OpenEOProcesses extends Serializable {
       return count
     }else{
       logger.info(s"Computing number of bands in cube: ${cube.metadata}")
-      val counts = cube.take(100).map({ case (k, t) => t.bandCount }).distinct
+      val counts = cube.take(10).map({ case (k, t) => t.bandCount }).distinct
 
       if(counts.size==0){
         if(cube.isEmpty())
