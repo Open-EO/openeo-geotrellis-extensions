@@ -464,6 +464,10 @@ class OpenEOProcesses extends Serializable {
       case value: OpenEORasterCube[SpaceTimeKey] => value.openEOMetadata.bandCount
       case _ => 0
     }
+    val bandCount2 = RDDBandCount(datacube) // Better
+    if (bandCount != bandCount2) {
+      logger.warn("Band count difference! Could cause problems later on")
+    }
     val filledRDD: RDD[(SpaceTimeKey, MultibandTile)] = {
       if(reduce) {
         tilesByInterval.rightOuterJoin(allKeysRDD,partitioner).mapValues(_._1.getOrElse(new EmptyMultibandTile(cols, rows, cellType, bandCount)))

@@ -121,6 +121,42 @@ class MergeCubesSpec {
     assertTrue(mse < 0.1)
   }
 
+  @Test def testMergeCubesTiledNodata(): Unit = {
+    val path = "tmp/testMergeCubesTiledNodata/"
+    Files.createDirectories(Paths.get(path))
+    val p = new OpenEOProcesses()
+
+    def agg(rdd: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+      val startDate = rdd.keys.collect().head.time
+      var composite = p.aggregateTemporal(
+        rdd,
+        List(startDate, startDate).map(DateTimeFormatter.ISO_INSTANT.format(_)).asJava,
+        List(startDate).map(DateTimeFormatter.ISO_INSTANT.format(_)).asJava,
+        TestOpenEOProcessScriptBuilder.createMedian(true),
+        java.util.Collections.emptyMap()
+      )
+//      composite = p.filterEmptyTile(composite)
+      val tmp2 = new ContextRDD(composite, composite.metadata)
+      tmp2
+    }
+
+    val tileLayerRDD_R = agg(buildSpatioTemporalDataCubePattern(patternScale = 8))
+    val tileLayerRDD_G = buildSpatioTemporalDataCubePattern(patternScale = 4)
+    val tileLayerRDD_B = agg(buildSpatioTemporalDataCubePattern(patternScale = 2))
+
+    val tileLayerRDD_RG = new OpenEOProcesses().mergeCubes(tileLayerRDD_R, tileLayerRDD_G, null)
+    val tileLayerRDD_RGB = new OpenEOProcesses().mergeCubes(tileLayerRDD_RG, tileLayerRDD_B, null)
+    saveRDD(tileLayerRDD_R.toSpatial(tileLayerRDD_R.keys.collect().head.time), -1, path + "tileLayerRDD_R.tiff")
+    saveRDD(tileLayerRDD_G.toSpatial(tileLayerRDD_G.keys.collect().head.time), -1, path + "tileLayerRDD_G.tiff")
+    saveRDD(tileLayerRDD_B.toSpatial(tileLayerRDD_B.keys.collect().head.time), -1, path + "tileLayerRDD_B.tiff")
+    saveRDD(tileLayerRDD_RG.toSpatial(tileLayerRDD_RG.keys.collect().head.time), -1, path + "tileLayerRDD_RG.tiff")
+    saveRDD(tileLayerRDD_RGB.toSpatial(tileLayerRDD_RGB.keys.collect().head.time), -1, path + "tileLayerRDD_RGB.tiff")
+
+//    val mse = MergeCubesSpec.simpleMeanSquaredError(specialTile, firstTile.band(2))
+//    println("MSE = " + mse)
+//    assertTrue(mse < 0.1)
+  }
+
   @Test def testSimpleMeanSquaredError(): Unit = {
     val size = 8
     val arr = ListBuffer[Byte]()

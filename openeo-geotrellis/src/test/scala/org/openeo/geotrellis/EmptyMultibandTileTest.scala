@@ -1,9 +1,8 @@
 package org.openeo.geotrellis
 
 import java.util
-
 import geotrellis.raster.CellType.constantNoDataCellTypes
-import geotrellis.raster.{CellType, FloatUserDefinedNoDataCellType, IntUserDefinedNoDataCellType, NODATA, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType}
+import geotrellis.raster.{CellType, FloatUserDefinedNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, NODATA, Tile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType}
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,4 +37,11 @@ class EmptyMultibandTileTest(ct:CellType) {
     assertEquals(NODATA,tile.get(0,0))
   }
 
+  @Test
+  def testCreate(): Unit = {
+    val emptyMultibandTile: MultibandTile = new EmptyMultibandTile(10, 10, ct, 3)
+    assertEquals(emptyMultibandTile.bandCount, 3)
+    assertEquals(NODATA, emptyMultibandTile.bands.head.get(0, 0))
+    assertEquals(NODATA, emptyMultibandTile.band(1).get(0, 0))
+  }
 }

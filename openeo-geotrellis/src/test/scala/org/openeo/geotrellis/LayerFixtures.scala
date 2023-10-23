@@ -8,7 +8,9 @@ import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
+import geotrellis.spark.testkit.TileLayerRDDBuilders.defaultCRS
 import geotrellis.vector.{Extent, ProjectedExtent}
+import jp.ne.opt.chronoscala.Imports._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
@@ -22,7 +24,6 @@ import java.nio.file.Paths
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
-import java.util
 import java.util.Collections.singletonList
 import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
@@ -49,7 +50,7 @@ object LayerFixtures {
     layer
   }
 
-  def buildSpatioTemporalDataCube(tiles: util.List[_ <: Tile], dates: Seq[String], extent: Option[Extent] = None, tilingFactor:Int=1): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+  def buildSpatioTemporalDataCube(tiles: java.util.List[_ <: Tile], dates: Seq[String], extent: Option[Extent] = None, tilingFactor:Int=1): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val mbTile = ArrayMultibandTile(tiles.asScala)
     val raster = Raster[MultibandTile](mbTile, extent.getOrElse(TileLayerRDDBuilders.defaultCRS.worldExtent))
     val tileLayout = new TileLayout(tilingFactor, tilingFactor, (raster.cols / tilingFactor).asInstanceOf[Integer], (raster.rows / tilingFactor).asInstanceOf[Integer])
@@ -67,7 +68,81 @@ object LayerFixtures {
     new ContextRDD(cubeXYTB, metadata)
   }
 
-  def buildSingleBandSpatioTemporalDataCube(tiles: util.List[Tile], dates: Seq[String]): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+
+  /**
+   * Based on TileLayerRDDBuilders.createSpaceTimeTileLayerRDD(...)
+   */
+  def createSpaceTimeMultibandTileLayerRDD(
+                                            tiles: Traversable[(MultibandTile, ZonedDateTime)],
+                                            tileLayout: TileLayout,
+                                            cellType: CellType = IntConstantNoDataCellType,
+                                            extent: Extent = defaultCRS.worldExtent,
+                                          )(implicit sc: SparkContext): MultibandTileLayerRDD[SpaceTimeKey] = {
+
+    val layout = LayoutDefinition(extent, tileLayout)
+    val keyBounds = {
+      val GridBounds(colMin, rowMin, colMax, rowMax) = layout.mapTransform(extent)
+      val minTime = tiles.minBy(_._2)._2
+      val maxTime = tiles.maxBy(_._2)._2
+      KeyBounds(SpaceTimeKey(colMin, rowMin, minTime), SpaceTimeKey(colMax, rowMax, maxTime))
+    }
+    val metadata = TileLayerMetadata(
+      cellType,
+      layout,
+      extent,
+      defaultCRS,
+      keyBounds
+    )
+
+    val re = RasterExtent(
+      extent = extent,
+      cols = tileLayout.layoutCols,
+      rows = tileLayout.layoutRows
+    )
+
+    val tileBounds = re.gridBoundsFor(extent)
+
+    val tilesArr = tiles.toArray
+    val tmsTiles = tileBounds.coordsIter.zip(tilesArr.iterator).map {
+      case ((col, row), (tile, time)) => (SpaceTimeKey(col, row, time), tile)
+    }
+
+    new ContextRDD(sc.parallelize(tmsTiles.toSeq), metadata)
+  }
+
+  /**
+   * Practical for testing nodata tiles.
+   */
+  def buildSpatioTemporalDataCubePattern(tilingFactor: Int = 1, patternScale: Int = 1): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    val horizontalTiles = 8
+    val tilePixelSize = 64
+    val tileLayout = new TileLayout(tilingFactor * horizontalTiles, tilingFactor, (tilePixelSize / tilingFactor), (tilePixelSize / tilingFactor))
+
+    val rand = new scala.util.Random(42) // Fixed seed to make test predictable
+
+    val tile1 = DoubleArrayTile.apply((1 to tilePixelSize * tilePixelSize).map(_ => 20 + 100 * rand.nextDouble).toArray, tilePixelSize, tilePixelSize)
+
+    val mbt0 = new EmptyMultibandTile(tile1.cols, tile1.rows, tile1.cellType, 1)
+    //    val tile0 = ArrayTile.empty(tile1.cellType, tile1.cols, tile1.rows)
+    //    val mbt0 = ArrayMultibandTile(Array(tile0))
+    val mbt1 = ArrayMultibandTile(Array(tile1))
+
+    val mbTiles = (0 until horizontalTiles).map(i => if ((i * 1.0 / patternScale).floor % 2 == 0) mbt0 else mbt1)
+
+    assert(mbTiles.length == horizontalTiles)
+    val dateTime = ZonedDateTime.parse("2019-01-01T00:00:00Z")
+
+    val tilesWithTime = mbTiles.map(t => (t, dateTime))
+    implicit val sc: SparkContext = SparkContext.getOrCreate()
+    val cubeXYTB = createSpaceTimeMultibandTileLayerRDD(
+      tilesWithTime,
+      tileLayout,
+      extent = LayerFixtures.defaultExtent,
+    )
+    new ContextRDD(cubeXYTB, cubeXYTB.metadata)
+  }
+
+  def buildSingleBandSpatioTemporalDataCube(tiles: java.util.List[Tile], dates: Seq[String]): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
 
     implicit val sc = SparkContext.getOrCreate
     val times: Seq[ZonedDateTime] = dates.map(ZonedDateTime.parse(_))
@@ -82,7 +157,7 @@ object LayerFixtures {
     val minDate = "2017-01-01T00:00:00Z"
     val maxDate = "2018-01-15T00:00:00Z"
     val dates = Seq(minDate,"2017-01-15T00:00:00Z","2017-02-01T00:00:00Z",maxDate)
-    val tiles = util.Arrays.asList(zeroTile, emptyTile)
+    val tiles = java.util.Arrays.asList(zeroTile, emptyTile)
     buildSpatioTemporalDataCube(tiles, dates, extent, tilingFactor)
   }
 
@@ -337,7 +412,7 @@ object LayerFixtures {
 
   def cglsFAPAR1km = {
     val dataGlob = Paths.get(cglsFAPARPath).getParent.resolve( "*.nc" ).toString
-    val netcdfVariables = util.Arrays.asList("FAPAR")
+    val netcdfVariables = java.util.Arrays.asList("FAPAR")
     val dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+"
     val openSearchClient = OpenSearchClient(dataGlob, isUTM = false, dateRegex, netcdfVariables, "cgls")
 
@@ -352,7 +427,7 @@ object LayerFixtures {
 
   val cglsNDVI300 = {
     val dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2019/201906*/*/*.nc"
-    val netcdfVariables = util.Arrays.asList("NDVI")
+    val netcdfVariables = java.util.Arrays.asList("NDVI")
     val dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+"
     val openSearchClient = OpenSearchClient(dataGlob, isUTM = false, dateRegex, netcdfVariables, "cgls")
     new org.openeo.geotrellis.file.PyramidFactory(
