@@ -7,8 +7,11 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert._
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue, fail}
+import org.junit.jupiter.api.{BeforeAll, Test}
+import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.geotiff.saveRDD
 import org.openeo.geotrelliscommon.{OpenEORasterCube, OpenEORasterCubeMetadata, SparseSpaceTimePartitioner}
@@ -17,15 +20,16 @@ import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
+import java.util.stream.{Stream => JStream}
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
 import scala.reflect.io.Directory
 
-object MergeCubesSpec{
+object MergeCubesSpec {
 
   var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit = {
     sc = {
       val conf = new SparkConf().setMaster("local[2]").setAppName(getClass.getSimpleName)
@@ -35,7 +39,7 @@ object MergeCubesSpec{
     }
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 
   private def getDebugTile: MutableArrayTile = {
@@ -64,6 +68,17 @@ object MergeCubesSpec{
     val squared = diffArr.map(v => v * v)
     squared.sum / squared.length
   }
+
+  def testMergeCubesTiledNodataArguments: JStream[Arguments] = JStream.of(
+    Arguments.of(java.lang.Boolean.valueOf(false), java.lang.Boolean.valueOf(false), java.lang.Boolean.valueOf(false)),
+    Arguments.of(java.lang.Boolean.valueOf(false), java.lang.Boolean.valueOf(false), java.lang.Boolean.valueOf(true)),
+    Arguments.of(java.lang.Boolean.valueOf(false), java.lang.Boolean.valueOf(true), java.lang.Boolean.valueOf(false)),
+    Arguments.of(java.lang.Boolean.valueOf(false), java.lang.Boolean.valueOf(true), java.lang.Boolean.valueOf(true)),
+    Arguments.of(java.lang.Boolean.valueOf(true), java.lang.Boolean.valueOf(false), java.lang.Boolean.valueOf(false)),
+    Arguments.of(java.lang.Boolean.valueOf(true), java.lang.Boolean.valueOf(false), java.lang.Boolean.valueOf(true)),
+    Arguments.of(java.lang.Boolean.valueOf(true), java.lang.Boolean.valueOf(true), java.lang.Boolean.valueOf(false)),
+    Arguments.of(java.lang.Boolean.valueOf(true), java.lang.Boolean.valueOf(true), java.lang.Boolean.valueOf(true)),
+  )
 }
 
 class MergeCubesSpec {
@@ -121,28 +136,38 @@ class MergeCubesSpec {
     assertTrue(mse < 0.1)
   }
 
-  @Test def testMergeCubesTiledNodata(): Unit = {
-    val path = "tmp/testMergeCubesTiledNodata/"
+
+  @ParameterizedTest
+  @MethodSource(Array("testMergeCubesTiledNodataArguments"))
+  def testMergeCubesTiledNodata(aggregateR: java.lang.Boolean,
+                                aggregateG: java.lang.Boolean,
+                                aggregateB: java.lang.Boolean,
+                               ): Unit = {
+    val path = "tmp/testMergeCubesTiledNodata/" + aggregateR + aggregateG + aggregateB + "/"
     Files.createDirectories(Paths.get(path))
     val p = new OpenEOProcesses()
 
     def agg(rdd: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
       val startDate = rdd.keys.collect().head.time
-      var composite = p.aggregateTemporal(
+      val composite = p.aggregateTemporal(
         rdd,
         List(startDate, startDate).map(DateTimeFormatter.ISO_INSTANT.format(_)).asJava,
         List(startDate).map(DateTimeFormatter.ISO_INSTANT.format(_)).asJava,
         TestOpenEOProcessScriptBuilder.createMedian(true),
         java.util.Collections.emptyMap()
       )
-//      composite = p.filterEmptyTile(composite)
+      // composite = p.filterEmptyTile(composite)
       val tmp2 = new ContextRDD(composite, composite.metadata)
       tmp2
     }
 
-    val tileLayerRDD_R = agg(buildSpatioTemporalDataCubePattern(patternScale = 8))
-    val tileLayerRDD_G = buildSpatioTemporalDataCubePattern(patternScale = 4)
-    val tileLayerRDD_B = agg(buildSpatioTemporalDataCubePattern(patternScale = 2))
+    var tileLayerRDD_R = buildSpatioTemporalDataCubePattern()
+    var tileLayerRDD_G = buildSpatioTemporalDataCubePattern(patternScale = 2)
+    var tileLayerRDD_B = buildSpatioTemporalDataCubePattern(patternScale = 4)
+
+    if (aggregateR) tileLayerRDD_R = agg(tileLayerRDD_R)
+    if (aggregateG) tileLayerRDD_G = agg(tileLayerRDD_G)
+    if (aggregateB) tileLayerRDD_B = agg(tileLayerRDD_B)
 
     val tileLayerRDD_RG = new OpenEOProcesses().mergeCubes(tileLayerRDD_R, tileLayerRDD_G, null)
     val tileLayerRDD_RGB = new OpenEOProcesses().mergeCubes(tileLayerRDD_RG, tileLayerRDD_B, null)
@@ -151,10 +176,7 @@ class MergeCubesSpec {
     saveRDD(tileLayerRDD_B.toSpatial(tileLayerRDD_B.keys.collect().head.time), -1, path + "tileLayerRDD_B.tiff")
     saveRDD(tileLayerRDD_RG.toSpatial(tileLayerRDD_RG.keys.collect().head.time), -1, path + "tileLayerRDD_RG.tiff")
     saveRDD(tileLayerRDD_RGB.toSpatial(tileLayerRDD_RGB.keys.collect().head.time), -1, path + "tileLayerRDD_RGB.tiff")
-
-//    val mse = MergeCubesSpec.simpleMeanSquaredError(specialTile, firstTile.band(2))
-//    println("MSE = " + mse)
-//    assertTrue(mse < 0.1)
+    // No error should pop up when saving the images.
   }
 
   @Test def testSimpleMeanSquaredError(): Unit = {

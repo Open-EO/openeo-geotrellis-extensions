@@ -115,7 +115,7 @@ object LayerFixtures {
    */
   def buildSpatioTemporalDataCubePattern(tilingFactor: Int = 1, patternScale: Int = 1): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val horizontalTiles = 8
-    val tilePixelSize = 64
+    val tilePixelSize = 16
     val tileLayout = new TileLayout(tilingFactor * horizontalTiles, tilingFactor, (tilePixelSize / tilingFactor), (tilePixelSize / tilingFactor))
 
     val rand = new scala.util.Random(42) // Fixed seed to make test predictable
