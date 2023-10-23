@@ -8,8 +8,7 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue, fail}
-import org.junit.jupiter.api.{BeforeAll, Test}
-import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.openeo.geotrellis.LayerFixtures._
@@ -20,9 +19,9 @@ import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util
-import java.util.stream.{Stream => JStream}
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
+import scala.language.implicitConversions
 import scala.reflect.io.Directory
 
 object MergeCubesSpec {
@@ -69,19 +68,28 @@ object MergeCubesSpec {
     squared.sum / squared.length
   }
 
-  def testMergeCubesTiledNodataArguments: JStream[Arguments] = JStream.of(
-    Arguments.of(java.lang.Boolean.valueOf(false), java.lang.Boolean.valueOf(false), java.lang.Boolean.valueOf(false)),
-    Arguments.of(java.lang.Boolean.valueOf(false), java.lang.Boolean.valueOf(false), java.lang.Boolean.valueOf(true)),
-    Arguments.of(java.lang.Boolean.valueOf(false), java.lang.Boolean.valueOf(true), java.lang.Boolean.valueOf(false)),
-    Arguments.of(java.lang.Boolean.valueOf(false), java.lang.Boolean.valueOf(true), java.lang.Boolean.valueOf(true)),
-    Arguments.of(java.lang.Boolean.valueOf(true), java.lang.Boolean.valueOf(false), java.lang.Boolean.valueOf(false)),
-    Arguments.of(java.lang.Boolean.valueOf(true), java.lang.Boolean.valueOf(false), java.lang.Boolean.valueOf(true)),
-    Arguments.of(java.lang.Boolean.valueOf(true), java.lang.Boolean.valueOf(true), java.lang.Boolean.valueOf(false)),
-    Arguments.of(java.lang.Boolean.valueOf(true), java.lang.Boolean.valueOf(true), java.lang.Boolean.valueOf(true)),
-  )
+  object AggregationType extends Enumeration {
+    case class Val(fileMarker: String) extends super.Val
+
+    implicit def valueToVal(x: Value): Val = x.asInstanceOf[Val]
+
+    val no: Val = Val("noAggregate")
+    val simple: Val = Val("simpleAggregate")
+    val extraNoData: Val = Val("extraNoDataAggregate")
+  }
+
+  def testMergeCubesTiledNodataArguments: java.util.stream.Stream[Arguments] = util.Arrays.stream((
+    for {
+      r <- Seq(AggregationType.no, AggregationType.simple, AggregationType.extraNoData)
+      g <- Seq(AggregationType.no, AggregationType.simple, AggregationType.extraNoData)
+      b <- Seq(AggregationType.no) // No need to run all combinations to test all what is needed
+    } yield Arguments.of(r, g, b)
+    ).toArray)
 }
 
 class MergeCubesSpec {
+
+  import MergeCubesSpec._
 
   @Test def testMergeCubesCrsResample(): Unit = {
     val path = "/tmp/testMergeCubesCrsResample/"
@@ -139,35 +147,49 @@ class MergeCubesSpec {
 
   @ParameterizedTest
   @MethodSource(Array("testMergeCubesTiledNodataArguments"))
-  def testMergeCubesTiledNodata(aggregateR: java.lang.Boolean,
-                                aggregateG: java.lang.Boolean,
-                                aggregateB: java.lang.Boolean,
+  def testMergeCubesTiledNodata(aggregateR: AggregationType.Value,
+                                aggregateG: AggregationType.Value,
+                                aggregateB: AggregationType.Value,
                                ): Unit = {
     val path = "tmp/testMergeCubesTiledNodata/" + aggregateR + aggregateG + aggregateB + "/"
     Files.createDirectories(Paths.get(path))
     val p = new OpenEOProcesses()
 
-    def agg(rdd: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]]): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    def agg(rdd: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]],
+            aggregationType: AggregationType.Value,
+           ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
       val startDate = rdd.keys.collect().head.time
-      val composite = p.aggregateTemporal(
-        rdd,
-        List(startDate, startDate).map(DateTimeFormatter.ISO_INSTANT.format(_)).asJava,
-        List(startDate).map(DateTimeFormatter.ISO_INSTANT.format(_)).asJava,
-        TestOpenEOProcessScriptBuilder.createMedian(true),
-        java.util.Collections.emptyMap()
-      )
-      // composite = p.filterEmptyTile(composite)
-      val tmp2 = new ContextRDD(composite, composite.metadata)
-      tmp2
+      if (aggregationType == AggregationType.no) {
+        rdd
+      } else {
+        val intervals = if (aggregationType == AggregationType.extraNoData) {
+          List(startDate, startDate, startDate.plusMonths(1), startDate.plusMonths(1)).map(DateTimeFormatter.ISO_INSTANT.format(_)).asJava
+        } else {
+          List(startDate, startDate).map(DateTimeFormatter.ISO_INSTANT.format(_)).asJava
+        }
+
+        val labels = if (aggregationType == AggregationType.extraNoData) {
+          List(startDate, startDate.plusMonths(1)).map(DateTimeFormatter.ISO_INSTANT.format(_)).asJava
+        } else {
+          List(startDate).map(DateTimeFormatter.ISO_INSTANT.format(_)).asJava
+        }
+
+        val composite = p.aggregateTemporal(
+          rdd,
+          intervals,
+          labels,
+          TestOpenEOProcessScriptBuilder.createMedian(true),
+          java.util.Collections.emptyMap()
+        )
+        // composite = p.filterEmptyTile(composite)
+        val tmp2 = new ContextRDD(composite, composite.metadata)
+        tmp2
+      }
     }
 
-    var tileLayerRDD_R = buildSpatioTemporalDataCubePattern()
-    var tileLayerRDD_G = buildSpatioTemporalDataCubePattern(patternScale = 2)
-    var tileLayerRDD_B = buildSpatioTemporalDataCubePattern(patternScale = 4)
-
-    if (aggregateR) tileLayerRDD_R = agg(tileLayerRDD_R)
-    if (aggregateG) tileLayerRDD_G = agg(tileLayerRDD_G)
-    if (aggregateB) tileLayerRDD_B = agg(tileLayerRDD_B)
+    val tileLayerRDD_R = agg(buildSpatioTemporalDataCubePattern(), aggregateR)
+    val tileLayerRDD_G = agg(buildSpatioTemporalDataCubePattern(patternScale = 2), aggregateG)
+    val tileLayerRDD_B = agg(buildSpatioTemporalDataCubePattern(patternScale = 4), aggregateB)
 
     val tileLayerRDD_RG = new OpenEOProcesses().mergeCubes(tileLayerRDD_R, tileLayerRDD_G, null)
     val tileLayerRDD_RGB = new OpenEOProcesses().mergeCubes(tileLayerRDD_RG, tileLayerRDD_B, null)
