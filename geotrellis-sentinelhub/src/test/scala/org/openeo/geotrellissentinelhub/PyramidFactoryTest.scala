@@ -41,6 +41,7 @@ import scala.io.Source
 
 object PyramidFactoryTest {
   private implicit var sc: SparkContext = _
+  private def testClassScopeMetadataTracker = ScopedMetadataTracker(scope = getClass.getName)
 
   implicit class WithRootCause(e: Throwable) {
     def getRootCause: Throwable = if (e.getCause == null) e else e.getCause.getRootCause
@@ -95,6 +96,10 @@ object PyramidFactoryTest {
   @AfterClass def trackingOff(): Unit ={
     BatchJobMetadataTracker.setGlobalTracking(false)
   }
+
+  @AfterClass
+  def printProcessingUnitsUsed(): Unit =
+    println(s"$testClassScopeMetadataTracker consumed a total of ${testClassScopeMetadataTracker.sentinelHubProcessingUnits} PUs")
 
   private class SingleResultCaptor[R] extends Answer[R] {
     var result: R = _
@@ -242,7 +247,8 @@ class PyramidFactoryTest {
       until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
       band_names = Seq("B08", "B04",  "SCL").asJava,
       metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
-      dataCubeParameters
+      dataCubeParameters,
+      correlationId = testClassScopeMetadataTracker.scope,
     )
 
     val spatialLayer = layer
@@ -301,7 +307,9 @@ class PyramidFactoryTest {
     val isoUntil = ISO_OFFSET_DATE_TIME format (datetime plusDays 1)
 
     val pyramid = pyramidFactory.pyramid_seq(boundingBox.extent, srs, isoFrom, isoUntil, bandNames.asJava,
-      metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]) // https://github.com/scala/bug/issues/8911
+      metadata_properties = Collections.emptyMap[String, util.Map[String, Any]], // https://github.com/scala/bug/issues/8911
+      correlationId = testClassScopeMetadataTracker.scope,
+    )
 
     val (zoom, baseLayer) = pyramid
       .maxBy { case (zoom, _) => zoom }
@@ -343,8 +351,9 @@ class PyramidFactoryTest {
 
   // TODO: use parameterized test
   private def testUtm(from: ZonedDateTime, until: ZonedDateTime): Unit = {
-    val correlationId = "r-abc123"
-    def scopedMetadataTracker = ScopedMetadataTracker(scope = correlationId)(sc)
+    val expected = referenceRaster("utm.tif")
+
+    def testScopedMetadataTracker = ScopedMetadataTracker(scope = "r-abc123")(sc)
 
     try {
       val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
@@ -359,9 +368,9 @@ class PyramidFactoryTest {
       val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "S2L2A", new DefaultCatalogApi(endpoint),
         new DefaultProcessApi(endpoint), authorizer, maxSpatialResolution = CellSize(10,10))
 
-      val parameters = new DataCubeParameters()
-      parameters.layoutScheme = "FloatingLayoutScheme"
-      parameters.globalExtent = Some(utmBoundingBox)
+      val dataCubeParameters = new DataCubeParameters()
+      dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+      dataCubeParameters.globalExtent = Some(utmBoundingBox)
 
       val Seq((_, layer)) = pyramidFactory.datacube_seq(
         Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
@@ -369,8 +378,8 @@ class PyramidFactoryTest {
         until_datetime = ISO_OFFSET_DATE_TIME format until,
         band_names = Seq("B08", "B04", "B03").asJava,
         metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
-        parameters,
-        correlationId
+        dataCubeParameters,
+        correlationId = testScopedMetadataTracker.scope,
       )
 
       assertTrue(layer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
@@ -388,7 +397,6 @@ class PyramidFactoryTest {
       val tif = MultibandGeoTiff(multibandTile, extent, layer.metadata.crs, geoTiffOptions)
       tif.write(s"/tmp/utm.tif")
 
-      val expected = referenceRaster("utm.tif")
       assertEquals(expected, actual)
 
       val trackedMetadata = BatchJobMetadataTracker.tracker("").asDict()
@@ -396,9 +404,12 @@ class PyramidFactoryTest {
 
       assertTrue(s"unexpected number of failed tile requests: $numFailedRequests", numFailedRequests >= 0)
 
-      assertTrue(s"PUs: ${scopedMetadataTracker.sentinelHubProcessingUnits}",
-        scopedMetadataTracker.sentinelHubProcessingUnits > 0)
-    } finally ScopedMetadataTracker.remove(scope = correlationId)
+      assertTrue(s"PUs: ${testScopedMetadataTracker.sentinelHubProcessingUnits}",
+        testScopedMetadataTracker.sentinelHubProcessingUnits > 0)
+    } finally {
+      testClassScopeMetadataTracker.addSentinelHubProcessingUnits(testScopedMetadataTracker.sentinelHubProcessingUnits)
+      ScopedMetadataTracker.remove(testScopedMetadataTracker.scope)
+    }
   }
 
   @Test
@@ -432,7 +443,9 @@ class PyramidFactoryTest {
       from_datetime = ISO_OFFSET_DATE_TIME format date,
       until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
       band_names = Seq("B08", "B04", "B03").asJava,
-      metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
+      metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
+      dataCubeParameters = new DataCubeParameters,
+      correlationId = testClassScopeMetadataTracker.scope,
     )
 
     assertTrue(layer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
@@ -503,7 +516,9 @@ class PyramidFactoryTest {
       from_datetime = ISO_OFFSET_DATE_TIME format date,
       until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
       band_names = Seq("VH", "VV").asJava,
-      metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
+      metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
+      dataCubeParameters = new DataCubeParameters,
+      correlationId = testClassScopeMetadataTracker.scope,
     )
 
     val spatialLayer = layer
@@ -559,6 +574,8 @@ class PyramidFactoryTest {
       until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
       band_names = Seq("HV", "HH").asJava,
       metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]],
+      dataCubeParameters = new DataCubeParameters,
+      correlationId = testClassScopeMetadataTracker.scope,
     )
     layer
   }
@@ -594,7 +611,9 @@ class PyramidFactoryTest {
       from_datetime = ISO_OFFSET_DATE_TIME format date,
       until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
       band_names = Seq("B3", "B2", "B1").asJava,
-      metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
+      metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
+      dataCubeParameters = new DataCubeParameters,
+      correlationId = testClassScopeMetadataTracker.scope,
     )
 
     val spatialLayer = layer
@@ -639,7 +658,9 @@ class PyramidFactoryTest {
       from_datetime = ISO_OFFSET_DATE_TIME format date,
       until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
       band_names = Seq("B2").asJava,
-      metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
+      metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
+      dataCubeParameters = new DataCubeParameters,
+      correlationId = testClassScopeMetadataTracker.scope,
     )
 
     val spatialLayer = layer
@@ -684,7 +705,9 @@ class PyramidFactoryTest {
       from_datetime = ISO_OFFSET_DATE_TIME format date,
       until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
       band_names = Seq("B4").asJava,
-      metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
+      metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
+      dataCubeParameters = new DataCubeParameters,
+      correlationId = testClassScopeMetadataTracker.scope,
     )
 
     val spatialLayer = layer
@@ -716,7 +739,9 @@ class PyramidFactoryTest {
       from_datetime = ISO_OFFSET_DATE_TIME format date,
       until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
       band_names = Seq("B04", "B03", "B02").asJava,
-      metadata_properties = Collections.singletonMap("eo:cloud_cover", Collections.singletonMap("lte", 20))
+      metadata_properties = Collections.singletonMap("eo:cloud_cover", Collections.singletonMap("lte", 20)),
+      dataCubeParameters = new DataCubeParameters,
+      correlationId = testClassScopeMetadataTracker.scope,
     )
 
     val spatialLayer = layer
@@ -755,7 +780,9 @@ class PyramidFactoryTest {
         from_datetime = ISO_OFFSET_DATE_TIME format from,
         until_datetime = ISO_OFFSET_DATE_TIME format until,
         band_names = Seq("DEM").asJava,
-        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]]
+        metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
+        dataCubeParameters = new DataCubeParameters,
+        correlationId = testClassScopeMetadataTracker.scope,
       )
 
       layer.cache()
@@ -817,7 +844,8 @@ class PyramidFactoryTest {
         ISO_OFFSET_DATE_TIME format from,
         ISO_OFFSET_DATE_TIME format until,
         band_names = Seq("VH", "VV").asJava,
-        metadata_properties = Collections.singletonMap("orbitDirection", Collections.singletonMap("eq", "DESCENDING"))
+        metadata_properties = Collections.singletonMap("orbitDirection", Collections.singletonMap("eq", "DESCENDING")),
+        correlationId = testClassScopeMetadataTracker.scope,
       )
 
       val (_, baseLayer) = pyramid
@@ -875,7 +903,9 @@ class PyramidFactoryTest {
         from_datetime = "2016-11-10T00:00:00Z",
         until_datetime = "2016-11-11T00:00:00Z",
         band_names = util.Arrays.asList("VV"),
-        metadata_properties = util.Collections.emptyMap()
+        metadata_properties = util.Collections.emptyMap(),
+        dataCubeParameters = new DataCubeParameters,
+        correlationId = testClassScopeMetadataTracker.scope,
       )
 
       layer.isEmpty() // force evaluation
@@ -916,6 +946,7 @@ class PyramidFactoryTest {
         band_names = bandNames.asJava,
         metadata_properties = metadata_properties,
         datacubeParams,
+        correlationId = testClassScopeMetadataTracker.scope,
       )
 
       layer
@@ -937,7 +968,8 @@ class PyramidFactoryTest {
         from_datetime = ISO_OFFSET_DATE_TIME format date,
         until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
         band_names = bandNames.asJava,
-        metadata_properties = metadata_properties
+        metadata_properties = metadata_properties,
+        correlationId = testClassScopeMetadataTracker.scope,
       ).maxBy { case (zoom, _) => zoom }
 
       baseLayer
@@ -1043,7 +1075,9 @@ class PyramidFactoryTest {
       from_datetime = ISO_OFFSET_DATE_TIME format from,
       until_datetime = ISO_OFFSET_DATE_TIME format until,
       band_names = util.Arrays.asList("VH", "VV"),
-      metadata_properties = util.Collections.emptyMap()
+      metadata_properties = util.Collections.emptyMap(),
+      dataCubeParameters = new DataCubeParameters,
+      correlationId = testClassScopeMetadataTracker.scope,
     )
 
     verify(catalogApiSpy, atLeastOnce()).search(eqTo("sentinel-1-grd"), any(), eqTo(LatLng),
@@ -1085,6 +1119,7 @@ class PyramidFactoryTest {
       band_names = util.Arrays.asList("B03"),
       metadata_properties = util.Collections.emptyMap(),
       datacubeParams,
+      correlationId = testClassScopeMetadataTracker.scope,
     )
     println(ret)
   }
@@ -1110,6 +1145,7 @@ class PyramidFactoryTest {
       bandNames,
       metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]],
       new DataCubeParameters,
+      correlationId = testClassScopeMetadataTracker.scope,
     )
     println(pyramid.length)
 
@@ -1148,7 +1184,9 @@ class PyramidFactoryTest {
         from_datetime = "2018-10-07T00:00:00Z",
         until_datetime = "2018-10-08T00:00:00Z",
         band_names = util.Arrays.asList("VV", "VH"),
-        metadata_properties = util.Collections.emptyMap()
+        metadata_properties = util.Collections.emptyMap(),
+        dataCubeParameters = new DataCubeParameters,
+        correlationId = testClassScopeMetadataTracker.scope,
       )
 
       layer.isEmpty() // force evaluation
