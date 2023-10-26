@@ -49,13 +49,12 @@ class Sentinel3PyramidFactoryTest extends RasterMatchers {
 
   @Test
   def compareReferenceImage(): Unit = {
-    val bandMix = util.Arrays.asList("MIR", "TOA_NDVI", "B2", "tg")
-
-    val (actualRaster, actualCrs) = sentinel3Raster(bandMix)
-
     val referenceGeoTiff = MultibandGeoTiff("/data/projects/OpenEO/automated_test_files/Sentinel3_2020-07-01.tif")
     val referenceCrs = referenceGeoTiff.crs
     val referenceRaster = referenceGeoTiff.raster
+
+    val bandMix = util.Arrays.asList("MIR", "TOA_NDVI", "B2", "tg")
+    val (actualRaster, actualCrs) = sentinel3Raster(bandMix)
 
     assertEqual(referenceRaster, actualRaster)
     assertEquals(referenceCrs, actualCrs)

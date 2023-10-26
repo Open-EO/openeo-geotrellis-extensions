@@ -3,17 +3,16 @@ package org.openeo.geotrellis.file
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.{GeoTiffReader, MultibandGeoTiff}
-import geotrellis.raster.{ArrayMultibandTile, CellSize, MultibandTile, Raster}
+import geotrellis.raster.testkit.RasterMatchers
+import geotrellis.raster.{CellSize, MultibandTile, Raster}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
-import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 
-import java.nio.file.Path
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
@@ -34,7 +33,7 @@ object ProbaVPyramidFactoryTest {
   def tearDownSpark(): Unit = sc.stop()
 }
 
-class ProbaVPyramidFactoryTest {
+class ProbaVPyramidFactoryTest extends RasterMatchers {
   private val openSearchEndpoint = "https://services.terrascope.be/catalogue"
   private val allTocBands: util.List[String] = util.Arrays.asList("NDVI", "RED", "NIR", "BLUE", "SWIR", "SZA", "SAA", "SWIRVAA", "SWIRVZA", "VNIRVAA", "VNIRVZA", "SM")
 
@@ -159,26 +158,21 @@ class ProbaVPyramidFactoryTest {
   }
 
   @Test
-  def compareS5ReferenceImage(@TempDir tempDir: Path): Unit = {
-    val bandMix = util.Arrays.asList(
-      "SM", "NDVI", "VNIRVZA", "RED", "VNIRVAA", "NIR", "SWIRVZA", "BLUE", "SWIRVAA", "SWIR", "SAA", "SZA")
-
-    val (actualRaster, actualCrs) = s5Raster(bandMix)
-    val outputFile = tempDir.resolve("actual.tif")
-    MultibandGeoTiff(actualRaster, actualCrs).write(outputFile.toString)
-    val actualGeoTiff = MultibandGeoTiff(outputFile.toString)
-
-    // TODO: find a cleaner way to compare against a reference image
+  def compareS5ReferenceImage(): Unit = {
     val (referenceRaster, referenceCrs) = this.referenceRaster("PROBAV_S5_20200101.tif")
 
-    assertEquals(referenceRaster, actualGeoTiff.raster.mapTile(_.toArrayTile()))
-    assertEquals(referenceCrs, actualGeoTiff.crs)
+    val bandMix = util.Arrays.asList(
+      "SM", "NDVI", "VNIRVZA", "RED", "VNIRVAA", "NIR", "SWIRVZA", "BLUE", "SWIRVAA", "SWIR", "SAA", "SZA")
+    val (actualRaster, actualCrs) = s5Raster(bandMix)
+
+    assertEqual(referenceRaster, actualRaster)
+    assertEquals(referenceCrs, actualCrs)
   }
 
-  private def referenceRaster(name: String): (Raster[ArrayMultibandTile], CRS) = {
+  private def referenceRaster(name: String): (Raster[MultibandTile], CRS) = {
     // TODO: get it from Artifactory instead?
     val referenceGeoTiff = MultibandGeoTiff(s"/data/projects/OpenEO/automated_test_files/$name")
-    (referenceGeoTiff.raster.mapTile(_.toArrayTile()), referenceGeoTiff.crs)
+    (referenceGeoTiff.raster, referenceGeoTiff.crs)
   }
 
   private def s5Raster(bands: util.List[String]): (Raster[MultibandTile], CRS) = {

@@ -1,20 +1,20 @@
 package org.openeo.geotrellis.file
 
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.{ArrayMultibandTile, CellSize, MultibandTile, Raster}
+import geotrellis.raster.{CellSize, MultibandTile, Raster}
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
+import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.backends.CreodiasClient
 
-import java.nio.file.{Path, Paths}
+import java.nio.file.Paths
 import java.util
 
 object CreoPyramidFactoryTest {
@@ -38,9 +38,10 @@ object CreoPyramidFactoryTest {
 }
 
 @Disabled("requires some environment variables (see https://github.com/Open-EO/openeo-opensearch-client/issues/25")
-class CreoPyramidFactoryTest {
+class CreoPyramidFactoryTest extends RasterMatchers {
   import CreoPyramidFactoryTest._
 
+  @Disabled("visual inspection only")
   @Test
   def testSentinel2L2a(): Unit = {
     val openSearchLinkTitlesSets = Seq(
@@ -114,27 +115,23 @@ class CreoPyramidFactoryTest {
   }
 
   @Test
-  def compareS2L2aReferenceImage(@TempDir tempDir: Path): Unit = {
+  def compareS2L2aReferenceImage(): Unit = {
+    val (referenceRaster, referenceCrs) = this.referenceRaster("creo_S2L2A_2023-09-24.tif")
+
     val bandMix = util.Arrays.asList(Saa, Vaa, B03, Vza)
     // expected SAA: 165.931952115363 everywhere
     // expected VAA: 107.973307847137 everywhere
     // expected B03: every value is 1000 less than the value in the jp2 asset
     // expected VZA: 6.85674497180878 everywhere
-
     val (actualRaster, actualCrs) = sentinel2L2aRaster(bandMix)
-    val outputFile = tempDir.resolve("actual.tif")
-    MultibandGeoTiff(actualRaster, actualCrs).write(outputFile.toString)
-    val actualGeoTiff = MultibandGeoTiff(outputFile.toString)
 
-    val (referenceRaster, referenceCrs) = this.referenceRaster("creo_S2L2A_2023-09-24.tif")
-
-    assertEquals(referenceRaster, actualGeoTiff.raster.mapTile(_.toArrayTile()))
-    assertEquals(referenceCrs, actualGeoTiff.crs)
+    assertEqual(referenceRaster, actualRaster)
+    assertEquals(referenceCrs, actualCrs)
   }
 
-  private def referenceRaster(name: String): (Raster[ArrayMultibandTile], CRS) = {
+  private def referenceRaster(name: String): (Raster[MultibandTile], CRS) = {
     // TODO: get it from Artifactory instead?
     val referenceGeoTiff = MultibandGeoTiff(s"/data/projects/OpenEO/automated_test_files/$name")
-    (referenceGeoTiff.raster.mapTile(_.toArrayTile()), referenceGeoTiff.crs)
+    (referenceGeoTiff.raster, referenceGeoTiff.crs)
   }
 }
