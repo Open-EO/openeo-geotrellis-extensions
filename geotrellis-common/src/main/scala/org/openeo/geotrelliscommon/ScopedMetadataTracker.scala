@@ -36,7 +36,7 @@ object ScopedMetadataTracker {
   }
 }
 
-class ScopedMetadataTracker private(scope: String)(implicit sc: SparkContext) extends Serializable {
+class ScopedMetadataTracker private(val scope: String)(implicit sc: SparkContext) extends Serializable {
   import ScopedMetadataTracker._
 
   logger.debug(s"creating ScopedMetadataTracker($scope)")
@@ -59,4 +59,6 @@ class ScopedMetadataTracker private(scope: String)(implicit sc: SparkContext) ex
     logger.debug(s"ScopedMetadataTracker($scope) recorded $amount PUs")
     amount
   }
+
+  override def toString: String = s"${getClass.getName}($scope)"
 }
