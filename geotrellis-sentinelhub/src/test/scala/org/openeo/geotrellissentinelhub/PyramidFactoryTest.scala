@@ -353,7 +353,7 @@ class PyramidFactoryTest {
   private def testUtm(from: ZonedDateTime, until: ZonedDateTime): Unit = {
     val expected = referenceRaster("utm.tif")
 
-    def testScopedMetadataTracker = ScopedMetadataTracker(scope = "r-abc123")(sc)
+    val testScopeMetadataTracker = ScopedMetadataTracker(scope = "testUtm")
 
     try {
       val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
@@ -379,7 +379,7 @@ class PyramidFactoryTest {
         band_names = Seq("B08", "B04", "B03").asJava,
         metadata_properties = Collections.emptyMap[String, util.Map[String, Any]],
         dataCubeParameters,
-        correlationId = testScopedMetadataTracker.scope,
+        correlationId = testScopeMetadataTracker.scope,
       )
 
       assertTrue(layer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
@@ -404,11 +404,11 @@ class PyramidFactoryTest {
 
       assertTrue(s"unexpected number of failed tile requests: $numFailedRequests", numFailedRequests >= 0)
 
-      assertTrue(s"PUs: ${testScopedMetadataTracker.sentinelHubProcessingUnits}",
-        testScopedMetadataTracker.sentinelHubProcessingUnits > 0)
+      assertTrue(s"PUs: ${testScopeMetadataTracker.sentinelHubProcessingUnits}",
+        testScopeMetadataTracker.sentinelHubProcessingUnits > 0)
     } finally {
-      testClassScopeMetadataTracker.addSentinelHubProcessingUnits(testScopedMetadataTracker.sentinelHubProcessingUnits)
-      ScopedMetadataTracker.remove(testScopedMetadataTracker.scope)
+      testClassScopeMetadataTracker.addSentinelHubProcessingUnits(testScopeMetadataTracker.sentinelHubProcessingUnits)
+      ScopedMetadataTracker.remove(testScopeMetadataTracker.scope)
     }
   }
 
