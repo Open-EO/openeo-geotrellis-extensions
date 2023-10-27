@@ -134,4 +134,69 @@ class CreoPyramidFactoryTest extends RasterMatchers {
     val referenceGeoTiff = MultibandGeoTiff(s"/data/projects/OpenEO/automated_test_files/$name")
     (referenceGeoTiff.raster, referenceGeoTiff.crs)
   }
+
+  @Disabled("visual inspection only")
+  @Test
+  def testLandsat8(): Unit = {
+    // TODO: these are to become the first alias in creo_layercatalog.json
+    val openSearchLinkTitles = util.Arrays.asList(
+      "SR_B1",
+      "SR_B2",
+      "SR_B3",
+      "SR_B4",
+      "SR_B5",
+      "SR_B6",
+      "SR_B7",
+      "ST_B10",
+      "QA_PIXEL",
+      "QA_RADSAT",
+      "SR_QA_AEROSOL",
+      "ST_QA",
+      "ST_TRAD",
+      "ST_URAD",
+      "ST_DRAD",
+      "ST_ATRAN",
+      "ST_EMIS",
+      "ST_EMSD",
+      "ST_CDIST",
+    )
+
+    val boundingBox = ProjectedExtent(Extent(4.123803680535843, 51.38393982450626, 4.21525120682341, 51.44770087550853), LatLng)
+    println(boundingBox.extent.toGeoJson())
+
+    val date = "2022-01-17T00:00:00Z"
+
+    val pyramidFactory = new PyramidFactory(
+      openSearchClient = new CreodiasClient,
+      openSearchCollectionId = "Landsat8",
+      openSearchLinkTitles,
+      rootPath = "/eodata",
+      maxSpatialResolution = CellSize(30, 30),
+    )
+
+    val projectedPolygons = ProjectedPolygons.fromExtent(boundingBox.extent, s"EPSG:${boundingBox.crs.epsgCode.get}")
+    val projectedPolygonsNativeCrs = ProjectedPolygons.reproject(projectedPolygons, 32631)
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+
+    val Seq((_, baseLayer)) = pyramidFactory.datacube_seq(
+      projectedPolygonsNativeCrs,
+      from_date = date, to_date = date,
+      metadata_properties = util.Collections.singletonMap("productType", "L2SP"),
+      correlationId = "",
+      dataCubeParameters,
+    )
+
+    val crs = baseLayer.metadata.crs
+
+    val raster = baseLayer
+      .toSpatial()
+      .stitch()
+      .crop(boundingBox.reproject(crs))
+
+    val fileName = s"testLandsat8_${String.join("_", openSearchLinkTitles)}.tif"
+    val outputFile = Paths.get("/tmp").resolve(fileName)
+
+    MultibandGeoTiff(raster, crs).write(outputFile.toString)
+  }
 }
