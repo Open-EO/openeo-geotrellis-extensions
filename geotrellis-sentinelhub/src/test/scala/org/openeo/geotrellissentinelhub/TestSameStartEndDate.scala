@@ -3,6 +3,7 @@ package org.openeo.geotrellissentinelhub
 import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Test
+import org.openeo.geotrelliscommon.ScopedMetadataTracker
 
 import java.util
 import scala.collection.JavaConverters._
@@ -24,7 +25,7 @@ class TestSameStartEndDate {
 
     val bandNames = Seq("VV", "VH", "HV", "HH").asJava
 
-    val sc = SparkContext.getOrCreate(
+    implicit val sc: SparkContext = SparkContext.getOrCreate(
       new SparkConf()
         .setMaster("local[1]")
         .setAppName("TestSentinelHub")
@@ -32,21 +33,25 @@ class TestSameStartEndDate {
         .set("spark.kryoserializer.buffer.max", "1024m"))
 
     try {
-      val endpoint = "https://services.sentinel-hub.com"
-      val pyramid = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
-        new DefaultProcessApi(endpoint),
-        new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
-        rateLimitingGuard = NoRateLimitingGuard)
-        .pyramid_seq(extent, bbox_srs, from, until, bandNames, metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]])
+      val testScopeMetadataTracker = ScopedMetadataTracker(scope = "testSameStartEndDate")
 
-      val (_, topLevelRdd) = pyramid.filter { case (zoom, _) => zoom == 14 }.head
+      try {
+        val endpoint = "https://services.sentinel-hub.com"
+        val pyramid = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
+          new DefaultProcessApi(endpoint),
+          new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId, clientSecret),
+          rateLimitingGuard = NoRateLimitingGuard)
+          .pyramid_seq(extent, bbox_srs, from, until, bandNames, metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]])
 
-      val results = topLevelRdd.collect()
+        val (_, topLevelRdd) = pyramid.filter { case (zoom, _) => zoom == 14 }.head
 
-      for {
-        (_, multibandTile) <- results
-        tile <- multibandTile.bands
-      } assert(tile.isNoDataTile)
+        val results = topLevelRdd.collect()
+
+        for {
+          (_, multibandTile) <- results
+          tile <- multibandTile.bands
+        } assert(tile.isNoDataTile)
+      } finally println(s"$testScopeMetadataTracker consumed a total of ${testScopeMetadataTracker.sentinelHubProcessingUnits} PUs")
     } finally sc.stop()
   }
 }

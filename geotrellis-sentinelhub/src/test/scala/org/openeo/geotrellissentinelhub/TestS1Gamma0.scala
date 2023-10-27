@@ -19,9 +19,11 @@ class TestS1Gamma0 {
     val endpoint = "https://services.sentinel-hub.com"
     val datasetId = "sentinel-1-grd"
 
-    new DefaultProcessApi(endpoint).getTile(datasetId, bbox, date, width = 256, height = 256, Seq("VV", "VH", "HV", "HH", "localIncidenceAngle"),
+    val (_, processingUnitsSpent) = new DefaultProcessApi(endpoint).getTile(datasetId, bbox, date, width = 256, height = 256, Seq("VV", "VH", "HV", "HH", "localIncidenceAngle"),
       SampleType.FLOAT32, additionalDataFilters = Collections.singletonMap("orbitDirection", "DESCENDING"),
       processingOptions = Collections.singletonMap("orthorectify", true), accessToken)
+
+    println(s"testGamma0 consumed a total of $processingUnitsSpent PUs")
   }
 
 }
