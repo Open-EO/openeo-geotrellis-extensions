@@ -41,27 +41,26 @@ object CreoPyramidFactoryTest {
 class CreoPyramidFactoryTest extends RasterMatchers {
   import CreoPyramidFactoryTest._
 
-  // TODO: these are to become the first alias in creo_layercatalog.json
   private val allLandsat8OpenSearchLinkTitles = util.Arrays.asList(
-    "SR_B1",
-    "SR_B2",
-    "SR_B3",
-    "SR_B4",
-    "SR_B5",
-    "SR_B6",
-    "SR_B7",
-    "ST_B10",
-    "QA_PIXEL",
-    "QA_RADSAT",
-    "SR_QA_AEROSOL",
-    "ST_QA",
-    "ST_TRAD",
-    "ST_URAD",
-    "ST_DRAD",
-    "ST_ATRAN",
-    "ST_EMIS",
-    "ST_EMSD",
-    "ST_CDIST",
+    "BAND_1",
+    "BAND_2",
+    "BAND_3",
+    "BAND_4",
+    "BAND_5",
+    "BAND_6",
+    "BAND_7",
+    "BAND_ST_B10",
+    "QUALITY_L1_PIXEL",
+    "QUALITY_L1_RADIOMETRIC_SATURATION",
+    "QUALITY_L2_AEROSOL",
+    "QUALITY_L2_SURFACE_TEMPERATURE",
+    "THERMAL_RADIANCE",
+    "UPWELL_RADIANCE",
+    "DOWNWELL_RADIANCE",
+    "ATMOSPHERIC_TRANSMITTANCE",
+    "EMISSIVITY",
+    "EMISSIVITY_STDEV",
+    "CLOUD_DISTANCE",
   )
 
   @Disabled("visual inspection only")
