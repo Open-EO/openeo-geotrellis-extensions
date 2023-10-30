@@ -1,20 +1,20 @@
 package org.openeo.geotrellis.file
 
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.{ArrayMultibandTile, CellSize, MultibandTile, Raster}
+import geotrellis.raster.{CellSize, MultibandTile, Raster}
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
+import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.backends.CreodiasClient
 
-import java.nio.file.{Path, Paths}
+import java.nio.file.Paths
 import java.util
 
 object CreoPyramidFactoryTest {
@@ -38,9 +38,33 @@ object CreoPyramidFactoryTest {
 }
 
 @Disabled("requires some environment variables (see https://github.com/Open-EO/openeo-opensearch-client/issues/25")
-class CreoPyramidFactoryTest {
+class CreoPyramidFactoryTest extends RasterMatchers {
   import CreoPyramidFactoryTest._
 
+  // TODO: these are to become the first alias in creo_layercatalog.json
+  private val allLandsat8OpenSearchLinkTitles = util.Arrays.asList(
+    "SR_B1",
+    "SR_B2",
+    "SR_B3",
+    "SR_B4",
+    "SR_B5",
+    "SR_B6",
+    "SR_B7",
+    "ST_B10",
+    "QA_PIXEL",
+    "QA_RADSAT",
+    "SR_QA_AEROSOL",
+    "ST_QA",
+    "ST_TRAD",
+    "ST_URAD",
+    "ST_DRAD",
+    "ST_ATRAN",
+    "ST_EMIS",
+    "ST_EMSD",
+    "ST_CDIST",
+  )
+
+  @Disabled("visual inspection only")
   @Test
   def testSentinel2L2a(): Unit = {
     val openSearchLinkTitlesSets = Seq(
@@ -114,27 +138,80 @@ class CreoPyramidFactoryTest {
   }
 
   @Test
-  def compareS2L2aReferenceImage(@TempDir tempDir: Path): Unit = {
+  def compareS2L2aReferenceImage(): Unit = {
+    val (referenceRaster, referenceCrs) = this.referenceRaster("creo_S2L2A_2023-09-24.tif")
+
     val bandMix = util.Arrays.asList(Saa, Vaa, B03, Vza)
     // expected SAA: 165.931952115363 everywhere
     // expected VAA: 107.973307847137 everywhere
     // expected B03: every value is 1000 less than the value in the jp2 asset
     // expected VZA: 6.85674497180878 everywhere
-
     val (actualRaster, actualCrs) = sentinel2L2aRaster(bandMix)
-    val outputFile = tempDir.resolve("actual.tif")
-    MultibandGeoTiff(actualRaster, actualCrs).write(outputFile.toString)
-    val actualGeoTiff = MultibandGeoTiff(outputFile.toString)
 
-    val (referenceRaster, referenceCrs) = this.referenceRaster("creo_S2L2A_2023-09-24.tif")
-
-    assertEquals(referenceRaster, actualGeoTiff.raster.mapTile(_.toArrayTile()))
-    assertEquals(referenceCrs, actualGeoTiff.crs)
+    assertEqual(referenceRaster, actualRaster)
+    assertEquals(referenceCrs, actualCrs)
   }
 
-  private def referenceRaster(name: String): (Raster[ArrayMultibandTile], CRS) = {
+  private def referenceRaster(name: String): (Raster[MultibandTile], CRS) = {
     // TODO: get it from Artifactory instead?
     val referenceGeoTiff = MultibandGeoTiff(s"/data/projects/OpenEO/automated_test_files/$name")
-    (referenceGeoTiff.raster.mapTile(_.toArrayTile()), referenceGeoTiff.crs)
+    (referenceGeoTiff.raster, referenceGeoTiff.crs)
+  }
+
+  @Disabled("visual inspection only")
+  @Test
+  def testLandsat8(): Unit = {
+    val (raster, crs) = this.landsat8l2Raster(allLandsat8OpenSearchLinkTitles)
+
+    val fileName = s"testLandsat8_${String.join("_", allLandsat8OpenSearchLinkTitles)}.tif"
+    val outputFile = Paths.get("/tmp").resolve(fileName)
+    MultibandGeoTiff(raster, crs).write(outputFile.toString)
+  }
+
+  @Test
+  def compareLandsat8ReferenceImage(): Unit = {
+    val (referenceRaster, referenceCrs) = this.referenceRaster("creo_Landsat8L2_2022-01-17.tif")
+
+    val (actualRaster, actualCrs) = landsat8l2Raster(allLandsat8OpenSearchLinkTitles)
+
+    assertEqual(referenceRaster, actualRaster)
+    assertEquals(referenceCrs, actualCrs)
+  }
+
+  private def landsat8l2Raster(openSearchLinkTitles: util.List[String]): (Raster[MultibandTile], CRS) = {
+    val boundingBox = ProjectedExtent(Extent(4.123803680535843, 51.38393982450626, 4.21525120682341, 51.44770087550853), LatLng)
+    println(boundingBox.extent.toGeoJson())
+
+    val date = "2022-01-17T00:00:00Z"
+
+    val pyramidFactory = new PyramidFactory(
+      openSearchClient = new CreodiasClient,
+      openSearchCollectionId = "Landsat8",
+      openSearchLinkTitles,
+      rootPath = "/eodata",
+      maxSpatialResolution = CellSize(30, 30),
+    )
+
+    val projectedPolygons = ProjectedPolygons.fromExtent(boundingBox.extent, s"EPSG:${boundingBox.crs.epsgCode.get}")
+    val projectedPolygonsNativeCrs = ProjectedPolygons.reproject(projectedPolygons, 32631)
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+
+    val Seq((_, baseLayer)) = pyramidFactory.datacube_seq(
+      projectedPolygonsNativeCrs,
+      from_date = date, to_date = date,
+      metadata_properties = util.Collections.singletonMap("productType", "L2SP"),
+      correlationId = "",
+      dataCubeParameters,
+    )
+
+    val crs = baseLayer.metadata.crs
+
+    val raster = baseLayer
+      .toSpatial()
+      .stitch()
+      .crop(boundingBox.reproject(crs))
+
+    (raster, crs)
   }
 }

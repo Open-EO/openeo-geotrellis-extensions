@@ -1104,8 +1104,11 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     def getBandAssetsByLinkTitle : Seq[Option[(Link, Int)]] = for {
       (title, bandIndex) <- openSearchLinkTitlesWithBandId.toList
-      link = feature.links.find(_.title.map(_.toUpperCase) contains title.toUpperCase)
-    } yield link.map((_, bandIndex))
+      linkWithTitle = feature.links.find(_.title.map(_.toUpperCase) contains title.toUpperCase).orElse {
+        logger.warn(s"asset with ID/title $title not found in feature ${feature.id}; inserting NODATA band instead")
+        None
+      }
+    } yield linkWithTitle.map((_, bandIndex))
 
     // TODO: pass a strategy to FileLayerProvider instead (incl. one for the PROBA-V workaround)
     val byLinkTitle = !openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
