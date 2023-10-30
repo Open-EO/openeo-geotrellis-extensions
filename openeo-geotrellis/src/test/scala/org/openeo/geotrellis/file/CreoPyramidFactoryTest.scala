@@ -41,6 +41,29 @@ object CreoPyramidFactoryTest {
 class CreoPyramidFactoryTest extends RasterMatchers {
   import CreoPyramidFactoryTest._
 
+  // TODO: these are to become the first alias in creo_layercatalog.json
+  private val allLandsat8OpenSearchLinkTitles = util.Arrays.asList(
+    "SR_B1",
+    "SR_B2",
+    "SR_B3",
+    "SR_B4",
+    "SR_B5",
+    "SR_B6",
+    "SR_B7",
+    "ST_B10",
+    "QA_PIXEL",
+    "QA_RADSAT",
+    "SR_QA_AEROSOL",
+    "ST_QA",
+    "ST_TRAD",
+    "ST_URAD",
+    "ST_DRAD",
+    "ST_ATRAN",
+    "ST_EMIS",
+    "ST_EMSD",
+    "ST_CDIST",
+  )
+
   @Disabled("visual inspection only")
   @Test
   def testSentinel2L2a(): Unit = {
@@ -138,29 +161,24 @@ class CreoPyramidFactoryTest extends RasterMatchers {
   @Disabled("visual inspection only")
   @Test
   def testLandsat8(): Unit = {
-    // TODO: these are to become the first alias in creo_layercatalog.json
-    val openSearchLinkTitles = util.Arrays.asList(
-      "SR_B1",
-      "SR_B2",
-      "SR_B3",
-      "SR_B4",
-      "SR_B5",
-      "SR_B6",
-      "SR_B7",
-      "ST_B10",
-      "QA_PIXEL",
-      "QA_RADSAT",
-      "SR_QA_AEROSOL",
-      "ST_QA",
-      "ST_TRAD",
-      "ST_URAD",
-      "ST_DRAD",
-      "ST_ATRAN",
-      "ST_EMIS",
-      "ST_EMSD",
-      "ST_CDIST",
-    )
+    val (raster, crs) = this.landsat8l2Raster(allLandsat8OpenSearchLinkTitles)
 
+    val fileName = s"testLandsat8_${String.join("_", allLandsat8OpenSearchLinkTitles)}.tif"
+    val outputFile = Paths.get("/tmp").resolve(fileName)
+    MultibandGeoTiff(raster, crs).write(outputFile.toString)
+  }
+
+  @Test
+  def compareLandsat8ReferenceImage(): Unit = {
+    val (referenceRaster, referenceCrs) = this.referenceRaster("creo_Landsat8L2_2022-01-17.tif")
+
+    val (actualRaster, actualCrs) = landsat8l2Raster(allLandsat8OpenSearchLinkTitles)
+
+    assertEqual(referenceRaster, actualRaster)
+    assertEquals(referenceCrs, actualCrs)
+  }
+
+  private def landsat8l2Raster(openSearchLinkTitles: util.List[String]): (Raster[MultibandTile], CRS) = {
     val boundingBox = ProjectedExtent(Extent(4.123803680535843, 51.38393982450626, 4.21525120682341, 51.44770087550853), LatLng)
     println(boundingBox.extent.toGeoJson())
 
@@ -194,9 +212,6 @@ class CreoPyramidFactoryTest extends RasterMatchers {
       .stitch()
       .crop(boundingBox.reproject(crs))
 
-    val fileName = s"testLandsat8_${String.join("_", openSearchLinkTitles)}.tif"
-    val outputFile = Paths.get("/tmp").resolve(fileName)
-
-    MultibandGeoTiff(raster, crs).write(outputFile.toString)
+    (raster, crs)
   }
 }
