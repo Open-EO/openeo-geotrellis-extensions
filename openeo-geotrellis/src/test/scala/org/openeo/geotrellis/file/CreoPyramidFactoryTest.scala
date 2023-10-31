@@ -160,9 +160,10 @@ class CreoPyramidFactoryTest extends RasterMatchers {
   @Disabled("visual inspection only")
   @Test
   def testLandsat8(): Unit = {
-    val (raster, crs) = this.landsat8l2Raster(allLandsat8OpenSearchLinkTitles)
+    val openSearchLinkTitles = util.Arrays.asList("BAND_1", "QUALITY_L2_AEROSOL", "QUALITY_L2_SURFACE_TEMPERATURE")
+    val (raster, crs) = this.landsat8l2Raster(openSearchLinkTitles)
 
-    val fileName = s"testLandsat8_${String.join("_", allLandsat8OpenSearchLinkTitles)}.tif"
+    val fileName = s"testLandsat8_${String.join("_", openSearchLinkTitles)}.tif"
     val outputFile = Paths.get("/tmp").resolve(fileName)
     MultibandGeoTiff(raster, crs).write(outputFile.toString)
   }
