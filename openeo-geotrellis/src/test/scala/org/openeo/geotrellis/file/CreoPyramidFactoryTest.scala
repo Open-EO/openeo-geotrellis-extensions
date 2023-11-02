@@ -37,7 +37,8 @@ object CreoPyramidFactoryTest {
   def tearDownSpark(): Unit = sc.stop()
 }
 
-@Disabled("requires some environment variables (see https://github.com/Open-EO/openeo-opensearch-client/issues/25")
+@Disabled("requires some environment variables (see https://github.com/Open-EO/openeo-opensearch-client/issues/25); " +
+  "covered in os_creodias_openeo_k8s tests as well")
 class CreoPyramidFactoryTest extends RasterMatchers {
   import CreoPyramidFactoryTest._
 
