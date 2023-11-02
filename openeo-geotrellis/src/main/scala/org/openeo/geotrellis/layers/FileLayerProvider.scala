@@ -1087,19 +1087,23 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val bandNames = openSearchLinkTitles.toList
 
     def getBandAssetsByBandInfo: Seq[Option[(Link, Int)]] = { // [Some((href, bandIndex))]
-      def getBandAsset(bandName: String): (Link, Int) = { // (href, bandIndex)
+      def getBandAsset(bandName: String): Option[(Link, Int)] = { // (href, bandIndex)
         feature.links
-          .find(link => link.bandNames match {
-            case Some(assetBandNames) => assetBandNames contains bandName
-            case _ => false
-          }) // TODO: find alternative to contains + indexOf
-          .map { link => (link, link.bandNames.get.indexOf(bandName)) }
-          .getOrElse(throw new IllegalArgumentException(s"band $bandName not found in ${feature.id}"))
+          .flatMap(link => link.bandNames match {
+            case Some(assetBandNames) =>
+              val bandIndex = assetBandNames.indexWhere(_ == bandName)
+              if (bandIndex >= 0) Some((link, bandIndex)) else None
+            case _ => None
+          })
+          .headOption
+          .orElse {
+            logger.warn(s"asset with band name $bandName not found in feature ${feature.id}; inserting NODATA band instead")
+            None
+          }
       }
 
       bandNames
         .map(getBandAsset)
-        .map { case (link, bandIndex) => Some((link, bandIndex)) }
     }
 
     def getBandAssetsByLinkTitle : Seq[Option[(Link, Int)]] = for {
