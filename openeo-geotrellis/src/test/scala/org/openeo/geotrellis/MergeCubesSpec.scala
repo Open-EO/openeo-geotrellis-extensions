@@ -161,9 +161,9 @@ class MergeCubesSpec {
     Files.createDirectories(Paths.get(path))
     val p = new OpenEOProcesses()
 
-    def aggregate(rdd: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]],
+    def aggregate(rdd: MultibandTileLayerRDD[SpaceTimeKey],
             aggregationType: AggregationType.Value,
-           ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+           ): MultibandTileLayerRDD[SpaceTimeKey] = {
       val startDate = rdd.keys.collect().head.time
       if (aggregationType == AggregationType.no) {
         rdd

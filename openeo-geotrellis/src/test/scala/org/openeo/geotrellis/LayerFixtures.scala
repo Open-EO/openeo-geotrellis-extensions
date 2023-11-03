@@ -113,7 +113,7 @@ object LayerFixtures {
    * Returns an RDD with tiles that switch between data and noData.
    * patternScale 2 gives [0 0 T T 0 0 T T] (where 0 is noData, and T is a data tile)
    */
-  def buildSpatioTemporalDataCubePattern(tilingFactor: Int = 1, patternScale: Int = 1): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+  def buildSpatioTemporalDataCubePattern(tilingFactor: Int = 1, patternScale: Int = 1): MultibandTileLayerRDD[SpaceTimeKey] = {
     val horizontalTiles = 8
     val tilePixelSize = 16
     val tileLayout = new TileLayout(tilingFactor * horizontalTiles, tilingFactor, (tilePixelSize / tilingFactor), (tilePixelSize / tilingFactor))
