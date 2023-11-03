@@ -71,9 +71,11 @@ object LayerFixtures {
 
   /**
    * Based on TileLayerRDDBuilders.createSpaceTimeTileLayerRDD(...)
+   * This returns an RDD on a single time
    */
   def createSpaceTimeMultibandTileLayerRDD(
-                                            tiles: Traversable[(MultibandTile, ZonedDateTime)],
+                                            tiles: Traversable[MultibandTile],
+                                            dataTime: ZonedDateTime,
                                             tileLayout: TileLayout,
                                             cellType: CellType = IntConstantNoDataCellType,
                                             extent: Extent = defaultCRS.worldExtent,
@@ -82,9 +84,7 @@ object LayerFixtures {
     val layout = LayoutDefinition(extent, tileLayout)
     val keyBounds = {
       val GridBounds(colMin, rowMin, colMax, rowMax) = layout.mapTransform(extent)
-      val (_, minTime) = tiles.minBy { case (_, timestamp) => timestamp }
-      val (_, maxTime) = tiles.maxBy { case (_, timestamp) => timestamp }
-      KeyBounds(SpaceTimeKey(colMin, rowMin, minTime), SpaceTimeKey(colMax, rowMax, maxTime))
+      KeyBounds(SpaceTimeKey(colMin, rowMin, dataTime), SpaceTimeKey(colMax, rowMax, dataTime))
     }
     val metadata = TileLayerMetadata(
       cellType,
@@ -103,7 +103,7 @@ object LayerFixtures {
     val tileBounds = re.gridBoundsFor(extent)
 
     val tmsTiles = tileBounds.coordsIter.zip(tiles.toIterator).map {
-      case ((col, row), (tile, time)) => (SpaceTimeKey(col, row, time), tile)
+      case ((col, row), tile) => (SpaceTimeKey(col, row, dataTime), tile)
     }
 
     new ContextRDD(sc.parallelize(tmsTiles.toSeq), metadata)
@@ -130,10 +130,10 @@ object LayerFixtures {
     assert(mbTiles.length == horizontalTiles)
     val dateTime = ZonedDateTime.parse("2019-01-01T00:00:00Z")
 
-    val tilesWithTime = mbTiles.map(t => (t, dateTime))
     implicit val sc: SparkContext = SparkContext.getOrCreate()
     val cubeXYTB = createSpaceTimeMultibandTileLayerRDD(
-      tilesWithTime,
+      mbTiles,
+      dateTime,
       tileLayout,
       extent = LayerFixtures.defaultExtent,
     )
