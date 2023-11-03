@@ -459,11 +459,7 @@ class OpenEOProcesses extends Serializable {
     val rows = datacube.metadata.tileLayout.tileRows
     val cellType = datacube.metadata.cellType
 
-    //ArrayMultibandTile.empty(datacube.metadata.cellType,1,0,0)
-    val bandCount = datacube match {
-      case value: OpenEORasterCube[SpaceTimeKey] => value.openEOMetadata.bandCount
-      case _ => 0
-    }
+    val bandCount = RDDBandCount(datacube)
     val filledRDD: RDD[(SpaceTimeKey, MultibandTile)] = {
       if(reduce) {
         tilesByInterval.rightOuterJoin(allKeysRDD,partitioner).mapValues(_._1.getOrElse(new EmptyMultibandTile(cols, rows, cellType, bandCount)))
@@ -776,27 +772,17 @@ class OpenEOProcesses extends Serializable {
     val rightBandCount = RDDBandCount(rightCube)
     leftCube.sparkContext.clearJobGroup()
     // Concatenation band counts are allowed to differ, but all resulting multiband tiles should have the same count
-    val retCube = new ContextRDD(joined.mapValues({
+    new ContextRDD(joined.mapValues({
       case (None, Some(r)) => MultibandTile(Vector.fill(leftBandCount)(ArrayTile.empty(r.cellType, r.cols, r.rows)) ++ r.bands)
       case (Some(l), None) => MultibandTile(l.bands ++ Vector.fill(rightBandCount)(ArrayTile.empty(l.cellType, l.cols, l.rows)))
       case (Some(l), Some(r)) => {
         if (l.bandCount != leftBandCount || r.bandCount != rightBandCount) {
-          if (l.isInstanceOf[EmptyMultibandTile]) {
-            MultibandTile(Vector.fill(leftBandCount)(ArrayTile.empty(r.cellType, r.cols, r.rows)) ++ r.bands)
-          }
-          else if (r.isInstanceOf[EmptyMultibandTile]) {
-            MultibandTile(l.bands ++ Vector.fill(rightBandCount)(ArrayTile.empty(l.cellType, l.cols, l.rows)))
-          } else {
-            throw new IllegalArgumentException(s"The number of bands in the metadata ${leftBandCount}/${rightBandCount} does not match the actual band count in the cubes (left/right): ${l.bandCount}/${r.bandCount}. You can fix this by explicitly specifying correct band labels.")
-          }
+          throw new IllegalArgumentException(s"The number of bands in the metadata ${leftBandCount}/${rightBandCount} does not match the actual band count in the cubes (left/right): ${l.bandCount}/${r.bandCount}. You can fix this by explicitly specifying correct band labels.")
         } else {
           MultibandTile(l.bands ++ r.bands)
         }
       }
     }), updatedMetadata)
-    val retCubeBandCount = RDDBandCount(retCube)
-    logger.warn("retCubeBandCount: " + retCubeBandCount)
-    retCube
   }
 
   private def resolve_merge_overlap[K](joinedRDD: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))], operator: String, updatedMetadata: TileLayerMetadata[K])(implicit kt: ClassTag[K], ord: Ordering[K] = null) = {

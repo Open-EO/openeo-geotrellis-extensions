@@ -7,8 +7,10 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert._
-import org.junit.{AfterClass, BeforeClass, Test}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue, fail}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.geotiff.saveRDD
 import org.openeo.geotrelliscommon.{OpenEORasterCube, OpenEORasterCubeMetadata, SparseSpaceTimePartitioner}
@@ -21,11 +23,11 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
 import scala.reflect.io.Directory
 
-object MergeCubesSpec{
+object MergeCubesSpec {
 
   var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit = {
     sc = {
       val conf = new SparkConf().setMaster("local[2]").setAppName(getClass.getSimpleName)
@@ -35,7 +37,7 @@ object MergeCubesSpec{
     }
   }
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 
   private def getDebugTile: MutableArrayTile = {
@@ -64,9 +66,29 @@ object MergeCubesSpec{
     val squared = diffArr.map(v => v * v)
     squared.sum / squared.length
   }
+
+  object AggregationType extends Enumeration {
+    case class Val(fileMarker: String) extends super.Val
+
+    implicit def valueToVal(x: Value): Val = x.asInstanceOf[Val]
+
+    val no: Val = Val("noAggregate")
+    val simple: Val = Val("simpleAggregate")
+    val extraNoData: Val = Val("extraNoDataAggregate")
+  }
+
+  def testMergeCubesTiledNoDataArguments: java.util.stream.Stream[Arguments] = util.Arrays.stream((
+    for {
+      r <- Seq(AggregationType.no, AggregationType.simple, AggregationType.extraNoData)
+      g <- Seq(AggregationType.no, AggregationType.simple, AggregationType.extraNoData)
+      b <- Seq(AggregationType.no) // No need to run all combinations to test all what is needed
+    } yield Arguments.of(r, g, b)
+    ).toArray)
 }
 
 class MergeCubesSpec {
+
+  import MergeCubesSpec._
 
   @Test def testMergeCubesCrsResample(): Unit = {
     val path = "/tmp/testMergeCubesCrsResample/"
@@ -119,6 +141,69 @@ class MergeCubesSpec {
     val mse = MergeCubesSpec.simpleMeanSquaredError(specialTile, firstTile.band(2))
     println("MSE = " + mse)
     assertTrue(mse < 0.1)
+  }
+
+
+  /**
+   * Combining aggregate_temporal and merge_cubes can leave the tiles RDD in a bad state.
+   * This only causes problems when an other merge_cubes is called.
+   * To trigger 2 different errors, and to make sure no errors remain, we iterate all possible combinations of those.
+   * 3 layers, called R, G and B are merged. They exists out of some tiles that will make 8 different ways of overlapping.
+   * Plus, this test is parameterized to get all combinations of aggregate_temporal
+   */
+  @ParameterizedTest
+  @MethodSource(Array("testMergeCubesTiledNoDataArguments"))
+  def testMergeCubesTiledNoData(aggregateR: AggregationType.Value,
+                                aggregateG: AggregationType.Value,
+                                aggregateB: AggregationType.Value,
+                               ): Unit = {
+    val path = "tmp/testMergeCubesTiledNoData/" + aggregateR + aggregateG + aggregateB + "/"
+    Files.createDirectories(Paths.get(path))
+    val p = new OpenEOProcesses()
+
+    def aggregate(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+            aggregationType: AggregationType.Value,
+           ): MultibandTileLayerRDD[SpaceTimeKey] = {
+      val startDate = rdd.keys.collect().head.time
+      if (aggregationType == AggregationType.no) {
+        rdd
+      } else {
+        val intervals = if (aggregationType == AggregationType.extraNoData) {
+          List(startDate, startDate, startDate.plusMonths(1), startDate.plusMonths(1)).map(DateTimeFormatter.ISO_INSTANT.format(_)).asJava
+        } else {
+          List(startDate, startDate).map(DateTimeFormatter.ISO_INSTANT.format(_)).asJava
+        }
+
+        val labels = if (aggregationType == AggregationType.extraNoData) {
+          List(startDate, startDate.plusMonths(1)).map(DateTimeFormatter.ISO_INSTANT.format(_)).asJava
+        } else {
+          List(startDate).map(DateTimeFormatter.ISO_INSTANT.format(_)).asJava
+        }
+
+        val composite = p.aggregateTemporal(
+          rdd,
+          intervals,
+          labels,
+          TestOpenEOProcessScriptBuilder.createMedian(true),
+          java.util.Collections.emptyMap()
+        )
+        val tmp2 = new ContextRDD(composite, composite.metadata)
+        tmp2
+      }
+    }
+
+    val tileLayerRDD_R = aggregate(buildSpatioTemporalDataCubePattern(), aggregateR)
+    val tileLayerRDD_G = aggregate(buildSpatioTemporalDataCubePattern(patternScale = 2), aggregateG)
+    val tileLayerRDD_B = aggregate(buildSpatioTemporalDataCubePattern(patternScale = 4), aggregateB)
+
+    val tileLayerRDD_RG = new OpenEOProcesses().mergeCubes(tileLayerRDD_R, tileLayerRDD_G, null)
+    val tileLayerRDD_RGB = new OpenEOProcesses().mergeCubes(tileLayerRDD_RG, tileLayerRDD_B, null)
+    saveRDD(tileLayerRDD_R.toSpatial(tileLayerRDD_R.keys.collect().head.time), -1, path + "tileLayerRDD_R.tiff")
+    saveRDD(tileLayerRDD_G.toSpatial(tileLayerRDD_G.keys.collect().head.time), -1, path + "tileLayerRDD_G.tiff")
+    saveRDD(tileLayerRDD_B.toSpatial(tileLayerRDD_B.keys.collect().head.time), -1, path + "tileLayerRDD_B.tiff")
+    saveRDD(tileLayerRDD_RG.toSpatial(tileLayerRDD_RG.keys.collect().head.time), -1, path + "tileLayerRDD_RG.tiff")
+    saveRDD(tileLayerRDD_RGB.toSpatial(tileLayerRDD_RGB.keys.collect().head.time), -1, path + "tileLayerRDD_RGB.tiff")
+    // No error should pop up when saving the images.
   }
 
   @Test def testSimpleMeanSquaredError(): Unit = {

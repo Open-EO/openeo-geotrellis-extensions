@@ -1,9 +1,8 @@
 package org.openeo.geotrellis
 
 import java.util
-
 import geotrellis.raster.CellType.constantNoDataCellTypes
-import geotrellis.raster.{CellType, FloatUserDefinedNoDataCellType, IntUserDefinedNoDataCellType, NODATA, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType}
+import geotrellis.raster.{CellType, FloatUserDefinedNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, NODATA, Tile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType}
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -26,16 +25,28 @@ object EmptyMultibandTileTest {
 }
 
 @RunWith(classOf[Parameterized])
-class EmptyMultibandTileTest(ct:CellType) {
+class EmptyMultibandTileTest(ct: CellType) {
 
   //@Parameterized.Parameter(value = 0) var ct: CellType = IntConstantNoDataCellType
-
 
 
   @Test
   def testCreateEmpty(): Unit = {
     val tile = EmptyMultibandTile.empty(ct, 10, 10)
-    assertEquals(NODATA,tile.get(0,0))
+    assertEquals(NODATA, tile.get(0, 0))
   }
 
+  @Test
+  def testCreate(): Unit = {
+    val emptyMultibandTile: MultibandTile = new EmptyMultibandTile(10, 10, ct, 3)
+    assertEquals(emptyMultibandTile.bandCount, 3)
+    assertEquals(emptyMultibandTile.bands.size, 3)
+    for (band <- emptyMultibandTile.bands) {
+      // Test the corners:
+      assertEquals(NODATA, band.get(0, 0))
+      assertEquals(NODATA, band.get(0, band.rows - 1))
+      assertEquals(NODATA, band.get(band.cols - 1, 0))
+      assertEquals(NODATA, band.get(band.cols - 1, band.rows - 1))
+    }
+  }
 }

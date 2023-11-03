@@ -37,7 +37,7 @@ class EmptyMultibandTile(val cols:Int, val rows:Int, val cellType:CellType, val 
 
   override def band(bandIndex: Int): Tile = EmptyMultibandTile.empty(cellType, cols, rows)
 
-  override def bands: Vector[Tile] = Vector[Tile]()
+  override def bands: Vector[Tile] = Vector.fill(bandCount)(EmptyMultibandTile.empty(cellType, cols, rows))
 
   override def subsetBands(bandSequence: Seq[Int]): MultibandTile = new EmptyMultibandTile(cols,rows,cellType,bandSequence.size)
 
