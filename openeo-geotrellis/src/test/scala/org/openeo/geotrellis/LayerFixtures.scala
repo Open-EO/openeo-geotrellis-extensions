@@ -82,8 +82,8 @@ object LayerFixtures {
     val layout = LayoutDefinition(extent, tileLayout)
     val keyBounds = {
       val GridBounds(colMin, rowMin, colMax, rowMax) = layout.mapTransform(extent)
-      val minTime = tiles.minBy(_._2)._2
-      val maxTime = tiles.maxBy(_._2)._2
+      val (_, minTime) = tiles.minBy { case (_, timestamp) => timestamp }
+      val (_, maxTime) = tiles.maxBy { case (_, timestamp) => timestamp }
       KeyBounds(SpaceTimeKey(colMin, rowMin, minTime), SpaceTimeKey(colMax, rowMax, maxTime))
     }
     val metadata = TileLayerMetadata(
@@ -102,8 +102,7 @@ object LayerFixtures {
 
     val tileBounds = re.gridBoundsFor(extent)
 
-    val tilesArr = tiles.toArray
-    val tmsTiles = tileBounds.coordsIter.zip(tilesArr.iterator).map {
+    val tmsTiles = tileBounds.coordsIter.zip(tiles.toIterator).map {
       case ((col, row), (tile, time)) => (SpaceTimeKey(col, row, time), tile)
     }
 
@@ -111,7 +110,8 @@ object LayerFixtures {
   }
 
   /**
-   * Practical for testing nodata tiles.
+   * Returns an RDD with tiles that switch between data and noData.
+   * patternScale 2 gives [0 0 T T 0 0 T T] (where 0 is noData, and T is a data tile)
    */
   def buildSpatioTemporalDataCubePattern(tilingFactor: Int = 1, patternScale: Int = 1): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     val horizontalTiles = 8
@@ -123,8 +123,6 @@ object LayerFixtures {
     val tile1 = DoubleArrayTile.apply((1 to tilePixelSize * tilePixelSize).map(_ => 20 + 100 * rand.nextDouble).toArray, tilePixelSize, tilePixelSize)
 
     val mbt0 = new EmptyMultibandTile(tile1.cols, tile1.rows, tile1.cellType, 1)
-    //    val tile0 = ArrayTile.empty(tile1.cellType, tile1.cols, tile1.rows)
-    //    val mbt0 = ArrayMultibandTile(Array(tile0))
     val mbt1 = ArrayMultibandTile(Array(tile1))
 
     val mbTiles = (0 until horizontalTiles).map(i => if ((i * 1.0 / patternScale).floor % 2 == 0) mbt0 else mbt1)

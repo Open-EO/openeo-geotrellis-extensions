@@ -21,7 +21,6 @@ import java.time.format.DateTimeFormatter
 import java.util
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
-import scala.language.implicitConversions
 import scala.reflect.io.Directory
 
 object MergeCubesSpec {
@@ -78,7 +77,7 @@ object MergeCubesSpec {
     val extraNoData: Val = Val("extraNoDataAggregate")
   }
 
-  def testMergeCubesTiledNodataArguments: java.util.stream.Stream[Arguments] = util.Arrays.stream((
+  def testMergeCubesTiledNoDataArguments: java.util.stream.Stream[Arguments] = util.Arrays.stream((
     for {
       r <- Seq(AggregationType.no, AggregationType.simple, AggregationType.extraNoData)
       g <- Seq(AggregationType.no, AggregationType.simple, AggregationType.extraNoData)
@@ -145,17 +144,24 @@ class MergeCubesSpec {
   }
 
 
+  /**
+   * Combining aggregate_temporal and merge_cubes can leave the tiles RDD in a bad state.
+   * This only causes problems when an other merge_cubes is called.
+   * To trigger 2 different errors, and to make sure no errors remain, we iterate all possible combinations of those.
+   * 3 layers, called R, G and B are merged. They exists out of some tiles that will make 8 different ways of overlapping.
+   * Plus, this test is parameterized to get all combinations of aggregate_temporal
+   */
   @ParameterizedTest
-  @MethodSource(Array("testMergeCubesTiledNodataArguments"))
-  def testMergeCubesTiledNodata(aggregateR: AggregationType.Value,
+  @MethodSource(Array("testMergeCubesTiledNoDataArguments"))
+  def testMergeCubesTiledNoData(aggregateR: AggregationType.Value,
                                 aggregateG: AggregationType.Value,
                                 aggregateB: AggregationType.Value,
                                ): Unit = {
-    val path = "tmp/testMergeCubesTiledNodata/" + aggregateR + aggregateG + aggregateB + "/"
+    val path = "tmp/testMergeCubesTiledNoData/" + aggregateR + aggregateG + aggregateB + "/"
     Files.createDirectories(Paths.get(path))
     val p = new OpenEOProcesses()
 
-    def agg(rdd: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]],
+    def aggregate(rdd: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]],
             aggregationType: AggregationType.Value,
            ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
       val startDate = rdd.keys.collect().head.time
@@ -181,15 +187,14 @@ class MergeCubesSpec {
           TestOpenEOProcessScriptBuilder.createMedian(true),
           java.util.Collections.emptyMap()
         )
-        // composite = p.filterEmptyTile(composite)
         val tmp2 = new ContextRDD(composite, composite.metadata)
         tmp2
       }
     }
 
-    val tileLayerRDD_R = agg(buildSpatioTemporalDataCubePattern(), aggregateR)
-    val tileLayerRDD_G = agg(buildSpatioTemporalDataCubePattern(patternScale = 2), aggregateG)
-    val tileLayerRDD_B = agg(buildSpatioTemporalDataCubePattern(patternScale = 4), aggregateB)
+    val tileLayerRDD_R = aggregate(buildSpatioTemporalDataCubePattern(), aggregateR)
+    val tileLayerRDD_G = aggregate(buildSpatioTemporalDataCubePattern(patternScale = 2), aggregateG)
+    val tileLayerRDD_B = aggregate(buildSpatioTemporalDataCubePattern(patternScale = 4), aggregateB)
 
     val tileLayerRDD_RG = new OpenEOProcesses().mergeCubes(tileLayerRDD_R, tileLayerRDD_G, null)
     val tileLayerRDD_RGB = new OpenEOProcesses().mergeCubes(tileLayerRDD_RG, tileLayerRDD_B, null)

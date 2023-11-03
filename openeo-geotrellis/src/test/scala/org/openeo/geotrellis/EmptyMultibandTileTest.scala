@@ -25,23 +25,28 @@ object EmptyMultibandTileTest {
 }
 
 @RunWith(classOf[Parameterized])
-class EmptyMultibandTileTest(ct:CellType) {
+class EmptyMultibandTileTest(ct: CellType) {
 
   //@Parameterized.Parameter(value = 0) var ct: CellType = IntConstantNoDataCellType
-
 
 
   @Test
   def testCreateEmpty(): Unit = {
     val tile = EmptyMultibandTile.empty(ct, 10, 10)
-    assertEquals(NODATA,tile.get(0,0))
+    assertEquals(NODATA, tile.get(0, 0))
   }
 
   @Test
   def testCreate(): Unit = {
     val emptyMultibandTile: MultibandTile = new EmptyMultibandTile(10, 10, ct, 3)
     assertEquals(emptyMultibandTile.bandCount, 3)
-    assertEquals(NODATA, emptyMultibandTile.bands.head.get(0, 0))
-    assertEquals(NODATA, emptyMultibandTile.band(1).get(0, 0))
+    assertEquals(emptyMultibandTile.bands.size, 3)
+    for (band <- emptyMultibandTile.bands) {
+      // Test the corners:
+      assertEquals(NODATA, band.get(0, 0))
+      assertEquals(NODATA, band.get(0, band.rows - 1))
+      assertEquals(NODATA, band.get(band.cols - 1, 0))
+      assertEquals(NODATA, band.get(band.cols - 1, band.rows - 1))
+    }
   }
 }
