@@ -1,19 +1,17 @@
 package org.openeo.geotrellis
 
-import java.util
 import geotrellis.raster.CellType.constantNoDataCellTypes
-import geotrellis.raster.{CellType, FloatUserDefinedNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, NODATA, Tile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType}
-import org.junit.Assert.assertEquals
-import org.junit.Test
-import org.junit.runner.RunWith
-import org.junit.runners.Parameterized
-import org.junit.runners.Parameterized.Parameters
+import geotrellis.raster._
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.MethodSource
+import org.scalatest.Assertions.assertThrows
 
 import scala.collection.JavaConverters._
 
 object EmptyMultibandTileTest {
-  @Parameters(name = "CellType: {0}") def data: java.lang.Iterable[Array[CellType]] = {
-    val list = new util.ArrayList[Array[CellType]]()
+  def cellTypeParams: java.lang.Iterable[Array[CellType]] = {
+    val list = new java.util.ArrayList[Array[CellType]]()
     list.add(Array[CellType](UShortUserDefinedNoDataCellType(11)))
     list.add(Array[CellType](IntUserDefinedNoDataCellType(12)))
     list.add(Array[CellType](UByteUserDefinedNoDataCellType(12)))
@@ -22,31 +20,49 @@ object EmptyMultibandTileTest {
     list.addAll(constantNoDataCellTypes.map(c => Array[CellType](c)).asJavaCollection)
     list
   }
+
+  def noNoDataCellTypeParams: java.lang.Iterable[Array[CellType]] = {
+    // Based on geotrellis.raster.CellType.noNoDataCellTypes
+    val noNoDataCellTypes = Seq(
+      // BitCellType, // Has special case.
+      ByteCellType,
+      UByteCellType,
+      ShortCellType,
+      UShortCellType,
+      IntCellType,
+      FloatCellType,
+      DoubleCellType
+    )
+
+    val list = new java.util.ArrayList[Array[CellType]]()
+    list.addAll(noNoDataCellTypes.map(c => Array[CellType](c)).asJavaCollection)
+    list
+  }
 }
 
-@RunWith(classOf[Parameterized])
-class EmptyMultibandTileTest(ct: CellType) {
+class EmptyMultibandTileTest() {
 
-  //@Parameterized.Parameter(value = 0) var ct: CellType = IntConstantNoDataCellType
-
-
-  @Test
-  def testCreateEmpty(): Unit = {
+  @ParameterizedTest
+  @MethodSource(Array("cellTypeParams"))
+  def testCreateEmpty(ct: CellType): Unit = {
     val tile = EmptyMultibandTile.empty(ct, 10, 10)
-    assertEquals(NODATA, tile.get(0, 0))
+    assertTrue(tile.isNoDataTile)
   }
 
-  @Test
-  def testCreate(): Unit = {
+  @ParameterizedTest
+  @MethodSource(Array("noNoDataCellTypeParams"))
+  def testCreateEmptyNoNoData(ct: CellType): Unit = {
+    assertThrows[IllegalArgumentException](EmptyMultibandTile.empty(ct, 10, 10))
+  }
+
+  @ParameterizedTest
+  @MethodSource(Array("cellTypeParams"))
+  def testCreate(ct: CellType): Unit = {
     val emptyMultibandTile: MultibandTile = new EmptyMultibandTile(10, 10, ct, 3)
     assertEquals(emptyMultibandTile.bandCount, 3)
     assertEquals(emptyMultibandTile.bands.size, 3)
     for (band <- emptyMultibandTile.bands) {
-      // Test the corners:
-      assertEquals(NODATA, band.get(0, 0))
-      assertEquals(NODATA, band.get(0, band.rows - 1))
-      assertEquals(NODATA, band.get(band.cols - 1, 0))
-      assertEquals(NODATA, band.get(band.cols - 1, band.rows - 1))
+      assertTrue(band.isNoDataTile)
     }
   }
 }
