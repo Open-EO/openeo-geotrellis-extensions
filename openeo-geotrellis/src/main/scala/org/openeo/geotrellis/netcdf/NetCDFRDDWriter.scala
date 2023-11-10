@@ -188,6 +188,9 @@ object NetCDFRDDWriter {
           }
         }
       }
+      if(netcdfFile!=null) {
+        netcdfFile.flush()
+      }
     }
 
     if(dates.nonEmpty) {
