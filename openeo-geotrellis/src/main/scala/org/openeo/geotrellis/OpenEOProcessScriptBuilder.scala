@@ -3,7 +3,7 @@ package org.openeo.geotrellis
 import ai.catboost.CatBoostModel
 import ai.catboost.spark.CatBoostClassificationModel
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{ArrayTile, BitCellType, ByteUserDefinedNoDataCellType, CellType, Dimensions, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isData, isNoData}
+import geotrellis.raster.{ArrayTile, BitCellType, ByteUserDefinedNoDataCellType, CellType, Dimensions, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantNoDataCellType, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isData, isNoData}
 import org.apache.commons.math3.exception.NotANumberException
 import org.apache.commons.math3.stat.descriptive.rank.Percentile
 import org.apache.commons.math3.stat.ranking.NaNStrategy
@@ -979,6 +979,8 @@ class OpenEOProcessScriptBuilder {
         Some(UByteUserDefinedNoDataCellType(255.byteValue()))
       }else if(output_range < 65535 && outMin >= 0){
         Some(UShortUserDefinedNoDataCellType(UShort.MaxValue.toShort))
+      }else if (outMax <= Short.MaxValue && outMin >= Short.MinValue + 1) {
+        Some(ShortConstantNoDataCellType)
       }else{
         Option.empty
       }
