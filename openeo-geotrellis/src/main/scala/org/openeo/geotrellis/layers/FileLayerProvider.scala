@@ -296,6 +296,40 @@ object FileLayerProvider {
     }
   }
 
+  /**
+   * TODO: use generics to have one function for SpatialKey and SpacetimeKey
+   * @param datacubeParams
+   * @param requiredSpacetimeKeys
+   * @param metadata
+   * @return
+   */
+  def applySpaceTimeMask(datacubeParams: Option[DataCubeParameters], requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], metadata: TileLayerMetadata[SpaceTimeKey]): RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = {
+    if (datacubeParams.exists(_.maskingCube.isDefined)) {
+      val maskObject = datacubeParams.get.maskingCube.get
+      maskObject match {
+        case theMask: MultibandTileLayerRDD[SpaceTimeKey] =>
+          if (theMask.metadata.bounds.get._1.isInstanceOf[SpaceTimeKey]) {
+            val filtered = theMask.withContext {
+              _.filter(_._2.band(0).toArray().exists(pixel => pixel == 0)).distinct()
+            }
+            val maskKeys =
+              if (theMask.metadata.crs.equals(metadata.crs) && theMask.metadata.layout.equals(metadata.layout)) {
+                filtered
+              } else {
+                logger.debug(s"mask: automatically resampling mask to match datacube: ${theMask.metadata}")
+                filtered.reproject(metadata.crs, metadata.layout, 16, requiredSpacetimeKeys.partitioner)._2
+              }
+            if (logger.isDebugEnabled) {
+              logger.debug(s"SpacetimeMask mask reduces the input to: ${maskKeys.countApproxDistinct()} keys.")
+            }
+            return requiredSpacetimeKeys.join(maskKeys).map(tuple => (tuple._1, tuple._2._1))
+          }
+        case _ =>
+      }
+    }
+    return requiredSpacetimeKeys
+  }
+
   def applySpatialMask[M](datacubeParams : Option[DataCubeParameters] , requiredSpatialKeys: RDD[(SpatialKey, M)],metadata:TileLayerMetadata[SpaceTimeKey])(implicit vt: ClassTag[M]): RDD[(SpatialKey, M)] = {
     if (datacubeParams.exists(_.maskingCube.isDefined)) {
       val maskObject = datacubeParams.get.maskingCube.get
@@ -802,6 +836,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     var requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = filteredSources.map(t => (SpaceTimeKey(t._1, TemporalKey(t._2.data._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))), t._2))
 
+    requiredSpacetimeKeys = applySpaceTimeMask(datacubeParams, requiredSpacetimeKeys,metadata)
     if (isUTM) {
       //only for utm is just a safeguard to limit to sentine-1/2 for now
       //try to resolve overlap before actually reqding the data
