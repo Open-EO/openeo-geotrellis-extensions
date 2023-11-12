@@ -22,6 +22,8 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
+import org.openeo.geotrellis.OpenEOProcessScriptBuilder
+import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, autoUtmEpsg, retryForever}
@@ -1226,11 +1228,19 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int,datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Seq[(RasterSource,Feature)] = {
     require(zoom >= 0) // TODO: remove zoom and sc parameters
 
-    val overlappingFeatures: Seq[Feature] = openSearch.getProducts(
+    var overlappingFeatures: Seq[Feature] = openSearch.getProducts(
       collectionId = openSearchCollectionId,
       (from.toLocalDate, to.toLocalDate), boundingBox,
       attributeValues, correlationId, ""
     )
+
+    val filter = datacubeParams.map(_.timeDimensionFilter)
+    if (filter.isDefined && filter.get.isDefined) {
+      val condition = filter.get.get.asInstanceOf[OpenEOProcessScriptBuilder]
+      //TODO how do we pass in user context
+      condition.inputFunction.asInstanceOf[AnyProcess].apply(Map("value"->"date")).apply("date")
+      overlappingFeatures=overlappingFeatures.filter(f=>condition.inputFunction.asInstanceOf[AnyProcess].apply(Map("value"->f.nominalDate)).apply(f.nominalDate).asInstanceOf[Boolean])
+    }
 
 
     val reprojectedBoundingBox: ProjectedExtent = targetBoundingBox(boundingBox, layoutScheme)

@@ -1934,6 +1934,47 @@ public class TestOpenEOProcessScriptBuilder {
 
     }
 
+    @Test
+    public void testDateBetweenIntervalAfter() {
+        testDateBetween("2023-01-02T00:00:00Z","2023-01-15T00:00:00Z",false,true);
+    }
+
+    @Test
+    public void testDateBetweenIntervalBefore() {
+        testDateBetween("2022-01-01T00:00:00Z","2022-01-01T12:00:00Z",false,true);
+    }
+
+    @Test
+    public void testDateBetweenActuallyBetween() {
+        testDateBetween("2022-01-02T00:00:00Z","2022-01-15T00:00:00Z",true,true);
+    }
+
+    @Test
+    public void testDateBetweenEndExclusive() {
+        testDateBetween("2022-01-01T00:00:00Z","2022-01-02T00:00:00Z",false,true);
+    }
+
+    @Test
+    public void testDateBetweenEndInclusive() {
+        testDateBetween("2022-01-01T00:00:00Z","2022-01-02T00:00:00Z",true,false);
+    }
+
+    void testDateBetween(Object min, Object max, Boolean expected, Object excludeMax) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> args = map3("min", min, "max", max, "exclude_max",excludeMax);
+        builder.expressionStart("date_between", args);
+        builder.argumentStart("x");
+        builder.fromParameter("value");
+        builder.argumentEnd();
+        //builder.constantArgument("min", (byte) 9);
+        //builder.constantArgument("max", (byte) 11);
+        builder.expressionEnd("date_between", args);
+
+        Object transformation = builder.generateAnyFunction(Collections.singletonMap("value","2022-01-02T00:00:00Z")).apply("2022-01-02T00:00:00Z");
+        assertEquals(transformation,expected);
+
+    }
+
     static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Map<String, Object> arguments = ignoreNoData!=null? Collections.singletonMap("ignore_nodata",ignoreNoData.booleanValue()) : Collections.emptyMap();

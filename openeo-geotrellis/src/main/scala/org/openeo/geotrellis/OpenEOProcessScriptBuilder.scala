@@ -492,6 +492,10 @@ class OpenEOProcessScriptBuilder {
     this.generateFunction(context.toMap)
   }
 
+  def generateAnyFunction(context: util.Map[String, Any]): Any => Any = {
+    this.inputFunction.asInstanceOf[AnyProcess](context.toMap)
+  }
+
   def generateFunction(): Seq[Tile] => Seq[Tile] = {
     wrapProcessWithDefaultContext(inputFunction.asInstanceOf[OpenEOProcess])
   }
@@ -527,7 +531,7 @@ class OpenEOProcessScriptBuilder {
   }
 
   private def getAnyProcessArg(name: String,arguments: java.util.Map[String, Object],default:Any = null): AnyProcess = {
-    if(arguments.get(name).isInstanceOf[String]) {
+    if(arguments.get(name).isInstanceOf[String] || arguments.get(name).isInstanceOf[Boolean]) {
       val theArg:Any = arguments.get(name)
       (context: Map[String,Any]) => (inputArg: Any) => {
         theArg
@@ -673,6 +677,31 @@ class OpenEOProcessScriptBuilder {
       createConstantTileFunction(diff)
     }
     dateDiffProcess
+  }
+
+
+  private def dateBetweenProcess(arguments: java.util.Map[String, Object]): AnyProcess = {
+    val xDate: AnyProcess = getAnyProcessArg("x", arguments)
+    val minDate: AnyProcess = getAnyProcessArg("min", arguments)
+    val maxDate = getAnyProcessArg("max", arguments)
+    val excludeMax = getAnyProcessArg("exclude_max", arguments, false)
+
+    val dateBetweenProcess = (context: Map[String, Any]) => {
+
+      val theFunction = (arg:Any) => {
+        val date1Evaluated = minDate(context)(null)
+        val date2Evaluated = maxDate(context)(null)
+        val xEvaluated = xDate(context)(null)
+        val excludeEvaluated = excludeMax(context)(null).asInstanceOf[Boolean]
+        val parsedDate1 = ZonedDateTime.parse(argumentToDate(date1Evaluated, context, "date_between"))
+        val parsedDate2 = ZonedDateTime.parse(argumentToDate(date2Evaluated, context, "date_between"))
+        val parsedX = ZonedDateTime.parse(argumentToDate(xEvaluated, context, "date_between"))
+        parsedX.isEqual(parsedDate1) || (parsedX.isAfter(parsedDate1)&&parsedX.isBefore(parsedDate2)) || (!excludeEvaluated && parsedX.isEqual(parsedDate2))
+      }
+
+      theFunction
+    }
+    dateBetweenProcess
   }
 
 
@@ -826,6 +855,7 @@ class OpenEOProcessScriptBuilder {
 
     val operation = operator match {
       case "date_difference" => dateDifferenceProcess(arguments)
+      case "date_between" => dateBetweenProcess(arguments)
       case "date_replace_component" => dateReplaceComponent(arguments)
       case "if" => ifProcess(arguments)
       // Comparison operators
