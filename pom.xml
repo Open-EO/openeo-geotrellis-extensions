@@ -33,7 +33,7 @@
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>s3</artifactId>
-                <version>2.13.74</version>
+                <version>${awssdk.version}</version>
                 <exclusions>
                     <exclusion>
                         <groupId>software.amazon.awssdk</groupId>
