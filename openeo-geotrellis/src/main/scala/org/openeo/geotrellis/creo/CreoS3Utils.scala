@@ -15,10 +15,12 @@ import java.time.Duration
 
 object CreoS3Utils {
 
+  private val cloudFerroRegion: Region = Region.of("RegionOne")
+
   def getAsyncClient(): S3AsyncClient = {
     S3AsyncClient.builder()
       .credentialsProvider(credentialsProvider)
-      .region(new Region("RegionOne")).overrideConfiguration(overrideConfig)
+      .region(cloudFerroRegion).overrideConfiguration(overrideConfig)
       .build();
   }
 
@@ -27,7 +29,7 @@ object CreoS3Utils {
 
     val clientBuilder = S3Client.builder()
       .overrideConfiguration(overrideConfig)
-      .region(Region.of("RegionOne"))
+      .region(cloudFerroRegion)
 
     val credentialsProvider: StaticCredentialsProvider = credentialsProvider
     clientBuilder.endpointOverride(URI.create(sys.env("SWIFT_URL"))).credentialsProvider(credentialsProvider).build()
