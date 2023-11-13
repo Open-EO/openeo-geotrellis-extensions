@@ -49,4 +49,8 @@ class DataCubeParameters extends Serializable {
   def setNoResampleOnRead(noResample:Boolean):Unit = {
     noResampleOnRead = noResample
   }
+
+  def setTimeDimensionFilter(conditionProcessScriptBuilder:Object):Unit = {
+    timeDimensionFilter = Some(conditionProcessScriptBuilder)
+  }
 }
