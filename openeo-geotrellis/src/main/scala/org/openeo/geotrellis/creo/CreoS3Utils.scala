@@ -25,13 +25,11 @@ object CreoS3Utils {
   }
 
   def getCreoS3Client(): S3Client = {
-    val overrideConfig: ClientOverrideConfiguration = overrideConfig
 
     val clientBuilder = S3Client.builder()
       .overrideConfiguration(overrideConfig)
       .region(cloudFerroRegion)
 
-    val credentialsProvider: StaticCredentialsProvider = credentialsProvider
     clientBuilder.endpointOverride(URI.create(sys.env("SWIFT_URL"))).credentialsProvider(credentialsProvider).build()
   }
 
