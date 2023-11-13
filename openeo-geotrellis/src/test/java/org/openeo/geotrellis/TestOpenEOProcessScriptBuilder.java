@@ -328,6 +328,35 @@ public class TestOpenEOProcessScriptBuilder {
         testLogicalComparisonXY("lte", 0, 1, 1, 0, 0, 0);
     }
 
+    @Test
+    public void testLogicalStringComparisonXY() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> argsEq1 = map2("x",null, "y","2022-01-01");
+        Map<String, Object> argsEq2 = map2("x",null, "y","2022-01-02");
+        Map<String, Object> orArgs = map2("x",null, "y",null);
+        builder.expressionStart("or", orArgs);
+        builder.argumentStart("x");
+            builder.expressionStart("eq", argsEq1);
+            builder.argumentStart("x");
+            builder.fromParameter("value");
+            builder.argumentEnd();
+            builder.expressionEnd("eq", argsEq1);
+        builder.argumentEnd();
+        builder.argumentStart("y");
+            builder.expressionStart("eq", argsEq2);
+            builder.argumentStart("x");
+            builder.fromParameter("value");
+            builder.argumentEnd();
+            builder.expressionEnd("eq", argsEq2);
+        builder.argumentEnd();
+        builder.expressionEnd("or", orArgs);
+        Function1<Object, Object> transformation = builder.generateAnyFunction(map1("value","2022-01-01"));
+
+        Object result = transformation.apply(null);
+        assertEquals(true,result );
+
+    }
+
 
     @DisplayName("Test logical operations: 'not' after 'equals' (legacy)")
     @Test
