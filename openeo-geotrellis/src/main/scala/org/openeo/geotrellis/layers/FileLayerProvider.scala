@@ -1154,11 +1154,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     // TODO: pass a strategy to FileLayerProvider instead (incl. one for the PROBA-V workaround)
     val byLinkTitle = !openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
 
-    if (byLinkTitle) {
-      // TODO: is this still applicable?
-      logger.warn("matching feature assets by ID/link title; only single band assets are supported")
-    }
-
     val expectedNumberOfBands = openSearchLinkTitlesWithBandId.size
 
     lazy val cloudPath = for {
