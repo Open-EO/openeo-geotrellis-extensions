@@ -9,7 +9,6 @@ import org.apache.spark.mllib.linalg.Vectors;
 import org.apache.spark.mllib.regression.LabeledPoint;
 import org.apache.spark.mllib.tree.RandomForest;
 import org.apache.spark.mllib.tree.model.RandomForestModel;
-import org.junit.Ignore;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -329,7 +328,7 @@ public class TestOpenEOProcessScriptBuilder {
         testLogicalComparisonXY("lte", 0, 1, 1, 0, 0, 0);
     }
 
-    @Ignore
+
     @Test
     public void testLogicalStringComparisonXY() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
@@ -1934,7 +1933,7 @@ public class TestOpenEOProcessScriptBuilder {
                     builder.argumentEnd();
                     builder.expressionEnd("absolute", absArgs);
                     builder.argumentEnd();
-                    builder.expressionEnd("add", map2("x","dummy","y","dummy"));
+                    builder.expressionEnd("add", dummyMap("x","y"));
                     builder.argumentEnd();
                     builder.expressionEnd("array_apply",Collections.EMPTY_MAP);
                 builder.argumentEnd();
@@ -1942,7 +1941,7 @@ public class TestOpenEOProcessScriptBuilder {
                 builder.argumentEnd();
                 builder.expressionEnd("int", Collections.EMPTY_MAP);
             builder.argumentEnd();
-        builder.expressionEnd("neq", map2("x","dummy","y","dummy"));
+        builder.expressionEnd("neq",dummyMap("x","y"));
         builder.argumentEnd();
         builder.expressionEnd("array_apply", Collections.EMPTY_MAP);
 
@@ -2202,11 +2201,11 @@ public class TestOpenEOProcessScriptBuilder {
             builder.expressionStart("not", dummyMap("x"));
             builder.argumentStart("x");
         }
-        builder.expressionStart(xyOperator, dummyMap("x", "y"));
+        builder.expressionStart(xyOperator, map2("x",null, "y",yValue));
         builder.argumentStart("x");
         builder.argumentEnd();
         builder.constantArgument("y", yValue);
-        builder.expressionEnd(xyOperator, dummyMap("x", "y"));
+        builder.expressionEnd(xyOperator, map2("x", null, "y", yValue));
         if (negation) {
             builder.argumentEnd();
             builder.expressionEnd("not", dummyMap("x"));
@@ -2287,7 +2286,7 @@ public class TestOpenEOProcessScriptBuilder {
     private static Map<String, Object> dummyMap(String... keys) {
         Map<String, Object> m = new HashMap<String, Object>();
         for (String key : keys) {
-            m.put(key, null);
+            m.put(key, "dummy");
         }
         return m;
     }

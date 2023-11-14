@@ -38,6 +38,8 @@ object OpenEOProcessScriptBuilder{
 
   private val logger = LoggerFactory.getLogger(classOf[OpenEOProcessScriptBuilder])
 
+  private val booleanOperators = Set("or", "and", "eq", "neq")
+
   type OpenEOProcess =  Map[String,Any] => (Seq[Tile]  => Seq[Tile] )
   type AnyProcess =  Map[String,Any] => (Any  => Any )
 
@@ -474,6 +476,7 @@ class OpenEOProcessScriptBuilder {
   val arrayElementStack: mutable.Stack[Integer] = new mutable.Stack[Integer]()
   val argNames: mutable.Stack[String] = new mutable.Stack[String]()
   val contextStack: mutable.Stack[mutable.Map[String,Object]] = new mutable.Stack[mutable.Map[String, Object]]()
+  val typeStack: mutable.Stack[mutable.Map[String,String]] = new mutable.Stack[mutable.Map[String, String]]()
   var arrayCounter : Int =  0
   var inputFunction:  Object = null
 
@@ -716,6 +719,7 @@ class OpenEOProcessScriptBuilder {
         val yEvaluated = yVal(context)(null)
         process match {
           case "eq" => xEvaluated == yEvaluated
+          case "neq" => xEvaluated != yEvaluated
           case "or" => xEvaluated.asInstanceOf[Boolean] || yEvaluated.asInstanceOf[Boolean]
           case "and" => xEvaluated.asInstanceOf[Boolean] && yEvaluated.asInstanceOf[Boolean]
           case _ => throw new IllegalArgumentException(s"Unsupported operation: $process (arguments: ${arguments.keySet()})")
@@ -817,6 +821,8 @@ class OpenEOProcessScriptBuilder {
     arrayElementStack.push(arrayCounter)
     argNames.push(name)
     contextStack.push(mutable.Map[String,Object]())
+    typeStack.head.put(name,"array")
+    typeStack.push(mutable.Map[String,String]())
     processStack.push("array")
     arrayCounter = 0
   }
@@ -824,6 +830,7 @@ class OpenEOProcessScriptBuilder {
   def arrayElementDone():Unit = {
     val scope = contextStack.head
     scope.put(arrayCounter.toString,inputFunction)
+    typeStack.head.put(arrayCounter.toString,resultingDataType.toString())
     arrayCounter += 1
     inputFunction = null
   }
@@ -834,11 +841,13 @@ class OpenEOProcessScriptBuilder {
     val constantTileFunction:OpenEOProcess = wrapSimpleProcess(createConstantTileFunction(value))
     val scope = contextStack.head
     scope.put(arrayCounter.toString,constantTileFunction)
+    typeStack.head.put(arrayCounter.toString,value.getClass.toString)
     arrayCounter += 1
   }
 
   def arrayEnd():Unit = {
     val name = argNames.pop()
+    typeStack.pop()
     val scope = contextStack.pop()
     processStack.pop()
 
@@ -852,7 +861,6 @@ class OpenEOProcessScriptBuilder {
       results
     }
     arrayCounter = arrayElementStack.pop()
-
     contextStack.head.put(name,inputFunction)
 
   }
@@ -861,11 +869,12 @@ class OpenEOProcessScriptBuilder {
   def expressionStart(operator:String,arguments:java.util.Map[String,Object]): Unit = {
     processStack.push(operator)
     contextStack.push(mutable.Map[String,Object]())
+    typeStack.push(mutable.Map[String,String]())
   }
 
   def expressionEnd(operator:String,arguments:java.util.Map[String,Object]): Unit = {
     // TODO: this is not only about expressions anymore. Rename it to e.g. "leaveProcess" to be more in line with graph visitor in Python?
-    logger.debug(operator + " process with arguments: " + contextStack.head.mkString(",") + " direct args: " + arguments.mkString(","))
+    logger.debug(operator + " process with arguments: " + contextStack.head.mkString(",") + " direct args: " + arguments.mkString(",") + " of types: " + typeStack.head.mkString(","))
     // Bit of argument sniffing to support multiple versions/variants of processes
     val hasXY = arguments.containsKey("x") && arguments.containsKey("y")
     val hasX = arguments.containsKey("x")
@@ -876,10 +885,14 @@ class OpenEOProcessScriptBuilder {
     val hasTrueCondition = Try(arguments.get("condition").toString.toBoolean).getOrElse(false)
     val hasConditionExpression = arguments.get("condition") != null && !arguments.get("condition").isInstanceOf[Boolean]
 
-    val xyConstantComparison = false && hasXY && (arguments("x").isInstanceOf[String] || !contextStack.head("x").isInstanceOf[OpenEOProcess] || arguments("y").isInstanceOf[String] || !contextStack.head("y").isInstanceOf[OpenEOProcess])
+    //TODO check below can be more generic, needs some work to make sure 'typeStack' holds the right info in a consistent manner
+    val xyConstantComparison = hasXY && ((arguments("x").isInstanceOf[String] && arguments("x") != "dummy" )
+      || typeStack.head.getOrElse("x","") == "boolean"
+      || (arguments("y").isInstanceOf[String]  && arguments("y") != "dummy"  )
+      || typeStack.head.getOrElse("y","") == "boolean")
 
     val operation = {
-      if(xyConstantComparison) {
+      if(xyConstantComparison && booleanOperators.contains(operator)) {
         xyConstantFunction(operator,arguments)
       }else{
         operator match {
@@ -1000,6 +1013,15 @@ class OpenEOProcessScriptBuilder {
     val expectedOperator = processStack.pop()
     assert(expectedOperator.equals(operator))
     contextStack.pop()
+    typeStack.pop()
+    if(typeStack.nonEmpty) {
+
+      if(xyConstantComparison && booleanOperators.contains(operator)){
+        typeStack.head(argNames.head) = "boolean"
+      }else{
+        typeStack.head(argNames.head) = resultingDataType.toString()
+      }
+    }
 
   }
 
