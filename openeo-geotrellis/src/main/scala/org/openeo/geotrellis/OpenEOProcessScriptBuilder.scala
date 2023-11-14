@@ -3,7 +3,7 @@ package org.openeo.geotrellis
 import ai.catboost.CatBoostModel
 import ai.catboost.spark.CatBoostClassificationModel
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{ArrayTile, BitCellType, ByteUserDefinedNoDataCellType, CellType, Dimensions, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isData, isNoData}
+import geotrellis.raster.{ArrayTile, BitCellType, ByteArrayTile, ByteUserDefinedNoDataCellType, CellType, Dimensions, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, HasNoData, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, NoNoData, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, isData, isNoData}
 import org.apache.commons.math3.exception.NotANumberException
 import org.apache.commons.math3.stat.descriptive.rank.Percentile
 import org.apache.commons.math3.stat.ranking.NaNStrategy
@@ -676,6 +676,78 @@ class OpenEOProcessScriptBuilder {
   }
 
 
+  private def xyFunctionPreserveNoData(compareOperator: (Double, Double) => Boolean, xArgName: String = "x", yArgName: String = "y", convertBitCells: Boolean = true): OpenEOProcess = {
+    def apply_operator(r1: Tile, r2: Tile): Tile = {
+      Traversable(r1, r2).assertEqualDimensions()
+      val Dimensions(cols, rows) = r1.dimensions
+
+      val tile = ByteArrayTile.fill(byteNODATA, cols, rows) // Was bit, but bit has no noData
+
+
+      if (r1.cellType.isFloatingPoint || r2.cellType.isFloatingPoint) {
+        cfor(0)(_ < r1.rows, _ + 1) { row =>
+          cfor(0)(_ < r1.cols, _ + 1) { col =>
+            val z1 = r1.getDouble(col, row)
+            val z2 = r2.getDouble(col, row)
+            if (!z1.isNaN && !z2.isNaN) tile.set(col, row, if (compareOperator(z1, z2)) 1 else 0)
+          }
+        }
+      } else {
+        val nd1 = r1.cellType match {
+          case ct: HasNoData[Byte] => ct.noDataValue
+          case ct: HasNoData[Short] => ct.noDataValue
+          case ct: HasNoData[Int] => ct.noDataValue
+        }
+
+        val nd2 = r2.cellType match {
+          case ct: HasNoData[Byte] => ct.noDataValue
+          case ct: HasNoData[Short] => ct.noDataValue
+          case ct: HasNoData[Int] => ct.noDataValue
+        }
+
+        cfor(0)(_ < r1.rows, _ + 1) { row =>
+          cfor(0)(_ < r1.cols, _ + 1) { col =>
+            val z1 = r1.get(col, row)
+            val z2 = r2.get(col, row)
+            if (z1 != nd1 && z2 != nd2)
+              tile.set(col, row, if (compareOperator(z1, z2)) 1 else 0)
+
+          }
+        }
+      }
+
+      tile
+    }
+
+    val x_function: OpenEOProcess = getProcessArg(xArgName)
+    val y_function: OpenEOProcess = getProcessArg(yArgName)
+    val processString = processStack.reverse.mkString("->")
+    val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
+
+      def convertBitCellsOp(aTile: Tile): Tile = {
+        if (convertBitCells && aTile.cellType.bits == 1) {
+          aTile.convert(ByteUserDefinedNoDataCellType(127.byteValue()))
+        } else {
+          aTile
+        }
+      }
+
+      val x_input: Seq[Tile] = evaluateToTiles(x_function, context, tiles).map(convertBitCellsOp)
+      val y_input: Seq[Tile] = evaluateToTiles(y_function, context, tiles).map(convertBitCellsOp)
+      if (x_input.size == y_input.size) {
+        x_input.zip(y_input).map(t => apply_operator(t._1, t._2))
+      } else if (x_input.size == 1) {
+        y_input.map(apply_operator(x_input.head, _))
+      } else if (y_input.size == 1) {
+        x_input.map(apply_operator(_, y_input.head))
+      } else {
+        throw new IllegalArgumentException(s"Incompatible numbers of tiles in this XY operation '${processString}' $xArgName has: ${x_input.size} , $yArgName has: ${y_input.size}\n We expect either equal counts, are one of them should be 1.")
+      }
+
+    }
+    bandFunction
+  }
+
   private def xyFunction(operator:(Tile,Tile) => Tile, xArgName:String = "x", yArgName:String = "y" ,convertBitCells: Boolean = true): OpenEOProcess = {
     val x_function: OpenEOProcess = getProcessArg(xArgName)
     val y_function: OpenEOProcess = getProcessArg(yArgName)
@@ -829,13 +901,13 @@ class OpenEOProcessScriptBuilder {
       case "date_replace_component" => dateReplaceComponent(arguments)
       case "if" => ifProcess(arguments)
       // Comparison operators
-      case "gt" if hasXY => xyFunction(Greater.apply,convertBitCells = false)
-      case "lt" if hasXY => xyFunction(Less.apply,convertBitCells = false)
-      case "gte" if hasXY => xyFunction(GreaterOrEqual.apply,convertBitCells = false)
-      case "lte" if hasXY => xyFunction(LessOrEqual.apply,convertBitCells = false)
+      case "gt" if hasXY => xyFunctionPreserveNoData(Greater.compare,convertBitCells = false)
+      case "lt" if hasXY => xyFunctionPreserveNoData(Less.compare,convertBitCells = false)
+      case "gte" if hasXY => xyFunctionPreserveNoData(GreaterOrEqual.compare,convertBitCells = false)
+      case "lte" if hasXY => xyFunctionPreserveNoData(LessOrEqual.compare,convertBitCells = false)
       case "between" if hasX => betweenFunction(arguments)
-      case "eq" if hasXY => xyFunction(Equal.apply,convertBitCells = false)
-      case "neq" if hasXY => xyFunction(Unequal.apply,convertBitCells = false)
+      case "eq" if hasXY => xyFunctionPreserveNoData(Equal.compare,convertBitCells = false)
+      case "neq" if hasXY => xyFunctionPreserveNoData(Unequal.compare,convertBitCells = false)
       // Boolean operators
       case "not" if hasX => mapFunction("x", Not.apply)
       case "not" if hasExpression => mapFunction("expression", Not.apply) // legacy 0.4 style

@@ -221,6 +221,29 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(FloatConstantNoDataCellType$.MODULE$, builder.getOutputCellType());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"gt", "lt", "gte", "lte", "eq", "neq",
+//            "and", "or", "xor", "add", "subtract", "multiply", "divide", "power", "normalized_difference", "log"
+    })
+    void testLogicalComparisonWithNan(String operator) {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> args = dummyMap("x", "y");
+        builder.expressionStart(operator, args);
+        builder.argumentStart("x");
+        builder.argumentEnd();
+        builder.constantArgument("y", 10);
+        builder.expressionEnd(operator, args);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+
+        assertEquals(BitCellType$.MODULE$, builder.getOutputCellType());
+        Tile tile = fillDoubleArrayTile(2, 2, Double.NaN, Double.NaN, Double.NaN, Double.NaN);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile)));
+        assertEquals(1, result.length());
+        Tile res = result.apply(0);
+        assertTrue(res.isNoDataTile());
+    }
+
     private void testLogicalComparisonWithConstant(String operator, int... expectedValues) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Map<String, Object> args = dummyMap("x", "y");
