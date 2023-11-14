@@ -876,7 +876,7 @@ class OpenEOProcessScriptBuilder {
     val hasTrueCondition = Try(arguments.get("condition").toString.toBoolean).getOrElse(false)
     val hasConditionExpression = arguments.get("condition") != null && !arguments.get("condition").isInstanceOf[Boolean]
 
-    val xyConstantComparison = hasXY && (arguments("x").isInstanceOf[String] || !contextStack.head("x").isInstanceOf[OpenEOProcess] || arguments("y").isInstanceOf[String] || !contextStack.head("y").isInstanceOf[OpenEOProcess])
+    val xyConstantComparison = false && hasXY && (arguments("x").isInstanceOf[String] || !contextStack.head("x").isInstanceOf[OpenEOProcess] || arguments("y").isInstanceOf[String] || !contextStack.head("y").isInstanceOf[OpenEOProcess])
 
     val operation = {
       if(xyConstantComparison) {

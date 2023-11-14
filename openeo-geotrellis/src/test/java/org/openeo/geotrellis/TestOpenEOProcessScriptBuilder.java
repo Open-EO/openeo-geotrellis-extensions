@@ -484,9 +484,7 @@ public class TestOpenEOProcessScriptBuilder {
 
     private void testLogicalOperatorWithXY(String operator, int... expectedValues) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
-        Map<String, Object> args = new HashMap<String, Object>();
-        args.put("x", "dummy");
-        args.put("y", "dummy");
+        Map<String, Object> args = dummyMap("x","y");
         builder.expressionStart(operator, args);
         buildBandXYArguments(builder, 0, 1);
         builder.expressionEnd(operator, args);
