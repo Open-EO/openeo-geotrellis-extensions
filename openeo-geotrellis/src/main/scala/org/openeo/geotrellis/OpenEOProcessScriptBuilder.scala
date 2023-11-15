@@ -693,23 +693,35 @@ class OpenEOProcessScriptBuilder {
           }
         }
       } else {
-        val nd1 = r1.cellType match {
-          case ct: HasNoData[Byte] => ct.noDataValue
-          case ct: HasNoData[Short] => ct.noDataValue
-          case ct: HasNoData[Int] => ct.noDataValue
+        var nd1 = -666
+        val has_nd1 = r1.cellType match {
+          case ct: HasNoData[AnyVal] =>
+            nd1 = ct.noDataValue match {
+              case x: Int => x
+              case x: Short => x.toInt
+              case x: Byte => x.toInt
+            }
+            true
+          case _ => false
         }
 
-        val nd2 = r2.cellType match {
-          case ct: HasNoData[Byte] => ct.noDataValue
-          case ct: HasNoData[Short] => ct.noDataValue
-          case ct: HasNoData[Int] => ct.noDataValue
+        var nd2 = -666
+        val has_nd2 = r2.cellType match {
+          case ct: HasNoData[AnyVal] =>
+            nd2 = ct.noDataValue match {
+              case x: Int => x
+              case x: Short => x.toInt
+              case x: Byte => x.toInt
+            }
+            true
+          case _ => false
         }
 
         cfor(0)(_ < r1.rows, _ + 1) { row =>
           cfor(0)(_ < r1.cols, _ + 1) { col =>
             val z1 = r1.get(col, row)
             val z2 = r2.get(col, row)
-            if (z1 != nd1 && z2 != nd2)
+            if ((!has_nd1 || z1 != nd1) && (!has_nd2 || z2 != nd2))
               tile.set(col, row, if (compareOperator(z1, z2)) 1 else 0)
 
           }

@@ -260,7 +260,7 @@ public class TestOpenEOProcessScriptBuilder {
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile)));
         assertEquals(1, result.length());
         Tile res = result.apply(0);
-        assertTileEquals(fillBitArrayTile(4, 3, expectedValues), res);
+        assertTileEquals(fillByteArrayTile(4, 3, expectedValues), res);
     }
 
     @DisplayName("Test logical 'eq' with constant")
@@ -312,7 +312,7 @@ public class TestOpenEOProcessScriptBuilder {
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
         assertEquals(1, result.length());
         Tile res = result.apply(0);
-        assertTileEquals(fillBitArrayTile(3, 2, expectedValues), res);
+        assertTileEquals(fillByteArrayTile(3, 2, expectedValues), res);
     }
 
     @DisplayName("Test logical 'eq' between bands")
@@ -1948,7 +1948,7 @@ public class TestOpenEOProcessScriptBuilder {
         Tile nodataTile = ByteConstantNoDataArrayTile.empty(1, 1);
 
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)));
-        BitConstantTile trueTile = new BitConstantTile(true, 1, 1);
+        Tile trueTile = ByteArrayTile.fill((byte)1, 1, 1);
         assertTileEquals(trueTile,result.apply(0));
         assertTileEquals(trueTile,result.apply(1));
         assertTileEquals(trueTile,result.apply(2));
