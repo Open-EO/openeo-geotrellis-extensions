@@ -1233,7 +1233,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     if (filter.isDefined && filter.get.isDefined) {
       val condition = filter.get.get.asInstanceOf[OpenEOProcessScriptBuilder]
       //TODO how do we pass in user context
-      condition.inputFunction.asInstanceOf[AnyProcess].apply(Map("value"->"date")).apply("date")
       overlappingFeatures=overlappingFeatures.filter(f=>condition.inputFunction.asInstanceOf[AnyProcess].apply(Map("value"->f.nominalDate)).apply(f.nominalDate).asInstanceOf[Boolean])
     }
 
