@@ -329,6 +329,36 @@ public class TestOpenEOProcessScriptBuilder {
     }
 
 
+    @Test
+    public void testLogicalStringComparisonXY() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> argsEq1 = map2("x",null, "y","2022-01-01");
+        Map<String, Object> argsEq2 = map2("x",null, "y","2022-01-02");
+        Map<String, Object> orArgs = map2("x",null, "y",null);
+        builder.expressionStart("or", orArgs);
+        builder.argumentStart("x");
+            builder.expressionStart("eq", argsEq1);
+            builder.argumentStart("x");
+            builder.fromParameter("value");
+            builder.argumentEnd();
+            builder.expressionEnd("eq", argsEq1);
+        builder.argumentEnd();
+        builder.argumentStart("y");
+            builder.expressionStart("eq", argsEq2);
+            builder.argumentStart("x");
+            builder.fromParameter("value");
+            builder.argumentEnd();
+            builder.expressionEnd("eq", argsEq2);
+        builder.argumentEnd();
+        builder.expressionEnd("or", orArgs);
+        Function1<Object, Object> transformation = builder.generateAnyFunction(map1("value","2022-01-01"));
+
+        Object result = transformation.apply(null);
+        assertEquals(true,result );
+
+    }
+
+
     @DisplayName("Test logical operations: 'not' after 'equals' (legacy)")
     @Test
     public void testLogicalNotEqWithExpression() {
@@ -453,9 +483,7 @@ public class TestOpenEOProcessScriptBuilder {
 
     private void testLogicalOperatorWithXY(String operator, int... expectedValues) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
-        Map<String, Object> args = new HashMap<String, Object>();
-        args.put("x", "dummy");
-        args.put("y", "dummy");
+        Map<String, Object> args = dummyMap("x","y");
         builder.expressionStart(operator, args);
         buildBandXYArguments(builder, 0, 1);
         builder.expressionEnd(operator, args);
@@ -1905,7 +1933,7 @@ public class TestOpenEOProcessScriptBuilder {
                     builder.argumentEnd();
                     builder.expressionEnd("absolute", absArgs);
                     builder.argumentEnd();
-                    builder.expressionEnd("add", map2("x","dummy","y","dummy"));
+                    builder.expressionEnd("add", dummyMap("x","y"));
                     builder.argumentEnd();
                     builder.expressionEnd("array_apply",Collections.EMPTY_MAP);
                 builder.argumentEnd();
@@ -1913,7 +1941,7 @@ public class TestOpenEOProcessScriptBuilder {
                 builder.argumentEnd();
                 builder.expressionEnd("int", Collections.EMPTY_MAP);
             builder.argumentEnd();
-        builder.expressionEnd("neq", map2("x","dummy","y","dummy"));
+        builder.expressionEnd("neq",dummyMap("x","y"));
         builder.argumentEnd();
         builder.expressionEnd("array_apply", Collections.EMPTY_MAP);
 
@@ -2173,11 +2201,11 @@ public class TestOpenEOProcessScriptBuilder {
             builder.expressionStart("not", dummyMap("x"));
             builder.argumentStart("x");
         }
-        builder.expressionStart(xyOperator, dummyMap("x", "y"));
+        builder.expressionStart(xyOperator, map2("x",null, "y",yValue));
         builder.argumentStart("x");
         builder.argumentEnd();
         builder.constantArgument("y", yValue);
-        builder.expressionEnd(xyOperator, dummyMap("x", "y"));
+        builder.expressionEnd(xyOperator, map2("x", null, "y", yValue));
         if (negation) {
             builder.argumentEnd();
             builder.expressionEnd("not", dummyMap("x"));

@@ -207,15 +207,19 @@ object NetCDFRDDWriter {
       logger.error(s"No netCDF written to ${path}, the datacube was empty.")
     }
     cachedRDD.unpersist(blocking = false)
+
+    val finalPath =
     if (path.startsWith("s3:/")) {
       if(rdd.context.getConf.get("spark.kubernetes.namespace","nothing").equals("spark-jobs-staging")) {
         uploadToS3LargeFile(path, intermediatePath)
       }else{
         uploadToS3(path, intermediatePath)
       }
+    }else{
+      path
     }
 
-    return Collections.singletonList(path)
+    return Collections.singletonList(finalPath)
   }
 
 
@@ -338,7 +342,6 @@ object NetCDFRDDWriter {
         logger.info(s"Writing ${name} with dates ${dates}.")
         try{
           writeToDisk(sorted.map(_._2), dates, filePath, bandNames, crs, dimensionNames, attributes)
-          filePath
         }catch {
           case t: IOException => {
             handleSampleWriteError(t, name, outputAsPath)
@@ -461,7 +464,7 @@ object NetCDFRDDWriter {
   def writeToDisk(rasters: Seq[Raster[MultibandTile]], dates:Seq[ZonedDateTime], path:String,
                   bandNames: ArrayList[String],
                   crs:CRS, dimensionNames: java.util.Map[String,String],
-                  attributes: java.util.Map[String,String]) = {
+                  attributes: java.util.Map[String,String]): String = {
     val maxExtent: Extent = rasters.map(_._2).reduce((a, b) => if (a.area > b.area) a else b)
     val equalRasters = rasters.map(raster =>
       if (raster.extent != maxExtent) raster.crop(maxExtent, CropOptions(clamp = false, force = true)) else raster
@@ -490,6 +493,8 @@ object NetCDFRDDWriter {
 
     if (path.startsWith("s3:/")) {
       uploadToS3(path, intermediatePath)
+    }else{
+      path
     }
 
   }
@@ -510,7 +515,7 @@ object NetCDFRDDWriter {
 
   }
 
-  private def uploadToS3(objectStoragePath: String, localPath: String) = {
+  private def uploadToS3(objectStoragePath: String, localPath: String):String = {
     val correctS3Path = objectStoragePath.replaceFirst("s3:/(?!/)", "s3://")
     val s3Uri = new AmazonS3URI(correctS3Path)
 
@@ -520,6 +525,7 @@ object NetCDFRDDWriter {
       .build
 
     CreoS3Utils.getCreoS3Client().putObject(objectRequest, RequestBody.fromFile(Paths.get(localPath)))
+    correctS3Path
   }
 
   private[netcdf] def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime],

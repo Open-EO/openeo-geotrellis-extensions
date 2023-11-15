@@ -38,6 +38,8 @@ object OpenEOProcessScriptBuilder{
 
   private val logger = LoggerFactory.getLogger(classOf[OpenEOProcessScriptBuilder])
 
+  private val booleanOperators = Set("or", "and", "eq", "neq")
+
   type OpenEOProcess =  Map[String,Any] => (Seq[Tile]  => Seq[Tile] )
   type AnyProcess =  Map[String,Any] => (Any  => Any )
 
@@ -474,6 +476,7 @@ class OpenEOProcessScriptBuilder {
   val arrayElementStack: mutable.Stack[Integer] = new mutable.Stack[Integer]()
   val argNames: mutable.Stack[String] = new mutable.Stack[String]()
   val contextStack: mutable.Stack[mutable.Map[String,Object]] = new mutable.Stack[mutable.Map[String, Object]]()
+  val typeStack: mutable.Stack[mutable.Map[String,String]] = new mutable.Stack[mutable.Map[String, String]]()
   var arrayCounter : Int =  0
   var inputFunction:  Object = null
 
@@ -704,6 +707,30 @@ class OpenEOProcessScriptBuilder {
     dateBetweenProcess
   }
 
+  private def xyConstantFunction(process:String, arguments: java.util.Map[String, Object]): AnyProcess = {
+    val xVal: AnyProcess = getAnyProcessArg("x", arguments)
+    val yVal: AnyProcess = getAnyProcessArg("y", arguments)
+
+
+    val xyProcess = (context: Map[String, Any]) => {
+
+      val theFunction = (arg: Any) => {
+        val xEvaluated = xVal(context)(null)
+        val yEvaluated = yVal(context)(null)
+        process match {
+          case "eq" => xEvaluated == yEvaluated
+          case "neq" => xEvaluated != yEvaluated
+          case "or" => xEvaluated.asInstanceOf[Boolean] || yEvaluated.asInstanceOf[Boolean]
+          case "and" => xEvaluated.asInstanceOf[Boolean] && yEvaluated.asInstanceOf[Boolean]
+          case _ => throw new IllegalArgumentException(s"Unsupported operation: $process (arguments: ${arguments.keySet()})")
+        }
+      }
+
+      theFunction
+    }
+    xyProcess
+  }
+
 
   private def xyFunction(operator:(Tile,Tile) => Tile, xArgName:String = "x", yArgName:String = "y" ,convertBitCells: Boolean = true): OpenEOProcess = {
     val x_function: OpenEOProcess = getProcessArg(xArgName)
@@ -794,6 +821,8 @@ class OpenEOProcessScriptBuilder {
     arrayElementStack.push(arrayCounter)
     argNames.push(name)
     contextStack.push(mutable.Map[String,Object]())
+    typeStack.head.put(name,"array")
+    typeStack.push(mutable.Map[String,String]())
     processStack.push("array")
     arrayCounter = 0
   }
@@ -801,6 +830,7 @@ class OpenEOProcessScriptBuilder {
   def arrayElementDone():Unit = {
     val scope = contextStack.head
     scope.put(arrayCounter.toString,inputFunction)
+    typeStack.head.put(arrayCounter.toString,resultingDataType.toString())
     arrayCounter += 1
     inputFunction = null
   }
@@ -811,11 +841,13 @@ class OpenEOProcessScriptBuilder {
     val constantTileFunction:OpenEOProcess = wrapSimpleProcess(createConstantTileFunction(value))
     val scope = contextStack.head
     scope.put(arrayCounter.toString,constantTileFunction)
+    typeStack.head.put(arrayCounter.toString,value.getClass.toString)
     arrayCounter += 1
   }
 
   def arrayEnd():Unit = {
     val name = argNames.pop()
+    typeStack.pop()
     val scope = contextStack.pop()
     processStack.pop()
 
@@ -829,7 +861,6 @@ class OpenEOProcessScriptBuilder {
       results
     }
     arrayCounter = arrayElementStack.pop()
-
     contextStack.head.put(name,inputFunction)
 
   }
@@ -838,11 +869,12 @@ class OpenEOProcessScriptBuilder {
   def expressionStart(operator:String,arguments:java.util.Map[String,Object]): Unit = {
     processStack.push(operator)
     contextStack.push(mutable.Map[String,Object]())
+    typeStack.push(mutable.Map[String,String]())
   }
 
   def expressionEnd(operator:String,arguments:java.util.Map[String,Object]): Unit = {
     // TODO: this is not only about expressions anymore. Rename it to e.g. "leaveProcess" to be more in line with graph visitor in Python?
-    logger.debug(operator + " process with arguments: " + contextStack.head.mkString(",") + " direct args: " + arguments.mkString(","))
+    logger.debug(operator + " process with arguments: " + contextStack.head.mkString(",") + " direct args: " + arguments.mkString(",") + " of types: " + typeStack.head.mkString(","))
     // Bit of argument sniffing to support multiple versions/variants of processes
     val hasXY = arguments.containsKey("x") && arguments.containsKey("y")
     val hasX = arguments.containsKey("x")
@@ -853,105 +885,118 @@ class OpenEOProcessScriptBuilder {
     val hasTrueCondition = Try(arguments.get("condition").toString.toBoolean).getOrElse(false)
     val hasConditionExpression = arguments.get("condition") != null && !arguments.get("condition").isInstanceOf[Boolean]
 
-    val operation = operator match {
-      case "date_difference" => dateDifferenceProcess(arguments)
-      case "date_between" => dateBetweenProcess(arguments)
-      case "date_replace_component" => dateReplaceComponent(arguments)
-      case "if" => ifProcess(arguments)
-      // Comparison operators
-      case "gt" if hasXY => xyFunction(Greater.apply,convertBitCells = false)
-      case "lt" if hasXY => xyFunction(Less.apply,convertBitCells = false)
-      case "gte" if hasXY => xyFunction(GreaterOrEqual.apply,convertBitCells = false)
-      case "lte" if hasXY => xyFunction(LessOrEqual.apply,convertBitCells = false)
-      case "between" if hasX => betweenFunction(arguments)
-      case "eq" if hasXY => xyFunction(Equal.apply,convertBitCells = false)
-      case "neq" if hasXY => xyFunction(Unequal.apply,convertBitCells = false)
-      // Boolean operators
-      case "not" if hasX => mapFunction("x", Not.apply)
-      case "not" if hasExpression => mapFunction("expression", Not.apply) // legacy 0.4 style
-      case "and" if hasXY => xyFunction(And.apply,convertBitCells = false)
-      case "and" if hasExpressions => reduceFunction("expressions", And.apply) // legacy 0.4 style
-      case "all"  => reduceFunction("data", And.apply)
-      case "or" if hasXY => xyFunction(Or.apply,convertBitCells = false)
-      case "or" if hasExpressions => reduceFunction("expressions", Or.apply) // legacy 0.4 style
-      case "any" => reduceFunction("data", Or.apply)
-      case "xor" if hasXY => xyFunction(Xor.apply,convertBitCells = false)
-      case "xor" if hasExpressions => reduceFunction("expressions", Xor.apply) // legacy 0.4 style
-      // Mathematical operations
-      case "sum" if hasData && !ignoreNoData => reduceFunction("data", Add.apply)
-      case "sum" if hasData && ignoreNoData => reduceFunction("data", AddIgnoreNodata.apply)
-      case "add" if hasXY => xyFunction(Add.apply)
-      case "subtract" if hasXY => xyFunction(Subtract.apply)
-      case "subtract" if hasData => reduceFunction("data", Subtract.apply) // legacy 0.4 style
-      case "product" if hasData => reduceFunction("data", Multiply.apply)
-      case "multiply" if hasXY => xyFunction(Multiply.apply)
-      case "multiply" if hasData => reduceFunction("data", Multiply.apply) // legacy 0.4 style
-      case "divide" if hasXY => xyFunction(Divide.apply)
-      case "divide" if hasData => reduceFunction("data", Divide.apply) // legacy 0.4 style
-      case "power" => xyFunction(Pow.apply,xArgName = "base",yArgName = "p")
-      case "exp" => mapFunction("p", Exp.apply)
-      case "normalized_difference" if hasXY => xyFunction((x, y) => Divide(Subtract(x, y), Add(x, y)))
-      case "clip" => clipFunction(arguments)
-      case "int" => intFunction(arguments)
-      // Statistics
-      case "max" if hasData && !ignoreNoData => reduceFunction("data", Max.apply)
-      case "max" if hasData && ignoreNoData => reduceFunction("data", MaxIgnoreNoData.apply)
-      case "min" if hasData && !ignoreNoData => reduceFunction("data", Min.apply)
-      case "min" if hasData && ignoreNoData => reduceFunction("data", MinIgnoreNoData.apply)
-        //TODO take ignorenodata into account!
-      case "mean" if hasData => reduceListFunction("data", Mean.apply)
-      case "variance" if hasData && !ignoreNoData => reduceListFunction("data", varianceWithNoData)
-      case "variance" if hasData && ignoreNoData => reduceListFunction("data", Variance.apply)
-      case "sd" if hasData && !ignoreNoData => reduceListFunction("data", Sqrt.apply _ compose varianceWithNoData)
-      case "sd" if hasData && ignoreNoData => reduceListFunction("data", Sqrt.apply _ compose Variance.apply)
-      case "median" if ignoreNoData => applyListFunction("data",median)
-      case "median" => applyListFunction("data", medianWithNodata)
-      case "count" if hasTrueCondition => applyListFunction("data", countAll)
-      case "count" if hasConditionExpression => mapListFunction("data", "condition", countCondition)
-      case "count" => applyListFunction("data", countValid)
-      // Unary math
-      case "abs" if hasX => mapFunction("x", Abs.apply)
-      case "absolute" if hasX => mapFunction("x", Abs.apply)
-      //TODO: "int" integer part of a number
-      //TODO "arccos" -> Acosh.apply,
-      //TODO: arctan 2 is not unary! "arctan2" -> Atan2.apply,
-      case "log" => xyFunction(LogBase.apply,xArgName = "x",yArgName = "base")
-      case "ln" if hasX => mapFunction( "x", Log.apply)
-      case "sqrt" if hasX => mapFunction("x", Sqrt.apply)
-      case "ceil" if hasX => mapFunction("x", Ceil.apply)
-      case "floor" if hasX => mapFunction("x", Floor.apply)
-      case "round" if hasX => mapFunction("x", Round.apply)
-      case "arccos" if hasX => mapFunction("x", Acos.apply)
-      case "arcsin" if hasX => mapFunction("x", Asin.apply)
-      case "arctan" if hasX => mapFunction("x", Atan.apply)
-      case "cos" if hasX => mapFunction("x", Cos.apply)
-      case "cosh" if hasX => mapFunction("x", Cosh.apply)
-      case "sin" if hasX => mapFunction("x", Sin.apply)
-      case "sinh" if hasX => mapFunction("x", Sinh.apply)
-      case "tan" if hasX => mapFunction("x", Tan.apply)
-      case "tanh" if hasX => mapFunction("x", Tanh.apply)
-      // Other
-      case "inspect" => inspectFunction(arguments)
-      case "first" if ignoreNoData =>  applyListFunction("data", firstFunctionIgnoreNoData)
-      case "first" => applyListFunction("data", firstFunctionWithNodata)
-      case "last" if ignoreNoData => applyListFunction("data", lastFunctionIgnoreNoData)
-      case "last" => applyListFunction("data", lastFunctionWithNoData)
-      case "is_nodata" if hasX => mapFunction("x", Undefined.apply)
-      case "is_nan" if hasX => mapFunction("x", Undefined.apply)
-      case "array_element" => arrayElementFunction(arguments)
-      case "array_modify" => arrayModifyFunction(arguments)
-      case "array_interpolate_linear" => applyListFunction("data",linearInterpolation)
-      case "array_find" => arrayFind(arguments)
-      case "linear_scale_range" => linearScaleRangeFunction(arguments)
-      case "quantiles" => quantilesFunction(arguments,ignoreNoData)
-      case "array_concat" => arrayConcatFunction(arguments)
-      case "array_append" => arrayAppendFunction(arguments)
-      case "array_create" => arrayCreateFunction(arguments)
-      case "array_apply" => arrayApplyFunction(arguments)
-      case "predict_random_forest" if hasData => predictRandomForestFunction(arguments)
-      case "predict_catboost" if hasData => predictCatBoostFunction(arguments)
-      case "predict_probabilities" if hasData => predictCatBoostProbabilitiesFunction(arguments)
-      case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
+    //TODO check below can be more generic, needs some work to make sure 'typeStack' holds the right info in a consistent manner
+    val xyConstantComparison = hasXY && ((arguments("x").isInstanceOf[String] && arguments("x") != "dummy" )
+      || typeStack.head.getOrElse("x","") == "boolean"
+      || (arguments("y").isInstanceOf[String]  && arguments("y") != "dummy"  )
+      || typeStack.head.getOrElse("y","") == "boolean")
+
+    val operation = {
+      if(xyConstantComparison && booleanOperators.contains(operator)) {
+        xyConstantFunction(operator,arguments)
+      }else{
+        operator match {
+          case "date_difference" => dateDifferenceProcess(arguments)
+          case "date_between" => dateBetweenProcess(arguments)
+          case "date_replace_component" => dateReplaceComponent(arguments)
+          case "if" => ifProcess(arguments)
+          // Comparison operators
+          case "gt" if hasXY => xyFunction(Greater.apply, convertBitCells = false)
+          case "lt" if hasXY => xyFunction(Less.apply, convertBitCells = false)
+          case "gte" if hasXY => xyFunction(GreaterOrEqual.apply, convertBitCells = false)
+          case "lte" if hasXY => xyFunction(LessOrEqual.apply, convertBitCells = false)
+          case "between" if hasX => betweenFunction(arguments)
+          case "eq" if hasXY => xyFunction(Equal.apply, convertBitCells = false)
+          case "neq" if hasXY => xyFunction(Unequal.apply, convertBitCells = false)
+          // Boolean operators
+          case "not" if hasX => mapFunction("x", Not.apply)
+          case "not" if hasExpression => mapFunction("expression", Not.apply) // legacy 0.4 style
+          case "and" if hasXY => xyFunction(And.apply, convertBitCells = false)
+          case "and" if hasExpressions => reduceFunction("expressions", And.apply) // legacy 0.4 style
+          case "all" => reduceFunction("data", And.apply)
+          case "or" if hasXY => xyFunction(Or.apply, convertBitCells = false)
+          case "or" if hasExpressions => reduceFunction("expressions", Or.apply) // legacy 0.4 style
+          case "any" => reduceFunction("data", Or.apply)
+          case "xor" if hasXY => xyFunction(Xor.apply, convertBitCells = false)
+          case "xor" if hasExpressions => reduceFunction("expressions", Xor.apply) // legacy 0.4 style
+          // Mathematical operations
+          case "sum" if hasData && !ignoreNoData => reduceFunction("data", Add.apply)
+          case "sum" if hasData && ignoreNoData => reduceFunction("data", AddIgnoreNodata.apply)
+          case "add" if hasXY => xyFunction(Add.apply)
+          case "subtract" if hasXY => xyFunction(Subtract.apply)
+          case "subtract" if hasData => reduceFunction("data", Subtract.apply) // legacy 0.4 style
+          case "product" if hasData => reduceFunction("data", Multiply.apply)
+          case "multiply" if hasXY => xyFunction(Multiply.apply)
+          case "multiply" if hasData => reduceFunction("data", Multiply.apply) // legacy 0.4 style
+          case "divide" if hasXY => xyFunction(Divide.apply)
+          case "divide" if hasData => reduceFunction("data", Divide.apply) // legacy 0.4 style
+          case "power" => xyFunction(Pow.apply, xArgName = "base", yArgName = "p")
+          case "exp" => mapFunction("p", Exp.apply)
+          case "normalized_difference" if hasXY => xyFunction((x, y) => Divide(Subtract(x, y), Add(x, y)))
+          case "clip" => clipFunction(arguments)
+          case "int" => intFunction(arguments)
+          // Statistics
+          case "max" if hasData && !ignoreNoData => reduceFunction("data", Max.apply)
+          case "max" if hasData && ignoreNoData => reduceFunction("data", MaxIgnoreNoData.apply)
+          case "min" if hasData && !ignoreNoData => reduceFunction("data", Min.apply)
+          case "min" if hasData && ignoreNoData => reduceFunction("data", MinIgnoreNoData.apply)
+          //TODO take ignorenodata into account!
+          case "mean" if hasData => reduceListFunction("data", Mean.apply)
+          case "variance" if hasData && !ignoreNoData => reduceListFunction("data", varianceWithNoData)
+          case "variance" if hasData && ignoreNoData => reduceListFunction("data", Variance.apply)
+          case "sd" if hasData && !ignoreNoData => reduceListFunction("data", Sqrt.apply _ compose varianceWithNoData)
+          case "sd" if hasData && ignoreNoData => reduceListFunction("data", Sqrt.apply _ compose Variance.apply)
+          case "median" if ignoreNoData => applyListFunction("data", median)
+          case "median" => applyListFunction("data", medianWithNodata)
+          case "count" if hasTrueCondition => applyListFunction("data", countAll)
+          case "count" if hasConditionExpression => mapListFunction("data", "condition", countCondition)
+          case "count" => applyListFunction("data", countValid)
+          // Unary math
+          case "abs" if hasX => mapFunction("x", Abs.apply)
+          case "absolute" if hasX => mapFunction("x", Abs.apply)
+          //TODO: "int" integer part of a number
+          //TODO "arccos" -> Acosh.apply,
+          //TODO: arctan 2 is not unary! "arctan2" -> Atan2.apply,
+          case "log" => xyFunction(LogBase.apply, xArgName = "x", yArgName = "base")
+          case "ln" if hasX => mapFunction("x", Log.apply)
+          case "sqrt" if hasX => mapFunction("x", Sqrt.apply)
+          case "ceil" if hasX => mapFunction("x", Ceil.apply)
+          case "floor" if hasX => mapFunction("x", Floor.apply)
+          case "round" if hasX => mapFunction("x", Round.apply)
+          case "arccos" if hasX => mapFunction("x", Acos.apply)
+          case "arcsin" if hasX => mapFunction("x", Asin.apply)
+          case "arctan" if hasX => mapFunction("x", Atan.apply)
+          case "cos" if hasX => mapFunction("x", Cos.apply)
+          case "cosh" if hasX => mapFunction("x", Cosh.apply)
+          case "sin" if hasX => mapFunction("x", Sin.apply)
+          case "sinh" if hasX => mapFunction("x", Sinh.apply)
+          case "tan" if hasX => mapFunction("x", Tan.apply)
+          case "tanh" if hasX => mapFunction("x", Tanh.apply)
+          // Other
+          case "inspect" => inspectFunction(arguments)
+          case "first" if ignoreNoData => applyListFunction("data", firstFunctionIgnoreNoData)
+          case "first" => applyListFunction("data", firstFunctionWithNodata)
+          case "last" if ignoreNoData => applyListFunction("data", lastFunctionIgnoreNoData)
+          case "last" => applyListFunction("data", lastFunctionWithNoData)
+          case "is_nodata" if hasX => mapFunction("x", Undefined.apply)
+          case "is_nan" if hasX => mapFunction("x", Undefined.apply)
+          case "array_element" => arrayElementFunction(arguments)
+          case "array_modify" => arrayModifyFunction(arguments)
+          case "array_interpolate_linear" => applyListFunction("data", linearInterpolation)
+          case "array_find" => arrayFind(arguments)
+          case "linear_scale_range" => linearScaleRangeFunction(arguments)
+          case "quantiles" => quantilesFunction(arguments, ignoreNoData)
+          case "array_concat" => arrayConcatFunction(arguments)
+          case "array_append" => arrayAppendFunction(arguments)
+          case "array_create" => arrayCreateFunction(arguments)
+          case "array_apply" => arrayApplyFunction(arguments)
+          case "predict_random_forest" if hasData => predictRandomForestFunction(arguments)
+          case "predict_catboost" if hasData => predictCatBoostFunction(arguments)
+          case "predict_probabilities" if hasData => predictCatBoostProbabilitiesFunction(arguments)
+          case _ => throw new IllegalArgumentException(s"Unsupported operation: $operator (arguments: ${arguments.keySet()})")
+        }
+      }
+
     }
 
     if(operator != "linear_scale_range") {
@@ -968,6 +1013,15 @@ class OpenEOProcessScriptBuilder {
     val expectedOperator = processStack.pop()
     assert(expectedOperator.equals(operator))
     contextStack.pop()
+    typeStack.pop()
+    if(typeStack.nonEmpty) {
+
+      if(xyConstantComparison && booleanOperators.contains(operator)){
+        typeStack.head(argNames.head) = "boolean"
+      }else{
+        typeStack.head(argNames.head) = resultingDataType.toString()
+      }
+    }
 
   }
 
