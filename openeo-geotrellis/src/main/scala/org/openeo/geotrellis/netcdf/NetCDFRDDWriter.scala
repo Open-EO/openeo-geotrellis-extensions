@@ -512,6 +512,7 @@ object NetCDFRDDWriter {
     val fileUpload = transferManager.uploadFile(uploadFileRequest)
 
     val uploadResult = fileUpload.completionFuture.join
+    correctS3Path
 
   }
 
