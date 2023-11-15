@@ -22,6 +22,8 @@ import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
+import software.amazon.awssdk.transfer.s3.S3TransferManager
+import software.amazon.awssdk.transfer.s3.model.UploadFileRequest
 import ucar.ma2.{ArrayDouble, ArrayInt, DataType}
 import ucar.nc2.write.Nc4ChunkingDefault
 import ucar.nc2.{Attribute, Dimension, NetcdfFileWriter, Variable}
@@ -208,7 +210,11 @@ object NetCDFRDDWriter {
 
     val finalPath =
     if (path.startsWith("s3:/")) {
-      uploadToS3(path, intermediatePath)
+      if(rdd.context.getConf.get("spark.kubernetes.namespace","nothing").equals("spark-jobs-staging")) {
+        uploadToS3LargeFile(path, intermediatePath)
+      }else{
+        uploadToS3(path, intermediatePath)
+      }
     }else{
       path
     }
@@ -490,6 +496,23 @@ object NetCDFRDDWriter {
     }else{
       path
     }
+
+  }
+
+  private def uploadToS3LargeFile(objectStoragePath: String, localPath: String) = {
+    val correctS3Path = objectStoragePath.replaceFirst("s3:/(?!/)", "s3://")
+    val s3Uri = new AmazonS3URI(correctS3Path)
+
+    val putRequest = PutObjectRequest.builder().bucket(s3Uri.getBucket).key(s3Uri.getKey).build()
+    val uploadFileRequest = UploadFileRequest.builder().putObjectRequest(putRequest).source(Paths.get(localPath)).build
+
+    val transferManager = S3TransferManager.builder()
+      .s3Client(CreoS3Utils.getAsyncClient())
+      .build();
+    val fileUpload = transferManager.uploadFile(uploadFileRequest)
+
+    val uploadResult = fileUpload.completionFuture.join
+    correctS3Path
 
   }
 

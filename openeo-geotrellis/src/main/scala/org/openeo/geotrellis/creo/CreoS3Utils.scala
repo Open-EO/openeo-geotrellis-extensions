@@ -8,14 +8,39 @@ import software.amazon.awssdk.core.retry.RetryPolicy
 import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy
 import software.amazon.awssdk.core.retry.conditions.{OrRetryCondition, RetryCondition}
 import software.amazon.awssdk.regions.Region
-import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.{S3AsyncClient, S3Client}
 
 import java.net.URI
 import java.time.Duration
 
 object CreoS3Utils {
 
+  private val cloudFerroRegion: Region = Region.of("RegionOne")
+
+  def getAsyncClient(): S3AsyncClient = {
+    S3AsyncClient.builder()
+      .credentialsProvider(credentialsProvider)
+      .region(cloudFerroRegion).overrideConfiguration(overrideConfig).forcePathStyle(true)
+      .build();
+  }
+
   def getCreoS3Client(): S3Client = {
+
+    val clientBuilder = S3Client.builder()
+      .overrideConfiguration(overrideConfig).forcePathStyle(true)
+      .region(cloudFerroRegion)
+
+    clientBuilder.endpointOverride(URI.create(sys.env("SWIFT_URL"))).credentialsProvider(credentialsProvider).build()
+  }
+
+  private def credentialsProvider = {
+    val swiftAccess = sys.env.getOrElse("SWIFT_ACCESS_KEY_ID", sys.env.getOrElse("AWS_ACCESS_KEY_ID", ""))
+    val swiftSecretAccess = sys.env.getOrElse("SWIFT_SECRET_ACCESS_KEY", sys.env.getOrElse("AWS_SECRET_ACCESS_KEY", ""))
+    val credentialsProvider = StaticCredentialsProvider.create(AwsBasicCredentials.create(swiftAccess, swiftSecretAccess))
+    credentialsProvider
+  }
+
+  private def overrideConfig = {
     val retryCondition =
       OrRetryCondition.create(
         RetryCondition.defaultRetryCondition(),
@@ -36,14 +61,7 @@ object CreoS3Utils {
       ClientOverrideConfiguration.builder()
         .retryPolicy(retryPolicy)
         .build()
-
-    val clientBuilder = S3Client.builder()
-      .overrideConfiguration(overrideConfig)
-      .region(Region.of("RegionOne"))
-
-    val swiftAccess = sys.env.getOrElse("SWIFT_ACCESS_KEY_ID", sys.env.getOrElse("AWS_ACCESS_KEY_ID",""))
-    val swiftSecretAccess = sys.env.getOrElse("SWIFT_SECRET_ACCESS_KEY", sys.env.getOrElse("AWS_SECRET_ACCESS_KEY",""))
-    clientBuilder.endpointOverride(URI.create(sys.env("SWIFT_URL"))).credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(swiftAccess,swiftSecretAccess))).build()
+    overrideConfig
   }
 
   def deleteCreoSubFolder(bucket_name: String, subfolder: String) = {
