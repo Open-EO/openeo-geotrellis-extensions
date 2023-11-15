@@ -177,7 +177,7 @@ object NetCDFRDDWriter {
 
             if(gridExtent.colMin + tile.cols > rasterExtent.cols || gridExtent.rowMin + tile.rows > rasterExtent.rows){
               tile = tile.crop(rasterExtent.cols-gridExtent.colMin,rasterExtent.rows-gridExtent.rowMin,raster.CropOptions(force=true))
-              logger.warn(s"Cropping output tile to avoid going out of variable (${variable}) bounds ${gridExtent}.")
+              logger.debug(s"Cropping output tile to avoid going out of variable (${variable}) bounds ${gridExtent}.")
             }
             try{
               writeTile(variable, origin, tile, netcdfFile)
