@@ -20,14 +20,14 @@ object CreoS3Utils {
   def getAsyncClient(): S3AsyncClient = {
     S3AsyncClient.builder()
       .credentialsProvider(credentialsProvider)
-      .region(cloudFerroRegion).overrideConfiguration(overrideConfig)
+      .region(cloudFerroRegion).overrideConfiguration(overrideConfig).forcePathStyle(true)
       .build();
   }
 
   def getCreoS3Client(): S3Client = {
 
     val clientBuilder = S3Client.builder()
-      .overrideConfiguration(overrideConfig)
+      .overrideConfiguration(overrideConfig).forcePathStyle(true)
       .region(cloudFerroRegion)
 
     clientBuilder.endpointOverride(URI.create(sys.env("SWIFT_URL"))).credentialsProvider(credentialsProvider).build()
