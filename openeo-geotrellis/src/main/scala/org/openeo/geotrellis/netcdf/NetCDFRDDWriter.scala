@@ -228,7 +228,14 @@ object NetCDFRDDWriter {
     val count = cachedRDD.count()
     cachedRDD.name = s"netCDF RDD ${count} elements"
     logger.info(s"Writing NetCDF from rdd with : ${count} elements and ${rdd.getNumPartitions} partitions.")
-    val elementsPartitionRatio = count / rdd.getNumPartitions
+
+    val elementsPartitionRatio =
+      if(rdd.getNumPartitions>0) {
+        1000 // just a large number
+      } else{
+        count / rdd.getNumPartitions
+      }
+
     val shuffledRDD =
       if (elementsPartitionRatio < 4) {
         //avoid iterating over many empty partitions
