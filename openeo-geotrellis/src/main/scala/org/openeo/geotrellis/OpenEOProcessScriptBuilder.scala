@@ -38,7 +38,8 @@ object OpenEOProcessScriptBuilder{
 
   private val logger = LoggerFactory.getLogger(classOf[OpenEOProcessScriptBuilder])
 
-  private val booleanOperators = Set("or", "and", "eq", "neq")
+  //operators that return a boolean
+  private val booleanOperators = Set("or", "and", "eq", "neq", "date_between")
 
   type OpenEOProcess =  Map[String,Any] => (Seq[Tile]  => Seq[Tile] )
   type AnyProcess =  Map[String,Any] => (Any  => Any )
@@ -1016,7 +1017,7 @@ class OpenEOProcessScriptBuilder {
     typeStack.pop()
     if(typeStack.nonEmpty) {
 
-      if(xyConstantComparison && booleanOperators.contains(operator)){
+      if((xyConstantComparison && booleanOperators.contains(operator)) || operator == "date_between"){
         typeStack.head(argNames.head) = "boolean"
       }else{
         typeStack.head(argNames.head) = resultingDataType.toString()
