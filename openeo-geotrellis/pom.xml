@@ -34,6 +34,12 @@
             <scope>compile</scope>
         </dependency>
         <dependency>
+            <groupId>software.amazon.awssdk.crt</groupId>
+            <artifactId>aws-crt</artifactId>
+            <version>0.28.7</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
             <groupId>org.openeo</groupId>
             <artifactId>geotrellis-accumulo-extensions</artifactId>
             <version>${parent.version}</version>

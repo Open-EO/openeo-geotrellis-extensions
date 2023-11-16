@@ -133,6 +133,11 @@
             <version>${spark.version}</version>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>org.openeo</groupId>
+            <artifactId>geopyspark-geotrellis</artifactId>
+            <version>${parent.version}</version>
+        </dependency>
     </dependencies>
     <profiles>
         <profile>
