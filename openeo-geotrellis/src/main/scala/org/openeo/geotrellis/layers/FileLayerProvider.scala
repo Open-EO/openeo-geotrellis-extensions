@@ -934,13 +934,14 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       val reduction = if(noResampling) 5 else 1
       //resampling is still needed in case bounding boxes are not aligned with pixels
       // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
+      val theResampleMethod = datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor)
       var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1, math.max(1,readKeysToRasterSourcesResult._4.size/reduction)).flatMap(t=>{
         val source = if (noResampling) {
           //fast path
           new LayoutTileSourceFixed(t._1, layoutDefinition, identity)
         } else{
           //slow path
-          t._1.tileToLayout(layoutDefinition, datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor))
+          t._1.tileToLayout(layoutDefinition, theResampleMethod)
         }
 
         t._2.map(key_feature=>{
