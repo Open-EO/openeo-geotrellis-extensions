@@ -8,7 +8,7 @@ import software.amazon.awssdk.core.retry.RetryPolicy
 import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy
 import software.amazon.awssdk.core.retry.conditions.{OrRetryCondition, RetryCondition}
 import software.amazon.awssdk.regions.Region
-import software.amazon.awssdk.services.s3.{S3AsyncClient, S3Client}
+import software.amazon.awssdk.services.s3.{S3AsyncClient, S3Client, S3Configuration}
 
 import java.net.URI
 import java.time.Duration
@@ -20,6 +20,7 @@ object CreoS3Utils {
   def getAsyncClient(): S3AsyncClient = {
     S3AsyncClient.builder()
       .credentialsProvider(credentialsProvider)
+      .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
       .region(cloudFerroRegion).overrideConfiguration(overrideConfig).forcePathStyle(true)
       .build();
   }
@@ -27,6 +28,7 @@ object CreoS3Utils {
   def getCreoS3Client(): S3Client = {
 
     val clientBuilder = S3Client.builder()
+      .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
       .overrideConfiguration(overrideConfig).forcePathStyle(true)
       .region(cloudFerroRegion)
 

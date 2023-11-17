@@ -1,6 +1,6 @@
 package org.openeo
 
-import java.time.{Duration, Instant}
+import _root_.geotrellis.raster._
 import org.slf4j.Logger
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
@@ -8,12 +8,12 @@ import software.amazon.awssdk.core.retry.RetryPolicy
 import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy
 import software.amazon.awssdk.core.retry.conditions.{OrRetryCondition, RetryCondition}
 import software.amazon.awssdk.regions.Region
-import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
-import _root_.geotrellis.raster._
+import software.amazon.awssdk.services.s3.{S3Client, S3Configuration}
 
 import java.net.URI
 import java.nio.file.{Path, Paths}
+import java.time.{Duration, Instant}
 import java.util.concurrent.ConcurrentHashMap
 import scala.compat.java8.FunctionConverters._
 
@@ -67,7 +67,7 @@ package object geotrellis {
       .region(if(region != null) region else Region.EU_CENTRAL_1)
 
     val theClient = if(endpoint != null) {
-      clientBuilder.endpointOverride(endpoint).build()
+      clientBuilder.serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build()).endpointOverride(endpoint).build()
     }else{
       clientBuilder.build()
     }

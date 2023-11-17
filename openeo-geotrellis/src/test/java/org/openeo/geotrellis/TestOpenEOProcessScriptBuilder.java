@@ -358,6 +358,44 @@ public class TestOpenEOProcessScriptBuilder {
 
     }
 
+    @Test
+    public void testComplexLogicalDateComparisonXY() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+
+        Map<String, Object> argsEq2 = map2("x",null, "y","2022-01-02");
+        Map<String, Object> orArgs = map2("x",null, "y",null);
+        builder.expressionStart("or", orArgs);
+        builder.argumentStart("x");
+            Map<String, Object> args = map3("min", "2022-01-01T00:00:00Z", "max", null, "exclude_max",true);
+            builder.expressionStart("date_between", args);
+            builder.argumentStart("x");
+            builder.fromParameter("value");
+            builder.argumentEnd();
+            builder.argumentStart("max");
+                Map<String, Object> dateShiftArgs = map3("unit", "day", "value", 1, "date", "2022-01-01T00:00:00Z");
+                builder.expressionStart("date_shift", dateShiftArgs);
+                builder.constantArgument("value",1);
+                builder.expressionEnd("date_shift",dateShiftArgs);
+            builder.argumentEnd();
+            //builder.constantArgument("min", (byte) 9);
+            //builder.constantArgument("max", (byte) 11);
+            builder.expressionEnd("date_between", args);
+        builder.argumentEnd();
+        builder.argumentStart("y");
+        builder.expressionStart("eq", argsEq2);
+        builder.argumentStart("x");
+        builder.fromParameter("value");
+        builder.argumentEnd();
+        builder.expressionEnd("eq", argsEq2);
+        builder.argumentEnd();
+        builder.expressionEnd("or", orArgs);
+        Function1<Object, Object> transformation = builder.generateAnyFunction(map1("value","2022-01-01T03:55:44.123Z"));
+
+        Object result = transformation.apply(null);
+        assertEquals(true,result );
+
+    }
+
 
     @DisplayName("Test logical operations: 'not' after 'equals' (legacy)")
     @Test
