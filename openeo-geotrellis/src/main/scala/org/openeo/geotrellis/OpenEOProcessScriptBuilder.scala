@@ -429,19 +429,22 @@ object OpenEOProcessScriptBuilder{
   }
 
   def argumentToDate(argument: Any, context: Map[String, Any],process:String="unknown"): String = {
-    if (argument.isInstanceOf[String]) {
-      argument.asInstanceOf[String]
-    } else if (argument.isInstanceOf[util.Map[String, Any]] && argument.asInstanceOf[util.Map[String, Any]].containsKey("from_parameter")) {
-      val paramName = argument.asInstanceOf[util.Map[String, Any]].get("from_parameter").asInstanceOf[String]
-      val theParamValue = context.getOrElse(paramName, throw new IllegalArgumentException(s"$process: Parameter $paramName not found in context: $context"))
-      theParamValue match {
-        case accessor: TemporalAccessor =>
-          DateTimeFormatter.ISO_INSTANT.format(accessor)
-        case _ =>
-          theParamValue.asInstanceOf[String]
-      }
-    } else {
-      throw new IllegalArgumentException(s"$process got unexpected argument: $argument")
+    argument match {
+      case str: String =>
+        str
+      case aTimeClass: TemporalAccessor =>
+        DateTimeFormatter.ISO_INSTANT.format(aTimeClass)
+      case objectHash: util.Map[String, Any] if objectHash.containsKey("from_parameter") =>
+        val paramName = objectHash.get("from_parameter").asInstanceOf[String]
+        val theParamValue = context.getOrElse(paramName, throw new IllegalArgumentException(s"$process: Parameter $paramName not found in context: $context"))
+        theParamValue match {
+          case accessor: TemporalAccessor =>
+            DateTimeFormatter.ISO_INSTANT.format(accessor)
+          case _ =>
+            theParamValue.asInstanceOf[String]
+        }
+      case _ =>
+        throw new IllegalArgumentException(s"$process got unexpected argument: $argument")
     }
   }
 
@@ -615,6 +618,25 @@ class OpenEOProcessScriptBuilder {
     val accept = getProcessArg("accept")
     val reject: OpenEOProcess = optionalArg("reject")
     ifElseProcess(value, accept, reject)
+  }
+
+  private def dateShift(arguments: java.util.Map[String, Object]): AnyProcess = {
+    val date = arguments.get("date")
+    //TODO full evaluation of integer arguments
+    val theValue = arguments.get("value")
+    val unit = arguments.get("unit")
+
+    if (!theValue.isInstanceOf[Integer]) {
+      throw new IllegalArgumentException("date_shift: The 'value' argument should be an integer, but got: " + theValue)
+    }
+    val dateProcess = (context: Map[String, Any]) => {
+      val parsedDate = ZonedDateTime.parse(argumentToDate(date, context, "date_shift"))
+      val theFunction = (arg: Any) => {
+        parsedDate.plus(theValue.asInstanceOf[Integer].longValue(),ChronoUnit.valueOf(unit.asInstanceOf[String].replace("millisecond","MILLI").toUpperCase + "S"))
+      }
+      theFunction
+    }
+    return dateProcess
   }
 
   private def dateReplaceComponent(arguments: java.util.Map[String, Object]): AnyProcess = {
@@ -899,6 +921,7 @@ class OpenEOProcessScriptBuilder {
         operator match {
           case "date_difference" => dateDifferenceProcess(arguments)
           case "date_between" => dateBetweenProcess(arguments)
+          case "date_shift" => dateShift(arguments)
           case "date_replace_component" => dateReplaceComponent(arguments)
           case "if" => ifProcess(arguments)
           // Comparison operators
