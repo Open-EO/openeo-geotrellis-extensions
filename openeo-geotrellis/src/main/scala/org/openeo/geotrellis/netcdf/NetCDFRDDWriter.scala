@@ -153,12 +153,28 @@ object NetCDFRDDWriter {
         }
 
 
-      if(netcdfFile == null){
-        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, bandNames, preProcessedRdd.metadata.crs, cellType,dimensionNames,attributes,zLevel,writeTimeDimension = dates.nonEmpty)
-      }
       val multibandTile = tuple._2
 
-      for (bandIndex <- bandNames.asScala.indices) {
+      val actualBandNames: util.List[String] =
+      if(bandNames.size() < multibandTile.bandCount){
+        logger.error(s"Your cube metadata has these band names ${bandNames.toArray.mkString(",")} but we got data from your cube with more bands: ${multibandTile.bandCount}. You can fix band metadata using rename_labels.")
+        val unknowns: util.List[String] = (bandNames.size() until multibandTile.bandCount toList).map(i => f"unkown_band_$i").asJava
+        bandNames.addAll(unknowns)
+        bandNames
+      }else if(bandNames.size() < multibandTile.bandCount){
+        logger.error(s"Your cube metadata has these band names ${bandNames.toArray.mkString(",")} but we got data from your cube with fewer bands: ${multibandTile.bandCount}. You can fix band metadata using rename_labels.")
+        bandNames.subList(0,multibandTile.bandCount)
+      }else{
+        bandNames
+      }
+
+
+      if(netcdfFile == null){
+        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, actualBandNames, preProcessedRdd.metadata.crs, cellType,dimensionNames,attributes,zLevel,writeTimeDimension = dates.nonEmpty)
+      }
+
+
+      for (bandIndex <- actualBandNames.asScala.indices) {
 
         if(bandIndex < multibandTile.bandCount){
           //gridBoundsFor considers the south/east border as _exclusive_ which means a row of pixels can get dropped
@@ -171,7 +187,7 @@ object NetCDFRDDWriter {
             }else{
               scala.Array( gridExtent.rowMin.toInt, gridExtent.colMin.toInt)
             }
-            val variable = bandNames.get(bandIndex)
+            val variable = actualBandNames.get(bandIndex)
 
             var tile = multibandTile.band(bandIndex)
 
@@ -537,7 +553,7 @@ object NetCDFRDDWriter {
   }
 
   private[netcdf] def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime],
-                                  bandNames: util.ArrayList[String], crs: CRS, cellType: CellType,
+                                  bandNames: util.List[String], crs: CRS, cellType: CellType,
                                   dimensionNames: java.util.Map[String,String],
                                   attributes: java.util.Map[String,String], zLevel:Int =6, writeTimeDimension:Boolean = true) = {
 
