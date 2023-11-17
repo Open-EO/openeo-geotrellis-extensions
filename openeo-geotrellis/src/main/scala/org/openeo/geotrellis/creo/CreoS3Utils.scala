@@ -21,7 +21,7 @@ object CreoS3Utils {
     S3AsyncClient.builder()
       .credentialsProvider(credentialsProvider)
       .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
-      .region(cloudFerroRegion).overrideConfiguration(overrideConfig).forcePathStyle(true)
+      .region(cloudFerroRegion).overrideConfiguration(overrideConfig).forcePathStyle(true).endpointOverride(URI.create(sys.env("SWIFT_URL")))
       .build();
   }
 
