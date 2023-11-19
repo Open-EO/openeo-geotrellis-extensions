@@ -18,10 +18,10 @@ object CreoS3Utils {
   private val cloudFerroRegion: Region = Region.of("RegionOne")
 
   def getAsyncClient(): S3AsyncClient = {
-    S3AsyncClient.builder()
+    S3AsyncClient.crtBuilder()
       .credentialsProvider(credentialsProvider)
-      .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
-      .region(cloudFerroRegion).overrideConfiguration(overrideConfig).forcePathStyle(true).endpointOverride(URI.create(sys.env("SWIFT_URL")))
+      //.serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
+      .region(cloudFerroRegion).forcePathStyle(true).endpointOverride(URI.create(sys.env("SWIFT_URL")))
       .build();
   }
 
