@@ -17,6 +17,7 @@ import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDat
 import org.openeo.geotrellisaccumulo.PyramidFactory
 import org.openeo.geotrelliscommon.SparseSpaceTimePartitioner
 import org.openeo.opensearch.OpenSearchClient
+import spire.syntax.cfor.cfor
 
 import java.awt.image.DataBufferByte
 import java.net.URL
@@ -241,6 +242,63 @@ object LayerFixtures {
   }
 
   lazy val b04Polygons = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/S2_B04_polygons.geojson").getPath)
+
+  def testSpecialValues(ct: CellType): ArrayTile = {
+    val size = 64
+    val rows = size
+    val cols = size
+
+    assert(Byte.MinValue == -128)
+    assert(Byte.MaxValue == 127)
+    assert(Short.MinValue == -32768)
+    assert(Short.MaxValue == 32767)
+    assert((Short.MinValue * -2).toShort == 0)
+    val values: Seq[Double] = ct match {
+      case _: BitCells => Seq(0, 1)
+      case _: ByteCells => Seq(Byte.MinValue, 0, Byte.MaxValue, Byte.MinValue * -2.0)
+      case _: UByteCells => Seq(Byte.MinValue, 0, Byte.MaxValue, Byte.MinValue * -2.0)
+      case _: ShortCells => Seq(Short.MinValue, 0, Short.MaxValue, -1).map(x => x.toDouble)
+      case _: UShortCells => Seq(Short.MinValue, 0, Short.MaxValue, -1).map(x => x.toDouble)
+      case _: IntCells => Seq(Int.MinValue, 0, Int.MaxValue, Int.MinValue * -2.0).map(x => x.toDouble) // No unsigned int?
+      //case _: FloatCells => Seq(Float.MinValue, 0, Float.MaxValue, -Float.NaN, Float.NaN).map(x => x.toDouble) // TODO: Is Float -> Double lossless in this case?
+      // Longs could become imprecise when casting to double. Max precise double 9007199254740993 is smaller than Long.MaxValue
+      //case _: DoubleCells => Seq(Double.MinValue, 0, Double.MaxValue, -Double.NaN, Double.NaN) // NegativeInfinity PositiveInfinity
+      case _ => throw new Exception("CellType not recognized: " + ct)
+    }
+    val blackWhite: (Double, Double) = ct match {
+      case _: BitCells => (0, 1)
+      case _: ByteCells => (Byte.MinValue, Byte.MaxValue)
+      case _: UByteCells => (0, Byte.MinValue * -2.0)
+      case _: ShortCells => (Short.MinValue, Short.MaxValue)
+      case _: UShortCells => (0, Short.MinValue * -2.0)
+      case _: IntCells => (Int.MinValue, Int.MaxValue)
+      case _: FloatCells => (Float.MinValue, Float.MaxValue)
+      //case _: DoubleCells => (Double.MinValue, Double.MaxValue)
+      case _ => throw new Exception("CellType not recognized: " + ct)
+    }
+
+    print(values)
+    val result = ArrayTile.alloc(ct, cols, rows)
+    cfor(0)(_ < cols, _ + 1) { col =>
+      cfor(0)(_ < rows, _ + 1) { row =>
+        val indexPrev = ((1.0 * (col - 1) / cols) * (values.length + 1)).toInt // can give too large index
+        val index = ((1.0 * col / cols) * (values.length + 1)).toInt // can give too large index
+        val value =
+          if (row == 0 || row == rows - 1 || indexPrev != index)
+            if ((row + col) % 2 == 0) blackWhite._1 / 2 else blackWhite._2 / 2
+          else if (index < values.length)
+            values(index)
+          else {
+            var percent = (cols - col) / (1.0 * cols / (values.length + 2))
+            percent = math.max(0, math.min(1, percent))
+            val reach = blackWhite._2 * 1.0 - blackWhite._1
+            blackWhite._1 + reach * percent
+          }
+        result.setDouble(col, row, value)
+      }
+    }
+    result
+  }
 
   /**
    * Creates a noisy data to test with.

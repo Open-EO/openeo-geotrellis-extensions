@@ -236,7 +236,24 @@ package object geotiff {
   }
 
   def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K], bandCount:Int, path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent], formatOptions:GTiffOptions = new GTiffOptions):java.util.List[String] = {
-    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
+    val rddCasted = rdd.map {
+      case (key, tile: MultibandTile) => (key, {
+        val toTypeOption = tile.cellType match {
+          case _root_.geotrellis.raster.ByteCellType => Some(_root_.geotrellis.raster.ShortCellType)
+          case _root_.geotrellis.raster.ByteConstantNoDataCellType => Some(_root_.geotrellis.raster.ShortConstantNoDataCellType)
+          case _root_.geotrellis.raster.ByteUserDefinedNoDataCellType(noDataValue) => Some(_root_.geotrellis.raster.ShortUserDefinedNoDataCellType(noDataValue))
+          case _ => None
+        }
+        toTypeOption match {
+          case Some(toType: CellType) =>
+            logger.warn(f"Will convert ${tile.cellType} output to $toType, to avoid tiff value overflow.")
+            tile.convert(_root_.geotrellis.raster.ShortConstantNoDataCellType)
+          case None => tile
+        }
+      })
+    }
+    val rddCastedWithContext: MultibandTileLayerRDD[K] = new ContextRDD(rddCasted, rdd.metadata)
+    val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rddCastedWithContext, cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
     val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3.persist(StorageLevel.MEMORY_AND_DISK)
