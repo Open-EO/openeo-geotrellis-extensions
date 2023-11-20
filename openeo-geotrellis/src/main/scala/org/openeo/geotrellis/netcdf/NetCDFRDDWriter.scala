@@ -207,7 +207,7 @@ object NetCDFRDDWriter {
         }
       }
       //pseudo feature flag
-      if(netcdfFile!=null && rdd.context.getConf.get("spark.kubernetes.namespace","nothing").equals("spark-jobs-staging")) {
+      if(netcdfFile!=null ) {
         netcdfFile.flush()
       }
     }
