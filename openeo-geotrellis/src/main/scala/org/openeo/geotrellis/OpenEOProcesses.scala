@@ -61,22 +61,32 @@ object OpenEOProcesses{
     tiles.filterNot(_.isInstanceOf[EmptyMultibandTile]).headOption.getOrElse(tiles.head)
   }
   private def createTemporalCallback(function: OpenEOProcess,context:Map[String,Any], expectedCellType: CellType) = {
-    val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => mutable.Map[SpaceTimeKey, MultibandTile] = values => {
-      //val values = tiles._2
+    val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[SpaceTimeKey, MultibandTile] = values => {
+
       val aTile = firstTile(values.map(_._2))
       val labels = values.map(_._1).toList.sortBy(_.instant)
       val theContext = context + ("array_labels"->labels.map(_.time.format(DateTimeFormatter.ISO_INSTANT)))
-      val resultMap: mutable.Map[SpaceTimeKey, ListBuffer[Tile]] = mutable.Map()
-      val functionWithContext = function.apply(theContext)
-      for (b <- 0 until aTile.bandCount) {
 
+      val functionWithContext = function.apply(theContext)
+      var range = 0 until aTile.bandCount
+
+      val callback: Int => Iterable[(SpaceTimeKey, (Int, Tile))] = b => {
         val temporalTile = timeseriesForBand(b, values, expectedCellType)
         val resultTiles = functionWithContext(temporalTile.bands)
         var resultLabels: Iterable[(SpaceTimeKey, Tile)] = labels.zip(resultTiles)
-        resultLabels.foreach(result => resultMap.getOrElseUpdate(result._1, mutable.ListBuffer()).append(result._2))
-
+        resultLabels.map(t => (t._1, (b, t._2)))
       }
-      resultMap.map(tuple => (tuple._1, MultibandTile(tuple._2)))
+
+      val resultMap =
+      if (aTile.bandCount>1 && context.contains("parallel")) {
+        range.par.flatMap(callback).seq
+      }else{
+        range.flatMap(callback)
+      }
+
+      resultMap.groupBy(_._1).map(t=>{
+        (t._1,MultibandTile(t._2.map(_._2).toList.sortBy(_._1).map(_._2)))
+      })
 
     }
     applyToTimeseries
@@ -157,7 +167,7 @@ class OpenEOProcesses extends Serializable {
     }
     logger.info(s"Applying callback on time dimension of cube with partitioner: ${datacube.partitioner.getOrElse("no partitioner")} - index: ${index.getOrElse("no index")} and metadata ${datacube.metadata}")
     val expectedCellType = datacube.metadata.cellType
-    val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => mutable.Map[SpaceTimeKey, MultibandTile] = createTemporalCallback(scriptBuilder.inputFunction.asInstanceOf[OpenEOProcess],context.asScala.toMap, expectedCellType)
+    val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[SpaceTimeKey, MultibandTile] = createTemporalCallback(scriptBuilder.inputFunction.asInstanceOf[OpenEOProcess],context.asScala.toMap, expectedCellType)
 
     val rdd =
     if(index.isDefined && index.get.isInstanceOf[SparseSpaceOnlyPartitioner]) {
@@ -190,16 +200,30 @@ class OpenEOProcesses extends Serializable {
    */
   def applyTimeDimensionTargetBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpatialKey] = {
     val expectedCelltype = datacube.metadata.cellType
-    val function = scriptBuilder.generateFunction(context.asScala.toMap)
+
+    val function = scriptBuilder.inputFunction.asInstanceOf[OpenEOProcess]
     val groupedOnTime: RDD[(SpatialKey, Iterable[(SpaceTimeKey, MultibandTile)])] = groupOnTimeDimension(datacube)
+    val parallel = context.containsKey("parallel")
     val resultRDD = groupedOnTime.mapValues{ tiles => {
       val aTile = firstTile(tiles.map(_._2))
-      val resultTile = mutable.ListBuffer[Tile]()
-      for( b <- 0 until aTile.bandCount){
-        val temporalTile = timeseriesForBand(b, tiles,expectedCelltype)
-        resultTile.appendAll(function(temporalTile.bands))
+
+      val labels = tiles.map(_._1).toList.sortBy(_.instant)
+      val theContext = context.asScala.toMap + ("array_labels" -> labels.map(_.time.format(DateTimeFormatter.ISO_INSTANT)))
+      val tileFunction: Seq[Tile] => Seq[Tile] = function(theContext)
+
+      val range = 0 until aTile.bandCount
+      val callback: Int => (Int, Seq[Tile]) = b => {
+        val temporalTile = timeseriesForBand(b, tiles, expectedCelltype)
+        (b, tileFunction(temporalTile.bands))
       }
-      if(resultTile.size>0) {
+      val result = if(aTile.bandCount>1 && parallel) {
+        range.par.map(callback).seq.sortBy(_._1)
+      }else {
+        range.map(callback)
+      }
+
+      val resultTile = result.flatMap(_._2)
+      if(resultTile.nonEmpty) {
         MultibandTile(resultTile)
       }else{
         // Note: Is this code ever reached? aTile.bandCount is always > 0.
@@ -449,7 +473,7 @@ class OpenEOProcesses extends Serializable {
         datacube.flatMap(tuple => {
           mapToNewKey(tuple)
         }).groupByKey(partitioner).flatMap( t => {
-          val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => mutable.Map[SpaceTimeKey, MultibandTile] = createTemporalCallback(function,context.asScala.toMap, datacube.metadata.cellType)
+          val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[SpaceTimeKey, MultibandTile] = createTemporalCallback(function,context.asScala.toMap, datacube.metadata.cellType)
           applyToTimeseries(t._2)
         })
 
