@@ -129,21 +129,21 @@ trait TileProtoBuf {
 
       protoCellType.dataType.toString match {
         case "BIT" =>
-          initialProtoTile.withUint32Cells(tile.toArray())
+          initialProtoTile.withUint32Cells(tile.mutable.toArray())
         case "BYTE" =>
-          initialProtoTile.withSint32Cells(tile.interpretAs(ByteCellType).toArray())
+          initialProtoTile.withSint32Cells(tile.mutable.interpretAs(ByteCellType).toArray())
         case "UBYTE" =>
-          initialProtoTile.withUint32Cells(tile.interpretAs(UByteCellType).toArray())
+          initialProtoTile.withUint32Cells(tile.mutable.interpretAs(UByteCellType).toArray())
         case "SHORT" =>
-          initialProtoTile.withSint32Cells(tile.interpretAs(ShortCellType).toArray())
+          initialProtoTile.withSint32Cells(tile.mutable.interpretAs(ShortCellType).toArray())
         case "USHORT" =>
-          initialProtoTile.withUint32Cells(tile.interpretAs(UShortCellType).toArray())
+          initialProtoTile.withUint32Cells(tile.mutable.interpretAs(UShortCellType).toArray())
         case "INT" =>
-          initialProtoTile.withSint32Cells(tile.toArray())
+          initialProtoTile.withSint32Cells(tile.mutable.toArray())
         case "FLOAT" =>
-          initialProtoTile.withFloatCells(tile.asInstanceOf[FloatArrayTile].array)
+          initialProtoTile.withFloatCells(tile.mutable.asInstanceOf[FloatArrayTile].array)
         case "DOUBLE" =>
-          initialProtoTile.withDoubleCells(tile.asInstanceOf[DoubleArrayTile].array)
+          initialProtoTile.withDoubleCells(tile.mutable.asInstanceOf[DoubleArrayTile].array)
       }
     }
 
