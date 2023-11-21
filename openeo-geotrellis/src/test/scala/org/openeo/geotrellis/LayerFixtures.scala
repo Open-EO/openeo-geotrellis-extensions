@@ -259,10 +259,7 @@ object LayerFixtures {
       case _: UByteCells => Seq(Byte.MinValue, 0, Byte.MaxValue, 255)
       case _: ShortCells => Seq(Short.MinValue, 0, Short.MaxValue, -1).map(x => x.toDouble)
       case _: UShortCells => Seq(Short.MinValue, 0, Short.MaxValue, -1).map(x => x.toDouble)
-      case _: IntCells => Seq(Int.MinValue, 0, Int.MaxValue, Int.MinValue * -2.0).map(x => x.toDouble) // No unsigned int?
-      //case _: FloatCells => Seq(Float.MinValue, 0, Float.MaxValue, -Float.NaN, Float.NaN).map(x => x.toDouble) // TODO: Is Float -> Double lossless in this case?
-      // Longs could become imprecise when casting to double. Max precise double 9007199254740993 is smaller than Long.MaxValue
-      //case _: DoubleCells => Seq(Double.MinValue, 0, Double.MaxValue, -Double.NaN, Double.NaN) // NegativeInfinity PositiveInfinity
+      case _: IntCells => Seq(Int.MinValue, 0, Int.MaxValue, Int.MinValue * -2.0).map(x => x) // NOTE; No unsigned int
       case _ => throw new Exception("CellType not recognized: " + ct)
     }
     val blackWhite: (Double, Double) = ct match {
@@ -273,7 +270,6 @@ object LayerFixtures {
       case _: UShortCells => (0, Short.MinValue * -2.0)
       case _: IntCells => (Int.MinValue, Int.MaxValue)
       case _: FloatCells => (Float.MinValue, Float.MaxValue)
-      //case _: DoubleCells => (Double.MinValue, Double.MaxValue)
       case _ => throw new Exception("CellType not recognized: " + ct)
     }
 
@@ -281,8 +277,8 @@ object LayerFixtures {
     val result = ArrayTile.alloc(ct, cols, rows)
     cfor(0)(_ < cols, _ + 1) { col =>
       cfor(0)(_ < rows, _ + 1) { row =>
-        val indexPrev = ((1.0 * (col - 1) / cols) * (values.length + 1)).toInt // can give too large index
-        val index = ((1.0 * col / cols) * (values.length + 1)).toInt // can give too large index
+        val indexPrev = ((1.0 * (col - 1) / cols) * (values.length + 1)).toInt
+        val index = ((1.0 * col / cols) * (values.length + 1)).toInt
         val value =
           if (row == 0 || row == rows - 1 || indexPrev != index)
             if ((row + col) % 2 == 0) blackWhite._1 / 2 else blackWhite._2 / 2

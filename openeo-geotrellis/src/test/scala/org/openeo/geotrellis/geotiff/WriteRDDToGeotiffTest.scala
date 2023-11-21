@@ -96,7 +96,7 @@ class WriteRDDToGeotiffTest {
       ByteCellType,
       ByteConstantNoDataCellType,
       ByteUserDefinedNoDataCellType(Byte.MinValue), // even explicit noData gets removed
-      ByteUserDefinedNoDataCellType(0), // even explicit noData gets removed
+      ByteUserDefinedNoDataCellType(0),
       UByteCellType,
       UByteUserDefinedNoDataCellType(0),
       UByteConstantNoDataCellType,
@@ -333,22 +333,20 @@ class WriteRDDToGeotiffTest {
 
 
   @Test
-  def testWriteMultibandRDDWithGaps(): Unit = {
+  def testWriteMultibandRDDWithGaps(): Unit ={
     val layoutCols = 8
     val layoutRows = 4
-    val (imageTile: ByteArrayTile, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(layoutCols, layoutRows)
+    val ( imageTile:ByteArrayTile, filtered:MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(layoutCols,layoutRows)
 
     val filename = "outFiltered.tif"
-    saveRDD(filtered.withContext {
-      _.repartition(layoutCols * layoutRows)
-    }, 3, filename)
+    saveRDD(filtered.withContext{_.repartition(layoutCols*layoutRows)},3,filename)
     val result = GeoTiff.readMultiband(filename).raster.tile
 
     //crop away the area where data was removed, and check if rest of geotiff is still fine
     val croppedReference = imageTile.crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArrayTile()
 
     val croppedOutput = result.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256)
-    assertArrayEquals(croppedReference.toArray(), croppedOutput.toArray())
+    assertArrayEquals(croppedReference.toArray(),croppedOutput.toArray())
   }
 
   @Test
