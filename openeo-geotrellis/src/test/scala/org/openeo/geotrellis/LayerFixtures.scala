@@ -255,8 +255,8 @@ object LayerFixtures {
     assert((Short.MinValue * -2).toShort == 0)
     val values: Seq[Double] = ct match {
       case _: BitCells => Seq(0, 1)
-      case _: ByteCells => Seq(Byte.MinValue, 0, Byte.MaxValue, Byte.MinValue * -2.0)
-      case _: UByteCells => Seq(Byte.MinValue, 0, Byte.MaxValue, Byte.MinValue * -2.0)
+      case _: ByteCells => Seq(Byte.MinValue, 0, Byte.MaxValue, 255)
+      case _: UByteCells => Seq(Byte.MinValue, 0, Byte.MaxValue, 255)
       case _: ShortCells => Seq(Short.MinValue, 0, Short.MaxValue, -1).map(x => x.toDouble)
       case _: UShortCells => Seq(Short.MinValue, 0, Short.MaxValue, -1).map(x => x.toDouble)
       case _: IntCells => Seq(Int.MinValue, 0, Int.MaxValue, Int.MinValue * -2.0).map(x => x.toDouble) // No unsigned int?

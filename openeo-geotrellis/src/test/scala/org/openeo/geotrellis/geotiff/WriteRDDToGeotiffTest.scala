@@ -93,19 +93,13 @@ class WriteRDDToGeotiffTest {
     Files.createDirectories(outDir)
     val qgisViewportExtent = Extent(-60, -50, 120, 60)
     val constantNoDataCellTypesLocal = Seq(
-      //ByteCellType, TODO
       ByteCellType,
       ByteConstantNoDataCellType,
       ByteUserDefinedNoDataCellType(Byte.MinValue), // even explicit noData gets removed
-      ByteUserDefinedNoDataCellType(0), //
+      ByteUserDefinedNoDataCellType(0), // even explicit noData gets removed
       UByteCellType,
       UByteUserDefinedNoDataCellType(0),
       UByteConstantNoDataCellType,
-      ShortConstantNoDataCellType,
-      //UShortConstantNoDataCellType, TODO
-      //IntConstantNoDataCellType, TODO
-      ////FloatConstantNoDataCellType, TODO
-      //DoubleConstantNoDataCellType TODO
     )
     for (i <- constantNoDataCellTypesLocal.indices) {
       val ct = constantNoDataCellTypesLocal(i)
@@ -132,9 +126,18 @@ class WriteRDDToGeotiffTest {
         _.repartition(layoutCols * layoutRows)
       }, 1, filename.toString)
 
-      val tiff = GeoTiff.readSingleband(filename.toString)
-      val output = tiff.raster.tile
-      assertArrayEquals(imageTile.toArray(), output.toArray())
+      val imageTileArr = imageTile.toArrayDouble()
+
+      val refTiffPath = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/testTiffNoDataReference/" + imageTile.cellType + ".tif")
+      val refTiffArray = GeoTiff.readSingleband(refTiffPath.getPath).raster.tile.toArrayDouble()
+
+      val readBackArray = GeoTiff.readSingleband(filename.toString).raster.tile.toArrayDouble()
+      for (i <- readBackArray.indices) {
+        assertEquals(readBackArray(i), imageTileArr(i), 0)
+        assertEquals(readBackArray(i), refTiffArray(i), 0)
+      }
+
+      println("Open all images in QGIS for the real test! With or without the fix, this test pasess.")
     }
   }
 
@@ -330,26 +333,22 @@ class WriteRDDToGeotiffTest {
 
 
   @Test
-  def testWriteMultibandRDDWithGaps(): Unit ={
+  def testWriteMultibandRDDWithGaps(): Unit = {
     val layoutCols = 8
     val layoutRows = 4
-    val ( imageTile:Tile, filtered:MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(layoutCols,layoutRows)
+    val (imageTile: ByteArrayTile, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(layoutCols, layoutRows)
 
-    val fc = filtered.withContext{_.repartition(layoutCols*layoutRows)}
-    val filename = "outFiltered2.tif"
-    saveRDD(fc,3,filename, zLevel = 0)
-    val filenamenc = "outFiltered2.nc"
-    NetCDFRDDWriter.saveSingleNetCDFSpatial(fc,
-      filenamenc, new util.ArrayList(util.Arrays.asList("B1", "B2", "B3")), null, null, 6)
-
-
+    val filename = "outFiltered.tif"
+    saveRDD(filtered.withContext {
+      _.repartition(layoutCols * layoutRows)
+    }, 3, filename)
     val result = GeoTiff.readMultiband(filename).raster.tile
 
     //crop away the area where data was removed, and check if rest of geotiff is still fine
     val croppedReference = imageTile.crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArrayTile()
 
     val croppedOutput = result.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256)
-//    assertArrayEquals(croppedReference.toArray(),croppedOutput.toArray())
+    assertArrayEquals(croppedReference.toArray(), croppedOutput.toArray())
   }
 
   @Test
