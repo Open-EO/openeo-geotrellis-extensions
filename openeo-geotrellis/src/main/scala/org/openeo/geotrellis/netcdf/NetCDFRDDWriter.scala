@@ -226,7 +226,8 @@ object NetCDFRDDWriter {
 
     val finalPath =
     if (path.startsWith("s3:/")) {
-      if(rdd.context.getConf.get("spark.kubernetes.namespace","nothing").equals("spark-jobs-staging")) {
+      // TODO: Change spark-jobs-staging-disabled back to spark-jobs-staging
+      if(rdd.context.getConf.get("spark.kubernetes.namespace","nothing").equals("spark-jobs-staging-disabled")) {
         uploadToS3LargeFile(path, intermediatePath)
       }else{
         uploadToS3(path, intermediatePath)
