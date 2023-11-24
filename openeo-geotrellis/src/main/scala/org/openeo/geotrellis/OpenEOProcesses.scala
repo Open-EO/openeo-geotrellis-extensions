@@ -35,7 +35,6 @@ import java.time.format.DateTimeFormatter
 import java.time.{Instant, ZonedDateTime}
 import java.util
 import scala.collection.JavaConverters._
-import scala.collection.mutable.ListBuffer
 import scala.collection.{JavaConverters, immutable, mutable}
 import scala.reflect._
 
@@ -578,6 +577,12 @@ class OpenEOProcesses extends Serializable {
     val kbLeft: Bounds[K] = leftCube.metadata.getComponent[Bounds[K]]
     val kbRight: Bounds[K] = rightCube.metadata.getComponent[Bounds[K]]
     val kb: Bounds[K] = kbLeft.combine(kbRight)
+
+    val leftCount = maybeBandCount(leftCube)
+    val rightCount = maybeBandCount(rightCube)
+    //fairly arbitrary heuristic if we're going to create a cube with a high number of bands
+    val manyBands = leftCount.getOrElse(1) + rightCount.getOrElse(1) > 25
+
     val part =if( leftCube.partitioner.isDefined && rightCube.partitioner.isDefined && leftCube.partitioner.get.isInstanceOf[SpacePartitioner[K]] && rightCube.partitioner.get.isInstanceOf[SpacePartitioner[K]]) {
       val leftPart = leftCube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
       val rightPart = rightCube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
@@ -603,7 +608,14 @@ class OpenEOProcesses extends Serializable {
         SpacePartitioner[K](kb)
       }
     } else {
-      SpacePartitioner[K](kb)
+      logger.info(s"Merging cubes with partitioners: ${leftCube.partitioner} - ${rightCube.partitioner} - many band case detected: $manyBands")
+      if(manyBands) {
+        val index: PartitionerIndex[K] = getManyBandsIndexGeneric[K]()
+        SpacePartitioner[K](kb)(implicitly,implicitly,index)
+      }else{
+        SpacePartitioner[K](kb)
+      }
+
     }
 
     val joinRdd =
@@ -620,31 +632,48 @@ class OpenEOProcesses extends Serializable {
     ContextRDD(joinRdd, part.bounds)
   }
 
+  def getManyBandsIndexGeneric[K]()(implicit t:ClassTag[K]):PartitionerIndex[K] = {
+    import reflect.ClassTag
+    val spacetimeKeyTag = classOf[SpaceTimeKey]
+    val index: PartitionerIndex[K] = t match {
+      case strtag if strtag == ClassTag(spacetimeKeyTag) => SpaceTimeByMonthPartitioner.asInstanceOf[PartitionerIndex[K]]
+      case _ => ByTileSpatialPartitioner.asInstanceOf[PartitionerIndex[K]]
+    }
+    index
+  }
+
+
+  def maybeBandCount[K](cube: RDD[(K, MultibandTile)]): Option[Int] = {
+    if (cube.isInstanceOf[OpenEORasterCube[K]] && cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount > 0) {
+      val count = cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount
+      logger.info(s"Computed band count ${count} from metadata of ${cube}")
+      return Some(count)
+    }else{
+      return None
+    }
+  }
   /**
    * Get band count used in RDD (each tile in RDD should have same band count)
    */
   def RDDBandCount[K](cube: MultibandTileLayerRDD[K]): Int = {
     // For performance reasons we only check a small subset of tile band counts
-    if(cube.isInstanceOf[OpenEORasterCube[K]] && cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount >0 ) {
-      val count = cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount
-      logger.info(s"Computed band count ${count} from metadata of ${cube}")
-      return count
-    }else{
+    maybeBandCount(cube).getOrElse({
       logger.info(s"Computing number of bands in cube: ${cube.metadata}")
       val counts = cube.take(10).map({ case (k, t) => t.bandCount }).distinct
 
-      if(counts.size==0){
-        if(cube.isEmpty())
+      if (counts.length == 0) {
+        if (cube.isEmpty())
           logger.info("This cube is empty, no band count.")
         else
           logger.info("This cube is not empty, but could not determine band count.")
-        return 1
+        1
+      }else{
+        if (counts.length != 1) {
+          throw new IllegalArgumentException("Cube doesn't have single consistent band count across tiles: [%s]".format(counts.mkString(", ")))
+        }
+        counts(0)
       }
-      if (counts.size != 1) {
-        throw new IllegalArgumentException("Cube doesn't have single consistent band count across tiles: [%s]".format(counts.mkString(", ")))
-      }
-      counts(0)
-    }
+    })
   }
 
   def filterNegativeSpatialKeys(data: (Int, MultibandTileLayerRDD[SpaceTimeKey])):(Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
