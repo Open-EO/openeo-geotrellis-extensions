@@ -272,7 +272,7 @@ object NetCDFRDDWriter {
     val bandArray =
       geotrellisArrayTile match {
         case t: BitArrayTile => ucar.ma2.Array.factory(DataType.UBYTE, shape, t.convert(UByteUserDefinedNoDataCellType(255.byteValue())).asInstanceOf[UByteArrayTile].array)
-        case t: ByteArrayTile => ucar.ma2.Array.factory(DataType.BYTE, shape, t.array)
+        case t: ByteArrayTile => ucar.ma2.Array.factory(DataType.SHORT, shape, t.convert(ShortCellType).asInstanceOf[ShortArrayTile].array)
         case t: UByteArrayTile => ucar.ma2.Array.factory(DataType.UBYTE, shape, t.array)
         case t: ShortArrayTile => ucar.ma2.Array.factory(DataType.SHORT, shape, t.array)
         case t: UShortArrayTile => ucar.ma2.Array.factory(DataType.USHORT, shape, t.array)
@@ -625,26 +625,26 @@ object NetCDFRDDWriter {
     bandDimension.add(xDimension)
 
     val (netcdfType:DataType,nodata:Option[Number]) = cellType match {
-      case BitCellType => (DataType.UBYTE,None)
-      case ByteCellType => (DataType.BYTE,None)
+      case BitCellType => (DataType.UBYTE,Some(255.toByte))
+      case ByteCellType => (DataType.SHORT, Some(shortNODATA)) // We upgrade type, so have place for noData.
       case UByteCellType => (DataType.UBYTE,None)
       case ShortCellType => (DataType.SHORT,None)
       case UShortCellType => (DataType.USHORT,None)
       case IntCellType => (DataType.INT,None)
       case FloatCellType => (DataType.FLOAT,None)
       case DoubleCellType => (DataType.DOUBLE,None)
-      case ByteConstantNoDataCellType => (DataType.BYTE,Some(byteNODATA))
-      case UByteConstantNoDataCellType => (DataType.UBYTE,Some(ubyteNODATA))
+      case ByteConstantNoDataCellType => (DataType.SHORT, Some(shortNODATA)) // We upgrade type, so have place for noData.
+      case UByteConstantNoDataCellType => (DataType.UBYTE,Some(UByteConstantNoDataCellType.noDataValue))
       case ShortConstantNoDataCellType => (DataType.SHORT,Some(shortNODATA))
       case UShortConstantNoDataCellType => (DataType.USHORT,Some(ushortNODATA))
       case IntConstantNoDataCellType => (DataType.INT,Some(NODATA))
       case FloatConstantNoDataCellType => (DataType.FLOAT,Some(floatNODATA.toFloat))
       case DoubleConstantNoDataCellType => (DataType.DOUBLE,Some(doubleNODATA.toDouble))
-      case ct: ByteUserDefinedNoDataCellType => (DataType.BYTE,Some(ct.noDataValue))
-      case ct: UByteUserDefinedNoDataCellType => (DataType.UBYTE,Some(ct.widenedNoData.asInt))
+      case ct: ByteUserDefinedNoDataCellType => (DataType.SHORT,Some(ct.noDataValue.toShort))
+      case ct: UByteUserDefinedNoDataCellType => (DataType.UBYTE,Some(ct.noDataValue))
       case ct: ShortUserDefinedNoDataCellType => (DataType.SHORT,Some(ct.noDataValue))
       case ct: UShortUserDefinedNoDataCellType => (DataType.USHORT,Some(ct.widenedNoData.asInt))
-      case ct: IntUserDefinedNoDataCellType => (DataType.INT,Some(ct.widenedNoData.asInt))
+      case ct: IntUserDefinedNoDataCellType => (DataType.INT,Some(ct.noDataValue.toInt))
       case ct: FloatUserDefinedNoDataCellType => (DataType.FLOAT,Some(ct.noDataValue))
       case ct: DoubleUserDefinedNoDataCellType => (DataType.DOUBLE,Some(ct.noDataValue))
     }
@@ -653,7 +653,7 @@ object NetCDFRDDWriter {
 
     for (bandName <- bandNames.asScala) {
       val varName = bandName.replace("/","_")
-      addNetcdfVariable(netcdfFile, bandDimension, varName, netcdfType, null, varName, "", null, nodata.getOrElse(0), null)
+      addNetcdfVariable(netcdfFile, bandDimension, varName, netcdfType, null, varName, "", null, nodata, null)
       netcdfFile.addVariableAttribute(varName, "grid_mapping", "crs")
       if(rasterExtent.cols>256 && rasterExtent.rows>256){
         val chunking = new ArrayInt.D1(if(writeTimeDimension) 3 else 2,false)
@@ -705,13 +705,13 @@ object NetCDFRDDWriter {
     }
   }
 
-  private def addNetcdfVariable(netcdfFile: NetcdfFileWriter, dimensions: util.ArrayList[Dimension], variableName: String, dataType: DataType, standardName: String, longName: String, units: String, axis: String, fillValue: Number, coordinates: String): Unit = {
+  private def addNetcdfVariable(netcdfFile: NetcdfFileWriter, dimensions: util.ArrayList[Dimension], variableName: String, dataType: DataType, standardName: String, longName: String, units: String, axis: String, fillValue: Option[Number], coordinates: String): Unit = {
     netcdfFile.addVariable(variableName, dataType, dimensions)
     if (standardName != null) netcdfFile.addVariableAttribute(variableName, "standard_name", standardName)
     if (longName != null) netcdfFile.addVariableAttribute(variableName, "long_name", longName)
     if (units != null) netcdfFile.addVariableAttribute(variableName, "units", units)
     if (axis != null) netcdfFile.addVariableAttribute(variableName, "axis", axis)
-    if (fillValue != Integer.MIN_VALUE) netcdfFile.addVariableAttribute(variableName, "_FillValue", fillValue)
+    if (fillValue.isDefined) netcdfFile.addVariableAttribute(variableName, "_FillValue", fillValue.get)
     if (coordinates != null) netcdfFile.addVariableAttribute(variableName, "coordinates", coordinates)
   }
 
