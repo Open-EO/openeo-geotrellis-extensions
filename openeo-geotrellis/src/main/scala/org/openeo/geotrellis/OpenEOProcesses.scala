@@ -247,6 +247,7 @@ class OpenEOProcesses extends Serializable {
         ByTileSpatialPartitioner
       }
 
+    logger.info(f"Regrouping data cube along the time dimension, with index $index. Cube metadata: ${datacube.metadata}")
     val partitioner: Partitioner = new SpacePartitioner(targetBounds)(implicitly,implicitly, index)
 
     val groupedOnTime = datacube.groupBy[SpatialKey]((t: (SpaceTimeKey, MultibandTile)) => t._1.spatialKey, partitioner)
