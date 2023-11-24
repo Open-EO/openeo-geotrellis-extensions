@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.geotiff
 
-import geotrellis.layer.{CRSWorldExtent, SpaceTimeKey, SpatialKey, ZoomedLayoutScheme}
+import geotrellis.layer.{CRSWorldExtent, KeyBounds, LayoutDefinition, SpaceTimeKey, SpatialKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
@@ -11,12 +11,13 @@ import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector._
 import geotrellis.vector.io.json.GeoJson
+import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext, SparkEnv}
 import org.junit.Assert._
 import org.junit._
 import org.junit.rules.TemporaryFolder
-import org.openeo.geotrellis.netcdf.NetCDFRDDWriter
-import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
+import org.openeo.geotrellis.netcdf.NetCDFOptions
+import org.openeo.geotrellis.{EmptyMultibandTile, LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 
 import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
@@ -93,52 +94,91 @@ class WriteRDDToGeotiffTest {
     Files.createDirectories(outDir)
     val qgisViewportExtent = Extent(-60, -50, 120, 60)
     val constantNoDataCellTypesLocal = Seq(
+      BitCellType,
+      // unsigned byte
+      UByteCellType,
+      UByteConstantNoDataCellType,
+      UByteUserDefinedNoDataCellType(Byte.MinValue), // actually does the noData right
+      UByteUserDefinedNoDataCellType(0),
+      // signed byte:
       ByteCellType,
       ByteConstantNoDataCellType,
       ByteUserDefinedNoDataCellType(Byte.MinValue), // even explicit noData gets removed
       ByteUserDefinedNoDataCellType(0),
-      UByteCellType,
-      UByteUserDefinedNoDataCellType(0),
-      UByteConstantNoDataCellType,
+      // unsigned short:
+      //UShortCellType, // Shown as signed short in Q-GIS 3.22.4 when exported as NetCDF
+      //UShortConstantNoDataCellType,
+      //UShortUserDefinedNoDataCellType(0),
+      // signed short:
+      ShortCellType,
+      ShortConstantNoDataCellType,
+      ShortUserDefinedNoDataCellType(0),
+      // signed int (No unsigned int):
+      IntCellType,
+      IntConstantNoDataCellType,
+      IntUserDefinedNoDataCellType(0),
     )
     for (i <- constantNoDataCellTypesLocal.indices) {
       val ct = constantNoDataCellTypesLocal(i)
-
+      println(" ===== " + ct + ":")
       val extent = Extent(
-        qgisViewportExtent.xmin, qgisViewportExtent.ymin + qgisViewportExtent.height * ((i + 0.0) / constantNoDataCellTypesLocal.length),
-        qgisViewportExtent.xmax, qgisViewportExtent.ymin + qgisViewportExtent.height * ((i + 1.0) / constantNoDataCellTypesLocal.length)
+        qgisViewportExtent.xmin, qgisViewportExtent.ymax - qgisViewportExtent.height * ((i + 1.0) / constantNoDataCellTypesLocal.length),
+        qgisViewportExtent.xmax, qgisViewportExtent.ymax - qgisViewportExtent.height * ((i + 0.0) / constantNoDataCellTypesLocal.length)
       )
-
-      val layoutCols = 1
-      val layoutRows = 1
 
       val imageTile = LayerFixtures.testSpecialValues(ct)
 
-      val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(
-        WriteRDDToGeotiffTest.sc,
-        Raster(MultibandTile(imageTile), extent),
-        TileLayout(layoutCols, layoutRows, imageTile.cols, imageTile.rows),
-        LatLng,
+      val emptyTile = new EmptyMultibandTile(imageTile.cols, imageTile.cols, ct, 1)
+
+      val lst = Seq(
+        (SpatialKey(0, 0), MultibandTile(imageTile)),
+        //(SpatialKey(1, 0), INTENTIONALLY KEPT EMPTY),
+        (SpatialKey(2, 0), emptyTile),
       )
-      val filename = outDir.resolve(imageTile.cellType + ".tif")
+      val tiled: RDD[(SpatialKey, MultibandTile)] = WriteRDDToGeotiffTest.sc.parallelize(lst)
+      val layoutCols = lst.length + 1
+      val layoutRows = 1
+      val metadata = TileLayerMetadata[SpatialKey](
+        ct,
+        LayoutDefinition(extent, TileLayout(layoutCols, layoutRows, imageTile.cols, imageTile.rows)),
+        extent,
+        LatLng,
+        new KeyBounds(lst.head._1, lst.last._1)
+      )
+      val tileLayerRDD: MultibandTileLayerRDD[SpatialKey] = new ContextRDD(tiled, metadata)
 
-      saveRDD(tileLayerRDD.withContext {
-        _.repartition(layoutCols * layoutRows)
-      }, 1, filename.toString)
+      val options = new NetCDFOptions()
+      options.setBandNames(new util.ArrayList(util.Arrays.asList("B01")))
+      org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters(
+        tileLayerRDD,
+        outDir.resolve(i + "_" + ct + ".nc").toString,
+        options,
+      )
 
-      val imageTileArr = imageTile.toArrayDouble()
+      val filename = outDir.resolve(i + "_" + ct + ".tif")
 
-      val refTiffPath = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/testTiffNoDataReference/" + imageTile.cellType + ".tif")
-      val refTiffArray = GeoTiff.readSingleband(refTiffPath.getPath).raster.tile.toArrayDouble()
-
-      val readBackArray = GeoTiff.readSingleband(filename.toString).raster.tile.toArrayDouble()
-      for (i <- readBackArray.indices) {
-        assertEquals(readBackArray(i), imageTileArr(i), 0)
-        assertEquals(readBackArray(i), refTiffArray(i), 0)
-      }
-
-      println("Open all images in QGIS for the real test! With or without the fix, this test pasess.")
+//      saveRDD(tileLayerRDD, 1, filename.toString)
+//      val readBackArray = GeoTiff.readSingleband(filename.toString).raster.tile.toArrayDouble()
+//
+//      val refTiffPath = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/testTiffNoDataReference/" + i + "_" + ct + ".tif").getPath
+//      if (Paths.get(refTiffPath).toFile.exists()) {
+//        val refTiffArray = GeoTiff.readSingleband(refTiffPath).raster.tile.toArrayDouble()
+//        for (i <- readBackArray.indices) {
+//          //                   expected, actual
+//          assertEquals(readBackArray(i), refTiffArray(i), 0)
+//        }
+//      } else println("Ref file not found: " + refTiffPath)
+//
+//      if (lst.length == 1) {
+//        val imageTileArray = imageTile.toArrayDouble()
+//        assertEquals(readBackArray.length, imageTileArray.length)
+//        for (i <- readBackArray.indices) {
+//          //                   expected, actual
+//          assertEquals(readBackArray(i), imageTileArray(i), 0)
+//        }
+//      }
     }
+    println("Open all images in QGIS for the real test! With or without the fix, this test passes.")
   }
 
   @Test

@@ -257,9 +257,9 @@ object LayerFixtures {
       case _: BitCells => Seq(0, 1)
       case _: ByteCells => Seq(Byte.MinValue, 0, Byte.MaxValue, 255)
       case _: UByteCells => Seq(Byte.MinValue, 0, Byte.MaxValue, 255)
-      case _: ShortCells => Seq(Short.MinValue, 0, Short.MaxValue, -1).map(x => x.toDouble)
-      case _: UShortCells => Seq(Short.MinValue, 0, Short.MaxValue, -1).map(x => x.toDouble)
-      case _: IntCells => Seq(Int.MinValue, 0, Int.MaxValue, Int.MinValue * -2.0).map(x => x) // NOTE; No unsigned int
+      case _: ShortCells => Seq(Short.MinValue, 0, Short.MaxValue, 65535)
+      case _: UShortCells => Seq(Short.MinValue, 0, Short.MaxValue, 65535)
+      case _: IntCells => Seq(Int.MinValue, 0, Int.MaxValue, Byte.MinValue * -2.0 - 1) // NOTE; No unsigned int
       case _ => throw new Exception("CellType not recognized: " + ct)
     }
     val blackWhite: (Double, Double) = ct match {
@@ -273,15 +273,14 @@ object LayerFixtures {
       case _ => throw new Exception("CellType not recognized: " + ct)
     }
 
-    print(values)
     val result = ArrayTile.alloc(ct, cols, rows)
     cfor(0)(_ < cols, _ + 1) { col =>
       cfor(0)(_ < rows, _ + 1) { row =>
         val indexPrev = ((1.0 * (col - 1) / cols) * (values.length + 1)).toInt
         val index = ((1.0 * col / cols) * (values.length + 1)).toInt
-        val value =
+        val value = {
           if (row == 0 || row == rows - 1 || indexPrev != index)
-            if ((row + col) % 2 == 0) blackWhite._1 / 2 else blackWhite._2 / 2
+            if ((row + col) % 2 == 0) math.floor(blackWhite._1 / 2) else math.ceil(blackWhite._2 / 2)
           else if (index < values.length)
             values(index)
           else {
@@ -290,6 +289,7 @@ object LayerFixtures {
             val reach = blackWhite._2 * 1.0 - blackWhite._1
             blackWhite._1 + reach * percent
           }
+        }
         result.setDouble(col, row, value)
       }
     }
