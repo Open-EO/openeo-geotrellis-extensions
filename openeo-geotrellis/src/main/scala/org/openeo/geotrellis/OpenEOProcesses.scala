@@ -25,7 +25,7 @@ import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MinIgnoreNoData, OpenEOProcess}
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
-import org.openeo.geotrelliscommon.{ByTileSpatialPartitioner, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner}
 import org.slf4j.LoggerFactory
 
 import java.io.File
@@ -150,7 +150,7 @@ class OpenEOProcesses extends Serializable {
   }
 
   def reduceTimeDimension(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpatialKey] = {
-    val rdd = transformTimeDimension[SpatialKey](datacube, scriptBuilder, context)
+    val rdd = transformTimeDimension[SpatialKey](datacube, scriptBuilder, context,reduce = true)
     ContextRDD(rdd,new TileLayerMetadata[SpatialKey](cellType=datacube.metadata.cellType,layout=datacube.metadata.layout, extent=datacube.metadata.extent,crs=datacube.metadata.crs,bounds=datacube.metadata.bounds.get.toSpatial ))
   }
 
@@ -195,14 +195,22 @@ class OpenEOProcesses extends Serializable {
         if (index.isDefined && index.get.isInstanceOf[SparseSpaceOnlyPartitioner]) {
           datacube
         } else {
-          val partitioner: Partitioner = createPartitionerByTime(datacube)
+          val keys: Option[Array[SpaceTimeKey]] = findPartitionerKeys(datacube)
+          val index =
+            if(keys.isDefined){
+              new SparseSpaceOnlyPartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, 0, keys)
+            }else{
+              ByTileSpacetimePartitioner
+            }
+          logger.info(f"Regrouping data cube along the time dimension, with index $index. Cube metadata: ${datacube.metadata}")
+          val partitioner: Partitioner = new SpacePartitioner(datacube.metadata.bounds)(implicitly, implicitly, index)
           datacube.partitionBy(partitioner)
 
         }
       rdd.mapPartitions(p => {
         val bySpatialKey: Map[SpatialKey, Seq[(SpaceTimeKey, MultibandTile)]] = p.toSeq.groupBy(_._1.spatialKey)
         bySpatialKey.mapValues(applyToTimeseries).flatMap(_._2).iterator
-      }, preservesPartitioning = true)
+      }, preservesPartitioning = reduce)
     }
 
 
@@ -253,13 +261,6 @@ class OpenEOProcesses extends Serializable {
   }
 
   private def groupOnTimeDimension(datacube: MultibandTileLayerRDD[SpaceTimeKey]) = {
-    val partitioner: Partitioner = createPartitionerByTime(datacube)
-
-    val groupedOnTime = datacube.groupBy[SpatialKey]((t: (SpaceTimeKey, MultibandTile)) => t._1.spatialKey, partitioner)
-    groupedOnTime
-  }
-
-  private def createPartitionerByTime(datacube: MultibandTileLayerRDD[SpaceTimeKey]) = {
     val targetBounds = datacube.metadata.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]].toSpatial
 
     val keys: Option[Array[SpaceTimeKey]] = findPartitionerKeys(datacube)
@@ -273,8 +274,11 @@ class OpenEOProcesses extends Serializable {
 
     logger.info(f"Regrouping data cube along the time dimension, with index $index. Cube metadata: ${datacube.metadata}")
     val partitioner: Partitioner = new SpacePartitioner(targetBounds)(implicitly, implicitly, index)
-    partitioner
+
+    val groupedOnTime = datacube.groupBy[SpatialKey]((t: (SpaceTimeKey, MultibandTile)) => t._1.spatialKey, partitioner)
+    groupedOnTime
   }
+
 
   def findPartitionerKeys(datacube: MultibandTileLayerRDD[SpaceTimeKey]): Option[Array[SpaceTimeKey]] = {
     val keys: Option[Array[SpaceTimeKey]] = if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
