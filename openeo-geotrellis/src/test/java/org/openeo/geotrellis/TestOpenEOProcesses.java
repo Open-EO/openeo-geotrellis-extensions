@@ -30,6 +30,7 @@ import java.util.stream.Collectors;
 import java.util.stream.DoubleStream;
 
 import static org.junit.Assert.*;
+import static org.openeo.geotrellis.TestOpenEOProcessScriptBuilder.createMax;
 
 public class TestOpenEOProcesses {
 
@@ -38,7 +39,7 @@ public class TestOpenEOProcesses {
 
         SparkConf conf = new SparkConf();
         conf.setAppName("OpenEOTest");
-        conf.setMaster("local[4]");
+        conf.setMaster("local[1]");
         conf.set("spark.driver.bindAddress", "127.0.0.1");
         conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
         SparkContext.getOrCreate(conf);
@@ -304,6 +305,28 @@ public class TestOpenEOProcesses {
         assertArrayEquals(new Object[]{ 377, 261}, bandValues.toArray());
         assertArrayEquals(new Object[]{ compositedPixel[3], compositedPixel[8]}, bandValues.toArray());
 
+    }
+
+    @Test
+    public void testReduceTime() {
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 = LayerFixtures.sentinel2B04Layer();
+        reduceMaxTest(datacube1);
+    }
+
+    @Test
+    public void testReduceTimeSparse() {
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 = LayerFixtures.sentinel2B04LayerSparse();
+        reduceMaxTest(datacube1);
+    }
+    private static void reduceMaxTest(ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1) {
+        int[] compositedPixel = OpenEOProcessesSpec.getPixel(datacube1);
+        int expectedMax = Arrays.stream(compositedPixel).max().getAsInt();
+
+        RDD<Tuple2<SpatialKey, MultibandTile>> reduced = new OpenEOProcesses().reduceTimeDimension(datacube1, createMax(), Collections.emptyMap());
+        Object shouldBeSingleTile = reduced.collect();
+        assertEquals(1,((Tuple2<SpatialKey, MultibandTile>[])shouldBeSingleTile).length);
+        MultibandTile maxTile = ((Tuple2<SpatialKey, MultibandTile>[])shouldBeSingleTile)[0]._2;
+        assertEquals(expectedMax,maxTile.band(0).get(0,0));
     }
 
     private RDD<Tuple2<SpaceTimeKey, MultibandTile>> composite(ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1) {

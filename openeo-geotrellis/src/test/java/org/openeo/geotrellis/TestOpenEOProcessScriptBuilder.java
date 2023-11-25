@@ -2170,6 +2170,18 @@ public class TestOpenEOProcessScriptBuilder {
         return builder;
     }
 
+    static OpenEOProcessScriptBuilder createMax() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        Map<String, Object> arguments = map1("data",null);
+        builder.expressionStart("max", arguments);
+
+        builder.argumentStart("data");
+        builder.argumentEnd();
+
+        builder.expressionEnd("max",arguments);
+        return builder;
+    }
+
     static OpenEOProcessScriptBuilder createLinearScaleRange(Number inputMin, Number inputMax,Number outputMin, Number outputMax) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Map<String, Object> arguments = new HashMap<>();

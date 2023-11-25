@@ -196,16 +196,16 @@ class OpenEOProcesses extends Serializable {
           datacube
         } else {
           val keys: Option[Array[SpaceTimeKey]] = findPartitionerKeys(datacube)
-          val index =
+          val spatiallyGroupingIndex =
             if(keys.isDefined){
               new SparseSpaceOnlyPartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, 0, keys)
             }else{
               ByTileSpacetimePartitioner
             }
-          logger.info(f"Regrouping data cube along the time dimension, with index $index. Cube metadata: ${datacube.metadata}")
-          val partitioner: Partitioner = new SpacePartitioner(datacube.metadata.bounds)(implicitly, implicitly, index)
-          datacube.partitionBy(partitioner)
-
+          logger.info(f"Regrouping data cube along the time dimension, with index $spatiallyGroupingIndex. Cube metadata: ${datacube.metadata}")
+          val partitioner: Partitioner = new SpacePartitioner(datacube.metadata.bounds)(implicitly, implicitly, spatiallyGroupingIndex)
+          //regular partitionBy doesn't work because Partitioners appear to be equal while they're not
+          new ShuffledRDD[SpaceTimeKey,MultibandTile,MultibandTile](datacube, partitioner)
         }
       rdd.mapPartitions(p => {
         val bySpatialKey: Map[SpatialKey, Seq[(SpaceTimeKey, MultibandTile)]] = p.toSeq.groupBy(_._1.spatialKey)
