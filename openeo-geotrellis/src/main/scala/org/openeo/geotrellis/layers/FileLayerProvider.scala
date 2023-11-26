@@ -50,9 +50,9 @@ private class LayoutTileSourceFixed[K: SpatialComponent](
                                                           override val tileKeyTransform: SpatialKey => K
                                                         ) extends LayoutTileSource[K](source, layout, tileKeyTransform) with Serializable {
 
-  override def sourceColOffset: Long = ((source.extent.xmin - layout.extent.xmin) / layout.cellwidth).round
+  override def sourceColOffset: Long = GridExtent.floorWithTolerance((source.extent.xmin - layout.extent.xmin) / layout.cellwidth).toLong
 
-  override def sourceRowOffset: Long = ((layout.extent.ymax - source.extent.ymax) / layout.cellheight).round
+  override def sourceRowOffset: Long = GridExtent.floorWithTolerance((layout.extent.ymax - source.extent.ymax) / layout.cellheight).toLong
 
 }
 
@@ -213,7 +213,8 @@ object FileLayerProvider {
 
   {
     try {
-      GDALWarp.init(32)
+      val gdaldatasetcachesize = Integer.valueOf(System.getenv().getOrDefault("GDAL_DATASET_CACHE_SIZE","32"))
+      GDALWarp.init(gdaldatasetcachesize)
     } catch {
       case e: java.lang.UnsatisfiedLinkError =>
         // Error message probably looks like this:
@@ -577,7 +578,7 @@ object FileLayerProvider {
           }
           if (result.isDefined) {
             val mbTile = result.get._1
-            val totalPixels = mbTile.rows * mbTile.cols * mbTile.bandCount
+              val totalPixels = mbTile.rows * mbTile.cols * mbTile.bandCount
             totalPixelsPartition += totalPixels
             totalChunksAcc.add(totalPixels / (256 * 256))
             tracker.add(PIXEL_COUNTER, totalPixels)
@@ -722,7 +723,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     }
   }
 
-  def readKeysToRasterSources(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon],polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): (RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], TileLayerMetadata[SpaceTimeKey], Option[CloudFilterStrategy], Seq[(RasterSource, Feature)]) = {
+
+
+  def readKeysToRasterSources(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon], polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): (RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], TileLayerMetadata[SpaceTimeKey], Option[CloudFilterStrategy], Seq[(RasterSource, Feature)]) = {
     val multiple_polygons_flag = polygons.length > 1
 
     val buffer = math.max(datacubeParams.map(_.pixelBufferX).getOrElse(0.0), datacubeParams.map(_.pixelBufferY).getOrElse(0.0))
@@ -851,22 +854,29 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           val key = t._1
           val extent = metadata.keyToExtent(key.spatialKey)
           val distances = t._2.map(source => {
-            val sourceExtent = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).reproject(LatLng, targetCRS).extent
             //try to detect tiles that are on the edge of the footprint
+            val sourcePolygon = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).reproject(LatLng, targetCRS)
+            val sourceExtent = sourcePolygon.extent
             /**-
              * Effect of buffer multiplication factor:
              *  - larger buffer -> shrink source footprint more -> tiles close to edge get discarded faster, this matters for scl_dilation
              */
-            val sourcePolygonBuffered = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).reproject(LatLng, targetCRS).buffer(-1.5*math.max(extent.width,extent.height))
+            val sourcePolygonBuffered = sourcePolygon.buffer(-1.5*math.max(extent.width,extent.height))
             val distanceToFootprint = extent.distance(sourcePolygonBuffered)
+            val contains = sourcePolygon.contains(extent)
 
             val distanceBetweenCenters = extent.center.distance(sourceExtent.center)
-            ((distanceBetweenCenters,distanceToFootprint), source)
+            ((distanceBetweenCenters,distanceToFootprint,contains), source)
           })
           val smallestCenterDistance = distances.map(_._1._1).min
           val smallestDistanceToFootprint = distances.map(_._1._2).min
           if(smallestDistanceToFootprint > 0) {
-            return_original
+            val fullyContained = distances.filter(_._1._3).map(distance_source => (key, distance_source._2))
+            if(fullyContained.nonEmpty) {
+              fullyContained
+            }else{
+              return_original
+            }
           }else{
 
             /**
@@ -890,6 +900,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     }
     (requiredSpacetimeKeys,metadata,  maskStrategy,overlappingRasterSources)
   }
+
+
+
 
   def selectLayoutScheme(extent: ProjectedExtent, multiple_polygons_flag: Boolean, datacubeParams: Option[DataCubeParameters]) = {
     val selectedLayoutScheme = if (layoutScheme.isInstanceOf[FloatingLayoutScheme]) {
@@ -917,9 +930,11 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     selectedLayoutScheme
   }
 
+
+
   def readMultibandTileLayer(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon], polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): MultibandTileLayerRDD[SpaceTimeKey] = {
 
-    val readKeysToRasterSourcesResult = readKeysToRasterSources(from,to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams)
+    val readKeysToRasterSourcesResult: (RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], TileLayerMetadata[SpaceTimeKey], Option[CloudFilterStrategy], Seq[(RasterSource, Feature)]) = readKeysToRasterSources(from,to, boundingBox, polygons, polygons_crs, zoom, sc, datacubeParams)
 
     var maskStrategy: Option[CloudFilterStrategy] = readKeysToRasterSourcesResult._3
     val metadata = readKeysToRasterSourcesResult._2
@@ -949,9 +964,14 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         }).filter(_._2._1.isDefined).map(t=>(t._1,(t._2._1.get,t._2._2)))
 
       })
+/*
+      requiredSpacetimeKeys.map(t=>{
+        val source =LayoutTileSource(t._2.data._1, layoutDefinition, identity)
+        (t._1,(source.rasterRegionForKey(t._1.spatialKey),t._2.data._1.name))
+      }).filter(_._2._1.isDefined).map(t=>(t._1,(t._2._1.get,t._2._2)))
 
       regions.name = s"FileCollection-${openSearchCollectionId}"
-
+*/
       //convert to raster region
       val cube= rasterRegionsToTiles(regions, metadata, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), partitioner, datacubeParams)
       logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner}")
