@@ -1229,21 +1229,22 @@ public class TestOpenEOProcessScriptBuilder {
         builder.arrayElementDone();
         builder.arrayEnd();
         builder.arrayStart("array2");
-        builder.expressionStart("array_element", map2("data","dummy","index", 1));
-        builder.argumentStart("data");
-        builder.fromParameter("data");
-        builder.argumentEnd();
-        builder.constantArgument("index", 1);
-        builder.expressionEnd("array_element", map2("data","dummy","index", 1));
+            builder.expressionStart("array_element", map2("data","dummy","index", 1));
+            builder.argumentStart("data");
+            builder.fromParameter("data");
+            builder.argumentEnd();
+            builder.constantArgument("index", 1);
+            builder.expressionEnd("array_element", map2("data","dummy","index", 1));
         builder.arrayElementDone();
-        builder.expressionStart("array_element", map2("data","dummy","index", 3));
-        builder.argumentStart("data");
-        builder.fromParameter("data");
-        builder.argumentEnd();
-        builder.constantArgument("index", 3);
-        builder.expressionEnd("array_element", map2("data","dummy","index", 3));
+            builder.expressionStart("array_element", map2("data","dummy","index", 3));
+            builder.argumentStart("data");
+            builder.fromParameter("data");
+            builder.argumentEnd();
+            builder.constantArgument("index", 3);
+            builder.expressionEnd("array_element", map2("data","dummy","index", 3));
         builder.arrayElementDone();
         builder.arrayEnd();
+        assertEquals("array[float32,float32]",builder.typeStack().head().get("array2").get());
         builder.expressionEnd("array_concat", dummyMap("array1", "array2"));
 
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
@@ -2038,6 +2039,42 @@ public class TestOpenEOProcessScriptBuilder {
 
         Object transformation = builder.generateAnyFunction(Collections.singletonMap("value","2022-01-02T00:00:00Z")).apply("2022-01-02T00:00:00Z");
         assertEquals(transformation,expected);
+
+    }
+
+    @Test
+    public void testAnyDateBetween() {
+        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+
+        builder.expressionStart("any",map1("data",null));
+
+        builder.arrayStart("data");
+            Map<String, Object> args = map3("min", "2022-01-01T00:00:00Z", "max", "2022-01-03T00:00:00Z", "exclude_max",false);
+            builder.expressionStart("date_between", args);
+            builder.argumentStart("x");
+            builder.fromParameter("value");
+            builder.argumentEnd();
+
+            builder.expressionEnd("date_between", args);
+        builder.arrayElementDone();
+
+            Map<String, Object> args2 = map3("min", "2022-01-10T00:00:00Z", "max", "2022-01-12T00:00:00Z", "exclude_max",true);
+            builder.expressionStart("date_between", args2);
+            builder.argumentStart("x");
+            builder.fromParameter("value");
+            builder.argumentEnd();
+
+            builder.expressionEnd("date_between", args2);
+        builder.arrayElementDone();
+        builder.arrayEnd();
+        assertEquals("array[boolean,boolean]",builder.typeStack().head().get("data").get());
+        builder.expressionEnd("any",map1("data",null));
+
+        Object transformation = builder.generateAnyFunction(Collections.singletonMap("value","2022-01-02T00:00:00Z")).apply("2022-01-02T00:00:00Z");
+        assertEquals(transformation,true);
+
+        Object transformation2 = builder.generateAnyFunction(Collections.singletonMap("value","2022-03-02T00:00:00Z")).apply("2022-03-02T00:00:00Z");
+        assertEquals(transformation2,false);
 
     }
 

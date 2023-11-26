@@ -754,6 +754,23 @@ class OpenEOProcessScriptBuilder {
     xyProcess
   }
 
+  private def anyConstantFunction(process: String, arguments: java.util.Map[String, Object]): AnyProcess = {
+    val xVal: AnyProcess = getAnyProcessArg("data", arguments)
+
+    val xyProcess = (context: Map[String, Any]) => {
+      val theFunction = (arg: Any) => {
+        val dataEvaluated = xVal(context)(null)
+        if(dataEvaluated.isInstanceOf[Seq[Any]]) {
+          dataEvaluated.asInstanceOf[Seq[Boolean]].foldLeft(false)(_|| _)
+        }else{
+          throw new IllegalArgumentException(s"Any process received unexpected input: ${dataEvaluated}")
+        }
+      }
+      theFunction
+    }
+    xyProcess
+  }
+
 
   private def xyFunction(operator:(Tile,Tile) => Tile, xArgName:String = "x", yArgName:String = "y" ,convertBitCells: Boolean = true): OpenEOProcess = {
     val x_function: OpenEOProcess = getProcessArg(xArgName)
@@ -853,7 +870,6 @@ class OpenEOProcessScriptBuilder {
   def arrayElementDone():Unit = {
     val scope = contextStack.head
     scope.put(arrayCounter.toString,inputFunction)
-    typeStack.head.put(arrayCounter.toString,resultingDataType.toString())
     arrayCounter += 1
     inputFunction = null
   }
@@ -870,19 +886,40 @@ class OpenEOProcessScriptBuilder {
 
   def arrayEnd():Unit = {
     val name = argNames.pop()
-    typeStack.pop()
+    val typesInArray = typeStack.pop()
+    val arrayTypes = typesInArray.toSeq.sortBy(_._1).map(_._2)
+    typeStack.head.put(name,f"array[${arrayTypes.mkString(",")}]")
     val scope = contextStack.pop()
     processStack.pop()
 
     val nbElements = arrayCounter
-    inputFunction = (context:Map[String,Any]) => (tiles:Seq[Tile]) => {
-      var results = Seq[Tile]()
-      for( i <- 0 until nbElements) {
-        val tileFunction = scope.get(i.toString).get.asInstanceOf[OpenEOProcess]
-        results = results ++ tileFunction(context)(tiles)
-      }
-      results
+
+    inputFunction =
+    if(typesInArray.values.map(_== "boolean").foldLeft(false)(_ || _)) {
+          //TODO: this branch is specific for boolean constants, but could be made more general
+      (context: Map[String, Any]) =>
+        (tiles: Seq[Tile]) => {
+          var results = ListBuffer[Any]()
+          for (i <- 0 until nbElements) {
+            val tileFunction = scope.get(i.toString).get.asInstanceOf[AnyProcess]
+            val functionResult = tileFunction(context)
+            val evaluated: Any = functionResult(tiles)
+            results.append(evaluated)
+          }
+          results
+        }
+    }else{
+      (context: Map[String, Any]) =>
+        (tiles: Seq[Tile]) => {
+          var results = Seq[Tile]()
+          for (i <- 0 until nbElements) {
+            val tileFunction = scope.get(i.toString).get.asInstanceOf[OpenEOProcess]
+            results = results ++ tileFunction(context)(tiles)
+          }
+          results
+        }
     }
+
     arrayCounter = arrayElementStack.pop()
     contextStack.head.put(name,inputFunction)
 
@@ -917,6 +954,10 @@ class OpenEOProcessScriptBuilder {
     val operation = {
       if(xyConstantComparison && booleanOperators.contains(operator)) {
         xyConstantFunction(operator,arguments)
+      }
+      else if ("any" == operator && typeStack.head.head._2.contains("boolean")) {
+        //the check on this situation should still be improved, we can also have booleans in the tile based case
+        anyConstantFunction(operator,arguments)
       }else{
         operator match {
           case "date_difference" => dateDifferenceProcess(arguments)
@@ -1039,11 +1080,17 @@ class OpenEOProcessScriptBuilder {
     contextStack.pop()
     typeStack.pop()
     if(typeStack.nonEmpty) {
+      val argName =
+        if(processStack.head == "array") {
+          arrayCounter.toString
+        }else{
+          argNames.head
+        }
 
       if((xyConstantComparison && booleanOperators.contains(operator)) || operator == "date_between"){
-        typeStack.head(argNames.head) = "boolean"
+        typeStack.head(argName) = "boolean"
       }else{
-        typeStack.head(argNames.head) = resultingDataType.toString()
+        typeStack.head(argName) = resultingDataType.toString()
       }
     }
 
