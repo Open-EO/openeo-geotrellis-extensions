@@ -227,7 +227,17 @@ class OpenEOProcesses extends Serializable {
     val expectedCelltype = datacube.metadata.cellType
 
     val function = scriptBuilder.inputFunction.asInstanceOf[OpenEOProcess]
-    val groupedOnTime: RDD[(SpatialKey, Iterable[(SpaceTimeKey, MultibandTile)])] = groupOnTimeDimension(datacube)
+    val tileSize = context.getOrDefault("TileSize",0).asInstanceOf[Int]
+
+    val retiled =
+      if (tileSize > 0 && tileSize <= 1024) {
+        val theResult = retile(datacube, tileSize, tileSize, 0, 0)
+        println(theResult)
+        theResult
+      } else {
+        datacube
+      }
+    val groupedOnTime: RDD[(SpatialKey, Iterable[(SpaceTimeKey, MultibandTile)])] = groupOnTimeDimension(retiled)
     val parallel = context.containsKey("parallel")
     val resultRDD = groupedOnTime.mapValues{ tiles => {
       val aTile = firstTile(tiles.map(_._2))
@@ -257,7 +267,7 @@ class OpenEOProcesses extends Serializable {
 
     }}
 
-    ContextRDD(resultRDD,datacube.metadata.copy(bounds = datacube.metadata.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]].toSpatial))
+    ContextRDD(resultRDD,retiled.metadata.copy(bounds = retiled.metadata.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]].toSpatial))
   }
 
   private def groupOnTimeDimension(datacube: MultibandTileLayerRDD[SpaceTimeKey]) = {

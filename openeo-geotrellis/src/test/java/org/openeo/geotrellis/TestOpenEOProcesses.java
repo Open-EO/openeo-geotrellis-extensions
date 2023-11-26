@@ -256,7 +256,9 @@ public class TestOpenEOProcesses {
 
 
         OpenEOProcessScriptBuilder featureEngineeringProcess = TestOpenEOProcessScriptBuilder.createFeatureEngineering();
-        RDD<Tuple2<SpatialKey, MultibandTile>> result = new OpenEOProcesses().applyTimeDimensionTargetBands(new ContextRDD<>(compositedCube,datacube1.metadata()), featureEngineeringProcess, new HashMap<>());
+        HashMap<String, Object> context = new HashMap<>();
+        //context.put("TileSize",64);
+        RDD<Tuple2<SpatialKey, MultibandTile>> result = new OpenEOProcesses().applyTimeDimensionTargetBands(new ContextRDD<>(compositedCube,datacube1.metadata()), featureEngineeringProcess, context);
         assertTrue(result.partitioner().get() instanceof SpacePartitioner);
 
         BigInt p1 = ((SpacePartitioner<SpatialKey>) result.partitioner().get()).index().toIndex(new SpatialKey(0, 0));
