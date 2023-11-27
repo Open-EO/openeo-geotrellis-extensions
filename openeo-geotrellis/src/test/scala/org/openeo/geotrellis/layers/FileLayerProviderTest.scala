@@ -5,7 +5,7 @@ import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, S
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
-import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, RasterSource, isNoData}
+import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, RasterSource, ShortConstantNoDataCellType, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.summary.polygonal._
@@ -32,7 +32,7 @@ import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.Collections
-import scala.collection.JavaConverters._
+import scala.collection.immutable
 import scala.io.Source
 
 object FileLayerProviderTest {
