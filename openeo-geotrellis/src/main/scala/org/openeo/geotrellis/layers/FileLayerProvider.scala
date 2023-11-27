@@ -861,9 +861,22 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
              * Effect of buffer multiplication factor:
              *  - larger buffer -> shrink source footprint more -> tiles close to edge get discarded faster, this matters for scl_dilation
              */
-            val sourcePolygonBuffered = sourcePolygon.buffer(-1.5*math.max(extent.width,extent.height))
-            val distanceToFootprint = extent.distance(sourcePolygonBuffered)
             val contains = sourcePolygon.contains(extent)
+
+            val sourcePolygonBuffered = sourcePolygon.buffer(-1.5*math.max(extent.width,extent.height))
+            val distanceToFootprint =
+            if(sourcePolygonBuffered.isEmpty) {
+              if(contains) {
+                extent.distance(sourcePolygon.getCentroid)
+              }else{
+                extent.distance(sourcePolygon.getCentroid) + 0.00001 //avoid that distance become zero
+              }
+
+            }else{
+              extent.distance(sourcePolygonBuffered)
+            }
+
+
 
             val distanceBetweenCenters = extent.center.distance(sourceExtent.center)
             ((distanceBetweenCenters,distanceToFootprint,contains), source)
