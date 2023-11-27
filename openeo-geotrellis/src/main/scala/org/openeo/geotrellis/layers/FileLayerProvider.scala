@@ -50,9 +50,9 @@ private class LayoutTileSourceFixed[K: SpatialComponent](
                                                           override val tileKeyTransform: SpatialKey => K
                                                         ) extends LayoutTileSource[K](source, layout, tileKeyTransform) with Serializable {
 
-  override def sourceColOffset: Long = GridExtent.floorWithTolerance((source.extent.xmin - layout.extent.xmin) / layout.cellwidth).toLong
+  override def sourceColOffset: Long = ((source.extent.xmin - layout.extent.xmin) / layout.cellwidth).round
 
-  override def sourceRowOffset: Long = GridExtent.floorWithTolerance((layout.extent.ymax - source.extent.ymax) / layout.cellheight).toLong
+  override def sourceRowOffset: Long = ((layout.extent.ymax - source.extent.ymax) / layout.cellheight).round
 
 }
 
@@ -964,14 +964,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         }).filter(_._2._1.isDefined).map(t=>(t._1,(t._2._1.get,t._2._2)))
 
       })
-/*
-      requiredSpacetimeKeys.map(t=>{
-        val source =LayoutTileSource(t._2.data._1, layoutDefinition, identity)
-        (t._1,(source.rasterRegionForKey(t._1.spatialKey),t._2.data._1.name))
-      }).filter(_._2._1.isDefined).map(t=>(t._1,(t._2._1.get,t._2._2)))
 
       regions.name = s"FileCollection-${openSearchCollectionId}"
-*/
+
       //convert to raster region
       val cube= rasterRegionsToTiles(regions, metadata, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), partitioner, datacubeParams)
       logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner}")
