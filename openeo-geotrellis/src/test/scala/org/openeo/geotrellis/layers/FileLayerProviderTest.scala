@@ -330,6 +330,80 @@ class FileLayerProviderTest {
     assertEquals(cols*rows,result._1.count(),0.1)
   }
 
+
+  /**
+   * Test created for resolving overlaps in a special case: overlap of 4 sentinel-2 tiles, but one of them is only a very small polygon at the edge of the swath
+   * https://github.com/Open-EO/openeo-geopyspark-driver/issues/594
+   */
+  @Test
+  def overlapsFilterTest2(): Unit = {
+    val date = LocalDate.of(2022, 2, 11).atStartOfDay(UTC)
+    val crs = CRS.fromEpsgCode(32629)
+    // a mix of 31UGS and 32ULB
+    val boundingBox = ProjectedExtent(Extent(-8.98, 38.84, -8.95, 38.89).reproject(LatLng,crs), crs)
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.globalExtent = Some(boundingBox)
+
+    val resource = Source.fromResource("org/openeo/geotrellis/layers/opensearch_result_portugal.json")
+    val features: FeatureCollection = FeatureCollection.parse(resource.mkString,true)
+    object MockOpenSearch extends OpenSearchClient with IdentityEquals {
+      override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
+        features.features
+      }
+
+      override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
+      override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+    }
+
+    val flp = new FileLayerProvider(
+      MockOpenSearch,
+      "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+      openSearchLinkTitles = NonEmptyList.of("TOC-B11_20M", "SCENECLASSIFICATION_20M"),
+      rootPath = "/bogus",
+      CellSize(10,10),
+      SplitYearMonthDayPathDateExtractor,
+      layoutScheme = FloatingLayoutScheme(256),
+      experimental = false
+    ) {
+      //avoids having to actually read the product TODO: improve this workaround
+      override def determineCelltype(overlappingRasterSources: Seq[(RasterSource, OpenSearchResponses.Feature)]): CellType = ShortConstantNoDataCellType
+    }
+
+    val result = flp.readKeysToRasterSources(
+      from = date,
+      to = date,
+      boundingBox,
+      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
+      polygons_crs = crs,
+      zoom = 0,
+      sc,
+      Some(dataCubeParameters)
+    )
+    val minKey = result._2.bounds.get.minKey
+
+    val layout = flp.selectLayoutScheme(boundingBox, multiple_polygons_flag = false, Some(dataCubeParameters))
+      .asInstanceOf[FloatingLayoutScheme]
+    val cols = math.ceil((boundingBox.extent.width / 10.0) / layout.tileCols)
+    val rows = math.ceil((boundingBox.extent.height / 10.0) / layout.tileRows)
+
+    assertEquals(0, minKey.col)
+    assertEquals(0, minKey.row)
+    assertEquals(crs, result._2.crs)
+
+    val allTiles = result._1.collect()
+    print(allTiles)
+    val ids: immutable.Seq[String] = allTiles.map(_._2.data._2.id).toList.distinct
+
+    //overlap filter has removed the other potential sources
+    assertEquals(4, ids.size)
+    assertTrue(ids.contains("urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20220211T113321_29SNC_TOC_V210"))
+
+    assertEquals(14, allTiles.size, 0.1)
+    assertEquals(4,allTiles.filter(_._1.spatialKey==SpatialKey(0,1)).toList.size)
+  }
+
   private val myFeatureJSON =
     """
       |{
