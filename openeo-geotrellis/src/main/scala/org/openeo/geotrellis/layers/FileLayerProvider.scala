@@ -854,43 +854,23 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           val key = t._1
           val extent = metadata.keyToExtent(key.spatialKey)
           val distances = t._2.map(source => {
+            val sourceExtent = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).reproject(LatLng, targetCRS).extent
             //try to detect tiles that are on the edge of the footprint
-            val sourcePolygon = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).reproject(LatLng, targetCRS)
-            val sourceExtent = sourcePolygon.extent
-            /**-
+            /** -
              * Effect of buffer multiplication factor:
              *  - larger buffer -> shrink source footprint more -> tiles close to edge get discarded faster, this matters for scl_dilation
              */
-            val contains = sourcePolygon.contains(extent)
-
-            val sourcePolygonBuffered = sourcePolygon.buffer(-1.5*math.max(extent.width,extent.height))
-            val distanceToFootprint =
-            if(sourcePolygonBuffered.isEmpty) {
-              if(contains) {
-                extent.distance(sourcePolygon.getCentroid)
-              }else{
-                extent.distance(sourcePolygon.getCentroid) + 0.00001 //avoid that distance become zero
-              }
-
-            }else{
-              extent.distance(sourcePolygonBuffered)
-            }
-
-
+            val sourcePolygonBuffered = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).reproject(LatLng, targetCRS).buffer(-1.5 * math.max(extent.width, extent.height))
+            val distanceToFootprint = extent.distance(sourcePolygonBuffered)
 
             val distanceBetweenCenters = extent.center.distance(sourceExtent.center)
-            ((distanceBetweenCenters,distanceToFootprint,contains), source)
+            ((distanceBetweenCenters, distanceToFootprint), source)
           })
           val smallestCenterDistance = distances.map(_._1._1).min
           val smallestDistanceToFootprint = distances.map(_._1._2).min
-          if(smallestDistanceToFootprint > 0) {
-            val fullyContained = distances.filter(_._1._3).map(distance_source => (key, distance_source._2))
-            if(fullyContained.nonEmpty) {
-              fullyContained
-            }else{
-              return_original
-            }
-          }else{
+          if (smallestDistanceToFootprint > 0) {
+            return_original
+          } else {
 
             /**
              * In case of overlap, we want to select the extent that is either fully inside the footprint
