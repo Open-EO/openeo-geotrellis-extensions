@@ -407,7 +407,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     // Compare to reference tile.
     saveRDD(resultCube.toSpatial(times.head),2, "groupByGeometry_2017-01-15_actual.tif", 6, Some(datacube.metadata.extent))
     val actualRaster = GeoTiffRasterSource("groupByGeometry_2017-01-15_actual.tif").read().get
-    val referenceRaster = GeoTiffRasterSource("https://artifactory.vgt.vito.be/testdata-public/groupByGeometry_2017-01-15_reference.tif").read().get
+    val referenceRaster = GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/groupByGeometry_2017-01-15_reference.tif").read().get
     assertRastersEqual(referenceRaster, actualRaster)
 
     // Visualize RDD.

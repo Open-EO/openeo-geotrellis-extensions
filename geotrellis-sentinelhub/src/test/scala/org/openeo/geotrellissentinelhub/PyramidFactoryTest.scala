@@ -1045,7 +1045,7 @@ class PyramidFactoryTest {
 
     for (extension <- Seq("cpg", "dbf", "prj", "shp", "shx")) {
       val geometriesFilename = s"$geometriesFileStem.$extension"
-      val geometriesUrl = new URL(s"https://artifactory.vgt.vito.be/testdata-public/parcels/$geometriesFilename")
+      val geometriesUrl = new URL(s"https://artifactory.vgt.vito.be/artifactory/testdata-public/parcels/$geometriesFilename")
       FileUtils.copyURLToFile(geometriesUrl, new File(tempDir, geometriesFilename))
     }
 

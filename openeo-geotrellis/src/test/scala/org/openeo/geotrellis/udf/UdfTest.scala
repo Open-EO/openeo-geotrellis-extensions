@@ -223,7 +223,7 @@ class UdfTest extends RasterMatchers {
     // Compare to reference tile.
     saveRDD(resultCube.toSpatial(resultArray(0)._1.time),2, "chunkPolygon_actual.tif", 6, Some(datacube.metadata.extent))
     val actualRaster = GeoTiffRasterSource("chunkPolygon_actual.tif").read().get
-    val referenceRaster = GeoTiffRasterSource("https://artifactory.vgt.vito.be/testdata-public/chunkPolygon_reference.tif").read().get
+    val referenceRaster = GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/chunkPolygon_reference.tif").read().get
     assertRastersEqual(referenceRaster, actualRaster)
 
     // Visualize RDD.
