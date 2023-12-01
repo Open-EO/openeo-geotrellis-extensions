@@ -15,7 +15,7 @@ public class Sentinel2Descriptor extends ICorCorrectionDescriptor{
 	}
 
 	public String getLookupTableURL() {
-		return "https://artifactory.vgt.vito.be/auxdata-public/lut/S2B_all.bin"; 
+		return "https://artifactory.vgt.vito.be/artifactory/auxdata-public/lut/S2B_all.bin"; 
 	}
    
     @Override

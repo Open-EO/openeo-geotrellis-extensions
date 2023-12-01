@@ -12,7 +12,7 @@ import geotrellis.raster.{FloatConstantNoDataCellType, Tile}
  * @param crs
  * @param path
  */
-class DEMProvider(layout:LayoutDefinition, crs:CRS,path:String="https://artifactory.vgt.vito.be/auxdata-public/DEM/DEM_Globe_CS.tif") extends ElevationProvider {
+class DEMProvider(layout:LayoutDefinition, crs:CRS,path:String="https://artifactory.vgt.vito.be/artifactory/auxdata-public/DEM/DEM_Globe_CS.tif") extends ElevationProvider {
   val rasterSource = GeoTiffRasterSource(path).reprojectToRegion(crs,layout.toRasterExtent())
 
   def compute(key:SpaceTimeKey, targetCRS:CRS,layoutDefinition:LayoutDefinition): Tile = {

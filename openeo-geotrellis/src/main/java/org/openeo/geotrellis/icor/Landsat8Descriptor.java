@@ -11,7 +11,7 @@ public class Landsat8Descriptor extends ICorCorrectionDescriptor{
 	}
 
 	public String getLookupTableURL() {
-		return "https://artifactory.vgt.vito.be/auxdata-public/lut/L8_big_disort.bin"; 
+		return "https://artifactory.vgt.vito.be/artifactory/auxdata-public/lut/L8_big_disort.bin"; 
 				//"L8_big_disort"; 
 	}
 

@@ -1093,7 +1093,7 @@ class FileLayerProviderTest {
     finally fileSource.close()
     val basePath = new java.io.File(jsonPathFull.getFile).getParent
     // Use artifactory to avoid heavy git repo
-    val basePathArtifactory = "https://artifactory.vgt.vito.be/testdata-public"
+    val basePathArtifactory = "https://artifactory.vgt.vito.be/artifactory/testdata-public"
 
     for (rest <- Seq(
       "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/manifest.safe",
