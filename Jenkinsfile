@@ -5,6 +5,11 @@ maven = 'Maven 3.5.4'
 
 
 node ('devdmz') {
+
+    options {
+        disableConcurrentBuilds()
+    }
+
     stage('Build and Test') {
         sh "rm -rf *"
         sh "rm -rf .git/"
