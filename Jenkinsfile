@@ -3,10 +3,6 @@
 def deployable_branches = ["master"]
 maven = 'Maven 3.5.4'
 
-options {
-    disableConcurrentBuilds()
-}
-
 node ('devdmz') {
 
     stage('Build and Test') {
