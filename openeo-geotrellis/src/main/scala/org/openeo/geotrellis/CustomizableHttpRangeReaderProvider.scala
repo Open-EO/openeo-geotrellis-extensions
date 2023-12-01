@@ -5,7 +5,7 @@ import geotrellis.util.{RangeReader, RangeReaderProvider}
 import io.circe.generic.auto._
 import org.openeo.geotrelliscommon.CirceException.decode
 import org.slf4j.{Logger, LoggerFactory}
-import scalaj.http.Http
+import scalaj.http.{Http, HttpOptions}
 
 import java.io.{File, FileNotFoundException}
 import java.net.URI
@@ -26,6 +26,7 @@ class CustomizableHttpRangeReaderProvider extends RangeReaderProvider {
 
     val request = credentials.foldLeft(
       Http(uri.toString)
+        .option(HttpOptions.followRedirects(true))
         .timeout(connTimeoutMs = 10000, readTimeoutMs = 40000)
     ) { case (http, Credentials(username, password)) =>
       http.auth(username, password)
