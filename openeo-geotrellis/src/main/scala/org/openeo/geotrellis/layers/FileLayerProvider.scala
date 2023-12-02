@@ -1012,7 +1012,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       href.getPath.replaceFirst("CGS_S2_DEV", "CGS_S2") // temporary workaround?
     case "https" if( _rootPath !=null ) =>
       val hrefString = href.toString
-      if (hrefString.contains("artifactory.vgt.vito.be/testdata-public")) {
+      if (hrefString.contains("artifactory.vgt.vito.be/artifactory/testdata-public")) {
         hrefString
       } else {
         // e.g. https://oscars-dev.vgt.vito.be/download/FAPAR_V2/2020/03/20/S2B_20200320T102639_33VVF_FAPAR_V200/10M/S2B_20200320T102639_33VVF_FAPAR_10M_V200.tif
