@@ -26,7 +26,10 @@ import scala.collection.JavaConverters._
  */
 class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = "") {
 
-  private val maxSpatialResolution = CellSize(10, 10)
+  // TODO: pass as param
+  private val maxSpatialResolution =
+    if (openSearchCollectionId ==  "Sentinel3") CellSize(0.00297619047619, 0.00297619047619)
+    else CellSize(10, 10)
 
   /**
    * Lookup OpenSearch Features
@@ -41,7 +44,7 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
       attributeValues = attributeValues.asScala.toMap,
       correlationId, ""
     )
-    return overlappingFeatures
+    overlappingFeatures.take(1) // FIXME: remove take()
   }
 
 
