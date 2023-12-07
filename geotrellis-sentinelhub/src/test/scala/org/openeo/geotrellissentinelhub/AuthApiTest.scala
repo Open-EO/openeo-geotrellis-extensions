@@ -29,8 +29,8 @@ class AuthApiTest {
       fail(s"should have thrown a ${classOf[SentinelHubException]}")
     } catch {
       case e: SentinelHubException =>
-        assertEquals(400, e.statusCode)
-        assertTrue(e.responseBody, e.responseBody contains """"message"""")
+        assertTrue(Seq(400, 401) contains e.statusCode)
+        assertTrue(e.responseBody, e.responseBody contains """"Invalid client or Invalid client credentials"""")
         assertFalse("contains client secret", e.getMessage contains wrongClientSecret)
     }
   }
