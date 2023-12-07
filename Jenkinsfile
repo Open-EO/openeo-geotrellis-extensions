@@ -13,7 +13,7 @@ def maven_version            =  '3.5.4'
 def node_label               =  'devdmz'
 def wipeout_workspace        =  true
 
-def maven_image              = globalDefaults.maven_image() + ":${maven_version}-jdk-${jdk_version}"
+def maven_image              = "vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.4.0"
 
 
 pipeline {
@@ -177,6 +177,7 @@ void build(tests = true){
     List jdkEnv = [ "HADOOP_CONF_DIR=/etc/hadoop/conf/","SPARK_LOCAL_IP=127.0.0.1"]
     docker.image(env.MAVEN_IMAGE).inside('-v /home/jenkins/.m2:/root/.m2 -v /etc/hadoop/conf:/etc/hadoop/conf:ro -u root') {
         withEnv(jdkEnv) {
+            sh "dnf install -y maven"
             def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
             rtMaven.deployer server: server, releaseRepo: 'libs-release-public', snapshotRepo: 'libs-snapshot-public'
