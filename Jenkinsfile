@@ -1,7 +1,7 @@
 @Library('lib')_
 
 def deployable_branches = ["master"]
-maven = 'Maven 3.5.4'
+maven = 'system_maven'
 def config = [:]
 
 def build_container_image    = (config.build_container_image == true) ?: false
@@ -172,9 +172,9 @@ String updateMavenVersion(){
 
 void build(tests = true){
     def publishable_branches = ["master", "develop", "109-upgrade-to-spark-33"]
-    String jdktool = tool name: "OpenJDK 11 Centos7", type: 'hudson.model.JDK'
-    List jdkEnv = ["PATH+JDK=${jdktool}/bin", "JAVA_HOME=${jdktool}", "HADOOP_CONF_DIR=/etc/hadoop/conf/","SPARK_LOCAL_IP=127.0.0.1"]
-    docker.image(env.MAVEN_IMAGE).inside('-v /home/jenkins/.m2:/root/.m2 -u root') {
+
+    List jdkEnv = [ "HADOOP_CONF_DIR=/etc/hadoop/conf/","SPARK_LOCAL_IP=127.0.0.1"]
+    docker.image(env.MAVEN_IMAGE).inside('-v /home/jenkins/.m2:/root/.m2 -v /etc/hadoop/conf:/etc/hadoop/conf:ro -u root') {
         withEnv(jdkEnv) {
             def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
