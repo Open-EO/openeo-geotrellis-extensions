@@ -80,44 +80,60 @@ pipeline{
 
 }
 
-if(deployable_branches.contains(env.BRANCH_NAME)){
+
     stage('Input'){
-        milestone()
-        input "Release build ${rel_version}?"
-        milestone()
+        when{
+          expression {
+            deployable_branches.contains(env.BRANCH_NAME)
+          }
+        }
+        steps{
+            script{
+                milestone()
+                input "Release build ${rel_version}?"
+                milestone()
+            }
+        }
+
     }
 
 
     stage('Releasing'){
-        checkout scm
-        rel_version = getReleaseVersion()
-        withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m","HADOOP_CONF_DIR=/etc/hadoop/conf/"]){
-            sh "mvn versions:use-releases -DgenerateBackupPoms=false -DfailIfNotReplaced=true"
-            echo "Removing SNAPSHOT from version for release"
-            sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${rel_version}"
+        when{
+          expression {
+            deployable_branches.contains(env.BRANCH_NAME)
+          }
         }
-        echo "releasing version ${rel_version}"
-        build(tests = false)
+        steps{
+            script{
+                checkout scm
+                rel_version = getReleaseVersion()
+                withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m","HADOOP_CONF_DIR=/etc/hadoop/conf/"]){
+                    sh "mvn versions:use-releases -DgenerateBackupPoms=false -DfailIfNotReplaced=true"
+                    echo "Removing SNAPSHOT from version for release"
+                    sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${rel_version}"
+                }
+                echo "releasing version ${rel_version}"
+                build(tests = false)
 
-        withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m","HADOOP_CONF_DIR=/etc/hadoop/conf/"]){
-            withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'BobDeBouwer', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD']]) {
-                //sh "git commit -a -m 'Set version v${rel_version} in pom for release'"
-                //sh "git tag -a v${rel_version} -m 'version ${rel_version}'"
-                //sh "git push https://${GIT_USERNAME}:${GIT_PASSWORD}@git.vito.be/scm/biggeo/geotrellistimeseries.git v${rel_version}"
-                sh "git checkout ${env.BRANCH_NAME}"
-                new_version = updateMavenVersion()
-                sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${new_version}"
-                //sh "git commit -a -m 'Raise version in pom to ${new_version}'"
-                //sh "git push https://${GIT_USERNAME}:${GIT_PASSWORD}@git.vito.be/scm/biggeo/geotrellistimeseries.git ${env.BRANCH_NAME}"
+                withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m","HADOOP_CONF_DIR=/etc/hadoop/conf/"]){
+                    withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'BobDeBouwer', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD']]) {
+                        //sh "git commit -a -m 'Set version v${rel_version} in pom for release'"
+                        //sh "git tag -a v${rel_version} -m 'version ${rel_version}'"
+                        //sh "git push https://${GIT_USERNAME}:${GIT_PASSWORD}@git.vito.be/scm/biggeo/geotrellistimeseries.git v${rel_version}"
+                        sh "git checkout ${env.BRANCH_NAME}"
+                        new_version = updateMavenVersion()
+                        sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${new_version}"
+                        //sh "git commit -a -m 'Raise version in pom to ${new_version}'"
+                        //sh "git push https://${GIT_USERNAME}:${GIT_PASSWORD}@git.vito.be/scm/biggeo/geotrellistimeseries.git ${env.BRANCH_NAME}"
+                    }
+                }
+
+                milestone()
             }
         }
-
-        milestone()
-
     }
 
-
-}
 }
 String getMavenVersion() {
     pom = readMavenPom file: 'pom.xml'
