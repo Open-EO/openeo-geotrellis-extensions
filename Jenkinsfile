@@ -56,6 +56,7 @@ pipeline {
                 script {
                     rel_version = getMavenVersion()
                     build()
+                    ${utils.setWorkspacePermissions()}
                 }
             }
         }
