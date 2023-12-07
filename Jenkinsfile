@@ -18,125 +18,123 @@ def create_promotion_job     = (prod_hosts != '' || create_git_tag_job) ? true :
 def maven_image              = globalDefaults.maven_image() + ":${maven_version}-jdk-${jdk_version}"
 
 
-pipeline{
+pipeline {
     agent {
-      label "devdmz"
+        label "devdmz"
     }
     environment {
-          BRANCH_NAME             = "${env.BRANCH_NAME}"
-          BUILD_NUMBER            = "${env.BUILD_NUMBER}"
-          BUILD_URL               = "${env.BUILD_URL}"
-          DEFAULT_MAVEN_OPTS      = "${default_maven_opts}"
-          DOCKER_REGISTRY_DEV     = "${docker_registry_dev}"
-          DOCKER_REGISTRY_PROD    = "${docker_registry_prod}"
-          JDK_VERSION             = "${jdk_version}"
-          JOB_BASE_NAME           = "${env.JOB_BASE_NAME}"
-          JOB_NAME                = "${env.JOB_NAME}"
-          JOB_URL                 = "${env.JOB_URL}"
+        BRANCH_NAME = "${env.BRANCH_NAME}"
+        BUILD_NUMBER = "${env.BUILD_NUMBER}"
+        BUILD_URL = "${env.BUILD_URL}"
+        DEFAULT_MAVEN_OPTS = "${default_maven_opts}"
+        DOCKER_REGISTRY_DEV = "${docker_registry_dev}"
+        DOCKER_REGISTRY_PROD = "${docker_registry_prod}"
+        JDK_VERSION = "${jdk_version}"
+        JOB_BASE_NAME = "${env.JOB_BASE_NAME}"
+        JOB_NAME = "${env.JOB_NAME}"
+        JOB_URL = "${env.JOB_URL}"
 
-          MAVEN_IMAGE             = "${maven_image}"
-          MAVEN_VERSION           = "${maven_version}"
-          PACKAGE_NAME            = "${package_name}"
-          WORKSPACE               = "${env.WORKSPACE}"
-        }
+        MAVEN_IMAGE = "${maven_image}"
+        MAVEN_VERSION = "${maven_version}"
+        PACKAGE_NAME = "${package_name}"
+        WORKSPACE = "${env.WORKSPACE}"
+    }
 
     stages {
-    stage('Checkout') {
-        steps {
-          script {
-            git.checkoutDefault(wipeout_workspace)
-            env.GIT_COMMIT = git.getCommit()
-            env.GROUP_ID = java.getGroupId()
-            env.PACKAGE_VERSION = "${java.getRevision()}-${utils.getDate()}-${BUILD_NUMBER}"
-            env.MAIL_ADDRESS = utils.getMailAddress()
-            env.IMAGE_NAME_TAG = "${DOCKER_REGISTRY_DEV}/${PACKAGE_NAME}:${PACKAGE_VERSION}"
-          }
-        }
-      }
-    stage('Build and Test') {
-        steps{
-            script{
-                rel_version = getMavenVersion()
-                build()
-            }
-        }
-    }
-
-    stage("trigger integrationtests") {
-        when{
-          expression {
-            ["master","develop"].contains(env.BRANCH_NAME)
-          }
-        }
-      steps{
-        script {
-            if(Jenkins.instance.getItemByFullName("openEO/openeo-integrationtests/master")){
-                utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
-            }else{
-                utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
-            }
-        }
-      }
-
-    }
-
-
-}
-
-
-    stage('Input'){
-        when{
-          expression {
-            deployable_branches.contains(env.BRANCH_NAME)
-          }
-        }
-        steps{
-            script{
-                milestone()
-                input "Release build ${rel_version}?"
-                milestone()
-            }
-        }
-
-    }
-
-
-    stage('Releasing'){
-        when{
-          expression {
-            deployable_branches.contains(env.BRANCH_NAME)
-          }
-        }
-        steps{
-            script{
-                checkout scm
-                rel_version = getReleaseVersion()
-                withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m","HADOOP_CONF_DIR=/etc/hadoop/conf/"]){
-                    sh "mvn versions:use-releases -DgenerateBackupPoms=false -DfailIfNotReplaced=true"
-                    echo "Removing SNAPSHOT from version for release"
-                    sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${rel_version}"
+        stage('Checkout') {
+            steps {
+                script {
+                    git.checkoutDefault(wipeout_workspace)
+                    env.GIT_COMMIT = git.getCommit()
+                    env.GROUP_ID = java.getGroupId()
+                    env.PACKAGE_VERSION = "${java.getRevision()}-${utils.getDate()}-${BUILD_NUMBER}"
+                    env.MAIL_ADDRESS = utils.getMailAddress()
+                    env.IMAGE_NAME_TAG = "${DOCKER_REGISTRY_DEV}/${PACKAGE_NAME}:${PACKAGE_VERSION}"
                 }
-                echo "releasing version ${rel_version}"
-                build(tests = false)
+            }
+        }
+        stage('Build and Test') {
+            steps {
+                script {
+                    rel_version = getMavenVersion()
+                    build()
+                }
+            }
+        }
 
-                withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m","HADOOP_CONF_DIR=/etc/hadoop/conf/"]){
-                    withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'BobDeBouwer', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD']]) {
-                        //sh "git commit -a -m 'Set version v${rel_version} in pom for release'"
-                        //sh "git tag -a v${rel_version} -m 'version ${rel_version}'"
-                        //sh "git push https://${GIT_USERNAME}:${GIT_PASSWORD}@git.vito.be/scm/biggeo/geotrellistimeseries.git v${rel_version}"
-                        sh "git checkout ${env.BRANCH_NAME}"
-                        new_version = updateMavenVersion()
-                        sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${new_version}"
-                        //sh "git commit -a -m 'Raise version in pom to ${new_version}'"
-                        //sh "git push https://${GIT_USERNAME}:${GIT_PASSWORD}@git.vito.be/scm/biggeo/geotrellistimeseries.git ${env.BRANCH_NAME}"
+        stage("trigger integrationtests") {
+            when {
+                expression {
+                    ["master", "develop"].contains(env.BRANCH_NAME)
+                }
+            }
+            steps {
+                script {
+                    if (Jenkins.instance.getItemByFullName("openEO/openeo-integrationtests/master")) {
+                        utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
+                    } else {
+                        utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
                     }
                 }
+            }
 
-                milestone()
+        }
+
+
+        stage('Input') {
+            when {
+                expression {
+                    deployable_branches.contains(env.BRANCH_NAME)
+                }
+            }
+            steps {
+                script {
+                    milestone()
+                    input "Release build ${rel_version}?"
+                    milestone()
+                }
+            }
+
+        }
+
+
+        stage('Releasing') {
+            when {
+                expression {
+                    deployable_branches.contains(env.BRANCH_NAME)
+                }
+            }
+            steps {
+                script {
+                    checkout scm
+                    rel_version = getReleaseVersion()
+                    withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m", "HADOOP_CONF_DIR=/etc/hadoop/conf/"]) {
+                        sh "mvn versions:use-releases -DgenerateBackupPoms=false -DfailIfNotReplaced=true"
+                        echo "Removing SNAPSHOT from version for release"
+                        sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${rel_version}"
+                    }
+                    echo "releasing version ${rel_version}"
+                    build(tests = false)
+
+                    withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m", "HADOOP_CONF_DIR=/etc/hadoop/conf/"]) {
+                        withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'BobDeBouwer', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD']]) {
+                            //sh "git commit -a -m 'Set version v${rel_version} in pom for release'"
+                            //sh "git tag -a v${rel_version} -m 'version ${rel_version}'"
+                            //sh "git push https://${GIT_USERNAME}:${GIT_PASSWORD}@git.vito.be/scm/biggeo/geotrellistimeseries.git v${rel_version}"
+                            sh "git checkout ${env.BRANCH_NAME}"
+                            new_version = updateMavenVersion()
+                            sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${new_version}"
+                            //sh "git commit -a -m 'Raise version in pom to ${new_version}'"
+                            //sh "git push https://${GIT_USERNAME}:${GIT_PASSWORD}@git.vito.be/scm/biggeo/geotrellistimeseries.git ${env.BRANCH_NAME}"
+                        }
+                    }
+
+                    milestone()
+                }
             }
         }
-    }
 
+    }
 }
 String getMavenVersion() {
     pom = readMavenPom file: 'pom.xml'
@@ -203,9 +201,9 @@ void build(tests = true){
                     }
                 }
             }catch(err){
-              notification.fail()
+                notification.fail()
 
-              throw err
+                throw err
             }
             finally {
                 if (tests) {
@@ -230,12 +228,12 @@ void withMavenEnv(List envVars = [], def body) {
 
 void replacePlaceholdersAndPut(replacements = [:], templateFile, outputFile) {
     sedScripts = replacements
-        .collect {
-            placeholder = it.key.replaceAll("/", "\\\\/")
-            value = it.value.replaceAll("/", "\\\\/")
-            "-e 's/$placeholder/$value/g'"
-        }
-        .join(" ")
+            .collect {
+                placeholder = it.key.replaceAll("/", "\\\\/")
+                value = it.value.replaceAll("/", "\\\\/")
+                "-e 's/$placeholder/$value/g'"
+            }
+            .join(" ")
 
     command = "sed ${sedScripts} ${templateFile} | hdfs dfs -copyFromLocal -f - ${outputFile}"
 
