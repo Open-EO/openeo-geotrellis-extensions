@@ -2,13 +2,59 @@
 
 def deployable_branches = ["master"]
 maven = 'Maven 3.5.4'
+def config = [:]
 
+def build_container_image    = (config.build_container_image == true) ?: false
+
+def docker_registry_dev      = config.docker_registry_dev ?: globalDefaults.docker_registry_dev()
+def docker_registry_prod     = config.docker_registry_prod ?: globalDefaults.docker_registry_prod()
+def jdk_version              = 11
+def maven_version            =  '3.5.4'
+def node_label               =  'devdmz'
+def wipeout_workspace        =  true
+
+def create_promotion_job     = (prod_hosts != '' || create_git_tag_job) ? true : false
+
+def maven_image              = globalDefaults.maven_image() + ":${maven_version}-jdk-${jdk_version}"
+
+
+pipeline{
+    agent {
+      label "devdmz"
+    }
+    environment {
+          BRANCH_NAME             = "${env.BRANCH_NAME}"
+          BUILD_NUMBER            = "${env.BUILD_NUMBER}"
+          BUILD_URL               = "${env.BUILD_URL}"
+          DEFAULT_MAVEN_OPTS      = "${default_maven_opts}"
+          DOCKER_REGISTRY_DEV     = "${docker_registry_dev}"
+          DOCKER_REGISTRY_PROD    = "${docker_registry_prod}"
+          JDK_VERSION             = "${jdk_version}"
+          JOB_BASE_NAME           = "${env.JOB_BASE_NAME}"
+          JOB_NAME                = "${env.JOB_NAME}"
+          JOB_URL                 = "${env.JOB_URL}"
+
+          MAVEN_IMAGE             = "${maven_image}"
+          MAVEN_VERSION           = "${maven_version}"
+          PACKAGE_NAME            = "${package_name}"
+          WORKSPACE               = "${env.WORKSPACE}"
+        }
 node ('devdmz') {
-
+    stages {
+    stage('Checkout') {
+        steps {
+          script {
+            git.checkoutDefault(wipeout_workspace)
+            env.GIT_COMMIT = git.getCommit()
+            env.GROUP_ID = java.getGroupId()
+            env.PACKAGE_VERSION = "${java.getRevision()}-${utils.getDate()}-${BUILD_NUMBER}"
+            env.MAIL_ADDRESS = utils.getMailAddress()
+            env.IMAGE_NAME_TAG = "${DOCKER_REGISTRY_DEV}/${PACKAGE_NAME}:${PACKAGE_VERSION}"
+          }
+        }
+      }
     stage('Build and Test') {
-        sh "rm -rf *"
-        sh "rm -rf .git/"
-        checkout scm
+
         rel_version = getMavenVersion()
         build()
     }
@@ -69,7 +115,8 @@ if(deployable_branches.contains(env.BRANCH_NAME)){
         }
     }
 }
-
+}
+}
 String getMavenVersion() {
     pom = readMavenPom file: 'pom.xml'
     version = pom.version
@@ -110,37 +157,39 @@ void build(tests = true){
     def publishable_branches = ["master", "develop", "109-upgrade-to-spark-33"]
     String jdktool = tool name: "OpenJDK 11 Centos7", type: 'hudson.model.JDK'
     List jdkEnv = ["PATH+JDK=${jdktool}/bin", "JAVA_HOME=${jdktool}", "HADOOP_CONF_DIR=/etc/hadoop/conf/","SPARK_LOCAL_IP=127.0.0.1"]
-    withEnv(jdkEnv) {
-        def server = Artifactory.server('vitoartifactory')
-        def rtMaven = Artifactory.newMavenBuild()
-        rtMaven.deployer server: server, releaseRepo: 'libs-release-public', snapshotRepo: 'libs-snapshot-public'
-        rtMaven.tool = maven
-        if (!tests) {
-            rtMaven.opts += ' -DskipTests=true'
-        }
-        rtMaven.deployer.deployArtifacts = publishable_branches.contains(env.BRANCH_NAME) || publishable_branches.contains(env.CHANGE_BRANCH)
-        //use '--projects StatisticsMapReduce' in 'goals' to build specific module
-        try {
-            withCredentials([
-                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'SentinelHubBatchS3'],
-                    [$class: 'UsernamePasswordMultiBinding', credentialsId: 'SentinelHubGeodatadev', usernameVariable: 'SENTINELHUB_CLIENT_ID', passwordVariable: 'SENTINELHUB_CLIENT_SECRET']
-            ]) {
-                buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts,integrationtests -U clean install'
-                try {
-                    if (rtMaven.deployer.deployArtifacts)
-                        server.publishBuildInfo buildInfo
-                } catch (e) {
-                    print e.message
-                }
+    docker.image(env.MAVEN_IMAGE).inside('-v /home/jenkins/.m2:/root/.m2 -u root') {
+        withEnv(jdkEnv) {
+            def server = Artifactory.server('vitoartifactory')
+            def rtMaven = Artifactory.newMavenBuild()
+            rtMaven.deployer server: server, releaseRepo: 'libs-release-public', snapshotRepo: 'libs-snapshot-public'
+            rtMaven.tool = maven
+            if (!tests) {
+                rtMaven.opts += ' -DskipTests=true'
             }
-        }catch(err){
-          notification.fail()
+            rtMaven.deployer.deployArtifacts = publishable_branches.contains(env.BRANCH_NAME) || publishable_branches.contains(env.CHANGE_BRANCH)
+            //use '--projects StatisticsMapReduce' in 'goals' to build specific module
+            try {
+                withCredentials([
+                        [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'SentinelHubBatchS3'],
+                        [$class: 'UsernamePasswordMultiBinding', credentialsId: 'SentinelHubGeodatadev', usernameVariable: 'SENTINELHUB_CLIENT_ID', passwordVariable: 'SENTINELHUB_CLIENT_SECRET']
+                ]) {
+                    buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts,integrationtests -U clean install'
+                    try {
+                        if (rtMaven.deployer.deployArtifacts)
+                            server.publishBuildInfo buildInfo
+                    } catch (e) {
+                        print e.message
+                    }
+                }
+            }catch(err){
+              notification.fail()
 
-          throw err
-        }
-        finally {
-            if (tests) {
-                junit '*/target/*-reports/*.xml'
+              throw err
+            }
+            finally {
+                if (tests) {
+                    junit '*/target/*-reports/*.xml'
+                }
             }
         }
     }
