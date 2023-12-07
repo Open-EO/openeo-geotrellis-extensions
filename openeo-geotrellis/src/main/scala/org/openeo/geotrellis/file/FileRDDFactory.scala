@@ -24,12 +24,13 @@ import scala.collection.JavaConverters._
  * A class that looks like a pyramid factory, but does not build a full datacube. Instead, it generates an RDD[SpaceTimeKey, ProductPath].
  * This RDD can then be transformed into
  */
-class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = "") {
+class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: String,
+                     attributeValues: util.Map[String, Any],
+                     correlationId: String, private val maxSpatialResolution: CellSize) {
 
-  // TODO: pass as param
-  private val maxSpatialResolution =
-    if (openSearchCollectionId ==  "Sentinel3") CellSize(0.00297619047619, 0.00297619047619)
-    else CellSize(10, 10)
+  def this(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: util.List[String],
+           attributeValues: util.Map[String, Any], correlationId: String) =
+    this(openSearch, openSearchCollectionId, attributeValues, correlationId, maxSpatialResolution = CellSize(10, 10))
 
   /**
    * Lookup OpenSearch Features
@@ -44,7 +45,7 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
       attributeValues = attributeValues.asScala.toMap,
       correlationId, ""
     )
-    overlappingFeatures.take(1) // FIXME: remove take()
+    overlappingFeatures
   }
 
 
