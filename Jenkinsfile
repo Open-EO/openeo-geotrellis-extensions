@@ -13,8 +13,6 @@ def maven_version            =  '3.5.4'
 def node_label               =  'devdmz'
 def wipeout_workspace        =  true
 
-def create_promotion_job     = (prod_hosts != '' || create_git_tag_job) ? true : false
-
 def maven_image              = globalDefaults.maven_image() + ":${maven_version}-jdk-${jdk_version}"
 
 
