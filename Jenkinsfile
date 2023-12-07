@@ -54,26 +54,28 @@ pipeline{
         }
       }
     stage('Build and Test') {
-
-        rel_version = getMavenVersion()
-        build()
+        steps{
+            script{
+                rel_version = getMavenVersion()
+                build()
+            }
+        }
     }
 
     if(["master","develop"].contains(env.BRANCH_NAME)) {
         stage("trigger integrationtests") {
-          script {
-            if(Jenkins.instance.getItemByFullName("openEO/openeo-integrationtests/master")){
-                utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
-            }else{
-                utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
+          steps{
+            script {
+                if(Jenkins.instance.getItemByFullName("openEO/openeo-integrationtests/master")){
+                    utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
+                }else{
+                    utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
+                }
             }
           }
-        }
-        stage('Deploy to Dev') {
-            //milestone ensures that previous builds that have reached this point are aborted
-            milestone()           
 
         }
+
     }
 
 }
