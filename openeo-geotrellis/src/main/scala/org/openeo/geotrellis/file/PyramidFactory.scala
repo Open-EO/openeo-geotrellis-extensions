@@ -88,17 +88,7 @@ class PyramidFactory(openSearchClient: OpenSearchClient,
   def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
                    metadata_properties: util.Map[String, Any], correlationId: String, dataCubeParameters: DataCubeParameters):
   Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
-    var cleanedPolygons = 0
-    val polysCleaned = polygons.polygons map { p =>
-      if (p.isValid) p
-      else {
-        cleanedPolygons += 1
-        p.union().asInstanceOf[MultiPolygon]
-      }
-    }
-    if (cleanedPolygons > 0) logger.warn(f"Cleaned up $cleanedPolygons polygon(s)")
-
-    val cube = datacube(polysCleaned, polygons.crs, from_date, to_date, metadata_properties, correlationId, dataCubeParameters)
+    val cube = datacube(polygons.polygons, polygons.crs, from_date, to_date, metadata_properties, correlationId, dataCubeParameters)
     Seq((0,cube))
   }
 
@@ -122,10 +112,20 @@ class PyramidFactory(openSearchClient: OpenSearchClient,
     val from = ZonedDateTime.parse(from_date)
     val to = ZonedDateTime.parse(to_date)
 
+    var cleanedPolygons = 0
+    val polysCleaned = polygons map { p =>
+      if (p.isValid) p
+      else {
+        cleanedPolygons += 1
+        p.union().asInstanceOf[MultiPolygon]
+      }
+    }
+    if (cleanedPolygons > 0) logger.warn(f"Cleaned up $cleanedPolygons polygon(s)")
+
 
     val boundingBox = ProjectedExtent(polygons.toSeq.extent, polygons_crs)
     val layerProvider = fileLayerProvider(metadata_properties.asScala.toMap, correlationId, FloatingLayoutScheme(dataCubeParameters.tileSize))
-    layerProvider.readMultibandTileLayer(from, to, boundingBox, polygons, polygons_crs, 0, sc, Some(dataCubeParameters))
+    layerProvider.readMultibandTileLayer(from, to, boundingBox, polysCleaned, polygons_crs, 0, sc, Some(dataCubeParameters))
   }
 
   def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int,
