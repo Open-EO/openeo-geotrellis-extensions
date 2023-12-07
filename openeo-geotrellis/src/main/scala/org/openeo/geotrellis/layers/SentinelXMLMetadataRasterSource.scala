@@ -4,11 +4,14 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType}
 import geotrellis.vector.Extent
+import org.openeo.geotrellis.layers.SentinelXMLMetadataRasterSource.logger
 import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
+import org.slf4j.LoggerFactory
 
 import scala.xml.XML
 
 object SentinelXMLMetadataRasterSource {
+  private val logger = LoggerFactory.getLogger(SentinelXMLMetadataRasterSource.getClass)
 
   def forAngleBand(xlmPath: String,
                    angleBandIndex: Int,
@@ -31,7 +34,9 @@ object SentinelXMLMetadataRasterSource {
 
     val theResolution = cellSize.getOrElse(CellSize(10, 10))
 
-    val xmlDoc = XML.load(CreoFeatureCollection.loadMetadata(xlmPath))
+    val path = CreoFeatureCollection.loadMetadata(xlmPath)
+    assert(path != null)
+    val xmlDoc = XML.load(path)
     val angles = xmlDoc \\ "Tile_Angles"
     val meanSun = angles \ "Mean_Sun_Angle"
     val mSZA = ( meanSun \ "ZENITH_ANGLE").text.toFloat
@@ -59,9 +64,9 @@ object SentinelXMLMetadataRasterSource {
   }
 }
 
-class SentinelXMLMetadataRasterSource(value: Float, // TODO: rename this to a more generic constant value RasterSource?
+case class SentinelXMLMetadataRasterSource(value: Float, // TODO: rename this to a more generic constant value RasterSource?
                                       theCrs: CRS,
-                                      theGridExtent: GridExtent[Long],
+                                      gridExtent: GridExtent[Long],
                                       sourcePathName: OpenEoSourcePath,
                                      ) extends RasterSource {
 
@@ -69,26 +74,45 @@ class SentinelXMLMetadataRasterSource(value: Float, // TODO: rename this to a mo
   val gridSize = 23
 
 
-  override def metadata: RasterMetadata = ???
+  override def metadata: RasterMetadata = this
 
-  override protected def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource = ???
+  override protected def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
+    new SentinelXMLMetadataRasterSource(value, targetCRS, gridExtent.reproject(crs, targetCRS), sourcePathName)
 
-  override def resample(resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource = ???
+  override def resample(resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
+    new SentinelXMLMetadataRasterSource(value, crs, resampleTarget(gridExtent), sourcePathName)
+
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    Some(Raster(MultibandTile(FloatConstantTile(
-      value,
-      math.floor(extent.width.intValue() / theGridExtent.cellSize.width).toInt,
-      math.floor(extent.height.intValue() / theGridExtent.cellSize.height).toInt,
-    )), extent))
+    val supportedBandIndices = Seq(0)
+    require(bands == supportedBandIndices)
+
+    extent.intersection(gridExtent.extent)
+      .map { intersection =>
+        val intersectionGridBounds = gridExtent.gridBoundsFor(intersection).toGridType[Int]
+        val noDataTile = FloatConstantTile(value, intersectionGridBounds.width, intersectionGridBounds.height)
+        Raster(MultibandTile(noDataTile), intersection)
+      }
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    val extent = gridExtent.extentFor(bounds, clamp = true) // clamp=true gives same results as the intersection don in GDALRasterSource
-    Some(Raster(MultibandTile(FloatConstantTile(value, bounds.width.intValue(), bounds.height.intValue())), extent))
+    val supportedBandIndices = Seq(0)
+    require(bands == supportedBandIndices)
+
+    bounds.intersection(gridExtent.dimensions)
+      .map { intersection =>
+        val intersectionGridBounds = intersection.toGridType[Int]
+        val noDataTile = FloatConstantTile(value, intersectionGridBounds.width, intersectionGridBounds.height)
+        Raster(MultibandTile(noDataTile), gridExtent.extentFor(intersection))
+      }
   }
 
-  override def convert(targetCellType: TargetCellType): RasterSource = ???
+  override def convert(targetCellType: TargetCellType): RasterSource = {
+    if(targetCellType.cellType != FloatConstantNoDataCellType) {
+      logger.warn("Ignoring cellType: " + cellType)
+    }
+    new SentinelXMLMetadataRasterSource(value, crs, gridExtent, sourcePathName)
+  }
 
   override def name: SourceName = sourcePathName
 
@@ -98,9 +122,7 @@ class SentinelXMLMetadataRasterSource(value: Float, // TODO: rename this to a mo
 
   override def cellType: CellType = FloatConstantNoDataCellType
 
-  override def gridExtent: GridExtent[Long] = theGridExtent
-
-  override def resolutions: List[CellSize] = List(theGridExtent.cellSize)
+  override def resolutions: List[CellSize] = List(gridExtent.cellSize)
 
   override def attributes: Map[String, String] = Map.empty[String,String]
 
