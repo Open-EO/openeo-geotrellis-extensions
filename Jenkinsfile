@@ -62,19 +62,23 @@ pipeline{
         }
     }
 
-    if(["master","develop"].contains(env.BRANCH_NAME)) {
-        stage("trigger integrationtests") {
-          steps{
-            script {
-                if(Jenkins.instance.getItemByFullName("openEO/openeo-integrationtests/master")){
-                    utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
-                }else{
-                    utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
-                }
-            }
+    stage("trigger integrationtests") {
+        when{
+          expression {
+            ["master","develop"].contains(env.BRANCH_NAME)
           }
-
         }
+      steps{
+        script {
+            if(Jenkins.instance.getItemByFullName("openEO/openeo-integrationtests/master")){
+                utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
+            }else{
+                utils.triggerJob("openEO/openeo-integrationtests", ['mail_address': env.MAIL_ADDRESS])
+            }
+        }
+      }
+
+    }
 
     }
 
