@@ -50,9 +50,6 @@ object ComputeStatsGeotrellisAdapterTest {
   @BeforeClass
   def setUpSpark(): Unit = {
     sc = {
-      val config = new HdfsConfiguration
-      config.set("hadoop.security.authentication", "kerberos")
-      UserGroupInformation.setConfiguration(config)
 
       val conf = new SparkConf().set("spark.driver.bindAddress", "127.0.0.1")
       SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName, conf)
