@@ -11,11 +11,16 @@ import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
+import org.slf4j.LoggerFactory
 
 import java.net.URL
 import java.time.ZonedDateTime
 import java.util
 import scala.collection.JavaConverters._
+
+object PyramidFactory {
+  private val logger = LoggerFactory.getLogger(PyramidFactory.getClass)
+}
 
 /**
  * Uses OpenSearch metadata lookup and file based access to create Pyramids.
@@ -40,6 +45,8 @@ class PyramidFactory(openSearchClient: OpenSearchClient,
                      maxSpatialResolution: CellSize,
                      experimental: Boolean = false) {
   require(openSearchLinkTitles.size() > 0)
+
+  import PyramidFactory._
 
   var crs: CRS = WebMercator
 
@@ -105,10 +112,20 @@ class PyramidFactory(openSearchClient: OpenSearchClient,
     val from = ZonedDateTime.parse(from_date)
     val to = ZonedDateTime.parse(to_date)
 
+    var cleanedPolygons = 0
+    val polysCleaned = polygons map { p =>
+      if (p.isValid) p
+      else {
+        cleanedPolygons += 1
+        p.union().asInstanceOf[MultiPolygon]
+      }
+    }
+    if (cleanedPolygons > 0) logger.warn(f"Cleaned up $cleanedPolygons polygon(s)")
+
 
     val boundingBox = ProjectedExtent(polygons.toSeq.extent, polygons_crs)
     val layerProvider = fileLayerProvider(metadata_properties.asScala.toMap, correlationId, FloatingLayoutScheme(dataCubeParameters.tileSize))
-    layerProvider.readMultibandTileLayer(from, to, boundingBox, polygons, polygons_crs, 0, sc, Some(dataCubeParameters))
+    layerProvider.readMultibandTileLayer(from, to, boundingBox, polysCleaned, polygons_crs, 0, sc, Some(dataCubeParameters))
   }
 
   def layer(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int,
