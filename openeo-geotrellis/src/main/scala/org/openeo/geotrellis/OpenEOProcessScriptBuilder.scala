@@ -3,7 +3,7 @@ package org.openeo.geotrellis
 import ai.catboost.CatBoostModel
 import ai.catboost.spark.CatBoostClassificationModel
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{ArrayTile, BitCellType, ByteUserDefinedNoDataCellType, CellType, Dimensions, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantNoDataCellType, ShortConstantTile, Tile, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortUserDefinedNoDataCellType, isData, isNoData}
+import geotrellis.raster.{ArrayTile, BitCellType, ByteUserDefinedNoDataCellType, CellType, Dimensions, DoubleConstantNoDataCellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantNoDataCellType, ShortConstantTile, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortUserDefinedNoDataCellType, isData, isNoData}
 import org.apache.commons.math3.exception.NotANumberException
 import org.apache.commons.math3.stat.descriptive.rank.Percentile
 import org.apache.commons.math3.stat.ranking.NaNStrategy
@@ -70,6 +70,39 @@ object OpenEOProcessScriptBuilder{
       wrapSimpleProcess(f)
   }
 
+  private def cellTypeUnion(a:CellType,b:CellType):CellType = {
+    if (a.bits < b.bits)
+      b
+    else if (a.bits > b.bits)
+      a
+    else if (a.isFloatingPoint && !b.isFloatingPoint)
+      a
+    else if(isUnSigned(a) != isUnSigned(b) ) {
+      if(a.bits==8) {
+        ShortConstantNoDataCellType
+      }else if(a.isFloatingPoint || b.isFloatingPoint){
+        if(math.max(a.bits,b.bits) == 32){
+          FloatConstantNoDataCellType
+        }else{
+          DoubleConstantNoDataCellType
+        }
+      }else{
+        IntConstantNoDataCellType
+      }
+    }
+    else
+      b
+  }
+
+  private def isUnSigned(a:CellType): Boolean = {
+    a match{
+      case x:UByteCells => true
+      case x:UShortCells => true
+      case x:UShortCells => true
+
+      case _ => false
+    }
+  }
 
 
   private def ifElseProcess(value: OpenEOProcess, accept: OpenEOProcess, reject: OpenEOProcess) = {
@@ -785,8 +818,11 @@ class OpenEOProcessScriptBuilder {
           aTile
         }
       }
-      val x_input: Seq[Tile] = evaluateToTiles(x_function, context, tiles).map(convertBitCellsOp)
-      val y_input: Seq[Tile] = evaluateToTiles(y_function, context, tiles).map(convertBitCellsOp)
+      var x_input: Seq[Tile] = evaluateToTiles(x_function, context, tiles).map(convertBitCellsOp)
+      var y_input: Seq[Tile] = evaluateToTiles(y_function, context, tiles).map(convertBitCellsOp)
+      val combinedCellType = x_input.headOption.map( t=> cellTypeUnion(t.cellType,y_input.headOption.map(_.cellType).getOrElse(BitCellType)))
+      x_input = x_input.map(_.convert(combinedCellType.getOrElse(BitCellType)))
+      y_input = y_input.map(_.convert(combinedCellType.getOrElse(BitCellType)))
       if(x_input.size == y_input.size) {
         x_input.zip(y_input).map(t=>operator(t._1,t._2))
       }else if(x_input.size == 1) {

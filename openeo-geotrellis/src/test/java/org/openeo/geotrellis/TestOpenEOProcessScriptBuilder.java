@@ -9,6 +9,7 @@ import org.apache.spark.mllib.linalg.Vectors;
 import org.apache.spark.mllib.regression.LabeledPoint;
 import org.apache.spark.mllib.tree.RandomForest;
 import org.apache.spark.mllib.tree.model.RandomForestModel;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -179,22 +180,42 @@ public class TestOpenEOProcessScriptBuilder {
     @DisplayName("Test multiband XY constant")
     @Test
     public void testMultiBandMultiplyConstant() {
+        OpenEOProcessScriptBuilder builder = createMultiply((byte)10);
+
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile1 = fillByteArrayTile(3, 3, 9, -10, 11, 12);
+        ByteArrayTile tile2 = fillByteArrayTile(3, 3, 5, 6, 7, 8);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1, tile2)));
+
+        assertTileEquals(fillShortArrayTile(3, 3, 90, -100, 110, 120, 0, 0, 0, 0, 0), result.apply(0));
+        assertTileEquals(fillShortArrayTile(3, 3, 50, 60, 70, 80, 0, 0, 0, 0, 0), result.apply(1));
+    }
+
+    @NotNull
+    private static OpenEOProcessScriptBuilder createMultiply(Number constant) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         Map<String, Object> args = dummyMap("x", "y");
         String operator = "multiply";
         builder.expressionStart(operator, args);
         builder.argumentStart("x");
         builder.argumentEnd();
-        builder.constantArgument("y", 10);
+        builder.constantArgument("y", constant);
         builder.expressionEnd(operator, args);
+        return builder;
+    }
+
+    @DisplayName("Test multiband XY constant")
+    @Test
+    public void testMultiBandMultiplyConstantFloat() {
+        OpenEOProcessScriptBuilder builder = createMultiply(10.0f);
 
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
-        ByteArrayTile tile1 = fillByteArrayTile(3, 3, 9, 10, 11, 12);
+        ByteArrayTile tile1 = fillByteArrayTile(3, 3, 9, -10, 11, 12);
         ByteArrayTile tile2 = fillByteArrayTile(3, 3, 5, 6, 7, 8);
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1, tile2)));
 
-        assertTileEquals(fillByteArrayTile(3, 3, 90, 100, 110, 120, 0, 0, 0, 0, 0), result.apply(0));
-        assertTileEquals(fillByteArrayTile(3, 3, 50, 60, 70, 80, 0, 0, 0, 0, 0), result.apply(1));
+        assertTileEquals(fillFloatArrayTile(3, 3, 90, -100, 110, 120, 0, 0, 0, 0, 0), result.apply(0));
+        assertTileEquals(fillFloatArrayTile(3, 3, 50, 60, 70, 80, 0, 0, 0, 0, 0), result.apply(1));
     }
 
     @DisplayName("Test multiplying multiple tiles.")
@@ -2340,6 +2361,14 @@ public class TestOpenEOProcessScriptBuilder {
 
     private static ByteArrayTile fillByteArrayTile(int cols, int rows, int... values) {
         ByteArrayTile tile = ByteArrayTile.ofDim(cols, rows);
+        for (int i = 0; i < Math.min(cols * rows, values.length); i++) {
+            tile.set(i % cols, i / cols, values[i]);
+        }
+        return tile;
+    }
+
+    private static ShortArrayTile fillShortArrayTile(int cols, int rows, int... values) {
+        ShortArrayTile tile = ShortArrayTile.ofDim(cols, rows);
         for (int i = 0; i < Math.min(cols * rows, values.length); i++) {
             tile.set(i % cols, i / cols, values[i]);
         }
