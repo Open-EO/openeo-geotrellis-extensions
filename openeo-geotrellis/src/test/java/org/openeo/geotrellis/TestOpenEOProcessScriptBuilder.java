@@ -576,7 +576,7 @@ public class TestOpenEOProcessScriptBuilder {
         testLogicalOperatorWithXY("xor", 0, 1, 1, 0);
     }
 
-    private void testMathXY(String operator, int... expectedValues) {
+    private void testMathXY(String operator, Number... expectedValues) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         builder.expressionStart(operator, dummyMap("x", "y"));
         buildBandXYArguments(builder, 0, 1);
@@ -588,8 +588,14 @@ public class TestOpenEOProcessScriptBuilder {
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
         assertEquals(1, result.length());
         Tile res = result.apply(0);
+
         IntArrayTile expectedTile = fillIntArrayTile(3, 2, expectedValues);
-        assertTileEquals(expectedTile, res);
+        if (expectedValues[0] instanceof Float) {
+            assertTileEquals(expectedTile.convert(CellType.fromName("float32")), res);
+        }else{
+            assertTileEquals(expectedTile, res);
+        }
+
 
         Tile doubleResult = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0.convert(CellType.fromName("float64")), tile1.convert(CellType.fromName("float64"))))).apply(0);
         assertTileEquals(expectedTile.convert(CellType.fromName("float64")), doubleResult);
@@ -646,7 +652,7 @@ public class TestOpenEOProcessScriptBuilder {
     @DisplayName("Test math 'divide(x,y)'")
     @Test
     public void testDivideXY() {
-        testMathXY("divide", 3, 2, 1, 0, 0, 0);
+        testMathXY("divide", 3.0f, 2.0f, 1.f, 0.f, 0.f, 0.f);
     }
 
     @DisplayName("Test math 'normalized_difference(x,y)'")
@@ -668,7 +674,7 @@ public class TestOpenEOProcessScriptBuilder {
     }
 
 
-    private void testMathData(String operator, int... expectedValues) {
+    private void testMathData(String operator, Number... expectedValues) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         builder.expressionStart(operator, dummyMap("data"));
         buildBandArray(builder, "data");
@@ -2375,10 +2381,10 @@ public class TestOpenEOProcessScriptBuilder {
         return tile;
     }
 
-    private static IntArrayTile fillIntArrayTile(int cols, int rows, int... values) {
+    private static IntArrayTile fillIntArrayTile(int cols, int rows, Number... values) {
         IntArrayTile tile = IntArrayTile.ofDim(cols, rows);
         for (int i = 0; i < Math.min(cols * rows, values.length); i++) {
-            tile.set(i % cols, i / cols, values[i]);
+            tile.set(i % cols, i / cols, values[i].intValue());
         }
         return tile;
     }

@@ -805,7 +805,7 @@ class OpenEOProcessScriptBuilder {
   }
 
 
-  private def xyFunction(operator:(Tile,Tile) => Tile, xArgName:String = "x", yArgName:String = "y" ,convertBitCells: Boolean = true): OpenEOProcess = {
+  private def xyFunction(operator:(Tile,Tile) => Tile, xArgName:String = "x", yArgName:String = "y" ,convertBitCells: Boolean = true, forceFloat:Boolean = false): OpenEOProcess = {
     val x_function: OpenEOProcess = getProcessArg(xArgName)
     val y_function: OpenEOProcess = getProcessArg(yArgName)
     val processString = processStack.reverse.mkString("->")
@@ -820,7 +820,10 @@ class OpenEOProcessScriptBuilder {
       }
       var x_input: Seq[Tile] = evaluateToTiles(x_function, context, tiles).map(convertBitCellsOp)
       var y_input: Seq[Tile] = evaluateToTiles(y_function, context, tiles).map(convertBitCellsOp)
-      val combinedCellType = x_input.headOption.map( t=> cellTypeUnion(t.cellType,y_input.headOption.map(_.cellType).getOrElse(BitCellType)))
+      var combinedCellType = x_input.headOption.map( t=> cellTypeUnion(t.cellType,y_input.headOption.map(_.cellType).getOrElse(BitCellType)))
+      if(!combinedCellType.getOrElse(BitCellType).isFloatingPoint && forceFloat) {
+        combinedCellType = Some(FloatConstantNoDataCellType)
+      }
       x_input = x_input.map(_.convert(combinedCellType.getOrElse(BitCellType)))
       y_input = y_input.map(_.convert(combinedCellType.getOrElse(BitCellType)))
       if(x_input.size == y_input.size) {
@@ -1029,11 +1032,11 @@ class OpenEOProcessScriptBuilder {
           case "product" if hasData => reduceFunction("data", Multiply.apply)
           case "multiply" if hasXY => xyFunction(Multiply.apply)
           case "multiply" if hasData => reduceFunction("data", Multiply.apply) // legacy 0.4 style
-          case "divide" if hasXY => xyFunction(Divide.apply)
+          case "divide" if hasXY => xyFunction(Divide.apply,forceFloat = true)
           case "divide" if hasData => reduceFunction("data", Divide.apply) // legacy 0.4 style
-          case "power" => xyFunction(Pow.apply, xArgName = "base", yArgName = "p")
+          case "power" => xyFunction(Pow.apply, xArgName = "base", yArgName = "p",forceFloat = true)
           case "exp" => mapFunction("p", Exp.apply)
-          case "normalized_difference" if hasXY => xyFunction((x, y) => Divide(Subtract(x, y), Add(x, y)))
+          case "normalized_difference" if hasXY => xyFunction((x, y) => Divide(Subtract(x, y), Add(x, y)),forceFloat = true)
           case "clip" => clipFunction(arguments)
           case "int" => intFunction(arguments)
           // Statistics
