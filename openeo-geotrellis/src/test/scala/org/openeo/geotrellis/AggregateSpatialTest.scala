@@ -6,8 +6,6 @@ import geotrellis.raster.{ByteCells, ByteConstantTile, MultibandTile}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
-import org.apache.hadoop.hdfs.HdfsConfiguration
-import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertArrayEquals, assertEquals}
@@ -18,8 +16,8 @@ import org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder
 import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.util
-import scala.collection.immutable.Seq
 import scala.collection.JavaConverters._
+import scala.collection.immutable.Seq
 import scala.collection.mutable
 import scala.io.Source
 
@@ -30,9 +28,6 @@ object AggregateSpatialTest {
   @BeforeClass
   def setUpSpark(): Unit = {
     sc = {
-      val config = new HdfsConfiguration
-      config.set("hadoop.security.authentication", "kerberos")
-      UserGroupInformation.setConfiguration(config)
 
       val conf = new SparkConf().set("spark.driver.bindAddress", "127.0.0.1")
       SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, conf)

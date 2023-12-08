@@ -8,15 +8,12 @@ import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, Polygon, _}
 import org.apache.commons.io.IOUtils
-import org.apache.hadoop.hdfs.HdfsConfiguration
-import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 import org.junit.runners.Parameterized.Parameters
-import org.junit.{AfterClass, Before, BeforeClass, Test}
 import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.TimeSeriesServiceResponses.GeometriesHistograms.Bin
 import org.openeo.geotrellis.TimeSeriesServiceResponses._
@@ -50,9 +47,9 @@ object ComputeStatsGeotrellisAdapterTest {
   @BeforeClass
   def setUpSpark(): Unit = {
     sc = {
-      val config = new HdfsConfiguration
-      config.set("hadoop.security.authentication", "kerberos")
-      UserGroupInformation.setConfiguration(config)
+      //val config = new HdfsConfiguration
+      //config.set("hadoop.security.authentication", "kerberos")
+      //UserGroupInformation.setConfiguration(config)
 
       val conf = new SparkConf().set("spark.driver.bindAddress", "127.0.0.1")
       SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName, conf)
@@ -257,13 +254,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val from_date = "2018-06-01T00:00:00Z"
     val to_date = "2018-06-11T00:00:00Z"
 
-    val datacube: MultibandTileLayerRDD[SpaceTimeKey] = accumuloDataCube(
-      layer = "PROBAV_L3_S10_TOC_NDVI_333M_V3",
-      minDateString = from_date,
-      maxDateString = to_date,
-      bbox,
-      srs = "EPSG:4326"
-    )
+    val datacube: MultibandTileLayerRDD[SpaceTimeKey] = probav_ndvi(from_date, to_date, bbox)
 
     val tempFile = Files.createTempFile("timeseries-", ".json")
 
@@ -322,61 +313,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     } println(s"$date: [$polygon] $bandMeans")
   }
 
-  @Test
-  def multiBandMedianArrayIndexOutOfBoundsException(): Unit = {
-    val startDate = LocalDate.of(2019, 4, 11).atStartOfDay(ZoneOffset.UTC)
-    val endDate = startDate plusWeeks 1
 
-    val datacube: MultibandTileLayerRDD[SpaceTimeKey] = accumuloPyramidFactory.load_rdd(
-      layerName = "S1_GRD_GAMMA0_PYRAMID_V2",
-      level = 14,
-      bbox = Extent(2.7018695091614826, 50.875524514346715, 3.366826213573422, 51.30898846322647),
-      bbox_srs = "EPSG:4326",
-      Some(startDate),
-      Some(endDate)
-    )
-
-    val stats = computeStatsGeotrellisAdapter.compute_median_time_series_from_datacube(
-      datacube,
-      polygons=ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/minimallyOverlappingGeometryCollection.json").getPath),
-      from_date = ISO_OFFSET_DATE_TIME format startDate,
-      to_date = ISO_OFFSET_DATE_TIME format endDate,
-      band_index = 0
-    ).asScala
-
-    for {
-      (date, polygonalHistograms) <- stats
-      (bandHistograms, polygon) <- polygonalHistograms.asScala.zipWithIndex
-      (median, band) <- bandHistograms.asScala.zipWithIndex
-    } println(s"$date: polygon $polygon/band $band: median $median")
-  }
-
-  /**
-    * This test is similar in setup to the openeo integrationtest:
-    * test_validate_timeseries.Test#test_zonal_statistics
-    *
-    * But it is easier to debug.
-    *
-    * Testing against accumulo is necessary, because we have a custom RangePartitioner for performance, that affects the result if not implemented correctly
-    */
-  @Test
-  def compute_median_timeseries_on_accumulo_datacube(): Unit = {
-
-    val minDateString = "2017-11-01T00:00:00Z"
-    val maxDateString = "2017-11-16T02:00:00Z"
-    val minDate = ZonedDateTime.parse(minDateString)
-    val maxDate = ZonedDateTime.parse(maxDateString)
-
-    val polygons = Seq(polygon3)
-
-    //bbox = new Extent(10.5, 46.5, 11.4, 46.9);
-    //srs = "EPSG:4326";
-
-
-    val datacube = accumuloDataCube("S2_FAPAR_PYRAMID_20200408", minDateString, maxDateString,  polygons.extent,  "EPSG:4326")
-
-    assertMedianComputedCorrectly(datacube, minDateString, minDate, maxDate, polygons)
-  }
 
   private def accumuloPyramidFactory = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
 
@@ -409,7 +346,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val srs = "EPSG:4326"
     val band = 0
 
-    val datacube = accumuloDataCube("S2_FAPAR_PYRAMID_20200408", minDateString, maxDateString, polygons.extent, srs)
+    val datacube = LayerFixtures.s2_fapar(minDateString, maxDateString, polygons.extent)
 
     val stats = computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
       datacube,
@@ -455,7 +392,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val srs = "EPSG:4326"
     val band = 0
 
-    val datacube = accumuloDataCube("S2_FAPAR_PYRAMID_20200408", minDateString, maxDateString, polygons.extent, srs)
+    val datacube = LayerFixtures.s2_fapar( minDateString, maxDateString, polygons.extent)
 
     val stats = computeStatsGeotrellisAdapter.compute_histograms_time_series_from_datacube(
       datacube,
