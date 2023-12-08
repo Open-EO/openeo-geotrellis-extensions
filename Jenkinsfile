@@ -174,10 +174,10 @@ String updateMavenVersion(){
 void build(tests = true){
     def publishable_branches = ["master", "develop", "109-upgrade-to-spark-33"]
 
-    List jdkEnv = [ "HADOOP_CONF_DIR=/etc/hadoop/conf/","SPARK_LOCAL_IP=127.0.0.1"]
-    docker.image(env.MAVEN_IMAGE).inside('-v /home/jenkins/.m2:/root/.m2 -v /etc/hadoop/conf:/etc/hadoop/conf:ro -u root') {
+    List jdkEnv = [ "HADOOP_CONF_DIR=/etc/hadoop/conf/","SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-11-openjdk"]
+    docker.image(env.MAVEN_IMAGE).inside('-v /home/jenkins/.m2:/root/.m2 -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root') {
         withEnv(jdkEnv) {
-            sh "dnf install -y maven"
+            sh "dnf install -y maven git java-11-openjdk-devel"
             def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
             rtMaven.deployer server: server, releaseRepo: 'libs-release-public', snapshotRepo: 'libs-snapshot-public'
