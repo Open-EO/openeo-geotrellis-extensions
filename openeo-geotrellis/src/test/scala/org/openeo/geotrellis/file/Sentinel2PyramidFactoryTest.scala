@@ -122,22 +122,12 @@ class Sentinel2PyramidFactoryTest {
         val client = new GeotiffNoDateSearchClient(tiffUrl.getPath, bandNames)
         val factory = new PyramidFactory(client, "", bandNames, null, CellSize(0.0002777777777777778, 0.0002777777777777778))
 
-        //        val factory = new PyramidFactory(
-        //            new org.openeo.opensearch.backends.OscarsClient(new URL("https://services.terrascope.be/catalogue/"), isUTM = false),
-        //            openSearchCollectionId = "urn:eop:VITO:COP_DEM_GLO_30M_COG",
-        //            openSearchLinkTitles = java.util.Collections.singletonList("DEM"),
-        //            rootPath = "/data/MTDA/DEM/COPERNICUS-DEM-30",
-        //            maxSpatialResolution = CellSize(2.777777777777778E-4, 2.777777777777778E-4),
-        //            experimental = false,
-        //        )
-
         val localFromDate = LocalDate.of(1970, 1, 1)
         val localToDate = LocalDate.of(2070, 1, 1)
         val ZonedFromDate = ZonedDateTime.of(localFromDate, MIDNIGHT, UTC)
         val zonedToDate = ZonedDateTime.of(localToDate, MIDNIGHT, UTC)
         val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format ZonedFromDate
         val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format zonedToDate
-
 
         val url = getClass.getResource("/org/openeo/geotrellis/geotiff/pretrain_train_adjecent_rectangles.geojson")
         import scala.util.Using
