@@ -199,7 +199,10 @@ object LayerFixtures {
     )
 
   def s2_fapar(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent)=
-    catalogDataCube("urn:ogc:def:EOP:VITO:PROBAV_S10-TERRASCOPE_S2_FAPAR_V2",from_date,to_date,bbox,CellSize(10, 10), NonEmptyList.one("FAPAR_10M").toList)
+    catalogDataCube("urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",from_date,to_date,bbox,CellSize(10, 10), NonEmptyList.one("FAPAR_10M").toList)
+
+  def s2_ndvi_bands(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent)=
+    catalogDataCube("urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",from_date,to_date,bbox,CellSize(10, 10), NonEmptyList.of("B04","B08").toList)
 
 
   def sentinel2TocLayerProviderUTM =

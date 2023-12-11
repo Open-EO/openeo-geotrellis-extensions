@@ -329,7 +329,8 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val maxDate = ZonedDateTime.parse(maxDateString)
 
     val polygons = Seq(polygon3)
-    val datacube= accumuloDataCube("CGS_SENTINEL2_RADIOMETRY_V102_EARLY", minDateString, maxDateString, polygons.extent, "EPSG:4326")
+
+    val datacube= s2_ndvi_bands( minDateString, maxDateString, polygons.extent)
 
     val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1,3)))
     val ndviProcess = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess10AddXY
@@ -439,7 +440,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
     val maxDate = ZonedDateTime.parse(maxDateString)
 
     val polygons = Seq(polygon4)
-    val datacube= accumuloDataCube("CGS_SENTINEL2_RADIOMETRY_V102_EARLY", minDateString, maxDateString, polygons.extent, "EPSG:4326")
+    val datacube= LayerFixtures.s2_ndvi_bands( minDateString, maxDateString, polygons.extent)
 
     val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1,3))).convert(DoubleConstantNoDataCellType)
     val ndviProcess = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess10AddXY
