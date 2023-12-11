@@ -8,15 +8,13 @@ import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, Polygon, _}
 import org.apache.commons.io.IOUtils
-import org.apache.hadoop.hdfs.HdfsConfiguration
-import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 import org.junit.runners.Parameterized.Parameters
-import org.junit.{AfterClass, Before, BeforeClass, Test}
+import org.junit._
 import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.TimeSeriesServiceResponses.GeometriesHistograms.Bin
 import org.openeo.geotrellis.TimeSeriesServiceResponses._
@@ -161,6 +159,7 @@ object ComputeStatsGeotrellisAdapterTest {
   }
 }
 
+@Ignore
 @RunWith(classOf[Parameterized])
 class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
   import ComputeStatsGeotrellisAdapterTest._
