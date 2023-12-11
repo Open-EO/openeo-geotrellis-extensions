@@ -182,6 +182,7 @@ public class TestOpenEOProcessScriptBuilder {
     public void testMultiBandMultiplyConstant() {
         OpenEOProcessScriptBuilder builder = createMultiply((byte)10);
 
+        assertEquals(ShortConstantNoDataCellType$.MODULE$,builder.resultingDataType());
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
         ByteArrayTile tile1 = fillByteArrayTile(3, 3, 9, -10, 11, 12);
         ByteArrayTile tile2 = fillByteArrayTile(3, 3, 5, 6, 7, 8);
@@ -194,12 +195,19 @@ public class TestOpenEOProcessScriptBuilder {
     @NotNull
     private static OpenEOProcessScriptBuilder createMultiply(Number constant) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultDataParameterName_$eq("data");
+        builder.defaultInputDataType_$eq(ByteConstantNoDataCellType.toString());
         Map<String, Object> args = dummyMap("x", "y");
         String operator = "multiply";
         builder.expressionStart(operator, args);
         builder.argumentStart("x");
+        builder.fromParameter("data");
         builder.argumentEnd();
         builder.constantArgument("y", constant);
+        assertEquals(ByteConstantNoDataCellType.toString(),builder.typeStack().head().get("x").get());
+
+        String yType = builder.typeStack().head().get("y").get();
+        assertNotNull(yType);
         builder.expressionEnd(operator, args);
         return builder;
     }
@@ -209,6 +217,7 @@ public class TestOpenEOProcessScriptBuilder {
     public void testMultiBandMultiplyConstantFloat() {
         OpenEOProcessScriptBuilder builder = createMultiply(10.0f);
 
+        assertEquals(FloatConstantNoDataCellType$.MODULE$,builder.resultingDataType());
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
         ByteArrayTile tile1 = fillByteArrayTile(3, 3, 9, -10, 11, 12);
         ByteArrayTile tile2 = fillByteArrayTile(3, 3, 5, 6, 7, 8);

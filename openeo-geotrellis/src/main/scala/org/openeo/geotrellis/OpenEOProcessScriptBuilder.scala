@@ -518,7 +518,8 @@ class OpenEOProcessScriptBuilder {
   var inputFunction:  Object = null
 
   var resultingDataType: CellType = FloatConstantNoDataCellType
-  val defaultDataParameterName:String = "data"
+  var defaultDataParameterName:String = "data"
+  var defaultInputDataType = FloatConstantNoDataCellType.toString()
 
   def generateFunction(context: Map[String,Any] = Map.empty): Seq[Tile] => Seq[Tile] = {
     if(inputFunction.isInstanceOf[OpenEOProcess]) {
@@ -809,6 +810,22 @@ class OpenEOProcessScriptBuilder {
     val x_function: OpenEOProcess = getProcessArg(xArgName)
     val y_function: OpenEOProcess = getProcessArg(yArgName)
     val processString = processStack.reverse.mkString("->")
+    val types = typeStack.head
+
+    resultingDataType =
+    if(types.contains("x") && types.contains("y")) {
+
+      try {
+        val xType = CellType.fromName(types("x"))
+        val yType = CellType.fromName(types("y"))
+        cellTypeUnion(xType, yType)
+      } catch {
+        case e:IllegalArgumentException => FloatConstantNoDataCellType
+      }
+    }else{
+      //fallback, float is fairly safe
+      FloatConstantNoDataCellType
+    }
     val bandFunction = (context: Map[String,Any]) => (tiles: Seq[Tile]) => {
 
       def convertBitCellsOp(aTile: Tile):Tile ={
@@ -842,6 +859,17 @@ class OpenEOProcessScriptBuilder {
 
   def constantArgument(name:String,value:Number): Unit = {
     var scope = contextStack.head
+
+    val dataType = {
+    value match {
+      case x: java.lang.Byte => UByteUserDefinedNoDataCellType(255.byteValue())
+      case x: java.lang.Short => ShortConstantNoDataCellType
+      case x: Integer => IntConstantNoDataCellType
+      case x: java.lang.Float => FloatConstantNoDataCellType
+      case _ => DoubleConstantNoDataCellType
+    }
+    }
+    typeStack.head(name) = dataType.toString()
     scope.put(name,wrapSimpleProcess(createConstantTileFunction(value)))
   }
 
@@ -857,6 +885,7 @@ class OpenEOProcessScriptBuilder {
 
   def constantArgument(name:String,value:Boolean): Unit = {
     //can be skipped, will simply be available when executing function
+    typeStack.head(name) = "boolean"
   }
 
   def argumentStart(name:String): Unit = {
@@ -865,6 +894,9 @@ class OpenEOProcessScriptBuilder {
 
   def fromParameter(parameterName:String): Unit = {
     val defaultName = defaultDataParameterName
+    if(parameterName == defaultDataParameterName) {
+      typeStack.head(argNames.head) = defaultInputDataType
+    }
     inputFunction = (context:Map[String,Any]) => (tiles: Seq[Tile]) => {
       if(context.contains(parameterName)) {
         if(context(parameterName).isInstanceOf[Seq[Tile]]) {
@@ -983,6 +1015,8 @@ class OpenEOProcessScriptBuilder {
     val ignoreNoData = !(arguments.getOrDefault("ignore_nodata",Boolean.box(true).asInstanceOf[Object]) == Boolean.box(false) || arguments.getOrDefault("ignore_nodata",None) == "false" )
     val hasTrueCondition = Try(arguments.get("condition").toString.toBoolean).getOrElse(false)
     val hasConditionExpression = arguments.get("condition") != null && !arguments.get("condition").isInstanceOf[Boolean]
+
+    resultingDataType = FloatConstantNoDataCellType
 
     //TODO check below can be more generic, needs some work to make sure 'typeStack' holds the right info in a consistent manner
     val xyConstantComparison = hasXY && ((arguments("x").isInstanceOf[String] && arguments("x") != "dummy" )
@@ -1107,8 +1141,6 @@ class OpenEOProcessScriptBuilder {
       //TODO: generalize to other operations that result in a specific datatype?
       if(Array("gt","lt","lte","gte","eq","neq","between").contains(operator)) {
         resultingDataType = BitCellType
-      }else{
-        resultingDataType = FloatConstantNoDataCellType
       }
     }
     inputFunction = operation
