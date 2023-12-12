@@ -74,22 +74,6 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     statisticsCollector.results
   }
 
-  /**
-   * Writes means to an UTF-8 encoded JSON file.
-   */
-  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, from_date: String, to_date: String, band_index: Int, output_file: String): Unit = {
-    val computeStatsGeotrellis = new AggregatePolygonProcess()
-
-    val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
-    val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
-
-    val statisticsWriter = new MultibandStatisticsWriter(new File(output_file))
-
-    try
-      computeStatsGeotrellis.computeAverageTimeSeries(datacube.persist(MEMORY_AND_DISK_SER), polygons.polygons, polygons.crs, startDate, endDate, statisticsWriter, unusedCancellationContext, sc)
-    finally
-      statisticsWriter.close()
-  }
 
   /**
    * Writes means to an UTF-8 encoded JSON file.

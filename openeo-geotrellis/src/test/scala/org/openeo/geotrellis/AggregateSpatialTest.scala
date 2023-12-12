@@ -65,12 +65,18 @@ object AggregateSpatialTest {
       finally bufferedSource.close()
     })
 
+    val nbGeometries = stats.map(_._2).distinct.max +1
+
     val groupedStats = stats
       .groupBy { case (timestamp, _, _) => timestamp }
-      .mapValues { timestampedValues =>
+      .mapValues { timestampedValues =>{
+        val theNumbers: Array[scala.collection.Seq[Double]] = Array.fill(nbGeometries)(scala.collection.Seq.fill(1)(Double.NaN))
         timestampedValues
-          .sortBy { case (_, geometry, _) => geometry }
-          .map { case (_, _, numbers) => numbers }
+
+          .foreach { case (_, geometry, numbers) => theNumbers(geometry) = numbers.toSeq }
+        theNumbers.toSeq
+      }
+
       }
 
     groupedStats.foreach(println)
