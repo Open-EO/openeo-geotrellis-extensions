@@ -9,12 +9,12 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.testkit.TileLayerRDDBuilders.defaultCRS
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellisaccumulo
-import org.openeo.geotrelliscommon.SparseSpaceTimePartitioner
+import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchClient
 
 import java.awt.image.DataBufferByte
@@ -200,8 +200,16 @@ object LayerFixtures {
   def s2_fapar(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent)=
     catalogDataCube("urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",from_date,to_date,bbox,CellSize(10, 10), NonEmptyList.one("FAPAR_10M").toList)
 
-  def s2_ndvi_bands(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent)=
-    catalogDataCube("urn:eop:VITO:TERRASCOPE_S2_TOC_V2",from_date,to_date,bbox,CellSize(0.0001, 0.0001), NonEmptyList.of("TOC-B04_10M","TOC-B08_10M").toList)
+
+  def s2_ndvi_bands(from_date: String = "2017-11-01T00:00:00Z", to_date: String = "2017-11-16T02:00:00Z", polygons:Seq[Polygon],crs:String)={
+    val parameters = new DataCubeParameters
+    parameters.layoutScheme = "FloatingLayoutScheme"
+    parameters.globalExtent = Some(ProjectedExtent(polygons.extent,CRS.fromName(crs)))
+    new file.PyramidFactory(OpenSearchClient.apply(new URL(opensearchEndpoint), false, "oscars"), "urn:eop:VITO:TERRASCOPE_S2_TOC_V2", NonEmptyList.of("TOC-B04_10M", "TOC-B08_10M").toList.asJava, null, CellSize(10, 10))
+      .datacube_seq(ProjectedPolygons(polygons, crs), from_date, to_date, util.Collections.emptyMap[String, Any](), "",parameters).head._2
+  }
+
+
 
 
   def sentinel2TocLayerProviderUTM =

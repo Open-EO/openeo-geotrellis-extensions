@@ -1,7 +1,7 @@
 package org.openeo.geotrellis
 
 import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, TileLayerMetadata}
-import geotrellis.proj4.{LatLng, WebMercator}
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.histogram.Histogram
 import geotrellis.raster.{ByteCells, ByteConstantTile, DoubleConstantNoDataCellType, MultibandTile}
 import geotrellis.spark._
@@ -12,8 +12,6 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
 import org.junit._
-import org.junit.runner.RunWith
-import org.junit.runners.Parameterized
 import org.junit.runners.Parameterized.Parameters
 import org.openeo.geotrellis.AggregateSpatialTest.parseCSV
 import org.openeo.geotrellis.LayerFixtures._
@@ -23,7 +21,7 @@ import org.openeo.geotrellis.aggregate_polygon.intern.{CancellationContext, Stat
 import org.openeo.geotrellisaccumulo.PyramidFactory
 
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
+import java.time.{ZoneOffset, ZonedDateTime}
 import java.util
 import scala.collection.JavaConverters._
 import scala.collection.immutable.Seq
@@ -336,15 +334,15 @@ class ComputeStatsGeotrellisAdapterTest() {
 
     val maxDate = ZonedDateTime.parse(maxDateString)
 
-    val polygons = Seq(polygon1)
+    val polygons = Seq(polygon1.reproject(LatLng,CRS.fromEpsgCode(32631)))
 
-    val datacube= s2_ndvi_bands( minDateString, maxDateString, polygons.extent)
+    val datacube= s2_ndvi_bands( minDateString, maxDateString, polygons,"EPSG:32631")
 
-    val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1,3)))
+    //val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(0,1)))
     val ndviProcess = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess10AddXY
-    val ndviDataCube = new OpenEOProcesses().mapBandsGeneric(selectedBands, ndviProcess, new util.HashMap[String, Any])
+    val ndviDataCube = new OpenEOProcesses().mapBandsGeneric(datacube, ndviProcess, new util.HashMap[String, Any])
 
-    assertMedianComputedCorrectly(ndviDataCube, minDateString, minDate, maxDate, polygons)
+    assertMedianComputedCorrectly(ndviDataCube, minDateString, minDate, maxDate, Seq(polygon1))
   }
 
   @Test
@@ -447,8 +445,9 @@ class ComputeStatsGeotrellisAdapterTest() {
 
     val maxDate = ZonedDateTime.parse(maxDateString)
 
-    val polygons = Seq(polygon4)
-    val datacube= LayerFixtures.s2_ndvi_bands( minDateString, maxDateString, polygons.extent)
+    val polygons = Seq(polygon4.reproject(LatLng, CRS.fromEpsgCode(32631)))
+
+    val datacube = s2_ndvi_bands(minDateString, maxDateString, polygons, "EPSG:32631")
 
     val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1,3))).convert(DoubleConstantNoDataCellType)
     val ndviProcess = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess10AddXY
@@ -466,7 +465,7 @@ class ComputeStatsGeotrellisAdapterTest() {
 
   private def assertMedianComputedCorrectly(ndviDataCube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], minDateString: String, minDate: ZonedDateTime, maxDate: ZonedDateTime, polygons: Seq[Polygon]) = {
     //alternative way to compute a histogram that works for this simple case
-    val histogram: Histogram[Double] = ndviDataCube.toSpatial(minDate).mask(polygons.map(_.reproject(LatLng, WebMercator))).histogram(1000)(0)
+    val histogram: Histogram[Double] = ndviDataCube.toSpatial().mask(polygons.map(_.reproject(LatLng, ndviDataCube.metadata.crs))).histogram(1000)(0)
     print("MEDIAN: ")
     val expectedMedian = histogram.median()
     print(expectedMedian)
