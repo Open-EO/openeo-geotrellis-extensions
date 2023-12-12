@@ -97,11 +97,17 @@ public class TestOpenEOProcessScriptBuilder {
         testNdvi(createNormalizedDifferenceProcess04DataArrays());
     }
 
+
+    static OpenEOProcessScriptBuilder createNormalizedDifferenceProcess10AddXY() {
+        return createNormalizedDifferenceProcess10AddXY(UByteConstantNoDataCellType$.MODULE$);
+    }
     /**
      * NDVI implementation with "add(x,y)", "subtract(x,y)" and "divide(x,y)" (API 1.0 style)
      */
-    static OpenEOProcessScriptBuilder createNormalizedDifferenceProcess10AddXY() {
+    static OpenEOProcessScriptBuilder createNormalizedDifferenceProcess10AddXY(DataType inputDataType) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultInputDataType_$eq(inputDataType.toString());
+        builder.defaultDataParameterName_$eq("data");
         Map<String, Object> empty = Collections.emptyMap();
         builder.expressionStart("divide", dummyMap("x", "y"));
 
@@ -931,16 +937,21 @@ public class TestOpenEOProcessScriptBuilder {
     public void testLastWithNoData() {
         // Assume we make a last(data, ignore_nodata=false) request on a list of tiles with a time dimension.
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        DataType inputDataType = ByteConstantNoDataCellType$.MODULE$;
+        builder.defaultInputDataType_$eq(inputDataType.toString());
+        builder.defaultDataParameterName_$eq("data");
         Map<String, Object> arguments = Collections.singletonMap("ignore_nodata", false);
         builder.expressionStart("last", arguments);
 
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
         builder.constantArgument("ignore_nodata", false);
 
         builder.expressionEnd("last",arguments);
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
 
+        assertEquals(inputDataType, builder.resultingDataType());
         // When we have a data tile for every timestep.
         ByteArrayTile tile_timestep0 = ByteConstantNoDataArrayTile.fill((byte)5, 4, 4);
         ByteArrayTile tile_timestep1 = ByteConstantNoDataArrayTile.empty(4,4);
@@ -2344,6 +2355,7 @@ public class TestOpenEOProcessScriptBuilder {
         builder.expressionStart("array_element", args);
         builder.constantArgument("index", index);
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
         builder.expressionEnd("array_element", args);
     }

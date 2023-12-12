@@ -395,7 +395,9 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
 
     val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1,3)))
     val ndviProcess = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess10AddXY
-    val ndviDataCube = new OpenEOProcesses().mapBandsGeneric(selectedBands, ndviProcess, new util.HashMap[String, Any])
+    assertEquals(FloatConstantNoDataCellType, ndviProcess.getOutputCellType())
+    val ndviDataCube = new OpenEOProcesses().mapBandsGeneric(selectedBands, ndviProcess, new util.HashMap[String, Any]).convert(ndviProcess.getOutputCellType())
+    assertEquals(FloatConstantNoDataCellType,ndviDataCube.metadata.cellType)
 
     assertMedianComputedCorrectly(ndviDataCube, minDateString, minDate, maxDate, polygons)
   }

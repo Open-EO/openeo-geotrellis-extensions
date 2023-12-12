@@ -563,7 +563,20 @@ class OpenEOProcessScriptBuilder {
     unaryFunction(argName, (tiles: Seq[Tile]) => Seq(tiles.reduce(operator)))
   }
 
-  private def applyListFunction(argName: String, operator: Seq[Tile] => Seq[Tile]): OpenEOProcess = {
+  private val PRESERVE_DATATYPE_MODE: Some[String] = Some("preserve")
+
+  private def applyListFunction(argName: String, operator: Seq[Tile] => Seq[Tile], dataTypeMode: Option[String]=None): OpenEOProcess = {
+
+    resultingDataType =
+    if(typeStack.head.contains(argName) && dataTypeMode == PRESERVE_DATATYPE_MODE) {
+      try {
+        CellType.fromName(typeStack.head(argName))
+      } catch {
+        case e: IllegalArgumentException => FloatConstantNoDataCellType
+      }
+    }else{
+      FloatConstantNoDataCellType
+    }
     unaryFunction(argName, (tiles: Seq[Tile]) => operator(tiles))
   }
 
@@ -643,8 +656,29 @@ class OpenEOProcessScriptBuilder {
     }
   }
 
-  private def reduceListFunction(argName: String, operator: Seq[Tile] => Tile): OpenEOProcess = {
-    unaryFunction(argName, (tiles: Seq[Tile]) => Seq(operator(tiles)))
+  private def reduceListFunction(argName: String, operator: Seq[Tile] => Tile,forceFloat:Boolean=false): OpenEOProcess = {
+    val types = typeStack.head
+    resultingDataType =
+      if(!forceFloat && types.contains(argName)) {
+      try {
+        CellType.fromName(types(argName))
+      } catch {
+        case e:IllegalArgumentException => FloatConstantNoDataCellType
+      }
+    }else{
+      FloatConstantNoDataCellType
+
+    }
+    unaryFunction(argName, (tiles: Seq[Tile]) => {
+      val converted =
+        if(forceFloat) {
+          tiles.map(_.convert(FloatConstantNoDataCellType))
+        } else{
+          tiles
+        }
+
+      Seq(operator(converted))
+    })
   }
 
   private def ifProcess(arguments:java.util.Map[String,Object]): OpenEOProcess ={
@@ -813,7 +847,7 @@ class OpenEOProcessScriptBuilder {
     val types = typeStack.head
 
     resultingDataType =
-    if(types.contains("x") && types.contains("y")) {
+    if(types.contains("x") && types.contains("y") && !forceFloat) {
 
       try {
         val xType = CellType.fromName(types("x"))
@@ -1079,13 +1113,13 @@ class OpenEOProcessScriptBuilder {
           case "min" if hasData && !ignoreNoData => reduceFunction("data", Min.apply)
           case "min" if hasData && ignoreNoData => reduceFunction("data", MinIgnoreNoData.apply)
           //TODO take ignorenodata into account!
-          case "mean" if hasData => reduceListFunction("data", Mean.apply)
-          case "variance" if hasData && !ignoreNoData => reduceListFunction("data", varianceWithNoData)
-          case "variance" if hasData && ignoreNoData => reduceListFunction("data", Variance.apply)
-          case "sd" if hasData && !ignoreNoData => reduceListFunction("data", Sqrt.apply _ compose varianceWithNoData)
-          case "sd" if hasData && ignoreNoData => reduceListFunction("data", Sqrt.apply _ compose Variance.apply)
-          case "median" if ignoreNoData => applyListFunction("data", median)
-          case "median" => applyListFunction("data", medianWithNodata)
+          case "mean" if hasData => reduceListFunction("data", Mean.apply,forceFloat = true)
+          case "variance" if hasData && !ignoreNoData => reduceListFunction("data", varianceWithNoData,forceFloat = true)
+          case "variance" if hasData && ignoreNoData => reduceListFunction("data", Variance.apply,forceFloat = true)
+          case "sd" if hasData && !ignoreNoData => reduceListFunction("data", Sqrt.apply _ compose varianceWithNoData,forceFloat = true)
+          case "sd" if hasData && ignoreNoData => reduceListFunction("data", Sqrt.apply _ compose Variance.apply,forceFloat = true)
+          case "median" if ignoreNoData => applyListFunction("data", median, dataTypeMode = PRESERVE_DATATYPE_MODE)
+          case "median" => applyListFunction("data", medianWithNodata, dataTypeMode = PRESERVE_DATATYPE_MODE )
           case "count" if hasTrueCondition => applyListFunction("data", countAll)
           case "count" if hasConditionExpression => mapListFunction("data", "condition", countCondition)
           case "count" => applyListFunction("data", countValid)
@@ -1112,10 +1146,10 @@ class OpenEOProcessScriptBuilder {
           case "tanh" if hasX => mapFunction("x", Tanh.apply)
           // Other
           case "inspect" => inspectFunction(arguments)
-          case "first" if ignoreNoData => applyListFunction("data", firstFunctionIgnoreNoData)
-          case "first" => applyListFunction("data", firstFunctionWithNodata)
-          case "last" if ignoreNoData => applyListFunction("data", lastFunctionIgnoreNoData)
-          case "last" => applyListFunction("data", lastFunctionWithNoData)
+          case "first" if ignoreNoData => applyListFunction("data", firstFunctionIgnoreNoData, dataTypeMode = PRESERVE_DATATYPE_MODE)
+          case "first" => applyListFunction("data", firstFunctionWithNodata, dataTypeMode = PRESERVE_DATATYPE_MODE)
+          case "last" if ignoreNoData => applyListFunction("data", lastFunctionIgnoreNoData, dataTypeMode = PRESERVE_DATATYPE_MODE)
+          case "last" => applyListFunction("data", lastFunctionWithNoData, dataTypeMode = PRESERVE_DATATYPE_MODE)
           case "is_nodata" if hasX => mapFunction("x", Undefined.apply)
           case "is_nan" if hasX => mapFunction("x", Undefined.apply)
           case "array_element" => arrayElementFunction(arguments)
@@ -1139,7 +1173,7 @@ class OpenEOProcessScriptBuilder {
 
     if(operator != "linear_scale_range") {
       //TODO: generalize to other operations that result in a specific datatype?
-      if(Array("gt","lt","lte","gte","eq","neq","between").contains(operator)) {
+      if(Array("gt","lt","lte","gte","eq","neq","between","any","and","all","or").contains(operator)) {
         resultingDataType = BitCellType
       }
     }
@@ -1529,6 +1563,12 @@ class OpenEOProcessScriptBuilder {
     if(label == null && !index.isInstanceOf[Integer]){
       throw new IllegalArgumentException("The 'index' argument should be an integer, but got: " + index)
     }
+    resultingDataType =
+      try {
+        CellType.fromName(typeStack.head("data"))
+      } catch {
+        case e: IllegalArgumentException => FloatConstantNoDataCellType
+      }
     val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) => {
       val input: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
       val theActualIndex: Int =
