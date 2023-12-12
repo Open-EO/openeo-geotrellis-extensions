@@ -19,6 +19,7 @@ import org.openeo.geotrellis.TimeSeriesServiceResponses.GeometriesHistograms.Bin
 import org.openeo.geotrellis.TimeSeriesServiceResponses._
 import org.openeo.geotrellis.aggregate_polygon.intern.{CancellationContext, StatisticsCallback}
 
+import java.nio.file.Files
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{ZoneOffset, ZonedDateTime}
 import java.util
@@ -389,25 +390,19 @@ class ComputeStatsGeotrellisAdapterTest() {
     val expectedMedian = histogram.median()
     print(expectedMedian)
 
-    val stats = computeStatsGeotrellisAdapter.compute_median_time_series_from_datacube(
-      ndviDataCube,
-      polygons=ProjectedPolygons(polygons, "EPSG:4326"),
-      from_date = ISO_OFFSET_DATE_TIME format minDate,
-      to_date = ISO_OFFSET_DATE_TIME format maxDate,
-      band_index = 0
-    ).asScala
+    val outDir = Files.createTempDirectory("csvoutput_assertMedianComputedCorrectly").toString
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube("median", ndviDataCube, ProjectedPolygons(polygons, "EPSG:4326"), outDir)
 
-    for ((date, means) <- stats) {
-      println(s"$date: $means")
-    }
+    val stats: Map[String, scala.Seq[scala.Seq[Double]]] = parseCSV(outDir).toSeq.sortBy(_._1).map(t=>(t._1.substring(0,10),t._2)).toMap
+    stats.foreach(println)
 
     assertFalse(stats.isEmpty)
 
     val means = stats
-      .flatMap { case (_, dailyMeans) => dailyMeans.asScala }.filter(!_.isEmpty)
+      .flatMap { case (_, dailyMeans) => dailyMeans }.filter(!_.isEmpty)
 
-    assertTrue(means.exists(mean => !mean.get(0).isNaN))
-    assertEquals( expectedMedian.get,stats(minDateString).get(0).get(0), 0.001)
+    assertTrue(means.exists(mean => !mean(0).isNaN))
+    assertEquals( expectedMedian.get,stats(minDateString.substring(0,10))(0)(0), 0.001)
   }
 
   @Test
