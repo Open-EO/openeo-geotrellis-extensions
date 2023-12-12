@@ -164,9 +164,9 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
         // FIXME: this is also done in the driver while a RasterSource carries a URI so an executor can do it himself
         val withinDateRange =
           if (from == null && to == null) true
-          else if (from == null) !(date isAfter to)
+          else if (from == null) !(date.isAfter(to) || date.isEqual(to))
           else if (to == null) !(date isBefore from)
-          else !(date isBefore from) && !(date isAfter to)
+          else !(date isBefore from) && !(date.isAfter(to) || date.isEqual(to))
 
         val withinBBox = rasterSource.extent.intersects(boundingBox.reproject(rasterSource.crs))
         withinDateRange && withinBBox
