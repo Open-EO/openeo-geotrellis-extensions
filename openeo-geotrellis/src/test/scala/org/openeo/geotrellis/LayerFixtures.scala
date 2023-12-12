@@ -10,7 +10,6 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.testkit.TileLayerRDDBuilders.defaultCRS
 import geotrellis.vector.{Extent, ProjectedExtent}
-import jp.ne.opt.chronoscala.Imports._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
@@ -202,7 +201,7 @@ object LayerFixtures {
     catalogDataCube("urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",from_date,to_date,bbox,CellSize(10, 10), NonEmptyList.one("FAPAR_10M").toList)
 
   def s2_ndvi_bands(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent)=
-    catalogDataCube("urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",from_date,to_date,bbox,CellSize(10, 10), NonEmptyList.of("B04","B08").toList)
+    catalogDataCube("urn:eop:VITO:TERRASCOPE_S2_TOC_V2",from_date,to_date,bbox,CellSize(0.0001, 0.0001), NonEmptyList.of("TOC-B04_10M","TOC-B08_10M").toList)
 
 
   def sentinel2TocLayerProviderUTM =

@@ -58,6 +58,10 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   private val unusedCancellationContext = new CancellationContext(null, null)
 
 
+  /**
+   *
+   * @deprecated Got replaced by more generic approaches, is not called from python
+   */
   def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
     val computeStatsGeotrellis = new AggregatePolygonProcess()
 

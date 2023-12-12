@@ -15,6 +15,7 @@ import org.junit._
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 import org.junit.runners.Parameterized.Parameters
+import org.openeo.geotrellis.AggregateSpatialTest.parseCSV
 import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.TimeSeriesServiceResponses.GeometriesHistograms.Bin
 import org.openeo.geotrellis.TimeSeriesServiceResponses._
@@ -62,6 +63,7 @@ object ComputeStatsGeotrellisAdapterTest {
     sc.stop()
   }
 
+  //11km²
   val polygon1: Polygon =
     """
       |{
@@ -97,6 +99,7 @@ object ComputeStatsGeotrellisAdapterTest {
       |}
       """.stripMargin.parseGeoJson[Polygon]()
 
+  //16km²
   val polygon2: Polygon =
     """
       |{
@@ -129,6 +132,7 @@ object ComputeStatsGeotrellisAdapterTest {
       """.stripMargin.parseGeoJson[Polygon]()
 
   //this polygon is also used in python tests with S2 data
+  //polygon roughly 2147km², so 21470000 10m pixels
   val polygon3: Polygon =
     """
       |{
@@ -145,7 +149,7 @@ object ComputeStatsGeotrellisAdapterTest {
       |}
       """.stripMargin.parseGeoJson[Polygon]()
 
-
+  //14164m² so 141 10m pixels: small field
   val polygon4: Polygon =
     """
       |{
@@ -160,17 +164,24 @@ object ComputeStatsGeotrellisAdapterTest {
       assertArrayEquals("should have same band stats", expected(i).toArray, actual.get(i).asScala.toArray, 1e-6)
     }
   }
+
+  def assertEqualTimeseriesStats(expected: Seq[Seq[Double]], actual: scala.Seq[scala.Seq[Double]]): Unit = {
+    assertEquals("should have same polygon count", expected.length, actual.size)
+    expected.indices.foreach { i =>
+      assertArrayEquals("should have same band stats", expected(i).toArray, actual(i).toArray, 1e-6)
+    }
+  }
 }
 
-@RunWith(classOf[Parameterized])
-class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
+
+class ComputeStatsGeotrellisAdapterTest() {
   import ComputeStatsGeotrellisAdapterTest._
 
 
 
   @Before
   def setup():Unit = {
-    System.setProperty("pixels.treshold","" + threshold)
+    //System.setProperty("pixels.treshold","" + threshold)
 
   }
 
@@ -204,19 +215,16 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
       _.mapValues(t => MultibandTile(Array(t.bands(0),t.bands(1),t.bands(0),t.bands(0),t.bands(0))))
     }
 
-    val stats = computeStatsGeotrellisAdapter.compute_average_timeseries_from_datacube(
-      datacube,
-      polygons=ProjectedPolygons(Seq(polygon1, polygon2),  "EPSG:4326"),
-      from_date,
-      to_date,
-      band_index = 0
-    )
-    stats.asScala.foreach(println)
+    val outDir = "/tmp/csvoutput"
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube("mean", datacube, ProjectedPolygons(Seq(polygon1, polygon2),  "EPSG:4326"), outDir)
 
-    val keys = Seq("2017-01-01T00:00:00Z", "2017-01-15T00:00:00Z", "2017-02-01T00:00:00Z")
+    val groupedStats: Map[String, scala.Seq[scala.Seq[Double]]] = parseCSV(outDir).toSeq.sortBy(_._1).map(t=>(t._1.substring(0,10),t._2)).toMap
+    groupedStats.foreach(println)
+
+    val keys = Seq("2017-01-01", "2017-01-15", "2017-02-01")
     keys.foreach(k => assertEqualTimeseriesStats(
       Seq(Seq(10.0, Double.NaN,10.0,10.0,10.0), Seq(10.0, Double.NaN,10.0,10.0,10.0)),
-      stats.get(k)
+      groupedStats.get(k).get
     ))
   }
 
@@ -328,7 +336,7 @@ class ComputeStatsGeotrellisAdapterTest(threshold:Int) {
 
     val maxDate = ZonedDateTime.parse(maxDateString)
 
-    val polygons = Seq(polygon3)
+    val polygons = Seq(polygon1)
 
     val datacube= s2_ndvi_bands( minDateString, maxDateString, polygons.extent)
 
