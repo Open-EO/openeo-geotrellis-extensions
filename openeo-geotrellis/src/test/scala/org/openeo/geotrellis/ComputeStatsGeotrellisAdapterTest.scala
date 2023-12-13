@@ -181,10 +181,7 @@ class ComputeStatsGeotrellisAdapterTest() {
   }
 
 
-  val computeStatsGeotrellisAdapter = new ComputeStatsGeotrellisAdapter(
-    zookeepers = "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",
-    accumuloInstanceName = "hdp-accumulo-instance"
-  )
+  val computeStatsGeotrellisAdapter = new ComputeStatsGeotrellisAdapter()
 
 
 
@@ -361,7 +358,7 @@ class ComputeStatsGeotrellisAdapterTest() {
 
   private def computeAggregateSpatial(reducer: String, ndviDataCube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], polygons: ProjectedPolygons): Map[String, scala.Seq[scala.Seq[Double]]] = {
     val outDir = Files.createTempDirectory("aggregateSpatial").toString
-    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube("median", ndviDataCube, polygons, outDir)
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(reducer, ndviDataCube, polygons, outDir)
 
     val stats: Map[String, scala.Seq[scala.Seq[Double]]] = parseCSV(outDir).toSeq.sortBy(_._1).map(t => (t._1.substring(0, 10), t._2)).toMap
     stats.foreach(println)

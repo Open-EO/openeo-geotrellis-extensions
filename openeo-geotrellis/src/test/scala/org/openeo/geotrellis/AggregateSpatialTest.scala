@@ -102,10 +102,7 @@ class AggregateSpatialTest {
 
   import AggregateSpatialTest._
 
-  private val computeStatsGeotrellisAdapter = new ComputeStatsGeotrellisAdapter(
-    zookeepers = "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",
-    accumuloInstanceName = "hdp-accumulo-instance"
-  )
+  private val computeStatsGeotrellisAdapter = new ComputeStatsGeotrellisAdapter()
 
 
   private def buildCubeRdd(from: ZonedDateTime, to: ZonedDateTime): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {

@@ -31,7 +31,6 @@ import org.openeo.geotrellis.aggregate_polygon.intern.splitOverlappingPolygons
 import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD}
-import org.openeo.geotrellisaccumulo.PyramidFactory
 import org.openeo.geotrelliscommon.SparseSpaceOnlyPartitioner
 import org.openeo.sparklisteners.GetInfoSparkListener
 
@@ -177,7 +176,6 @@ class OpenEOProcessesSpec extends RasterMatchers {
     result
   }
 
-  private lazy val accumuloPyramidFactory = {new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")}
   private val pyramidFactory = new Sentinel2RadiometryPyramidFactory
 
   private def dataCube(minDateString: String, maxDateString: String, bbox: Extent, srs: String) = {
@@ -190,15 +188,6 @@ class OpenEOProcessesSpec extends RasterMatchers {
     datacube
   }
 
-  private def accumuloDataCube(layer: String, minDateString: String, maxDateString: String, bbox: Extent, srs: String) = {
-    val pyramid = accumuloPyramidFactory.pyramid_seq(layer,bbox, srs, minDateString, maxDateString)
-    System.out.println("pyramid = " + pyramid)
-
-    val pyramidAsMap = pyramid.toMap
-    val maxZoom = pyramidAsMap.keys.max
-    val datacube = pyramidAsMap.get(maxZoom).get
-    datacube
-  }
 
   /**
     * Test created in the frame of:

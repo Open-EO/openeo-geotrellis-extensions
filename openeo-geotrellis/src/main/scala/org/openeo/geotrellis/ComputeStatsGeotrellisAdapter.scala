@@ -55,6 +55,10 @@ object ComputeStatsGeotrellisAdapter {
 class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: String) {
   import ComputeStatsGeotrellisAdapter._
 
+  def this() {
+    this("","")
+  }
+
   private val unusedCancellationContext = new CancellationContext(null, null)
 
 
