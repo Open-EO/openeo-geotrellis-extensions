@@ -13,6 +13,7 @@ import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CroppedTile, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
+import geotrellis.spark.join.VectorJoin
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector
 import geotrellis.vector.Extent.toPolygon
@@ -606,10 +607,19 @@ object FileLayerProvider {
     sc.parallelize(keys.toSeq, 1).map((_, null))
   }
 
-  private def featuresRDD(geometricFeatures: Seq[vector.Feature[Geometry, (RasterSource, Feature)]], metadata: TileLayerMetadata[SpaceTimeKey], targetCRS: CRS, workingPartitioner: SpacePartitioner[SpatialKey], sc: SparkContext) = {
+  private def featuresRDD(geometricFeatures: Seq[vector.Feature[Geometry, (RasterSource, Feature)]], metadata: TileLayerMetadata[SpaceTimeKey], targetCRS: CRS, workingPartitioner: SpacePartitioner[SpatialKey], maybeKeys: Option[RDD[(SpatialKey, Iterable[Geometry])]] ,sc: SparkContext) = {
     val emptyPoint = Point(0.0, 0.0)
     val cubeExtent = metadata.extent
-    val keysForfeatures = sc.parallelize(geometricFeatures, math.max(1, geometricFeatures.size))
+
+    val inputNumberOfPartitions = if(maybeKeys.isDefined) {
+      //spatial keys are already known and will determine partitioning?
+      10
+    }else{
+      //cliptogrid generates a lot of keys, so requires more memory
+      math.max(1, geometricFeatures.size)
+    }
+
+    val clippedFeatures: RDD[vector.Feature[Geometry, (RasterSource, Feature)]] = sc.parallelize(geometricFeatures, inputNumberOfPartitions)
       .map(eoProductFeature => {
 
         val productCRSOrDefault = eoProductFeature.data._2.crs.getOrElse(targetCRS)
@@ -627,8 +637,21 @@ object FileLayerProvider {
 
         })
       }).filter(!_.geom.equals(emptyPoint))
-      .clipToGrid(metadata.layout).partitionBy(workingPartitioner)
-    keysForfeatures
+
+    if(maybeKeys.isDefined) {
+      val transform = metadata.mapTransform
+      val geometryToKey: RDD[vector.Feature[Polygon, SpatialKey]] = maybeKeys.get.keys.map(k=>{
+        vector.Feature(transform.apply(k).toPolygon(),k)
+      })
+
+      implicit val theContext: SparkContext = sc
+      val joined: RDD[(vector.Feature[Geometry, (RasterSource, Feature)], vector.Feature[Polygon, SpatialKey])] = VectorJoin(clippedFeatures,geometryToKey, (a, b)=>{a.intersects(b)})
+      joined.map(t=>(t._2.data,t._1))
+
+    }else{
+      clippedFeatures.clipToGrid(metadata.layout).partitionBy(workingPartitioner)
+    }
+
   }
 
   private val metadataCache =
@@ -825,17 +848,17 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     //avoid computing keys that are anyway out of bounds, with some buffering to avoid throwing away too much
 
     val geometricFeatures = overlappingRasterSources.map(f => geotrellis.vector.Feature(f._2.geometry.getOrElse(f._2.bbox.toPolygon()), f))
-    val keysForfeatures= featuresRDD(geometricFeatures, metadata, targetCRS, workingPartitioner, sc)
 
 
-    //rdd
-    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = {
-      if(maxSpatialKeyCount >2) {
-        keysForfeatures.join(requiredSpatialKeys,workingPartitioner).map(t => (t._1, t._2._1))
-      }else{
-        keysForfeatures
+    val keysIfSparse: Option[RDD[(SpatialKey, Iterable[Geometry])]] =
+      if (maxSpatialKeyCount > 2) {
+        Some(requiredSpatialKeys)
+      } else {
+        None
       }
-    }
+    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] =  featuresRDD(geometricFeatures, metadata, targetCRS, workingPartitioner,keysIfSparse, sc)
+
+
     val filteredSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = applySpatialMask(datacubeParams, griddedRasterSources,metadata)
 
 
