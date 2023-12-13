@@ -1,11 +1,5 @@
 package org.openeo.geotrellis.geotiff
 
-import java.net.URI
-import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
-import java.time.format.DateTimeFormatter.{ISO_LOCAL_DATE, ISO_OFFSET_DATE_TIME}
-import java.time.{LocalDate, ZonedDateTime}
-import java.util
 import geotrellis.layer._
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster._
@@ -25,6 +19,12 @@ import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCrede
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 
+import java.net.URI
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
+import java.time.format.DateTimeFormatter.{ISO_LOCAL_DATE, ISO_OFFSET_DATE_TIME}
+import java.time.{LocalDate, ZonedDateTime}
+import java.util
 import java.util.zip.Deflater.BEST_COMPRESSION
 
 object PyramidFactoryTest {
@@ -404,7 +404,7 @@ class PyramidFactoryTest {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
 
     val from = ZonedDateTime.of(LocalDate.of(2019, 4, 24), MIDNIGHT, UTC)
-    val to = from
+    val to = from.plusDays(1)
 
     val zoom = 10
 

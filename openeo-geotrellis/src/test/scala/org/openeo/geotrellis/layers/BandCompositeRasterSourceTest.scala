@@ -60,4 +60,30 @@ class BandCompositeRasterSourceTest {
     assertTrue(compositeRasterByGridBounds.tile.band(1).isNoDataTile)
     assertTrue(compositeRasterByGridBounds.extent.equalsExact(bbox.extent, 0.01))
   }
+
+  @Test
+  def XmlBand(): Unit = {
+    val bbox = ProjectedExtent(Extent(126.0, -26.0, 127.0, -25.0), LatLng)
+
+    val geoTiffRasterSource = GeoTiffRasterSource(singleBandGeotiffPath)
+
+    val rasterSources = NonEmptyList.of(
+      geoTiffRasterSource,
+      new SentinelXMLMetadataRasterSource(42, geoTiffRasterSource.crs, geoTiffRasterSource.gridExtent, OpenEoSourcePath("test")),
+    )
+
+    val composite = new BandCompositeRasterSource(rasterSources, crs = bbox.crs)
+
+    val Some(compositeRasterByExtent) = composite.read(bbox.extent)
+    assertEquals(2, compositeRasterByExtent.tile.bandCount)
+    assertFalse(compositeRasterByExtent.tile.band(0).isNoDataTile)
+    assertEquals(compositeRasterByExtent.tile.band(1).get(0, 0), 42, 0.0001)
+    assertTrue(compositeRasterByExtent.extent.equalsExact(bbox.extent, 0.01))
+
+    val Some(compositeRasterByGridBounds) = composite.read(bounds = composite.gridExtent.gridBoundsFor(bbox.extent))
+    assertEquals(2, compositeRasterByGridBounds.tile.bandCount)
+    assertFalse(compositeRasterByGridBounds.tile.band(0).isNoDataTile)
+    assertEquals(compositeRasterByGridBounds.tile.band(1).get(0, 0), 42, 0.0001)
+    assertTrue(compositeRasterByGridBounds.extent.equalsExact(bbox.extent, 0.01))
+  }
 }
