@@ -1,13 +1,27 @@
 package org.openeo.geotrellis.layers
 
 import geotrellis.proj4.{LatLng, WebMercator}
+import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType, GridBounds, GridExtent, RasterSource}
 import geotrellis.vector.Extent
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.{BeforeAll, Test}
 
+import java.nio.file.{Files, Paths}
+
+
+object SentinelXMLMetadataRasterSourceTest {
+  val outDir = "tmp/SentinelXMLMetadataRasterSourceTest/"
+  @BeforeAll
+  def beforeAll(): Unit = {
+    Files.createDirectories(Paths.get(outDir))
+    // After the tests run, one can manually compare the exported tiff files in QGIS
+  }
+}
 
 class SentinelXMLMetadataRasterSourceTest {
+
+  import SentinelXMLMetadataRasterSourceTest._
 
   @Test
   def testReadAngles(): Unit = {
@@ -17,6 +31,7 @@ class SentinelXMLMetadataRasterSourceTest {
     assertEquals(  65.707, source(1).read().get.tile.band(0).getDouble(0,0),0.001)
     assertEquals( 251.333, source(2).read().get.tile.band(0).getDouble(0,0),0.001)
     assertEquals(source.head.name.toString, path)
+    GeoTiff(source.head.read().get, source.head.crs).write(outDir + "testReadAngles.tif")
   }
 
   val path = getClass.getResource("/org/openeo/geotrellis/layers/MTD_TL.xml").getPath
@@ -32,15 +47,18 @@ class SentinelXMLMetadataRasterSourceTest {
 
   @Test
   def readExtent(): Unit = {
-    val Some(rasterCroppedByExtent) = noDataRasterSource.read(Extent(499980.0, 5390220.0, 609780.0, 5500020.0))
-    assertEquals(Extent(499980.0, 5390220.0, 609780.0, 5500020.0), rasterCroppedByExtent.extent)
+    val extent = Extent(555000.0, 5390220.0, 609780.0, 5500020.0)
+    val Some(rasterCroppedByExtent) = noDataRasterSource.read(extent)
+    assertEquals(extent, rasterCroppedByExtent.extent)
+    GeoTiff(rasterCroppedByExtent, noDataRasterSource.crs).write(outDir + "readExtent.tif")
   }
 
   @Test
   def readGridBounds(): Unit = {
-    val Some(rasterCroppedByGridBounds) = noDataRasterSource.read(GridBounds[Long](0, 0, 0, 0))
-    assertEquals(1, rasterCroppedByGridBounds.cols)
-    assertEquals(1, rasterCroppedByGridBounds.rows)
+    val Some(rasterCroppedByGridBounds) = noDataRasterSource.read(GridBounds[Long](0, 0, 1023, 1023))
+    GeoTiff(rasterCroppedByGridBounds, noDataRasterSource.crs).write(outDir + "readGridBounds.tif")
+    assertEquals(1024, rasterCroppedByGridBounds.cols)
+    assertEquals(1024, rasterCroppedByGridBounds.rows)
   }
 
   @Test

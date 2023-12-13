@@ -29,7 +29,7 @@ object SentinelXMLMetadataRasterSource {
                     angleBandIndices: Seq[Int] = Seq(0, 1, 2, 3), // SAA, SZA, VAA, VZA
                     te: Option[Extent] = None,
                     cellSize: Option[CellSize] = None
-                ): Seq[SentinelXMLMetadataRasterSource] = {
+                   ): Seq[SentinelXMLMetadataRasterSource] = {
     require(angleBandIndices.forall(index => index >= 0 && index <= 3))
 
     val theResolution = cellSize.getOrElse(CellSize(10, 10))
@@ -64,24 +64,22 @@ object SentinelXMLMetadataRasterSource {
   }
 }
 
-case class SentinelXMLMetadataRasterSource(value: Float, // TODO: rename this to a more generic constant value RasterSource?
-                                      theCrs: CRS,
-                                      gridExtent: GridExtent[Long],
-                                      sourcePathName: OpenEoSourcePath,
-                                     ) extends RasterSource {
+case class SentinelXMLMetadataRasterSource(
+                                            value: Float, // TODO: rename this to a more generic constant value RasterSource?
+                                            crs: CRS,
+                                            gridExtent: GridExtent[Long],
+                                            sourcePathName: OpenEoSourcePath,
+                                          ) extends RasterSource {
 
-  val targetCellType = None
-  val gridSize = 23
-
+  val targetCellType: Option[TargetCellType] = None
 
   override def metadata: RasterMetadata = this
 
   override protected def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
-    new SentinelXMLMetadataRasterSource(value, targetCRS, gridExtent.reproject(crs, targetCRS), sourcePathName)
+    new SentinelXMLMetadataRasterSource(value, targetCRS, resampleTarget(gridExtent.reproject(crs, targetCRS)), sourcePathName)
 
   override def resample(resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
-    new SentinelXMLMetadataRasterSource(value, crs, resampleTarget(gridExtent), sourcePathName)
-
+    reprojection(crs, resampleTarget, method, strategy)
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val supportedBandIndices = Seq(0)
@@ -111,12 +109,10 @@ case class SentinelXMLMetadataRasterSource(value: Float, // TODO: rename this to
     if(targetCellType.cellType != FloatConstantNoDataCellType) {
       logger.warn("Ignoring cellType: " + cellType)
     }
-    new SentinelXMLMetadataRasterSource(value, crs, gridExtent, sourcePathName)
+    this.copy()
   }
 
   override def name: SourceName = sourcePathName
-
-  override def crs: CRS = theCrs
 
   override def bandCount: Int = 1
 
@@ -127,6 +123,4 @@ case class SentinelXMLMetadataRasterSource(value: Float, // TODO: rename this to
   override def attributes: Map[String, String] = Map.empty[String,String]
 
   override def attributesForBand(band: Int): Map[String, String] = Map.empty[String,String]
-
-
 }
