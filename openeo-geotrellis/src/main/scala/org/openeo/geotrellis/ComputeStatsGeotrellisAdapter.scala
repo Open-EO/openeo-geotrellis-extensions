@@ -136,6 +136,9 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
       geometriesCrs, bandCount = new OpenEOProcesses().RDDBandCount(datacube), output_dir)
   }
 
+  /**
+   * @deprecated histograms are not supported in openEO
+   */
   def compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
                                                    from_date: String, to_date: String, band_index: Int
                                                   ): JMap[String, JList[JList[JMap[Double, Long]]]] = { // date -> polygon -> band -> value/count
@@ -144,6 +147,9 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     histogramsCollector.results
   }
 
+  /**
+   * @deprecated
+   */
   def compute_median_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
                                                from_date: String, to_date: String, band_index: Int
                                               ): JMap[String, JList[JList[Double]]] = {
@@ -152,6 +158,9 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     mediansCollector.results
   }
 
+  /**
+   * @deprecated
+   */
   def compute_sd_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
                                            from_date: String, to_date: String, band_index: Int
                                           ): JMap[String, JList[JList[Double]]] = { // date -> polygon -> value/count
