@@ -31,6 +31,7 @@ import java.util.stream.DoubleStream;
 
 import static org.junit.Assert.*;
 import static org.openeo.geotrellis.TestOpenEOProcessScriptBuilder.createMax;
+import static org.openeo.geotrellis.TestOpenEOProcessScriptBuilder.createStandardDeviation;
 
 public class TestOpenEOProcesses {
 
@@ -320,11 +321,30 @@ public class TestOpenEOProcesses {
         int[] compositedPixel = OpenEOProcessesSpec.getPixel(datacube1);
         int expectedMax = Arrays.stream(compositedPixel).max().getAsInt();
 
-        RDD<Tuple2<SpatialKey, MultibandTile>> reduced = new OpenEOProcesses().reduceTimeDimension(datacube1, createMax(), Collections.emptyMap());
+        ContextRDD<SpatialKey, MultibandTile,TileLayerMetadata<SpatialKey>> reduced =
+                (ContextRDD<SpatialKey, MultibandTile,TileLayerMetadata<SpatialKey>>)new OpenEOProcesses().reduceTimeDimension(datacube1, createMax(datacube1.metadata().cellType()), Collections.emptyMap());
+        assertEquals(datacube1.metadata().cellType(),reduced.metadata().cellType());
         Object shouldBeSingleTile = reduced.collect();
         assertEquals(1,((Tuple2<SpatialKey, MultibandTile>[])shouldBeSingleTile).length);
         MultibandTile maxTile = ((Tuple2<SpatialKey, MultibandTile>[])shouldBeSingleTile)[0]._2;
         assertEquals(expectedMax,maxTile.band(0).get(0,0));
+        assertEquals(datacube1.metadata().cellType(),maxTile.cellType());
+    }
+
+    @Test
+    public void testReduceTimeSD() {
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 = LayerFixtures.sentinel2B04Layer();
+        int[] compositedPixel = OpenEOProcessesSpec.getPixel(datacube1);
+        //int expectedMax = Arrays.stream(compositedPixel).summaryStatistics();
+
+        ContextRDD<SpatialKey, MultibandTile,TileLayerMetadata<SpatialKey>> reduced =
+                (ContextRDD<SpatialKey, MultibandTile,TileLayerMetadata<SpatialKey>>)new OpenEOProcesses().reduceTimeDimension(datacube1, createStandardDeviation(true,datacube1.metadata().cellType()), Collections.emptyMap());
+        assertEquals(FloatConstantNoDataCellType$.MODULE$,reduced.metadata().cellType());
+        Object shouldBeSingleTile = reduced.collect();
+        assertEquals(1,((Tuple2<SpatialKey, MultibandTile>[])shouldBeSingleTile).length);
+        MultibandTile maxTile = ((Tuple2<SpatialKey, MultibandTile>[])shouldBeSingleTile)[0]._2;
+        //assertEquals(expectedMax,maxTile.band(0).get(0,0));
+        assertEquals(FloatConstantNoDataCellType$.MODULE$,maxTile.cellType());
     }
 
     private RDD<Tuple2<SpaceTimeKey, MultibandTile>> composite(ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1) {

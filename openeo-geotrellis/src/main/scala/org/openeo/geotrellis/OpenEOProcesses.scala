@@ -119,7 +119,7 @@ class OpenEOProcesses extends Serializable {
 
   def reduceTimeDimension(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpatialKey] = {
     val rdd = transformTimeDimension[SpatialKey](datacube, scriptBuilder, context,reduce = true)
-    ContextRDD(rdd,new TileLayerMetadata[SpatialKey](cellType=datacube.metadata.cellType,layout=datacube.metadata.layout, extent=datacube.metadata.extent,crs=datacube.metadata.crs,bounds=datacube.metadata.bounds.get.toSpatial ))
+    ContextRDD(rdd,new TileLayerMetadata[SpatialKey](cellType=scriptBuilder.getOutputCellType(),layout=datacube.metadata.layout, extent=datacube.metadata.extent,crs=datacube.metadata.crs,bounds=datacube.metadata.bounds.get.toSpatial ))
   }
 
   /**

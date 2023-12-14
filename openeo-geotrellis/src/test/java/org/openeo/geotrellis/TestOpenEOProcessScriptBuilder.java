@@ -1482,18 +1482,19 @@ public class TestOpenEOProcessScriptBuilder {
         Tile tile3 = FloatConstantNoDataArrayTile.fill((byte)19.0, 4, 4);
         Tile nodataTile = FloatConstantNoDataArrayTile.empty(4, 4);
 
-        Seq<Tile> result = createStandardDeviation(null).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
+        FloatConstantNoDataCellType$ ct = FloatConstantNoDataCellType$.MODULE$;
+        Seq<Tile> result = createStandardDeviation(null, ct).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
         assertEquals(FloatConstantNoDataArrayTile.empty(0, 0).cellType(), result.apply(0).cellType());
 
         assertEquals(9.261029243469238,result.apply(0).getDouble(0,0));
 
-        Seq<Tile> result_nodata = createStandardDeviation(false).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)));
+        Seq<Tile> result_nodata = createStandardDeviation(false,ct).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)));
         assertTrue(result_nodata.apply(0).isNoDataTile());
 
-        Seq<Tile> input1 = createStandardDeviation(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(), tile3)));
+        Seq<Tile> input1 = createStandardDeviation(true,ct).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(), tile3)));
         assertEquals(20.50609588623047, input1.apply(0).getDouble(0,0));
 
-        Seq<Tile> input2 = createStandardDeviation(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(),tile1, nodataTile)));
+        Seq<Tile> input2 = createStandardDeviation(true,ct).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(),tile1, nodataTile)));
         assertEquals(9.192388534545898, input2.apply(0).getDouble(0,0));
     }
 
@@ -2147,14 +2148,17 @@ public class TestOpenEOProcessScriptBuilder {
         return builder;
     }
 
-    static OpenEOProcessScriptBuilder createStandardDeviation(Boolean ignoreNoData) {
+    static OpenEOProcessScriptBuilder createStandardDeviation(Boolean ignoreNoData,DataType inputType) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultInputDataType_$eq(inputType.name());
+        builder.defaultDataParameterName_$eq("data");
         Map<String, Object> arguments = new HashMap<>();
         if (ignoreNoData != null) arguments.put("ignore_nodata", ignoreNoData.booleanValue());
         arguments.put("data", "dummy");
         builder.expressionStart("sd", arguments);
 
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
 
         if (ignoreNoData != null) {
@@ -2263,12 +2267,15 @@ public class TestOpenEOProcessScriptBuilder {
         return builder;
     }
 
-    static OpenEOProcessScriptBuilder createMax() {
+    static OpenEOProcessScriptBuilder createMax(DataType cellType) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultInputDataType_$eq(cellType.name());
+        builder.defaultDataParameterName_$eq("data");
         Map<String, Object> arguments = map1("data",null);
         builder.expressionStart("max", arguments);
 
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
 
         builder.expressionEnd("max",arguments);

@@ -559,7 +559,17 @@ class OpenEOProcessScriptBuilder {
     unaryFunction(argName, (tiles: Seq[Tile]) => tiles.map(operator))
   }
 
-  private def reduceFunction(argName: String, operator: (Tile, Tile) => Tile): OpenEOProcess = {
+  private def reduceFunction(argName: String, operator: (Tile, Tile) => Tile, dataTypeMode: Option[String]=None): OpenEOProcess = {
+    resultingDataType =
+      if (typeStack.head.contains(argName) && dataTypeMode == PRESERVE_DATATYPE_MODE) {
+        try {
+          CellType.fromName(typeStack.head(argName))
+        } catch {
+          case e: IllegalArgumentException => FloatConstantNoDataCellType
+        }
+      } else {
+        FloatConstantNoDataCellType
+      }
     unaryFunction(argName, (tiles: Seq[Tile]) => Seq(tiles.reduce(operator)))
   }
 
@@ -1108,10 +1118,10 @@ class OpenEOProcessScriptBuilder {
           case "clip" => clipFunction(arguments)
           case "int" => intFunction(arguments)
           // Statistics
-          case "max" if hasData && !ignoreNoData => reduceFunction("data", Max.apply)
-          case "max" if hasData && ignoreNoData => reduceFunction("data", MaxIgnoreNoData.apply)
-          case "min" if hasData && !ignoreNoData => reduceFunction("data", Min.apply)
-          case "min" if hasData && ignoreNoData => reduceFunction("data", MinIgnoreNoData.apply)
+          case "max" if hasData && !ignoreNoData => reduceFunction("data", Max.apply, dataTypeMode = PRESERVE_DATATYPE_MODE)
+          case "max" if hasData && ignoreNoData => reduceFunction("data", MaxIgnoreNoData.apply, dataTypeMode = PRESERVE_DATATYPE_MODE)
+          case "min" if hasData && !ignoreNoData => reduceFunction("data", Min.apply, dataTypeMode = PRESERVE_DATATYPE_MODE)
+          case "min" if hasData && ignoreNoData => reduceFunction("data", MinIgnoreNoData.apply, dataTypeMode = PRESERVE_DATATYPE_MODE)
           //TODO take ignorenodata into account!
           case "mean" if hasData => reduceListFunction("data", Mean.apply,forceFloat = true)
           case "variance" if hasData && !ignoreNoData => reduceListFunction("data", varianceWithNoData,forceFloat = true)
