@@ -97,28 +97,6 @@ class OpenEOProcesses extends Serializable {
 
   import OpenEOProcesses._
 
-  val unaryProcesses: Map[String, Tile => Tile] = Map(
-    "absolute" -> Abs.apply,
-    //TODO "exp"
-    "ln" -> Log.apply,
-    //TODO "log"
-    "sqrt" -> Sqrt.apply,
-    "ceil" -> Ceil.apply,
-    "floor" -> Floor.apply,
-    //TODO: "int" integer part of a number
-    "round" -> Round.apply,
-    "arccos" -> Acos.apply,
-    //TODO "arccos" -> Acosh.apply,
-    "arcsin" -> Asin.apply,
-    "arctan" -> Atan.apply,
-    //TODO: arctan 2 is not unary! "arctan2" -> Atan2.apply,
-    "cos" -> Cos.apply,
-    "cosh" -> Cosh.apply,
-    "sin" -> Sin.apply,
-    "sinh" -> Sinh.apply,
-    "tan" -> Tan.apply,
-    "tanh" -> Tanh.apply
-  )
 
   val tileBinaryOp: Map[String, LocalTileBinaryOp] = Map(
     "or" -> Or,
@@ -138,16 +116,6 @@ class OpenEOProcesses extends Serializable {
     return new OpenEORasterCube[K](datacube,datacube.metadata,new OpenEORasterCubeMetadata(Seq.empty))
   }
 
-  def applyProcess[K](datacube:MultibandTileLayerRDD[K], process:String): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]= {
-    val proc = unaryProcesses(process)
-    return ContextRDD(
-      datacube.map(multibandtile => (
-        multibandtile._1,
-        multibandtile._2.mapBands((b, tile) => proc(tile))
-      )),
-      datacube.metadata
-    )
-  }
 
   def reduceTimeDimension(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpatialKey] = {
     val rdd = transformTimeDimension[SpatialKey](datacube, scriptBuilder, context,reduce = true)
