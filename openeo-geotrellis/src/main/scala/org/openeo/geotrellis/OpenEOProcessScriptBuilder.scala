@@ -1564,11 +1564,16 @@ class OpenEOProcessScriptBuilder {
       throw new IllegalArgumentException("The 'index' argument should be an integer, but got: " + index)
     }
     resultingDataType =
-      try {
-        CellType.fromName(typeStack.head("data"))
-      } catch {
-        case e: IllegalArgumentException => FloatConstantNoDataCellType
+      if(typeStack.head.contains("data")) {
+        try {
+          CellType.fromName(typeStack.head("data"))
+        } catch {
+          case e: IllegalArgumentException => FloatConstantNoDataCellType
+        }
+      }else{
+        FloatConstantNoDataCellType
       }
+
     val bandFunction = (context: Map[String,Any]) => (tiles:Seq[Tile]) => {
       val input: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
       val theActualIndex: Int =

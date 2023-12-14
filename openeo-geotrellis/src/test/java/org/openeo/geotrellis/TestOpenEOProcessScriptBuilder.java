@@ -1071,22 +1071,27 @@ public class TestOpenEOProcessScriptBuilder {
     @Test
     public void testArrayElement() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultDataParameterName_$eq("theData");
+        builder.defaultInputDataType_$eq(ByteConstantNoDataCellType$.MODULE$.name());
         Map<String, Object> arguments = Collections.singletonMap("index",1);
         builder.expressionStart("array_element", arguments);
 
         builder.argumentStart("data");
+        builder.fromParameter("theData");
         builder.argumentEnd();
         builder.argumentStart("index");
         builder.argumentEnd();
 
         builder.expressionEnd("array_element",arguments);
 
+        assertEquals(ByteConstantNoDataCellType$.MODULE$,builder.getOutputCellType());
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
         ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
         ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
         Tile res = result.apply(0);
         assertTileEquals(tile1, res);
+        assertEquals(ByteConstantNoDataCellType$.MODULE$,res.cellType());
     }
 
     @DisplayName("Test array_element by label process")
@@ -1133,6 +1138,7 @@ public class TestOpenEOProcessScriptBuilder {
         builder.argumentEnd();
 
         builder.expressionEnd("array_find",arguments);
+        assertEquals(ByteConstantNoDataCellType$.MODULE$,builder.getOutputCellType());
 
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
         ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
@@ -2202,6 +2208,7 @@ public class TestOpenEOProcessScriptBuilder {
         builder.fromParameter("data");
         builder.argumentEnd();
         builder.expressionEnd("sd", map1("data","dummy"));
+
         builder.arrayElementDone();
         builder.expressionStart("mean", Collections.emptyMap());
         builder.argumentStart("data");
