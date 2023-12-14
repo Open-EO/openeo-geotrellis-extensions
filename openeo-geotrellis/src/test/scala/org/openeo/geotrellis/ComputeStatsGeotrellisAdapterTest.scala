@@ -441,17 +441,14 @@ class ComputeStatsGeotrellisAdapterTest() {
     val from_date = "2017-01-01T00:00:00Z"
     val to_date = "2017-03-10T00:00:00Z"
 
-    val polygons = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/EmptyGeometry.shp").getPath)
+    val empty = MultiPolygon(polygon1).buffer(-10)
 
+    val myEmptyPolygons = ProjectedPolygons(Array(empty),LatLng)
     val stats = computeAggregateSpatial(
       "mean",
-      buildCubeRdd(ZonedDateTime.parse(from_date), ZonedDateTime.parse(to_date)), polygons)
+      buildCubeRdd(ZonedDateTime.parse(from_date), ZonedDateTime.parse(to_date)), myEmptyPolygons)
 
-    val keys = Seq("2017-01-01", "2017-01-15", "2017-02-01")
-    keys.foreach(k => assertEqualTimeseriesStats(
-      Seq(Seq(Double.NaN, Double.NaN)),
-      stats.get(k).get
-    ))
+    assertTrue(stats.isEmpty)
   }
 
 

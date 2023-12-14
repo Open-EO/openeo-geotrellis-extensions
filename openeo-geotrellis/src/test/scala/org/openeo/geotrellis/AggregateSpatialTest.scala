@@ -65,6 +65,9 @@ object AggregateSpatialTest {
       finally bufferedSource.close()
     })
 
+    if(stats.isEmpty) {
+      return Map[String, scala.Seq[scala.Seq[Double]]]()
+    }
     val nbGeometries = stats.map(_._2).distinct.max +1
 
     val groupedStats = stats

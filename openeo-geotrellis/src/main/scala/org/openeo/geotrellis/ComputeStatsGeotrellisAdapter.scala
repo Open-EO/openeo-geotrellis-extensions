@@ -94,7 +94,14 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   def compute_generic_timeseries_from_datacube(scriptBuilder:SparkAggregateScriptBuilder, datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, output_file: String): Unit = {
     val computeStatsGeotrellis = new AggregatePolygonProcess()
 
+    if(polygons.polygons.isEmpty) {
+      return //not a lot we can compute here
+    }
     val splitPolygons = splitOverlappingPolygons(polygons.polygons)
+
+    if(splitPolygons._1.isEmpty) {
+      return //happens when all polygons are empty
+    }
 
     val bandCount = new OpenEOProcesses().RDDBandCount(datacube)
     computeStatsGeotrellis.aggregateSpatialGeneric(scriptBuilder, datacube.persist(MEMORY_AND_DISK_SER),splitPolygons, polygons.crs, bandCount,output_file)
