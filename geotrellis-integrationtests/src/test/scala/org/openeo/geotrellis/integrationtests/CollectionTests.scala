@@ -15,7 +15,7 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.openeo.geotrellis.file.{ProbaVPyramidFactoryTest, PyramidFactory}
-import org.openeo.geotrellis.{AggregateSpatialTest, ComputeStatsGeotrellisAdapterTest, LayerFixtures, ProjectedPolygons}
+import org.openeo.geotrellis.{AggregateSpatialTest, ComputeStatsGeotrellisAdapter, LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
 
