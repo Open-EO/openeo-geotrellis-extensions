@@ -15,23 +15,26 @@ import org.apache.commons.io.FileUtils
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
-import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test, Timeout}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DatacubeSupport._
-import org.openeo.geotrelliscommon.{DataCubeParameters, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
-import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection}
+import org.openeo.geotrelliscommon.{ConfigurableSpaceTimePartitioner, DataCubeParameters, DatacubeSupport, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection, Link}
+import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
+import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.io.File
-import java.net.URL
+import java.net.{URI, URL}
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util.Collections
+import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.io.Source
 
@@ -43,7 +46,7 @@ object FileLayerProviderTest {
       println("Creating SparkContext")
 
       val sc = SparkUtils.createLocalSparkContext(
-        "local[*]",
+        "local[1]",
         appName = classOf[FileLayerProviderTest].getName
       )
       _sc = Some(sc)
@@ -1137,5 +1140,132 @@ class FileLayerProviderTest {
       from_date, to_date, Collections.emptyMap(), ""
     )
     cube.head._2
+  }
+
+  private def keysForLargeArea(useBBox:Boolean=false) = {
+    val date = LocalDate.of(2022, 2, 11).atStartOfDay(UTC)
+    val crs = CRS.fromEpsgCode(32630)
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+
+
+    val features: FeatureCollection = CreoFeatureCollection.parse(Source.fromResource("org/openeo/geotrellis/layers/creodias_opensearch_result_large.json").mkString.replace("/eodata/Sentinel-2/MSI/", "/DummyPath/").replace(".SAFE", "NOTSAFE"), true)
+    features.features.foreach(f => {
+      f.links(0) = Link(URI.create("file://myfile.jp2"), Some("B02"))
+
+    })
+    object MockOpenSearch extends CreodiasClient {
+      override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] = {
+        features.features
+      }
+
+      override protected def getProductsFromPage(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String, startIndex: Int): OpenSearchResponses.FeatureCollection = ???
+
+      override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
+    }
+
+    val flp = new FileLayerProvider(
+      MockOpenSearch,
+      "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
+      openSearchLinkTitles = NonEmptyList.of("B02"),
+      rootPath = "/bogus",
+      CellSize(10, 10),
+      SplitYearMonthDayPathDateExtractor,
+      layoutScheme = FloatingLayoutScheme(256),
+      experimental = false
+    ) {
+      //avoids having to actually read the product TODO: improve this workaround
+      override def determineCelltype(overlappingRasterSources: Seq[(RasterSource, OpenSearchResponses.Feature)]): CellType = ShortConstantNoDataCellType
+    }
+
+    val polygons = ProjectedPolygons.fromVectorFile(Thread.currentThread.getContextClassLoader.getResource("org/openeo/geotrellis/geometries/samples.geojson").toString)
+    dataCubeParameters.globalExtent = Some(polygons.extent)
+    var polygonsInCRS = polygons.polygons.map(_.reproject(LatLng, crs))
+    if(useBBox) {
+      polygonsInCRS = Array(MultiPolygon(polygonsInCRS.seq.extent.toPolygon()))
+    }
+
+
+    val boundingBox = dataCubeParameters.globalExtent.get
+    val result = flp.readKeysToRasterSources(
+      from = date,
+      to = date,
+      boundingBox,
+      polygons = polygonsInCRS,
+      polygons_crs = crs,
+      zoom = 0,
+      sc,
+      Some(dataCubeParameters)
+    )
+    (dataCubeParameters,result)
+  }
+  /**
+   * Test to mimick a large area sampling case
+   */
+  @Test
+  @Timeout(value=4,unit=TimeUnit.MINUTES)//test should not take longer than this
+  def samplingDataCubeTest(): Unit = {
+
+    val listener = new GetInfoSparkListener()
+    sc.addSparkListener(listener)
+
+    val (datacubeParams,result) = keysForLargeArea()
+
+    val allTiles = result._1.collect()
+    sc.removeSparkListener(listener)
+    print(allTiles)
+    val ids: immutable.Seq[String] = allTiles.map(_._2.data._2.id).toList.distinct
+
+    val partitioner = DatacubeSupport.createPartitioner(Some(datacubeParams), result._1.keys,result._2)
+    println(partitioner)
+    val index = partitioner.get.index
+    println(index)
+
+    assertTrue(index.isInstanceOf[SparseSpaceTimePartitioner])
+    assertTrue(index.asInstanceOf[SparseSpaceTimePartitioner].theKeys.isDefined)
+    assertEquals(128,result._2.tileLayout.tileCols)
+    //overlap filter has removed the other potential sources
+    assertEquals(229, ids.size)
+
+    assertEquals(2,listener.getJobsCompleted)
+    assertEquals(5,listener.getStagesCompleted)
+    assertEquals(2384,listener.getTasksCompleted)
+    assertEquals(4928, allTiles.size, 0.1)
+
+  }
+
+  @Test
+  @Timeout(value=5,unit=TimeUnit.MINUTES)//test should not take longer than this
+  def largeDataCubeTest(): Unit = {
+
+    val listener = new GetInfoSparkListener()
+    sc.addSparkListener(listener)
+
+    val (datacubeParams,result) = keysForLargeArea(true)
+
+    val allTiles = result._1.collect()
+    sc.removeSparkListener(listener)
+    print(allTiles)
+    val ids: immutable.Seq[String] = allTiles.map(_._2.data._2.id).toList.distinct
+
+    assertEquals(512,result._2.tileLayout.tileCols)
+    //overlap filter has removed the other potential sources
+    assertEquals(694, ids.size)
+
+    assertEquals(1, listener.getJobsCompleted)
+    assertEquals(3, listener.getStagesCompleted)
+    assertEquals(501, listener.getTasksCompleted)
+    assertEquals(76184, allTiles.size, 0.1)
+    println(listener.getPeakMemoryMB)
+
+    val partitioner = DatacubeSupport.createPartitioner(Some(datacubeParams), result._1.keys, result._2)
+    println(partitioner)
+    val index = partitioner.get.index
+    println(index)
+
+    assertTrue(index.isInstanceOf[ConfigurableSpaceTimePartitioner])
+    assertEquals(7,index.asInstanceOf[ConfigurableSpaceTimePartitioner].indexReduction)
+
   }
 }
