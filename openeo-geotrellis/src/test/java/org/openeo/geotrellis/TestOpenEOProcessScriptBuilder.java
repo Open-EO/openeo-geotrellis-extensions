@@ -2180,6 +2180,8 @@ public class TestOpenEOProcessScriptBuilder {
 
     static OpenEOProcessScriptBuilder createFeatureEngineering() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultDataParameterName_$eq("data");
+        builder.defaultDataParameterName_$eq(UShortConstantNoDataCellType$.MODULE$.name());
         builder.expressionStart("array_concat",Collections.emptyMap());
         builder.argumentStart("array1");
         List<Double> percentiles = Arrays.asList(0.25, 0.5, 0.75);

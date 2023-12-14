@@ -57,12 +57,14 @@ public class TestOpenEOProcesses {
     @Test
     public void testMapBands() {
         OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess10AddXY();
-        Tile tile0 = new DoubleConstantTile(3.0,256,256, (DoubleCells) CellType$.MODULE$.fromName("float64"));
-        Tile tile1 = new DoubleConstantTile(1.0,256,256, (DoubleCells) CellType$.MODULE$.fromName("float64"));
+        assertEquals(FloatConstantNoDataCellType$.MODULE$,processBuilder.getOutputCellType());
+        Tile tile0 = new UByteConstantTile((byte)3,256,256, (UByteCells)  CellType$.MODULE$.fromName("uint8"));
+        Tile tile1 = new UByteConstantTile((byte)1,256,256, (UByteCells) CellType$.MODULE$.fromName("uint8"));
         RDD<Tuple2<SpatialKey, MultibandTile>> datacube = TileLayerRDDBuilders$.MODULE$.createMultibandTileLayerRDD(SparkContext.getOrCreate(), new ArrayMultibandTile(new Tile[]{tile0,tile1}), new TileLayout(1, 1, 256, 256));
         ClassTag<SpatialKey> tag = scala.reflect.ClassTag$.MODULE$.apply(SpatialKey.class);
         RDD<Tuple2<SpatialKey, MultibandTile>> ndviDatacube = new OpenEOProcesses().<SpatialKey>mapBandsGeneric(datacube, processBuilder, new HashMap<>(), tag);
         List<Tuple2<SpatialKey, MultibandTile>> result = ndviDatacube.toJavaRDD().collect();
+        assertEquals(FloatConstantNoDataCellType$.MODULE$,result.get(0)._2.cellType());
         System.out.println("result = " + result);
         assertEquals(1, result.get(0)._2().bandCount());
         double[] doubles = result.get(0)._2().band(0).toArrayDouble();
@@ -99,6 +101,10 @@ public class TestOpenEOProcesses {
         System.out.println("map = " + map);
         assertEquals(1, map.entrySet().stream().filter(tuple -> tuple.getKey().time().equals(ZonedDateTime.parse("2017-01-01T00:00:00Z"))).count());
         assertEquals(1, map.entrySet().stream().filter(tuple -> tuple.getKey().time().equals(ZonedDateTime.parse("2017-01-15T00:00:00Z"))).count());
+
+        Set<DataType> dataTypes = map.entrySet().stream().map(t -> t.getValue().cellType()).collect(Collectors.toSet());
+        assertEquals(1, dataTypes.size());
+        assertEquals(ByteConstantNoDataCellType$.MODULE$,dataTypes.iterator().next());
 
         assertEquals(-10, map.entrySet().stream().filter(tuple -> tuple.getKey().time().equals(ZonedDateTime.parse("2017-01-01T00:00:00Z"))).findFirst().get().getValue().band(0).get(0,0));
         assertEquals(4, map.entrySet().stream().filter(tuple -> tuple.getKey().time().equals(ZonedDateTime.parse("2017-01-15T00:00:00Z"))).findFirst().get().getValue().band(0).get(0,0));
@@ -244,10 +250,12 @@ public class TestOpenEOProcesses {
 
 
         OpenEOProcessScriptBuilder featureEngineeringProcess = TestOpenEOProcessScriptBuilder.createFeatureEngineering();
+        assertEquals(FloatConstantNoDataCellType$.MODULE$,featureEngineeringProcess.resultingDataType());
         HashMap<String, Object> context = new HashMap<>();
         //context.put("TileSize",64);
-        RDD<Tuple2<SpatialKey, MultibandTile>> result = new OpenEOProcesses().applyTimeDimensionTargetBands(new ContextRDD<>(compositedCube,datacube1.metadata()), featureEngineeringProcess, context);
+        ContextRDD<SpatialKey, MultibandTile,TileLayerMetadata<SpatialKey>> result = ((ContextRDD<SpatialKey, MultibandTile,TileLayerMetadata<SpatialKey>>)new OpenEOProcesses().applyTimeDimensionTargetBands(new ContextRDD<>(compositedCube,datacube1.metadata()), featureEngineeringProcess, context));
         assertTrue(result.partitioner().get() instanceof SpacePartitioner);
+        assertEquals(FloatConstantNoDataCellType$.MODULE$,result.metadata().cellType());
 
         BigInt p1 = ((SpacePartitioner<SpatialKey>) result.partitioner().get()).index().toIndex(new SpatialKey(0, 0));
         BigInt p2 = ((SpacePartitioner<SpatialKey>) result.partitioner().get()).index().toIndex(new SpatialKey(1, 0));
