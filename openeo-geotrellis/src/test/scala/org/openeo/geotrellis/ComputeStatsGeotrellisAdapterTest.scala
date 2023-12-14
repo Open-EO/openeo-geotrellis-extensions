@@ -3,7 +3,7 @@ package org.openeo.geotrellis
 import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.histogram.Histogram
-import geotrellis.raster.{ByteCells, ByteConstantTile, DoubleConstantNoDataCellType, MultibandTile}
+import geotrellis.raster.{ByteCells, ByteConstantTile, FloatConstantNoDataCellType, MultibandTile, UByteUserDefinedNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Polygon, _}
@@ -18,9 +18,10 @@ import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.TimeSeriesServiceResponses._
 
 import java.nio.file.Files
-import java.time.{ZoneOffset, ZonedDateTime}
+import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
 import java.util
 import scala.collection.JavaConverters._
+import scala.collection.immutable
 import scala.collection.immutable.Seq
 
 object ComputeStatsGeotrellisAdapterTest {
@@ -309,8 +310,8 @@ class ComputeStatsGeotrellisAdapterTest() {
   @Test
   def compute_median_masked_ndvi_timeseries_on_accumulo_datacube(): Unit = {
 
-    val minDateString = "2018-04-21T00:00:00Z"
-    val maxDateString = "2018-04-21T02:00:00Z"
+    val minDateString = "2022-04-24T00:00:00Z"
+    val maxDateString = "2022-04-30T02:00:00Z"
     val minDate = ZonedDateTime.parse(minDateString)
 
     val maxDate = ZonedDateTime.parse(maxDateString)
@@ -319,36 +320,41 @@ class ComputeStatsGeotrellisAdapterTest() {
 
     val datacube = s2_ndvi_bands(minDateString, maxDateString, polygons, "EPSG:32631")
 
-    val selectedBands = datacube.withContext(_.mapValues(_.subsetBands(1,3))).convert(DoubleConstantNoDataCellType)
+    val selectedBands = datacube.convert(FloatConstantNoDataCellType)
     val ndviProcess = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess10AddXY
     val processes = new OpenEOProcesses()
     val ndviDataCube = processes.mapBandsGeneric(selectedBands, ndviProcess, new util.HashMap[String, Any])//.withContext(_.mapValues(_.mapDouble(0)(pixel => 0.1)))
 
     val mask = s2_scl(minDateString, maxDateString, polygons, "EPSG:32631")
-    val binaryMask = mask.withContext(_.mapValues( _.map(0)(pixel => if ( pixel < 5) 1 else 0)))
+    val binaryMask = mask.convert(UByteUserDefinedNoDataCellType(255.byteValue())).withContext(_.mapValues( _.map(0)(pixel => if ( pixel < 5) 1 else 0)))
 
     print(binaryMask.partitioner)
 
     val maskedCube = processes.rasterMask(ndviDataCube,binaryMask,Double.NaN)
-    assertMedianComputedCorrectly(maskedCube, minDateString, minDate, maxDate, polygons)
+    //NetCDFRDDWriter.writeRasters(maskedCube,"/tmp/out_NDVI.nc", options)
+    assertMedianComputedCorrectly(maskedCube, minDateString, minDate, maxDate, Seq(polygon4))
   }
 
   private def assertMedianComputedCorrectly(ndviDataCube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], minDateString: String, minDate: ZonedDateTime, maxDate: ZonedDateTime, polygons: Seq[Polygon]) = {
     //alternative way to compute a histogram that works for this simple case
-    val histogram: Histogram[Double] = ndviDataCube.toSpatial().mask(polygons.map(_.reproject(LatLng, ndviDataCube.metadata.crs))).histogram(1000)(0)
-    print("MEDIAN: ")
-    val expectedMedian = histogram.median()
-    print(expectedMedian)
 
     val stats: _root_.scala.collection.immutable.Map[_root_.java.lang.String, scala.Seq[scala.Seq[Double]]] = computeAggregateSpatial("median",ndviDataCube, polygons)
 
     assertFalse(stats.isEmpty)
 
+    val dates: immutable.Iterable[String] = stats.map(_._1)
+    val theDate = dates.head
+    val histogram: Histogram[Double] = ndviDataCube.toSpatial(LocalDate.parse(theDate).atStartOfDay(ZoneOffset.UTC)).mask(polygons.map(_.reproject(LatLng, ndviDataCube.metadata.crs))).histogram(1000)(0)
+    print("MEDIAN: ")
+    val expectedMedian = histogram.median()
+    print(expectedMedian)
+
+
     val means = stats
       .flatMap { case (_, dailyMeans) => dailyMeans }.filter(!_.isEmpty)
 
     assertTrue(means.exists(mean => !mean(0).isNaN))
-    assertEquals( expectedMedian.get,stats(minDateString.substring(0,10))(0)(0), 0.001)
+    assertEquals( expectedMedian.get,stats(theDate)(0)(0), 0.001)
   }
 
 
