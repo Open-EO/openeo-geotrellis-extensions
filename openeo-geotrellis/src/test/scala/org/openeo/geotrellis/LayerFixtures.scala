@@ -9,13 +9,12 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.testkit.TileLayerRDDBuilders.defaultCRS
-import geotrellis.vector.{Extent, ProjectedExtent}
-import jp.ne.opt.chronoscala.Imports._
+import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
-import org.openeo.geotrellisaccumulo.PyramidFactory
-import org.openeo.geotrelliscommon.SparseSpaceTimePartitioner
+import org.openeo.geotrellisaccumulo
+import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchClient
 
 import java.awt.image.DataBufferByte
@@ -24,6 +23,7 @@ import java.nio.file.Paths
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
+import java.util
 import java.util.Collections.singletonList
 import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
@@ -159,7 +159,7 @@ object LayerFixtures {
     buildSpatioTemporalDataCube(tiles, dates, extent, tilingFactor)
   }
 
-  private def accumuloPyramidFactory = new PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
+  private def accumuloPyramidFactory = new geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
 
   def accumuloDataCube(layer: String, minDateString: String, maxDateString: String, bbox: Extent, srs: String) = {
     val pyramid: Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = accumuloPyramidFactory.pyramid_seq(layer, bbox, srs, minDateString, maxDateString)
@@ -169,6 +169,11 @@ object LayerFixtures {
     datacube
   }
 
+  def catalogDataCube(layer: String, minDateString: String, maxDateString: String, bbox: Extent, resolution:CellSize, bandNames:List[String]) = {
+    new file.PyramidFactory(OpenSearchClient.apply(new URL(opensearchEndpoint), false, "oscars"),layer,bandNames.asJava,null,resolution).pyramid_seq(bbox,"EPSG:4326",minDateString,maxDateString,util.Collections.emptyMap[String,Any](),"").head._2
+
+  }
+
   private val maxSpatialResolution = CellSize(10, 10)
   private val pathDateExtractor = SplitYearMonthDayPathDateExtractor
   val opensearchEndpoint = "https://services.terrascope.be/catalogue"
@@ -176,13 +181,9 @@ object LayerFixtures {
 
   def defaultExtent = Extent(xmin = 3.248235121238894, ymin = 50.9753557675801, xmax = 3.256396825072918, ymax = 50.98003212949561)
 
-  def probav_ndvi(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent) = accumuloDataCube(
-    layer = "PROBAV_L3_S10_TOC_NDVI_333M_V3",
-    minDateString = from_date,
-    maxDateString = to_date,
-    bbox,
-    srs = "EPSG:4326"
-  )
+  def probav_ndvi(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent) =
+    catalogDataCube("urn:ogc:def:EOP:VITO:PROBAV_S10-TOC_333M_V001",from_date,to_date,bbox,CellSize(333, 333), NonEmptyList.of("NDVI", "SM").toList)
+
 
   def sentinel1Sigma0LayerProviderUTM =
     FileLayerProvider(
@@ -196,7 +197,34 @@ object LayerFixtures {
       experimental = false
     )
 
-  def s2_fapar(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z",bbox:Extent=defaultExtent)=accumuloDataCube("S2_FAPAR_PYRAMID_20200408", from_date, to_date, bbox, "EPSG:4326")
+  def s2_fapar(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z", polygons:Seq[Polygon],crs:String) = {
+    val parameters = new DataCubeParameters
+    parameters.layoutScheme = "FloatingLayoutScheme"
+    parameters.globalExtent = Some(ProjectedExtent(polygons.extent, CRS.fromName(crs)))
+    new file.PyramidFactory(OpenSearchClient.apply(new URL(opensearchEndpoint), false, "oscars"), "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2", NonEmptyList.of("FAPAR_10M").toList.asJava, null, CellSize(10, 10))
+      .datacube_seq(ProjectedPolygons(polygons, crs), from_date, to_date, util.Collections.emptyMap[String, Any](), "", parameters).head._2
+  }
+
+
+
+  def s2_ndvi_bands(from_date: String = "2017-11-01T00:00:00Z", to_date: String = "2017-11-16T02:00:00Z", polygons:Seq[Polygon],crs:String)={
+    val parameters = new DataCubeParameters
+    parameters.layoutScheme = "FloatingLayoutScheme"
+    parameters.globalExtent = Some(ProjectedExtent(polygons.extent,CRS.fromName(crs)))
+    new file.PyramidFactory(OpenSearchClient.apply(new URL(opensearchEndpoint), false, "oscars"), "urn:eop:VITO:TERRASCOPE_S2_TOC_V2", NonEmptyList.of("TOC-B04_10M", "TOC-B08_10M").toList.asJava, null, CellSize(10, 10))
+      .datacube_seq(ProjectedPolygons(polygons, crs), from_date, to_date, util.Collections.emptyMap[String, Any](), "",parameters).head._2
+  }
+
+  def s2_scl(from_date: String = "2017-11-01T00:00:00Z", to_date: String = "2017-11-16T02:00:00Z", polygons: Seq[Polygon], crs: String) = {
+    val parameters = new DataCubeParameters
+    parameters.layoutScheme = "FloatingLayoutScheme"
+    parameters.globalExtent = Some(ProjectedExtent(polygons.extent, CRS.fromName(crs)))
+    new file.PyramidFactory(OpenSearchClient.apply(new URL(opensearchEndpoint), false, "oscars"), "urn:eop:VITO:TERRASCOPE_S2_TOC_V2", NonEmptyList.of("SCENECLASSIFICATION_20M").toList.asJava, null, CellSize(10, 10))
+      .datacube_seq(ProjectedPolygons(polygons, crs), from_date, to_date, util.Collections.emptyMap[String, Any](), "", parameters).head._2
+  }
+
+
+
 
   def sentinel2TocLayerProviderUTM =
     FileLayerProvider(
