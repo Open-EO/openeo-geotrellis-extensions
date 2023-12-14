@@ -449,6 +449,7 @@ class OpenEOProcesses extends Serializable {
 
 
     val function = scriptBuilder.inputFunction.asInstanceOf[OpenEOProcess]
+    val outputCellType = scriptBuilder.getOutputCellType()
     def aggregateTiles(tiles: Iterable[(SpaceTimeKey,MultibandTile)]) = {
       val theContext = context.asScala.toMap + ("array_labels"->tiles.map(_._1.time.format(DateTimeFormatter.ISO_INSTANT)))
       val tilesFunction = function.apply(theContext)
@@ -501,7 +502,7 @@ class OpenEOProcesses extends Serializable {
         tilesByInterval
       }
     }
-    val metadata = if(reduce) datacube.metadata.copy(bounds = newBounds) else datacube.metadata
+    val metadata = if(reduce) datacube.metadata.copy(bounds = newBounds,cellType = outputCellType) else datacube.metadata.copy(cellType = outputCellType)
     return ContextRDD(filledRDD, metadata)
   }
 
