@@ -28,9 +28,6 @@ object AggregateSpatialTest {
   @BeforeClass
   def setUpSpark(): Unit = {
     sc = {
-      //val config = new HdfsConfiguration
-      //config.set("hadoop.security.authentication", "kerberos")
-      //UserGroupInformation.setConfiguration(config)
 
       val conf = new SparkConf().set("spark.driver.bindAddress", "127.0.0.1")
       SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, conf)
@@ -68,12 +65,21 @@ object AggregateSpatialTest {
       finally bufferedSource.close()
     })
 
+    if(stats.isEmpty) {
+      return Map[String, scala.Seq[scala.Seq[Double]]]()
+    }
+    val nbGeometries = stats.map(_._2).distinct.max +1
+
     val groupedStats = stats
       .groupBy { case (timestamp, _, _) => timestamp }
-      .mapValues { timestampedValues =>
+      .mapValues { timestampedValues =>{
+        val theNumbers: Array[scala.collection.Seq[Double]] = Array.fill(nbGeometries)(scala.collection.Seq.fill(1)(Double.NaN))
         timestampedValues
-          .sortBy { case (_, geometry, _) => geometry }
-          .map { case (_, _, numbers) => numbers }
+
+          .foreach { case (_, geometry, numbers) => theNumbers(geometry) = numbers.toSeq }
+        theNumbers.toSeq
+      }
+
       }
 
     groupedStats.foreach(println)
@@ -99,10 +105,7 @@ class AggregateSpatialTest {
 
   import AggregateSpatialTest._
 
-  private val computeStatsGeotrellisAdapter = new ComputeStatsGeotrellisAdapter(
-    zookeepers = "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181",
-    accumuloInstanceName = "hdp-accumulo-instance"
-  )
+  private val computeStatsGeotrellisAdapter = new ComputeStatsGeotrellisAdapter()
 
 
   private def buildCubeRdd(from: ZonedDateTime, to: ZonedDateTime): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {

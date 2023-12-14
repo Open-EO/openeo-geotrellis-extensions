@@ -11,7 +11,7 @@ import geotrellis.raster.{CellSize, MultibandTile}
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
-import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
+import geotrellis.vector._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
@@ -20,6 +20,7 @@ import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
+import org.openeo.opensearch.backends.GeotiffNoDateSearchClient
 
 import java.net.URL
 import java.time.LocalTime.MIDNIGHT
@@ -28,6 +29,8 @@ import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZonedDateTime}
 import java.util.Collections
 import java.util.Collections.{emptyMap, singletonList}
+import scala.io.Source
+
 
 object Sentinel2PyramidFactoryTest {
     private var sc: SparkContext = _
@@ -110,6 +113,30 @@ class Sentinel2PyramidFactoryTest {
         val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(projected_polygons_native_crs,from_date,to_date,Collections.emptyMap(),"")
         cube.head._2.toSpatial().writeGeoTiff("geoid.tif")
 
+    }
+
+    @Test
+    def testDemDirEdgeError(): Unit = {
+        val bandNames = Collections.singletonList("DEM")
+        val tiffUrl = getClass.getResource("/org/openeo/geotrellis/geotiff/pretrain_train_adjecent_rectangles_DEM.tiff")
+        val client = new GeotiffNoDateSearchClient(tiffUrl.getPath, bandNames)
+        val factory = new PyramidFactory(client, "", bandNames, null, CellSize(0.0002777777777777778, 0.0002777777777777778))
+
+        val localFromDate = LocalDate.of(1970, 1, 1)
+        val localToDate = LocalDate.of(2070, 1, 1)
+        val ZonedFromDate = ZonedDateTime.of(localFromDate, MIDNIGHT, UTC)
+        val zonedToDate = ZonedDateTime.of(localToDate, MIDNIGHT, UTC)
+        val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format ZonedFromDate
+        val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format zonedToDate
+
+        val url = getClass.getResource("/org/openeo/geotrellis/geotiff/pretrain_train_adjecent_rectangles.geojson")
+        import scala.util.Using
+        val geoJson = Using(Source.fromURL(url)) { source => source.getLines.mkString("\n") }.get
+        val h = geoJson.parseGeoJson[MultiPolygon]()
+        val polygons = ProjectedPolygons(Array(h), LatLng)
+        val dcp = new DataCubeParameters()
+        dcp.globalExtent = Some(ProjectedExtent(Extent(-1.6147222333333389, 48.636527788888884, -0.13166667777778684, 49.638750011111114), LatLng))
+        factory.datacube_seq(polygons, from_date, to_date, Collections.emptyMap(), "", dcp)
     }
 
     @Test

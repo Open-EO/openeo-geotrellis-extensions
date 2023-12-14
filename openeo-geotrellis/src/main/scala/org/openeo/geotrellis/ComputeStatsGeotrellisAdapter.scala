@@ -55,9 +55,17 @@ object ComputeStatsGeotrellisAdapter {
 class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: String) {
   import ComputeStatsGeotrellisAdapter._
 
+  def this() {
+    this("","")
+  }
+
   private val unusedCancellationContext = new CancellationContext(null, null)
 
 
+  /**
+   *
+   * @deprecated Got replaced by more generic approaches, is not called from python
+   */
   def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, from_date: String, to_date: String, band_index: Int): JMap[String, JList[JList[Double]]] = {
     val computeStatsGeotrellis = new AggregatePolygonProcess()
 
@@ -70,22 +78,6 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     statisticsCollector.results
   }
 
-  /**
-   * Writes means to an UTF-8 encoded JSON file.
-   */
-  def compute_average_timeseries_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, from_date: String, to_date: String, band_index: Int, output_file: String): Unit = {
-    val computeStatsGeotrellis = new AggregatePolygonProcess()
-
-    val startDate: ZonedDateTime = ZonedDateTime.parse(from_date)
-    val endDate: ZonedDateTime = ZonedDateTime.parse(to_date)
-
-    val statisticsWriter = new MultibandStatisticsWriter(new File(output_file))
-
-    try
-      computeStatsGeotrellis.computeAverageTimeSeries(datacube.persist(MEMORY_AND_DISK_SER), polygons.polygons, polygons.crs, startDate, endDate, statisticsWriter, unusedCancellationContext, sc)
-    finally
-      statisticsWriter.close()
-  }
 
   /**
    * Writes means to an UTF-8 encoded JSON file.
@@ -102,7 +94,14 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
   def compute_generic_timeseries_from_datacube(scriptBuilder:SparkAggregateScriptBuilder, datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons, output_file: String): Unit = {
     val computeStatsGeotrellis = new AggregatePolygonProcess()
 
+    if(polygons.polygons.isEmpty) {
+      return //not a lot we can compute here
+    }
     val splitPolygons = splitOverlappingPolygons(polygons.polygons)
+
+    if(splitPolygons._1.isEmpty) {
+      return //happens when all polygons are empty
+    }
 
     val bandCount = new OpenEOProcesses().RDDBandCount(datacube)
     computeStatsGeotrellis.aggregateSpatialGeneric(scriptBuilder, datacube.persist(MEMORY_AND_DISK_SER),splitPolygons, polygons.crs, bandCount,output_file)
@@ -148,6 +147,9 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
       geometriesCrs, bandCount = new OpenEOProcesses().RDDBandCount(datacube), output_dir)
   }
 
+  /**
+   * @deprecated histograms are not supported in openEO
+   */
   def compute_histograms_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
                                                    from_date: String, to_date: String, band_index: Int
                                                   ): JMap[String, JList[JList[JMap[Double, Long]]]] = { // date -> polygon -> band -> value/count
@@ -156,6 +158,9 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     histogramsCollector.results
   }
 
+  /**
+   * @deprecated
+   */
   def compute_median_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
                                                from_date: String, to_date: String, band_index: Int
                                               ): JMap[String, JList[JList[Double]]] = {
@@ -164,6 +169,9 @@ class ComputeStatsGeotrellisAdapter(zookeepers: String, accumuloInstanceName: St
     mediansCollector.results
   }
 
+  /**
+   * @deprecated
+   */
   def compute_sd_time_series_from_datacube(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: ProjectedPolygons,
                                            from_date: String, to_date: String, band_index: Int
                                           ): JMap[String, JList[JList[Double]]] = { // date -> polygon -> value/count
