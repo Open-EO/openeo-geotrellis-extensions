@@ -298,7 +298,7 @@ class CollectionTests {
     }
 
     val file_name = s"${layerStr}_${from_date_parsed.toLocalDate}_${to_date_parsed.minusDays(1).toLocalDate}"
-    new ComputeStatsGeotrellisAdapterTest(1).computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(
+    new ComputeStatsGeotrellisAdapter().compute_generic_timeseries_from_datacube(
       "mean",
       layer,
       polygons,

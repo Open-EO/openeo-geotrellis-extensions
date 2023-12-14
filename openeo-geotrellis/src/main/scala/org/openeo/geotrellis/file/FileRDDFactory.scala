@@ -24,9 +24,13 @@ import scala.collection.JavaConverters._
  * A class that looks like a pyramid factory, but does not build a full datacube. Instead, it generates an RDD[SpaceTimeKey, ProductPath].
  * This RDD can then be transformed into
  */
-class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = "") {
+class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: String,
+                     attributeValues: util.Map[String, Any],
+                     correlationId: String, private val maxSpatialResolution: CellSize) {
 
-  private val maxSpatialResolution = CellSize(10, 10)
+  def this(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: util.List[String],
+           attributeValues: util.Map[String, Any], correlationId: String) =
+    this(openSearch, openSearchCollectionId, attributeValues, correlationId, maxSpatialResolution = CellSize(10, 10))
 
   /**
    * Lookup OpenSearch Features
@@ -41,7 +45,7 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
       attributeValues = attributeValues.asScala.toMap,
       correlationId, ""
     )
-    return overlappingFeatures
+    overlappingFeatures
   }
 
 
@@ -67,20 +71,29 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
     )
 
     //construct Spatial Keys that we want to load
-    val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons.polygons).map{_.reproject(polygons.crs,metadata.crs)}.clipToGrid(metadata.layout).groupByKey()
+    val requiredKeys: RDD[SpatialKey] = sc.parallelize(polygons.polygons)
+      .map(_.reproject(polygons.crs, metadata.crs))
+      .clipToGrid(metadata.layout)
+      .groupByKey()
+      .keys
+
     val productsRDD = sc.parallelize(productMetadata)
-    val spatialRDD: RDD[(SpaceTimeKey, Feature)] = requiredKeys.keys.cartesian(productsRDD).map{ case (key,value) => (SpaceTimeKey(key.col,key.row,value.nominalDate),value)}.filter(tuple =>{
 
-      val keyExtent = metadata.mapTransform.keyToExtent(tuple._1.spatialKey)
-      ProjectedExtent(tuple._2.bbox,LatLng).reproject(metadata.crs).intersects(keyExtent)
-    })
-    BatchJobMetadataTracker.tracker("").addInputProducts(openSearchCollectionId,spatialRDD.map(_._2.id).distinct().collect().toList.asJava)
+    val spaceTimeRDD: RDD[(SpaceTimeKey, Feature)] = requiredKeys.cartesian(productsRDD)
+      .map { case (SpatialKey(col, row), feature) => (SpaceTimeKey(col, row, feature.nominalDate), feature) }
+      .filter { case (spaceTimeKey, feature) =>
+        val keyExtent = metadata.mapTransform.keyToExtent(spaceTimeKey.spatialKey)
+        ProjectedExtent(feature.bbox, LatLng).reproject(metadata.crs).intersects(keyExtent)
+      }
 
-    val partitioner = DatacubeSupport.createPartitioner(None,spatialRDD.map(_._1),metadata)
+    BatchJobMetadataTracker.tracker("").addInputProducts(openSearchCollectionId,
+      spaceTimeRDD.values.map(_.id).distinct().collect().toList.asJava)
+
+    val partitioner = DatacubeSupport.createPartitioner(None, spaceTimeRDD.keys, metadata)
     /**
-     * Note that keys in spatialRDD are not necessarily unique, because one date can have multiple Sentinel-1 products
+     * Note that keys in spaceTimeRDD are not necessarily unique, because one date can have multiple Sentinel-1 products
      */
-    return new ContextRDD(spatialRDD.partitionBy(partitioner.get),metadata)
+    new ContextRDD(spaceTimeRDD.partitionBy(partitioner.get), metadata)
   }
 
   /**

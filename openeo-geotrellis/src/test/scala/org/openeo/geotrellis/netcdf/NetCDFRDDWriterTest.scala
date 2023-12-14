@@ -162,7 +162,7 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     val sampleNames = polygons.polygons.indices.map(_.toString)
     val sampleNameList = new util.ArrayList[String]()
     sampleNames.foreach(sampleNameList.add)
-    val bandNames = new util.ArrayList(util.Arrays.asList("TOC-B04_10M"))
+    val bandNames = new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"))
 
     val targetDir = temporaryFolder.getRoot.toString
 
@@ -170,8 +170,8 @@ class NetCDFRDDWriterTest extends RasterMatchers{
       layer, targetDir, polygons, sampleNameList, bandNames
     )
 
-    val raster1: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:"${sampleFilenames.get(0)}""").read().get
-    val raster2: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:"${sampleFilenames.get(1)}""").read().get
+    val raster1: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:${sampleFilenames.get(0)}:TOC-B04_10M""").read().get
+    val raster2: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:${sampleFilenames.get(1)}:TOC-B04_10M""").read().get
 
     // Compare raster extents.
     //assert(raster1.extent.width == 2560.0)
@@ -179,10 +179,10 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     //assert(raster2.extent.width == 2560.0)
     //assert(raster2.extent.height == 2560.0)
     val bands = raster1.tile.bands.filter(!_.isNoDataTile)
-    assert(bands.size==4)
+    assert(bands.size==3) //3 dates
 
-    for(bandIndex:Int <- 0 until 4) {
-      // Ensure there is data within the polygon on this band.
+    for(bandIndex:Int <- 0 until 3) {
+      // Ensure there is data within the polygon on this observation.
       assert(bands(bandIndex).mask(raster1.extent, polygon1_nativecrs).toArray().exists(p => p != -2147483648))
     }
   }

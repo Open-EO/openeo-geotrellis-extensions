@@ -143,6 +143,15 @@ package object geotrelliscommon {
     }
   }
 
+  class ConfigurableSpatialPartitioner(val indexReduction:Int = 4) extends PartitionerIndex[SpatialKey] {
+    private def toZ(key: SpatialKey): Z2 = Z2(key.col >> indexReduction, key.row >> indexReduction)
+
+    def toIndex(key: SpatialKey): BigInt = toZ(key).z
+
+    def indexRanges(keyRange: (SpatialKey, SpatialKey)): Seq[(BigInt, BigInt)] =
+      Z2.zranges(ZRange(toZ(keyRange._1), toZ(keyRange._2))).map(t=> (BigInt.long2bigInt(t.lower),BigInt.long2bigInt(t.upper)))
+  }
+
   class ConfigurableSpaceTimePartitioner ( val indexReduction:Int = SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION )  extends PartitionerIndex[SpaceTimeKey] {
 
     val keyIndex = SfCurveZSpaceTimeKeyIndex.byDay(null)
