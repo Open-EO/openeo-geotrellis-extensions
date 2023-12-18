@@ -15,11 +15,10 @@ object SentinelXMLMetadataRasterSource {
 
   def forAngleBand(xlmPath: String,
                    angleBandIndex: Int,
-                   targetExtent: Option[Extent] = None,
                    cellSize: Option[CellSize] = None
                   ): SentinelXMLMetadataRasterSource = {
     // TODO: write forAngleBands in terms of forAngleBand instead
-    forAngleBands(xlmPath, Seq(angleBandIndex), targetExtent, cellSize).head
+    forAngleBands(xlmPath, Seq(angleBandIndex), cellSize).head
   }
 
   /**
@@ -27,7 +26,6 @@ object SentinelXMLMetadataRasterSource {
    */
   def forAngleBands(xlmPath: String,
                     angleBandIndices: Seq[Int] = Seq(0, 1, 2, 3), // SAA, SZA, VAA, VZA
-                    te: Option[Extent] = None,
                     cellSize: Option[CellSize] = None
                    ): Seq[SentinelXMLMetadataRasterSource] = {
     require(angleBandIndices.forall(index => index >= 0 && index <= 3))
@@ -52,8 +50,7 @@ object SentinelXMLMetadataRasterSource {
     val uly = (position \ "ULY").text.toDouble
     // TODO: Looking at the cloud locations in the accompanying cloud mask file
     val maxExtent = Extent(ulx, uly - (theResolution.width * 10980), ulx + (theResolution.height * 10980), uly)
-    val targetExtent = te.getOrElse(maxExtent)
-    val gridExtent = GridExtent[Long](targetExtent, theResolution)
+    val gridExtent = GridExtent[Long](maxExtent, theResolution)
 
     val constantAngleBandValues = Seq(mSAA, mSZA, mVAA, mVZA)
 
@@ -75,8 +72,10 @@ case class SentinelXMLMetadataRasterSource(
 
   override def metadata: RasterMetadata = this
 
-  override protected def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
-    new SentinelXMLMetadataRasterSource(value, targetCRS, resampleTarget(gridExtent.reproject(crs, targetCRS)), sourcePathName)
+  override protected def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource = {
+    val gridExtentNew = resampleTarget(gridExtent.reproject(crs, targetCRS))
+    new SentinelXMLMetadataRasterSource(value, targetCRS, gridExtentNew, sourcePathName)
+  }
 
   override def resample(resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
     reprojection(crs, resampleTarget, method, strategy)
@@ -88,8 +87,8 @@ case class SentinelXMLMetadataRasterSource(
     extent.intersection(gridExtent.extent)
       .map { intersection =>
         val intersectionGridBounds = gridExtent.gridBoundsFor(intersection).toGridType[Int]
-        val noDataTile = FloatConstantTile(value, intersectionGridBounds.width, intersectionGridBounds.height)
-        Raster(MultibandTile(noDataTile), intersection)
+        val tile = FloatConstantTile(value, intersectionGridBounds.width, intersectionGridBounds.height)
+        Raster(MultibandTile(tile), intersection)
       }
   }
 
@@ -100,8 +99,8 @@ case class SentinelXMLMetadataRasterSource(
     bounds.intersection(gridExtent.dimensions)
       .map { intersection =>
         val intersectionGridBounds = intersection.toGridType[Int]
-        val noDataTile = FloatConstantTile(value, intersectionGridBounds.width, intersectionGridBounds.height)
-        Raster(MultibandTile(noDataTile), gridExtent.extentFor(intersection))
+        val tile = FloatConstantTile(value, intersectionGridBounds.width, intersectionGridBounds.height)
+        Raster(MultibandTile(tile), gridExtent.extentFor(intersection))
       }
   }
 
