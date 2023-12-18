@@ -1126,12 +1126,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           GDALRasterSource(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType)
         }
       }else if(dataPath.endsWith("MTD_TL.xml")) {
-        val rs = SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, Some(theResolution))
-        featureExtentInLayout match {
-          case None => rs
+        val targetProjectedExtent = featureExtentInLayout match {
+          case None => None
           case Some(featureExtentInLayoutGet) =>
-            rs.reprojectToGrid(targetExtent.crs, featureExtentInLayoutGet)
+            Some(ProjectedExtent(featureExtentInLayoutGet.extent, targetExtent.crs))
         }
+        SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, targetProjectedExtent, Some(theResolution))
       }
       else {
         def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {

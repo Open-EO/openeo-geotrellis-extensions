@@ -3,7 +3,7 @@ package org.openeo.geotrellis.layers
 import geotrellis.proj4.CRS
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, Raster, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, SourceName, TargetCellType}
-import geotrellis.vector.Extent
+import geotrellis.vector.{Extent, ProjectedExtent}
 import org.openeo.geotrellis.layers.SentinelXMLMetadataRasterSource.logger
 import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
 import org.slf4j.LoggerFactory
@@ -15,10 +15,11 @@ object SentinelXMLMetadataRasterSource {
 
   def forAngleBand(xlmPath: String,
                    angleBandIndex: Int,
+                   targetProjectedExtent: Option[ProjectedExtent] = None,
                    cellSize: Option[CellSize] = None
                   ): SentinelXMLMetadataRasterSource = {
     // TODO: write forAngleBands in terms of forAngleBand instead
-    forAngleBands(xlmPath, Seq(angleBandIndex), cellSize).head
+    forAngleBands(xlmPath, Seq(angleBandIndex), targetProjectedExtent, cellSize).head
   }
 
   /**
@@ -26,6 +27,7 @@ object SentinelXMLMetadataRasterSource {
    */
   def forAngleBands(xlmPath: String,
                     angleBandIndices: Seq[Int] = Seq(0, 1, 2, 3), // SAA, SZA, VAA, VZA
+                    targetProjectedExtent: Option[ProjectedExtent] = None,
                     cellSize: Option[CellSize] = None
                    ): Seq[SentinelXMLMetadataRasterSource] = {
     require(angleBandIndices.forall(index => index >= 0 && index <= 3))
@@ -50,14 +52,22 @@ object SentinelXMLMetadataRasterSource {
     val uly = (position \ "ULY").text.toDouble
     // TODO: Looking at the cloud locations in the accompanying cloud mask file
     val maxExtent = Extent(ulx, uly - (theResolution.width * 10980), ulx + (theResolution.height * 10980), uly)
-    val gridExtent = GridExtent[Long](maxExtent, theResolution)
+    val currentPe = ProjectedExtent(maxExtent, crs)
+    val projectedExtent = targetProjectedExtent match {
+      case None => currentPe
+      case Some(pe) =>
+        //val currentPeReproject = currentPe.reproject(pe.crs)
+        //assert(currentPeReproject.contains(pe.extent)) // This assert fails
+        pe
+    }
+    val gridExtent = GridExtent[Long](projectedExtent.extent, theResolution)
 
     val constantAngleBandValues = Seq(mSAA, mSZA, mVAA, mVZA)
 
     for {
       index <- angleBandIndices
       angleBandValue = constantAngleBandValues(index)
-    } yield new SentinelXMLMetadataRasterSource(angleBandValue, crs, gridExtent, OpenEoSourcePath(xlmPath))
+    } yield new SentinelXMLMetadataRasterSource(angleBandValue, projectedExtent.crs, gridExtent, OpenEoSourcePath(xlmPath))
   }
 }
 
