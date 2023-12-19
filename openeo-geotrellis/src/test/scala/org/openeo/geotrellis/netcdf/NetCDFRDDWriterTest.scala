@@ -134,8 +134,8 @@ class NetCDFRDDWriterTest extends RasterMatchers{
   @Test
   def testWriteSamplesWithGlobalBoundsBuffer(): Unit = {
     val utm30 = CRS.fromEpsgCode(32630)
-    val startDate = ZonedDateTime.of(LocalDate.of(2021, 12, 1), MIDNIGHT, UTC)
-    val endDate = ZonedDateTime.of(LocalDate.of(2021, 12, 31), MIDNIGHT, UTC)
+    val startDate = ZonedDateTime.of(LocalDate.of(2023, 7, 1), MIDNIGHT, UTC)
+    val endDate = ZonedDateTime.of(LocalDate.of(2023, 7, 15), MIDNIGHT, UTC)
 
     val polygon1 = new Extent(-0.6, 60.0, -0.597, 60.003).toPolygon()
     val polygon2 = new Extent(-0.6, 61.0, -0.597, 61.003).toPolygon()
@@ -179,9 +179,10 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     //assert(raster2.extent.width == 2560.0)
     //assert(raster2.extent.height == 2560.0)
     val bands = raster1.tile.bands.filter(!_.isNoDataTile)
-    assert(bands.size==3) //3 dates
+    val amountOfDates = 4
+    assert(bands.size == amountOfDates)
 
-    for(bandIndex:Int <- 0 until 3) {
+    for(bandIndex:Int <- 0 until amountOfDates) {
       // Ensure there is data within the polygon on this observation.
       assert(bands(bandIndex).mask(raster1.extent, polygon1_nativecrs).toArray().exists(p => p != -2147483648))
     }
