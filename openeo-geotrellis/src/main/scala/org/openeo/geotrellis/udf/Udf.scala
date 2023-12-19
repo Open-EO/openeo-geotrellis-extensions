@@ -44,6 +44,7 @@ object Udf {
       |import openeo.metadata
       |from openeo.udf import UdfData
       |from openeo.udf.xarraydatacube import XarrayDataCube
+      |from openeo_driver.errors import OpenEOApiException
       |""".stripMargin
 
   private var isInterpreterInitialized = false
