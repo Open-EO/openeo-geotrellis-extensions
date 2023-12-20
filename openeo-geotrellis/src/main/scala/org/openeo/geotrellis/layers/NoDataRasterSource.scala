@@ -56,7 +56,7 @@ class NoDataRasterSource(override val cellType: CellType, override val gridExten
   override def convert(targetCellType: TargetCellType): RasterSource =
     new NoDataRasterSource(targetCellType.cellType, gridExtent, crs)
 
-  override def name: SourceName = toString
+  override def name: SourceName = OpenEoSourcePath(toString)
 
   override def bandCount: Int = supportedBandIndices.size
 
