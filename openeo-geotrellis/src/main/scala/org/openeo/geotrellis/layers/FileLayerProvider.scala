@@ -11,7 +11,7 @@ import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CroppedTile, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CroppedTile, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, EmptyName, SourcePath, StringName, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.join.VectorJoin
 import geotrellis.spark.partition.SpacePartitioner
@@ -504,8 +504,8 @@ object FileLayerProvider {
       val allRegions = tuple._2.toSeq
 
       val tilesForRegion = allRegions
-        .flatMap { case (rasterRegion, sourcePath: SourcePath) =>
-          val result: Option[(MultibandTile, SourcePath)] = cloudFilterStrategy match {
+        .flatMap { case (rasterRegion, sourcePath: SourceName) =>
+          val result: Option[(MultibandTile, SourceName)] = cloudFilterStrategy match {
             case l1cFilterStrategy: L1CCloudFilterStrategy =>
               if (GDALCloudRasterSource.isRegionFullyClouded(rasterRegion, crs, layout, l1cFilterStrategy.bufferInMeters)) {
                 // Do not read the tile data at all.
@@ -588,7 +588,19 @@ object FileLayerProvider {
         .sortWith { case ((leftMultibandTile, leftSourcePath), (rightMultibandTile, rightSourcePath)) =>
           if (leftMultibandTile.band(0).isInstanceOf[PaddedTile] && !rightMultibandTile.band(0).isInstanceOf[PaddedTile]) true
           else if (!leftMultibandTile.band(0).isInstanceOf[PaddedTile] && rightMultibandTile.band(0).isInstanceOf[PaddedTile]) false
-          else leftSourcePath.value < rightSourcePath.value
+          else {
+            val leftValue = leftSourcePath match {
+              case s: SourcePath => s.value
+              case s: StringName => s.value
+              case s => s.toString // ex: EmptyName
+            }
+            val rightValue = rightSourcePath match {
+              case s: SourcePath => s.value
+              case s: StringName => s.value
+              case s => s.toString // ex: EmptyName
+            }
+            leftValue < rightValue
+          }
         }
         .map { case (multibandTile, _) => multibandTile }
         .reduceOption(_ merge _)
