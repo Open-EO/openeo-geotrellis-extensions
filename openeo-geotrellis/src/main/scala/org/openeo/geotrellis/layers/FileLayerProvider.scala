@@ -11,7 +11,7 @@ import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CroppedTile, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, EmptyName, SourcePath, StringName, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CroppedTile, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.join.VectorJoin
 import geotrellis.spark.partition.SpacePartitioner
@@ -22,10 +22,10 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
-import org.openeo.geotrellis.OpenEOProcessScriptBuilder
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
 import org.openeo.geotrellis.tile_grid.TileGrid
+import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, sortableSourceName}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, autoUtmEpsg, retryForever}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
@@ -504,7 +504,7 @@ object FileLayerProvider {
       val allRegions = tuple._2.toSeq
 
       val tilesForRegion = allRegions
-        .flatMap { case (rasterRegion, sourcePath: SourceName) =>
+        .flatMap { case (rasterRegion, sourceName: SourceName) =>
           val result: Option[(MultibandTile, SourceName)] = cloudFilterStrategy match {
             case l1cFilterStrategy: L1CCloudFilterStrategy =>
               if (GDALCloudRasterSource.isRegionFullyClouded(rasterRegion, crs, layout, l1cFilterStrategy.bufferInMeters)) {
@@ -532,7 +532,7 @@ object FileLayerProvider {
                       Some(maskedTile)
                     } else Option.empty
                   }
-                }).map((_, sourcePath))
+                }).map((_, sourceName))
               }
             case _ =>
               cloudFilterStrategy.loadMasked(new MaskTileLoader {
@@ -574,7 +574,7 @@ object FileLayerProvider {
                   }
 
                 }
-              }).map((_, sourcePath))
+              }).map((_, sourceName))
           }
           if (result.isDefined) {
             val mbTile = result.get._1
@@ -589,17 +589,7 @@ object FileLayerProvider {
           if (leftMultibandTile.band(0).isInstanceOf[PaddedTile] && !rightMultibandTile.band(0).isInstanceOf[PaddedTile]) true
           else if (!leftMultibandTile.band(0).isInstanceOf[PaddedTile] && rightMultibandTile.band(0).isInstanceOf[PaddedTile]) false
           else {
-            val leftValue = leftSourcePath match {
-              case s: SourcePath => s.value
-              case s: StringName => s.value
-              case s => s.toString // ex: EmptyName
-            }
-            val rightValue = rightSourcePath match {
-              case s: SourcePath => s.value
-              case s: StringName => s.value
-              case s => s.toString // ex: EmptyName
-            }
-            leftValue < rightValue
+            sortableSourceName(leftSourcePath) < sortableSourceName(rightSourcePath)
           }
         }
         .map { case (multibandTile, _) => multibandTile }
