@@ -26,7 +26,7 @@ import org.openeo.geotrellis.OpenEOProcessScriptBuilder
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
 import org.openeo.geotrellis.tile_grid.TileGrid
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, autoUtmEpsg, retryForever}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg, retryForever}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.LoggerFactory
@@ -369,25 +369,7 @@ object FileLayerProvider {
       tiledLayoutSource.source.extent.interiorIntersects(tiledLayoutSource.layout.extent)
     })
 
-    // The requested sources already contain the requested dates for every tile (if they exist).
-    // We can join these dates with the requested spatial keys.
-
-    val partitioner = useSparsePartitioner match {
-      case true => {
-        if(inputFeatures.isDefined) {
-          //using metadata inside features is a much faster way of determining Spacetime keys
-          val keysForfeatures: _root_.org.apache.spark.rdd.RDD[(_root_.geotrellis.layer.SpatialKey, _root_.geotrellis.vector.Feature[_root_.geotrellis.vector.Geometry, _root_.org.openeo.opensearch.OpenSearchResponses.Feature])] = productsToSpatialKeys(inputFeatures, metadata, sc)
-          val griddedFeatures = keysForfeatures.join(localSpatialKeys)
-
-          val requiredSpacetimeKeys: RDD[(SpaceTimeKey)] = griddedFeatures.map(t=>SpaceTimeKey(t._1,TemporalKey(t._2._1.data.nominalDate)))
-
-          DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys, metadata)
-        }else{
-          createPartitioner(datacubeParams, localSpatialKeys, filteredSources, metadata)
-        }
-      }
-      case false => Option.empty
-    }
+    val partitioner = createPartitioner(datacubeParams, localSpatialKeys, filteredSources, metadata)
 
     //use spatialkeycount as heuristic to choose code path
 
@@ -978,7 +960,24 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     requiredSpacetimeKeys.setName(s"FileLayerProvider_keys_${this.openSearchCollectionId}_${from.toString}_${to.toString}")
 
     try{
-      val partitioner = DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
+
+      val spatialBounds = metadata.bounds.get.toSpatial
+      val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
+
+      val partitioner = {
+        if(maxKeys>4) {
+          DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
+        }else{
+          //for low number of spatial keys, we can construct sparse partitioner in a cheaper way
+          val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
+          val keys = metadata.keysForGeometry(toPolygon(metadata.extent))
+          val dates = readKeysToRasterSourcesResult._4.map(_._2.nominalDate.toEpochSecond).distinct
+          val allKeys: Set[SpaceTimeKey] = for {x <- keys; y <- dates} yield SpaceTimeKey(x, TemporalKey(y))
+          val indices = allKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).toArray.sorted
+          new SparseSpaceTimePartitioner(indices, reduction)
+        }
+
+      }
 
       val layoutDefinition = metadata.layout
       val noResampling = math.abs(layoutDefinition.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * layoutDefinition.cellSize.resolution
