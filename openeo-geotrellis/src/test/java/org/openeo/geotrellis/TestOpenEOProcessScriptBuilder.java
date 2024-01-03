@@ -1120,19 +1120,21 @@ public class TestOpenEOProcessScriptBuilder {
     @Test
     public void testArrayFind() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultInputDataType_$eq(ByteConstantNoDataCellType$.MODULE$.toString());
         Map<String, Object> arguments = Collections.emptyMap();
         builder.expressionStart("array_find", arguments);
 
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
         builder.argumentStart("value");
         Map<String, Object> valueArgs = Collections.singletonMap("index",1);
         builder.expressionStart("array_element", valueArgs);
 
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
-        builder.argumentStart("index");
-        builder.argumentEnd();
+        builder.constantArgument("index",1);
 
         builder.expressionEnd("array_element",valueArgs);
         builder.argumentEnd();
