@@ -269,6 +269,9 @@
                         <LD_LIBRARY_PATH>/tmp_epod/gdal:../venv/lib/python3.8/site-packages/jep</LD_LIBRARY_PATH>
                         <PROJ_LIB>/tmp_epod/gdal/data</PROJ_LIB>
                     </environmentVariables>
+                    <systemPropertyVariables>
+                        <software.amazon.awssdk.http.service.impl>software.amazon.awssdk.http.apache.ApacheSdkHttpService</software.amazon.awssdk.http.service.impl>
+                    </systemPropertyVariables>
                     <reuseForks>false</reuseForks>
                     <includes>
                         <include>**/Test*.*</include>
