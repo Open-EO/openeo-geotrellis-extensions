@@ -142,4 +142,10 @@ package object geotrellis {
 
     generatePath(prefixNonNull, suffixNonNull, tmpdir)
   }
+
+  def sortableSourceName(sourceName: SourceName): String = sourceName match {
+    case s: SourcePath => s.value
+    case s: StringName => s.value
+    case s => s.toString // ex: EmptyName
+  }
 }
