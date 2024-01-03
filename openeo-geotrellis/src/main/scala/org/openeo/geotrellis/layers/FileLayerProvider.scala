@@ -966,7 +966,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       val spatialBounds = metadata.bounds.get.toSpatial
       val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
 
-      val partitioner = {
+      val partitioner: Option[SpacePartitioner[SpaceTimeKey]] = {
         if(maxKeys>4) {
           DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
         }else{
@@ -976,7 +976,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           val dates = readKeysToRasterSourcesResult._4.map(_._2.nominalDate.toEpochSecond).distinct
           val allKeys: Set[SpaceTimeKey] = for {x <- keys; y <- dates} yield SpaceTimeKey(x, TemporalKey(y))
           val indices = allKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).toArray.sorted
-          new SparseSpaceTimePartitioner(indices, reduction)
+          Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), new SparseSpaceTimePartitioner(indices, reduction)))
         }
 
       }
