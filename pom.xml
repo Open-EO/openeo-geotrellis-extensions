@@ -28,12 +28,6 @@
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>s3</artifactId>
                 <version>${awssdk.version}</version>
-                <exclusions>
-                    <exclusion>
-                        <groupId>software.amazon.awssdk</groupId>
-                        <artifactId>apache-client</artifactId>
-                    </exclusion>
-                </exclusions>
             </dependency>
             <dependency>
                 <groupId>org.scalactic</groupId>
