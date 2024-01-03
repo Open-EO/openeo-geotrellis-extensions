@@ -90,7 +90,7 @@ public class TestOpenEOProcesses {
         ByteArrayTile band2 = ByteArrayTile.fill((byte) 4, 256, 256);
         ByteArrayTile band3 = ByteArrayTile.fill((byte) 5, 256, 256);
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 =LayerFixtures.buildSingleBandSpatioTemporalDataCube(Arrays.asList(band1,ByteArrayTile.empty(256,256), band2,band3), JavaConversions.asScalaBuffer(Arrays.asList("2017-01-03T00:00:00Z", "2017-01-30T00:00:00Z","2017-01-30T00:00:00Z", "2017-03-30T00:00:00Z")));
-        OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createMedian(true);
+        OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createMedian(true,datacube1.metadata().cellType());
 
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> mappedRDD = (ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>>) new OpenEOProcesses().aggregateTemporal(datacube1, Arrays.asList("2017-01-01T00:00:00Z", "2017-01-30T00:00:00Z","2017-01-30T00:00:00Z", "2017-03-30T00:00:00Z"), Arrays.asList("2017-01-01T00:00:00Z","2017-01-15T00:00:00Z"),processBuilder, Collections.EMPTY_MAP);
 
@@ -296,6 +296,7 @@ public class TestOpenEOProcesses {
         List<Tuple2<String,MultibandTile>> results = JavaPairRDD.fromJavaRDD(result.toJavaRDD()).map(spaceTimeKeyMultibandTileTuple2 -> new Tuple2<String,MultibandTile>(spaceTimeKeyMultibandTileTuple2._1.toString(),spaceTimeKeyMultibandTileTuple2._2)).collect();
         MultibandTile interpolatedTile = results.stream().collect(Collectors.toList()).get(0)._2;
         assertEquals(2,interpolatedTile.bandCount());
+        assertEquals(datacube1.metadata().cellType(),interpolatedTile.cellType());
         List<Integer> bandValues = getPixel(interpolatedTile);
         System.out.println("bandValues = " + bandValues);
 
@@ -348,7 +349,7 @@ public class TestOpenEOProcesses {
     }
 
     private RDD<Tuple2<SpaceTimeKey, MultibandTile>> composite(ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1) {
-        OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createMedian(true);
+        OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createMedian(true,datacube1.metadata().cellType());
         return (RDD<Tuple2<SpaceTimeKey, MultibandTile>>) new OpenEOProcesses().aggregateTemporal(datacube1,
                 Arrays.asList("2019-01-01T00:00:00Z", "2019-01-11T00:00:00Z",
                         "2019-01-11T00:00:00Z", "2019-01-21T00:00:00Z",
@@ -363,7 +364,7 @@ public class TestOpenEOProcesses {
     }
 
     private RDD<Tuple2<SpaceTimeKey, MultibandTile>> compositeByMonth(ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1) {
-        OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createMedian(true);
+        OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createMedian(true,datacube1.metadata().cellType());
         return (RDD<Tuple2<SpaceTimeKey, MultibandTile>>) new OpenEOProcesses().aggregateTemporal(datacube1,
                 Arrays.asList("2019-01-01T00:00:00Z", "2019-02-01T00:00:00Z",
                         "2019-02-01T00:00:00Z", "2019-03-01T00:00:00Z",

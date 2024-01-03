@@ -475,7 +475,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val labels = Range(0,20).map{r => DateTimeFormatter.ISO_INSTANT.format(startDate.plusDays(10L*r))}
 
     val listener = new GetInfoSparkListener()
-    val rdd = new OpenEOProcesses().aggregateTemporal(layer,intervals.asJava,labels.asJava,TestOpenEOProcessScriptBuilder.createMedian(true), java.util.Collections.emptyMap())
+    val rdd = new OpenEOProcesses().aggregateTemporal(layer,intervals.asJava,labels.asJava,TestOpenEOProcessScriptBuilder.createMedian(true,layer.metadata.cellType), java.util.Collections.emptyMap())
 
     SparkContext.getOrCreate().addSparkListener(listener)
     val resultTiles: Array[MultibandTile] = rdd.values.collect()
@@ -506,7 +506,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val resultTiles: Array[MultibandTile] = new OpenEOProcesses().aggregateTemporal(layer,
       intervals.asJava,
       labels.asJava,
-      TestOpenEOProcessScriptBuilder.createMedian(true),
+      TestOpenEOProcessScriptBuilder.createMedian(true,layer.metadata.cellType),
       java.util.Collections.emptyMap()
     ).values.collect()
 

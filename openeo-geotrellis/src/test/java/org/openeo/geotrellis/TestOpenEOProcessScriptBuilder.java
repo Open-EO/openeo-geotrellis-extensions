@@ -1458,18 +1458,18 @@ public class TestOpenEOProcessScriptBuilder {
         Tile tile3 = ByteConstantNoDataArrayTile.fill((byte)19, 4, 4);
         Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
 
-        Seq<Tile> result = createMedian(null).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
+        Seq<Tile> result = createMedian(null,tile0.cellType()).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
         assertEquals(ByteConstantNoDataCellType.withDefaultNoData(),result.apply(0).cellType());
 
         assertEquals(3,result.apply(0).get(0,0));
 
-        Seq<Tile> result_nodata = createMedian(false).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)));
+        Seq<Tile> result_nodata = createMedian(false,tile0.cellType()).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)));
         assertTrue(result_nodata.apply(0).isNoDataTile());
 
-        Seq<Tile> single_input = createMedian(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy())));
+        Seq<Tile> single_input = createMedian(true,tile0.cellType()).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy())));
         assertEquals(-10,single_input.apply(0).get(0,0));
 
-        Seq<Tile> even_input = createMedian(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(),tile1)));
+        Seq<Tile> even_input = createMedian(true,tile0.cellType()).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(),tile1)));
         assertEquals(-3.0,even_input.apply(0).get(0,0));
     }
 
@@ -2132,9 +2132,10 @@ public class TestOpenEOProcessScriptBuilder {
 
     }
 
-    static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
+    static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData,DataType inputType) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         builder.defaultDataParameterName_$eq("data");
+        builder.defaultInputDataType_$eq(inputType.name());
         Map<String, Object> arguments = ignoreNoData!=null? Collections.singletonMap("ignore_nodata",ignoreNoData.booleanValue()) : Collections.emptyMap();
         builder.expressionStart("median", arguments);
 

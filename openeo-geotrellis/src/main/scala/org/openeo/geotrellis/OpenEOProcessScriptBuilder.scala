@@ -98,8 +98,6 @@ object OpenEOProcessScriptBuilder{
     a match{
       case x:UByteCells => true
       case x:UShortCells => true
-      case x:UShortCells => true
-
       case _ => false
     }
   }
