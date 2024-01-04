@@ -1169,7 +1169,7 @@ class OpenEOProcessScriptBuilder {
           case "is_nan" if hasX => mapFunction("x", Undefined.apply)
           case "array_element" => arrayElementFunction(arguments)
           case "array_modify" => arrayModifyFunction(arguments)
-          case "array_interpolate_linear" => applyListFunction("data", linearInterpolation)
+          case "array_interpolate_linear" => applyListFunction("data", linearInterpolation, dataTypeMode = PRESERVE_DATATYPE_MODE)
           case "array_find" => arrayFind(arguments)
           case "linear_scale_range" => linearScaleRangeFunction(arguments)
           case "quantiles" => quantilesFunction(arguments, ignoreNoData)

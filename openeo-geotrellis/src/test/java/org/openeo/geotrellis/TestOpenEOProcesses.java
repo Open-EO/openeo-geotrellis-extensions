@@ -63,7 +63,8 @@ public class TestOpenEOProcesses {
         Tile tile1 = new UByteConstantTile((byte)1,256,256, (UByteCells) CellType$.MODULE$.fromName("uint8"));
         RDD<Tuple2<SpatialKey, MultibandTile>> datacube = TileLayerRDDBuilders$.MODULE$.createMultibandTileLayerRDD(SparkContext.getOrCreate(), new ArrayMultibandTile(new Tile[]{tile0,tile1}), new TileLayout(1, 1, 256, 256));
         ClassTag<SpatialKey> tag = scala.reflect.ClassTag$.MODULE$.apply(SpatialKey.class);
-        RDD<Tuple2<SpatialKey, MultibandTile>> ndviDatacube = new OpenEOProcesses().<SpatialKey>mapBandsGeneric(datacube, processBuilder, new HashMap<>(), tag);
+        ContextRDD<SpatialKey, MultibandTile, TileLayerMetadata<SpatialKey>> ndviDatacube = (ContextRDD<SpatialKey, MultibandTile, TileLayerMetadata<SpatialKey>>) new OpenEOProcesses().<SpatialKey>mapBandsGeneric(datacube, processBuilder, new HashMap<>(), tag);
+        assertEquals(FloatConstantNoDataCellType$.MODULE$,ndviDatacube.metadata().cellType());
         List<Tuple2<SpatialKey, MultibandTile>> result = ndviDatacube.toJavaRDD().collect();
         assertEquals(FloatConstantNoDataCellType$.MODULE$,result.get(0)._2.cellType());
         System.out.println("result = " + result);
@@ -199,10 +200,12 @@ public class TestOpenEOProcesses {
         ByteArrayTile band1 = ByteArrayTile.fill((byte) -10, 256, 256);
         ByteArrayTile band2 = ByteArrayTile.fill((byte) 4, 256, 256);
         ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1 =LayerFixtures.buildSingleBandSpatioTemporalDataCube(Arrays.asList(band1,ByteArrayTile.empty(256,256), band2), JavaConversions.asScalaBuffer(Arrays.asList("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z","2020-02-03T00:00:00Z")));
-        OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createArrayInterpolateLinear();
-        RDD<Tuple2<SpaceTimeKey, MultibandTile>> result = new OpenEOProcesses().applyTimeDimension(datacube1, processBuilder, new HashMap<>());
+        OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createArrayInterpolateLinear(datacube1.metadata().cellType());
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> result = ((ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>>)new OpenEOProcesses().applyTimeDimension(datacube1, processBuilder, new HashMap<>()));
         List<Tuple2<String,MultibandTile>> results = JavaPairRDD.fromJavaRDD(result.toJavaRDD()).map(spaceTimeKeyMultibandTileTuple2 -> new Tuple2<String,MultibandTile>(spaceTimeKeyMultibandTileTuple2._1.time().toString(),spaceTimeKeyMultibandTileTuple2._2)).collect();
         MultibandTile interpolatedTile = results.stream().filter(tuple2 -> tuple2._1.equals("2020-02-02T00:00Z")).collect(Collectors.toList()).get(0)._2;
+        assertEquals(IntConstantNoDataCellType$.MODULE$,result.metadata().cellType());
+        assertEquals(IntConstantNoDataCellType$.MODULE$,interpolatedTile.cellType());
         assertEquals(-3, interpolatedTile.band(0).get(0,0));
 
     }
@@ -221,7 +224,7 @@ public class TestOpenEOProcesses {
     }
 
     private void compositeAndInterpolate(ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1) {
-        RDD<Tuple2<SpaceTimeKey, MultibandTile>> compositedCube = composite(datacube1);
+        ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> compositedCube = composite(datacube1);
 
         List<SpaceTimeKey> keys = compositedCube.toJavaRDD().map(v1 -> v1._1).collect();
         Option<SpaceTimeKey[]> partitionerKeys = new OpenEOProcesses().findPartitionerKeys(compositedCube);
@@ -232,7 +235,7 @@ public class TestOpenEOProcesses {
         //Partitioner p = compositedCube.partitioner().get();
         //keys.forEach(spaceTimeKey -> System.out.println("p.getPartition(spaceTimeKey) = " + p.getPartition(spaceTimeKey)) );
 
-        OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createArrayInterpolateLinear();
+        OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createArrayInterpolateLinear(compositedCube.metadata().cellType());
         RDD<Tuple2<SpaceTimeKey, MultibandTile>> result = new OpenEOProcesses().applyTimeDimension(compositedCube, processBuilder, new HashMap<>());
 
         //int[] compositedPixel = OpenEOProcessesSpec.getPixel(compositedCube);
@@ -348,9 +351,9 @@ public class TestOpenEOProcesses {
         assertEquals(FloatConstantNoDataCellType$.MODULE$,maxTile.cellType());
     }
 
-    private RDD<Tuple2<SpaceTimeKey, MultibandTile>> composite(ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1) {
+    private ContextRDD<SpaceTimeKey, MultibandTile,TileLayerMetadata<SpaceTimeKey>> composite(ContextRDD<SpaceTimeKey, MultibandTile, TileLayerMetadata<SpaceTimeKey>> datacube1) {
         OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createMedian(true,datacube1.metadata().cellType());
-        return (RDD<Tuple2<SpaceTimeKey, MultibandTile>>) new OpenEOProcesses().aggregateTemporal(datacube1,
+        return (ContextRDD<SpaceTimeKey, MultibandTile,TileLayerMetadata<SpaceTimeKey>>) new OpenEOProcesses().aggregateTemporal(datacube1,
                 Arrays.asList("2019-01-01T00:00:00Z", "2019-01-11T00:00:00Z",
                         "2019-01-11T00:00:00Z", "2019-01-21T00:00:00Z",
                         "2019-01-21T00:00:00Z", "2019-02-01T00:00:00Z",//0-10 -> 0

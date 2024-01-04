@@ -2259,13 +2259,18 @@ public class TestOpenEOProcessScriptBuilder {
 
     }
 
-
     static OpenEOProcessScriptBuilder createArrayInterpolateLinear() {
+        return createArrayInterpolateLinear(ByteConstantNoDataCellType$.MODULE$);
+    }
+
+    static OpenEOProcessScriptBuilder createArrayInterpolateLinear(DataType type) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultInputDataType_$eq(type.toString());
         Map<String, Object> arguments = Collections.emptyMap();
         builder.expressionStart("array_interpolate_linear", arguments);
 
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
 
         builder.expressionEnd("array_interpolate_linear",arguments);
