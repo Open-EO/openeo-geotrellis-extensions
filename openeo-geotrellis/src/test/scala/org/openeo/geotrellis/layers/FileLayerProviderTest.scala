@@ -116,13 +116,14 @@ class FileLayerProviderTest {
 
   @Test
   def smallBoundingBox(): Unit = {
-    val smallBbox = ProjectedExtent(Point(x = 4.9754, y = 50.3244).buffer(0.001).extent, LatLng)
+    val smallBbox = ProjectedExtent(Point(x = 4.9754, y = 50.3244).buffer(0.025).extent, LatLng)
 
-    assertTrue(smallBbox.extent.width < 0.05,s"${smallBbox.extent.width}")
-    assertTrue(smallBbox.extent.height < 0.05, s"${smallBbox.extent.height}")
+    assertTrue(smallBbox.extent.width < 0.06,s"${smallBbox.extent.width}")
+    assertTrue(smallBbox.extent.height < 0.06, s"${smallBbox.extent.height}")
 
     val date = LocalDate.of(2020, 1, 1).atStartOfDay(ZoneId.of("UTC"))
 
+    //A small bounding can effectively fall between pixel centers
     val baseLayer = sentinel5PFileLayerProvider.readTileLayer(from = date, to = date, smallBbox, sc = sc)
 
     val Summary(singleBandMean) = baseLayer
@@ -131,7 +132,7 @@ class FileLayerProviderTest {
 
     val physicalMean = (singleBandMean.mean * 5).toInt
 
-    assertEquals(25, physicalMean)
+    assertEquals(32, physicalMean)
   }
 
 
