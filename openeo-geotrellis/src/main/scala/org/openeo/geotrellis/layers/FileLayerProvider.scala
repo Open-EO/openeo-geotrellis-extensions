@@ -973,10 +973,10 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           //for low number of spatial keys, we can construct sparse partitioner in a cheaper way
           val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
           val keys = metadata.keysForGeometry(toPolygon(metadata.extent))
-          val dates = readKeysToRasterSourcesResult._4.map(_._2.nominalDate.toEpochSecond).distinct
+          val dates = readKeysToRasterSourcesResult._4.map(_._2.nominalDate).distinct
           val allKeys: Set[SpaceTimeKey] = for {x <- keys; y <- dates} yield SpaceTimeKey(x, TemporalKey(y))
           val indices = allKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).toArray.sorted
-          Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), new SparseSpaceTimePartitioner(indices, reduction)))
+          Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), new SparseSpaceTimePartitioner(indices, reduction,theKeys = Some(allKeys.toArray))))
         }
 
       }
