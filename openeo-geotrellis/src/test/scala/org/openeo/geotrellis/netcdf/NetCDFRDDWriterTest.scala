@@ -17,7 +17,7 @@ import org.junit.Assert.{assertFalse, assertTrue}
 import org.junit._
 import org.junit.rules.TemporaryFolder
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
-import org.openeo.geotrelliscommon.{ByKeyPartitioner, ConfigurableSpaceTimePartitioner, DataCubeParameters}
+import org.openeo.geotrelliscommon.{ByKeyPartitioner, DataCubeParameters, SparseSpaceTimePartitioner}
 import ucar.nc2.dataset.NetcdfDataset
 
 import java.time.LocalTime.MIDNIGHT
@@ -73,13 +73,14 @@ class NetCDFRDDWriterTest extends RasterMatchers{
 
     val dcParams = new DataCubeParameters()
     dcParams.layoutScheme = "FloatingLayoutScheme"
+    dcParams.tileSize = 64
 
     val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date.plusDays(20), bbox,polygonsUTM31.polygons,utm31,14, sc = sc,Some(dcParams))
     val partitioner = layer.partitioner.get
     assert(partitioner.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
     val index: PartitionerIndex[SpaceTimeKey] = partitioner.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
-    assert(index.isInstanceOf[ConfigurableSpaceTimePartitioner])
-    assert(layer.metadata.tileCols == 128)
+    assert(index.isInstanceOf[SparseSpaceTimePartitioner])
+    assert(layer.metadata.tileCols == 64)
 
     val sampleNames = polygons.polygons.indices.map(_.toString)
     val sampleNameList = new util.ArrayList[String]()
