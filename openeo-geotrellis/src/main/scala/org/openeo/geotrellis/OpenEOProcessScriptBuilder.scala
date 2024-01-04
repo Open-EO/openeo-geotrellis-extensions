@@ -452,7 +452,7 @@ object OpenEOProcessScriptBuilder{
 
   private def unifyCellType(combined: Seq[Tile]) = {
     if (combined.nonEmpty) {
-      val unionCelltype = combined.map(_.cellType).reduce(_.union(_))
+      val unionCelltype = combined.map(_.cellType).reduce(cellTypeUnion)
       combined.map(_.convert(unionCelltype))
     } else {
       combined
@@ -700,6 +700,16 @@ class OpenEOProcessScriptBuilder {
     val value = getProcessArg("value")
     val accept = getProcessArg("accept")
     val reject: OpenEOProcess = optionalArg("reject")
+    val types = typeStack.head
+    resultingDataType = typeOrElse("accept",FloatConstantNoDataCellType)
+    if(types.contains("reject")) {
+      resultingDataType = try {
+        cellTypeUnion(resultingDataType, CellType.fromName(types("reject")))
+      } catch {
+        case e: IllegalArgumentException => FloatConstantNoDataCellType
+      }
+    }
+
     ifElseProcess(value, accept, reject)
   }
 
@@ -1188,7 +1198,7 @@ class OpenEOProcessScriptBuilder {
 
     if(operator != "linear_scale_range") {
       //TODO: generalize to other operations that result in a specific datatype?
-      if(Array("gt","lt","lte","gte","eq","neq","between","any","and","all","or").contains(operator)) {
+      if(Array("gt","lt","lte","gte","eq","neq","between","any","and","all","or", "is_nodata", "is_nan").contains(operator)) {
         resultingDataType = BitCellType
       }
     }
@@ -1672,13 +1682,34 @@ class OpenEOProcessScriptBuilder {
     clipFunction
   }
 
+  private def typeOrElse(argName:String,orElse:CellType):CellType = {
+    if (typeStack.head.contains(argName)) {
+      try {
+        CellType.fromName(typeStack.head(argName))
+      } catch {
+        case e: IllegalArgumentException => orElse
+      }
+    } else {
+      orElse
+    }
+  }
+
   private def intFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
 
     val inputFunction = getProcessArg("x")
+    resultingDataType = typeOrElse("x", IntConstantNoDataCellType)
+    if(resultingDataType.isFloatingPoint) {
+      resultingDataType = IntConstantNoDataCellType
+    }
 
     val clipFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
-      val input = evaluateToTiles(inputFunction, context, tiles).map(_.convert(FloatConstantNoDataCellType))
-      input.map(_.mapIfSetDouble(_.toInt))
+      val inputTiles = evaluateToTiles(inputFunction, context, tiles)
+      if(inputTiles.head.cellType.isFloatingPoint) {
+        val input = inputTiles.map(_.convert(FloatConstantNoDataCellType))
+        input.map(_.mapIfSetDouble(_.toInt).convert(IntConstantNoDataCellType))
+      }else{
+        inputTiles
+      }
     }
     clipFunction
   }

@@ -755,6 +755,7 @@ public class TestOpenEOProcessScriptBuilder {
     @Test
     public void testIf() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultInputDataType_$eq(ByteConstantNoDataCellType$.MODULE$.toString());
         Map<String, Object> arguments = dummyMap("accept","reject");
         builder.expressionStart("if", arguments);
 
@@ -762,9 +763,12 @@ public class TestOpenEOProcessScriptBuilder {
         buildArrayElementProcess(builder, 1);
         builder.argumentEnd();
         builder.argumentStart("accept");
+        builder.fromParameter("data");
         builder.argumentEnd();
 
         builder.expressionEnd("if",arguments);
+
+        assertEquals(ByteConstantNoDataCellType$.MODULE$,builder.getOutputCellType());
 
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
         ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
@@ -1017,21 +1021,36 @@ public class TestOpenEOProcessScriptBuilder {
     @DisplayName("Test int process")
     @Test
     public void testInt() {
-        testUnary( "int", "x",0.0, 3.0, 0.0, -3.0,Double.NaN,0.0,0.0,0.0,0.0);
+        testUnary( "int", "x",0, 3, 0, -3,IntConstantNoDataCellType.noDataValue(),0,0,0,0);
     }
 
     private void testUnary( String processName, String argName, double... expectedValues) {
+        OpenEOProcessScriptBuilder builder = buildUnaryProcess(processName, argName);
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        Seq<Tile> result1 = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(fillFloatArrayTile(3, 3, 0, 3.5, -0.4, -3.5, Double.NaN))));
+        assertTileEquals(fillFloatArrayTile(3, 3, expectedValues), result1.head());
+
+    }
+
+    @NotNull
+    private static OpenEOProcessScriptBuilder buildUnaryProcess(String processName, String argName) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultInputDataType_$eq(FloatConstantNoDataCellType$.MODULE$.toString());
         Map<String, Object> arguments = Collections.emptyMap();
         builder.expressionStart(processName, arguments);
         builder.argumentStart(argName);
         builder.argumentEnd();
         builder.expressionEnd(processName,arguments);
+        return builder;
+    }
+
+    private void testUnary( String processName, String argName, int... expectedValues) {
+        OpenEOProcessScriptBuilder builder = buildUnaryProcess(processName, argName);
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
 
         Seq<Tile> result1 = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(fillFloatArrayTile(3, 3, 0, 3.5, -0.4, -3.5, Double.NaN))));
 
-        assertTileEquals(fillFloatArrayTile(3, 3, expectedValues), result1.head());
+        assertTileEquals(fillShortArrayTile(3, 3, expectedValues).convert(IntConstantNoDataCellType$.MODULE$), result1.head());
 
     }
 
