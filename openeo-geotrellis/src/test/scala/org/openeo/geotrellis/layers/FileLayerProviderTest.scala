@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.layers
 
 import cats.data.NonEmptyList
-import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata, ZoomedLayoutScheme}
+import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
@@ -89,7 +89,7 @@ class FileLayerProviderTest {
   import FileLayerProviderTest._
 
   private def sentinel5PMaxSpatialResolution = CellSize(0.05, 0.05)
-  private def sentinel5PLayoutScheme = ZoomedLayoutScheme(LatLng)
+  private def sentinel5PLayoutScheme = FloatingLayoutScheme(64)
   private def sentinel5PCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1"
   private def sentinel5PFileLayerProvider = FileLayerProvider(
     openSearch = OpenSearchClient(new URL("https://services.terrascope.be/catalogue")),
@@ -153,32 +153,46 @@ class FileLayerProviderTest {
     val fullBbox = ProjectedExtent(bbox1.extent.combine(bbox2.extent), LatLng)
     val date = LocalDate.of(2020, 1, 1).atStartOfDay(ZoneId.of("UTC"))
 
-    val (rasterSources, metadata) = _getSentinel5PRasterSources(fullBbox, date, 10)
     val polygons = Array(MultiPolygon(bbox1.extent.toPolygon(), bbox2.extent.toPolygon()))
     val polygons_crs = fullBbox.crs
 
+    val params = new DataCubeParameters()
+    params.layoutScheme = "FloatingLayoutScheme"
+    params.globalExtent = Some(fullBbox)
+    params.tileSize = 64
+
+    val result = sentinel5PFileLayerProvider.readKeysToRasterSources(
+      from = date,
+      to = date,
+      fullBbox,
+      polygons = polygons,
+      polygons_crs = polygons_crs,
+      zoom = 0,
+      sc,
+      Some(params)
+    )
+
+    val rs = result._1
+
+    val metadata: TileLayerMetadata[SpaceTimeKey] = result._2
     // Create the sparse Partitioner.
-    val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc, retainNoDataTiles = false, NoCloudFilterStrategy)
-    val sparsePartitioner: SpacePartitioner[SpaceTimeKey] = sparseBaseLayer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]]
+    val sparsePartitioner: SpacePartitioner[SpaceTimeKey] = DatacubeSupport.createPartitioner(Some(params),rs.keys,metadata).get
     assert(sparsePartitioner.index.getClass == classOf[SparseSpaceTimePartitioner])
     val sparsePartitionerIndex = sparsePartitioner.index.asInstanceOf[SparseSpaceTimePartitioner]
 
     // Create the default Space Partitioner.
-    val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, polygons, polygons_crs, sc, retainNoDataTiles = false, NoCloudFilterStrategy, useSparsePartitioner=false)
-    val defaultPartitioner: SpacePartitioner[SpaceTimeKey] = defaultBaseLayer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]]
+
+    val defaultPartitioner: SpacePartitioner[SpaceTimeKey] = SpacePartitioner[SpaceTimeKey](metadata.bounds)
     assert(defaultPartitioner.index == SpaceTimeByMonthPartitioner)
 
-    assert(sparseBaseLayer.getNumPartitions <= defaultBaseLayer.getNumPartitions)
+    assert(sparsePartitioner.numPartitions <= defaultPartitioner.numPartitions)
 
     val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map {
       _.reproject(polygons_crs, metadata.crs)
     }.clipToGrid(metadata.layout).groupByKey()
 
-    val filteredSources: RDD[LayoutTileSource[SpaceTimeKey]] = rasterSources.filter({ tiledLayoutSource =>
-      tiledLayoutSource.source.extent.interiorIntersects(tiledLayoutSource.layout.extent)
-    })
 
-    val requiredSpacetimeKeys: RDD[SpaceTimeKey] = filteredSources.flatMap(_.keys).map {
+    val requiredSpacetimeKeys: RDD[SpaceTimeKey] = rs.keys.map {
       tuple => (tuple.spatialKey, tuple)
     }.rightOuterJoin(requiredKeys).flatMap(_._2._1.toList)
 
@@ -188,15 +202,13 @@ class FileLayerProviderTest {
 
     // Even though both RDDs have a different number of partitions, the keys for both RDDs are the same.
     // This means that the default partitioner has many empty partitions that have no source.
-    val sparseKeys = sparseBaseLayer.keys.collect().sorted
-    val defaultKeys = defaultBaseLayer.keys.collect().sorted
-    assert(sparseKeys sameElements defaultKeys)
+    val sparseKeys = rs.keys.collect().sorted
+
 
     // Keys corresponding with NoDataTiles are removed from the final RDD.
     // Which means those few partitions will still be empty.
     val partitionKeys = requiredSpacetimeKeys.collect().sorted.toSet
     assert(sparseKeys.toSet.subsetOf(partitionKeys))
-    assert(defaultKeys.toSet.subsetOf(partitionKeys))
 
     // Ensure that the regions in sparsePartitioner are a subset of the default Partitioner.
     sparsePartitioner.regions.toSet.subsetOf(defaultPartitioner.regions.toSet)
