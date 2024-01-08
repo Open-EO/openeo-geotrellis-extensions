@@ -485,7 +485,10 @@ class OpenEOProcessScriptBuilder {
   var inputFunction:  Object = null
 
   var resultingDataType: CellType = FloatConstantNoDataCellType
-  val defaultDataParameterName:String = "data"
+  var defaultDataParameterName:String = "data"
+  var defaultInputDataType = FloatConstantNoDataCellType.toString()
+
+  def setInputDataType(dataType:String): Unit = { defaultInputDataType = dataType }
 
   def generateFunction(context: Map[String,Any] = Map.empty): Seq[Tile] => Seq[Tile] = {
     if(inputFunction.isInstanceOf[OpenEOProcess]) {
