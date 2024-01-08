@@ -621,6 +621,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
 
   @Test
+  @Disabled("Covered by faster integration test now: https://git.vito.be/projects/TPT/repos/os_creodias_openeo_k8s/commits/538ebf0a7995d582a5429a11237b951d8838d36f")
   def testL1CResolutionResample(): Unit = {
     val creoL1CLayerProvider = FileLayerProvider(
       MockOpenSearch,

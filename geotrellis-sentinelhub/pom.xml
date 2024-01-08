@@ -182,6 +182,9 @@
                 <version>2.22.2</version>
                 <configuration>
                     <trimStackTrace>false</trimStackTrace>
+                    <systemPropertyVariables>
+                        <software.amazon.awssdk.http.service.impl>software.amazon.awssdk.http.apache.ApacheSdkHttpService</software.amazon.awssdk.http.service.impl>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
         </plugins>

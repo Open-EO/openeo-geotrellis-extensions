@@ -11,7 +11,7 @@ import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CroppedTile, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CroppedTile, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.join.VectorJoin
 import geotrellis.spark.partition.SpacePartitioner
@@ -22,11 +22,11 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
-import org.openeo.geotrellis.OpenEOProcessScriptBuilder
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
 import org.openeo.geotrellis.tile_grid.TileGrid
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, autoUtmEpsg, retryForever}
+import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, sortableSourceName}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg, retryForever}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.LoggerFactory
@@ -369,25 +369,7 @@ object FileLayerProvider {
       tiledLayoutSource.source.extent.interiorIntersects(tiledLayoutSource.layout.extent)
     })
 
-    // The requested sources already contain the requested dates for every tile (if they exist).
-    // We can join these dates with the requested spatial keys.
-
-    val partitioner = useSparsePartitioner match {
-      case true => {
-        if(inputFeatures.isDefined) {
-          //using metadata inside features is a much faster way of determining Spacetime keys
-          val keysForfeatures: _root_.org.apache.spark.rdd.RDD[(_root_.geotrellis.layer.SpatialKey, _root_.geotrellis.vector.Feature[_root_.geotrellis.vector.Geometry, _root_.org.openeo.opensearch.OpenSearchResponses.Feature])] = productsToSpatialKeys(inputFeatures, metadata, sc)
-          val griddedFeatures = keysForfeatures.join(localSpatialKeys)
-
-          val requiredSpacetimeKeys: RDD[(SpaceTimeKey)] = griddedFeatures.map(t=>SpaceTimeKey(t._1,TemporalKey(t._2._1.data.nominalDate)))
-
-          DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys, metadata)
-        }else{
-          createPartitioner(datacubeParams, localSpatialKeys, filteredSources, metadata)
-        }
-      }
-      case false => Option.empty
-    }
+    val partitioner = createPartitioner(datacubeParams, localSpatialKeys, filteredSources, metadata)
 
     //use spatialkeycount as heuristic to choose code path
 
@@ -504,8 +486,8 @@ object FileLayerProvider {
       val allRegions = tuple._2.toSeq
 
       val tilesForRegion = allRegions
-        .flatMap { case (rasterRegion, sourcePath: SourcePath) =>
-          val result: Option[(MultibandTile, SourcePath)] = cloudFilterStrategy match {
+        .flatMap { case (rasterRegion, sourceName: SourceName) =>
+          val result: Option[(MultibandTile, SourceName)] = cloudFilterStrategy match {
             case l1cFilterStrategy: L1CCloudFilterStrategy =>
               if (GDALCloudRasterSource.isRegionFullyClouded(rasterRegion, crs, layout, l1cFilterStrategy.bufferInMeters)) {
                 // Do not read the tile data at all.
@@ -532,7 +514,7 @@ object FileLayerProvider {
                       Some(maskedTile)
                     } else Option.empty
                   }
-                }).map((_, sourcePath))
+                }).map((_, sourceName))
               }
             case _ =>
               cloudFilterStrategy.loadMasked(new MaskTileLoader {
@@ -574,7 +556,7 @@ object FileLayerProvider {
                   }
 
                 }
-              }).map((_, sourcePath))
+              }).map((_, sourceName))
           }
           if (result.isDefined) {
             val mbTile = result.get._1
@@ -588,7 +570,9 @@ object FileLayerProvider {
         .sortWith { case ((leftMultibandTile, leftSourcePath), (rightMultibandTile, rightSourcePath)) =>
           if (leftMultibandTile.band(0).isInstanceOf[PaddedTile] && !rightMultibandTile.band(0).isInstanceOf[PaddedTile]) true
           else if (!leftMultibandTile.band(0).isInstanceOf[PaddedTile] && rightMultibandTile.band(0).isInstanceOf[PaddedTile]) false
-          else leftSourcePath.value < rightSourcePath.value
+          else {
+            sortableSourceName(leftSourcePath) < sortableSourceName(rightSourcePath)
+          }
         }
         .map { case (multibandTile, _) => multibandTile }
         .reduceOption(_ merge _)
@@ -978,7 +962,24 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     requiredSpacetimeKeys.setName(s"FileLayerProvider_keys_${this.openSearchCollectionId}_${from.toString}_${to.toString}")
 
     try{
-      val partitioner = DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
+
+      val spatialBounds = metadata.bounds.get.toSpatial
+      val maxKeys = (spatialBounds.maxKey.col - spatialBounds.minKey.col + 1) * (spatialBounds.maxKey.row - spatialBounds.minKey.row + 1)
+
+      val partitioner: Option[SpacePartitioner[SpaceTimeKey]] = {
+        if(maxKeys>4) {
+          DatacubeSupport.createPartitioner(datacubeParams, requiredSpacetimeKeys.keys, metadata)
+        }else{
+          //for low number of spatial keys, we can construct sparse partitioner in a cheaper way
+          val reduction: Int = datacubeParams.map(_.partitionerIndexReduction).getOrElse(SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION)
+          val keys = metadata.keysForGeometry(toPolygon(metadata.extent))
+          val dates = readKeysToRasterSourcesResult._4.map(_._2.nominalDate).distinct
+          val allKeys: Set[SpaceTimeKey] = for {x <- keys; y <- dates} yield SpaceTimeKey(x, TemporalKey(y))
+          val indices = allKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).toArray.sorted
+          Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable, ClassTag(classOf[SpaceTimeKey]), new SparseSpaceTimePartitioner(indices, reduction,theKeys = Some(allKeys.toArray))))
+        }
+
+      }
 
       val layoutDefinition = metadata.layout
       val noResampling = math.abs(layoutDefinition.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * layoutDefinition.cellSize.resolution
@@ -1126,9 +1127,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           GDALRasterSource(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType)
         }
       }else if(dataPath.endsWith("MTD_TL.xml")) {
-        //TODO EP-3611 parse angles
-        val te = featureExtentInLayout.map(_.extent) // Can be bigger then original tile.
-        SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, te, Some(theResolution))
+        val targetProjectedExtent = featureExtentInLayout match {
+          case None => None
+          case Some(featureExtentInLayoutGet) =>
+            Some(ProjectedExtent(featureExtentInLayoutGet.extent, targetExtent.crs))
+        }
+        SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, targetProjectedExtent, Some(theResolution))
       }
       else {
         def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {
