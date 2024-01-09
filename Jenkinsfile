@@ -137,7 +137,7 @@ pipeline {
     post {
         always {
           script {
-            docker.image(env.MAVEN_IMAGE).inside('-u root --entrypoint=""') {
+            docker.image(maven_image).inside('-u root --entrypoint=""') {
               sh """
                 ${utils.setWorkspacePermissions()}
               """
