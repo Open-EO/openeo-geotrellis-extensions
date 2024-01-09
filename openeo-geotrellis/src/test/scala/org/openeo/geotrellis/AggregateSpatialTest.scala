@@ -208,7 +208,7 @@ class AggregateSpatialTest {
     )
 
     val groupedStats = parseCSV(outDir)
-    val keys = Seq("2017-01-01T01:00:00.000+01:00", "2017-01-15T01:00:00.000+01:00", "2017-02-01T01:00:00.000+01:00")
+    val keys = Seq("2017-01-01T00:00:00.000Z", "2017-01-15T00:00:00.000Z", "2017-02-01T00:00:00.000Z")
     println(groupedStats)
     keys.foreach(k => assertEqualTimeseriesStats(
       Seq(Seq(10.0, Double.NaN), Seq(10.0, Double.NaN)), groupedStats(k)
