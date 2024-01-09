@@ -218,9 +218,6 @@
                 <configuration>
                     <parallel>classes</parallel>
                     <threadCount>3</threadCount>
-                    <additionalClasspathElements>
-                        <additionalClasspathElement>/etc/hadoop/conf</additionalClasspathElement>
-                    </additionalClasspathElements>
                     <environmentVariables>
                         <PATH>../venv/bin:${env.PATH}</PATH>
                         <LD_LIBRARY_PATH>/tmp_epod/gdal:../venv/lib/python3.8/site-packages/jep</LD_LIBRARY_PATH>
