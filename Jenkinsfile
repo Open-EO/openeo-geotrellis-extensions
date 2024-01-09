@@ -134,6 +134,22 @@ pipeline {
         }
 
     }
+    post {
+        always {
+          script {
+            docker.image(env.MAVEN_IMAGE).inside('-u root --entrypoint=""') {
+              sh """
+                ${utils.setWorkspacePermissions()}
+              """
+            }
+          }
+        }
+        failure {
+          script {
+            notification.fail(env.MAIL_ADDRESS)
+          }
+        }
+      }
 }
 String getMavenVersion() {
     pom = readMavenPom file: 'pom.xml'
