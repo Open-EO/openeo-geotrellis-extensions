@@ -14,7 +14,7 @@
         <dependency>
             <groupId>com.azavea.geotrellis</groupId>
             <artifactId>gdal-warp-bindings</artifactId>
-            <version>3.8.1</version>
+            <version>${gdal-bindings.version}</version>
         </dependency>
         <dependency>
             <groupId>org.locationtech.proj4j</groupId>
