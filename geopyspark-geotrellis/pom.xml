@@ -107,6 +107,11 @@
             </exclusions>
         </dependency>
         <dependency>
+            <groupId>com.azavea.geotrellis</groupId>
+            <artifactId>gdal-warp-bindings</artifactId>
+            <version>3.8.1</version>
+        </dependency>
+        <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
             <artifactId>geotrellis-gdal_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>
@@ -134,9 +139,6 @@
                 <configuration>
                     <parallel>classes</parallel>
                     <threadCount>3</threadCount>
-                    <additionalClasspathElements>
-                        <additionalClasspathElement>/etc/hadoop/conf</additionalClasspathElement>
-                    </additionalClasspathElements>
                     <environmentVariables>
                         <PATH>../venv/bin:${env.PATH}</PATH>
                         <LD_LIBRARY_PATH>/tmp_epod/gdal:../venv/lib/python3.8/site-packages/jep</LD_LIBRARY_PATH>
