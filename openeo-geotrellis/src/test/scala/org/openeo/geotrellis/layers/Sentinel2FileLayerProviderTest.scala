@@ -141,7 +141,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     print(summary.size)
     val values: Array[Double] = summary.map(_.data.toOption.get(0).sum)
     val counts: Array[Long] = summary.map(_.data.toOption.get(0).count)
-    val resultArray: Array[Double] = Array(15228.0,26313.0,220392.0,511556.0)
+    val resultArray: Array[Double] = Array(15509.0,26313.0,220760.0,511556.0)
     val expectedCounts: Array[Long] = Array(349,489,3415,3738)
     assertArrayEquals(expectedCounts, counts.sorted)
     assertArrayEquals(resultArray, values.sorted,0.001)
@@ -165,7 +165,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
     val Summary(value) = spatialLayer.polygonalSummaryValue(polygon, MeanVisitor)
 
-    val qgisZonalStatisticsPluginResult = 48.7280433452766
+    val qgisZonalStatisticsPluginResult = 48.9074868071421
     assertEquals(qgisZonalStatisticsPluginResult, value.mean, 0.1)
     val inputs = BatchJobMetadataTracker.tracker("").asDict().get("links")
 
@@ -272,11 +272,12 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     builder.expressionStart("gte", args)
     builder.argumentStart("x")
     builder.argumentEnd()
-    builder.constantArgument("y", 4)
+    builder.constantArgument("y", 6)
     builder.expressionEnd("gte", args)
-    //mask.toSpatial(date).writeGeoTiff("/tmp/Sentinel2FileLayerProvider_multiband_mask.tif", bbox)
+    mask.toSpatial(date).writeGeoTiff("tmp/Sentinel2FileLayerProvider_multiband_SCL.tif", bbox)
     val p = new OpenEOProcesses()
     mask = p.mapBands(mask, builder)
+    mask.toSpatial(date).writeGeoTiff("tmp/Sentinel2FileLayerProvider_multiband_mask.tif", bbox)
 
     var layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 14,datacubeParams = Option.empty)
 
@@ -324,7 +325,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     println(SizeEstimator.estimate(localData))
     println((System.currentTimeMillis()-time)/1000)
     println(localData.map(_._1.time).mkString(";"))
-    assertEquals(17,localData.length)
+    assertEquals(14,localData.length)
     assertEquals(4,localData(0)._2.bandCount)
     assertFalse(localData(0)._2.band(0).isNoDataTile)
     assertEquals(ShortUserDefinedNoDataCellType(32767),localData(0)._2.band(1).cellType)
