@@ -406,12 +406,17 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             }
 
             if (featureIntersections.isEmpty()) {
-              throw NoSuchFeaturesException(message =
-                s"""no features found for criteria:
-                   |collection ID "$collectionId"
-                   |${polygons.length} polygon(s)
-                   |[$from_datetime, $until_datetime)
-                   |metadata properties $metadata_properties""".stripMargin)
+              if(dataCubeParameters.allowEmptyCube) {
+                return Seq( 0-> ContextRDD(sc.emptyRDD[(SpaceTimeKey, MultibandTile)],metadata))
+              }else{
+                throw NoSuchFeaturesException(message =
+                  s"""no features found for criteria:
+                     |collection ID "$collectionId"
+                     |${polygons.length} polygon(s)
+                     |[$from_datetime, $until_datetime)
+                     |metadata properties $metadata_properties""".stripMargin)
+              }
+
             }
 
             // this optimization consists of dissolving geometries of overlapping features and will therefore lose
