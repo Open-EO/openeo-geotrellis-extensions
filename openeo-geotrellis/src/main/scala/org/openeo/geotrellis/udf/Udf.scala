@@ -63,7 +63,7 @@ object Udf {
   }
 
   private def createExtentFromSpatialKey(layoutDefinition: LayoutDefinition,
-                                          key: SpatialKey
+                                         key: SpatialKey, overlapX: Int = 0, overlapY: Int = 0
                                          ): SpatialExtent = {
     val ex = layoutDefinition.extent
     val tileLayout = layoutDefinition.tileLayout
@@ -72,10 +72,10 @@ object Udf {
     val yrange = ex.ymax - ex.ymin
     val yinc = yrange / tileLayout.layoutRows
     SpatialExtent(
-      ex.xmin + xinc * key.col,
-      ex.ymax - yinc * (key.row + 1),
-      ex.xmin + xinc * (key.col + 1),
-      ex.ymax - yinc * key.row,
+      ex.xmin + xinc * key.col - overlapX,
+      ex.ymax - yinc * (key.row + 1) + overlapY,
+      ex.xmin + xinc * (key.col + 1) + overlapX,
+      ex.ymax - yinc * key.row - overlapY,
       tileCols=tileLayout.tileCols,
       tileRows=tileLayout.tileRows
     )
@@ -354,7 +354,9 @@ object Udf {
    * @return The resulting MultibandTileLayerRDD.
   */
   def runUserCode(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
-                  bandNames: util.ArrayList[String], context: util.HashMap[String, Any]): MultibandTileLayerRDD[SpaceTimeKey] = {
+                  bandNames: util.ArrayList[String], context: util.HashMap[String, Any],
+                  overlapX: Int = 0, overlapY: Int = 0
+                 ): MultibandTileLayerRDD[SpaceTimeKey] = {
     // TODO: Implement apply_timeseries, apply_hypercube.
     // Map a python function to every tile of the RDD.
     // Map will serialize + send partitions to worker nodes
@@ -397,7 +399,7 @@ object Udf {
           val directTile = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
 
           // Setup the xarray datacube.
-          val spatialExtent = createExtentFromSpatialKey(layer.metadata.layout, key_and_tile._1.spatialKey)
+          val spatialExtent = createExtentFromSpatialKey(layer.metadata.layout, key_and_tile._1.spatialKey, overlapX, overlapY)
           setXarraydatacubeInPython(interp, directTile, tileShape, spatialExtent, bandNames)
           // Convert context from jep.PyJMap to python dict.
           setContextInPython(interp, context)
