@@ -1,10 +1,19 @@
 package org.openeo.geotrellis
 
-import java.nio.file.Paths
+import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata}
+import geotrellis.raster.crop.Crop
+import geotrellis.raster.crop.Crop.Options
+import geotrellis.raster.io.geotiff.GeoTiff
+import geotrellis.raster.{ByteArrayTile, MultibandTile, Raster}
 
+import java.nio.file.Paths
 import geotrellis.spark.util.SparkUtils
+import geotrellis.spark._
+import geotrellis.vector._
 import geotrellis.vector.io.json.{GeoJson, JsonFeatureCollection}
+import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.{BeforeClass, Test}
 
 object VectorizeSpec{
@@ -29,11 +38,25 @@ class VectorizeSpec {
 
   @Test
   def vectorize() = {
-    val layer = LayerFixtures.ClearNDVILayerForSingleDate()(VectorizeSpec.sc)
+    //val layer = LayerFixtures.ClearNDVILayerForSingleDate()(VectorizeSpec.sc)
+
+    val cube: (RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], ByteArrayTile) = LayerFixtures.aSpacetimeTileLayerRdd(10,10,1)
+
+    val res = cube._1.metadata.cellSize
+    val theExtent = cube._1.metadata.extent
+    val newExtent = theExtent.copy(theExtent.xmin, theExtent.ymin, theExtent.xmax - 50 * res.width, theExtent.ymax - 60 * res.height)
+    println(newExtent)
+    val croppedCube = cube._1.crop(newExtent, Options(force = true, clamp = true))
+    
+    GeoTiff(Raster(cube._2,theExtent).crop(newExtent,Crop.Options(force=true)),cube._1.metadata.crs).write("vectorize_reference.tiff")
     val outputPath = Paths.get("polygons.geojson")
-    new OpenEOProcesses().vectorize(layer,outputPath.toString)
+    new OpenEOProcesses().vectorize(ContextRDD(croppedCube,croppedCube.metadata.copy(extent = newExtent)),outputPath.toString)
 
     val json: JsonFeatureCollection = GeoJson.fromFile[JsonFeatureCollection](outputPath.toString)
-    print(json)
+
+    val polygons = json.getAllPolygons()
+    assertEquals(11,polygons.size)
+    assertTrue(newExtent.contains(polygons.extent))
+
   }
 }
