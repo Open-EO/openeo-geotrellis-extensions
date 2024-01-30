@@ -1162,13 +1162,13 @@ public class TestOpenEOProcessScriptBuilder {
         builder.argumentEnd();
 
         builder.expressionEnd("array_find",arguments);
-        assertEquals(ByteConstantNoDataCellType$.MODULE$,builder.getOutputCellType());
+        assertEquals(ShortConstantNoDataCellType$.MODULE$,builder.getOutputCellType());
 
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
         ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
         ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
-        ByteArrayTile expectedResult = ByteConstantNoDataArrayTile.fill((byte) 1, 4, 4);
+        ArrayTile expectedResult = ShortConstantNoDataArrayTile.fill((short) 1, 4, 4);
         assertTileEquals(expectedResult, result.head());
 
 

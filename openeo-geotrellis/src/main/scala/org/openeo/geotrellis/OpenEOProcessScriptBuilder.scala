@@ -651,9 +651,9 @@ class OpenEOProcessScriptBuilder {
             bandValues.append(d)
           }
           if(!bandValues.isEmpty) {
-            val resultValues = if(!reverse) bandValues.indexOf(the_value.getDouble(col,row)) else bandValues.lastIndexOf(the_value.getDouble(col,row))
+            val resultValues: Int = if(!reverse) bandValues.indexOf(the_value.getDouble(col,row)) else bandValues.lastIndexOf(the_value.getDouble(col,row))
             if(resultValues>=0)
-              mutableResult.setDouble(col, row,resultValues)
+              mutableResult.set(col, row,resultValues)
           }
           i += 1
         }
@@ -1698,7 +1698,11 @@ class OpenEOProcessScriptBuilder {
       try {
         val theType = typeStack.head(argName)
         if(theType.startsWith("array")) {
-          CellType.fromName(theType.substring(6,theType.indexOf(",")))
+          var endIndex = theType.indexOf(",")
+          if(endIndex<6) {
+            endIndex = theType.length-1
+          }
+          CellType.fromName(theType.substring(6,endIndex))
         }else{
           CellType.fromName(theType)
         }
