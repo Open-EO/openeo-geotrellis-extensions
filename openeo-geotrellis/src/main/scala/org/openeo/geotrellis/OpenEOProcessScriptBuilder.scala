@@ -81,11 +81,7 @@ object OpenEOProcessScriptBuilder{
       if(a.bits==8) {
         ShortConstantNoDataCellType
       }else if(a.isFloatingPoint || b.isFloatingPoint){
-        if(math.max(a.bits,b.bits) == 32){
-          FloatConstantNoDataCellType
-        }else{
-          DoubleConstantNoDataCellType
-        }
+        Seq(a,b).maxBy(_.bits)
       }else{
         IntConstantNoDataCellType
       }
