@@ -472,9 +472,6 @@ object Udf {
                                 bandNames: util.ArrayList[String], context: util.HashMap[String, Any],
                                 overlapX: Int = 0, overlapY: Int = 0
                                ): MultibandTileLayerRDD[SpaceTimeKey] = {
-    if (bandNames.size() == 0) {
-      throw new IllegalArgumentException("runUserCodeSpatioTemporal currently does not support datacubes with no band dimension.")
-    }
     // First group by SpatialKey.
     val bounds: KeyBounds[SpaceTimeKey] = layer.metadata.bounds.get
     val rows = bounds.maxKey.row - bounds.minKey.row + 1
