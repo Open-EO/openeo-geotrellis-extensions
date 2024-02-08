@@ -7,7 +7,6 @@ import org.apache.curator.framework.CuratorFrameworkFactory
 import org.apache.curator.retry.ExponentialBackoffRetry
 import org.openeo.geotrelliscommon.CirceException.decode
 import org.openeo.geotrellissentinelhub.AuthApi.AuthResponse
-import org.openeo.geotrellissentinelhub.RlGuardAdapter.AccessToken
 import org.slf4j.LoggerFactory
 
 import java.nio.charset.StandardCharsets.UTF_8
@@ -21,6 +20,10 @@ trait Authorizer extends Serializable {
 
 object MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer {
   private val logger = LoggerFactory.getLogger(classOf[MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer])
+
+  private case class AccessToken(token: String, expires_at: ZonedDateTime) {
+    def isValid(when: ZonedDateTime): Boolean = when isBefore expires_at
+  }
 }
 
 /**
@@ -64,50 +67,6 @@ class MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(zookeeperCon
         .filter { cachedAccessToken =>
           val valid = cachedAccessToken.isValid(now)
           logger.debug(s"Zookeeper access token at $accessTokenPath expires at ${cachedAccessToken.expires_at}: " +
-            s"${if (valid) "valid" else "invalid"}")
-          valid
-        }
-        .map(cachedAccessToken =>
-          AuthResponse(cachedAccessToken.token, expires_in = between(now, cachedAccessToken.expires_at)))
-        .getOrElse {
-          val freshAccessToken = new AuthApi().authenticate(clientId, clientSecret)
-          logger.debug(s"Auth API access token for clientID $clientId expires within ${freshAccessToken.expires_in}")
-          freshAccessToken
-        }
-    }
-
-    try fn(accessToken)
-    catch {
-      case SentinelHubException(_, 401, _, _) =>
-        AccessTokenCache.invalidate(clientId, clientSecret)
-        fn(accessToken)
-    }
-  }
-}
-
-object MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer {
-  private val logger =
-    LoggerFactory.getLogger(classOf[MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer])
-}
-
-/**
- * Supports access tokens cached in memory and Zookeeper (a single one at /openeo/rlguard/access_token)
- * with Auth API fallback.
- */
-@deprecated("use MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer instead")
-class MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer(clientId: String, clientSecret: String)
-  extends Authorizer {
-
-  import MemoizedRlGuardAdapterCachedAccessTokenWithAuthApiFallbackAuthorizer._
-
-  override def authorized[R](fn: String => R): R = {
-    def accessToken: String = AccessTokenCache.get(clientId, clientSecret) { (clientId, clientSecret) =>
-      val now = ZonedDateTime.now()
-
-      new RlGuardAdapter().accessToken
-        .filter { cachedAccessToken =>
-          val valid = cachedAccessToken.isValid(now)
-          logger.debug(s"Zookeeper access token for client ID $clientId expires at ${cachedAccessToken.expires_at}: " +
             s"${if (valid) "valid" else "invalid"}")
           valid
         }
