@@ -22,7 +22,7 @@ import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.backends.GlobalNetCDFSearchClient
 
 import java.util
-import scala.collection.JavaConverters.asScalaBuffer
+import scala.collection.JavaConverters._
 
 object GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
   @AfterClass
@@ -38,14 +38,21 @@ class GlobalNetCdfFileLayerProviderTest {
     dateRegex = raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored
   )
 
-  private val vars: util.List[String] = util.Arrays.asList("LAI", "NOBS")
+  private val bands: util.List[String] = util.Arrays.asList("LAI", "NOBS")
 
-  private def layerProvider2 = FileLayerProvider(new GlobalNetCDFSearchClient(dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/*/*/*/*.nc",vars, raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored),"BioPar_LAI300_V1_Global",
-    NonEmptyList.fromList(asScalaBuffer(vars).toList).get,
+  private def multibandFileLayerProvider = FileLayerProvider(
+    new GlobalNetCDFSearchClient(
+      dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/*/*/*/*.nc",
+      bands,
+      dateRegex = raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored
+    ),
+    openSearchCollectionId = "BioPar_LAI300_V1_Global",
+    openSearchLinkTitles = NonEmptyList.fromListUnsafe(bands.asScala.toList),
     rootPath = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global",
     maxSpatialResolution = CellSize(0.002976190476204,0.002976190476190),
     new Sentinel5PPathDateExtractor(maxDepth = 3),
-    layoutScheme = FloatingLayoutScheme(256))
+    layoutScheme = FloatingLayoutScheme(256)
+  )
 
   class MockGlobalNetCdf extends GlobalNetCdfFileLayerProvider(dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/*/*/*/*.nc",
     bandName = "LAI",
@@ -163,7 +170,7 @@ class GlobalNetCdfFileLayerProviderTest {
     val date = LocalDate.of(2017, 1, 10).atStartOfDay(ZoneId.of("UTC"))
     val boundingBox = ProjectedExtent(Extent(-86.30859375, 29.84064389983441, -80.33203125, 35.53222622770337), LatLng)
 
-    val layer = layerProvider2.readTileLayer(from = date, to = date, boundingBox, sc = sc).cache()
+    val layer = multibandFileLayerProvider.readTileLayer(from = date, to = date, boundingBox, sc = sc).cache()
 
     layer
       .toSpatial(date)
@@ -179,7 +186,11 @@ class GlobalNetCdfFileLayerProviderTest {
     parameters.layoutScheme = "FloatingLayoutScheme"
 
     val polygons = ProjectedPolygons.fromExtent(boundingBox.extent, "EPSG:4326")
-    val layer = layerProvider2.readMultibandTileLayer(date, date, boundingBox, polygons.polygons, polygons.crs , layerProvider.maxZoom, sc,Option(parameters)).cache()
+    val layer = multibandFileLayerProvider.readMultibandTileLayer(
+      date, date, boundingBox, polygons.polygons, polygons.crs, layerProvider.maxZoom, sc, Option(parameters)).cache()
+
+    val (_, arbitraryTile) = layer.first()
+    assertEquals(2, arbitraryTile.bandCount)
 
     layer
       .toSpatial(date)
@@ -192,7 +203,7 @@ class GlobalNetCdfFileLayerProviderTest {
     val to = LocalDate.of(2017, 2, 1).atStartOfDay(ZoneId.of("UTC"))
     val boundingBox = ProjectedExtent(Extent(-86.30859375, 29.84064389983441, -80.33203125, 35.53222622770337), LatLng)
 
-    val layer = layerProvider2.readTileLayer(from, to, boundingBox, sc = sc).cache()
+    val layer = multibandFileLayerProvider.readTileLayer(from, to, boundingBox, sc = sc).cache()
 
     def mean(at: ZonedDateTime): Double = {
       val Summary(mean) = layer
@@ -215,7 +226,7 @@ class GlobalNetCdfFileLayerProviderTest {
     val parameters = new DataCubeParameters()
     parameters.layoutScheme = "FloatingLayoutScheme"
 
-    val layerProvider2WithOneBand = FileLayerProvider(new GlobalNetCDFSearchClient(dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/2017/20170110/*/*.nc",vars, raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored),"BioPar_LAI300_V1_Global",
+    val layerProvider2WithOneBand = FileLayerProvider(new GlobalNetCDFSearchClient(dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/2017/20170110/*/*.nc",bands , raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored),"BioPar_LAI300_V1_Global",
       NonEmptyList.of("LAI"),
       rootPath = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global",
       maxSpatialResolution = CellSize(0.002976190476204,0.002976190476190),
