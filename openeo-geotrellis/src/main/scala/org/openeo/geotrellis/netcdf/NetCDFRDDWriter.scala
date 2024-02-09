@@ -504,6 +504,7 @@ object NetCDFRDDWriter {
         for (i <- equalRasters.indices) {
           writeTile(bandNames.get(bandIndex),  if(dates!=null)  scala.Array(i , 0, 0) else scala.Array( 0, 0), equalRasters(i).tile.band(bandIndex), netcdfFile)
         }
+        netcdfFile.flush()
       }
     }finally {
       netcdfFile.close()
