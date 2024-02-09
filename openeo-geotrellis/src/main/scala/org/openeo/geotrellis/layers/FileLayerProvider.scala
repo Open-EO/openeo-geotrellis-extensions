@@ -1124,7 +1124,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType)
         } else {
           predefinedExtent = featureExtentInLayout
-          GDALRasterSource(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType)
+          GDALRasterSource(GDALPath(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https")), options = warpOptions, targetCellType = targetCellType)
         }
       }else if(dataPath.endsWith("MTD_TL.xml")) {
         val targetProjectedExtent = featureExtentInLayout match {
@@ -1185,7 +1185,15 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           .flatMap(link => link.bandNames match {
             case Some(assetBandNames) =>
               val bandIndex = assetBandNames.indexWhere(_ == bandName)
-              if (bandIndex >= 0) Some((link, bandIndex)) else None
+              if (bandIndex >= 0) {
+                // 1 netCDF asset can contain n bands, but a GDALRasterSource can only handle 1 band/wants the
+                //  band embedded in the path: NETCDF:$href:$bandName
+                if (link.href.toString contains ".nc") {
+                  val netCdfDataset = s"NETCDF:${link.href}:$bandName"
+                  val netCdfDatasetBandIndex = 0
+                  Some((link.copy(href = URI.create(netCdfDataset)), netCdfDatasetBandIndex))
+                } else Some((link, bandIndex))
+              } else None
             case _ => None
           })
           .headOption
