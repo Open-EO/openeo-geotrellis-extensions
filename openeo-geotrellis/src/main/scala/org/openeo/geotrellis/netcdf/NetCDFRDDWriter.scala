@@ -338,7 +338,7 @@ object NetCDFRDDWriter {
                   dimensionNames: java.util.Map[String,String],
                   attributes: java.util.Map[String,String],
                   filenamePrefix: Option[String] = None,
-                 ): java.util.List[String] = {
+                 ): java.util.List[(String, Extent)] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
     groupByFeatureAndWriteToNetCDFSpatial(rdd,  features,path,bandNames,dimensionNames,attributes, filenamePrefix)
@@ -441,28 +441,22 @@ object NetCDFRDDWriter {
                                            dimensionNames: java.util.Map[String,String],
                                            attributes: java.util.Map[String,String],
                                            filenamePrefix: Option[String],
-                                           ) = {
+                                           ): java.util.List[(String, Extent)] = {
     val featuresBC: Broadcast[List[(String, Extent)]] = SparkContext.getOrCreate().broadcast(features)
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
 
-    groupRDDBySample(rdd,featuresBC)
+    groupRDDBySample(rdd, featuresBC)
       .map { case ((name, extent), tiles) =>
-
         val outputAsPath: Path = getSamplePath(name, path, filenamePrefix)
         val sample: Raster[MultibandTile] = stitchAndCropTiles(tiles, extent, layout)
 
         try{
           writeToDisk(Seq(sample),null,outputAsPath.toString,bandNames,crs,dimensionNames,attributes)
-          outputAsPath.toString
-        }catch {
-          case t: IOException => {
-            handleSampleWriteError(t, name, outputAsPath)
-          }
-          case t: Throwable =>  throw t
+          (outputAsPath.toString, extent.extent)
+        } catch {
+          case t: IOException => (handleSampleWriteError(t, name, outputAsPath), extent.extent)
         }
-
-
       }.collect()
       .toList.asJava
   }

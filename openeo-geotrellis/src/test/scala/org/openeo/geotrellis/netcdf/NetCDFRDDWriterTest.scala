@@ -215,7 +215,7 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     val dcParams = new DataCubeParameters()
     dcParams.layoutScheme = "FloatingLayoutScheme"
 
-    val (imageTile: ByteArrayTile, layer: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(20, 10)
+    val (_, layer: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(20, 10)
 
     val localLayer = ContextRDD(layer,layer.metadata.copy(extent = bbox.extent,crs=bbox.crs,layout = layer.metadata.layout.copy(extent=bbox.extent)))
 
@@ -223,7 +223,7 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     val sampleNameList = new util.ArrayList[String]()
     sampleNames.foreach(sampleNameList.add)
 
-    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSamplesSpatial(
+    val samples = NetCDFRDDWriter.saveSamplesSpatial(
       localLayer,
       "/tmp",
       polygonsUTM31,
@@ -232,10 +232,14 @@ class NetCDFRDDWriterTest extends RasterMatchers{
       null,
       null,
       Some("prefixTest"),
-    )
-    val expectedPaths = List("/tmp/prefixTest_0.nc", "/tmp/prefixTest_1.nc")
+    ).asScala
 
-    Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
+    val expectedSamples = Set(
+      ("/tmp/prefixTest_0.nc", polygonsUTM31.polygons(0).extent),
+      ("/tmp/prefixTest_1.nc", polygonsUTM31.polygons(1).extent),
+    )
+
+    Assert.assertEquals(expectedSamples, samples.toSet)
   }
 
   @Ignore
