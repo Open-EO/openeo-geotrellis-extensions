@@ -452,8 +452,8 @@ object NetCDFRDDWriter {
         val sample: Raster[MultibandTile] = stitchAndCropTiles(tiles, extent, layout)
 
         try{
-          writeToDisk(Seq(sample),null,outputAsPath.toString,bandNames,crs,dimensionNames,attributes)
-          (outputAsPath.toString, extent.extent)
+          (writeToDisk(Seq(sample), dates = null, outputAsPath.toString, bandNames, crs, dimensionNames, attributes),
+            extent.extent)
         } catch {
           case t: IOException => (handleSampleWriteError(t, name, outputAsPath), extent.extent)
         }
