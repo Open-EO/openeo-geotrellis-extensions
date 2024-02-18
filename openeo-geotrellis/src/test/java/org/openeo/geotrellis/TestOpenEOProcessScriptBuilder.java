@@ -9,6 +9,7 @@ import org.apache.spark.mllib.linalg.Vectors;
 import org.apache.spark.mllib.regression.LabeledPoint;
 import org.apache.spark.mllib.tree.RandomForest;
 import org.apache.spark.mllib.tree.model.RandomForestModel;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -96,11 +97,17 @@ public class TestOpenEOProcessScriptBuilder {
         testNdvi(createNormalizedDifferenceProcess04DataArrays());
     }
 
+
+    static OpenEOProcessScriptBuilder createNormalizedDifferenceProcess10AddXY() {
+        return createNormalizedDifferenceProcess10AddXY(UByteConstantNoDataCellType$.MODULE$);
+    }
     /**
      * NDVI implementation with "add(x,y)", "subtract(x,y)" and "divide(x,y)" (API 1.0 style)
      */
-    static OpenEOProcessScriptBuilder createNormalizedDifferenceProcess10AddXY() {
+    static OpenEOProcessScriptBuilder createNormalizedDifferenceProcess10AddXY(DataType inputDataType) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultInputDataType_$eq(inputDataType.toString());
+        builder.defaultDataParameterName_$eq("data");
         Map<String, Object> empty = Collections.emptyMap();
         builder.expressionStart("divide", dummyMap("x", "y"));
 
@@ -179,22 +186,51 @@ public class TestOpenEOProcessScriptBuilder {
     @DisplayName("Test multiband XY constant")
     @Test
     public void testMultiBandMultiplyConstant() {
+        OpenEOProcessScriptBuilder builder = createMultiply((byte)10);
+
+        assertEquals(ShortConstantNoDataCellType$.MODULE$,builder.resultingDataType());
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        ByteArrayTile tile1 = fillByteArrayTile(3, 3, 9, -10, 11, 12);
+        ByteArrayTile tile2 = fillByteArrayTile(3, 3, 5, 6, 7, 8);
+        Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1, tile2)));
+
+        assertTileEquals(fillShortArrayTile(3, 3, 90, -100, 110, 120, 0, 0, 0, 0, 0), result.apply(0));
+        assertTileEquals(fillShortArrayTile(3, 3, 50, 60, 70, 80, 0, 0, 0, 0, 0), result.apply(1));
+    }
+
+    @NotNull
+    private static OpenEOProcessScriptBuilder createMultiply(Number constant) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultDataParameterName_$eq("data");
+        builder.defaultInputDataType_$eq(ByteConstantNoDataCellType.toString());
         Map<String, Object> args = dummyMap("x", "y");
         String operator = "multiply";
         builder.expressionStart(operator, args);
         builder.argumentStart("x");
+        builder.fromParameter("data");
         builder.argumentEnd();
-        builder.constantArgument("y", 10);
-        builder.expressionEnd(operator, args);
+        builder.constantArgument("y", constant);
+        assertEquals(ByteConstantNoDataCellType.toString(),builder.typeStack().head().get("x").get());
 
+        String yType = builder.typeStack().head().get("y").get();
+        assertNotNull(yType);
+        builder.expressionEnd(operator, args);
+        return builder;
+    }
+
+    @DisplayName("Test multiband XY constant")
+    @Test
+    public void testMultiBandMultiplyConstantFloat() {
+        OpenEOProcessScriptBuilder builder = createMultiply(10.0f);
+
+        assertEquals(FloatConstantNoDataCellType$.MODULE$,builder.resultingDataType());
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
-        ByteArrayTile tile1 = fillByteArrayTile(3, 3, 9, 10, 11, 12);
+        ByteArrayTile tile1 = fillByteArrayTile(3, 3, 9, -10, 11, 12);
         ByteArrayTile tile2 = fillByteArrayTile(3, 3, 5, 6, 7, 8);
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1, tile2)));
 
-        assertTileEquals(fillByteArrayTile(3, 3, 90, 100, 110, 120, 0, 0, 0, 0, 0), result.apply(0));
-        assertTileEquals(fillByteArrayTile(3, 3, 50, 60, 70, 80, 0, 0, 0, 0, 0), result.apply(1));
+        assertTileEquals(fillFloatArrayTile(3, 3, 90, -100, 110, 120, 0, 0, 0, 0, 0), result.apply(0));
+        assertTileEquals(fillFloatArrayTile(3, 3, 50, 60, 70, 80, 0, 0, 0, 0, 0), result.apply(1));
     }
 
     @DisplayName("Test multiplying multiple tiles.")
@@ -555,7 +591,7 @@ public class TestOpenEOProcessScriptBuilder {
         testLogicalOperatorWithXY("xor", 0, 1, 1, 0);
     }
 
-    private void testMathXY(String operator, int... expectedValues) {
+    private void testMathXY(String operator, Number... expectedValues) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         builder.expressionStart(operator, dummyMap("x", "y"));
         buildBandXYArguments(builder, 0, 1);
@@ -567,8 +603,14 @@ public class TestOpenEOProcessScriptBuilder {
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
         assertEquals(1, result.length());
         Tile res = result.apply(0);
+
         IntArrayTile expectedTile = fillIntArrayTile(3, 2, expectedValues);
-        assertTileEquals(expectedTile, res);
+        if (expectedValues[0] instanceof Float) {
+            assertTileEquals(expectedTile.convert(CellType.fromName("float32")), res);
+        }else{
+            assertTileEquals(expectedTile, res);
+        }
+
 
         Tile doubleResult = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0.convert(CellType.fromName("float64")), tile1.convert(CellType.fromName("float64"))))).apply(0);
         assertTileEquals(expectedTile.convert(CellType.fromName("float64")), doubleResult);
@@ -625,7 +667,7 @@ public class TestOpenEOProcessScriptBuilder {
     @DisplayName("Test math 'divide(x,y)'")
     @Test
     public void testDivideXY() {
-        testMathXY("divide", 3, 2, 1, 0, 0, 0);
+        testMathXY("divide", 3.0f, 2.0f, 1.f, 0.f, 0.f, 0.f);
     }
 
     @DisplayName("Test math 'normalized_difference(x,y)'")
@@ -647,7 +689,7 @@ public class TestOpenEOProcessScriptBuilder {
     }
 
 
-    private void testMathData(String operator, int... expectedValues) {
+    private void testMathData(String operator, Number... expectedValues) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         builder.expressionStart(operator, dummyMap("data"));
         buildBandArray(builder, "data");
@@ -713,6 +755,7 @@ public class TestOpenEOProcessScriptBuilder {
     @Test
     public void testIf() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultInputDataType_$eq(ByteConstantNoDataCellType$.MODULE$.toString());
         Map<String, Object> arguments = dummyMap("accept","reject");
         builder.expressionStart("if", arguments);
 
@@ -720,9 +763,12 @@ public class TestOpenEOProcessScriptBuilder {
         buildArrayElementProcess(builder, 1);
         builder.argumentEnd();
         builder.argumentStart("accept");
+        builder.fromParameter("data");
         builder.argumentEnd();
 
         builder.expressionEnd("if",arguments);
+
+        assertEquals(ByteConstantNoDataCellType$.MODULE$,builder.getOutputCellType());
 
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
         ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
@@ -895,16 +941,21 @@ public class TestOpenEOProcessScriptBuilder {
     public void testLastWithNoData() {
         // Assume we make a last(data, ignore_nodata=false) request on a list of tiles with a time dimension.
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        DataType inputDataType = ByteConstantNoDataCellType$.MODULE$;
+        builder.defaultInputDataType_$eq(inputDataType.toString());
+        builder.defaultDataParameterName_$eq("data");
         Map<String, Object> arguments = Collections.singletonMap("ignore_nodata", false);
         builder.expressionStart("last", arguments);
 
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
         builder.constantArgument("ignore_nodata", false);
 
         builder.expressionEnd("last",arguments);
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
 
+        assertEquals(inputDataType, builder.resultingDataType());
         // When we have a data tile for every timestep.
         ByteArrayTile tile_timestep0 = ByteConstantNoDataArrayTile.fill((byte)5, 4, 4);
         ByteArrayTile tile_timestep1 = ByteConstantNoDataArrayTile.empty(4,4);
@@ -970,21 +1021,36 @@ public class TestOpenEOProcessScriptBuilder {
     @DisplayName("Test int process")
     @Test
     public void testInt() {
-        testUnary( "int", "x",0.0, 3.0, 0.0, -3.0,Double.NaN,0.0,0.0,0.0,0.0);
+        testUnary( "int", "x",0, 3, 0, -3,IntConstantNoDataCellType.noDataValue(),0,0,0,0);
     }
 
     private void testUnary( String processName, String argName, double... expectedValues) {
+        OpenEOProcessScriptBuilder builder = buildUnaryProcess(processName, argName);
+        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        Seq<Tile> result1 = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(fillFloatArrayTile(3, 3, 0, 3.5, -0.4, -3.5, Double.NaN))));
+        assertTileEquals(fillFloatArrayTile(3, 3, expectedValues), result1.head());
+
+    }
+
+    @NotNull
+    private static OpenEOProcessScriptBuilder buildUnaryProcess(String processName, String argName) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultInputDataType_$eq(FloatConstantNoDataCellType$.MODULE$.toString());
         Map<String, Object> arguments = Collections.emptyMap();
         builder.expressionStart(processName, arguments);
         builder.argumentStart(argName);
         builder.argumentEnd();
         builder.expressionEnd(processName,arguments);
+        return builder;
+    }
+
+    private void testUnary( String processName, String argName, int... expectedValues) {
+        OpenEOProcessScriptBuilder builder = buildUnaryProcess(processName, argName);
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
 
         Seq<Tile> result1 = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(fillFloatArrayTile(3, 3, 0, 3.5, -0.4, -3.5, Double.NaN))));
 
-        assertTileEquals(fillFloatArrayTile(3, 3, expectedValues), result1.head());
+        assertTileEquals(fillShortArrayTile(3, 3, expectedValues).convert(IntConstantNoDataCellType$.MODULE$), result1.head());
 
     }
 
@@ -1024,32 +1090,39 @@ public class TestOpenEOProcessScriptBuilder {
     @Test
     public void testArrayElement() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultDataParameterName_$eq("theData");
+        builder.defaultInputDataType_$eq(ByteConstantNoDataCellType$.MODULE$.name());
         Map<String, Object> arguments = Collections.singletonMap("index",1);
         builder.expressionStart("array_element", arguments);
 
         builder.argumentStart("data");
+        builder.fromParameter("theData");
         builder.argumentEnd();
         builder.argumentStart("index");
         builder.argumentEnd();
 
         builder.expressionEnd("array_element",arguments);
 
+        assertEquals(ByteConstantNoDataCellType$.MODULE$,builder.getOutputCellType());
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
         ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
         ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
         Tile res = result.apply(0);
         assertTileEquals(tile1, res);
+        assertEquals(ByteConstantNoDataCellType$.MODULE$,res.cellType());
     }
 
     @DisplayName("Test array_element by label process")
     @Test
     public void testArrayElementByLabel() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.setInputDataType(ByteConstantNoDataCellType$.MODULE$.name());
         Map<String, Object> arguments = Collections.singletonMap("label","B03");
         builder.expressionStart("array_element", arguments);
 
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
         builder.argumentStart("label");
         builder.argumentEnd();
@@ -1057,6 +1130,7 @@ public class TestOpenEOProcessScriptBuilder {
         builder.expressionEnd("array_element",arguments);
 
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction(Collections.singletonMap("array_labels",Arrays.asList("B02","B03")));
+        assertEquals(ByteConstantNoDataCellType$.MODULE$,builder.getOutputCellType());
         ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
         ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
@@ -1068,30 +1142,33 @@ public class TestOpenEOProcessScriptBuilder {
     @Test
     public void testArrayFind() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultInputDataType_$eq(ByteConstantNoDataCellType$.MODULE$.toString());
         Map<String, Object> arguments = Collections.emptyMap();
         builder.expressionStart("array_find", arguments);
 
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
         builder.argumentStart("value");
         Map<String, Object> valueArgs = Collections.singletonMap("index",1);
         builder.expressionStart("array_element", valueArgs);
 
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
-        builder.argumentStart("index");
-        builder.argumentEnd();
+        builder.constantArgument("index",1);
 
         builder.expressionEnd("array_element",valueArgs);
         builder.argumentEnd();
 
         builder.expressionEnd("array_find",arguments);
+        assertEquals(ShortConstantNoDataCellType$.MODULE$,builder.getOutputCellType());
 
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
         ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
         ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1)));
-        ByteArrayTile expectedResult = ByteConstantNoDataArrayTile.fill((byte) 1, 4, 4);
+        ArrayTile expectedResult = ShortConstantNoDataArrayTile.fill((short) 1, 4, 4);
         assertTileEquals(expectedResult, result.head());
 
 
@@ -1122,11 +1199,13 @@ public class TestOpenEOProcessScriptBuilder {
         builder.expressionEnd("array_find",arguments);
 
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        assertEquals(ShortConstantNoDataCellType$.MODULE$,builder.getOutputCellType());
+
         ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
         ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(tile0, tile1,tile1)));
         ByteArrayTile expectedResult = ByteConstantNoDataArrayTile.fill((byte) 2, 4, 4);
-        assertTileEquals(expectedResult, result.head());
+        assertTileEquals(expectedResult.convert(ShortConstantNoDataCellType$.MODULE$), result.head());
 
 
     }
@@ -1204,6 +1283,7 @@ public class TestOpenEOProcessScriptBuilder {
          */
 
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultInputDataType_$eq(ByteConstantNoDataCellType$.MODULE$.name());
         builder.expressionStart("array_concat", dummyMap("array1", "array2"));
         builder.arrayStart("array1");
         builder.expressionStart("array_element", map2("data","dummy", "index", 4));
@@ -1244,8 +1324,10 @@ public class TestOpenEOProcessScriptBuilder {
             builder.expressionEnd("array_element", map2("data","dummy","index", 3));
         builder.arrayElementDone();
         builder.arrayEnd();
-        assertEquals("array[float32,float32]",builder.typeStack().head().get("array2").get());
+        assertEquals("array[int8,int8]",builder.typeStack().head().get("array2").get());
         builder.expressionEnd("array_concat", dummyMap("array1", "array2"));
+
+        assertEquals(ByteConstantNoDataCellType$.MODULE$,builder.resultingDataType());
 
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
         ByteArrayTile t0 = ByteConstantNoDataArrayTile.fill((byte) 0, 4, 4);
@@ -1261,6 +1343,7 @@ public class TestOpenEOProcessScriptBuilder {
         assertTileEquals(t0, result.apply(2));
         assertTileEquals(t1, result.apply(3));
         assertTileEquals(t3, result.apply(4));
+        assertEquals(ByteConstantNoDataCellType$.MODULE$,result.apply(1).cellType());
     }
 
     @DisplayName("Test array_create")
@@ -1282,6 +1365,8 @@ public class TestOpenEOProcessScriptBuilder {
          */
 
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultDataParameterName_$eq("data");
+        builder.defaultInputDataType_$eq(ByteConstantNoDataCellType$.MODULE$.name());
         builder.expressionStart("array_create", map2("data", "dummy", "repeat", 2));
         builder.arrayStart("data");
         builder.expressionStart("array_element", map2("data","dummy", "index", 1));
@@ -1310,6 +1395,7 @@ public class TestOpenEOProcessScriptBuilder {
         builder.expressionEnd("array_create", map2("data", "dummy", "repeat", 2));
 
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
+        assertEquals(ByteConstantNoDataCellType$.MODULE$,builder.getOutputCellType());
         ByteArrayTile t0 = ByteConstantNoDataArrayTile.fill((byte) 0, 4, 4);
         ByteArrayTile t1 = ByteConstantNoDataArrayTile.fill((byte) 1, 4, 4);
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(t0, t1)));
@@ -1405,18 +1491,18 @@ public class TestOpenEOProcessScriptBuilder {
         Tile tile3 = ByteConstantNoDataArrayTile.fill((byte)19, 4, 4);
         Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
 
-        Seq<Tile> result = createMedian(null).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
+        Seq<Tile> result = createMedian(null,tile0.cellType()).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
         assertEquals(ByteConstantNoDataCellType.withDefaultNoData(),result.apply(0).cellType());
 
         assertEquals(3,result.apply(0).get(0,0));
 
-        Seq<Tile> result_nodata = createMedian(false).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)));
+        Seq<Tile> result_nodata = createMedian(false,tile0.cellType()).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)));
         assertTrue(result_nodata.apply(0).isNoDataTile());
 
-        Seq<Tile> single_input = createMedian(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy())));
+        Seq<Tile> single_input = createMedian(true,tile0.cellType()).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy())));
         assertEquals(-10,single_input.apply(0).get(0,0));
 
-        Seq<Tile> even_input = createMedian(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(),tile1)));
+        Seq<Tile> even_input = createMedian(true,tile0.cellType()).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(),tile1)));
         assertEquals(-3.0,even_input.apply(0).get(0,0));
     }
 
@@ -1429,18 +1515,19 @@ public class TestOpenEOProcessScriptBuilder {
         Tile tile3 = FloatConstantNoDataArrayTile.fill((byte)19.0, 4, 4);
         Tile nodataTile = FloatConstantNoDataArrayTile.empty(4, 4);
 
-        Seq<Tile> result = createStandardDeviation(null).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
+        FloatConstantNoDataCellType$ ct = FloatConstantNoDataCellType$.MODULE$;
+        Seq<Tile> result = createStandardDeviation(null, ct).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)));
         assertEquals(FloatConstantNoDataArrayTile.empty(0, 0).cellType(), result.apply(0).cellType());
 
         assertEquals(9.261029243469238,result.apply(0).getDouble(0,0));
 
-        Seq<Tile> result_nodata = createStandardDeviation(false).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)));
+        Seq<Tile> result_nodata = createStandardDeviation(false,ct).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)));
         assertTrue(result_nodata.apply(0).isNoDataTile());
 
-        Seq<Tile> input1 = createStandardDeviation(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(), tile3)));
+        Seq<Tile> input1 = createStandardDeviation(true,ct).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(), tile3)));
         assertEquals(20.50609588623047, input1.apply(0).getDouble(0,0));
 
-        Seq<Tile> input2 = createStandardDeviation(true).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(),tile1, nodataTile)));
+        Seq<Tile> input2 = createStandardDeviation(true,ct).generateFunction().apply(JavaConversions.asScalaBuffer(Arrays.asList(tile2.mutable().copy(),tile1, nodataTile)));
         assertEquals(9.192388534545898, input2.apply(0).getDouble(0,0));
     }
 
@@ -2078,12 +2165,15 @@ public class TestOpenEOProcessScriptBuilder {
 
     }
 
-    static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData) {
+    static OpenEOProcessScriptBuilder createMedian(Boolean ignoreNoData,DataType inputType) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultDataParameterName_$eq("data");
+        builder.defaultInputDataType_$eq(inputType.name());
         Map<String, Object> arguments = ignoreNoData!=null? Collections.singletonMap("ignore_nodata",ignoreNoData.booleanValue()) : Collections.emptyMap();
         builder.expressionStart("median", arguments);
 
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
 
         if (ignoreNoData != null) {
@@ -2094,14 +2184,17 @@ public class TestOpenEOProcessScriptBuilder {
         return builder;
     }
 
-    static OpenEOProcessScriptBuilder createStandardDeviation(Boolean ignoreNoData) {
+    static OpenEOProcessScriptBuilder createStandardDeviation(Boolean ignoreNoData,DataType inputType) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultInputDataType_$eq(inputType.name());
+        builder.defaultDataParameterName_$eq("data");
         Map<String, Object> arguments = new HashMap<>();
         if (ignoreNoData != null) arguments.put("ignore_nodata", ignoreNoData.booleanValue());
         arguments.put("data", "dummy");
         builder.expressionStart("sd", arguments);
 
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
 
         if (ignoreNoData != null) {
@@ -2133,6 +2226,8 @@ public class TestOpenEOProcessScriptBuilder {
 
     static OpenEOProcessScriptBuilder createFeatureEngineering() {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultDataParameterName_$eq("data");
+        builder.defaultDataParameterName_$eq(UShortConstantNoDataCellType$.MODULE$.name());
         builder.expressionStart("array_concat",Collections.emptyMap());
         builder.argumentStart("array1");
         List<Double> percentiles = Arrays.asList(0.25, 0.5, 0.75);
@@ -2153,6 +2248,7 @@ public class TestOpenEOProcessScriptBuilder {
         builder.fromParameter("data");
         builder.argumentEnd();
         builder.expressionEnd("sd", map1("data","dummy"));
+
         builder.arrayElementDone();
         builder.expressionStart("mean", Collections.emptyMap());
         builder.argumentStart("data");
@@ -2194,25 +2290,33 @@ public class TestOpenEOProcessScriptBuilder {
 
     }
 
-
     static OpenEOProcessScriptBuilder createArrayInterpolateLinear() {
+        return createArrayInterpolateLinear(ByteConstantNoDataCellType$.MODULE$);
+    }
+
+    static OpenEOProcessScriptBuilder createArrayInterpolateLinear(DataType type) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultInputDataType_$eq(type.toString());
         Map<String, Object> arguments = Collections.emptyMap();
         builder.expressionStart("array_interpolate_linear", arguments);
 
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
 
         builder.expressionEnd("array_interpolate_linear",arguments);
         return builder;
     }
 
-    static OpenEOProcessScriptBuilder createMax() {
+    static OpenEOProcessScriptBuilder createMax(DataType cellType) {
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
+        builder.defaultInputDataType_$eq(cellType.name());
+        builder.defaultDataParameterName_$eq("data");
         Map<String, Object> arguments = map1("data",null);
         builder.expressionStart("max", arguments);
 
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
 
         builder.expressionEnd("max",arguments);
@@ -2308,6 +2412,7 @@ public class TestOpenEOProcessScriptBuilder {
         builder.expressionStart("array_element", args);
         builder.constantArgument("index", index);
         builder.argumentStart("data");
+        builder.fromParameter("data");
         builder.argumentEnd();
         builder.expressionEnd("array_element", args);
     }
@@ -2346,10 +2451,18 @@ public class TestOpenEOProcessScriptBuilder {
         return tile;
     }
 
-    private static IntArrayTile fillIntArrayTile(int cols, int rows, int... values) {
-        IntArrayTile tile = IntArrayTile.ofDim(cols, rows);
+    private static ShortArrayTile fillShortArrayTile(int cols, int rows, int... values) {
+        ShortArrayTile tile = ShortArrayTile.ofDim(cols, rows);
         for (int i = 0; i < Math.min(cols * rows, values.length); i++) {
             tile.set(i % cols, i / cols, values[i]);
+        }
+        return tile;
+    }
+
+    private static IntArrayTile fillIntArrayTile(int cols, int rows, Number... values) {
+        IntArrayTile tile = IntArrayTile.ofDim(cols, rows);
+        for (int i = 0; i < Math.min(cols * rows, values.length); i++) {
+            tile.set(i % cols, i / cols, values[i].intValue());
         }
         return tile;
     }

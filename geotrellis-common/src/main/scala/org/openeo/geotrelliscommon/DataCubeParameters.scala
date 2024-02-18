@@ -21,6 +21,7 @@ class DataCubeParameters extends Serializable {
   var pixelBufferY:Double = 0.0
   var noResampleOnRead: Boolean = false
   var timeDimensionFilter: Option[Object] = Option.empty
+  var allowEmptyCube: Boolean = false
 
   override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube, $resampleMethod, $pixelBufferX, $pixelBufferY)"
 
@@ -52,5 +53,9 @@ class DataCubeParameters extends Serializable {
 
   def setTimeDimensionFilter(conditionProcessScriptBuilder:Object):Unit = {
     timeDimensionFilter = Some(conditionProcessScriptBuilder)
+  }
+
+  def setAllowEmptyCube(allowEmpty:Boolean):Unit = {
+    allowEmptyCube = allowEmpty
   }
 }

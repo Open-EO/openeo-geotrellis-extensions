@@ -63,7 +63,7 @@ object Udf {
   }
 
   private def createExtentFromSpatialKey(layoutDefinition: LayoutDefinition,
-                                          key: SpatialKey
+                                         key: SpatialKey
                                          ): SpatialExtent = {
     val ex = layoutDefinition.extent
     val tileLayout = layoutDefinition.tileLayout
@@ -95,6 +95,8 @@ object Udf {
    *      d: x-axis   (#cols)
    * @param spatialExtent The extent of the tile + the number of cols and rows.
    * @param bandCoordinates A list of band names to act as coordinates for the band dimension (if exists).
+   * @param overlapX The number of overlapping pixels in the x-direction.
+   * @param overlapY The number of overlapping pixels in the y-direction.
    * @param timeCoordinates A list of dates to act as coordinates for the time dimension (if exists).
    */
   private def setXarraydatacubeInPython(interp: SharedInterpreter,
@@ -102,11 +104,14 @@ object Udf {
                                          tileShape: List[Int],
                                          spatialExtent: SpatialExtent,
                                          bandCoordinates: util.ArrayList[String],
-                                         timeCoordinates: List[Long] = List()
-                                      ): Unit = {
+                                         overlapX: Int = 0, overlapY: Int = 0,
+                                         timeCoordinates: List[Long] = List(),
+                                        ): Unit = {
     // Note: This method is a scala implementation of geopysparkdatacube._tile_to_datacube.
     interp.set("tile_shape", new util.ArrayList[Int](tileShape.asJava))
     interp.set("extent", spatialExtent)
+    interp.set("overlap_x", overlapX)
+    interp.set("overlap_y", overlapY)
     interp.set("band_names", bandCoordinates)
     interp.set("start_times", new util.ArrayList[Long](timeCoordinates.asJava))
 
@@ -137,10 +142,10 @@ object Udf {
         |    gridy=(extent.ymax() - extent.ymin())/extent.tileCols()
         |    xdelta=gridx*0.5*(tile_shape[-1]-extent.tileRows())
         |    ydelta=gridy*0.5*(tile_shape[-2]-extent.tileCols())
-        |    xmin=extent.xmin()-xdelta
-        |    xmax=extent.xmax()+xdelta
-        |    ymin=extent.ymin()-ydelta
-        |    ymax=extent.ymax()+ydelta
+        |    xmin=extent.xmin()-xdelta-(overlap_x*gridx)
+        |    xmax=extent.xmax()+xdelta+(overlap_x*gridx)
+        |    ymin=extent.ymin()-ydelta-(overlap_y*gridx)
+        |    ymax=extent.ymax()+ydelta+(overlap_y*gridy)
         |    coords['x']=np.linspace(xmin+0.5*gridx,xmax-0.5*gridx,tile_shape[-1],dtype=np.float32)
         |    coords['y']=np.linspace(ymax-0.5*gridy,ymin+0.5*gridy,tile_shape[-2],dtype=np.float32)
         |""".stripMargin)
@@ -189,7 +194,7 @@ object Udf {
             |}
             |
             |""".stripMargin
-        val resultMetadata = layer.sparkContext.parallelize(Seq(1)).map(t=>{
+        val newCellSize = layer.sparkContext.parallelize(Seq(1)).map(t=>{
           val interp = createSharedInterpreter()
           try {
             interp.exec(DEFAULT_IMPORTS)
@@ -201,9 +206,14 @@ object Udf {
             val targetResolutionY:Double = interp.getValue("[d for d in result_metadata.spatial_dimensions if d.name == \"y\"][0].step").asInstanceOf[Double]
             CellSize(targetResolutionX,targetResolutionY)
           } finally if (interp != null) interp.close()
-        }).collect()
-
-        Some(LayoutDefinition(RasterExtent(layer.metadata.layout.extent, resultMetadata.apply(0)), layer.metadata.layout.tileRows))
+        }).collect().apply(0)
+        val ratioX = layer.metadata.layout.cellSize.width / newCellSize.width
+        val ratioY = layer.metadata.layout.cellSize.height / newCellSize.height
+        val newTileRows = (layer.metadata.layout.tileRows * ratioY).toInt
+        val newTileCols = (layer.metadata.layout.tileCols * ratioX).toInt
+        val newLayout = LayoutDefinition(RasterExtent(layer.metadata.layout.extent, newCellSize), newTileCols, newTileRows)
+        logger.info(s"UDF applyMetadata returned this new layout: $newLayout")
+        Some(newLayout)
       } else {
         None
       }
@@ -287,7 +297,7 @@ object Udf {
           val directTile = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
 
           // Convert DirectNDArray to XarrayDatacube.
-          setXarraydatacubeInPython(interp, directTile, tileShape, spatialExtent, bandNames, dates)
+          setXarraydatacubeInPython(interp, directTile, tileShape, spatialExtent, bandNames, 0, 0, dates)
           // Convert context from jep.PyJMap to dict.
           setContextInPython(interp, context)
 
@@ -349,7 +359,9 @@ object Udf {
    * @return The resulting MultibandTileLayerRDD.
   */
   def runUserCode(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
-                  bandNames: util.ArrayList[String], context: util.HashMap[String, Any]): MultibandTileLayerRDD[SpaceTimeKey] = {
+                  bandNames: util.ArrayList[String], context: util.HashMap[String, Any],
+                  overlapX: Int = 0, overlapY: Int = 0
+                 ): MultibandTileLayerRDD[SpaceTimeKey] = {
     // TODO: Implement apply_timeseries, apply_hypercube.
     // Map a python function to every tile of the RDD.
     // Map will serialize + send partitions to worker nodes
@@ -393,7 +405,7 @@ object Udf {
 
           // Setup the xarray datacube.
           val spatialExtent = createExtentFromSpatialKey(layer.metadata.layout, key_and_tile._1.spatialKey)
-          setXarraydatacubeInPython(interp, directTile, tileShape, spatialExtent, bandNames)
+          setXarraydatacubeInPython(interp, directTile, tileShape, spatialExtent, bandNames, overlapX, overlapY)
           // Convert context from jep.PyJMap to python dict.
           setContextInPython(interp, context)
 
@@ -425,12 +437,6 @@ object Udf {
                 FloatBuffer.wrap(cube.getData)
             }
 
-          // UDFs can
-          //  * add/remove band coordinates,
-          //  * add/remove row/col coordinates (Change in resolution)
-          //  * remove the band or date dimension
-          // UDFs can not
-          //  * add/remove time coordinates (Since map returns one SpaceTimeKey and MultiBandTile)
           // TODO: This is how it is done in apply_tiles (python), check if this meets user requirements.
           val resultHasBandDimension = interp.getValue("'bands' in result_cube.get_array().dims").asInstanceOf[Boolean]
           newTileRows = resultDimensions(resultDimensions.length - 2)
@@ -445,43 +451,12 @@ object Udf {
           resultBuffer.rewind()
           resultMultiBandTile = extractMultibandTileFromBuffer(resultBuffer, newNumberOfBands, newTileRows, newTileCols)
         } finally if (interp != null) interp.close()
-
-        if (newLayout.isDefined) {
-          logger.info(s"UDF created this spatial layout for the raster data cube: $newLayout")
-          var newExtent: Extent = key_and_tile._1.spatialKey.extent(oldLayout) //TODO: don't assume that extent stays the same, but determine extent of the output based on result XArray Coords
-          // Convert newExtent to SpatialKeys, if resolution increased then this spreads out e.g.
-          // a 256x256 result tile back into 4 128x128 tiles.
-          // Tile shape should always stay the same, only the number of tiles changes when resolution changes.
-          val tileCoords: TileBounds = newLayout.get.mapTransform(newExtent)
-          val tiles: Iterator[(SpaceTimeKey, MultibandTile)] = tileCoords
-            .coordsIter
-            .map { spatialComponent =>
-              val outKey: SpatialKey = spatialComponent
-              val noDataTile = multiBandTile.prototype(FloatConstantNoDataCellType, tileCols, tileRows)
-              // Merge in data from resultMultiBandTile that overlaps with this SpatialKey.
-              val tileForKey = noDataTile.merge(
-                newLayout.get.mapTransform.keyToExtent(outKey),
-                newExtent,
-                resultMultiBandTile,
-                NearestNeighbor
-              )
-              (SpaceTimeKey(outKey,key_and_tile._1.time), tileForKey)
-            }
-          tiles
-        } else {
-          Some((key_and_tile._1, resultMultiBandTile))
-        }
-
+        Some((key_and_tile._1, resultMultiBandTile))
       })
     }, preservesPartitioning = newLayout.isEmpty)
 
     if (newLayout.isDefined) {
-      val newLayoutVal = newLayout.get
-      val newTileBounds: TileBounds = newLayoutVal.mapTransform(newLayoutVal.extent)
-      val oldBounds = layer.metadata.bounds
-      val minSTK = SpaceTimeKey(newTileBounds.colMin, newTileBounds.rowMin, oldBounds.get.minKey.instant)
-      val maxSTK = SpaceTimeKey(newTileBounds.colMax, newTileBounds.rowMax, oldBounds.get.maxKey.instant)
-      return ContextRDD(result, layer.metadata.copy(layout=newLayoutVal, bounds=Bounds(minSTK, maxSTK)))  // TODO: Update extent
+      return ContextRDD(result, layer.metadata.copy(layout=newLayout.get))
     }
     ContextRDD(result, layer.metadata)
   }
@@ -494,10 +469,9 @@ object Udf {
    * @return The resulting MultibandTileLayerRDD.
   */
   def runUserCodeSpatioTemporal(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
-                                bandNames: util.ArrayList[String], context: util.HashMap[String, Any]): MultibandTileLayerRDD[SpaceTimeKey] = {
-    if (bandNames.size() == 0) {
-      throw new IllegalArgumentException("runUserCodeSpatioTemporal currently does not support datacubes with no band dimension.")
-    }
+                                bandNames: util.ArrayList[String], context: util.HashMap[String, Any],
+                                overlapX: Int = 0, overlapY: Int = 0
+                               ): MultibandTileLayerRDD[SpaceTimeKey] = {
     // First group by SpatialKey.
     val bounds: KeyBounds[SpaceTimeKey] = layer.metadata.bounds.get
     val rows = bounds.maxKey.row - bounds.minKey.row + 1
@@ -512,7 +486,6 @@ object Udf {
 
     // Then run the UDF for every SpatialKey. Each key is a (t,bands,y,x) datacube.
     val newLayout: Option[LayoutDefinition] = callApplyMetadata(code, layer, context)
-    val oldLayout = layer.metadata.layout
 
     val result: RDD[(SpaceTimeKey, MultibandTile)] = spatiallyGrouped.mapPartitions((iter: Iterator[(SpatialKey, Iterable[(SpaceTimeKey, MultibandTile)])]) => {
       iter.flatMap((groupedBySpatialKey: (SpatialKey, Iterable[(SpaceTimeKey, MultibandTile)])) => {
@@ -550,7 +523,7 @@ object Udf {
           val directTile = new DirectNDArray[FloatBuffer](buffer, tileShape: _*)
 
           // Convert DirectNDArray to XarrayDatacube with shape (t,bands,y,x).
-          setXarraydatacubeInPython(interp, directTile, tileShape, spatialExtent, bandNames, dates)
+          setXarraydatacubeInPython(interp, directTile, tileShape, spatialExtent, bandNames, overlapX, overlapY, dates)
           // Convert context from jep.PyJMap to dict.
           setContextInPython(interp, context)
 
@@ -600,46 +573,16 @@ object Udf {
             resultTiles += ((spaceTimeKey, multibandTile))
           }
         } finally { if (interp != null) interp.close() }
-
-        if (newLayout.isDefined) {
-          logger.info(s"UDF created this spatial layout for the raster data cube: $newLayout")
-          var newExtent: Extent = spatialKey.extent(oldLayout) //TODO: don't assume that extent stays the same, but determine extent of the output based on result XArray Coords
-          // Convert newExtent to SpatialKeys, add NoData to tiles covered by SpatialKeys but not by newExtent.
-          val tileCoords: TileBounds = newLayout.get.mapTransform(newExtent)
-          // Do this for every date in resultTiles.
-          val outputTiles: Seq[(SpaceTimeKey, MultibandTile)] = resultTiles.flatMap(resultTile => {
-            val date = resultTile._1.temporalKey
-            val multibandTile = resultTile._2 // Output of the UDF for this date, we will retile it to the new extent.
-            val newTiles: Iterator[(SpaceTimeKey, MultibandTile)] = tileCoords
-              .coordsIter
-              .map { spatialComponent =>
-                val outKey: SpatialKey = spatialComponent
-                val noDataTile: ArrayMultibandTile = multibandTile.prototype(FloatConstantNoDataCellType, tileCols, tileRows)
-                val keyExtent = newLayout.get.mapTransform.keyToExtent(outKey)
-                // Merge in data from resultMultiBandTile that overlaps with this SpatialKey.
-                val tileWithAddedNoData = noDataTile.merge(
-                    keyExtent,
-                    newExtent,
-                    multibandTile,
-                    NearestNeighbor
-                )
-                (SpaceTimeKey(outKey, date), tileWithAddedNoData)
-              }
-            newTiles
-          })
-          outputTiles
-        } else {
-          resultTiles
-        }
+        resultTiles
       })
     }, preservesPartitioning = newLayout.isEmpty)
 
     if (newLayout.isDefined) {
       val newLayoutVal = newLayout.get
-      val newTileBounds: TileBounds = newLayoutVal.mapTransform(newLayoutVal.extent)
+      val newBounds: TileBounds = newLayoutVal.mapTransform(newLayoutVal.extent)
       val oldBounds = layer.metadata.bounds
-      val minSTK = SpaceTimeKey(newTileBounds.colMin, newTileBounds.rowMin, oldBounds.get.minKey.instant)
-      val maxSTK = SpaceTimeKey(newTileBounds.colMax, newTileBounds.rowMax, oldBounds.get.maxKey.instant)
+      val minSTK = SpaceTimeKey(newBounds.colMin, newBounds.rowMin, oldBounds.get.minKey.instant)
+      val maxSTK = SpaceTimeKey(newBounds.colMax, newBounds.rowMax, oldBounds.get.maxKey.instant)
       return ContextRDD(result, layer.metadata.copy(layout=newLayoutVal, bounds=Bounds(minSTK, maxSTK)))  // TODO: Update extent
     }
     ContextRDD(result, layer.metadata)

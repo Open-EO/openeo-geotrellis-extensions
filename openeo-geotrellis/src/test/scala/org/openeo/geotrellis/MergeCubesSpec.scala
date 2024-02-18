@@ -184,7 +184,7 @@ class MergeCubesSpec {
           rdd,
           intervals,
           labels,
-          TestOpenEOProcessScriptBuilder.createMedian(true),
+          TestOpenEOProcessScriptBuilder.createMedian(true, rdd.metadata.cellType),
           java.util.Collections.emptyMap()
         )
         val tmp2 = new ContextRDD(composite, composite.metadata)
@@ -195,6 +195,8 @@ class MergeCubesSpec {
     val tileLayerRDD_R = aggregate(buildSpatioTemporalDataCubePattern(), aggregateR)
     val tileLayerRDD_G = aggregate(buildSpatioTemporalDataCubePattern(patternScale = 2), aggregateG)
     val tileLayerRDD_B = aggregate(buildSpatioTemporalDataCubePattern(patternScale = 4), aggregateB)
+
+    assertEquals(DoubleConstantNoDataCellType,tileLayerRDD_R.metadata.cellType)
 
     val tileLayerRDD_RG = new OpenEOProcesses().mergeCubes(tileLayerRDD_R, tileLayerRDD_G, null)
     val tileLayerRDD_RGB = new OpenEOProcesses().mergeCubes(tileLayerRDD_RG, tileLayerRDD_B, null)
@@ -485,8 +487,10 @@ class MergeCubesSpec {
     val labels = Range(0, 3).map { r => DateTimeFormatter.ISO_INSTANT.format(startDate.plusDays(10L * r)) }
 
     val p = new OpenEOProcesses()
-    val composite1 = p.aggregateTemporal(cube1,intervals.asJava,labels.asJava,TestOpenEOProcessScriptBuilder.createMedian(true), java.util.Collections.emptyMap())
-    val composite2 = p.aggregateTemporal(cube2,intervals.asJava,labels.asJava,TestOpenEOProcessScriptBuilder.createMedian(true), java.util.Collections.emptyMap())
+    val medianProcess = TestOpenEOProcessScriptBuilder.createMedian(true,cube1.metadata.cellType)
+    assertEquals(cube1.metadata.cellType,medianProcess.getOutputCellType())
+    val composite1 = p.aggregateTemporal(cube1,intervals.asJava,labels.asJava,medianProcess, java.util.Collections.emptyMap())
+    val composite2 = p.aggregateTemporal(cube2,intervals.asJava,labels.asJava,medianProcess, java.util.Collections.emptyMap())
     val merged = p.mergeCubes(p.filterEmptyTile(composite1), p.filterEmptyTile(composite2), operator = null)
     val expectedKey = SpaceTimeKey(0,0,1577836800000L)
     val localTiles = merged.filter(_._1==expectedKey).collect()

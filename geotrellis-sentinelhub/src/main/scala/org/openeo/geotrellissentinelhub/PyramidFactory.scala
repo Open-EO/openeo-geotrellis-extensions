@@ -20,7 +20,6 @@ import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalTime, OffsetTime, ZonedDateTime}
 import java.util
-import java.util.concurrent.TimeUnit.MILLISECONDS
 import scala.collection.JavaConverters._
 
 object PyramidFactory {
@@ -65,7 +64,6 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                      authorizer: Authorizer,
                      processingOptions: util.Map[String, Any] = util.Collections.emptyMap[String, Any],
                      sampleType: SampleType = UINT16,
-                     rateLimitingGuard: RateLimitingGuard = NoRateLimitingGuard,
                      maxSpatialResolution: CellSize = CellSize(10,10), maxSoftErrorsRatio: Double = 0.0) extends Serializable {
   import PyramidFactory._
 
@@ -157,8 +155,6 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
       .flatMap { key =>
         val width = layout.tileLayout.tileCols
         val height = layout.tileLayout.tileRows
-
-        awaitRateLimitingGuardDelay(bandNames, width, height)
 
         try {
           val (multibandTile, processingUnitsSpent) = authorized { accessToken =>
@@ -273,8 +269,6 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
         def loadMasked(spatialKey: SpatialKey, dateTime: ZonedDateTime, numRequests: Long): Option[MultibandTile] = try {
           def getTile(bandNames: Seq[String], projectedExtent: ProjectedExtent, width: Int, height: Int): MultibandTile = {
-            awaitRateLimitingGuardDelay(bandNames, width, height)
-
             val (tile, processingUnitsSpent) = authorized { accessToken =>
               processApi.getTile(datasetId, projectedExtent, dateTime, width, height, bandNames,
                 sampleType, Criteria.toDataFilters(metadata_properties), processingOptions, accessToken)
@@ -406,12 +400,17 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             }
 
             if (featureIntersections.isEmpty()) {
-              throw NoSuchFeaturesException(message =
-                s"""no features found for criteria:
-                   |collection ID "$collectionId"
-                   |${polygons.length} polygon(s)
-                   |[$from_datetime, $until_datetime)
-                   |metadata properties $metadata_properties""".stripMargin)
+              if(dataCubeParameters.allowEmptyCube) {
+                return Seq( 0-> ContextRDD(sc.emptyRDD[(SpaceTimeKey, MultibandTile)],metadata))
+              }else{
+                throw NoSuchFeaturesException(message =
+                  s"""no features found for criteria:
+                     |collection ID "$collectionId"
+                     |${polygons.length} polygon(s)
+                     |[$from_datetime, $until_datetime)
+                     |metadata properties $metadata_properties""".stripMargin)
+              }
+
             }
 
             // this optimization consists of dissolving geometries of overlapping features and will therefore lose
@@ -464,21 +463,5 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
     }
 
     Seq(0 -> cube)
-  }
-
-  private def awaitRateLimitingGuardDelay(bandNames: Seq[String], width: Int, height: Int): Unit = {
-    val delay = rateLimitingGuard.delay(
-      batchProcessing = false,
-      width, height,
-      bandNames.count(_ != "dataMask"),
-      outputFormat = "tiff32",
-      nDataSamples = bandNames.size,
-      s1Orthorectification = false
-    )
-
-    if (logger.isDebugEnabled) logger.debug(s"$rateLimitingGuard says to wait $delay")
-    else if (!delay.isZero) logger.info(s"$rateLimitingGuard says to wait $delay")
-
-    MILLISECONDS.sleep(delay.toMillis)
   }
 }

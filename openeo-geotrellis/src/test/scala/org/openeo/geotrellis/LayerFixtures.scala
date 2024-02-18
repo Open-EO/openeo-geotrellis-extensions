@@ -136,6 +136,7 @@ object LayerFixtures {
       dateTime,
       tileLayout,
       extent = LayerFixtures.defaultExtent,
+      cellType = mbTiles.filter(_.bandCount>0).head.cellType
     )
     new ContextRDD(cubeXYTB, cubeXYTB.metadata)
   }
