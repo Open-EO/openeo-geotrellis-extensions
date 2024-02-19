@@ -1,19 +1,15 @@
 package org.openeo.geotrellis.vector
 
-import geotrellis.layer.{SpatialKey}
-import geotrellis.raster.{MultibandTile}
+import geotrellis.layer.SpatialKey
+import geotrellis.raster.MultibandTile
+import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Feature, Geometry}
-import org.apache.hadoop.hdfs.HdfsConfiguration
-import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.{SparkConf, SparkContext}
+import org.junit.Assert.assertEquals
 import org.junit.{AfterClass, BeforeClass, Test}
-import org.junit.Assert.{assertEquals}
 import org.openeo.geotrellis.LayerFixtures.sentinel2B04Layer
 import org.openeo.geotrellis.vector.VectorCubeMethods.extractFeatures
-import geotrellis.spark.{MultibandTileLayerRDD}
-
-import java.util
 
 object VectorCubeMethodsTest {
 
@@ -22,9 +18,6 @@ object VectorCubeMethodsTest {
   @BeforeClass
   def setUpSpark(): Unit = {
     sc = {
-      val config = new HdfsConfiguration
-      config.set("hadoop.security.authentication", "kerberos")
-      UserGroupInformation.setConfiguration(config)
 
       val conf = new SparkConf().set("spark.driver.bindAddress", "127.0.0.1")
       SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, conf)
@@ -40,7 +33,6 @@ object VectorCubeMethodsTest {
 
 
 class VectorCubeMethodsTest {
-  import VectorCubeMethodsTest._
 
   @Test def testVectorToRaster(): Unit = {
     val path = getClass.getResource("/org/openeo/geotrellis/geometries/input_vector_cube.geojson").getPath

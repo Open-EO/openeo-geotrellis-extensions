@@ -39,9 +39,6 @@ object CollectionTests {
 
   private implicit def sc: SparkContext = {
     if (_sc.isEmpty) {
-      val config = new HdfsConfiguration
-      //config.set("hadoop.security.authentication", "kerberos")
-      UserGroupInformation.setConfiguration(config)
 
       val conf = new SparkConf()
         //        .setMaster("local[*]")

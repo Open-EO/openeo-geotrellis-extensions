@@ -1163,7 +1163,7 @@ class FileLayerProviderTest {
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
 
 
-    val features: FeatureCollection = CreoFeatureCollection.parse(Source.fromResource("org/openeo/geotrellis/layers/creodias_opensearch_result_large.json").mkString.replace("/eodata/Sentinel-2/MSI/", "/DummyPath/").replace(".SAFE", "NOTSAFE"), true)
+    val features: FeatureCollection = CreoFeatureCollection.parse(Source.fromResource("org/openeo/geotrellis/layers/creodias_opensearch_result_large.json")(scala.io.Codec.UTF8).mkString.replace("/eodata/Sentinel-2/MSI/", "/DummyPath/").replace(".SAFE", "NOTSAFE"), true)
     features.features.foreach(f => {
       f.links(0) = Link(URI.create("file://myfile.jp2"), Some("B02"))
 
