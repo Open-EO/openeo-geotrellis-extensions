@@ -10,9 +10,9 @@
         <gt-version>21.2</gt-version>
         <hadoop.version>3.1.1</hadoop.version>
         <avro.version>1.7.7</avro.version>
-        <spark.version>3.3.1</spark.version>
+        <spark.version>3.4.2</spark.version>
         <scala.binary.version>2.12</scala.binary.version>
-        <scala.version>2.12.15</scala.version>
+        <scala.version>2.12.18</scala.version>
         <geotrellis.version>3.6.0</geotrellis.version>
         <gdal-bindings.version>3.8.0</gdal-bindings.version>
         <commons-compress-version>1.10</commons-compress-version>
@@ -34,6 +34,11 @@
                 <groupId>org.scalactic</groupId>
                 <artifactId>scalactic_${scala.binary.version}</artifactId>
                 <version>3.2.17</version>
+            </dependency>
+            <dependency>
+                <groupId>org.scala-lang</groupId>
+                <artifactId>scala-library</artifactId>
+                <version>${scala.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
