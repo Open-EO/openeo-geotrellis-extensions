@@ -1,0 +1,495 @@
+{
+  "assets": {
+    "openEO_0.nc": {
+      "eo:bands": [
+        {
+          "name": "B01"
+        },
+        {
+          "center_wavelength": 0.4966,
+          "name": "B02"
+        }
+      ],
+      "file:nodata": [
+        32767
+      ],
+      "file:size": 10720869,
+      "href": "https://openeo-dev.vito.be/openeo/1.2/jobs/j-240220e286c949dba55d586ea584500e/results/assets/MDhlMmE0MDA2MTE1NTU4OWJhNDBjZDAyY2JjMzNiZmFlNWUyMGFjOWRhMDAxNjRiNzgzY2M2OTc2MjdjMzQ0YUBlZ2kuZXU%3D/b4179a3d321479a7c588cbb1164e5016/openEO_0.nc?expires=1709060271",
+      "proj:bbox": [
+        615050.0,
+        5677250.0,
+        628750.0,
+        5686540.0
+      ],
+      "proj:epsg": 32631,
+      "proj:shape": [
+        1370,
+        929
+      ],
+      "raster:bands": [
+        {
+          "name": "B01",
+          "statistics": {
+            "maximum": 19246.0,
+            "mean": 1161.8614631934,
+            "minimum": 1.0,
+            "stddev": 1451.1166116843,
+            "valid_percent": 94.96
+          }
+        },
+        {
+          "name": "B02",
+          "statistics": {
+            "maximum": 18152.0,
+            "mean": 1137.9305719083,
+            "minimum": -999.0,
+            "stddev": 1424.8520547176,
+            "valid_percent": 94.96
+          }
+        }
+      ],
+      "roles": [
+        "data"
+      ],
+      "title": "openEO_0.nc",
+      "type": "application/x-netcdf"
+    },
+    "openEO_1.nc": {
+      "eo:bands": [
+        {
+          "name": "B01"
+        },
+        {
+          "center_wavelength": 0.4966,
+          "name": "B02"
+        }
+      ],
+      "file:nodata": [
+        32767
+      ],
+      "file:size": 15599681,
+      "href": "https://openeo-dev.vito.be/openeo/1.2/jobs/j-240220e286c949dba55d586ea584500e/results/assets/MDhlMmE0MDA2MTE1NTU4OWJhNDBjZDAyY2JjMzNiZmFlNWUyMGFjOWRhMDAxNjRiNzgzY2M2OTc2MjdjMzQ0YUBlZ2kuZXU%3D/241826a429b7121e36acfd3f2575ca29/openEO_1.nc?expires=1709060271",
+      "proj:bbox": [
+        636340.0,
+        5663450.0,
+        653150.0,
+        5674120.0
+      ],
+      "proj:epsg": 32631,
+      "proj:shape": [
+        1681,
+        1067
+      ],
+      "raster:bands": [
+        {
+          "name": "B01",
+          "statistics": {
+            "maximum": 8955.0,
+            "mean": 898.44480617918,
+            "minimum": 120.0,
+            "stddev": 963.74066952475,
+            "valid_percent": 93.97
+          }
+        },
+        {
+          "name": "B02",
+          "statistics": {
+            "maximum": 18184.0,
+            "mean": 900.72469275785,
+            "minimum": -776.0,
+            "stddev": 984.78289940106,
+            "valid_percent": 93.97
+          }
+        }
+      ],
+      "roles": [
+        "data"
+      ],
+      "title": "openEO_1.nc",
+      "type": "application/x-netcdf"
+    },
+    "openEO_2.nc": {
+      "eo:bands": [
+        {
+          "name": "B01"
+        },
+        {
+          "center_wavelength": 0.4966,
+          "name": "B02"
+        }
+      ],
+      "file:nodata": [
+        32767
+      ],
+      "file:size": 11915590,
+      "href": "https://openeo-dev.vito.be/openeo/1.2/jobs/j-240220e286c949dba55d586ea584500e/results/assets/MDhlMmE0MDA2MTE1NTU4OWJhNDBjZDAyY2JjMzNiZmFlNWUyMGFjOWRhMDAxNjRiNzgzY2M2OTc2MjdjMzQ0YUBlZ2kuZXU%3D/e403063fb8a0f874e37370edfb35beea/openEO_2.nc?expires=1709060271",
+      "proj:bbox": [
+        604500.0,
+        5656790.0,
+        617590.0,
+        5666820.0
+      ],
+      "proj:epsg": 32631,
+      "proj:shape": [
+        1309,
+        1003
+      ],
+      "raster:bands": [
+        {
+          "name": "B01",
+          "statistics": {
+            "maximum": 11105.0,
+            "mean": 968.4235114314,
+            "minimum": 115.0,
+            "stddev": 1016.4820353372,
+            "valid_percent": 95.64
+          }
+        },
+        {
+          "name": "B02",
+          "statistics": {
+            "maximum": 18152.0,
+            "mean": 995.8615694729,
+            "minimum": -999.0,
+            "stddev": 1058.4204778751,
+            "valid_percent": 95.64
+          }
+        }
+      ],
+      "roles": [
+        "data"
+      ],
+      "title": "openEO_2.nc",
+      "type": "application/x-netcdf"
+    }
+  },
+  "description": "Results for batch job j-240220e286c949dba55d586ea584500e",
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          4.053457,
+          51.01616,
+          4.129008,
+          51.049831
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          "2020-05-01T00:00:00Z",
+          "2020-05-22T00:00:00Z"
+        ]
+      ]
+    }
+  },
+  "id": "j-240220e286c949dba55d586ea584500e",
+  "license": "proprietary",
+  "links": [
+    {
+      "href": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20200507T104031_31UES_TOC_V210",
+      "rel": "derived_from",
+      "title": "Derived from urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20200507T104031_31UES_TOC_V210",
+      "type": "application/json"
+    },
+    {
+      "href": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20200507T104031_31UFS_TOC_V210",
+      "rel": "derived_from",
+      "title": "Derived from urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20200507T104031_31UFS_TOC_V210",
+      "type": "application/json"
+    },
+    {
+      "href": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20200517T104031_31UES_TOC_V210",
+      "rel": "derived_from",
+      "title": "Derived from urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20200517T104031_31UES_TOC_V210",
+      "type": "application/json"
+    },
+    {
+      "href": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20200517T104031_31UFS_TOC_V210",
+      "rel": "derived_from",
+      "title": "Derived from urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20200517T104031_31UFS_TOC_V210",
+      "type": "application/json"
+    },
+    {
+      "href": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20200520T105031_31UES_TOC_V210",
+      "rel": "derived_from",
+      "title": "Derived from urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20200520T105031_31UES_TOC_V210",
+      "type": "application/json"
+    },
+    {
+      "href": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20200520T105031_31UFS_TOC_V210",
+      "rel": "derived_from",
+      "title": "Derived from urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2A_20200520T105031_31UFS_TOC_V210",
+      "type": "application/json"
+    },
+    {
+      "href": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20200502T103619_31UES_TOC_V210",
+      "rel": "derived_from",
+      "title": "Derived from urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20200502T103619_31UES_TOC_V210",
+      "type": "application/json"
+    },
+    {
+      "href": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20200502T103619_31UFS_TOC_V210",
+      "rel": "derived_from",
+      "title": "Derived from urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20200502T103619_31UFS_TOC_V210",
+      "type": "application/json"
+    },
+    {
+      "href": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20200505T104619_31UES_TOC_V210",
+      "rel": "derived_from",
+      "title": "Derived from urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20200505T104619_31UES_TOC_V210",
+      "type": "application/json"
+    },
+    {
+      "href": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20200505T104619_31UFS_TOC_V210",
+      "rel": "derived_from",
+      "title": "Derived from urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20200505T104619_31UFS_TOC_V210",
+      "type": "application/json"
+    },
+    {
+      "href": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20200512T103619_31UES_TOC_V210",
+      "rel": "derived_from",
+      "title": "Derived from urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20200512T103619_31UES_TOC_V210",
+      "type": "application/json"
+    },
+    {
+      "href": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20200512T103619_31UFS_TOC_V210",
+      "rel": "derived_from",
+      "title": "Derived from urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20200512T103619_31UFS_TOC_V210",
+      "type": "application/json"
+    },
+    {
+      "href": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20200515T104619_31UES_TOC_V210",
+      "rel": "derived_from",
+      "title": "Derived from urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20200515T104619_31UES_TOC_V210",
+      "type": "application/json"
+    },
+    {
+      "href": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20200515T104619_31UFS_TOC_V210",
+      "rel": "derived_from",
+      "title": "Derived from urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20200515T104619_31UFS_TOC_V210",
+      "type": "application/json"
+    },
+    {
+      "href": "https://openeo-dev.vito.be/openeo/1.2/jobs/j-240220e286c949dba55d586ea584500e/results",
+      "rel": "self",
+      "type": "application/json"
+    },
+    {
+      "href": "https://openeo-dev.vito.be/openeo/1.2/jobs/j-240220e286c949dba55d586ea584500e/results/MDhlMmE0MDA2MTE1NTU4OWJhNDBjZDAyY2JjMzNiZmFlNWUyMGFjOWRhMDAxNjRiNzgzY2M2OTc2MjdjMzQ0YUBlZ2kuZXU%3D/f344b6fda933d30e73bd4c498a9f876f?expires=1709060271",
+      "rel": "canonical",
+      "type": "application/json"
+    },
+    {
+      "href": "http://ceos.org/ard/files/PFS/SR/v5.0/CARD4L_Product_Family_Specification_Surface_Reflectance-v5.0.pdf",
+      "rel": "card4l-document",
+      "type": "application/pdf"
+    },
+    {
+      "href": "https://openeo-dev.vito.be/openeo/1.2/jobs/j-240220e286c949dba55d586ea584500e/results/items/MDhlMmE0MDA2MTE1NTU4OWJhNDBjZDAyY2JjMzNiZmFlNWUyMGFjOWRhMDAxNjRiNzgzY2M2OTc2MjdjMzQ0YUBlZ2kuZXU%3D/b4179a3d321479a7c588cbb1164e5016/openEO_0.nc?expires=1709060271",
+      "rel": "item",
+      "type": "application/geo+json"
+    },
+    {
+      "href": "https://openeo-dev.vito.be/openeo/1.2/jobs/j-240220e286c949dba55d586ea584500e/results/items/MDhlMmE0MDA2MTE1NTU4OWJhNDBjZDAyY2JjMzNiZmFlNWUyMGFjOWRhMDAxNjRiNzgzY2M2OTc2MjdjMzQ0YUBlZ2kuZXU%3D/241826a429b7121e36acfd3f2575ca29/openEO_1.nc?expires=1709060271",
+      "rel": "item",
+      "type": "application/geo+json"
+    },
+    {
+      "href": "https://openeo-dev.vito.be/openeo/1.2/jobs/j-240220e286c949dba55d586ea584500e/results/items/MDhlMmE0MDA2MTE1NTU4OWJhNDBjZDAyY2JjMzNiZmFlNWUyMGFjOWRhMDAxNjRiNzgzY2M2OTc2MjdjMzQ0YUBlZ2kuZXU%3D/e403063fb8a0f874e37370edfb35beea/openEO_2.nc?expires=1709060271",
+      "rel": "item",
+      "type": "application/geo+json"
+    }
+  ],
+  "openeo:status": "finished",
+  "providers": [
+    {
+      "description": "This data was processed on an openEO backend maintained by VITO.",
+      "name": "VITO",
+      "processing:expression": [
+        {
+          "expression": {
+            "filterspatial1": {
+              "arguments": {
+                "data": {
+                  "from_node": "loadcollection1"
+                },
+                "geometries": {
+                  "features": [
+                    {
+                      "geometry": {
+                        "coordinates": [
+                          [
+                            [
+                              4.650875,
+                              51.315576
+                            ],
+                            [
+                              4.650875,
+                              51.234992
+                            ],
+                            [
+                              4.844148,
+                              51.234992
+                            ],
+                            [
+                              4.844148,
+                              51.315576
+                            ],
+                            [
+                              4.650875,
+                              51.315576
+                            ]
+                          ]
+                        ],
+                        "type": "Polygon"
+                      },
+                      "properties": {},
+                      "type": "Feature"
+                    },
+                    {
+                      "geometry": {
+                        "coordinates": [
+                          [
+                            [
+                              4.951521,
+                              51.198001
+                            ],
+                            [
+                              4.951521,
+                              51.106254
+                            ],
+                            [
+                              5.187586,
+                              51.106254
+                            ],
+                            [
+                              5.187586,
+                              51.198001
+                            ],
+                            [
+                              4.951521,
+                              51.198001
+                            ]
+                          ]
+                        ],
+                        "type": "Polygon"
+                      },
+                      "properties": {},
+                      "type": "Feature"
+                    },
+                    {
+                      "geometry": {
+                        "coordinates": [
+                          [
+                            [
+                              4.49384,
+                              51.140774
+                            ],
+                            [
+                              4.49384,
+                              51.053111
+                            ],
+                            [
+                              4.677723,
+                              51.053111
+                            ],
+                            [
+                              4.677723,
+                              51.140774
+                            ],
+                            [
+                              4.49384,
+                              51.140774
+                            ]
+                          ]
+                        ],
+                        "type": "Polygon"
+                      },
+                      "properties": {},
+                      "type": "Feature"
+                    }
+                  ],
+                  "type": "FeatureCollection"
+                }
+              },
+              "process_id": "filter_spatial"
+            },
+            "loadcollection1": {
+              "arguments": {
+                "bands": [
+                  "B01",
+                  "B02"
+                ],
+                "id": "SENTINEL2_L2A",
+                "properties": {
+                  "eo:cloud_cover": {
+                    "process_graph": {
+                      "lte1": {
+                        "arguments": {
+                          "x": {
+                            "from_parameter": "value"
+                          },
+                          "y": 90
+                        },
+                        "process_id": "lte",
+                        "result": true
+                      }
+                    }
+                  }
+                },
+                "spatial_extent": {
+                  "east": 4.129008,
+                  "north": 51.049831,
+                  "south": 51.01616,
+                  "west": 4.053457
+                },
+                "temporal_extent": [
+                  "2020-05-01",
+                  "2020-05-22"
+                ]
+              },
+              "process_id": "load_collection"
+            },
+            "saveresult1": {
+              "arguments": {
+                "data": {
+                  "from_node": "filterspatial1"
+                },
+                "format": "netCDF",
+                "options": {
+                  "sample_by_feature": true
+                }
+              },
+              "process_id": "save_result",
+              "result": true
+            }
+          },
+          "format": "openeo"
+        }
+      ],
+      "processing:facility": "openEO Geotrellis backend",
+      "processing:software": {
+        "Geotrellis backend": "0.27.0a1"
+      },
+      "roles": [
+        "processor"
+      ]
+    }
+  ],
+  "stac_extensions": [
+    "https://stac-extensions.github.io/eo/v1.1.0/schema.json",
+    "https://stac-extensions.github.io/file/v2.1.0/schema.json",
+    "https://stac-extensions.github.io/processing/v1.1.0/schema.json",
+    "https://stac-extensions.github.io/projection/v1.1.0/schema.json"
+  ],
+  "stac_version": "1.0.0",
+  "summaries": {
+    "instruments": [
+      "MSI"
+    ]
+  },
+  "title": "generate sbf STAC with items",
+  "type": "Collection"
+}
