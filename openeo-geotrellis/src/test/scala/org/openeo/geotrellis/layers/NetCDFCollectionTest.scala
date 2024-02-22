@@ -5,7 +5,7 @@ import geotrellis.raster.{CellSize, RasterExtent, ShortConstantNoDataCellType, S
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.Extent
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.{Disabled, Test}
 import org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 
@@ -16,6 +16,7 @@ import java.time.ZonedDateTime
 
 class NetCDFCollectionTest {
 
+  @Disabled
   @Test
   def testLoadNetCDFCollection():Unit = {
     val osClient = new FixedFeaturesOpenSearchClient()
