@@ -117,7 +117,13 @@ class PyramidFactory(openSearchClient: OpenSearchClient,
       if (p.isValid) p
       else {
         cleanedPolygons += 1
-        p.union().asInstanceOf[MultiPolygon]
+        val validPolygon = p.union()
+        validPolygon match  {
+          case p: Polygon => MultiPolygon(p)
+          case mp: MultiPolygon => mp
+          case _ => throw new IllegalArgumentException("Union of polygons should result in a Polygon or MultiPolygon")
+        }
+
       }
     }
     if (cleanedPolygons > 0) logger.warn(f"Cleaned up $cleanedPolygons polygon(s)")
