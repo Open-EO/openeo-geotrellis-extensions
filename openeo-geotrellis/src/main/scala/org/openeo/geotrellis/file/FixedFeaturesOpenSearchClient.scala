@@ -31,6 +31,11 @@ class FixedFeaturesOpenSearchClient extends OpenSearchClient {
     addFeature(id, bbox, nominalDate, sLinks)
   }
 
+  def addFeature(feature:Feature)
+  {
+    features += feature
+  }
+
   private def addFeature(id: String, bbox: Extent, nominalDate: ZonedDateTime, links: Array[Link]): Unit = {
     val feature = Feature(id, bbox, nominalDate, links, resolution = None)
     features += feature
