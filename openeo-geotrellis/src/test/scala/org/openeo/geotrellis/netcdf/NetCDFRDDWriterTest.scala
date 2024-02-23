@@ -88,14 +88,14 @@ class NetCDFRDDWriterTest extends RasterMatchers{
 
     val targetDir = temporaryFolder.getRoot.toString
 
-    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSamples(layer, targetDir, polygonsUTM31,
+    val sampleFilenames: util.List[(String, Extent)] = NetCDFRDDWriter.saveSamples(layer, targetDir, polygonsUTM31,
       sampleNameList, new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M",
         "SCENECLASSIFICATION_20M")),
       Some("prefixTest"))
 
     val expectedPaths = List(s"$targetDir/prefixTest_0.nc", s"$targetDir/prefixTest_1.nc")
 
-    Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
+    Assert.assertEquals(sampleFilenames.asScala.map(_._1).groupBy(identity), expectedPaths.groupBy(identity))
 
     // note: tests first geometry only
     val bandName = "TOC-B04_10M"
@@ -167,12 +167,12 @@ class NetCDFRDDWriterTest extends RasterMatchers{
 
     val targetDir = temporaryFolder.getRoot.toString
 
-    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSamples(
+    val sampleFilenames: util.List[(String, Extent)] = NetCDFRDDWriter.saveSamples(
       layer, targetDir, polygons, sampleNameList, bandNames
     )
 
-    val raster1: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:${sampleFilenames.get(0)}:TOC-B04_10M""").read().get
-    val raster2: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:${sampleFilenames.get(1)}:TOC-B04_10M""").read().get
+    val raster1: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:${sampleFilenames.get(0)._1}:TOC-B04_10M""").read().get
+    val raster2: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:${sampleFilenames.get(1)._1}:TOC-B04_10M""").read().get
 
     // Compare raster extents.
     //assert(raster1.extent.width == 2560.0)

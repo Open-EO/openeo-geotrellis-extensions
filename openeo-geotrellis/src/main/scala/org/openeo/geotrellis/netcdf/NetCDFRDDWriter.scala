@@ -291,7 +291,7 @@ object NetCDFRDDWriter {
                   polygons: ProjectedPolygons,
                   sampleNames: ArrayList[String],
                   bandNames: ArrayList[String],
-                 ): java.util.List[String] =
+                 ): java.util.List[(String, Extent)] =
     saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null)
 
   // Overload to avoid: "multiple overloaded alternatives of method saveSamples define default arguments"
@@ -301,7 +301,7 @@ object NetCDFRDDWriter {
                   sampleNames: ArrayList[String],
                   bandNames: ArrayList[String],
                   filenamePrefix: Option[String],
-                  ): java.util.List[String] =
+                  ): java.util.List[(String, Extent)] =
     saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null, filenamePrefix)
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
@@ -311,7 +311,7 @@ object NetCDFRDDWriter {
                   bandNames: ArrayList[String],
                   dimensionNames: java.util.Map[String, String],
                   attributes: java.util.Map[String, String],
-                 ): java.util.List[String] =
+                 ): java.util.List[(String, Extent)] =
     saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames, attributes, None)
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
@@ -322,7 +322,7 @@ object NetCDFRDDWriter {
                   dimensionNames: java.util.Map[String,String],
                   attributes: java.util.Map[String,String],
                   filenamePrefix: Option[String],
-                 ): java.util.List[String] = {
+                 ): java.util.List[(String, Extent)] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.zip(reprojected.polygons)
     logger.info(s"Using metadata: ${rdd.metadata}.")
@@ -349,7 +349,7 @@ object NetCDFRDDWriter {
                                            dimensionNames: java.util.Map[String,String],
                                            attributes: java.util.Map[String,String],
                                            filenamePrefix: Option[String] = None,
-                                           ): util.List[String] = {
+                                           ): java.util.List[(String, Extent)] = {
     val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
 
     val crs = rdd.metadata.crs
@@ -364,11 +364,12 @@ object NetCDFRDDWriter {
         val sorted = tiles.toSeq.sortBy(_._1)
         val dates = sorted.map(  t=> ZonedDateTime.ofInstant(t._1, ZoneOffset.UTC))
         logger.info(s"Writing ${name} with dates ${dates}.")
+        val extent = sorted.head._2.extent
         try{
-          writeToDisk(sorted.map(_._2), dates, filePath, bandNames, crs, dimensionNames, attributes)
+          (writeToDisk(sorted.map(_._2), dates, filePath, bandNames, crs, dimensionNames, attributes),extent)
         }catch {
           case t: IOException => {
-            handleSampleWriteError(t, name, outputAsPath)
+            (handleSampleWriteError(t, name, outputAsPath),extent)
           }
           case t: Throwable =>  throw t
         }
