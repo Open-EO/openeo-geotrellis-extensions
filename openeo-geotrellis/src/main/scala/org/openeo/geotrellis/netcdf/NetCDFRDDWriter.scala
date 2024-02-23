@@ -48,7 +48,8 @@ object NetCDFRDDWriter {
   val X = "x"
   val Y = "y"
   val TIME = "t"
-  val cfDatePattern = DateTimeFormatter.ofPattern("YYYY-MM-dd")
+//  val cfDatePattern = DateTimeFormatter.ofPattern("YYYY-MM-dd")
+  val cfDatePattern = DateTimeFormatter.ISO_LOCAL_DATE_TIME
 
   class OpenEOChunking(deflateLevel:Int) extends Nc4ChunkingDefault(deflateLevel,false) {
 
@@ -127,7 +128,9 @@ object NetCDFRDDWriter {
 
     val dates =
       cachedRDD.keys.flatMap {
-        case key: SpaceTimeKey => Some(Duration.between(fixedTimeOffset, key.time).toDays.toInt)
+        case key: SpaceTimeKey =>
+          logger.warn("key.time: " + key.time)
+          Some(Duration.between(fixedTimeOffset, key.time).getSeconds.toInt)
         case _ =>
           None
       }.distinct().collect().sorted.toList
@@ -146,7 +149,7 @@ object NetCDFRDDWriter {
       val cellType = tuple._2.cellType
       val timeDimIndex =
         if(dates.nonEmpty){
-          val timeOffset = Duration.between(fixedTimeOffset, tuple._1.asInstanceOf[SpaceTimeKey].time).toDays.toInt
+          val timeOffset = Duration.between(fixedTimeOffset, tuple._1.asInstanceOf[SpaceTimeKey].time).getSeconds.toInt
           dates.indexOf(timeOffset)
         }else{
           -1
@@ -677,7 +680,7 @@ object NetCDFRDDWriter {
     //Write values to variable
 
     if(dates!=null){
-      val daysSince = dates.map(Duration.between(fixedTimeOffset, _).toDays.toInt)
+      val daysSince = dates.map(Duration.between(fixedTimeOffset, _).getSeconds.toInt)
       writeTime(timeDimName, netcdfFile, daysSince)
     }
     write1DValues(netcdfFile, xValues, X)
@@ -686,7 +689,7 @@ object NetCDFRDDWriter {
   }
 
   private def addTimeVariable(netcdfFile: NetcdfFileWriter, dates: Seq[ZonedDateTime], timeDimName: String, timeDimensions: util.ArrayList[Dimension]) = {
-    addNetcdfVariable(netcdfFile, timeDimensions, timeDimName, DataType.INT, TIME, TIME, "days since " + cfDatePattern.format(fixedTimeOffset), "T")
+    addNetcdfVariable(netcdfFile, timeDimensions, timeDimName, DataType.INT, TIME, TIME, "seconds since " + cfDatePattern.format(fixedTimeOffset), "T")
   }
 
   import java.io.IOException
