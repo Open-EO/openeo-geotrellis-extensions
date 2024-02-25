@@ -1,19 +1,29 @@
 package org.openeo.geotrellis.layers
 
-import geotrellis.layer.{LayoutDefinition, SpaceTimeKey, TemporalProjectedExtent, TileLayerMetadata}
+import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalProjectedExtent, TileLayerMetadata}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.{CellSize, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
 import geotrellis.raster.gdal.{DefaultDomain, GDALRasterSource}
-import geotrellis.spark.{ContextRDD, withTilerMethods}
+import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
 
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util
 import scala.collection.immutable
 
 object NetCDFCollection {
+
+  def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
+                   metadata_properties: util.Map[String, Any], correlationId: String, dataCubeParameters: DataCubeParameters,osClient:OpenSearchClient): Seq[(Int, MultibandTileLayerRDD[SpatialKey])] = {
+    val sc = SparkContext.getOrCreate()
+    val cube: RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]] = loadCollection(osClient, sc)
+    Seq((0, cube))
+  }
 
   def loadCollection(osClient:OpenSearchClient,sc: SparkContext) = {
     val stacItems = osClient.getProducts("", None, null, Map[String, Any](), "", "")
@@ -74,8 +84,8 @@ object NetCDFCollection {
     val extent = bboxWGS84.reproject(LatLng,crs(0))
     val layout = LayoutDefinition(RasterExtent(extent, CellSize(resolutions(0), resolutions(0))), 128)
 
-    val retiled = features.tileToLayout(cellType,layout)
-    ContextRDD(retiled,TileLayerMetadata[SpaceTimeKey](cellType,layout,extent,crs(0),null))
+    val retiled: RDD[(SpatialKey, MultibandTile)] = features.tileToLayout(cellType,layout)
+    ContextRDD(retiled,TileLayerMetadata[SpatialKey](cellType,layout,extent,crs(0),null))
 
 
   }
