@@ -5,6 +5,7 @@ import geotrellis.proj4.LatLng
 import geotrellis.raster.{CellSize, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
 import geotrellis.raster.gdal.{DefaultDomain, GDALRasterSource}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
+import geotrellis.spark._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -19,9 +20,9 @@ import scala.collection.immutable
 object NetCDFCollection {
 
   def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
-                   metadata_properties: util.Map[String, Any], correlationId: String, dataCubeParameters: DataCubeParameters,osClient:OpenSearchClient): Seq[(Int, MultibandTileLayerRDD[SpatialKey])] = {
+                   metadata_properties: util.Map[String, Any], correlationId: String, dataCubeParameters: DataCubeParameters,osClient:OpenSearchClient): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     val sc = SparkContext.getOrCreate()
-    val cube: RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]] = loadCollection(osClient, sc)
+    val cube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = loadCollection(osClient, sc)
     Seq((0, cube))
   }
 
@@ -84,8 +85,9 @@ object NetCDFCollection {
     val extent = bboxWGS84.reproject(LatLng,crs(0))
     val layout = LayoutDefinition(RasterExtent(extent, CellSize(resolutions(0), resolutions(0))), 128)
 
-    val retiled: RDD[(SpatialKey, MultibandTile)] = features.tileToLayout(cellType,layout)
-    ContextRDD(retiled,TileLayerMetadata[SpatialKey](cellType,layout,extent,crs(0),null))
+    val metadata = TileLayerMetadata[SpaceTimeKey](cellType, layout, extent, crs(0), null)
+    val retiled: RDD[(SpaceTimeKey, MultibandTile)] = features.tileToLayout(metadata)
+    ContextRDD(retiled,metadata)
 
 
   }
