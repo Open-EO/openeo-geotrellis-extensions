@@ -1,9 +1,9 @@
 package org.openeo.geotrellis.layers
 
-import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalProjectedExtent, TileLayerMetadata}
+import geotrellis.layer.{KeyBounds, LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TemporalProjectedExtent, TileBounds, TileLayerMetadata}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.{CellSize, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
-import geotrellis.raster.gdal.{DefaultDomain, GDALRasterSource}
+import geotrellis.raster.gdal.{DefaultDomain, GDALException, GDALRasterSource, MalformedProjectionException}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
 import geotrellis.spark._
 import geotrellis.vector.{Extent, ProjectedExtent}
@@ -47,31 +47,42 @@ object NetCDFCollection {
     val features: RDD[(TemporalProjectedExtent, MultibandTile)] = items.flatMap(f=>{
       val allTiles = f.links.flatMap(l=>{
         l.bandNames.get.flatMap(b=> {
-          val rs = GDALRasterSource(s"${l.href.toString.replace("file:", "NETCDF:")}:${b}")
-          val units = rs.metadata.baseMetadata(DefaultDomain)("t#units")
-          val time_values = rs.metadata.baseMetadata(DefaultDomain)("NETCDF_DIM_t_VALUES")
-          val extraDim = rs.metadata.baseMetadata(DefaultDomain)("NETCDF_DIM_EXTRA")
-          val conventions: String = rs.metadata.baseMetadata(DefaultDomain).getOrElse("NC_GLOBAL#Conventions", "")
+          try{
 
-          if (!conventions.startsWith("CF-1")) {
-            throw new IllegalArgumentException("Only netCDF files with CF-1.x conventions are supported by this openEO backend.")
-          }
-          if (extraDim != "{t}") {
-            throw new IllegalArgumentException("Only netCDF files with a time dimension named 't' are supported by this openEO backend.")
-          }
-          if( units != "days since 1990-01-01") {
-            throw new IllegalArgumentException("Only netCDF files with a time dimension in 'days since 1990-01-01' are supported by this openEO backend.")
-          }
-          val timestamps = time_values.substring(1,time_values.length-1).split(",").map(t=>{LocalDate.of(1990,1,1).atStartOfDay(ZoneId.of("UTC")).plusDays(t.toInt)})
-          val raster: Raster[MultibandTile] = rs.read().get
-          val temporalRasters: immutable.Seq[(ZonedDateTime, (String, ProjectedExtent, Tile))] = raster.tile.bands.zip(timestamps).map(rasterBand_time=>{
-            (rasterBand_time._2,(b,ProjectedExtent(raster.extent,rs.crs),rasterBand_time._1))
-          })
-          temporalRasters
+            var gdalNetCDFLink = s"${l.href.toString.replace("file:", "NETCDF:")}:${b}"
+            if(!gdalNetCDFLink.startsWith("NETCDF:")) {
+              gdalNetCDFLink = s"NETCDF:${gdalNetCDFLink}"
+            }
+            val rs = GDALRasterSource(gdalNetCDFLink)
 
-        }
-          )
-        })
+
+            val units = rs.metadata.baseMetadata(DefaultDomain)("t#units")
+            val time_values = rs.metadata.baseMetadata(DefaultDomain)("NETCDF_DIM_t_VALUES")
+            val extraDim = rs.metadata.baseMetadata(DefaultDomain)("NETCDF_DIM_EXTRA")
+            val conventions: String = rs.metadata.baseMetadata(DefaultDomain).getOrElse("NC_GLOBAL#Conventions", "")
+
+            if (!conventions.startsWith("CF-1")) {
+              throw new IllegalArgumentException("Only netCDF files with CF-1.x conventions are supported by this openEO backend.")
+            }
+            if (extraDim != "{t}") {
+              throw new IllegalArgumentException("Only netCDF files with a time dimension named 't' are supported by this openEO backend.")
+            }
+            if( units != "days since 1990-01-01") {
+              throw new IllegalArgumentException("Only netCDF files with a time dimension in 'days since 1990-01-01' are supported by this openEO backend.")
+            }
+            val timestamps = time_values.substring(1,time_values.length-1).split(",").map(t=>{LocalDate.of(1990,1,1).atStartOfDay(ZoneId.of("UTC")).plusDays(t.toInt)})
+            val raster: Raster[MultibandTile] = rs.read().get
+            val temporalRasters: immutable.Seq[(ZonedDateTime, (String, ProjectedExtent, Tile))] = raster.tile.bands.zip(timestamps).map(rasterBand_time=>{
+              (rasterBand_time._2,(b,ProjectedExtent(raster.extent,rs.crs),rasterBand_time._1))
+            })
+            temporalRasters
+          }catch {
+            case e: GDALException => {
+              throw new IllegalArgumentException(s"load_stac/load_collection: GDAL gave an error for ${l.href.toString} with band $b. Error message: ${e.getMessage}", e)
+            }
+          }
+
+        })})
         val byTime: Map[ZonedDateTime, Array[(String, ProjectedExtent, Tile)]] = allTiles.groupBy(_._1).mapValues(_.map(_._2))
         byTime.map(t=>{
           val sortedBands = t._2.sortBy(_._1)
@@ -85,7 +96,10 @@ object NetCDFCollection {
     val extent = bboxWGS84.reproject(LatLng,crs(0))
     val layout = LayoutDefinition(RasterExtent(extent, CellSize(resolutions(0), resolutions(0))), 128)
 
-    val metadata = TileLayerMetadata[SpaceTimeKey](cellType, layout, extent, crs(0), null)
+    val spatialBounds = KeyBounds(layout.mapTransform(extent))
+    val temporalBounds = KeyBounds(SpaceTimeKey(spatialBounds.minKey,TemporalKey(LocalDate.of(1990,1,1).atStartOfDay(ZoneId.of("UTC")))),SpaceTimeKey(spatialBounds.maxKey,TemporalKey(LocalDate.now().atStartOfDay(ZoneId.of("UTC")))))
+
+    val metadata = TileLayerMetadata[SpaceTimeKey](cellType, layout, extent, crs(0), temporalBounds)
     val retiled: RDD[(SpaceTimeKey, MultibandTile)] = features.tileToLayout(metadata)
     ContextRDD(retiled,metadata)
 
