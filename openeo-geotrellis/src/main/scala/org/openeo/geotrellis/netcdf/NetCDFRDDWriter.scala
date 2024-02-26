@@ -41,7 +41,7 @@ import scala.reflect.ClassTag
 object NetCDFRDDWriter {
 
   object TemporalResolution extends Enumeration {
-    val seconds, days = Value
+    val seconds, days, undefined = Value
   }
 
   val logger = LoggerFactory.getLogger(NetCDFRDDWriter.getClass)
@@ -131,7 +131,7 @@ object NetCDFRDDWriter {
 
     val temporalResolution = if (cachedRDD.keys.filter({
       case key: SpaceTimeKey =>
-        // true if not exactly x days:
+        // true if not exactly n days:
         Duration.between(fixedTimeOffset, key.time).getSeconds % secondsPerDay != 0
       case _ =>
         false
@@ -521,9 +521,9 @@ object NetCDFRDDWriter {
       path
     }
 
-    val temporalResolution = if (!dates.exists {
+    val temporalResolution = if (dates == null) TemporalResolution.undefined else if (!dates.exists {
       time =>
-        // true if not exactly x days:
+        // true if not exactly n days:
         Duration.between(fixedTimeOffset, time).getSeconds % secondsPerDay != 0
     }) TemporalResolution.days else TemporalResolution.seconds
 
@@ -721,7 +721,7 @@ object NetCDFRDDWriter {
   private def addTimeVariable(netcdfFile: NetcdfFileWriter, dates: Seq[ZonedDateTime], timeDimName: String, timeDimensions: util.ArrayList[Dimension], temporalResolution: TemporalResolution.Value): Unit = {
     val units = temporalResolution match {
       case TemporalResolution.days => "days since " + DateTimeFormatter.ofPattern("YYYY-MM-dd").format(fixedTimeOffset)
-      case TemporalResolution.seconds => "seconds since " + DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(fixedTimeOffset)
+      case TemporalResolution.seconds => "seconds since " + DateTimeFormatter.ISO_ZONED_DATE_TIME.format(fixedTimeOffset)
     }
     addNetcdfVariable(netcdfFile, timeDimensions, timeDimName, DataType.INT, TIME, TIME, units, "T")
   }

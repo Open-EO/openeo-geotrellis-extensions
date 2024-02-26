@@ -316,6 +316,28 @@ class WriteRDDToGeotiffTest {
   }
 
   @Test
+  def testWriteMultibandTemporalHourlyRDDWithGaps(): Unit = {
+    val layoutCols = 8
+    val layoutRows = 4
+    val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerHoursRdd(layoutCols, layoutRows)
+
+    val outDir = Paths.get("tmp/geotiffGapsHourly/")
+    new Directory(outDir.toFile).deleteRecursively()
+    Files.createDirectories(outDir)
+
+    saveRDDTemporal(layer, outDir.toString)
+    val result = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-01T01-00-00Z.tif").toString).raster.tile
+
+    //crop away the area where data was removed, and check if rest of geotiff is still fine
+    val croppedReference = imageTile.crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArrayTile()
+
+    val croppedOutput = result.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256)
+    assertArrayEquals(croppedReference.toArray(), croppedOutput.toArray())
+    val result2 = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-01T02-00-00Z.tif").toString).raster.tile
+    assertArrayEquals(croppedReference.toArray(), result2.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArray())
+  }
+
+  @Test
   def testWriteMultibandTemporalRDDWithGapsNamed(): Unit = {
     val layoutCols = 8
     val layoutRows = 4
