@@ -193,7 +193,7 @@ object NetCDFRDDWriter {
 
 
       if(netcdfFile == null){
-        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, actualBandNames, preProcessedRdd.metadata.crs, cellType,dimensionNames,attributes,zLevel,writeTimeDimension = dates.nonEmpty)
+        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, actualBandNames, preProcessedRdd.metadata.crs, cellType, dimensionNames, temporalResolution, attributes, zLevel, writeTimeDimension = dates.nonEmpty)
       }
 
 
@@ -521,7 +521,13 @@ object NetCDFRDDWriter {
       path
     }
 
-    val netcdfFile: NetcdfFileWriter = setupNetCDF(intermediatePath, rasterExtent, dates, bandNames, crs, aRaster.cellType,dimensionNames, attributes, writeTimeDimension= dates!=null)
+    val temporalResolution = if (!dates.exists {
+      time =>
+        // true if not exactly x days:
+        Duration.between(fixedTimeOffset, time).getSeconds % secondsPerDay != 0
+    }) TemporalResolution.days else TemporalResolution.seconds
+
+    val netcdfFile: NetcdfFileWriter = setupNetCDF(intermediatePath, rasterExtent, dates, bandNames, crs, aRaster.cellType, dimensionNames, temporalResolution, attributes, writeTimeDimension = dates != null)
     try{
 
       for (bandIndex <- bandNames.asScala.indices) {
@@ -575,8 +581,8 @@ object NetCDFRDDWriter {
   private[netcdf] def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime],
                                   bandNames: util.List[String], crs: CRS, cellType: CellType,
                                   dimensionNames: java.util.Map[String, String],
-                                  attributes: java.util.Map[String, String], zLevel: Int = 6, writeTimeDimension: Boolean = true,
-                                  temporalResolution: TemporalResolution.Value = TemporalResolution.days) = {
+                                  temporalResolution: TemporalResolution.Value,
+                                  attributes: java.util.Map[String, String], zLevel: Int = 6, writeTimeDimension: Boolean = true) = {
 
     logger.info(s"Writing netCDF to $path with bands $bandNames, $cellType, $crs, $rasterExtent")
     val theChunking = new OpenEOChunking(zLevel)
