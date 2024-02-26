@@ -40,6 +40,10 @@ import scala.reflect.ClassTag
 
 object NetCDFRDDWriter {
 
+  object TemporalResolution extends Enumeration {
+    val seconds, days = Value
+  }
+
   val logger = LoggerFactory.getLogger(NetCDFRDDWriter.getClass)
 
   val fixedTimeOffset = ZonedDateTime.parse("1990-01-01T00:00:00Z")
@@ -48,8 +52,7 @@ object NetCDFRDDWriter {
   val X = "x"
   val Y = "y"
   val TIME = "t"
-//  val cfDatePattern = DateTimeFormatter.ofPattern("YYYY-MM-dd")
-  val cfDatePattern = DateTimeFormatter.ISO_LOCAL_DATE_TIME
+  val secondsPerDay = 86400L
 
   class OpenEOChunking(deflateLevel:Int) extends Nc4ChunkingDefault(deflateLevel,false) {
 
@@ -126,11 +129,24 @@ object NetCDFRDDWriter {
 
     val cachedRDD: RDD[(K, MultibandTile)] = cacheAndRepartition(preProcessedRdd)
 
+    val temporalResolution = if (cachedRDD.keys.filter({
+      case key: SpaceTimeKey =>
+        // true if not exactly x days:
+        Duration.between(fixedTimeOffset, key.time).getSeconds % secondsPerDay != 0
+      case _ =>
+        false
+    }).isEmpty()) TemporalResolution.days else TemporalResolution.seconds
+    logger.warn("temporalResolution: " + temporalResolution) // TODO: Remove log
+
     val dates =
       cachedRDD.keys.flatMap {
         case key: SpaceTimeKey =>
           logger.warn("key.time: " + key.time)
-          Some(Duration.between(fixedTimeOffset, key.time).getSeconds.toInt)
+          val duration = Duration.between(fixedTimeOffset, key.time)
+          Some((temporalResolution match {
+            case TemporalResolution.days => duration.toDays
+            case TemporalResolution.seconds => duration.getSeconds
+          }).toInt)
         case _ =>
           None
       }.distinct().collect().sorted.toList
@@ -149,7 +165,11 @@ object NetCDFRDDWriter {
       val cellType = tuple._2.cellType
       val timeDimIndex =
         if(dates.nonEmpty){
-          val timeOffset = Duration.between(fixedTimeOffset, tuple._1.asInstanceOf[SpaceTimeKey].time).getSeconds.toInt
+          val duration = Duration.between(fixedTimeOffset, tuple._1.asInstanceOf[SpaceTimeKey].time)
+          val timeOffset = (temporalResolution match {
+            case TemporalResolution.days => duration.toDays
+            case TemporalResolution.seconds => duration.getSeconds
+          }).toInt
           dates.indexOf(timeOffset)
         }else{
           -1
@@ -554,8 +574,9 @@ object NetCDFRDDWriter {
 
   private[netcdf] def setupNetCDF(path: String, rasterExtent: RasterExtent, dates: Seq[ZonedDateTime],
                                   bandNames: util.List[String], crs: CRS, cellType: CellType,
-                                  dimensionNames: java.util.Map[String,String],
-                                  attributes: java.util.Map[String,String], zLevel:Int =6, writeTimeDimension:Boolean = true) = {
+                                  dimensionNames: java.util.Map[String, String],
+                                  attributes: java.util.Map[String, String], zLevel: Int = 6, writeTimeDimension: Boolean = true,
+                                  temporalResolution: TemporalResolution.Value = TemporalResolution.days) = {
 
     logger.info(s"Writing netCDF to $path with bands $bandNames, $cellType, $crs, $rasterExtent")
     val theChunking = new OpenEOChunking(zLevel)
@@ -580,7 +601,7 @@ object NetCDFRDDWriter {
     val timeDimensions = new util.ArrayList[Dimension]
     timeDimensions.add(timeDimension)
     if(writeTimeDimension) {
-      addTimeVariable(netcdfFile, dates, timeDimName, timeDimensions)
+      addTimeVariable(netcdfFile, dates, timeDimName, timeDimensions, temporalResolution)
     }
 
 
@@ -680,16 +701,23 @@ object NetCDFRDDWriter {
     //Write values to variable
 
     if(dates!=null){
-      val daysSince = dates.map(Duration.between(fixedTimeOffset, _).getSeconds.toInt)
-      writeTime(timeDimName, netcdfFile, daysSince)
+      val timeSince = temporalResolution match {
+        case TemporalResolution.days => dates.map(Duration.between(fixedTimeOffset, _).toDays.toInt)
+        case TemporalResolution.seconds => dates.map(Duration.between(fixedTimeOffset, _).getSeconds.toInt)
+      }
+      writeTime(timeDimName, netcdfFile, timeSince)
     }
     write1DValues(netcdfFile, xValues, X)
     write1DValues(netcdfFile, yValues, Y)
     netcdfFile
   }
 
-  private def addTimeVariable(netcdfFile: NetcdfFileWriter, dates: Seq[ZonedDateTime], timeDimName: String, timeDimensions: util.ArrayList[Dimension]) = {
-    addNetcdfVariable(netcdfFile, timeDimensions, timeDimName, DataType.INT, TIME, TIME, "seconds since " + cfDatePattern.format(fixedTimeOffset), "T")
+  private def addTimeVariable(netcdfFile: NetcdfFileWriter, dates: Seq[ZonedDateTime], timeDimName: String, timeDimensions: util.ArrayList[Dimension], temporalResolution: TemporalResolution.Value): Unit = {
+    val units = temporalResolution match {
+      case TemporalResolution.days => "days since " + DateTimeFormatter.ofPattern("YYYY-MM-dd").format(fixedTimeOffset)
+      case TemporalResolution.seconds => "seconds since " + DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(fixedTimeOffset)
+    }
+    addNetcdfVariable(netcdfFile, timeDimensions, timeDimName, DataType.INT, TIME, TIME, units, "T")
   }
 
   import java.io.IOException
