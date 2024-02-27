@@ -17,7 +17,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.geotiff.preProcess
-import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
+import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons, TemporalResolution}
 import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.sync.RequestBody
@@ -39,10 +39,6 @@ import scala.reflect.ClassTag
 
 
 object NetCDFRDDWriter {
-
-  object TemporalResolution extends Enumeration {
-    val seconds, days, undefined = Value
-  }
 
   val logger = LoggerFactory.getLogger(NetCDFRDDWriter.getClass)
 

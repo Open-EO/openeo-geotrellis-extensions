@@ -16,7 +16,7 @@ import org.apache.spark.SparkContext
 import org.junit.Assert.{assertFalse, assertTrue}
 import org.junit._
 import org.junit.rules.TemporaryFolder
-import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.TemporalResolution
+import org.openeo.geotrellis.TemporalResolution
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.{ByKeyPartitioner, DataCubeParameters, SparseSpaceTimePartitioner}
 import org.slf4j.LoggerFactory
