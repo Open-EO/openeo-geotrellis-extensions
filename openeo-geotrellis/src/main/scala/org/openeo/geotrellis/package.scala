@@ -148,4 +148,8 @@ package object geotrellis {
     case s: StringName => s.value
     case s => s.toString // ex: EmptyName
   }
+
+  object TemporalResolution extends Enumeration {
+    val seconds, days, undefined = Value
+  }
 }

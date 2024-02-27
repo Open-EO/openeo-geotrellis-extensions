@@ -16,8 +16,10 @@ import org.apache.spark.SparkContext
 import org.junit.Assert.{assertFalse, assertTrue}
 import org.junit._
 import org.junit.rules.TemporaryFolder
+import org.openeo.geotrellis.TemporalResolution
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.{ByKeyPartitioner, DataCubeParameters, SparseSpaceTimePartitioner}
+import org.slf4j.LoggerFactory
 import ucar.nc2.dataset.NetcdfDataset
 
 import java.time.LocalTime.MIDNIGHT
@@ -31,6 +33,8 @@ import scala.io.Source
 
 object NetCDFRDDWriterTest {
   private var sc: SparkContext = _
+
+  private val logger = LoggerFactory.getLogger(NetCDFRDDWriterTest.getClass)
 
   @BeforeClass
   def setupSpark(): Unit = {
@@ -49,7 +53,12 @@ object NetCDFRDDWriterTest {
   }
 
   @AfterClass
-  def tearDown(): Unit = GDALWarp.deinit()
+  def tearDown(): Unit = try {
+    GDALWarp.deinit()
+  } catch {
+    // triggers error when running locally
+    case e: Throwable => logger.error("Ignoring deinit error: " + e.toString)
+  }
 }
 
 
@@ -318,6 +327,33 @@ class NetCDFRDDWriterTest extends RasterMatchers{
   }
 
   @Test
+  def testWriteSingleNetCDFMultipleSamplesOnADay(): Unit = {
+    val date1 = ZonedDateTime.parse("1990-01-02T00:00:00Z")
+    val extentTAP3857 = Extent(564389 - 10, 6659413 - 10, 565503 + 10, 6660301 + 10)
+
+    for {
+      date2 <- List(date1.plusDays(2), date1.plusHours(2))
+    } {
+      val dates = List(date1, date2)
+      val dataCubeContextRDD: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(
+        extent = extentTAP3857,
+        crs = CRS.fromName("EPSG:3857"),
+        dates = Some(dates)
+      )
+      val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSingleNetCDF(
+        dataCubeContextRDD,
+        "tmp/testWriteSingleNetCDFMultipleSamplesOnADay_" + date2.toString.replace(":", "_") + ".nc",
+        new util.ArrayList(util.Arrays.asList("band")),
+        null, null, 6
+      )
+      val ds = NetcdfDataset.openDataset(sampleFilenames.get(0), true, null)
+      // When the samples are in the same day, they should still be separate
+      Assert.assertEquals(dates.length, ds.findDimension("t").getLength)
+    }
+    Assert.assertEquals(true, true)
+  }
+
+  @Test
   def testWriteCGLS(): Unit = {
 
     val boundingBox = ProjectedExtent(Extent(38.6, 5.7, 41.0, 9.15), LatLng)
@@ -347,7 +383,15 @@ class NetCDFRDDWriterTest extends RasterMatchers{
       dimMapping.put("t","myTimeDim")
       val attributes = new util.HashMap[String, String]()
       attributes.put("title","my netcdf file")
-      val file = NetCDFRDDWriter.setupNetCDF("test.nc", RasterExtent(Extent(0, 0, 10, 10), 512, 512),Seq(ZonedDateTime.parse("2021-05-01T00:00:00Z"),ZonedDateTime.parse("2021-05-10T00:00:00Z")),new util.ArrayList(util.Arrays.asList("b1","b2")),LatLng,cellType,dimMapping,attributes)
+      val file = NetCDFRDDWriter.setupNetCDF(
+        "test.nc",
+        RasterExtent(Extent(0, 0, 10, 10), 512, 512),
+        Seq(ZonedDateTime.parse("2021-05-01T00:00:00Z"), ZonedDateTime.parse("2021-05-10T00:00:00Z")),
+        new util.ArrayList(util.Arrays.asList("b1", "b2")),
+        LatLng, cellType, dimMapping,
+        TemporalResolution.days,
+        attributes
+      )
       Assert.assertEquals("my netcdf file",file.findGlobalAttribute("title").getStringValue())
       Assert.assertNotNull(file.findVariable("myTimeDim"))
       Assert.assertNotNull(file.findVariable("crs"))

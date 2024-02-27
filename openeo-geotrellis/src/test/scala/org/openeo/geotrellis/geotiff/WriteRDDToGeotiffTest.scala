@@ -18,7 +18,7 @@ import org.junit.rules.TemporaryFolder
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 
 import java.nio.file.{Files, Paths}
-import java.time.ZonedDateTime
+import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
 import java.util.zip.Deflater._
 import scala.annotation.meta.getter
@@ -315,6 +315,29 @@ class WriteRDDToGeotiffTest {
     assertArrayEquals(croppedReference.toArray(), result2.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArray())
   }
 
+  @Ignore("Fix this test: https://github.com/Open-EO/openeo-geotrellis-extensions/issues/257")
+  @Test
+  def testWriteMultibandTemporalHourlyRDDWithGaps(): Unit = {
+    val layoutCols = 8
+    val layoutRows = 4
+    val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerHoursRdd(layoutCols, layoutRows)
+
+    val outDir = Paths.get("tmp/geotiffGapsHourly/")
+    new Directory(outDir.toFile).deleteRecursively()
+    Files.createDirectories(outDir)
+
+    saveRDDTemporal(layer, outDir.toString)
+    val result = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-01T01-00-00Z.tif").toString).raster.tile
+
+    //crop away the area where data was removed, and check if rest of geotiff is still fine
+    val croppedReference = imageTile.crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArrayTile()
+
+    val croppedOutput = result.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256)
+    assertArrayEquals(croppedReference.toArray(), croppedOutput.toArray())
+    val result2 = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-01T02-00-00Z.tif").toString).raster.tile
+    assertArrayEquals(croppedReference.toArray(), result2.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArray())
+  }
+
   @Test
   def testWriteMultibandTemporalRDDWithGapsNamed(): Unit = {
     val layoutCols = 8
@@ -340,7 +363,7 @@ class WriteRDDToGeotiffTest {
   }
 
   @Test
-  def testSaveSamplesOnlyConsidersPixelsWithinGeometry(): Unit = {
+  def testSaveSamplesOnlyConsidersPixelsWithinGeometryHourly(): Unit = {
     val layoutCols = 8
     val layoutRows = 4
 
@@ -348,6 +371,40 @@ class WriteRDDToGeotiffTest {
     val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
 
     val date = ZonedDateTime.now()
+
+    val tileLayerRDD = TileLayerRDDBuilders
+      .createSpaceTimeTileLayerRDD(Seq((imageTile, date)), TileLayout(layoutCols, layoutRows, 256, 256),
+        ByteConstantNoDataCellType)(WriteRDDToGeotiffTest.sc)
+      .withContext(_.mapValues(MultibandTile(_)))
+
+    val geometriesPath = getClass.getResource("/org/openeo/geotrellis/geotiff/ll_ur_polygon.geojson").getPath
+
+    // its extent differs substantially from its shape
+    val tiltedRectangle = ProjectedPolygons.fromVectorFile(geometriesPath)
+
+    val sampleNames = tiltedRectangle.polygons.indices
+      .map(_.toString + "-testName")
+      .asJava
+
+    val outDir = Paths.get("tmp/geotiffSampleHourly/")
+    new Directory(outDir.toFile).deleteRecursively()
+    Files.createDirectories(outDir)
+
+    val ret = saveSamples(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
+      DeflateCompression(BEST_COMPRESSION))
+    assertTrue(ret.get(0)._2.contains("T"))
+  }
+
+  @Test
+  def testSaveSamplesOnlyConsidersPixelsWithinGeometry(): Unit = {
+    val layoutCols = 8
+    val layoutRows = 4
+
+    val intImage = LayerFixtures.createTextImage(layoutCols * 256, layoutRows * 256)
+    val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
+
+    val now = ZonedDateTime.now()
+    val date = ZonedDateTime.of(now.toLocalDate, LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     val tileLayerRDD = TileLayerRDDBuilders
       .createSpaceTimeTileLayerRDD(Seq((imageTile, date)), TileLayout(layoutCols, layoutRows, 256, 256),
