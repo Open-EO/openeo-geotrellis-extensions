@@ -132,7 +132,6 @@ object NetCDFRDDWriter {
       case _ =>
         false
     }).isEmpty()) TemporalResolution.days else TemporalResolution.seconds
-    logger.warn("temporalResolution: " + temporalResolution) // TODO: Remove log
 
     val dates =
       cachedRDD.keys.flatMap {
