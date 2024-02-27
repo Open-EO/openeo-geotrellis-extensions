@@ -18,7 +18,7 @@ import org.junit.rules.TemporaryFolder
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 
 import java.nio.file.{Files, Paths}
-import java.time.ZonedDateTime
+import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
 import java.util.zip.Deflater._
 import scala.annotation.meta.getter
@@ -362,7 +362,7 @@ class WriteRDDToGeotiffTest {
   }
 
   @Test
-  def testSaveSamplesOnlyConsidersPixelsWithinGeometry(): Unit = {
+  def testSaveSamplesOnlyConsidersPixelsWithinGeometryHourly(): Unit = {
     val layoutCols = 8
     val layoutRows = 4
 
@@ -370,6 +370,40 @@ class WriteRDDToGeotiffTest {
     val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
 
     val date = ZonedDateTime.now()
+
+    val tileLayerRDD = TileLayerRDDBuilders
+      .createSpaceTimeTileLayerRDD(Seq((imageTile, date)), TileLayout(layoutCols, layoutRows, 256, 256),
+        ByteConstantNoDataCellType)(WriteRDDToGeotiffTest.sc)
+      .withContext(_.mapValues(MultibandTile(_)))
+
+    val geometriesPath = getClass.getResource("/org/openeo/geotrellis/geotiff/ll_ur_polygon.geojson").getPath
+
+    // its extent differs substantially from its shape
+    val tiltedRectangle = ProjectedPolygons.fromVectorFile(geometriesPath)
+
+    val sampleNames = tiltedRectangle.polygons.indices
+      .map(_.toString + "-testName")
+      .asJava
+
+    val outDir = Paths.get("tmp/geotiffSampleHourly/")
+    new Directory(outDir.toFile).deleteRecursively()
+    Files.createDirectories(outDir)
+
+    val ret = saveSamples(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
+      DeflateCompression(BEST_COMPRESSION))
+    assertTrue(ret.get(0)._2.contains("T"))
+  }
+
+  @Test
+  def testSaveSamplesOnlyConsidersPixelsWithinGeometry(): Unit = {
+    val layoutCols = 8
+    val layoutRows = 4
+
+    val intImage = LayerFixtures.createTextImage(layoutCols * 256, layoutRows * 256)
+    val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
+
+    val now = ZonedDateTime.now()
+    val date = ZonedDateTime.of(now.toLocalDate, LocalTime.MIDNIGHT, ZoneOffset.UTC)
 
     val tileLayerRDD = TileLayerRDDBuilders
       .createSpaceTimeTileLayerRDD(Seq((imageTile, date)), TileLayout(layoutCols, layoutRows, 256, 256),
