@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.layers
 
+import com.azavea.gdal.GDALWarp
 import geotrellis.layer.{KeyBounds, LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TemporalProjectedExtent, TileBounds, TileLayerMetadata}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.{CellSize, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
@@ -47,19 +48,26 @@ object NetCDFCollection {
     val features: RDD[(TemporalProjectedExtent, MultibandTile)] = items.flatMap(f=>{
       val allTiles = f.links.flatMap(l=>{
         l.bandNames.get.flatMap(b=> {
+          var gdalNetCDFLink = s"${l.href.toString.replace("file:", "NETCDF:")}:${b}"
+          if(!gdalNetCDFLink.startsWith("NETCDF:")) {
+            gdalNetCDFLink = s"NETCDF:${gdalNetCDFLink}"
+          }
           try{
 
-            var gdalNetCDFLink = s"${l.href.toString.replace("file:", "NETCDF:")}:${b}"
-            if(!gdalNetCDFLink.startsWith("NETCDF:")) {
-              gdalNetCDFLink = s"NETCDF:${gdalNetCDFLink}"
-            }
             val rs = GDALRasterSource(gdalNetCDFLink)
 
-
-            val units = rs.metadata.baseMetadata(DefaultDomain)("t#units")
-            val time_values = rs.metadata.baseMetadata(DefaultDomain)("NETCDF_DIM_t_VALUES")
-            val extraDim = rs.metadata.baseMetadata(DefaultDomain)("NETCDF_DIM_EXTRA")
-            val conventions: String = rs.metadata.baseMetadata(DefaultDomain).getOrElse("NC_GLOBAL#Conventions", "")
+            /**
+             * Retrieving metadata using dataset directly, because sometimes metadata is so large that it doesn't fit the array allocated by GDALWarp
+             */
+            val units = rs.dataset.getMetadataItem("t#units",DefaultDomain,0)
+            val conventions: String = rs.dataset.getMetadataItem("NC_GLOBAL#Conventions",DefaultDomain,0)
+            val extraDim = rs.dataset.getMetadataItem("NETCDF_DIM_EXTRA",DefaultDomain,0)
+            val arr = Array.ofDim[Byte](1 << 11)
+            val returnValue = GDALWarp.get_metadata_item(rs.dataset.token, 1, 2, 0, "NETCDF_DIM_t_VALUES","",  arr)
+            if(returnValue<=0) {
+              throw new IllegalArgumentException(s"GDAL Could not retrieve time values from netcdf ${gdalNetCDFLink}")
+            }
+            val time_values = new String(arr,"UTF-8").trim
 
             if (!conventions.startsWith("CF-1")) {
               throw new IllegalArgumentException("Only netCDF files with CF-1.x conventions are supported by this openEO backend.")
@@ -78,7 +86,7 @@ object NetCDFCollection {
             temporalRasters
           }catch {
             case e: GDALException => {
-              throw new IllegalArgumentException(s"load_stac/load_collection: GDAL gave an error for ${l.href.toString} with band $b. Error message: ${e.getMessage}", e)
+              throw new IllegalArgumentException(s"load_stac/load_collection: GDAL gave an error for ${gdalNetCDFLink} with band $b. Error message: ${e.getMessage}", e)
             }
           }
 
