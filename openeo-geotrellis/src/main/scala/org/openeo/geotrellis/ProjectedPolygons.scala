@@ -153,7 +153,7 @@ object ProjectedPolygons {
       } catch {
         case _: DecodingFailure =>
           val featureCollection = geoJson.parseGeoJson[JsonFeatureCollection]()
-          featureCollection.getAllGeometries()
+          featureCollection.getAll[Geometry]
             .flatMap(asMultiPolygons)
             .toArray
       }

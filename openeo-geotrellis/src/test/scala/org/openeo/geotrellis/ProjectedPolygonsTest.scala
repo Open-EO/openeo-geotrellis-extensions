@@ -28,6 +28,15 @@ class ProjectedPolygonsTest() {
   }
 
   @Test
+  def projected_polygons_from_vector_file_mixed_polygons(): Unit = {
+    val pp = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/test_MVP_2fields.geojson").getPath)
+    assertEquals(2, pp.polygons.length)
+    assertTrue(pp.polygons(0).toString.startsWith("MULTIPOLYGON (((3.820542167275136"))
+    assertTrue(pp.polygons(1).toString.startsWith("MULTIPOLYGON (((3.649860567588494"))
+    assertEquals(CRS.fromEpsgCode(4326), pp.crs)
+  }
+
+  @Test
   def areaInSquareMeters(): Unit = {
     val pp = ProjectedPolygons.fromExtent(Extent(xmin = 4.0, ymin = 51.0, xmax = 5.0, ymax = 52.0), "EPSG:4326")
 
