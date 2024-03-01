@@ -305,10 +305,10 @@ class CollectionTests {
     println("Outputted path: " + Paths.get(output_dir, file_name).toString)
 
     if (Files.exists(Paths.get(expected_dir, file_name))) {
-      val groupedStats1 = AggregateSpatialTest.parseCSV(Paths.get(output_dir, file_name).toString)
-      val groupedStats2 = AggregateSpatialTest.parseCSV(Paths.get(expected_dir, file_name).toString)
+      val groupedStats1 = AggregateSpatialTest.parseCSV(Paths.get(output_dir, file_name).toString).toList.sortBy(_._1)
+      val groupedStats2 = AggregateSpatialTest.parseCSV(Paths.get(expected_dir, file_name).toString).toList.sortBy(_._1)
       groupedStats1.zip(groupedStats2).foreach(pair => {
-        assertEquals(pair._1._1, pair._2._1)
+        assertEquals(ZonedDateTime.parse(pair._1._1).toInstant, ZonedDateTime.parse(pair._2._1).toInstant)
         AggregateSpatialTest.assertEqualTimeseriesStats(pair._1._2, pair._2._2, 0.028)
       })
       println(groupedStats1.mkString("\n"))
