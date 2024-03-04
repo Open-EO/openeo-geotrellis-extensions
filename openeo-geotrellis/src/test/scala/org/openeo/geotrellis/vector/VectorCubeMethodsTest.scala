@@ -73,7 +73,36 @@ object VectorCubeMethodsTest {
 
 class VectorCubeMethodsTest {
 
-  @Test def testVectorToRaster(): Unit = {
+  @Test
+  def testExtractFeatures(): Unit = {
+    val path = getClass.getResource("/org/openeo/geotrellis/geometries/input_vector_cube_temporal.geojson").getPath
+    val targetDataCube = sentinel2B04Layer
+    val features: Map[String, Seq[(String, mutable.Buffer[Feature[Geometry, Double]])]] = extractFeatures(path, targetDataCube.metadata.crs, targetDataCube.metadata.layout)
+
+    val bandsForDate: Map[String, List[String]] = features.map({
+      case (date, dateValues: Seq[(String, mutable.Buffer[Feature[Geometry, Double]])]) =>
+      (date, dateValues.map(_._1).toList)
+    })
+    assertEquals(bandsForDate("2017-09-25T11:37:00Z"), Seq("0", "1"))
+    assertEquals(bandsForDate("2017-09-30T00:37:00Z"), Seq("0", "1"))
+    assertEquals(bandsForDate("2017-10-25T11:37:00Z"), Seq("0", "1"))
+
+    val valuesForBandForDate: Map[String, Map[String, List[Double]]] = features.map({
+      case (date, dateValues: Seq[(String, mutable.Buffer[Feature[Geometry, Double]])]) =>
+        (date, dateValues.map({ case (bandName, features) =>
+          (bandName, features.map(_.data).toList)
+        }).toMap)
+    })
+    assertEquals(valuesForBandForDate("2017-09-25T11:37:00Z")("0"), Seq(1.0, 3.0, 5.0))
+    assertEquals(valuesForBandForDate("2017-09-25T11:37:00Z")("1"), Seq(2.0, 4.0, 6.0))
+    valuesForBandForDate("2017-09-30T00:37:00Z")("0").foreach(v => assert(v.isNaN))
+    valuesForBandForDate("2017-09-30T00:37:00Z")("1").foreach(v => assert(v.isNaN))
+    assertEquals(valuesForBandForDate("2017-10-25T11:37:00Z")("0"), Seq(2.0, 3.0, 5.0))
+    assertEquals(valuesForBandForDate("2017-10-25T11:37:00Z")("1"), Seq(1.0, 4.0, 6.0))
+  }
+
+  @Test
+  def testVectorToRaster(): Unit = {
     val path = getClass.getResource("/org/openeo/geotrellis/geometries/input_vector_cube.geojson").getPath
     val targetDataCube = sentinel2B04Layer
     val cube: MultibandTileLayerRDD[SpatialKey] = VectorCubeMethods.vectorToRasterSpatial(path, targetDataCube)
