@@ -136,7 +136,6 @@ object NetCDFRDDWriter {
     val dates =
       cachedRDD.keys.flatMap {
         case key: SpaceTimeKey =>
-          logger.warn("key.time: " + key.time)
           val duration = Duration.between(fixedTimeOffset, key.time)
           Some((temporalResolution match {
             case TemporalResolution.days => duration.toDays
