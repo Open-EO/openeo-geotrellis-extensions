@@ -207,7 +207,9 @@ object Udf {
             interp.exec(code)
             interp.exec(cubeMetadata)
             interp.exec("result_metadata = apply_metadata(openeo.metadata.CollectionMetadata(metadata), context)")
-            val newBandNames = interp.getValue("[repr(b) for b in result_metadata.bands]").asInstanceOf[util.ArrayList[String]]
+            // Only band name is enough, as the input is also just band name.
+            // Otherwise, possible to return all metadata as JSON?
+            val newBandNames = interp.getValue("[b.name for b in result_metadata.bands]").asInstanceOf[util.ArrayList[String]]
             val targetResolutionX:Double = interp.getValue("[d for d in result_metadata.spatial_dimensions if d.name == \"x\"][0].step").asInstanceOf[Double]
             val targetResolutionY:Double = interp.getValue("[d for d in result_metadata.spatial_dimensions if d.name == \"y\"][0].step").asInstanceOf[Double]
             (CellSize(targetResolutionX,targetResolutionY), newBandNames)
@@ -358,16 +360,24 @@ object Udf {
     ContextRDD(resultGroupedBySpaceTimeKey, layer.metadata)
   }
 
+  def runUserCode(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
+                  bandNames: util.ArrayList[String], context: util.HashMap[String, Any],
+                  overlapX: Int = 0, overlapY: Int = 0
+                 ): MultibandTileLayerRDD[SpaceTimeKey] = {
+    // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/266
+    // This redirect function can be removed when ticket fully merged
+    runUserCodeWithBands(code, layer, bandNames, context, overlapX, overlapY)._1
+  }
 
   /**
    * Iterate over every spacetimekey/tile in layer, convert it into a (bands,y,x) datacube, and run the UDF.
    *
    * @return The resulting MultibandTileLayerRDD.
   */
-  def runUserCode(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
+  def runUserCodeWithBands(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
                   bandNames: util.ArrayList[String], context: util.HashMap[String, Any],
                   overlapX: Int = 0, overlapY: Int = 0
-                 ): MultibandTileLayerRDD[SpaceTimeKey] = {
+                 ): (MultibandTileLayerRDD[SpaceTimeKey], util.ArrayList[String]) = {
     // TODO: Implement apply_timeseries, apply_hypercube.
     // Map a python function to every tile of the RDD.
     // Map will serialize + send partitions to worker nodes
@@ -462,11 +472,20 @@ object Udf {
     }, preservesPartitioning = newLayout.isEmpty)
 
     if (newLayout.isDefined) {
-      return ContextRDD(result, layer.metadata.copy(layout = newLayout.get._1))
+      return (ContextRDD(result, layer.metadata.copy(layout = newLayout.get._1)), newLayout.get._2)
     }
-    ContextRDD(result, layer.metadata)
+    (ContextRDD(result, layer.metadata), bandNames)
   }
 
+
+  def runUserCodeSpatioTemporal(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
+                                bandNames: util.ArrayList[String], context: util.HashMap[String, Any],
+                                overlapX: Int = 0, overlapY: Int = 0
+                               ): MultibandTileLayerRDD[SpaceTimeKey] = {
+    // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/266
+    // This redirect function can be removed when ticket fully merged
+    runUserCodeSpatioTemporalWithBands(code, layer, bandNames, context, overlapX, overlapY)._1
+  }
 
   /**
    * First groups by SpatialKey, so every key has a list of dates/tiles.
@@ -474,7 +493,7 @@ object Udf {
    *
    * @return The resulting MultibandTileLayerRDD.
   */
-  def runUserCodeSpatioTemporal(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
+  def runUserCodeSpatioTemporalWithBands(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
                                 bandNames: util.ArrayList[String], context: util.HashMap[String, Any],
                                 overlapX: Int = 0, overlapY: Int = 0
                                ): (MultibandTileLayerRDD[SpaceTimeKey], util.ArrayList[String]) = {
