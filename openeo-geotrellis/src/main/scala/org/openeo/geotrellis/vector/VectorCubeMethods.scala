@@ -33,10 +33,10 @@ object VectorCubeMethods {
     datacube match {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
         val rdd: MultibandTileLayerRDD[SpatialKey] = rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]]
-        vectorToRasterTemporalGeneric(path, rdd.metadata.layout, rdd.metadata.crs, rdd.metadata.bounds.get.toSpatial)
+        vectorToRasterTemporalInternal(path, rdd.metadata.layout, rdd.metadata.crs, rdd.metadata.bounds.get.toSpatial)
       case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
         val rdd: MultibandTileLayerRDD[SpaceTimeKey] = rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]]
-        vectorToRasterTemporalGeneric(path, rdd.metadata.layout, rdd.metadata.crs, rdd.metadata.bounds.get.toSpatial)
+        vectorToRasterTemporalInternal(path, rdd.metadata.layout, rdd.metadata.crs, rdd.metadata.bounds.get.toSpatial)
       case _ => throw new IllegalArgumentException("Unsupported rdd type to vectorize: ${rdd}")
     }
   }
@@ -45,15 +45,15 @@ object VectorCubeMethods {
     datacube match {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
         val rdd: MultibandTileLayerRDD[SpatialKey] = rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]]
-        vectorToRasterSpatialGeneric(path, rdd.metadata.layout, rdd.metadata.crs, rdd.metadata.bounds.get.toSpatial)
+        vectorToRasterSpatialInternal(path, rdd.metadata.layout, rdd.metadata.crs, rdd.metadata.bounds.get.toSpatial)
       case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
         val rdd: MultibandTileLayerRDD[SpaceTimeKey] = rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]]
-        vectorToRasterSpatialGeneric(path, rdd.metadata.layout, rdd.metadata.crs, rdd.metadata.bounds.get.toSpatial)
+        vectorToRasterSpatialInternal(path, rdd.metadata.layout, rdd.metadata.crs, rdd.metadata.bounds.get.toSpatial)
       case _ => throw new IllegalArgumentException("Unsupported rdd type to vectorize: ${rdd}")
     }
   }
 
-  def isUTM(crs: CRS): Boolean = {
+  private def isUTM(crs: CRS): Boolean = {
     crs.epsgCode.get.toString.startsWith("326") || crs.epsgCode.get.toString.startsWith("327")
   }
 
@@ -104,7 +104,7 @@ object VectorCubeMethods {
     featuresByDateOrdered
   }
 
-  def featuresToBand(features: mutable.Buffer[Feature[Geometry, Double]], targetLayout: LayoutDefinition, cellType: raster.CellType): RDD[(SpatialKey, Tile)] = {
+  private def featuresToBand(features: mutable.Buffer[Feature[Geometry, Double]], targetLayout: LayoutDefinition, cellType: raster.CellType): RDD[(SpatialKey, Tile)] = {
     val sc = SparkContext.getOrCreate()
     val options = Rasterizer.Options(includePartial = true, sampleType = PixelIsPoint)
 
@@ -121,7 +121,7 @@ object VectorCubeMethods {
    * @param targetDatacube: Target datacube to extract the crs and resolution from.
    * @return A raster datacube.
    */
-  def vectorToRasterSpatialGeneric(path: String, targetLayout: LayoutDefinition, targetCRS: CRS, spatialBounds: KeyBounds[SpatialKey]): MultibandTileLayerRDD[SpatialKey] = {
+  private def vectorToRasterSpatialInternal(path: String, targetLayout: LayoutDefinition, targetCRS: CRS, spatialBounds: KeyBounds[SpatialKey]): MultibandTileLayerRDD[SpatialKey] = {
     val cellType = DoubleConstantNoDataCellType
 
     val featureBands: Seq[(String, mutable.Buffer[Feature[Geometry, Double]])] = extractFeatures(path, targetCRS, targetLayout)("")
@@ -147,7 +147,7 @@ object VectorCubeMethods {
    * @param t
    * @return A raster datacube.
    */
-  def vectorToRasterTemporalGeneric(path: String, targetLayout: LayoutDefinition, targetCRS: CRS, spatialBounds: KeyBounds[SpatialKey]): MultibandTileLayerRDD[SpaceTimeKey] = {
+  private def vectorToRasterTemporalInternal(path: String, targetLayout: LayoutDefinition, targetCRS: CRS, spatialBounds: KeyBounds[SpatialKey]): MultibandTileLayerRDD[SpaceTimeKey] = {
     val cellType = DoubleConstantNoDataCellType
 
     // Create the datacube.
