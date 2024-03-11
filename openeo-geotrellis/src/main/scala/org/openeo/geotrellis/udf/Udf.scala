@@ -177,9 +177,10 @@ object Udf {
 
   private def callApplyMetadata(code: String,
                                 layer: MultibandTileLayerRDD[SpaceTimeKey],
-                                context: util.HashMap[String, Any]
-                               ): Option[LayoutDefinition] = {
-      if (code.contains("apply_metadata")) {
+                                context: util.HashMap[String, Any],
+                                bandNames: util.ArrayList[String],
+                               ): Option[(LayoutDefinition, util.ArrayList[String])] = {
+      if (code.contains("def apply_metadata(")) { // TODO: Better check
         val crsCode = layer.metadata.crs.epsgCode.get
         val stepSize = layer.metadata.layout.cellSize
         val cubeMetadata =
@@ -189,12 +190,16 @@ object Udf {
             |   "cube:dimensions": {
             |      "x": {"type": "spatial", "axis": "x", "step": ${stepSize.width}, "reference_system": $crsCode},
             |      "y": {"type": "spatial", "axis": "y", "step": ${stepSize.height}, "reference_system": $crsCode},
-            |      "t": {"type": "temporal"}
+            |      "t": {"type": "temporal"},
+            |      "band": {
+            |         "type": "bands",
+            |         "values": [${bandNames.asScala.map('"' + _ + '"').mkString(", ")}]
+            |      }
             |   }
             |}
             |
             |""".stripMargin
-        val newCellSize = layer.sparkContext.parallelize(Seq(1)).map(t=>{
+        val (newCellSize, newBandNames) = layer.sparkContext.parallelize(Seq(1)).map(_=>{
           val interp = createSharedInterpreter()
           try {
             interp.exec(DEFAULT_IMPORTS)
@@ -202,9 +207,12 @@ object Udf {
             interp.exec(code)
             interp.exec(cubeMetadata)
             interp.exec("result_metadata = apply_metadata(openeo.metadata.CollectionMetadata(metadata), context)")
+            // Only band name is enough, as the input is also just band name.
+            // Otherwise, possible to return all metadata as JSON?
+            val newBandNames = interp.getValue("[b.name for b in result_metadata.bands]").asInstanceOf[util.ArrayList[String]]
             val targetResolutionX:Double = interp.getValue("[d for d in result_metadata.spatial_dimensions if d.name == \"x\"][0].step").asInstanceOf[Double]
             val targetResolutionY:Double = interp.getValue("[d for d in result_metadata.spatial_dimensions if d.name == \"y\"][0].step").asInstanceOf[Double]
-            CellSize(targetResolutionX,targetResolutionY)
+            (CellSize(targetResolutionX,targetResolutionY), newBandNames)
           } finally if (interp != null) interp.close()
         }).collect().apply(0)
         val ratioX = layer.metadata.layout.cellSize.width / newCellSize.width
@@ -213,7 +221,7 @@ object Udf {
         val newTileCols = (layer.metadata.layout.tileCols * ratioX).toInt
         val newLayout = LayoutDefinition(RasterExtent(layer.metadata.layout.extent, newCellSize), newTileCols, newTileRows)
         logger.info(s"UDF applyMetadata returned this new layout: $newLayout")
-        Some(newLayout)
+        Some((newLayout, newBandNames))
       } else {
         None
       }
@@ -221,7 +229,7 @@ object Udf {
 
   private def checkOutputDtype(dtype: String): Unit = {
     if (!dtype.equals("float32"))
-      throw new IllegalArgumentException("UDF returned a datacube that does not have dtype == np.float32.")
+      throw new IllegalArgumentException("UDF returned a datacube dtype should be np.float32, but is: " + dtype)
   }
 
   private def checkOutputSpatialDimensions(resultDimensions: Seq[Int], tileRows: Int, tileCols: Int): Unit = {
@@ -352,16 +360,24 @@ object Udf {
     ContextRDD(resultGroupedBySpaceTimeKey, layer.metadata)
   }
 
+  def runUserCode(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
+                  bandNames: util.ArrayList[String], context: util.HashMap[String, Any],
+                  overlapX: Int = 0, overlapY: Int = 0
+                 ): MultibandTileLayerRDD[SpaceTimeKey] = {
+    // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/266
+    // This redirect function can be removed when ticket fully merged
+    runUserCodeWithBands(code, layer, bandNames, context, overlapX, overlapY)._1
+  }
 
   /**
    * Iterate over every spacetimekey/tile in layer, convert it into a (bands,y,x) datacube, and run the UDF.
    *
    * @return The resulting MultibandTileLayerRDD.
   */
-  def runUserCode(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
+  def runUserCodeWithBands(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
                   bandNames: util.ArrayList[String], context: util.HashMap[String, Any],
                   overlapX: Int = 0, overlapY: Int = 0
-                 ): MultibandTileLayerRDD[SpaceTimeKey] = {
+                 ): (MultibandTileLayerRDD[SpaceTimeKey], util.ArrayList[String]) = {
     // TODO: Implement apply_timeseries, apply_hypercube.
     // Map a python function to every tile of the RDD.
     // Map will serialize + send partitions to worker nodes
@@ -372,7 +388,7 @@ object Udf {
     // TODO: AllocateDirect is an expensive operation, we should create one buffer for the entire partition
     // and then slice it!
 
-    val newLayout: Option[LayoutDefinition] = callApplyMetadata(code, layer, context)
+    val newLayout: Option[(LayoutDefinition, util.ArrayList[String])] = callApplyMetadata(code, layer, context, bandNames)
     val oldLayout = layer.metadata.layout
 
     val result: RDD[(SpaceTimeKey, MultibandTile)] = layer.mapPartitions(iter => {
@@ -456,11 +472,20 @@ object Udf {
     }, preservesPartitioning = newLayout.isEmpty)
 
     if (newLayout.isDefined) {
-      return ContextRDD(result, layer.metadata.copy(layout=newLayout.get))
+      return (ContextRDD(result, layer.metadata.copy(layout = newLayout.get._1)), newLayout.get._2)
     }
-    ContextRDD(result, layer.metadata)
+    (ContextRDD(result, layer.metadata), bandNames)
   }
 
+
+  def runUserCodeSpatioTemporal(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
+                                bandNames: util.ArrayList[String], context: util.HashMap[String, Any],
+                                overlapX: Int = 0, overlapY: Int = 0
+                               ): MultibandTileLayerRDD[SpaceTimeKey] = {
+    // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/266
+    // This redirect function can be removed when ticket fully merged
+    runUserCodeSpatioTemporalWithBands(code, layer, bandNames, context, overlapX, overlapY)._1
+  }
 
   /**
    * First groups by SpatialKey, so every key has a list of dates/tiles.
@@ -468,10 +493,10 @@ object Udf {
    *
    * @return The resulting MultibandTileLayerRDD.
   */
-  def runUserCodeSpatioTemporal(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
+  def runUserCodeSpatioTemporalWithBands(code: String, layer: MultibandTileLayerRDD[SpaceTimeKey],
                                 bandNames: util.ArrayList[String], context: util.HashMap[String, Any],
                                 overlapX: Int = 0, overlapY: Int = 0
-                               ): MultibandTileLayerRDD[SpaceTimeKey] = {
+                               ): (MultibandTileLayerRDD[SpaceTimeKey], util.ArrayList[String]) = {
     // First group by SpatialKey.
     val bounds: KeyBounds[SpaceTimeKey] = layer.metadata.bounds.get
     val rows = bounds.maxKey.row - bounds.minKey.row + 1
@@ -485,7 +510,7 @@ object Udf {
     }).groupByKey(partitioner=partitioner)
 
     // Then run the UDF for every SpatialKey. Each key is a (t,bands,y,x) datacube.
-    val newLayout: Option[LayoutDefinition] = callApplyMetadata(code, layer, context)
+    val newLayout: Option[(LayoutDefinition, util.ArrayList[String])] = callApplyMetadata(code, layer, context, bandNames)
 
     val result: RDD[(SpaceTimeKey, MultibandTile)] = spatiallyGrouped.mapPartitions((iter: Iterator[(SpatialKey, Iterable[(SpaceTimeKey, MultibandTile)])]) => {
       iter.flatMap((groupedBySpatialKey: (SpatialKey, Iterable[(SpaceTimeKey, MultibandTile)])) => {
@@ -578,14 +603,14 @@ object Udf {
     }, preservesPartitioning = newLayout.isEmpty)
 
     if (newLayout.isDefined) {
-      val newLayoutVal = newLayout.get
+      val newLayoutVal = newLayout.get._1
       val newBounds: TileBounds = newLayoutVal.mapTransform(newLayoutVal.extent)
       val oldBounds = layer.metadata.bounds
       val minSTK = SpaceTimeKey(newBounds.colMin, newBounds.rowMin, oldBounds.get.minKey.instant)
       val maxSTK = SpaceTimeKey(newBounds.colMax, newBounds.rowMax, oldBounds.get.maxKey.instant)
-      return ContextRDD(result, layer.metadata.copy(layout=newLayoutVal, bounds=Bounds(minSTK, maxSTK)))  // TODO: Update extent
+      return (ContextRDD(result, layer.metadata.copy(layout=newLayoutVal, bounds=Bounds(minSTK, maxSTK))), newLayout.get._2)  // TODO: Update extent
     }
-    ContextRDD(result, layer.metadata)
+    (ContextRDD(result, layer.metadata), bandNames)
   }
 
 }
