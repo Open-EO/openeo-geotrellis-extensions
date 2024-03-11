@@ -180,7 +180,7 @@ object Udf {
                                 context: util.HashMap[String, Any],
                                 bandNames: util.ArrayList[String],
                                ): Option[(LayoutDefinition, util.ArrayList[String])] = {
-      if (code.contains("apply_metadata")) {
+      if (code.contains("def apply_metadata(")) { // TODO: Better check
         val crsCode = layer.metadata.crs.epsgCode.get
         val stepSize = layer.metadata.layout.cellSize
         val cubeMetadata =
@@ -229,7 +229,7 @@ object Udf {
 
   private def checkOutputDtype(dtype: String): Unit = {
     if (!dtype.equals("float32"))
-      throw new IllegalArgumentException("UDF returned a datacube that does not have dtype == np.float32.")
+      throw new IllegalArgumentException("UDF returned a datacube dtype should be np.float32, but is: " + dtype)
   }
 
   private def checkOutputSpatialDimensions(resultDimensions: Seq[Int], tileRows: Int, tileCols: Int): Unit = {
