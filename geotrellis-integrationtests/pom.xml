@@ -216,12 +216,9 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>2.22.2</version>
                 <configuration>
-                    <parallel>classes</parallel>
-                    <threadCount>3</threadCount>
                     <environmentVariables>
                         <PATH>../venv/bin:${env.PATH}</PATH>
                         <LD_LIBRARY_PATH>/tmp_epod/gdal:../venv/lib/python3.8/site-packages/jep</LD_LIBRARY_PATH>
-                        <PROJ_LIB>/tmp_epod/gdal/data</PROJ_LIB>
                     </environmentVariables>
                     <reuseForks>false</reuseForks>
                     <includes>
