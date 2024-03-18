@@ -1179,6 +1179,16 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     val bandNames = openSearchLinkTitles.toList
 
+    def convertNetcdfLinksToGDALFormat(link: Link, bandName: String, bandIndex: Int) = {
+      // 1 netCDF asset can contain n bands, but a GDALRasterSource can only handle 1 band/wants the
+      //  band embedded in the path: NETCDF:$href:$bandName
+      if ((link.href.toString contains ".nc") && !link.href.toString.startsWith("NETCDF:")) {
+        val netCdfDataset = s"NETCDF:${link.href.getPath}:$bandName"
+        val netCdfDatasetBandIndex = 0
+        Some((link.copy(href = URI.create(netCdfDataset)), netCdfDatasetBandIndex))
+      } else Some((link, bandIndex))
+    }
+
     def getBandAssetsByBandInfo: Seq[Option[(Link, Int)]] = { // [Some((href, bandIndex))]
       def getBandAsset(bandName: String): Option[(Link, Int)] = { // (href, bandIndex)
         feature.links
@@ -1186,13 +1196,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             case Some(assetBandNames) =>
               val bandIndex = assetBandNames.indexWhere(_ == bandName)
               if (bandIndex >= 0) {
-                // 1 netCDF asset can contain n bands, but a GDALRasterSource can only handle 1 band/wants the
-                //  band embedded in the path: NETCDF:$href:$bandName
-                if (link.href.toString contains ".nc") {
-                  val netCdfDataset = s"NETCDF:${link.href}:$bandName"
-                  val netCdfDatasetBandIndex = 0
-                  Some((link.copy(href = URI.create(netCdfDataset)), netCdfDatasetBandIndex))
-                } else Some((link, bandIndex))
+                convertNetcdfLinksToGDALFormat(link, bandName, bandIndex)
               } else None
             case _ => None
           })
@@ -1213,7 +1217,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         logger.warn(s"asset with ID/title $title not found in feature ${feature.id}; inserting NODATA band instead")
         None
       }
-    } yield linkWithTitle.map((_, bandIndex))
+    } yield linkWithTitle.map(convertNetcdfLinksToGDALFormat(_,title,bandIndex).get)
 
     // TODO: pass a strategy to FileLayerProvider instead (incl. one for the PROBA-V workaround)
     val byLinkTitle = !openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]

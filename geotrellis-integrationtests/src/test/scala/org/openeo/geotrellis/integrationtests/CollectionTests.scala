@@ -2,7 +2,7 @@ package org.openeo.geotrellis.integrationtests
 
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import geotrellis.layer.SpaceTimeKey
-import geotrellis.proj4.CRS
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.CellSize
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.spark.util.SparkUtils
@@ -15,7 +15,7 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.openeo.geotrellis.file.{ProbaVPyramidFactoryTest, PyramidFactory}
-import org.openeo.geotrellis.{AggregateSpatialTest, ComputeStatsGeotrellisAdapter, LayerFixtures, ProjectedPolygons}
+import org.openeo.geotrellis.{AggregateSpatialTest, ComputeStatsGeotrellisAdapter, LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
 
@@ -132,6 +132,7 @@ object CollectionTests {
     //    arguments("CGLS_FAPAR_V2_GLOBAL"),
     //    arguments("CGLS_LAI_V2_GLOBAL"),
     //    arguments("CGLS_LAI300_V1_GLOBAL"),
+    arguments("CGLS_DMP300_V1_GLOBAL"),
   ))
 }
 
@@ -151,6 +152,19 @@ class CollectionTests {
       maxSpatialResolution = CellSize(10, 10)
     )
     p.crs = CRS.fromEpsgCode(32631)
+    p
+  }
+
+  def cglsPyramidFactory(collection:String, bands: util.List[String]): PyramidFactory = {
+    val openSearchClient = OpenSearchClient("https://globalland.vito.be/catalogue", isUTM = false, dateRegex = "",bands= null, clientType = "oscars")
+    val p = new PyramidFactory(
+      openSearchClient,
+      openSearchCollectionId = collection,
+      openSearchLinkTitles = bands,
+      rootPath = "",
+      maxSpatialResolution = CellSize(0.002976190476190, 0.002976190476190)
+    )
+    p.crs = LatLng
     p
   }
 
@@ -230,8 +244,10 @@ class CollectionTests {
 
     val vector_file = getClass.getResource("/org/openeo/geotrellis/integrationtests/collectiontests/"
       + (if (layerStr.contains("CGLS")) "cgls_test.json" else "50testfields.json")).getFile
+
+    val targetCRS = if (layerStr.contains("CGLS")) LatLng else CRS.fromEpsgCode(32631)
     var polygons = ProjectedPolygons.fromVectorFile(vector_file)
-    polygons = ProjectedPolygons.reproject(polygons, CRS.fromEpsgCode(32631))
+    polygons = ProjectedPolygons.reproject(polygons, targetCRS)
     val from_date_parsed = ZonedDateTime.parse(from_date)
     val to_date_parsed = ZonedDateTime.parse(to_date)
 
@@ -291,6 +307,21 @@ class CollectionTests {
         )
         val Seq((_, layer)) = seqThing
         layer
+      case "CGLS_DMP300_V1_GLOBAL" =>
+        val bandNames = util.Arrays.asList("GDMP")
+        val seqThing = cglsPyramidFactory("clms_global_gdmp_300m_v1_10daily_netcdf",bandNames).datacube_seq(
+          polygons,
+          from_date,
+          to_date,
+          util.Collections.emptyMap[String, Any](),
+          "correlationid",
+          datacubeParams
+        )
+        val Seq((_, layer)) = seqThing
+        val wrapped = new OpenEOProcesses().wrapCube(layer)
+        wrapped.openEOMetadata.setBandNames(bandNames)
+        wrapped
+
       case _ => throw new IllegalStateException(s"Layer $layerStr not supported")
     }
 
