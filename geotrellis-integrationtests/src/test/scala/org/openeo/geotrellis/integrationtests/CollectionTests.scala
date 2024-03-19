@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.integrationtests
 
+import com.azavea.gdal.GDALWarp
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.{CRS, LatLng}
@@ -59,6 +60,7 @@ object CollectionTests {
 
   @AfterAll
   def tearDownSpark_AfterAll(): Unit = {
+    GDALWarp.init(0)
     gotAfterAll = true
     maybeStopSpark()
   }
