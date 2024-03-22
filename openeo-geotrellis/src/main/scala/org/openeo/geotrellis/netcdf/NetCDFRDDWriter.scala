@@ -505,8 +505,16 @@ object NetCDFRDDWriter {
     val equalRasters = rasters.map(raster =>
       if (raster.extent != maxExtent) raster.crop(maxExtent, CropOptions(clamp = false, force = true)) else raster
     )
-    val aRaster = equalRasters.head
-    val rasterExtent = aRaster.rasterExtent
+    var aRaster = equalRasters.head
+    if (aRaster.tile.cols == 0 || aRaster.tile.rows == 0) {
+      logger.warn("At least one of the rasters in writeToDisk has 0 cols or rows. Trying to find a valid raster.")
+      val aRasterOption = equalRasters.find(raster => raster.tile.cols > 0 && raster.tile.rows > 0)
+      if (aRasterOption.isEmpty) {
+        throw new IllegalArgumentException("No valid raster data found.")
+      }
+      aRaster = aRasterOption.get
+    }
+    val rasterExtent: RasterExtent = aRaster.rasterExtent
 
     val intermediatePath =
     if (path.startsWith("s3:/")) {
