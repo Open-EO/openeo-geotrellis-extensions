@@ -436,6 +436,48 @@ object FileLayerProvider {
 
   private val PIXEL_COUNTER = "InputPixels"
 
+  private def rasterRegionsToTilesLoadPerProductStrategy(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))],
+                                   metadata: TileLayerMetadata[SpaceTimeKey],
+                                   retainNoDataTiles: Boolean,
+                                   cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy,
+                                   partitionerOption: Option[SpacePartitioner[SpaceTimeKey]] = None,
+                                   datacubeParams : Option[DataCubeParameters] = None,
+                                  ): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+    val partitioner = partitionerOption.getOrElse(SpacePartitioner(metadata.bounds))
+    logger.info(s"Cube partitioner index: ${partitioner.index}")
+    val totalChunksAcc: LongAccumulator = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
+    val tracker = BatchJobMetadataTracker.tracker("")
+    tracker.registerCounter(PIXEL_COUNTER)
+    val loadingTimeAcc = rasterRegionRDD.sparkContext.doubleAccumulator("SecondsPerChunk_" + rasterRegionRDD.name)
+    val crs = metadata.crs
+    val layout = metadata.layout
+
+    var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = rasterRegionRDD.map(t=>(t._2._2,t)).groupByKey().mapPartitions(partitionIterator => {
+      var totalPixelsPartition = 0
+      val startTime = System.currentTimeMillis()
+
+      val (loadedPartitions,partitionPixels) = loadPartitionBySource(partitionIterator, cloudFilterStrategy, totalChunksAcc, tracker,crs,layout )
+      totalPixelsPartition += partitionPixels
+
+      val durationMillis = System.currentTimeMillis() - startTime
+      if (totalPixelsPartition > 0) {
+        val secondsPerChunk = (durationMillis / 1000.0) / (totalPixelsPartition / (256 * 256))
+        loadingTimeAcc.add(secondsPerChunk)
+      }
+      loadedPartitions
+
+    }
+      .filter { case (_, tile) => retainNoDataTiles ||  !tile.bands.forall(_.isNoDataTile) },
+      preservesPartitioning = true).groupByKey(partitioner).flatMapValues(tiles => tiles.reduceOption(_ merge _) )
+
+    tiledRDD = DatacubeSupport.applyDataMask(datacubeParams,tiledRDD,metadata, pixelwiseMasking = true)
+
+    val cRDD = ContextRDD(tiledRDD, metadata)
+    cRDD.name = rasterRegionRDD.name
+    cRDD
+
+  }
+
   private def rasterRegionsToTiles(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))],
                                    metadata: TileLayerMetadata[SpaceTimeKey],
                                    retainNoDataTiles: Boolean,
@@ -478,6 +520,24 @@ object FileLayerProvider {
     val cRDD = ContextRDD(tiledRDD, metadata)
     cRDD.name = rasterRegionRDD.name
     cRDD
+  }
+
+
+  private def loadPartitionBySource(partitionIterator: Iterator[(SourceName, Iterable[(SpaceTimeKey,(RasterRegion, SourceName))])], cloudFilterStrategy: CloudFilterStrategy, totalChunksAcc: LongAccumulator, tracker: BatchJobMetadataTracker, crs :CRS, layout:LayoutDefinition )= {
+    var totalPixelsPartition = 0
+    val tiles: Iterator[(SpaceTimeKey, MultibandTile)] = partitionIterator.flatMap(tuple=>{
+      val keys = tuple._2.map(_._1).asJavaCollection
+      val source = tuple._2.head._2._1.asInstanceOf[GridBoundsRasterRegion].source
+      val bounds = tuple._2.map(_._2._1.asInstanceOf[GridBoundsRasterRegion].bounds)
+      val allBounds: Iterator[Raster[MultibandTile]] = source.readBounds(bounds)
+      val totalPixels = allBounds.map(tile => tile.cols * tile.rows * tile.tile.bandCount).sum
+      totalPixelsPartition += totalPixels
+      totalChunksAcc.add(totalPixels / (256 * 256))
+      tracker.add(PIXEL_COUNTER, totalPixels)
+      keys.iterator().asScala.zip(allBounds.map(_.tile))
+
+    })
+    (tiles,totalPixelsPartition)
   }
 
   private def loadPartition(partitionIterator: Iterator[(SpaceTimeKey, Iterable[(RasterRegion, SourceName)])], cloudFilterStrategy: CloudFilterStrategy, totalChunksAcc: LongAccumulator, tracker: BatchJobMetadataTracker, crs :CRS, layout:LayoutDefinition ) = {
@@ -1005,7 +1065,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       regions.name = s"FileCollection-${openSearchCollectionId}"
 
       //convert to raster region
-      val cube= rasterRegionsToTiles(regions, metadata, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), partitioner, datacubeParams)
+      val cube=
+        if(datacubeParams.map(_.loadPerProduct).getOrElse(false)){
+          rasterRegionsToTiles(regions, metadata, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), partitioner, datacubeParams)
+        }else{
+          rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), partitioner, datacubeParams)
+        }
       logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner}")
       cube
     }finally{

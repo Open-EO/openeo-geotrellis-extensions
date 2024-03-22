@@ -22,6 +22,7 @@ class DataCubeParameters extends Serializable {
   var noResampleOnRead: Boolean = false
   var timeDimensionFilter: Option[Object] = Option.empty
   var allowEmptyCube: Boolean = false
+  var loadPerProduct: Boolean = false
 
   override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube, $resampleMethod, $pixelBufferX, $pixelBufferY)"
 
@@ -29,6 +30,8 @@ class DataCubeParameters extends Serializable {
   def setPartitionerTemporalResolution(res:String): Unit = partitionerTemporalResolution = res
   def setLayoutScheme(scheme:String): Unit = layoutScheme = scheme
   def setTileSize(size:Int): Unit = tileSize = size
+
+  def setLoadPerProduct(loadPerProduct:Boolean): Unit = this.loadPerProduct = loadPerProduct
 
   def setMaskingCube(aMaskingCube: Object): Unit = {
     maskingCube = Some(aMaskingCube)
