@@ -94,6 +94,19 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   override def name: SourceName = sources.head.name
   override def bandCount: Int = sources.size
 
+  override def readBounds(bounds: Traversable[GridBounds[Long]]): Iterator[Raster[MultibandTile]] = {
+    var bandIndex = -1
+    val rastersByBounds = reprojectedSources.toList.par.flatMap(s => {
+      bandIndex = bandIndex + 1
+      s.readBounds(bounds).zipWithIndex.map(raster_int => ((raster_int._2,(bandIndex,raster_int._1))))
+    }).groupBy(_._1)
+    rastersByBounds.values.map(rasters => {
+      val sortedRasters = rasters.toList.sortBy(_._1).map(_._2._2)
+      Raster(MultibandTile(sortedRasters.map(_.tile.band(0).convert(cellType))), sortedRasters.head.extent)
+    }).toIterator
+
+  }
+
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val selectedSources = reprojectedSources(bands)
 
@@ -529,12 +542,12 @@ object FileLayerProvider {
       val keys = tuple._2.map(_._1).asJavaCollection
       val source = tuple._2.head._2._1.asInstanceOf[GridBoundsRasterRegion].source
       val bounds = tuple._2.map(_._2._1.asInstanceOf[GridBoundsRasterRegion].bounds)
-      val allBounds: Iterator[Raster[MultibandTile]] = source.readBounds(bounds)
+      val allBounds = source.readBounds(bounds).toSeq
       val totalPixels = allBounds.map(tile => tile.cols * tile.rows * tile.tile.bandCount).sum
       totalPixelsPartition += totalPixels
       totalChunksAcc.add(totalPixels / (256 * 256))
       tracker.add(PIXEL_COUNTER, totalPixels)
-      keys.iterator().asScala.zip(allBounds.map(_.tile))
+      keys.iterator().asScala.zip(allBounds.map(_.tile).iterator)
 
     })
     (tiles,totalPixelsPartition)
