@@ -1066,7 +1066,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
       //convert to raster region
       val cube=
-        if(datacubeParams.map(_.loadPerProduct).getOrElse(false)){
+        if(!datacubeParams.map(_.loadPerProduct).getOrElse(false)){
           rasterRegionsToTiles(regions, metadata, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), partitioner, datacubeParams)
         }else{
           rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), partitioner, datacubeParams)
