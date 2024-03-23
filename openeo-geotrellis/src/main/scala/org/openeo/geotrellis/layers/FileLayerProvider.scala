@@ -38,6 +38,7 @@ import java.time._
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
+import scala.collection.parallel.immutable.{ParMap, ParSeq}
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
 
@@ -95,13 +96,12 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   override def bandCount: Int = sources.size
 
   override def readBounds(bounds: Traversable[GridBounds[Long]]): Iterator[Raster[MultibandTile]] = {
-    var bandIndex = -1
-    val rastersByBounds = reprojectedSources.toList.par.flatMap(s => {
-      bandIndex = bandIndex + 1
-      s.readBounds(bounds).zipWithIndex.map(raster_int => ((raster_int._2,(bandIndex,raster_int._1))))
+
+    val rastersByBounds: ParMap[Int, ParSeq[(Int, (Int, Raster[MultibandTile]))]] = reprojectedSources.zipWithIndex.toList.par.flatMap(s => {
+      s._1.readBounds(bounds).zipWithIndex.map(raster_int => ((raster_int._2,(s._2,raster_int._1))))
     }).groupBy(_._1)
-    rastersByBounds.values.map(rasters => {
-      val sortedRasters = rasters.toList.sortBy(_._1).map(_._2._2)
+    rastersByBounds.values.map((rasters: ParSeq[(Int, (Int, Raster[MultibandTile]))]) => {
+      val sortedRasters = rasters.toList.sortBy(_._2._1).map(_._2._2)
       Raster(MultibandTile(sortedRasters.map(_.tile.band(0).convert(cellType))), sortedRasters.head.extent)
     }).toIterator
 
