@@ -816,7 +816,7 @@ class OpenEOProcesses extends Serializable {
     val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
 
     val updatedMetadata = leftCube.metadata.copy(bounds = joined.metadata,extent = leftCube.metadata.extent.combine(resampled.metadata.extent),cellType = outputCellType)
-    mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,resampled)
+    mergeCubesGeneric(joined,operator,updatedMetadata,leftCube,rightCube)
   }
 
   private def mergeCubesGeneric[K: Boundable: PartitionerIndex: ClassTag
