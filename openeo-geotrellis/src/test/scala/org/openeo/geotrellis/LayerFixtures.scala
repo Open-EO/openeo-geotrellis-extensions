@@ -10,23 +10,30 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark.testkit.TileLayerRDDBuilders.defaultCRS
 import geotrellis.vector._
+import org.apache.commons.io.FileUtils
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
+import org.openeo.geotrellis.file.PyramidFactory
+import org.openeo.geotrellis.layers.{FileLayerProvider, MockOpenSearchFeatures, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellisaccumulo
 import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchClient
+import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
 
 import java.awt.image.DataBufferByte
+import java.io.File
 import java.net.URL
 import java.nio.file.Paths
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
+import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZonedDateTime}
 import java.util
+import java.util.Collections
 import java.util.Collections.singletonList
 import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
+import scala.io.Source
 import scala.reflect.ClassTag
 
 object LayerFixtures {
@@ -344,6 +351,61 @@ object LayerFixtures {
     implicit val newIndex = new SparseSpaceTimePartitioner(keys.map(SparseSpaceTimePartitioner.toIndex(_, 0)), 0, Some(keys.toArray))
     val partitioner = new SpacePartitioner[SpaceTimeKey](cube.metadata.bounds)(implicitly,implicitly,newIndex)
     new ContextRDD(cube.partitionBy(partitioner),cube.metadata)
+  }
+
+  /**
+   * Creates a Sentinel-2 cube by downloading data locally.
+   */
+  def sentinel2Cube(localDate: LocalDate, projected_polygons_native_crs: ProjectedPolygons, jsonPath: String, dataCubeParameters: DataCubeParameters = new DataCubeParameters) = {
+    val jsonPathFull = getClass.getResource(jsonPath)
+
+    val bandNames = Collections.singletonList("IMG_DATA_Band_B04_10m_Tile1_Data")
+    val fileSource = Source.fromURL(jsonPathFull)
+    var txt = try fileSource.mkString
+    finally fileSource.close()
+    val basePath = new File(jsonPathFull.getFile).getParent
+    // Use artifactory to avoid heavy git repo
+    val basePathArtifactory = "https://artifactory.vgt.vito.be/artifactory/testdata-public"
+
+    for (rest <- Seq(
+      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/MTD_MSIL2A.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/GRANULE/L2A_T31UGS_A030636_20230117T104258/IMG_DATA/R10m/T31UGS_20230117T104259_B04_10m.jp2",
+      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/MTD_MSIL2A.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R10m/T31UFS_20230405T105031_B04_10m.jp2",
+    )) {
+      val jp2File = new File(basePath, rest)
+      if (!jp2File.exists()) {
+        println("Copy from artifactory to: " + jp2File)
+        FileUtils.copyURLToFile(new URL(basePathArtifactory + rest), jp2File)
+      }
+    }
+    txt = txt.replace("\"/eodata/", "\"" + basePath + "/eodata/")
+    val mockedFeatures = CreoFeatureCollection.parse(txt)
+    val client = new MockOpenSearchFeatures(mockedFeatures.features)
+    //    val client = CreodiasClient() // More difficult to capture a nodata piece
+
+    val factory = new PyramidFactory(
+      client, "Sentinel2", bandNames,
+      null,
+      maxSpatialResolution = CellSize(10, 10),
+    )
+    factory.crs = projected_polygons_native_crs.crs
+
+    val localFromDate = localDate
+    val localToDate = localDate.plusDays(1)
+    val ZonedFromDate = ZonedDateTime.of(localFromDate, java.time.LocalTime.MIDNIGHT, UTC)
+    val zonedToDate = ZonedDateTime.of(localToDate, java.time.LocalTime.MIDNIGHT, UTC)
+    val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format ZonedFromDate
+    val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format zonedToDate
+
+
+    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
+      projected_polygons_native_crs,
+      from_date, to_date, Collections.emptyMap(), "",dataCubeParameters = dataCubeParameters
+    )
+    cube.head._2
   }
 
   def rgbLayerProvider =

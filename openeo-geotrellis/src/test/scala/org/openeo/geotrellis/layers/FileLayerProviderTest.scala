@@ -3,6 +3,7 @@ package org.openeo.geotrellis.layers
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, RasterSource, ShortConstantNoDataCellType, isNoData}
@@ -20,6 +21,8 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
+import org.openeo.geotrellis.geotiff._
+import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{ConfigurableSpaceTimePartitioner, DataCubeParameters, DatacubeSupport, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
@@ -1279,6 +1282,35 @@ class FileLayerProviderTest {
 
     assertTrue(index.isInstanceOf[ConfigurableSpaceTimePartitioner])
     assertEquals(7,index.asInstanceOf[ConfigurableSpaceTimePartitioner].indexReduction)
+
+  }
+
+  @Test
+  def testSamplingLoadPerProduct():Unit = {
+
+    val srs32631 = "EPSG:32631"
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(Extent(703109 - 100, 5600100, 709000, 5610000 - 100), srs32631)
+    val dataCubeParameters = new DataCubeParameters()
+    dataCubeParameters.tileSize = 256
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.loadPerProduct = true
+
+
+    val cube = LayerFixtures.sentinel2Cube(LocalDate.of(2023, 4, 5), projected_polygons_native_crs, "/org/openeo/geotrellis/testPixelValueOffsetNeededCorner.json",dataCubeParameters)
+    val opts = new GTiffOptions
+    opts.setFilenamePrefix("load_per_product")
+    saveRDDTemporal(cube,"./", formatOptions = opts)
+
+
+    dataCubeParameters.loadPerProduct = false
+    val cube_ref = LayerFixtures.sentinel2Cube(LocalDate.of(2023, 4, 5), projected_polygons_native_crs, "/org/openeo/geotrellis/testPixelValueOffsetNeededCorner.json",dataCubeParameters)
+    opts.setFilenamePrefix("load_regular")
+    saveRDDTemporal(cube_ref,"./", formatOptions = opts)
+
+    val reference = GeoTiff.readMultiband("./load_regular_2023-04-05Z.tif").raster
+    val actual = GeoTiff.readMultiband("./load_per_product_2023-04-05Z.tif").raster
+
+    assertRastersEqual(reference,actual)
 
   }
 }
