@@ -97,10 +97,10 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
   override def readBounds(bounds: Traversable[GridBounds[Long]]): Iterator[Raster[MultibandTile]] = {
 
-    val rastersByBounds: ParMap[Int, ParSeq[(Int, (Int, Raster[MultibandTile]))]] = reprojectedSources.zipWithIndex.toList.par.flatMap(s => {
+    val rastersByBounds = reprojectedSources.zipWithIndex.toList.flatMap(s => {
       s._1.readBounds(bounds).zipWithIndex.map(raster_int => ((raster_int._2,(s._2,raster_int._1))))
     }).groupBy(_._1)
-    rastersByBounds.values.map((rasters: ParSeq[(Int, (Int, Raster[MultibandTile]))]) => {
+    rastersByBounds.toSeq.sortBy(_._1).map(_._2).map((rasters) => {
       val sortedRasters = rasters.toList.sortBy(_._2._1).map(_._2._2)
       Raster(MultibandTile(sortedRasters.map(_.tile.band(0).convert(cellType))), sortedRasters.head.extent)
     }).toIterator
