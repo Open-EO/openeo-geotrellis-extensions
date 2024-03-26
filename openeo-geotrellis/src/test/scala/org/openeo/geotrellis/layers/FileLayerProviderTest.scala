@@ -6,7 +6,8 @@ import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
-import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, RasterSource, ShortConstantNoDataCellType, isNoData}
+import geotrellis.raster.testkit.RasterMatchers
+import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, Raster, RasterSource, ShortConstantNoDataCellType, Tile, isNoData}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.summary.polygonal._
@@ -88,7 +89,7 @@ class MockOpenSearchFeatures(val mockedFeatures: Array[OpenSearchResponses.Featu
   }
 }
 
-class FileLayerProviderTest {
+class FileLayerProviderTest extends RasterMatchers{
   import FileLayerProviderTest._
 
   private def sentinel5PMaxSpatialResolution = CellSize(0.05, 0.05)
@@ -1102,61 +1103,13 @@ class FileLayerProviderTest {
                                   extent: Extent,
                                   localDate: LocalDate,
                                 ): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val bandNames = Collections.singletonList("IMG_DATA_Band_B04_10m_Tile1_Data")
     val srs32631 = "EPSG:32631"
     val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, srs32631)
 
-    val jsonPathFull = getClass.getResource(jsonPath)
-    val fileSource = Source.fromURL(jsonPathFull)
-    var txt = try fileSource.mkString
-    finally fileSource.close()
-    val basePath = new java.io.File(jsonPathFull.getFile).getParent
-    // Use artifactory to avoid heavy git repo
-    val basePathArtifactory = "https://artifactory.vgt.vito.be/artifactory/testdata-public"
-
-    for (rest <- Seq(
-      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/manifest.safe",
-      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/MTD_MSIL2A.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/GRANULE/L2A_T31UGS_A030636_20230117T104258/IMG_DATA/R10m/T31UGS_20230117T104259_B04_10m.jp2",
-      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/manifest.safe",
-      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/MTD_MSIL2A.xml",
-      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R10m/T31UFS_20230405T105031_B04_10m.jp2",
-    )) {
-      val jp2File = new File(basePath, rest)
-      if (!jp2File.exists()) {
-        println("Copy from artifactory to: " + jp2File)
-        FileUtils.copyURLToFile(new URL(basePathArtifactory + rest), jp2File)
-      }
-    }
-    txt = txt.replace("\"/eodata/", "\"" + basePath + "/eodata/")
-    val mockedFeatures = CreoFeatureCollection.parse(txt)
-    val client = new MockOpenSearchFeatures(mockedFeatures.features)
-    //    val client = CreodiasClient() // More difficult to capture a nodata piece
-
-    val factory = new org.openeo.geotrellis.file.PyramidFactory(
-      client, "Sentinel2", bandNames,
-      null,
-      maxSpatialResolution = CellSize(10, 10),
-    )
-    factory.crs = projected_polygons_native_crs.crs
-
-    val localFromDate = localDate
-    val localToDate = localDate.plusDays(1)
-    val ZonedFromDate = ZonedDateTime.of(localFromDate, java.time.LocalTime.MIDNIGHT, UTC)
-    val zonedToDate = ZonedDateTime.of(localToDate, java.time.LocalTime.MIDNIGHT, UTC)
-    val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format ZonedFromDate
-    val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format zonedToDate
-
-    val dataCubeParameters = new DataCubeParameters()
-    dataCubeParameters.tileSize = 256
-    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
-
-    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
-      projected_polygons_native_crs,
-      from_date, to_date, Collections.emptyMap(), ""
-    )
-    cube.head._2
+    LayerFixtures.sentinel2Cube(localDate, projected_polygons_native_crs, jsonPath)
   }
+
+
 
   private def keysForLargeArea(useBBox:Boolean=false) = {
     val date = LocalDate.of(2022, 2, 11).atStartOfDay(UTC)
