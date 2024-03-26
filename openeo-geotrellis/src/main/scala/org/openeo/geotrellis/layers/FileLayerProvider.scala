@@ -456,6 +456,11 @@ object FileLayerProvider {
                                    partitionerOption: Option[SpacePartitioner[SpaceTimeKey]] = None,
                                    datacubeParams : Option[DataCubeParameters] = None,
                                   ): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+
+    if(cloudFilterStrategy!=NoCloudFilterStrategy) {
+      throw new IllegalArgumentException("load_collection: mask_l1c or mask_scl_dilation are not supported by the 'load per product' strategy. Consider using 'to_scl_dilation_mask'.")
+    }
+
     val partitioner = partitionerOption.getOrElse(SpacePartitioner(metadata.bounds))
     logger.info(s"Cube partitioner index: ${partitioner.index}")
     val totalChunksAcc: LongAccumulator = rasterRegionRDD.sparkContext.longAccumulator("ChunkCount_" + rasterRegionRDD.name)
