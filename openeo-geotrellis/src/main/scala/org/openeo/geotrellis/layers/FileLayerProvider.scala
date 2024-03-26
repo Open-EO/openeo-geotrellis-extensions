@@ -1082,12 +1082,14 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
       regions.name = s"FileCollection-${openSearchCollectionId}"
 
+      val theMaskStrategy: CloudFilterStrategy = maskStrategy.getOrElse(NoCloudFilterStrategy)
+
       //convert to raster region
       val cube=
-        if(!datacubeParams.map(_.loadPerProduct).getOrElse(false)){
-          rasterRegionsToTiles(regions, metadata, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), partitioner, datacubeParams)
+        if(!datacubeParams.map(_.loadPerProduct).getOrElse(false) || theMaskStrategy != NoCloudFilterStrategy){
+          rasterRegionsToTiles(regions, metadata, retainNoDataTiles, theMaskStrategy, partitioner, datacubeParams)
         }else{
-          rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, maskStrategy.getOrElse(NoCloudFilterStrategy), partitioner, datacubeParams)
+          rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams)
         }
       logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner}")
       cube
