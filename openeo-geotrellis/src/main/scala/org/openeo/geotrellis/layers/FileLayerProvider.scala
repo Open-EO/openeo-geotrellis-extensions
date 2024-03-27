@@ -26,7 +26,7 @@ import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, sortableSourceName}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg, retryForever}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg, retryForever}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.LoggerFactory
@@ -470,7 +470,7 @@ object FileLayerProvider {
     val crs = metadata.crs
     val layout = metadata.layout
 
-    val byBandSource: RDD[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])] = rasterRegionRDD.flatMap(key_region_sourcename => {
+    val byBandSource = rasterRegionRDD.flatMap(key_region_sourcename => {
       val source = key_region_sourcename._2._1.asInstanceOf[GridBoundsRasterRegion].source
       val bounds = key_region_sourcename._2._1.asInstanceOf[GridBoundsRasterRegion].bounds
       val result: Seq[(SourceName, (Seq[Int], SpaceTimeKey, RasterRegion))] =
@@ -490,11 +490,12 @@ object FileLayerProvider {
 
         }
 
-
       result
-    }).groupByKey()
+    })
 
-    var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = byBandSource.mapPartitions((partitionIterator: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
+    val allSources: Array[SourceName] = byBandSource.keys.distinct().collect()
+
+    var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = byBandSource.groupByKey(new ByKeyPartitioner(allSources)).mapPartitions((partitionIterator: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
       var totalPixelsPartition = 0
       val startTime = System.currentTimeMillis()
 
