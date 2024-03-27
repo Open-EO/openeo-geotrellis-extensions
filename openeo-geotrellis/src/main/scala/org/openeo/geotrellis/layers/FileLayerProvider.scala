@@ -470,11 +470,35 @@ object FileLayerProvider {
     val crs = metadata.crs
     val layout = metadata.layout
 
-    var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = rasterRegionRDD.map(t=>(t._2._2,t)).groupByKey().mapPartitions(partitionIterator => {
+    val byBandSource: RDD[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])] = rasterRegionRDD.flatMap(key_region_sourcename => {
+      val source = key_region_sourcename._2._1.asInstanceOf[GridBoundsRasterRegion].source
+      val bounds = key_region_sourcename._2._1.asInstanceOf[GridBoundsRasterRegion].bounds
+      val result: Seq[(SourceName, (Seq[Int], SpaceTimeKey, RasterRegion))] =
+        source match {
+          case source1: MultibandCompositeRasterSource =>
+            //decompose into individual bands
+            //TODO do something like line below, but make sure that band order is maintained! For now we just return the composite source.
+            //source1.sourcesListWithBandIds.map(s => (s._1.name, (s._2,key_region_sourcename._1,GridBoundsRasterRegion(s._1, bounds))))
+            Seq((source.name, (Seq(0), key_region_sourcename._1, key_region_sourcename._2._1)))
+
+          case source1: BandCompositeRasterSource =>
+            //decompose into individual bands
+            source1.sources.map(s => (s.name, GridBoundsRasterRegion(s, bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key_region_sourcename._1, t._1._2))).toList.toSeq
+
+          case _ =>
+            Seq((source.name, (Seq(0), key_region_sourcename._1, key_region_sourcename._2._1)))
+
+        }
+
+
+      result
+    }).groupByKey()
+
+    var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = byBandSource.mapPartitions((partitionIterator: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
       var totalPixelsPartition = 0
       val startTime = System.currentTimeMillis()
 
-      val (loadedPartitions,partitionPixels) = loadPartitionBySource(partitionIterator, cloudFilterStrategy, totalChunksAcc, tracker,crs,layout )
+      val (loadedPartitions: Iterator[(SpaceTimeKey, (Int, MultibandTile))],partitionPixels) = loadPartitionBySource(partitionIterator, cloudFilterStrategy, totalChunksAcc, tracker,crs,layout )
       totalPixelsPartition += partitionPixels
 
       val durationMillis = System.currentTimeMillis() - startTime
@@ -484,9 +508,11 @@ object FileLayerProvider {
       }
       loadedPartitions
 
-    }
-      .filter { case (_, tile) => retainNoDataTiles ||  !tile.bands.forall(_.isNoDataTile) },
-      preservesPartitioning = true).groupByKey(partitioner).flatMapValues(tiles => tiles.reduceOption(_ merge _) )
+    },preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile)]) => {
+      val mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1).mapValues(_.map(_._2).reduceOption(_ merge _))
+      MultibandTile(mergedBands.toSeq.sortBy(_._1).flatMap(_._2.get.bands))
+
+    } ).filter { case (_, tile) => retainNoDataTiles ||  !tile.bands.forall(_.isNoDataTile) }
 
     tiledRDD = DatacubeSupport.applyDataMask(datacubeParams,tiledRDD,metadata, pixelwiseMasking = true)
 
@@ -541,18 +567,20 @@ object FileLayerProvider {
   }
 
 
-  private def loadPartitionBySource(partitionIterator: Iterator[(SourceName, Iterable[(SpaceTimeKey,(RasterRegion, SourceName))])], cloudFilterStrategy: CloudFilterStrategy, totalChunksAcc: LongAccumulator, tracker: BatchJobMetadataTracker, crs :CRS, layout:LayoutDefinition )= {
+  private def loadPartitionBySource(partitionIterator: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])], cloudFilterStrategy: CloudFilterStrategy, totalChunksAcc: LongAccumulator, tracker: BatchJobMetadataTracker, crs :CRS, layout:LayoutDefinition )= {
     var totalPixelsPartition = 0
-    val tiles: Iterator[(SpaceTimeKey, MultibandTile)] = partitionIterator.flatMap(tuple=>{
-      val keys = tuple._2.map(_._1).asJavaCollection
-      val source = tuple._2.head._2._1.asInstanceOf[GridBoundsRasterRegion].source
-      val bounds = tuple._2.map(_._2._1.asInstanceOf[GridBoundsRasterRegion].bounds)
-      val allBounds = source.readBounds(bounds).toSeq
-      val totalPixels = allBounds.map(tile => tile.cols * tile.rows * tile.tile.bandCount).sum
+    val tiles: Iterator[(SpaceTimeKey, (Int,MultibandTile))] = partitionIterator.flatMap(tuple=>{
+      val keys = tuple._2.map(_._2).asJavaCollection
+      val source = tuple._2.head._3.asInstanceOf[GridBoundsRasterRegion].source
+      val bounds = tuple._2.map(_._3.asInstanceOf[GridBoundsRasterRegion].bounds)
+      //TODO this assumes that the index is actually the index of this band in the eventual multiband tile, not the index to read from the source
+      val theIndex = tuple._2.flatMap(_._1).head
+      val allRasters = source.readBounds(bounds).toSeq
+      val totalPixels = allRasters.map(tile => tile.cols * tile.rows * tile.tile.bandCount).sum
       totalPixelsPartition += totalPixels
       totalChunksAcc.add(totalPixels / (256 * 256))
       tracker.add(PIXEL_COUNTER, totalPixels)
-      keys.iterator().asScala.zip(allBounds.map(_.tile).iterator)
+      keys.iterator().asScala.zip(allRasters.map(b=>(theIndex,b.tile)).iterator)
 
     })
     (tiles,totalPixelsPartition)
@@ -781,19 +809,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     case _ => 14
   }
 
-  private val compositeRasterSource: (Feature, NonEmptyList[(RasterSource, Seq[Int])], CRS, Map[String, String]) => (BandCompositeRasterSource,Feature) = {
-    (feature, sources, crs, attributes) =>
-      {
-        val gridExtent = if(feature.tileID.isDefined && feature.crs.isDefined && feature.crs.get == crs && experimental) {
-          val tiles = TileGrid.computeFeaturesForTileGrid("100km", ProjectedExtent(ProjectedExtent(feature.bbox, LatLng).reproject(feature.crs.get),feature.crs.get)).filter(_._1.contains(feature.tileID.get))
-          tiles.headOption.map(t=>GridExtent[Long](t._2.expandToInclude(t._2.xmax+9800,t._2.ymin-9800),CellSize(10,10)) )
-        }else{
-          None
-        }
-        if (bandIndices.isEmpty) (new BandCompositeRasterSource(sources.map(_._1), crs, attributes,predefinedExtent = gridExtent),feature)
-        else (new MultibandCompositeRasterSource(sources, crs, attributes),feature)
-      }
-  }
+
 
   def determineCelltype(overlappingRasterSources: Seq[(RasterSource, Feature)]): CellType = {
     try {
