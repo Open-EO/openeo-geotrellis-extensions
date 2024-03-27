@@ -810,21 +810,15 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     case _ => 14
   }
 
-
-
   def determineCelltype(overlappingRasterSources: Seq[(RasterSource, Feature)]): CellType = {
+    val (arbitraryRasterSource, _) = overlappingRasterSources.head
     try {
-      var commonCellType = overlappingRasterSources.head._1.cellType
-      if (commonCellType.isInstanceOf[NoNoData]) {
-        commonCellType = commonCellType.withDefaultNoData()
-      }
-      commonCellType
+      val commonCellType = arbitraryRasterSource.cellType
+      if (commonCellType.isInstanceOf[NoNoData]) commonCellType.withDefaultNoData() else commonCellType
     } catch {
-      case e: Exception => throw new IOException(s"Exception while determining data type of collection ${this.openSearchCollectionId} and item ${overlappingRasterSources.head._1.name}. Detailed message: ${e.getMessage}",e)
+      case e: Exception => throw new IOException(s"Exception while determining data type of asset ${arbitraryRasterSource.name} in collection $openSearchCollectionId. Detailed message: ${e.getMessage}", e)
     }
   }
-
-
 
   def readKeysToRasterSources(from: ZonedDateTime, to: ZonedDateTime, boundingBox: ProjectedExtent, polygons: Array[MultiPolygon], polygons_crs: CRS, zoom: Int, sc: SparkContext, datacubeParams : Option[DataCubeParameters]): (RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], TileLayerMetadata[SpaceTimeKey], Option[CloudFilterStrategy], Seq[(RasterSource, Feature)]) = {
     val multiple_polygons_flag = polygons.length > 1
