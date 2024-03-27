@@ -573,15 +573,36 @@ object FileLayerProvider {
     val tiles: Iterator[(SpaceTimeKey, (Int,MultibandTile))] = partitionIterator.flatMap(tuple=>{
       val keys = tuple._2.map(_._2).asJavaCollection
       val source = tuple._2.head._3.asInstanceOf[GridBoundsRasterRegion].source
-      val bounds = tuple._2.map(_._3.asInstanceOf[GridBoundsRasterRegion].bounds)
+      val bounds = tuple._2.map(_._3.asInstanceOf[GridBoundsRasterRegion].bounds).toSeq
+      val intersections: Seq[Option[GridBounds[Long]]] = bounds.map(_.intersection(source.dimensions)).toSeq
       //TODO this assumes that the index is actually the index of this band in the eventual multiband tile, not the index to read from the source
       val theIndex = tuple._2.flatMap(_._1).head
+
       val allRasters = source.readBounds(bounds).toSeq
       val totalPixels = allRasters.map(tile => tile.cols * tile.rows * tile.tile.bandCount).sum
+      val paddedRasters = allRasters.zipWithIndex.flatMap {case (raster,index) => {
+        val intersection = intersections(index)
+        val theBounds = bounds(index)
+        //apply padding, as done in GridBoundsRasterRegion
+        if(intersection.isEmpty) {
+          None
+        }
+        else if (raster.tile.cols == theBounds.width && raster.tile.rows == theBounds.height)
+          Some(raster)
+        else {
+          val colOffset = math.abs(theBounds.colMin - intersection.get.colMin)
+          val rowOffset = math.abs(theBounds.rowMin - intersection.get.rowMin)
+          require(colOffset <= Int.MaxValue && rowOffset <= Int.MaxValue, "Computed offsets are outside of RasterBounds")
+          Some(raster.mapTile {
+            _.mapBands { (_, band) => PaddedTile(band, colOffset.toInt, rowOffset.toInt, theBounds.width.toInt, theBounds.height.toInt) }
+          })
+        }
+      }}
+
       totalPixelsPartition += totalPixels
       totalChunksAcc.add(totalPixels / (256 * 256))
       tracker.add(PIXEL_COUNTER, totalPixels)
-      keys.iterator().asScala.zip(allRasters.map(b=>(theIndex,b.tile)).iterator)
+      keys.iterator().asScala.zip(paddedRasters.map(b=>(theIndex,b.tile)).iterator)
 
     })
     (tiles,totalPixelsPartition)
