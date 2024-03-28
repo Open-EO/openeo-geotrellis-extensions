@@ -483,7 +483,7 @@ object FileLayerProvider {
 
           case source1: BandCompositeRasterSource =>
             //decompose into individual bands
-            source1.sources.map(s => (s.name, GridBoundsRasterRegion(s.convert(source1.cellType), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key_region_sourcename._1, t._1._2))).toList.toSeq
+            source1.sources.map(s => (s.name, GridBoundsRasterRegion(s, bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key_region_sourcename._1, t._1._2))).toList.toSeq
 
           case _ =>
             Seq((source.name, (Seq(0), key_region_sourcename._1, key_region_sourcename._2._1)))
@@ -494,12 +494,13 @@ object FileLayerProvider {
     })
 
     val allSources: Array[SourceName] = byBandSource.keys.distinct().collect()
+    val theCellType = metadata.cellType
 
     var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = byBandSource.groupByKey(new ByKeyPartitioner(allSources)).mapPartitions((partitionIterator: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
       var totalPixelsPartition = 0
       val startTime = System.currentTimeMillis()
 
-      val (loadedPartitions: Iterator[(SpaceTimeKey, (Int, MultibandTile))],partitionPixels) = loadPartitionBySource(partitionIterator, cloudFilterStrategy, totalChunksAcc, tracker,crs,layout )
+      val (loadedPartitions: Iterator[(SpaceTimeKey, (Int, MultibandTile))],partitionPixels) = loadPartitionBySource(partitionIterator, cloudFilterStrategy, totalChunksAcc, tracker,crs,layout,theCellType )
       totalPixelsPartition += partitionPixels
 
       val durationMillis = System.currentTimeMillis() - startTime
@@ -568,7 +569,7 @@ object FileLayerProvider {
   }
 
 
-  private def loadPartitionBySource(partitionIterator: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])], cloudFilterStrategy: CloudFilterStrategy, totalChunksAcc: LongAccumulator, tracker: BatchJobMetadataTracker, crs :CRS, layout:LayoutDefinition )= {
+  private def loadPartitionBySource(partitionIterator: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])], cloudFilterStrategy: CloudFilterStrategy, totalChunksAcc: LongAccumulator, tracker: BatchJobMetadataTracker, crs :CRS, layout:LayoutDefinition, cellType: CellType )= {
     var totalPixelsPartition = 0
     val tiles: Iterator[(SpaceTimeKey, (Int,MultibandTile))] = partitionIterator.flatMap(tuple=>{
       val keys = tuple._2.map(_._2).asJavaCollection
@@ -578,7 +579,7 @@ object FileLayerProvider {
       //TODO this assumes that the index is actually the index of this band in the eventual multiband tile, not the index to read from the source
       val theIndex = tuple._2.flatMap(_._1).head
 
-      val allRasters = source.readBounds(bounds).toSeq
+      val allRasters = source.readBounds(bounds).map(_.mapTile(_.convert(cellType))).toSeq
       val totalPixels = allRasters.map(tile => tile.cols * tile.rows * tile.tile.bandCount).sum
       val paddedRasters = allRasters.zipWithIndex.flatMap {case (raster,index) => {
         val intersection = intersections(index)
