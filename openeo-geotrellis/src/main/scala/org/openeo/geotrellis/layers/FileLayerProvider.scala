@@ -223,6 +223,7 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 object FileLayerProvider {
 
   private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
+  private val maxRetries = sys.env.getOrElse("GDALREAD_MAXRETRIES", "10").toInt
 
   {
     try {
@@ -579,7 +580,13 @@ object FileLayerProvider {
       //TODO this assumes that the index is actually the index of this band in the eventual multiband tile, not the index to read from the source
       val theIndex = tuple._2.flatMap(_._1).head
 
-      val allRasters = source.readBounds(bounds).map(_.mapTile(_.convert(cellType))).toSeq
+      val allRasters =
+        try{
+          bounds.toIterator.flatMap(b => retryForever(Duration.ofSeconds(10),maxRetries)(source.read(b).iterator)).map(_.mapTile(_.convert(cellType))).toSeq
+        } catch {
+          case e: Exception => throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}", e)
+        }
+
       val totalPixels = allRasters.map(tile => tile.cols * tile.rows * tile.tile.bandCount).sum
       val paddedRasters = allRasters.zipWithIndex.flatMap {case (raster,index) => {
         val intersection = intersections(index)
