@@ -44,7 +44,7 @@ object NetCDFCollection {
     val bboxWGS84: Extent = items.map(_.bbox).reduce((a, b)=>(a.combine(b)))
 
 
-
+w
     val features: RDD[(TemporalProjectedExtent, MultibandTile)] = items.flatMap(f=>{
       val allTiles = f.links.flatMap(l=>{
         l.bandNames.get.flatMap(b=> {
@@ -65,12 +65,12 @@ object NetCDFCollection {
             val arr = Array.ofDim[Byte](1 << 11)
             val returnValue = GDALWarp.get_metadata_item(rs.dataset.token, 1, 2, 0, "NETCDF_DIM_t_VALUES","",  arr)
             if(returnValue<=0) {
-              throw new IllegalArgumentException(s"GDAL Could not retrieve time values from netcdf ${gdalNetCDFLink}")
+              throw new IllegalArgumentException(s"GDAL Could not retrieve time values from netcdf ${gdalNetCDFLink} with extra dimensions ${extraDim} and units ${units}")
             }
             val time_values = new String(arr,"UTF-8").trim
 
             if (!conventions.startsWith("CF-1")) {
-              throw new IllegalArgumentException("Only netCDF files with CF-1.x conventions are supported by this openEO backend.")
+              throw new IllegalArgumentException(s"Only netCDF files with CF-1.x conventions are supported by this openEO backend, but found ${conventions}.")
             }
             if (extraDim != "{t}") {
               throw new IllegalArgumentException("Only netCDF files with a time dimension named 't' are supported by this openEO backend.")
