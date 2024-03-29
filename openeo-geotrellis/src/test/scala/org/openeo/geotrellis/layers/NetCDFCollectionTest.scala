@@ -1,11 +1,12 @@
 package org.openeo.geotrellis.layers
 
+import com.azavea.gdal.GDALWarp
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{CellSize, RasterExtent, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType}
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.Extent
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.{Disabled, Test}
+import org.junit.jupiter.api.{AfterAll, Disabled, Test}
 import org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 
@@ -13,10 +14,17 @@ import java.time.ZonedDateTime
 
 
 
+object NetCDFCollectionTest {
+  @AfterAll
+  def tearDown():Unit = {
+    GDALWarp.deinit()
+    GDALWarp.init(20)
+  }
+}
 
 class NetCDFCollectionTest {
 
-  @Disabled
+
   @Test
   def testLoadNetCDFCollection():Unit = {
     val osClient = new FixedFeaturesOpenSearchClient()
@@ -44,7 +52,7 @@ class NetCDFCollectionTest {
     )
 
     val cube = NetCDFCollection.loadCollection(osClient, sc)
-    assertEquals(333,cube.count())
+    assertEquals(2331,cube.count())
     assertEquals(Extent(603901.4819578232, 5656508.552285681, 653638.1910088382, 5687527.3439567955),cube.metadata.extent)
     assertEquals(crs,cube.metadata.crs)
     assertEquals(ShortUserDefinedNoDataCellType(32767),cube.metadata.cellType)

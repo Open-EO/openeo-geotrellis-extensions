@@ -63,13 +63,6 @@ object NetCDFCollection {
             val conventions: String = rs.dataset.getMetadataItem("NC_GLOBAL#Conventions",DefaultDomain,0)
             val extraDim = rs.dataset.getMetadataItem("NETCDF_DIM_EXTRA",DefaultDomain,0)
 
-            val arr = Array.ofDim[String](1)
-            val returnValue = GDALWarp.get_metadata_item(rs.dataset.token, 1, 4, 0, "NETCDF_DIM_t_VALUES","",arr)
-            if(returnValue<=0) {
-              throw new IllegalArgumentException(s"GDAL Could not retrieve time values from netcdf ${gdalNetCDFLink} with extra dimensions ${extraDim} and units ${units}")
-            }
-            val time_values = arr(0)// new String(arr,"UTF-8").trim
-
             if (!conventions.startsWith("CF-1")) {
               throw new IllegalArgumentException(s"Only netCDF files with CF-1.x conventions are supported by this openEO backend, but found ${conventions}.")
             }
@@ -79,7 +72,12 @@ object NetCDFCollection {
             if( units != "days since 1990-01-01") {
               throw new IllegalArgumentException("Only netCDF files with a time dimension in 'days since 1990-01-01' are supported by this openEO backend.")
             }
-            val timestamps = time_values.substring(1,time_values.length-1).split(",").map(t=>{LocalDate.of(1990,1,1).atStartOfDay(ZoneId.of("UTC")).plusDays(t.toInt)})
+            val bandCount: Int = rs.dataset.bandCount
+
+            //there's also a metadata item containing all timesteps, but it doesn't work on cluster for unknown reason
+            val timeValues = (1 to bandCount).map(b=>{rs.dataset.getMetadataItem("NETCDF_DIM_t",DefaultDomain,b).toInt})
+
+            val timestamps = timeValues.map(t=>{LocalDate.of(1990,1,1).atStartOfDay(ZoneId.of("UTC")).plusDays(t)})
             val raster: Raster[MultibandTile] = rs.read().get
             val temporalRasters: immutable.Seq[(ZonedDateTime, (String, ProjectedExtent, Tile))] = raster.tile.bands.zip(timestamps).map(rasterBand_time=>{
               (rasterBand_time._2,(b,ProjectedExtent(raster.extent,rs.crs),rasterBand_time._1))
