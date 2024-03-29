@@ -31,6 +31,7 @@ object NetCDFCollection {
     val stacItems = osClient.getProducts("", None, null, Map[String, Any](), "", "")
     val items = sc.parallelize(stacItems)
 
+    sc.setJobDescription(s"load_stac from netCDFs - ${stacItems.head.id} - ${stacItems.head.links.head.href}")
     val resolutions = items.flatMap(_.resolution).distinct().collect()
     if(resolutions.length != 1) {
       throw new IllegalArgumentException("All items in a collection must have the same resolution")
