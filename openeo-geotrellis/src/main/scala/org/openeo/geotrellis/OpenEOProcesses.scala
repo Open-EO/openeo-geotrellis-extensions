@@ -394,12 +394,13 @@ class OpenEOProcesses extends Serializable {
     val labelsDates = labels.asScala.map(ZonedDateTime.parse(_))
     val periodsToLabels: Seq[(Iterable[Instant], String)] = timePeriods.zip(labels.asScala)
 
+    val filteredCube = filterNegativeSpatialKeys(datacube)
 
-    val keys = findPartitionerKeys(datacube)
+    val keys = findPartitionerKeys(filteredCube)
     val allPossibleKeys: immutable.Seq[SpatialKey] = if(keys.isDefined) {
       keys.get.map(_.spatialKey).distinct.toList
     } else{
-      datacube.metadata.tileBounds
+      filteredCube.metadata.tileBounds
         .coordsIter
         .map { case (x, y) => SpatialKey(x, y) }
         .toList
@@ -469,19 +470,19 @@ class OpenEOProcesses extends Serializable {
     val tilesByInterval: RDD[(SpaceTimeKey, MultibandTile)] =
       if(reduce) {
         if(datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] && datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
-          datacube.mapPartitions(elements =>{
+          filteredCube.mapPartitions(elements =>{
             val byNewKey= elements.flatMap(mapToNewKey).toStream.groupBy(_._1)
             byNewKey.mapValues(v=>aggregateTiles(v.map(_._2))).iterator
           },preservesPartitioning = true)
         }else{
-          datacube.flatMap(tuple => {
+          filteredCube.flatMap(tuple => {
             mapToNewKey(tuple)
           }).groupByKey(partitioner).mapValues( aggregateTiles)
         }
 
       }else{
 
-        datacube.flatMap(tuple => {
+        filteredCube.flatMap(tuple => {
           mapToNewKey(tuple)
         }).groupByKey(partitioner).flatMap( t => {
           val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[SpaceTimeKey, MultibandTile] = createTemporalCallback(function,context.asScala.toMap, datacube.metadata.cellType)
@@ -490,8 +491,8 @@ class OpenEOProcesses extends Serializable {
 
       }
 
-    val cols = datacube.metadata.tileLayout.tileCols
-    val rows = datacube.metadata.tileLayout.tileRows
+    val cols = filteredCube.metadata.tileLayout.tileCols
+    val rows = filteredCube.metadata.tileLayout.tileRows
     val cellType = datacube.metadata.cellType
 
     val bandCount = RDDBandCount(datacube)
