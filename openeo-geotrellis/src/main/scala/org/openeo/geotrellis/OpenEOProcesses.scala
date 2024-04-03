@@ -396,7 +396,7 @@ class OpenEOProcesses extends Serializable {
 
     val filteredCube = filterNegativeSpatialKeys(datacube)
 
-    val keys = findPartitionerKeys(filteredCube)
+    val keys = findPartitionerKeys(filteredCube).map(_.filter( k => k.row >= 0 && k.col >= 0 ))
     val allPossibleKeys: immutable.Seq[SpatialKey] = if(keys.isDefined) {
       keys.get.map(_.spatialKey).distinct.toList
     } else{
