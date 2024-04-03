@@ -915,7 +915,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
         var requiredSpatialKeysLocal: RDD[(SpatialKey, Iterable[Geometry])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey(workingPartitioner)
 
-        var spatialKeyCount: Long =
+        val spatialKeyCount: Long =
           if (polygons.length == 1) {
             //special case for single bbox request
             maxSpatialKeyCount
@@ -1100,25 +1100,34 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       }
 
       val layoutDefinition = metadata.layout
-      val noResampling = math.abs(layoutDefinition.cellSize.resolution - maxSpatialResolution.resolution) < 0.0000001 * layoutDefinition.cellSize.resolution
-      val reduction = if(noResampling) 5 else 1
+      val resample = math.abs(layoutDefinition.cellSize.resolution - maxSpatialResolution.resolution) >= 0.0000001 * layoutDefinition.cellSize.resolution
+      val reduction = if (resample) 1 else 5
       //resampling is still needed in case bounding boxes are not aligned with pixels
       // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
       val theResampleMethod = datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor)
-      var regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys.groupBy(_._2.data._1, math.max(1,readKeysToRasterSourcesResult._4.size/reduction)).flatMap(t=>{
-        val source = if (noResampling) {
-          //fast path
-          new LayoutTileSourceFixed(t._1, layoutDefinition, identity)
-        } else{
-          //slow path
-          t._1.tileToLayout(layoutDefinition, theResampleMethod)
+
+      val regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys
+        .groupBy { case (_, vector.Feature(_, (rasterSource, _))) => rasterSource }
+        .flatMap { case (rasterSource, keyedFeatures) =>
+          val source = if (resample) {
+            //slow path
+            rasterSource.tileToLayout(layoutDefinition, theResampleMethod)
+          } else {
+            //fast path
+            new LayoutTileSourceFixed(rasterSource, layoutDefinition, identity)
+          }
+
+          keyedFeatures
+            .map { case (spaceTimeKey, vector.Feature(_, (rasterSource, _))) =>
+              (spaceTimeKey, (source.rasterRegionForKey(spaceTimeKey.spatialKey), rasterSource.name))
+            }
+            .filter { case (spaceTimeKey, (rasterRegion, sourceName)) =>
+              val canRead = rasterRegion.isDefined
+              if (!canRead) logger.warn(s"no RasterRegion for $spaceTimeKey in $sourceName")
+              canRead
+            }
+            .map { case (spaceTimeKey, (Some(rasterRegion), sourceName)) => (spaceTimeKey, (rasterRegion, sourceName)) }
         }
-
-        t._2.map(key_feature=>{
-          (key_feature._1,(source.rasterRegionForKey(key_feature._1.spatialKey),key_feature._2.data._1.name))
-        }).filter(_._2._1.isDefined).map(t=>(t._1,(t._2._1.get,t._2._2)))
-
-      })
 
       regions.name = s"FileCollection-${openSearchCollectionId}"
 
