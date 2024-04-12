@@ -31,15 +31,14 @@ class FixedFeaturesOpenSearchClient extends OpenSearchClient {
     addFeature(id, bbox, nominalDate, sLinks)
   }
 
-  def addFeature(feature:Feature)
-  {
+  def addFeature(feature: Feature): Unit = {
     features += feature
+    logger.debug(s"added $feature")
   }
 
   private def addFeature(id: String, bbox: Extent, nominalDate: ZonedDateTime, links: Array[Link]): Unit = {
     val feature = Feature(id, bbox, nominalDate, links, resolution = None)
-    features += feature
-    logger.debug(s"added $feature")
+    addFeature(feature)
   }
 
   override def getProducts(collectionId: String, dateRange: Option[(ZonedDateTime, ZonedDateTime)], bbox: ProjectedExtent, attributeValues: collection.Map[String, Any], correlationId: String, processingLevel: String): Seq[OpenSearchResponses.Feature] =
