@@ -1317,7 +1317,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       // 1 netCDF asset can contain n bands, but a GDALRasterSource can only handle 1 band/wants the
       //  band embedded in the path: NETCDF:$href:$bandName
       if ((link.href.toString contains ".nc") && !link.href.toString.startsWith("NETCDF:")) {
-        val netCdfDataset = s"NETCDF:${link.href.getPath}:$bandName"
+        val netCdfDataset = s"NETCDF:${link.href}:$bandName"
         val netCdfDatasetBandIndex = 0
         Some((link.copy(href = URI.create(netCdfDataset)), netCdfDatasetBandIndex))
       } else Some((link, bandIndex))
