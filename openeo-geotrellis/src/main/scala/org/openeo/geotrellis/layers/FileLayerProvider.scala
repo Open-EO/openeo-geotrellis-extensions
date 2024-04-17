@@ -440,6 +440,23 @@ object FileLayerProvider {
     keysForfeatures
   }
 
+  def convertNetcdfLinksToGDALFormat(link: Link, bandName: String, bandIndex: Int) = {
+    // 1 netCDF asset can contain n bands, but a GDALRasterSource can only handle 1 band/wants the
+    //  band embedded in the path: NETCDF:$href:$bandName
+    if ((link.href.toString contains ".nc") && !link.href.toString.startsWith("NETCDF:")) {
+      val netCdfDataset = {
+        if(link.href.getScheme == "file") {
+          s"NETCDF:${link.href.getPath}:$bandName"
+        }else{
+          //note that /vsicurl/ is added for http urls later on, perhaps this can also happen here?
+          s"NETCDF:${link.href}:$bandName"
+        }
+      }
+      val netCdfDatasetBandIndex = 0
+      Some((link.copy(href = URI.create(netCdfDataset)), netCdfDatasetBandIndex))
+    } else Some((link, bandIndex))
+  }
+
   def createPartitioner(datacubeParams: Option[DataCubeParameters], requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])], filteredSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey]): Some[SpacePartitioner[SpaceTimeKey]] = {
     val requiredSpacetimeKeys: RDD[SpaceTimeKey] = filteredSources.flatMap(_.keys).map {
       tuple => (tuple.spatialKey, tuple)
@@ -1313,15 +1330,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     val bandNames = openSearchLinkTitles.toList
 
-    def convertNetcdfLinksToGDALFormat(link: Link, bandName: String, bandIndex: Int) = {
-      // 1 netCDF asset can contain n bands, but a GDALRasterSource can only handle 1 band/wants the
-      //  band embedded in the path: NETCDF:$href:$bandName
-      if ((link.href.toString contains ".nc") && !link.href.toString.startsWith("NETCDF:")) {
-        val netCdfDataset = s"NETCDF:${link.href}:$bandName"
-        val netCdfDatasetBandIndex = 0
-        Some((link.copy(href = URI.create(netCdfDataset)), netCdfDatasetBandIndex))
-      } else Some((link, bandIndex))
-    }
+
 
     def getBandAssetsByBandInfo: Seq[Option[(Link, Int)]] = { // [Some((href, bandIndex))]
       def getBandAsset(bandName: String): Option[(Link, Int)] = { // (href, bandIndex)

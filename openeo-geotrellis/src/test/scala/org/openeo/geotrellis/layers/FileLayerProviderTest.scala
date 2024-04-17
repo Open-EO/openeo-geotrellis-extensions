@@ -1266,4 +1266,14 @@ class FileLayerProviderTest extends RasterMatchers{
     assertRastersEqual(reference,actual)
 
   }
+
+  @Test
+  def testGDALConvert():Unit = {
+    val result = FileLayerProvider.convertNetcdfLinksToGDALFormat(Link(URI.create("file:///data/MTDA/Copernicus/Land/global/netcdf/dry_matter_productivity/gdmp_300m_v1_10daily/2020/20200310/c_gls_GDMP300-RT5_202003100000_GLOBE_PROBAV_V1.0.1.nc"),Some("DMP")),"dry_matter_productivity",1)
+    assertEquals(Some((Link(URI.create("NETCDF:/data/MTDA/Copernicus/Land/global/netcdf/dry_matter_productivity/gdmp_300m_v1_10daily/2020/20200310/c_gls_GDMP300-RT5_202003100000_GLOBE_PROBAV_V1.0.1.nc:dry_matter_productivity"),Some("DMP")),0)),result)
+
+    val httpResult = FileLayerProvider.convertNetcdfLinksToGDALFormat(Link(URI.create("http://openeo.vito.be/job-xxx/results/result.nc"),Some("DMP")),"dry_matter_productivity",1)
+    assertEquals(Some((Link(URI.create("NETCDF:http://openeo.vito.be/job-xxx/results/result.nc:dry_matter_productivity"),Some("DMP")),0)),httpResult)
+
+  }
 }
