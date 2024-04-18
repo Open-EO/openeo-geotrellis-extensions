@@ -146,8 +146,9 @@ object NetCDFRDDWriter {
       }.distinct().collect().sorted.toList
 
 
+    val forceTempFile = !rdd.context.getConf.get("spark.kubernetes.namespace", "nothing").equals("nothing")
     val intermediatePath =
-      if (path.startsWith("s3:/")) {
+      if (path.startsWith("s3:/") || forceTempFile) {
         Files.createTempFile(null, null).toString
       }else{
         path
@@ -249,7 +250,11 @@ object NetCDFRDDWriter {
       }else{
         uploadToS3(path, intermediatePath)
       }
-    }else{
+    }else if(forceTempFile) {
+      Files.move(Paths.get(intermediatePath),Paths.get(path),java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+      path
+    }
+    else{
       path
     }
 
