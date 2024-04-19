@@ -1,5 +1,7 @@
 package org.openeo.geotrellis
 
+import io.circe.syntax.EncoderOps
+import io.circe.Json
 import geotrellis.layer.SpatialKey._
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata, _}
 import geotrellis.proj4.CRS
@@ -539,7 +541,7 @@ class OpenEOProcesses extends Serializable {
    * @param datacube
    * @return
    */
-  def vectorize[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): (Array[PolygonFeature[Int]],CRS) = {
+  def vectorize[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): (Array[(String, List[PolygonFeature[Int]])], CRS) = {
     val layout = datacube.metadata.layout
     val maxExtent = datacube.metadata.extent
     //naive approach: combine tiles and hope that we don't exceed the max size
@@ -549,24 +551,55 @@ class OpenEOProcesses extends Serializable {
 
     val singleBandLayer: TileLayerRDD[K] = datacube.withContext(_.mapValues(_.band(0)))
     val retiled = singleBandLayer.regrid(newCols.intValue(),newRows.intValue())
-    val collectedFeatures: Array[PolygonFeature[Int]] = retiled.toRasters.mapValues(_.crop(maxExtent,Crop.Options(force=true,clamp=true)).toVector()).flatMap(_._2).collect()
-
+    val vectorizedValues: RDD[(K, List[PolygonFeature[Int]])] = retiled.toRasters.mapValues(_.crop(maxExtent,Crop.Options(force=true,clamp=true)).toVector())
+    val collectedFeatures: Array[(String, List[PolygonFeature[Int]])] = vectorizedValues.map(kv => {
+      val key: K = kv._1
+      val bandStr = "band0"
+      key match {
+        case stk: SpaceTimeKey =>
+          val id = bandStr + "_" + stk.time.format(DateTimeFormatter.ofPattern("yyyyMMdd"))
+          (id, kv._2)
+        case _ =>
+          (bandStr, kv._2)
+      }
+    }).collect()
     return (collectedFeatures,datacube.metadata.crs)
   }
 
   def vectorize(datacube:Object, outputFile:String): Unit = {
-
-    val (features,crs) = datacube match {
+    val (features: Array[(String, List[PolygonFeature[Int]])],crs) = datacube match {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
         vectorize(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
       case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]  =>
         vectorize(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]])
       case _ => throw new IllegalArgumentException("Unsupported rdd type to vectorize: ${rdd}")
     }
-    val json = JsonFeatureCollection(features).asJson
+    // Add ids for every Key.
+    val geojsonFeaturesWithId: Array[Json] = features.flatMap((v) => {
+      val key: String = v._1
+      val feats: Seq[PolygonFeature[Int]] = v._2
+      feats.zipWithIndex.map({case (f,i) => f.asJson.deepMerge(Json.obj("id" -> (key + "_" + i).asJson))})
+    })
+    // Add bbox to top level.
+    val allFeatures: Array[PolygonFeature[Int]] = features.flatMap(_._2)
+    val bboxOption = allFeatures.map(_.geom.extent).reduceOption(_ combine _)
+    val jsonWithBbox = bboxOption match {
+      case Some(bbox) =>
+        Json.obj(
+          "type" -> "FeatureCollection".asJson,
+          "bbox" -> Extent.listEncoder(bbox),
+          "features" -> geojsonFeaturesWithId.asJson
+        )
+      case _ =>
+        Json.obj(
+          "type" -> "FeatureCollection".asJson,
+          "features" -> geojsonFeaturesWithId.asJson
+        )
+    }
+    // Add epsg to top level.
     val epsg = "epsg:"+ crs.epsgCode.get
     val crs_json = _root_.io.circe.parser.parse("""{"crs":{"type":"name","properties":{"name":"THE_CRS"}}}""".replace("THE_CRS",epsg))
-    val jsonWithCRS = json.deepMerge(crs_json.right.get)
+    val jsonWithCRS = jsonWithBbox.deepMerge(crs_json.right.get)
     Files.write(Paths.get(outputFile), jsonWithCRS.toString().getBytes(StandardCharsets.UTF_8))
   }
 

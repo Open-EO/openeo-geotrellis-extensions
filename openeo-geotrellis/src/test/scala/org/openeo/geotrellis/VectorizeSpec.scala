@@ -1,5 +1,6 @@
 package org.openeo.geotrellis
 
+import io.circe.Json
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.raster.crop.Crop
 import geotrellis.raster.crop.Crop.Options
@@ -47,13 +48,16 @@ class VectorizeSpec {
     val newExtent = theExtent.copy(theExtent.xmin, theExtent.ymin, theExtent.xmax - 50 * res.width, theExtent.ymax - 60 * res.height)
     println(newExtent)
     val croppedCube = cube._1.crop(newExtent, Options(force = true, clamp = true))
-    
+
     GeoTiff(Raster(cube._2,theExtent).crop(newExtent,Crop.Options(force=true)),cube._1.metadata.crs).write("vectorize_reference.tiff")
     val outputPath = Paths.get("polygons.geojson")
     new OpenEOProcesses().vectorize(ContextRDD(croppedCube,croppedCube.metadata.copy(extent = newExtent)),outputPath.toString)
 
     val json: JsonFeatureCollection = GeoJson.fromFile[JsonFeatureCollection](outputPath.toString)
-
+    val features: Seq[Json] = json.asJson.hcursor.downField("features").focus.flatMap(_.asArray).getOrElse(Vector.empty)
+    val featureIds: Seq[String] = features.flatMap { feature => feature.hcursor.downField("id").focus.flatMap(_.asString) }
+    val expectedIds: Seq[String] = (0 to 10).map(i => s"band0_20170102_$i")
+    assertEquals(expectedIds, featureIds)
     val polygons = json.getAllPolygons()
     assertEquals(11,polygons.size)
     assertTrue(newExtent.contains(polygons.extent))
