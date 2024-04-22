@@ -50,7 +50,10 @@ class CustomizableHttpRangeReader(request: HttpRequest, useHeadRequest: Boolean)
      * https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
      */
     require(res.code != 416,
-      "Server unable to generate the byte range between ${start} and ${start + length}")
+      s"Server unable to generate the byte range between ${start} and ${start + length} for ${request.url}")
+
+    require(res.is2xx,
+      s"While reading ${request.url}, server returned status code ${res.code} with type ${res.contentType} and body ${new String(res.body)}")
 
     res.body
   }
