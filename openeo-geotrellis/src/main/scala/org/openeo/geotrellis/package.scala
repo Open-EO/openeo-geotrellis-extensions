@@ -67,7 +67,7 @@ package object geotrellis {
       .region(if(region != null) region else Region.EU_CENTRAL_1)
 
     val theClient = if(endpoint != null) {
-      clientBuilder.serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build()).endpointOverride(endpoint).build()
+      clientBuilder.serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build()).forcePathStyle(true).endpointOverride(endpoint).build()
     }else{
       clientBuilder.build()
     }
