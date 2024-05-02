@@ -1426,7 +1426,7 @@ class OpenEOProcessScriptBuilder {
     resultingDataType = typeOrElse("data",FloatConstantNoDataCellType)
     val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
       val data = evaluateToTiles(dataFunction, context, tiles)
-      Seq.fill(repeat)(data).flatten
+      Seq.fill(repeat)(data).flatten.map(_.convert(resultingDataType))
     }
     bandFunction
   }
