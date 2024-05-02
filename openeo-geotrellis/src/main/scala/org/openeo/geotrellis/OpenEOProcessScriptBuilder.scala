@@ -24,6 +24,7 @@ import scala.collection.JavaConversions.mapAsScalaMap
 import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.collection.{immutable, mutable}
+import scala.math.BigDecimal
 import scala.util.Try
 import scala.util.control.Breaks.{break, breakable}
 
@@ -926,11 +927,17 @@ class OpenEOProcessScriptBuilder {
       case x: java.lang.Short => ShortConstantNoDataCellType
       case x: Integer => IntConstantNoDataCellType
       case x: java.lang.Float => FloatConstantNoDataCellType
+      case x if BigDecimal(x.doubleValue()).precision <= 7 => FloatConstantNoDataCellType
       case _ => DoubleConstantNoDataCellType
     }
     }
     typeStack.head(name) = dataType.toString()
-    scope.put(name,wrapSimpleProcess(createConstantTileFunction(value)))
+
+    val converted: Number = dataType match {
+      case x if x == FloatConstantNoDataCellType => value.floatValue()
+      case _ => value
+    }
+    scope.put(name,wrapSimpleProcess(createConstantTileFunction(converted)))
   }
 
   def constantArguments(args: java.util.Map[String,Object]): Unit = {
