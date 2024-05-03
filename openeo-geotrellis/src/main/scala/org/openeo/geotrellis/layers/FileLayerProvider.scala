@@ -1152,7 +1152,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
       //convert to raster region
       val cube=
-        if(!datacubeParams.map(_.loadPerProduct).getOrElse(false) || theMaskStrategy != NoCloudFilterStrategy){
+        if(!datacubeParams.map(_.loadPerProduct).getOrElse(false) || theMaskStrategy != NoCloudFilterStrategy || openSearchLinkTitles.filter(_.contains("Metadata##")).nonEmpty){
           rasterRegionsToTiles(regions, metadata, retainNoDataTiles, theMaskStrategy, partitioner, datacubeParams)
         }else{
           rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams)
