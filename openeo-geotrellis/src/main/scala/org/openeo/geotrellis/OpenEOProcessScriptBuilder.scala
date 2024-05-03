@@ -1423,10 +1423,11 @@ class OpenEOProcessScriptBuilder {
     val dataFunction:OpenEOProcess = getProcessArg("data")
     val repeat: Int = arguments.getOrDefault("repeat", 1.asInstanceOf[Object]).asInstanceOf[Int]
 
-    resultingDataType = typeOrElse("data",FloatConstantNoDataCellType)
+    val targetType = typeOrElse("data", FloatConstantNoDataCellType)
+    resultingDataType = targetType
     val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
       val data = evaluateToTiles(dataFunction, context, tiles)
-      Seq.fill(repeat)(data).flatten.map(_.convert(resultingDataType))
+      Seq.fill(repeat)(data).flatten.map(_.convert(targetType))
     }
     bandFunction
   }
