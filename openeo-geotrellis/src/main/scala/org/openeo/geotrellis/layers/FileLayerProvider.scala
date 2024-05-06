@@ -511,7 +511,7 @@ object FileLayerProvider {
       result
     })
 
-    val allSources: Array[SourceName] = byBandSource.keys.distinct().collect()
+    val allSources: Array[SourceName] = rasterRegionRDD.map(_._2._2).distinct().collect()
     val theCellType = metadata.cellType
 
     var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = byBandSource.groupByKey(new ByKeyPartitioner(allSources)).mapPartitions((partitionIterator: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
