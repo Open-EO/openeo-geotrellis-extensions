@@ -13,6 +13,8 @@ import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
 import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CroppedTile, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
+import geotrellis.spark.clip.ClipToGrid
+import geotrellis.spark.clip.ClipToGrid.clipFeatureToExtent
 import geotrellis.spark.join.VectorJoin
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector
@@ -929,8 +931,10 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         }
 
 
-        // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
-        var requiredSpatialKeysLocal: RDD[(SpatialKey, Iterable[Geometry])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey(workingPartitioner)
+        val clipped = clipToGridWithErrorHandling(polygonsRDD, metadata)
+
+
+        var requiredSpatialKeysLocal: RDD[(SpatialKey, Iterable[Geometry])] = clipped.groupByKey(workingPartitioner)
 
         val spatialKeyCount: Long =
           if (polygons.length == 1) {
@@ -946,7 +950,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         metadata = retiledMetadata.getOrElse(metadata)
 
         if (retiledMetadata.isDefined) {
-          requiredSpatialKeysLocal = polygonsRDD.clipToGrid(retiledMetadata.get).groupByKey(workingPartitioner)
+          requiredSpatialKeysLocal = clipToGridWithErrorHandling(polygonsRDD, retiledMetadata.get).groupByKey(workingPartitioner)
         }
         requiredSpatialKeysLocal
       }
@@ -1057,7 +1061,20 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   }
 
 
+  private def clipToGridWithErrorHandling(polygonsRDD: RDD[MultiPolygon], metadata: TileLayerMetadata[SpaceTimeKey]) = {
+    // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
+    val polygonFeatureRDD: RDD[vector.Feature[MultiPolygon, Unit]] = polygonsRDD.map(vector.Feature(_, ()))
+    val clippingFunction: (Extent, vector.Feature[MultiPolygon, Unit], ClipToGrid.Predicates) => Option[vector.Feature[Geometry, Unit]] = (e, f, p) => {
+      try {
+        clipFeatureToExtent[MultiPolygon, Unit](e, f, p)
+      } catch {
+        case ex: Exception => throw new IOException(s"load_collection/load_stac: internal error while clipping input geometry ${f.geom} to extent ${e}. Original message: ${ex.getMessage} ", ex)
+      }
 
+    }
+    val clipped = ClipToGrid.apply[MultiPolygon, Unit](rdd = polygonFeatureRDD, layout = metadata.layout, clipFeature = clippingFunction).mapValues(_.geom)
+    clipped
+  }
 
   def selectLayoutScheme(extent: ProjectedExtent, multiple_polygons_flag: Boolean, datacubeParams: Option[DataCubeParameters]) = {
     val selectedLayoutScheme = if (layoutScheme.isInstanceOf[FloatingLayoutScheme]) {
