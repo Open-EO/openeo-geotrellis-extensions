@@ -1346,9 +1346,10 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(ByteConstantNoDataCellType$.MODULE$,result.apply(1).cellType());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"int16","float32"})
     @DisplayName("Test array_create")
-    @Test
-    public void testArrayCreate() {
+    public void testArrayCreate(String type) {
         /* Builder setup based on:
          python openeogeotrellis/geotrellis_tile_processgraph_visitor.py '{
                 "band0": {"process_id": "array_element", "arguments": {"data": {"from_parameter": "data"}, "index": 0}},
@@ -1364,6 +1365,15 @@ public class TestOpenEOProcessScriptBuilder {
             }'
          */
 
+        DataType constantType = CellType$.MODULE$.fromName(type);
+        Number theConstant = null;
+
+        switch (type) {
+            case "int16": theConstant = (byte)10; break;
+            case "float32": theConstant = 1.005; break;
+
+        };
+
         OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
         builder.defaultDataParameterName_$eq("data");
         builder.defaultInputDataType_$eq(ByteConstantNoDataCellType$.MODULE$.name());
@@ -1376,12 +1386,21 @@ public class TestOpenEOProcessScriptBuilder {
         builder.constantArgument("index", 1);
         builder.expressionEnd("array_element", map2("data","dummy", "index", 1));
         builder.arrayElementDone();
-        builder.expressionStart("array_element", map2("data","dummy", "index", 0));
-        builder.argumentStart("data");
-        builder.fromParameter("data");
-        builder.argumentEnd();
-        builder.constantArgument("index", 0);
-        builder.expressionEnd("array_element", map2("data","dummy", "index", 0));
+
+            builder.expressionStart("multiply", Collections.EMPTY_MAP);
+            builder.constantArgument("x", theConstant);
+            builder.argumentStart("y");
+
+                builder.expressionStart("array_element", map2("data","dummy", "index", 0));
+                builder.argumentStart("data");
+                builder.fromParameter("data");
+                builder.argumentEnd();
+                builder.constantArgument("index", 0);
+                builder.expressionEnd("array_element", map2("data","dummy", "index", 0));
+
+            builder.argumentEnd();
+            builder.expressionEnd("multiply", map2("x", 1.005, "y", "dummy"));
+
         builder.arrayElementDone();
         builder.expressionStart("array_element", map2("data","dummy", "index", 1));
         builder.argumentStart("data");
@@ -1395,9 +1414,9 @@ public class TestOpenEOProcessScriptBuilder {
         builder.expressionEnd("array_create", map2("data", "dummy", "repeat", 2));
 
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
-        assertEquals(ByteConstantNoDataCellType$.MODULE$,builder.getOutputCellType());
-        ByteArrayTile t0 = ByteConstantNoDataArrayTile.fill((byte) 0, 4, 4);
-        ByteArrayTile t1 = ByteConstantNoDataArrayTile.fill((byte) 1, 4, 4);
+        assertEquals(constantType,builder.getOutputCellType());
+        Tile t0 = ByteConstantNoDataArrayTile.fill((byte) 0, 4, 4).convert(constantType);
+        Tile t1 = ByteConstantNoDataArrayTile.fill((byte) 1, 4, 4).convert(constantType);
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(t0, t1)));
         assertEquals(6, result.size());
         assertTileEquals(t1, result.apply(0));

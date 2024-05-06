@@ -1702,11 +1702,9 @@ class OpenEOProcessScriptBuilder {
       try {
         val theType = typeStack.head(argName)
         if(theType.startsWith("array")) {
-          var endIndex = theType.indexOf(",")
-          if(endIndex<6) {
-            endIndex = theType.length-1
-          }
-          CellType.fromName(theType.substring(6,endIndex))
+          val types = theType.substring(theType.indexOf('[')+1,theType.indexOf(']')).split(',').map(CellType.fromName)
+          val mergedType = types.reduce(cellTypeUnion)
+          mergedType
         }else{
           CellType.fromName(theType)
         }
