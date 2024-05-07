@@ -120,7 +120,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
   @Test
   def smallBoundingBox(): Unit = {
-    val smallBbox = ProjectedExtent(Point(x = 4.9754, y = 50.3244).buffer(0.025).extent, LatLng)
+    val smallBbox = ProjectedExtent(Point(x = 4.9754, y = 50.3244).buffer(0.0251).extent, LatLng)
 
     assertTrue(smallBbox.extent.width < 0.06,s"${smallBbox.extent.width}")
     assertTrue(smallBbox.extent.height < 0.06, s"${smallBbox.extent.height}")

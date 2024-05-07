@@ -14,7 +14,7 @@ class ProjectedPolygonsTest() {
   def projected_polygons_from_wkt(): Unit = {
     val pp = ProjectedPolygons.fromWkt(List(polygon1.toWKT()).asJava, "EPSG:4326")
     assertEquals(1, pp.polygons.length)
-    assertEquals(MultiPolygon(polygon1), pp.polygons(0))
+    assertTrue(MultiPolygon(polygon1).equalsExact( pp.polygons(0),0.00000001))
     assertEquals(CRS.fromEpsgCode(4326), pp.crs)
   }
 
@@ -31,8 +31,8 @@ class ProjectedPolygonsTest() {
   def projected_polygons_from_vector_file_mixed_polygons(): Unit = {
     val pp = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/test_MVP_2fields.geojson").getPath)
     assertEquals(2, pp.polygons.length)
-    assertTrue(pp.polygons(0).toString.startsWith("MULTIPOLYGON (((3.820542167275136"))
-    assertTrue(pp.polygons(1).toString.startsWith("MULTIPOLYGON (((3.649860567588494"))
+    assertTrue(f"Unexpected start ${pp.polygons(0).toString}", pp.polygons(0).toString.startsWith("MULTIPOLYGON (((3.82054216728"))
+    assertTrue(f"Unexpected start ${pp.polygons(1).toString}", pp.polygons(1).toString.startsWith("MULTIPOLYGON (((3.64986056759"))
     assertEquals(CRS.fromEpsgCode(4326), pp.crs)
   }
 

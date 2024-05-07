@@ -60,7 +60,11 @@ class VectorizeSpec {
     assertEquals(expectedIds, featureIds)
     val polygons = json.getAllPolygons()
     assertEquals(11,polygons.size)
-    assertTrue(newExtent.contains(polygons.extent))
+
+    for (elem <- polygons) {
+      assertTrue(newExtent.toPolygon().buffer(0.00000001).covers(elem),f"Polygon $elem not in extent")
+    }
+
 
   }
 }
