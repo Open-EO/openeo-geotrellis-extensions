@@ -6,6 +6,7 @@ import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.{RasterRegion, RasterSource, TargetCellType}
 import geotrellis.vector.{Extent, MultiPolygon, Polygon}
+import org.locationtech.jts.geom.{GeometryFactory, PrecisionModel}
 import org.openeo.opensearch.OpenSearchResponses.Feature
 
 import java.util
@@ -105,7 +106,7 @@ class GDALCloudRasterSource(
   def getMergedPolygons(dilationDistance: Double): Seq[Polygon] = {
     if (mergedCloudPolygons.isEmpty && readCloudFile().nonEmpty) {
       // Dilate and merge polygons.
-      val bufferedPolygons = readCloudFile().par.map(p => p.buffer(dilationDistance).asInstanceOf[Polygon]).toBuffer
+      val bufferedPolygons = readCloudFile().par.map(p => new GeometryFactory(new PrecisionModel(1e8)).createGeometry(p).buffer(dilationDistance).asInstanceOf[Polygon]).toBuffer
 
       def mergeIntersectingPolygons(polygon: Polygon): Polygon = {
         val intersectingPolygons = bufferedPolygons.filter(p => p.intersects(polygon))
