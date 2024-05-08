@@ -23,6 +23,7 @@ import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.AccumulatorV2
 import org.openeo.geotrellis
 import org.openeo.geotrellis.creo.CreoS3Utils
+import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.fixedTimeOffset
 import org.openeo.geotrellis.stac.STACItem
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.slf4j.LoggerFactory
@@ -32,6 +33,7 @@ import spire.math.Integral
 import spire.syntax.cfor.cfor
 
 import java.nio.file.{Path, Paths}
+import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Collections, Map, List => JList}
 import scala.collection.JavaConverters._
@@ -40,6 +42,7 @@ import scala.reflect._
 package object geotiff {
 
   private val logger = LoggerFactory.getLogger(getClass)
+  private val secondsPerDay = 86400L
 
   class SetAccumulator[T](var value: Set[T]) extends AccumulatorV2[T, Set[T]] {
     def this() = this(Set.empty[T])
@@ -124,7 +127,15 @@ package object geotiff {
           (index, (multibandTile.cellType, compressedBytes))
       })
     }.map(tuple => {
-      val filename = s"${formatOptions.filenamePrefix}_${DateTimeFormatter.ISO_DATE.format(tuple._1.time)}.tif"
+      val isDays = Duration.between(fixedTimeOffset, tuple._1.time).getSeconds % secondsPerDay == 0
+      val filename = if(isDays) {
+        s"${formatOptions.filenamePrefix}_${DateTimeFormatter.ISO_DATE.format(tuple._1.time)}.tif"
+       } else{
+          // ':' is not valid in a Windows filename
+          s"${formatOptions.filenamePrefix}_${DateTimeFormatter.ISO_ZONED_DATE_TIME.format(tuple._1.time).replace(":", "").replace("-","")}.tif"
+       }
+
+
       val timestamp = tuple._1.time format DateTimeFormatter.ISO_ZONED_DATE_TIME
       ((filename, timestamp), tuple._2)
     }).groupByKey().map((tuple: ((String, String), Iterable[Vector[(Int, (CellType, Array[Byte]))]])) => {
