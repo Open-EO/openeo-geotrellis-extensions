@@ -23,6 +23,7 @@ import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.AccumulatorV2
 import org.openeo.geotrellis
 import org.openeo.geotrellis.creo.CreoS3Utils
+import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.fixedTimeOffset
 import org.openeo.geotrellis.stac.STACItem
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.slf4j.LoggerFactory
@@ -32,6 +33,7 @@ import spire.math.Integral
 import spire.syntax.cfor.cfor
 
 import java.nio.file.{Path, Paths}
+import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Collections, Map, List => JList}
 import scala.collection.JavaConverters._
@@ -40,6 +42,8 @@ import scala.reflect._
 package object geotiff {
 
   private val logger = LoggerFactory.getLogger(getClass)
+
+  val secondsPerDay = 86400L
 
   class SetAccumulator[T](var value: Set[T]) extends AccumulatorV2[T, Set[T]] {
     def this() = this(Set.empty[T])
@@ -95,6 +99,14 @@ package object geotiff {
     val croppedExtent: Extent = preProcessResult._2
     val preprocessedRdd: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = preProcessResult._3
 
+    val temporalResolution = if (preprocessedRdd.keys.filter({
+      case key: SpaceTimeKey =>
+        // true if not exactly n days:
+        Duration.between(fixedTimeOffset, key.time).getSeconds % secondsPerDay != 0
+      case _ =>
+        false
+    }).isEmpty()) TemporalResolution.days else TemporalResolution.seconds
+
     val tileLayout = preprocessedRdd.metadata.tileLayout
 
     val totalCols = math.ceil(gridBounds.width.toDouble / tileLayout.tileCols).toInt
@@ -124,7 +136,13 @@ package object geotiff {
           (index, (multibandTile.cellType, compressedBytes))
       })
     }.map(tuple => {
-      val filename = s"${formatOptions.filenamePrefix}_${DateTimeFormatter.ISO_DATE.format(tuple._1.time)}.tif"
+      val filename = temporalResolution match {
+        case TemporalResolution.days =>
+          s"${formatOptions.filenamePrefix}_${DateTimeFormatter.ISO_DATE.format(tuple._1.time)}.tif"
+        case TemporalResolution.seconds =>
+          // ':' is not valid in a Windows filename
+          s"${formatOptions.filenamePrefix}_${DateTimeFormatter.ISO_ZONED_DATE_TIME.format(tuple._1.time).replace(":", "-")}.tif"
+      }
       val timestamp = tuple._1.time format DateTimeFormatter.ISO_ZONED_DATE_TIME
       ((filename, timestamp), tuple._2)
     }).groupByKey().map((tuple: ((String, String), Iterable[Vector[(Int, (CellType, Array[Byte]))]])) => {
@@ -682,6 +700,14 @@ package object geotiff {
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
 
+    val temporalResolution = if (rdd.keys.filter({
+      case key: SpaceTimeKey =>
+        // true if not exactly n days:
+        Duration.between(fixedTimeOffset, key.time).getSeconds % secondsPerDay != 0
+      case _ =>
+        false
+    }).isEmpty()) TemporalResolution.days else TemporalResolution.seconds
+
     rdd
       .flatMap { case (key, tile) => featuresBC.value
         .filter { case (_, geometry) => layout.mapTransform.keysForGeometry(geometry) contains key.spatialKey }
@@ -689,7 +715,13 @@ package object geotiff {
       }
       .groupByKey()
       .map { case ((name, (geometry, time)), tiles) =>
-        val filename = s"${filenamePrefix.getOrElse("openEO")}_${DateTimeFormatter.ISO_DATE.format(time)}_$name.tif"
+        val filename = temporalResolution match {
+          case TemporalResolution.days =>
+            s"${filenamePrefix.getOrElse("openEO")}_${DateTimeFormatter.ISO_DATE.format(time)}_$name.tif"
+          case TemporalResolution.seconds =>
+            // ':' is not valid in a Windows filename
+            s"${filenamePrefix.getOrElse("openEO")}_${DateTimeFormatter.ISO_ZONED_DATE_TIME.format(time).replace(":", "-")}_$name.tif"
+        }
         val filePath = Paths.get(path).resolve(filename).toString
         val timestamp = time format DateTimeFormatter.ISO_ZONED_DATE_TIME
         (stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression),

@@ -315,7 +315,6 @@ class WriteRDDToGeotiffTest {
     assertArrayEquals(croppedReference.toArray(), result2.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArray())
   }
 
-  @Ignore("Fix this test: https://github.com/Open-EO/openeo-geotrellis-extensions/issues/257")
   @Test
   def testWriteMultibandTemporalHourlyRDDWithGaps(): Unit = {
     val layoutCols = 8
@@ -392,7 +391,7 @@ class WriteRDDToGeotiffTest {
 
     val ret = saveSamples(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
       DeflateCompression(BEST_COMPRESSION))
-    assertTrue(ret.get(0)._2.contains("T"))
+    assertTrue(ret.get(0)._1.contains("T"))
   }
 
   @Test
