@@ -359,7 +359,7 @@ object LayerFixtures {
   def sentinel2Cube(localDate: LocalDate, projected_polygons_native_crs: ProjectedPolygons, jsonPath: String, dataCubeParameters: DataCubeParameters = new DataCubeParameters) = {
     val jsonPathFull = getClass.getResource(jsonPath)
 
-    val bandNames = Collections.singletonList("IMG_DATA_Band_B04_10m_Tile1_Data")
+    val bandNames = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data","S2_Level-2A_Tile1_Metadata##1","S2_Level-2A_Tile1_Metadata##0")
     val fileSource = Source.fromURL(jsonPathFull)
     var txt = try fileSource.mkString
     finally fileSource.close()
@@ -370,9 +370,11 @@ object LayerFixtures {
     for (rest <- Seq(
       "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/manifest.safe",
       "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/MTD_MSIL2A.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/GRANULE/L2A_T31UGS_A030636_20230117T104258/MTD_TL.xml",
       "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/GRANULE/L2A_T31UGS_A030636_20230117T104258/IMG_DATA/R10m/T31UGS_20230117T104259_B04_10m.jp2",
       "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/manifest.safe",
       "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/MTD_MSIL2A.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/MTD_TL.xml",
       "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R10m/T31UFS_20230405T105031_B04_10m.jp2",
     )) {
       val jp2File = new File(basePath, rest)

@@ -67,7 +67,7 @@ object SentinelXMLMetadataRasterSource {
     for {
       index <- angleBandIndices
       angleBandValue = constantAngleBandValues(index)
-    } yield new SentinelXMLMetadataRasterSource(angleBandValue, projectedExtent.crs, gridExtent, OpenEoSourcePath(xlmPath))
+    } yield new SentinelXMLMetadataRasterSource(angleBandValue, projectedExtent.crs, gridExtent, OpenEoSourcePath(xlmPath + s"_${angleBandValue.toInt}"))
   }
 }
 
