@@ -393,10 +393,28 @@ class ComputeStatsGeotrellisAdapterTest() {
     val to_date = "2017-03-10T00:00:00Z"
 
     val polygons = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath)
+
     val stats = computeAggregateSpatial(
       "median",
       buildCubeRdd(ZonedDateTime.parse(from_date), ZonedDateTime.parse(to_date)), polygons)
 
+    val keys = Seq("2017-01-01", "2017-01-15", "2017-02-01")
+    keys.foreach(k => assertEqualTimeseriesStats(
+      Seq(Seq(10.0, Double.NaN), Seq(10.0, Double.NaN)),
+      stats.get(k).get
+    ))
+  }
+
+
+  @Test
+  def compute_median_timeseries_on_datacube_from_GeoJson_file_with_featurecollection_and_crs(): Unit = {
+    val from_date = "2017-01-01T00:00:00Z"
+    val to_date = "2017-03-10T00:00:00Z"
+
+    val polygons = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/FeatureCollectionWithCRS.json").getPath)
+    val stats = computeAggregateSpatial(
+      "median",
+      buildCubeRdd(ZonedDateTime.parse(from_date), ZonedDateTime.parse(to_date)), polygons)
 
     val keys = Seq("2017-01-01", "2017-01-15", "2017-02-01")
     keys.foreach(k => assertEqualTimeseriesStats(
