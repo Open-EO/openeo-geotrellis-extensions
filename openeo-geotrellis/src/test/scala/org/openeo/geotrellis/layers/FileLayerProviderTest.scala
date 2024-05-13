@@ -34,6 +34,7 @@ import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.io.File
 import java.net.{URI, URL}
+import java.nio.file.{Files, Paths}
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
@@ -41,6 +42,7 @@ import java.util.Collections
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.io.Source
+import scala.reflect.io.Directory
 
 object FileLayerProviderTest {
   private var _sc: Option[SparkContext] = None
@@ -1110,6 +1112,29 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
 
+  @Test
+  def testMissingS2(): Unit = {
+    val outDir = Paths.get("tmp/FileLayerProviderTest/")
+    new Directory(outDir.toFile).deleteRecursively()
+    Files.createDirectories(outDir)
+
+    val from = ZonedDateTime.parse("2024-03-24T00:00:00Z")
+    val to = ZonedDateTime.parse("2024-03-25T00:00:00Z")
+
+    val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, "EPSG:4326")
+    //val utmCrs = CRS.fromName("EPSG:32603")
+    val utmCrs = CRS.fromName("EPSG:32604")
+    val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, utmCrs)
+    val poly2 = ProjectedPolygons(Array(reprojected), utmCrs)
+    val layer = LayerFixtures.sentinel2CubeCDSE((from, to), poly2)
+
+    val cubeSpatial = layer.toSpatial()
+    cubeSpatial.writeGeoTiff(outDir + "/testMissingS2.tiff")
+    val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
+
+//    assertEquals(8048, band.get(0, 0), 1)
+  }
 
   private def keysForLargeArea(useBBox:Boolean=false) = {
     val date = LocalDate.of(2022, 2, 11).atStartOfDay(UTC)

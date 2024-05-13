@@ -19,6 +19,7 @@ import org.openeo.geotrellisaccumulo
 import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
+import org.openeo.opensearch.backends.CreodiasClient
 
 import java.awt.image.DataBufferByte
 import java.io.File
@@ -406,6 +407,33 @@ object LayerFixtures {
     val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
       projected_polygons_native_crs,
       from_date, to_date, Collections.emptyMap(), "",dataCubeParameters = dataCubeParameters
+    )
+    cube.head._2
+  }
+
+  /**
+   * Creates a Sentinel-2 cube by downloading data locally.
+   */
+  def sentinel2CubeCDSE(dateRange: Tuple2[ZonedDateTime, ZonedDateTime], projected_polygons_native_crs: ProjectedPolygons, dataCubeParameters: DataCubeParameters = new DataCubeParameters) = {
+    // True Color Bands: B04, B03, B02
+    val bandNames = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data", "IMG_DATA_Band_B03_10m_Tile1_Data", "IMG_DATA_Band_B02_10m_Tile1_Data")
+
+    val client = CreodiasClient()
+
+    val factory = new PyramidFactory(
+      client, "Sentinel2", bandNames,
+      null,
+      maxSpatialResolution = CellSize(10, 10),
+    )
+    factory.crs = projected_polygons_native_crs.crs
+
+    val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format dateRange._1
+    val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format dateRange._2
+
+
+    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
+      projected_polygons_native_crs,
+      from_date, to_date, Collections.emptyMap(), "", dataCubeParameters = dataCubeParameters
     )
     cube.head._2
   }
