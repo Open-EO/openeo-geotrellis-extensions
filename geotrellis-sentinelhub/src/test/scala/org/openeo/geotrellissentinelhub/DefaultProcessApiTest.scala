@@ -74,7 +74,7 @@ class DefaultProcessApiTest {
     assertTrue(delay >= retryAfter)
   }
 
-  @Test(timeout = 3000)
+  @Test
   def testSentinel1BandNotPresentException(): Unit = {
     try {
       authorizer.authorized { accessToken =>
@@ -88,6 +88,7 @@ class DefaultProcessApiTest {
       fail("should have thrown a Sentinel1BandNotPresentException")
     } catch {
       case e: Sentinel1BandNotPresentException =>
+        assertEquals(400, e.statusCode)
         assertTrue(e.getMessage, e.getMessage contains "Requested band 'HH' is not present in Sentinel 1 tile")
         assertEquals(e.missingBandName, "HH", e.missingBandName)
     }
