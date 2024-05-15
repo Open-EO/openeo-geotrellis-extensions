@@ -2,6 +2,7 @@ package org.openeo.geotrellis
 
 import io.circe.Json
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata}
+import geotrellis.proj4.CRS
 import geotrellis.raster.crop.Crop
 import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.io.geotiff.GeoTiff
@@ -32,13 +33,10 @@ object VectorizeSpec{
 }
 
 class VectorizeSpec {
-
-
-
   //TODO better test would be a round-trip: rasterize then vectorize
 
   @Test
-  def vectorize() = {
+  def vectorize(): Unit = {
     //val layer = LayerFixtures.ClearNDVILayerForSingleDate()(VectorizeSpec.sc)
 
     val cube: (RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], ByteArrayTile) = LayerFixtures.aSpacetimeTileLayerRdd(10,10,1)
@@ -64,7 +62,27 @@ class VectorizeSpec {
     for (elem <- polygons) {
       assertTrue(newExtent.toPolygon().buffer(0.00000001).covers(elem),f"Polygon $elem not in extent")
     }
+  }
 
+  @Test
+  def vectorizeGeojsonProperties(): Unit = {
+    val cube: (RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], ByteArrayTile) = LayerFixtures.aSpacetimeTileLayerRdd(10, 10, 1)
+    val res = cube._1.metadata.cellSize
+    val theExtent = cube._1.metadata.extent
+    val newExtent = theExtent.copy(theExtent.xmin, theExtent.ymin, theExtent.xmax - 50 * res.width, theExtent.ymax - 60 * res.height)
+    println(newExtent)
+    val croppedCube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = cube._1.crop(newExtent, Options(force = true, clamp = true))
 
+    val openEOProcesses = new OpenEOProcesses()
+    val (features: Array[(String, List[PolygonFeature[Map[String, Int]]])], crs: CRS) = openEOProcesses.vectorize(ContextRDD(croppedCube, croppedCube.metadata.copy(extent = newExtent)))
+    val geojson = openEOProcesses.featuresToGeojson(features, crs)
+
+    // assert that geojson["features"][0]["properties"] is a Map
+    val hcursor = geojson.hcursor.downField("features").downArray.downField("properties")
+    assertTrue(hcursor.focus.exists(_.isObject))
+
+    // assert that geojson["features"][0]["properties"]["value"] == 0
+    val value = hcursor.downField("value").focus.flatMap(_.asNumber).flatMap(_.toInt)
+    assertEquals(Some(0), value)
   }
 }
