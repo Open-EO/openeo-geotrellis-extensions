@@ -357,11 +357,11 @@ object LayerFixtures {
   /**
    * Creates a Sentinel-2 cube by downloading data locally.
    */
-  def sentinel2Cube(localDate: LocalDate, projected_polygons_native_crs: ProjectedPolygons, jsonPath: String, dataCubeParameters: DataCubeParameters = new DataCubeParameters) = {
+  def sentinel2Cube(localDate: LocalDate, projected_polygons_native_crs: ProjectedPolygons, jsonPath: String,
+                    dataCubeParameters: DataCubeParameters = new DataCubeParameters,
+                    bandNames: util.List[String] = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data", "S2_Level-2A_Tile1_Metadata##1", "S2_Level-2A_Tile1_Metadata##0")) = {
     val jsonPathFull = getClass.getResource(jsonPath)
 
-//    val bandNames = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data","S2_Level-2A_Tile1_Metadata##1","S2_Level-2A_Tile1_Metadata##0")
-    val bandNames = util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data")
     val fileSource = Source.fromURL(jsonPathFull)
     var txt = try fileSource.mkString
     finally fileSource.close()

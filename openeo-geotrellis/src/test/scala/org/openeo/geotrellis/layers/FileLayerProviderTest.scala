@@ -38,6 +38,7 @@ import java.nio.file.{Files, Paths}
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util
 import java.util.Collections
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable
@@ -1134,7 +1135,7 @@ class FileLayerProviderTest extends RasterMatchers{
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
     //    val layer = LayerFixtures.sentinel2CubeCDSE((from, to), projected_polygons_native_crs, dataCubeParameters)
     val jsonPath = "/org/openeo/geotrellis/testMissingS2.json"
-    val layer = LayerFixtures.sentinel2Cube(from.toLocalDate, poly2, jsonPath)
+    val layer = LayerFixtures.sentinel2Cube(from.toLocalDate, poly2, jsonPath, dataCubeParameters, util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data"))
 
     //    NetCDFRDDWriter.saveSingleNetCDFGeneric(layer, outDir + "saveSingleNetCDFGeneric.nc", new util.ArrayList(util.Arrays.asList("B04", "B03", "B02")), null, null, 6)
 
