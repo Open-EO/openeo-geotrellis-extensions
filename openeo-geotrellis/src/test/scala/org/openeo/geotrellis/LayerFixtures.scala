@@ -360,7 +360,8 @@ object LayerFixtures {
   def sentinel2Cube(localDate: LocalDate, projected_polygons_native_crs: ProjectedPolygons, jsonPath: String, dataCubeParameters: DataCubeParameters = new DataCubeParameters) = {
     val jsonPathFull = getClass.getResource(jsonPath)
 
-    val bandNames = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data","S2_Level-2A_Tile1_Metadata##1","S2_Level-2A_Tile1_Metadata##0")
+//    val bandNames = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data","S2_Level-2A_Tile1_Metadata##1","S2_Level-2A_Tile1_Metadata##0")
+    val bandNames = util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data")
     val fileSource = Source.fromURL(jsonPathFull)
     var txt = try fileSource.mkString
     finally fileSource.close()
@@ -377,6 +378,31 @@ object LayerFixtures {
       "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/MTD_MSIL2A.xml",
       "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/MTD_TL.xml",
       "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R10m/T31UFS_20230405T105031_B04_10m.jp2",
+      // for testMissingS2:
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWT_20240324T234241.SAFE/GRANULE/L2A_T03WWT_A036821_20240324T230529/IMG_DATA/R20m/T03WWT_20240324T230529_SCL_20m.jp2",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWT_20240324T234241.SAFE/GRANULE/L2A_T03WWT_A036821_20240324T230529/MTD_TL.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWT_20240324T234241.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWT_20240324T234241.SAFE/MTD_MSIL2A.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWU_20240324T234241.SAFE/GRANULE/L2A_T03WWU_A036821_20240324T230529/IMG_DATA/R20m/T03WWU_20240324T230529_SCL_20m.jp2",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWU_20240324T234241.SAFE/GRANULE/L2A_T03WWU_A036821_20240324T230529/MTD_TL.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWU_20240324T234241.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWU_20240324T234241.SAFE/MTD_MSIL2A.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXT_20240324T234241.SAFE/GRANULE/L2A_T03WXT_A036821_20240324T230529/IMG_DATA/R20m/T03WXT_20240324T230529_SCL_20m.jp2",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXT_20240324T234241.SAFE/GRANULE/L2A_T03WXT_A036821_20240324T230529/MTD_TL.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXT_20240324T234241.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXT_20240324T234241.SAFE/MTD_MSIL2A.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXU_20240324T234241.SAFE/GRANULE/L2A_T03WXU_A036821_20240324T230529/IMG_DATA/R20m/T03WXU_20240324T230529_SCL_20m.jp2",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXU_20240324T234241.SAFE/GRANULE/L2A_T03WXU_A036821_20240324T230529/MTD_TL.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXU_20240324T234241.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXU_20240324T234241.SAFE/MTD_MSIL2A.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDC_20240324T234241.SAFE/GRANULE/L2A_T04WDC_A036821_20240324T230529/IMG_DATA/R20m/T04WDC_20240324T230529_SCL_20m.jp2",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDC_20240324T234241.SAFE/GRANULE/L2A_T04WDC_A036821_20240324T230529/MTD_TL.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDC_20240324T234241.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDC_20240324T234241.SAFE/MTD_MSIL2A.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/GRANULE/L2A_T04WDD_A036821_20240324T230529/IMG_DATA/R20m/T04WDD_20240324T230529_SCL_20m.jp2",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/GRANULE/L2A_T04WDD_A036821_20240324T230529/MTD_TL.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/MTD_MSIL2A.xml",
     )) {
       val jp2File = new File(basePath, rest)
       if (!jp2File.exists()) {
@@ -392,7 +418,7 @@ object LayerFixtures {
     val factory = new PyramidFactory(
       client, "Sentinel2", bandNames,
       null,
-      maxSpatialResolution = CellSize(10, 10),
+      maxSpatialResolution = CellSize(20, 20),
     )
     factory.crs = projected_polygons_native_crs.crs
 
@@ -414,26 +440,32 @@ object LayerFixtures {
   /**
    * Creates a Sentinel-2 cube by downloading data locally.
    */
-  def sentinel2CubeCDSE(dateRange: Tuple2[ZonedDateTime, ZonedDateTime], projected_polygons_native_crs: ProjectedPolygons, dataCubeParameters: DataCubeParameters = new DataCubeParameters) = {
+  def sentinel2CubeCDSE(dateRange: Tuple2[ZonedDateTime, ZonedDateTime], projected_polygons: ProjectedPolygons, dataCubeParameters: DataCubeParameters = new DataCubeParameters) = {
     // True Color Bands: B04, B03, B02
-    val bandNames = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data", "IMG_DATA_Band_B03_10m_Tile1_Data", "IMG_DATA_Band_B02_10m_Tile1_Data")
+    //    val bandNames = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data", "IMG_DATA_Band_B03_10m_Tile1_Data", "IMG_DATA_Band_B02_10m_Tile1_Data")
+    val bandNames = util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data")
 
     val client = CreodiasClient()
 
     val factory = new PyramidFactory(
       client, "Sentinel2", bandNames,
-      null,
+      "/eodata",
       maxSpatialResolution = CellSize(10, 10),
     )
-    factory.crs = projected_polygons_native_crs.crs
+    //    factory.crs = projected_polygons_native_crs.crs
 
     val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format dateRange._1
     val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format dateRange._2
 
 
+    val utmCrs = CRS.fromName("EPSG:32604")
+    val reprojected = projected_polygons.polygons.head.reproject(projected_polygons.crs, utmCrs)
+    val projected_polygons_native_crs = ProjectedPolygons(Array(reprojected), utmCrs)
+
     val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
       projected_polygons_native_crs,
-      from_date, to_date, Collections.emptyMap(), "", dataCubeParameters = dataCubeParameters
+      from_date, to_date,
+      util.Collections.singletonMap("productType", "L2A"), "", dataCubeParameters = dataCubeParameters
     )
     cube.head._2
   }

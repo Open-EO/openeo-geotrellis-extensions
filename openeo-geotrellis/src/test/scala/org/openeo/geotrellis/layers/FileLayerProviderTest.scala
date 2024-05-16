@@ -1122,18 +1122,37 @@ class FileLayerProviderTest extends RasterMatchers{
     val to = ZonedDateTime.parse("2024-03-25T00:00:00Z")
 
     val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
-    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, "EPSG:4326")
+    val latlon = CRS.fromName("EPSG:4326")
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, latlon.toString())
     //val utmCrs = CRS.fromName("EPSG:32603")
     val utmCrs = CRS.fromName("EPSG:32604")
     val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, utmCrs)
     val poly2 = ProjectedPolygons(Array(reprojected), utmCrs)
-    val layer = LayerFixtures.sentinel2CubeCDSE((from, to), poly2)
+    val dataCubeParameters: DataCubeParameters = new DataCubeParameters
+    dataCubeParameters.partitionerIndexReduction = 6
+    dataCubeParameters.globalExtent = Some(projected_polygons_native_crs.extent)
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    //    val layer = LayerFixtures.sentinel2CubeCDSE((from, to), projected_polygons_native_crs, dataCubeParameters)
+    val jsonPath = "/org/openeo/geotrellis/testMissingS2.json"
+    val layer = LayerFixtures.sentinel2Cube(from.toLocalDate, poly2, jsonPath)
 
+    //    NetCDFRDDWriter.saveSingleNetCDFGeneric(layer, outDir + "saveSingleNetCDFGeneric.nc", new util.ArrayList(util.Arrays.asList("B04", "B03", "B02")), null, null, 6)
+
+    //    val worldLayout: LayoutDefinition = DatacubeSupport.getLayout(layoutScheme, boundingBox, zoom, maxSpatialResoluton, globalBounds = globalBounds, multiple_polygons_flag = multiple_polygons_flag)
+    //    val layer2 = layer.reproject(latlon, layer.metadata.layout)
     val cubeSpatial = layer.toSpatial()
-    cubeSpatial.writeGeoTiff(outDir + "/testMissingS2.tiff")
-    val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
+    //    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSingleNetCDFSpatial(cubeSpatial, outDir + "saveSingleNetCDFSpatial.nc", new util.ArrayList(util.Arrays.asList("B04", "B03", "B02")),null,null,6)
+    val band_count = 1
+    val save_filename = outDir + "/testMissingS2.tiff"
+    val zlevel = 6
+    val crop_extent = reprojected.extent
+    val gtiff_options = new org.openeo.geotrellis.geotiff.GTiffOptions()
+    val outputPaths = org.openeo.geotrellis.geotiff.saveRDD(cubeSpatial, band_count, save_filename, zlevel, Option(crop_extent), gtiff_options)
 
-//    assertEquals(8048, band.get(0, 0), 1)
+    //    cubeSpatial.writeGeoTiff(outDir + "/testMissingS2_writeGeoTiff.tiff")
+    //    val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
+
+    //    assertEquals(8048, band.get(0, 0), 1)
   }
 
   private def keysForLargeArea(useBBox:Boolean=false) = {
