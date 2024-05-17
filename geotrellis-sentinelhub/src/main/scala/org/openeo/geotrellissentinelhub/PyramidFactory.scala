@@ -353,10 +353,30 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               }
             }
 
+            def byTileId(productId: String): Boolean = {
+              val expectedTileId = Option(metadata_properties
+                .getOrDefault("tileId", util.Collections.emptyMap())
+                .get("eq"))
+                .map(_.asInstanceOf[String])
+
+              val expectedTileIds = metadata_properties
+                .getOrDefault("tileId", util.Collections.emptyMap())
+                .get("in") match {
+                case ids: util.List[String] => ids.asScala
+                case _ => Seq()
+              }
+
+              Sentinel2L2a.extractTileId(productId) match {
+                case Some(actualTileId) =>
+                  expectedTileId.contains(actualTileId) || expectedTileIds.contains(actualTileId)
+                case _ => false
+              }
+            }
+
             val features = authorized { accessToken =>
               _catalogApi.search(collectionId, multiPolygon, polygons_crs,
                 from, to, accessToken, Criteria.toQueryProperties(metadata_properties, collectionId))
-            }
+            }.filterKeys(byTileId)
 
             tracker.addInputProductsWithUrls(
               collectionId,

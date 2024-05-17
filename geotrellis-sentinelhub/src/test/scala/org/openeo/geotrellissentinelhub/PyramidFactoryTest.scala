@@ -759,9 +759,11 @@ class PyramidFactoryTest {
   }
 
   @Test
-  def testTileId(): Unit = {
+  def testFilterByTileIds(): Unit = {
     val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2024, 4, 24), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+    val expectedTileIds = Set("31UES", "31UFS")
 
     val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "sentinel-2-l2a", new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint), authorizer)
@@ -780,7 +782,8 @@ class PyramidFactoryTest {
       from_datetime = ISO_OFFSET_DATE_TIME format date,
       until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
       band_names = Seq("B04", "B03", "B02").asJava,
-      metadata_properties = Collections.emptyMap[String, util.Map[String, Any]], // TODO: set tileId
+      metadata_properties = Collections.singletonMap("tileId",
+        Collections.singletonMap("in", expectedTileIds.toBuffer.asJava)),
       dataCubeParameters = new DataCubeParameters,
       correlationId = testClassScopeMetadataTracker.scope,
     )
@@ -796,22 +799,12 @@ class PyramidFactoryTest {
     val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
     tif.write(s"/tmp/testTileId.tif")
 
-    val expectedTileIds = Set("31UES", "31UET", "31UFS", "31UFT")
-
     val links = BatchJobMetadataTracker.tracker("").asDict()
       .get("links").asInstanceOf[util.HashMap[String, util.List[ProductIdAndUrl]]]
 
-    def extractTileId(productId: String): String = {
-      val tileIdPattern = raw"_T([0-9]{2}[A-Z]{3})_".r.unanchored
-
-      productId match {
-        case tileIdPattern(tileId) => tileId
-      }
-    }
-
     val actualTileIds = links.get("sentinel-2-l2a").asScala
       .map(_.getId)
-      .map(extractTileId)
+      .flatMap(Sentinel2L2a.extractTileId)
       .toSet
 
     assertEquals(expectedTileIds, actualTileIds)
