@@ -25,7 +25,7 @@
           ]
         ]
       },
-      "properties" : 0
+      "properties" : {"value":  0}
     },
     {
       "id" : "band0_20230105_0",
@@ -44,7 +44,7 @@
           ]
         ]
       },
-      "properties" : 0
+      "properties" : {"value": 0}
     }
   ]
 }
