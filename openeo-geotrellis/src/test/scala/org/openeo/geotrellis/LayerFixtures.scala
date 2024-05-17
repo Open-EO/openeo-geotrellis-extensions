@@ -418,7 +418,7 @@ object LayerFixtures {
     val factory = new PyramidFactory(
       client, "Sentinel2", bandNames,
       null,
-      maxSpatialResolution = CellSize(20, 20),
+      maxSpatialResolution = CellSize(10, 10),
     )
     factory.crs = projected_polygons_native_crs.crs
 
