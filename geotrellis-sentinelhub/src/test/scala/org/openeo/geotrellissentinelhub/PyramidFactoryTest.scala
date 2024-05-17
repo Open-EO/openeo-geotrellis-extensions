@@ -754,6 +754,67 @@ class PyramidFactoryTest {
 
     val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
     tif.write(s"/tmp/testEoCloudCover.tif")
+
+    // TODO: add assertions
+  }
+
+  @Test
+  def testTileId(): Unit = {
+    val endpoint = "https://services.sentinel-hub.com"
+    val date = ZonedDateTime.of(LocalDate.of(2024, 4, 24), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+    val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "sentinel-2-l2a", new DefaultCatalogApi(endpoint),
+      new DefaultProcessApi(endpoint), authorizer)
+
+    val utmBoundingBox = {
+      val boundingBox = ProjectedExtent(Extent(
+        4.4158740490713804, 51.4204485519121945,
+        4.4613941769140322, 51.4639210615473885), LatLng)
+
+      val utmCrs = UTM.getZoneCrs(boundingBox.extent.center.x, boundingBox.extent.center.y)
+      ProjectedExtent(boundingBox.reproject(utmCrs), utmCrs)
+    }
+
+    val Seq((_, layer)) = pyramidFactory.datacube_seq(
+      Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
+      from_datetime = ISO_OFFSET_DATE_TIME format date,
+      until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
+      band_names = Seq("B04", "B03", "B02").asJava,
+      metadata_properties = Collections.emptyMap[String, util.Map[String, Any]], // TODO: set tileId
+      dataCubeParameters = new DataCubeParameters,
+      correlationId = testClassScopeMetadataTracker.scope,
+    )
+
+    val spatialLayer = layer
+      .toSpatial()
+      .cache()
+
+    val Raster(multibandTile, extent) = spatialLayer
+      .crop(utmBoundingBox.extent)
+      .stitch()
+
+    val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
+    tif.write(s"/tmp/testTileId.tif")
+
+    val expectedTileIds = Set("31UES", "31UET", "31UFS", "31UFT")
+
+    val links = BatchJobMetadataTracker.tracker("").asDict()
+      .get("links").asInstanceOf[util.HashMap[String, util.List[ProductIdAndUrl]]]
+
+    def extractTileId(productId: String): String = {
+      val tileIdPattern = raw"_T([0-9]{2}[A-Z]{3})_".r.unanchored
+
+      productId match {
+        case tileIdPattern(tileId) => tileId
+      }
+    }
+
+    val actualTileIds = links.get("sentinel-2-l2a").asScala
+      .map(_.getId)
+      .map(extractTileId)
+      .toSet
+
+    assertEquals(expectedTileIds, actualTileIds)
   }
 
   @Test
