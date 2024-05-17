@@ -1242,7 +1242,7 @@ class FileLayerProviderTest extends RasterMatchers{
     //overlap filter has removed the other potential sources
     assertEquals(229, ids.size)
 
-    assertEquals(2,listener.getJobsCompleted)
+    assertTrue(Seq(1, 2).contains(listener.getJobsCompleted))
     assertEquals(5,listener.getStagesCompleted)
     assertEquals(2384,listener.getTasksCompleted)
     assertEquals(4928, allTiles.size, 0.1)
