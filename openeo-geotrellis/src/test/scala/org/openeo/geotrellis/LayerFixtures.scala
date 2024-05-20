@@ -437,39 +437,6 @@ object LayerFixtures {
     cube.head._2
   }
 
-  /**
-   * Creates a Sentinel-2 cube by downloading data locally.
-   */
-  def sentinel2CubeCDSE(dateRange: Tuple2[ZonedDateTime, ZonedDateTime], projected_polygons: ProjectedPolygons, dataCubeParameters: DataCubeParameters = new DataCubeParameters) = {
-    // True Color Bands: B04, B03, B02
-    //    val bandNames = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data", "IMG_DATA_Band_B03_10m_Tile1_Data", "IMG_DATA_Band_B02_10m_Tile1_Data")
-    val bandNames = util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data")
-
-    val client = CreodiasClient()
-
-    val factory = new PyramidFactory(
-      client, "Sentinel2", bandNames,
-      "/eodata",
-      maxSpatialResolution = CellSize(10, 10),
-    )
-    //    factory.crs = projected_polygons_native_crs.crs
-
-    val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format dateRange._1
-    val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format dateRange._2
-
-
-    val utmCrs = CRS.fromName("EPSG:32604")
-    val reprojected = projected_polygons.polygons.head.reproject(projected_polygons.crs, utmCrs)
-    val projected_polygons_native_crs = ProjectedPolygons(Array(reprojected), utmCrs)
-
-    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
-      projected_polygons_native_crs,
-      from_date, to_date,
-      util.Collections.singletonMap("productType", "L2A"), "", dataCubeParameters = dataCubeParameters
-    )
-    cube.head._2
-  }
-
   def rgbLayerProvider =
     FileLayerProvider(
       openSearch = client,
