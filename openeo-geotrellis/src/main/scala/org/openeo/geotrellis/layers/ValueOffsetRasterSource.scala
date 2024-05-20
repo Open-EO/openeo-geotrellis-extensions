@@ -42,11 +42,7 @@ class ValueOffsetRasterSource(val rasterSource: RasterSource,
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    if (rasterSource.toString.contains("S2B_MSIL2A_20240324T230529_N0510_R044_T03WXT_20240324T234241")){
-      1+1
-    }
     val raster: Option[Raster[MultibandTile]] = rasterSource.read(bounds, bands)
-    logger.info(f"ValueOffsetRasterSource.read(${bounds}, b) head.isNoDataTile: " + raster.get.tile.bands.head.isNoDataTile + " rasterSource: " + rasterSource)
 
     // Convert tiles in raster
     val newRaster = raster.map(r => {

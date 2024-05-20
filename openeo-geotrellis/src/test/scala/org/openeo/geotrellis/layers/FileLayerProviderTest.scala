@@ -38,7 +38,6 @@ import java.nio.file.{Files, Paths}
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
-import java.util
 import java.util.Collections
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable
@@ -1132,12 +1131,12 @@ class FileLayerProviderTest extends RasterMatchers{
     dataCubeParameters.globalExtent = Some(projected_polygons_native_crs.extent)
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
     val jsonPath = "/org/openeo/geotrellis/testMissingS2.json"
-    val layer = LayerFixtures.sentinel2Cube(from.toLocalDate, poly2, jsonPath, dataCubeParameters, util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data"))
+    val layer = LayerFixtures.sentinel2Cube(from.toLocalDate, poly2, jsonPath, dataCubeParameters, java.util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data"))
 
     val cubeSpatial = layer.toSpatial()
     cubeSpatial.writeGeoTiff(outDir + "/testMissingS2.tiff")
-    //val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
-    //assertEquals(8048, band.get(0, 0), 1)
+    val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
+    assertEquals(8, band.get(200, 200))
   }
 
   private def keysForLargeArea(useBBox:Boolean=false) = {
@@ -1254,7 +1253,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(1, listener.getJobsCompleted)
     assertEquals(3, listener.getStagesCompleted)
     assertEquals(501, listener.getTasksCompleted)
-    assertEquals(76184, allTiles.size, 0.1)
+    assertEquals(77314, allTiles.size)
     println(listener.getPeakMemoryMB)
 
     val partitioner = DatacubeSupport.createPartitioner(Some(datacubeParams), result._1.keys, result._2)

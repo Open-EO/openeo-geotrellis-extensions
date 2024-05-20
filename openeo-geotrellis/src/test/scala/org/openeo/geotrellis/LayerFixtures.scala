@@ -19,7 +19,6 @@ import org.openeo.geotrellisaccumulo
 import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
-import org.openeo.opensearch.backends.CreodiasClient
 
 import java.awt.image.DataBufferByte
 import java.io.File
