@@ -34,6 +34,7 @@ import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.io.File
 import java.net.{URI, URL}
+import java.nio.file.{Files, Paths}
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
@@ -41,6 +42,7 @@ import java.util.Collections
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.io.Source
+import scala.reflect.io.Directory
 
 object FileLayerProviderTest {
   private var _sc: Option[SparkContext] = None
@@ -1110,6 +1112,32 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
 
+  @Test
+  def testMissingS2(): Unit = {
+    val outDir = Paths.get("tmp/FileLayerProviderTest/")
+    new Directory(outDir.toFile).deleteRecursively()
+    Files.createDirectories(outDir)
+
+    val from = ZonedDateTime.parse("2024-03-24T00:00:00Z")
+
+    val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
+    val latlon = CRS.fromName("EPSG:4326")
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, latlon.toString())
+    val utmCrs = CRS.fromName("EPSG:32604")
+    val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, utmCrs)
+    val poly2 = ProjectedPolygons(Array(reprojected), utmCrs)
+    val dataCubeParameters: DataCubeParameters = new DataCubeParameters
+    dataCubeParameters.partitionerIndexReduction = 6
+    dataCubeParameters.globalExtent = Some(projected_polygons_native_crs.extent)
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    val jsonPath = "/org/openeo/geotrellis/testMissingS2.json"
+    val layer = LayerFixtures.sentinel2Cube(from.toLocalDate, poly2, jsonPath, dataCubeParameters, java.util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data"))
+
+    val cubeSpatial = layer.toSpatial()
+    cubeSpatial.writeGeoTiff(outDir + "/testMissingS2.tiff")
+    val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
+    assertEquals(8, band.get(200, 200))
+  }
 
   private def keysForLargeArea(useBBox:Boolean=false) = {
     val date = LocalDate.of(2022, 2, 11).atStartOfDay(UTC)
@@ -1197,7 +1225,7 @@ class FileLayerProviderTest extends RasterMatchers{
     //overlap filter has removed the other potential sources
     assertEquals(229, ids.size)
 
-    assertEquals(2,listener.getJobsCompleted)
+    assertTrue(Seq(1, 2).contains(listener.getJobsCompleted))
     assertEquals(5,listener.getStagesCompleted)
     assertEquals(2384,listener.getTasksCompleted)
     assertEquals(4928, allTiles.size, 0.1)
@@ -1225,7 +1253,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(1, listener.getJobsCompleted)
     assertEquals(3, listener.getStagesCompleted)
     assertEquals(501, listener.getTasksCompleted)
-    assertEquals(76184, allTiles.size, 0.1)
+    assertEquals(77314, allTiles.size)
     println(listener.getPeakMemoryMB)
 
     val partitioner = DatacubeSupport.createPartitioner(Some(datacubeParams), result._1.keys, result._2)

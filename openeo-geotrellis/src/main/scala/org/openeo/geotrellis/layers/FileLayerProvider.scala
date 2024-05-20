@@ -989,8 +989,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     requiredSpacetimeKeys = applySpaceTimeMask(datacubeParams, requiredSpacetimeKeys,metadata)
     if (isUTM) {
-      //only for utm is just a safeguard to limit to sentine-1/2 for now
-      //try to resolve overlap before actually reqding the data
+      //only for utm is just a safeguard to limit to Sentinel-1/2 for now
+      //try to resolve overlap before actually reading the data
       requiredSpacetimeKeys = requiredSpacetimeKeys.groupByKey().flatMap(t => {
 
         def return_original = t._2.map(source => (t._1,source))
@@ -1049,7 +1049,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             if (filteredByCRS.nonEmpty) {
               filteredByCRS.map(distance_source => (key, distance_source._2))
             } else {
-              filteredByDistance.filter(_._1._1 == smallestCenterDistance).map(distance_source => (key, distance_source._2))
+              Seq(filteredByDistance.minBy(_._1._1)).map(distance_source => (key, distance_source._2))
             }
 
           }

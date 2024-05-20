@@ -1,0 +1,737 @@
+{
+  "type": "FeatureCollection",
+  "properties": {
+    "id": "8891ec37-ae65-5790-bc1f-9918dae20073",
+    "totalResults": null,
+    "exactCount": 0,
+    "startIndex": 1,
+    "itemsPerPage": 1000,
+    "query": {
+      "originalFilters": {
+        "box": "-162.27495005167802,70.16901656591824,-161.27034763537463,70.35492193571385",
+        "status": "ONLINE",
+        "dataset": "ESA-DATASET",
+        "productType": "L2A",
+        "startDate": "2024-03-24T00:00:00Z",
+        "completionDate": "2024-03-25T00:00:00.000000001Z",
+        "collection": "SENTINEL-2"
+      },
+      "appliedFilters": {
+        "box": "-162.27495005167802,70.16901656591824,-161.27034763537463,70.35492193571385",
+        "status": "ONLINE",
+        "dataset": "ESA-DATASET",
+        "productType": "L2A",
+        "startDate": "2024-03-24T00:00:00Z",
+        "completionDate": "2024-03-25T00:00:00.000000001Z",
+        "collection": "SENTINEL-2"
+      },
+      "processingTime": 0.220601624
+    },
+    "links": [
+      {
+        "rel": "self",
+        "type": "application/json",
+        "title": "self",
+        "href": "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/search.json?box=-162.27495005167802%2C70.16901656591824%2C-161.27034763537463%2C70.35492193571385&page=1&maxRecords=1000&status=ONLINE&dataset=ESA-DATASET&productType=L2A&startDate=2024-03-24T00%3A00%3A00Z&completionDate=2024-03-25T00%3A00%3A00.000000001Z"
+      },
+      {
+        "rel": "search",
+        "type": "application/opensearchdescription+xml",
+        "title": "OpenSearch Description Document",
+        "href": "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel2/describe.xml"
+      }
+    ]
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "id": "22058ee0-8842-4cfc-ad32-ce83810174b3",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -159.9227103998577,
+              70.2310916983264
+            ],
+            [
+              -162.3430027355695,
+              70.28644046073472
+            ],
+            [
+              -162.4641047145883,
+              69.30282788325452
+            ],
+            [
+              -161.5484353463569,
+              69.28202189797597
+            ],
+            [
+              -161.3810909035089,
+              69.38467990274789
+            ],
+            [
+              -161.2174423251895,
+              69.48354930284206
+            ],
+            [
+              -161.1673254219035,
+              69.51388897810054
+            ],
+            [
+              -161.0435181604661,
+              69.58755316601419
+            ],
+            [
+              -160.94699658017,
+              69.6450172376719
+            ],
+            [
+              -160.7263989324311,
+              69.7748818187008
+            ],
+            [
+              -160.5029845072186,
+              69.90447776522008
+            ],
+            [
+              -160.2762408081954,
+              70.03377008730462
+            ],
+            [
+              -160.0463491149661,
+              70.16275910425662
+            ],
+            [
+              -159.9227103998577,
+              70.2310916983264
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "collection": "SENTINEL-2",
+        "status": "ONLINE",
+        "license": {
+          "licenseId": "unlicensed",
+          "hasToBeSigned": "never",
+          "grantedCountries": null,
+          "grantedOrganizationCountries": null,
+          "grantedFlags": null,
+          "viewService": "public",
+          "signatureQuota": -1,
+          "description": {
+            "shortName": "No license"
+          }
+        },
+        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXT_20240324T234241.SAFE",
+        "parentIdentifier": null,
+        "title": "S2B_MSIL2A_20240324T230529_N0510_R044_T03WXT_20240324T234241.SAFE",
+        "description": "<REMOVED>",
+        "organisationName": null,
+        "startDate": "2024-03-24T23:05:29.024Z",
+        "completionDate": "2024-03-24T23:05:29.024Z",
+        "productType": "S2MSI2A",
+        "processingLevel": "S2MSI2A",
+        "platform": "S2B",
+        "instrument": "MSI",
+        "resolution": 0,
+        "sensorMode": "INS-NOBS",
+        "orbitNumber": 36821,
+        "quicklook": null,
+        "thumbnail": "<REMOVED>",
+        "updated": "2024-03-25T00:41:47.708Z",
+        "published": "2024-03-25T00:41:07.709Z",
+        "snowCover": 0,
+        "cloudCover": 99.836278,
+        "gmlgeometry": "<gml:Polygon srsName=\"EPSG:4326\"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>-159.922710399858,70.2310916983264 -162.34300273557,70.2864404607347 -162.464104714588,69.3028278832545 -161.548435346357,69.282021897976 -161.381090903509,69.3846799027479 -161.217442325189,69.4835493028421 -161.167325421904,69.5138889781005 -161.043518160466,69.5875531660142 -160.94699658017,69.6450172376719 -160.726398932431,69.7748818187008 -160.502984507219,69.9044777652201 -160.276240808195,70.0337700873046 -160.046349114966,70.1627591042566 -159.922710399858,70.2310916983264</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>",
+        "centroid": {
+          "type": "Point",
+          "coordinates": [
+            -161.510527971332,
+            69.8489711461306
+          ]
+        },
+        "orbitDirection": null,
+        "timeliness": null,
+        "relativeOrbitNumber": 44,
+        "processingBaseline": 5.1,
+        "missionTakeId": "GS2B_20240324T230529_036821_N05.10",
+        "services": {
+          "download": {
+            "url": "https://catalogue.dataspace.copernicus.eu/download/22058ee0-8842-4cfc-ad32-ce83810174b3",
+            "mimeType": "application/octet-stream",
+            "size": 446842906
+          }
+        },
+        "links": [
+          {
+            "rel": "self",
+            "type": "application/json",
+            "title": "GeoJSON link for 22058ee0-8842-4cfc-ad32-ce83810174b3",
+            "href": "https://catalogue.dataspace.copernicus.eu/resto/collections/SENTINEL-2/22058ee0-8842-4cfc-ad32-ce83810174b3.json"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "a8e1a85d-376b-4b1a-ba85-ee6b819f4a85",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -158.7330354467214,
+              70.86748611647155
+            ],
+            [
+              -158.7286112530641,
+              71.2026463682936
+            ],
+            [
+              -161.7796848901916,
+              71.1822427633901
+            ],
+            [
+              -161.6467684943307,
+              70.19882184705502
+            ],
+            [
+              -159.960818970093,
+              70.21002986944714
+            ],
+            [
+              -159.8134714496191,
+              70.29146583628733
+            ],
+            [
+              -159.5782475384151,
+              70.41996931428191
+            ],
+            [
+              -159.3403598800812,
+              70.54820462334034
+            ],
+            [
+              -159.0995830124529,
+              70.67607732558069
+            ],
+            [
+              -158.8563067906838,
+              70.80362081121201
+            ],
+            [
+              -158.7751783407913,
+              70.84563646820828
+            ],
+            [
+              -158.7330354467214,
+              70.86748611647155
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "collection": "SENTINEL-2",
+        "status": "ONLINE",
+        "license": {
+          "licenseId": "unlicensed",
+          "hasToBeSigned": "never",
+          "grantedCountries": null,
+          "grantedOrganizationCountries": null,
+          "grantedFlags": null,
+          "viewService": "public",
+          "signatureQuota": -1,
+          "description": {
+            "shortName": "No license"
+          }
+        },
+        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE",
+        "parentIdentifier": null,
+        "title": "S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE",
+        "description": "<REMOVED>",
+        "organisationName": null,
+        "startDate": "2024-03-24T23:05:29.024Z",
+        "completionDate": "2024-03-24T23:05:29.024Z",
+        "productType": "S2MSI2A",
+        "processingLevel": "S2MSI2A",
+        "platform": "S2B",
+        "instrument": "MSI",
+        "resolution": 0,
+        "sensorMode": "INS-NOBS",
+        "orbitNumber": 36821,
+        "quicklook": null,
+        "thumbnail": "<REMOVED>",
+        "updated": "2024-03-25T00:36:33.394Z",
+        "published": "2024-03-25T00:36:10.582Z",
+        "snowCover": 0,
+        "cloudCover": 65.599805,
+        "gmlgeometry": "<gml:Polygon srsName=\"EPSG:4326\"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>-158.733035446721,70.8674861164716 -158.728611253064,71.2026463682936 -161.779684890192,71.1822427633901 -161.646768494331,70.198821847055 -159.960818970093,70.2100298694471 -159.813471449619,70.2914658362873 -159.578247538415,70.4199693142819 -159.340359880081,70.5482046233403 -159.099583012453,70.6760773255807 -158.856306790684,70.803620811212 -158.775178340791,70.8456364682083 -158.733035446721,70.8674861164716</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>",
+        "centroid": {
+          "type": "Point",
+          "coordinates": [
+            -160.394772849332,
+            70.7474122602667
+          ]
+        },
+        "orbitDirection": null,
+        "timeliness": null,
+        "relativeOrbitNumber": 44,
+        "processingBaseline": 5.1,
+        "missionTakeId": "GS2B_20240324T230529_036821_N05.10",
+        "services": {
+          "download": {
+            "url": "https://catalogue.dataspace.copernicus.eu/download/a8e1a85d-376b-4b1a-ba85-ee6b819f4a85",
+            "mimeType": "application/octet-stream",
+            "size": 750372010
+          }
+        },
+        "links": [
+          {
+            "rel": "self",
+            "type": "application/json",
+            "title": "GeoJSON link for a8e1a85d-376b-4b1a-ba85-ee6b819f4a85",
+            "href": "https://catalogue.dataspace.copernicus.eu/resto/collections/SENTINEL-2/a8e1a85d-376b-4b1a-ba85-ee6b819f4a85.json"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "1bd7c885-444f-4f40-ae7a-145b91e26257",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -165.0005317590458,
+              70.30601749291662
+            ],
+            [
+              -165.0005074898225,
+              69.32139673047041
+            ],
+            [
+              -162.2164436503046,
+              69.2990206384545
+            ],
+            [
+              -162.0835527542836,
+              70.28242673530563
+            ],
+            [
+              -165.0005317590458,
+              70.30601749291662
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "collection": "SENTINEL-2",
+        "status": "ONLINE",
+        "license": {
+          "licenseId": "unlicensed",
+          "hasToBeSigned": "never",
+          "grantedCountries": null,
+          "grantedOrganizationCountries": null,
+          "grantedFlags": null,
+          "viewService": "public",
+          "signatureQuota": -1,
+          "description": {
+            "shortName": "No license"
+          }
+        },
+        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWT_20240324T234241.SAFE",
+        "parentIdentifier": null,
+        "title": "S2B_MSIL2A_20240324T230529_N0510_R044_T03WWT_20240324T234241.SAFE",
+        "description": "<REMOVED>",
+        "organisationName": null,
+        "startDate": "2024-03-24T23:05:29.024Z",
+        "completionDate": "2024-03-24T23:05:29.024Z",
+        "productType": "S2MSI2A",
+        "processingLevel": "S2MSI2A",
+        "platform": "S2B",
+        "instrument": "MSI",
+        "resolution": 0,
+        "sensorMode": "INS-NOBS",
+        "orbitNumber": 36821,
+        "quicklook": null,
+        "thumbnail": "<REMOVED>",
+        "updated": "2024-03-25T00:49:10.030Z",
+        "published": "2024-03-25T00:48:45.491Z",
+        "snowCover": 0,
+        "cloudCover": 71.547562,
+        "gmlgeometry": "<gml:Polygon srsName=\"EPSG:4326\"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>-165.000531759046,70.3060174929166 -165.000507489822,69.3213967304704 -162.216443650305,69.2990206384545 -162.083552754284,70.2824267353056 -165.000531759046,70.3060174929166</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>",
+        "centroid": {
+          "type": "Point",
+          "coordinates": [
+            -163.575035253286,
+            69.8060395334479
+          ]
+        },
+        "orbitDirection": null,
+        "timeliness": null,
+        "relativeOrbitNumber": 44,
+        "processingBaseline": 5.1,
+        "missionTakeId": "GS2B_20240324T230529_036821_N05.10",
+        "services": {
+          "download": {
+            "url": "https://catalogue.dataspace.copernicus.eu/download/1bd7c885-444f-4f40-ae7a-145b91e26257",
+            "mimeType": "application/octet-stream",
+            "size": 862476704
+          }
+        },
+        "links": [
+          {
+            "rel": "self",
+            "type": "application/json",
+            "title": "GeoJSON link for 1bd7c885-444f-4f40-ae7a-145b91e26257",
+            "href": "https://catalogue.dataspace.copernicus.eu/resto/collections/SENTINEL-2/1bd7c885-444f-4f40-ae7a-145b91e26257.json"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "b00398eb-f0e7-4d69-92cd-5f978a5da024",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -159.8000771977254,
+              70.29878315341158
+            ],
+            [
+              -161.6580586258855,
+              70.28642480502495
+            ],
+            [
+              -161.536908401117,
+              69.30281303307645
+            ],
+            [
+              -161.5142997673709,
+              69.3029624823826
+            ],
+            [
+              -161.3810909035089,
+              69.38467990274789
+            ],
+            [
+              -161.2174423251895,
+              69.48354930284206
+            ],
+            [
+              -161.1673254219035,
+              69.51388897810054
+            ],
+            [
+              -161.0435181604661,
+              69.58755316601419
+            ],
+            [
+              -160.94699658017,
+              69.6450172376719
+            ],
+            [
+              -160.7263989324311,
+              69.7748818187008
+            ],
+            [
+              -160.5029845072186,
+              69.90447776522008
+            ],
+            [
+              -160.2762408081954,
+              70.03377008730462
+            ],
+            [
+              -160.0463491149661,
+              70.16275910425662
+            ],
+            [
+              -159.8134714496191,
+              70.29146583628733
+            ],
+            [
+              -159.8000771977254,
+              70.29878315341158
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "collection": "SENTINEL-2",
+        "status": "ONLINE",
+        "license": {
+          "licenseId": "unlicensed",
+          "hasToBeSigned": "never",
+          "grantedCountries": null,
+          "grantedOrganizationCountries": null,
+          "grantedFlags": null,
+          "viewService": "public",
+          "signatureQuota": -1,
+          "description": {
+            "shortName": "No license"
+          }
+        },
+        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDC_20240324T234241.SAFE",
+        "parentIdentifier": null,
+        "title": "S2B_MSIL2A_20240324T230529_N0510_R044_T04WDC_20240324T234241.SAFE",
+        "description": "<REMOVED>",
+        "organisationName": null,
+        "startDate": "2024-03-24T23:05:29.024Z",
+        "completionDate": "2024-03-24T23:05:29.024Z",
+        "productType": "S2MSI2A",
+        "processingLevel": "S2MSI2A",
+        "platform": "S2B",
+        "instrument": "MSI",
+        "resolution": 0,
+        "sensorMode": "INS-NOBS",
+        "orbitNumber": 36821,
+        "quicklook": null,
+        "thumbnail": "<REMOVED>",
+        "updated": "2024-03-25T00:36:56.739Z",
+        "published": "2024-03-25T00:36:23.973Z",
+        "snowCover": 0,
+        "cloudCover": 99.890131,
+        "gmlgeometry": "<gml:Polygon srsName=\"EPSG:4326\"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>-159.800077197725,70.2987831534116 -161.658058625886,70.286424805025 -161.536908401117,69.3028130330764 -161.514299767371,69.3029624823826 -161.381090903509,69.3846799027479 -161.217442325189,69.4835493028421 -161.167325421904,69.5138889781005 -161.043518160466,69.5875531660142 -160.94699658017,69.6450172376719 -160.726398932431,69.7748818187008 -160.502984507219,69.9044777652201 -160.276240808195,70.0337700873046 -160.046349114966,70.1627591042566 -159.813471449619,70.2914658362873 -159.800077197725,70.2987831534116</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>",
+        "centroid": {
+          "type": "Point",
+          "coordinates": [
+            -161.003804507739,
+            69.9614549779785
+          ]
+        },
+        "orbitDirection": null,
+        "timeliness": null,
+        "relativeOrbitNumber": 44,
+        "processingBaseline": 5.1,
+        "missionTakeId": "GS2B_20240324T230529_036821_N05.10",
+        "services": {
+          "download": {
+            "url": "https://catalogue.dataspace.copernicus.eu/download/b00398eb-f0e7-4d69-92cd-5f978a5da024",
+            "mimeType": "application/octet-stream",
+            "size": 251174090
+          }
+        },
+        "links": [
+          {
+            "rel": "self",
+            "type": "application/json",
+            "title": "GeoJSON link for b00398eb-f0e7-4d69-92cd-5f978a5da024",
+            "href": "https://catalogue.dataspace.copernicus.eu/resto/collections/SENTINEL-2/b00398eb-f0e7-4d69-92cd-5f978a5da024.json"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "aad889ca-a6b6-4e7d-85fc-3ad71eb13d2b",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -165.0005561284247,
+              71.20284256141437
+            ],
+            [
+              -165.0005294971705,
+              70.21832076563753
+            ],
+            [
+              -162.0959367919296,
+              70.19484288998889
+            ],
+            [
+              -161.9501450317065,
+              71.1780394383418
+            ],
+            [
+              -165.0005561284247,
+              71.20284256141437
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "collection": "SENTINEL-2",
+        "status": "ONLINE",
+        "license": {
+          "licenseId": "unlicensed",
+          "hasToBeSigned": "never",
+          "grantedCountries": null,
+          "grantedOrganizationCountries": null,
+          "grantedFlags": null,
+          "viewService": "public",
+          "signatureQuota": -1,
+          "description": {
+            "shortName": "No license"
+          }
+        },
+        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWU_20240324T234241.SAFE",
+        "parentIdentifier": null,
+        "title": "S2B_MSIL2A_20240324T230529_N0510_R044_T03WWU_20240324T234241.SAFE",
+        "description": "<REMOVED>",
+        "organisationName": null,
+        "startDate": "2024-03-24T23:05:29.024Z",
+        "completionDate": "2024-03-24T23:05:29.024Z",
+        "productType": "S2MSI2A",
+        "processingLevel": "S2MSI2A",
+        "platform": "S2B",
+        "instrument": "MSI",
+        "resolution": 0,
+        "sensorMode": "INS-NOBS",
+        "orbitNumber": 36821,
+        "quicklook": null,
+        "thumbnail": "<REMOVED>",
+        "updated": "2024-03-25T00:40:37.854Z",
+        "published": "2024-03-25T00:40:03.988Z",
+        "snowCover": 0,
+        "cloudCover": 11.538651,
+        "gmlgeometry": "<gml:Polygon srsName=\"EPSG:4326\"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>-165.000556128425,71.2028425614144 -165.000529497171,70.2183207656375 -162.09593679193,70.1948428899889 -161.950145031707,71.1780394383418 -165.000556128425,71.2028425614144</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>",
+        "centroid": {
+          "type": "Point",
+          "coordinates": [
+            -163.511530442101,
+            70.7025272416643
+          ]
+        },
+        "orbitDirection": null,
+        "timeliness": null,
+        "relativeOrbitNumber": 44,
+        "processingBaseline": 5.1,
+        "missionTakeId": "GS2B_20240324T230529_036821_N05.10",
+        "services": {
+          "download": {
+            "url": "https://catalogue.dataspace.copernicus.eu/download/aad889ca-a6b6-4e7d-85fc-3ad71eb13d2b",
+            "mimeType": "application/octet-stream",
+            "size": 994710096
+          }
+        },
+        "links": [
+          {
+            "rel": "self",
+            "type": "application/json",
+            "title": "GeoJSON link for aad889ca-a6b6-4e7d-85fc-3ad71eb13d2b",
+            "href": "https://catalogue.dataspace.copernicus.eu/resto/collections/SENTINEL-2/aad889ca-a6b6-4e7d-85fc-3ad71eb13d2b.json"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "a15db7a8-50e6-463e-ad75-68bda1289c97",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -159.3453104912484,
+              70.54553595545948
+            ],
+            [
+              -159.1852129790427,
+              71.112435514905
+            ],
+            [
+              -162.2214248875038,
+              71.18225922301176
+            ],
+            [
+              -162.3542883718346,
+              70.19883742790859
+            ],
+            [
+              -160.0748990779564,
+              70.14674011893183
+            ],
+            [
+              -160.0463491149661,
+              70.16275910425662
+            ],
+            [
+              -159.8134714496191,
+              70.29146583628733
+            ],
+            [
+              -159.5782475384151,
+              70.41996931428191
+            ],
+            [
+              -159.3453104912484,
+              70.54553595545948
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "collection": "SENTINEL-2",
+        "status": "ONLINE",
+        "license": {
+          "licenseId": "unlicensed",
+          "hasToBeSigned": "never",
+          "grantedCountries": null,
+          "grantedOrganizationCountries": null,
+          "grantedFlags": null,
+          "viewService": "public",
+          "signatureQuota": -1,
+          "description": {
+            "shortName": "No license"
+          }
+        },
+        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WXU_20240324T234241.SAFE",
+        "parentIdentifier": null,
+        "title": "S2B_MSIL2A_20240324T230529_N0510_R044_T03WXU_20240324T234241.SAFE",
+        "description": "<REMOVED>",
+        "organisationName": null,
+        "startDate": "2024-03-24T23:05:29.024Z",
+        "completionDate": "2024-03-24T23:05:29.024Z",
+        "productType": "S2MSI2A",
+        "processingLevel": "S2MSI2A",
+        "platform": "S2B",
+        "instrument": "MSI",
+        "resolution": 0,
+        "sensorMode": "INS-NOBS",
+        "orbitNumber": 36821,
+        "quicklook": null,
+        "thumbnail": "<REMOVED>",
+        "updated": "2024-03-25T00:52:01.208Z",
+        "published": "2024-03-25T00:51:35.443Z",
+        "snowCover": 0,
+        "cloudCover": 63.064533,
+        "gmlgeometry": "<gml:Polygon srsName=\"EPSG:4326\"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>-159.345310491248,70.5455359554595 -159.185212979043,71.112435514905 -162.221424887504,71.1822592230118 -162.354288371835,70.1988374279086 -160.074899077956,70.1467401189318 -160.046349114966,70.1627591042566 -159.813471449619,70.2914658362873 -159.578247538415,70.4199693142819 -159.345310491248,70.5455359554595</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>",
+        "centroid": {
+          "type": "Point",
+          "coordinates": [
+            -160.858976062729,
+            70.6782031204416
+          ]
+        },
+        "orbitDirection": null,
+        "timeliness": null,
+        "relativeOrbitNumber": 44,
+        "processingBaseline": 5.1,
+        "missionTakeId": "GS2B_20240324T230529_036821_N05.10",
+        "services": {
+          "download": {
+            "url": "https://catalogue.dataspace.copernicus.eu/download/a15db7a8-50e6-463e-ad75-68bda1289c97",
+            "mimeType": "application/octet-stream",
+            "size": 839650401
+          }
+        },
+        "links": [
+          {
+            "rel": "self",
+            "type": "application/json",
+            "title": "GeoJSON link for a15db7a8-50e6-463e-ad75-68bda1289c97",
+            "href": "https://catalogue.dataspace.copernicus.eu/resto/collections/SENTINEL-2/a15db7a8-50e6-463e-ad75-68bda1289c97.json"
+          }
+        ]
+      }
+    }
+  ]
+}
