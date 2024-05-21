@@ -362,15 +362,23 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               val expectedTileIds = metadata_properties
                 .getOrDefault("tileId", util.Collections.emptyMap())
                 .get("in") match {
-                case ids: util.List[String] => ids.asScala
-                case _ => Seq()
+                case ids: util.List[String] => Some(ids.asScala)
+                case _ => None
               }
 
-              Sentinel2L2a.extractTileId(productId) match {
-                case Some(actualTileId) =>
-                  expectedTileId.contains(actualTileId) || expectedTileIds.contains(actualTileId)
-                case _ => false
+              lazy val actualTileId = Sentinel2L2a.extractTileId(productId)
+
+              val matchesSingleTileId = expectedTileId match {
+                case None => true
+                case tileId => tileId == actualTileId
               }
+
+              val matchesMultipleTileIds = expectedTileIds match {
+                case None => true
+                case Some(tileIds) => tileIds.exists(actualTileId.contains)
+              }
+
+              matchesSingleTileId && matchesMultipleTileIds
             }
 
             val features = authorized { accessToken =>
