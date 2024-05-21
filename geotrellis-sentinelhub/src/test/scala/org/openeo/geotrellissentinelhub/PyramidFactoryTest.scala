@@ -758,12 +758,35 @@ class PyramidFactoryTest {
     // TODO: add assertions
   }
 
+  // TODO: use parameterized test
   @Test
   def testFilterByTileIds(): Unit = {
+    val expectedTileIds = Set("31UES", "31UFS")
+
+    testFilterByTileIds(
+      metadata_properties = Collections.singletonMap("tileId",
+        Collections.singletonMap("in", expectedTileIds.toBuffer.asJava)),
+      expectedTileIds
+    )
+  }
+
+  @Test
+  def testFilterByTileId(): Unit = {
+    val expectedTileIds = Set("31UFS")
+
+    testFilterByTileIds(
+      metadata_properties = Collections.singletonMap("tileId",
+        Collections.singletonMap("eq", expectedTileIds.head)),
+      expectedTileIds
+    )
+  }
+
+  private def testFilterByTileIds(metadata_properties: util.Map[String, util.Map[String, Any]],
+                                  expectedTileIds: Set[String]): Unit = {
+    val tempDir = temporaryFolder.getRoot
+
     val endpoint = "https://services.sentinel-hub.com"
     val date = ZonedDateTime.of(LocalDate.of(2024, 4, 24), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-
-    val expectedTileIds = Set("31UES", "31UFS")
 
     val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "sentinel-2-l2a", new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint), authorizer)
@@ -782,8 +805,7 @@ class PyramidFactoryTest {
       from_datetime = ISO_OFFSET_DATE_TIME format date,
       until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
       band_names = Seq("B04", "B03", "B02").asJava,
-      metadata_properties = Collections.singletonMap("tileId",
-        Collections.singletonMap("in", expectedTileIds.toBuffer.asJava)),
+      metadata_properties = metadata_properties,
       dataCubeParameters = new DataCubeParameters,
       correlationId = testClassScopeMetadataTracker.scope,
     )
@@ -796,9 +818,11 @@ class PyramidFactoryTest {
       .crop(utmBoundingBox.extent)
       .stitch()
 
+    // note that input geometries are buffered so you get an extra margin of data around the Sentinel 2 tiles
     val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
-    tif.write(s"/tmp/testTileId.tif")
+    tif.write(new File(tempDir, s"testTileId_${expectedTileIds mkString "_"}.tif").getCanonicalPath)
 
+    // links to input products reflect which tiles were requested (obviously)
     val links = BatchJobMetadataTracker.tracker("").asDict()
       .get("links").asInstanceOf[util.HashMap[String, util.List[ProductIdAndUrl]]]
 
