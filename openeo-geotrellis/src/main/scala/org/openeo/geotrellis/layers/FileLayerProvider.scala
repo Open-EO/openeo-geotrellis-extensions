@@ -988,7 +988,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     var requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = filteredSources.map(t => (SpaceTimeKey(t._1, TemporalKey(t._2.data._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))), t._2))
 
     requiredSpacetimeKeys = applySpaceTimeMask(datacubeParams, requiredSpacetimeKeys,metadata)
-    if (isUTM) {
+    if (isUTM && !openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]) {
       //only for utm is just a safeguard to limit to Sentinel-1/2 for now
       //try to resolve overlap before actually reading the data
       requiredSpacetimeKeys = requiredSpacetimeKeys.groupByKey().flatMap(t => {

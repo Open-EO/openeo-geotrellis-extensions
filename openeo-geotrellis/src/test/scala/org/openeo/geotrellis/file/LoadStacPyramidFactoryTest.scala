@@ -17,12 +17,14 @@ import java.net.URI
 import java.time.ZonedDateTime
 import java.util.Collections
 
+import scala.collection.JavaConverters._
+
 object LoadStacPyramidFactoryTest {
   private var sc: SparkContext = _
 
   @BeforeAll
   def setupSpark(): Unit =
-    sc = SparkUtils.createLocalSparkContext("local[*]", appName = classOf[Sentinel3PyramidFactoryTest].getName)
+    sc = SparkUtils.createLocalSparkContext("local[*]", appName = classOf[LoadStacPyramidFactoryTest].getName)
 
   @AfterAll
   def tearDownSpark(): Unit = sc.stop()
@@ -35,6 +37,8 @@ class LoadStacPyramidFactoryTest {
     val boundingBox = ProjectedExtent(
       Extent(11.1427023295687, 47.22033843316067, 11.821519349155245, 47.628952581107114), LatLng)
 
+    val bandNames = Seq("TCD")
+
     val topFeature = Feature(
       id = "TCD_2018_010m_E44N27_03035_v020",
       bbox = Extent(11.064548187608006, 47.38783029804821, 12.36948893966052, 48.3083796083107),
@@ -42,7 +46,7 @@ class LoadStacPyramidFactoryTest {
       links = Array(Link(
         URI.create("file:/data/projects/OpenEO/automated_test_files/load_stac_TCD_2018_010m_E44N27_03035_v020.tif"),
         title = None,
-        bandNames = Some(Seq("TCD")),
+        bandNames = Some(bandNames),
       )),
       resolution = None,
     )
@@ -54,7 +58,7 @@ class LoadStacPyramidFactoryTest {
       links = Array(Link(
         URI.create("file:/data/projects/OpenEO/automated_test_files/load_stac_TCD_2018_010m_E44N26_03035_v020.tif"),
         title = None,
-        bandNames = Some(Seq("TCD")),
+        bandNames = Some(bandNames),
       )),
       resolution = None,
     )
@@ -63,12 +67,10 @@ class LoadStacPyramidFactoryTest {
     openSearchClient.addFeature(topFeature)
     openSearchClient.addFeature(bottomFeature)
 
-    val bandNames = Collections.singletonList("TCD")
-
     val pyramidFactory = new PyramidFactory(
       openSearchClient,
       openSearchCollectionId = "doesnotmatter",
-      openSearchLinkTitles = bandNames,
+      openSearchLinkTitles = bandNames.asJava,
       rootPath = "/doesnotmatter",
       maxSpatialResolution = CellSize(10, 10),
       experimental = false,
