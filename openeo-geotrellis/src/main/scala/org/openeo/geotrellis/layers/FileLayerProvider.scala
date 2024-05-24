@@ -999,7 +999,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           if (sources.size == 1)
             return_original
           else {
-            val extent = metadata.keyToExtent(key.spatialKey)
+            val keyExtent = metadata.keyToExtent(key.spatialKey)
 
             val distances = sources.map { case source @ vector.Feature(_, (_, feature)) =>
               //try to detect tiles that are on the edge of the footprint
@@ -1009,17 +1009,17 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
                * Effect of buffer multiplication factor:
                *  - larger buffer -> shrink source footprint more -> tiles close to edge get discarded faster, this matters for scl_dilation
                */
-              val contains = sourcePolygon.contains(extent)
+              val contains = sourcePolygon.contains(keyExtent)
 
-              val sourcePolygonBuffered = sourcePolygon.buffer(-1.5 * math.max(extent.width, extent.height))
+              val sourcePolygonBuffered = sourcePolygon.buffer(-1.5 * math.max(keyExtent.width, keyExtent.height))
               val distanceToFootprint =
                 if (sourcePolygonBuffered.isEmpty)
-                  if(contains) extent.distance(sourcePolygon.getCentroid)
-                  else extent.distance(sourcePolygon.getCentroid) + 0.00001 //avoid that distance become zero
+                  if (contains) keyExtent.distance(sourcePolygon.getCentroid)
+                  else keyExtent.distance(sourcePolygon.getCentroid) + 0.00001 //avoid that distance become zero
                 else
-                  extent.distance(sourcePolygonBuffered)
+                  keyExtent.distance(sourcePolygonBuffered)
 
-              val distanceBetweenCenters = extent.center.distance(sourceExtent.center)
+              val distanceBetweenCenters = keyExtent.center.distance(sourceExtent.center)
               ((distanceBetweenCenters, distanceToFootprint, contains), source)
             }
 
