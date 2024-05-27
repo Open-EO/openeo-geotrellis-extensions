@@ -5,7 +5,8 @@ import geotrellis.proj4.util.UTM
 import geotrellis.raster.{CellSize, isData}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
-import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
+import geotrellis.vector.io.json.GeoJson
+import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
@@ -16,7 +17,6 @@ import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import java.net.URI
 import java.time.ZonedDateTime
 import java.util.Collections
-
 import scala.collection.JavaConverters._
 
 object LoadStacPyramidFactoryTest {
@@ -49,6 +49,7 @@ class LoadStacPyramidFactoryTest {
         bandNames = Some(bandNames),
       )),
       resolution = None,
+      geometry = Some(GeoJson.parse[Geometry]("""{"type":"Polygon","coordinates":[[[11.046005504476401,47.40858428037738],[11.707867449704809,47.40021736186508],[12.36948893966052,47.38783030409527],[12.390240820693707,47.837566260620925],[12.411462626880093,48.28720072607632],[11.738134164531402,48.29984134090657],[11.064548187608006,48.30837961418922],[11.055172953154765,47.85853023272656],[11.046005504476401,47.40858428037738]]]}""")),
     )
 
     val bottomFeature = Feature(
@@ -61,6 +62,7 @@ class LoadStacPyramidFactoryTest {
         bandNames = Some(bandNames),
       )),
       resolution = None,
+      geometry = Some(GeoJson.parse[Geometry]("""{"type":"Polygon","coordinates":[[[11.028268294907988,46.508374655560594],[11.67891503074726,46.50017140047362],[12.329336972791394,46.48802652576836],[12.349192334635823,46.93798601154326],[12.36948893966052,47.38783030409527],[11.707867449704809,47.40021736186508],[11.046005504476401,47.40858428037738],[11.037039355869382,46.958534756699635],[11.028268294907988,46.508374655560594]]]}""")),
     )
 
     val openSearchClient = new FixedFeaturesOpenSearchClient
