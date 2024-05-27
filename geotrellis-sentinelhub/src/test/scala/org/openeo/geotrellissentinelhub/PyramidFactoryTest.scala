@@ -1158,6 +1158,40 @@ class PyramidFactoryTest {
   }
 
   @Test
+  def testTimeDimensionFilter(): Unit = {
+    val extent = Extent(-55.8071, -6.7014, -55.7933, -6.6703)
+    BatchJobMetadataTracker.setGlobalTracking(true)
+    val from = "2019-06-01T00:00:00Z"
+    val to = "2019-06-11T00:00:00Z"
+    val bandNames = Seq("VV", "VH", "HV", "HH").asJava
+
+    val endpoint = "https://services.sentinel-hub.com"
+    val pyramidFactory = new PyramidFactory("sentinel-1-grd", "sentinel-1-grd", new DefaultCatalogApi(endpoint),
+      new DefaultProcessApi(endpoint), authorizer)
+
+    val dataCubeParameters = new DataCubeParameters()
+    dataCubeParameters.setTimeDimensionFilter(new Object())
+
+    val multiPolygons = Array(MultiPolygon(extent.toPolygon()))
+
+    try {
+      pyramidFactory.datacube_seq(
+        multiPolygons,
+        CRS.fromEpsgCode(4326),
+        from,
+        to,
+        bandNames,
+        metadata_properties = util.Collections.emptyMap[String, util.Map[String, Any]],
+        dataCubeParameters,
+        correlationId = testClassScopeMetadataTracker.scope,
+      )
+    } catch {
+      case e: IllegalArgumentException =>
+        assertTrue(e.getRootCause.getClass.toString, e.getRootCause.isInstanceOf[IllegalArgumentException])
+    }
+  }
+
+  @Test
   def testErrorsFailResultRequest(): Unit = {
     // /result calls don't do tracking (OPENEO_BATCH_JOB_ID is not set) and fail on every error (error ratio 0.0)
     trackingOff()
