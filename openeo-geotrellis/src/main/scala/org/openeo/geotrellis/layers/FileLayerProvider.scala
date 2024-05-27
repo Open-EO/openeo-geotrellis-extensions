@@ -1003,35 +1003,33 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
             val distances = sources.map { case source @ vector.Feature(_, (_, feature)) =>
               //try to detect tiles that are on the edge of the footprint
-              val sourcePolygon = feature.geometry.getOrElse(feature.bbox.toPolygon()).reproject(LatLng, targetCRS)
-              val sourceExtent = sourcePolygon.extent
+              val sourceFootprint = feature.geometry.getOrElse(feature.bbox.toPolygon()).reproject(LatLng, targetCRS)
               /**-
                * Effect of buffer multiplication factor:
                *  - larger buffer -> shrink source footprint more -> tiles close to edge get discarded faster, this matters for scl_dilation
                */
-              val contains = sourcePolygon.contains(keyExtent)
+              val fullyContained = sourceFootprint.contains(keyExtent)
 
-              val sourcePolygonBuffered = sourcePolygon.buffer(-1.5 * math.max(keyExtent.width, keyExtent.height))
+              val shrunkSourceFootprint = sourceFootprint.buffer(-1.5 * math.max(keyExtent.width, keyExtent.height))
               val distanceToFootprint =
-                if (sourcePolygonBuffered.isEmpty)
-                  if (contains) keyExtent.distance(sourcePolygon.getCentroid)
-                  else keyExtent.distance(sourcePolygon.getCentroid) + 0.00001 //avoid that distance become zero
+                if (shrunkSourceFootprint.isEmpty)
+                  if (fullyContained) keyExtent.distance(sourceFootprint.getCentroid)
+                  else keyExtent.distance(sourceFootprint.getCentroid) + 0.00001 //avoid that distance become zero
                 else
-                  keyExtent.distance(sourcePolygonBuffered)
+                  keyExtent.distance(shrunkSourceFootprint)
 
+              val sourceExtent = sourceFootprint.extent
               val distanceBetweenCenters = keyExtent.center.distance(sourceExtent.center)
-              ((distanceBetweenCenters, distanceToFootprint, contains), source)
+              ((distanceBetweenCenters, distanceToFootprint, fullyContained), source)
             }
 
-            val smallestCenterDistance = distances
-              .map { case ((centerDistance, _, _ ), _) => centerDistance }.min
             val smallestDistanceToFootprint = distances
               .map { case ((_, distanceToFootprint, _ ), _) => distanceToFootprint }.min
 
             if (smallestDistanceToFootprint > 0) {
               val fullyContained = distances
                 .filter { case ((_, _, contains), _) => contains }
-                .map { case (distance, source) => (key, source) }
+                .map { case (_, source) => (key, source) }
 
               if (fullyContained.nonEmpty) fullyContained
               else return_original
@@ -1052,10 +1050,10 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
               }
 
               if (filteredByCRS.nonEmpty)
-                filteredByCRS.map { case (distance, source) => (key, source) }
+                filteredByCRS.map { case (_, source) => (key, source) }
               else
                 Seq(filteredByDistance.minBy { case ((centerDistance, _, _), _) => centerDistance })
-                  .map { case (distance, source) => (key, source) }
+                  .map { case (_, source) => (key, source) }
             }
           }
         }
