@@ -58,6 +58,22 @@ object PyramidFactory {
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
       new MemoizedAuthApiAccessTokenAuthorizer(clientId, clientSecret, authApiUrl),
       processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
+
+  private def byTileId(productId: String, tileIdCriteria: util.Map[String, Any]): Boolean = {
+    lazy val actualTileId = Sentinel2L2a.extractTileId(productId)
+
+    val matchesSingleTileId = tileIdCriteria.get("eq") match {
+      case tileId: String => actualTileId contains tileId
+      case _ => true
+    }
+
+    val matchesMultipleTileIds = tileIdCriteria.get("in") match {
+      case tileIds: util.List[String] => tileIds.asScala.exists(actualTileId.contains)
+      case _ => true
+    }
+
+    matchesSingleTileId && matchesMultipleTileIds
+  }
 }
 
 class PyramidFactory(collectionId: String, datasetId: String, catalogApi: CatalogApi, processApi: ProcessApi,
@@ -353,38 +369,13 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               }
             }
 
-            def byTileId(productId: String): Boolean = {
-              val expectedTileId = Option(metadata_properties
-                .getOrDefault("tileId", util.Collections.emptyMap())
-                .get("eq"))
-                .map(_.asInstanceOf[String])
-
-              val expectedTileIds = metadata_properties
-                .getOrDefault("tileId", util.Collections.emptyMap())
-                .get("in") match {
-                case ids: util.List[String] => Some(ids.asScala)
-                case _ => None
+            val features = Option(metadata_properties.get("tileId"))
+              .foldLeft(authorized { accessToken =>
+                _catalogApi.search(collectionId, multiPolygon, polygons_crs,
+                  from, to, accessToken, Criteria.toQueryProperties(metadata_properties, collectionId))
+              }) { (acc, tileIdCriteria) =>
+                acc.filterKeys(byTileId(_, tileIdCriteria))
               }
-
-              lazy val actualTileId = Sentinel2L2a.extractTileId(productId)
-
-              val matchesSingleTileId = expectedTileId match {
-                case None => true
-                case tileId => tileId == actualTileId
-              }
-
-              val matchesMultipleTileIds = expectedTileIds match {
-                case None => true
-                case Some(tileIds) => tileIds.exists(actualTileId.contains)
-              }
-
-              matchesSingleTileId && matchesMultipleTileIds
-            }
-
-            val features = authorized { accessToken =>
-              _catalogApi.search(collectionId, multiPolygon, polygons_crs,
-                from, to, accessToken, Criteria.toQueryProperties(metadata_properties, collectionId))
-            }.filterKeys(byTileId)
 
             tracker.addInputProductsWithUrls(
               collectionId,
@@ -392,7 +383,6 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 case (id, Feature(_, FeatureData(_, selfUrl))) => new ProductIdAndUrl(id, selfUrl.orNull)
               }.toList.asJava
             )
-
 
             // In test over England, there where up to 0.003 deviations on long line segments due to curvature
             // change between CRS. Here we convert that distance to the value in the polygon specific CRS.
