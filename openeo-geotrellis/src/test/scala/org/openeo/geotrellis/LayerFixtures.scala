@@ -19,6 +19,7 @@ import org.openeo.geotrellisaccumulo
 import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
+import org.openeo.opensearch.backends.CreodiasClient
 
 import java.awt.image.DataBufferByte
 import java.io.File
@@ -356,9 +357,12 @@ object LayerFixtures {
   /**
    * Creates a Sentinel-2 cube by downloading data locally.
    */
-  def sentinel2Cube(localDate: LocalDate, projected_polygons_native_crs: ProjectedPolygons, jsonPath: String,
+  def sentinel2Cube(localDate: LocalDate,
+                    projected_polygons_native_crs: ProjectedPolygons,
+                    jsonPath: String,
                     dataCubeParameters: DataCubeParameters = new DataCubeParameters,
-                    bandNames: util.List[String] = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data", "S2_Level-2A_Tile1_Metadata##1", "S2_Level-2A_Tile1_Metadata##0")) = {
+                    bandNames: util.List[String] = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data", "S2_Level-2A_Tile1_Metadata##1", "S2_Level-2A_Tile1_Metadata##0")
+                   ) = {
     val jsonPathFull = getClass.getResource(jsonPath)
 
     val fileSource = Source.fromURL(jsonPathFull)
@@ -368,7 +372,7 @@ object LayerFixtures {
     // Use artifactory to avoid heavy git repo
     val basePathArtifactory = "https://artifactory.vgt.vito.be/artifactory/testdata-public"
 
-    for (rest <- Seq(
+    val artifactoryPaths = Set(
       "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/manifest.safe",
       "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/MTD_MSIL2A.xml",
       "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/GRANULE/L2A_T31UGS_A030636_20230117T104258/MTD_TL.xml",
@@ -402,18 +406,43 @@ object LayerFixtures {
       "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/GRANULE/L2A_T04WDD_A036821_20240324T230529/MTD_TL.xml",
       "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/manifest.safe",
       "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/MTD_MSIL2A.xml",
-    )) {
-      val jp2File = new File(basePath, rest)
+    )
+
+    for (path <- artifactoryPaths) {
+      val jp2File = new File(basePath, path)
       if (!jp2File.exists()) {
         println("Copy from artifactory to: " + jp2File)
-        FileUtils.copyURLToFile(new URL(basePathArtifactory + rest), jp2File)
+        FileUtils.copyURLToFile(new URL(basePathArtifactory + path), jp2File)
       }
     }
-    txt = txt.replace("\"/eodata/", "\"" + basePath + "/eodata/")
+
+    val folders = artifactoryPaths.map(x => x.substring(0, x.indexOf(".SAFE") + ".SAFE".length))
+    val matches = "/eodata/.*?.SAFE".r.findAllIn(txt).toList
+    for (m <- matches) {
+      if (folders.contains(m)) {
+        txt = txt.replace(m, basePath + m)
+      }
+    }
+
+
     val mockedFeatures = CreoFeatureCollection.parse(txt)
     val client = new MockOpenSearchFeatures(mockedFeatures.features)
     //    val client = CreodiasClient() // More difficult to capture a nodata piece
 
+    val localFromDate = localDate
+    val localToDate = localDate.plusDays(1)
+    val ZonedFromDate = ZonedDateTime.of(localFromDate, java.time.LocalTime.MIDNIGHT, UTC)
+    val zonedToDate = ZonedDateTime.of(localToDate, java.time.LocalTime.MIDNIGHT, UTC)
+
+    sentinel2CubeCDSEGeneric((ZonedFromDate, zonedToDate), projected_polygons_native_crs, client, dataCubeParameters, bandNames)
+  }
+
+  def sentinel2CubeCDSEGeneric(dateInterval: (ZonedDateTime, ZonedDateTime),
+                               projected_polygons_native_crs: ProjectedPolygons,
+                               client: OpenSearchClient = CreodiasClient(),
+                               dataCubeParameters: DataCubeParameters = new DataCubeParameters,
+                               bandNames: util.List[String] = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data", "S2_Level-2A_Tile1_Metadata##1", "S2_Level-2A_Tile1_Metadata##0")
+                              ): MultibandTileLayerRDD[SpaceTimeKey] = {
     val factory = new PyramidFactory(
       client, "Sentinel2", bandNames,
       null,
@@ -421,17 +450,12 @@ object LayerFixtures {
     )
     factory.crs = projected_polygons_native_crs.crs
 
-    val localFromDate = localDate
-    val localToDate = localDate.plusDays(1)
-    val ZonedFromDate = ZonedDateTime.of(localFromDate, java.time.LocalTime.MIDNIGHT, UTC)
-    val zonedToDate = ZonedDateTime.of(localToDate, java.time.LocalTime.MIDNIGHT, UTC)
-    val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format ZonedFromDate
-    val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format zonedToDate
-
+    val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format dateInterval._1
+    val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format dateInterval._2
 
     val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
       projected_polygons_native_crs,
-      from_date, to_date, Collections.emptyMap(), "",dataCubeParameters = dataCubeParameters
+      from_date, to_date, Collections.emptyMap(), "", dataCubeParameters = dataCubeParameters
     )
     cube.head._2
   }
