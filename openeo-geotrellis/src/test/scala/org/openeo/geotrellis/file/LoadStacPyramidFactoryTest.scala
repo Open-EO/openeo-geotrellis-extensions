@@ -1,7 +1,6 @@
 package org.openeo.geotrellis.file
 
-import geotrellis.proj4.LatLng
-import geotrellis.proj4.util.UTM
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{CellSize, isData}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
@@ -34,6 +33,8 @@ class LoadStacPyramidFactoryTest {
 
   @Test
   def testMissingDataInAdjacentTiles(): Unit = {
+    // mimics a load_stac from https://stac.openeo.vito.be/collections/tree_cover_density_2018 with assets in EPSG:3035
+
     val boundingBox = ProjectedExtent(
       Extent(11.1427023295687, 47.22033843316067, 11.821519349155245, 47.628952581107114), LatLng)
 
@@ -78,10 +79,10 @@ class LoadStacPyramidFactoryTest {
       experimental = false,
     )
 
-    val utmCrs = UTM.getZoneCrs(lon = boundingBox.extent.center.getX, lat = boundingBox.extent.center.getY)
-    val utmBoundingBox = ProjectedExtent(boundingBox.reproject(utmCrs), utmCrs)
+    val targetCrs = CRS.fromEpsgCode(3035)
+    val targetCrsBoundingBox = ProjectedExtent(boundingBox.reproject(targetCrs), targetCrs)
 
-    val projectedPolygons = ProjectedPolygons(Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmCrs)
+    val projectedPolygons = ProjectedPolygons(Array(MultiPolygon(targetCrsBoundingBox.extent.toPolygon())), targetCrs)
 
     val Seq((_, baseLayer)) = pyramidFactory.datacube_seq(
       projectedPolygons,
@@ -95,7 +96,7 @@ class LoadStacPyramidFactoryTest {
     val spatialLayer = baseLayer
       .withContext(_.mapValues(_.band(0)))
       .toSpatial()
-      .crop(utmBoundingBox.extent)
+      .crop(targetCrsBoundingBox.extent)
       .cache()
 
     geotrellis.raster.io.geotiff.GeoTiff(spatialLayer.stitch(), spatialLayer.metadata.crs)
