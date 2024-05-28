@@ -837,6 +837,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   }
 
   private val _rootPath = if(rootPath != null) Paths.get(rootPath) else null
+  private val fromLoadStac = openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
 
   private val openSearchLinkTitlesWithBandId: Seq[(String, Int)] = {
     if (bandIndices.nonEmpty) {
@@ -989,7 +990,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     requiredSpacetimeKeys = applySpaceTimeMask(datacubeParams, requiredSpacetimeKeys,metadata)
 
-    if (isUTM) {
+    if (isUTM && !fromLoadStac) {
       //only for utm is just a safeguard to limit to Sentinel-1/2 for now
       //try to resolve overlap before actually reading the data
       requiredSpacetimeKeys = requiredSpacetimeKeys
@@ -1382,7 +1383,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     } yield linkWithTitle.map(convertNetcdfLinksToGDALFormat(_,title,bandIndex).get)
 
     // TODO: pass a strategy to FileLayerProvider instead (incl. one for the PROBA-V workaround)
-    val byLinkTitle = !openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
+    val byLinkTitle = !fromLoadStac
 
     val expectedNumberOfBands = openSearchLinkTitlesWithBandId.size
 
