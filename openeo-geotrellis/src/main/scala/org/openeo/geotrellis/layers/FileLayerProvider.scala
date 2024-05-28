@@ -837,6 +837,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   }
 
   private val _rootPath = if(rootPath != null) Paths.get(rootPath) else null
+  private val fromLoadStac = openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
 
   private val openSearchLinkTitlesWithBandId: Seq[(String, Int)] = {
     if (bandIndices.nonEmpty) {
@@ -988,76 +989,78 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     var requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = filteredSources.map(t => (SpaceTimeKey(t._1, TemporalKey(t._2.data._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))), t._2))
 
     requiredSpacetimeKeys = applySpaceTimeMask(datacubeParams, requiredSpacetimeKeys,metadata)
-    if (isUTM && !openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]) {
+
+    if (isUTM && !fromLoadStac) {
       //only for utm is just a safeguard to limit to Sentinel-1/2 for now
       //try to resolve overlap before actually reading the data
-      requiredSpacetimeKeys = requiredSpacetimeKeys.groupByKey().flatMap(t => {
+      requiredSpacetimeKeys = requiredSpacetimeKeys
+        .groupByKey().flatMap { case (key, sources) =>
+          lazy val return_original = sources.map(source => (key, source))
 
-        def return_original = t._2.map(source => (t._1,source))
-        if( t._2.size <= 1) {
-          return_original
-        }else{
-          val key = t._1
-          val extent = metadata.keyToExtent(key.spatialKey)
-          val distances = t._2.map(source => {
-            //try to detect tiles that are on the edge of the footprint
-            val sourcePolygon = source.data._2.geometry.getOrElse(source.data._2.bbox.toPolygon()).reproject(LatLng, targetCRS)
-            val sourceExtent = sourcePolygon.extent
-            /**-
-             * Effect of buffer multiplication factor:
-             *  - larger buffer -> shrink source footprint more -> tiles close to edge get discarded faster, this matters for scl_dilation
-             */
-            val contains = sourcePolygon.contains(extent)
+          if (sources.size == 1)
+            return_original
+          else {
+            val keyExtent = metadata.keyToExtent(key.spatialKey)
 
-            val sourcePolygonBuffered = sourcePolygon.buffer(-1.5*math.max(extent.width,extent.height))
-            val distanceToFootprint =
-            if(sourcePolygonBuffered.isEmpty) {
-              if(contains) {
-                extent.distance(sourcePolygon.getCentroid)
-              }else{
-                extent.distance(sourcePolygon.getCentroid) + 0.00001 //avoid that distance become zero
+            val distances = sources.map { case source @ vector.Feature(_, (_, feature)) =>
+              //try to detect tiles that are on the edge of the footprint
+              val sourceFootprint = feature.geometry.getOrElse(feature.bbox.toPolygon()).reproject(LatLng, targetCRS)
+              /**-
+               * Effect of buffer multiplication factor:
+               *  - larger buffer -> shrink source footprint more -> tiles close to edge get discarded faster, this matters for scl_dilation
+               */
+              val fullyContained = sourceFootprint.contains(keyExtent)
+
+              val shrunkSourceFootprint = sourceFootprint.buffer(-1.5 * math.max(keyExtent.width, keyExtent.height))
+              val distanceToFootprint =
+                if (shrunkSourceFootprint.isEmpty)
+                  if (fullyContained) keyExtent.distance(sourceFootprint.getCentroid)
+                  else keyExtent.distance(sourceFootprint.getCentroid) + 0.00001 //avoid that distance become zero
+                else
+                  keyExtent.distance(shrunkSourceFootprint)
+
+              val sourceExtent = sourceFootprint.extent
+              val distanceBetweenCenters = keyExtent.center.distance(sourceExtent.center)
+              ((distanceBetweenCenters, distanceToFootprint, fullyContained), source)
+            }
+
+            val smallestDistanceToFootprint = distances
+              .map { case ((_, distanceToFootprint, _ ), _) => distanceToFootprint }.min
+
+            if (smallestDistanceToFootprint > 0) {
+              val fullyContained = distances
+                .filter { case ((_, _, contains), _) => contains }
+                .map { case (_, source) => (key, source) }
+
+              if (fullyContained.nonEmpty) fullyContained
+              else return_original
+            } else {
+
+              /**
+               * In case of overlap, we want to select the extent that is either fully inside the footprint
+               * Or, in case multiple sources satisfy the distance constraint, we prefer the one that has a CRS matching the target CRS
+               *
+               */
+
+              val filteredByDistance = distances.filter { case ((_, distanceToFootprint, _), _) =>
+                distanceToFootprint == 0
               }
 
-            }else{
-              extent.distance(sourcePolygonBuffered)
+              val filteredByCRS = filteredByDistance.filter { case (_, vector.Feature(_, (_, feature))) =>
+                feature.crs contains targetCRS
+              }
+
+              if (filteredByCRS.nonEmpty)
+                filteredByCRS.map { case (_, source) => (key, source) }
+              else
+                Seq(filteredByDistance.minBy { case ((centerDistance, _, _), _) => centerDistance })
+                  .map { case (_, source) => (key, source) }
             }
-
-
-
-            val distanceBetweenCenters = extent.center.distance(sourceExtent.center)
-            ((distanceBetweenCenters,distanceToFootprint,contains), source)
-          })
-          val smallestCenterDistance = distances.map(_._1._1).min
-          val smallestDistanceToFootprint = distances.map(_._1._2).min
-          if(smallestDistanceToFootprint > 0) {
-            val fullyContained = distances.filter(_._1._3).map(distance_source => (key, distance_source._2))
-            if(fullyContained.nonEmpty) {
-              fullyContained
-            }else{
-              return_original
-            }
-          }else{
-
-            /**
-             * In case of overlap, we want to select the extent that is either fully inside the footprint
-             * Or, in case multiple sources satisfy the distance constraint, we prefer the one that has a CRS matching the target CRS
-             *
-             */
-
-            val filteredByDistance = distances.filter(_._1._2 == 0)
-            val filteredByCRS = filteredByDistance.filter(d => d._2.data._2.crs.isDefined && d._2.data._2.crs.get == targetCRS)
-            if (filteredByCRS.nonEmpty) {
-              filteredByCRS.map(distance_source => (key, distance_source._2))
-            } else {
-              Seq(filteredByDistance.minBy(_._1._1)).map(distance_source => (key, distance_source._2))
-            }
-
           }
         }
-
-      })
     }
-    (requiredSpacetimeKeys,metadata,  maskStrategy,overlappingRasterSources)
+
+    (requiredSpacetimeKeys, metadata, maskStrategy, overlappingRasterSources)
   }
 
 
@@ -1380,7 +1383,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     } yield linkWithTitle.map(convertNetcdfLinksToGDALFormat(_,title,bandIndex).get)
 
     // TODO: pass a strategy to FileLayerProvider instead (incl. one for the PROBA-V workaround)
-    val byLinkTitle = !openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
+    val byLinkTitle = !fromLoadStac
 
     val expectedNumberOfBands = openSearchLinkTitlesWithBandId.size
 
