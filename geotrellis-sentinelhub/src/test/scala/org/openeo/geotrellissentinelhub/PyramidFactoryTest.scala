@@ -1241,7 +1241,7 @@ class PyramidFactoryTest {
       )
     } catch {
       case e: IllegalArgumentException =>
-        assertTrue(e.getRootCause.getClass.toString, e.getRootCause.isInstanceOf[IllegalArgumentException])
+        assertTrue(e.getRootCause.isInstanceOf[IllegalArgumentException], e.getRootCause.getClass.toString)
     }
   }
 
