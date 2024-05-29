@@ -234,7 +234,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
     // TODO: use ProjectedPolygons type
     // TODO: reduce code duplication with pyramid_seq()
     if (dataCubeParameters.timeDimensionFilter.isDefined) {
-      throw new IllegalArgumentException("OpenEO does not support timeDimensionFilter yet for SentinelHub layers. (Probably used in filter_labels)")
+      throw new IllegalArgumentException("filter_labels on time dimension is not supported for sentinelhub collections.")
     }
 
     val cube: MultibandTileLayerRDD[SpaceTimeKey] = {
