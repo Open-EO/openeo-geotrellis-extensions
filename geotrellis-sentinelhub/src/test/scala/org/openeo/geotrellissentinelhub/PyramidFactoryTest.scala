@@ -13,11 +13,14 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import geotrellis.vector.io.json.GeoJson
 import org.apache.commons.io.FileUtils
-import org.apache.spark.{SparkConf, SparkContext, SparkException}
+import org.apache.spark.{SparkContext, SparkException}
+import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.{CustomMatcher, Matcher}
-import org.junit.Assert.{assertEquals, assertThat, assertTrue, fail}
-import org.junit._
-import org.junit.rules.TemporaryFolder
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue, fail}
+import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.{AfterAll, BeforeAll, BeforeEach, Disabled, Test}
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.mockito.ArgumentMatchers.{any, eq => eqTo}
 import org.mockito.Mockito._
 import org.mockito.invocation.InvocationOnMock
@@ -26,16 +29,16 @@ import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{ProductIdAndUrl, SH_
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, ScopedMetadataTracker, SparseSpaceTimePartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
 
-import java.io.File
 import java.net.URL
+import java.nio.file.Path
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicLong
+import java.util.stream.{Stream => JStream}
 import java.util.zip.Deflater.BEST_COMPRESSION
-import scala.annotation.meta.getter
 import scala.collection.JavaConverters._
 import scala.io.Source
 
@@ -83,21 +86,19 @@ object PyramidFactoryTest {
     def getTileCount: Long = getTileCounter.value
   }
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit = sc = SparkUtils.createLocalSparkContext("local[*]", appName = getClass.getSimpleName)
 
-  @AfterClass
+  @AfterAll
   def tearDownSpark(): Unit = sc.stop()
 
-  @BeforeClass def tracking(): Unit ={
-    BatchJobMetadataTracker.setGlobalTracking(true)
-  }
+  @BeforeAll
+  def tracking(): Unit = BatchJobMetadataTracker.setGlobalTracking(true)
 
-  @AfterClass def trackingOff(): Unit ={
-    BatchJobMetadataTracker.setGlobalTracking(false)
-  }
+  @AfterAll
+  def trackingOff(): Unit = BatchJobMetadataTracker.setGlobalTracking(false)
 
-  @AfterClass
+  @AfterAll
   def printProcessingUnitsUsed(): Unit =
     println(s"$testClassScopeMetadataTracker consumed a total of ${testClassScopeMetadataTracker.sentinelHubProcessingUnits} PUs")
 
@@ -109,13 +110,32 @@ object PyramidFactoryTest {
       result
     }
   }
+
+  def testUtmParams: JStream[Arguments] = JStream.of(
+    Arguments.of( // compliant, end is exclusive
+      ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC),
+      ZonedDateTime.of(LocalDate.of(2019, 9, 22), LocalTime.MIDNIGHT, ZoneOffset.UTC)),
+    Arguments.of( // backwards compatibility, end is inclusive
+      ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC),
+      ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)),
+  )
+
+  def testFilterByTileIdsParams: JStream[Arguments] = JStream.of(
+    Arguments.of(
+      Collections.singletonMap("tileId",
+        Collections.singletonMap("in", util.Arrays.asList("31UES", "31UFS"))),
+      Set("31UES", "31UFS"),
+    ),
+    Arguments.of(
+      Collections.singletonMap("tileId",
+        Collections.singletonMap("eq", "31UFS")),
+      Set("31UFS"),
+    )
+  )
 }
 
 class PyramidFactoryTest {
   import PyramidFactoryTest._
-
-  @(Rule@getter)
-  val temporaryFolder = new TemporaryFolder
 
   private val clientId = Utils.clientId
   private val clientSecret = Utils.clientSecret
@@ -124,10 +144,8 @@ class PyramidFactoryTest {
 
   private val geoTiffOptions = GeoTiffOptions(DeflateCompression(BEST_COMPRESSION))
 
-  @Before
-  def clearTracker(): Unit = {
-    BatchJobMetadataTracker.clearGlobalTracker()
-  }
+  @BeforeEach
+  def clearTracker(): Unit = BatchJobMetadataTracker.clearGlobalTracker()
 
   @Test
   def testGamma0(): Unit = {
@@ -274,7 +292,7 @@ class PyramidFactoryTest {
         date, Seq("UNKNOWN"))
     catch {
       case e: SparkException =>
-        assertTrue(e.getRootCause.getClass.toString, e.getRootCause.isInstanceOf[SentinelHubException])
+        assertTrue(e.getRootCause.isInstanceOf[SentinelHubException], e.getRootCause.getClass.toString)
     }
   }
 
@@ -289,17 +307,13 @@ class PyramidFactoryTest {
         "unknown", date, Seq("B10", "B11"))
     catch {
       case e: Exception =>
-        assertTrue(e.getRootCause.getClass.toString, e.getRootCause.isInstanceOf[SentinelHubException])
+        assertTrue(e.getRootCause.isInstanceOf[SentinelHubException], e.getRootCause.getClass.toString)
     }
   }
 
   private def testLayer(pyramidFactory: PyramidFactory, layer: String, datetime: ZonedDateTime, bandNames: Seq[String],
                         test: MultibandTileLayerRDD[SpaceTimeKey] => Unit = _ => ()): Raster[MultibandTile] = {
     val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
-
-    val sparkConf = new SparkConf()
-      .set("spark.kryoserializer.buffer.max", "512m")
-      .set("spark.rdd.compress", "true")
 
     val srs = s"EPSG:${boundingBox.crs.epsgCode.get}"
 
@@ -334,23 +348,9 @@ class PyramidFactoryTest {
   private def referenceRaster(name: String): Raster[MultibandTile] =
     MultibandGeoTiff(s"/data/projects/OpenEO/automated_test_files/$name").raster.mapTile(_.toArrayTile())
 
-  @Test
-  def testUtm(): Unit = {
-    val from = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    val until = from plusDays 1
-    testUtm(from, until)
-  }
-
-  @Test
-  def testUtmSameFromUntil(): Unit = {
-    // asserts original behaviour where end timestamp is considered inclusive
-    val from = ZonedDateTime.of(LocalDate.of(2019, 9, 21), LocalTime.MIDNIGHT, ZoneOffset.UTC)
-    val until = from
-    testUtm(from, until)
-  }
-
-  // TODO: use parameterized test
-  private def testUtm(from: ZonedDateTime, until: ZonedDateTime): Unit = {
+  @ParameterizedTest
+  @MethodSource(Array("testUtmParams"))
+  def testUtm(from: ZonedDateTime, until: ZonedDateTime): Unit = {
     val expected = referenceRaster("utm.tif")
 
     val testScopeMetadataTracker = ScopedMetadataTracker(scope = "testUtm")
@@ -402,10 +402,10 @@ class PyramidFactoryTest {
       val trackedMetadata = BatchJobMetadataTracker.tracker("").asDict()
       val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
 
-      assertTrue(s"unexpected number of failed tile requests: $numFailedRequests", numFailedRequests >= 0)
+      assertTrue(numFailedRequests >= 0, s"unexpected number of failed tile requests: $numFailedRequests")
 
-      assertTrue(s"PUs: ${testScopeMetadataTracker.sentinelHubProcessingUnits}",
-        testScopeMetadataTracker.sentinelHubProcessingUnits > 0)
+      assertTrue(testScopeMetadataTracker.sentinelHubProcessingUnits > 0,
+        s"PUs: ${testScopeMetadataTracker.sentinelHubProcessingUnits}")
     } finally {
       testClassScopeMetadataTracker.addSentinelHubProcessingUnits(testScopeMetadataTracker.sentinelHubProcessingUnits)
       ScopedMetadataTracker.remove(testScopeMetadataTracker.scope)
@@ -490,7 +490,7 @@ class PyramidFactoryTest {
     val lowerRightPolygon =
       Extent(4.094831943511963, 50.39508660393027, 4.0970635414123535, 50.396317702692095).toPolygon()
 
-    assertTrue("polygons do not overlap", upperLeftPolygon intersects lowerRightPolygon)
+    assertTrue(upperLeftPolygon intersects lowerRightPolygon, "polygons do not overlap")
 
     val polygons: Array[MultiPolygon] = Array(
       MultiPolygon(upperLeftPolygon),
@@ -580,7 +580,7 @@ class PyramidFactoryTest {
     layer
   }
 
-  @Ignore("the actual collection ID is a secret")
+  @Disabled("the actual collection ID is a secret")
   @Test
   def testPlanetScope(): Unit = {
     val planetCollectionId = {
@@ -628,7 +628,7 @@ class PyramidFactoryTest {
     tif.write(s"/tmp/testPlanetScope.tif")
   }
 
-  @Ignore("the actual collection ID is a secret")
+  @Disabled("the actual collection ID is a secret")
   @Test
   def testPlanetScopeCatalogReturnsMultiPolygonFeatures(): Unit = {
     val planetCollectionId = {
@@ -675,7 +675,7 @@ class PyramidFactoryTest {
     tif.write(s"/tmp/testPlanetScopeCatalogReturnsMultiPolygonFeatures.tif")
   }
 
-  @Ignore("the actual collection ID is a secret")
+  @Disabled("the actual collection ID is a secret")
   @Test
   def testPlanetScopeCatalogReturnsPolygonFeatures(): Unit = {
     val planetCollectionId = {
@@ -754,6 +754,61 @@ class PyramidFactoryTest {
 
     val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
     tif.write(s"/tmp/testEoCloudCover.tif")
+
+    // TODO: add assertions
+  }
+
+  @ParameterizedTest
+  @MethodSource(Array("testFilterByTileIdsParams"))
+  def testFilterByTileIds(metadata_properties: util.Map[String, util.Map[String, Any]], expectedTileIds: Set[String],
+                          @TempDir tempDir: Path): Unit = {
+    val endpoint = "https://services.sentinel-hub.com"
+    val date = ZonedDateTime.of(LocalDate.of(2024, 4, 24), LocalTime.MIDNIGHT, ZoneOffset.UTC)
+
+    val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "sentinel-2-l2a", new DefaultCatalogApi(endpoint),
+      new DefaultProcessApi(endpoint), authorizer)
+
+    val utmBoundingBox = {
+      val boundingBox = ProjectedExtent(Extent(
+        4.4158740490713804, 51.4204485519121945,
+        4.4613941769140322, 51.4639210615473885), LatLng)
+
+      val utmCrs = UTM.getZoneCrs(boundingBox.extent.center.x, boundingBox.extent.center.y)
+      ProjectedExtent(boundingBox.reproject(utmCrs), utmCrs)
+    }
+
+    val Seq((_, layer)) = pyramidFactory.datacube_seq(
+      Array(MultiPolygon(utmBoundingBox.extent.toPolygon())), utmBoundingBox.crs,
+      from_datetime = ISO_OFFSET_DATE_TIME format date,
+      until_datetime = ISO_OFFSET_DATE_TIME format (date plusDays 1),
+      band_names = Seq("B04", "B03", "B02").asJava,
+      metadata_properties = metadata_properties,
+      dataCubeParameters = new DataCubeParameters,
+      correlationId = testClassScopeMetadataTracker.scope,
+    )
+
+    val spatialLayer = layer
+      .toSpatial()
+      .cache()
+
+    val Raster(multibandTile, extent) = spatialLayer
+      .crop(utmBoundingBox.extent)
+      .stitch()
+
+    // note that input geometries are buffered so you get an extra margin of data around the Sentinel 2 tiles
+    val tif = MultibandGeoTiff(multibandTile, extent, spatialLayer.metadata.crs, geoTiffOptions)
+    tif.write(tempDir.resolve(s"testTileId_${expectedTileIds mkString "_"}.tif").toString)
+
+    // links to input products reflect which tiles were requested (obviously)
+    val links = BatchJobMetadataTracker.tracker("").asDict()
+      .get("links").asInstanceOf[util.HashMap[String, util.List[ProductIdAndUrl]]]
+
+    val actualTileIds = links.get("sentinel-2-l2a").asScala
+      .map(_.getId)
+      .flatMap(Sentinel2L2a.extractTileId)
+      .toSet
+
+    assertEquals(expectedTileIds, actualTileIds)
   }
 
   @Test
@@ -879,7 +934,7 @@ class PyramidFactoryTest {
     val trackedMetadata = BatchJobMetadataTracker.tracker("").asDict()
     val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
 
-    assertTrue(s"unexpected number of failed tile requests: $numFailedRequests", numFailedRequests >= 0)
+    assertTrue(numFailedRequests >= 0, s"unexpected number of failed tile requests: $numFailedRequests")
   }
 
   @Test
@@ -918,7 +973,7 @@ class PyramidFactoryTest {
     } catch {
       case e: SparkException =>
         val SentinelHubException(_, 400, _, responseBody) = e.getRootCause
-        assertTrue(responseBody, responseBody contains "not present in Sentinel 1 tile")
+        assertTrue(responseBody contains "not present in Sentinel 1 tile", responseBody)
     }
 
     provokeNonTransientError(softErrors = true) // shouldn't throw
@@ -926,7 +981,7 @@ class PyramidFactoryTest {
     val trackedMetadata = BatchJobMetadataTracker.tracker("").asDict()
     val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
 
-    assertTrue(s"expected at least one failed tile request but got $numFailedRequests instead", numFailedRequests > 0)
+    assertTrue(numFailedRequests > 0, s"expected at least one failed tile request but got $numFailedRequests instead")
   }
 
   @Test
@@ -1039,23 +1094,22 @@ class PyramidFactoryTest {
   }
 
   @Test
-  def testLargeNumberOfInputPolygons(): Unit = {
-    val tempDir = temporaryFolder.getRoot
+  def testLargeNumberOfInputPolygons(@TempDir tempDir: Path): Unit = {
     val geometriesFileStem = "Fields_to_extract_2021_30SVH_RAW_0"
 
     for (extension <- Seq("cpg", "dbf", "prj", "shp", "shx")) {
       val geometriesFilename = s"$geometriesFileStem.$extension"
       val geometriesUrl = new URL(s"https://artifactory.vgt.vito.be/artifactory/testdata-public/parcels/$geometriesFilename")
-      FileUtils.copyURLToFile(geometriesUrl, new File(tempDir, geometriesFilename))
+      FileUtils.copyURLToFile(geometriesUrl, tempDir.resolve(geometriesFilename).toFile)
     }
 
     val endpoint = "https://services.sentinel-hub.com"
 
-    val geometriesFile = new File(tempDir, s"$geometriesFileStem.shp")
+    val geometriesFile = tempDir resolve s"$geometriesFileStem.shp"
     val geometriesCrs = LatLng
 
     val geometries = ShapeFileReader
-      .readMultiPolygonFeatures(geometriesFile.getCanonicalPath)
+      .readMultiPolygonFeatures(geometriesFile.toString)
       .map(_.geom)
 
     val from = LocalDate.of(2020, 7, 1).minusDays(90).atStartOfDay(ZoneOffset.UTC)
@@ -1154,7 +1208,7 @@ class PyramidFactoryTest {
 
     println(links)
 
-    links.get("sentinel-1-grd").forEach(p => assertTrue(p.getSelfUrl, p.getSelfUrl.startsWith("http")))
+    links.get("sentinel-1-grd").forEach(p => assertTrue(p.getSelfUrl.startsWith("http"), p.getSelfUrl))
   }
 
   @Test
@@ -1187,7 +1241,7 @@ class PyramidFactoryTest {
       )
     } catch {
       case e: IllegalArgumentException =>
-        assertTrue(e.getRootCause.getClass.toString, e.getRootCause.isInstanceOf[IllegalArgumentException])
+        assertTrue(e.getRootCause.isInstanceOf[IllegalArgumentException], e.getRootCause.getClass.toString)
     }
   }
 
@@ -1228,17 +1282,17 @@ class PyramidFactoryTest {
     } catch {
       case e: SparkException =>
         val SentinelHubException(_, 400, _, responseBody) = e.getRootCause
-        assertTrue(responseBody, responseBody contains "Invalid DEM instance: retteketet")
+        assertTrue(responseBody contains "Invalid DEM instance: retteketet", responseBody)
     }
 
     val trackedMetadata = BatchJobMetadataTracker.tracker("").asDict()
     val numFailedRequests = trackedMetadata.get(SH_FAILED_TILE_REQUESTS).asInstanceOf[Long]
 
-    assertEquals(s"expected exactly zero tracked failed tile requests but got $numFailedRequests instead",
-      0, numFailedRequests)
+    assertEquals(0, numFailedRequests,
+      s"expected exactly zero tracked failed tile requests but got $numFailedRequests instead")
   }
 
-  @Ignore("not to be run automatically")
+  @Disabled("not to be run automatically")
   @Test
   def testFixedAccessToken(): Unit = {
     val endpoint = "https://sh.dataspace.copernicus.eu"
@@ -1255,7 +1309,7 @@ class PyramidFactoryTest {
     testLayer(pyramidFactory, "sentinel-3-olci", date, Seq("B02", "B17", "B19"))
   }
 
-  @Ignore("not to be run automatically")
+  @Disabled("not to be run automatically")
   @Test
   def testCustomAuthApi(): Unit = {
     val endpoint = "https://sh.dataspace.copernicus.eu"
