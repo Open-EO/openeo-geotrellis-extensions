@@ -1,10 +1,13 @@
 package org.openeo.geotrellis
 
-import geotrellis.raster.geotiff.GeoTiffRasterSource
+import geotrellis.proj4.LatLng
+import geotrellis.raster.RasterSource
+import geotrellis.raster.geotiff.{GeoTiffRasterSource, GeoTiffReprojectRasterSource}
 import geotrellis.raster.io.geotiff.SinglebandGeoTiff
 import geotrellis.util.RangeReader
 import geotrellis.vector.Extent
-import org.junit.{Ignore, Test}
+import org.junit.jupiter.api.Test
+import org.junit.Ignore
 
 import java.net.URI
 
@@ -39,4 +42,18 @@ class CustomizableHttpRangeReaderTest {
 
   private def buffer(extent: Extent, relativeDistance: Double): Extent =
     extent.buffer(extent.width * relativeDistance, extent.height * relativeDistance)
+
+  def getCornerPixelValue(rs: RasterSource): Int = rs.read().get._1.toArrayTile().band(0).get(5, 5)
+
+  @Test
+  def testRetry(): Unit = {
+    for (i <- 0 to 5) {
+      println("Iteration " + i)
+      val tiffRs = GeoTiffReprojectRasterSource("https://services.terrascope.be/download/AgERA5/2024/20240418/AgERA5_dewpoint-temperature_20240418.tif",
+        LatLng)
+
+      val newValue = getCornerPixelValue(tiffRs)
+      println(newValue)
+    }
+  }
 }

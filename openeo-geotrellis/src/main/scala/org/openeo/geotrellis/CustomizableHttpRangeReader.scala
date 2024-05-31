@@ -9,9 +9,9 @@ import scala.util.Try
 class CustomizableHttpRangeReader(request: HttpRequest, useHeadRequest: Boolean) extends RangeReader {
   override lazy val totalLength: Long = {
     val headers = if (useHeadRequest) {
-      request.method("HEAD").asString
+      withRetries { request.method("HEAD").asString }
     } else {
-      request.method("GET").execute { _ => "" }
+      withRetries { request.method("GET").execute { _ => "" } }
     }
     val contentLength = headers
       .header("Content-Length")
@@ -37,11 +37,12 @@ class CustomizableHttpRangeReader(request: HttpRequest, useHeadRequest: Boolean)
   }
 
   def readClippedRange(start: Long, length: Int): Array[Byte] = {
-    val res = request
-      .method("GET")
-      .header("Range", s"bytes=${start}-${start + length}")
-      .asBytes
-
+    val res = withRetries {
+      request
+        .method("GET")
+        .header("Range", s"bytes=${start}-${start + length}")
+        .asBytes
+    }
     /**
      * "If the byte-range-set is unsatisfiable, the server SHOULD return
      * a response with a status of 416 (Requested range not satisfiable).

@@ -1,7 +1,7 @@
 package org.openeo
 
 import _root_.geotrellis.raster._
-import org.slf4j.Logger
+import org.slf4j.{Logger, LoggerFactory}
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.core.retry.RetryPolicy
@@ -14,10 +14,15 @@ import software.amazon.awssdk.services.s3.{S3Client, S3Configuration}
 import java.net.URI
 import java.nio.file.{Path, Paths}
 import java.time.{Duration, Instant}
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
+import java.util.concurrent.TimeUnit.SECONDS
+import scala.annotation.tailrec
 import scala.compat.java8.FunctionConverters._
 
+
 package object geotrellis {
+  private val logger = LoggerFactory.getLogger("geotrellis")
+
   def logTiming[R](context: String)(action: => R)(implicit logger: Logger): R = {
     if (logger.isDebugEnabled()) {
       val start = Instant.now()
@@ -151,5 +156,30 @@ package object geotrellis {
 
   object TemporalResolution extends Enumeration {
     val seconds, days, undefined = Value
+  }
+
+  def withRetries[R](action: => scalaj.http.HttpResponse[R]): scalaj.http.HttpResponse[R] = {
+    @tailrec
+    def attempt(retries: Int, delay: (Long, TimeUnit))(action: => scalaj.http.HttpResponse[R]): scalaj.http.HttpResponse[R] = {
+      val (amount, timeUnit) = delay
+
+      val ret = action
+      if (ret.code == 429) {
+        logger.warn(f"Got ${ret.code}. Will retry request: " + ret)
+        // TODO: Could use Retry-After header.
+        // It is not returned by https://services.terrascope.be/ at the moment.
+        // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After
+      } else {
+        return ret
+      }
+      timeUnit.sleep(amount)
+      attempt(retries - 1, (amount * 2, timeUnit)) {
+        action
+      }
+    }
+
+    attempt(retries = 4, delay = (30, SECONDS)) {
+      action
+    }
   }
 }
