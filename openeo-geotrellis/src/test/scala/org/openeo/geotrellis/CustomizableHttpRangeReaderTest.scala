@@ -6,8 +6,7 @@ import geotrellis.raster.geotiff.{GeoTiffRasterSource, GeoTiffReprojectRasterSou
 import geotrellis.raster.io.geotiff.SinglebandGeoTiff
 import geotrellis.util.RangeReader
 import geotrellis.vector.Extent
-import org.junit.jupiter.api.Test
-import org.junit.Ignore
+import org.junit.{Ignore, Test}
 
 import java.net.URI
 
