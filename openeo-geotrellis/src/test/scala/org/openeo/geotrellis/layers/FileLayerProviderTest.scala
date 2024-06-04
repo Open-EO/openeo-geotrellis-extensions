@@ -1147,7 +1147,8 @@ class FileLayerProviderTest extends RasterMatchers{
 //    val extent = Extent(178.0, 70.0, 178.99, 70.99)
     val latlon = CRS.fromName("EPSG:4326")
     val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, latlon.toString())
-    val utmCrs = CRS.fromName("EPSG:32601")
+//    val utmCrs = CRS.fromName("EPSG:32601") // gives good result
+    val utmCrs = CRS.fromName("EPSG:32660") // gives empty result
     val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, utmCrs)
     val poly2 = ProjectedPolygons(Array(reprojected), utmCrs)
 
