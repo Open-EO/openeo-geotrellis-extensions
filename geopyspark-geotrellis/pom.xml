@@ -190,6 +190,7 @@
                             <type>scalapb</type>
                             <outputOptions>grpc</outputOptions> <!-- more scalapb options can be added here -->
                             <pluginArtifact>com.thesamet.scalapb:protoc-gen-scala:0.9.6:sh:unix</pluginArtifact>
+                            <!--<pluginArtifact>com.thesamet.scalapb:protoc-gen-scala:0.9.6:bat:windows</pluginArtifact>-->
                         </outputTarget>
                     </outputTargets>
                 </configuration>

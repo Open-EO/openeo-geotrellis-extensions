@@ -5,7 +5,7 @@ import scala.collection.JavaConverters._
 
 object Criteria {
   private def isPropagated(metadataProperty: String): Boolean =
-    !Set("provider:backend", "federation:backends").contains(metadataProperty)
+    !Set("provider:backend", "federation:backends", "tileId").contains(metadataProperty)
 
   def toQueryProperties(metadata_properties: util.Map[String, util.Map[String, Any]],
                         collectionId: String): util.Map[String, util.Map[String, Any]] = {

@@ -1,9 +1,10 @@
 package org.openeo.geotrellis
 
 import _root_.io.circe.DecodingFailure
+import _root_.io.circe.HCursor
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.vector._
-import geotrellis.vector.io.json.JsonFeatureCollection
+import geotrellis.vector.io.json.{JsonCRS, JsonFeatureCollection, NamedCRS}
 import org.geotools.data.Query
 import org.geotools.data.shapefile.ShapefileDataStore
 import org.geotools.data.simple.SimpleFeatureIterator
@@ -148,18 +149,22 @@ object ProjectedPolygons {
         }.toArray
       }
 
+      val cursor: HCursor = geoJson.stripMargin.parseJson.hcursor
+      val crs: CRS = cursor.downField("crs").as[JsonCRS].getOrElse(NamedCRS("EPSG:4326")).toCRS.getOrElse(LatLng)
+      var polygons: Array[Geometry] = Array.empty
       try {
-        asMultiPolygons(geoJson.parseGeoJson[Geometry]())
+        polygons = asMultiPolygons(geoJson.parseGeoJson[Geometry]())
       } catch {
         case _: DecodingFailure =>
           val featureCollection = geoJson.parseGeoJson[JsonFeatureCollection]()
-          featureCollection.getAll[Geometry]
+          polygons = featureCollection.getAll[Geometry]
             .flatMap(asMultiPolygons)
             .toArray
       }
+      ProjectedPolygons(polygons, crs)
     } finally src.close()
 
-    ProjectedPolygons(multiPolygons, LatLng)
+    multiPolygons
   }
 
   /**

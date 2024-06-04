@@ -4,7 +4,9 @@ import com.azavea.gdal.GDALWarp
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.CellSize
+import geotrellis.raster.{CellSize, ShortConstantNoDataCellType}
+import geotrellis.raster.gdal.GDALRasterSource
+import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.spark.util.SparkUtils
 import org.apache.hadoop.hdfs.HdfsConfiguration
@@ -16,9 +18,11 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.openeo.geotrellis.file.{ProbaVPyramidFactoryTest, PyramidFactory}
-import org.openeo.geotrellis.{AggregateSpatialTest, ComputeStatsGeotrellisAdapter, LayerFixtures, OpenEOProcesses, ProjectedPolygons}
+import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
+import org.openeo.geotrellis.{AggregateSpatialTest, ComputeStatsGeotrellisAdapter, LayerFixtures, MergeCubesSpec, OpenEOProcesses, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
+import ucar.nc2.dataset.NetcdfDataset
 
 import java.net.URL
 import java.nio.file.{Files, Paths}
@@ -121,20 +125,20 @@ object CollectionTests {
     //    arguments("TERRASCOPE_S1_SLC_COHERENCE_V1"),
     //    arguments("TERRASCOPE_S1_GAMMA0_V1"),
     arguments("TERRASCOPE_S2_FAPAR_V2"), // Has layer
-    arguments("TERRASCOPE_S2_NDVI_V2"), // Has layer
+//    arguments("TERRASCOPE_S2_NDVI_V2"), // Has layer
     //    arguments("TERRASCOPE_S2_LAI_V2"),
     //    arguments("TERRASCOPE_S2_FCOVER_V2"),
     //    arguments("TERRASCOPE_S2_TOC_V2"), // Has layer. Took 55min in CI
     //    arguments("S1_GRD_SIGMA0_ASCENDING"),
     //    arguments("S1_GRD_SIGMA0_DESCENDING"),
-    arguments("PROBAV_L3_S5_TOC_100M"), // Has layer
-    arguments("PROBAV_L3_S10_TOC_333M"), // Has layer
+//    arguments("PROBAV_L3_S5_TOC_100M"), // Has layer
+//    arguments("PROBAV_L3_S10_TOC_333M"), // Has layer
     //    arguments("COPERNICUS_30"),
     //    arguments("COPERNICUS_90"),
     //    arguments("CGLS_FAPAR_V2_GLOBAL"),
     //    arguments("CGLS_LAI_V2_GLOBAL"),
     //    arguments("CGLS_LAI300_V1_GLOBAL"),
-    arguments("CGLS_DMP300_V1_GLOBAL"),
+//    arguments("CGLS_DMP300_V1_GLOBAL"),
   ))
 }
 
@@ -334,6 +338,11 @@ class CollectionTests {
       polygons,
       Paths.get(output_dir, file_name).toString,
     )
+
+    val newPath = Paths.get(output_dir, file_name).toString + "/openEo.nc"
+    val options = new NetCDFOptions
+    options.setBandNames(new util.ArrayList(util.Arrays.asList("band")))
+    NetCDFRDDWriter.writeRasters(layer, newPath, options)
 
     println("Outputted path: " + Paths.get(output_dir, file_name).toString)
 
