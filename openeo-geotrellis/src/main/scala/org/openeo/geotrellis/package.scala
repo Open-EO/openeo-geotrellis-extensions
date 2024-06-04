@@ -1,22 +1,24 @@
 package org.openeo
 
 import _root_.geotrellis.raster._
+import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent, ExecutionScheduledEvent}
+import net.jodah.failsafe.{ExecutionContext, Failsafe}
+import org.openeo.geotrelliscommon.CirceException
 import org.slf4j.{Logger, LoggerFactory}
+import scalaj.http.HttpStatusException
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
-import software.amazon.awssdk.core.retry.RetryPolicy
 import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy
 import software.amazon.awssdk.core.retry.conditions.{OrRetryCondition, RetryCondition}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
 import software.amazon.awssdk.services.s3.{S3Client, S3Configuration}
 
-import java.net.URI
+import java.net.{SocketTimeoutException, URI}
 import java.nio.file.{Path, Paths}
+import java.time.temporal.ChronoUnit
 import java.time.{Duration, Instant}
-import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
-import java.util.concurrent.TimeUnit.SECONDS
-import scala.annotation.tailrec
+import java.util.concurrent.ConcurrentHashMap
 import scala.compat.java8.FunctionConverters._
 
 
@@ -56,7 +58,7 @@ package object geotrellis {
         .maxBackoffTime(Duration.ofMillis(15))
         .build()
     val retryPolicy =
-      RetryPolicy.defaultRetryPolicy()
+      software.amazon.awssdk.core.retry.RetryPolicy.defaultRetryPolicy()
         .toBuilder()
         .retryCondition(retryCondition)
         .backoffStrategy(backoffStrategy)
@@ -158,28 +160,64 @@ package object geotrellis {
     val seconds, days, undefined = Value
   }
 
-  def withRetries[R](action: => scalaj.http.HttpResponse[R]): scalaj.http.HttpResponse[R] = {
-    @tailrec
-    def attempt(retries: Int, delay: (Long, TimeUnit))(action: => scalaj.http.HttpResponse[R]): scalaj.http.HttpResponse[R] = {
-      val (amount, timeUnit) = delay
 
-      val ret = action
-      if (ret.code == 429) {
-        logger.warn(f"Got ${ret.code}. Will retry request: " + ret)
-        // TODO: Could use Retry-After header.
-        // It is not returned by https://services.terrascope.be/ at the moment.
-        // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After
-      } else {
-        return ret
-      }
-      timeUnit.sleep(amount)
-      attempt(retries - 1, (amount * 2, timeUnit)) {
-        action
-      }
+  /**
+   * taken from DefaultProcessApi
+   */
+  def withRetryAfterRetries[R](context: String)(fn: => R)(implicit logger: Logger): R = {
+    val retryable: Throwable => Boolean = {
+      case HttpStatusException(400, _, responseBody) if responseBody.contains("Request body should be non-empty.") => true
+      case HttpStatusException(statusCode, _, responseBody) if statusCode >= 500
+        && !responseBody.contains("newLimit > capacity") && !responseBody.contains("Illegal request to https") => true
+      case _: SocketTimeoutException => true
+      case _: CirceException => true
+      case e => logger.error(s"Not attempting to retry unrecoverable error in context: $context", e); false
     }
 
-    attempt(retries = 4, delay = (30, SECONDS)) {
-      action
+    val shakyConnectionRetryPolicy = new net.jodah.failsafe.RetryPolicy[R]()
+      .handleIf(retryable.asJava)
+      .withBackoff(1, 1000, ChronoUnit.SECONDS) // should not reach maxDelay because of maxAttempts 5
+      .withJitter(0.5)
+      .withMaxAttempts(5)
+      .onFailedAttempt((attempt: ExecutionAttemptedEvent[R]) => {
+        val e = attempt.getLastFailure
+        logger.warn(s"Attempt ${attempt.getAttemptCount} failed in context: $context", e)
+      })
+      .onFailure((execution: ExecutionCompletedEvent[R]) => {
+        val e = execution.getFailure
+        logger.error(s"Failed after ${execution.getAttemptCount} attempt(s) in context: $context", e)
+      })
+
+    val isRateLimitingResponse: Throwable => Boolean = {
+      case HttpStatusException(429, _, _) => true
+      case _ => false
     }
+
+    var retryAfterSecondsCounter = 20.0
+    val rateLimitingRetryPolicy = new net.jodah.failsafe.RetryPolicy[R]()
+      .handleIf(isRateLimitingResponse.asJava)
+      .withMaxAttempts(5)
+      .withDelay((_: R, sentinelHubException: HttpStatusException, _: ExecutionContext) => {
+        println("sentinelHubException: " + sentinelHubException)
+        val retryAfterSeconds = retryAfterSecondsCounter
+        retryAfterSecondsCounter *= 1.6
+        // TODO: Use retry-after when available
+        // val retryAfterHeader = "retry-after"
+        // retryAfterSeconds = sentinelHubException
+        //   .responseHeaders
+        //   .find { case (header, _) => header equalsIgnoreCase retryAfterHeader }
+        //   .map { case (_, values) => values.head.toLong }
+        //   .getOrElse(throw new IllegalStateException(
+        //     s"""missing expected header "$retryAfterHeader" (case-insensitive);""" +
+        //       s" actual headers are: ${sentinelHubException.responseHeaders.keys mkString ", "}"))
+        Duration.ofSeconds(retryAfterSeconds.toInt)
+      })
+      .onRetryScheduled((retry: ExecutionScheduledEvent[scalaj.http.HttpResponse[_root_.geotrellis.raster.io.geotiff.MultibandGeoTiff]]) => {
+        logger.warn(s"Scheduled retry within ${retry.getDelay} because of 429 response in context: $context")
+      })
+
+    Failsafe
+      .`with`(java.util.Arrays.asList(shakyConnectionRetryPolicy, rateLimitingRetryPolicy))
+      .get(() => fn)
   }
 }

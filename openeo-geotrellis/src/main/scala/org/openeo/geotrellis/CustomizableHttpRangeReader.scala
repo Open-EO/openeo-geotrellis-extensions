@@ -1,17 +1,27 @@
 package org.openeo.geotrellis
 
 import geotrellis.util.RangeReader
+import org.slf4j.{Logger, LoggerFactory}
 import scalaj.http.HttpRequest
 
 import scala.util.Try
 
+
 // copied from geotrellis.util.HttpRangeReader as that one is not extensible
 class CustomizableHttpRangeReader(request: HttpRequest, useHeadRequest: Boolean) extends RangeReader {
+  private implicit val logger: Logger = LoggerFactory.getLogger(this.getClass)
+
+
+
   override lazy val totalLength: Long = {
     val headers = if (useHeadRequest) {
-      withRetries { request.method("HEAD").asString }
+      withRetryAfterRetries("totalLength") {
+        request.method("HEAD").asString.throwError
+      }
     } else {
-      withRetries { request.method("GET").execute { _ => "" } }
+      withRetryAfterRetries("totalLength") {
+        request.method("GET").execute { _ => "" }.throwError
+      }
     }
     val contentLength = headers
       .header("Content-Length")
@@ -19,7 +29,6 @@ class CustomizableHttpRangeReader(request: HttpRequest, useHeadRequest: Boolean)
       case Some(num) => num
       case None => -1L
     }
-    headers.throwError
 
     /**
      * "The Accept-Ranges response HTTP header is a marker used by the server
@@ -37,21 +46,13 @@ class CustomizableHttpRangeReader(request: HttpRequest, useHeadRequest: Boolean)
   }
 
   def readClippedRange(start: Long, length: Int): Array[Byte] = {
-    val res = withRetries {
+    val res = withRetryAfterRetries("readClippedRange") {
       request
         .method("GET")
         .header("Range", s"bytes=${start}-${start + length}")
         .asBytes
+        .throwError
     }
-    /**
-     * "If the byte-range-set is unsatisfiable, the server SHOULD return
-     * a response with a status of 416 (Requested range not satisfiable).
-     * Otherwise, the server SHOULD return a response with a status of 206
-     * (Partial Content) containing the satisfiable ranges of the entity-body."
-     * https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
-     */
-    require(res.code != 416,
-      s"Server unable to generate the byte range between ${start} and ${start + length} for ${request.url}")
 
     require(res.is2xx,
       s"While reading ${request.url}, server returned status code ${res.code} with type ${res.contentType} and body ${new String(res.body)}")
