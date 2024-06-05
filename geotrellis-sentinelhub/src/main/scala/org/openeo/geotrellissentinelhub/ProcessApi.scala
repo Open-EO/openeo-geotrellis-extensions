@@ -89,7 +89,7 @@ object DefaultProcessApi {
   }
 }
 
-class DefaultProcessApi(endpoint: String, noDataValue: Double) extends ProcessApi with Serializable {
+class DefaultProcessApi(endpoint: String, noDataValue: Double = 0) extends ProcessApi with Serializable {
   // TODO: clean up JSON construction/parsing
   import DefaultProcessApi._
 
