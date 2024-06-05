@@ -34,9 +34,10 @@ object PyramidFactory {
                                  clientId: String, clientSecret: String,
                                  zookeeperConnectionString: String, zookeeperAccessTokenPath: String,
                                  processingOptions: util.Map[String, Any], sampleType: SampleType,
-                                 maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
+                                 maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double,
+                                 noDataValue: Double = 0): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint),
+      new DefaultProcessApi(endpoint, noDataValue),
       new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(zookeeperConnectionString,
         zookeeperAccessTokenPath, clientId, clientSecret),
       processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
@@ -45,17 +46,19 @@ object PyramidFactory {
   def withFixedAccessToken(endpoint: String, collectionId: String, datasetId: String,
                            accessToken: String,
                            processingOptions: util.Map[String, Any], sampleType: SampleType,
-                           maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
+                           maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double,
+                           noDataValue: Double = 0): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), new FixedAccessTokenAuthorizer(accessToken),
+      new DefaultProcessApi(endpoint, noDataValue), new FixedAccessTokenAuthorizer(accessToken),
       processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
 
   // CDSE setup with workaround for Keycloak access token not working yet
   def withCustomAuthApi(endpoint: String, collectionId: String, datasetId: String,
                         authApiUrl: String, clientId: String, clientSecret: String,
                         processingOptions: util.Map[String, Any], sampleType: SampleType,
-                        maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
-    new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
+                        maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double,
+                        noDataValue: Double = 0): PyramidFactory =
+    new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint, noDataValue),
       new MemoizedAuthApiAccessTokenAuthorizer(clientId, clientSecret, authApiUrl),
       processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
 

@@ -89,7 +89,7 @@ object DefaultProcessApi {
   }
 }
 
-class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
+class DefaultProcessApi(endpoint: String, noDataValue: Double) extends ProcessApi with Serializable {
   // TODO: clean up JSON construction/parsing
   import DefaultProcessApi._
 
@@ -211,6 +211,6 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
       .toArrayTile()
       // unless handled differently, NODATA pîxels are 0 according to
       // https://docs.sentinel-hub.com/api/latest/user-guides/datamask/#datamask---handling-of-pixels-with-no-data
-      .mapBands { case (_, tile) => tile.withNoData(Some(0)) }, processingUnitsSpent)
+      .mapBands { case (_, tile) => tile.withNoData(Some(noDataValue)) }, processingUnitsSpent)
  }
 }
