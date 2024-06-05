@@ -263,12 +263,19 @@ object RasterRegionReproject {
       val rowcoords = rowCoords(region, rasterExtent, trans, errorThreshold)
       val resampler: Array[Resample] = Array.ofDim[Resample](raster.tile.bandCount)
 
-      val targetCellSizeInSrcCRS = rasterExtent.reproject(dest,src).cellSize
-
+      val targetCellSizeInSrcCRS =
+        try{
+          rasterExtent.reproject(dest,src).cellSize
+        }catch {
+          case e:Exception => //reprojection errors happen when going outside valid area of projection, need a better fix here
+            raster.rasterExtent.cellSize
+        }
       for (b <- 0 until raster.tile.bandCount) {
         val band: Tile = raster.tile.bands(b)
         resampler(b) = Resample(resampleMethod, band, raster.extent, targetCellSizeInSrcCRS)
       }
+
+
 
       if (raster.cellType.isFloatingPoint) {
         cfor(0)(_ < rasterExtent.rows, _ + 1){ i =>
