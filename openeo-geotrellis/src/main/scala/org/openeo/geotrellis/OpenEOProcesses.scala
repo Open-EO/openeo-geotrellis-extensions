@@ -772,7 +772,8 @@ class OpenEOProcesses extends Serializable {
       logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
       (0,data)
     }else{
-      filterNegativeSpatialKeys(data.reproject(target.metadata.crs,target.metadata.layout,16,method,target.partitioner))
+      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, target.metadata.crs, Right(target.metadata.layout), 16, method, target.partitioner)
+      filterNegativeSpatialKeys(reprojected)
     }
   }
 
@@ -781,9 +782,11 @@ class OpenEOProcesses extends Serializable {
       logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
       (0,data)
     }else if(partitioner==null) {
-      filterNegativeSpatialKeys(data.reproject(crs,layout,16,method,new SpacePartitioner(data.metadata.bounds)))
+      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, crs, Right(layout), 16, method, new SpacePartitioner(data.metadata.bounds))
+      filterNegativeSpatialKeys(reprojected)
     }else{
-      filterNegativeSpatialKeys(data.reproject(crs,layout,16,method,Option(partitioner)))
+      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, crs, Right(layout), 16, method, partitioner)
+      filterNegativeSpatialKeys(reprojected)
     }
   }
 
@@ -792,9 +795,11 @@ class OpenEOProcesses extends Serializable {
       logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
       (0,data)
     }else if(partitioner==null) {
-      filterNegativeSpatialKeys_spatial(data.reproject(crs,layout,16,method,new SpacePartitioner(data.metadata.bounds)))
+      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, crs, Right(layout), 16, method, new SpacePartitioner(data.metadata.bounds))
+      filterNegativeSpatialKeys_spatial(reprojected)
     }else{
-      filterNegativeSpatialKeys_spatial(data.reproject(crs,layout,16,method,Option(partitioner)))
+      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, crs, Right(layout), 16, method, partitioner)
+      filterNegativeSpatialKeys_spatial(reprojected)
     }
   }
 
