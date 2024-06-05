@@ -165,6 +165,8 @@ package object geotrellis {
    * taken from DefaultProcessApi
    */
   def withRetryAfterRetries[R](context: String)(fn: => HttpResponse[R])(implicit logger: Logger): HttpResponse[R] = {
+    var lastResponse: Option[HttpResponse[R]] = None
+
     val retryable: Throwable => Boolean = {
       case HttpStatusException(400, _, responseBody) if responseBody.contains("Request body should be non-empty.") => true
       case HttpStatusException(statusCode, _, responseBody) if statusCode >= 500
@@ -197,16 +199,15 @@ package object geotrellis {
     val rateLimitingRetryPolicy = new net.jodah.failsafe.RetryPolicy[HttpResponse[R]]()
       .handleIf(isRateLimitingResponse.asJava)
       .withMaxAttempts(5)
-      .withDelay((lastResponse: HttpResponse[R], e: HttpStatusException, _: ExecutionContext) => {
-
-        val retryAfterSeconds = if (lastResponse == null)
-          retryAfterSecondsCounter.toLong
-        else
-          lastResponse
+      .withDelay((_: HttpResponse[R], _: HttpStatusException, _: ExecutionContext) => {
+        val retryAfterSeconds = lastResponse match {
+          case None => retryAfterSecondsCounter.toLong
+          case Some(x) => x
             .headers
             .find { case (header, _) => header equalsIgnoreCase "retry-after" }
             .map { case (_, values) => values.head.toLong }
             .getOrElse(retryAfterSecondsCounter.toLong)
+        }
         retryAfterSecondsCounter *= 1.6
         Duration.ofSeconds(retryAfterSeconds)
       })
@@ -216,6 +217,10 @@ package object geotrellis {
 
     Failsafe
       .`with`(java.util.Arrays.asList(shakyConnectionRetryPolicy, rateLimitingRetryPolicy))
-      .get(() => fn)
+      .get(() => {
+        val res = fn
+        lastResponse = Some(res)
+        res.throwError
+      })
   }
 }

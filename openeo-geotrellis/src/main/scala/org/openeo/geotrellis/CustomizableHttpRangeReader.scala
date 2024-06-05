@@ -16,11 +16,11 @@ class CustomizableHttpRangeReader(request: HttpRequest, useHeadRequest: Boolean)
   override lazy val totalLength: Long = {
     val headers = if (useHeadRequest) {
       withRetryAfterRetries("totalLength") {
-        request.method("HEAD").asString.throwError
+        request.method("HEAD").asString
       }
     } else {
       withRetryAfterRetries("totalLength") {
-        request.method("GET").execute { _ => "" }.throwError
+        request.method("GET").execute { _ => "" }
       }
     }
     val contentLength = headers
@@ -29,6 +29,7 @@ class CustomizableHttpRangeReader(request: HttpRequest, useHeadRequest: Boolean)
       case Some(num) => num
       case None => -1L
     }
+    headers.throwError
 
     /**
      * "The Accept-Ranges response HTTP header is a marker used by the server
@@ -51,8 +52,8 @@ class CustomizableHttpRangeReader(request: HttpRequest, useHeadRequest: Boolean)
         .method("GET")
         .header("Range", s"bytes=${start}-${start + length}")
         .asBytes
-        .throwError
     }
+    res.throwError
 
     require(res.is2xx,
       s"While reading ${request.url}, server returned status code ${res.code} with type ${res.contentType} and body ${new String(res.body)}")
