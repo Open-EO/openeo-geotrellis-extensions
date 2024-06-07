@@ -28,6 +28,15 @@ object PyramidFactory {
 
   private val maxKeysPerPartition = 20
 
+  def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String,
+                                 clientId: String, clientSecret: String,
+                                 zookeeperConnectionString: String, zookeeperAccessTokenPath: String,
+                                 processingOptions: util.Map[String, Any], sampleType: SampleType,
+                                 maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
+    withoutGuardedRateLimiting(endpoint, collectionId, datasetId, clientId, clientSecret,
+      zookeeperConnectionString, zookeeperAccessTokenPath, processingOptions,
+      sampleType, maxSpatialResolution, maxSoftErrorsRatio, 0)
+
   // convenience methods for Python client
   // Terrascope setup with Zookeeper cache and default Auth API endpoint
   def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String,
@@ -35,19 +44,26 @@ object PyramidFactory {
                                  zookeeperConnectionString: String, zookeeperAccessTokenPath: String,
                                  processingOptions: util.Map[String, Any], sampleType: SampleType,
                                  maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double,
-                                 noDataValue: Double = 0): PyramidFactory =
+                                 noDataValue: Double): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint, noDataValue),
       new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(zookeeperConnectionString,
         zookeeperAccessTokenPath, clientId, clientSecret),
       processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
 
+  def withFixedAccessToken(endpoint: String, collectionId: String, datasetId: String,
+                           accessToken: String,
+                           processingOptions: util.Map[String, Any], sampleType: SampleType,
+                           maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
+    withFixedAccessToken(endpoint, collectionId, datasetId, accessToken, processingOptions,
+      sampleType, maxSpatialResolution, maxSoftErrorsRatio, 0)
+
   // CDSE setup with user's Keycloak access token
   def withFixedAccessToken(endpoint: String, collectionId: String, datasetId: String,
                            accessToken: String,
                            processingOptions: util.Map[String, Any], sampleType: SampleType,
                            maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double,
-                           noDataValue: Double = 0): PyramidFactory =
+                           noDataValue: Double): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
       new DefaultProcessApi(endpoint, noDataValue), new FixedAccessTokenAuthorizer(accessToken),
       processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
