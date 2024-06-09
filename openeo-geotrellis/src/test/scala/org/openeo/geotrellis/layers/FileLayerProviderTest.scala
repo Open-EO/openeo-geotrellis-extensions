@@ -1286,7 +1286,7 @@ class FileLayerProviderTest extends RasterMatchers{
     val reference = GeoTiff.readMultiband("./load_regular_2023-04-05Z.tif").raster
     val actual = GeoTiff.readMultiband("./load_per_product_2023-04-05Z.tif").raster
 
-    assertRastersEqual(reference,actual)
+    assertRastersEqual(actual,reference)
 
   }
 

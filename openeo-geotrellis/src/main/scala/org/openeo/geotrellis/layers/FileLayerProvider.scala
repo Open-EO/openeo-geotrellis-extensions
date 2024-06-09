@@ -533,7 +533,7 @@ object FileLayerProvider {
 
     },preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile)]) => {
       var mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1).mapValues(_.map(_._2).reduceOption(_ merge _))
-      for (x <- 0 to expectedBandCount){
+      for (x <- 0 until expectedBandCount){
         if(!mergedBands.contains(x)){
           logger.warn("Band " + x + " is missing in the input data. Filling with empty tile.")
           val someTile = mergedBands.head._2.get
