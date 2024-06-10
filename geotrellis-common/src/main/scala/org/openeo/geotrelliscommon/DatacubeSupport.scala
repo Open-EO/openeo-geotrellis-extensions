@@ -244,14 +244,14 @@ object DatacubeSupport {
                 spacetimeMask.reproject(metadata.crs,metadata.layout,16,rdd.partitioner)._2
               }
 
+            // retain only tiles where there is at least one valid pixel (mask value == 0), others will be fully removed
+            val filtered = alignedMask.withContext{_.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))}
+
             if (pixelwiseMasking) {
               val spacetimeDataContextRDD = ContextRDD(rdd, metadata)
               // maskingCube is only set from Python when replacement is not defined
-              rasterMaskGeneric(spacetimeDataContextRDD, alignedMask, null, ignoreKeysWithoutMask = true)
+              rasterMaskGeneric(spacetimeDataContextRDD, filtered, null, ignoreKeysWithoutMask = true)
             } else {
-
-              // retain only tiles where there is at least one valid pixel (mask value == 0)
-              val filtered = alignedMask.withContext{_.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))}
               rdd.join(filtered).mapValues(_._1)
             }
           } else {
