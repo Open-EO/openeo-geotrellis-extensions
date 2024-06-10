@@ -1134,28 +1134,32 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(8, band.get(200, 200))
   }
 
-  @Test
-  def testMissingS2DateLine(): Unit = {
-    val outDir = Paths.get("tmp/FileLayerProviderTest/")
-    new Directory(outDir.toFile).deleteRecursively()
+  @ParameterizedTest
+  @ValueSource(strings = Array("EPSG:32601", "EPSG:32660"))
+  def testMissingS2DateLine(crsName: String): Unit = {
+    val outDir = Paths.get("tmp/FileLayerProviderTest_" + crsName.replace(":", "_") + "/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
     Files.createDirectories(outDir)
 
     val dateFrom = ZonedDateTime.parse("2024-04-02T00:00:00Z")
     val dateTo = ZonedDateTime.parse("2024-04-03T00:00:00Z")
 
     val extent = Extent(178.7384, 70.769, 178.8548, 70.8254)
-//    val extent = Extent(178.0, 70.0, 178.99, 70.99)
-    val latlon = CRS.fromName("EPSG:4326")
-    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, latlon.toString())
-//    val utmCrs = CRS.fromName("EPSG:32601") // gives good result
-    val utmCrs = CRS.fromName("EPSG:32660") // gives empty result
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, LatLng.proj4jCrs.toString)
+    val utmCrs = CRS.fromName(crsName)
     val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, utmCrs)
     val poly2 = ProjectedPolygons(Array(reprojected), utmCrs)
 
     val layer = LayerFixtures.sentinel2CubeCDSEGeneric((dateFrom, dateTo), poly2, bandNames = java.util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data"))
 
+    val layer_collected = layer.collect()
+    assert(layer_collected.nonEmpty)
+    for {
+      (_, multiBandTile) <- layer_collected
+      tile <- multiBandTile.bands
+    } assert(!tile.isNoDataTile)
     val cubeSpatial = layer.toSpatial()
-    cubeSpatial.writeGeoTiff(outDir + "/testMissingS2DateLine.tiff")
+    cubeSpatial.writeGeoTiff(outDir + "/testMissingS2DateLine_" + crsName.replace(":", "_") + ".tiff")
   }
 
   private def keysForLargeArea(useBBox:Boolean=false) = {
