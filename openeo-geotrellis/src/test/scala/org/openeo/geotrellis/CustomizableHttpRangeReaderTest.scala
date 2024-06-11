@@ -6,9 +6,11 @@ import geotrellis.raster.geotiff.{GeoTiffRasterSource, GeoTiffReprojectRasterSou
 import geotrellis.raster.io.geotiff.SinglebandGeoTiff
 import geotrellis.util.RangeReader
 import geotrellis.vector.Extent
+import org.junit.Assert.assertEquals
 import org.junit.{Ignore, Test}
 
 import java.net.URI
+import java.time.Instant
 
 @Ignore("requires a file with Terrascope credentials")
 class CustomizableHttpRangeReaderTest {
@@ -46,15 +48,28 @@ class CustomizableHttpRangeReaderTest {
 
   @Test
   def testRetry(): Unit = {
-    for (i <- 0 to 5) {
+    for (i <- 0 to 3) {
       println("Iteration " + i)
       // Run test server with this snippet: https://gist.github.com/EmileSonneveld/67f8a050d5891cb96bb969d634796841
-      val url = "http://localhost:8000/?response_code=429"
-      // val url = "https://services.terrascope.be/download/AgERA5/2024/20240418/AgERA5_dewpoint-temperature_20240418.tif"
-      val tiffRs = GeoTiffReprojectRasterSource(url, LatLng)
+      val url = "http://localhost:8000/shaky?token=rand" + Instant.now()
+      // val url = "https://services.terrascope.be/download/AgERA5/2024/20240418/AgERA5_dewpoint-temperature_20240418.tif" // Used to give 429 quickly
+      // val url = "https://artifactory.vgt.vito.be/artifactory/testdata-public/S2_B04_timeseries.tiff" // used behind the shaky request
+      val tiffRs = GeoTiffRasterSource(url)
+
+      // Without throwError in callback:
+      //   Attempt 1 failed in context: 'readClippedRange' Scheduled retry in PT20S
+      //   Attempt 2 failed in context: 'readClippedRange' Scheduled retry in PT3S
+      //   Attempt 3 failed in context: 'readClippedRange' result code: 500
+      //   Attempt 4 failed in context: 'readClippedRange' java.net.SocketTimeoutException: Read timed out
+
+      // With throwError in callback (not recommended):
+      //   Attempt 1 failed in context: 'readClippedRange' Scheduled retry in PT20S
+      //   Attempt 2 failed in context: 'readClippedRange' Scheduled retry in PT32S
+      //   Attempt 3 failed in context: 'readClippedRange' scalaj.http.HttpStatusException: 500 Error: HTTP/1.0 500 Internal Server Error
+      //   Attempt 4 failed in context: 'readClippedRange' java.net.SocketTimeoutException: Read timed out
 
       val newValue = getCornerPixelValue(tiffRs)
-      println(newValue)
+      assertEquals(newValue, 32767)
     }
   }
 }
