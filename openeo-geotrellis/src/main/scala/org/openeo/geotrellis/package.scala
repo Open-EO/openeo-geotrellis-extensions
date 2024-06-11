@@ -14,7 +14,7 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
 import software.amazon.awssdk.services.s3.{S3Client, S3Configuration}
 
-import java.net.{SocketTimeoutException, URI}
+import java.net.{ConnectException, SocketTimeoutException, URI}
 import java.nio.file.{Path, Paths}
 import java.time.temporal.ChronoUnit
 import java.time.{Duration, Instant}
@@ -167,7 +167,7 @@ package object geotrellis {
     val retryableException: Throwable => Boolean = {
       case HttpStatusException(statusCode, _, _) if statusCode >= 500 => true
       case _: SocketTimeoutException => true
-      case _: java.net.ConnectException => true // Got this when terminating test server in the middle of a request
+      case _: ConnectException => true // Got this when terminating test server in the middle of a request
       case e => logger.error(s"Not attempting to retry unrecoverable error in context: '$context' " + e.getMessage); false
     }
 
