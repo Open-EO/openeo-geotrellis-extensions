@@ -6,20 +6,21 @@ import scalaj.http.HttpRequest
 
 import scala.util.Try
 
+object CustomizableHttpRangeReader {
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[CustomizableHttpRangeReader])
+}
 
 // copied from geotrellis.util.HttpRangeReader as that one is not extensible
 class CustomizableHttpRangeReader(request: HttpRequest, useHeadRequest: Boolean) extends RangeReader {
-  private implicit val logger: Logger = LoggerFactory.getLogger(this.getClass)
-
-
+  import CustomizableHttpRangeReader._
 
   override lazy val totalLength: Long = {
     val headers = if (useHeadRequest) {
-      withRetryAfterRetries("totalLength") {
+      withRetryAfterRetries("HEAD totalLength") {
         request.method("HEAD").asString
       }
     } else {
-      withRetryAfterRetries("totalLength") {
+      withRetryAfterRetries("GET totalLength") {
         request.method("GET").execute { _ => "" }
       }
     }

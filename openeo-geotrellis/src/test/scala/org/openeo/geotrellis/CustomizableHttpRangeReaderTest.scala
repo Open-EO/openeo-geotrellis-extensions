@@ -48,8 +48,10 @@ class CustomizableHttpRangeReaderTest {
   def testRetry(): Unit = {
     for (i <- 0 to 5) {
       println("Iteration " + i)
-      val tiffRs = GeoTiffReprojectRasterSource("https://services.terrascope.be/download/AgERA5/2024/20240418/AgERA5_dewpoint-temperature_20240418.tif",
-        LatLng)
+      // Run test server with this snippet: https://gist.github.com/EmileSonneveld/67f8a050d5891cb96bb969d634796841
+      val url = "http://localhost:8000/?response_code=429"
+      // val url = "https://services.terrascope.be/download/AgERA5/2024/20240418/AgERA5_dewpoint-temperature_20240418.tif"
+      val tiffRs = GeoTiffReprojectRasterSource(url, LatLng)
 
       val newValue = getCornerPixelValue(tiffRs)
       println(newValue)

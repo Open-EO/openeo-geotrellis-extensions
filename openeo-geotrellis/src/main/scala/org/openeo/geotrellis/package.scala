@@ -2,14 +2,14 @@ package org.openeo
 
 import _root_.geotrellis.raster._
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent, ExecutionScheduledEvent}
-import net.jodah.failsafe.{ExecutionContext, Failsafe}
-import org.openeo.geotrelliscommon.CirceException
-import org.slf4j.{Logger, LoggerFactory}
+import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy => FailsafeRetryPolicy}
+import org.slf4j.Logger
 import scalaj.http.{HttpResponse, HttpStatusException}
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy
 import software.amazon.awssdk.core.retry.conditions.{OrRetryCondition, RetryCondition}
+import software.amazon.awssdk.core.retry.{RetryPolicy => AwsRetryPolicy}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
 import software.amazon.awssdk.services.s3.{S3Client, S3Configuration}
@@ -23,8 +23,6 @@ import scala.compat.java8.FunctionConverters._
 
 
 package object geotrellis {
-  private val logger = LoggerFactory.getLogger("geotrellis")
-
   def logTiming[R](context: String)(action: => R)(implicit logger: Logger): R = {
     if (logger.isDebugEnabled()) {
       val start = Instant.now()
@@ -58,7 +56,7 @@ package object geotrellis {
         .maxBackoffTime(Duration.ofMillis(15))
         .build()
     val retryPolicy =
-      software.amazon.awssdk.core.retry.RetryPolicy.defaultRetryPolicy()
+      AwsRetryPolicy.defaultRetryPolicy()
         .toBuilder()
         .retryCondition(retryCondition)
         .backoffStrategy(backoffStrategy)
@@ -164,19 +162,16 @@ package object geotrellis {
   /**
    * taken from DefaultProcessApi
    */
-  def withRetryAfterRetries[R](context: String)(fn: => HttpResponse[R])(implicit logger: Logger): HttpResponse[R] = {
+  def withRetryAfterRetries[R](context: String)(httpResponseFunctor: => HttpResponse[R])(implicit logger: Logger): HttpResponse[R] = {
     var lastResponse: Option[HttpResponse[R]] = None
 
     val retryable: Throwable => Boolean = {
-      case HttpStatusException(400, _, responseBody) if responseBody.contains("Request body should be non-empty.") => true
-      case HttpStatusException(statusCode, _, responseBody) if statusCode >= 500
-        && !responseBody.contains("newLimit > capacity") && !responseBody.contains("Illegal request to https") => true
+      case HttpStatusException(statusCode, _, _) if statusCode >= 500 => true
       case _: SocketTimeoutException => true
-      case _: CirceException => true
       case e => logger.error(s"Not attempting to retry unrecoverable error in context: $context", e); false
     }
 
-    val shakyConnectionRetryPolicy = new net.jodah.failsafe.RetryPolicy[HttpResponse[R]]()
+    val shakyConnectionRetryPolicy = new FailsafeRetryPolicy[HttpResponse[R]]()
       .handleIf(retryable.asJava)
       .withBackoff(1, 1000, ChronoUnit.SECONDS) // should not reach maxDelay because of maxAttempts 5
       .withJitter(0.5)
@@ -195,20 +190,19 @@ package object geotrellis {
       case _ => false
     }
 
-    var retryAfterSecondsCounter = 20.0
-    val rateLimitingRetryPolicy = new net.jodah.failsafe.RetryPolicy[HttpResponse[R]]()
+    val rateLimitingRetryPolicy = new FailsafeRetryPolicy[HttpResponse[R]]()
       .handleIf(isRateLimitingResponse.asJava)
       .withMaxAttempts(5)
-      .withDelay((_: HttpResponse[R], _: HttpStatusException, _: ExecutionContext) => {
+      .withDelay((_: HttpResponse[R], _: HttpStatusException, context: ExecutionContext) => {
+        val retryAfterSecondsCounter = (20 * math.pow(1.6, context.getAttemptCount - 1)).toLong
         val retryAfterSeconds = lastResponse match {
-          case None => retryAfterSecondsCounter.toLong
+          case None => retryAfterSecondsCounter
           case Some(x) => x
             .headers
             .find { case (header, _) => header equalsIgnoreCase "retry-after" }
             .map { case (_, values) => values.head.toLong }
-            .getOrElse(retryAfterSecondsCounter.toLong)
+            .getOrElse(retryAfterSecondsCounter)
         }
-        retryAfterSecondsCounter *= 1.6
         Duration.ofSeconds(retryAfterSeconds)
       })
       .onRetryScheduled((retry: ExecutionScheduledEvent[scalaj.http.HttpResponse[_root_.geotrellis.raster.io.geotiff.MultibandGeoTiff]]) => {
@@ -218,7 +212,7 @@ package object geotrellis {
     Failsafe
       .`with`(java.util.Arrays.asList(shakyConnectionRetryPolicy, rateLimitingRetryPolicy))
       .get(() => {
-        val res = fn
+        val res = httpResponseFunctor
         lastResponse = Some(res)
         res.throwError
       })
