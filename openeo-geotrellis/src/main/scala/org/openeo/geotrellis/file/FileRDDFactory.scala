@@ -16,7 +16,7 @@ import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.openeo.opensearch.backends.{CreodiasClient, OscarsClient}
 
 import java.net.URL
-import java.time.ZonedDateTime
+import java.time.{LocalTime, ZonedDateTime}
 import java.util
 import scala.collection.JavaConverters._
 
@@ -38,9 +38,13 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
   private def getFeatures(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, sc: SparkContext): Seq[Feature] = {
     require(zoom >= 0)
 
+    val dateRange = // retain backwards compatibility for from == to
+      if (from isEqual to) (from `with` LocalTime.MIN, from `with` LocalTime.MAX)
+      else (from, to)
+
     val overlappingFeatures: Seq[Feature] = openSearch.getProducts(
       openSearchCollectionId,
-      Some((from, to)),
+      Some(dateRange),
       boundingBox,
       attributeValues = attributeValues.asScala.toMap,
       correlationId, ""
