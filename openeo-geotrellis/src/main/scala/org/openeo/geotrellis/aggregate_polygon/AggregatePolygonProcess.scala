@@ -12,7 +12,7 @@ import org.apache.spark.rdd._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Column, Row, SaveMode, SparkSession}
-import org.openeo.geotrellis.SpatialToSpacetimeJoinRdd
+import org.openeo.geotrellis.{OpenEOProcesses, SpatialToSpacetimeJoinRdd}
 import org.openeo.geotrellis.aggregate_polygon.intern.PixelRateValidator.exceedsTreshold
 import org.openeo.geotrellis.aggregate_polygon.intern._
 import org.openeo.geotrellis.layers.LayerProvider
@@ -153,7 +153,8 @@ class AggregatePolygonProcess() {
       }
     }
     val cellType = datacube.metadata.cellType
-    aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath)
+    val maybeLabels = new OpenEOProcesses().maybeBandLabels(datacube)
+    aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath,maybeLabels)
   }
 
   def aggregateSpatialForGeometryWithSpatialCube(scriptBuilder: SparkAggregateScriptBuilder,
@@ -305,14 +306,15 @@ class AggregatePolygonProcess() {
         }
       }
       val cellType = datacube.metadata.cellType
-      aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath)
+      val maybeLabels = new OpenEOProcesses().maybeBandLabels(datacube)
+      aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath,maybeLabels)
 
     }finally{
       byIndexMask.unpersist()
     }
   }
 
-  private def aggregateByDateAndPolygon(pixelRDD: RDD[Row], scriptBuilder: SparkAggregateScriptBuilder, bandCount: Int, cellType: CellType, outputPath: String) = {
+  private def aggregateByDateAndPolygon(pixelRDD: RDD[Row], scriptBuilder: SparkAggregateScriptBuilder, bandCount: Int, cellType: CellType, outputPath: String, maybeBandLabels: Option[Seq[String]] = Option.empty[Seq[String]]) = {
     val session = SparkSession.builder().config(pixelRDD.sparkContext.getConf).getOrCreate()
     val dataType =
       if (cellType.isFloatingPoint) {
@@ -320,7 +322,7 @@ class AggregatePolygonProcess() {
       } else {
         IntegerType
       }
-    val bandColumns = (0 until bandCount).map(b => f"band_$b")
+    val bandColumns = maybeBandLabels.getOrElse (0 until bandCount).map(b => f"band_$b")
 
     val bandStructs = bandColumns.map(StructField(_, dataType, true))
 
