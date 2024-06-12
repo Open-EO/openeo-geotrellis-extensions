@@ -40,7 +40,7 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
 
     val overlappingFeatures: Seq[Feature] = openSearch.getProducts(
       openSearchCollectionId,
-      (from.toLocalDate, to.toLocalDate),
+      Some((from, to)),
       boundingBox,
       attributeValues = attributeValues.asScala.toMap,
       correlationId, ""
