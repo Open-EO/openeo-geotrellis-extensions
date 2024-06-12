@@ -760,7 +760,15 @@ class OpenEOProcesses extends Serializable {
   def filterNegativeSpatialKeys[K: SpatialComponent: ClassTag
   ](data: MultibandTileLayerRDD[K]):MultibandTileLayerRDD[K] = {
     val filtered = data.filter( tuple => {
-      val sKey = tuple._1.getComponent[SpatialKey]
+      val sKey =
+        tuple._1 match {
+          case key: SpatialKey =>
+            key
+          case key:SpaceTimeKey =>
+            key.spatialKey
+          case key: Any =>
+            throw new IllegalArgumentException(s"Unsupported key type: $key")
+        }
       if(sKey.col<0 || sKey.row<0){
         logger.debug("Preemptively filtering negative spatial key: " + sKey)
         false
