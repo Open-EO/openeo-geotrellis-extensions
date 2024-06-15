@@ -56,16 +56,10 @@ class CustomizableHttpRangeReaderTest {
       // val url = "https://artifactory.vgt.vito.be/artifactory/testdata-public/S2_B04_timeseries.tiff" // used behind the shaky request
       val tiffRs = GeoTiffRasterSource(url)
 
-      // Without throwError in callback:
+      // log output:
       //   Attempt 1 failed in context: 'readClippedRange' Scheduled retry in PT20S
       //   Attempt 2 failed in context: 'readClippedRange' Scheduled retry in PT3S
       //   Attempt 3 failed in context: 'readClippedRange' result code: 500
-      //   Attempt 4 failed in context: 'readClippedRange' java.net.SocketTimeoutException: Read timed out
-
-      // With throwError in callback (not recommended):
-      //   Attempt 1 failed in context: 'readClippedRange' Scheduled retry in PT20S
-      //   Attempt 2 failed in context: 'readClippedRange' Scheduled retry in PT32S
-      //   Attempt 3 failed in context: 'readClippedRange' scalaj.http.HttpStatusException: 500 Error: HTTP/1.0 500 Internal Server Error
       //   Attempt 4 failed in context: 'readClippedRange' java.net.SocketTimeoutException: Read timed out
 
       val newValue = getCornerPixelValue(tiffRs)

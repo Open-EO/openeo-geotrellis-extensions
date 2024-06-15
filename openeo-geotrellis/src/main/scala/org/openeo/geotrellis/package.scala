@@ -161,11 +161,14 @@ package object geotrellis {
 
   /**
    * taken from DefaultProcessApi
+   * Specific to retry HttpResponse, without throwError logic.
    */
   def withRetryAfterRetries[R](context: String)(httpResponseCallback: => HttpResponse[R])(implicit logger: Logger): HttpResponse[R] = {
     val retryableResult: HttpResponse[R] => Boolean = r => r.is5xx
     val retryableException: Throwable => Boolean = {
-      case HttpStatusException(statusCode, _, _) if statusCode >= 500 => true
+      case _: HttpStatusException =>
+        logger.warn("withRetryAfterRetries does not support .throwError logic.")
+        false
       case _: SocketTimeoutException => true
       case _: ConnectException => true // Got this when terminating test server in the middle of a request
       case e => logger.error(s"Not attempting to retry unrecoverable error in context: '$context' " + e.getMessage); false
@@ -190,24 +193,19 @@ package object geotrellis {
         logger.error(s"Failed after ${execution.getAttemptCount} attempt(s) in context: '$context'" + e.getMessage)
       })
 
-    val isRateLimitingResponse: HttpResponse[R] => Boolean = r => r.code == 429 // similar to isRateLimitingException
-    val isRateLimitingException: Throwable => Boolean = {
-      case HttpStatusException(429, _, _) => true
-      case _ => false
-    }
+    val isRateLimitingResponse: HttpResponse[R] => Boolean = r => r.code == 429
+    val isRateLimitingException: Throwable => Boolean = _ => false // handle errors in shakyConnectionRetryPolicy
     val rateLimitingRetryPolicy = new FailsafeRetryPolicy[HttpResponse[R]]()
       .handleResultIf(isRateLimitingResponse.asJava)
       .handleIf(isRateLimitingException.asJava)
       .withMaxAttempts(5)
       .withDelay((lastResponse: HttpResponse[R], _: Throwable, executionContext: ExecutionContext) => {
         val retryAfterSecondsCalculated = (20 * math.pow(1.6, executionContext.getAttemptCount - 1)).toLong
-        val retryAfterSeconds = if (lastResponse == null) retryAfterSecondsCalculated
-        else {
-          lastResponse.headers
-            .find { case (header, _) => header equalsIgnoreCase "retry-after" }
-            .map { case (_, values) => values.head.toLong }
-            .getOrElse(retryAfterSecondsCalculated)
-        }
+        val retryAfterSeconds = lastResponse.headers
+          .find { case (header, _) => header equalsIgnoreCase "retry-after" }
+          .map { case (_, values) => values.head.toLong }
+          .getOrElse(retryAfterSecondsCalculated)
+
         val duration = Duration.ofSeconds(retryAfterSeconds)
         logger.warn(s"Attempt ${executionContext.getAttemptCount} failed in context: '$context' Scheduled retry in $duration")
         duration
