@@ -16,6 +16,7 @@ import org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder
 import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.util
+import java.util.stream
 import scala.collection.JavaConverters._
 import scala.collection.immutable.Seq
 import scala.collection.mutable
@@ -200,13 +201,18 @@ class AggregateSpatialTest {
     builder.expressionEnd("median",emptyMap)
 
     val outDir = "/tmp/csvoutput2"
+    val dataCube = buildCubeRdd(ZonedDateTime.parse(from_date), ZonedDateTime.parse(to_date))
+    val cubeWithBandNames = new OpenEOProcesses().wrapCube(dataCube)
+    cubeWithBandNames.openEOMetadata.setBandNames( Seq("B04", "B05").asJava)
     computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(
       builder,
-      buildCubeRdd(ZonedDateTime.parse(from_date), ZonedDateTime.parse(to_date)),
+      cubeWithBandNames,
       ProjectedPolygons(Seq(polygon1, polygon2), "EPSG:4326"),
         outDir
     )
+    val headers: stream.Stream[String] = Files.list(Paths.get(outDir)).filter(_.toString.endsWith(".csv")).map(path => Source.fromFile(path.toFile).getLines().next())
 
+    assertEquals("date,feature_index,B04,B05",headers.findFirst().get())
     val groupedStats = parseCSV(outDir)
     val keys = Seq("2017-01-01T00:00:00.000Z", "2017-01-15T00:00:00.000Z", "2017-02-01T00:00:00.000Z")
     println(groupedStats)

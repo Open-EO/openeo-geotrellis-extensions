@@ -226,7 +226,13 @@ class AggregatePolygonProcess() {
 
     val builder = scriptBuilder.generateFunction()
     val expressionCols: Seq[Column] = bandColumns.flatMap(col => builder(dataframe.col(col), col))
-    dataframe.groupBy("feature_index").agg(expressionCols.head, expressionCols.tail: _*).coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+    val renamedCols =
+      if(maybeBandLabels.map(_.size).getOrElse(0) == expressionCols.size) {
+        expressionCols.zip(maybeBandLabels.get).map(t => t._1.as(t._2))
+      }else{
+        expressionCols
+      }
+    dataframe.groupBy("feature_index").agg(renamedCols.head, renamedCols.tail: _*).coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
   }
 
   def aggregateSpatialGeneric(scriptBuilder:SparkAggregateScriptBuilder, datacube : MultibandTileLayerRDD[SpaceTimeKey], polygonsWithIndexMapping: PolygonsWithIndexMapping, crs: CRS, bandCount:Int, outputPath:String): Unit = {
@@ -337,7 +343,13 @@ class AggregatePolygonProcess() {
     //Seq(count(col.isNull),count(not(col.isNull)),expr(s"percentile_approx(band_1,0.95)")
     val builder = scriptBuilder.generateFunction()
     val expressionCols: Seq[Column] = bandColumns.flatMap(col => builder(df.col(col), col))
-    dataframe.groupBy("date", "feature_index").agg(expressionCols.head, expressionCols.tail: _*).coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+    val renamedCols =
+    if(maybeBandLabels.map(_.size).getOrElse(0) == expressionCols.size) {
+      expressionCols.zip(maybeBandLabels.get).map(t => t._1.as(t._2))
+    }else{
+      expressionCols
+    }
+    dataframe.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*).coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
   }
 
   /*
