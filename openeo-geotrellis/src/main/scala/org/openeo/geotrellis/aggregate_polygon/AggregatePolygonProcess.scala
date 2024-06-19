@@ -209,15 +209,16 @@ class AggregatePolygonProcess() {
         }
         result
     }
+    val maybeLabels = new OpenEOProcesses().maybeBandLabels(datacube)
     val cellType = datacube.metadata.cellType
-    aggregateByPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath)
+    aggregateByPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath, maybeLabels)
   }
 
-  private def aggregateByPolygon(pixelRDD: RDD[Row], scriptBuilder: SparkAggregateScriptBuilder, bandCount: Int, cellType: CellType, outputPath: String): Unit = {
+  private def aggregateByPolygon(pixelRDD: RDD[Row], scriptBuilder: SparkAggregateScriptBuilder, bandCount: Int, cellType: CellType, outputPath: String, maybeBandLabels: Option[Seq[String]] = Option.empty[Seq[String]]): Unit = {
     val session = SparkSession.builder().config(pixelRDD.sparkContext.getConf).getOrCreate()
     val dataType = if (cellType.isFloatingPoint) DoubleType else IntegerType
 
-    val bandColumns = (0 until bandCount).map(b => f"band_$b")
+    val bandColumns = maybeBandLabels.getOrElse ( (0 until bandCount).map(b => f"band_$b") )
     val bandStructs = bandColumns.map(StructField(_, dataType, nullable = true))
 
     val schema = StructType(Seq(StructField("feature_index", IntegerType, nullable = true)) ++ bandStructs)
@@ -322,7 +323,7 @@ class AggregatePolygonProcess() {
       } else {
         IntegerType
       }
-    val bandColumns = maybeBandLabels.getOrElse (0 until bandCount).map(b => f"band_$b")
+    val bandColumns = maybeBandLabels.getOrElse ( (0 until bandCount).map(b => f"band_$b") )
 
     val bandStructs = bandColumns.map(StructField(_, dataType, true))
 
