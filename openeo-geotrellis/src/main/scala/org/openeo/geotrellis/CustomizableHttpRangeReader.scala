@@ -52,11 +52,6 @@ class CustomizableHttpRangeReader(request: HttpRequest, useHeadRequest: Boolean)
         .header("Range", s"bytes=${start}-${start + length}")
         .asBytes
     }
-    res.throwError
-
-    require(res.is2xx,
-      s"While reading ${request.url}, server returned status code ${res.code} with type ${res.contentType} and body ${new String(res.body)}")
-
-    res.body
+    res.throwError.body
   }
 }

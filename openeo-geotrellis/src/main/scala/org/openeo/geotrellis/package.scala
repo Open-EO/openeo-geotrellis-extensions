@@ -14,7 +14,7 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
 import software.amazon.awssdk.services.s3.{S3Client, S3Configuration}
 
-import java.net.{ConnectException, SocketTimeoutException, URI}
+import java.net.{SocketException, SocketTimeoutException, URI}
 import java.nio.file.{Path, Paths}
 import java.time.temporal.ChronoUnit
 import java.time.{Duration, Instant}
@@ -170,7 +170,7 @@ package object geotrellis {
         logger.warn("withRetryAfterRetries does not support .throwError logic.")
         false
       case _: SocketTimeoutException => true
-      case _: ConnectException => true // Got this when terminating test server in the middle of a request
+      case _: SocketException => true // Got this when terminating test server in the middle of a request
       case e => logger.error(s"Not attempting to retry unrecoverable error in context: '$context' " + e.getMessage); false
     }
 
