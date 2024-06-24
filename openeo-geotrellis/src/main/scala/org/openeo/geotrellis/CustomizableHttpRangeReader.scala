@@ -15,12 +15,10 @@ class CustomizableHttpRangeReader(request: HttpRequest, useHeadRequest: Boolean)
   import CustomizableHttpRangeReader._
 
   override lazy val totalLength: Long = {
-    val headers = if (useHeadRequest) {
-      withRetryAfterRetries("HEAD totalLength") {
+    val headers = withRetryAfterRetries("totalLength") {
+      if (useHeadRequest) {
         request.method("HEAD").asString
-      }
-    } else {
-      withRetryAfterRetries("GET totalLength") {
+      } else {
         request.method("GET").execute { _ => "" }
       }
     }
