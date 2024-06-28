@@ -1076,7 +1076,7 @@ class FileLayerProviderTest extends RasterMatchers{
     cubeSpatial.writeGeoTiff("tmp/testPixelValueOffsetNeededCorner.tiff")
     val arr = cubeSpatial.collect().array
     assertTrue(isNoData(arr(1)._2.toArrayTile().band(0).get(162, 250)))
-    assertEquals(172, arr(0)._2.toArrayTile().band(0).get(5, 5), 1)
+    assertEquals(187, arr(0)._2.toArrayTile().band(0).get(160, 5), 1)
   }
 
   @Test
@@ -1091,7 +1091,7 @@ class FileLayerProviderTest extends RasterMatchers{
     cubeSpatial.writeGeoTiff("tmp/testPixelValueOffsetNeededDark.tiff")
     val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
 
-    assertEquals(888, band.get(0, 0), 1)
+    assertEquals(682, band.get(20, 140), 1)
     assertEquals(-582, band.get(133, 151), 1)
   }
 
@@ -1141,16 +1141,22 @@ class FileLayerProviderTest extends RasterMatchers{
     new Directory(outDir.toFile).deepFiles.foreach(_.delete())
     Files.createDirectories(outDir)
 
-    val dateFrom = ZonedDateTime.parse("2024-04-02T00:00:00Z")
-    val dateTo = ZonedDateTime.parse("2024-04-03T00:00:00Z")
-
     val extent = Extent(178.7384, 70.769, 178.8548, 70.8254)
     val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, LatLng.proj4jCrs.toString)
     val utmCrs = CRS.fromName(crsName)
     val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, utmCrs)
     val poly2 = ProjectedPolygons(Array(reprojected), utmCrs)
 
-    val layer = LayerFixtures.sentinel2CubeCDSEGeneric((dateFrom, dateTo), poly2, bandNames = java.util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data"))
+    val jsonPath = "/org/openeo/geotrellis/testMissingS2DateLine.json"
+
+
+    val bandNames = java.util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data")
+
+    val layer = LayerFixtures.sentinel2Cube(
+      LocalDate.of(2024, 4, 2), poly2, jsonPath,
+      new DataCubeParameters,
+      bandNames,
+    )
 
     val layer_collected = layer.collect()
     assert(layer_collected.nonEmpty)

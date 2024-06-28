@@ -372,6 +372,26 @@ object LayerFixtures {
     // Use artifactory to avoid heavy git repo
     val basePathArtifactory = "https://artifactory.vgt.vito.be/artifactory/testdata-public"
 
+    /*
+    To upload new files;
+    - mount /eodata
+    - change openeo-opensearch-client to use fs instead of s3
+    - run this Python script, and copy the printed paths here:
+root = Path("/tmp/EODATA/")
+l = set(filter(lambda p: p.is_file(), root.rglob("*.*")))
+l = {f for f in l if os.stat(f).st_size > 0}
+l = set(map(lambda p: os.path.relpath(p, root), l))
+for p in l:
+    cmd = f'curl -uUSERNAME:PASS -T {root / p} "https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/{p}"'
+    print(cmd)
+    code = os.system(cmd)
+    if code != 0:
+        raise Exception("Failed: " + cmd)
+print("\n")
+for p in l:
+    print(f'"/eodata/{p}",')
+     */
+
     val artifactoryPaths = Set(
       "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/manifest.safe",
       "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/MTD_MSIL2A.xml",
@@ -406,6 +426,17 @@ object LayerFixtures {
       "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/GRANULE/L2A_T04WDD_A036821_20240324T230529/MTD_TL.xml",
       "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/manifest.safe",
       "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/MTD_MSIL2A.xml",
+      // testMissingS2DateLine
+      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T01WCU_20240402T003652.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T01WCU_20240402T003652.SAFE/MTD_MSIL2A.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T60WWD_20240402T003652.SAFE/MTD_MSIL2A.xml",
+      "/eodata/Sentinel-2/MSI/L1C/2024/04/02/S2B_MSIL1C_20240402T000609_N0510_R016_T01WCU_20240402T001958.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L1C/2024/04/02/S2B_MSIL1C_20240402T000609_N0510_R016_T01WCU_20240402T001958.SAFE/MTD_MSIL1C.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T60WWD_20240402T003652.SAFE/GRANULE/L2A_T60WWD_A036936_20240402T000609/IMG_DATA/R20m/T60WWD_20240402T000609_SCL_20m.jp2",
+      "/eodata/Sentinel-2/MSI/L1C/2024/04/02/S2B_MSIL1C_20240402T000609_N0510_R016_T60WWD_20240402T001958.SAFE/MTD_MSIL1C.xml",
+      "/eodata/Sentinel-2/MSI/L1C/2024/04/02/S2B_MSIL1C_20240402T000609_N0510_R016_T60WWD_20240402T001958.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T01WCU_20240402T003652.SAFE/GRANULE/L2A_T01WCU_A036936_20240402T000609/IMG_DATA/R20m/T01WCU_20240402T000609_SCL_20m.jp2",
+      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T60WWD_20240402T003652.SAFE/manifest.safe",
     )
 
     for (path <- artifactoryPaths) {
