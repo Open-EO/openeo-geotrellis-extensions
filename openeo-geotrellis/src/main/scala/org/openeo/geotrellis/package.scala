@@ -193,11 +193,10 @@ package object geotrellis {
         logger.error(s"Failed after ${execution.getAttemptCount} attempt(s) in context: '$context'" + e.getMessage)
       })
 
-    val isRateLimitingResponse: HttpResponse[R] => Boolean = r => r.code == 429
-    val isRateLimitingException: Throwable => Boolean = _ => false // handle errors in shakyConnectionRetryPolicy
+    val isRateLimitingResponse: (HttpResponse[R], Throwable) => Boolean =
+      (response, _ /* ignore exceptions, those are handled in shakyConnectionRetryPolicy */) => response.code == 429
     val rateLimitingRetryPolicy = new FailsafeRetryPolicy[HttpResponse[R]]()
-      .handleResultIf(isRateLimitingResponse.asJava)
-      .handleIf(isRateLimitingException.asJava)
+      .handleIf(isRateLimitingResponse.asJava)
       .withMaxAttempts(5)
       .withDelay((lastResponse: HttpResponse[R], _: Throwable, executionContext: ExecutionContext) => {
         val retryAfterSecondsCalculated = (20 * math.pow(1.6, executionContext.getAttemptCount - 1)).toLong
