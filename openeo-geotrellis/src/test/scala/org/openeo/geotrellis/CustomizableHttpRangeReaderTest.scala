@@ -6,9 +6,11 @@ import geotrellis.raster.geotiff.{GeoTiffRasterSource, GeoTiffReprojectRasterSou
 import geotrellis.raster.io.geotiff.SinglebandGeoTiff
 import geotrellis.util.RangeReader
 import geotrellis.vector.Extent
+import org.junit.Assert.assertEquals
 import org.junit.{Ignore, Test}
 
 import java.net.URI
+import java.time.Instant
 
 @Ignore("requires a file with Terrascope credentials")
 class CustomizableHttpRangeReaderTest {
@@ -46,13 +48,18 @@ class CustomizableHttpRangeReaderTest {
 
   @Test
   def testRetry(): Unit = {
-    for (i <- 0 to 5) {
-      println("Iteration " + i)
-      val tiffRs = GeoTiffReprojectRasterSource("https://services.terrascope.be/download/AgERA5/2024/20240418/AgERA5_dewpoint-temperature_20240418.tif",
-        LatLng)
+    // Run test server with this snippet: https://gist.github.com/EmileSonneveld/67f8a050d5891cb96bb969d634796841
+    val url = "http://localhost:8000/shaky?token=rand" + Instant.now()
+    // val url = "https://services.terrascope.be/download/AgERA5/2024/20240418/AgERA5_dewpoint-temperature_20240418.tif" // Used to give 429 quickly
+    val tiffRs = GeoTiffRasterSource(url)
 
-      val newValue = getCornerPixelValue(tiffRs)
-      println(newValue)
-    }
+    // log output:
+    //   Attempt 1 failed in context: 'readClippedRange' Scheduled retry in PT20S
+    //   Attempt 2 failed in context: 'readClippedRange' Scheduled retry in PT3S
+    //   Attempt 3 failed in context: 'readClippedRange' result code: 500
+    //   Attempt 4 failed in context: 'readClippedRange' java.net.SocketTimeoutException: Read timed out
+
+    val newValue = getCornerPixelValue(tiffRs)
+    assertEquals(-2147483648, newValue)
   }
 }
