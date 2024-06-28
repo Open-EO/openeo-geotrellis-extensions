@@ -1147,15 +1147,12 @@ class FileLayerProviderTest extends RasterMatchers{
     val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, utmCrs)
     val poly2 = ProjectedPolygons(Array(reprojected), utmCrs)
 
-    val jsonPath = "/org/openeo/geotrellis/testMissingS2DateLine.json"
-
-
-    val bandNames = java.util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data")
-
     val layer = LayerFixtures.sentinel2Cube(
-      LocalDate.of(2024, 4, 2), poly2, jsonPath,
+      LocalDate.of(2024, 4, 2),
+      poly2,
+      "/org/openeo/geotrellis/testMissingS2DateLine.json",
       new DataCubeParameters,
-      bandNames,
+      java.util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data"),
     )
 
     val layer_collected = layer.collect()
