@@ -343,7 +343,11 @@ class FileLayerProviderTest extends RasterMatchers{
     val ids = result._1.values.map(_.data._2.id).distinct().collect()
     //overlap filter has removed the other potential sources
     assertEquals(1,ids.length)
-    assertEquals("urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220701T103629_32ULB_TOC_V210",ids(0))
+    // Tile ID changed in catalog, and might change back. So allow both versions:
+    assertTrue(Seq(
+      "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220701T103629_32ULB_TOC_V210",
+      "urn:eop:VITO:TERRASCOPE_S2_TOC_V2:S2B_20220701T103629_31UGS_TOC_V210",
+    ).contains(ids(0)))
     assertEquals(cols*rows,result._1.count(),0.1)
   }
 
