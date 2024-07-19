@@ -1,13 +1,14 @@
 package org.openeo.geotrellis
 
-import geotrellis.proj4.LatLng
 import geotrellis.raster.RasterSource
-import geotrellis.raster.geotiff.{GeoTiffRasterSource, GeoTiffReprojectRasterSource}
+import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.SinglebandGeoTiff
 import geotrellis.util.RangeReader
 import geotrellis.vector.Extent
+import net.jodah.failsafe.FailsafeException
 import org.junit.Assert.assertEquals
 import org.junit.{Ignore, Test}
+import scalaj.http.HttpStatusException
 
 import java.net.URI
 import java.time.Instant
@@ -45,6 +46,30 @@ class CustomizableHttpRangeReaderTest {
     extent.buffer(extent.width * relativeDistance, extent.height * relativeDistance)
 
   def getCornerPixelValue(rs: RasterSource): Int = rs.read().get._1.toArrayTile().band(0).get(5, 5)
+
+  @Test(expected = classOf[HttpStatusException], timeout = 10000L)
+  def test400Exception(): Unit = {
+    // Add '|| r.is4xx' to 'retryableResult' to see what retrying on invalid 400 looks like.
+    val url = "http://localhost:8000/echo?response_code=400"
+    val tiffRs = GeoTiffRasterSource(url)
+    getCornerPixelValue(tiffRs)
+  }
+
+  @Test(expected = classOf[FailsafeException], timeout = 5000L)
+  def testNonExiestentHostException(): Unit = {
+    // Add this to 'retryableException' to what retrying on invalid DNS looks like:
+    //    case _: java.net.UnknownHostException => true
+    val url = "http://non-existent-dns-jsfdjsldfnsdfndslf.com/img.tif"
+    val tiffRs = GeoTiffRasterSource(url)
+    getCornerPixelValue(tiffRs)
+  }
+
+  @Test(expected = classOf[Exception], timeout = 5000L)
+  def testNonExiestentPathException(): Unit = {
+    val url = "/data/fake-folder-jsfdjsldfnsdfndslf/img.tif"
+    val tiffRs = GeoTiffRasterSource(url)
+    getCornerPixelValue(tiffRs)
+  }
 
   @Test
   def testRetry(): Unit = {
