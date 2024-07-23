@@ -1165,6 +1165,11 @@ class FileLayerProviderTest extends RasterMatchers{
     cubeSpatial.writeGeoTiff(outDir + "/testMissingS2DateLine_" + crsName.replace(":", "_") + ".tiff")
   }
 
+  @Test
+  def testMissingS2DateLineOutside(): Unit = {
+    assertThrows[AssertionError](testMissingS2DateLine("EPSG:32631"))
+  }
+
   private def keysForLargeArea(useBBox:Boolean=false) = {
     val date = LocalDate.of(2022, 2, 11).atStartOfDay(UTC)
     val crs = CRS.fromEpsgCode(32630)

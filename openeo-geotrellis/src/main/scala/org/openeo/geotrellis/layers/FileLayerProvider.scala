@@ -886,6 +886,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val reprojectedBoundingBox: ProjectedExtent = DatacubeSupport.targetBoundingBox(fullBBox, layoutScheme)
     val alignedExtent = worldLayout.createAlignedRasterExtent(reprojectedBoundingBox.extent)
 
+    val polygonIsUTM = polygons_crs.proj4jCrs.getProjection.getName == "utm"
+    if (polygonIsUTM) {
+      // This is an extend that has the highest sensible values for northern and/or southern hemisphere UTM zones
+      val utmProjectedBounds = Extent(166021.44, 0000000.00, 833978.56, 10000000)
+      assert(alignedExtent.extent.intersects(utmProjectedBounds), "Extend should be in valid values of UTM zone to avoid distortion when reprojecting.")
+    }
 
     logger.info(s"Loading ${openSearchCollectionId} with params ${datacubeParams.getOrElse(new DataCubeParameters)} and bands ${openSearchLinkTitles.toList.mkString(";")} initial layout: ${worldLayout}")
 
