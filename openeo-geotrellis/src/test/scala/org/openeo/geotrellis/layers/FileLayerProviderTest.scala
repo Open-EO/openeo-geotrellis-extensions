@@ -1137,6 +1137,7 @@ class FileLayerProviderTest extends RasterMatchers{
   @ParameterizedTest
   @ValueSource(strings = Array("EPSG:32601", "EPSG:32660"))
   def testMissingS2DateLine(crsName: String): Unit = {
+    // crsName "EPSG:4326" only works with the environment variable PROJ_LIB=/usr/share/proj
     val outDir = Paths.get("tmp/FileLayerProviderTest_" + crsName.replace(":", "_") + "/")
     new Directory(outDir.toFile).deepFiles.foreach(_.delete())
     Files.createDirectories(outDir)

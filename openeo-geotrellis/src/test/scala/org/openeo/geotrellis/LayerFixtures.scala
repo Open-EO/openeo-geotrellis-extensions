@@ -477,7 +477,8 @@ for p in l:
     val factory = new PyramidFactory(
       client, "Sentinel2", bandNames,
       null,
-      maxSpatialResolution = CellSize(10, 10),
+      maxSpatialResolution = if (projected_polygons_native_crs.crs == LatLng)
+        CellSize(0.0001471299295632278, 0.0001471299295632278) else CellSize(10, 10),
     )
     factory.crs = projected_polygons_native_crs.crs
 

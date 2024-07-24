@@ -804,6 +804,25 @@ object FileLayerProvider {
           Some(bbox, dates)
         }
       })
+
+  private def healthCheckExtent(projectedExtent: ProjectedExtent): Unit = {
+    val horizontal_tolerance = 1.5
+    val polygonIsUTM = projectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
+    if (polygonIsUTM) {
+      // This is an extend that has the highest sensible values for northern and/or southern hemisphere UTM zones
+      val utmProjectedBoundsOriginal = Extent(166021.44, 0000000.00, 833978.56, 10000000)
+      val utmProjectedBounds = utmProjectedBoundsOriginal.buffer(
+        utmProjectedBoundsOriginal.width * horizontal_tolerance, 0)
+      assert(projectedExtent.extent.intersects(utmProjectedBounds),
+        "Extend should be in valid values of UTM zone to avoid distortion when reprojecting: " + projectedExtent.extent)
+    } else if (projectedExtent.crs == LatLng) {
+      assert(projectedExtent.extent.xmin >= -180 * horizontal_tolerance)
+      assert(projectedExtent.extent.xmax <= +180 * horizontal_tolerance)
+      assert(projectedExtent.extent.ymin >= -90)
+      assert(projectedExtent.extent.ymax <= +90)
+    }
+  }
+
 }
 
 class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
@@ -886,12 +905,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val reprojectedBoundingBox: ProjectedExtent = DatacubeSupport.targetBoundingBox(fullBBox, layoutScheme)
     val alignedExtent = worldLayout.createAlignedRasterExtent(reprojectedBoundingBox.extent)
 
-    val polygonIsUTM = polygons_crs.proj4jCrs.getProjection.getName == "utm"
-    if (polygonIsUTM) {
-      // This is an extend that has the highest sensible values for northern and/or southern hemisphere UTM zones
-      val utmProjectedBounds = Extent(166021.44, 0000000.00, 833978.56, 10000000)
-      assert(alignedExtent.extent.intersects(utmProjectedBounds), "Extend should be in valid values of UTM zone to avoid distortion when reprojecting.")
-    }
 
     logger.info(s"Loading ${openSearchCollectionId} with params ${datacubeParams.getOrElse(new DataCubeParameters)} and bands ${openSearchLinkTitles.toList.mkString(";")} initial layout: ${worldLayout}")
 
@@ -1247,13 +1260,26 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
        * Several edge cases to cover:
        *  - if feature extent is whole world, it may be invalid in target crs
        *  - if feature is in utm, target extent may be invalid in feature crs
-       *  this is why we take intersection
+       *  this is why we take intersection.
+       *  We convert both extents to a common CRS before converting ti to the target CRS.
+       *  If one of the CRSes can cover the whole world (Non-UTM), we choose this CRS.
        */
-      val featureExtentInTargetCRS = feature.rasterExtent.get.reproject(feature.crs.get, targetExtent.crs)
+      val featureIsUTM = feature.crs.get.proj4jCrs.getProjection.getName == "utm"
+      val targetIsUTM = targetExtent.crs.proj4jCrs.getProjection.getName == "utm"
+      val commonCrs = if (!targetIsUTM) targetExtent.crs
+      else if (!featureIsUTM) feature.crs.get
+      else targetExtent.crs // Avoid conversion imprecision by intersecting directly in the target CRS
 
-      val intersection = featureExtentInTargetCRS.intersection(targetExtent.extent).map(_.buffer(1.0))
-        .getOrElse(featureExtentInTargetCRS)
-      val tmp = expandToCellSize(intersection, theResolution)
+      val featureExtentInCommonCRS = feature.rasterExtent.get.reproject(feature.crs.get, commonCrs)
+      val targetExtentInCommonCRS = targetExtent.extent.reproject(targetExtent.crs, commonCrs)
+
+      val intersection = featureExtentInCommonCRS.intersection(targetExtentInCommonCRS).map(_.buffer(1.0))
+      val intersectionTargetCrs = intersection match {
+        case None => targetExtent.extent.reproject(targetExtent.crs, targetExtent.crs)
+        case Some(value) => value.reproject(commonCrs, targetExtent.crs)
+      }
+      val tmp = expandToCellSize(intersectionTargetCrs, theResolution)
+      healthCheckExtent(ProjectedExtent(tmp, targetExtent.crs))
 
       val alignedToTargetExtent = re.createAlignedRasterExtent(tmp)
       Some(alignedToTargetExtent.toGridType[Long])
