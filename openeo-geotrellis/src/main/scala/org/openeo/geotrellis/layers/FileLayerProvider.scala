@@ -27,11 +27,11 @@ import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
 import org.openeo.geotrellis.tile_grid.TileGrid
-import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, sortableSourceName}
+import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtent, sortableSourceName}
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg, retryForever}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
-import org.slf4j.LoggerFactory
+import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.{IOException, Serializable}
 import java.net.URI
@@ -224,7 +224,7 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 
 object FileLayerProvider {
 
-  private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
   private val maxRetries = sys.env.getOrElse("GDALREAD_MAXRETRIES", "10").toInt
 
   {
@@ -804,25 +804,6 @@ object FileLayerProvider {
           Some(bbox, dates)
         }
       })
-
-  private def healthCheckExtent(projectedExtent: ProjectedExtent): Unit = {
-    val horizontal_tolerance = 1.5
-    val polygonIsUTM = projectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
-    if (polygonIsUTM) {
-      // This is an extend that has the highest sensible values for northern and/or southern hemisphere UTM zones
-      val utmProjectedBoundsOriginal = Extent(166021.44, 0000000.00, 833978.56, 10000000)
-      val utmProjectedBounds = utmProjectedBoundsOriginal.buffer(
-        utmProjectedBoundsOriginal.width * horizontal_tolerance, 0)
-      assert(projectedExtent.extent.intersects(utmProjectedBounds),
-        "Extend should be in valid values of UTM zone to avoid distortion when reprojecting: " + projectedExtent.extent)
-    } else if (projectedExtent.crs == LatLng) {
-      assert(projectedExtent.extent.xmin >= -180 * horizontal_tolerance)
-      assert(projectedExtent.extent.xmax <= +180 * horizontal_tolerance)
-      assert(projectedExtent.extent.ymin >= -90)
-      assert(projectedExtent.extent.ymax <= +90)
-    }
-  }
-
 }
 
 class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,

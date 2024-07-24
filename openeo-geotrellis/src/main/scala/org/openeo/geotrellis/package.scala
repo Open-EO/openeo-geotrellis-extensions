@@ -1,6 +1,8 @@
 package org.openeo
 
+import _root_.geotrellis.proj4.LatLng
 import _root_.geotrellis.raster._
+import _root_.geotrellis.vector._
 import org.slf4j.Logger
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
@@ -151,5 +153,29 @@ package object geotrellis {
 
   object TemporalResolution extends Enumeration {
     val seconds, days, undefined = Value
+  }
+
+  def healthCheckExtent(projectedExtent: ProjectedExtent)(implicit logger: Logger): Boolean = {
+    val horizontal_tolerance = 1.1
+    val polygonIsUTM = projectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
+    if (polygonIsUTM) {
+      // This is an extend that has the highest sensible values for northern and/or southern hemisphere UTM zones
+      val utmProjectedBoundsOriginal = Extent(166021.44, 0000000.00, 833978.56, 10000000)
+      val utmProjectedBounds = utmProjectedBoundsOriginal.buffer(
+        utmProjectedBoundsOriginal.width * horizontal_tolerance, 0)
+      if (!projectedExtent.extent.intersects(utmProjectedBounds)) {
+        logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
+        return false
+      }
+    } else if (projectedExtent.crs == LatLng) {
+      if ((projectedExtent.extent.xmin < -180 * horizontal_tolerance)
+        || (projectedExtent.extent.xmax > +180 * horizontal_tolerance)
+        || (projectedExtent.extent.ymin < -90)
+        || (projectedExtent.extent.ymax > +90)) {
+        logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
+        return false
+      }
+    }
+    true
   }
 }
