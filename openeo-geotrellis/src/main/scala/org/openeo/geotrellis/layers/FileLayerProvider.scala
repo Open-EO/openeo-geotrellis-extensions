@@ -475,6 +475,7 @@ object FileLayerProvider {
                                    cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy,
                                    partitionerOption: Option[SpacePartitioner[SpaceTimeKey]] = None,
                                    datacubeParams : Option[DataCubeParameters] = None,
+                                                         expectedBandCount : Int = -1
                                   ): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
 
     if(cloudFilterStrategy!=NoCloudFilterStrategy) {
@@ -531,7 +532,14 @@ object FileLayerProvider {
       loadedPartitions
 
     },preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile)]) => {
-      val mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1).mapValues(_.map(_._2).reduceOption(_ merge _))
+      var mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1).mapValues(_.map(_._2).reduceOption(_ merge _))
+      for (x <- 0 until expectedBandCount){
+        if(!mergedBands.contains(x)){
+          logger.warn("Band " + x + " is missing in the input data. Filling with empty tile.")
+          val someTile = mergedBands.head._2.get
+          mergedBands = mergedBands + (x -> Some(someTile.prototype(someTile.cols,someTile.rows)))
+        }
+      }
       MultibandTile(mergedBands.toSeq.sortBy(_._1).flatMap(_._2.get.bands))
 
     } ).filter { case (_, tile) => retainNoDataTiles ||  !tile.bands.forall(_.isNoDataTile) }
@@ -1175,7 +1183,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         if(!datacubeParams.map(_.loadPerProduct).getOrElse(false) || theMaskStrategy != NoCloudFilterStrategy ){
           rasterRegionsToTiles(regions, metadata, retainNoDataTiles, theMaskStrategy, partitioner, datacubeParams)
         }else{
-          rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams)
+          rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size)
         }
       logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner}")
       cube

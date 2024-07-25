@@ -14,7 +14,7 @@ import org.slf4j.{Logger, LoggerFactory}
 import scalaj.http.{Http, HttpResponse}
 
 import java.io.InputStream
-import java.net.{SocketTimeoutException, URI}
+import java.net.{SocketException, SocketTimeoutException, URI}
 import java.time.{Duration, ZonedDateTime}
 import java.time.format.DateTimeFormatter.ISO_INSTANT
 import java.time.temporal.ChronoUnit.SECONDS
@@ -40,6 +40,7 @@ object DefaultProcessApi {
       case SentinelHubException(_, statusCode, _, responseBody) if statusCode >= 500
         && !responseBody.contains("newLimit > capacity") && !responseBody.contains("Illegal request to https") => true
       case _: SocketTimeoutException => true
+      case _: SocketException => true
       case _: CirceException => true
       case e => logger.error(s"Not attempting to retry unrecoverable error in context: $context", e); false
     }
@@ -89,7 +90,7 @@ object DefaultProcessApi {
   }
 }
 
-class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
+class DefaultProcessApi(endpoint: String, noDataValue: Double = 0) extends ProcessApi with Serializable {
   // TODO: clean up JSON construction/parsing
   import DefaultProcessApi._
 
@@ -211,6 +212,6 @@ class DefaultProcessApi(endpoint: String) extends ProcessApi with Serializable {
       .toArrayTile()
       // unless handled differently, NODATA pîxels are 0 according to
       // https://docs.sentinel-hub.com/api/latest/user-guides/datamask/#datamask---handling-of-pixels-with-no-data
-      .mapBands { case (_, tile) => tile.withNoData(Some(0)) }, processingUnitsSpent)
+      .mapBands { case (_, tile) => tile.withNoData(Some(noDataValue)) }, processingUnitsSpent)
  }
 }

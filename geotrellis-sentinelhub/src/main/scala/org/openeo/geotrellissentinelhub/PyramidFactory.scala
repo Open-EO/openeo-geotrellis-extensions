@@ -28,36 +28,71 @@ object PyramidFactory {
 
   private val maxKeysPerPartition = 20
 
+  def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String,
+                                 clientId: String, clientSecret: String,
+                                 zookeeperConnectionString: String, zookeeperAccessTokenPath: String,
+                                 processingOptions: util.Map[String, Any], sampleType: SampleType,
+                                 maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
+    withoutGuardedRateLimiting(endpoint, collectionId, datasetId, clientId, clientSecret,
+      zookeeperConnectionString, zookeeperAccessTokenPath, processingOptions,
+      sampleType, maxSpatialResolution, maxSoftErrorsRatio, 0)
+
   // convenience methods for Python client
   // Terrascope setup with Zookeeper cache and default Auth API endpoint
   def withoutGuardedRateLimiting(endpoint: String, collectionId: String, datasetId: String,
                                  clientId: String, clientSecret: String,
                                  zookeeperConnectionString: String, zookeeperAccessTokenPath: String,
                                  processingOptions: util.Map[String, Any], sampleType: SampleType,
-                                 maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
+                                 maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double,
+                                 noDataValue: Double): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint),
+      new DefaultProcessApi(endpoint, noDataValue),
       new MemoizedCuratorCachedAccessTokenWithAuthApiFallbackAuthorizer(zookeeperConnectionString,
         zookeeperAccessTokenPath, clientId, clientSecret),
       processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
+
+  def withFixedAccessToken(endpoint: String, collectionId: String, datasetId: String,
+                           accessToken: String,
+                           processingOptions: util.Map[String, Any], sampleType: SampleType,
+                           maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
+    withFixedAccessToken(endpoint, collectionId, datasetId, accessToken, processingOptions,
+      sampleType, maxSpatialResolution, maxSoftErrorsRatio, 0)
 
   // CDSE setup with user's Keycloak access token
   def withFixedAccessToken(endpoint: String, collectionId: String, datasetId: String,
                            accessToken: String,
                            processingOptions: util.Map[String, Any], sampleType: SampleType,
-                           maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
+                           maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double,
+                           noDataValue: Double): PyramidFactory =
     new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint),
-      new DefaultProcessApi(endpoint), new FixedAccessTokenAuthorizer(accessToken),
+      new DefaultProcessApi(endpoint, noDataValue), new FixedAccessTokenAuthorizer(accessToken),
       processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
 
   // CDSE setup with workaround for Keycloak access token not working yet
   def withCustomAuthApi(endpoint: String, collectionId: String, datasetId: String,
                         authApiUrl: String, clientId: String, clientSecret: String,
                         processingOptions: util.Map[String, Any], sampleType: SampleType,
-                        maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double): PyramidFactory =
-    new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint),
+                        maxSpatialResolution: CellSize, maxSoftErrorsRatio: Double,
+                        noDataValue: Double = 0): PyramidFactory =
+    new PyramidFactory(collectionId, datasetId, new DefaultCatalogApi(endpoint), new DefaultProcessApi(endpoint, noDataValue),
       new MemoizedAuthApiAccessTokenAuthorizer(clientId, clientSecret, authApiUrl),
       processingOptions, sampleType, maxSpatialResolution = maxSpatialResolution, maxSoftErrorsRatio = maxSoftErrorsRatio)
+
+  private def byTileId(productId: String, tileIdCriteria: util.Map[String, Any]): Boolean = {
+    lazy val actualTileId = Sentinel2L2a.extractTileId(productId)
+
+    val matchesSingleTileId = tileIdCriteria.get("eq") match {
+      case tileId: String => actualTileId contains tileId
+      case _ => true
+    }
+
+    val matchesMultipleTileIds = tileIdCriteria.get("in") match {
+      case tileIds: util.List[String] => tileIds.asScala.exists(actualTileId.contains)
+      case _ => true
+    }
+
+    matchesSingleTileId && matchesMultipleTileIds
+  }
 }
 
 class PyramidFactory(collectionId: String, datasetId: String, catalogApi: CatalogApi, processApi: ProcessApi,
@@ -234,7 +269,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
     // TODO: use ProjectedPolygons type
     // TODO: reduce code duplication with pyramid_seq()
     if (dataCubeParameters.timeDimensionFilter.isDefined) {
-      throw new IllegalArgumentException("OpenEO does not support timeDimensionFilter yet for SentinelHub layers. (Probably used in filter_labels)")
+      throw new IllegalArgumentException("filter_labels on time dimension is not supported for sentinelhub collections.")
     }
 
     val cube: MultibandTileLayerRDD[SpaceTimeKey] = {
@@ -353,10 +388,13 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               }
             }
 
-            val features = authorized { accessToken =>
-              _catalogApi.search(collectionId, multiPolygon, polygons_crs,
-                from, to, accessToken, Criteria.toQueryProperties(metadata_properties, collectionId))
-            }
+            val features = Option(metadata_properties.get("tileId"))
+              .foldLeft(authorized { accessToken =>
+                _catalogApi.search(collectionId, multiPolygon, polygons_crs,
+                  from, to, accessToken, Criteria.toQueryProperties(metadata_properties, collectionId))
+              }) { (acc, tileIdCriteria) =>
+                acc.filterKeys(byTileId(_, tileIdCriteria))
+              }
 
             tracker.addInputProductsWithUrls(
               collectionId,
@@ -364,7 +402,6 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 case (id, Feature(_, FeatureData(_, selfUrl))) => new ProductIdAndUrl(id, selfUrl.orNull)
               }.toList.asJava
             )
-
 
             // In test over England, there where up to 0.003 deviations on long line segments due to curvature
             // change between CRS. Here we convert that distance to the value in the polygon specific CRS.

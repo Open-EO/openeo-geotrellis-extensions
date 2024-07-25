@@ -30,7 +30,7 @@ class SentinelXMLMetadataRasterSourceTest {
     assertEquals( 171.800, source(0).read().get.tile.band(0).getDouble(0,0),0.001)
     assertEquals(  65.707, source(1).read().get.tile.band(0).getDouble(0,0),0.001)
     assertEquals( 251.333, source(2).read().get.tile.band(0).getDouble(0,0),0.001)
-    assertEquals(source.head.name.toString, path.toString + "_171")
+    assertEquals(source.head.name.toString, path.toString + "_171800")
     GeoTiff(source.head.read().get, source.head.crs).write(outDir + "testReadAngles.tif")
   }
 

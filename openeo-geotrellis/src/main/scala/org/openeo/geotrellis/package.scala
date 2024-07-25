@@ -2,22 +2,27 @@ package org.openeo
 
 import _root_.geotrellis.proj4.LatLng
 import _root_.geotrellis.raster._
+import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent, ExecutionScheduledEvent}
+import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy => FailsafeRetryPolicy}
 import _root_.geotrellis.vector._
 import org.slf4j.Logger
+import scalaj.http.{HttpResponse, HttpStatusException}
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
-import software.amazon.awssdk.core.retry.RetryPolicy
 import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy
 import software.amazon.awssdk.core.retry.conditions.{OrRetryCondition, RetryCondition}
+import software.amazon.awssdk.core.retry.{RetryPolicy => AwsRetryPolicy}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
 import software.amazon.awssdk.services.s3.{S3Client, S3Configuration}
 
-import java.net.URI
+import java.net.{SocketException, SocketTimeoutException, URI}
 import java.nio.file.{Path, Paths}
+import java.time.temporal.ChronoUnit
 import java.time.{Duration, Instant}
 import java.util.concurrent.ConcurrentHashMap
 import scala.compat.java8.FunctionConverters._
+
 
 package object geotrellis {
   def logTiming[R](context: String)(action: => R)(implicit logger: Logger): R = {
@@ -53,7 +58,7 @@ package object geotrellis {
         .maxBackoffTime(Duration.ofMillis(15))
         .build()
     val retryPolicy =
-      RetryPolicy.defaultRetryPolicy()
+      AwsRetryPolicy.defaultRetryPolicy()
         .toBuilder()
         .retryCondition(retryCondition)
         .backoffStrategy(backoffStrategy)
@@ -153,6 +158,65 @@ package object geotrellis {
 
   object TemporalResolution extends Enumeration {
     val seconds, days, undefined = Value
+  }
+
+
+  /**
+   * taken from DefaultProcessApi
+   * Specific to retry HttpResponse, without throwError logic.
+   */
+  def withRetryAfterRetries[R](context: String)(httpResponseCallback: => HttpResponse[R])(implicit logger: Logger): HttpResponse[R] = {
+    val retryableResult: HttpResponse[R] => Boolean = r => r.is5xx
+    val retryableException: Throwable => Boolean = {
+      case _: HttpStatusException =>
+        logger.warn("withRetryAfterRetries does not support .throwError logic.")
+        false
+      case _: SocketTimeoutException => true
+      case _: SocketException => true // Got this when terminating test server in the middle of a request
+      case e => logger.error(s"Not attempting to retry unrecoverable error in context: '$context' " + e.getMessage); false
+    }
+
+    val shakyConnectionRetryPolicy = new FailsafeRetryPolicy[HttpResponse[R]]()
+      .handleResultIf(retryableResult.asJava)
+      .handleIf(retryableException.asJava)
+      .withBackoff(1, 1000, ChronoUnit.SECONDS) // should not reach maxDelay because of maxAttempts 5
+      .withJitter(0.5)
+      .withMaxAttempts(5)
+      .onFailedAttempt((attempt: ExecutionAttemptedEvent[HttpResponse[R]]) => {
+        val msg = if (attempt.getLastFailure != null) {
+          attempt.getLastFailure
+        } else if (attempt.getLastResult != null) {
+          "result code: " + attempt.getLastResult.code
+        } else ""
+        logger.warn(s"Attempt ${attempt.getAttemptCount} failed in context: '$context' " + msg)
+      })
+      .onFailure((execution: ExecutionCompletedEvent[HttpResponse[R]]) => {
+        val e = execution.getFailure
+        logger.error(s"Failed after ${execution.getAttemptCount} attempt(s) in context: '$context'" + e.getMessage)
+      })
+
+    val isRateLimitingResponse: (HttpResponse[R], Throwable) => Boolean =
+      (response, _ /* ignore exceptions, those are handled in shakyConnectionRetryPolicy */) => response.code == 429
+    val rateLimitingRetryPolicy = new FailsafeRetryPolicy[HttpResponse[R]]()
+      .handleIf(isRateLimitingResponse.asJava)
+      .withMaxAttempts(5)
+      .withDelay((lastResponse: HttpResponse[R], _: Throwable, executionContext: ExecutionContext) => {
+        val retryAfterSecondsCalculated = (20 * math.pow(1.6, executionContext.getAttemptCount - 1)).toLong
+        val retryAfterSeconds = lastResponse.headers
+          .find { case (header, _) => header equalsIgnoreCase "retry-after" }
+          .map { case (_, values) => values.head.toLong }
+          .getOrElse(retryAfterSecondsCalculated)
+
+        val duration = Duration.ofSeconds(retryAfterSeconds)
+        logger.warn(s"Attempt ${executionContext.getAttemptCount} failed in context: '$context' Scheduled retry in $duration")
+        duration
+      })
+
+    Failsafe
+      .`with`(java.util.Arrays.asList(shakyConnectionRetryPolicy, rateLimitingRetryPolicy))
+      .get(() => {
+        httpResponseCallback
+      })
   }
 
   def healthCheckExtent(projectedExtent: ProjectedExtent)(implicit logger: Logger): Boolean = {

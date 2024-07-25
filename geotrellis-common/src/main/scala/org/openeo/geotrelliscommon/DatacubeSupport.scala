@@ -235,22 +235,24 @@ object DatacubeSupport {
             if (logger.isDebugEnabled) {
               logger.debug(s"Spacetime mask is used to reduce input.")
             }
-            val filtered = spacetimeMask.withContext{_.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))}
+
             val alignedMask: MultibandTileLayerRDD[SpaceTimeKey] =
               if(spacetimeMask.metadata.crs.equals(metadata.crs) && spacetimeMask.metadata.layout.equals(metadata.layout)) {
-                filtered
+                spacetimeMask
               }else{
                 logger.debug(s"mask: automatically resampling mask to match datacube: ${spacetimeMask.metadata}")
-                filtered.reproject(metadata.crs,metadata.layout,16,rdd.partitioner)._2
+                spacetimeMask.reproject(metadata.crs,metadata.layout,16,rdd.partitioner)._2
               }
+
+            // retain only tiles where there is at least one valid pixel (mask value == 0), others will be fully removed
+            val filtered = alignedMask.withContext{_.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))}
 
             if (pixelwiseMasking) {
               val spacetimeDataContextRDD = ContextRDD(rdd, metadata)
               // maskingCube is only set from Python when replacement is not defined
-              rasterMaskGeneric(spacetimeDataContextRDD, alignedMask, null, ignoreKeysWithoutMask = true)
+              rasterMaskGeneric(spacetimeDataContextRDD, filtered, null, ignoreKeysWithoutMask = true)
             } else {
-              // Because we are working on Tiles here and not RasterSources, this operation can already download the pixel data:
-              rdd.join(alignedMask).mapValues(_._1)
+              rdd.join(filtered).mapValues(_._1)
             }
           } else {
             rdd
