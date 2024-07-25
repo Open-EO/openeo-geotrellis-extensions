@@ -1250,8 +1250,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
        *  - if feature extent is whole world, it may be invalid in target crs
        *  - if feature is in utm, target extent may be invalid in feature crs
        *  this is why we take intersection.
-       *  We convert both extents to a common CRS before converting ti to the target CRS.
-       *  If one of the CRSes can cover the whole world (Non-UTM), we choose this CRS.
+       *  We convert both extents to a common CRS before taking the intersection.
+       *  If one of the CRSes can cover the whole world (non-UTM), this will be used as common CRS.
+       *  We give priority to use the target CRS as common one, because the intersection will be converted to it anyway
        */
       val featureIsUTM = feature.crs.get.proj4jCrs.getProjection.getName == "utm"
       val targetIsUTM = targetExtent.crs.proj4jCrs.getProjection.getName == "utm"
