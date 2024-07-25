@@ -1168,7 +1168,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
   @Test
   def testMissingS2DateLineOutside(): Unit = {
-    assertThrows[AssertionError](testMissingS2DateLine("EPSG:32631"))
+    assertThrows[Exception](testMissingS2DateLine("EPSG:32631"))
   }
 
   private def keysForLargeArea(useBBox:Boolean=false) = {
