@@ -128,9 +128,9 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val selectedSources = reprojectedSources(bands)
 
-    def readBounds(source:RasterSource): Option[Raster[Tile]] = {
+    def readBounds(source: RasterSource): Option[Raster[Tile]] = {
       try {
-        logger.debug(s"attempting to read $bounds from ${source.name}")
+        logger.debug(s"reading $bounds from ${source.name}")
         val raster = source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
         logger.debug(s"finished reading $bounds from ${source.name}")
         raster
@@ -139,8 +139,13 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       }
     }
 
+    def readBoundsAttemptFailed(source: RasterSource)(e: Exception): Unit =
+      logger.warn(s"attempt to read $bounds from ${source.name} failed", e)
+
     val singleBandRasters = selectedSources.par
-      .map(rs => retryForever(Duration.ofSeconds(10), maxRetries)(readBounds(rs)))
+      .map(rs => retryForever(Duration.ofSeconds(10), maxRetries, readBoundsAttemptFailed(rs)) {
+        readBounds(rs)
+      })
       .collect { case Some(raster) => raster }
 
     try {
