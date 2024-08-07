@@ -59,6 +59,10 @@ private class LayoutTileSourceFixed[K: SpatialComponent](
 
 }
 
+object BandCompositeRasterSource {
+  private val logger = LoggerFactory.getLogger(classOf[BandCompositeRasterSource])
+}
+
 
 // TODO: are these attributes typically propagated as RasterSources are transformed? Maybe we should find another way to
 //  attach e.g. a date to a RasterSource.
@@ -66,8 +70,8 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                                 override val crs: CRS,
                                 override val attributes: Map[String, String] = Map.empty,
                                 val predefinedExtent: Option[GridExtent[Long]] = None,
-                               )
-  extends MosaicRasterSource { // TODO: don't inherit?
+                               ) extends MosaicRasterSource { // TODO: don't inherit?
+  import BandCompositeRasterSource._
 
   private val maxRetries = sys.env.getOrElse("GDALREAD_MAXRETRIES", "10").toInt
 
@@ -124,11 +128,14 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     val selectedSources = reprojectedSources(bands)
 
-    def readBounds(source:RasterSource):Option[Raster[Tile]] = {
+    def readBounds(source:RasterSource): Option[Raster[Tile]] = {
       try {
-        source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
+        logger.debug(s"attempting to read $bounds from ${source.name}")
+        val raster = source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
+        logger.debug(s"finished reading $bounds from ${source.name}")
+        raster
       } catch {
-        case e: Exception => throw new IOException(s"Error while reading ${bounds} from: ${source.name.toString}", e)
+        case e: Exception => throw new IOException(s"Error while reading $bounds from ${source.name}", e)
       }
     }
 
