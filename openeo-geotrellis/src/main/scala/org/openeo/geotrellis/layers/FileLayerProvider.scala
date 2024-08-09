@@ -1268,12 +1268,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
        */
       val featureIsUTM = feature.crs.get.proj4jCrs.getProjection.getName == "utm"
       val targetIsUTM = targetExtent.crs.proj4jCrs.getProjection.getName == "utm"
-      if (featureIsUTM && targetIsUTM) {
-        if (feature.crs.get != targetExtent.crs) {
-          // Check logs if this test-case is already covered. TODO: Remove this log before merge
-          logger.info(s"Special case: Feature and target extent are both in UTM, but have different CRSes: ${feature.crs.get} and ${targetExtent.crs}.")
-        }
-      }
       val commonCrs = if (!targetIsUTM) targetExtent.crs
       else if (!featureIsUTM) feature.crs.get
       else targetExtent.crs // Avoid conversion imprecision by intersecting directly in the target CRS
