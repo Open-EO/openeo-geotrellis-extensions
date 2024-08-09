@@ -26,7 +26,7 @@ import scala.collection.JavaConverters._
  */
 class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: String,
                      attributeValues: util.Map[String, Any],
-                     correlationId: String, private val maxSpatialResolution: CellSize) {
+                     correlationId: String, val maxSpatialResolution: CellSize) {
 
   def this(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: util.List[String],
            attributeValues: util.Map[String, Any], correlationId: String) =

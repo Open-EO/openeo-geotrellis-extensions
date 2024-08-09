@@ -76,7 +76,7 @@ class SparkAggregateScriptBuilder {
 
 
   def constantArrayElement(value: Number):Unit = {
-    badReducer(s"Constants are not expected in a reducer callback, got value ${value}.")
+    //quantiles can have this as part of its 'probabilities' argument, just ignore it here
   }
 
   def arrayEnd():Unit = {

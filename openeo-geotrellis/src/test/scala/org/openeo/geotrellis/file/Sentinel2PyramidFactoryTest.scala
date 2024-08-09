@@ -96,7 +96,7 @@ class Sentinel2PyramidFactoryTest {
     @Test
     def testSingleGeotiff():Unit = {
         val bandNames = Collections.singletonList("band")
-        val client = OpenSearchClient("https://s3-eu-west-1.amazonaws.com/download.agisoft.com/gtg/us_nga_egm96_15.tif",false,null,bandNames, clientType = "globspatialonly")
+        val client = OpenSearchClient("https://download.agisoft.com/gtg/us_nga_egm96_15.tif",false,null,bandNames, clientType = "globspatialonly")
         val factory = new PyramidFactory(client,"",bandNames,null,CellSize(0.25,0.25))
 
         val localFromDate = LocalDate.of(2010, 1, 1)
@@ -192,7 +192,7 @@ class Sentinel2PyramidFactoryTest {
     @Test
     def testStatsFromPyramid(): Unit = {
         val bbox = ProjectedExtent(Extent(373863.50, 5212258.22, 378241.73, 5216244.73), CRS.fromEpsgCode(32631))
-        val localDate = LocalDate.of(2022, 8, 1)
+        val localDate = LocalDate.of(2024, 8, 2)
         val spatialLayer = createLayerForDate(bbox, localDate)
 
         checkStatsResult("testStatsFromPyramid", bbox, spatialLayer)
@@ -201,7 +201,7 @@ class Sentinel2PyramidFactoryTest {
     @Test
     def testStatsFromNativeUTM(): Unit = {
         val bbox = ProjectedExtent(Extent(373863.50, 5212258.22, 378241.73, 5216244.73), CRS.fromEpsgCode(32631))
-        val localDate = LocalDate.of(2022, 8, 1)
+        val localDate = LocalDate.of(2024, 8, 2)
         val spatialLayer = createLayerForDate(bbox, localDate,pyramid = false)
 
         checkStatsResult("testStatsFromNativeUTM", bbox, spatialLayer)
@@ -216,7 +216,7 @@ class Sentinel2PyramidFactoryTest {
             case Summary(values) => values.head.mean
         }
 
-        val qgisZonalStaticsPluginResult = 8.874901011878574
+        val qgisZonalStaticsPluginResult = 8.982515316307564
         assertEquals(qgisZonalStaticsPluginResult, singleBandMean, 0.005)
     }
 
