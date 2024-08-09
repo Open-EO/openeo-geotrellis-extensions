@@ -28,6 +28,7 @@ import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, sortableSourceName}
+import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg, retryForever}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
@@ -340,20 +341,16 @@ object FileLayerProvider {
       maskObject match {
         case theMask: MultibandTileLayerRDD[SpaceTimeKey] =>
           if (theMask.metadata.bounds.get._1.isInstanceOf[SpaceTimeKey]) {
-            val filtered = theMask.withContext {
-              _.filter(_._2.band(0).toArray().exists(pixel => pixel == 0)).distinct()
-            }
-            val maskKeys =
-              if (theMask.metadata.crs.equals(metadata.crs) && theMask.metadata.layout.equals(metadata.layout)) {
-                filtered
-              } else {
-                logger.debug(s"mask: automatically resampling mask to match datacube: ${theMask.metadata}")
-                filtered.reproject(metadata.crs, metadata.layout, 16, requiredSpacetimeKeys.partitioner)._2
-              }
+
+            val partitioner = requiredSpacetimeKeys.partitioner
+            val filtered = prepareMask(theMask, metadata, partitioner)
+
             if (logger.isDebugEnabled) {
-              logger.debug(s"SpacetimeMask mask reduces the input to: ${maskKeys.countApproxDistinct()} keys.")
+              logger.debug(s"SpacetimeMask mask reduces the input to: ${filtered.countApproxDistinct()} keys.")
             }
-            return requiredSpacetimeKeys.join(maskKeys).map(tuple => (tuple._1, tuple._2._1))
+
+            datacubeParams.get.maskingCube = Some(filtered)
+            return requiredSpacetimeKeys.join(filtered).map(tuple => (tuple._1, tuple._2._1))
           }
         case _ =>
       }

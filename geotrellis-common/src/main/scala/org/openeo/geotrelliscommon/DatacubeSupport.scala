@@ -8,6 +8,7 @@ import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util.GetComponent
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
+import org.apache.spark.Partitioner
 import org.apache.spark.rdd.RDD
 import org.slf4j.LoggerFactory
 
@@ -236,16 +237,8 @@ object DatacubeSupport {
               logger.debug(s"Spacetime mask is used to reduce input.")
             }
 
-            val alignedMask: MultibandTileLayerRDD[SpaceTimeKey] =
-              if(spacetimeMask.metadata.crs.equals(metadata.crs) && spacetimeMask.metadata.layout.equals(metadata.layout)) {
-                spacetimeMask
-              }else{
-                logger.debug(s"mask: automatically resampling mask to match datacube: ${spacetimeMask.metadata}")
-                spacetimeMask.reproject(metadata.crs,metadata.layout,16,rdd.partitioner)._2
-              }
-
-            // retain only tiles where there is at least one valid pixel (mask value == 0), others will be fully removed
-            val filtered = alignedMask.withContext{_.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))}
+            val partitioner = rdd.partitioner
+            val filtered = prepareMask(spacetimeMask, metadata, partitioner)
 
             if (pixelwiseMasking) {
               val spacetimeDataContextRDD = ContextRDD(rdd, metadata)
@@ -262,5 +255,21 @@ object DatacubeSupport {
     } else {
       rdd
     }
+  }
+
+  def prepareMask(spacetimeMask: MultibandTileLayerRDD[SpaceTimeKey], metadata: TileLayerMetadata[SpaceTimeKey], partitioner: Option[Partitioner]): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    val alignedMask: MultibandTileLayerRDD[SpaceTimeKey] =
+      if (spacetimeMask.metadata.crs.equals(metadata.crs) && spacetimeMask.metadata.layout.equals(metadata.layout)) {
+        spacetimeMask
+      } else {
+        logger.debug(s"mask: automatically resampling mask to match datacube: ${spacetimeMask.metadata}")
+        spacetimeMask.reproject(metadata.crs, metadata.layout, 16, partitioner)._2
+      }
+
+    // retain only tiles where there is at least one valid pixel (mask value == 0), others will be fully removed
+    val filtered = alignedMask.withContext {
+      _.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))
+    }
+    filtered
   }
 }
