@@ -40,6 +40,7 @@ import java.nio.file.{Path, Paths}
 import java.time._
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
+import scala.collection.GenSeq
 import scala.collection.JavaConverters._
 import scala.collection.parallel.immutable.{ParMap, ParSeq}
 import scala.reflect.ClassTag
@@ -71,6 +72,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                                 override val crs: CRS,
                                 override val attributes: Map[String, String] = Map.empty,
                                 val predefinedExtent: Option[GridExtent[Long]] = None,
+                                val parallelRead: Boolean = true
                                ) extends MosaicRasterSource { // TODO: don't inherit?
   import BandCompositeRasterSource._
 
@@ -115,9 +117,13 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   }
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    val selectedSources = reprojectedSources(bands)
+    var selectedSources: GenSeq[RasterSource] = reprojectedSources(bands)
 
-    val singleBandRasters = selectedSources.par
+    if(parallelRead){
+      selectedSources = selectedSources.par
+    }
+
+    val singleBandRasters = selectedSources
       .map { _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) } }
       .collect { case Some(raster) => raster }
 
@@ -127,7 +133,11 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    val selectedSources = reprojectedSources(bands)
+    var selectedSources: GenSeq[RasterSource] = reprojectedSources(bands)
+
+    if(parallelRead){
+      selectedSources = selectedSources.par
+    }
 
     def readBounds(source: RasterSource): Option[Raster[Tile]] = {
       try {
@@ -143,7 +153,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     def readBoundsAttemptFailed(source: RasterSource)(e: Exception): Unit =
       logger.warn(s"attempt to read $bounds from ${source.name} failed", e)
 
-    val singleBandRasters = selectedSources.par
+    val singleBandRasters = selectedSources
       .map(rs => retryForever(Duration.ofSeconds(10), maxRetries, readBoundsAttemptFailed(rs)) {
         readBounds(rs)
       })
@@ -180,11 +190,11 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     reprojectedSources map { _.resample(resampleTarget, method, strategy) }, crs)
 
   override def convert(targetCellType: TargetCellType): RasterSource =
-    new BandCompositeRasterSource(reprojectedSources map { _.convert(targetCellType) }, crs)
+    new BandCompositeRasterSource(reprojectedSources map { _.convert(targetCellType) }, crs, parallelRead =  parallelRead)
 
   override def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
     new BandCompositeRasterSource(reprojectedSources map { _.reproject(targetCRS, resampleTarget, method, strategy) },
-      crs)
+      crs, parallelRead =  parallelRead)
 }
 
 // TODO: is this class necessary? Looks like a more general case of BandCompositeRasterSource so maybe the inheritance
@@ -514,7 +524,7 @@ object FileLayerProvider {
 
           case source1: BandCompositeRasterSource =>
             //decompose into individual bands
-            source1.sources.map(s => (s.name, GridBoundsRasterRegion(new BandCompositeRasterSource(NonEmptyList.one(s),source1.crs,source1.attributes,source1.predefinedExtent), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key_region_sourcename._1, t._1._2))).toList.toSeq
+            source1.sources.map(s => (s.name, GridBoundsRasterRegion(new BandCompositeRasterSource(NonEmptyList.one(s),source1.crs,source1.attributes,source1.predefinedExtent, parallelRead = datacubeParams.forall(!_.loadPerProduct)), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key_region_sourcename._1, t._1._2))).toList.toSeq
 
           case _ =>
             Seq((source.name, (Seq(0), key_region_sourcename._1, key_region_sourcename._2._1)))
