@@ -487,7 +487,8 @@ object FileLayerProvider {
                                    cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy,
                                    partitionerOption: Option[SpacePartitioner[SpaceTimeKey]] = None,
                                    datacubeParams : Option[DataCubeParameters] = None,
-                                                         expectedBandCount : Int = -1
+                                                         expectedBandCount : Int = -1,
+                                                         sources: Seq[(RasterSource, Feature)]
                                   ): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
 
     if(cloudFilterStrategy!=NoCloudFilterStrategy) {
@@ -526,7 +527,24 @@ object FileLayerProvider {
       result
     })
 
-    val allSources: Array[SourceName] =  byBandSource.keys.distinct().collect()
+    /**
+     *  Avoid the use of the rdd to simply compute source names, because this triggers a lot of computation which is then repeated later on, even touching the rasters in some cases.
+     */
+    val allSources: Array[SourceName] = sources.flatMap( t =>{
+      t._1 match {
+        case source1: MultibandCompositeRasterSource =>
+          //decompose into individual bands
+          //TODO do something like line below, but make sure that band order is maintained! For now we just return the composite source.
+          //source1.sourcesListWithBandIds.map(s => (s._1.name, (s._2,key_region_sourcename._1,GridBoundsRasterRegion(s._1, bounds))))
+          Seq(t._1.name)
+        case source1: BandCompositeRasterSource =>
+          //decompose into individual bands
+          source1.sources.map(s => s.name).toList
+        case _ =>
+          Seq(t._1.name)
+      }
+    }).distinct.toArray
+
     val theCellType = metadata.cellType
 
     var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = byBandSource.groupByKey(new ByKeyPartitioner(allSources)).mapPartitions((partitionIterator: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
@@ -1195,7 +1213,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         if(!datacubeParams.map(_.loadPerProduct).getOrElse(false) || theMaskStrategy != NoCloudFilterStrategy ){
           rasterRegionsToTiles(regions, metadata, retainNoDataTiles, theMaskStrategy, partitioner, datacubeParams)
         }else{
-          rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size)
+          rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size,readKeysToRasterSourcesResult._4)
         }
       logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner}")
       cube
