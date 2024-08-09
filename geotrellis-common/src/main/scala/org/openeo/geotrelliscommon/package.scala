@@ -231,7 +231,7 @@ package object geotrelliscommon {
   import java.util.concurrent.TimeUnit
 
 
-  def retryForever[R](delay: Duration, retries: Int = 20, onAttemptFailed: Exception => Unit = _ => ())(f: => R): R = {
+  def retryForever[R](delay: Duration, retries: Int = 20 /* actually: attempts */, onAttemptFailed: Exception => Unit = _ => ())(f: => R): R = {
     var lastException: Exception = null
     var countDown = retries
     while (countDown>0) {
@@ -240,7 +240,7 @@ package object geotrelliscommon {
         case e: Exception =>
           onAttemptFailed(e)
           lastException = e
-          TimeUnit.SECONDS.sleep(delay.getSeconds)
+          if (countDown > 1) TimeUnit.SECONDS.sleep(delay.getSeconds)
       }
       countDown = countDown - 1
     }
