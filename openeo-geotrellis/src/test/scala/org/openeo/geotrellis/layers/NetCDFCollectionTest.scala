@@ -39,12 +39,12 @@ class NetCDFCollectionTest {
     val f = new Feature("openEO_0",
       e0.reproject(crs,LatLng), ZonedDateTime.parse("2021-01-01T00:00:00Z"),
       Array(new Link(url0.toURI, Some("Sentinel2_L2A"), None, Some(List("B01", "B02")))),Some(10.0),None,None,Some(crs),null,
-      Some(e0),0.0)
+      Some(e0))
     osClient.addFeature(f)
     val e1 = Extent(636340.0, 5663450.0, 653150.0, 5674120.0)
-    osClient.addFeature(new Feature("openEO_1", e1.reproject(crs,LatLng), ZonedDateTime.parse("2021-01-01T00:00:00Z"),Array(new Link(url1.toURI, Some("Sentinel2_L2A"), None, Some(List("B01", "B02")))),Some(10.0),None,None,Some(CRS.fromName("EPSG:32631")),null,Some(e1),0.0))
+    osClient.addFeature(new Feature("openEO_1", e1.reproject(crs,LatLng), ZonedDateTime.parse("2021-01-01T00:00:00Z"),Array(new Link(url1.toURI, Some("Sentinel2_L2A"), None, Some(List("B01", "B02")))),Some(10.0),None,None,Some(CRS.fromName("EPSG:32631")),null,Some(e1)))
     val e2 = Extent(604500.0, 5656790.0, 617590.0, 5666820.0)
-    osClient.addFeature(new Feature("openEO_2", e2.reproject(crs,LatLng), ZonedDateTime.parse("2021-01-01T00:00:00Z"),Array(new Link(url2.toURI, Some("Sentinel2_L2A"), None, Some(List("B01", "B02")))),Some(10.0),None,None,Some(CRS.fromName("EPSG:32631")),null,Some(e2),0.0))
+    osClient.addFeature(new Feature("openEO_2", e2.reproject(crs,LatLng), ZonedDateTime.parse("2021-01-01T00:00:00Z"),Array(new Link(url2.toURI, Some("Sentinel2_L2A"), None, Some(List("B01", "B02")))),Some(10.0),None,None,Some(CRS.fromName("EPSG:32631")),null,Some(e2)))
 
     val sc = SparkUtils.createLocalSparkContext(
       "local[1]",
