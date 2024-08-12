@@ -1,7 +1,9 @@
 package org.openeo.geotrellis.file
 
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.{CellSize, isData}
+import geotrellis.raster.gdal.GDALRasterSource
+import geotrellis.raster.io.geotiff.MultibandGeoTiff
+import geotrellis.raster.{CellSize, Raster, isData}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.io.json.GeoJson
@@ -106,5 +108,21 @@ class LoadStacPyramidFactoryTest {
       tile <- spatialLayer.values
       value <- tile
     } assertTrue(isData(value))
+  }
+
+
+  @Test
+  def rasterSourceFromCorruptTile(): Unit = {
+    /* Make sure to set:
+     - AWS_HTTPS=TRUE
+     - AWS_VIRTUAL_HOSTING=FALSE
+     - AWS_S3_ENDPOINT=eodata.cloudferro.com
+     - AWS_ACCESS_KEY_ID=...
+     - AWS_SECRET_ACCESS_KEY=...
+     */
+    val rs = GDALRasterSource("/vsis3/EODATA/Sentinel-2/MSI/L2A_N0500/2018/03/27/S2A_MSIL2A_20180327T114351_N0500_R123_T29UMV_20230828T122340.SAFE/GRANULE/L2A_T29UMV_A014420_20180327T114351/IMG_DATA/R10m/T29UMV_20180327T114351_B04_10m.jp2")
+
+    val Some(raster) = rs.read()
+    MultibandGeoTiff(raster, rs.crs).write("/tmp/rasterSourceFromCorruptTile.tif")
   }
 }
