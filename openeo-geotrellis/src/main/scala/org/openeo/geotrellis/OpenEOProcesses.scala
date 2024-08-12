@@ -196,6 +196,8 @@ class OpenEOProcesses extends Serializable {
   def applyTimeDimensionTargetBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpatialKey] = {
     val expectedCelltype = datacube.metadata.cellType
 
+    SparkContext.getOrCreate().setCallSite("apply_dimension target='bands'")
+
     val function = scriptBuilder.inputFunction.asInstanceOf[OpenEOProcess]
     val currentTileSize = datacube.metadata.tileLayout.tileSize
     var tileSize = context.getOrDefault("TileSize",0).asInstanceOf[Int]
@@ -242,6 +244,7 @@ class OpenEOProcesses extends Serializable {
 
     }}
 
+    SparkContext.getOrCreate().clearCallSite()
     ContextRDD(resultRDD,retiled.metadata.copy(bounds = retiled.metadata.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]].toSpatial,cellType = scriptBuilder.getOutputCellType()))
   }
 
@@ -434,7 +437,11 @@ class OpenEOProcesses extends Serializable {
     logger.info(s"aggregate_temporal results in ${allPossibleSpacetime.size} keys, using partitioner index: ${index} with bounds ${newBounds}" )
     val partitioner: SpacePartitioner[SpaceTimeKey] = SpacePartitioner[SpaceTimeKey](newBounds)(implicitly,implicitly, index)
 
-    val allKeysRDD: RDD[(SpaceTimeKey, Null)] = SparkContext.getOrCreate().parallelize(allPossibleSpacetime)
+
+    val sc = SparkContext.getOrCreate()
+    sc.setCallSite("aggregate_temporal")
+    val allKeysRDD: RDD[(SpaceTimeKey, Null)] = sc.parallelize(allPossibleSpacetime)
+    sc.clearCallSite()
 
     def mapToNewKey(tuple: (SpaceTimeKey, MultibandTile)): Seq[(SpaceTimeKey, (SpaceTimeKey,MultibandTile))] = {
       val instant = tuple._1.time.toInstant
@@ -468,7 +475,7 @@ class OpenEOProcesses extends Serializable {
 
     }
 
-
+    sc.setCallSite("aggregate_temporal")
     val tilesByInterval: RDD[(SpaceTimeKey, MultibandTile)] =
       if(reduce) {
         if(datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] && datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
@@ -506,7 +513,10 @@ class OpenEOProcesses extends Serializable {
       }
     }
     val metadata = if(reduce) datacube.metadata.copy(bounds = newBounds,cellType = outputCellType) else datacube.metadata.copy(cellType = outputCellType)
-    return ContextRDD(filledRDD, metadata)
+    sc.clearCallSite()
+    val aggregatedCube = ContextRDD(filledRDD, metadata)
+    aggregatedCube.name = "aggregate_temporal result"
+    return aggregatedCube
   }
 
   def mapBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder, context: java.util.Map[String,Any] = new util.HashMap[String, Any]()): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]= {
