@@ -74,7 +74,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                                ) extends MosaicRasterSource { // TODO: don't inherit?
   import BandCompositeRasterSource._
 
-  private val maxRetries = sys.env.getOrElse("GDALREAD_MAXRETRIES", "10").toInt
+  private val maxRetries = 3
 
   protected def reprojectedSources: NonEmptyList[RasterSource] = sources map { _.reproject(crs) }
 
@@ -82,7 +82,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     val selectedBands = bands.map(sources.toList)
 
     selectedBands map { rs =>
-      try retryForever(Duration.ofSeconds(10), maxRetries)(rs.reproject(crs))
+      try retryForever(Duration.ofSeconds(3), maxRetries)(rs.reproject(crs))
       catch {
         case e: Exception => throw new IOException(s"Error while reading: ${rs.name.toString}", e)
       }
@@ -144,7 +144,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       logger.warn(s"attempt to read $bounds from ${source.name} failed", e)
 
     val singleBandRasters = selectedSources.par
-      .map(rs => retryForever(Duration.ofSeconds(10), maxRetries, readBoundsAttemptFailed(rs)) {
+      .map(rs => retryForever(Duration.ofSeconds(3), maxRetries, readBoundsAttemptFailed(rs)) {
         readBounds(rs)
       })
       .collect { case Some(raster) => raster }
@@ -238,7 +238,7 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 object FileLayerProvider {
 
   private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
-  private val maxRetries = sys.env.getOrElse("GDALREAD_MAXRETRIES", "10").toInt
+  private val maxRetries = 3
 
   {
     try {
@@ -636,7 +636,7 @@ object FileLayerProvider {
 
       val allRasters =
         try{
-          bounds.toIterator.flatMap(b => retryForever(Duration.ofSeconds(10),maxRetries)(source.read(b).iterator)).map(_.mapTile(_.convert(cellType))).toSeq
+          bounds.toIterator.flatMap(b => retryForever(Duration.ofSeconds(3), maxRetries)(source.read(b).iterator)).map(_.mapTile(_.convert(cellType))).toSeq
         } catch {
           case e: Exception => throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}", e)
         }
@@ -1330,6 +1330,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType)
         } else {
           predefinedExtent = featureExtentInLayout
+          //.replace("/vsis3/eodata/", "/eodata/")
           GDALRasterSource(GDALPath(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https")), options = warpOptions, targetCellType = targetCellType)
         }
       }else if(dataPath.endsWith("MTD_TL.xml")) {
