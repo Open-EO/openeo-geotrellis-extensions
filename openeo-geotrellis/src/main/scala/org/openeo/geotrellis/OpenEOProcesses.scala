@@ -199,7 +199,7 @@ class OpenEOProcesses extends Serializable {
     val function = scriptBuilder.inputFunction.asInstanceOf[OpenEOProcess]
     val currentTileSize = datacube.metadata.tileLayout.tileSize
     var tileSize = context.getOrDefault("TileSize",0).asInstanceOf[Int]
-    if(currentTileSize>=512 && tileSize==0) {
+    if(currentTileSize>=512*512 && tileSize==0) {
       tileSize = 128//right value here depends on how many bands we're going to create, but can be a high number
     }
 
