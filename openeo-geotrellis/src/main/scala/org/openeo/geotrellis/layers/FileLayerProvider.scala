@@ -348,6 +348,7 @@ object FileLayerProvider {
   def applySpaceTimeMask(datacubeParams: Option[DataCubeParameters], requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])], metadata: TileLayerMetadata[SpaceTimeKey]): RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = {
     if (datacubeParams.exists(_.maskingCube.isDefined)) {
       val maskObject = datacubeParams.get.maskingCube.get
+      requiredSpacetimeKeys.sparkContext.setCallSite("load_collection: filter mask keys")
       maskObject match {
         case theMask: MultibandTileLayerRDD[SpaceTimeKey] =>
           if (theMask.metadata.bounds.get._1.isInstanceOf[SpaceTimeKey]) {
@@ -360,7 +361,9 @@ object FileLayerProvider {
             }
 
             datacubeParams.get.maskingCube = Some(filtered)
-            return requiredSpacetimeKeys.join(filtered).map(tuple => (tuple._1, tuple._2._1))
+            val result = requiredSpacetimeKeys.join(filtered).map(tuple => (tuple._1, tuple._2._1))
+            requiredSpacetimeKeys.sparkContext.clearCallSite()
+            return result
           }
         case _ =>
       }
@@ -511,6 +514,7 @@ object FileLayerProvider {
     val crs = metadata.crs
     val layout = metadata.layout
 
+    rasterRegionRDD.sparkContext.setCallSite("load_collection: group by input product")
     val byBandSource = rasterRegionRDD.flatMap(key_region_sourcename => {
       val source = key_region_sourcename._2._1.asInstanceOf[GridBoundsRasterRegion].source
       val bounds = key_region_sourcename._2._1.asInstanceOf[GridBoundsRasterRegion].bounds
@@ -553,7 +557,7 @@ object FileLayerProvider {
     }).distinct.toArray
 
     val theCellType = metadata.cellType
-
+    rasterRegionRDD.sparkContext.setCallSite("load_collection: read by input product")
     var tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] = byBandSource.groupByKey(new ByKeyPartitioner(allSources)).mapPartitions((partitionIterator: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])]) => {
       var totalPixelsPartition = 0
       val startTime = System.currentTimeMillis()
@@ -581,8 +585,9 @@ object FileLayerProvider {
 
     } ).filter { case (_, tile) => retainNoDataTiles ||  !tile.bands.forall(_.isNoDataTile) }
 
+    rasterRegionRDD.sparkContext.setCallSite("load_collection: apply mask pixel wise")
     tiledRDD = DatacubeSupport.applyDataMask(datacubeParams,tiledRDD,metadata, pixelwiseMasking = true)
-
+    rasterRegionRDD.sparkContext.clearCallSite()
     val cRDD = ContextRDD(tiledRDD, metadata)
     cRDD.name = rasterRegionRDD.name
     cRDD
@@ -964,6 +969,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       }
     }
 
+    sc.setCallSite(s"load_collection: $openSearchCollectionId resolution $maxSpatialResolution construct input product metadata" )
 
     val workingPartitioner = SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(3))
     val requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] =
@@ -1187,6 +1193,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       //resampling is still needed in case bounding boxes are not aligned with pixels
       // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
       val theResampleMethod = datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor)
+
+      requiredSpacetimeKeys.sparkContext.setCallSite(s"load_collection: determine raster regions to read resample: ${resample}")
 
       val regions: RDD[(SpaceTimeKey, (RasterRegion, SourceName))] = requiredSpacetimeKeys
         .groupBy { case (_, vector.Feature(_, (rasterSource, _))) => rasterSource }
