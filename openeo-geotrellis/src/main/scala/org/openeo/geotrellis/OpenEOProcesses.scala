@@ -196,14 +196,14 @@ class OpenEOProcesses extends Serializable {
   def applyTimeDimensionTargetBands(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpatialKey] = {
     val expectedCelltype = datacube.metadata.cellType
 
-    SparkContext.getOrCreate().setCallSite("apply_dimension target='bands'")
-
     val function = scriptBuilder.inputFunction.asInstanceOf[OpenEOProcess]
     val currentTileSize = datacube.metadata.tileLayout.tileSize
     var tileSize = context.getOrDefault("TileSize",0).asInstanceOf[Int]
     if(currentTileSize>=512 && tileSize==0) {
       tileSize = 128//right value here depends on how many bands we're going to create, but can be a high number
     }
+
+    SparkContext.getOrCreate().setCallSite(s"apply_dimension target='bands' TileSize: $tileSize ")
 
     val retiled =
       if (tileSize > 0 && tileSize <= 1024) {
