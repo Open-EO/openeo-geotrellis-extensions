@@ -80,8 +80,17 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   protected def reprojectedSources: NonEmptyList[RasterSource] = sources map { _.reproject(crs) }
 
   protected def reprojectedSources(bands: Seq[Int]): Seq[RasterSource] = {
+    def reprojectRasterSourceAttemptFailed(source: RasterSource)(e: Exception): Unit =
+      logger.warn(s"attempt to reproject ${source.name} to $crs failed", e)
+
     val selectedBands = bands.map(sources.toList)
-    selectedBands map { _.reproject(crs) }
+    selectedBands map { rs =>
+      try retryForever(maxRetries, reprojectRasterSourceAttemptFailed(rs))(rs.reproject(crs))
+      catch {
+        // reading the CRS from a GDALRasterSource can fail
+        case e: Exception => throw new IOException(s"Error while reading: ${rs.name.toString}", e)
+      }
+    }
   }
 
   override def gridExtent: GridExtent[Long] = predefinedExtent.getOrElse {
