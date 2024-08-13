@@ -16,6 +16,7 @@ import org.junit.Assert._
 import org.junit._
 import org.junit.rules.TemporaryFolder
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
+import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.nio.file.{Files, Paths}
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
@@ -37,6 +38,7 @@ object WriteRDDToGeotiffTest{
       val conf = new SparkConf().setMaster("local[2]").setAppName(getClass.getSimpleName)
         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
         .set("spark.kryo.registrator", classOf[geotrellis.spark.store.kryo.KryoRegistrator].getName)
+        .set("spark.ui.enabled", "true")
       SparkContext.getOrCreate(conf)
     }
   }
@@ -46,6 +48,8 @@ object WriteRDDToGeotiffTest{
 }
 
 class WriteRDDToGeotiffTest {
+
+  import WriteRDDToGeotiffTest._
 
   @(Rule @getter)
   val temporaryFolder = new TemporaryFolder
@@ -313,6 +317,35 @@ class WriteRDDToGeotiffTest {
     assertArrayEquals(croppedReference.toArray(), croppedOutput.toArray())
     val result2 = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z.tif").toString).raster.tile
     assertArrayEquals(croppedReference.toArray(), result2.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArray())
+  }
+
+
+  @Test
+  def testWriteMultibandTemporalRDDWithGapsOneBandPerTiff(): Unit = {
+    val layoutCols = 8
+    val layoutRows = 4
+    val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
+
+    val outDir = Paths.get("tmp/geotiffGapsOneBandPerTiff/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    Files.createDirectories(outDir)
+
+    val listener = new GetInfoSparkListener()
+    sc.addSparkListener(listener)
+
+    val options = new GTiffOptions()
+    options.oneTiffPerBand = true
+    saveRDDTemporal(layer, outDir.toString, formatOptions = options)
+    sc.removeSparkListener(listener)
+    assertTrue(listener.getStagesCompleted <= 3)
+
+    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z_band0.tif").toString).raster.tile
+    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z_band1.tif").toString).raster.tile
+    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z_band2.tif").toString).raster.tile
+
+    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z_band0.tif").toString).raster.tile
+    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z_band1.tif").toString).raster.tile
+    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z_band2.tif").toString).raster.tile
   }
 
   @Test

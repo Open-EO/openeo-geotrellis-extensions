@@ -108,48 +108,51 @@ package object geotiff {
     val compression = Deflate(zLevel)
     val bandSegmentCount = totalCols * totalRows
 
-    preprocessedRdd.map { case (key: SpaceTimeKey, multibandTile: MultibandTile) =>
+    preprocessedRdd.flatMap { case (key: SpaceTimeKey, multibandTile: MultibandTile) =>
       var bandIndex = -1
       //Warning: for deflate compression, the segmentcount and index is not really used, making it stateless.
       //Not sure how this works out for other types of compression!!!
 
       val theCompressor = compression.createCompressor(multibandTile.bandCount)
-      (key, multibandTile.bands.map {
+      multibandTile.bands.map {
         tile =>
           bandIndex += 1
           val layoutCol = key.getComponent[SpatialKey]._1
           val layoutRow = key.getComponent[SpatialKey]._2
-          val bandSegmentOffset = bandSegmentCount * bandIndex
+          val bandSegmentOffset = bandSegmentCount * (if (formatOptions.oneTiffPerBand) 0 else bandIndex)
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
           //tiff format seems to require that we provide 'full' tiles
           val bytes = raster.CroppedTile(tile, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
           val compressedBytes = theCompressor.compress(bytes, 0)
-          (index, (multibandTile.cellType, compressedBytes))
-      })
-    }.map(tuple => {
-      val isDays = Duration.between(fixedTimeOffset, tuple._1.time).getSeconds % secondsPerDay == 0
-      val filename = if(isDays) {
-        s"${formatOptions.filenamePrefix}_${DateTimeFormatter.ISO_DATE.format(tuple._1.time)}.tif"
-       } else{
-          // ':' is not valid in a Windows filename
-          s"${formatOptions.filenamePrefix}_${DateTimeFormatter.ISO_ZONED_DATE_TIME.format(tuple._1.time).replace(":", "").replace("-","")}.tif"
-       }
 
+          val isDays = Duration.between(fixedTimeOffset, key.time).getSeconds % secondsPerDay == 0
+          val timePieceSlug = if (isDays) {
+            "_" + DateTimeFormatter.ISO_DATE.format(key.time)
+          } else {
+            // ':' is not valid in a Windows filename
+            "_" + DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time).replace(":", "").replace("-", "")
+          }
+          // TODO: Get band names from metadata?
+          val bandPiece = if (formatOptions.oneTiffPerBand) "_band" + bandIndex else ""
+          //noinspection RedundantBlock
+          val filename = s"${formatOptions.filenamePrefix}${timePieceSlug}${bandPiece}.tif"
 
-      val timestamp = tuple._1.time format DateTimeFormatter.ISO_ZONED_DATE_TIME
-      ((filename, timestamp), tuple._2)
-    }).groupByKey().map((tuple: ((String, String), Iterable[Vector[(Int, (CellType, Array[Byte]))]])) => {
-      val detectedBandCount = tuple._2.map(_.size).max
-      val segments: Iterable[(Int, (CellType, Array[Byte]))] = tuple._2.flatten
+          val timestamp = DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time)
+          val tiffBands = if (formatOptions.oneTiffPerBand) 1 else multibandTile.bandCount
+          ((filename, timestamp, tiffBands), (index, (multibandTile.cellType, compressedBytes)))
+      }
+    }.groupByKey().map { case ((filename: String, timestamp: String, tiffBands:Int), sequence) =>
+      val segments: Iterable[(Int, (CellType, Array[Byte]))] = sequence
       val cellTypes = segments.map(_._2._1).toSet
       val tiffs: Predef.Map[Int, Array[Byte]] = segments.map(tuple => (tuple._1, tuple._2._2)).toMap
 
-      val segmentCount = (bandSegmentCount*detectedBandCount)
-      val thePath = Paths.get(path).resolve(tuple._1._1).toString
-      val correctedPath = writeTiff( thePath  ,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, tileLayout, compression, cellTypes.head, detectedBandCount, segmentCount,formatOptions)
-      val (_, timestamp) = tuple._1
+      val segmentCount = bandSegmentCount * tiffBands
+      val thePath = Paths.get(path).resolve(filename).toString
+      val correctedPath = writeTiff(thePath, tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs,
+        tileLayout, compression, cellTypes.head, tiffBands, segmentCount, formatOptions,
+      )
       (correctedPath, timestamp, croppedExtent)
-    }).collect().toList.asJava
+    }.collect().toList.asJava
 
   }
 

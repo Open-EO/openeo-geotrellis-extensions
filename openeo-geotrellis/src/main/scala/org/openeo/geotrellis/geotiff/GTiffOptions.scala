@@ -13,6 +13,7 @@ class GTiffOptions extends Serializable {
   var tags: Tags = Tags.empty
   var overviews:String = "OFF"
   var resampleMethod:String = "near"
+  var oneTiffPerBand = false
 
   def setFilenamePrefix(name: String): Unit = this.filenamePrefix = name
 
