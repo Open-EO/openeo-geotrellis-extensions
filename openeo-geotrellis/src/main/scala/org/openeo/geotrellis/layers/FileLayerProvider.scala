@@ -26,10 +26,9 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
-import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, sortableSourceName}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg, retryForever}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.LoggerFactory
@@ -74,19 +73,13 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                                ) extends MosaicRasterSource { // TODO: don't inherit?
   import BandCompositeRasterSource._
 
-  private val maxRetries = 3
+  private val maxRetries = sys.env.getOrElse("GDALREAD_MAXRETRIES", "20").toInt
 
   protected def reprojectedSources: NonEmptyList[RasterSource] = sources map { _.reproject(crs) }
 
   protected def reprojectedSources(bands: Seq[Int]): Seq[RasterSource] = {
     val selectedBands = bands.map(sources.toList)
-
-    selectedBands map { rs =>
-      try retryForever(Duration.ofSeconds(3), maxRetries)(rs.reproject(crs))
-      catch {
-        case e: Exception => throw new IOException(s"Error while reading: ${rs.name.toString}", e)
-      }
-    }
+    selectedBands map { _.reproject(crs) }
   }
 
   override def gridExtent: GridExtent[Long] = predefinedExtent.getOrElse {
@@ -144,7 +137,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       logger.warn(s"attempt to read $bounds from ${source.name} failed", e)
 
     val singleBandRasters = selectedSources.par
-      .map(rs => retryForever(Duration.ofSeconds(3), maxRetries, readBoundsAttemptFailed(rs)) {
+      .map(rs => retryForever(maxRetries, readBoundsAttemptFailed(rs)) {
         readBounds(rs)
       })
       .collect { case Some(raster) => raster }
@@ -238,7 +231,6 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 object FileLayerProvider {
 
   private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
-  private val maxRetries = 3
 
   {
     try {
@@ -636,7 +628,7 @@ object FileLayerProvider {
 
       val allRasters =
         try{
-          bounds.toIterator.flatMap(b => retryForever(Duration.ofSeconds(3), maxRetries)(source.read(b).iterator)).map(_.mapTile(_.convert(cellType))).toSeq
+          bounds.toIterator.flatMap(b => source.read(b).iterator).map(_.mapTile(_.convert(cellType))).toSeq
         } catch {
           case e: Exception => throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}", e)
         }
