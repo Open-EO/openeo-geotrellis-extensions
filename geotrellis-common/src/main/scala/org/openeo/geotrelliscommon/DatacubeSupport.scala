@@ -197,7 +197,7 @@ object DatacubeSupport {
     val joined = if (ignoreKeysWithoutMask) {
       //inner join, try to preserve partitioner
       val tmpRdd: RDD[(K, (MultibandTile, Option[MultibandTile]))] =
-        if(datacube.partitioner.isDefined && datacube.partitioner.isInstanceOf[SpacePartitioner[K]]){
+        if(datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[K]]){
             val part = datacube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
             new CoGroupedRDD[K](List(datacube, part(mask)), part)
               .flatMapValues { case Array(l, r) =>
