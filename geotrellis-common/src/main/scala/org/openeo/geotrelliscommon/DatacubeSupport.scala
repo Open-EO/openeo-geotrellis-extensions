@@ -201,10 +201,11 @@ object DatacubeSupport {
             val part = datacube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
             new CoGroupedRDD[K](List(datacube, part(mask)), part)
               .flatMapValues { case Array(l, r) =>
-                if (l.isEmpty)
-                  for (v <- r.iterator) yield None
+                if (l.isEmpty) {
+                  Seq.empty[(MultibandTile, Option[MultibandTile])]
+                }
                 else if (r.isEmpty)
-                  for (v <- l.iterator) yield None
+                  Seq.empty[(MultibandTile, Option[MultibandTile])]
                 else
                   for (v <- l.iterator; w <- r.iterator) yield (v, Some(w))
               }.asInstanceOf[RDD[(K, (MultibandTile, Option[MultibandTile]))]]
