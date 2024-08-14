@@ -284,9 +284,12 @@ object DatacubeSupport {
         spacetimeMask.reproject(metadata.crs, metadata.layout, 16, partitioner)._2
       }
 
+    val keyBounds = metadata.bounds.get
     // retain only tiles where there is at least one valid pixel (mask value == 0), others will be fully removed
     val filtered = alignedMask.withContext {
-      _.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))
+      _.filter(t => {
+        keyBounds.includes(t._1) && t._2.band(0).toArray().exists(pixel => pixel == 0)
+      })
     }
     filtered
   }
