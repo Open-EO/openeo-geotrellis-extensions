@@ -154,7 +154,7 @@ class WriteRDDToGeotiffTest {
 
     val filename = "openEO_2017-03-01Z.tif"
     val p = new OpenEOProcesses()
-    val buffered: MultibandTileLayerRDD[SpaceTimeKey] = p.remove_overlap(p.retile(tileLayerRDD,224,224,16,16),224,224,16,16)
+    val buffered: MultibandTileLayerRDD[SpaceTimeKey] = p.remove_overlap(p.retileGeneric(tileLayerRDD,224,224,16,16),224,224,16,16)
 
     val cropBounds = Extent(-115, -65, 5.0, 56)
     saveRDDTemporal(buffered,"./",cropBounds = Some(cropBounds))

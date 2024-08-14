@@ -223,7 +223,7 @@ class OpenEOProcesses extends Serializable {
 
     val retiled =
       if (tileSize > 0 && tileSize <= 1024) {
-        val theResult = retile(datacube, tileSize, tileSize, 0, 0)
+        val theResult = retileGeneric(datacube, tileSize, tileSize, 0, 0)
         theResult
       } else {
         datacube
@@ -980,7 +980,18 @@ class OpenEOProcesses extends Serializable {
   }
 
 
-  def retile(datacube: MultibandTileLayerRDD[SpaceTimeKey], sizeX:Int, sizeY:Int, overlapX:Int, overlapY:Int): MultibandTileLayerRDD[SpaceTimeKey] = {
+  def retile(datacube: Object, sizeX:Int, sizeY:Int, overlapX:Int, overlapY:Int): Object = {
+
+    datacube match {
+      case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        retileGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], sizeX, sizeY, overlapX, overlapY)
+      case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        retileGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], sizeX, sizeY, overlapX, overlapY)
+      case _ => throw new IllegalArgumentException(s"Unsupported rdd type to retile: ${datacube}")
+    }
+  }
+  def retileGeneric[K: SpatialComponent: ClassTag
+  ](datacube: MultibandTileLayerRDD[K], sizeX:Int, sizeY:Int, overlapX:Int, overlapY:Int): MultibandTileLayerRDD[K] = {
     val regridded =
     if(sizeX >0 && sizeY > 0){
       RegridFixed(filterNegativeSpatialKeys(datacube),sizeX,sizeY)
