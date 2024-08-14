@@ -71,7 +71,8 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                                 override val crs: CRS,
                                 override val attributes: Map[String, String] = Map.empty,
                                 val predefinedExtent: Option[GridExtent[Long]] = None,
-                                val parallelRead: Boolean = true
+                                parallelRead: Boolean = true,
+                                softErrors: Boolean = false,
                                ) extends MosaicRasterSource { // TODO: don't inherit?
   import BandCompositeRasterSource._
 
@@ -84,11 +85,15 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       logger.warn(s"attempt to reproject ${source.name} to $crs failed", e)
 
     val selectedBands = bands.map(sources.toList)
-    selectedBands map { rs =>
-      try retryForever(maxRetries, reprojectRasterSourceAttemptFailed(rs))(rs.reproject(crs))
+    selectedBands flatMap { rs =>
+      try Some(retryForever(maxRetries, reprojectRasterSourceAttemptFailed(rs))(rs.reproject(crs)))
       catch {
         // reading the CRS from a GDALRasterSource can fail
-        case e: Exception => throw new IOException(s"Error while reading: ${rs.name.toString}", e)
+        case e: Exception =>
+          if (softErrors) {
+            logger.warn(s"ignoring soft error for ${rs.name}", e)
+            None
+          } else throw new IOException(s"Error while reading: ${rs.name}", e)
       }
     }
   }
@@ -148,7 +153,11 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
         logger.debug(s"finished reading $bounds from ${source.name}")
         raster
       } catch {
-        case e: Exception => throw new IOException(s"Error while reading $bounds from ${source.name}", e)
+        case e: Exception =>
+          if (softErrors) {
+            logger.warn(s"ignoring soft error for ${source.name}", e)
+            None
+          } else throw new IOException(s"Error while reading $bounds from ${source.name}", e)
       }
     }
 
@@ -189,14 +198,16 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                          method: ResampleMethod,
                          strategy: OverviewStrategy
                        ): RasterSource = new BandCompositeRasterSource(
-    reprojectedSources map { _.resample(resampleTarget, method, strategy) }, crs)
+    reprojectedSources map { _.resample(resampleTarget, method, strategy) }, crs, parallelRead = parallelRead,
+    softErrors = softErrors)
 
   override def convert(targetCellType: TargetCellType): RasterSource =
-    new BandCompositeRasterSource(reprojectedSources map { _.convert(targetCellType) }, crs, parallelRead =  parallelRead)
+    new BandCompositeRasterSource(reprojectedSources map { _.convert(targetCellType) }, crs,
+      parallelRead =  parallelRead, softErrors = softErrors)
 
   override def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
     new BandCompositeRasterSource(reprojectedSources map { _.reproject(targetCRS, resampleTarget, method, strategy) },
-      crs, parallelRead =  parallelRead)
+      crs, parallelRead =  parallelRead, softErrors = softErrors)
 }
 
 // TODO: is this class necessary? Looks like a more general case of BandCompositeRasterSource so maybe the inheritance
@@ -282,9 +293,9 @@ object FileLayerProvider {
   def apply(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
             maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
             bandIndices: Seq[Int] = Seq(), correlationId: String = "", experimental: Boolean = false,
-            retainNoDataTiles: Boolean = false): FileLayerProvider = new FileLayerProvider(
+            retainNoDataTiles: Boolean = false, maxSoftErrorsRatio: Double = 0.0): FileLayerProvider = new FileLayerProvider(
     openSearch, openSearchCollectionId, openSearchLinkTitles, rootPath, maxSpatialResolution, pathDateExtractor,
-    attributeValues, layoutScheme, bandIndices, correlationId, experimental, retainNoDataTiles,
+    attributeValues, layoutScheme, bandIndices, correlationId, experimental, retainNoDataTiles, maxSoftErrorsRatio,
     disambiguateConstructors = null
   )
 
@@ -503,13 +514,14 @@ object FileLayerProvider {
   private val PIXEL_COUNTER = "InputPixels"
 
   private def rasterRegionsToTilesLoadPerProductStrategy(rasterRegionRDD: RDD[(SpaceTimeKey, (RasterRegion, SourceName))],
-                                   metadata: TileLayerMetadata[SpaceTimeKey],
-                                   retainNoDataTiles: Boolean,
-                                   cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy,
-                                   partitionerOption: Option[SpacePartitioner[SpaceTimeKey]] = None,
-                                   datacubeParams : Option[DataCubeParameters] = None,
+                                                         metadata: TileLayerMetadata[SpaceTimeKey],
+                                                         retainNoDataTiles: Boolean,
+                                                         cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy,
+                                                         partitionerOption: Option[SpacePartitioner[SpaceTimeKey]] = None,
+                                                         datacubeParams : Option[DataCubeParameters] = None,
                                                          expectedBandCount : Int = -1,
-                                                         sources: Seq[(RasterSource, Feature)]
+                                                         sources: Seq[(RasterSource, Feature)],
+                                                         softErrors: Boolean,
                                   ): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
 
     if(cloudFilterStrategy!=NoCloudFilterStrategy) {
@@ -539,7 +551,7 @@ object FileLayerProvider {
 
           case source1: BandCompositeRasterSource =>
             //decompose into individual bands
-            source1.sources.map(s => (s.name, GridBoundsRasterRegion(new BandCompositeRasterSource(NonEmptyList.one(s),source1.crs,source1.attributes,source1.predefinedExtent, parallelRead = datacubeParams.forall(!_.loadPerProduct)), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key_region_sourcename._1, t._1._2))).toList.toSeq
+            source1.sources.map(s => (s.name, GridBoundsRasterRegion(new BandCompositeRasterSource(NonEmptyList.one(s),source1.crs,source1.attributes,source1.predefinedExtent, parallelRead = datacubeParams.forall(!_.loadPerProduct), softErrors = softErrors), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key_region_sourcename._1, t._1._2))).toList.toSeq
 
           case _ =>
             Seq((source.name, (Seq(0), key_region_sourcename._1, key_region_sourcename._2._1)))
@@ -872,7 +884,7 @@ object FileLayerProvider {
 class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
                         maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any], layoutScheme: LayoutScheme,
                         bandIndices: Seq[Int], correlationId: String, experimental: Boolean,
-                        retainNoDataTiles: Boolean,
+                        retainNoDataTiles: Boolean, maxSoftErrorsRatio: Double,
                         disambiguateConstructors: Null) extends LayerProvider { // workaround for: constructors have the same type after erasure
 
   import DatacubeSupport._
@@ -883,7 +895,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   def this(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
            maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
            bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "", experimental: Boolean = false,
-           retainNoDataTiles: Boolean = false) = this(openSearch, openSearchCollectionId,
+           retainNoDataTiles: Boolean = false, maxSoftErrorsRatio: Double = 0.0) = this(openSearch, openSearchCollectionId,
            openSearchLinkTitles = NonEmptyList.fromListUnsafe(for {
              (title, bandIndices) <- openSearchLinkTitles.toList.zipAll(bandIds, thisElem = "", thatElem = Seq(0))
              _ <- bandIndices
@@ -891,7 +903,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
            rootPath, maxSpatialResolution, pathDateExtractor, attributeValues, layoutScheme,
            bandIndices = bandIds.flatten,
            correlationId, experimental,
-           retainNoDataTiles, disambiguateConstructors = null)
+           retainNoDataTiles, maxSoftErrorsRatio, disambiguateConstructors = null)
 
   assert(bandIndices.isEmpty || bandIndices.size == openSearchLinkTitles.size)
 
@@ -901,6 +913,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
   private val _rootPath = if(rootPath != null) Paths.get(rootPath) else null
   private val fromLoadStac = openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
+  private val softErrors = maxSoftErrorsRatio > 0.0
 
   private val openSearchLinkTitlesWithBandId: Seq[(String, Int)] = {
     if (bandIndices.nonEmpty) {
@@ -1241,7 +1254,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         if(!datacubeParams.map(_.loadPerProduct).getOrElse(false) || theMaskStrategy != NoCloudFilterStrategy ){
           rasterRegionsToTiles(regions, metadata, retainNoDataTiles, theMaskStrategy, partitioner, datacubeParams)
         }else{
-          rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size,readKeysToRasterSourcesResult._4)
+          rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size,readKeysToRasterSourcesResult._4, softErrors)
         }
       logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner}")
       cube
@@ -1513,7 +1526,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           return None
         }
 
-        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource }, targetExtent.crs, attributes, predefinedExtent = predefinedExtent), feature))
+        Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource }, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
       } else Some((new MultibandCompositeRasterSource(sources.map { case (rasterSource, bandIndex) => (rasterSource, Seq(bandIndex))}, targetExtent.crs, attributes), feature))
     }
   }

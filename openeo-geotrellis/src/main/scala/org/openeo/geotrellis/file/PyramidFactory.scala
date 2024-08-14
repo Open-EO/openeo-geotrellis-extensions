@@ -43,7 +43,9 @@ class PyramidFactory(openSearchClient: OpenSearchClient,
                      openSearchLinkTitles: util.List[String],
                      rootPath: String,
                      maxSpatialResolution: CellSize,
-                     experimental: Boolean = false) {
+                     experimental: Boolean = false,
+                     maxSoftErrorsRatio: Double = 0.0,
+                    ) {
   require(openSearchLinkTitles.size() > 0)
 
   import PyramidFactory._
@@ -75,7 +77,8 @@ class PyramidFactory(openSearchClient: OpenSearchClient,
     metadataProperties,
     layoutScheme,
     correlationId = correlationId,
-    experimental = experimental
+    experimental = experimental,
+    maxSoftErrorsRatio = maxSoftErrorsRatio,
   )
 
   def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
