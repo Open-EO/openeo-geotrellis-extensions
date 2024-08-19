@@ -17,7 +17,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
-import org.junit.jupiter.api.{AfterAll, BeforeAll, Test, Timeout}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test, Timeout}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.TestImplicits._
@@ -1305,6 +1305,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
   }
 
+  @Disabled("temporarily disabled: lowering geotrellis.raster.gdal.number-of-attempts does not work")
   @Test
   def readGDALRasterSourceFromCorruptTileThrows(): Unit = {
     val rs = GDALRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/T29UMV_20180327T114351_B04_10m.jp2")
