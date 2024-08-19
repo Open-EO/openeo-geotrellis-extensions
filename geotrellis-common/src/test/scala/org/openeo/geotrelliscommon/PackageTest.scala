@@ -13,7 +13,7 @@ class PackageTest {
     var attempts = 0
 
     try {
-      retryForever(delay = Duration.ZERO, retries = 3, onAttemptFailed = _ => attempts += 1) {
+      retryForever(delay = Duration.ZERO, attempts = 3, onAttemptFailed = _ => attempts += 1) {
         println("attempting...")
         throw new FailedAttempt
       }
@@ -31,7 +31,7 @@ class PackageTest {
   @Timeout(5) // less than RetryForever's delay below
   def retryForeverNoDelayAfterFinalFailure(): Unit =
     assertThrowsExactly(classOf[FailedAttempt], () =>
-      retryForever(delay = Duration.ofSeconds(60), retries = 1) {
+      retryForever(delay = Duration.ofSeconds(60), attempts = 1) {
         println("attempting...")
         throw new FailedAttempt
       })
