@@ -1,8 +1,6 @@
 package org.openeo.geotrellis.file
 
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.gdal.GDALRasterSource
-import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.raster.{CellSize, isData}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
@@ -10,7 +8,7 @@ import geotrellis.vector.io.json.GeoJson
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}

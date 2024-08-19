@@ -1374,7 +1374,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType)
         } else {
           predefinedExtent = featureExtentInLayout
-          //.replace("/vsis3/eodata/", "/eodata/")
           GDALRasterSource(GDALPath(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https")), options = warpOptions, targetCellType = targetCellType)
         }
       }else if(dataPath.endsWith("MTD_TL.xml")) {
