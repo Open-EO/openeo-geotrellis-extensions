@@ -65,7 +65,7 @@ private class LayoutTileSourceFixed[K: SpatialComponent](
 object BandCompositeRasterSource {
   private val logger = LoggerFactory.getLogger(classOf[BandCompositeRasterSource])
 
-  private def retryForever[R](maxAttempts: Int = 20, onAttemptFailed: Exception => Unit = _ => ())(f: => R): R = {
+  private def retryWithBackoff[R](maxAttempts: Int = 20, onAttemptFailed: Exception => Unit = _ => ())(f: => R): R = {
     val retryPolicy = new RetryPolicy[R]
       .handle(classOf[Exception]) // will otherwise retry Error
       .withMaxAttempts(maxAttempts)
@@ -101,7 +101,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
     val selectedBands = bands.map(sources.toList)
     selectedBands flatMap { rs =>
-      try Some(retryForever(maxRetries, reprojectRasterSourceAttemptFailed(rs))(rs.reproject(crs)))
+      try Some(retryWithBackoff(maxRetries, reprojectRasterSourceAttemptFailed(rs))(rs.reproject(crs)))
       catch {
         // reading the CRS from a GDALRasterSource can fail
         case e: Exception =>
@@ -180,7 +180,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       logger.warn(s"attempt to read $bounds from ${source.name} failed", e)
 
     val singleBandRasters = selectedSources
-      .map(rs => retryForever(maxRetries, readBoundsAttemptFailed(rs)) {
+      .map(rs => retryWithBackoff(maxRetries, readBoundsAttemptFailed(rs)) {
         readBounds(rs)
       })
       .collect { case Some(raster) => raster }
