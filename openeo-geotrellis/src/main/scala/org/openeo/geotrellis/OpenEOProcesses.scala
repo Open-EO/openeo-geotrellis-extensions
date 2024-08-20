@@ -132,12 +132,18 @@ class OpenEOProcesses extends Serializable {
    * @return
    */
   def applyTimeDimension(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpaceTimeKey] = {
-    val rdd = transformTimeDimension[SpaceTimeKey](datacube, scriptBuilder, context)
-    if(datacube.partitioner.isDefined) {
-      ContextRDD(rdd.partitionBy(datacube.partitioner.get),datacube.metadata.copy(cellType = scriptBuilder.getOutputCellType()))
-    }else{
-      ContextRDD(rdd,datacube.metadata.copy(cellType = scriptBuilder.getOutputCellType()))
+    datacube.context.setCallSite(s"apply_dimension target='t' ")
+    try{
+      val rdd = transformTimeDimension[SpaceTimeKey](datacube, scriptBuilder, context)
+      if(datacube.partitioner.isDefined) {
+        ContextRDD(rdd.partitionBy(datacube.partitioner.get),datacube.metadata.copy(cellType = scriptBuilder.getOutputCellType()))
+      }else{
+        ContextRDD(rdd,datacube.metadata.copy(cellType = scriptBuilder.getOutputCellType()))
+      }
+    }finally{
+      datacube.context.clearCallSite()
     }
+
   }
 
     private def transformTimeDimension[KT](datacube: MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder: OpenEOProcessScriptBuilder, context: util.Map[String, Any], reduce:Boolean=false): RDD[(KT, MultibandTile)] = {
@@ -217,7 +223,7 @@ class OpenEOProcesses extends Serializable {
 
     val retiled =
       if (tileSize > 0 && tileSize <= 1024) {
-        val theResult = retile(datacube, tileSize, tileSize, 0, 0)
+        val theResult = retileGeneric(datacube, tileSize, tileSize, 0, 0)
         theResult
       } else {
         datacube
@@ -855,6 +861,7 @@ class OpenEOProcesses extends Serializable {
   }
 
   def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String, swapOperands:Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    leftCube.sparkContext.setCallSite("merge_cubes - (x,y,bands,t) + (x,y,bands)")
     val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,ResampleMethods.NearestNeighbor,rightCube.partitioner.orNull)._2
     checkMetadataCompatible(leftCube.metadata,resampled.metadata)
     val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](leftCube, resampled)
@@ -898,6 +905,7 @@ class OpenEOProcesses extends Serializable {
   }
 
   def mergeSpatialCubes(leftCube: MultibandTileLayerRDD[SpatialKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String): ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = {
+    leftCube.sparkContext.setCallSite("merge_cubes - (x,y,bands)")
     val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,NearestNeighbor,leftCube.partitioner.orNull)._2
     checkMetadataCompatible(leftCube.metadata,resampled.metadata)
     val joined = outerJoin(leftCube,resampled)
@@ -907,6 +915,7 @@ class OpenEOProcesses extends Serializable {
   }
 
   def mergeCubes(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpaceTimeKey], operator:String): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    leftCube.sparkContext.setCallSite("merge_cubes - (x,y,bands,t)")
     val resampled = resampleCubeSpatial(rightCube,leftCube,NearestNeighbor)._2
     checkMetadataCompatible(leftCube.metadata,resampled.metadata)
     val joined = outerJoin(leftCube,resampled)
@@ -971,7 +980,18 @@ class OpenEOProcesses extends Serializable {
   }
 
 
-  def retile(datacube: MultibandTileLayerRDD[SpaceTimeKey], sizeX:Int, sizeY:Int, overlapX:Int, overlapY:Int): MultibandTileLayerRDD[SpaceTimeKey] = {
+  def retile(datacube: Object, sizeX:Int, sizeY:Int, overlapX:Int, overlapY:Int): Object = {
+
+    datacube match {
+      case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        retileGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]], sizeX, sizeY, overlapX, overlapY)
+      case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        retileGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]], sizeX, sizeY, overlapX, overlapY)
+      case _ => throw new IllegalArgumentException(s"Unsupported rdd type to retile: ${datacube}")
+    }
+  }
+  def retileGeneric[K: SpatialComponent: ClassTag
+  ](datacube: MultibandTileLayerRDD[K], sizeX:Int, sizeY:Int, overlapX:Int, overlapY:Int): MultibandTileLayerRDD[K] = {
     val regridded =
     if(sizeX >0 && sizeY > 0){
       RegridFixed(filterNegativeSpatialKeys(datacube),sizeX,sizeY)
