@@ -20,6 +20,8 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
+import net.jodah.failsafe.{Failsafe, RetryPolicy}
+import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.LongAccumulator
@@ -37,11 +39,11 @@ import java.io.{IOException, Serializable}
 import java.net.URI
 import java.nio.file.{Path, Paths}
 import java.time._
-import java.time.temporal.ChronoUnit
+import java.time.temporal.ChronoUnit.{DAYS, SECONDS}
+import java.util
 import java.util.concurrent.TimeUnit
 import scala.collection.GenSeq
 import scala.collection.JavaConverters._
-import scala.collection.parallel.immutable.{ParMap, ParSeq}
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
 
@@ -62,6 +64,19 @@ private class LayoutTileSourceFixed[K: SpatialComponent](
 
 object BandCompositeRasterSource {
   private val logger = LoggerFactory.getLogger(classOf[BandCompositeRasterSource])
+
+  private def retryForever[R](maxAttempts: Int = 20, onAttemptFailed: Exception => Unit = _ => ())(f: => R): R = {
+    val retryPolicy = new RetryPolicy[R]
+      .handle(classOf[Exception]) // will otherwise retry Error
+      .withMaxAttempts(maxAttempts)
+      .withBackoff(1, 16, SECONDS)
+      .onFailedAttempt((attempt: ExecutionAttemptedEvent[R]) =>
+        onAttemptFailed(attempt.getLastFailure.asInstanceOf[Exception]))
+
+    Failsafe
+      .`with`(util.Collections.singletonList(retryPolicy))
+      .get(f _)
+  }
 }
 
 
@@ -315,7 +330,7 @@ object FileLayerProvider {
   def rasterSourceRDD(rasterSources: Seq[RasterSource], metadata: TileLayerMetadata[SpaceTimeKey], maxSpatialResolution: CellSize, collection: String)(implicit sc: SparkContext): RDD[LayoutTileSource[SpaceTimeKey]] = {
 
     val keyExtractor = new TemporalKeyExtractor {
-      def getMetadata(rs: RasterMetadata): ZonedDateTime = ZonedDateTime.parse(rs.attributes("date")).truncatedTo(ChronoUnit.DAYS)
+      def getMetadata(rs: RasterMetadata): ZonedDateTime = ZonedDateTime.parse(rs.attributes("date")).truncatedTo(DAYS)
     }
     val sources = sc.parallelize(rasterSources,rasterSources.size)
 
