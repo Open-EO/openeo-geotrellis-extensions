@@ -3,6 +3,7 @@ package org.openeo.geotrellis.layers
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.raster.gdal.{GDALIOException, GDALRasterSource}
 import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
@@ -16,7 +17,7 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
-import org.junit.jupiter.api.{AfterAll, BeforeAll, Test, Timeout}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test, Timeout}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.TestImplicits._
@@ -1302,5 +1303,18 @@ class FileLayerProviderTest extends RasterMatchers{
     val httpResult = FileLayerProvider.convertNetcdfLinksToGDALFormat(Link(URI.create("http://openeo.vito.be/job-xxx/results/result.nc"),Some("DMP")),"dry_matter_productivity",1)
     assertEquals(Some((Link(URI.create("NETCDF:http://openeo.vito.be/job-xxx/results/result.nc:dry_matter_productivity"),Some("DMP")),0)),httpResult)
 
+  }
+
+  @Disabled("temporarily disabled: lowering geotrellis.raster.gdal.number-of-attempts does not work")
+  @Test
+  def readGDALRasterSourceFromCorruptTileThrows(): Unit = {
+    val rs = GDALRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/T29UMV_20180327T114351_B04_10m.jp2")
+
+    try {
+      rs.read()
+      fail(s"should have thrown a GDALIOException (geotrellis.raster.gdal.numberOfAttempts is ${geotrellis.raster.gdal.numberOfAttempts})")
+    } catch {
+      case _: GDALIOException => // OK
+    }
   }
 }
