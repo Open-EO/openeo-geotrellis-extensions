@@ -250,6 +250,16 @@ object FileLayerProvider {
   private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
   private val maxRetries = sys.env.getOrElse("GDALREAD_MAXRETRIES", "10").toInt
 
+
+
+
+  lazy val sdk = {
+    import _root_.io.opentelemetry.api.OpenTelemetry
+    import _root_.io.opentelemetry.api.GlobalOpenTelemetry
+    GlobalOpenTelemetry.get()
+  }
+  lazy val megapixelPerSecondMeter = sdk.meterBuilder("load_collection_read").build().gaugeBuilder("megapixel_per_second").build()
+
   {
     try {
       val gdaldatasetcachesize = Integer.valueOf(System.getenv().getOrDefault("GDAL_DATASET_CACHE_SIZE","32"))
@@ -569,6 +579,8 @@ object FileLayerProvider {
       if (totalPixelsPartition > 0) {
         val secondsPerChunk = (durationMillis / 1000.0) / (totalPixelsPartition / (256 * 256))
         loadingTimeAcc.add(secondsPerChunk)
+        val megapixelPerSecond = (totalPixelsPartition /(1024*1024)) / (durationMillis / 1000.0)
+        megapixelPerSecondMeter.set(megapixelPerSecond)
       }
       loadedPartitions
 

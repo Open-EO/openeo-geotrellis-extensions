@@ -9,7 +9,7 @@ import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util.GetComponent
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.Partitioner
-import org.apache.spark.rdd.RDD
+import org.apache.spark.rdd.{CoGroupedRDD, RDD}
 import org.slf4j.LoggerFactory
 
 import java.time.ZonedDateTime
@@ -195,7 +195,25 @@ object DatacubeSupport {
    ignoreKeysWithoutMask: Boolean = false,
   ): RDD[(K, MultibandTile)] with Metadata[M] = {
     val joined = if (ignoreKeysWithoutMask) {
-      val tmpRdd = SpatialJoin.join(datacube, mask).mapValues(v => (v._1, Option(v._2)))
+      //inner join, try to preserve partitioner
+      val tmpRdd: RDD[(K, (MultibandTile, Option[MultibandTile]))] =
+        if(datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[K]]){
+            val part = datacube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
+            new CoGroupedRDD[K](List(datacube, part(mask)), part)
+              .flatMapValues { case Array(l, r) =>
+                if (l.isEmpty) {
+                  Seq.empty[(MultibandTile, Option[MultibandTile])]
+                }
+                else if (r.isEmpty)
+                  Seq.empty[(MultibandTile, Option[MultibandTile])]
+                else
+                  for (v <- l.iterator; w <- r.iterator) yield (v, Some(w))
+              }.asInstanceOf[RDD[(K, (MultibandTile, Option[MultibandTile]))]]
+        }else{
+          SpatialJoin.join(datacube, mask).mapValues(v => (v._1, Option(v._2)))
+        }
+
+
       ContextRDD(tmpRdd, datacube.metadata)
     } else {
       SpatialJoin.leftOuterJoin(datacube, mask)

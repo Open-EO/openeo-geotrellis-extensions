@@ -12,6 +12,7 @@ import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.raster.{CellSize, MultibandTile, NODATA, PaddedTile, ShortUserDefinedNoDataCellType}
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.spark._
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
@@ -27,10 +28,12 @@ import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.junit.{AfterClass, BeforeClass}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
-import org.openeo.geotrellis.{LayerFixtures, MergeCubesSpec, OpenEOProcessScriptBuilder, OpenEOProcesses}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, ResampledTile}
+import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
+import org.openeo.geotrellis.{LayerFixtures, MergeCubesSpec, OpenEOProcessScriptBuilder, OpenEOProcesses, ProjectedPolygons, TestOpenEOProcessScriptBuilder}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ConfigurableSpaceTimePartitioner, DataCubeParameters, ResampledTile}
 import org.openeo.opensearch.OpenSearchResponses.Link
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
+import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.net.URI
 import java.time.LocalTime.MIDNIGHT
@@ -109,6 +112,15 @@ object Sentinel2FileLayerProviderTest {
     arguments(Map("method"->"mask_scl_dilation","erosion_kernel_size"->3,"kernel1_size"->0).asJava.asInstanceOf[util.Map[String,Object]],"https://artifactory.vgt.vito.be/artifactory/testdata-public/masked_erosion.tif")
   ))
 
+  def datacubeParams: Stream[Arguments] = Arrays.stream(Array(
+    arguments(new DataCubeParameters(),8.asInstanceOf[Integer]),
+    arguments({
+      val p = new DataCubeParameters()
+      p.loadPerProduct = true
+      p
+    },9.asInstanceOf[Integer]
+      )
+  ))
 }
 
 
@@ -260,8 +272,9 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     m
   }
 
-  @Test
-  def multibandWithSpacetimeMask(): Unit = {
+  @ParameterizedTest
+  @MethodSource(Array("datacubeParams"))
+  def multibandWithSpacetimeMask(parameters: DataCubeParameters, expectedNBStages: Int): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
     val bbox = ProjectedExtent(Extent(1.90283, 50.9579, 1.97116, 51.0034), LatLng)
 
@@ -282,11 +295,16 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     var layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 14,datacubeParams = Option.empty)
 
     val originalCount = layer.count()
-    val parameters = new DataCubeParameters()
     parameters.maskingCube = Some(mask)
-    layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 14,datacubeParams = Some(parameters))
 
+    val listener = new GetInfoSparkListener()
+    SparkContext.getOrCreate().addSparkListener(listener)
+
+    layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 14,datacubeParams = Some(parameters))
+    assertTrue(layer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[ConfigurableSpaceTimePartitioner])
     val maskedCount = layer.count()
+    SparkContext.getOrCreate().removeSparkListener(listener)
+    assertEquals(expectedNBStages,listener.getStagesCompleted)
     val spatialLayer = p.rasterMask(layer,mask,Double.NaN)
       .toSpatial(date)
       .cache()
