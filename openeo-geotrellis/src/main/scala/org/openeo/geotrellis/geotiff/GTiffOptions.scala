@@ -61,11 +61,12 @@ class GTiffOptions extends Serializable {
 
 
   /**
-   * Avoids error:
+   * Avoids error when using .clone():
    * "method clone in class Object cannot be accessed in org.openeo.geotrellis.geotiff.GTiffOptions"
    */
   def deepClone(): GTiffOptions = {
     // https://www.avajava.com/tutorials/lessons/how-do-i-perform-a-deep-clone-using-serializable.html
+    // TODO: Check for a better implementation
     val baos = new java.io.ByteArrayOutputStream()
     val oos = new java.io.ObjectOutputStream(baos)
     oos.writeObject(this)

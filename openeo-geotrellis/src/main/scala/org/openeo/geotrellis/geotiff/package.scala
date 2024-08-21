@@ -181,6 +181,7 @@ package object geotiff {
           (0 until band_count).map("band" + _)
       }
 
+      // TODO: Save tiffs on executors instead of driver
       val paths = (0 until bandCount).par.map(b => {
         val bandRdd = rdd_per_band.filter(_._1 == b).map(_._2)
         val contextRDD = ContextRDD(bandRdd, rdd.metadata)
