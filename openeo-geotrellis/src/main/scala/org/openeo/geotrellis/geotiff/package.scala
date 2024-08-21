@@ -107,54 +107,93 @@ package object geotiff {
 
     val compression = Deflate(zLevel)
     val bandSegmentCount = totalCols * totalRows
+    val bandLabels = new OpenEOProcesses().maybeBandLabels(rdd) match {
+      case Some(labels) => labels
+      case None =>
+        val band_count = new OpenEOProcesses().RDDBandCount(rdd)
+        (0 until band_count).map("band" + _)
+    }
 
-    preprocessedRdd.map { case (key: SpaceTimeKey, multibandTile: MultibandTile) =>
+    preprocessedRdd.flatMap { case (key: SpaceTimeKey, multibandTile: MultibandTile) =>
       var bandIndex = -1
       //Warning: for deflate compression, the segmentcount and index is not really used, making it stateless.
       //Not sure how this works out for other types of compression!!!
 
       val theCompressor = compression.createCompressor(multibandTile.bandCount)
-      (key, multibandTile.bands.map {
+      multibandTile.bands.map {
         tile =>
           bandIndex += 1
           val layoutCol = key.getComponent[SpatialKey]._1
           val layoutRow = key.getComponent[SpatialKey]._2
-          val bandSegmentOffset = bandSegmentCount * bandIndex
+          val bandSegmentOffset = bandSegmentCount * (if (formatOptions.separateAssetPerBand) 0 else bandIndex)
           val index = totalCols * layoutRow + layoutCol + bandSegmentOffset
           //tiff format seems to require that we provide 'full' tiles
           val bytes = raster.CroppedTile(tile, raster.GridBounds(0, 0, tileLayout.tileCols - 1, tileLayout.tileRows - 1)).toBytes()
           val compressedBytes = theCompressor.compress(bytes, 0)
-          (index, (multibandTile.cellType, compressedBytes))
-      })
-    }.map(tuple => {
-      val isDays = Duration.between(fixedTimeOffset, tuple._1.time).getSeconds % secondsPerDay == 0
-      val filename = if(isDays) {
-        s"${formatOptions.filenamePrefix}_${DateTimeFormatter.ISO_DATE.format(tuple._1.time)}.tif"
-       } else{
-          // ':' is not valid in a Windows filename
-          s"${formatOptions.filenamePrefix}_${DateTimeFormatter.ISO_ZONED_DATE_TIME.format(tuple._1.time).replace(":", "").replace("-","")}.tif"
-       }
 
+          val isDays = Duration.between(fixedTimeOffset, key.time).getSeconds % secondsPerDay == 0
+          val timePieceSlug = if (isDays) {
+            "_" + DateTimeFormatter.ISO_DATE.format(key.time)
+          } else {
+            // ':' is not valid in a Windows filename
+            "_" + DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time).replace(":", "").replace("-", "")
+          }
+          // TODO: Get band names from metadata?
+          val bandPiece = if (formatOptions.separateAssetPerBand) "_" + bandLabels(bandIndex) else ""
+          //noinspection RedundantBlock
+          val filename = s"${formatOptions.filenamePrefix}${timePieceSlug}${bandPiece}.tif"
 
-      val timestamp = tuple._1.time format DateTimeFormatter.ISO_ZONED_DATE_TIME
-      ((filename, timestamp), tuple._2)
-    }).groupByKey().map((tuple: ((String, String), Iterable[Vector[(Int, (CellType, Array[Byte]))]])) => {
-      val detectedBandCount = tuple._2.map(_.size).max
-      val segments: Iterable[(Int, (CellType, Array[Byte]))] = tuple._2.flatten
+          val timestamp = DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time)
+          val tiffBands = if (formatOptions.separateAssetPerBand) 1 else multibandTile.bandCount
+          ((filename, timestamp, tiffBands), (index, (multibandTile.cellType, compressedBytes)))
+      }
+    }.groupByKey().map { case ((filename: String, timestamp: String, tiffBands:Int), sequence) =>
+      val segments: Iterable[(Int, (CellType, Array[Byte]))] = sequence
       val cellTypes = segments.map(_._2._1).toSet
       val tiffs: Predef.Map[Int, Array[Byte]] = segments.map(tuple => (tuple._1, tuple._2._2)).toMap
 
-      val segmentCount = (bandSegmentCount*detectedBandCount)
-      val thePath = Paths.get(path).resolve(tuple._1._1).toString
-      val correctedPath = writeTiff( thePath  ,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, tileLayout, compression, cellTypes.head, detectedBandCount, segmentCount,formatOptions)
-      val (_, timestamp) = tuple._1
+      val segmentCount = bandSegmentCount * tiffBands
+      val thePath = Paths.get(path).resolve(filename).toString
+      val correctedPath = writeTiff(thePath, tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs,
+        tileLayout, compression, cellTypes.head, tiffBands, segmentCount, formatOptions,
+      )
       (correctedPath, timestamp, croppedExtent)
-    }).collect().toList.asJava
+    }.collect().toList.asJava
 
   }
 
-  def saveRDD(rdd:MultibandTileLayerRDD[SpatialKey], bandCount:Int, path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent], formatOptions:GTiffOptions = new GTiffOptions):java.util.List[String] = {
-    saveRDDGeneric(rdd,bandCount, path, zLevel, cropBounds,formatOptions)
+  def saveRDD(rdd: MultibandTileLayerRDD[SpatialKey], bandCount: Int, path: String, zLevel: Int = 6, cropBounds: Option[Extent] = Option.empty[Extent], formatOptions: GTiffOptions = new GTiffOptions): java.util.List[String] = {
+    if (formatOptions.separateAssetPerBand) {
+      val rdd_per_band = rdd.flatMap { case (key: SpatialKey, multibandTile: MultibandTile) =>
+        var bandIndex = -1
+        multibandTile.bands.map {
+          tile =>
+            bandIndex += 1
+            val t = _root_.geotrellis.raster.MultibandTile(Seq(tile))
+            (bandIndex, (key, t))
+        }
+      }
+
+      val bandLabels = new OpenEOProcesses().maybeBandLabels(rdd) match {
+        case Some(labels) => labels
+        case None =>
+          val band_count = new OpenEOProcesses().RDDBandCount(rdd)
+          (0 until band_count).map("band" + _)
+      }
+
+      // TODO: Save tiffs on executors instead of driver
+      val paths = (0 until bandCount).par.map(b => {
+        val bandRdd = rdd_per_band.filter(_._1 == b).map(_._2)
+        val contextRDD = ContextRDD(bandRdd, rdd.metadata)
+        val fo = formatOptions.deepClone()
+        fo.setFilenamePrefix(formatOptions.filenamePrefix + "_" + bandLabels(b))
+        fo.setSeparateAssetPerBand(false)
+        saveRDDGeneric(contextRDD, 1, path, zLevel, cropBounds, fo)
+      })
+      paths.flatMap(_.asScala).toList.asJava
+    } else {
+      saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions)
+    }
   }
 
   def saveRDDTileGrid(rdd:MultibandTileLayerRDD[SpatialKey], bandCount:Int, path:String, tileGrid: String, zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]) = {
@@ -323,7 +362,7 @@ package object geotiff {
 
   }
 
-  private def getCompressedTiles[K: SpatialComponent : Boundable : ClassTag](preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]],gridBounds: GridBounds[Int], compression: Compression) = {
+  private def getCompressedTiles[K: SpatialComponent : Boundable : ClassTag](preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]],gridBounds: GridBounds[Int], compression: Compression): (collection.Map[Int, Array[Byte]], CellType, Double, Int) = {
     val tileLayout = preprocessedRdd.metadata.tileLayout
 
     val totalCols = math.ceil(gridBounds.width.toDouble / tileLayout.tileCols).toInt
