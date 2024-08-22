@@ -84,6 +84,23 @@ package object geotiff {
     })
   }
 
+
+  @deprecated("Use saveRDDTemporalAllowAssetPerBand instead.")
+  def saveRDDTemporal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                      path: String,
+                      zLevel: Int = 6,
+                      cropBounds: Option[Extent] = Option.empty[Extent],
+                      formatOptions: GTiffOptions = new GTiffOptions
+                     ): java.util.List[(String, String, Extent)] = {
+    val ret = saveRDDTemporalAllowAssetPerBand(rdd, path, zLevel, cropBounds, formatOptions).asScala
+    logger.warn("Calling backwards compatibility version for saveRDDTemporalConsiderAssetPerBand")
+    //    val duplicates = ret.groupBy(_._2).filter(_._2.size > 1)
+    //    if (duplicates.nonEmpty) {
+    //      throw new Exception(s"Multiple returned files with same timestamp: ${duplicates.keys.mkString(", ")}")
+    //    }
+    ret.map(t => (t._1, t._2, t._3)).asJava
+  }
+
   /**
    * Save temporal rdd, on the executors
    *
@@ -92,7 +109,12 @@ package object geotiff {
    * @param zLevel
    * @param cropBounds
    */
-  def saveRDDTemporal(rdd:MultibandTileLayerRDD[SpaceTimeKey], path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent], formatOptions:GTiffOptions = new GTiffOptions): java.util.List[(String, String, Extent)] = {
+  def saveRDDTemporalAllowAssetPerBand(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                                          path: String,
+                                          zLevel: Int = 6,
+                                          cropBounds: Option[Extent] = Option.empty[Extent],
+                                          formatOptions: GTiffOptions = new GTiffOptions
+                                         ): java.util.List[(String, String, Extent, java.util.List[Int])] = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
@@ -145,24 +167,47 @@ package object geotiff {
 
           val timestamp = DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time)
           val tiffBands = if (formatOptions.separateAssetPerBand) 1 else multibandTile.bandCount
-          ((filename, timestamp, tiffBands), (index, (multibandTile.cellType, compressedBytes)))
+          ((filename, timestamp, tiffBands), (index, (multibandTile.cellType, compressedBytes), bandIndex))
       }
     }.groupByKey().map { case ((filename: String, timestamp: String, tiffBands:Int), sequence) =>
-      val segments: Iterable[(Int, (CellType, Array[Byte]))] = sequence
-      val cellTypes = segments.map(_._2._1).toSet
-      val tiffs: Predef.Map[Int, Array[Byte]] = segments.map(tuple => (tuple._1, tuple._2._2)).toMap
+      val cellTypes = sequence.map(_._2._1).toSet
+      val tiffs: Predef.Map[Int, Array[Byte]] = sequence.map(tuple => (tuple._1, tuple._2._2)).toMap
+      val bandIndices = sequence.map(_._3).toSet.toList.asJava
 
       val segmentCount = bandSegmentCount * tiffBands
       val thePath = Paths.get(path).resolve(filename).toString
       val correctedPath = writeTiff(thePath, tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs,
         tileLayout, compression, cellTypes.head, tiffBands, segmentCount, formatOptions,
       )
-      (correctedPath, timestamp, croppedExtent)
+      (correctedPath, timestamp, croppedExtent, bandIndices)
     }.collect().toList.asJava
 
   }
 
-  def saveRDD(rdd: MultibandTileLayerRDD[SpatialKey], bandCount: Int, path: String, zLevel: Int = 6, cropBounds: Option[Extent] = Option.empty[Extent], formatOptions: GTiffOptions = new GTiffOptions): java.util.List[String] = {
+
+  @deprecated("Use saveRDDAllowAssetPerBand instead.")
+  def saveRDD(rdd: MultibandTileLayerRDD[SpatialKey],
+              bandCount: Int,
+              path: String,
+              zLevel: Int = 6,
+              cropBounds: Option[Extent] = Option.empty[Extent],
+              formatOptions: GTiffOptions = new GTiffOptions
+             ): java.util.List[String] = {
+    val tmp = saveRDDAllowAssetPerBand(rdd, bandCount, path, zLevel, cropBounds, formatOptions).asScala
+    logger.warn("Calling backwards compatibility version for saveRDDAllowAssetPerBand")
+    //    if (tmp.size() > 1) {
+    //      throw new Exception("Multiple returned files, probably meant to call saveRDDAllowAssetPerBand")
+    //    }
+    tmp.map(_._1).asJava
+  }
+
+  def saveRDDAllowAssetPerBand(rdd: MultibandTileLayerRDD[SpatialKey],
+                               bandCount: Int,
+                               path: String,
+                               zLevel: Int = 6,
+                               cropBounds: Option[Extent] = Option.empty[Extent],
+                               formatOptions: GTiffOptions = new GTiffOptions
+                              ): java.util.List[(String, java.util.List[Int])] = {
     if (formatOptions.separateAssetPerBand) {
       val rdd_per_band = rdd.flatMap { case (key: SpatialKey, multibandTile: MultibandTile) =>
         var bandIndex = -1
@@ -188,11 +233,13 @@ package object geotiff {
         val fo = formatOptions.deepClone()
         fo.setFilenamePrefix(formatOptions.filenamePrefix + "_" + bandLabels(b))
         fo.setSeparateAssetPerBand(false)
-        saveRDDGeneric(contextRDD, 1, path, zLevel, cropBounds, fo)
+        val tmp = saveRDDGeneric(contextRDD, 1, path, zLevel, cropBounds, fo).asScala
+        tmp.map(t => (t, Collections.singletonList(b))).asJava
       })
       paths.flatMap(_.asScala).toList.asJava
     } else {
-      saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions)
+      val tmp = saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions).asScala
+      tmp.map(t => (t, (0 until bandCount).toList.asJava)).asJava
     }
   }
 
