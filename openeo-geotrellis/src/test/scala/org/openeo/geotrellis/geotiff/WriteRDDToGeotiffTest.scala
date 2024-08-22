@@ -334,8 +334,8 @@ class WriteRDDToGeotiffTest {
     val layoutRows = 4
     val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
 
-    val outDir = Paths.get("tmp/geotiffGaps/")
-    new Directory(outDir.toFile).deleteRecursively()
+    val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGaps/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
     Files.createDirectories(outDir)
 
     saveRDDTemporal(layer, outDir.toString)
@@ -357,7 +357,7 @@ class WriteRDDToGeotiffTest {
     val layoutRows = 4
     val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
 
-    val outDir = Paths.get("tmp/geotiffGapsOneBandPerTiff/")
+    val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGapsSeparateAssetPerBand/")
     new Directory(outDir.toFile).deepFiles.foreach(_.delete())
     Files.createDirectories(outDir)
 
