@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.openeo</groupId>
   <artifactId>openeo-geotrellis-extensions</artifactId>
-  <version>2.4.0_2.12-SNAPSHOT</version>
+  <version>${revision}</version>
     <packaging>pom</packaging>
     <name>openeo-geotrellis-extensions</name>
     <properties>
@@ -21,6 +21,7 @@
         <awssdk.version>2.21.26</awssdk.version>
         <jaxb.api.version>2.3.0</jaxb.api.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <revision>2.4.0_2.12-SNAPSHOT</revision>
     </properties>
 
     <dependencyManagement>
@@ -60,6 +61,7 @@
                 <module>geotrellis-common</module>
                 <module>openeo-logging</module>
                 <module>geopyspark-geotrellis</module>
+                <module>geotrellis-integrationtests</module>
             </modules>
         </profile>
         <profile>

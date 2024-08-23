@@ -37,7 +37,9 @@ pipeline {
         PACKAGE_NAME = "${package_name}"
         WORKSPACE = "${env.WORKSPACE}"
     }
-
+    parameters {
+      booleanParam(name: 'skip_tests', defaultValue: false, description: 'Check this if you want to skip running tests.')
+    }
     stages {
         stage('Checkout') {
             steps {
@@ -55,7 +57,7 @@ pipeline {
             steps {
                 script {
                     rel_version = getMavenVersion()
-                    build()
+                    build( !params.skip_tests)
                     utils.setWorkspacePermissions()
                 }
             }
@@ -196,12 +198,17 @@ void build(tests = true){
             sh "dnf install -y maven git java-11-openjdk-devel gdal-3.8.4"
             def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
-            rtMaven.deployer server: server, releaseRepo: 'libs-release-public', snapshotRepo: 'libs-snapshot-public'
+            def snapshotRepo = 'libs-snapshot-public'
+            if (!publishable_branches.contains(env.BRANCH_NAME)) {
+                snapshotRepo = 'openeo-branch-builds'
+                rtMaven.opts += " -Drevision=${env.BRANCH_NAME}"
+            }
+            rtMaven.deployer server: server, releaseRepo: 'libs-release-public', snapshotRepo: snapshotRepo
             rtMaven.tool = maven
             if (!tests) {
                 rtMaven.opts += ' -DskipTests=true'
             }
-            rtMaven.deployer.deployArtifacts = publishable_branches.contains(env.BRANCH_NAME) || publishable_branches.contains(env.CHANGE_BRANCH)
+            rtMaven.deployer.deployArtifacts = true
             //use '--projects StatisticsMapReduce' in 'goals' to build specific module
             try {
                 withCredentials([
