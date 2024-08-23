@@ -108,6 +108,7 @@ package object geotiff {
    * @param zLevel
    * @param cropBounds
    */
+  //noinspection ScalaWeakerAccess
   def saveRDDTemporalAllowAssetPerBand(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                                           path: String,
                                           zLevel: Int = 6,
@@ -202,6 +203,7 @@ package object geotiff {
     tmp.map(_._1).asJava
   }
 
+  //noinspection ScalaWeakerAccess
   def saveRDDAllowAssetPerBand(rdd: MultibandTileLayerRDD[SpatialKey],
                                bandCount: Int,
                                path: String,
@@ -210,34 +212,34 @@ package object geotiff {
                                formatOptions: GTiffOptions = new GTiffOptions
                               ): java.util.List[(String, java.util.List[Int])] = {
     if (formatOptions.separateAssetPerBand) {
+      val bandLabels = formatOptions.tags.bandTags.map(_("DESCRIPTION"))
+      val layout = rdd.metadata.layout
+      val crs = rdd.metadata.crs
+      val extent = rdd.metadata.extent
+      val compression = Deflate(zLevel)
+
       val rdd_per_band = rdd.flatMap { case (key: SpatialKey, multibandTile: MultibandTile) =>
         var bandIndex = -1
         multibandTile.bands.map {
           tile =>
             bandIndex += 1
             val t = _root_.geotrellis.raster.MultibandTile(Seq(tile))
-            (bandIndex, (key, t))
+            val name = formatOptions.filenamePrefix + "_" + bandLabels(bandIndex) + ".tif"
+            ((name, bandIndex), (key, t))
         }
       }
+      rdd_per_band.groupByKey().map { case ((name, bandIndex), tiles) =>
+        val fixedPath =
+          if (path.endsWith("out")) {
+            path.substring(0, path.length - 3) + name
+          }
+          else {
+            path
+          }
 
-      val bandLabels = formatOptions.tags.bandTags.map(_("DESCRIPTION"))
-
-      // TODO: Save tiffs on executors instead of driver
-      val paths = (0 until bandCount).par.map(b => {
-        val bandRdd = rdd_per_band.filter(_._1 == b).map(_._2)
-        val contextRDD = ContextRDD(bandRdd, rdd.metadata)
-        val fo = formatOptions.deepClone()
-        fo.setFilenamePrefix(formatOptions.filenamePrefix + "_" + bandLabels(b))
-        fo.setSeparateAssetPerBand(false)
-
-        // Keep only one band tag
-        val newBandTags = List(formatOptions.tags.bandTags(b))
-        fo.setBandTags(newBandTags)
-
-        val tmp = saveRDDGeneric(contextRDD, 1, path, zLevel, cropBounds, fo).asScala
-        tmp.map(t => (t, Collections.singletonList(b))).asJava
-      })
-      paths.flatMap(_.asScala).toList.asJava
+        (stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, None, None, compression, Some(formatOptions)),
+          Collections.singletonList(bandIndex))
+      }.collect().toList.sortBy(_._1).asJava
     } else {
       val tmp = saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions).asScala
       tmp.map(t => (t, (0 until bandCount).toList.asJava)).asJava
@@ -684,7 +686,11 @@ package object geotiff {
       .toList.asJava
   }
 
-  private def stitchAndWriteToTiff(tiles: Iterable[(SpatialKey, MultibandTile)], filePath: String, layout: LayoutDefinition, crs: CRS, geometry: Geometry, croppedExtent: Option[Extent], cropDimensions: Option[java.util.ArrayList[Int]], compression: Compression) = {
+  private def stitchAndWriteToTiff(tiles: Iterable[(SpatialKey, MultibandTile)], filePath: String,
+                                   layout: LayoutDefinition, crs: CRS, geometry: Geometry,
+                                   croppedExtent: Option[Extent], cropDimensions: Option[java.util.ArrayList[Int]],
+                                   compression: Compression, formatOptions: Option[GTiffOptions] = None
+                                  ) = {
     val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).stitch()
 
     val re = raster.rasterExtent
@@ -711,9 +717,14 @@ package object geotiff {
       resampled
     }
 
-    val geotiff = MultibandGeoTiff(adjusted, crs, GeoTiffOptions(compression))
-      .withOverviews(NearestNeighbor, List(4, 8, 16))
-
+    var geotiff = MultibandGeoTiff(adjusted, crs, GeoTiffOptions(compression))
+    // If no formatOptions was specified, the default was to generate pyramids
+    if (formatOptions.isEmpty || formatOptions.get.overviews.toUpperCase == "ALL" || {
+      val gridBounds = adjusted.extent
+      formatOptions.get.overviews.toUpperCase == "AUTO" && (gridBounds.width > 1024 || gridBounds.height > 1024)
+    }) {
+      geotiff = geotiff.withOverviews(NearestNeighbor, List(4, 8, 16))
+    }
     writeGeoTiff(geotiff, filePath)
   }
 

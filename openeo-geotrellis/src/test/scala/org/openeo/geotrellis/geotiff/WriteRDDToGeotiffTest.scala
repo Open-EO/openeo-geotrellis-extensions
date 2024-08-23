@@ -17,6 +17,7 @@ import org.junit._
 import org.junit.rules.TemporaryFolder
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 import org.openeo.sparklisteners.GetInfoSparkListener
+import org.slf4j.{Logger, LoggerFactory}
 
 import java.nio.file.{Files, Paths}
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
@@ -29,6 +30,7 @@ import scala.reflect.io.Directory
 
 
 object WriteRDDToGeotiffTest{
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[WriteRDDToGeotiffTest])
 
   var sc: SparkContext = _
 
@@ -41,6 +43,7 @@ object WriteRDDToGeotiffTest{
         .set("spark.ui.enabled", "true")
       SparkContext.getOrCreate(conf)
     }
+    if (sc.uiWebUrl.isDefined) logger.info("Spark uiWebUrl: " + sc.uiWebUrl.get)
   }
 
   @AfterClass
@@ -331,7 +334,8 @@ class WriteRDDToGeotiffTest {
     //crop away the area where data was removed, and check if rest of geotiff is still fine
     val croppedReference = imageTile.crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArrayTile()
 
-    val croppedOutput = result.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256)
+    val resultWidth = result.band(0).toArrayTile().dimensions.cols
+    val croppedOutput = result.band(0).toArrayTile().crop(resultWidth - (6 * 256), 0, layoutCols * 256, layoutRows * 256)
     assertArrayEquals(croppedReference.toArray(), croppedOutput.toArray())
   }
 
