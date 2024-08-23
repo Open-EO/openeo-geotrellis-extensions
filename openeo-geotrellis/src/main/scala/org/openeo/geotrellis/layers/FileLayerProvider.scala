@@ -284,6 +284,8 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
     )
 }
 
+
+
 object FileLayerProvider {
 
   private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
@@ -702,7 +704,7 @@ object FileLayerProvider {
 
       val allRasters =
         try{
-          bounds.toIterator.flatMap(b => source.read(b).iterator).map(_.mapTile(_.convert(cellType))).toSeq
+          source.readBounds(bounds).map(_.mapTile(_.convert(cellType))).toSeq
         } catch {
           case e: Exception => throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}", e)
         }
