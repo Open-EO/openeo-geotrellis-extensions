@@ -130,7 +130,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   def readBoundsFullTile(bounds: Traversable[GridBounds[Long]]): Iterator[Raster[MultibandTile]] = {
     val union = bounds.reduce(_ combine _)
     val fullRaster = read(union).get
-    val mappedBounds = bounds.map(b=> b.offset(union.colMin,union.rowMin).toGridType[Int])
+    val mappedBounds = bounds.map(b=> b.offset(-union.colMin,-union.rowMin).toGridType[Int])
     return mappedBounds.map(b => fullRaster.crop(b, CropOptions(force = true))).toIterator
 
   }
