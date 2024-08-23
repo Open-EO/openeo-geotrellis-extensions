@@ -11,7 +11,7 @@ import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CroppedTile, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CropOptions, CroppedTile, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.clip.ClipToGrid
 import geotrellis.spark.clip.ClipToGrid.clipFeatureToExtent
@@ -88,6 +88,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
                                 val predefinedExtent: Option[GridExtent[Long]] = None,
                                 parallelRead: Boolean = true,
                                 softErrors: Boolean = false,
+                                readFullTile: Boolean = false
                                ) extends MosaicRasterSource { // TODO: don't inherit?
   import BandCompositeRasterSource._
 
@@ -126,15 +127,25 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   override def name: SourceName = sources.head.name
   override def bandCount: Int = sources.size
 
-  override def readBounds(bounds: Traversable[GridBounds[Long]]): Iterator[Raster[MultibandTile]] = {
+  def readBoundsFullTile(bounds: Traversable[GridBounds[Long]]): Iterator[Raster[MultibandTile]] = {
+    val union = bounds.reduce(_ combine _)
+    val fullRaster = read(union).get
+    return bounds.map(b => fullRaster.crop(b.toGridType[Int], CropOptions(force = true))).toIterator
 
-    val rastersByBounds = reprojectedSources.zipWithIndex.toList.flatMap(s => {
-      s._1.readBounds(bounds).zipWithIndex.map(raster_int => ((raster_int._2,(s._2,raster_int._1))))
-    }).groupBy(_._1)
-    rastersByBounds.toSeq.sortBy(_._1).map(_._2).map((rasters) => {
-      val sortedRasters = rasters.toList.sortBy(_._2._1).map(_._2._2)
-      Raster(MultibandTile(sortedRasters.map(_.tile.band(0).convert(cellType))), sortedRasters.head.extent)
-    }).toIterator
+  }
+
+  override def readBounds(bounds: Traversable[GridBounds[Long]]): Iterator[Raster[MultibandTile]] = {
+    if(readFullTile){
+      return readBoundsFullTile(bounds)
+    }else{
+      val rastersByBounds = reprojectedSources.zipWithIndex.toList.flatMap(s => {
+        s._1.readBounds(bounds).zipWithIndex.map(raster_int => ((raster_int._2,(s._2,raster_int._1))))
+      }).groupBy(_._1)
+      rastersByBounds.toSeq.sortBy(_._1).map(_._2).map((rasters) => {
+        val sortedRasters = rasters.toList.sortBy(_._2._1).map(_._2._2)
+        Raster(MultibandTile(sortedRasters.map(_.tile.band(0).convert(cellType))), sortedRasters.head.extent)
+      }).toIterator
+    }
 
   }
 
@@ -566,7 +577,7 @@ object FileLayerProvider {
 
           case source1: BandCompositeRasterSource =>
             //decompose into individual bands
-            source1.sources.map(s => (s.name, GridBoundsRasterRegion(new BandCompositeRasterSource(NonEmptyList.one(s),source1.crs,source1.attributes,source1.predefinedExtent, parallelRead = datacubeParams.forall(!_.loadPerProduct), softErrors = softErrors), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key_region_sourcename._1, t._1._2))).toList.toSeq
+            source1.sources.map(s => (s.name, GridBoundsRasterRegion(new BandCompositeRasterSource(NonEmptyList.one(s),source1.crs,source1.attributes,source1.predefinedExtent, parallelRead = datacubeParams.forall(!_.loadPerProduct), softErrors = softErrors, readFullTile = true), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key_region_sourcename._1, t._1._2))).toList.toSeq
 
           case _ =>
             Seq((source.name, (Seq(0), key_region_sourcename._1, key_region_sourcename._2._1)))
@@ -1271,7 +1282,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         }else{
           rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size,readKeysToRasterSourcesResult._4, softErrors)
         }
-      logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner}")
+      logger.info(s"Created cube for ${openSearchCollectionId} with metadata ${cube.metadata} and partitioner ${cube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index}")
       cube
     }finally{
       requiredSpacetimeKeys.unpersist(false)
