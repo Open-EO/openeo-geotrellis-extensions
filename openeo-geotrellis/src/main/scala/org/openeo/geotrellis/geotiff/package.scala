@@ -237,7 +237,12 @@ package object geotiff {
             path
           }
 
-        (stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, None, None, compression, Some(formatOptions)),
+        val fo = formatOptions.deepClone()
+        // Keep only one band tag
+        val newBandTags = List(formatOptions.tags.bandTags(bandIndex))
+        fo.setBandTags(newBandTags)
+
+        (stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, None, None, compression, Some(fo)),
           Collections.singletonList(bandIndex))
       }.collect().toList.sortBy(_._1).asJava
     } else {
@@ -717,12 +722,20 @@ package object geotiff {
       resampled
     }
 
-    var geotiff = MultibandGeoTiff(adjusted, crs, GeoTiffOptions(compression))
-    // If no formatOptions was specified, the default was to generate pyramids
-    if (formatOptions.isEmpty || formatOptions.get.overviews.toUpperCase == "ALL" || {
-      val gridBounds = adjusted.extent
-      formatOptions.get.overviews.toUpperCase == "AUTO" && (gridBounds.width > 1024 || gridBounds.height > 1024)
-    }) {
+    val fo = formatOptions match {
+      case Some(fo) => fo
+      case None =>
+        val fo = new GTiffOptions()
+        // If no formatOptions was specified, the default was to generate pyramids
+        fo.overviews = "ALL"
+        fo
+    }
+    var geotiff = MultibandGeoTiff(adjusted.tile, adjusted.extent, crs,
+      fo.tags, GeoTiffOptions(compression))
+    val gridBounds = adjusted.extent
+    if (fo.overviews.toUpperCase == "ALL" ||
+      fo.overviews.toUpperCase == "AUTO" && (gridBounds.width > 1024 || gridBounds.height > 1024)
+    ) {
       geotiff = geotiff.withOverviews(NearestNeighbor, List(4, 8, 16))
     }
     writeGeoTiff(geotiff, filePath)
