@@ -59,6 +59,9 @@ class GTiffOptions extends Serializable {
     tags = Tags(tags.headTags ,newBandTags.toList)
   }
 
+  def setBandTags(newBandTags: List[Map[String, String]]): Unit = {
+    tags = Tags(tags.headTags, newBandTags)
+  }
 
   /**
    * Avoids error when using .clone():

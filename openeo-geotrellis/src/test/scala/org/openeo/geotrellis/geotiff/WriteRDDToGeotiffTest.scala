@@ -314,10 +314,18 @@ class WriteRDDToGeotiffTest {
     val filename = outDir + "/out"
     val options = new GTiffOptions()
     options.separateAssetPerBand = true
+    options.addBandTag(0, "DESCRIPTION", "B01")
+    options.addBandTag(1, "DESCRIPTION", "B02")
+    options.addBandTag(2, "DESCRIPTION", "B03")
     val paths = saveRDD(filtered.withContext {
       _.repartition(layoutCols * layoutRows)
     }, 3, filename, formatOptions = options)
     assertEquals(3, paths.size())
+
+    GeoTiff.readMultiband(outDir.resolve("openEO_B01.tif").toString).raster.tile
+    GeoTiff.readMultiband(outDir.resolve("openEO_B02.tif").toString).raster.tile
+    GeoTiff.readMultiband(outDir.resolve("openEO_B03.tif").toString).raster.tile
+
     val result = GeoTiff.readMultiband(paths.get(0)).raster.tile
 
     //crop away the area where data was removed, and check if rest of geotiff is still fine
@@ -363,15 +371,18 @@ class WriteRDDToGeotiffTest {
 
     val options = new GTiffOptions()
     options.separateAssetPerBand = true
+    options.addBandTag(0, "DESCRIPTION", "B01")
+    options.addBandTag(1, "DESCRIPTION", "B02")
+    options.addBandTag(2, "DESCRIPTION", "B03")
     saveRDDTemporal(layer, outDir.toString, formatOptions = options)
 
-    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z_band0.tif").toString).raster.tile
-    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z_band1.tif").toString).raster.tile
-    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z_band2.tif").toString).raster.tile
+    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z_B01.tif").toString).raster.tile
+    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z_B02.tif").toString).raster.tile
+    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z_B03.tif").toString).raster.tile
 
-    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z_band0.tif").toString).raster.tile
-    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z_band1.tif").toString).raster.tile
-    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z_band2.tif").toString).raster.tile
+    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z_B01.tif").toString).raster.tile
+    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z_B02.tif").toString).raster.tile
+    GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z_B03.tif").toString).raster.tile
   }
 
   @Test

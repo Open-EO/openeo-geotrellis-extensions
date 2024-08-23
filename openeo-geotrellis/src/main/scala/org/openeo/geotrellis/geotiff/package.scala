@@ -85,7 +85,6 @@ package object geotiff {
   }
 
 
-  @deprecated("Use saveRDDTemporalAllowAssetPerBand instead.")
   def saveRDDTemporal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                       path: String,
                       zLevel: Int = 6,
@@ -129,12 +128,7 @@ package object geotiff {
 
     val compression = Deflate(zLevel)
     val bandSegmentCount = totalCols * totalRows
-    val bandLabels = new OpenEOProcesses().maybeBandLabels(rdd) match {
-      case Some(labels) => labels
-      case None =>
-        val band_count = new OpenEOProcesses().RDDBandCount(rdd)
-        (0 until band_count).map("band" + _)
-    }
+    val bandLabels = formatOptions.tags.bandTags.map(_("DESCRIPTION"))
 
     preprocessedRdd.flatMap { case (key: SpaceTimeKey, multibandTile: MultibandTile) =>
       var bandIndex = -1
@@ -176,8 +170,16 @@ package object geotiff {
 
       val segmentCount = bandSegmentCount * tiffBands
       val thePath = Paths.get(path).resolve(filename).toString
+
+      // filter band tags that match bandIndices
+      val fo = formatOptions.deepClone()
+      val newBandTags = formatOptions.tags.bandTags.zipWithIndex
+        .filter { case (_, bandIndex) => bandIndices.contains(bandIndex) }
+        .map { case (bandTags, _) => bandTags }
+      fo.setBandTags(newBandTags)
+
       val correctedPath = writeTiff(thePath, tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs,
-        tileLayout, compression, cellTypes.head, tiffBands, segmentCount, formatOptions,
+        tileLayout, compression, cellTypes.head, tiffBands, segmentCount, fo,
       )
       (correctedPath, timestamp, croppedExtent, bandIndices)
     }.collect().toList.asJava
@@ -185,7 +187,6 @@ package object geotiff {
   }
 
 
-  @deprecated("Use saveRDDAllowAssetPerBand instead.")
   def saveRDD(rdd: MultibandTileLayerRDD[SpatialKey],
               bandCount: Int,
               path: String,
@@ -219,12 +220,7 @@ package object geotiff {
         }
       }
 
-      val bandLabels = new OpenEOProcesses().maybeBandLabels(rdd) match {
-        case Some(labels) => labels
-        case None =>
-          val band_count = new OpenEOProcesses().RDDBandCount(rdd)
-          (0 until band_count).map("band" + _)
-      }
+      val bandLabels = formatOptions.tags.bandTags.map(_("DESCRIPTION"))
 
       // TODO: Save tiffs on executors instead of driver
       val paths = (0 until bandCount).par.map(b => {
@@ -233,6 +229,11 @@ package object geotiff {
         val fo = formatOptions.deepClone()
         fo.setFilenamePrefix(formatOptions.filenamePrefix + "_" + bandLabels(b))
         fo.setSeparateAssetPerBand(false)
+
+        // Keep only one band tag
+        val newBandTags = List(formatOptions.tags.bandTags(b))
+        fo.setBandTags(newBandTags)
+
         val tmp = saveRDDGeneric(contextRDD, 1, path, zLevel, cropBounds, fo).asScala
         tmp.map(t => (t, Collections.singletonList(b))).asJava
       })
