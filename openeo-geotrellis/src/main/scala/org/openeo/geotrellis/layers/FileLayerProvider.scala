@@ -131,7 +131,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     val union = bounds.reduce(_ combine _)
     val fullRaster = read(union).get
     val mappedBounds = bounds.map(b=> b.offset(-union.colMin,-union.rowMin).toGridType[Int])
-    return mappedBounds.map(b => fullRaster.crop(b, CropOptions(force = true))).toIterator
+    return mappedBounds.map(b => fullRaster.crop(b, CropOptions(force = true,clamp=false))).toIterator
 
   }
 
