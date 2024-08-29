@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.openeo</groupId>
   <artifactId>openeo-geotrellis-extensions</artifactId>
-  <version>2.4.0_2.12-SNAPSHOT</version>
+  <version>${revision}</version>
     <packaging>pom</packaging>
     <name>openeo-geotrellis-extensions</name>
     <properties>
@@ -14,7 +14,7 @@
         <scala.binary.version>2.12</scala.binary.version>
         <scala.version>2.12.18</scala.version>
         <geotrellis.version>3.6.0</geotrellis.version>
-        <gdal-bindings.version>3.9.0</gdal-bindings.version>
+        <gdal-bindings.version>3.8.0</gdal-bindings.version>
         <commons-compress-version>1.10</commons-compress-version>
         <gwc-geotrellis.version>0.17.0_2.12-SNAPSHOT</gwc-geotrellis.version>
         <openeo-opensearch-client.version>1.4.0_2.12-SNAPSHOT</openeo-opensearch-client.version>
@@ -79,7 +79,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
+                <version>3.1</version>
                 <configuration>
                     <source>11</source>
                     <target>11</target>
@@ -156,7 +156,7 @@
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>flatten-maven-plugin</artifactId>
-                <version>1.5.0</version>
+                <version>1.6.0</version>
                 <configuration>
                     <updatePomFile>true</updatePomFile>
                     <flattenMode>resolveCiFriendliesOnly</flattenMode>
