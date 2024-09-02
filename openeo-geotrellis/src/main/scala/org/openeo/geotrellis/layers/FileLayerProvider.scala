@@ -15,7 +15,7 @@ import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CropOptions
 import geotrellis.spark._
 import geotrellis.spark.clip.ClipToGrid
 import geotrellis.spark.clip.ClipToGrid.clipFeatureToExtent
-import geotrellis.spark.join.VectorJoin
+import geotrellis.spark.join.{SpatialJoin, VectorJoin}
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector
 import geotrellis.vector.Extent.toPolygon
@@ -23,7 +23,7 @@ import geotrellis.vector._
 import net.jodah.failsafe.{Failsafe, RetryPolicy}
 import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import org.apache.spark.SparkContext
-import org.apache.spark.rdd.RDD
+import org.apache.spark.rdd.{CoGroupedRDD, RDD}
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
@@ -409,6 +409,7 @@ object FileLayerProvider {
           if (theMask.metadata.bounds.get._1.isInstanceOf[SpaceTimeKey]) {
 
             val partitioner = requiredSpacetimeKeys.partitioner
+            // filtered mask to tiles with at least one valid pixel, remove others, so need to perform inner join
             val filtered = prepareMask(theMask, metadata, partitioner)
 
             if (logger.isDebugEnabled) {
@@ -416,7 +417,7 @@ object FileLayerProvider {
             }
 
             datacubeParams.get.maskingCube = Some(filtered)
-            val result = requiredSpacetimeKeys.join(filtered).map(tuple => (tuple._1, tuple._2._1))
+            val result = SpatialJoin.join(ContextRDD(requiredSpacetimeKeys,metadata),filtered).map(tuple => (tuple._1, tuple._2._1))
             requiredSpacetimeKeys.sparkContext.clearCallSite()
             return result
           }
