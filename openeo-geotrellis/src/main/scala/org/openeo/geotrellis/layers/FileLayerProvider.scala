@@ -417,7 +417,7 @@ object FileLayerProvider {
             }
 
             datacubeParams.get.maskingCube = Some(filtered)
-            val result = SpatialJoin.join(ContextRDD(requiredSpacetimeKeys,metadata),filtered).map(tuple => (tuple._1, tuple._2._1))
+            val result = requiredSpacetimeKeys.join(filtered).map(tuple => (tuple._1, tuple._2._1))
             requiredSpacetimeKeys.sparkContext.clearCallSite()
             return result
           }
