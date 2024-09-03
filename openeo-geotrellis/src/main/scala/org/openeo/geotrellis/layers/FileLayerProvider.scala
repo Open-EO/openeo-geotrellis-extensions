@@ -140,7 +140,9 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   }
 
   override def readBounds(bounds: Traversable[GridBounds[Long]]): Iterator[Raster[MultibandTile]] = {
-    if(readFullTile){
+    var union = bounds.reduce(_ combine _)
+    val percentageToRead = bounds.map(_.size).sum / union.size
+    if(percentageToRead> 0.5 && readFullTile){
       return readBoundsFullTile(bounds)
     }else{
       val rastersByBounds = reprojectedSources.zipWithIndex.toList.flatMap(s => {
@@ -408,6 +410,8 @@ object FileLayerProvider {
         case theMask: MultibandTileLayerRDD[SpaceTimeKey] =>
           if (theMask.metadata.bounds.get._1.isInstanceOf[SpaceTimeKey]) {
 
+            //TODO: this partioner is none most of the time
+            // Perhaps try using the partitioner from the mask, but only valid after reprojection
             val partitioner = requiredSpacetimeKeys.partitioner
             // filtered mask to tiles with at least one valid pixel, remove others, so need to perform inner join
             val filtered = prepareMask(theMask, metadata, partitioner)
@@ -731,6 +735,12 @@ object FileLayerProvider {
           val rowOffset = math.abs(theBounds.rowMin - intersection.get.rowMin)
           require(colOffset <= Int.MaxValue && rowOffset <= Int.MaxValue, "Computed offsets are outside of RasterBounds")
           Some(raster.mapTile {
+            //GridBounds(16,0,79,58)
+            //coloffset = 16 , rowOffset = 0
+            // band = 64 x 59
+            //theBounds = 64x64
+            //require((chunk.cols (64) + colOffset (16)  <= cols (64)) && (chunk.rows + rowOffset <= rows),
+            // chunk at GridBounds(16,0,79,58) exceeds tile boundary at (64, 64)
             _.mapBands { (_, band) => PaddedTile(band, colOffset.toInt, rowOffset.toInt, theBounds.width.toInt, theBounds.height.toInt) }
           })
         }
