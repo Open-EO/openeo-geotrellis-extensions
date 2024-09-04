@@ -54,7 +54,7 @@ class VectorizeSpec {
     val json: JsonFeatureCollection = GeoJson.fromFile[JsonFeatureCollection](outputPath.toString)
     val features: Seq[Json] = json.asJson.hcursor.downField("features").focus.flatMap(_.asArray).getOrElse(Vector.empty)
     val featureIds: Seq[String] = features.flatMap { feature => feature.hcursor.downField("id").focus.flatMap(_.asString) }
-    val expectedIds: Seq[String] = (0 to 10).map(i => s"band0_20170102_$i")
+    val expectedIds: Seq[String] = (0 to 10).map(i => s"20170102_band0_$i")
     assertEquals(expectedIds, featureIds)
     val polygons = json.getAllPolygons()
     assertEquals(11,polygons.size)
@@ -74,7 +74,7 @@ class VectorizeSpec {
     val croppedCube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = cube._1.crop(newExtent, Options(force = true, clamp = true))
 
     val openEOProcesses = new OpenEOProcesses()
-    val (features: Array[(String, List[PolygonFeature[Map[String, Int]]])], crs: CRS) = openEOProcesses.vectorize(ContextRDD(croppedCube, croppedCube.metadata.copy(extent = newExtent)))
+    val (features: Array[(String, List[PolygonFeature[Int]])], crs: CRS) = openEOProcesses.vectorize(ContextRDD(croppedCube, croppedCube.metadata.copy(extent = newExtent)))
     val geojson = openEOProcesses.featuresToGeojson(features, crs)
 
     // assert that geojson["features"][0]["properties"] is a Map

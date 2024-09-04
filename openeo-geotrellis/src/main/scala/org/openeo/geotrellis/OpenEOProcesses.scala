@@ -580,7 +580,7 @@ class OpenEOProcesses extends Serializable {
    * @param datacube
    * @return
    */
-  def vectorize[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): (Array[(String, List[PolygonFeature[Map[String,Int]]])], CRS) = {
+  def vectorize[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): (Array[(String, List[PolygonFeature[Int]])], CRS) = {
     val layout = datacube.metadata.layout
     val maxExtent = datacube.metadata.extent
     //naive approach: combine tiles and hope that we don't exceed the max size
@@ -590,33 +590,30 @@ class OpenEOProcesses extends Serializable {
 
     val singleBandLayer: TileLayerRDD[K] = datacube.withContext(_.mapValues(_.band(0)))
     val retiled = singleBandLayer.regrid(newCols.intValue(),newRows.intValue())
+    // Perform the actual vectorization.
     val vectorizedValues: RDD[(K, List[PolygonFeature[Int]])] = retiled.toRasters.mapValues(_.crop(maxExtent,Crop.Options(force=true,clamp=true)).toVector())
-    val vectorizedValuesWithMap: RDD[(K, List[PolygonFeature[Map[String, Int]]])] = vectorizedValues.mapValues(_.map(_.mapData(v => immutable.Map("value" -> v))))
-    val collectedFeatures: Array[(String, List[PolygonFeature[Map[String, Int]]])] = vectorizedValuesWithMap.map(kv => {
-      val key: K = kv._1
-      val value: List[PolygonFeature[Map[String, Int]]] = kv._2
+    // We don't require spatial partitioning for features, so we can group by (Time, Band) instead.
+    // In the meantime we construct the feature ids as they will appear in the geojson file.
+    val featuresWithId: RDD[(String, List[PolygonFeature[Int]])] = vectorizedValues.map(kv => {
       val bandStr = "band0"
-      key match {
-        case stk: SpaceTimeKey =>
-          val id = bandStr + "_" + stk.time.format(DateTimeFormatter.ofPattern("yyyyMMdd"))
-          (id, value)
-        case _ =>
-          (bandStr, value)
+      kv._1 match {
+        case stk: SpaceTimeKey => (stk.time.format(DateTimeFormatter.ofPattern("yyyyMMdd")) + "_" + bandStr, kv._2)
+        case _ => (bandStr, kv._2)
       }
-    }).collect()
-    return (collectedFeatures,datacube.metadata.crs)
+    }).groupByKey().flatMapValues(v => v)
+    return (featuresWithId.collect(), datacube.metadata.crs)
   }
 
-  def featuresToGeojson(features: Array[(String, List[PolygonFeature[Map[String,Int]]])], crs: CRS): Json = {
-    // Add ids for every Key.
+  def featuresToGeojson(features: Array[(String, List[PolygonFeature[Int]])], crs: CRS): Json = {
+    // Add index to each feature id, so final id will be 'date_band_index'.
     val geojsonFeaturesWithId: Array[Json] = features.flatMap((v) => {
-      val key: String = v._1
-      val feats: List[PolygonFeature[Map[String,Int]]] = v._2
+      val key: String = v._1 // (Time, Band) key.
+      // Geojson lists properties as a map.
+      val feats: List[PolygonFeature[Map[String,Int]]] = v._2.map(_.mapData(v => immutable.Map("value" -> v)))
       feats.zipWithIndex.map({case (f,i) => f.asJson.deepMerge(Json.obj("id" -> (key + "_" + i).asJson))})
     })
     // Add bbox to top level.
-    val allFeatures: Array[PolygonFeature[Map[String,Int]]] = features.flatMap(_._2)
-    val bboxOption = allFeatures.map(_.geom.extent).reduceOption(_ combine _)
+    val bboxOption = features.flatMap(_._2).map(_.geom.extent).reduceOption(_ combine _)
     val jsonWithBbox = bboxOption match {
       case Some(bbox) =>
         Json.obj(
@@ -638,7 +635,7 @@ class OpenEOProcesses extends Serializable {
   }
 
   def vectorize(datacube:Object, outputFile:String): Unit = {
-    val (features: Array[(String, List[PolygonFeature[Map[String,Int]]])],crs: CRS) = datacube match {
+    val (features: Array[(String, List[PolygonFeature[Int]])], crs: CRS) = datacube match {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
         vectorize(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
       case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]  =>
