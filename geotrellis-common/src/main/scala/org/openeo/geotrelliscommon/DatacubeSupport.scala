@@ -229,7 +229,8 @@ object DatacubeSupport {
           if (dataTile.bandCount == maskTile.bandCount) {
             maskIndex = index
           }
-          tile.dualCombine(maskTile.band(maskIndex))((v1, v2) => if (v2 != 0 && isData(v1)) replacementInt else v1)((v1, v2) => if (v2 != 0.0 && isData(v1)) replacementDouble else v1)
+          //tile has to be 'mutable', for instant ConstantTile implements dualCombine, but not correctly converting celltype!!
+          tile.mutable.dualCombine(maskTile.band(maskIndex))((v1, v2) => if (v2 != 0 && isData(v1)) replacementInt else v1)((v1, v2) => if (v2 != 0.0 && isData(v1)) replacementDouble else v1)
         })
 
       } else {
