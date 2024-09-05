@@ -600,8 +600,10 @@ class OpenEOProcesses extends Serializable {
         case stk: SpaceTimeKey => (stk.time.format(DateTimeFormatter.ofPattern("yyyyMMdd")) + "_" + bandStr, kv._2)
         case _ => (bandStr, kv._2)
       }
-    }).groupByKey().flatMapValues(v => v)
-    return (featuresWithId.collect(), datacube.metadata.crs)
+    })
+    val featuresWithIdGrouped: RDD[(String, Iterable[List[PolygonFeature[Int]]])] = featuresWithId.groupByKey()
+    val featuresWithIdGroupedFlat: RDD[(String, List[PolygonFeature[Int]])] = featuresWithIdGrouped.mapValues(_.flatten.toList)
+    return (featuresWithIdGroupedFlat.collect(), datacube.metadata.crs)
   }
 
   def featuresToGeojson(features: Array[(String, List[PolygonFeature[Int]])], crs: CRS): Json = {
