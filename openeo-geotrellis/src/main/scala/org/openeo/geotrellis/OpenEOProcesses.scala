@@ -580,7 +580,7 @@ class OpenEOProcesses extends Serializable {
    * @param datacube
    * @return
    */
-  def vectorize[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): (Array[(String, List[PolygonFeature[Int]])], CRS) = {
+  def vectorize[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): (Array[(String, List[PolygonFeature[Map[String, Int]]])], CRS) = {
     val layout = datacube.metadata.layout
     val maxExtent = datacube.metadata.extent
     //naive approach: combine tiles and hope that we don't exceed the max size
@@ -592,27 +592,27 @@ class OpenEOProcesses extends Serializable {
     val retiled = singleBandLayer.regrid(newCols.intValue(),newRows.intValue())
     // Perform the actual vectorization.
     val vectorizedValues: RDD[(K, List[PolygonFeature[Int]])] = retiled.toRasters.mapValues(_.crop(maxExtent,Crop.Options(force=true,clamp=true)).toVector())
-    // We don't require spatial partitioning for features, so we can group by (Time, Band) instead.
+    // We don't require spatial partitioning for features, so we can group by Time instead.
     // In the meantime we construct the feature ids as they will appear in the geojson file.
-    val featuresWithId: RDD[(String, List[PolygonFeature[Int]])] = vectorizedValues.map(kv => {
+    val featuresWithId: RDD[(String, List[PolygonFeature[Map[String, Int]]])] = vectorizedValues.map(kv => {
       val bandStr = "band0"
+      // Geojson lists properties as a map. So we create a map from bandName to value.
+      val feats = kv._2.map(f => f.mapData((i: Int) => Map(bandStr -> i)))
       kv._1 match {
-        case stk: SpaceTimeKey => (stk.time.format(DateTimeFormatter.ofPattern("yyyyMMdd")) + "_" + bandStr, kv._2)
-        case _ => (bandStr, kv._2)
+        case stk: SpaceTimeKey => (stk.time.format(DateTimeFormatter.ofPattern("yyyyMMdd")), feats)
+        case _ => ("", feats)
       }
     })
-    val featuresWithIdGrouped: RDD[(String, Iterable[List[PolygonFeature[Int]]])] = featuresWithId.groupByKey()
-    val featuresWithIdGroupedFlat: RDD[(String, List[PolygonFeature[Int]])] = featuresWithIdGrouped.mapValues(_.flatten.toList)
+    val featuresWithIdGrouped: RDD[(String, Iterable[List[PolygonFeature[Map[String, Int]]]])] = featuresWithId.groupByKey()
+    val featuresWithIdGroupedFlat: RDD[(String, List[PolygonFeature[Map[String, Int]]])] = featuresWithIdGrouped.mapValues(_.flatten.toList)
     return (featuresWithIdGroupedFlat.collect(), datacube.metadata.crs)
   }
 
-  def featuresToGeojson(features: Array[(String, List[PolygonFeature[Int]])], crs: CRS): Json = {
+  def featuresToGeojson(features: Array[(String, List[PolygonFeature[Map[String, Int]]])], crs: CRS): Json = {
     // Add index to each feature id, so final id will be 'date_band_index'.
     val geojsonFeaturesWithId: Array[Json] = features.flatMap((v) => {
       val key: String = v._1 // (Time, Band) key.
-      // Geojson lists properties as a map.
-      val feats: List[PolygonFeature[Map[String,Int]]] = v._2.map(_.mapData(v => immutable.Map("value" -> v)))
-      feats.zipWithIndex.map({case (f,i) => f.asJson.deepMerge(Json.obj("id" -> (key + "_" + i).asJson))})
+      v._2.zipWithIndex.map({case (f,i) => f.asJson.deepMerge(Json.obj("id" -> (key + "_" + i).asJson))})
     })
     // Add bbox to top level.
     val bboxOption = features.flatMap(_._2).map(_.geom.extent).reduceOption(_ combine _)
@@ -637,7 +637,7 @@ class OpenEOProcesses extends Serializable {
   }
 
   def vectorize(datacube:Object, outputFile:String): Unit = {
-    val (features: Array[(String, List[PolygonFeature[Int]])], crs: CRS) = datacube match {
+    val (features: Array[(String, List[PolygonFeature[Map[String, Int]]])], crs: CRS) = datacube match {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
         vectorize(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
       case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]  =>
