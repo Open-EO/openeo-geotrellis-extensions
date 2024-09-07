@@ -23,7 +23,7 @@ class BatchJobProgressListener extends SparkListener {
     import BatchJobProgressListener.logger
 
     override def onStageSubmitted( stageSubmitted:SparkListenerStageSubmitted):Unit = {
-        logger.info("Starting part of the process graph: " + stageSubmitted.stageInfo.details)
+        logger.info("Starting part of the process graph: " + stageSubmitted.stageInfo.name)
     }
 
    override def onStageCompleted( stageCompleted: SparkListenerStageCompleted):Unit = {
@@ -33,7 +33,7 @@ class BatchJobProgressListener extends SparkListener {
             logger.warn("A part of the process graph failed, and will be retried, the reason was: " + stageCompleted.stageInfo.failureReason.get);
             logger.info("Your job may still complete if the failure was caused by a transient error, but will take more time. A common cause of transient errors is too little executor memory (overhead). Too low executor-memory can be seen by a high 'garbage collection' time, which was: " + Duration.ofNanos(taskMetrics.jvmGCTime).toSeconds + " seconds.");
         }else{
-            logger.info("Finished part of the process graph: " + stageCompleted.stageInfo.details + ".\n The total computing time was: " + Duration.ofNanos(taskMetrics.executorCpuTime).toMinutes + " minutes. It produced: " +taskMetrics.shuffleWriteMetrics.bytesWritten/(1024*1024) + "MB of data.");
+            logger.info("Finished part of the process graph: " + stageCompleted.stageInfo.name + ".\n The total computing time was: " + Duration.ofNanos(taskMetrics.executorCpuTime).toMinutes + " minutes. It produced: " +taskMetrics.shuffleWriteMetrics.bytesWritten/(1024*1024) + "MB of data.");
         }
 
 
