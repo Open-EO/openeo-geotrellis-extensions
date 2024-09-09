@@ -38,7 +38,6 @@ class BatchJobProgressListener extends SparkListener {
             logger.warn(message);
 
         }else{
-          println(taskMetrics.jvmGCTime)
           val duration = Duration.ofMillis(taskMetrics.executorRunTime)
           val timeString = if(duration.toSeconds>60) {
             duration.toMinutes + " minutes"
@@ -46,7 +45,8 @@ class BatchJobProgressListener extends SparkListener {
             duration.toMillis.toFloat / 1000.0 + " seconds"
           }
           val megabytes = taskMetrics.shuffleWriteMetrics.bytesWritten.toFloat/(1024.0*1024.0)
-          logger.info(f"Finished part ${stageCompleted.stageInfo.stageId}  of the process graph: ${stageCompleted.stageInfo.name}.\n The total computing time was: $timeString. It produced: $megabytes%.2f MB of data.");
+          val name = stageCompleted.stageInfo.name
+          logger.info(f"Finished part ${stageCompleted.stageInfo.stageId}  of the process graph: ${name}.\n The total computing time was: $timeString. It produced: $megabytes%.2f MB of data.");
 
           val accumulators = stageCompleted.stageInfo.accumulables;
           val chunkCounts = accumulators.filter(_._2.name.get.startsWith("ChunkCount"));
