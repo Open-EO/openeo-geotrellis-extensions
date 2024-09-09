@@ -6,6 +6,7 @@ import geotrellis.raster.mapalgebra.local._
 import geotrellis.raster.{ArrayTile, BitCellType, ByteUserDefinedNoDataCellType, CellType, Dimensions, DoubleConstantNoDataCellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantNoDataCellType, ShortConstantTile, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortUserDefinedNoDataCellType, isData, isNoData}
 import org.apache.commons.math3.exception.NotANumberException
 import org.apache.commons.math3.stat.descriptive.rank.Percentile
+import org.apache.commons.math3.stat.descriptive.rank.Percentile.EstimationType
 import org.apache.commons.math3.stat.ranking.NaNStrategy
 import org.apache.spark.ml
 import org.apache.spark.mllib.linalg
@@ -1322,9 +1323,9 @@ class OpenEOProcessScriptBuilder {
       multibandMapToNewTiles(MultibandTile(data),ts => {
 
         val p = if(ignoreNoData){
-          new Percentile()
+          new Percentile().withEstimationType(EstimationType.R_7)
         }else{
-          new Percentile().withNaNStrategy(NaNStrategy.FAILED)
+          new Percentile().withEstimationType(EstimationType.R_7).withNaNStrategy(NaNStrategy.FAILED)
         }
         p.setData(ts.toArray)
 
