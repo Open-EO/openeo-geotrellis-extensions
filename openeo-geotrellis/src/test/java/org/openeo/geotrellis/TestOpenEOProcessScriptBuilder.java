@@ -1579,7 +1579,7 @@ public class TestOpenEOProcessScriptBuilder {
         //nd,3,nd,3,3,-10,nd,19,nd
         // -10,1 ,3 3 3 19 nd nd nd nd
 
-        assertArrayEquals(new Object[]{-1,3,7}, elements);
+        assertArrayEquals(new Object[]{1,3,3}, elements);
     }
 
     @DisplayName("Test quantiles process on floats")

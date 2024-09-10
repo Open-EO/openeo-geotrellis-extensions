@@ -278,9 +278,9 @@ public class TestOpenEOProcesses {
 
         double[] inputTSAsArray = doubleValues.toArray();
         double sd = new StandardDeviation().evaluate(inputTSAsArray);
-        double p25 = new Percentile().evaluate(inputTSAsArray,25);
-        double p50 = new Percentile().evaluate(inputTSAsArray,50);
-        double p75 = new Percentile().evaluate(inputTSAsArray,75);
+        double p25 = new Percentile().withEstimationType(Percentile.EstimationType.R_7).evaluate(inputTSAsArray,25);
+        double p50 = new Percentile().withEstimationType(Percentile.EstimationType.R_7).evaluate(inputTSAsArray,50);
+        double p75 = new Percentile().withEstimationType(Percentile.EstimationType.R_7).evaluate(inputTSAsArray,75);
 
         assertArrayEquals(new Object[]{(int)p25, (int)p50, (int)p75, (int)sd, (int) Arrays.stream(inputTSAsArray).average().getAsDouble()}, bandValues.toArray());
 
