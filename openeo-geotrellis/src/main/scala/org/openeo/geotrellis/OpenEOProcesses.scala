@@ -839,7 +839,7 @@ class OpenEOProcesses extends Serializable {
           case _ =>
             index
         }
-        Some(SpacePartitioner[SpaceTimeKey](target.metadata.bounds)(implicitly,implicitly,index))
+        Some(SpacePartitioner[SpaceTimeKey](target.metadata.bounds)(implicitly,implicitly,theIndex))
       }else{
         target.partitioner
       }
