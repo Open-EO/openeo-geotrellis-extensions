@@ -8,12 +8,14 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrellis.ProjectedPolygons
+import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
+import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DatacubeSupport.layerMetadata
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.openeo.opensearch.backends.{CreodiasClient, OscarsClient}
+import org.slf4j.LoggerFactory
 
 import java.net.URL
 import java.time.{LocalTime, ZonedDateTime}
@@ -27,7 +29,7 @@ import scala.collection.JavaConverters._
 class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: String,
                      attributeValues: util.Map[String, Any],
                      correlationId: String, val maxSpatialResolution: CellSize) {
-
+  import FileRDDFactory._
   def this(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: util.List[String],
            attributeValues: util.Map[String, Any], correlationId: String) =
     this(openSearch, openSearchCollectionId, attributeValues, correlationId, maxSpatialResolution = CellSize(10, 10))
@@ -63,7 +65,17 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
 
     val boundingBox = ProjectedExtent(bbox, polygons.crs)
     //load product metadata from OpenSearch
-    val productMetadata: Seq[Feature] = getFeatures(boundingBox, from, to, zoom,sc)
+    var productMetadata: Seq[Feature] = getFeatures(boundingBox, from, to, zoom,sc)
+
+    val filter = Option(dataCubeParameters).map(_.timeDimensionFilter)
+    if (filter.isDefined && filter.get.isDefined) {
+      val condition = filter.get.get.asInstanceOf[OpenEOProcessScriptBuilder].inputFunction.asInstanceOf[AnyProcess]
+      //TODO how do we pass in user context
+      val before = productMetadata.map(_.nominalDate).toSet
+      productMetadata = productMetadata.filter(f => condition.apply(Map("value" -> f.nominalDate)).apply(f.nominalDate).asInstanceOf[Boolean])
+      val after = productMetadata.map(_.nominalDate).toSet
+      logger.info("Dates removed by timeDimensionFilter: " + (before -- after).mkString(","))
+    }
 
     //construct layer metadata
     //hardcoded celltype of float: assuming we will generate floats in further processing
@@ -127,7 +139,8 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
 }
 
 object FileRDDFactory {
-
+  // Ignore trailing $'s in the class names for Scala objects
+  private implicit val logger = LoggerFactory.getLogger(this.getClass.getName.stripSuffix("$"))
   def oscars(openSearchCollectionId: String, openSearchLinkTitles: util.List[String], attributeValues: util.Map[String, Any] = util.Collections.emptyMap(), correlationId: String = ""): FileRDDFactory = {
     val openSearch: OpenSearchClient = new OscarsClient(new URL("https://services.terrascope.be/catalogue"))
     new FileRDDFactory(openSearch, openSearchCollectionId, openSearchLinkTitles, attributeValues, correlationId = correlationId)
