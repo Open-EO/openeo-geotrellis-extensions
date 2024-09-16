@@ -1579,7 +1579,26 @@ public class TestOpenEOProcessScriptBuilder {
         //nd,3,nd,3,3,-10,nd,19,nd
         // -10,1 ,3 3 3 19 nd nd nd nd
 
-        assertArrayEquals(new Object[]{-1,3,7}, elements);
+        assertArrayEquals(new Object[]{1,3,3}, elements);
+    }
+
+    @DisplayName("Test quantiles process on floats")
+    @Test
+    public void testQuantilesOnFloats() {
+
+        double[] values =  {0.00612713, 0.01104487, 0.01374031, 0.01521673, 0.01546687,
+                0.01585949, 0.01644365, 0.01667373, 0.01726482, 0.01831796,
+                0.02303652, 0.02482071};
+
+        List<Tile> tiles = Arrays.stream(values).mapToObj(d -> FloatConstantNoDataArrayTile.fill((float)d, 4, 4).mutable()).collect(Collectors.toList());
+
+
+        Seq<Tile> result = createQuantiles(null,10).generateFunction().apply(JavaConversions.asScalaBuffer(tiles));
+        Collection<Tile> javaCollection = JavaConversions.asJavaCollection(result);
+        double[] quantiles = javaCollection.stream().mapToDouble(t -> t.getDouble(0, 0)).toArray();
+        double[] expected = {0.01131441444158554, 0.014035594649612904, 0.015291771851480007, 0.015623917803168297, 0.01615156978368759, 0.016581697389483452, 0.01708749309182167, 0.018107332289218903, 0.022564664483070374};
+
+        assertArrayEquals(expected, quantiles,0.00001);
     }
 
     @DisplayName("Test clip process")
@@ -2232,7 +2251,7 @@ public class TestOpenEOProcessScriptBuilder {
 
         builder.argumentStart("data");
         builder.argumentEnd();
-        builder.constantArgument("q",2);
+        builder.constantArgument("q",qValue);
 
         if (ignoreNoData != null) {
             builder.constantArgument("ignore_nodata",ignoreNoData.booleanValue());

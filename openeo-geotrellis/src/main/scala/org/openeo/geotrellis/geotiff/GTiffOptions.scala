@@ -13,8 +13,11 @@ class GTiffOptions extends Serializable {
   var tags: Tags = Tags.empty
   var overviews:String = "OFF"
   var resampleMethod:String = "near"
+  var separateAssetPerBand = false
 
   def setFilenamePrefix(name: String): Unit = this.filenamePrefix = name
+
+  def setSeparateAssetPerBand(value: Boolean): Unit = this.separateAssetPerBand = value
 
   def setColorMap(colors: util.ArrayList[Int]): Unit = {
     colorMap = Some(new IndexedColorMap(colors.asScala))
@@ -56,5 +59,23 @@ class GTiffOptions extends Serializable {
     tags = Tags(tags.headTags ,newBandTags.toList)
   }
 
+  def setBandTags(newBandTags: List[Map[String, String]]): Unit = {
+    tags = Tags(tags.headTags, newBandTags)
+  }
 
+  /**
+   * Avoids error when using .clone():
+   * "method clone in class Object cannot be accessed in org.openeo.geotrellis.geotiff.GTiffOptions"
+   */
+  def deepClone(): GTiffOptions = {
+    // https://www.avajava.com/tutorials/lessons/how-do-i-perform-a-deep-clone-using-serializable.html
+    // TODO: Check for a better implementation
+    val baos = new java.io.ByteArrayOutputStream()
+    val oos = new java.io.ObjectOutputStream(baos)
+    oos.writeObject(this)
+    oos.close()
+    val bais = new java.io.ByteArrayInputStream(baos.toByteArray())
+    val ois = new java.io.ObjectInputStream(bais)
+    ois.readObject().asInstanceOf[GTiffOptions]
+  }
 }

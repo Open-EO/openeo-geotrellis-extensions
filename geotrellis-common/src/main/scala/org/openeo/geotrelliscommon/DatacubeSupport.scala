@@ -8,7 +8,8 @@ import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util.GetComponent
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
-import org.apache.spark.rdd.RDD
+import org.apache.spark.Partitioner
+import org.apache.spark.rdd.{CoGroupedRDD, RDD}
 import org.slf4j.LoggerFactory
 
 import java.time.ZonedDateTime
@@ -194,7 +195,25 @@ object DatacubeSupport {
    ignoreKeysWithoutMask: Boolean = false,
   ): RDD[(K, MultibandTile)] with Metadata[M] = {
     val joined = if (ignoreKeysWithoutMask) {
-      val tmpRdd = SpatialJoin.join(datacube, mask).mapValues(v => (v._1, Option(v._2)))
+      //inner join, try to preserve partitioner
+      val tmpRdd: RDD[(K, (MultibandTile, Option[MultibandTile]))] =
+        if(datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[K]]){
+            val part = datacube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
+            new CoGroupedRDD[K](List(datacube, part(mask)), part)
+              .flatMapValues { case Array(l, r) =>
+                if (l.isEmpty) {
+                  Seq.empty[(MultibandTile, Option[MultibandTile])]
+                }
+                else if (r.isEmpty)
+                  Seq.empty[(MultibandTile, Option[MultibandTile])]
+                else
+                  for (v <- l.iterator; w <- r.iterator) yield (v, Some(w))
+              }.asInstanceOf[RDD[(K, (MultibandTile, Option[MultibandTile]))]]
+        }else{
+          SpatialJoin.join(datacube, mask).mapValues(v => (v._1, Option(v._2)))
+        }
+
+
       ContextRDD(tmpRdd, datacube.metadata)
     } else {
       SpatialJoin.leftOuterJoin(datacube, mask)
@@ -210,7 +229,8 @@ object DatacubeSupport {
           if (dataTile.bandCount == maskTile.bandCount) {
             maskIndex = index
           }
-          tile.dualCombine(maskTile.band(maskIndex))((v1, v2) => if (v2 != 0 && isData(v1)) replacementInt else v1)((v1, v2) => if (v2 != 0.0 && isData(v1)) replacementDouble else v1)
+          //tile has to be 'mutable', for instant ConstantTile implements dualCombine, but not correctly converting celltype!!
+          tile.mutable.dualCombine(maskTile.band(maskIndex))((v1, v2) => if (v2 != 0 && isData(v1)) replacementInt else v1)((v1, v2) => if (v2 != 0.0 && isData(v1)) replacementDouble else v1)
         })
 
       } else {
@@ -236,16 +256,8 @@ object DatacubeSupport {
               logger.debug(s"Spacetime mask is used to reduce input.")
             }
 
-            val alignedMask: MultibandTileLayerRDD[SpaceTimeKey] =
-              if(spacetimeMask.metadata.crs.equals(metadata.crs) && spacetimeMask.metadata.layout.equals(metadata.layout)) {
-                spacetimeMask
-              }else{
-                logger.debug(s"mask: automatically resampling mask to match datacube: ${spacetimeMask.metadata}")
-                spacetimeMask.reproject(metadata.crs,metadata.layout,16,rdd.partitioner)._2
-              }
-
-            // retain only tiles where there is at least one valid pixel (mask value == 0), others will be fully removed
-            val filtered = alignedMask.withContext{_.filter(_._2.band(0).toArray().exists(pixel => pixel == 0))}
+            val partitioner = rdd.partitioner
+            val filtered = prepareMask(spacetimeMask, metadata, partitioner)
 
             if (pixelwiseMasking) {
               val spacetimeDataContextRDD = ContextRDD(rdd, metadata)
@@ -262,5 +274,24 @@ object DatacubeSupport {
     } else {
       rdd
     }
+  }
+
+  def prepareMask(spacetimeMask: MultibandTileLayerRDD[SpaceTimeKey], metadata: TileLayerMetadata[SpaceTimeKey], partitioner: Option[Partitioner]): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    val alignedMask: MultibandTileLayerRDD[SpaceTimeKey] =
+      if (spacetimeMask.metadata.crs.equals(metadata.crs) && spacetimeMask.metadata.layout.equals(metadata.layout)) {
+        spacetimeMask
+      } else {
+        logger.debug(s"mask: automatically resampling mask to match datacube: ${spacetimeMask.metadata}")
+        spacetimeMask.reproject(metadata.crs, metadata.layout, 16, partitioner)._2
+      }
+
+    val keyBounds = metadata.bounds.get
+    // retain only tiles where there is at least one valid pixel (mask value == 0), others will be fully removed
+    val filtered = alignedMask.withContext {
+      _.filter(t => {
+        keyBounds.includes(t._1) && t._2.band(0).toArray().exists(pixel => pixel == 0)
+      })
+    }
+    filtered
   }
 }
