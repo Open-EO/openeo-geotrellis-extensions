@@ -1140,18 +1140,28 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @ParameterizedTest
-  @ValueSource(strings = Array("EPSG:32601", "EPSG:32660"))
+  @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:3035", "EPSG:4326"))
   def testMissingS2DateLine(crsName: String): Unit = {
-    // crsName "EPSG:4326" only works with the environment variable PROJ_LIB=/usr/share/proj
+    if ((crsName == "EPSG:3035" || crsName == "EPSG:4326") && System.getenv("PROJ_LIB") == null) {
+      println("PROJ_LIB is not set in the environment variables. Skipping this test")
+      // A typical value would be: PROJ_LIB=/usr/share/proj
+      return
+    }
     val outDir = Paths.get("tmp/FileLayerProviderTest_" + crsName.replace(":", "_") + "/")
     new Directory(outDir.toFile).deepFiles.foreach(_.delete())
     Files.createDirectories(outDir)
 
-    val extent = Extent(178.7384, 70.769, 178.8548, 70.8254)
+    val extent = Extent(178.1, 70.3, 178.9, 70.9)
     val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, LatLng.proj4jCrs.toString)
     val utmCrs = CRS.fromName(crsName)
     val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, utmCrs)
     val poly2 = ProjectedPolygons(Array(reprojected), utmCrs)
+
+    if (crsName == "EPSG:4326") {
+      val poly2GeoJson = poly2.polygons.head.toGeoJson
+      // geojson only officially suports latLon
+      Files.writeString(Paths.get(outDir + "/polygons.geojson"), poly2GeoJson)
+    }
 
     val layer = LayerFixtures.sentinel2Cube(
       LocalDate.of(2024, 4, 2),
@@ -1163,10 +1173,18 @@ class FileLayerProviderTest extends RasterMatchers{
 
     val layer_collected = layer.collect()
     assert(layer_collected.nonEmpty)
+    var found10 = false // SCL value for 'snow or ice'
     for {
       (_, multiBandTile) <- layer_collected
       tile <- multiBandTile.bands
-    } assert(!tile.isNoDataTile)
+    } {
+      assert(!tile.isNoDataTile)
+      val values = tile.toArrayDouble()
+      if (values.contains(10.0)) {
+        found10 = true
+      }
+    }
+    assert(found10)
     val cubeSpatial = layer.toSpatial()
     cubeSpatial.writeGeoTiff(outDir + "/testMissingS2DateLine_" + crsName.replace(":", "_") + ".tiff")
   }
