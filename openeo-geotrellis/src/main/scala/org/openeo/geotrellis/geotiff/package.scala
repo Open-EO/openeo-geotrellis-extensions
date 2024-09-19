@@ -91,6 +91,7 @@ package object geotiff {
                       cropBounds: Option[Extent] = Option.empty[Extent],
                       formatOptions: GTiffOptions = new GTiffOptions
                      ): java.util.List[(String, String, Extent)] = {
+    rdd.sparkContext.setCallSite(s"save_result(GTiff, temporal)")
     val ret = saveRDDTemporalAllowAssetPerBand(rdd, path, zLevel, cropBounds, formatOptions).asScala
     logger.warn("Calling backwards compatibility version for saveRDDTemporalConsiderAssetPerBand")
     //    val duplicates = ret.groupBy(_._2).filter(_._2.size > 1)
@@ -195,6 +196,7 @@ package object geotiff {
               cropBounds: Option[Extent] = Option.empty[Extent],
               formatOptions: GTiffOptions = new GTiffOptions
              ): java.util.List[String] = {
+    rdd.sparkContext.setCallSite(s"save_result(GTiff, spatial, $bandCount)")
     val tmp = saveRDDAllowAssetPerBand(rdd, bandCount, path, zLevel, cropBounds, formatOptions).asScala
     logger.warn("Calling backwards compatibility version for saveRDDAllowAssetPerBand")
     //    if (tmp.size() > 1) {
