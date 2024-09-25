@@ -565,11 +565,15 @@ class OpenEOProcesses extends Serializable {
     return ContextRDD(new org.apache.spark.rdd.PairRDDFunctions[K,MultibandTile](datacube).mapValues(tile => {
       if (!tile.isInstanceOf[EmptyMultibandTile]) {
         val resultTiles = function(tile.bands)
-        MultibandTile(resultTiles)
+        if(resultTiles.exists(!_.isNoDataTile)){
+          MultibandTile(resultTiles)
+        }else{
+          new EmptyMultibandTile(tile.cols,tile.rows,tile.cellType,resultTiles.length)
+        }
       }else{
-        tile
+        tile//at this point, the band count of the empty tile may be wrong
       }
-    }).filter(_._2.bands.exists(!_.isNoDataTile)),datacube.metadata.copy(cellType = scriptBuilder.getOutputCellType()))
+    }),datacube.metadata.copy(cellType = scriptBuilder.getOutputCellType()))
   }
 
   def filterEmptyTile[K:ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
