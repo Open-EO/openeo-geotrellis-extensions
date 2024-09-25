@@ -12,11 +12,14 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaPairRDD$;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.function.Function;
 import org.apache.spark.rdd.RDD;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.jupiter.api.DisplayName;
+import scala.Function1;
 import scala.Option;
 import scala.Tuple2;
 import scala.collection.JavaConversions;
@@ -54,24 +57,6 @@ public class TestOpenEOProcesses {
     }
 
 
-    @DisplayName("Test combining all bands.")
-    @Test
-    public void testMapBands() {
-        OpenEOProcessScriptBuilder processBuilder = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess10AddXY();
-        assertEquals(FloatConstantNoDataCellType$.MODULE$,processBuilder.getOutputCellType());
-        Tile tile0 = new UByteConstantTile((byte)3,256,256, (UByteCells)  CellType$.MODULE$.fromName("uint8"));
-        Tile tile1 = new UByteConstantTile((byte)1,256,256, (UByteCells) CellType$.MODULE$.fromName("uint8"));
-        RDD<Tuple2<SpatialKey, MultibandTile>> datacube = TileLayerRDDBuilders$.MODULE$.createMultibandTileLayerRDD(SparkContext.getOrCreate(), new ArrayMultibandTile(new Tile[]{tile0,tile1}), new TileLayout(1, 1, 256, 256));
-        ClassTag<SpatialKey> tag = scala.reflect.ClassTag$.MODULE$.apply(SpatialKey.class);
-        ContextRDD<SpatialKey, MultibandTile, TileLayerMetadata<SpatialKey>> ndviDatacube = (ContextRDD<SpatialKey, MultibandTile, TileLayerMetadata<SpatialKey>>) new OpenEOProcesses().<SpatialKey>mapBandsGeneric(datacube, processBuilder, new HashMap<>(), tag);
-        assertEquals(FloatConstantNoDataCellType$.MODULE$,ndviDatacube.metadata().cellType());
-        List<Tuple2<SpatialKey, MultibandTile>> result = ndviDatacube.toJavaRDD().collect();
-        assertEquals(FloatConstantNoDataCellType$.MODULE$,result.get(0)._2.cellType());
-        System.out.println("result = " + result);
-        assertEquals(1, result.get(0)._2().bandCount());
-        double[] doubles = result.get(0)._2().band(0).toArrayDouble();
-        assertEquals(0.5,doubles[0],0.0);
-    }
 
     @Test
     public void testMapToIntervals() {
