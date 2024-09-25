@@ -53,7 +53,7 @@ class VectorizeSpec {
     val json: JsonFeatureCollection = GeoJson.fromFile[JsonFeatureCollection](outputPath.toString)
     val features: Seq[Json] = json.asJson.hcursor.downField("features").focus.flatMap(_.asArray).getOrElse(Vector.empty)
     val featureIds: Seq[String] = features.flatMap { feature => feature.hcursor.downField("id").focus.flatMap(_.asString) }
-1    val expectedIds: Seq[String] = (0 to 14).map(i => s"20170102_band0_$i") ++ (0 to 14).map(i => s"20170103_band0_$i") ++ (0 to 14).map(i => s"20170104_band0_$i")
+    val expectedIds: Seq[String] = (0 to 14).map(i => s"20170102_band0_$i") ++ (0 to 14).map(i => s"20170103_band0_$i") ++ (0 to 14).map(i => s"20170104_band0_$i")
     assertEquals(expectedIds, featureIds)
     val polygons = json.getAllPolygons()
     assertEquals(45,polygons.size)
