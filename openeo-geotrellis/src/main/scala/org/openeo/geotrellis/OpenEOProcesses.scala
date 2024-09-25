@@ -564,10 +564,10 @@ class OpenEOProcesses extends Serializable {
         if(resultTiles.exists(!_.isNoDataTile)){
           MultibandTile(resultTiles)
         }else{
-          new EmptyMultibandTile(tile.cols,tile.rows,tile.cellType,tile.bandCount)
+          new EmptyMultibandTile(tile.cols,tile.rows,tile.cellType,resultTiles.length)
         }
       }else{
-        tile
+        tile//at this point, the band count of the empty tile may be wrong
       }
     }),datacube.metadata.copy(cellType = scriptBuilder.getOutputCellType()))
   }

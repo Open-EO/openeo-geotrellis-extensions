@@ -624,6 +624,8 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val doubles = result(key0).band(0).toArrayDouble
     assertEquals(0.5, doubles(0), 0.0)
     assertTrue(result(SpatialKey(1,0)).isInstanceOf[EmptyMultibandTile])
+    // this test fails, because ndvi function doesn't really know the band count
+    //assertEquals(1,result(SpatialKey(1,0)).bandCount)
   }
 
 }
