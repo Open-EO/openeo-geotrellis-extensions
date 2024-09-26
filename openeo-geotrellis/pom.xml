@@ -46,7 +46,7 @@
         </dependency>
         <dependency>
             <groupId>org.openeo</groupId>
-            <artifactId>geotrellis-accumulo-extensions</artifactId>
+            <artifactId>geotrellis-common</artifactId>
             <version>${parent.version}</version>
         </dependency>
         <dependency>

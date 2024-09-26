@@ -15,7 +15,6 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.file.PyramidFactory
 import org.openeo.geotrellis.layers.{FileLayerProvider, MockOpenSearchFeatures, SplitYearMonthDayPathDateExtractor}
-import org.openeo.geotrellisaccumulo
 import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
@@ -165,16 +164,6 @@ object LayerFixtures {
     val dates = Seq(minDate,"2017-01-15T00:00:00Z","2017-02-01T00:00:00Z",maxDate)
     val tiles = java.util.Arrays.asList(zeroTile, emptyTile)
     buildSpatioTemporalDataCube(tiles, dates, extent, tilingFactor)
-  }
-
-  private def accumuloPyramidFactory = new geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
-
-  def accumuloDataCube(layer: String, minDateString: String, maxDateString: String, bbox: Extent, srs: String) = {
-    val pyramid: Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = accumuloPyramidFactory.pyramid_seq(layer, bbox, srs, minDateString, maxDateString)
-    System.out.println("pyramid = " + pyramid)
-
-    val (_, datacube) = pyramid.maxBy { case (zoom, _) => zoom }
-    datacube
   }
 
   def catalogDataCube(layer: String, minDateString: String, maxDateString: String, bbox: Extent, resolution:CellSize, bandNames:List[String]) = {
@@ -377,6 +366,7 @@ object LayerFixtures {
       "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/MTD_MSIL2A.xml",
       "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/MTD_TL.xml",
       "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R10m/T31UFS_20230405T105031_B04_10m.jp2",
+      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R20m/T31UFS_20230405T105031_SCL_20m.jp2",
       // for testMissingS2:
       "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWT_20240324T234241.SAFE/GRANULE/L2A_T03WWT_A036821_20240324T230529/IMG_DATA/R20m/T03WWT_20240324T230529_SCL_20m.jp2",
       "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWT_20240324T234241.SAFE/GRANULE/L2A_T03WWT_A036821_20240324T230529/MTD_TL.xml",
