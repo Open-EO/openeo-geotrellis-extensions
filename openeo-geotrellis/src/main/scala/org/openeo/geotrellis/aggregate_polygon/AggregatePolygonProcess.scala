@@ -259,6 +259,7 @@ class AggregatePolygonProcess() {
       val polygonMappingBC = sc.broadcast(invertedMapping)
       val spatiallyPartitionedIndexMaskLayer: RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition] = ContextRDD(byIndexMask.persist(MEMORY_ONLY_2), byIndexMask.metadata)
       val combinedRDD = new SpatialToSpacetimeJoinRdd(datacube, spatiallyPartitionedIndexMaskLayer)
+      combinedRDD.name = "aggregate_spatial: datacube masked with geometries"
       val pixelRDD: RDD[Row] = combinedRDD.flatMap{
         case (key: SpaceTimeKey,( tile: MultibandTile,zones: Tile)) => {
           val rows  = tile.rows
@@ -314,6 +315,7 @@ class AggregatePolygonProcess() {
       }
       val cellType = datacube.metadata.cellType
       val maybeLabels = new OpenEOProcesses().maybeBandLabels(datacube)
+      pixelRDD.name = s"aggregate_spatial: all pixels by zone ${maybeLabels.map(_.mkString(",")).getOrElse("band labels unknown")} ${cellType.name}"
       aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath,maybeLabels)
 
     }finally{
@@ -349,6 +351,9 @@ class AggregatePolygonProcess() {
     }else{
       expressionCols
     }
+
+    logger.debug(s"aggregate_spatial: ${dataframe.rdd.getNumPartitions} partitions")
+    dataframe.hint("REBALANCE")
     dataframe.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*).coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
   }
 
