@@ -27,21 +27,6 @@
     <dependencies>
         <dependency>
             <groupId>org.openeo</groupId>
-            <artifactId>geotrellis-accumulo-extensions</artifactId>
-            <version>${project.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.locationtech.geotrellis</groupId>
-                    <artifactId>geotrellis-spark_${scala.binary.version}</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.scala-lang</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>org.openeo</groupId>
             <artifactId>geotrellis-s3-extensions</artifactId>
             <version>${project.version}</version>
             <exclusions>
