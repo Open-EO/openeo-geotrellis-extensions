@@ -345,16 +345,25 @@ class AggregatePolygonProcess() {
     //Seq(count(col.isNull),count(not(col.isNull)),expr(s"percentile_approx(band_1,0.95)")
     val builder = scriptBuilder.generateFunction()
     val expressionCols: Seq[Column] = bandColumns.flatMap(col => builder(df.col(col), col))
-    val renamedCols =
-    if(maybeBandLabels.map(_.size).getOrElse(0) == expressionCols.size) {
-      expressionCols.zip(maybeBandLabels.get).map(t => t._1.as(t._2))
-    }else{
-      expressionCols
+    val renamedCols = {
+      if (maybeBandLabels.map(_.size).getOrElse(0) == expressionCols.size) {
+        expressionCols.zip(maybeBandLabels.get).map(t => t._1.as(t._2))
+      } else {
+        expressionCols
+      }
     }
 
-    logger.debug(s"aggregate_spatial: ${dataframe.rdd.getNumPartitions} partitions")
-    dataframe.hint("REBALANCE")
-    dataframe.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*).coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+    val filteredDF =
+    if(scriptBuilder.nodataIsIgnored) {
+      dataframe.filter(bandColumns.map(col => df.col(col).isNotNull and !df.col(col).isNaN).reduce(_ or _))
+    }else{
+      dataframe
+    }
+
+
+    logger.debug(s"aggregate_spatial: ${filteredDF.rdd.getNumPartitions} partitions")
+    filteredDF.hint("REBALANCE")
+    filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*).coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
   }
 
   /*
