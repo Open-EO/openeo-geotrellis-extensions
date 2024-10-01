@@ -281,4 +281,39 @@ class AggregateSpatialTest {
       Seq(10, 10.0, Double.NaN, Double.NaN)), // geometry2
       stats)
   }
+
+  private[geotrellis] def createQuantiles( qValue: Int) = {
+    val builder = new SparkAggregateScriptBuilder
+    val arguments = new util.HashMap[String, Object]()
+    arguments.put("q", qValue.asInstanceOf[Object])
+
+    builder.expressionStart("quantiles", arguments)
+    builder.argumentStart("data")
+    builder.argumentEnd()
+    builder.constantArgument("q", qValue)
+    builder.expressionEnd("quantiles", arguments)
+    builder
+  }
+
+  @Test
+  def compute_timeseries_large_area():Unit = {
+
+    val testCollection = LayerFixtures.randomNoiseLayer(PixelType.Float, cols = 1024, rows = 1024)
+
+    val collectionWithNoData = testCollection.withContext(_.mapValues(_.mapDouble { (b,t) => {
+      if(t >50.0) {
+        Double.NaN
+      }else{
+        t
+      }
+    }} ))
+
+    val builder = createQuantiles(2)
+
+    val outDir = "/tmp/compute_timeseries_large_area"
+
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(builder, collectionWithNoData,
+      ProjectedPolygons.fromExtent(collectionWithNoData.metadata.extent,s"EPSG:${collectionWithNoData.metadata.crs.epsgCode.get}"), outDir)
+
+  }
 }
