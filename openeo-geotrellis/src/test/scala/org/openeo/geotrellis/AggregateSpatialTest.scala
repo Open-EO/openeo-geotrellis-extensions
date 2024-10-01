@@ -31,6 +31,10 @@ object AggregateSpatialTest {
     sc = {
 
       val conf = new SparkConf().set("spark.driver.bindAddress", "127.0.0.1")
+        .set("spark.sql.adaptive.coalescePartitions.parallelismFirst","false")
+        .set("spark.sql.adaptive.advisoryPartitionSizeInBytes",(10*1024).toString)
+
+
       SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, conf)
     }
 
@@ -315,5 +319,10 @@ class AggregateSpatialTest {
     computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(builder, collectionWithNoData,
       ProjectedPolygons.fromExtent(collectionWithNoData.metadata.extent,s"EPSG:${collectionWithNoData.metadata.crs.epsgCode.get}"), outDir)
 
+    val groupedStats = parseCSV(outDir)
+
+    for ((_, stats) <- groupedStats) assertEqualTimeseriesStats(Seq(
+      Seq(34.98)),
+      stats, 1e-1)
   }
 }

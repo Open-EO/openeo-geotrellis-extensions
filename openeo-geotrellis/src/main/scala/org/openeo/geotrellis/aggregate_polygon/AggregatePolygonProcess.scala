@@ -360,9 +360,7 @@ class AggregatePolygonProcess() {
       dataframe
     }
 
-
     logger.debug(s"aggregate_spatial: ${filteredDF.rdd.getNumPartitions} partitions")
-    filteredDF.hint("REBALANCE")
     filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*).coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
   }
 
