@@ -310,16 +310,7 @@ object LayerFixtures {
     val layout = LayoutDefinition(RasterExtent(extent, cols, rows), 64, 64)
     val rdd = TileLayerRDDBuilders.createSpaceTimeTileLayerRDD(timeSeries,layout.tileLayout,timeSeries(0)._1.cellType)
 
-
-
-    /*val metadata = TileLayerMetadata(
-      timeSeries(0)._1.cellType,
-      layout,
-      extent,
-      crs,
-      KeyBounds[SpaceTimeKey](timeSeries.head._1, timeSeries.last._1).setSpatialBounds(GridBounds[Int](0,0,cols/64,rows/64))
-    )*/
-    rdd.withContext(_.mapValues(t => MultibandTile(t)))
+    new ContextRDD(rdd.mapValues(t => MultibandTile(t)),rdd.metadata.copy(layout= rdd.metadata.layout.copy(extent=extent),extent = extent,crs=crs))
   }
 
   def sentinel2B04Layer = {
