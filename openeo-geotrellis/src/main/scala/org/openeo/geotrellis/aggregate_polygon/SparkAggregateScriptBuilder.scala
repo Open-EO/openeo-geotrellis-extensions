@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.aggregate_polygon
 
 import org.apache.spark.sql.Column
-import org.apache.spark.sql.functions.{avg, count, countDistinct, first, kurtosis, last, lit, max, min, not, percentile_approx, product, skewness, stddev, sum, variance, when}
+import org.apache.spark.sql.functions.{avg, count, countDistinct, first, kurtosis, last, lit, max, median, min, not, percentile_approx, product, skewness, stddev, sum, variance, when}
 import org.apache.spark.sql.types.DataType
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder
 import org.slf4j.LoggerFactory
@@ -22,6 +22,7 @@ class SparkAggregateScriptBuilder {
   type MultiExpressionBuilder = (Column, String) => Seq[Column]
 
   val reducers = ListBuffer[ExpressionBuilder]()
+  var nodataIsIgnored = true
 
   def generateFunction(context: Map[String,Any] = Map.empty): MultiExpressionBuilder = {
     return (col: Column, columnName: String) => {
@@ -101,8 +102,10 @@ class SparkAggregateScriptBuilder {
     }
 
     val hasData = arguments.containsKey("data")
-    val ignoreNoData = !(arguments.getOrDefault("ignore_nodata",Boolean.box(true).asInstanceOf[Object]) == Boolean.box(false) || arguments.getOrDefault("ignore_nodata",None) == "false" )
+    val ignoreNoData: Boolean = !(arguments.getOrDefault("ignore_nodata",Boolean.box(true).asInstanceOf[Object]) == Boolean.box(false) || arguments.getOrDefault("ignore_nodata",None) == "false" )
     val condition = arguments.getOrDefault("condition",null)
+
+    nodataIsIgnored = nodataIsIgnored && ignoreNoData && (condition != Boolean.box(true) && condition != "true")
 
     if(operator == "quantiles") {
       val probs = arguments.get("probabilities")
@@ -134,9 +137,9 @@ class SparkAggregateScriptBuilder {
             }
             case "max" => max(col)
             case "min" => min(col)
-            case "first" => first(col)
-            case "last" => last(col)
-            case "median" => percentile_approx(col,lit(0.5),lit(100000))
+            case "first" => first(col,ignoreNulls = ignoreNoData)
+            case "last" => last(col,ignoreNulls = ignoreNoData)
+            case "median" => median(col)
             case "product" => product(col)
             case "sd" => stddev(col)
             case "sum" => sum(col)

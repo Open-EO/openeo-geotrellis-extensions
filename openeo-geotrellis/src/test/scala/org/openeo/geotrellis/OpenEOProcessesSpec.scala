@@ -550,7 +550,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val outDir = "/tmp/aggregateTemporalTest/"
     Files.createDirectories(Paths.get(outDir))
     val pixelType = PixelType.Short
-    val layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType)
+    val layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType,cols = 64,rows=64)
     val bounds = layer.metadata.bounds
     val middleDate = SpaceTimeKey(0, 0, (bounds.get.minKey.instant + bounds.get.maxKey.instant) / 2).time
 

@@ -9,6 +9,7 @@ import geotrellis.vector._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertArrayEquals, assertEquals}
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.ComputeStatsGeotrellisAdapterTest.{polygon1, polygon2}
 import org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder
@@ -31,6 +32,10 @@ object AggregateSpatialTest {
     sc = {
 
       val conf = new SparkConf().set("spark.driver.bindAddress", "127.0.0.1")
+        .set("spark.sql.adaptive.coalescePartitions.parallelismFirst","false")
+        .set("spark.sql.adaptive.advisoryPartitionSizeInBytes",(10*1024).toString)
+
+
       SparkUtils.createLocalSparkContext(sparkMaster = "local[2]", appName = getClass.getSimpleName, conf)
     }
 
@@ -261,6 +266,8 @@ class AggregateSpatialTest {
     builder.expressionEnd("min", emptyMap)
     builder.expressionEnd("mean", emptyMap)
 
+    assertTrue(builder.nodataIsIgnored)
+
     val from = ZonedDateTime.parse("2017-01-01T00:00:00Z")
 
     val spatialCube = buildCubeRdd(from, to = ZonedDateTime.now())
@@ -280,5 +287,47 @@ class AggregateSpatialTest {
       Seq(10, 10.0, Double.NaN, Double.NaN), // geometry1
       Seq(10, 10.0, Double.NaN, Double.NaN)), // geometry2
       stats)
+  }
+
+  private[geotrellis] def createQuantiles( qValue: Int) = {
+    val builder = new SparkAggregateScriptBuilder
+    val arguments = new util.HashMap[String, Object]()
+    arguments.put("q", qValue.asInstanceOf[Object])
+
+    builder.expressionStart("quantiles", arguments)
+    builder.argumentStart("data")
+    builder.argumentEnd()
+    builder.constantArgument("q", qValue)
+    builder.expressionEnd("quantiles", arguments)
+    builder
+  }
+
+  @Test
+  def compute_timeseries_large_area_with_nodata():Unit = {
+
+    val testCollection = LayerFixtures.randomNoiseLayer(PixelType.Float, cols = 1024, rows = 1024)
+
+    val collectionWithNoData = testCollection.withContext(_.mapValues(_.mapDouble { (b,t) => {
+      if(t >50.0) {
+        Double.NaN
+      }else{
+        t
+      }
+    }} ))
+
+    val builder = createQuantiles(2)
+
+    val outDir = "/tmp/compute_timeseries_large_area"
+
+    assertTrue(builder.nodataIsIgnored)
+
+    computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(builder, collectionWithNoData,
+      ProjectedPolygons.fromExtent(collectionWithNoData.metadata.extent,s"EPSG:${collectionWithNoData.metadata.crs.epsgCode.get}"), outDir)
+
+    val groupedStats = parseCSV(outDir)
+
+    for ((_, stats) <- groupedStats) assertEqualTimeseriesStats(Seq(
+      Seq(34.98)),
+      stats, 1e-1)
   }
 }

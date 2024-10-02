@@ -275,19 +275,17 @@ object LayerFixtures {
    * max: 15
    */
   def randomNoiseLayer(pixelType: PixelType = PixelType.Byte,
-                       extent: Extent = defaultExtent,
+                       extent: Extent = ProjectedExtent(defaultExtent,LatLng).reproject(CRS.fromEpsgCode(32631)),
                        crs: CRS = CRS.fromEpsgCode(32631),
-                       dates: Option[List[ZonedDateTime]] = None,
+                       dates: Option[List[ZonedDateTime]] = None,cols:Int = 256,rows:Int = 256
                       ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val rows = 256;
-    val cols = 256;
 
     val rand = new scala.util.Random(42) // Fixed seed to make test predictable
 
     val defaultStartDate = ZonedDateTime.parse("2019-01-21T00:00:00Z")
     val datesGet = dates.getOrElse(0 to 4 map (defaultStartDate.plusDays(_)))
 
-    val timeSeries: Array[(SpaceTimeKey, MultibandTile)] = datesGet.map({ date =>
+    val timeSeries: Array[(Tile, ZonedDateTime)] = datesGet.map({ date =>
       val v = pixelType match {
         // Uses values in the 0-127 range, so that windows thumbnails show something visible
         case PixelType.Double => DoubleArrayTile.apply((1 to cols * rows).map(_ => 20 + 100 * rand.nextDouble).toArray, cols, rows)
@@ -302,20 +300,17 @@ object LayerFixtures {
         case _ => throw new IllegalStateException(s"pixelType $pixelType not supported")
       }
       (
-        SpaceTimeKey(0, 0, date),
-        MultibandTile(v.withNoData(Some(32767)))
+        v.withNoData(Some(32767)),
+        date
       )
     }).toArray
 
-    val rdd = SparkContext.getOrCreate().parallelize(timeSeries)
-    val metadata = TileLayerMetadata(
-      timeSeries(0)._2.cellType,
-      LayoutDefinition(RasterExtent(extent, cols, rows), cols, rows),
-      extent,
-      crs,
-      KeyBounds[SpaceTimeKey](timeSeries.head._1, timeSeries.last._1)
-    )
-    new ContextRDD(rdd, metadata)
+    implicit val sc = SparkContext.getOrCreate()
+
+    val layout = LayoutDefinition(RasterExtent(extent, cols, rows), 64, 64)
+    val rdd = TileLayerRDDBuilders.createSpaceTimeTileLayerRDD(timeSeries,layout.tileLayout,timeSeries(0)._1.cellType)
+
+    new ContextRDD(rdd.mapValues(t => MultibandTile(t)),rdd.metadata.copy(layout= rdd.metadata.layout.copy(extent=extent),extent = extent,crs=crs))
   }
 
   def sentinel2B04Layer = {
