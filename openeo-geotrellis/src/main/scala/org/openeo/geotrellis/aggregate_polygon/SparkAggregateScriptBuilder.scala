@@ -105,7 +105,7 @@ class SparkAggregateScriptBuilder {
     val ignoreNoData: Boolean = !(arguments.getOrDefault("ignore_nodata",Boolean.box(true).asInstanceOf[Object]) == Boolean.box(false) || arguments.getOrDefault("ignore_nodata",None) == "false" )
     val condition = arguments.getOrDefault("condition",null)
 
-    nodataIsIgnored = nodataIsIgnored && ignoreNoData && (condition != Boolean.box(true) && condition != "true")
+    nodataIsIgnored = nodataIsIgnored && ignoreNoData  && operator != "count"
 
     if(operator == "quantiles") {
       val probs = arguments.get("probabilities")
