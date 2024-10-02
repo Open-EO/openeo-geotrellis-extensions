@@ -9,6 +9,7 @@ import geotrellis.vector._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert.{assertArrayEquals, assertEquals}
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.ComputeStatsGeotrellisAdapterTest.{polygon1, polygon2}
 import org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder
@@ -265,6 +266,8 @@ class AggregateSpatialTest {
     builder.expressionEnd("min", emptyMap)
     builder.expressionEnd("mean", emptyMap)
 
+    assertTrue(builder.nodataIsIgnored)
+
     val from = ZonedDateTime.parse("2017-01-01T00:00:00Z")
 
     val spatialCube = buildCubeRdd(from, to = ZonedDateTime.now())
@@ -300,7 +303,7 @@ class AggregateSpatialTest {
   }
 
   @Test
-  def compute_timeseries_large_area():Unit = {
+  def compute_timeseries_large_area_with_nodata():Unit = {
 
     val testCollection = LayerFixtures.randomNoiseLayer(PixelType.Float, cols = 1024, rows = 1024)
 
@@ -315,6 +318,8 @@ class AggregateSpatialTest {
     val builder = createQuantiles(2)
 
     val outDir = "/tmp/compute_timeseries_large_area"
+
+    assertTrue(builder.nodataIsIgnored)
 
     computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(builder, collectionWithNoData,
       ProjectedPolygons.fromExtent(collectionWithNoData.metadata.extent,s"EPSG:${collectionWithNoData.metadata.crs.epsgCode.get}"), outDir)
