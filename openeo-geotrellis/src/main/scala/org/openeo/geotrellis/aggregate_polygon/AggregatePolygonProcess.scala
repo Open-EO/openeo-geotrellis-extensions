@@ -361,7 +361,16 @@ class AggregatePolygonProcess() {
     }
 
     logger.debug(s"aggregate_spatial: ${filteredDF.rdd.getNumPartitions} partitions")
-    filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*).coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+    val aggregated = filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*)
+      if(scriptBuilder.nodataIsIgnored) {
+        // why this complex? Because spark was spending a lot of time processing nodata rows, using only one partition
+        // this approach filters out nodata for the computation, but restores it in the output.
+        val requiredRows = dataframe.select("date", "feature_index").distinct()
+        requiredRows.join(aggregated, Seq("date", "feature_index"), "left").coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+      }else{
+        aggregated.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
+      }
+
   }
 
   /*
