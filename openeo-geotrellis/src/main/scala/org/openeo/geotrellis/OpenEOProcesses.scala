@@ -563,16 +563,14 @@ class OpenEOProcesses extends Serializable {
       scriptBuilder.generateFunction(context.asScala.toMap)
     }
     return ContextRDD(new org.apache.spark.rdd.PairRDDFunctions[K,MultibandTile](datacube).mapValues(tile => {
-      if (!tile.isInstanceOf[EmptyMultibandTile]) {
-        val resultTiles = function(tile.bands)
-        if(resultTiles.exists(!_.isNoDataTile)){
-          MultibandTile(resultTiles)
-        }else{
-          new EmptyMultibandTile(tile.cols,tile.rows,tile.cellType,resultTiles.length)
-        }
+
+      val resultTiles = function(tile.bands)
+      if(resultTiles.exists(!_.isNoDataTile)){
+        MultibandTile(resultTiles)
       }else{
-        tile//at this point, the band count of the empty tile may be wrong
+        new EmptyMultibandTile(tile.cols,tile.rows,tile.cellType,resultTiles.length)
       }
+
     }),datacube.metadata.copy(cellType = scriptBuilder.getOutputCellType()))
   }
 
