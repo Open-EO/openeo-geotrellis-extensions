@@ -2,7 +2,6 @@ package org.openeo.geotrellissentinelhub
 
 import _root_.io.circe.generic.auto._
 import cats.syntax.either._
-import org.apache.commons.lang.StringUtils.abbreviate
 import org.openeo.geotrelliscommon.CirceException.decode
 import scalaj.http.{HttpRequest, HttpResponse}
 
@@ -28,7 +27,7 @@ object SentinelHubException {
 
     s"""Sentinel Hub returned an error
        |response: $statusLine with body: $responseBody
-       |request: ${request.method} $queryString with (possibly abbreviated) body: ${abbreviate(requestBody, 20000)}"""
+       |request: ${request.method} $queryString with (possibly abbreviated) body: ${requestBody.slice(0,20000)}..."""
       .stripMargin
   }
 
