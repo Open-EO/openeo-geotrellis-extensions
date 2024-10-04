@@ -25,10 +25,17 @@ object SentinelHubException {
     val queryString = request.urlBuilder(request)
     val statusLine = responseHeaders.get("Status").flatMap(_.headOption).getOrElse("UNKNOWN")
 
-    s"""Sentinel Hub returned an error
+    val message = s"""Sentinel Hub returned an error
        |response: $statusLine with body: $responseBody
-       |request: ${request.method} $queryString with (possibly abbreviated) body: ${requestBody.slice(0,20000)}..."""
+       |request: ${request.method} $queryString"""
       .stripMargin
+
+    if(requestBody!=null) {
+      message +  s"""with (possibly abbreviated) body: ${requestBody.slice(0,20000)}..."""
+    }else{
+      message
+    }
+
   }
 
   case class SentinelHubError(message: String)
