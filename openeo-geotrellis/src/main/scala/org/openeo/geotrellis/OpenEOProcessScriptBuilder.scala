@@ -72,7 +72,7 @@ object OpenEOProcessScriptBuilder{
       wrapSimpleProcess(f)
   }
 
-  private def cellTypeUnion(a:CellType,b:CellType):CellType = {
+  def cellTypeUnion(a:CellType,b:CellType):CellType = {
     if (a.bits < b.bits)
       b
     else if (a.bits > b.bits)

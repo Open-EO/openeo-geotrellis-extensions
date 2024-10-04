@@ -122,7 +122,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     }
   }
 
-  override def cellType: CellType = sources.map(_.cellType).reduceLeft(_ union _)
+  override def cellType: CellType = sources.map(_.cellType).reduceLeft((a,b) => OpenEOProcessScriptBuilder.cellTypeUnion(a,b))
 
   override def name: SourceName = sources.head.name
   override def bandCount: Int = sources.size
