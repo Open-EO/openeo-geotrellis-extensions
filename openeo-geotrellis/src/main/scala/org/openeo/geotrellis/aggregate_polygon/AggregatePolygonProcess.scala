@@ -361,6 +361,7 @@ class AggregatePolygonProcess() {
     }
 
     val aggregated = filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*)
+    logger.info(s"aggregate_spatial - dataframe schema before join: ${aggregated.schema.toDDL}")
       if(scriptBuilder.nodataIsIgnored) {
         // why this complex? Because spark was spending a lot of time processing nodata rows, using only one partition
         // this approach filters out nodata for the computation, but restores it in the output.
