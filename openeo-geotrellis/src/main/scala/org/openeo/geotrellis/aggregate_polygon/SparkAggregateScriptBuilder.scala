@@ -139,7 +139,7 @@ class SparkAggregateScriptBuilder {
             case "min" => min(col)
             case "first" => first(col,ignoreNulls = ignoreNoData)
             case "last" => last(col,ignoreNulls = ignoreNoData)
-            case "median" => median(col)
+            case "median" => median(col).cast(col.expr.dataType)
             case "product" => product(col)
             case "sd" => stddev(col)
             case "sum" => sum(col)

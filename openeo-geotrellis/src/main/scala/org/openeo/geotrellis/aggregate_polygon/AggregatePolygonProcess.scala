@@ -339,7 +339,7 @@ class AggregatePolygonProcess() {
       StructField("feature_index", IntegerType, true),
     ) ++ bandStructs)
     val df = session.createDataFrame(pixelRDD, schema)
-    logger.info(s"aggregate_spatial initial schema $schema")
+
     val dataframe = df.withColumnRenamed(df.columns(0), "date").withColumnRenamed(df.columns(1), "feature_index")
     //val expressions = bandColumns.flatMap(col => Seq((col,"sum"),(col,"max"))).toMap
     //https://spark.apache.org/docs/3.2.0/sql-ref-null-semantics.html#built-in-aggregate
@@ -360,10 +360,8 @@ class AggregatePolygonProcess() {
     }else{
       dataframe
     }
-    logger.info(s"aggregate_spatial filtered schema ${filteredDF.schema}")
 
     val aggregated = filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*)
-    logger.info(s"aggregate_spatial - dataframe schema before join: ${aggregated.schema.toDDL}")
       if(scriptBuilder.nodataIsIgnored) {
         // why this complex? Because spark was spending a lot of time processing nodata rows, using only one partition
         // this approach filters out nodata for the computation, but restores it in the output.
