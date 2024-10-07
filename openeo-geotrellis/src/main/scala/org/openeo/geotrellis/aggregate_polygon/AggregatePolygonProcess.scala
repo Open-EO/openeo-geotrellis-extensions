@@ -339,6 +339,7 @@ class AggregatePolygonProcess() {
       StructField("feature_index", IntegerType, true),
     ) ++ bandStructs)
     val df = session.createDataFrame(pixelRDD, schema)
+    logger.info(s"aggregate_spatial initial schema $schema")
     val dataframe = df.withColumnRenamed(df.columns(0), "date").withColumnRenamed(df.columns(1), "feature_index")
     //val expressions = bandColumns.flatMap(col => Seq((col,"sum"),(col,"max"))).toMap
     //https://spark.apache.org/docs/3.2.0/sql-ref-null-semantics.html#built-in-aggregate
@@ -359,6 +360,7 @@ class AggregatePolygonProcess() {
     }else{
       dataframe
     }
+    logger.info(s"aggregate_spatial filtered schema ${filteredDF.schema}")
 
     val aggregated = filteredDF.groupBy("date", "feature_index").agg(renamedCols.head, renamedCols.tail: _*)
     logger.info(s"aggregate_spatial - dataframe schema before join: ${aggregated.schema.toDDL}")
@@ -367,10 +369,8 @@ class AggregatePolygonProcess() {
         // this approach filters out nodata for the computation, but restores it in the output.
         val requiredRows = dataframe.select("date", "feature_index").distinct()
         val joined = requiredRows.join(aggregated, Seq("date", "feature_index"), "left")
-        logger.info(s"aggregate_spatial - dataframe schema: ${joined.schema.toDDL}")
         joined.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
       }else{
-        logger.info(s"aggregate_spatial - dataframe schema: ${aggregated.schema.toDDL}")
         aggregated.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
       }
 
