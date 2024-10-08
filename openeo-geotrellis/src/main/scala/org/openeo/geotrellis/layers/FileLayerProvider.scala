@@ -141,7 +141,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
   override def readBounds(bounds: Traversable[GridBounds[Long]]): Iterator[Raster[MultibandTile]] = {
     var union = bounds.reduce(_ combine _)
-    val percentageToRead = bounds.map(_.size).sum / union.size
+    val percentageToRead = bounds.map(_.size).sum.toFloat / union.size.toFloat
     if(percentageToRead> 0.5 && readFullTile){
       return readBoundsFullTile(bounds)
     }else{
@@ -214,7 +214,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
             case Raster(croppedTile: CroppedTile, extent) =>
               croppedTile.sourceTile match {
                 case tile: ResampledTile => tile.cropAndConvert(croppedTile.gridBounds, cellType)
-                case _ => croppedTile.convert(cellType)
+                case _ => if(croppedTile.cellType != cellType) croppedTile.convert(cellType) else croppedTile
               }
           }.seq
           Some(Raster(MultibandTile(convertedRasters), intersection))
@@ -590,7 +590,7 @@ object FileLayerProvider {
 
           case source1: BandCompositeRasterSource =>
             //decompose into individual bands
-            source1.sources.map(s => (s.name, GridBoundsRasterRegion(new BandCompositeRasterSource(NonEmptyList.one(s), source1.crs, source1.attributes, source1.predefinedExtent, parallelRead = loadPerProduct, softErrors = softErrors, readFullTile = true), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key_region_sourcename._1, t._1._2))).toList.toSeq
+            source1.sources.map(s => (s.name, GridBoundsRasterRegion(new BandCompositeRasterSource(NonEmptyList.one(s), source1.crs, source1.attributes, source1.predefinedExtent, parallelRead = loadPerProduct, softErrors = softErrors, readFullTile = false), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key_region_sourcename._1, t._1._2))).toList.toSeq
 
           case _ =>
             Seq((source.name, (Seq(0), key_region_sourcename._1, key_region_sourcename._2._1)))
@@ -1296,7 +1296,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
       //convert to raster region
       val cube=
-        if(!datacubeParams.map(_.loadPerProduct).getOrElse(false) || theMaskStrategy != NoCloudFilterStrategy ){
+        if(!datacubeParams.map(_.loadPerProduct).getOrElse(false) || theMaskStrategy != NoCloudFilterStrategy || fromLoadStac ){
           rasterRegionsToTiles(regions, metadata, retainNoDataTiles, theMaskStrategy, partitioner, datacubeParams)
         }else{
           rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size,readKeysToRasterSourcesResult._4, softErrors)
