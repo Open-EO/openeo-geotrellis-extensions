@@ -52,7 +52,7 @@ object DatacubeSupport {
               reprojected = globalBounds.get.extent.buffer(0.1).reprojectAsPolygon(globalBounds.get.crs, boundingBox.crs, 0.01).getEnvelopeInternal
             }
             if (!reprojected.covers(boundingBox.extent)) {
-              logger.error(f"Trying to construct a datacube with a bounds ${boundingBox.extent} that is not entirely inside the global bounds: ${reprojected}. ")
+              logger.warn(f"Trying to construct a datacube with a bounds ${boundingBox.extent} that is not entirely inside the global bounds: ${reprojected}. ")
               reprojected = reprojected.expandToInclude(boundingBox.extent)
             }
             if (p.getName == "utm") {
