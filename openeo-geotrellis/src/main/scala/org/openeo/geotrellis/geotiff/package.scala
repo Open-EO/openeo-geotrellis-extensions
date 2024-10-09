@@ -698,9 +698,8 @@ package object geotiff {
                                    croppedExtent: Option[Extent], cropDimensions: Option[java.util.ArrayList[Int]],
                                    compression: Compression, formatOptions: Option[GTiffOptions] = None
                                   ) = {
-    this.logger.debug("stitchAndWriteToTiff tiles.size: " + tiles.size)
+    this.logger.info("stitchAndWriteToTiff tiles.size: " + tiles.size) // Remove before release
     val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).stitch()
-    this.logger.debug("stitchAndWriteToTiff raster.dimensions: " + raster.dimensions)
 
     val re = raster.rasterExtent
     val alignedExtent = re.createAlignedGridExtent(geometry.extent).extent
@@ -742,7 +741,9 @@ package object geotiff {
     ) {
       geotiff = geotiff.withOverviews(NearestNeighbor, List(4, 8, 16))
     }
-    writeGeoTiff(geotiff, filePath)
+    val res = writeGeoTiff(geotiff, filePath)
+    this.logger.info("stitchAndWriteToTiff writeGeoTiff done. filePath: " + filePath) // Remove before release
+    res
   }
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
