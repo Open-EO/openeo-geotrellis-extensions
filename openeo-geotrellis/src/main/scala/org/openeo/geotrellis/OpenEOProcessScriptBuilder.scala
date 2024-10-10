@@ -3,7 +3,7 @@ package org.openeo.geotrellis
 import ai.catboost.CatBoostModel
 import ai.catboost.spark.CatBoostClassificationModel
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{ArrayTile, BitCellType, ByteUserDefinedNoDataCellType, CellType, Dimensions, DoubleConstantNoDataCellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantNoDataCellType, ShortConstantTile, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortUserDefinedNoDataCellType, isData, isNoData}
+import geotrellis.raster.{ArrayTile, BitCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, Dimensions, DoubleConstantNoDataCellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantNoDataCellType, ShortConstantTile, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortUserDefinedNoDataCellType, isData, isNoData}
 import org.apache.commons.math3.exception.NotANumberException
 import org.apache.commons.math3.stat.descriptive.rank.Percentile
 import org.apache.commons.math3.stat.descriptive.rank.Percentile.EstimationType
@@ -1302,7 +1302,14 @@ class OpenEOProcessScriptBuilder {
         }
       }))
       if(targetType.isDefined) {
-        normalizedTiles.map(_.convert(targetType.get))
+        def convert(tile: Tile): Tile = {
+          if(tile.isInstanceOf[ConstantTile] && tile.getDouble(0,0).isNaN ){
+            EmptyMultibandTile.empty(targetType.get, tile.cols, tile.rows)
+          }else{
+            tile.convert(targetType.get)
+          }
+        }
+        normalizedTiles.map(convert)
       }else{
         normalizedTiles
       }
