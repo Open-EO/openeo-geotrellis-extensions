@@ -24,7 +24,7 @@ import geotrellis.vector.io.json.JsonFeatureCollection
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.{Partitioner, SparkContext}
-import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MinIgnoreNoData, OpenEOProcess}
+import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MinIgnoreNoData, OpenEOProcess, safeConvert}
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner}
@@ -890,9 +890,9 @@ class OpenEOProcesses extends Serializable {
       val updatedMetadata = leftCube.metadata.copy(cellType = outputCellType)
       return new ContextRDD(rdd.mapValues({case (l,r) =>
         if(swapOperands) {
-          MultibandTile(r.convert(updatedMetadata.cellType).bands ++ l.convert(updatedMetadata.cellType).bands)
+          MultibandTile( r.bands.map(t=>safeConvert(t,updatedMetadata.cellType))  ++ l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
         }else{
-          MultibandTile(l.convert(updatedMetadata.cellType).bands ++ r.convert(updatedMetadata.cellType).bands)
+          MultibandTile(l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)) ++ r.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
         }
       }), updatedMetadata)
     }else{
@@ -946,8 +946,7 @@ class OpenEOProcesses extends Serializable {
 
   private def mergeCubesGeneric[K: Boundable: PartitionerIndex: ClassTag
   ](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))] with Metadata[Bounds[K]], operator:String, metadata:TileLayerMetadata[K],leftCube: MultibandTileLayerRDD[K], rightCube: MultibandTileLayerRDD[K]): ContextRDD[K, MultibandTile, TileLayerMetadata[K]] = {
-
-    val converted = joined.mapValues{t=> (t._1.map(_.convert(metadata.cellType)),t._2.map(_.convert(metadata.cellType)))}
+    val converted = joined.mapValues{t=> (t._1.map( x => safeConvert(x,metadata.cellType)),t._2.map( x => safeConvert(x,metadata.cellType)))}
     if(operator==null) {
       combine_bands(converted, leftCube, rightCube, metadata)
     }else{
