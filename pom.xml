@@ -55,7 +55,6 @@
                 <module>geotrellis-s3-extensions</module>
                 <module>geotrellis-sentinelhub</module>
                 <module>geotrellis-extensions</module>
-                <module>geotrellis-seeder</module>
                 <module>openeo-geotrellis</module>
                 <module>geotrellis-benchmarks</module>
                 <module>geotrellis-common</module>
