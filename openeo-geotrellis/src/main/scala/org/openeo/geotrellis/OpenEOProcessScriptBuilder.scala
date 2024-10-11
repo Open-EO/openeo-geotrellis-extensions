@@ -72,6 +72,18 @@ object OpenEOProcessScriptBuilder{
       wrapSimpleProcess(f)
   }
 
+  /**
+   * Works around geotrellis issue.
+   * https://github.com/locationtech/geotrellis/issues/3525
+   */
+  def safeConvert(tile: Tile,ct:CellType): Tile = {
+    if(tile.isInstanceOf[ConstantTile] && tile.getDouble(0,0).isNaN ){
+      EmptyMultibandTile.empty(ct, tile.cols, tile.rows)
+    }else{
+      tile.convert(ct)
+    }
+  }
+
   def cellTypeUnion(a:CellType,b:CellType):CellType = {
     if (a.bits < b.bits)
       b
@@ -1302,14 +1314,7 @@ class OpenEOProcessScriptBuilder {
         }
       }))
       if(targetType.isDefined) {
-        def convert(tile: Tile): Tile = {
-          if(tile.isInstanceOf[ConstantTile] && tile.getDouble(0,0).isNaN ){
-            EmptyMultibandTile.empty(targetType.get, tile.cols, tile.rows)
-          }else{
-            tile.convert(targetType.get)
-          }
-        }
-        normalizedTiles.map(convert)
+        normalizedTiles.map(t=>safeConvert(t,targetType.get))
       }else{
         normalizedTiles
       }
