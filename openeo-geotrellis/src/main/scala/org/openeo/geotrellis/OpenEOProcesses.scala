@@ -946,7 +946,7 @@ class OpenEOProcesses extends Serializable {
 
   private def mergeCubesGeneric[K: Boundable: PartitionerIndex: ClassTag
   ](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))] with Metadata[Bounds[K]], operator:String, metadata:TileLayerMetadata[K],leftCube: MultibandTileLayerRDD[K], rightCube: MultibandTileLayerRDD[K]): ContextRDD[K, MultibandTile, TileLayerMetadata[K]] = {
-    val converted = joined.mapValues{t=> (t._1.map( x => safeConvert(x,metadata.cellType)),t._2.map( x => safeConvert(x,metadata.cellType)))}
+    val converted = joined.mapValues{t=> (t._1.map(_.mapBands( (i,x) => safeConvert(x,metadata.cellType))),t._2.map( _.mapBands( (i,x) => safeConvert(x,metadata.cellType))))}
     if(operator==null) {
       combine_bands(converted, leftCube, rightCube, metadata)
     }else{
