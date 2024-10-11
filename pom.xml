@@ -7,7 +7,7 @@
     <packaging>pom</packaging>
     <name>openeo-geotrellis-extensions</name>
     <properties>
-        <gt-version>21.2</gt-version>
+        <gt-version>31.0</gt-version>
         <hadoop.version>3.1.1</hadoop.version>
         <avro.version>1.7.7</avro.version>
         <spark.version>3.4.2</spark.version>
@@ -51,8 +51,6 @@
                 <activeByDefault>true</activeByDefault>
             </activation>
             <modules>
-                <module>geotrellis-accumulo-extensions</module>
-                <module>geotrellis-s3-extensions</module>
                 <module>geotrellis-sentinelhub</module>
                 <module>geotrellis-extensions</module>
                 <module>openeo-geotrellis</module>
