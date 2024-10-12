@@ -24,7 +24,7 @@ import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.transfer.s3.S3TransferManager
 import software.amazon.awssdk.transfer.s3.model.UploadFileRequest
-import ucar.ma2.{ArrayDouble, ArrayInt, DataType, InvalidRangeException}
+import ucar.ma2.{ArrayDouble, ArrayInt, DataType}
 import ucar.nc2.write.Nc4ChunkingDefault
 import ucar.nc2.{Attribute, Dimension, NetcdfFileWriter, Variable}
 
@@ -759,6 +759,7 @@ object NetCDFRDDWriter {
     if (coordinates != null) netcdfFile.addVariableAttribute(variableName, "coordinates", coordinates)
   }
 
+  import org.opengis.coverage.grid.InvalidRangeException
 
   @throws[IOException]
   @throws[InvalidRangeException]
