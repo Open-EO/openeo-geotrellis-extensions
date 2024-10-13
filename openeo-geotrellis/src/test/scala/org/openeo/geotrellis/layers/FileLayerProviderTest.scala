@@ -1081,7 +1081,7 @@ class FileLayerProviderTest extends RasterMatchers{
     cubeSpatial.writeGeoTiff("tmp/testPixelValueOffsetNeededCorner.tiff")
     val arr = cubeSpatial.collect().array
     assertTrue(isNoData(arr(1)._2.toArrayTile().band(0).get(162, 250)))
-    assertEquals(172, arr(0)._2.toArrayTile().band(0).get(5, 5), 1)
+    assertEquals(187, arr(0)._2.toArrayTile().band(0).get(160, 5), 1)
   }
 
   @Test
@@ -1096,7 +1096,7 @@ class FileLayerProviderTest extends RasterMatchers{
     cubeSpatial.writeGeoTiff("tmp/testPixelValueOffsetNeededDark.tiff")
     val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
 
-    assertEquals(888, band.get(0, 0), 1)
+    assertEquals(682, band.get(20, 140), 1)
     assertEquals(-582, band.get(133, 151), 1)
   }
 
@@ -1137,6 +1137,61 @@ class FileLayerProviderTest extends RasterMatchers{
     cubeSpatial.writeGeoTiff(outDir + "/testMissingS2.tiff")
     val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
     assertEquals(8, band.get(200, 200))
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:3035", "EPSG:4326"))
+  def testMissingS2DateLine(crsName: String): Unit = {
+    if ((crsName == "EPSG:3035" || crsName == "EPSG:4326") && System.getenv("PROJ_LIB") == null) {
+      println("PROJ_LIB is not set in the environment variables. Skipping this test")
+      // A typical value would be: PROJ_LIB=/usr/share/proj
+      return
+    }
+    val outDir = Paths.get("tmp/FileLayerProviderTest_" + crsName.replace(":", "_") + "/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    Files.createDirectories(outDir)
+
+    val extent = Extent(178.1, 70.3, 178.9, 70.9)
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, LatLng.proj4jCrs.toString)
+    val utmCrs = CRS.fromName(crsName)
+    val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, utmCrs)
+    val poly2 = ProjectedPolygons(Array(reprojected), utmCrs)
+
+    if (crsName == "EPSG:4326") {
+      val poly2GeoJson = poly2.polygons.head.toGeoJson
+      // geojson only officially suports latLon
+      Files.writeString(Paths.get(outDir + "/polygons.geojson"), poly2GeoJson)
+    }
+
+    val layer = LayerFixtures.sentinel2Cube(
+      LocalDate.of(2024, 4, 2),
+      poly2,
+      "/org/openeo/geotrellis/testMissingS2DateLine.json",
+      new DataCubeParameters,
+      java.util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data"),
+    )
+
+    val layer_collected = layer.collect()
+    assert(layer_collected.nonEmpty)
+    var found10 = false // SCL value for 'snow or ice'
+    for {
+      (_, multiBandTile) <- layer_collected
+      tile <- multiBandTile.bands
+    } {
+      assert(!tile.isNoDataTile)
+      val values = tile.toArrayDouble()
+      if (values.contains(10.0)) {
+        found10 = true
+      }
+    }
+    assert(found10)
+    val cubeSpatial = layer.toSpatial()
+    cubeSpatial.writeGeoTiff(outDir + "/testMissingS2DateLine_" + crsName.replace(":", "_") + ".tiff")
+  }
+
+  @Test
+  def testMissingS2DateLineOutside(): Unit = {
+    assertThrows[Exception](testMissingS2DateLine("EPSG:32631"))
   }
 
   private def keysForLargeArea(useBBox:Boolean=false) = {

@@ -28,12 +28,12 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
-import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, sortableSourceName}
+import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtent, sortableSourceName}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
-import org.slf4j.LoggerFactory
+import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.{IOException, Serializable}
 import java.net.URI
@@ -296,7 +296,7 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 
 object FileLayerProvider {
 
-  private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
 
 
 
@@ -1379,13 +1379,27 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
        * Several edge cases to cover:
        *  - if feature extent is whole world, it may be invalid in target crs
        *  - if feature is in utm, target extent may be invalid in feature crs
-       *  this is why we take intersection
+       *  this is why we take intersection.
+       *  We convert both extents to a common CRS before taking the intersection.
+       *  If one of the CRSes can cover the whole world (non-UTM), this will be used as common CRS.
+       *  We give priority to use the target CRS as common one, because the intersection will be converted to it anyway
        */
-      val targetExtentInLatLon = targetExtent.reproject(feature.crs.get)
-      val featureExtentInLatLon = feature.rasterExtent.get.reproject(feature.crs.get,LatLng)
+      val featureIsUTM = feature.crs.get.proj4jCrs.getProjection.getName == "utm"
+      val targetIsUTM = targetExtent.crs.proj4jCrs.getProjection.getName == "utm"
+      val commonCrs = if (!targetIsUTM) targetExtent.crs
+      else if (!featureIsUTM) feature.crs.get
+      else targetExtent.crs // Avoid conversion imprecision by intersecting directly in the target CRS
 
-      val intersection = featureExtentInLatLon.intersection(targetExtentInLatLon).map(_.buffer(1.0)).getOrElse(featureExtentInLatLon)
-      val tmp = expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), theResolution)
+      val featureExtentInCommonCRS = feature.rasterExtent.get.reproject(feature.crs.get, commonCrs)
+      val targetExtentInCommonCRS = targetExtent.extent.reproject(targetExtent.crs, commonCrs)
+
+      val intersection = featureExtentInCommonCRS.intersection(targetExtentInCommonCRS).map(_.buffer(1.0))
+      val intersectionTargetCrs = intersection match {
+        case None => targetExtent.extent.reproject(targetExtent.crs, targetExtent.crs)
+        case Some(value) => value.reproject(commonCrs, targetExtent.crs)
+      }
+      val tmp = expandToCellSize(intersectionTargetCrs, theResolution)
+      healthCheckExtent(ProjectedExtent(tmp, targetExtent.crs))
 
       val alignedToTargetExtent = re.createAlignedRasterExtent(tmp)
       Some(alignedToTargetExtent.toGridType[Long])
