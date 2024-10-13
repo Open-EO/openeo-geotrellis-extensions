@@ -590,7 +590,7 @@ object FileLayerProvider {
 
           case source1: BandCompositeRasterSource =>
             //decompose into individual bands
-            source1.sources.map(s => (s.name, GridBoundsRasterRegion(new BandCompositeRasterSource(NonEmptyList.one(s), source1.crs, source1.attributes, source1.predefinedExtent, parallelRead = loadPerProduct, softErrors = softErrors, readFullTile = false), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key_region_sourcename._1, t._1._2))).toList.toSeq
+            source1.sources.map(s => (s.name, GridBoundsRasterRegion(new BandCompositeRasterSource(NonEmptyList.one(s), source1.crs, source1.attributes, source1.predefinedExtent, parallelRead = loadPerProduct, softErrors = softErrors, readFullTile = true), bounds))).zipWithIndex.map(t => (t._1._1, (Seq(t._2), key_region_sourcename._1, t._1._2))).toList.toSeq
 
           case _ =>
             Seq((source.name, (Seq(0), key_region_sourcename._1, key_region_sourcename._2._1)))
