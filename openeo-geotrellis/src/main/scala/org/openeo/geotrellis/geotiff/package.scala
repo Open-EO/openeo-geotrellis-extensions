@@ -828,21 +828,27 @@ package object geotiff {
   }
 
   private def writeGeoTiff(geoTiff: MultibandGeoTiff, path: String): String = {
+    import java.nio.file.Files
     if (path.startsWith("s3:/")) {
       val correctS3Path = path.replaceFirst("s3:/(?!/)", "s3://")
 
-      import java.nio.file.Files
 
       val tempFile = Files.createTempFile(null, null)
       geoTiff.write(tempFile.toString, optimizedOrder = true)
       uploadToS3(tempFile, correctS3Path)
 
     } else {
-      geoTiff.write(path, optimizedOrder = true)
-      // Call fsync on the parent path to assure the fusemount is up-to data:
-      val channel = FileChannel.open(Path.of(path))
-      // Ensure that all changes to the file are written to disk
-      channel.force(true) // The equivalent of Python's os.fsync
+      val tempFile = Files.createTempFile(null, null)
+      geoTiff.write(tempFile.toString, optimizedOrder = true)
+
+      // Geotrellis writes the file piecewise and sometimes files are only partially written.
+      // Maybe a move operation is easier for the fusemount:
+      Files.move(tempFile, Path.of(path))
+
+      // Call fsync on the parent path to assure the fusemount is up-to-date.
+      // The equivalent of Python's os.fsync
+      FileChannel.open(Path.of(path)).force(true)
+
       path
     }
 
