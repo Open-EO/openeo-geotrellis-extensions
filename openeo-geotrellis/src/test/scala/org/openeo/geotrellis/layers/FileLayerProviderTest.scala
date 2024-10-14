@@ -4,7 +4,9 @@ import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.gdal.{GDALIOException, GDALRasterSource}
+import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.GeoTiff
+import geotrellis.raster.resample.{Bilinear, CubicConvolution, ResampleMethod}
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.testkit.RasterMatchers
@@ -21,20 +23,27 @@ import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test, Timeout}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.TestImplicits._
+import org.openeo.geotrellis.file.PyramidFactory
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.geotiff._
-import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
+import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
+import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{ConfigurableSpaceTimePartitioner, DataCubeParameters, DatacubeSupport, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection, Link}
 import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.openeo.sparklisteners.GetInfoSparkListener
+import org.slf4j.LoggerFactory
+import ucar.nc2.NetcdfFile
+import ucar.nc2.util.CompareNetcdf2
 
 import java.net.{URI, URL}
 import java.nio.file.{Files, Paths}
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util
+import java.util.Formatter
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.io.Source
@@ -1316,5 +1325,91 @@ class FileLayerProviderTest extends RasterMatchers{
     } catch {
       case _: GDALIOException => // OK
     }
+  }
+
+  @Test
+  def testMultibandCOGViaSTAC(): Unit = {
+    val factory = LayerFixtures.STACCOGCollection()
+
+    val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
+    val latlon = CRS.fromName("EPSG:4326")
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, latlon.toString())
+
+    val dataCubeParameters: DataCubeParameters = datacubeParams(projected_polygons_native_crs, null)
+
+    val bands: util.ArrayList[String] = new util.ArrayList[String]()
+    bands.add("temperature-mean")
+    bands.add("precipitation-flux")
+
+    val outLocation = "tmp/testMultibandCOGViaSTAC.nc"
+    val referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/testMultibandCOGViaSTAC.nc"
+
+    writeToNetCDFAndCompare(projected_polygons_native_crs, dataCubeParameters, bands, factory, outLocation, referenceFile)
+
+  }
+
+
+  @Test
+  def testMultibandCOGViaSTACResample(): Unit = {
+    val factory = LayerFixtures.STACCOGCollection(resolution = CellSize(10.0,10.0))
+
+    val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
+    val latlon = CRS.fromName("EPSG:4326")
+    val projected_polygons_native_crs = ProjectedPolygons.reproject(ProjectedPolygons.fromExtent(extent, latlon.toString()),32604)
+
+    val resampleMethod = CubicConvolution
+
+    val dataCubeParameters: DataCubeParameters = datacubeParams(projected_polygons_native_crs, resampleMethod)
+
+    val bands: util.ArrayList[String] = new util.ArrayList[String]()
+    bands.add("temperature-mean")
+    bands.add("precipitation-flux")
+
+    writeToNetCDFAndCompare(projected_polygons_native_crs, dataCubeParameters, bands, factory, "tmp/testMultibandCOGViaSTACResampledCubic.nc", "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/testMultibandCOGViaSTACResampledCubic.nc")
+  }
+
+  @Test
+  def testMultibandCOGViaSTACResampleReadOneBand(): Unit = {
+    val factory = LayerFixtures.STACCOGCollection(resolution = CellSize(10.0,10.0),util.Arrays.asList("precipitation-flux"))
+
+    val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
+    val latlon = CRS.fromName("EPSG:4326")
+    val projected_polygons_native_crs = ProjectedPolygons.reproject(ProjectedPolygons.fromExtent(extent, latlon.toString()),32604)
+
+    val dataCubeParameters: DataCubeParameters = datacubeParams(projected_polygons_native_crs, Bilinear)
+
+    val bands: util.ArrayList[String] = new util.ArrayList[String]()
+    bands.add("precipitation-flux")
+
+    writeToNetCDFAndCompare(projected_polygons_native_crs, dataCubeParameters, bands, factory, "tmp/testSinglebandCOGViaSTACResampled.nc", "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/testSinglebandCOGViaSTACResampled.nc")
+  }
+
+  private def datacubeParams(polygonsAOI: ProjectedPolygons, resampleMethod: ResampleMethod) = {
+    val dataCubeParameters: DataCubeParameters = new DataCubeParameters
+    dataCubeParameters.partitionerIndexReduction = 6
+    dataCubeParameters.globalExtent = Some(polygonsAOI.extent)
+    if(resampleMethod!=null) {
+      dataCubeParameters.setResampleMethod(resampleMethod)
+    }
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.loadPerProduct = true
+    dataCubeParameters
+  }
+
+  private def writeToNetCDFAndCompare(polygonAOI: ProjectedPolygons, dataCubeParameters: DataCubeParameters, bands: util.ArrayList[String], factory: PyramidFactory, outLocation: String, referenceFile: String): Unit = {
+    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(polygonAOI, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)
+    val opts = new NetCDFOptions()
+    opts.setBandNames(bands)
+    NetCDFRDDWriter.saveSingleNetCDFGeneric(cube.head._2, outLocation, opts)
+
+    val actualFile = NetcdfFile.open(outLocation)
+    val refFile = NetcdfFile.open(referenceFile)
+
+    val formatter = new Formatter()
+    val comparison = new CompareNetcdf2(formatter, true, true, true).compare(actualFile, refFile)
+
+    val string = formatter.toString
+    println(string)
+    println(comparison)
   }
 }

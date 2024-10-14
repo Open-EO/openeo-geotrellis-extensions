@@ -13,11 +13,11 @@ import geotrellis.vector._
 import org.apache.commons.io.FileUtils
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrellis.file.PyramidFactory
+import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory}
 import org.openeo.geotrellis.layers.{FileLayerProvider, MockOpenSearchFeatures, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
-import org.openeo.opensearch.OpenSearchClient
-import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
+import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
+import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureBuilder}
 
 import java.awt.image.DataBufferByte
 import java.io.File
@@ -560,6 +560,20 @@ object LayerFixtures {
       maxSpatialResolution = CellSize(0.002976190476204, 0.002976190476190),
       experimental = false
     )
+  }
+
+  def STACCOGCollection(resolution:CellSize = CellSize(0.1, 0.1) ,bands: util.List[String] = util.Arrays.asList("temperature-mean","precipitation-flux") )= {
+    val client = new FixedFeaturesOpenSearchClient()
+    client.addFeature(OpenSearchResponses.featureBuilder().withId("openEO_2020-07-01Z.tif").withNominalDate("2020-07-01T00:00:00Z").withBBox(-180.05,-90.05,180.05,90.05).withResolution(0.1).withRasterExtent(-180.05,-90.05,180.05,90.05).withCRS("EPSG:4326").addLink("https://s3.waw3-1.cloudferro.com/swift/v1/agera/AgERA5_monthly_2017-12-01.tif","openEO_2020-07-01Z.tif",bandNames = util.Arrays.asList("temperature-mean","precipitation-flux")).build())
+    client.addFeature(OpenSearchResponses.featureBuilder().withId("openEO_2020-08-01Z.tif").withNominalDate("2020-08-01T00:00:00Z").withBBox(-180.05,-90.05,180.05,90.05).withResolution(0.1).withRasterExtent(-180.05,-90.05,180.05,90.05).withCRS("EPSG:4326").addLink("https://s3.waw3-1.cloudferro.com/swift/v1/agera/AgERA5_monthly_2017-11-01.tif","openEO_2020-08-01Z.tif",bandNames = util.Arrays.asList("temperature-mean","precipitation-flux")).build())
+    client.addFeature(OpenSearchResponses.featureBuilder().withId("openEO_2020-09-01Z.tif").withNominalDate("2020-09-01T00:00:00Z").withBBox(-180.05,-90.05,180.05,90.05).withResolution(0.1).withRasterExtent(-180.05,-90.05,180.05,90.05).withCRS("EPSG:4326").addLink("https://s3.waw3-1.cloudferro.com/swift/v1/agera/AgERA5_monthly_2017-10-01.tif","openEO_2020-09-01Z.tif",bandNames = util.Arrays.asList("temperature-mean","precipitation-flux")).build())
+
+    val factory = new PyramidFactory(
+      client, "STAC_AGERA", bands,
+      null,
+      maxSpatialResolution = resolution,
+    )
+    factory
   }
 
 }
