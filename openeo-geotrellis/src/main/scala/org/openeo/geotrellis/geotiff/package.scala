@@ -32,6 +32,7 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import spire.math.Integral
 import spire.syntax.cfor.cfor
 
+import java.nio.channels.FileChannel
 import java.nio.file.{Path, Paths}
 import java.time.Duration
 import java.time.format.DateTimeFormatter
@@ -838,6 +839,10 @@ package object geotiff {
 
     } else {
       geoTiff.write(path, optimizedOrder = true)
+      // Call fsync on the parent path to assure the fusemount is up-to data:
+      val channel = FileChannel.open(Path.of(path))
+      // Ensure that all changes to the file are written to disk
+      channel.force(true) // The equivalent of Python's os.fsync
       path
     }
 
