@@ -13,9 +13,11 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 
+import java.nio.file.{Files, Paths}
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
+import scala.reflect.io.Directory
 
 object ProbaVPyramidFactoryTest {
   private var sc: SparkContext = _
@@ -108,6 +110,10 @@ class ProbaVPyramidFactoryTest extends RasterMatchers {
 
   @Test
   def writeS10NDVIGeoTiffs(): Unit = {
+    val outDir = Paths.get("tmp/writeS10NDVIGeoTiffs/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    Files.createDirectories(outDir)
+
     val boundingBox = ProjectedExtent(Extent(xmin = 2.5, ymin = 49.5, xmax = 2.55, ymax = 49.55), LatLng)
     val from = ZonedDateTime.of(LocalDate.of(2019, 8, 1), LocalTime.MIDNIGHT, ZoneOffset.UTC)
     val to = from plusDays 2
@@ -125,7 +131,7 @@ class ProbaVPyramidFactoryTest extends RasterMatchers {
     assertTrue(baseLayer.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
     println(s"got ${baseLayer.count()} tiles")
     val cropBounds = boundingBox.reproject(baseLayer.metadata.crs)
-    val timestampedFiles = org.openeo.geotrellis.geotiff.saveRDDTemporal(baseLayer,"./",cropBounds = Some(cropBounds))
+    val timestampedFiles = org.openeo.geotrellis.geotiff.saveRDDTemporal(baseLayer,outDir.toString,cropBounds = Some(cropBounds))
     assertEquals(1, timestampedFiles.size())
     val (fileName, timestamp, bbox) = timestampedFiles.get(0)
     assertEquals("2019-08-01T00:00:00Z", timestamp)
