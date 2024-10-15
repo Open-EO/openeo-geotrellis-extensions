@@ -33,7 +33,7 @@ import spire.math.Integral
 import spire.syntax.cfor.cfor
 
 import java.nio.channels.FileChannel
-import java.nio.file.{Path, Paths}
+import java.nio.file.{FileAlreadyExistsException, Path, Paths}
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Collections, Map, List => JList}
@@ -838,12 +838,21 @@ package object geotiff {
       uploadToS3(tempFile, correctS3Path)
 
     } else {
-      val tempFile = Files.createTempFile(null, null)
+      val tempFile = Files.createTempFile(null, ".tif")
+      // TODO: Try to run fsync on the file opened by GeoTrellis (without the temporary copy)
       geoTiff.write(tempFile.toString, optimizedOrder = true)
 
       // Geotrellis writes the file piecewise and sometimes files are only partially written.
       // Maybe a move operation is easier for the fusemount:
-      Files.move(tempFile, Path.of(path))
+      try {
+        Files.move(tempFile, Path.of(path))
+      } catch {
+        case e: FileAlreadyExistsException =>
+          logger.info("FileAlreadyExistsException. Will overwrite file: " + e.getMessage)
+          // The existing file could be a partial result of a previous failing Spark task.
+          Files.deleteIfExists(Path.of(path))
+          Files.move(tempFile, Path.of(path))
+      }
 
       // Call fsync on the parent path to assure the fusemount is up-to-date.
       // The equivalent of Python's os.fsync
