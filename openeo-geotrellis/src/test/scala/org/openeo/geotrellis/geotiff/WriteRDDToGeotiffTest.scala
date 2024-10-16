@@ -290,7 +290,7 @@ class WriteRDDToGeotiffTest {
     val ( imageTile:ByteArrayTile, filtered:MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(layoutCols,layoutRows)
 
     val outDir = Paths.get("tmp/testWriteMultibandRDDWithGaps/")
-    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    new Directory(outDir.toFile).deepList().foreach(_.delete())
     Files.createDirectories(outDir)
 
     val filename = outDir + "/outFiltered.tif"
@@ -387,7 +387,7 @@ class WriteRDDToGeotiffTest {
     val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
 
     val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGaps/")
-    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    new Directory(outDir.toFile).deepList().foreach(_.delete())
     Files.createDirectories(outDir)
 
     saveRDDTemporal(layer, outDir.toString)
@@ -410,7 +410,7 @@ class WriteRDDToGeotiffTest {
     val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
 
     val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGapsSeparateAssetPerBand/")
-    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    new Directory(outDir.toFile).deepList().foreach(_.delete())
     Files.createDirectories(outDir)
 
     val options = new GTiffOptions()
@@ -436,7 +436,7 @@ class WriteRDDToGeotiffTest {
     val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
 
     val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGapsFilepathPerBand/")
-    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    new Directory(outDir.toFile).deepList().foreach(_.delete())
     Files.createDirectories(outDir)
 
     val options = new GTiffOptions()
