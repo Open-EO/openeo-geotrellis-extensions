@@ -40,7 +40,7 @@ class LogErrorSparkListener extends SparkListener {
   private val executorRuntime = new AtomicLong(0L)
   private val recordsRead = new AtomicLong(0L)
   private val recordsWritten = new AtomicLong(0L)
-  private val debug = true
+  private val debug = false
 
   def getStagesCompleted: Int = stagesCompleted.get()
 
