@@ -39,7 +39,7 @@ import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Collections, Map, List => JList}
 import scala.collection.JavaConverters._
 import scala.reflect._
-import scala.util.control.Breaks.break
+import scala.util.control.Breaks.{break, breakable}
 
 package object geotiff {
 
@@ -856,22 +856,24 @@ package object geotiff {
 
   def moveOverwriteWithRetries(oldPath: Path, newPath: Path): Unit = {
     var try_count = 1
-    while (true) {
-      try {
-        if (newPath.toFile.exists()) {
-          // It might be a partial result of a previous failing task.
-          logger.info(f"Will replace $newPath. (try $try_count)")
-        }
-        Files.deleteIfExists(newPath)
-        Files.move(oldPath, newPath)
-        break
-      } catch {
-        case e: FileAlreadyExistsException =>
-          // Here if another executor wrote the file between the delete and the move statement.
-          try_count += 1
-          if (try_count > 5) {
-            throw e
+    breakable {
+      while (true) {
+        try {
+          if (newPath.toFile.exists()) {
+            // It might be a partial result of a previous failing task.
+            logger.info(f"Will replace $newPath. (try $try_count)")
           }
+          Files.deleteIfExists(newPath)
+          Files.move(oldPath, newPath)
+          break
+        } catch {
+          case e: FileAlreadyExistsException =>
+            // Here if another executor wrote the file between the delete and the move statement.
+            try_count += 1
+            if (try_count > 5) {
+              throw e
+            }
+        }
       }
     }
   }
