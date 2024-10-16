@@ -700,7 +700,6 @@ package object geotiff {
                                    croppedExtent: Option[Extent], cropDimensions: Option[java.util.ArrayList[Int]],
                                    compression: Compression, formatOptions: Option[GTiffOptions] = None
                                   ) = {
-    this.logger.info("stitchAndWriteToTiff tiles.size: " + tiles.size) // Remove before release
     val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).stitch()
 
     val re = raster.rasterExtent
@@ -743,9 +742,7 @@ package object geotiff {
     ) {
       geotiff = geotiff.withOverviews(NearestNeighbor, List(4, 8, 16))
     }
-    val res = writeGeoTiff(geotiff, filePath)
-    this.logger.info("stitchAndWriteToTiff writeGeoTiff done. filePath: " + filePath) // Remove before release
-    res
+    writeGeoTiff(geotiff, filePath)
   }
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
