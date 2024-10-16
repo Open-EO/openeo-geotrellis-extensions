@@ -154,16 +154,17 @@ package object geotiff {
 
           val isDays = Duration.between(fixedTimeOffset, key.time).getSeconds % secondsPerDay == 0
           val timePieceSlug = if (isDays) {
-            "_" + DateTimeFormatter.ISO_DATE.format(key.time)
+            DateTimeFormatter.ISO_DATE.format(key.time)
           } else {
             // ':' is not valid in a Windows filename
-            "_" + DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time).replace(":", "").replace("-", "")
+            DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time).replace(":", "").replace("-", "")
           }
-          // TODO: Get band names from metadata?
-          val bandPiece = if (formatOptions.separateAssetPerBand) "_" + bandLabels(bandIndex) else ""
-          //noinspection RedundantBlock
-          val filename = s"${formatOptions.filenamePrefix}${timePieceSlug}${bandPiece}.tif"
 
+          val bandPiece = if (formatOptions.separateAssetPerBand) "_" + bandLabels(bandIndex) else ""
+          val filename = formatOptions.filepathPerBand match {
+            case Some(filepathPerBand) => filepathPerBand.get(bandIndex).replace("<date>", timePieceSlug)
+            case None => s"${formatOptions.filenamePrefix}_${timePieceSlug}${bandPiece}.tif"
+          }
           val timestamp = DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time)
           val tiffBands = if (formatOptions.separateAssetPerBand) 1 else multibandTile.bandCount
           ((filename, timestamp, tiffBands), (index, (multibandTile.cellType, compressedBytes), bandIndex))
@@ -174,7 +175,9 @@ package object geotiff {
       val bandIndices = sequence.map(_._3).toSet.toList.asJava
 
       val segmentCount = bandSegmentCount * tiffBands
-      val thePath = Paths.get(path).resolve(filename).toString
+      val absolutePath = Paths.get(path).resolve(filename)
+      absolutePath.toFile.getParentFile.mkdirs()
+      val thePath = absolutePath.toString
 
       // filter band tags that match bandIndices
       val fo = formatOptions.deepClone()
@@ -230,7 +233,6 @@ package object geotiff {
           tile =>
             bandIndex += 1
             val t = _root_.geotrellis.raster.MultibandTile(Seq(tile))
-            // match on formatOptions.filepathPerBand:
             val name = formatOptions.filepathPerBand match {
               case Some(filepathPerBand) => filepathPerBand.get(bandIndex)
               case None => formatOptions.filenamePrefix + "_" + bandLabels(bandIndex) + ".tif"

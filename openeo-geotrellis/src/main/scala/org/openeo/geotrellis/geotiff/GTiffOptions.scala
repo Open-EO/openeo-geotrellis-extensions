@@ -27,7 +27,7 @@ class GTiffOptions extends Serializable {
   def setFilepathPerBand(value: Option[util.ArrayList[String]]): Unit = {
     if (value.isDefined) {
       // Check in lower case because Windows does not make the distinction
-      val valueLowercase = value.get.asScala.map(_.toLowerCase).toList
+      val valueLowercase = value.get.asScala.map(_.toLowerCase.replace("<date>", "")).toList
       valueLowercase.foreach(filepath => {
         assertSafeToUseInFilePath(filepath)
 

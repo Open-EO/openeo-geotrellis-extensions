@@ -370,7 +370,7 @@ class WriteRDDToGeotiffTest {
     GeoTiff.readMultiband(outDir.resolve("testA/A/B02.tiff").toString).raster.tile
     GeoTiff.readMultiband(outDir.resolve("testB/B03.tiff").toString).raster.tile
 
-    val result = GeoTiff.readMultiband(paths.get(0)).raster.tile
+    val result = GeoTiff.readMultiband(paths.asScala.find(_.contains("B01")).get).raster.tile
 
     //crop away the area where data was removed, and check if rest of geotiff is still fine
     val croppedReference = imageTile.crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArrayTile()
@@ -427,6 +427,37 @@ class WriteRDDToGeotiffTest {
     GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z_B01.tif").toString).raster.tile
     GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z_B02.tif").toString).raster.tile
     GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z_B03.tif").toString).raster.tile
+  }
+
+  @Test
+  def testWriteMultibandTemporalRDDWithGapsFilepathPerBand(): Unit = {
+    val layoutCols = 8
+    val layoutRows = 4
+    val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
+
+    val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGapsFilepathPerBand/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    Files.createDirectories(outDir)
+
+    val options = new GTiffOptions()
+    val filepathPerBand: util.ArrayList[String] = new util.ArrayList[String]()
+    filepathPerBand.add("testA/<date>_B01.tif")
+    filepathPerBand.add("testA/A/<date>_B02.tif")
+    filepathPerBand.add("testB/<date>_B03.tif")
+    options.setFilepathPerBand(Some(filepathPerBand))
+    options.separateAssetPerBand = true
+    options.addBandTag(0, "DESCRIPTION", "B01")
+    options.addBandTag(1, "DESCRIPTION", "B02")
+    options.addBandTag(2, "DESCRIPTION", "B03")
+    saveRDDTemporal(layer, outDir.toString, formatOptions = options)
+
+    GeoTiff.readMultiband(outDir.resolve("testA/2017-01-02Z_B01.tif").toString).raster.tile
+    GeoTiff.readMultiband(outDir.resolve("testA/A/2017-01-02Z_B02.tif").toString).raster.tile
+    GeoTiff.readMultiband(outDir.resolve("testB/2017-01-02Z_B03.tif").toString).raster.tile
+
+    GeoTiff.readMultiband(outDir.resolve("testA/2017-01-03Z_B01.tif").toString).raster.tile
+    GeoTiff.readMultiband(outDir.resolve("testA/A/2017-01-03Z_B02.tif").toString).raster.tile
+    GeoTiff.readMultiband(outDir.resolve("testB/2017-01-03Z_B03.tif").toString).raster.tile
   }
 
   @Test
