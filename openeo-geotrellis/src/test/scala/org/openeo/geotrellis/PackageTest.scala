@@ -29,8 +29,8 @@ class PackageTest {
       // Limit the amount of parallel jobs to avoid getting over the max retries
       (1 to 4).par.foreach { _ =>
         writeGeoTiff(refTiff, dst.toString)
-        assertTrue(Files.exists(dst))
       }
+      assertTrue(Files.exists(dst))
       val refTiff2 = GeoTiff.readMultiband(dst.toString)
       assertEquals(refTiff2.cellSize, refTiff.cellSize)
     }

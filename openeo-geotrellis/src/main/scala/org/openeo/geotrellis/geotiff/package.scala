@@ -33,7 +33,7 @@ import spire.math.Integral
 import spire.syntax.cfor.cfor
 
 import java.nio.channels.FileChannel
-import java.nio.file.{FileAlreadyExistsException, Files, Path, Paths}
+import java.nio.file.{FileAlreadyExistsException, Files, NoSuchFileException, Path, Paths}
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Collections, Map, List => JList}
@@ -847,8 +847,11 @@ package object geotiff {
 
       // Call fsync on the parent path to assure the fusemount is up-to-date.
       // The equivalent of Python's os.fsync
-      FileChannel.open(Path.of(path)).force(true)
-
+      try {
+        FileChannel.open(Path.of(path)).force(true)
+      } catch {
+        case _: NoSuchFileException => // Ignore. The file may already be deleted by another executor
+      }
       path
     }
 
