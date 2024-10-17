@@ -19,7 +19,7 @@ import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 import org.openeo.sparklisteners.GetInfoSparkListener
 import org.slf4j.{Logger, LoggerFactory}
 
-import java.nio.file.{Files, Paths}
+import java.nio.file.{Files, Path, Paths}
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
 import java.util.zip.Deflater._
@@ -77,6 +77,7 @@ class WriteRDDToGeotiffTest {
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile),TileLayout(layoutCols,layoutRows,256,256),LatLng)
     val filename = "out.tif"
+    Files.deleteIfExists(Path.of(filename))
 
     saveRDD(tileLayerRDD.withContext{_.repartition(layoutCols*layoutRows)},1,filename,formatOptions = allOverviewOptions)
 
@@ -151,6 +152,10 @@ class WriteRDDToGeotiffTest {
 
   @Test
   def testWriteRDD_apply_neighborhood(): Unit ={
+    val outDir = Paths.get("tmp/testWriteRDD_apply_neighborhood/")
+    new Directory(outDir.toFile).deepList().foreach(_.delete())
+    Files.createDirectories(outDir)
+
     val layoutCols = 8
     val layoutRows = 4
 
@@ -164,10 +169,11 @@ class WriteRDDToGeotiffTest {
     val buffered: MultibandTileLayerRDD[SpaceTimeKey] = p.remove_overlap(p.retileGeneric(tileLayerRDD,224,224,16,16),224,224,16,16)
 
     val cropBounds = Extent(-115, -65, 5.0, 56)
-    saveRDDTemporal(buffered,"./",cropBounds = Some(cropBounds))
+    saveRDDTemporal(buffered, outDir.toString, cropBounds = Some(cropBounds))
 
     val croppedRaster: Raster[MultibandTile] = tileLayerRDD.toSpatial().stitch().crop(cropBounds)
     val referenceFile = "croppedRaster.tif"
+    Files.deleteIfExists(Path.of(referenceFile))
     GeoTiff(croppedRaster,LatLng).write(referenceFile)
 
     val result = GeoTiff.readMultiband(filename).raster
@@ -190,6 +196,7 @@ class WriteRDDToGeotiffTest {
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile,secondBand,thirdBand),TileLayout(layoutCols,layoutRows,256,256),LatLng)
     val filename = "outRGB.tif"
+    Files.deleteIfExists(Path.of(filename))
     saveRDD(tileLayerRDD.withContext{_.repartition(layoutCols*layoutRows)},3,filename)
     val result = GeoTiff.readMultiband(filename).raster.tile
     assertArrayEquals(imageTile.toArray(),result.band(0).toArray())
@@ -216,8 +223,10 @@ class WriteRDDToGeotiffTest {
 
     val croppedRaster: Raster[MultibandTile] = tileLayerRDD.stitch().crop(cropBounds)
     val referenceFile = "croppedRaster.tif"
+    Files.deleteIfExists(Path.of(referenceFile))
     GeoTiff(croppedRaster,LatLng).write(referenceFile)
     val filename = "outRGBCropped3.tif"
+    Files.deleteIfExists(Path.of(filename))
     saveRDD(tileLayerRDD.withContext{_.repartition(layoutCols*layoutRows)},3,filename,cropBounds = Some(cropBounds))
     val result = GeoTiff.readMultiband(filename).raster
     val reference = GeoTiff.readMultiband(referenceFile).raster
@@ -248,6 +257,7 @@ class WriteRDDToGeotiffTest {
     GeoTiff(croppedRaster,LatLng).write(referenceFile)
 
     val filename = "outCropped.tif"
+    Files.deleteIfExists(Path.of(filename))
     saveRDD(tileLayerRDD.withContext{_.repartition(tileLayerRDD.count().toInt)},3,filename,cropBounds = Some(cropBounds))
     val resultRaster = GeoTiff.readMultiband(filename).raster
 
@@ -269,6 +279,7 @@ class WriteRDDToGeotiffTest {
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile),TileLayout(layoutCols,layoutRows,256,256),LatLng)
     val empty = tileLayerRDD.withContext{_.filter(_ => false)}
     val filename = "outEmpty.tif"
+    Files.deleteIfExists(Path.of(filename))
     val cropBounds = Extent(-115, -65, 5.0, 56)
     saveRDD(empty,-1,filename,cropBounds = Some(cropBounds))
 
@@ -311,7 +322,7 @@ class WriteRDDToGeotiffTest {
     val (imageTile: ByteArrayTile, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(layoutCols, layoutRows)
 
     val outDir = Paths.get("tmp/testWriteMultibandRDDWithGapsSeparateAssetPerBand/")
-    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    new Directory(outDir.toFile).deepList().foreach(_.delete())
     Files.createDirectories(outDir)
 
     val filename = outDir + "/out"
