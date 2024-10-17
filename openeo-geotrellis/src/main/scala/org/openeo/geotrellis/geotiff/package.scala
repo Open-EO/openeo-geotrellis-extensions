@@ -840,6 +840,7 @@ package object geotiff {
       // TODO: Try to run fsync on the file opened by GeoTrellis (without the temporary copy)
       geoTiff.write(tempFile.toString, optimizedOrder = true)
 
+      // TODO: Write to unique path instead to avoid collisions between executors. Let the driver choose the paths.
       moveOverwriteWithRetries(tempFile, Path.of(path))
 
       // Call fsync on the parent path to assure the fusemount is up-to-date.
