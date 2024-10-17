@@ -128,7 +128,9 @@ package object geotrellis {
   }
 
   /**
-   * Inspired on 'Files.createTempFile'
+   * Inspired on 'Files.createTempFile', but does not create an empty file.
+   * The default permissions of 'createTempFile' are a bit too strict too: 600, which is not accessible by other users.
+   * This function could have default 664 for example.
    */
   def getTempFile(prefix: String, suffix: String): Path = {
     val prefixNonNull = if (prefix == null) "" else suffix
