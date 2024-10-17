@@ -39,3 +39,4 @@ tmp*
 *eclipse*.prefs
 .cache-main
 .cache-tests
+.flattened-pom.xml
