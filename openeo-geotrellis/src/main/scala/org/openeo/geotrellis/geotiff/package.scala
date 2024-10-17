@@ -836,7 +836,7 @@ package object geotiff {
       uploadToS3(tempFile, correctS3Path)
 
     } else {
-      val tempFile = Files.createTempFile(null, ".tif")
+      val tempFile = getTempFile(null, ".tif")
       // TODO: Try to run fsync on the file opened by GeoTrellis (without the temporary copy)
       geoTiff.write(tempFile.toString, optimizedOrder = true)
 
