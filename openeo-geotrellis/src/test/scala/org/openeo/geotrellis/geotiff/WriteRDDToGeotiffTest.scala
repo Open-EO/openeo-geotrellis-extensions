@@ -164,7 +164,7 @@ class WriteRDDToGeotiffTest {
 
     val tileLayerRDD = LayerFixtures.buildSingleBandSpatioTemporalDataCube(util.Arrays.asList(imageTile),Seq("2017-03-01T00:00:00Z"))
 
-    val filename = "openEO_2017-03-01Z.tif"
+    val filename = outDir + "/openEO_2017-03-01Z.tif"
     val p = new OpenEOProcesses()
     val buffered: MultibandTileLayerRDD[SpaceTimeKey] = p.remove_overlap(p.retileGeneric(tileLayerRDD,224,224,16,16),224,224,16,16)
 
@@ -172,7 +172,7 @@ class WriteRDDToGeotiffTest {
     saveRDDTemporal(buffered, outDir.toString, cropBounds = Some(cropBounds))
 
     val croppedRaster: Raster[MultibandTile] = tileLayerRDD.toSpatial().stitch().crop(cropBounds)
-    val referenceFile = "croppedRaster.tif"
+    val referenceFile = outDir + "/croppedRaster.tif"
     Files.deleteIfExists(Path.of(referenceFile))
     GeoTiff(croppedRaster,LatLng).write(referenceFile)
 

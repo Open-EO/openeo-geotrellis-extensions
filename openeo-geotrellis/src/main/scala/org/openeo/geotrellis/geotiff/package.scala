@@ -193,7 +193,7 @@ package object geotiff {
       (correctedPath, timestamp, croppedExtent, bandIndices)
     }.collect().map({
       case (absolutePath, timestamp, croppedExtent, bandIndices) =>
-        // Move output file to standard location:
+        // Move output file to standard location. (On S3, a move is more a copy and delete):
         val relativePath = Path.of(path).relativize(Path.of(absolutePath)).toString
         val destinationPath = Path.of(path).resolve(relativePath.substring(relativePath.indexOf("/") + 1))
         Files.move(Path.of(absolutePath), destinationPath)
@@ -273,7 +273,7 @@ package object geotiff {
       }.collect().map({
         case (absolutePath, y) =>
           if (path.endsWith("out")) {
-            // Move output file to standard location:
+            // Move output file to standard location. (On S3, a move is more a copy and delete):
             val beforeOut = path.substring(0, path.length - "out".length)
             val relativePath = Path.of(beforeOut).relativize(Path.of(absolutePath)).toString
             val destinationPath = beforeOut + relativePath.substring(relativePath.indexOf("/") + 1)
