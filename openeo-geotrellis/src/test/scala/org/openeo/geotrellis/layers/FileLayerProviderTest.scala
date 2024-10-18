@@ -1080,6 +1080,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
   @Test
   def testPixelValueOffsetNeededCorner(): Unit = {
+    Files.createDirectories(Paths.get("tmp/"))
     // This selection will go over a corner that has nodata pixels
     val layer = testPixelValueOffsetNeeded(
       "/org/openeo/geotrellis/testPixelValueOffsetNeededCorner.json",
@@ -1329,6 +1330,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
   @Test
   def testMultibandCOGViaSTAC(): Unit = {
+    Files.createDirectories(Paths.get("tmp/"))
     val factory = LayerFixtures.STACCOGCollection()
 
     val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
@@ -1351,6 +1353,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
   @Test
   def testMultibandCOGViaSTACResample(): Unit = {
+    Files.createDirectories(Paths.get("tmp/"))
     val factory = LayerFixtures.STACCOGCollection(resolution = CellSize(10.0,10.0))
 
     val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
@@ -1370,6 +1373,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
   @Test
   def testMultibandCOGViaSTACResampleReadOneBand(): Unit = {
+    Files.createDirectories(Paths.get("tmp/"))
     val factory = LayerFixtures.STACCOGCollection(resolution = CellSize(10.0,10.0),util.Arrays.asList("precipitation-flux"))
 
     val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)

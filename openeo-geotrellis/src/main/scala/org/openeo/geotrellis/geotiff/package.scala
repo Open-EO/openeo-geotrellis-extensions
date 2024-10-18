@@ -15,7 +15,7 @@ import geotrellis.spark.pyramid.Pyramid
 import geotrellis.store.s3._
 import geotrellis.util._
 import geotrellis.vector.{ProjectedExtent, _}
-import org.apache.commons.io.FilenameUtils
+import org.apache.commons.io.{FileUtils, FilenameUtils}
 import org.apache.spark.SparkContext
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
@@ -134,7 +134,7 @@ package object geotiff {
     val bandSegmentCount = totalCols * totalRows
     val bandLabels = formatOptions.tags.bandTags.map(_("DESCRIPTION"))
 
-    preprocessedRdd.flatMap { case (key: SpaceTimeKey, multibandTile: MultibandTile) =>
+    val res = preprocessedRdd.flatMap { case (key: SpaceTimeKey, multibandTile: MultibandTile) =>
       var bandIndex = -1
       //Warning: for deflate compression, the segmentcount and index is not really used, making it stateless.
       //Not sure how this works out for other types of compression!!!
@@ -173,7 +173,12 @@ package object geotiff {
       val bandIndices = sequence.map(_._3).toSet.toList.asJava
 
       val segmentCount = bandSegmentCount * tiffBands
-      val thePath = Paths.get(path).resolve(filename).toString
+
+      // Each executor writes to a unique folder to avoid conflicts:
+      val uniqueFolderName = "tmp" + java.lang.Long.toUnsignedString(new java.security.SecureRandom().nextLong())
+      val base = Paths.get(path + "/" + uniqueFolderName)
+      Files.createDirectories(base)
+      val thePath = base.resolve(filename).toString
 
       // filter band tags that match bandIndices
       val fo = formatOptions.deepClone()
@@ -186,8 +191,22 @@ package object geotiff {
         tileLayout, compression, cellTypes.head, tiffBands, segmentCount, fo,
       )
       (correctedPath, timestamp, croppedExtent, bandIndices)
-    }.collect().toList.asJava
+    }.collect().map({
+      case (absolutePath, timestamp, croppedExtent, bandIndices) =>
+        // Move output file to standard location. (On S3, a move is more a copy and delete):
+        val relativePath = Path.of(path).relativize(Path.of(absolutePath)).toString
+        val destinationPath = Path.of(path).resolve(relativePath.substring(relativePath.indexOf("/") + 1))
+        Files.move(Path.of(absolutePath), destinationPath)
+        (destinationPath.toString, timestamp, croppedExtent, bandIndices)
+    }).toList.asJava
 
+    // Clean up failed tasks:
+    Files.list(Path.of(path)).forEach { p =>
+      if (Files.isDirectory(p) && p.getFileName.toString.startsWith("tmp")) {
+        FileUtils.deleteDirectory(p.toFile)
+      }
+    }
+    res
   }
 
 
@@ -232,10 +251,13 @@ package object geotiff {
             ((name, bandIndex), (key, t))
         }
       }
-      rdd_per_band.groupByKey().map { case ((name, bandIndex), tiles) =>
+      val res = rdd_per_band.groupByKey().map { case ((name, bandIndex), tiles) =>
+        val uniqueFolderName = "tmp" + java.lang.Long.toUnsignedString(new java.security.SecureRandom().nextLong())
         val fixedPath =
           if (path.endsWith("out")) {
-            path.substring(0, path.length - 3) + name
+            val base = path.substring(0, path.length - 3) + uniqueFolderName + "/"
+            Files.createDirectories(Path.of(base))
+            base + name
           }
           else {
             path
@@ -248,7 +270,27 @@ package object geotiff {
 
         (stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, None, None, compression, Some(fo)),
           Collections.singletonList(bandIndex))
-      }.collect().toList.sortBy(_._1).asJava
+      }.collect().map({
+        case (absolutePath, y) =>
+          if (path.endsWith("out")) {
+            // Move output file to standard location. (On S3, a move is more a copy and delete):
+            val beforeOut = path.substring(0, path.length - "out".length)
+            val relativePath = Path.of(beforeOut).relativize(Path.of(absolutePath)).toString
+            val destinationPath = beforeOut + relativePath.substring(relativePath.indexOf("/") + 1)
+            Files.move(Path.of(absolutePath), Path.of(destinationPath))
+            (destinationPath, y)
+          } else {
+            (absolutePath, y)
+          }
+      }).toList.sortBy(_._1).asJava
+      // Clean up failed tasks:
+      val beforeOut = path.substring(0, path.length - "out".length)
+      Files.list(Path.of(beforeOut)).forEach { p =>
+        if (Files.isDirectory(p) && p.getFileName.toString.startsWith("tmp")) {
+          FileUtils.deleteDirectory(p.toFile)
+        }
+      }
+      res
     } else {
       val tmp = saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions).asScala
       tmp.map(t => (t, (0 until bandCount).toList.asJava)).asJava
@@ -826,33 +868,16 @@ package object geotiff {
   }
 
   def writeGeoTiff(geoTiff: MultibandGeoTiff, path: String): String = {
-    import java.nio.file.Files
+    val tempFile = getTempFile(null, ".tif")
+    geoTiff.write(tempFile.toString, optimizedOrder = true)
+
     if (path.startsWith("s3:/")) {
       val correctS3Path = path.replaceFirst("s3:/(?!/)", "s3://")
-
-
-      val tempFile = Files.createTempFile(null, null)
-      geoTiff.write(tempFile.toString, optimizedOrder = true)
       uploadToS3(tempFile, correctS3Path)
-
     } else {
-      val tempFile = getTempFile(null, ".tif")
-      // TODO: Try to run fsync on the file opened by GeoTrellis (without the temporary copy)
-      geoTiff.write(tempFile.toString, optimizedOrder = true)
-
-      // TODO: Write to unique path instead to avoid collisions between executors. Let the driver choose the paths.
       moveOverwriteWithRetries(tempFile, Path.of(path))
-
-      // Call fsync on the parent path to assure the fusemount is up-to-date.
-      // The equivalent of Python's os.fsync
-      try {
-        FileChannel.open(Path.of(path)).force(true)
-      } catch {
-        case _: NoSuchFileException => // Ignore. The file may already be deleted by another executor
-      }
       path
     }
-
   }
 
   def moveOverwriteWithRetries(oldPath: Path, newPath: Path): Unit = {
