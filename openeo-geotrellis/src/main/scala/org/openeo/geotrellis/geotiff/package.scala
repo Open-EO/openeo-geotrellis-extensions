@@ -94,6 +94,7 @@ package object geotiff {
                       formatOptions: GTiffOptions = new GTiffOptions
                      ): java.util.List[(String, String, Extent)] = {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, temporal)")
+    formatOptions.assertNoConflicts()
     val ret = saveRDDTemporalAllowAssetPerBand(rdd, path, zLevel, cropBounds, formatOptions).asScala
     logger.warn("Calling backwards compatibility version for saveRDDTemporalConsiderAssetPerBand")
     //    val duplicates = ret.groupBy(_._2).filter(_._2.size > 1)
@@ -118,6 +119,7 @@ package object geotiff {
                                           cropBounds: Option[Extent] = Option.empty[Extent],
                                           formatOptions: GTiffOptions = new GTiffOptions
                                          ): java.util.List[(String, String, Extent, java.util.List[Int])] = {
+    formatOptions.assertNoConflicts()
     val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
@@ -153,16 +155,17 @@ package object geotiff {
 
           val isDays = Duration.between(fixedTimeOffset, key.time).getSeconds % secondsPerDay == 0
           val timePieceSlug = if (isDays) {
-            "_" + DateTimeFormatter.ISO_DATE.format(key.time)
+            DateTimeFormatter.ISO_DATE.format(key.time)
           } else {
             // ':' is not valid in a Windows filename
-            "_" + DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time).replace(":", "").replace("-", "")
+            DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time).replace(":", "").replace("-", "")
           }
-          // TODO: Get band names from metadata?
-          val bandPiece = if (formatOptions.separateAssetPerBand) "_" + bandLabels(bandIndex) else ""
-          //noinspection RedundantBlock
-          val filename = s"${formatOptions.filenamePrefix}${timePieceSlug}${bandPiece}.tif"
 
+          val bandPiece = if (formatOptions.separateAssetPerBand) "_" + bandLabels(bandIndex) else ""
+          val filename = formatOptions.filepathPerBand match {
+            case Some(filepathPerBand) => filepathPerBand.get(bandIndex).replace("<date>", timePieceSlug)
+            case None => s"${formatOptions.filenamePrefix}_${timePieceSlug}${bandPiece}.tif"
+          }
           val timestamp = DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time)
           val tiffBands = if (formatOptions.separateAssetPerBand) 1 else multibandTile.bandCount
           ((filename, timestamp, tiffBands), (index, (multibandTile.cellType, compressedBytes), bandIndex))
@@ -173,7 +176,9 @@ package object geotiff {
       val bandIndices = sequence.map(_._3).toSet.toList.asJava
 
       val segmentCount = bandSegmentCount * tiffBands
-      val thePath = Paths.get(path).resolve(filename).toString
+      val absolutePath = Paths.get(path).resolve(filename)
+      absolutePath.toFile.getParentFile.mkdirs()
+      val thePath = absolutePath.toString
 
       // filter band tags that match bandIndices
       val fo = formatOptions.deepClone()
@@ -215,6 +220,7 @@ package object geotiff {
                                cropBounds: Option[Extent] = Option.empty[Extent],
                                formatOptions: GTiffOptions = new GTiffOptions
                               ): java.util.List[(String, java.util.List[Int])] = {
+    formatOptions.assertNoConflicts()
     if (formatOptions.separateAssetPerBand) {
       val bandLabels = formatOptions.tags.bandTags.map(_("DESCRIPTION"))
       val layout = rdd.metadata.layout
@@ -228,7 +234,10 @@ package object geotiff {
           tile =>
             bandIndex += 1
             val t = _root_.geotrellis.raster.MultibandTile(Seq(tile))
-            val name = formatOptions.filenamePrefix + "_" + bandLabels(bandIndex) + ".tif"
+            val name = formatOptions.filepathPerBand match {
+              case Some(filepathPerBand) => filepathPerBand.get(bandIndex)
+              case None => formatOptions.filenamePrefix + "_" + bandLabels(bandIndex) + ".tif"
+            }
             ((name, bandIndex), (key, t))
         }
       }
@@ -240,11 +249,16 @@ package object geotiff {
           else {
             path
           }
-
+        Path.of(fixedPath).toFile.getParentFile.mkdirs()
         val fo = formatOptions.deepClone()
         // Keep only one band tag
         val newBandTags = List(formatOptions.tags.bandTags(bandIndex))
         fo.setBandTags(newBandTags)
+        if (formatOptions.filepathPerBand.isDefined) {
+          fo.setFilepathPerBand(Some(new ArrayList[String](Collections.singletonList(
+            formatOptions.filepathPerBand.get.get(bandIndex)
+          ))))
+        }
 
         (stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, None, None, compression, Some(fo)),
           Collections.singletonList(bandIndex))
@@ -734,6 +748,7 @@ package object geotiff {
         fo.overviews = "ALL"
         fo
     }
+    fo.assertNoConflicts()
     var geotiff = MultibandGeoTiff(adjusted.tile, adjusted.extent, crs,
       fo.tags, GeoTiffOptions(compression))
     val gridBounds = adjusted.extent
@@ -921,5 +936,34 @@ package object geotiff {
     })
     result.collect()
     print("test done")
+  }
+
+  def assertSafeToUseInFilePath(filepath: String): Unit = {
+    val name = filepath.split("/").last
+    assertValidWindowsFilename(name)
+    if (filepath.contains("..") || filepath.contains("%") || filepath.contains("|")) {
+      throw new IllegalArgumentException("Invalid filepath: " + filepath)
+    }
+  }
+
+
+  /**
+   * http://msdn.microsoft.com/en-us/library/aa365247.aspx
+   */
+  def assertValidWindowsFilename(filename: String): Unit = {
+    // TODO: Is there a standard library function for this?
+    val filenameLower = filename.toLowerCase
+    val invalidCharacters = Seq("<", ">", ":", "\"", "/", "\\", "|", "?", "*")
+    if (invalidCharacters.exists(filenameLower.contains)) {
+      throw new IllegalArgumentException("Invalid characters in filename: " + filename)
+    }
+
+    val filenameWithoutExtension = filename.split('.').head
+    val invalidNames = Seq("CON", "PRN", "AUX", "NUL", "COM0", "COM1", "COM2",
+      "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2",
+      "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9")
+    if (invalidNames.contains(filenameWithoutExtension.toUpperCase())) {
+      throw new IllegalArgumentException("Invalid filename: " + filename)
+    }
   }
 }
