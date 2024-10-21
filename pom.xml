@@ -7,17 +7,17 @@
     <packaging>pom</packaging>
     <name>openeo-geotrellis-extensions</name>
     <properties>
-        <gt-version>21.2</gt-version>
+        <gt-version>25.0</gt-version>
         <hadoop.version>3.1.1</hadoop.version>
         <avro.version>1.7.7</avro.version>
         <spark.version>3.4.2</spark.version>
         <scala.binary.version>2.12</scala.binary.version>
         <scala.version>2.12.18</scala.version>
-        <geotrellis.version>3.6.0</geotrellis.version>
+        <geotrellis.version>3.7.1</geotrellis.version>
         <gdal-bindings.version>3.8.0</gdal-bindings.version>
         <commons-compress-version>1.10</commons-compress-version>
         <gwc-geotrellis.version>0.17.0_2.12-SNAPSHOT</gwc-geotrellis.version>
-        <openeo-opensearch-client.version>1.4.0_2.12-SNAPSHOT</openeo-opensearch-client.version>
+        <openeo-opensearch-client.version>1.5.0_2.12-SNAPSHOT</openeo-opensearch-client.version>
         <awssdk.version>2.21.26</awssdk.version>
         <jaxb.api.version>2.3.0</jaxb.api.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

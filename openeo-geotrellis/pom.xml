@@ -286,7 +286,9 @@
                         <PATH>../venv/bin:${env.PATH}</PATH>
                         <LD_LIBRARY_PATH>/tmp_epod/gdal:../venv/lib/python3.8/site-packages/jep</LD_LIBRARY_PATH>
                         <PROJ_LIB>/tmp_epod/gdal/data</PROJ_LIB>
+                        <SPARK_LOCAL_IP>127.0.0.1</SPARK_LOCAL_IP>
                     </environmentVariables>
+                    <argLine>--add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/sun.security.action=ALL-UNNAMED</argLine>
                     <systemPropertyVariables>
                         <software.amazon.awssdk.http.service.impl>software.amazon.awssdk.http.apache.ApacheSdkHttpService</software.amazon.awssdk.http.service.impl>
                     </systemPropertyVariables>

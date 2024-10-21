@@ -59,8 +59,8 @@ class AgEra5FileLayerProviderTest {
 
     assertEquals(27902.167,histogram(0).mean().get,1.0)
     assertEquals(0.247,histogram(1).mean().get,0.01)
-    assertEquals(11414687,histogram(2).mean().get,1.0)
-    assertEquals(1158,histogram(0).totalCount())
+    assertEquals(11413342,histogram(2).mean().get,1.0)
+    assertEquals(1157,histogram(0).totalCount())
     assertEquals(1224,histogram(1).totalCount())
     assertEquals(2500,histogram(2).totalCount())
 
@@ -72,7 +72,7 @@ class AgEra5FileLayerProviderTest {
   }
 
   @Test
-  def agEra5WithOpensearchClient(): Unit = {
+  def agEra5UTM(): Unit = {
     val utm31 = CRS.fromEpsgCode(32631)
     val projectedExtent = ProjectedExtent(ProjectedExtent(extent, LatLng).reproject(utm31),utm31)
     val projectedPolygons = ProjectedPolygons.fromExtent(projectedExtent.extent, s"EPSG:${projectedExtent.crs.epsgCode.get}")
