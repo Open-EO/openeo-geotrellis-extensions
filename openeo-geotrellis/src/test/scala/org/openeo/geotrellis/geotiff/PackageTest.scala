@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue}
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
+import java.io.IOException
 import java.nio.file.{Files, Path, Paths}
 
 class PackageTest {
@@ -22,15 +23,15 @@ class PackageTest {
         <Item name="DESCRIPTION" sample="0">CO</Item>
       </GDALMetadata>
 
-    embedGdalMetadata(gdalMetadataXml.toString(), geotiffCopy)
+    embedGdalMetadata(gdalMetadataXml, geotiffCopy)
 
     assertEquals(Some("0.45.0a1"), processingSoftware(geotiffCopy))
   }
 
   @Test
   def testEmbedGdalMetadataFails(): Unit = {
-    val e = assertThrows(classOf[Exception], () =>
-      embedGdalMetadata(gdalMetadataXml = "", geotiffPath = Paths.get("doesnotexist.tif")))
+    val e = assertThrows(classOf[IOException], () =>
+      embedGdalMetadata(<GdalMetadata />, geotiffPath = Paths.get("doesnotexist.tif")))
 
     assertTrue(e.getMessage contains "doesnotexist.tif: No such file or directory")
   }

@@ -3,7 +3,6 @@ package org.openeo.geotrellis.geotiff
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-import scala.xml.XML
 import scala.xml.Utility.trim
 
 class GTiffOptionsTest {
@@ -16,7 +15,7 @@ class GTiffOptionsTest {
     val bandNames = Seq("VV", "VH", "mask", "local_incidence_angle")
 
     for ((bandName, index) <- bandNames.zipWithIndex) {
-      options.addBandTag(index, "DESCRIPTION", bandName, role = Some("description"))
+      options.addBandTag(index, "DESCRIPTION", bandName, role = "description")
     }
 
     assertEquals(Map("PROCESSING_SOFTWARE" -> "0.6.1a1"), options.tags.headTags)
@@ -36,6 +35,6 @@ class GTiffOptionsTest {
         <Item name="DESCRIPTION" sample="3" role="description">local_incidence_angle</Item>
       </GDALMetadata>
 
-    assertEquals(trim(expectedGdalMetadataXml), trim(XML.loadString(options.toGdalMetadataXml)))
+    assertEquals(trim(expectedGdalMetadataXml), trim(options.toGdalMetadataXml))
   }
 }

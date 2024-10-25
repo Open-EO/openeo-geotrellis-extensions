@@ -28,7 +28,7 @@ class PackageTest {
       val dst = Path.of(p + f"/$i.tif")
       // Limit the amount of parallel jobs to avoid getting over the max retries
       (1 to 4).par.foreach { _ =>
-        writeGeoTiff(refTiff, dst.toString)
+        writeGeoTiff(refTiff, dst.toString, gtiffOptions = None)
       }
       assertTrue(Files.exists(dst))
       val refTiff2 = GeoTiff.readMultiband(dst.toString)
