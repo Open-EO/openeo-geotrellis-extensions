@@ -15,8 +15,6 @@ class GTiffOptions extends Serializable {
   var resampleMethod:String = "near"
   var separateAssetPerBand = false
 
-  private val xmlTags = collection.mutable.Buffer[String]() // TODO: improve
-
   def setFilenamePrefix(name: String): Unit = this.filenamePrefix = name
 
   def setSeparateAssetPerBand(value: Boolean): Unit = this.separateAssetPerBand = value
@@ -49,42 +47,23 @@ class GTiffOptions extends Serializable {
     })
   }
 
-  def addHeadTag(tagName:String, value:String): Unit = {
+  def addHeadTag(tagName: String, value: String): Unit = {
     tags = Tags(tags.headTags + (tagName -> value), tags.bandTags)
-
-    xmlTags append asItemElement(tagName, value)
   }
 
-  // TODO: drop method with role
-  private def addBandTag(bandIndex: Int, tagName:String, value:String, role: Option[String]): Unit = {
+  def addBandTag(bandIndex: Int, tagName: String, value: String): Unit = {
     val emptyMap = Map.empty[String, String]
     var newBandTags = Vector.fill[Map[String,String]](math.max(bandIndex+1,tags.bandTags.size))(emptyMap)
     newBandTags =  newBandTags.zipAll(tags.bandTags,emptyMap,emptyMap).map(elem => elem._1 ++ elem._2)
     newBandTags = newBandTags.updated(bandIndex, newBandTags(bandIndex) + (tagName -> value))
     tags = Tags(tags.headTags ,newBandTags.toList)
-
-    xmlTags append asItemElement(tagName, value, Some(bandIndex), role)
   }
-
-  def addBandTag(bandIndex: Int, tagName:String, value:String, role: String): Unit =
-    addBandTag(bandIndex, tagName, value, Some(role))
-
-  def addBandTag(bandIndex: Int, tagName: String, value: String): Unit =
-    addBandTag(bandIndex, tagName, value, role = None)
 
   def setBandTags(newBandTags: List[Map[String, String]]): Unit = {
     tags = Tags(tags.headTags, newBandTags)
-
-    xmlTags.clear()
-    for ((tagName, value) <- tags.headTags) addHeadTag(tagName, value)
-    for {
-      (band, bandIndex) <- newBandTags.zipWithIndex
-      (tagName, value) <- band
-    } addBandTag(bandIndex, tagName, value)
   }
 
-  // TODO: rename
-  def toGdalMetadataXml: xml.Elem = {
+  def tagsAsGdalMetadataXml: xml.Elem = {
     val headTags = for {
       (key, value) <- tags.headTags
     }  yield <Item name={key}>{value}</Item>
@@ -120,12 +99,5 @@ class GTiffOptions extends Serializable {
     val bais = new java.io.ByteArrayInputStream(baos.toByteArray())
     val ois = new java.io.ObjectInputStream(bais)
     ois.readObject().asInstanceOf[GTiffOptions]
-  }
-
-  private def asItemElement(name: String, value: Any, index: Option[Int] = None,
-                            role: Option[String] = None): String = {
-    val sampleAttribute = index.map(i => s"""sample="$i"""").getOrElse("")
-    val roleAttribute = role.map(r => s"""role="$r"""").getOrElse("")
-    s"""<Item name="$name" $sampleAttribute $roleAttribute>$value</Item>"""
   }
 }

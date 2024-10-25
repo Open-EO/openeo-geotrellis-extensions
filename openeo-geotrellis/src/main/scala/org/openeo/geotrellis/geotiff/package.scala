@@ -827,22 +827,16 @@ package object geotiff {
   }
 
   def writeGeoTiff(geoTiff: MultibandGeoTiff, path: String, gtiffOptions: Option[GTiffOptions]): String = {
-    import java.nio.file.Files
-    // TODO: DRY
     if (path.startsWith("s3:/")) {
-      val correctS3Path = path.replaceFirst("s3:/(?!/)", "s3://")
-
-
       val tempFile = Files.createTempFile(null, null)
       geoTiff.write(tempFile.toString, optimizedOrder = true)
-      gtiffOptions.foreach(options => embedGdalMetadata(options.toGdalMetadataXml, tempFile))
-      uploadToS3(tempFile, correctS3Path)
-
+      gtiffOptions.foreach(options => embedGdalMetadata(tempFile, options.tagsAsGdalMetadataXml))
+      uploadToS3(tempFile, path.replaceFirst("s3:/(?!/)", "s3://"))
     } else {
       val tempFile = getTempFile(null, ".tif")
       // TODO: Try to run fsync on the file opened by GeoTrellis (without the temporary copy)
       geoTiff.write(tempFile.toString, optimizedOrder = true)
-      gtiffOptions.foreach(options => embedGdalMetadata(options.toGdalMetadataXml, tempFile))
+      gtiffOptions.foreach(options => embedGdalMetadata(tempFile, options.tagsAsGdalMetadataXml))
 
       // TODO: Write to unique path instead to avoid collisions between executors. Let the driver choose the paths.
       moveOverwriteWithRetries(tempFile, Path.of(path))
@@ -854,9 +848,9 @@ package object geotiff {
       } catch {
         case _: NoSuchFileException => // Ignore. The file may already be deleted by another executor
       }
+
       path
     }
-
   }
 
   def moveOverwriteWithRetries(oldPath: Path, newPath: Path): Unit = {
@@ -927,8 +921,7 @@ package object geotiff {
     print("test done")
   }
 
-  // TODO: swap arguments
-  def embedGdalMetadata(gdalMetadata: xml.Elem, geotiffPath: Path): Unit = {
+  def embedGdalMetadata(geotiffPath: Path, gdalMetadata: xml.Elem): Unit = {
     import scala.sys.process._
     import java.nio.charset._
 

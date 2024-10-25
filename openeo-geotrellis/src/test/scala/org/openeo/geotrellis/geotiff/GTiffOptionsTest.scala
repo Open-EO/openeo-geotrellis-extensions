@@ -15,7 +15,7 @@ class GTiffOptionsTest {
     val bandNames = Seq("VV", "VH", "mask", "local_incidence_angle")
 
     for ((bandName, index) <- bandNames.zipWithIndex) {
-      options.addBandTag(index, "DESCRIPTION", bandName, role = "description")
+      options.addBandTag(index, "DESCRIPTION", bandName)
     }
 
     assertEquals(Map("PROCESSING_SOFTWARE" -> "0.6.1a1"), options.tags.headTags)
@@ -35,6 +35,6 @@ class GTiffOptionsTest {
         <Item name="DESCRIPTION" sample="3" role="description">local_incidence_angle</Item>
       </GDALMetadata>
 
-    assertEquals(trim(expectedGdalMetadataXml), trim(options.toGdalMetadataXml))
+    assertEquals(trim(expectedGdalMetadataXml), trim(options.tagsAsGdalMetadataXml))
   }
 }

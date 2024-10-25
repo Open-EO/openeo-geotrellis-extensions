@@ -23,7 +23,7 @@ class PackageTest {
         <Item name="DESCRIPTION" sample="0">CO</Item>
       </GDALMetadata>
 
-    embedGdalMetadata(gdalMetadataXml, geotiffCopy)
+    embedGdalMetadata(geotiffCopy, gdalMetadataXml)
 
     assertEquals(Some("0.45.0a1"), processingSoftware(geotiffCopy))
   }
@@ -31,7 +31,8 @@ class PackageTest {
   @Test
   def testEmbedGdalMetadataFails(): Unit = {
     val e = assertThrows(classOf[IOException], () =>
-      embedGdalMetadata(<GdalMetadata />, geotiffPath = Paths.get("doesnotexist.tif")))
+      embedGdalMetadata(geotiffPath = Paths.get("doesnotexist.tif"), <GdalMetadata />)
+    )
 
     assertTrue(e.getMessage contains "doesnotexist.tif: No such file or directory")
   }
