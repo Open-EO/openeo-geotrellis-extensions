@@ -922,4 +922,24 @@ package object geotiff {
     result.collect()
     print("test done")
   }
+
+  // TODO: favor dedicated XML type over String?
+  def embedGdalMetadata(gdalMetadataXml: String, geotiffPath: Path): Unit = {
+    import scala.sys.process._
+    import java.nio.charset._
+
+    val outputBuffer = new StringBuilder
+    val processLogger = ProcessLogger(line => outputBuffer appendAll line)
+
+    val tempFile = Files.createTempFile("GDALMetadata_", ".xml.tmp")
+    try {
+      Files.write(tempFile, s"$gdalMetadataXml\n".getBytes(StandardCharsets.US_ASCII))
+
+      val args = Seq("tiffset", "-sf", "42112", tempFile.toString, geotiffPath.toString)
+      val exitCode = args ! processLogger
+      if (exitCode != 0) {
+        throw new Exception(s"${args mkString " "} failed; output: $outputBuffer")
+      }
+    } finally Files.delete(tempFile)
+  }
 }
