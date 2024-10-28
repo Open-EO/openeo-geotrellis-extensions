@@ -23,7 +23,7 @@ class BatchJobProgressListener extends SparkListener {
     import BatchJobProgressListener.logger
 
     override def onStageSubmitted( stageSubmitted:SparkListenerStageSubmitted):Unit = {
-        logger.info("Starting part of the process graph: " + stageSubmitted.stageInfo.name)
+        logger.info(s"Starting stage: ${stageSubmitted.stageInfo.stageId} - ${stageSubmitted.stageInfo.name}. \nStages may combine multiple processes." )
     }
 
    override def onStageCompleted( stageCompleted: SparkListenerStageCompleted):Unit = {
@@ -46,7 +46,7 @@ class BatchJobProgressListener extends SparkListener {
           }
           val megabytes = taskMetrics.shuffleWriteMetrics.bytesWritten.toFloat/(1024.0*1024.0)
           val name = stageCompleted.stageInfo.name
-          logger.info(f"Finished part ${stageCompleted.stageInfo.stageId}  of the process graph: ${name}.\n The total computing time was: $timeString. It produced: $megabytes%.2f MB of data.");
+          logger.info(f"Stage ${stageCompleted.stageInfo.stageId} produced $megabytes%.2f MB in $timeString - ${name}.");
 
           val accumulators = stageCompleted.stageInfo.accumulables;
           val chunkCounts = accumulators.filter(_._2.name.get.startsWith("ChunkCount"));

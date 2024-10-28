@@ -42,7 +42,7 @@ import java.time._
 import java.time.temporal.ChronoUnit.{DAYS, SECONDS}
 import java.util
 import java.util.concurrent.TimeUnit
-import scala.collection.GenSeq
+import scala.collection.{GenSeq, immutable}
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
@@ -122,7 +122,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     }
   }
 
-  override def cellType: CellType = sources.map(_.cellType).reduceLeft(_ union _)
+  override def cellType: CellType = sources.map(_.cellType).reduceLeft((a,b) => OpenEOProcessScriptBuilder.cellTypeUnion(a,b))
 
   override def name: SourceName = sources.head.name
   override def bandCount: Int = sources.size
@@ -141,7 +141,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 
   override def readBounds(bounds: Traversable[GridBounds[Long]]): Iterator[Raster[MultibandTile]] = {
     var union = bounds.reduce(_ combine _)
-    val percentageToRead = bounds.map(_.size).sum / union.size
+    val percentageToRead = bounds.map(_.size).sum.toFloat / union.size.toFloat
     if(percentageToRead> 0.5 && readFullTile){
       return readBoundsFullTile(bounds)
     }else{
@@ -214,7 +214,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
             case Raster(croppedTile: CroppedTile, extent) =>
               croppedTile.sourceTile match {
                 case tile: ResampledTile => tile.cropAndConvert(croppedTile.gridBounds, cellType)
-                case _ => croppedTile.convert(cellType)
+                case _ => if(croppedTile.cellType != cellType) croppedTile.convert(cellType) else croppedTile
               }
           }.seq
           Some(Raster(MultibandTile(convertedRasters), intersection))
@@ -249,8 +249,9 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
 class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(RasterSource, Seq[Int])],
                                      override val crs: CRS,
                                      override val attributes: Map[String, String] = Map.empty,
+                                     val readFullTile: Boolean = false
                                     )
-  extends BandCompositeRasterSource(sourcesListWithBandIds.map(_._1), crs, attributes) {
+  extends BandCompositeRasterSource(sourcesListWithBandIds.map(_._1), crs, attributes,readFullTile = readFullTile) {
 
   override def bandCount: Int = sourcesListWithBandIds.map(_._2.size).toList.sum
 
@@ -279,15 +280,15 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
                          method: ResampleMethod,
                          strategy: OverviewStrategy
                        ): RasterSource = new MultibandCompositeRasterSource(
-    sourcesWithBandIds map { case (source, bands) => (source.resample(resampleTarget, method, strategy), bands) }, crs)
+    sourcesWithBandIds map { case (source, bands) => (source.resample(resampleTarget, method, strategy), bands) }, crs,readFullTile = readFullTile)
 
   override def convert(targetCellType: TargetCellType): RasterSource =
-    new MultibandCompositeRasterSource(sourcesWithBandIds map { case (source, bands) => (source.convert(targetCellType), bands) }, crs)
+    new MultibandCompositeRasterSource(sourcesWithBandIds map { case (source, bands) => (source.convert(targetCellType), bands) }, crs, readFullTile = readFullTile)
 
   override def reprojection(targetCRS: CRS, resampleTarget: ResampleTarget, method: ResampleMethod, strategy: OverviewStrategy): RasterSource =
     new MultibandCompositeRasterSource(
       sourcesWithBandIds map { case (source, bands) => (source.reproject(targetCRS, resampleTarget, method, strategy), bands) },
-      crs,
+      crs, readFullTile = readFullTile
     )
 }
 
@@ -601,6 +602,7 @@ object FileLayerProvider {
     })
 
     /**
+     *  Determine unique sources, to be used for partitioning.
      *  Avoid the use of the rdd to simply compute source names, because this triggers a lot of computation which is then repeated later on, even touching the rasters in some cases.
      */
     val allSources: Array[SourceName] = sources.flatMap( t =>{
@@ -638,6 +640,18 @@ object FileLayerProvider {
 
     },preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile)]) => {
       var mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1).mapValues(_.map(_._2).reduceOption(_ merge _))
+        .flatMap{case (index,multiband) =>{
+          if(multiband.isDefined && multiband.get.bandCount>1) {
+            if(index != 0) {
+              throw new NotImplementedError("load_collection: read by input product: no support for reading from multiple multiband assets")
+            }else{
+              val bandsWithIndex: immutable.Seq[(Tile, Int)] = multiband.get.bands.zipWithIndex
+              bandsWithIndex.map(t=>(t._2,Some(MultibandTile(t._1))))
+            }
+          }else{
+            Seq[(Int,Option[MultibandTile])]((index,multiband))
+          }
+        }}
       for (x <- 0 until expectedBandCount){
         if(!mergedBands.contains(x)){
           logger.warn("Band " + x + " is missing in the input data. Filling with empty tile.")
@@ -1585,7 +1599,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         }
 
         Some((new BandCompositeRasterSource(sources.map { case (rasterSource, _) => rasterSource }, targetExtent.crs, attributes, predefinedExtent = predefinedExtent, softErrors = softErrors), feature))
-      } else Some((new MultibandCompositeRasterSource(sources.map { case (rasterSource, bandIndex) => (rasterSource, Seq(bandIndex))}, targetExtent.crs, attributes), feature))
+      } else Some((new MultibandCompositeRasterSource(sources.map { case (rasterSource, bandIndex) => (rasterSource, Seq(bandIndex))}, targetExtent.crs, attributes, readFullTile = datacubeParams.exists(_.loadPerProduct)), feature))
     }
   }
 

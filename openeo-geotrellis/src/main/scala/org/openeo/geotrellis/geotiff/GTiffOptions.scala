@@ -47,11 +47,11 @@ class GTiffOptions extends Serializable {
     })
   }
 
-  def addHeadTag(tagName:String,value:String): Unit = {
+  def addHeadTag(tagName: String, value: String): Unit = {
     tags = Tags(tags.headTags + (tagName -> value), tags.bandTags)
   }
 
-  def addBandTag(bandIndex:Int, tagName:String,value:String): Unit = {
+  def addBandTag(bandIndex: Int, tagName: String, value: String): Unit = {
     val emptyMap = Map.empty[String, String]
     var newBandTags = Vector.fill[Map[String,String]](math.max(bandIndex+1,tags.bandTags.size))(emptyMap)
     newBandTags =  newBandTags.zipAll(tags.bandTags,emptyMap,emptyMap).map(elem => elem._1 ++ elem._2)
@@ -61,6 +61,28 @@ class GTiffOptions extends Serializable {
 
   def setBandTags(newBandTags: List[Map[String, String]]): Unit = {
     tags = Tags(tags.headTags, newBandTags)
+  }
+
+  def tagsAsGdalMetadataXml: xml.Elem = {
+    val headTags = for {
+      (key, value) <- tags.headTags
+    }  yield <Item name={key}>{value}</Item>
+
+    val bandTags = for {
+      (tags, i) <- tags.bandTags.zipWithIndex
+      (key, value) <- tags
+    } yield {
+      if (Seq("description", "scale", "offset") contains key.toLowerCase) {
+        // TODO: DRY
+        <Item name={key} sample={i.toString} role={key.toLowerCase}>{value}</Item>
+      } else
+        <Item name={key} sample={i.toString}>{value}</Item>
+    }
+
+    <GDALMetadata>
+      {headTags}
+      {bandTags}
+    </GDALMetadata>
   }
 
   /**

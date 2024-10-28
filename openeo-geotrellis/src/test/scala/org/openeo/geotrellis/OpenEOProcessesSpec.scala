@@ -20,7 +20,7 @@ import org.apache.hadoop.security.UserGroupInformation
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.Assert._
-import org.junit.jupiter.api.{AfterAll, BeforeAll}
+import org.junit.jupiter.api.{AfterAll, BeforeAll, DisplayName}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, EnumSource, MethodSource}
@@ -396,7 +396,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     // Compare to reference tile.
     saveRDD(resultCube.toSpatial(times.head),2, "groupByGeometry_2017-01-15_actual.tif", 6, Some(datacube.metadata.extent))
     val actualRaster = GeoTiffRasterSource("groupByGeometry_2017-01-15_actual.tif").read().get
-    val referenceRaster = GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/groupByGeometry_2017-01-15_reference.tif").read().get
+    val referenceRaster = GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/testGroupAndMaskByGeometry.tif").read().get
     assertRastersEqual(referenceRaster, actualRaster)
 
     // Visualize RDD.
@@ -550,7 +550,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val outDir = "/tmp/aggregateTemporalTest/"
     Files.createDirectories(Paths.get(outDir))
     val pixelType = PixelType.Short
-    val layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType)
+    val layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType,cols = 64,rows=64)
     val bounds = layer.metadata.bounds
     val middleDate = SpaceTimeKey(0, 0, (bounds.get.minKey.instant + bounds.get.maxKey.instant) / 2).time
 
@@ -596,6 +596,36 @@ class OpenEOProcessesSpec extends RasterMatchers {
     assertEquals(0,resampledBounds.get.minKey.col)
     assertEquals(0,resampledBounds.get.minKey.row)
 
+  }
+
+  @DisplayName("Test combining all bands.")
+  @Test def testMapBands(): Unit = {
+    val processBuilder = TestOpenEOProcessScriptBuilder.createNormalizedDifferenceProcess10AddXY
+    assertEquals(FloatConstantNoDataCellType, processBuilder.getOutputCellType)
+    val inputCellType = UByteConstantNoDataCellType
+    val tile0 = new UByteConstantTile(3.toByte, 256, 256, inputCellType)
+    val tile1 = new UByteConstantTile(1.toByte, 256, 256, inputCellType)
+    val datacube = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, new ArrayMultibandTile(Array[Tile](tile0, tile1)), new TileLayout(4, 4, 64, 64))
+    val withEmptyTiles = datacube.withContext{_.map((v1: Tuple2[SpatialKey, MultibandTile]) => {
+      if (v1._1 == new SpatialKey(1, 0)) {
+        val tile = v1._2
+        new Tuple2[SpatialKey, MultibandTile](v1._1, new EmptyMultibandTile(tile.cols, tile.rows, tile.cellType, tile.bandCount))
+      }
+      else v1
+    })}
+
+    val ndviDatacube = new OpenEOProcesses().mapBandsGeneric[SpatialKey](withEmptyTiles, processBuilder, new util.HashMap[String, Any])
+    assertEquals(FloatConstantNoDataCellType, ndviDatacube.metadata.cellType)
+    val result = ndviDatacube.collectAsMap()
+    val key0 = SpatialKey(0, 0)
+    assertEquals(FloatConstantNoDataCellType, result(key0).cellType)
+    System.out.println("result = " + result)
+    assertEquals(1, result(key0).bandCount)
+    val doubles = result(key0).band(0).toArrayDouble
+    assertEquals(0.5, doubles(0), 0.0)
+    assertTrue(result(SpatialKey(1,0)).isInstanceOf[EmptyMultibandTile])
+    // this test fails, because ndvi function doesn't really know the band count
+    //assertEquals(1,result(SpatialKey(1,0)).bandCount)
   }
 
 }

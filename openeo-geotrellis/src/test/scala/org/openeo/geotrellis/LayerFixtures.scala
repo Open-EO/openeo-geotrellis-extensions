@@ -13,13 +13,14 @@ import geotrellis.vector._
 import org.apache.commons.io.FileUtils
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.openeo.geotrellis.file.PyramidFactory
+import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory}
 import org.openeo.geotrellis.layers.{FileLayerProvider, MockOpenSearchFeatures, SplitYearMonthDayPathDateExtractor}
-import org.openeo.geotrellisaccumulo
 import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
 import org.openeo.opensearch.backends.CreodiasClient
+import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
+import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureBuilder}
 
 import java.awt.image.DataBufferByte
 import java.io.File
@@ -168,16 +169,6 @@ object LayerFixtures {
     buildSpatioTemporalDataCube(tiles, dates, extent, tilingFactor)
   }
 
-  private def accumuloPyramidFactory = new geotrellisaccumulo.PyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
-
-  def accumuloDataCube(layer: String, minDateString: String, maxDateString: String, bbox: Extent, srs: String) = {
-    val pyramid: Seq[(Int, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]])] = accumuloPyramidFactory.pyramid_seq(layer, bbox, srs, minDateString, maxDateString)
-    System.out.println("pyramid = " + pyramid)
-
-    val (_, datacube) = pyramid.maxBy { case (zoom, _) => zoom }
-    datacube
-  }
-
   def catalogDataCube(layer: String, minDateString: String, maxDateString: String, bbox: Extent, resolution:CellSize, bandNames:List[String]) = {
     new file.PyramidFactory(OpenSearchClient.apply(new URL(opensearchEndpoint), false, "oscars"),layer,bandNames.asJava,null,resolution).pyramid_seq(bbox,"EPSG:4326",minDateString,maxDateString,util.Collections.emptyMap[String,Any](),"").head._2
 
@@ -287,19 +278,17 @@ object LayerFixtures {
    * max: 15
    */
   def randomNoiseLayer(pixelType: PixelType = PixelType.Byte,
-                       extent: Extent = defaultExtent,
+                       extent: Extent = ProjectedExtent(defaultExtent,LatLng).reproject(CRS.fromEpsgCode(32631)),
                        crs: CRS = CRS.fromEpsgCode(32631),
-                       dates: Option[List[ZonedDateTime]] = None,
+                       dates: Option[List[ZonedDateTime]] = None,cols:Int = 256,rows:Int = 256
                       ): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
-    val rows = 256;
-    val cols = 256;
 
     val rand = new scala.util.Random(42) // Fixed seed to make test predictable
 
     val defaultStartDate = ZonedDateTime.parse("2019-01-21T00:00:00Z")
     val datesGet = dates.getOrElse(0 to 4 map (defaultStartDate.plusDays(_)))
 
-    val timeSeries: Array[(SpaceTimeKey, MultibandTile)] = datesGet.map({ date =>
+    val timeSeries: Array[(Tile, ZonedDateTime)] = datesGet.map({ date =>
       val v = pixelType match {
         // Uses values in the 0-127 range, so that windows thumbnails show something visible
         case PixelType.Double => DoubleArrayTile.apply((1 to cols * rows).map(_ => 20 + 100 * rand.nextDouble).toArray, cols, rows)
@@ -314,20 +303,17 @@ object LayerFixtures {
         case _ => throw new IllegalStateException(s"pixelType $pixelType not supported")
       }
       (
-        SpaceTimeKey(0, 0, date),
-        MultibandTile(v.withNoData(Some(32767)))
+        v.withNoData(Some(32767)),
+        date
       )
     }).toArray
 
-    val rdd = SparkContext.getOrCreate().parallelize(timeSeries)
-    val metadata = TileLayerMetadata(
-      timeSeries(0)._2.cellType,
-      LayoutDefinition(RasterExtent(extent, cols, rows), cols, rows),
-      extent,
-      crs,
-      KeyBounds[SpaceTimeKey](timeSeries.head._1, timeSeries.last._1)
-    )
-    new ContextRDD(rdd, metadata)
+    implicit val sc = SparkContext.getOrCreate()
+
+    val layout = LayoutDefinition(RasterExtent(extent, cols, rows), 64, 64)
+    val rdd = TileLayerRDDBuilders.createSpaceTimeTileLayerRDD(timeSeries,layout.tileLayout,timeSeries(0)._1.cellType)
+
+    new ContextRDD(rdd.mapValues(t => MultibandTile(t)),rdd.metadata.copy(layout= rdd.metadata.layout.copy(extent=extent),extent = extent,crs=crs))
   }
 
   def sentinel2B04Layer = {
@@ -401,6 +387,7 @@ for p in l:
       "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/MTD_MSIL2A.xml",
       "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/MTD_TL.xml",
       "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R10m/T31UFS_20230405T105031_B04_10m.jp2",
+      "/eodata/Sentinel-2/MSI/L2A/2023/04/05/S2A_MSIL2A_20230405T105031_N0509_R051_T31UFS_20230405T162253.SAFE/GRANULE/L2A_T31UFS_A040660_20230405T105026/IMG_DATA/R20m/T31UFS_20230405T105031_SCL_20m.jp2",
       // for testMissingS2:
       "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWT_20240324T234241.SAFE/GRANULE/L2A_T03WWT_A036821_20240324T230529/IMG_DATA/R20m/T03WWT_20240324T230529_SCL_20m.jp2",
       "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T03WWT_20240324T234241.SAFE/GRANULE/L2A_T03WWT_A036821_20240324T230529/MTD_TL.xml",
@@ -631,6 +618,20 @@ for p in l:
       maxSpatialResolution = CellSize(0.002976190476204, 0.002976190476190),
       experimental = false
     )
+  }
+
+  def STACCOGCollection(resolution:CellSize = CellSize(0.1, 0.1) ,bands: util.List[String] = util.Arrays.asList("temperature-mean","precipitation-flux") )= {
+    val client = new FixedFeaturesOpenSearchClient()
+    client.addFeature(OpenSearchResponses.featureBuilder().withId("openEO_2020-07-01Z.tif").withNominalDate("2020-07-01T00:00:00Z").withBBox(-180.05,-90.05,180.05,90.05).withResolution(0.1).withRasterExtent(-180.05,-90.05,180.05,90.05).withCRS("EPSG:4326").addLink("https://s3.waw3-1.cloudferro.com/swift/v1/agera/AgERA5_monthly_2017-12-01.tif","openEO_2020-07-01Z.tif",bandNames = util.Arrays.asList("temperature-mean","precipitation-flux")).build())
+    client.addFeature(OpenSearchResponses.featureBuilder().withId("openEO_2020-08-01Z.tif").withNominalDate("2020-08-01T00:00:00Z").withBBox(-180.05,-90.05,180.05,90.05).withResolution(0.1).withRasterExtent(-180.05,-90.05,180.05,90.05).withCRS("EPSG:4326").addLink("https://s3.waw3-1.cloudferro.com/swift/v1/agera/AgERA5_monthly_2017-11-01.tif","openEO_2020-08-01Z.tif",bandNames = util.Arrays.asList("temperature-mean","precipitation-flux")).build())
+    client.addFeature(OpenSearchResponses.featureBuilder().withId("openEO_2020-09-01Z.tif").withNominalDate("2020-09-01T00:00:00Z").withBBox(-180.05,-90.05,180.05,90.05).withResolution(0.1).withRasterExtent(-180.05,-90.05,180.05,90.05).withCRS("EPSG:4326").addLink("https://s3.waw3-1.cloudferro.com/swift/v1/agera/AgERA5_monthly_2017-10-01.tif","openEO_2020-09-01Z.tif",bandNames = util.Arrays.asList("temperature-mean","precipitation-flux")).build())
+
+    val factory = new PyramidFactory(
+      client, "STAC_AGERA", bands,
+      null,
+      maxSpatialResolution = resolution,
+    )
+    factory
   }
 
 }

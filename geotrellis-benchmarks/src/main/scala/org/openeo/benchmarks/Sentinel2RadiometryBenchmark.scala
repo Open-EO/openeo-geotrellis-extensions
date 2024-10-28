@@ -13,7 +13,6 @@ import geotrellis.vector.{MultiPolygon, ProjectedExtent, _}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory.Band._
-import org.openeo.geotrellisaccumulo.{PyramidFactory => AccumuloPyramidFactory}
 
 import scala.collection.JavaConverters._
 
@@ -43,10 +42,6 @@ object Sentinel2RadiometryBenchmark {
       val bbox_srs = s"EPSG:${crs.epsgCode.get}"
       val (start_date, end_date) = (ISO_OFFSET_DATE_TIME format startDate, ISO_OFFSET_DATE_TIME format endDate)
 
-      def accumuloPyramid(bbox: ProjectedExtent): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
-        val fromAccumulo = new AccumuloPyramidFactory("hdp-accumulo-instance", "epod-master1.vgt.vito.be:2181,epod-master2.vgt.vito.be:2181,epod-master3.vgt.vito.be:2181")
-        fromAccumulo.pyramid_seq("CGS_SENTINEL2_RADIOMETRY_V102_EARLY", bbox.extent, bbox_srs, start_date, end_date)
-      }
 
       def filePyramid(bbox: ProjectedExtent): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
         val fromFile = new Sentinel2RadiometryPyramidFactory
@@ -56,25 +51,13 @@ object Sentinel2RadiometryBenchmark {
 
       val durations = for {
         bbox <- bboxes
-        (_, accumuloDuration) = time { evaluate(accumuloPyramid(bbox)) }
         (_, fileDuration) = time { evaluate(filePyramid(bbox)) }
       } yield {
-        println(s"Evaluating an Accumulo pyramid took $accumuloDuration, while a file pyramid took $fileDuration.")
-        (accumuloDuration, fileDuration)
+        println(s"Evaluating file pyramid took $fileDuration.")
+        fileDuration
       }
 
-      val (totalAccumuloDuration, totalFileDuration) = durations reduce[(Duration, Duration)] {
-        case ((ad1, fd1), (ad2, fd2)) => (ad1 plus ad2, fd1 plus fd2)
-      }
 
-      val (averageAccumuloDuration, averageFileDuration) =
-        (totalAccumuloDuration dividedBy durations.size, totalFileDuration dividedBy durations.size)
-
-      println(s"""
-            |Accumulo average: ${averageAccumuloDuration.getSeconds} seconds
-            |    file average: ${averageFileDuration.getSeconds} seconds
-         """.stripMargin
-      )
     } finally sc.stop()
   }
 

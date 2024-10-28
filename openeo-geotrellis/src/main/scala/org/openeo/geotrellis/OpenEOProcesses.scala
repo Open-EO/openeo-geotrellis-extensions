@@ -24,7 +24,7 @@ import geotrellis.vector.io.json.JsonFeatureCollection
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.{Partitioner, SparkContext}
-import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MinIgnoreNoData, OpenEOProcess}
+import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MinIgnoreNoData, OpenEOProcess, safeConvert}
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner}
@@ -424,6 +424,11 @@ class OpenEOProcesses extends Serializable {
     return aggregateTemporal(datacube, intervals, labels, scriptBuilder, context,true)
   }
   def aggregateTemporal(datacube:MultibandTileLayerRDD[SpaceTimeKey], intervals:java.lang.Iterable[String],labels:java.lang.Iterable[String], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any], reduce:Boolean ) :MultibandTileLayerRDD[SpaceTimeKey] = {
+    if(reduce) {
+      datacube.sparkContext.setCallSite(s"aggregate_temporal $intervals")
+    }else{
+      datacube.sparkContext.setCallSite(s"apply_neighborhood over time intervals")
+    }
     val timePeriods: Seq[Iterable[Instant]] = JavaConverters.iterableAsScalaIterableConverter(intervals).asScala.map(s => Instant.parse(s)).grouped(2).toList
     val labelsDates = labels.asScala.map(ZonedDateTime.parse(_))
     val periodsToLabels: Seq[(Iterable[Instant], String)] = timePeriods.zip(labels.asScala)
@@ -468,9 +473,9 @@ class OpenEOProcesses extends Serializable {
 
 
     val sc = SparkContext.getOrCreate()
-    sc.setCallSite("aggregate_temporal")
+
     val allKeysRDD: RDD[(SpaceTimeKey, Null)] = sc.parallelize(allPossibleSpacetime)
-    sc.clearCallSite()
+
 
     def mapToNewKey(tuple: (SpaceTimeKey, MultibandTile)): Seq[(SpaceTimeKey, (SpaceTimeKey,MultibandTile))] = {
       val instant = tuple._1.time.toInstant
@@ -504,7 +509,6 @@ class OpenEOProcesses extends Serializable {
 
     }
 
-    sc.setCallSite("aggregate_temporal")
     val tilesByInterval: RDD[(SpaceTimeKey, MultibandTile)] =
       if(reduce) {
         if(datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] && datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
@@ -559,13 +563,15 @@ class OpenEOProcesses extends Serializable {
       scriptBuilder.generateFunction(context.asScala.toMap)
     }
     return ContextRDD(new org.apache.spark.rdd.PairRDDFunctions[K,MultibandTile](datacube).mapValues(tile => {
-      if (!tile.isInstanceOf[EmptyMultibandTile]) {
-        val resultTiles = function(tile.bands)
+
+      val resultTiles = function(tile.bands)
+      if(resultTiles.exists(!_.isNoDataTile)){
         MultibandTile(resultTiles)
       }else{
-        tile
+        new EmptyMultibandTile(tile.cols,tile.rows,resultTiles.head.cellType,resultTiles.length)
       }
-    }).filter(_._2.bands.exists(!_.isNoDataTile)),datacube.metadata.copy(cellType = scriptBuilder.getOutputCellType()))
+
+    }),datacube.metadata.copy(cellType = scriptBuilder.getOutputCellType()))
   }
 
   def filterEmptyTile[K:ClassTag](datacube:MultibandTileLayerRDD[K]): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]={
@@ -580,7 +586,7 @@ class OpenEOProcesses extends Serializable {
    * @param datacube
    * @return
    */
-  def vectorize[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): (Array[(String, List[PolygonFeature[Map[String,Int]]])], CRS) = {
+  def vectorize[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): (Array[(String, List[PolygonFeature[Int]])], CRS) = {
     val layout = datacube.metadata.layout
     val maxExtent = datacube.metadata.extent
     //naive approach: combine tiles and hope that we don't exceed the max size
@@ -590,33 +596,32 @@ class OpenEOProcesses extends Serializable {
 
     val singleBandLayer: TileLayerRDD[K] = datacube.withContext(_.mapValues(_.band(0)))
     val retiled = singleBandLayer.regrid(newCols.intValue(),newRows.intValue())
+    // Perform the actual vectorization.
     val vectorizedValues: RDD[(K, List[PolygonFeature[Int]])] = retiled.toRasters.mapValues(_.crop(maxExtent,Crop.Options(force=true,clamp=true)).toVector())
-    val vectorizedValuesWithMap: RDD[(K, List[PolygonFeature[Map[String, Int]]])] = vectorizedValues.mapValues(_.map(_.mapData(v => immutable.Map("value" -> v))))
-    val collectedFeatures: Array[(String, List[PolygonFeature[Map[String, Int]]])] = vectorizedValuesWithMap.map(kv => {
-      val key: K = kv._1
-      val value: List[PolygonFeature[Map[String, Int]]] = kv._2
+    // We don't require spatial partitioning for features, so we can group by (Time, Band) instead.
+    // In the meantime we construct the feature ids as they will appear in the geojson file.
+    val featuresWithId: RDD[(String, List[PolygonFeature[Int]])] = vectorizedValues.map(kv => {
       val bandStr = "band0"
-      key match {
-        case stk: SpaceTimeKey =>
-          val id = bandStr + "_" + stk.time.format(DateTimeFormatter.ofPattern("yyyyMMdd"))
-          (id, value)
-        case _ =>
-          (bandStr, value)
+      kv._1 match {
+        case stk: SpaceTimeKey => (stk.time.format(DateTimeFormatter.ofPattern("yyyyMMdd")) + "_" + bandStr, kv._2)
+        case _ => (bandStr, kv._2)
       }
-    }).collect()
-    return (collectedFeatures,datacube.metadata.crs)
+    })
+    val featuresWithIdGrouped: RDD[(String, Iterable[List[PolygonFeature[Int]]])] = featuresWithId.groupByKey()
+    val featuresWithIdGroupedFlat: RDD[(String, List[PolygonFeature[Int]])] = featuresWithIdGrouped.mapValues(_.flatten.toList)
+    return (featuresWithIdGroupedFlat.collect(), datacube.metadata.crs)
   }
 
-  def featuresToGeojson(features: Array[(String, List[PolygonFeature[Map[String,Int]]])], crs: CRS): Json = {
-    // Add ids for every Key.
+  def featuresToGeojson(features: Array[(String, List[PolygonFeature[Int]])], crs: CRS): Json = {
+    // Add index to each feature id, so final id will be 'date_band_index'.
     val geojsonFeaturesWithId: Array[Json] = features.flatMap((v) => {
-      val key: String = v._1
-      val feats: List[PolygonFeature[Map[String,Int]]] = v._2
+      val key: String = v._1 // (Time, Band) key.
+      // Geojson lists properties as a map.
+      val feats: List[PolygonFeature[Map[String,Int]]] = v._2.map(_.mapData(v => immutable.Map("value" -> v)))
       feats.zipWithIndex.map({case (f,i) => f.asJson.deepMerge(Json.obj("id" -> (key + "_" + i).asJson))})
     })
     // Add bbox to top level.
-    val allFeatures: Array[PolygonFeature[Map[String,Int]]] = features.flatMap(_._2)
-    val bboxOption = allFeatures.map(_.geom.extent).reduceOption(_ combine _)
+    val bboxOption = features.flatMap(_._2).map(_.geom.extent).reduceOption(_ combine _)
     val jsonWithBbox = bboxOption match {
       case Some(bbox) =>
         Json.obj(
@@ -638,7 +643,7 @@ class OpenEOProcesses extends Serializable {
   }
 
   def vectorize(datacube:Object, outputFile:String): Unit = {
-    val (features: Array[(String, List[PolygonFeature[Map[String,Int]]])],crs: CRS) = datacube match {
+    val (features: Array[(String, List[PolygonFeature[Int]])], crs: CRS) = datacube match {
       case rdd1 if datacube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
         vectorize(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
       case rdd2 if datacube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]  =>
@@ -885,9 +890,9 @@ class OpenEOProcesses extends Serializable {
       val updatedMetadata = leftCube.metadata.copy(cellType = outputCellType)
       return new ContextRDD(rdd.mapValues({case (l,r) =>
         if(swapOperands) {
-          MultibandTile(r.convert(updatedMetadata.cellType).bands ++ l.convert(updatedMetadata.cellType).bands)
+          MultibandTile( r.bands.map(t=>safeConvert(t,updatedMetadata.cellType))  ++ l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
         }else{
-          MultibandTile(l.convert(updatedMetadata.cellType).bands ++ r.convert(updatedMetadata.cellType).bands)
+          MultibandTile(l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)) ++ r.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
         }
       }), updatedMetadata)
     }else{
@@ -941,8 +946,7 @@ class OpenEOProcesses extends Serializable {
 
   private def mergeCubesGeneric[K: Boundable: PartitionerIndex: ClassTag
   ](joined: RDD[(K, (Option[MultibandTile], Option[MultibandTile]))] with Metadata[Bounds[K]], operator:String, metadata:TileLayerMetadata[K],leftCube: MultibandTileLayerRDD[K], rightCube: MultibandTileLayerRDD[K]): ContextRDD[K, MultibandTile, TileLayerMetadata[K]] = {
-
-    val converted = joined.mapValues{t=> (t._1.map(_.convert(metadata.cellType)),t._2.map(_.convert(metadata.cellType)))}
+    val converted = joined.mapValues{t=> (t._1.map(_.mapBands( (i,x) => safeConvert(x,metadata.cellType))),t._2.map( _.mapBands( (i,x) => safeConvert(x,metadata.cellType))))}
     if(operator==null) {
       combine_bands(converted, leftCube, rightCube, metadata)
     }else{
@@ -1077,6 +1081,7 @@ class OpenEOProcesses extends Serializable {
 
   def rasterMaskGeneric[K: Boundable: PartitionerIndex: ClassTag,M: GetComponent[*, Bounds[K]]]
   (datacube: RDD[(K,MultibandTile)] with Metadata[M], mask: RDD[(K,MultibandTile)] with Metadata[M], replacement: java.lang.Double): RDD[(K,MultibandTile)] with Metadata[M] = {
+    datacube.sparkContext.setCallSite("mask with rastercube")
     DatacubeSupport.rasterMaskGeneric(datacube, mask, replacement)
   }
 
@@ -1094,6 +1099,7 @@ class OpenEOProcesses extends Serializable {
     * @return
     */
   def apply_kernel[K: SpatialComponent: ClassTag](datacube:MultibandTileLayerRDD[K],kernel:Tile): RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = {
+    datacube.sparkContext.setCallSite(s"apply_kernel")
     val k = new Kernel(kernel)
     val outputCellType = datacube.convert(datacube.metadata.cellType.union(kernel.cellType))
     if (kernel.cols > 10 || kernel.rows > 10) {

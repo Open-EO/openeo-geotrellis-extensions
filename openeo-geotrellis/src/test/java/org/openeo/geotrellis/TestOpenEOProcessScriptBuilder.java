@@ -1460,7 +1460,7 @@ public class TestOpenEOProcessScriptBuilder {
         Tile tile1 = FloatConstantNoDataArrayTile.fill(3, 4, 4);
         Tile tile2 = FloatConstantNoDataArrayTile.fill(-1, 4, 4);
         Tile tile3 = FloatConstantNoDataArrayTile.fill(1.9f, 4, 4);
-        Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
+        Tile nodataTile = new ByteConstantTile((byte)123, 4, 4, ByteUserDefinedNoDataCellType.apply((byte)123));
 
         Seq<Tile> result = transformation.apply(JavaConversions.asScalaBuffer(Arrays.asList(nodataTile,tile0,tile1,tile2,tile3)));
 

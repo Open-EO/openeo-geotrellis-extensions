@@ -89,7 +89,7 @@ class GlobalNetCdfFileLayerProviderTest {
 
     layer
       .toSpatial(date)
-      .writeGeoTiff("/tmp/lai300_georgia2.tif")
+      .writeGeoTiff("/tmp/lai300_georgia2_readTileLayer.tif")
   }
 
   @Test
@@ -104,7 +104,7 @@ class GlobalNetCdfFileLayerProviderTest {
 
     layer
       .toSpatial(date)
-      .writeGeoTiff("/tmp/lai300_georgia2.tif")
+      .writeGeoTiff("/tmp/lai300_georgia2_readDataCube.tif")
   }
 
   @Test
