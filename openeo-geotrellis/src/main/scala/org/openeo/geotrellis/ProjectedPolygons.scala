@@ -25,6 +25,7 @@ case class ProjectedPolygons(geometries: Array[Geometry], crs: CRS) {
 
   def polygons: Array[MultiPolygon] = geometries.filter(_.isInstanceOf[MultiPolygon]).map(_.asInstanceOf[MultiPolygon])
   def extent: ProjectedExtent = ProjectedExtent(polygons.toSeq.extent,crs)
+  def reproject(crs: CRS): ProjectedPolygons = ProjectedPolygons.reproject(this, crs)
 }
 
 object ProjectedPolygons {
@@ -52,7 +53,6 @@ object ProjectedPolygons {
     }
   }
 
-  // FIXME: make this an instance method
   def reproject(projectedPolygons: ProjectedPolygons,epsg_code:Int): ProjectedPolygons = {
     val targetCRS = CRS.fromEpsgCode(epsg_code)
     reproject(projectedPolygons, targetCRS)
