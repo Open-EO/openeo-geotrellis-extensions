@@ -18,7 +18,9 @@ import org.openeo.opensearch.backends.{CreodiasClient, OscarsClient}
 import org.slf4j.LoggerFactory
 
 import java.net.URL
-import java.time.{LocalTime, ZonedDateTime}
+import java.time.{LocalTime, OffsetTime, ZonedDateTime}
+import java.time.ZoneOffset.UTC
+import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import java.util
 import scala.collection.JavaConverters._
 
@@ -54,12 +56,10 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
     overlappingFeatures
   }
 
-
-  def loadSpatialFeatureRDD(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters): ContextRDD[SpaceTimeKey, Feature, TileLayerMetadata[SpaceTimeKey]] = {
+  private def loadSpatialFeatureRDD(polygons: ProjectedPolygons, from_date: String, until_date: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters): ContextRDD[SpaceTimeKey, Feature, TileLayerMetadata[SpaceTimeKey]] = {
     val sc = SparkContext.getOrCreate()
 
-    val from = ZonedDateTime.parse(from_date)
-    val to = ZonedDateTime.parse(to_date)
+    val (from, to) = parseTemporalInterval(from_date, until_date)
 
     val bbox = polygons.polygons.toSeq.extent
 
@@ -116,9 +116,9 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
    * Variant of `loadSpatialFeatureRDD` that allows working with the data in JavaRDD format in PySpark context:
    * (e.g. oscars response is JSON-serialized)
    */
-  def loadSpatialFeatureJsonRDD(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters = null): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey]) = {
+  def loadSpatialFeatureJsonRDD(polygons: ProjectedPolygons, from_date: String, until_date: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters = null): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey]) = {
     import org.openeo.geotrellis.file.FileRDDFactory.{jsonObject, toJson}
-    val crdd = loadSpatialFeatureRDD(polygons, from_date, to_date, zoom, tileSize, dataCubeParameters)
+    val crdd = loadSpatialFeatureRDD(polygons, from_date, until_date, zoom, tileSize, dataCubeParameters)
     val jrdd = crdd.map { case (key, feature) => jsonObject(
       "key" -> toJson(key),
       "key_extent" -> toJson(crdd.metadata.mapTransform.keyToExtent(key)),
@@ -134,7 +134,21 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
       )
     )}.toJavaRDD()
 
-    return (jrdd, crdd.metadata)
+    (jrdd, crdd.metadata)
+  }
+
+  // TODO: reduce code duplication with org.openeo.geotrellissentinelhub.BatchProcessingService.parseTemporalInterval
+  private def parseTemporalInterval(from_datetime: String, until_datetime: String): (ZonedDateTime, ZonedDateTime) = {
+    val from = ZonedDateTime.parse(from_datetime, ISO_OFFSET_DATE_TIME)
+    val until = ZonedDateTime.parse(until_datetime, ISO_OFFSET_DATE_TIME)
+
+    val to =
+      if (from isEqual until) { // include end day
+        val endOfDay = OffsetTime.of(LocalTime.MAX, UTC)
+        until.toLocalDate.atTime(endOfDay).toZonedDateTime
+      } else until minusNanos 1
+
+    (from, to)
   }
 }
 
