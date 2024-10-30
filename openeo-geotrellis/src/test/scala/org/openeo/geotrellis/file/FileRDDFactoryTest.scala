@@ -69,7 +69,8 @@ class FileRDDFactoryTest extends RasterMatchers {
 
   @ParameterizedTest
   @ValueSource(strings = Array("2022-06-18T00:00:00+00:00", "2022-06-19T00:00:00+00:00"))
-  def testUpperTemporalBound(until_date: String): Unit = {
+  def testUpperTemporalBound(until_datetime: String): Unit = {
+    // TODO: replace with FixedFeaturesOpenSearchClient?
     val openSearchClient = OpenSearchClient(new URL("https://catalogue.dataspace.copernicus.eu/resto"))
     val attributeValues = Map[String, Any]("productType" -> "SY_2_SYN___").asJava
     val fileRddFactory = new FileRDDFactory(
@@ -80,14 +81,14 @@ class FileRDDFactoryTest extends RasterMatchers {
       maxSpatialResolution = CellSize(1.0/112/3,  1.0/112/3)
     )
 
-    val fromDate = ZonedDateTime.parse("2022-06-18T00:00:00+00:00", ISO_OFFSET_DATE_TIME)
-    val untilDate = ZonedDateTime.parse(until_date, ISO_OFFSET_DATE_TIME)
+    val from = ZonedDateTime.parse("2022-06-18T00:00:00+00:00", ISO_OFFSET_DATE_TIME)
+    val until = ZonedDateTime.parse(until_datetime, ISO_OFFSET_DATE_TIME)
 
     val (javaRdd, _) = fileRddFactory.loadSpatialFeatureJsonRDD(
       ProjectedPolygons.fromExtent(Extent(399960.0, 1590240.0, 509760.0, 1700040.0), crs = "EPSG:32628")
         .reproject(LatLng),
-      from_date = ISO_OFFSET_DATE_TIME format fromDate,
-      until_date = ISO_OFFSET_DATE_TIME format untilDate,
+      from_datetime = ISO_OFFSET_DATE_TIME format from,
+      until_datetime = ISO_OFFSET_DATE_TIME format until,
       zoom = 0
     )
 
@@ -103,7 +104,7 @@ class FileRDDFactoryTest extends RasterMatchers {
 
     assertTrue(keyInstants.nonEmpty)
     assertTrue(keyInstants.forall { instant =>
-      LocalDate.ofInstant(instant, UTC) == fromDate.toLocalDate
+      LocalDate.ofInstant(instant, UTC) == from.toLocalDate
     })
   }
 }

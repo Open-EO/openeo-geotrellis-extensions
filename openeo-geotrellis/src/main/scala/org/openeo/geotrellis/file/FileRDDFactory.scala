@@ -42,13 +42,9 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
   private def getFeatures(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, sc: SparkContext): Seq[Feature] = {
     require(zoom >= 0)
 
-    val dateRange = // retain backwards compatibility for from == to
-      if (from isEqual to) (from `with` LocalTime.MIN, from `with` LocalTime.MAX)
-      else (from, to)
-
     val overlappingFeatures: Seq[Feature] = openSearch.getProducts(
       openSearchCollectionId,
-      Some(dateRange),
+      Some((from, to)),
       boundingBox,
       attributeValues = attributeValues.asScala.toMap,
       correlationId, ""
@@ -56,10 +52,10 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
     overlappingFeatures
   }
 
-  private def loadSpatialFeatureRDD(polygons: ProjectedPolygons, from_date: String, until_date: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters): ContextRDD[SpaceTimeKey, Feature, TileLayerMetadata[SpaceTimeKey]] = {
+  private def loadSpatialFeatureRDD(polygons: ProjectedPolygons, from_datetime: String, until_datetime: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters): ContextRDD[SpaceTimeKey, Feature, TileLayerMetadata[SpaceTimeKey]] = {
     val sc = SparkContext.getOrCreate()
 
-    val (from, to) = parseTemporalInterval(from_date, until_date)
+    val (from, to) = parseTemporalInterval(from_datetime, until_datetime)
 
     val bbox = polygons.polygons.toSeq.extent
 
@@ -116,9 +112,9 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
    * Variant of `loadSpatialFeatureRDD` that allows working with the data in JavaRDD format in PySpark context:
    * (e.g. oscars response is JSON-serialized)
    */
-  def loadSpatialFeatureJsonRDD(polygons: ProjectedPolygons, from_date: String, until_date: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters = null): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey]) = {
+  def loadSpatialFeatureJsonRDD(polygons: ProjectedPolygons, from_datetime: String, until_datetime: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters = null): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey]) = {
     import org.openeo.geotrellis.file.FileRDDFactory.{jsonObject, toJson}
-    val crdd = loadSpatialFeatureRDD(polygons, from_date, until_date, zoom, tileSize, dataCubeParameters)
+    val crdd = loadSpatialFeatureRDD(polygons, from_datetime, until_datetime, zoom, tileSize, dataCubeParameters)
     val jrdd = crdd.map { case (key, feature) => jsonObject(
       "key" -> toJson(key),
       "key_extent" -> toJson(crdd.metadata.mapTransform.keyToExtent(key)),
@@ -143,7 +139,7 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
     val until = ZonedDateTime.parse(until_datetime, ISO_OFFSET_DATE_TIME)
 
     val to =
-      if (from isEqual until) { // include end day
+      if (from isEqual until) { // retain backwards compatibility
         val endOfDay = OffsetTime.of(LocalTime.MAX, UTC)
         until.toLocalDate.atTime(endOfDay).toZonedDateTime
       } else until minusNanos 1
