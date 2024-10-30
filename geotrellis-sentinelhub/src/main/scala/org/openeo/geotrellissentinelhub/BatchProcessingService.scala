@@ -2,11 +2,11 @@ package org.openeo.geotrellissentinelhub
 
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.vector._
+import org.openeo.geotrelliscommon.parseToInclusiveTemporalInterval
 import org.openeo.geotrellissentinelhub.SampleType.SampleType
 
 import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-import java.time.ZoneOffset.UTC
-import java.time.{LocalTime, OffsetTime, ZonedDateTime}
+import java.time.ZonedDateTime
 import java.util
 import java.util.UUID
 import scala.collection.JavaConverters._
@@ -63,7 +63,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
                           sampleType: SampleType, metadata_properties: util.Map[String, util.Map[String, Any]],
                           processing_options: util.Map[String, Any], subfolder: String): String = {
     // TODO: implement retries
-    val (from, to) = parseTemporalInterval(from_datetime, until_datetime)
+    val (from, to) = parseToInclusiveTemporalInterval(from_datetime, until_datetime)
 
     val multiPolygon = simplify(polygons)
     val multiPolygonCrs = crs
@@ -181,7 +181,7 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
     val geometryCrs = LatLng
 
     // from should be start of day, to should be end of day (23:59:59)
-    val (from, to) = parseTemporalInterval(from_datetime, until_datetime)
+    val (from, to) = parseToInclusiveTemporalInterval(from_datetime, until_datetime)
 
     // original features that overlap in space and time
     val features = authorized { accessToken =>
@@ -226,18 +226,5 @@ class BatchProcessingService(endpoint: String, val bucketName: String, authorize
   private def dataTakeId(featureId: String): String = {
     val penultimatePart = featureId.split("_").reverse(1) // from source at https://apps.sentinel-hub.com/s1-card4l/
     penultimatePart
-  }
-
-  private def parseTemporalInterval(from_datetime: String, until_datetime: String): (ZonedDateTime, ZonedDateTime) = {
-    val from = ZonedDateTime.parse(from_datetime, ISO_OFFSET_DATE_TIME)
-    val until = ZonedDateTime.parse(until_datetime, ISO_OFFSET_DATE_TIME)
-
-    val to =
-      if (from isEqual until) { // include end day
-        val endOfDay = OffsetTime.of(LocalTime.MAX, UTC)
-        until.toLocalDate.atTime(endOfDay).toZonedDateTime
-      } else until minusNanos 1
-
-    (from, to)
   }
 }

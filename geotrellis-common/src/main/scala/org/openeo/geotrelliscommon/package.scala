@@ -6,6 +6,10 @@ import org.apache.spark.Partitioner
 import org.locationtech.sfcurve.zorder.{Z2, ZRange}
 import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 
+import java.time.ZoneOffset.UTC
+import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
+import java.time.{LocalTime, OffsetTime, ZonedDateTime}
+
 package object geotrelliscommon {
 
   def autoUtmEpsg(lon: Double, lat: Double): Int = {
@@ -249,6 +253,18 @@ package object geotrelliscommon {
     throw lastException
   }
 
+  def parseToInclusiveTemporalInterval(from_datetime: String, until_datetime: String): (ZonedDateTime, ZonedDateTime) = {
+    // exclusive "until" becomes inclusive "to", with backwards compatibility
 
+    val from = ZonedDateTime.parse(from_datetime, ISO_OFFSET_DATE_TIME)
+    val until = ZonedDateTime.parse(until_datetime, ISO_OFFSET_DATE_TIME)
 
+    val to =
+      if (from isEqual until) { // include end day
+        val endOfDay = OffsetTime.of(LocalTime.MAX, UTC)
+        until.toLocalDate.atTime(endOfDay).toZonedDateTime
+      } else until minusNanos 1
+
+    (from, to)
+  }
 }

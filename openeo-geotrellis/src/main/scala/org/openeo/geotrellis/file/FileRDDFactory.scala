@@ -11,16 +11,14 @@ import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DatacubeSupport.layerMetadata
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport, parseToInclusiveTemporalInterval}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.openeo.opensearch.backends.{CreodiasClient, OscarsClient}
 import org.slf4j.LoggerFactory
 
 import java.net.URL
-import java.time.{LocalTime, OffsetTime, ZonedDateTime}
-import java.time.ZoneOffset.UTC
-import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
+import java.time.ZonedDateTime
 import java.util
 import scala.collection.JavaConverters._
 
@@ -55,7 +53,7 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
   private def loadSpatialFeatureRDD(polygons: ProjectedPolygons, from_datetime: String, until_datetime: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters): ContextRDD[SpaceTimeKey, Feature, TileLayerMetadata[SpaceTimeKey]] = {
     val sc = SparkContext.getOrCreate()
 
-    val (from, to) = parseTemporalInterval(from_datetime, until_datetime)
+    val (from, to) = parseToInclusiveTemporalInterval(from_datetime, until_datetime)
 
     val bbox = polygons.polygons.toSeq.extent
 
@@ -131,20 +129,6 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
     )}.toJavaRDD()
 
     (jrdd, crdd.metadata)
-  }
-
-  // TODO: reduce code duplication with org.openeo.geotrellissentinelhub.BatchProcessingService.parseTemporalInterval
-  private def parseTemporalInterval(from_datetime: String, until_datetime: String): (ZonedDateTime, ZonedDateTime) = {
-    val from = ZonedDateTime.parse(from_datetime, ISO_OFFSET_DATE_TIME)
-    val until = ZonedDateTime.parse(until_datetime, ISO_OFFSET_DATE_TIME)
-
-    val to =
-      if (from isEqual until) { // retain backwards compatibility
-        val endOfDay = OffsetTime.of(LocalTime.MAX, UTC)
-        until.toLocalDate.atTime(endOfDay).toZonedDateTime
-      } else until minusNanos 1
-
-    (from, to)
   }
 }
 
