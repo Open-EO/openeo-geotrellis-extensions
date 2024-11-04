@@ -5,7 +5,7 @@ import _root_.io.circe.HCursor
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.vector._
 import geotrellis.vector.io.json.{JsonCRS, JsonFeatureCollection, NamedCRS}
-import org.geotools.data.Query
+import org.geotools.api.data.Query
 import org.geotools.data.shapefile.ShapefileDataStore
 import org.geotools.data.simple.SimpleFeatureIterator
 
