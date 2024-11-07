@@ -932,7 +932,7 @@ package object geotiff {
       // The following line corrects this:
       val correctS3Path = path.replaceFirst("s3:/(?!/)", "s3://")
       if (fileExists) {
-        CreoS3Utils.uploadToS3(tempFile, correctS3Path)
+        CreoS3Utils.uploadToS3TryFirstWithStreaming(tempFile, path)
       }
       (correctS3Path, fileExists)
     } else {
