@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.stac
 
-import org.openeo.geotrellis.geotiff.uploadToS3
+import org.openeo.geotrellis.creo.CreoS3Utils.uploadToS3
 import org.openeo.geotrellis.getTempFile
 import org.slf4j.LoggerFactory
 

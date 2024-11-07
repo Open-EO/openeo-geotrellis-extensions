@@ -1,8 +1,5 @@
 package org.openeo.geotrellis.geotiff
 
-import java.time.LocalTime.MIDNIGHT
-import java.time.ZoneOffset.UTC
-import java.time.{LocalDate, ZonedDateTime}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.spark._
@@ -10,19 +7,25 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.SparkContext
 import org.apache.spark.storage.StorageLevel.DISK_ONLY
-import org.junit._
+import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.{BeforeAll, Test}
+import org.junit.{AfterClass, Assert}
 import org.openeo.geotrellis.LayerFixtures.rgbLayerProvider
 import org.openeo.geotrellis.png.PngTest
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrellis.{LayerFixtures, geotiff}
 
+import java.nio.file.Path
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
+import java.time.{LocalDate, ZonedDateTime}
 import scala.collection.JavaConverters._
 
 object TileGridTest {
   private var sc: SparkContext = _
 
-  @BeforeClass
+  @BeforeAll
   def setupSpark(): Unit = {
     // originally geotrellis.spark.util.SparkUtils.createLocalSparkContext
     val conf = SparkUtils.createSparkConf
@@ -47,7 +50,7 @@ class TileGridTest {
   import TileGridTest._
 
   @Test
-  def testSaveStitchWithTileGrids(): Unit = {
+  def testSaveStitchWithTileGrids(@TempDir outDir: Path): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
     val bbox = ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng)
 
@@ -57,8 +60,13 @@ class TileGridTest {
       .toSpatial()
       .persist(DISK_ONLY)
 
-    val tiles = geotiff.saveStitchedTileGrid(spatialLayer, "/tmp/testSaveStitched.tiff", "10km", DeflateCompression(6))
-    val expectedPaths = Set("/tmp/testSaveStitched-31UDS_3_4.tiff", "/tmp/testSaveStitched-31UDS_2_4.tiff", "/tmp/testSaveStitched-31UDS_3_5.tiff", "/tmp/testSaveStitched-31UDS_2_5.tiff")
+    val tiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched.tiff", "10km", DeflateCompression(6))
+    val expectedPaths = Set(
+      outDir + "/testSaveStitched-31UDS_3_4.tiff",
+      outDir + "/testSaveStitched-31UDS_2_4.tiff",
+      outDir + "/testSaveStitched-31UDS_3_5.tiff",
+      outDir + "/testSaveStitched-31UDS_2_5.tiff",
+    )
 
     // TODO: check if extents (in the layer CRS) are 10000m wide/high (in UTM)
     Assert.assertEquals(expectedPaths, tiles.asScala.map { case (path, _) => path }.toSet)
@@ -66,8 +74,13 @@ class TileGridTest {
     val extent = bbox.reproject(spatialLayer.metadata.crs)
     val cropBounds = mapAsJavaMap(Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax))
 
-    val croppedTiles = geotiff.saveStitchedTileGrid(spatialLayer, "/tmp/testSaveStitched_cropped.tiff", "10km", cropBounds, DeflateCompression(6))
-    val expectedCroppedPaths = Set("/tmp/testSaveStitched_cropped-31UDS_3_4.tiff", "/tmp/testSaveStitched_cropped-31UDS_2_4.tiff", "/tmp/testSaveStitched_cropped-31UDS_3_5.tiff", "/tmp/testSaveStitched_cropped-31UDS_2_5.tiff")
+    val croppedTiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched_cropped.tiff", "10km", cropBounds, DeflateCompression(6))
+    val expectedCroppedPaths = Set(
+      outDir + "/testSaveStitched_cropped-31UDS_3_4.tiff",
+      outDir + "/testSaveStitched_cropped-31UDS_2_4.tiff",
+      outDir + "/testSaveStitched_cropped-31UDS_3_5.tiff",
+      outDir + "/testSaveStitched_cropped-31UDS_2_5.tiff",
+    )
 
     // TODO: also check extents
     Assert.assertEquals(expectedCroppedPaths, croppedTiles.asScala.map { case (path, _) => path }.toSet)
