@@ -13,7 +13,6 @@ import java.time.LocalTime
 import scala.annotation.meta.getter
 import scala.collection.JavaConverters._
 
-@Ignore("Avoid SentinelHubException in CI")
 class BatchProcessingServiceTest {
   private val endpoint = "https://services.sentinel-hub.com" // TODO: this depends on the dataset
   private val authorizer = new MemoizedAuthApiAccessTokenAuthorizer(Utils.clientId, Utils.clientSecret)
