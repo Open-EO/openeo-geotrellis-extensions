@@ -25,7 +25,7 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
   override def rangeReader(uri: URI): S3RangeReader = {
     val s3Uri = new AmazonS3URI(uri)
     val isCloudFerro = s3Endpoint != null &&
-      (s3Endpoint.toLowerCase.contains("cloudferro") || s3Endpoint.toLowerCase == "eodata.dataspace.copernicus.eu")
+      (s3Endpoint.toLowerCase.contains("cloudferro") || s3Endpoint.toLowerCase.endsWith(".dataspace.copernicus.eu"))
 
     val theClient: S3Client =
       if (isCloudFerro)
