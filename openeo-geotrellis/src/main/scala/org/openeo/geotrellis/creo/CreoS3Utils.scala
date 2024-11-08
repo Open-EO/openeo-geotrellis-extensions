@@ -30,21 +30,25 @@ object CreoS3Utils {
   private val cloudFerroRegion: Region = Region.of("RegionOne")
 
   def getAsyncClient(): S3AsyncClient = {
-    S3AsyncClient.crtBuilder()
+    S3AsyncClient.builder() // used to be crtBuilder
       .credentialsProvider(credentialsProvider)
-      //.serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
-      .region(cloudFerroRegion).forcePathStyle(true).endpointOverride(URI.create(sys.env("SWIFT_URL")))
+      .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
+      .overrideConfiguration(overrideConfig)
+      .forcePathStyle(true)
+      .region(cloudFerroRegion)
+      .endpointOverride(URI.create(sys.env("SWIFT_URL")))
       .build();
   }
 
   def getCreoS3Client(): S3Client = {
-
-    val clientBuilder = S3Client.builder()
+    S3Client.builder()
+      .credentialsProvider(credentialsProvider)
       .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
-      .overrideConfiguration(overrideConfig).forcePathStyle(true)
+      .overrideConfiguration(overrideConfig)
+      .forcePathStyle(true)
       .region(cloudFerroRegion)
-
-    clientBuilder.endpointOverride(URI.create(sys.env("SWIFT_URL"))).credentialsProvider(credentialsProvider).build()
+      .endpointOverride(URI.create(sys.env("SWIFT_URL")))
+      .build()
   }
 
   private def credentialsProvider = {
