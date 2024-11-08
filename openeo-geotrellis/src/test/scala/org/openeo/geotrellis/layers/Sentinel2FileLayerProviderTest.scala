@@ -31,7 +31,7 @@ import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
 import org.openeo.geotrellis.{LayerFixtures, MergeCubesSpec, OpenEOProcessScriptBuilder, OpenEOProcesses, ProjectedPolygons, TestOpenEOProcessScriptBuilder}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ConfigurableSpaceTimePartitioner, DataCubeParameters, ResampledTile}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ConfigurableSpaceTimePartitioner, SparseSpaceTimePartitioner, DataCubeParameters, ResampledTile}
 import org.openeo.opensearch.OpenSearchResponses.Link
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.openeo.sparklisteners.GetInfoSparkListener
@@ -114,13 +114,13 @@ object Sentinel2FileLayerProviderTest {
   ))
 
   def datacubeParams: Stream[Arguments] = Arrays.stream(Array(
-    arguments(new DataCubeParameters(),8.asInstanceOf[Integer]),
+    arguments(new DataCubeParameters(),11.asInstanceOf[Integer]),
     arguments({
       val p = new DataCubeParameters()
       p.resampleMethod = Average
       p.loadPerProduct = true
       p
-    },9.asInstanceOf[Integer]
+    },12.asInstanceOf[Integer]
       )
   ))
 }
@@ -277,7 +277,10 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   @ParameterizedTest
   @MethodSource(Array("datacubeParams"))
   def multibandWithSpacetimeMask(parameters: DataCubeParameters, expectedNBStages: Int): Unit = {
-    val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
+
+    val refPath = s"org/openeo/geotrellis/Sentinel2FileLayerProvider_multiband_reference_${parameters.resampleMethod.toString.toLowerCase}.tif"
+
+    val date = ZonedDateTime.of(LocalDate.of(2024, 4, 22), MIDNIGHT, UTC)
     val bbox = ProjectedExtent(Extent(1.90283, 50.9579, 1.97116, 51.0034), LatLng)
 
     var mask = sceneclassificationLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
@@ -294,7 +297,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     mask = p.mapBands(mask, builder)
     mask.toSpatial(date).writeGeoTiff(f"tmp/Sentinel2FileLayerProvider_multiband_mask_${parameters.hashCode()}.tif", bbox)
 
-    var layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 14,datacubeParams = Option.empty)
+    var layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 13,datacubeParams = Option.empty)
 
     val originalCount = layer.count()
     parameters.maskingCube = Some(mask)
@@ -302,7 +305,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val listener = new GetInfoSparkListener()
     SparkContext.getOrCreate().addSparkListener(listener)
 
-    layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 14,datacubeParams = Some(parameters))
+    layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 13,datacubeParams = Some(parameters))
+    print(layer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index)
     assertTrue(layer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[ConfigurableSpaceTimePartitioner])
     val maskedCount = layer.count()
     SparkContext.getOrCreate().removeSparkListener(listener)
@@ -316,7 +320,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
     val resultTiff = GeoTiff.readMultiband(f"tmp/Sentinel2FileLayerProvider_multiband_${parameters.hashCode()}.tif")
 
-    val refFile = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/Sentinel2FileLayerProvider_multiband_reference.tif")
+    val refFile = Thread.currentThread().getContextClassLoader.getResource(refPath)
     val refTiff = GeoTiff.readMultiband(refFile.getPath)
 
 
