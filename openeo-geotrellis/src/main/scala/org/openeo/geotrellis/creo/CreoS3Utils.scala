@@ -2,7 +2,6 @@ package org.openeo.geotrellis.creo
 
 import geotrellis.store.s3.AmazonS3URI
 import org.apache.commons.io.FileUtils
-import org.apache.spark.SparkContext
 import org.openeo.geotrelliss3.S3Utils
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
@@ -273,8 +272,9 @@ object CreoS3Utils {
   }
 
   def uploadToS3TryFirstWithStreaming(localPath: Path, s3Path: String): String = {
-    val context = SparkContext.getOrCreate
-    if (Seq("spark-jobs-staging", "spark-jobs-dev").contains(context.getConf.get("spark.kubernetes.namespace", "nothing"))) {
+    // Streaming to s3 still has issues. This function often runs on executors, su SparkContext is not accessible.
+    val try_streaming = sys.env.getOrElse("TRY_SWIFT_STREAMING", "false").toBoolean
+    if (try_streaming) {
       // TODO: Streaming to s3 could cause error, so disable on prod for the moment
       // py4j.protocol.Py4JJavaError: An error occurred while calling z:org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters.
       //: java.util.concurrent.CompletionException: software.amazon.awssdk.services.s3.model.S3Exception: null (Service: S3, Status Code: 400, Request ID: tx0000000000000613fcf8d-00655f6998-84eddc61-default)
