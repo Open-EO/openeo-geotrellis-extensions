@@ -4,7 +4,6 @@ import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.gdal.{GDALIOException, GDALRasterSource}
-import geotrellis.raster.geotiff.GeoTiffRasterSource
 import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.resample.{Bilinear, CubicConvolution, ResampleMethod}
 import geotrellis.raster.summary.polygonal.Summary
@@ -19,27 +18,27 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
-import org.junit.jupiter.api.{AfterAll, BeforeAll, Disabled, Test, Timeout}
+import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api._
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.file.PyramidFactory
-import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.geotiff._
+import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
-import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
+import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{ConfigurableSpaceTimePartitioner, DataCubeParameters, DatacubeSupport, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection, Link}
 import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.openeo.sparklisteners.GetInfoSparkListener
-import org.slf4j.LoggerFactory
 import ucar.nc2.NetcdfFile
 import ucar.nc2.util.CompareNetcdf2
 
 import java.net.{URI, URL}
-import java.nio.file.{Files, Paths}
+import java.nio.file.{Files, Path, Paths}
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util
@@ -47,7 +46,6 @@ import java.util.Formatter
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.io.Source
-import scala.reflect.io.Directory
 
 object FileLayerProviderTest {
   private var _sc: Option[SparkContext] = None
@@ -1079,7 +1077,7 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @Test
-  def testPixelValueOffsetNeededCorner(): Unit = {
+  def testPixelValueOffsetNeededCorner(@TempDir outDir: Path): Unit = {
     // This selection will go over a corner that has nodata pixels
     val layer = testPixelValueOffsetNeeded(
       "/org/openeo/geotrellis/testPixelValueOffsetNeededCorner.json",
@@ -1087,14 +1085,14 @@ class FileLayerProviderTest extends RasterMatchers{
       LocalDate.of(2023, 4, 5),
     )
     val cubeSpatial = layer.toSpatial()
-    cubeSpatial.writeGeoTiff("tmp/testPixelValueOffsetNeededCorner.tiff")
+    cubeSpatial.writeGeoTiff(f"$outDir/testPixelValueOffsetNeededCorner.tiff")
     val arr = cubeSpatial.collect().array
     assertTrue(isNoData(arr(1)._2.toArrayTile().band(0).get(162, 250)))
     assertEquals(172, arr(0)._2.toArrayTile().band(0).get(5, 5), 1)
   }
 
   @Test
-  def testPixelValueOffsetNeededDark(): Unit = {
+  def testPixelValueOffsetNeededDark(@TempDir outDir: Path): Unit = {
     // This will cover an area where pixels go under 0
     val layer = testPixelValueOffsetNeeded(
       "/org/openeo/geotrellis/testPixelValueOffsetNeededDark.json",
@@ -1102,7 +1100,7 @@ class FileLayerProviderTest extends RasterMatchers{
       LocalDate.of(2023, 1, 17),
     )
     val cubeSpatial = layer.toSpatial()
-    cubeSpatial.writeGeoTiff("tmp/testPixelValueOffsetNeededDark.tiff")
+    cubeSpatial.writeGeoTiff(f"$outDir/testPixelValueOffsetNeededDark.tiff")
     val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
 
     assertEquals(888, band.get(0, 0), 1)
@@ -1122,11 +1120,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
 
   @Test
-  def testMissingS2(): Unit = {
-    val outDir = Paths.get("tmp/FileLayerProviderTest/")
-    new Directory(outDir.toFile).deleteRecursively()
-    Files.createDirectories(outDir)
-
+  def testMissingS2(@TempDir outDir: Path): Unit = {
     val from = ZonedDateTime.parse("2024-03-24T00:00:00Z")
 
     val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
@@ -1276,8 +1270,7 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @Test
-  def testSamplingLoadPerProduct():Unit = {
-
+  def testSamplingLoadPerProduct(@TempDir outDir: Path):Unit = {
     val srs32631 = "EPSG:32631"
     val projected_polygons_native_crs = ProjectedPolygons.fromExtent(Extent(703109 - 100, 5600100, 709000, 5610000 - 100), srs32631)
     val dataCubeParameters = new DataCubeParameters()
@@ -1289,16 +1282,16 @@ class FileLayerProviderTest extends RasterMatchers{
     val cube = LayerFixtures.sentinel2Cube(LocalDate.of(2023, 4, 5), projected_polygons_native_crs, "/org/openeo/geotrellis/testPixelValueOffsetNeededCorner.json",dataCubeParameters)
     val opts = new GTiffOptions
     opts.setFilenamePrefix("load_per_product")
-    saveRDDTemporal(cube,"./", formatOptions = opts)
+    saveRDDTemporal(cube,outDir.toString, formatOptions = opts)
 
 
     dataCubeParameters.loadPerProduct = false
     val cube_ref = LayerFixtures.sentinel2Cube(LocalDate.of(2023, 4, 5), projected_polygons_native_crs, "/org/openeo/geotrellis/testPixelValueOffsetNeededCorner.json",dataCubeParameters)
     opts.setFilenamePrefix("load_regular")
-    saveRDDTemporal(cube_ref,"./", formatOptions = opts)
+    saveRDDTemporal(cube_ref, outDir.toString, formatOptions = opts)
 
-    val reference = GeoTiff.readMultiband("./load_regular_2023-04-05Z.tif").raster
-    val actual = GeoTiff.readMultiband("./load_per_product_2023-04-05Z.tif").raster
+    val reference = GeoTiff.readMultiband(f"$outDir/load_regular_2023-04-05Z.tif").raster
+    val actual = GeoTiff.readMultiband(f"$outDir/load_per_product_2023-04-05Z.tif").raster
 
     assertRastersEqual(actual,reference)
 
@@ -1328,7 +1321,7 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @Test
-  def testMultibandCOGViaSTAC(): Unit = {
+  def testMultibandCOGViaSTAC(@TempDir outDir: Path): Unit = {
     val factory = LayerFixtures.STACCOGCollection()
 
     val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
@@ -1341,7 +1334,7 @@ class FileLayerProviderTest extends RasterMatchers{
     bands.add("temperature-mean")
     bands.add("precipitation-flux")
 
-    val outLocation = "tmp/testMultibandCOGViaSTAC.nc"
+    val outLocation = f"$outDir/testMultibandCOGViaSTAC.nc"
     val referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/testMultibandCOGViaSTAC.nc"
 
     writeToNetCDFAndCompare(projected_polygons_native_crs, dataCubeParameters, bands, factory, outLocation, referenceFile)
@@ -1350,7 +1343,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
 
   @Test
-  def testMultibandCOGViaSTACResample(): Unit = {
+  def testMultibandCOGViaSTACResample(@TempDir outDir: Path): Unit = {
     val factory = LayerFixtures.STACCOGCollection(resolution = CellSize(10.0,10.0))
 
     val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
@@ -1365,11 +1358,13 @@ class FileLayerProviderTest extends RasterMatchers{
     bands.add("temperature-mean")
     bands.add("precipitation-flux")
 
-    writeToNetCDFAndCompare(projected_polygons_native_crs, dataCubeParameters, bands, factory, "tmp/testMultibandCOGViaSTACResampledCubic.nc", "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/testMultibandCOGViaSTACResampledCubic.nc")
+    val referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/testMultibandCOGViaSTACResampledCubic.nc"
+    writeToNetCDFAndCompare(projected_polygons_native_crs, dataCubeParameters, bands, factory,
+      f"$outDir/testMultibandCOGViaSTACResampledCubic.nc", referenceFile)
   }
 
   @Test
-  def testMultibandCOGViaSTACResampleReadOneBand(): Unit = {
+  def testMultibandCOGViaSTACResampleReadOneBand(@TempDir outDir: Path): Unit = {
     val factory = LayerFixtures.STACCOGCollection(resolution = CellSize(10.0,10.0),util.Arrays.asList("precipitation-flux"))
 
     val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
@@ -1381,7 +1376,9 @@ class FileLayerProviderTest extends RasterMatchers{
     val bands: util.ArrayList[String] = new util.ArrayList[String]()
     bands.add("precipitation-flux")
 
-    writeToNetCDFAndCompare(projected_polygons_native_crs, dataCubeParameters, bands, factory, "tmp/testSinglebandCOGViaSTACResampled.nc", "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/testSinglebandCOGViaSTACResampled.nc")
+    val referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/testSinglebandCOGViaSTACResampled.nc"
+    writeToNetCDFAndCompare(projected_polygons_native_crs, dataCubeParameters, bands, factory,
+      f"$outDir/testSinglebandCOGViaSTACResampled.nc", referenceFile)
   }
 
   private def datacubeParams(polygonsAOI: ProjectedPolygons, resampleMethod: ResampleMethod) = {
