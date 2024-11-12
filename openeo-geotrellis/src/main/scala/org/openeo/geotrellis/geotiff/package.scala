@@ -120,7 +120,7 @@ package object geotiff {
     executorAttemptDirectory
   }
 
-  private def moveFromExecutorAttemptDirectory(parentDirectory: Path, absoluteFilePath: String, fileExists: Boolean): Path = {
+  private def moveFromExecutorAttemptDirectory(parentDirectory: Path, absoluteFilePath: String, fileExists: Boolean): String = {
     // Move output file to standard location. (On S3, a move is more a copy and delete):
     val relativeFilePath = parentDirectory.relativize(Path.of(absoluteFilePath)).toString
     if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception()
@@ -133,7 +133,11 @@ package object geotiff {
       }
       CreoS3Utils.moveOverwriteWithRetries(absoluteFilePath, destinationPath.toString)
     }
-    destinationPath
+    if (CreoS3Utils.isS3(destinationPath.toString)) {
+      destinationPath.toString.replaceFirst("s3:/(?!/)", "s3://")
+    } else {
+      destinationPath.toString
+    }
   }
 
   private def cleanUpExecutorAttemptDirectory(parentDirectory: String): Unit = {
