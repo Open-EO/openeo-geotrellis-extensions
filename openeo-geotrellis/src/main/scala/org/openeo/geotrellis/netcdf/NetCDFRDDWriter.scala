@@ -269,7 +269,7 @@ object NetCDFRDDWriter {
     logger.info(s"Writing NetCDF from rdd with : ${count} elements and ${rdd.getNumPartitions} partitions.")
 
     val elementsPartitionRatio =
-      if(rdd.getNumPartitions>0) {
+      if(rdd.getNumPartitions == 0) {
         1000 // just a large number
       } else{
         count / rdd.getNumPartitions
