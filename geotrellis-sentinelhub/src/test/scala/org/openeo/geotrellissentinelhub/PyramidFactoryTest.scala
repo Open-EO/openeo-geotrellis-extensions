@@ -357,12 +357,18 @@ class PyramidFactoryTest {
 
     try {
       val boundingBox = ProjectedExtent(Extent(xmin = 2.59003, ymin = 51.069, xmax = 2.8949, ymax = 51.2206), LatLng)
+      val center = boundingBox.extent.center
+      val utmCrs = UTM.getZoneCrs(lon = center.getX, lat = center.getY)
 
-      val utmBoundingBox = {
-        val center = boundingBox.extent.center
-        val utmCrs = UTM.getZoneCrs(lon = center.getX, lat = center.getY)
-        ProjectedExtent(boundingBox.reproject(utmCrs), utmCrs)
-      }
+      val reprojected = boundingBox.reproject(utmCrs)
+      val x = 10
+      val y = 10
+      // Round to Sentinel2 grid, just like the reference image is.
+      val roundedExtent = Extent(
+        x * Math.floor(reprojected.xmin / x), y * Math.floor(reprojected.ymin / y),
+        x * Math.ceil(reprojected.xmax / x), y * Math.ceil(reprojected.ymax / y),
+      )
+      val utmBoundingBox = ProjectedExtent(roundedExtent, utmCrs)
 
       val endpoint = "https://services.sentinel-hub.com"
       val pyramidFactory = new PyramidFactory("sentinel-2-l2a", "S2L2A", new DefaultCatalogApi(endpoint),
