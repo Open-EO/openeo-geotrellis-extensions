@@ -27,6 +27,19 @@ class DataCubeSupportSpec {
 
   }
 
+  @Test def testUtmPixelAlignment(): Unit = {
+    val box = ProjectedExtent(Extent(660280.2335363723, 4830543.527054116, 660807.1934326619, 4830999.507525481),CRS.fromEpsgCode(32630))
+    val globalBounds = ProjectedExtent(Extent(-1.0135500738874659, 43.61065306598471, -1.007392304507547, 43.61453493423263),LatLng)
+    print(box.reproject(LatLng))
+    val start = LocalDate.parse("2020-04-02").atStartOfDay(ZoneId.systemDefault())
+    val end = LocalDate.parse("2020-04-20").atStartOfDay(ZoneId.systemDefault())
+    val meta = DatacubeSupport.layerMetadata(box,start,end,10,FloatConstantNoDataCellType,FloatingLayoutScheme(256), CellSize(10, 10),Some(globalBounds))
+    print(meta)
+    val min = meta.bounds.get.minKey
+    assert(min.col >= 0)
+    assert(min.row >= 0)
+  }
+
   @Test def testLayerMetadataBending(): Unit = {
 
     val box = ProjectedExtent(Extent(474275.94784671185, 5652716.683271102, 551324.9238115384, 5671345.942297149),CRS.fromEpsgCode(32631))

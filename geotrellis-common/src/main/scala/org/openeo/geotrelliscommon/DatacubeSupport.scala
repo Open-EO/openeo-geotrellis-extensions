@@ -55,7 +55,7 @@ object DatacubeSupport {
               logger.warn(f"Trying to construct a datacube with a bounds ${boundingBox.extent} that is not entirely inside the global bounds: ${reprojected}. ")
               reprojected = reprojected.expandToInclude(boundingBox.extent)
             }
-            if (p.getName == "utm") {
+            if (p != globalBounds.get.crs.proj4jCrs.getProjection) {
               //this forces utm projection to always round to 10m, which is fine for sentinel-2, but perhaps not generally desired?
               val x = maxSpatialResolution.width
               val y = maxSpatialResolution.height
