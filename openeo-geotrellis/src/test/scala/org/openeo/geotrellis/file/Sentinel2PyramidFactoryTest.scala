@@ -18,11 +18,13 @@ import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.TestImplicits._
+import org.openeo.geotrellis.geotiff.saveRDD
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.backends.GeotiffNoDateSearchClient
 
 import java.net.URL
+import java.nio.file.{Files, Path}
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.format.DateTimeFormatter
@@ -137,6 +139,33 @@ class Sentinel2PyramidFactoryTest {
         val dcp = new DataCubeParameters()
         dcp.globalExtent = Some(ProjectedExtent(Extent(-1.6147222333333389, 48.636527788888884, -0.13166667777778684, 49.638750011111114), LatLng))
         factory.datacube_seq(polygons, from_date, to_date, Collections.emptyMap(), "", dcp)
+    }
+
+    @Test
+    def testPixelShift(): Unit = {
+        val p = Path.of(f"tmp/testPixelShift/")
+        Files.createDirectories(p)
+        val bandNames = Collections.singletonList("SCF")
+        val tiffUrl = getClass.getResource("/org/openeo/geotrellis/pixel_shift/SCF_2023012.tif") // compressed version
+        val client = new GeotiffNoDateSearchClient(tiffUrl.getPath, bandNames)
+        val factory = new PyramidFactory(client, "", bandNames, null, CellSize(500, 500))
+
+        val fromDate = ZonedDateTime.of(LocalDate.of(1970, 1, 1), MIDNIGHT, UTC)
+        val toDate = ZonedDateTime.of(LocalDate.of(2070, 1, 1), MIDNIGHT, UTC)
+        val fromDateStr = DateTimeFormatter.ISO_OFFSET_DATE_TIME format fromDate
+        val toDateStr = DateTimeFormatter.ISO_OFFSET_DATE_TIME format toDate
+
+        val projectedExtent = ProjectedExtent(Extent(631800.0, 5167700.0, 655800.0, 5184200.0), CRS.fromName("EPSG:32632"))
+        val polygons = ProjectedPolygons.fromExtent(projectedExtent.extent, projectedExtent.crs.toString())
+        val dcp = new DataCubeParameters()
+        dcp.globalExtent = Some(projectedExtent) // The offset in the extent will help align the output pixels with the source tiffs
+        val baseLayer = factory.datacube_seq(polygons, fromDateStr, toDateStr, Collections.emptyMap(), "", dcp).maxBy { case (zoom, _) => zoom }._2
+        val baseLayerSpatial = baseLayer.toSpatial()
+        val actualTiffs = baseLayerSpatial.toGeoTiffs(Tags.empty, GeoTiffOptions(DeflateCompression)).collect().toList.map(t => t._2)
+
+        // Values where a multiple of 500 before. Now it should take into account the global extent offset:
+        assertEquals(Extent(631800.0, 5056200.0, 759800.0, 5184200.0), actualTiffs.head.extent)
+        saveRDD(baseLayerSpatial, 1, "tmp/testPixelShift/testPixelShift.tiff")
     }
 
     @Test
