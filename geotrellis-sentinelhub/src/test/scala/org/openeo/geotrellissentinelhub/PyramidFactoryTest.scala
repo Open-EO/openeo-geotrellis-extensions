@@ -363,7 +363,7 @@ class PyramidFactoryTest {
       val reprojected = boundingBox.reproject(utmCrs)
       val x = 10
       val y = 10
-      // Round to Sentinel2 grid, just like the reference image is.
+      // Round to Sentinel2 grid, just like the reference tiff image is.
       val roundedExtent = Extent(
         x * Math.floor(reprojected.xmin / x), y * Math.floor(reprojected.ymin / y),
         x * Math.ceil(reprojected.xmax / x), y * Math.ceil(reprojected.ymax / y),
