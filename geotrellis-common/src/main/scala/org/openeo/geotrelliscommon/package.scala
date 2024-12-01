@@ -2,6 +2,7 @@ package org.openeo
 
 import geotrellis.layer.{SpaceTimeKey, SpatialKey}
 import geotrellis.spark.partition.PartitionerIndex
+import geotrellis.store.index.KeyIndex
 import org.apache.spark.Partitioner
 import org.locationtech.sfcurve.zorder.{Z2, ZRange}
 import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
@@ -156,9 +157,8 @@ package object geotrelliscommon {
       Z2.zranges(ZRange(toZ(keyRange._1), toZ(keyRange._2))).map(t=> (BigInt.long2bigInt(t.lower),BigInt.long2bigInt(t.upper)))
   }
 
-  class ConfigurableSpaceTimePartitioner ( val indexReduction:Int = SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION )  extends PartitionerIndex[SpaceTimeKey] {
+  class ConfigurableSpaceTimePartitioner ( val indexReduction:Int = SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION, val keyIndex: KeyIndex[SpaceTimeKey] = SfCurveZSpaceTimeKeyIndex.byDay(null) )  extends PartitionerIndex[SpaceTimeKey] {
 
-    val keyIndex = SfCurveZSpaceTimeKeyIndex.byDay(null)
 
     def toIndex(key: SpaceTimeKey): BigInt = keyIndex.toIndex(key) >> indexReduction
 
