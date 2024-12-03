@@ -30,12 +30,11 @@ class BatchJobProgressListener extends SparkListener {
         val taskMetrics = stageCompleted.stageInfo.taskMetrics
 
         if(stageCompleted.stageInfo.failureReason.isDefined){
-            val message =
-              f"""
-                |"A part of the process graph failed, and will be retried, the reason was: ${stageCompleted.stageInfo.failureReason.get}
-                |"Your job may still complete if the failure was caused by a transient error, but will take more time. A common cause of transient errors is too little executor memory (overhead). Too low executor-memory can be seen by a high 'garbage collection' time, which was: ${Duration.ofMillis(taskMetrics.jvmGCTime).toSeconds/1000.0} seconds."
-                |""".stripMargin
-            logger.warn(message);
+          val message =
+            f"""A part of the process graph failed, and will be retried, the reason was: "${stageCompleted.stageInfo.failureReason.get}"
+               |Your job may still complete if the failure was caused by a transient error, but will take more time. A common cause of transient errors is too little executor memory (overhead). Too low executor-memory can be seen by a high 'garbage collection' time, which was: ${Duration.ofMillis(taskMetrics.jvmGCTime).toSeconds / 1000.0} seconds.
+               |""".stripMargin
+          logger.warn(message)
 
         }else{
           val duration = Duration.ofMillis(taskMetrics.executorRunTime)
