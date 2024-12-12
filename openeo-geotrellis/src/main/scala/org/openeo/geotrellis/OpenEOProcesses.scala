@@ -734,7 +734,7 @@ class OpenEOProcesses extends Serializable {
         val index: PartitionerIndex[K] = getManyBandsIndexGeneric[K]()
         SpacePartitioner[K](kb)(implicitly,implicitly,index)
       } else {
-        val nrBands = leftCount.getOrElse(1) + rightCount.getOrElse(1)
+        val nrBands = leftCount.getOrElse(10) + rightCount.getOrElse(10)
         val outputCellType = maybeCellType(leftCube).getOrElse(DoubleCellType).union(maybeCellType(rightCube).getOrElse(DoubleCellType))
         val tileSize = maybeTileSize(leftCube).getOrElse(128 * 128)
         val newIndex = getPartitionerIndexForMaxPartitionSize[K](nrBands, tileSize, outputCellType.bits)
