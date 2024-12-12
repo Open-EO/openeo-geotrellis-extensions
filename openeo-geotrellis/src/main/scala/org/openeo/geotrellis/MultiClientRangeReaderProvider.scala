@@ -39,8 +39,9 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
             }
           }
           s3Client(Region.of("RegionOne"), uri)
-        }
-        else s3Client(Region.of("RegionOne"), swiftEndpoint)
+        } else if (s3Uri.getBucket.toLowerCase().startsWith("lcfm")) {
+          s3Client(Region.of("waw3-1"), URI.create("https://s3.waw3-1.cloudferro.com"))
+        } else s3Client(Region.of("RegionOne"), swiftEndpoint)
       else s3Client(bucketRegion(s3Uri.getBucket))
 
     rangeReader(uri, theClient)
