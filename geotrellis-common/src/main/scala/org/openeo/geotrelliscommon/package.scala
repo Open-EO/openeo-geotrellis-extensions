@@ -4,6 +4,7 @@ import geotrellis.layer.{SpaceTimeKey, SpatialKey}
 import geotrellis.spark.partition.PartitionerIndex
 import geotrellis.store.index.KeyIndex
 import org.apache.spark.Partitioner
+import org.locationtech.sfcurve.IndexRange
 import org.locationtech.sfcurve.zorder.{Z2, ZRange}
 import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 
@@ -157,20 +158,21 @@ package object geotrelliscommon {
       Z2.zranges(ZRange(toZ(keyRange._1), toZ(keyRange._2))).map(t=> (BigInt.long2bigInt(t.lower),BigInt.long2bigInt(t.upper)))
   }
 
-  class ConfigurableSpaceTimePartitioner ( val indexReduction:Int = SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION, val keyIndex: KeyIndex[SpaceTimeKey] = SfCurveZSpaceTimeKeyIndex.byDay(null) )  extends PartitionerIndex[SpaceTimeKey] {
-
-
-    def toIndex(key: SpaceTimeKey): BigInt = keyIndex.toIndex(key) >> indexReduction
-
-    def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
-      val originalRanges = keyIndex.indexRanges(keyRange)
-
-      val mappedRanges = originalRanges.map(range => (range._1 >> indexReduction, (range._2 >> indexReduction)))
+  object ConfigurableSpatialPartitionerReduceZ {
+    /**
+     * Maps a sequence of index ranges by applying a reduction to their values, and filters out redundant ranges.
+     *
+     * @param originalRanges A sequence of tuples where each tuple represents a range with a start and an end value.
+     * @param indexReduction The number of bits to reduce from each index value in the ranges.
+     * @return A sequence of distinct and filtered ranges after applying the index reduction.
+     */
+    def mapIndexRangeWithReduction(originalRanges: Seq[(BigInt, BigInt)], indexReduction: Int): Seq[(BigInt, BigInt)] = {
+      val mappedRanges: Seq[(BigInt, BigInt)] = originalRanges.map(range => (range._1 >> indexReduction, (range._2 >> indexReduction)))
 
       val distinct = mappedRanges.distinct
       var previousEnd: BigInt = null
 
-      //filter out regions that only span 1 value, and are already included in another region, so basically duplicates
+      // Filter out regions that only span 1 value, and are already included in another region, so basically duplicates
       var lookAheadIndex = 0
       val filtered = distinct.filter(range => {
         lookAheadIndex += 1
@@ -189,7 +191,32 @@ package object geotrelliscommon {
       })
       return filtered
     }
+  }
 
+  class ConfigurableSpatialPartitionerReduceZ(val indexReduction:Int = 2) extends PartitionerIndex[SpatialKey] {
+    // Identical to ConfigurableSpatialPartitioner but indexReduction is applied on toZ()'s output.
+    // This allows you to specify the maximum amount of records in powers of two rather than powers of four.
+    private def toZ(key: SpatialKey): Z2 = Z2(key.col, key.row)
+
+    def toIndex(key: SpatialKey): BigInt = toZ(key).z >> indexReduction
+
+    def indexRanges(keyRange: (SpatialKey, SpatialKey)): Seq[(BigInt, BigInt)] = {
+      val originalZRanges: Seq[IndexRange] = Z2.zranges(ZRange(toZ(keyRange._1), toZ(keyRange._2)))
+      val originalRanges: Seq[(BigInt, BigInt)] = originalZRanges.map(t => (BigInt.long2bigInt(t.lower), BigInt.long2bigInt(t.upper)))
+      return ConfigurableSpatialPartitionerReduceZ.mapIndexRangeWithReduction(originalRanges, indexReduction)
+    }
+  }
+
+  class ConfigurableSpaceTimePartitioner ( val indexReduction:Int = SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION, val keyIndex: KeyIndex[SpaceTimeKey] = SfCurveZSpaceTimeKeyIndex.byDay(null) )  extends PartitionerIndex[SpaceTimeKey] {
+
+    // No matter if keyIndex is by day or by month, the indexReduction decides the maximum records per partition.
+    // A higher temporal resolution means a lower spatial resolution and vice versa.
+    def toIndex(key: SpaceTimeKey): BigInt = keyIndex.toIndex(key) >> indexReduction
+
+    def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
+      val originalRanges = keyIndex.indexRanges(keyRange)
+      return ConfigurableSpatialPartitionerReduceZ.mapIndexRangeWithReduction(originalRanges, indexReduction)
+    }
   }
 
   implicit object SpaceTimeByMonthPartitioner extends PartitionerIndex[SpaceTimeKey] {

@@ -27,7 +27,7 @@ import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MinIgnoreNoData, OpenEOProcess, safeConvert}
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner}
 import org.slf4j.LoggerFactory
 
 import java.io.File
@@ -92,8 +92,28 @@ object OpenEOProcesses{
     }
     applyToTimeseries
   }
-}
 
+  /**
+   * Determines the appropriate partitioner index for the maximum partition size based on the input parameters.
+   *
+   * @param nrBands              The number of bands in the tile.
+   * @param tileSize             The size of the tile in number of pixels (cols*rows).
+   * @param cellTypeBits         The number of bits used for the cell type (e.g., 8 for Byte, 16 for Short, etc.).
+   * @param maxPartitionSizeInMb The maximum size of each partition in megabytes. Default is 500.0 MB.
+   * @return A partitioner index of type `PartitionerIndex[K]` tailored to ensure the partitions adhere to the specified maximum size.
+   */
+  def getPartitionerIndexForMaxPartitionSize[K](nrBands: Int, tileSize: Int, cellTypeBits: Int, maxPartitionSizeInMb: Double = 500.0)(implicit t:ClassTag[K]): PartitionerIndex[K] = {
+    // Estimate the maximum amount of records required to hit maxPartitionSizeInMb,
+    // then calculate the max indexReduction that remains under this amount of records.
+    val tileSizeInMb: Double = (nrBands * tileSize * cellTypeBits).toDouble / (8 * 1024 * 1024)
+    val maxRecordsPerPartition: Double = math.min(maxPartitionSizeInMb / tileSizeInMb, 1024)
+    val indexReduction = math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt
+    t match {
+      case spaceTag if spaceTag == ClassTag(classOf[SpatialKey]) => new ConfigurableSpatialPartitionerReduceZ(indexReduction).asInstanceOf[PartitionerIndex[K]]
+      case _ => new ConfigurableSpaceTimePartitioner(indexReduction).asInstanceOf[PartitionerIndex[K]]
+    }
+  }
+}
 
 class OpenEOProcesses extends Serializable {
 
@@ -708,14 +728,18 @@ class OpenEOProcesses extends Serializable {
         SpacePartitioner[K](kb)
       }
     } else {
+      // At least one partitioner is undefined.
       logger.info(s"Merging cubes with partitioners: ${leftCube.partitioner} - ${rightCube.partitioner} - many band case detected: $manyBands")
       if(manyBands) {
         val index: PartitionerIndex[K] = getManyBandsIndexGeneric[K]()
         SpacePartitioner[K](kb)(implicitly,implicitly,index)
-      }else{
-        SpacePartitioner[K](kb)
+      } else {
+        val nrBands = leftCount.getOrElse(10) + rightCount.getOrElse(10)
+        val outputCellType = maybeCellType(leftCube).getOrElse(DoubleCellType).union(maybeCellType(rightCube).getOrElse(DoubleCellType))
+        val tileSize = maybeTileSize(leftCube).getOrElse(128 * 128)
+        val newIndex = getPartitionerIndexForMaxPartitionSize[K](nrBands, tileSize, outputCellType.bits)
+        SpacePartitioner[K](kb)(implicitly, implicitly, newIndex)
       }
-
     }
 
     val joinRdd =
@@ -742,7 +766,6 @@ class OpenEOProcesses extends Serializable {
     index
   }
 
-
   def maybeBandCount[K](cube: RDD[(K, MultibandTile)]): Option[Int] = {
     if (cube.isInstanceOf[OpenEORasterCube[K]] && cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount > 0) {
       val count = cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount
@@ -760,6 +783,20 @@ class OpenEOProcesses extends Serializable {
     }else{
       return None
     }
+  }
+
+  def maybeCellType[K](cube: RDD[(K, MultibandTile)]): Option[CellType] = {
+    if (cube.isInstanceOf[MultibandTileLayerRDD[K]]) {
+      return Some(cube.asInstanceOf[MultibandTileLayerRDD[K]].metadata.cellType)
+    }
+    return None
+  }
+
+  def maybeTileSize[K](cube: RDD[(K, MultibandTile)]): Option[Int] = {
+    if (cube.isInstanceOf[MultibandTileLayerRDD[K]]) {
+      return Some(cube.asInstanceOf[MultibandTileLayerRDD[K]].metadata.tileLayout.tileSize)
+    }
+    return None
   }
 
   /**
