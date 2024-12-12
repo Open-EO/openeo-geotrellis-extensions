@@ -93,6 +93,15 @@ object OpenEOProcesses{
     applyToTimeseries
   }
 
+  /**
+   * Determines the appropriate partitioner index for the maximum partition size based on the input parameters.
+   *
+   * @param nrBands              The number of bands in the tile.
+   * @param tileSize             The size of the tile in number of pixels (cols*rows).
+   * @param cellTypeBits         The number of bits used for the cell type (e.g., 8 for Byte, 16 for Short, etc.).
+   * @param maxPartitionSizeInMb The maximum size of each partition in megabytes. Default is 500.0 MB.
+   * @return A partitioner index of type `PartitionerIndex[K]` tailored to ensure the partitions adhere to the specified maximum size.
+   */
   def getPartitionerIndexForMaxPartitionSize[K](nrBands: Int, tileSize: Int, cellTypeBits: Int, maxPartitionSizeInMb: Double = 500.0)(implicit t:ClassTag[K]): PartitionerIndex[K] = {
     // Estimate the maximum amount of records required to hit maxPartitionSizeInMb,
     // then calculate the max indexReduction that remains under this amount of records.
