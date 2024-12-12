@@ -723,7 +723,7 @@ class OpenEOProcesses extends Serializable {
       logger.info(s"Merging cubes with partitioners: ${leftCube.partitioner} - ${rightCube.partitioner} - many band case detected: $manyBands")
       val nrBands = leftCount.getOrElse(1) + rightCount.getOrElse(1)
       val outputCellType = maybeCellType(leftCube).getOrElse(DoubleCellType).union(maybeCellType(rightCube).getOrElse(DoubleCellType))
-      val tileSize = maybeTileSize(leftCube).getOrElse(128)
+      val tileSize = maybeTileSize(leftCube).getOrElse(128*128)
       val newIndex = getPartitionerIndexForMaxPartitionSize[K](nrBands, tileSize, outputCellType.bits)
       SpacePartitioner[K](kb)(implicitly, implicitly, newIndex)
     }
