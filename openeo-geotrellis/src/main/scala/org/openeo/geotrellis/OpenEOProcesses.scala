@@ -730,11 +730,16 @@ class OpenEOProcesses extends Serializable {
     } else {
       // At least one partitioner is undefined.
       logger.info(s"Merging cubes with partitioners: ${leftCube.partitioner} - ${rightCube.partitioner} - many band case detected: $manyBands")
-      val nrBands = leftCount.getOrElse(1) + rightCount.getOrElse(1)
-      val outputCellType = maybeCellType(leftCube).getOrElse(DoubleCellType).union(maybeCellType(rightCube).getOrElse(DoubleCellType))
-      val tileSize = maybeTileSize(leftCube).getOrElse(128*128)
-      val newIndex = getPartitionerIndexForMaxPartitionSize[K](nrBands, tileSize, outputCellType.bits)
-      SpacePartitioner[K](kb)(implicitly, implicitly, newIndex)
+      if(manyBands) {
+        val index: PartitionerIndex[K] = getManyBandsIndexGeneric[K]()
+        SpacePartitioner[K](kb)(implicitly,implicitly,index)
+      } else {
+        val nrBands = leftCount.getOrElse(1) + rightCount.getOrElse(1)
+        val outputCellType = maybeCellType(leftCube).getOrElse(DoubleCellType).union(maybeCellType(rightCube).getOrElse(DoubleCellType))
+        val tileSize = maybeTileSize(leftCube).getOrElse(128 * 128)
+        val newIndex = getPartitionerIndexForMaxPartitionSize[K](nrBands, tileSize, outputCellType.bits)
+        SpacePartitioner[K](kb)(implicitly, implicitly, newIndex)
+      }
     }
 
     val joinRdd =
@@ -749,6 +754,16 @@ class OpenEOProcesses extends Serializable {
         }.asInstanceOf[RDD[(K, (Option[MultibandTile], Option[MultibandTile]))]]
 
     ContextRDD(joinRdd, part.bounds)
+  }
+
+  def getManyBandsIndexGeneric[K]()(implicit t:ClassTag[K]):PartitionerIndex[K] = {
+    import reflect.ClassTag
+    val spacetimeKeyTag = classOf[SpaceTimeKey]
+    val index: PartitionerIndex[K] = t match {
+      case strtag if strtag == ClassTag(spacetimeKeyTag) => SpaceTimeByMonthPartitioner.asInstanceOf[PartitionerIndex[K]]
+      case _ => ByTileSpatialPartitioner.asInstanceOf[PartitionerIndex[K]]
+    }
+    index
   }
 
   def maybeBandCount[K](cube: RDD[(K, MultibandTile)]): Option[Int] = {
