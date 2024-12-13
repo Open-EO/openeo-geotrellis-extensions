@@ -926,8 +926,10 @@ package object geotiff {
     val tempFile = getTempFile(null, ".tif")
     geoTiff.write(tempFile.toString, optimizedOrder = true)
     val fileExists = Files.exists(tempFile)
+    var gdalInfoPathName:Option[Path] = None
     if (fileExists) {
       gtiffOptions.foreach(options => embedGdalMetadata(tempFile, options.tagsAsGdalMetadataXml))
+      gdalInfoPathName = createGdalInfo(tempFile)
     } else {
       logger.warn("writeGeoTiff() File was not created: " + path)
     }
@@ -938,13 +940,55 @@ package object geotiff {
       if (fileExists) {
         CreoS3Utils.uploadToS3TryFirstWithStreaming(tempFile, path)
       }
+      gdalInfoPathName match {
+        case Some(gdalInfoPath) =>
+          CreoS3Utils.uploadToS3TryFirstWithStreaming(gdalInfoPath, makeGdalInfoPathName(Path.of(path)).toString)
+        case None =>
+      }
       (correctS3Path, fileExists)
     } else {
       // Retry should not be needed at this point, but it is almost free to keep it.
       if (fileExists) {
         CreoS3Utils.moveOverwriteWithRetries(tempFile.toString, path)
       }
+      gdalInfoPathName match {
+        case Some(gdalInfoPath) =>
+          CreoS3Utils.moveOverwriteWithRetries(gdalInfoPath.toString, makeGdalInfoPathName(Path.of(path)).toString)
+        case None =>
+      }
       (path, fileExists)
+    }
+  }
+
+  private def makeGdalInfoPathName(rasterFilePath: Path): Path = {
+    val filename = rasterFilePath.getFileName.toString
+    val file_split = filename.splitAt(filename.lastIndexOf('.'))
+    rasterFilePath.getParent.resolve(file_split._1 + "_gdalinfo" + file_split._2)
+  }
+
+  private def createGdalInfo(rasterFilePath: Path): Option[Path] = {
+    import scala.sys.process._
+    import java.nio.charset._
+
+    val outputBuffer = new StringBuilder
+    val cerrBuffer = new StringBuilder
+    val processLogger = ProcessLogger(line => outputBuffer appendAll line, line => cerrBuffer appendAll line)
+
+
+    val args = Seq("gdalinfo", rasterFilePath.toString, "-json", "-stats", "--config", "GDAL_IGNORE_ERRORS", "ALL")
+    val exitCode = args ! processLogger
+
+    if (cerrBuffer.nonEmpty) {
+      logger.info(s"gdalinfo warnings: ${cerrBuffer.toString()}")
+    }
+    if (exitCode == 0) {
+      val gdalInfoPath = makeGdalInfoPathName(rasterFilePath)
+      Files.write(gdalInfoPath, outputBuffer.toString().getBytes(StandardCharsets.US_ASCII))
+      Some(gdalInfoPath)
+    }
+    else {
+      logger.warn(s"${args mkString " "} failed; output was: $outputBuffer")
+      None
     }
   }
 
