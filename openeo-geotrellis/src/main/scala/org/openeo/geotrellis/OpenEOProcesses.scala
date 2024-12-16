@@ -725,6 +725,11 @@ class OpenEOProcesses extends Serializable {
       else if(leftPart.index == rightPart.index && leftPart.index.isInstanceOf[ConfigurableSpaceTimePartitioner] ) {
         leftPart
       }
+      else if(leftPart.index == rightPart.index && leftPart.index.isInstanceOf[ConfigurableSpatialPartitionerReduceZ] ) {
+        val indexReduction: Int = leftPart.index.asInstanceOf[ConfigurableSpatialPartitionerReduceZ].indexReduction
+        logger.info(s"Using ConfigurableSpatialPartitionerReduceZ with indexReduction: ${indexReduction}")
+        leftPart
+      }
       else if(leftPart.index == rightPart.index  && leftPart.index.isInstanceOf[SparseSpatialPartitioner] ) {
         val newIndices: Array[BigInt] = (leftPart.index.asInstanceOf[SparseSpatialPartitioner].indices ++ rightPart.index.asInstanceOf[SparseSpatialPartitioner].indices).distinct.sorted
         implicit val newIndex: PartitionerIndex[K] = new SparseSpatialPartitioner(newIndices,leftPart.index.asInstanceOf[SparseSpatialPartitioner].indexReduction).asInstanceOf[PartitionerIndex[K]]
