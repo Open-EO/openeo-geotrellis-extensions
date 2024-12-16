@@ -574,7 +574,8 @@ class WriteRDDToGeotiffTest {
     saveSamples(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
       DeflateCompression(BEST_COMPRESSION))
 
-    val Array(geoTiffPath) = Files.list(outDir).iterator().asScala.toArray // 1 date, 1 polygon
+    val paths = Files.list(outDir).iterator().asScala.toArray // 1 date, 1 polygon
+    val geoTiffPath = paths.find(_.toString.endsWith(".tif")).get
     val raster = GeoTiff.readMultiband(geoTiffPath.toString).raster.mapTile(_.band(0))
 
     val geometry = {

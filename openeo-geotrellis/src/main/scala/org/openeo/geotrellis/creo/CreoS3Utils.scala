@@ -2,6 +2,7 @@ package org.openeo.geotrellis.creo
 
 import geotrellis.store.s3.AmazonS3URI
 import org.apache.commons.io.FileUtils
+import org.apache.commons.io.filefilter.TrueFileFilter
 import org.openeo.geotrelliss3.S3Utils
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
@@ -111,6 +112,12 @@ object CreoS3Utils {
         val p = Path.of(path)
         if (Files.exists(p)) {
           if (Files.isDirectory(p)) {
+            val files_in_directory = FileUtils
+              .listFilesAndDirs(p.toFile, TrueFileFilter.INSTANCE, TrueFileFilter.INSTANCE)
+              .asScala
+              .filter(_.isFile)
+            // Ideally, the directory should be empty.
+            if (files_in_directory.nonEmpty) logger.warn(f"Deleting files_in_directory: $files_in_directory")
             FileUtils.deleteDirectory(p.toFile)
           } else {
             throw new IllegalArgumentException(f"Can only delete directory here: $path")
