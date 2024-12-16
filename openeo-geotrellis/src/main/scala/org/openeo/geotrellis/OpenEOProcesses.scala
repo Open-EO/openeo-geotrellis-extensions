@@ -109,8 +109,14 @@ object OpenEOProcesses{
     val maxRecordsPerPartition: Double = math.min(maxPartitionSizeInMb / tileSizeInMb, 1024)
     val indexReduction = math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt
     t match {
-      case spaceTag if spaceTag == ClassTag(classOf[SpatialKey]) => new ConfigurableSpatialPartitionerReduceZ(indexReduction).asInstanceOf[PartitionerIndex[K]]
-      case _ => new ConfigurableSpaceTimePartitioner(indexReduction).asInstanceOf[PartitionerIndex[K]]
+      case spaceTag if spaceTag == ClassTag(classOf[SpatialKey]) => {
+        logger.info(s"Creating ConfigurableSpatialPartitionerReduceZ($indexReduction) based on tile size: $tileSize, band count: $nrBands, cell type bits: $cellTypeBits, tileSizeInMb: $tileSizeInMb")
+        new ConfigurableSpatialPartitionerReduceZ(indexReduction).asInstanceOf[PartitionerIndex[K]]
+      }
+      case _ => {
+        logger.info(s"Creating ConfigurableSpaceTimePartitioner($indexReduction) based on tile size: $tileSize, band count: $nrBands, cell type bits: $cellTypeBits, tileSizeInMb: $tileSizeInMb")
+        new ConfigurableSpaceTimePartitioner(indexReduction).asInstanceOf[PartitionerIndex[K]]
+      }
     }
   }
 }
