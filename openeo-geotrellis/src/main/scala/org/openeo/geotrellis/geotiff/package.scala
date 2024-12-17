@@ -981,6 +981,11 @@ package object geotiff {
   val GDALINFO_SUFFIX = "_gdalinfo.json"
 
   private def createGdalInfo(rasterFilePath: Path): Option[Path] = {
+    // Allow to quickly disable gdalinfo on executor if something goes wrong
+    val gdalinfo_on_executor = sys.env.getOrElse("GDALINFO_ON_EXECUTOR", "true").toBoolean
+    if (!gdalinfo_on_executor) {
+      return None
+    }
     import scala.sys.process._
     import java.nio.charset._
 
