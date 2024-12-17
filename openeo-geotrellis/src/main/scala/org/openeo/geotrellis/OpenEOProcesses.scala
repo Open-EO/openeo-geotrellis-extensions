@@ -107,7 +107,7 @@ object OpenEOProcesses{
     // then calculate the max indexReduction that remains under this amount of records.
     val tileSizeInMb: Double = (nrBands * tileSize * cellTypeBits).toDouble / (8 * 1024 * 1024)
     val maxRecordsPerPartition: Double = math.min(maxPartitionSizeInMb / tileSizeInMb, 1024)
-    val indexReduction = math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt
+    val indexReduction = math.max(math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt - 1, 1)
     t match {
       case spaceTag if spaceTag == ClassTag(classOf[SpatialKey]) => {
         logger.info(s"Creating ConfigurableSpatialPartitionerReduceZ($indexReduction) based on tile size: $tileSize, band count: $nrBands, cell type bits: $cellTypeBits, tileSizeInMb: $tileSizeInMb")
