@@ -372,6 +372,7 @@ class WriteRDDToGeotiffTest {
     GeoTiff.readMultiband(outDir.resolve("testA/B01.tiff").toString).raster.tile
     GeoTiff.readMultiband(outDir.resolve("testA/A/B02.tiff").toString).raster.tile
     GeoTiff.readMultiband(outDir.resolve("testB/B03.tiff").toString).raster.tile
+    assert(Path.of(outDir.resolve("testA/B01.tiff").toString + GDALINFO_SUFFIX).exists)
 
     val result = GeoTiff.readMultiband(paths.asScala.find(_.contains("B01")).get).raster.tile
 

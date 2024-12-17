@@ -302,4 +302,35 @@ object CreoS3Utils {
       uploadToS3(localPath, s3Path)
     }
   }
+
+  def readFileAsString(path: String): String = {
+    if (isS3(path)) {
+      val s3Uri = toAmazonS3URI(path)
+      val objectRequest = GetObjectRequest.builder
+        .bucket(s3Uri.getBucket)
+        .key(s3Uri.getKey)
+        .build
+      val response = getCreoS3Client().getObject(objectRequest)
+      val content = response.readAllBytes()
+      new String(content)
+    } else {
+      Files.readString(Path.of(path))
+    }
+  }
+
+  def writeStringToFile(path: String, content: String): Unit = {
+    if (isS3(path)) {
+      val s3Uri = toAmazonS3URI(path)
+      val objectRequest = PutObjectRequest.builder
+        .bucket(s3Uri.getBucket)
+        .key(s3Uri.getKey)
+        .build
+      val tempFile = Files.createTempFile("tmp_writeStringToFile", ".txt")
+      Files.writeString(tempFile, content)
+      getCreoS3Client().putObject(objectRequest, tempFile)
+      Files.delete(tempFile)
+    } else {
+      Files.writeString(Path.of(path), content)
+    }
+  }
 }

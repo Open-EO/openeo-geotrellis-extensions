@@ -136,8 +136,14 @@ package object geotiff {
 
     geoTiffResultObject.gdalInfoPath match {
       case Some(gdalInfoPath) =>
-        val gdalInfoDestinationPath  = gdalInfoPath.replaceFirst(executorAttemptDirectoryPrefix+"\\d+/", "")
-        CreoS3Utils.moveOverwriteWithRetries(gdalInfoPath, gdalInfoDestinationPath)
+        val str = CreoS3Utils.readFileAsString(gdalInfoPath)
+        var parsedJson = SimpleJson.parse(str)
+        parsedJson += "description" -> destinationPath.toString
+        parsedJson += "files" -> Seq(destinationPath.toString)
+        val strAgain = SimpleJson.serialize(parsedJson)
+        val gdalInfoDestinationPath = gdalInfoPath.replaceFirst(executorAttemptDirectoryPrefix + "\\d+/", "")
+        CreoS3Utils.writeStringToFile(gdalInfoDestinationPath, strAgain)
+        CreoS3Utils.assetDelete(gdalInfoPath)
       case None => // do nothing
     }
     if (CreoS3Utils.isS3(destinationPath.toString)) {
@@ -972,7 +978,7 @@ package object geotiff {
     GeoTiffResultObject(path, fileExists, gdalInfoPathNameStr)
   }
 
-  private val GDALINFO_SUFFIX = "_gdalinfo.json"
+  val GDALINFO_SUFFIX = "_gdalinfo.json"
 
   private def createGdalInfo(rasterFilePath: Path): Option[Path] = {
     import scala.sys.process._
