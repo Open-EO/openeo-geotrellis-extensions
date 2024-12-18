@@ -29,8 +29,14 @@ object CreoS3Utils {
 
   private val cloudFerroRegion: Region = Region.of("RegionOne")
 
-  def getAsyncClient(): S3AsyncClient = {
-    S3AsyncClient.builder() // used to be crtBuilder
+  lazy val getAsyncClient: S3AsyncClient = {
+    // Might log this warning:
+    // "
+    // The provided DefaultS3AsyncClient is not an instance of S3CrtAsyncClient,
+    // and thus multipart upload/download feature is not enabled and resumable file upload is not supported.
+    // To benefit from maximum throughput, consider using S3AsyncClient.crtBuilder().build() instead.
+    // "
+    S3AsyncClient.builder() // used to be crtBuilder, but then gave error
       .credentialsProvider(credentialsProvider)
       .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
       .overrideConfiguration(overrideConfig)
@@ -242,7 +248,7 @@ object CreoS3Utils {
     }
   }
 
-  def uploadToS3(localFile: Path, s3Path: String) = {
+  def uploadToS3(localFile: Path, s3Path: String): String = {
     val s3Uri = toAmazonS3URI(s3Path)
     val objectRequest = PutObjectRequest.builder
       .bucket(s3Uri.getBucket)
@@ -267,7 +273,7 @@ object CreoS3Utils {
       .build
 
     val transferManager = S3TransferManager.builder
-      .s3Client(CreoS3Utils.getAsyncClient())
+      .s3Client(CreoS3Utils.getAsyncClient)
       .build
     val fileUpload = transferManager.uploadFile(uploadFileRequest)
 
@@ -286,11 +292,10 @@ object CreoS3Utils {
         logger.info(f"uploadToS3TryFirstWithStreaming: Try to upload with streaming")
         uploadToS3LargeFile(localPath, s3Path)
       } catch {
-        case e: Exception =>
+        case e: Throwable =>
           logger.warn(f"uploadToS3TryFirstWithStreaming: Failed to upload with streaming, trying with regular upload: $e")
           uploadToS3(localPath, s3Path)
       }
-      uploadToS3LargeFile(localPath, s3Path)
     } else {
       uploadToS3(localPath, s3Path)
     }
