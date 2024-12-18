@@ -46,7 +46,7 @@ class PyramidFactory(openSearchClient: OpenSearchClient,
                      experimental: Boolean = false,
                      maxSoftErrorsRatio: Double = 0.0,
                     ) {
-  require(openSearchLinkTitles.size() > 0)
+  require(openSearchLinkTitles.size() > 0, "List of tiles should not be empty")
 
   import PyramidFactory._
 
