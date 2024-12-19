@@ -372,6 +372,7 @@ class WriteRDDToGeotiffTest {
     GeoTiff.readMultiband(outDir.resolve("testA/B01.tiff").toString).raster.tile
     GeoTiff.readMultiband(outDir.resolve("testA/A/B02.tiff").toString).raster.tile
     GeoTiff.readMultiband(outDir.resolve("testB/B03.tiff").toString).raster.tile
+    assert(Path.of(outDir.resolve("testA/B01.tiff").toString + GDALINFO_SUFFIX).exists)
 
     val result = GeoTiff.readMultiband(paths.asScala.find(_.contains("B01")).get).raster.tile
 
@@ -574,7 +575,8 @@ class WriteRDDToGeotiffTest {
     saveSamples(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
       DeflateCompression(BEST_COMPRESSION))
 
-    val Array(geoTiffPath) = Files.list(outDir).iterator().asScala.toArray // 1 date, 1 polygon
+    val paths = Files.list(outDir).iterator().asScala.toArray // 1 date, 1 polygon
+    val geoTiffPath = paths.find(_.toString.endsWith(".tif")).get
     val raster = GeoTiff.readMultiband(geoTiffPath.toString).raster.mapTile(_.band(0))
 
     val geometry = {

@@ -120,18 +120,31 @@ package object geotiff {
     executorAttemptDirectory
   }
 
-  private def moveFromExecutorAttemptDirectory(parentDirectory: Path, absoluteFilePath: String, fileExists: Boolean): String = {
+  private def moveFromExecutorAttemptDirectory(parentDirectory: Path, geoTiffResultObject: GeoTiffResultObject): String = {
     // Move output file to standard location. (On S3, a move is more a copy and delete):
-    val relativeFilePath = parentDirectory.relativize(Path.of(absoluteFilePath)).toString
+    val relativeFilePath = parentDirectory.relativize(Path.of(geoTiffResultObject.correctPath)).toString
     if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception()
     // Remove the executorAttemptDirectory part from the path:
     val destinationPath = parentDirectory.resolve(relativeFilePath.substring(relativeFilePath.indexOf("/") + 1))
-    if (fileExists) {
-      CreoS3Utils.waitTillPathAvailable(Path.of(absoluteFilePath))
+    if (geoTiffResultObject.fileExists) {
+      CreoS3Utils.waitTillPathAvailable(Path.of(geoTiffResultObject.correctPath))
       if (!CreoS3Utils.isS3(parentDirectory.toString)) {
         Files.createDirectories(destinationPath.getParent)
       }
-      CreoS3Utils.moveOverwriteWithRetries(absoluteFilePath, destinationPath.toString)
+      CreoS3Utils.moveOverwriteWithRetries(geoTiffResultObject.correctPath, destinationPath.toString)
+    }
+
+    geoTiffResultObject.gdalInfoPath match {
+      case Some(gdalInfoPath) =>
+        val str = CreoS3Utils.readFileAsString(gdalInfoPath)
+        var parsedJson = SimpleJson.parse(str)
+        parsedJson += "description" -> destinationPath.toString
+        parsedJson += "files" -> Seq(destinationPath.toString)
+        val strAgain = SimpleJson.serialize(parsedJson)
+        val gdalInfoDestinationPath = gdalInfoPath.replaceFirst(executorAttemptDirectoryPrefix + "\\d+/", "")
+        CreoS3Utils.writeStringToFile(gdalInfoDestinationPath, strAgain)
+        CreoS3Utils.assetDelete(gdalInfoPath)
+      case None => // do nothing
     }
     if (CreoS3Utils.isS3(destinationPath.toString)) {
       destinationPath.toString.replaceFirst("s3:/(?!/)", "s3://")
@@ -231,13 +244,13 @@ package object geotiff {
         .map { case (bandTags, _) => bandTags }
       fo.setBandTags(newBandTags)
 
-      val (correctedPath, fileExists) = writeTiff(thePath, tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs,
+      val geoTiffResultObject = writeTiff(thePath, tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs,
         tileLayout, compression, cellTypes.head, tiffBands, segmentCount, fo,
       )
-      (correctedPath, fileExists, timestamp, croppedExtent, bandIndices)
+      (geoTiffResultObject, timestamp, croppedExtent, bandIndices)
     }.collect().map {
-      case (absoluteFilePath, fileExists, timestamp, croppedExtent, bandIndices) =>
-        val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path), absoluteFilePath, fileExists)
+      case (geoTiffResultObject, timestamp, croppedExtent, bandIndices) =>
+        val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path), geoTiffResultObject)
         (destinationPath.toString, timestamp, croppedExtent, bandIndices)
     }.toList.asJava
 
@@ -315,13 +328,13 @@ package object geotiff {
         (stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, None, None, compression, Some(fo)),
           Collections.singletonList(bandIndex))
       }.collect().map {
-        case ((absoluteFilePath, fileExists), bandIndices) =>
+        case (geoTiffResultObject, bandIndices) =>
           if (path.endsWith("out")) {
             val beforeOut = path.substring(0, path.length - "out".length)
-            val destinationPath = moveFromExecutorAttemptDirectory(Path.of(beforeOut), absoluteFilePath, fileExists)
+            val destinationPath = moveFromExecutorAttemptDirectory(Path.of(beforeOut), geoTiffResultObject)
             (destinationPath.toString, bandIndices)
           } else {
-            (absoluteFilePath, bandIndices)
+            (geoTiffResultObject.correctPath, bandIndices)
           }
       }.toList.sortBy(_._1).asJava
 
@@ -493,7 +506,7 @@ package object geotiff {
       val metadata = new STACItem()
       metadata.asset(fixedPath)
       metadata.write(stacItemPath)
-      val finalPath = writeTiff( fixedPath,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, preprocessedRdd.metadata.tileLayout, compression, cellType, detectedBandCount, segmentCount,formatOptions = formatOptions, overviews = overviews)._1
+      val finalPath = writeTiff( fixedPath,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, preprocessedRdd.metadata.tileLayout, compression, cellType, detectedBandCount, segmentCount,formatOptions = formatOptions, overviews = overviews).correctPath
       return Collections.singletonList(finalPath)
     }finally {
       preprocessedRdd.unpersist()
@@ -573,7 +586,7 @@ package object geotiff {
   }
 
   // This implementation does not properly work, output tiffs are not properly aligned and colors are also incorrect
-  def saveRDDGenericTileGrid[K: SpatialComponent : Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, tileGrid: String, zLevel: Int = 6, cropBounds: Option[Extent] = Option.empty[Extent]) = {
+  private def saveRDDGenericTileGrid[K: SpatialComponent : Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, tileGrid: String, zLevel: Int = 6, cropBounds: Option[Extent] = Option.empty[Extent]) = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd, cropBounds)
     val croppedExtent: Extent = preProcessResult._2
     val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3
@@ -645,7 +658,7 @@ package object geotiff {
 
         val segmentCount = bandSegmentCount * detectedBandCount
         val newPath = newFilePath(path, name)
-        writeTiff(newPath, tiffs, gridBounds, extent.intersection(croppedExtent).get, preprocessedRdd.metadata.crs, tileLayout, compression, cellType, detectedBandCount, segmentCount)._1
+        writeTiff(newPath, tiffs, gridBounds, extent.intersection(croppedExtent).get, preprocessedRdd.metadata.crs, tileLayout, compression, cellType, detectedBandCount, segmentCount).correctPath
       }.collect()
       .toList
   }
@@ -655,7 +668,7 @@ package object geotiff {
                         tileLayout: TileLayout, compression: DeflateCompression, cellType: CellType,
                         detectedBandCount: Double, segmentCount: Int,
                         formatOptions: GTiffOptions = new GTiffOptions, overviews: List[GeoTiffMultibandTile] = Nil
-                       ): (String, Boolean) = {
+                       ): GeoTiffResultObject = {
     logger.info(s"Writing geotiff to $path with type ${cellType.toString()} and bands $detectedBandCount")
     val tiffTile: GeoTiffMultibandTile = toTiff(tiffs, gridBounds, tileLayout, compression, cellType, detectedBandCount, segmentCount)
     val options = if(formatOptions.colorMap.isDefined){
@@ -781,8 +794,8 @@ package object geotiff {
 
         (stitchAndWriteToTiff(tiles, filePath, layout, crs, extent, croppedExtent, cropDimensions, compression), extent)
       }.collect().map {
-        case ((absoluteFilePath, fileExists), croppedExtent) =>
-          val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path).getParent, absoluteFilePath, fileExists)
+        case (geoTiffResultObject, croppedExtent) =>
+          val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path).getParent, geoTiffResultObject)
           (destinationPath.toString, croppedExtent)
       }.toList.asJava
 
@@ -795,7 +808,7 @@ package object geotiff {
                                    layout: LayoutDefinition, crs: CRS, geometry: Geometry,
                                    croppedExtent: Option[Extent], cropDimensions: Option[java.util.ArrayList[Int]],
                                    compression: Compression, formatOptions: Option[GTiffOptions] = None
-                                  ):(String, Boolean) = {
+                                  ): GeoTiffResultObject = {
     val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).stitch()
 
     val re = raster.rasterExtent
@@ -915,22 +928,27 @@ package object geotiff {
         val filename = s"${filenamePrefix.getOrElse("openEO")}_${DateTimeFormatter.ISO_DATE.format(time)}_$name.tif"
         val filePath = Paths.get(path).resolve(filename).toString
         val timestamp = time format DateTimeFormatter.ISO_ZONED_DATE_TIME
-        (stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression)._1,
+        (stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression).correctPath,
           timestamp, geometry.extent)
       }
       .collect()
       .toList.asJava
   }
 
-  def writeGeoTiff(geoTiff: MultibandGeoTiff, path: String, gtiffOptions: Option[GTiffOptions]): (String, Boolean) = {
-    val tempFile = getTempFile(null, ".tif")
+  private[geotrellis] case class GeoTiffResultObject(correctPath: String, fileExists: Boolean, gdalInfoPath: Option[String])
+
+  private[geotrellis] def writeGeoTiff(geoTiff: MultibandGeoTiff, path: String, gtiffOptions: Option[GTiffOptions]): GeoTiffResultObject = {
+    val tempFile = getTempFile(FilenameUtils.getBaseName(path) + "_", ".tif")
     geoTiff.write(tempFile.toString, optimizedOrder = true)
     val fileExists = Files.exists(tempFile)
+    var gdalInfoPathName:Option[Path] = None
     if (fileExists) {
       gtiffOptions.foreach(options => embedGdalMetadata(tempFile, options.tagsAsGdalMetadataXml))
+      gdalInfoPathName = createGdalInfo(tempFile)
     } else {
       logger.warn("writeGeoTiff() File was not created: " + path)
     }
+    var gdalInfoPathNameStr = gdalInfoPathName.map(_.toString)
     if (CreoS3Utils.isS3(path)) {
       // Converting to Path and back could change the s3:// prefix to s3:/
       // The following line corrects this:
@@ -938,13 +956,61 @@ package object geotiff {
       if (fileExists) {
         CreoS3Utils.uploadToS3TryFirstWithStreaming(tempFile, path)
       }
-      (correctS3Path, fileExists)
+      gdalInfoPathName match {
+        case Some(gdalInfoPath) =>
+          CreoS3Utils.uploadToS3TryFirstWithStreaming(gdalInfoPath, correctS3Path + GDALINFO_SUFFIX)
+          gdalInfoPathNameStr = Some(correctS3Path + GDALINFO_SUFFIX)
+        case None => // do nothing
+      }
+      GeoTiffResultObject(correctS3Path, fileExists, gdalInfoPathName.map(_.toString.replaceFirst("s3:/(?!/)", "s3://")))
     } else {
       // Retry should not be needed at this point, but it is almost free to keep it.
       if (fileExists) {
         CreoS3Utils.moveOverwriteWithRetries(tempFile.toString, path)
       }
-      (path, fileExists)
+      gdalInfoPathName match {
+        case Some(gdalInfoPath) =>
+          CreoS3Utils.moveOverwriteWithRetries(gdalInfoPath.toString, path + GDALINFO_SUFFIX)
+          gdalInfoPathNameStr = Some(path + GDALINFO_SUFFIX)
+        case None => // do nothing
+      }
+    }
+    GeoTiffResultObject(path, fileExists, gdalInfoPathNameStr)
+  }
+
+  val GDALINFO_SUFFIX = "_gdalinfo.json"
+
+  private def createGdalInfo(rasterFilePath: Path): Option[Path] = {
+    // Allow to quickly disable gdalinfo on executor if something goes wrong
+    val gdalinfo_on_executor = sys.env.getOrElse("GDALINFO_ON_EXECUTOR", "true").toBoolean
+    if (!gdalinfo_on_executor) {
+      return None
+    }
+    import scala.sys.process._
+    import java.nio.charset._
+
+    val outputBuffer = new StringBuilder
+    val cerrBuffer = new StringBuilder
+    val processLogger = ProcessLogger(
+      line => outputBuffer appendAll line + "\n",
+      line => cerrBuffer appendAll line + "\n",
+    )
+
+    val args = Seq("gdalinfo", rasterFilePath.toString, "-json", "-stats", "--config", "GDAL_IGNORE_ERRORS", "ALL")
+    val exitCode = args ! processLogger
+
+    if (cerrBuffer.nonEmpty) {
+      logger.info(s"gdalinfo warnings: ${cerrBuffer.toString()}") // Mostly harmless messages
+    }
+    val outputBufferString = outputBuffer.toString().trim
+    if (exitCode == 0) {
+      val gdalInfoPath = Path.of(rasterFilePath.toString + GDALINFO_SUFFIX)
+      Files.write(gdalInfoPath, outputBufferString.getBytes(StandardCharsets.US_ASCII))
+      Some(gdalInfoPath)
+    }
+    else {
+      logger.warn(s"${args mkString " "} failed; output was: $outputBufferString")
+      None
     }
   }
 
