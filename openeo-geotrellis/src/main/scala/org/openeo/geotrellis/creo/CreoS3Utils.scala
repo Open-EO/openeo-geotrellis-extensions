@@ -290,7 +290,7 @@ object CreoS3Utils {
 
   def uploadToS3TryFirstWithStreaming(localPath: Path, s3Path: String): String = {
     // Streaming to s3 still has issues. This function often runs on executors, su SparkContext is not accessible.
-    val try_streaming = sys.env.getOrElse("TRY_SWIFT_STREAMING", "false").toBoolean
+    val try_streaming = sys.env.getOrElse("TRY_SWIFT_STREAMING", "true").toBoolean
     if (try_streaming) {
       // TODO: Streaming to s3 could cause error, so disable on prod for the moment
       // py4j.protocol.Py4JJavaError: An error occurred while calling z:org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters.
