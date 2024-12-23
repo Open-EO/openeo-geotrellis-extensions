@@ -147,7 +147,7 @@ package object geotiff {
       case Some(gdalInfoPath) =>
         updateGdalInfoJsonFile(gdalInfoPath, destinationPath.toString)
         val gdalInfoDestinationPath = gdalInfoPath.replaceFirst(executorAttemptDirectoryPrefix + "\\d+/", "")
-        CreoS3Utils.moveAsset(gdalInfoPath, gdalInfoDestinationPath)
+        CreoS3Utils.moveOverwriteWithRetries(gdalInfoPath, gdalInfoDestinationPath)
       case None => // do nothing
     }
     if (CreoS3Utils.isS3(destinationPath.toString)) {
