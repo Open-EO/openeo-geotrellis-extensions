@@ -120,6 +120,15 @@ package object geotiff {
     executorAttemptDirectory
   }
 
+  private def updateGdalInfoJsonFile(jsonFilePath: String, tiffFilePath: String): Unit = {
+    val str = CreoS3Utils.readFileAsString(jsonFilePath)
+    var parsedJson = SimpleJson.parse(str)
+    parsedJson += "description" -> tiffFilePath
+    parsedJson += "files" -> Seq(tiffFilePath)
+    val strAgain = SimpleJson.serialize(parsedJson)
+    CreoS3Utils.writeStringToFile(jsonFilePath, strAgain)
+  }
+
   private def moveFromExecutorAttemptDirectory(parentDirectory: Path, geoTiffResultObject: GeoTiffResultObject): String = {
     // Move output file to standard location. (On S3, a move is more a copy and delete):
     val relativeFilePath = parentDirectory.relativize(Path.of(geoTiffResultObject.correctPath)).toString
@@ -136,14 +145,9 @@ package object geotiff {
 
     geoTiffResultObject.gdalInfoPath match {
       case Some(gdalInfoPath) =>
-        val str = CreoS3Utils.readFileAsString(gdalInfoPath)
-        var parsedJson = SimpleJson.parse(str)
-        parsedJson += "description" -> destinationPath.toString
-        parsedJson += "files" -> Seq(destinationPath.toString)
-        val strAgain = SimpleJson.serialize(parsedJson)
+        updateGdalInfoJsonFile(gdalInfoPath, destinationPath.toString)
         val gdalInfoDestinationPath = gdalInfoPath.replaceFirst(executorAttemptDirectoryPrefix + "\\d+/", "")
-        CreoS3Utils.writeStringToFile(gdalInfoDestinationPath, strAgain)
-        CreoS3Utils.assetDelete(gdalInfoPath)
+        CreoS3Utils.moveAsset(gdalInfoPath, gdalInfoDestinationPath)
       case None => // do nothing
     }
     if (CreoS3Utils.isS3(destinationPath.toString)) {
@@ -506,8 +510,13 @@ package object geotiff {
       val metadata = new STACItem()
       metadata.asset(fixedPath)
       metadata.write(stacItemPath)
-      val finalPath = writeTiff( fixedPath,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, preprocessedRdd.metadata.tileLayout, compression, cellType, detectedBandCount, segmentCount,formatOptions = formatOptions, overviews = overviews).correctPath
-      return Collections.singletonList(finalPath)
+      val geoTiffResultObject = writeTiff( fixedPath,tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs, preprocessedRdd.metadata.tileLayout, compression, cellType, detectedBandCount, segmentCount,formatOptions = formatOptions, overviews = overviews)
+      geoTiffResultObject.gdalInfoPath match {
+        case Some(gdalInfoPath) =>
+          updateGdalInfoJsonFile(gdalInfoPath, geoTiffResultObject.correctPath)
+        case None => // do nothing
+      }
+      return Collections.singletonList(geoTiffResultObject.correctPath)
     }finally {
       preprocessedRdd.unpersist()
     }
@@ -658,7 +667,13 @@ package object geotiff {
 
         val segmentCount = bandSegmentCount * detectedBandCount
         val newPath = newFilePath(path, name)
-        writeTiff(newPath, tiffs, gridBounds, extent.intersection(croppedExtent).get, preprocessedRdd.metadata.crs, tileLayout, compression, cellType, detectedBandCount, segmentCount).correctPath
+        val geoTiffResultObject = writeTiff(newPath, tiffs, gridBounds, extent.intersection(croppedExtent).get, preprocessedRdd.metadata.crs, tileLayout, compression, cellType, detectedBandCount, segmentCount)
+        geoTiffResultObject.gdalInfoPath match {
+          case Some(gdalInfoPath) =>
+            updateGdalInfoJsonFile(gdalInfoPath, geoTiffResultObject.correctPath)
+          case None => // do nothing
+        }
+        geoTiffResultObject.correctPath
       }.collect()
       .toList
   }
