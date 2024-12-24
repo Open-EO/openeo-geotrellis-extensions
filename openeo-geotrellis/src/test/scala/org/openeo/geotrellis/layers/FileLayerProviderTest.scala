@@ -457,101 +457,107 @@ class FileLayerProviderTest extends RasterMatchers{
       {
       |  "type": "FeatureCollection",
       |  "properties": {
-      |    "id": "35d62b97-2c19-56f8-bac1-bd5135ea044c",
-      |    "totalResults": 2,
-      |    "exactCount": true,
+      |    "id": "e42393a3-fc80-593d-b6d0-ce910756f241",
+      |    "totalResults": null,
+      |    "exactCount": 0,
       |    "startIndex": 1,
       |    "itemsPerPage": 100,
-      |
+      |    "query": {
+      |      "originalFilters": {
+      |        "box": "-5.501993509841079,41.716232207553176,-5.2206261514227466,41.92935559222629",
+      |        "completionDate": "2021-04-02T23:59:59.999999999Z",
+      |        "dataset": "ESA-DATASET",
+      |        "productType": "S2MSI2A",
+      |        "startDate": "2021-04-01T00:00:00Z",
+      |        "collection": "SENTINEL-2"
+      |      },
+      |      "appliedFilters": {
+      |        "box": "-5.501993509841079,41.716232207553176,-5.2206261514227466,41.92935559222629",
+      |        "completionDate": "2021-04-02T23:59:59.999999999Z",
+      |        "dataset": "ESA-DATASET",
+      |        "productType": "S2MSI2A",
+      |        "startDate": "2021-04-01T00:00:00Z",
+      |        "collection": "SENTINEL-2"
+      |      },
+      |      "processingTime": 0.198199403
+      |    },
       |    "links": [
       |      {
       |        "rel": "self",
       |        "type": "application/json",
       |        "title": "self",
-      |        "href": "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?&box=-5.501993509841079%2C41.716232207553176%2C-5.2206261514227466%2C41.92935559222629&sortParam=startDate&sortOrder=ascending&page=1&maxRecords=100&status=0%7C34%7C37&dataset=ESA-DATASET&productType=L2A&startDate=2021-04-01T00%3A00%3A00Z&completionDate=2021-10-31T23%3A59%3A59.999999999Z"
+      |        "href": "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?box=-5.501993509841079%2C41.716232207553176%2C-5.2206261514227466%2C41.92935559222629&completionDate=2021-04-02T23%3A59%3A59.999999999Z&dataset=ESA-DATASET&maxRecords=100&page=1&productType=S2MSI2A&sortOrder=ascending&sortParam=startDate&startDate=2021-04-01T00%3A00%3A00Z"
       |      },
       |      {
       |        "rel": "search",
       |        "type": "application/opensearchdescription+xml",
       |        "title": "OpenSearch Description Document",
       |        "href": "https://finder.creodias.eu/resto/api/collections/Sentinel2/describe.xml"
-      |      },
-      |      {
-      |        "rel": "next",
-      |        "type": "application/json",
-      |        "title": "next",
-      |        "href": "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?&box=-5.501993509841079%2C41.716232207553176%2C-5.2206261514227466%2C41.92935559222629&sortParam=startDate&sortOrder=ascending&page=2&maxRecords=100&status=0%7C34%7C37&dataset=ESA-DATASET&productType=L2A&startDate=2021-04-01T00%3A00%3A00Z&completionDate=2021-10-31T23%3A59%3A59.999999999Z"
-      |      },
-      |      {
-      |        "rel": "last",
-      |        "type": "application/json",
-      |        "title": "last",
-      |        "href": "https://finder.creodias.eu/resto/api/collections/Sentinel2/search.json?&box=-5.501993509841079%2C41.716232207553176%2C-5.2206261514227466%2C41.92935559222629&sortParam=startDate&sortOrder=ascending&page=3&maxRecords=100&status=0%7C34%7C37&dataset=ESA-DATASET&productType=L2A&startDate=2021-04-01T00%3A00%3A00Z&completionDate=2021-10-31T23%3A59%3A59.999999999Z"
       |      }
       |    ]
       |  },
       |  "features": [
       |    {
       |      "type": "Feature",
-      |      "id": "4a5f1c4b-494b-5f8f-a170-ac8d769e5cfb",
+      |      "id": "a4e250a6-e174-467b-b027-85d8735544cf",
       |      "geometry": {
       |        "type": "Polygon",
       |        "coordinates": [
       |          [
       |            [
       |              -6.597992,
-      |              41.562119054
-      |            ],
-      |            [
-      |              -6.578247,
-      |              41.626124845
-      |            ],
-      |            [
-      |              -6.5322266,
-      |              41.773028035
-      |            ],
-      |            [
-      |              -6.4852905,
-      |              41.919850791
-      |            ],
-      |            [
-      |              -6.4388733,
-      |              42.066956737
-      |            ],
-      |            [
-      |              -6.390991,
-      |              42.213715835
-      |            ],
-      |            [
-      |              -6.3444214,
-      |              42.360855787
-      |            ],
-      |            [
-      |              -6.331024,
-      |              42.402868296
-      |            ],
-      |            [
-      |              -5.3124084,
-      |              42.429360872
-      |            ],
-      |            [
-      |              -5.2769775,
-      |              41.441212167
+      |              41.5621075538264
       |            ],
       |            [
       |              -6.589264,
-      |              41.40772619
+      |              41.4077261901107
+      |            ],
+      |            [
+      |              -5.2769775,
+      |              41.4412121669859
+      |            ],
+      |            [
+      |              -5.3124084,
+      |              42.4293608723592
+      |            ],
+      |            [
+      |              -6.331024,
+      |              42.4028684360103
+      |            ],
+      |            [
+      |              -6.344391,
+      |              42.3608547140878
+      |            ],
+      |            [
+      |              -6.390991,
+      |              42.2137148034246
+      |            ],
+      |            [
+      |              -6.4388733,
+      |              42.0669561042168
+      |            ],
+      |            [
+      |              -6.4852905,
+      |              41.9198491910765
+      |            ],
+      |            [
+      |              -6.5322266,
+      |              41.7730267885899
+      |            ],
+      |            [
+      |              -6.578247,
+      |              41.6261240558926
       |            ],
       |            [
       |              -6.597992,
-      |              41.562119054
+      |              41.5621075538264
       |            ]
       |          ]
       |        ]
       |      },
       |      "properties": {
-      |        "collection": "Sentinel2",
-      |        "status": 0,
+      |        "collection": "SENTINEL-2",
+      |        "status": "ONLINE",
       |        "license": {
       |          "licenseId": "unlicensed",
       |          "hasToBeSigned": "never",
@@ -564,117 +570,117 @@ class FileLayerProviderTest extends RasterMatchers{
       |            "shortName": "No license"
       |          }
       |        },
-      |        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A/2021/04/01/S2A_MSIL2A_20210401T110621_N0300_R137_T30TTM_20210401T141035.SAFE",
+      |        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A_N0500/2021/04/01/S2A_MSIL2A_20210401T110621_N0500_R137_T30TTM_20230520T034031.SAFE",
       |        "parentIdentifier": null,
-      |        "title": "S2A_MSIL2A_20210401T110621_N0300_R137_T30TTM_20210401T141035.SAFE",
-      |        "description": null,
-      |        "organisationName": "ESA",
-      |        "startDate": "2021-04-01T11:06:21.024Z",
-      |        "completionDate": "2021-04-01T11:06:21.024Z",
-      |        "productType": "L2A",
-      |        "processingLevel": "LEVEL2A",
+      |        "title": "S2A_MSIL2A_20210401T110621_N0500_R137_T30TTM_20230520T034031.SAFE",
+      |        "description": "The Copernicus Sentinel-2 mission consists of two polar-orbiting satellites that are positioned in the same sun-synchronous orbit, with a phase difference of 180°. It aims to monitor changes in land surface conditions. The satellites have a wide swath width (290 km) and a high revisit time. Sentinel-2 is equipped with an optical instrument payload that samples 13 spectral bands: four bands at 10 m, six bands at 20 m and three bands at 60 m spatial resolution [https://dataspace.copernicus.eu/explore-data/data-collections/sentinel-data/sentinel-2].",
+      |        "organisationName": null,
+      |        "startDate": "2021-04-01T11:06:21.024000Z",
+      |        "completionDate": "2021-04-01T11:06:21.024000Z",
+      |        "productType": "S2MSI2A",
+      |        "processingLevel": "S2MSI2A",
       |        "platform": "S2A",
       |        "instrument": "MSI",
-      |        "resolution": 60,
-      |        "sensorMode": "",
+      |        "resolution": 0,
+      |        "sensorMode": null,
       |        "orbitNumber": 30164,
       |        "quicklook": null,
-      |        "thumbnail": "https://finder.creodias.eu/files/Sentinel-2/MSI/L2A/2021/04/01/S2A_MSIL2A_20210401T110621_N0300_R137_T30TTM_20210401T141035.SAFE/S2A_MSIL2A_20210401T110621_N0300_R137_T30TTM_20210401T141035-ql.jpg",
-      |        "updated": "2021-04-01T18:49:15.903195Z",
-      |        "published": "2021-04-01T18:49:15.903195Z",
+      |        "thumbnail": "https://finder.creodias.eu/get-object?path=/Sentinel-2/MSI/L2A_N0500/2021/04/01/S2A_MSIL2A_20210401T110621_N0500_R137_T30TTM_20230520T034031.SAFE/S2A_MSIL2A_20210401T110621_N0500_R137_T30TTM_20230520T034031-ql.jpg",
+      |        "updated": "2024-05-07T09:50:11.536038Z",
+      |        "published": "2023-06-29T02:06:02.991627Z",
       |        "snowCover": 0,
-      |        "cloudCover": 69.467697,
-      |        "gmlgeometry": "<gml:Polygon srsName=\"EPSG:4326\"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>-6.597992,41.562119054439 -6.578247,41.626124844758 -6.5322266,41.773028035388 -6.4852905,41.919850790636 -6.4388733,42.06695673689 -6.390991,42.213715835021 -6.3444214,42.360855786794 -6.331024,42.402868295522 -5.3124084,42.429360872359 -5.2769775,41.441212166986 -6.589264,41.407726190111 -6.597992,41.562119054439</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>",
+      |        "cloudCover": 73.570055,
+      |        "gmlgeometry": "<gml:Polygon srsName=\"EPSG:4326\"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>-6.597992,41.5621075538264 -6.589264,41.4077261901107 -5.2769775,41.4412121669859 -5.3124084,42.4293608723592 -6.331024,42.4028684360103 -6.344391,42.3608547140878 -6.390991,42.2137148034246 -6.4388733,42.0669561042168 -6.4852905,41.9198491910765 -6.5322266,41.7730267885899 -6.578247,41.6261240558926 -6.597992,41.5621075538264</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>",
       |        "centroid": {
       |          "type": "Point",
       |          "coordinates": [
-      |            -5.892901344,
-      |            41.897220387
+      |            -5.89290005229704,
+      |            41.8972193665829
       |          ]
       |        },
-      |        "orbitDirection": "descending",
+      |        "orbitDirection": "DESCENDING",
       |        "timeliness": null,
       |        "relativeOrbitNumber": 137,
-      |        "processingBaseline": 3,
-      |        "missionTakeId": "GS2A_20210401T110621_030164_N03.00",
+      |        "processingBaseline": 5,
+      |        "missionTakeId": "GS2A_20210401T110621_030164_N05.00",
       |        "services": {
       |          "download": {
-      |            "url": "https://zipper.creodias.eu/download/4a5f1c4b-494b-5f8f-a170-ac8d769e5cfb",
-      |            "mimeType": "application/unknown",
-      |            "size": 932073644
+      |            "url": "https://finder.creodias.eu/download/a4e250a6-e174-467b-b027-85d8735544cf",
+      |            "mimeType": "application/octet-stream",
+      |            "size": 977270361
       |          }
       |        },
       |        "links": [
       |          {
       |            "rel": "self",
       |            "type": "application/json",
-      |            "title": "GeoJSON link for 4a5f1c4b-494b-5f8f-a170-ac8d769e5cfb",
-      |            "href": "https://finder.creodias.eu/resto/collections/Sentinel2/4a5f1c4b-494b-5f8f-a170-ac8d769e5cfb.json?&lang=en"
+      |            "title": "GeoJSON link for a4e250a6-e174-467b-b027-85d8735544cf",
+      |            "href": "https://finder.creodias.eu/resto/collections/SENTINEL-2/a4e250a6-e174-467b-b027-85d8735544cf.json"
       |          }
       |        ]
       |      }
       |    },
       |    {
       |      "type": "Feature",
-      |      "id": "ee728e84-04ad-5705-bee0-5de3c1059e1f",
+      |      "id": "f57a622f-f0b4-4b21-b7c1-851044950716",
       |      "geometry": {
       |        "type": "Polygon",
       |        "coordinates": [
       |          [
       |            [
       |              -6.6024475,
-      |              41.547733882
-      |            ],
-      |            [
-      |              -6.578247,
-      |              41.626124845
-      |            ],
-      |            [
-      |              -6.5322266,
-      |              41.773028035
-      |            ],
-      |            [
-      |              -6.4852905,
-      |              41.919850791
-      |            ],
-      |            [
-      |              -6.4388733,
-      |              42.066956737
-      |            ],
-      |            [
-      |              -6.390991,
-      |              42.213715835
-      |            ],
-      |            [
-      |              -6.3444214,
-      |              42.360855787
-      |            ],
-      |            [
-      |              -6.32547,
-      |              42.420318851
-      |            ],
-      |            [
-      |              -5.2368774,
-      |              42.390880662
-      |            ],
-      |            [
-      |              -5.2944336,
-      |              41.404034746
+      |              41.5477186736175
       |            ],
       |            [
       |              -6.606537,
-      |              41.438846245
+      |              41.4388462447947
+      |            ],
+      |            [
+      |              -5.2944336,
+      |              41.4040347461201
+      |            ],
+      |            [
+      |              -5.2368774,
+      |              42.3908806623885
+      |            ],
+      |            [
+      |              -6.32547,
+      |              42.4203187089648
+      |            ],
+      |            [
+      |              -6.344391,
+      |              42.3608547140878
+      |            ],
+      |            [
+      |              -6.390991,
+      |              42.2137148034246
+      |            ],
+      |            [
+      |              -6.4388733,
+      |              42.0669561042168
+      |            ],
+      |            [
+      |              -6.4852905,
+      |              41.9198491910765
+      |            ],
+      |            [
+      |              -6.5322266,
+      |              41.7730267885899
+      |            ],
+      |            [
+      |              -6.578247,
+      |              41.6261240558926
       |            ],
       |            [
       |              -6.6024475,
-      |              41.547733882
+      |              41.5477186736175
       |            ]
       |          ]
       |        ]
       |      },
       |      "properties": {
-      |        "collection": "Sentinel2",
-      |        "status": 0,
+      |        "collection": "SENTINEL-2",
+      |        "status": "ONLINE",
       |        "license": {
       |          "licenseId": "unlicensed",
       |          "hasToBeSigned": "never",
@@ -687,56 +693,58 @@ class FileLayerProviderTest extends RasterMatchers{
       |            "shortName": "No license"
       |          }
       |        },
-      |        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A/2021/04/01/S2A_MSIL2A_20210401T110621_N0300_R137_T29TQG_20210401T141035.SAFE",
+      |        "productIdentifier": "/eodata/Sentinel-2/MSI/L2A_N0500/2021/04/01/S2A_MSIL2A_20210401T110621_N0500_R137_T29TQG_20230520T034031.SAFE",
       |        "parentIdentifier": null,
-      |        "title": "S2A_MSIL2A_20210401T110621_N0300_R137_T29TQG_20210401T141035.SAFE",
-      |        "description": null,
-      |        "organisationName": "ESA",
-      |        "startDate": "2021-04-01T11:06:21.024Z",
-      |        "completionDate": "2021-04-01T11:06:21.024Z",
-      |        "productType": "L2A",
-      |        "processingLevel": "LEVEL2A",
+      |        "title": "S2A_MSIL2A_20210401T110621_N0500_R137_T29TQG_20230520T034031.SAFE",
+      |        "description": "The Copernicus Sentinel-2 mission consists of two polar-orbiting satellites that are positioned in the same sun-synchronous orbit, with a phase difference of 180°. It aims to monitor changes in land surface conditions. The satellites have a wide swath width (290 km) and a high revisit time. Sentinel-2 is equipped with an optical instrument payload that samples 13 spectral bands: four bands at 10 m, six bands at 20 m and three bands at 60 m spatial resolution [https://dataspace.copernicus.eu/explore-data/data-collections/sentinel-data/sentinel-2].",
+      |        "organisationName": null,
+      |        "startDate": "2021-04-01T11:06:21.024000Z",
+      |        "completionDate": "2021-04-01T11:06:21.024000Z",
+      |        "productType": "S2MSI2A",
+      |        "processingLevel": "S2MSI2A",
       |        "platform": "S2A",
       |        "instrument": "MSI",
-      |        "resolution": 60,
-      |        "sensorMode": "",
+      |        "resolution": 0,
+      |        "sensorMode": null,
       |        "orbitNumber": 30164,
       |        "quicklook": null,
-      |        "thumbnail": "https://finder.creodias.eu/files/Sentinel-2/MSI/L2A/2021/04/01/S2A_MSIL2A_20210401T110621_N0300_R137_T29TQG_20210401T141035.SAFE/S2A_MSIL2A_20210401T110621_N0300_R137_T29TQG_20210401T141035-ql.jpg",
-      |        "updated": "2021-04-01T18:47:18.613604Z",
-      |        "published": "2021-04-01T18:47:18.613604Z",
+      |        "thumbnail": "https://finder.creodias.eu/get-object?path=/Sentinel-2/MSI/L2A_N0500/2021/04/01/S2A_MSIL2A_20210401T110621_N0500_R137_T29TQG_20230520T034031.SAFE/S2A_MSIL2A_20210401T110621_N0500_R137_T29TQG_20230520T034031-ql.jpg",
+      |        "updated": "2024-05-07T09:50:14.135521Z",
+      |        "published": "2023-06-29T02:08:37.889690Z",
       |        "snowCover": 0,
-      |        "cloudCover": 70.376396,
-      |        "gmlgeometry": "<gml:Polygon srsName=\"EPSG:4326\"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>-6.6024475,41.547733882318 -6.578247,41.626124844758 -6.5322266,41.773028035388 -6.4852905,41.919850790636 -6.4388733,42.06695673689 -6.390991,42.213715835021 -6.3444214,42.360855786794 -6.32547,42.420318851084 -5.2368774,42.390880662389 -5.2944336,41.40403474612 -6.606537,41.438846244795 -6.6024475,41.547733882318</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>",
+      |        "cloudCover": 74.44213,
+      |        "gmlgeometry": "<gml:Polygon srsName=\"EPSG:4326\"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>-6.6024475,41.5477186736175 -6.606537,41.4388462447947 -5.2944336,41.4040347461201 -5.2368774,42.3908806623885 -6.32547,42.4203187089648 -6.344391,42.3608547140878 -6.390991,42.2137148034246 -6.4388733,42.0669561042168 -6.4852905,41.9198491910765 -6.5322266,41.7730267885899 -6.578247,41.6261240558926 -6.6024475,41.5477186736175</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>",
       |        "centroid": {
       |          "type": "Point",
       |          "coordinates": [
-      |            -5.875944976,
-      |            41.897187921
+      |            -5.87594345717395,
+      |            41.8971867908318
       |          ]
       |        },
-      |        "orbitDirection": "descending",
+      |        "orbitDirection": "DESCENDING",
       |        "timeliness": null,
       |        "relativeOrbitNumber": 137,
-      |        "processingBaseline": 3,
-      |        "missionTakeId": "GS2A_20210401T110621_030164_N03.00",
+      |        "processingBaseline": 5,
+      |        "missionTakeId": "GS2A_20210401T110621_030164_N05.00",
       |        "services": {
       |          "download": {
-      |            "url": "https://zipper.creodias.eu/download/ee728e84-04ad-5705-bee0-5de3c1059e1f",
-      |            "mimeType": "application/unknown",
-      |            "size": 943720828
+      |            "url": "https://finder.creodias.eu/download/f57a622f-f0b4-4b21-b7c1-851044950716",
+      |            "mimeType": "application/octet-stream",
+      |            "size": 990845034
       |          }
       |        },
       |        "links": [
       |          {
       |            "rel": "self",
       |            "type": "application/json",
-      |            "title": "GeoJSON link for ee728e84-04ad-5705-bee0-5de3c1059e1f",
-      |            "href": "https://finder.creodias.eu/resto/collections/Sentinel2/ee728e84-04ad-5705-bee0-5de3c1059e1f.json?&lang=en"
+      |            "title": "GeoJSON link for f57a622f-f0b4-4b21-b7c1-851044950716",
+      |            "href": "https://finder.creodias.eu/resto/collections/SENTINEL-2/f57a622f-f0b4-4b21-b7c1-851044950716.json"
       |          }
       |        ]
       |      }
-      |    }]}""".stripMargin
+      |    }
+      |  ]
+      |}""".stripMargin
 
   private lazy val creoS2Products =  CreoFeatureCollection.parse(myCreoFeatureJSON)
 
