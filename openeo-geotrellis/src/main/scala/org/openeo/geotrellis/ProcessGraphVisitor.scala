@@ -186,7 +186,7 @@ class GeotrellisTileProcessGraphVisitor (_builder: Option[OpenEOProcessScriptBui
   private val processes = mutable.LinkedHashMap[String, java.util.Map[String, Object]]()
   // Companion object for the 'create' method
 
-  def create(defaultInputParameter: Option[String] = None, defaultInputDataType: Option[String] = None) = {
+  def create(defaultInputParameter: Option[String] = None, defaultInputDataType: Option[String] = None): GeotrellisTileProcessGraphVisitor = {
     val builder = new OpenEOProcessScriptBuilder()
     defaultInputDataType match {
       case Some(v) => builder.setInputDataType(v)
