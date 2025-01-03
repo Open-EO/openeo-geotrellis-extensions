@@ -45,7 +45,7 @@ import java.util.stream.Stream
 import java.util.{Arrays, Collections}
 import scala.collection.JavaConverters.mapAsJavaMapConverter
 
-object Sentinel2FileLayerProviderTest {
+object Sentinel2LoadCollectionFromAssetsTest {
   private val openSearchEndpoint = LayerFixtures.client
   private val maxSpatialResolution = CellSize(10, 10)
   private val pathDateExtractor = SplitYearMonthDayPathDateExtractor
@@ -68,7 +68,7 @@ object Sentinel2FileLayerProviderTest {
       BatchJobMetadataTracker.setGlobalTracking(true)
 
       val sc = SparkUtils.createLocalSparkContext("local[1]",
-        appName = Sentinel2FileLayerProviderTest.getClass.getName)
+        appName = Sentinel2LoadCollectionFromAssetsTest.getClass.getName)
       _sc = Some(sc)
     }
     _sc.get
@@ -126,8 +126,8 @@ object Sentinel2FileLayerProviderTest {
 }
 
 
-class Sentinel2FileLayerProviderTest extends RasterMatchers {
-  import Sentinel2FileLayerProviderTest._
+class Sentinel2LoadCollectionFromAssetsTest extends RasterMatchers {
+  import Sentinel2LoadCollectionFromAssetsTest._
 
   @BeforeEach
   def clearTracker(): Unit = {
@@ -561,7 +561,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val mask2Values = util.Arrays.asList(3, 8, 9, 10, 11)
     val erosionKernelSize = 0
     val kernel1Size = 17
-    val kernel2Size = 201
+    val kernel2Size = 77
     val mask: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().toSclDilationMask(sclLayer, erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
     val spatialMask = mask.toSpatial(date)
 
@@ -596,7 +596,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
     }
 
-    val creoL1CLayerProvider = FileLayerProvider(
+    val creoL1CLayerProvider = LoadCollectionFromAssets(
       MockOpenSearch,
       openSearchCollectionId = "Sentinel2",
       openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_10m_1_Tile1_Data"),
@@ -652,7 +652,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   @Test
   @Disabled("Covered by faster integration test now: https://git.vito.be/projects/TPT/repos/os_creodias_openeo_k8s/commits/538ebf0a7995d582a5429a11237b951d8838d36f")
   def testL1CResolutionResample(): Unit = {
-    val creoL1CLayerProvider = FileLayerProvider(
+    val creoL1CLayerProvider = LoadCollectionFromAssets(
       MockOpenSearch,
       openSearchCollectionId = "Sentinel2",
       openSearchLinkTitles = NonEmptyList.of(
@@ -692,7 +692,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   def testL1CMultibandTileMask(): Unit = {
     val dilationDistance = 5
 
-    val creoL1CLayerProvider = FileLayerProvider(
+    val creoL1CLayerProvider = LoadCollectionFromAssets(
       MockOpenSearch,
       openSearchCollectionId = "Sentinel2",
       openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_10m_1_Tile1_Data", "IMG_DATA_Band_10m_2_Tile1_Data", "IMG_DATA_Band_10m_3_Tile1_Data"),
@@ -778,7 +778,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   }
 
   private def faparLayerProvider(attributeValues: Map[String, Any] = Map("resolution" -> 10 /* exclude 20m features like in layercatalog.json */)) =
-    FileLayerProvider(
+    LoadCollectionFromAssets(
       openSearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_FAPAR_V2",
       openSearchLinkTitles = NonEmptyList.of("FAPAR_10M"),
@@ -789,7 +789,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     )
 
   private def tocLayerProvider =
-    FileLayerProvider(
+    LoadCollectionFromAssets(
       openSearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"),
@@ -801,7 +801,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   private def tocLayerProviderUTM = LayerFixtures.sentinel2TocLayerProviderUTM
 
   private def sceneclassificationLayerProviderUTM =
-    FileLayerProvider(
+    LoadCollectionFromAssets(
       openSearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("SCENECLASSIFICATION_20M"),
@@ -812,7 +812,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     )
 
   private def sceneclassificationLayerProvider =
-    FileLayerProvider(
+    LoadCollectionFromAssets(
       openSearchEndpoint,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("SCENECLASSIFICATION_20M"),

@@ -25,7 +25,7 @@ import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.file.PyramidFactory
 import org.openeo.geotrellis.geotiff._
-import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
+import org.openeo.geotrellis.layers.LoadCollectionFromAssets.rasterSourceRDD
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DatacubeSupport._
@@ -47,7 +47,7 @@ import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.io.Source
 
-object FileLayerProviderTest {
+object LoadCollectionFromAssetsTest {
   private var _sc: Option[SparkContext] = None
 
   private def sc: SparkContext = {
@@ -56,7 +56,7 @@ object FileLayerProviderTest {
 
       val sc = SparkUtils.createLocalSparkContext(
         "local[1]",
-        appName = classOf[FileLayerProviderTest].getName
+        appName = classOf[LoadCollectionFromAssetsTest].getName
       )
       _sc = Some(sc)
     }
@@ -94,13 +94,13 @@ class MockOpenSearchFeatures(val mockedFeatures: Array[OpenSearchResponses.Featu
   }
 }
 
-class FileLayerProviderTest extends RasterMatchers{
-  import FileLayerProviderTest._
+class LoadCollectionFromAssetsTest extends RasterMatchers{
+  import LoadCollectionFromAssetsTest._
 
   private def sentinel5PMaxSpatialResolution = CellSize(0.05, 0.05)
   private def sentinel5PLayoutScheme = FloatingLayoutScheme(64)
   private def sentinel5PCollectionId = "urn:eop:VITO:TERRASCOPE_S5P_L3_NO2_TD_V1"
-  private def sentinel5PFileLayerProvider = FileLayerProvider(
+  private def sentinel5PFileLayerProvider = LoadCollectionFromAssets(
     openSearch = OpenSearchClient(new URL("https://services.terrascope.be/catalogue")),
     openSearchCollectionId = sentinel5PCollectionId,
     NonEmptyList.one("NO2"),
@@ -232,10 +232,10 @@ class FileLayerProviderTest extends RasterMatchers{
     val date = LocalDate.of(2020, 1, 1).atStartOfDay(ZoneId.of("UTC"))
     val polygons1 = MultiPolygon(bbox1.extent.toPolygon())
     val (rasterSources1, metadata1) = _getSentinel5PRasterSources(bbox1, date, zoom)
-    val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
+    val sparseBaseLayer = LoadCollectionFromAssets.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
       bbox1.crs, sc, retainNoDataTiles = false,
       NoCloudFilterStrategy)
-    val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
+    val defaultBaseLayer = LoadCollectionFromAssets.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
       bbox1.crs, sc, retainNoDataTiles = false,
       NoCloudFilterStrategy,
       useSparsePartitioner = false)
@@ -244,10 +244,10 @@ class FileLayerProviderTest extends RasterMatchers{
     val bbox2 = ProjectedExtent(Extent(xmin = 58.0, ymin = 20.0, xmax = 62.0, ymax = 25.0), LatLng)
     val polygons2 = MultiPolygon(bbox2.extent.toPolygon())
     val (rasterSources2, metadata2) = _getSentinel5PRasterSources(bbox1, date, zoom)
-    val sparseBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources2, metadata2, Array(polygons2),
+    val sparseBaseLayer2 = LoadCollectionFromAssets.readMultibandTileLayer(rasterSources2, metadata2, Array(polygons2),
       bbox2.crs, sc, retainNoDataTiles = false,
       NoCloudFilterStrategy)
-    val defaultBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources2, metadata2, Array(polygons2),
+    val defaultBaseLayer2 = LoadCollectionFromAssets.readMultibandTileLayer(rasterSources2, metadata2, Array(polygons2),
       bbox2.crs, sc, retainNoDataTiles = false,
       NoCloudFilterStrategy,
       useSparsePartitioner = false)
@@ -269,10 +269,10 @@ class FileLayerProviderTest extends RasterMatchers{
     val date = LocalDate.of(2020, 1, 1).atStartOfDay(ZoneId.of("UTC"))
     val polygons = MultiPolygon(bbox.extent.toPolygon())
     val (rasterSources, metadata) = _getSentinel5PRasterSources(bbox, date, 8)
-    val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(polygons),
+    val sparseBaseLayer = LoadCollectionFromAssets.readMultibandTileLayer(rasterSources, metadata, Array(polygons),
       bbox.crs, sc, retainNoDataTiles = false,
       NoCloudFilterStrategy)
-    val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(polygons),
+    val defaultBaseLayer = LoadCollectionFromAssets.readMultibandTileLayer(rasterSources, metadata, Array(polygons),
       bbox.crs, sc, retainNoDataTiles = false,
       NoCloudFilterStrategy,
       useSparsePartitioner = false)
@@ -386,7 +386,7 @@ class FileLayerProviderTest extends RasterMatchers{
       override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
     }
 
-    val flp = new FileLayerProvider(
+    val flp = new LoadCollectionFromAssets(
       MockOpenSearch,
       "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B11_20M", "SCENECLASSIFICATION_20M"),
@@ -773,7 +773,7 @@ class FileLayerProviderTest extends RasterMatchers{
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
     dataCubeParameters.globalExtent = Some(boundingBox)
 
-    val flp = new FileLayerProvider(
+    val flp = new LoadCollectionFromAssets(
       new MockOpenSearchFeatures(sentinel1Product.features),
       "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
       openSearchLinkTitles = NonEmptyList.of("VV"),
@@ -833,7 +833,7 @@ class FileLayerProviderTest extends RasterMatchers{
     dataCubeParameters.globalExtent = Some(boundingBox)
 
     val res = 0.0001
-    val flp = new FileLayerProvider(
+    val flp = new LoadCollectionFromAssets(
       new MockOpenSearchFeatures(sentinel1Product.features),
       "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
       openSearchLinkTitles = NonEmptyList.of("VV"),
@@ -892,7 +892,7 @@ class FileLayerProviderTest extends RasterMatchers{
     dataCubeParameters.pixelBufferY = buffer
     dataCubeParameters.pixelBufferX = buffer
 
-    val flp = new FileLayerProvider(
+    val flp = new LoadCollectionFromAssets(
       new MockOpenSearchFeatures(sentinel1Product.features),
       "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
       openSearchLinkTitles = NonEmptyList.of("VV"),
@@ -1037,7 +1037,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
     dataCubeParameters.globalExtent = Some(boundingBox)
 
-    val flp = new FileLayerProvider(
+    val flp = new LoadCollectionFromAssets(
       MockCreoOpenSearch,
       "Sentinel2",
       openSearchLinkTitles = NonEmptyList.of("IMG_DATA_Band_B04_10m_Tile1_Data"),
@@ -1173,7 +1173,7 @@ class FileLayerProviderTest extends RasterMatchers{
       override def getCollections(correlationId: String): Seq[OpenSearchResponses.Feature] = ???
     }
 
-    val flp = new FileLayerProvider(
+    val flp = new LoadCollectionFromAssets(
       MockOpenSearch,
       "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("B02"),
@@ -1308,10 +1308,10 @@ class FileLayerProviderTest extends RasterMatchers{
 
   @Test
   def testGDALConvert():Unit = {
-    val result = FileLayerProvider.convertNetcdfLinksToGDALFormat(Link(URI.create("file:///data/MTDA/Copernicus/Land/global/netcdf/dry_matter_productivity/gdmp_300m_v1_10daily/2020/20200310/c_gls_GDMP300-RT5_202003100000_GLOBE_PROBAV_V1.0.1.nc"),Some("DMP")),"dry_matter_productivity",1)
+    val result = LoadCollectionFromAssets.convertNetcdfLinksToGDALFormat(Link(URI.create("file:///data/MTDA/Copernicus/Land/global/netcdf/dry_matter_productivity/gdmp_300m_v1_10daily/2020/20200310/c_gls_GDMP300-RT5_202003100000_GLOBE_PROBAV_V1.0.1.nc"),Some("DMP")),"dry_matter_productivity",1)
     assertEquals(Some((Link(URI.create("NETCDF:/data/MTDA/Copernicus/Land/global/netcdf/dry_matter_productivity/gdmp_300m_v1_10daily/2020/20200310/c_gls_GDMP300-RT5_202003100000_GLOBE_PROBAV_V1.0.1.nc:dry_matter_productivity"),Some("DMP")),0)),result)
 
-    val httpResult = FileLayerProvider.convertNetcdfLinksToGDALFormat(Link(URI.create("http://openeo.vito.be/job-xxx/results/result.nc"),Some("DMP")),"dry_matter_productivity",1)
+    val httpResult = LoadCollectionFromAssets.convertNetcdfLinksToGDALFormat(Link(URI.create("http://openeo.vito.be/job-xxx/results/result.nc"),Some("DMP")),"dry_matter_productivity",1)
     assertEquals(Some((Link(URI.create("NETCDF:http://openeo.vito.be/job-xxx/results/result.nc:dry_matter_productivity"),Some("DMP")),0)),httpResult)
 
   }

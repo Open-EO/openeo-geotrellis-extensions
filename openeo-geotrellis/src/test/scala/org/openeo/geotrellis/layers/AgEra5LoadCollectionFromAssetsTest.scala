@@ -18,21 +18,21 @@ import java.time.{LocalDate, ZoneId}
 import java.util
 import scala.collection.JavaConverters.asScalaBuffer
 
-object AgEra5FileLayerProviderTest extends LocalSparkContextJupyter
+object AgEra5LoadCollectionFromAssetsTest extends LocalSparkContextJupyter
 
-class AgEra5FileLayerProviderTest {
-  import AgEra5FileLayerProviderTest._
+class AgEra5LoadCollectionFromAssetsTest {
+  import AgEra5LoadCollectionFromAssetsTest._
 
   private val bands: util.List[String] = util.Arrays.asList("dewpoint-temperature", "precipitation-flux", "solar-radiation-flux")
 
-  private def layerProvider = FileLayerProvider(new Agera5SearchClient(dataGlob = "/data/MEP/ECMWF/AgERA5/2020/20200424/AgERA5_dewpoint-temperature_*.tif", bands, raw".+_(\d{4})(\d{2})(\d{2})\.tif".r),"",
+  private def layerProvider = LoadCollectionFromAssets(new Agera5SearchClient(dataGlob = "/data/MEP/ECMWF/AgERA5/2020/20200424/AgERA5_dewpoint-temperature_*.tif", bands, raw".+_(\d{4})(\d{2})(\d{2})\.tif".r),"",
     NonEmptyList.fromList(asScalaBuffer(bands).toList).get,
     rootPath = "/data/MEP/ECMWF/AgERA5",
     maxSpatialResolution = CellSize(0.1, 0.1),
     new Sentinel5PPathDateExtractor(maxDepth = 3),
     layoutScheme = FloatingLayoutScheme(256), experimental = false)
 
-  private def layerProvider2 = FileLayerProvider(new Agera5SearchClient(dataGlob = "/data/MEP/ECMWF/AgERA5/2020/20200424/AgERA5_dewpoint-temperature_*.tif", bands, raw".+_(\d{4})(\d{2})(\d{2})\.tif".r),"",
+  private def layerProvider2 = LoadCollectionFromAssets(new Agera5SearchClient(dataGlob = "/data/MEP/ECMWF/AgERA5/2020/20200424/AgERA5_dewpoint-temperature_*.tif", bands, raw".+_(\d{4})(\d{2})(\d{2})\.tif".r),"",
     NonEmptyList.fromList(asScalaBuffer(bands).toList).get,
     rootPath = "/data/MEP/ECMWF/AgERA5",
     maxSpatialResolution = CellSize(3000, 3000),

@@ -160,7 +160,7 @@ abstract class AbstractGlobFileLayerProvider extends LayerProvider {
     val thePartitioner: Partitioner = if(partitioner.isDefined) {
       partitioner.get
     }else if(datacubeParams.isDefined){
-      FileLayerProvider.createPartitioner(datacubeParams, requiredKeys, tiledLayoutSourceRDD, layerMetadata).get
+      LoadCollectionFromAssets.createPartitioner(datacubeParams, requiredKeys, tiledLayoutSourceRDD, layerMetadata).get
     }else{
       SpacePartitioner(layerMetadata.bounds)
     }

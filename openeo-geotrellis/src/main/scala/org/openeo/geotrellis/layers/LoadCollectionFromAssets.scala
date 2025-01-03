@@ -294,11 +294,9 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 
 
 
-object FileLayerProvider {
+object LoadCollectionFromAssets {
 
-  private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
-
-
+  private val logger = LoggerFactory.getLogger(classOf[LoadCollectionFromAssets])
 
 
   lazy val sdk = {
@@ -329,7 +327,7 @@ object FileLayerProvider {
   def apply(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
             maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
             bandIndices: Seq[Int] = Seq(), correlationId: String = "", experimental: Boolean = false,
-            retainNoDataTiles: Boolean = false, maxSoftErrorsRatio: Double = 0.0): FileLayerProvider = new FileLayerProvider(
+            retainNoDataTiles: Boolean = false, maxSoftErrorsRatio: Double = 0.0): LoadCollectionFromAssets = new LoadCollectionFromAssets(
     openSearch, openSearchCollectionId, openSearchLinkTitles, rootPath, maxSpatialResolution, pathDateExtractor,
     attributeValues, layoutScheme, bandIndices, correlationId, experimental, retainNoDataTiles, maxSoftErrorsRatio,
     disambiguateConstructors = null
@@ -940,14 +938,35 @@ object FileLayerProvider {
       })
 }
 
-class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
-                        maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any], layoutScheme: LayoutScheme,
-                        bandIndices: Seq[Int], correlationId: String, experimental: Boolean,
-                        retainNoDataTiles: Boolean, maxSoftErrorsRatio: Double,
-                        disambiguateConstructors: Null) extends LayerProvider { // workaround for: constructors have the same type after erasure
+/**
+ * Implements the 'load_collection' process for collections that are built from items and assets, following the [STAC](https://stacspec.org/en/about/stac-spec/)
+ * definition of these terms.
+ *
+ *
+ *
+ * @param openSearch The 'OpenSearch' client, the name is referring to the deprecated opensearch catalog spec, which can be considered somewhat equivalent to the STAC catalog spec.
+ * @param openSearchCollectionId
+ * @param openSearchLinkTitles
+ * @param rootPath
+ * @param maxSpatialResolution
+ * @param pathDateExtractor
+ * @param attributeValues
+ * @param layoutScheme
+ * @param bandIndices
+ * @param correlationId
+ * @param experimental
+ * @param retainNoDataTiles
+ * @param maxSoftErrorsRatio
+ * @param disambiguateConstructors
+ */
+class LoadCollectionFromAssets private(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
+                                       maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any], layoutScheme: LayoutScheme,
+                                       bandIndices: Seq[Int], correlationId: String, experimental: Boolean,
+                                       retainNoDataTiles: Boolean, maxSoftErrorsRatio: Double,
+                                       disambiguateConstructors: Null) extends LayerProvider { // workaround for: constructors have the same type after erasure
 
   import DatacubeSupport._
-  import FileLayerProvider._
+  import LoadCollectionFromAssets._
 
   @deprecated("call a constructor/factory method with flattened bandIndices instead of nested bandIds")
   // TODO: remove this eventually (e.g. after updating geotrellistimeseries)

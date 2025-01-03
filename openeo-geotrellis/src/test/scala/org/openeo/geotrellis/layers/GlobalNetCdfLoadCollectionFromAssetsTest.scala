@@ -24,13 +24,13 @@ import org.openeo.opensearch.backends.GlobalNetCDFSearchClient
 import java.util
 import scala.collection.JavaConverters._
 
-object GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
+object GlobalNetCdfLoadCollectionFromAssetsTest extends LocalSparkContext {
   @AfterClass
   def tearDown(): Unit = GDALWarp.deinit()
 }
 
-class GlobalNetCdfFileLayerProviderTest {
-  import GlobalNetCdfFileLayerProviderTest._
+class GlobalNetCdfLoadCollectionFromAssetsTest {
+  import GlobalNetCdfLoadCollectionFromAssetsTest._
 
   private def layerProvider = new GlobalNetCdfFileLayerProvider(
     dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/*/*/*/*.nc",
@@ -40,7 +40,7 @@ class GlobalNetCdfFileLayerProviderTest {
 
   private val bands: util.List[String] = util.Arrays.asList("LAI", "NOBS")
 
-  private def multibandFileLayerProvider = FileLayerProvider(
+  private def multibandFileLayerProvider = LoadCollectionFromAssets(
     new GlobalNetCDFSearchClient(
       dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/*/*/*/*.nc",
       bands,
@@ -226,7 +226,7 @@ class GlobalNetCdfFileLayerProviderTest {
     val parameters = new DataCubeParameters()
     parameters.layoutScheme = "FloatingLayoutScheme"
 
-    val layerProvider2WithOneBand = FileLayerProvider(new GlobalNetCDFSearchClient(dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/2017/20170110/*/*.nc",bands , raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored),"BioPar_LAI300_V1_Global",
+    val layerProvider2WithOneBand = LoadCollectionFromAssets(new GlobalNetCDFSearchClient(dataGlob = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global/2017/20170110/*/*.nc",bands , raw"_(\d{4})(\d{2})(\d{2})0000_".r.unanchored),"BioPar_LAI300_V1_Global",
       NonEmptyList.of("LAI"),
       rootPath = "/data/MTDA/BIOPAR/BioPar_LAI300_V1_Global",
       maxSpatialResolution = CellSize(0.002976190476204,0.002976190476190),
