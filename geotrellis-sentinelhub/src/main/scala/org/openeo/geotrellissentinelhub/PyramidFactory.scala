@@ -524,7 +524,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
             }
 
             datacubeParams.get.maskingCube = Some(filtered)
-            val result = requiredSpacetimeKeys.map(v=>(v,null)).join(filtered).map(tuple => tuple._1))
+            val result = requiredSpacetimeKeys.map(v=>(v,null)).join(filtered).map(tuple => tuple._1)
             requiredSpacetimeKeys.sparkContext.clearCallSite()
             return result
           }
