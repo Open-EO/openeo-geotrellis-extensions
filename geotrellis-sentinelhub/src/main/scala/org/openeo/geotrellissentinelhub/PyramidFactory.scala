@@ -475,8 +475,8 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               logger.info(s"Sentinelhub datacube requires approximately ${spatialKeyCount} spatial keys.")
             }
 
-            val requiredKeysRdd = requiredSpatialKeysForFeatures.map { case (SpatialKey(col, row), Feature(_, date)) => SpaceTimeKey(col, row, date)}.filter(k=> k.col>=0&&k.row>=0)
-
+            var requiredKeysRdd: RDD[SpaceTimeKey] = requiredSpatialKeysForFeatures.map { case (SpatialKey(col, row), Feature(_, date)) => SpaceTimeKey(col, row, date)}.filter(k=> k.col>=0&&k.row>=0)
+            requiredKeysRdd = applySpaceTimeMask(Some(dataCubeParameters), requiredKeysRdd,metadata)
             val partitioner = DatacubeSupport.createPartitioner(Some(dataCubeParameters), requiredKeysRdd, metadata)
             val approxRequests = requiredKeysRdd.countApproxDistinct()
             logger.info(s"Created Sentinelhub datacube ${collectionId} with $approxRequests keys and metadata ${metadata} and ${partitioner.get}")
@@ -504,4 +504,35 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
 
     Seq(0 -> cube)
   }
+
+  def applySpaceTimeMask(datacubeParams: Option[DataCubeParameters], requiredSpacetimeKeys: RDD[SpaceTimeKey], metadata: TileLayerMetadata[SpaceTimeKey]): RDD[SpaceTimeKey] = {
+    if (datacubeParams.exists(_.maskingCube.isDefined)) {
+      val maskObject = datacubeParams.get.maskingCube.get
+      requiredSpacetimeKeys.sparkContext.setCallSite("load_collection: filter mask keys")
+      maskObject match {
+        case theMask: MultibandTileLayerRDD[SpaceTimeKey] =>
+          if (theMask.metadata.bounds.get._1.isInstanceOf[SpaceTimeKey]) {
+
+            //TODO: this partioner is none most of the time
+            // Perhaps try using the partitioner from the mask, but only valid after reprojection
+            val partitioner = requiredSpacetimeKeys.partitioner
+            // filtered mask to tiles with at least one valid pixel, remove others, so need to perform inner join
+            val filtered = DatacubeSupport.prepareMask(theMask, metadata, partitioner)
+
+            if (logger.isDebugEnabled) {
+              logger.debug(s"SpacetimeMask mask reduces the input to: ${filtered.countApproxDistinct()} keys.")
+            }
+
+            datacubeParams.get.maskingCube = Some(filtered)
+            val result = requiredSpacetimeKeys.map(v=>(v,null)).join(filtered).map(tuple => tuple._1))
+            requiredSpacetimeKeys.sparkContext.clearCallSite()
+            return result
+          }
+        case _ =>
+      }
+    }
+    return requiredSpacetimeKeys
+  }
 }
+
+
