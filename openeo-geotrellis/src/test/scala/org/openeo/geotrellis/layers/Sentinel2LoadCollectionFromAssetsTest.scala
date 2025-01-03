@@ -562,7 +562,7 @@ class Sentinel2LoadCollectionFromAssetsTest extends RasterMatchers {
     val mask2Values = util.Arrays.asList(3, 8, 9, 10, 11)
     val erosionKernelSize = 0
     val kernel1Size = 17
-    val kernel2Size = 77
+    val kernel2Size = 201
     val mask: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().toSclDilationMask(sclLayer, erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
     val spatialMask = mask.toSpatial(date)
 
