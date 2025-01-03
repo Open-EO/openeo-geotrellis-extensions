@@ -11,9 +11,10 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{BeforeAll, Test}
 import org.junit.{AfterClass, Assert}
 import org.openeo.geotrellis.LayerFixtures.rgbLayerProvider
+import org.openeo.geotrellis.geotiff.SaveResultAsGeotiff.saveRDDTileGrid
 import org.openeo.geotrellis.png.PngTest
 import org.openeo.geotrellis.tile_grid.TileGrid
-import org.openeo.geotrellis.{LayerFixtures, geotiff}
+import org.openeo.geotrellis.LayerFixtures
 
 import java.nio.file.Path
 import java.time.LocalTime.MIDNIGHT
@@ -60,7 +61,7 @@ class TileGridTest {
       .toSpatial()
       .persist(DISK_ONLY)
 
-    val tiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched.tiff", "10km", DeflateCompression(6))
+    val tiles = SaveResultAsGeotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched.tiff", "10km", DeflateCompression(6))
     val expectedPaths = Set(
       outDir + "/testSaveStitched-31UDS_3_4.tiff",
       outDir + "/testSaveStitched-31UDS_2_4.tiff",
@@ -74,7 +75,7 @@ class TileGridTest {
     val extent = bbox.reproject(spatialLayer.metadata.crs)
     val cropBounds = mapAsJavaMap(Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax))
 
-    val croppedTiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched_cropped.tiff", "10km", cropBounds, DeflateCompression(6))
+    val croppedTiles = SaveResultAsGeotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched_cropped.tiff", "10km", cropBounds, DeflateCompression(6))
     val expectedCroppedPaths = Set(
       outDir + "/testSaveStitched_cropped-31UDS_3_4.tiff",
       outDir + "/testSaveStitched_cropped-31UDS_2_4.tiff",
@@ -138,7 +139,7 @@ class TileGridTest {
 
     val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
 
-    val tiles = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6))
+    val tiles = SaveResultAsGeotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6))
     val expectedTiles = Set(
       ("/tmp/openEO_2020-04-05Z_31UDS_3_4.tif", isoFormattedDate),
       ("/tmp/openEO_2020-04-05Z_31UDS_2_4.tif", isoFormattedDate),
@@ -158,7 +159,7 @@ class TileGridTest {
 
     val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
 
-    val tiles = geotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6), filenamePrefix = Some("testPrefix"))
+    val tiles = SaveResultAsGeotiff.saveStitchedTileGridTemporal(layer, "/tmp/", "10km", DeflateCompression(6), filenamePrefix = Some("testPrefix"))
     val expectedTiles = Set(
       ("/tmp/testPrefix_2020-04-05Z_31UDS_3_4.tif", isoFormattedDate),
       ("/tmp/testPrefix_2020-04-05Z_31UDS_2_4.tif", isoFormattedDate),

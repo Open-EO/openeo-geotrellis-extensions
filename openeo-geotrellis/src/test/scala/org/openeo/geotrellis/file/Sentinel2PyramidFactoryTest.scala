@@ -18,7 +18,7 @@ import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.TestImplicits._
-import org.openeo.geotrellis.geotiff.saveRDD
+import org.openeo.geotrellis.geotiff.SaveResultAsGeotiff.saveRDD
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.backends.GeotiffNoDateSearchClient

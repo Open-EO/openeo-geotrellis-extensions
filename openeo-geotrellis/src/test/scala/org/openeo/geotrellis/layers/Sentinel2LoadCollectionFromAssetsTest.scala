@@ -28,10 +28,11 @@ import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.junit.{AfterClass, BeforeClass}
 import org.openeo.geotrellis.TestImplicits._
-import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
+import org.openeo.geotrellis.geotiff.GTiffOptions
+import org.openeo.geotrellis.geotiff.SaveResultAsGeotiff.saveRDD
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
 import org.openeo.geotrellis.{LayerFixtures, MergeCubesSpec, OpenEOProcessScriptBuilder, OpenEOProcesses, ProjectedPolygons, TestOpenEOProcessScriptBuilder}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ConfigurableSpaceTimePartitioner, SparseSpaceTimePartitioner, DataCubeParameters, ResampledTile}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ConfigurableSpaceTimePartitioner, DataCubeParameters, ResampledTile, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.Link
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.openeo.sparklisteners.GetInfoSparkListener

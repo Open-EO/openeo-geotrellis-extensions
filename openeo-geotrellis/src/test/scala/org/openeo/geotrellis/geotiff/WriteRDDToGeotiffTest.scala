@@ -18,6 +18,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{BeforeAll, Test}
 import org.junit.rules.TemporaryFolder
 import org.junit.{AfterClass, Rule}
+import org.openeo.geotrellis.geotiff.SaveResultAsGeotiff.{GDALINFO_SUFFIX, saveRDD, saveRDDTemporal, saveSamples}
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 import org.slf4j.{Logger, LoggerFactory}
 

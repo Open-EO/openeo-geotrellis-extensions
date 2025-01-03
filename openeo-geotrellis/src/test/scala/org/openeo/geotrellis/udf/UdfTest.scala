@@ -12,7 +12,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
-import org.openeo.geotrellis.geotiff.saveRDD
+import org.openeo.geotrellis.geotiff.SaveResultAsGeotiff.saveRDD
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons}
 
 import java.time.ZonedDateTime

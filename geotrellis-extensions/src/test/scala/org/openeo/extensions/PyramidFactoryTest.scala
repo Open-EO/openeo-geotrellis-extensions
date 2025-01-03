@@ -61,7 +61,7 @@ class PyramidFactoryTest {
           .toSpatial()
           .cache()
 
-        val paths = org.openeo.geotrellis.geotiff.saveRDD(
+        val paths = org.openeo.geotrellis.geotiff.SaveResultAsGeotiff.saveRDD(
           rdd = spatialLayer,
           bandCount = 2,
           path = "/tmp/sentinalHubSmallAreaToTiff.gtiff",

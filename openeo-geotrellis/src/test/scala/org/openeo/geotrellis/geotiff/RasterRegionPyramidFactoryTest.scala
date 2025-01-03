@@ -1,4 +1,4 @@
-package org.openeo.geotrellis.geotiff
+package org.openeo.geotrellis.SaveResultAsGeotiff
 
 import geotrellis.layer._
 import geotrellis.raster.Raster

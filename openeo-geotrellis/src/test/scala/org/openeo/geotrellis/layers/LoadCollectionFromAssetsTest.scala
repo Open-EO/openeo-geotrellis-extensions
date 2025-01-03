@@ -24,7 +24,8 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.file.PyramidFactory
-import org.openeo.geotrellis.geotiff._
+import org.openeo.geotrellis.geotiff.GTiffOptions
+import org.openeo.geotrellis.geotiff.SaveResultAsGeotiff._
 import org.openeo.geotrellis.layers.LoadCollectionFromAssets.rasterSourceRDD
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}

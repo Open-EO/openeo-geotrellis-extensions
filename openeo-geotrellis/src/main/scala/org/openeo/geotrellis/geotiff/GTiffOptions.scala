@@ -3,6 +3,7 @@ package org.openeo.geotrellis.geotiff
 import java.util
 import geotrellis.raster.io.geotiff.Tags
 import geotrellis.raster.render.{ColorMap, DoubleColorMap, IndexedColorMap}
+import org.openeo.geotrellis.geotiff.SaveResultAsGeotiff.assertSafeToUseInFilePath
 
 import scala.collection.JavaConverters._
 

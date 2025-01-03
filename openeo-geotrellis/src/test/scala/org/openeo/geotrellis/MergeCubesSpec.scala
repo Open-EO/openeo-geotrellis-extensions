@@ -1,6 +1,6 @@
 package org.openeo.geotrellis
 
-import geotrellis.layer.{SpaceTimeKey, _}
+import geotrellis.layer._
 import geotrellis.proj4.CRS
 import geotrellis.raster._
 import geotrellis.spark._
@@ -12,7 +12,7 @@ import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.openeo.geotrellis.LayerFixtures._
-import org.openeo.geotrellis.geotiff.saveRDD
+import org.openeo.geotrellis.geotiff.SaveResultAsGeotiff.saveRDD
 import org.openeo.geotrelliscommon.{OpenEORasterCube, OpenEORasterCubeMetadata, SparseSpaceTimePartitioner}
 
 import java.nio.file.{Files, Paths}

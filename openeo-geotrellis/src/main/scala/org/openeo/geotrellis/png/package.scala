@@ -7,7 +7,7 @@ import geotrellis.raster.{MultibandTile, UByteCellType}
 import geotrellis.spark._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.openeo.geotrellis.creo.CreoS3Utils.uploadToS3
-import org.openeo.geotrellis.geotiff.SRDD
+import org.openeo.geotrellis.geotiff.SaveResultAsGeotiff.SRDD
 
 import java.io.File
 import java.nio.file.{Files, Paths}

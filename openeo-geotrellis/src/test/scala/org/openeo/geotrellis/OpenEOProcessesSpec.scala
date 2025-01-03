@@ -30,7 +30,7 @@ import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.aggregate_polygon.intern.splitOverlappingPolygons
 import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
-import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD}
+import org.openeo.geotrellis.geotiff.SaveResultAsGeotiff.{ContextSeq, saveRDD}
 import org.openeo.geotrelliscommon.SparseSpaceOnlyPartitioner
 import org.openeo.sparklisteners.GetInfoSparkListener
 
