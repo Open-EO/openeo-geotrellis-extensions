@@ -1259,7 +1259,7 @@ class OpenEOProcesses extends Serializable {
       MultibandTile(filter.createMask(tile.tile).crop(originalBounds))
     })
     val updatedMetadata = datacube.metadata.copy(cellType = BitCellType)
-    ContextRDD(mask, updatedMetadata)
+    ContextRDD(new ShuffledRDD[SpaceTimeKey, MultibandTile,MultibandTile](mask,mask.partitioner.get), updatedMetadata)
   }
 
   def mergeTiles(tiles: MultibandTileLayerRDD[SpaceTimeKey]): MultibandTileLayerRDD[SpaceTimeKey] = {
