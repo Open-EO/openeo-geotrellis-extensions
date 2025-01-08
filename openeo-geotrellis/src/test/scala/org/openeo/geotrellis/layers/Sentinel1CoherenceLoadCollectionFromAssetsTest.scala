@@ -20,19 +20,19 @@ import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
 
-object Sentinel1CoherenceFileLayerProviderTest {
+object Sentinel1CoherenceLoadCollectionFromAssetsTest {
   private var sc: SparkContext = _
 
   @BeforeClass
   def setupSpark(): Unit = sc = SparkUtils.createLocalSparkContext("local[2]",
-    appName = Sentinel1CoherenceFileLayerProviderTest.getClass.getName)
+    appName = Sentinel1CoherenceLoadCollectionFromAssetsTest.getClass.getName)
 
   @AfterClass
   def tearDownSpark(): Unit = sc.stop()
 }
 
-class Sentinel1CoherenceFileLayerProviderTest {
-  import Sentinel1CoherenceFileLayerProviderTest._
+class Sentinel1CoherenceLoadCollectionFromAssetsTest {
+  import Sentinel1CoherenceLoadCollectionFromAssetsTest._
 
   @Test
   def polygonalMean(): Unit = {
@@ -96,7 +96,7 @@ class Sentinel1CoherenceFileLayerProviderTest {
   }
 
   private def coherenceLayerProvider(attributeValues: Map[String, Any] = Map()) =
-    FileLayerProvider(
+    LoadCollectionFromAssets(
       openSearch = OpenSearchClient(new URL("https://services.terrascope.be/catalogue")),
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S1_SLC_COHERENCE_V1",
       openSearchLinkTitles = NonEmptyList.of("VH", "VV"),

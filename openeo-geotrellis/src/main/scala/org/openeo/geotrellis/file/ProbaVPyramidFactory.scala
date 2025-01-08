@@ -8,7 +8,7 @@ import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.openeo.geotrellis.ProjectedPolygons
-import org.openeo.geotrellis.layers.{FileLayerProvider, ProbaVPathDateExtractor}
+import org.openeo.geotrellis.layers.{LoadCollectionFromAssets, ProbaVPathDateExtractor}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
 
@@ -51,7 +51,7 @@ class ProbaVPyramidFactory(openSearchEndpoint: String,
   private def fileLayerProvider(correlationId: String) = {
     val (assetTitles, bandIndices) = _bandNames.map(bandNameToAssetBandIndex).unzip
 
-    FileLayerProvider(
+    LoadCollectionFromAssets(
         OpenSearchClient(openSearchEndpointUrl),
         openSearchCollectionId,
         openSearchLinkTitles = NonEmptyList.of(assetTitles.head, assetTitles.tail: _*),

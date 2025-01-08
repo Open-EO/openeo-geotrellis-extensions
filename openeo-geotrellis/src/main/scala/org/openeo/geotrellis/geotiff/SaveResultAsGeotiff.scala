@@ -1,4 +1,4 @@
-package org.openeo.geotrellis
+package org.openeo.geotrellis.geotiff
 
 import geotrellis.layer._
 import geotrellis.proj4.CRS
@@ -22,6 +22,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.AccumulatorV2
 import org.openeo.geotrellis
+import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons, SimpleJson, getTempFile}
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.fixedTimeOffset
 import org.openeo.geotrellis.stac.STACItem
@@ -38,7 +39,7 @@ import java.util.{ArrayList, Collections, Map, List => JList}
 import scala.collection.JavaConverters._
 import scala.reflect._
 
-package object geotiff {
+object SaveResultAsGeotiff {
 
   private val logger = LoggerFactory.getLogger(getClass)
   private val secondsPerDay = 86400L
@@ -896,14 +897,14 @@ package object geotiff {
                                    compression: Compression,
                                    filenamePrefix: Option[String],
                                   ): java.util.List[(String, String, Extent)] =
-    geotrellis.geotiff.saveStitchedTileGridTemporal(rdd, path, tileGrid, Option.empty, Option.empty, compression, filenamePrefix)
+    SaveResultAsGeotiff.saveStitchedTileGridTemporal(rdd, path, tileGrid, Option.empty, Option.empty, compression, filenamePrefix)
 
   def saveStitchedTileGridTemporal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                                    path: String,
                                    tileGrid: String,
                                    compression: Compression,
                                   ): java.util.List[(String, String, Extent)] =
-    geotrellis.geotiff.saveStitchedTileGridTemporal(rdd, path, tileGrid, Option.empty, Option.empty, compression)
+    SaveResultAsGeotiff.saveStitchedTileGridTemporal(rdd, path, tileGrid, Option.empty, Option.empty, compression)
 
   def saveStitchedTileGridTemporal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                                    path: String,

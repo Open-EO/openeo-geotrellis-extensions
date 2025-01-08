@@ -16,7 +16,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.openeo.geotrellis.creo.CreoS3Utils
-import org.openeo.geotrellis.geotiff.preProcess
+import org.openeo.geotrellis.geotiff.SaveResultAsGeotiff.preProcess
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons, TemporalResolution}
 import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory

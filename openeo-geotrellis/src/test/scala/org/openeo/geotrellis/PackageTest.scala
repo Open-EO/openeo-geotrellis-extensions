@@ -4,7 +4,7 @@ import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.{ByteCellType, ByteUserDefinedNoDataCellType, FloatUserDefinedNoDataCellType, UByteCellType, UByteUserDefinedNoDataCellType}
 import org.junit.Assert._
 import org.junit.Test
-import org.openeo.geotrellis.geotiff._
+import org.openeo.geotrellis.geotiff.SaveResultAsGeotiff._
 
 import java.nio.file.{Files, Path}
 

@@ -14,7 +14,7 @@ import org.apache.commons.io.FileUtils
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory}
-import org.openeo.geotrellis.layers.{FileLayerProvider, MockOpenSearchFeatures, SplitYearMonthDayPathDateExtractor}
+import org.openeo.geotrellis.layers.{LoadCollectionFromAssets, MockOpenSearchFeatures, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureBuilder}
@@ -183,7 +183,7 @@ object LayerFixtures {
 
 
   def sentinel1Sigma0LayerProviderUTM =
-    FileLayerProvider(
+    LoadCollectionFromAssets(
       client,
       "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
       openSearchLinkTitles = NonEmptyList.of("VV"),
@@ -224,7 +224,7 @@ object LayerFixtures {
 
 
   def sentinel2TocLayerProviderUTM =
-    FileLayerProvider(
+    LoadCollectionFromAssets(
       client,
       "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M"),
@@ -236,7 +236,7 @@ object LayerFixtures {
     )
 
   def sentinel2TocLayerProviderUTMMultiResolution =
-    FileLayerProvider(
+    LoadCollectionFromAssets(
       client,
       "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B05_20M"),
@@ -248,7 +248,7 @@ object LayerFixtures {
     )
 
   def sentinel2TocLayerProviderUTM20M =
-    FileLayerProvider(
+    LoadCollectionFromAssets(
       client,
       "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B11_20M", "SCENECLASSIFICATION_20M"),
@@ -422,7 +422,7 @@ object LayerFixtures {
   }
 
   def rgbLayerProvider =
-    FileLayerProvider(
+    LoadCollectionFromAssets(
       openSearch = client,
       openSearchCollectionId = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
       openSearchLinkTitles = NonEmptyList.of("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M"),

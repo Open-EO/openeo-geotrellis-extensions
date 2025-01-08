@@ -1,4 +1,4 @@
-package org.openeo.geotrellis.geotiff
+package org.openeo.geotrellis.SaveResultAsGeotiff
 
 import cats.data.NonEmptyList
 import geotrellis.layer.{SpaceTimeKey, TemporalKeyExtractor, ZoomedLayoutScheme}

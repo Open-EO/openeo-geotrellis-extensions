@@ -1,4 +1,4 @@
-package org.openeo.geotrellis.geotiff
+package org.openeo.geotrellis.SaveResultAsGeotiff
 
 import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 

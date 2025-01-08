@@ -16,7 +16,7 @@ import org.junit.Assert.assertEquals
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.{AfterClass, Ignore, Test}
 import org.openeo.geotrellis.TestImplicits._
-import org.openeo.geotrellis.geotiff._
+import org.openeo.geotrellis.geotiff.SaveResultAsGeotiff._
 import org.openeo.geotrellis.{LayerFixtures, LocalSparkContext, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient

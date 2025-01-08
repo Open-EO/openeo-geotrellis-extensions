@@ -4,6 +4,7 @@ import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue}
 import org.junit.jupiter.api.{Disabled, Test}
 import org.junit.jupiter.api.io.TempDir
+import org.openeo.geotrellis.geotiff.SaveResultAsGeotiff.embedGdalMetadata
 
 import java.io.IOException
 import java.nio.file.{Files, Path, Paths}

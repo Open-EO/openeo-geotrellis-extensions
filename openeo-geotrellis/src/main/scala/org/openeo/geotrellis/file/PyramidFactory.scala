@@ -8,7 +8,7 @@ import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.openeo.geotrellis.ProjectedPolygons
-import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
+import org.openeo.geotrellis.layers.{LoadCollectionFromAssets, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
 import org.slf4j.LoggerFactory
@@ -67,7 +67,7 @@ class PyramidFactory(openSearchClient: OpenSearchClient,
    */
   private def fileLayerProvider(metadataProperties: Map[String, Any],
                                correlationId: String,
-                               layoutScheme: LayoutScheme = ZoomedLayoutScheme(crs, 256)) = FileLayerProvider(
+                               layoutScheme: LayoutScheme = ZoomedLayoutScheme(crs, 256)) = LoadCollectionFromAssets(
     openSearchClient,
     openSearchCollectionId,
     NonEmptyList.fromListUnsafe(openSearchLinkTitles.asScala.toList),
