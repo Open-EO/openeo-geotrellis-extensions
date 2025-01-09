@@ -1,0 +1,54 @@
+{
+  "arraye1": {
+    "process_id": "array_element",
+    "arguments": {
+      "data": {
+        "from_parameter": "data"
+      },
+      "index": 0
+    }
+  },
+  "arraye2": {
+    "process_id": "array_element",
+    "arguments": {
+      "data": {
+        "from_parameter": "data"
+      },
+      "index": 1
+    }
+  },
+  "subtra1": {
+    "process_id": "subtract",
+    "arguments": {
+      "x": {
+        "from_node": "arraye1"
+      },
+      "y": {
+        "from_node": "arraye2"
+      }
+    }
+  },
+  "add1": {
+    "process_id": "add",
+    "arguments": {
+      "x": {
+        "from_node": "arraye1"
+      },
+      "y": {
+        "from_node": "arraye2"
+      }
+    }
+  },
+  "divide1": {
+    "process_id": "divide",
+    "arguments": {
+      "x": {
+        "from_node": "subtra1"
+      },
+      "y": {
+        "from_node": "add1"
+      }
+    },
+    "result": true
+  }
+}

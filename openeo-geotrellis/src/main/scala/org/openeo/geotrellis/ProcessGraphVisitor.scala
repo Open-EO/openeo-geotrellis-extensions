@@ -6,13 +6,13 @@ class ProcessGraphVisitException(message: String) extends Exception(message)
 
 class ProcessGraphVisitor() {
 
-  private var processStack = mutable.Stack[String]()
+  private val processStack = mutable.Stack[String]()
 
   def dereferenceFromNodeArguments(processGraph: java.util.Map[String, Any]): String = {
 
-    def resolveFromNode(node: Any, fromNode: Any): String = {
-      processGraph.get(fromNode) match {
-        case Some(value:String) => value
+    def resolveFromNode(node: Any, fromNode: Any): java.util.Map[String,Any] = {
+      processGraph.getOrDefault(fromNode,null) match {
+        case value:java.util.Map[String,Any] => value
         case null => throw new ProcessGraphVisitException(s"from_node $fromNode (referenced by $node) not in process graph.")
       }
     }
@@ -26,20 +26,20 @@ class ProcessGraphVisitor() {
           resultNode = Some(node)
         }
         var arguments: java.util.Map[String, Any] = nodeDict.get("arguments") match {
-          case Some(v:java.util.Map[String,Any]) => v
+          case v:java.util.Map[String,Any] => v
           case _ => new java.util.HashMap[String, Any]
         }
 
         arguments.forEach {
           case (_, value: java.util.Map[String, Any]) =>
-            value.get("from_node") match {
-              case Some(fromNode: String) =>
+            value.getOrDefault("from_node",null) match {
+              case fromNode: String =>
                 value.put("node", resolveFromNode(node, fromNode))
               case null =>
                 value.forEach {
                   case (k, v: Map[String, Any]) =>
-                    if (v.contains("from_node"))
-                      value.put(k, resolveFromNode(node, v("from_node")))
+                      if (v.contains("from_node"))
+                        value.put(k, resolveFromNode(node, v("from_node")))
                   case _ =>
                 }
             }
@@ -48,11 +48,9 @@ class ProcessGraphVisitor() {
               case elem: Map[String, Any] =>
                 if (elem.contains("from_node"))
                   arguments.put(argId, resolveFromNode(node, elem("from_node")))
-              case _ =>
             }
           case _ =>
         }
-      case _ =>
     }
 
     resultNode.getOrElse(throw new ProcessGraphVisitException("No result node found"))
@@ -61,23 +59,22 @@ class ProcessGraphVisitor() {
   def acceptProcessGraph(graph: java.util.Map[String, Any]): ProcessGraphVisitor = {
     val topLevelNode = dereferenceFromNodeArguments(graph)
     graph.get(topLevelNode) match {
-      case Some(map: java.util.Map[String,Any]) =>
+      case map: java.util.Map[String,Any] =>
         acceptNode(map)
-      case _ =>
     }
     this
   }
 
   def acceptNode(node: java.util.Map[String, Any]): Unit = {
     val pid = node.get("process_id") match{
-      case Some(v:String) => v
+      case v : String => v
     }
     val arguments = node.get("arguments") match {
-      case Some(v:java.util.Map[String,Any]) => v
+      case v : java.util.Map[String,Any] => v
       case _ => new java.util.HashMap[String,Any]
     }
-    val namespace = node.get("namespace") match {
-      case v : Option[String] => v
+    val namespace = node.getOrDefault("namespace",null) match {
+      case v : String => Some(v)
       case _ => null
     }
     _acceptProcess(pid, arguments, namespace)
@@ -102,7 +99,6 @@ class ProcessGraphVisitor() {
     assert(processStack.pop() == processId)
   }
 
-  // Accept a list of arguments
   private def _acceptArgumentList(elements: List[Any]): Unit = {
     elements.foreach {
       case elem: java.util.Map[String, Any] =>
@@ -115,19 +111,28 @@ class ProcessGraphVisitor() {
 
   // Accept a dictionary argument
   private def _acceptArgumentDict(value: java.util.Map[String, Any]): Unit = {
-    value.get("node") match {
-      case Some(node: java.util.Map[String, Any]) => acceptNode(node)
-      case None =>
-        value.get("from_node") match {
-          case Some(node: java.util.Map[String,Any]) => acceptNode(node)
-          case None =>
-            value.get("process_id") match {
+    value.getOrDefault("from_node",null) match {
+      case node: java.util.Map[String, Any] => acceptNode(node)
+      case _: String =>
+        value.getOrDefault("node",null) match {
+          case node: java.util.Map[String,Any] => acceptNode(node)
+          case null =>
+            value.getOrDefault("process_id",None) match {
               case Some(_) => acceptNode(value)
               case None =>
-                value.get("from_parameter") match {
-                  case Some(parameter:java.util.Map[String,Any]) => fromParameter(parameter.asInstanceOf[String])
+                value.getOrDefault("from_parameter",None) match {
+                  case parameter:String => fromParameter(parameter)
                   case None => _acceptDict(value)
                 }
+            }
+        }
+      case null =>
+        value.getOrDefault("process_id",null) match {
+          case _:java.util.Map[String,Any] => acceptNode(value)
+          case null =>
+            value.getOrDefault("from_parameter",null) match {
+              case parameter:String => fromParameter(parameter)
+              case null => _acceptDict(value)
             }
         }
     }
@@ -182,9 +187,7 @@ class ProcessGraphVisitor() {
 
 class GeotrellisTileProcessGraphVisitor (_builder: Option[OpenEOProcessScriptBuilder] = None) extends ProcessGraphVisitor {
   private val builder = _builder.getOrElse(new OpenEOProcessScriptBuilder())
-  // Process list to keep track of processes
   private val processes = mutable.LinkedHashMap[String, java.util.Map[String, Object]]()
-  // Companion object for the 'create' method
 
   def create(defaultInputParameter: Option[String] = None, defaultInputDataType: Option[String] = None): GeotrellisTileProcessGraphVisitor = {
     val builder = new OpenEOProcessScriptBuilder()
@@ -195,14 +198,13 @@ class GeotrellisTileProcessGraphVisitor (_builder: Option[OpenEOProcessScriptBui
     new GeotrellisTileProcessGraphVisitor(Some(builder))
   }
 
-  def enterProcess(processId: String, arguments: java.util.Map[String, Object], namespace: Option[String]): GeotrellisTileProcessGraphVisitor = {
+  def enterProcess(processId: String, arguments: java.util.Map[String, Object], namespace: Option[String] = None): GeotrellisTileProcessGraphVisitor = {
     builder.expressionStart(processId, arguments)
     processes += (processId -> arguments)
     this
   }
 
-  // Method to handle leaving a process
-  def leaveProcess(processId: String, arguments: java.util.Map[String, Object], namespace: Option[String]): GeotrellisTileProcessGraphVisitor = {
+  def leaveProcess(processId: String, arguments: java.util.Map[String, Object], namespace: Option[String] = None): GeotrellisTileProcessGraphVisitor = {
     builder.expressionEnd(processId, arguments)
     this
   }
@@ -212,19 +214,16 @@ class GeotrellisTileProcessGraphVisitor (_builder: Option[OpenEOProcessScriptBui
     this
   }
 
-  // Method to handle leaving an argument
   def leaveArgument(argumentId: String, value: Any): GeotrellisTileProcessGraphVisitor = {
     builder.argumentEnd()
     this
   }
 
-  // Method to handle 'from parameter' calls
   def fromParameter(parameterId: String): GeotrellisTileProcessGraphVisitor = {
     builder.fromParameter(parameterId)
     this
   }
 
-  // Method to handle constant arguments
   def constantArgument(argumentId: String, value: Any): GeotrellisTileProcessGraphVisitor = {
     value match {
       case _: String =>
@@ -235,30 +234,25 @@ class GeotrellisTileProcessGraphVisitor (_builder: Option[OpenEOProcessScriptBui
     this
   }
 
-  // Method to handle entering an array
   def enterArray(argumentId: String): Unit = {
     builder.arrayStart(argumentId)
   }
 
-  // Method to handle constant array elements
   def constantArrayElement(value: Number): Unit = {
     builder.constantArrayElement(value)
   }
 
-  // Method to handle array element completion
   def arrayElementDone(value: Map[String, Any]): Unit = {
     builder.arrayElementDone()
   }
 
-  // Method to handle leaving an array
   def leaveArray(argumentId: String): Unit = {
     builder.arrayEnd()
   }
 
-  // Method to handle a dictionary (process graph)
   def acceptDict(value: java.util.Map[String, Any]): Unit = {
-    value.get("process_graph") match {
-      case Some(v: java.util.Map[String,Any]) => acceptProcessGraph(v)
+      value.get("process_graph") match {
+      case v: java.util.Map[String,Any] => acceptProcessGraph(v)
     }
   }
 
