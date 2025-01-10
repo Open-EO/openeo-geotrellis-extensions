@@ -27,6 +27,7 @@ import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.fixedTimeOffset
 import org.openeo.geotrellis.stac.STACItem
 import org.openeo.geotrellis.tile_grid.TileGrid
+import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
 import spire.math.Integral
 import spire.syntax.cfor.cfor
@@ -241,13 +242,10 @@ package object geotiff {
 
     val separate_asset_per_band_new_partitioner = sys.env.getOrElse("SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER", "true").toBoolean
     val partitioner = if (separate_asset_per_band_new_partitioner) {
-      val bandCount = if (formatOptions.separateAssetPerBand) bandLabels.length else 1
-      val dateCount = preprocessedRdd.map(_._1.time).distinct().count().toInt
-      new ByKeyPartitionerKnowKeyAmount(bandCount * dateCount) {
-        override def getPartition(key: Any): Int = {
-          key.asInstanceOf[(String, String, Int)]._3
-        }
-      }
+      // TODO: Test if extra stage is worth the better partitioning.
+      // If there is a better way to find the dates, that would be faster.
+      val keys = toBeGrouped.map(_._1).distinct().collect()
+      new ByKeyPartitioner(keys)
     } else {
       defaultPartitioner(toBeGrouped)
     }
