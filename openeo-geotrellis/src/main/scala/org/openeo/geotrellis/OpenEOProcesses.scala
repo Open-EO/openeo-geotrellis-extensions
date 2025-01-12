@@ -918,15 +918,20 @@ class OpenEOProcesses extends Serializable {
   }
 
   def resampleCubeSpatial_spatial(data: MultibandTileLayerRDD[SpatialKey],crs:CRS,layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpatialKey]) = {
-    if(crs.equals(data.metadata.crs) && layout.equals(data.metadata.layout)) {
-      logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
-      (0,data)
-    }else if(partitioner==null) {
-      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, crs, Right(layout), 16, method, new SpacePartitioner(data.metadata.bounds))
-      filterNegativeSpatialKeys_spatial(reprojected)
-    }else{
-      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, crs, Right(layout), 16, method, partitioner)
-      filterNegativeSpatialKeys_spatial(reprojected)
+    try {
+      if (crs.equals(data.metadata.crs) && layout.equals(data.metadata.layout)) {
+        logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
+        (0, data)
+      } else if (partitioner == null) {
+        val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, crs, Right(layout), 16, method, new SpacePartitioner(data.metadata.bounds))
+        filterNegativeSpatialKeys_spatial(reprojected)
+      } else {
+        val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, crs, Right(layout), 16, method, partitioner)
+        filterNegativeSpatialKeys_spatial(reprojected)
+      }
+    } catch {
+      case e:GeoAttrsError => throw new IllegalStateException(s"Unexpected error during resample_cube_spatial or merge_cubes of a spatial cube (${data.name}) , resampling from: ${data.metadata.crs} / ${data.metadata.layout} to ${layout} / ${crs}")
+      case e:Any => throw e
     }
   }
 
