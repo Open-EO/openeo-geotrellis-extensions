@@ -240,7 +240,7 @@ package object geotiff {
       }
     }
 
-    val separate_asset_per_band_new_partitioner = sys.env.getOrElse("SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER", "true").toBoolean
+    val separate_asset_per_band_new_partitioner = sys.env.getOrElse("SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER", "false").toBoolean
     val partitioner = if (separate_asset_per_band_new_partitioner) {
       // TODO: Test if extra stage is worth the better partitioning.
       // If there is a better way to find the dates, that would be faster.
