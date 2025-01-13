@@ -73,7 +73,7 @@ object TileRDDReproject {
     val (targetCellSize:CellSize,targetDataExtent:Extent)=
     targetLayout match {
       case Right(l) => {
-        (targetLayout.asInstanceOf[LayoutDefinition].cellSize, targetLayout.asInstanceOf[LayoutDefinition].createAlignedGridExtent(ProjectedExtent(metadata.extent,metadata.crs).reproject(destCrs)))
+        (l.cellSize, l.createAlignedGridExtent(ProjectedExtent(metadata.extent,metadata.crs).reproject(destCrs)).extent)
       }
       case Left(l) => {
         val passthroughGridExtent = ReprojectRasterExtent(sourceDataGridExtent, metadata.crs, destCrs)
