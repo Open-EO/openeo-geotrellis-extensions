@@ -16,7 +16,8 @@ import geotrellis.store.s3._
 import geotrellis.util._
 import geotrellis.vector.{ProjectedExtent, _}
 import org.apache.commons.io.{FileUtils, FilenameUtils}
-import org.apache.spark.SparkContext
+import org.apache.spark.Partitioner.defaultPartitioner
+import org.apache.spark.{HashPartitioner, Partitioner, SparkContext}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
@@ -26,6 +27,7 @@ import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.fixedTimeOffset
 import org.openeo.geotrellis.stac.STACItem
 import org.openeo.geotrellis.tile_grid.TileGrid
+import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
 import spire.math.Integral
 import spire.syntax.cfor.cfor
@@ -37,6 +39,15 @@ import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Collections, Map, List => JList}
 import scala.collection.JavaConverters._
 import scala.reflect._
+
+
+class ByKeyPartitionerKnowKeyAmount(numPartitionsArgument: Int) extends Partitioner {
+  override def numPartitions: Int = numPartitionsArgument
+
+  override def getPartition(key: Any): Int = {
+    key.asInstanceOf[(String, Int)]._2
+  }
+}
 
 package object geotiff {
 
@@ -193,8 +204,7 @@ package object geotiff {
     val compression = Deflate(zLevel)
     val bandSegmentCount = totalCols * totalRows
     val bandLabels = formatOptions.tags.bandTags.map(_("DESCRIPTION"))
-
-    val res = preprocessedRdd.flatMap { case (key: SpaceTimeKey, multibandTile: MultibandTile) =>
+    val toBeGrouped = preprocessedRdd.flatMap { case (key: SpaceTimeKey, multibandTile: MultibandTile) =>
       var bandIndex = -1
       //Warning: for deflate compression, the segmentcount and index is not really used, making it stateless.
       //Not sure how this works out for other types of compression!!!
@@ -228,7 +238,18 @@ package object geotiff {
           val tiffBands = if (formatOptions.separateAssetPerBand) 1 else multibandTile.bandCount
           ((filename, timestamp, tiffBands), (index, (multibandTile.cellType, compressedBytes), bandIndex))
       }
-    }.groupByKey().map { case ((filename: String, timestamp: String, tiffBands:Int), sequence) =>
+    }
+
+    val separate_asset_per_band_new_partitioner = sys.env.getOrElse("SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER", "true").toBoolean
+    val partitioner = if (separate_asset_per_band_new_partitioner) {
+      // TODO: Test if extra stage is worth the better partitioning.
+      // If there is a better way to find the dates, that would be faster.
+      val keys = toBeGrouped.map(_._1).distinct().collect()
+      new ByKeyPartitioner(keys)
+    } else {
+      defaultPartitioner(toBeGrouped)
+    }
+    val res = toBeGrouped.groupByKey(partitioner).map { case ((filename: String, timestamp: String, tiffBands:Int), sequence) =>
       val cellTypes = sequence.map(_._2._1).toSet
       val tiffs: Predef.Map[Int, Array[Byte]] = sequence.map(tuple => (tuple._1, tuple._2._2)).toMap
       val bandIndices = sequence.map(_._3).toSet.toList.asJava
@@ -309,7 +330,13 @@ package object geotiff {
             ((name, bandIndex), (key, t))
         }
       }
-      val res = rdd_per_band.groupByKey().map { case ((name, bandIndex), tiles) =>
+      val partitioner = new ByKeyPartitionerKnowKeyAmount(bandLabels.length) {
+        override def getPartition(key: Any): Int = {
+          key.asInstanceOf[(String, Int)]._2
+        }
+      }
+      // groupByKey does a shuffle, so we can partition at the same time
+      val res = rdd_per_band.groupByKey(partitioner).map { case ((name, bandIndex), tiles) =>
         val fixedPath =
           if (path.endsWith("out")) {
             val executorAttemptDirectory = createExecutorAttemptDirectory(path.substring(0, path.length - 3))
