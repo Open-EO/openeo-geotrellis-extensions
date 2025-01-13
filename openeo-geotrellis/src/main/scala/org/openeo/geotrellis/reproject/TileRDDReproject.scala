@@ -70,8 +70,17 @@ object TileRDDReproject {
     implicit val sc = bufferedTiles.context
 
     val sourceDataGridExtent = metadata.layout.createAlignedGridExtent(metadata.extent)
-    val passthroughGridExtent = ReprojectRasterExtent(sourceDataGridExtent, metadata.crs, destCrs)
-    val targetDataExtent = passthroughGridExtent.extent
+    val (targetCellSize:CellSize,targetDataExtent:Extent)=
+    targetLayout match {
+      case Right(l) => {
+        (targetLayout.asInstanceOf[LayoutDefinition].cellSize, targetLayout.asInstanceOf[LayoutDefinition].createAlignedGridExtent(ProjectedExtent(metadata.extent,metadata.crs).reproject(destCrs)))
+      }
+      case Left(l) => {
+        val passthroughGridExtent = ReprojectRasterExtent(sourceDataGridExtent, metadata.crs, destCrs)
+        (passthroughGridExtent.cellSize,passthroughGridExtent.extent)
+      }
+    }
+
 
     val targetPartitioner: Option[Partitioner] = partitioner.orElse(bufferedTiles.partitioner)
 
@@ -112,7 +121,7 @@ object TileRDDReproject {
                   layoutScheme.levelFor(targetDataExtent, ct)
 
                 case None =>
-                  layoutScheme.levelFor(targetDataExtent, passthroughGridExtent.cellSize)
+                  layoutScheme.levelFor(targetDataExtent, targetCellSize)
               }
           }
         }
