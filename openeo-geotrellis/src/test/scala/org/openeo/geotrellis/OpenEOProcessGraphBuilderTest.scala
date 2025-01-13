@@ -3,13 +3,11 @@ package org.openeo.geotrellis
 import org.apache.commons.io.IOUtils
 import org.junit.Test
 import com.fasterxml.jackson.databind.ObjectMapper
-import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ShortArrayTile, ShortConstantNoDataCellType$, Tile}
+import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ShortArrayTile, Tile}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotNull}
 
 import java.util
-import java.util.{Arrays, Collections, HashMap, Map}
 import scala.collection.mutable.ArrayBuffer
-import scala.collection.{JavaConversions, mutable}
 
 class OpenEOProcessGraphBuilderTest {
 
