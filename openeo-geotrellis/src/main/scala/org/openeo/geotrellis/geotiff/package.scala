@@ -238,18 +238,18 @@ package object geotiff {
           val tiffBands = if (formatOptions.separateAssetPerBand) 1 else multibandTile.bandCount
           ((filename, timestamp, tiffBands), (index, (multibandTile.cellType, compressedBytes), bandIndex))
       }
-    }
+    }.persist()
 
     val separate_asset_per_band_new_partitioner = sys.env.getOrElse("SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER", "false").toBoolean
-    val partitioner = if (separate_asset_per_band_new_partitioner) {
+    val grouped = if (separate_asset_per_band_new_partitioner) {
       // TODO: Test if extra stage is worth the better partitioning.
       // If there is a better way to find the dates, that would be faster.
       val keys = toBeGrouped.map(_._1).distinct().collect()
-      new ByKeyPartitioner(keys)
+      toBeGrouped.groupByKey(new ByKeyPartitioner(keys))
     } else {
-      defaultPartitioner(toBeGrouped)
+      toBeGrouped.groupByKey()
     }
-    val res = toBeGrouped.groupByKey(partitioner).map { case ((filename: String, timestamp: String, tiffBands:Int), sequence) =>
+    val res = grouped.map { case ((filename: String, timestamp: String, tiffBands:Int), sequence) =>
       val cellTypes = sequence.map(_._2._1).toSet
       val tiffs: Predef.Map[Int, Array[Byte]] = sequence.map(tuple => (tuple._1, tuple._2._2)).toMap
       val bandIndices = sequence.map(_._3).toSet.toList.asJava
@@ -280,6 +280,7 @@ package object geotiff {
     }.toList.asJava
 
     cleanUpExecutorAttemptDirectory(path)
+    toBeGrouped.unpersist()
 
     res
   }
