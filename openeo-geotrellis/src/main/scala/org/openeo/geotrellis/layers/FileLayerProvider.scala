@@ -7,6 +7,7 @@ import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
+import geotrellis.raster.{StringName, EmptyName}
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
@@ -37,7 +38,7 @@ import org.slf4j.LoggerFactory
 
 import java.io.{IOException, Serializable}
 import java.net.URI
-import java.nio.file.{Path, Paths}
+import java.nio.file.{Files, Path, Paths}
 import java.time._
 import java.time.temporal.ChronoUnit.{DAYS, SECONDS}
 import java.util
@@ -1000,7 +1001,14 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       val commonCellType = arbitraryRasterSource.cellType
       if (commonCellType.isInstanceOf[NoNoData]) commonCellType.withDefaultNoData() else commonCellType
     } catch {
-      case e: Exception => throw new IOException(s"Exception while determining data type of asset ${arbitraryRasterSource.name} in collection $openSearchCollectionId. Detailed message: ${e.getMessage}", e)
+      case e: Exception => {
+        val path = Paths.get(arbitraryRasterSource.name match {
+          case StringName(value) => value.replace("NETCDF:", "").split(":").head
+          case EmptyName => ""
+        })
+        val fileExistsMessage = s"File ${if (Files.exists(path)) "exists" else "does not exist"}: $path."
+        throw new IOException(s"Exception while reading RasterSource ${arbitraryRasterSource.name} in collection $openSearchCollectionId. $fileExistsMessage Detailed message: ${e.getMessage}", e)
+      }
     }
   }
 
