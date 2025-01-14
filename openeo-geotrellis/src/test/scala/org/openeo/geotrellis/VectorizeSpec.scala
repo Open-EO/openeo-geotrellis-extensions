@@ -1,6 +1,7 @@
 package org.openeo.geotrellis
 
 import io.circe.Json
+import io.circe._, io.circe.parser._
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata}
 import geotrellis.proj4.CRS
 import geotrellis.raster.crop.Crop
@@ -76,7 +77,9 @@ class VectorizeSpec {
     val openEOProcesses = new OpenEOProcesses()
     val (features: Array[(String, List[PolygonFeature[Int]])], crs: CRS) = openEOProcesses.vectorize(ContextRDD(croppedCube, croppedCube.metadata.copy(extent = newExtent)),1)
     val geojson:Json = openEOProcesses.featuresToGeojson(features, crs)
-    val expected = IOUtils.toString(getClass.getResource("/org/openeo/geotrellis/TestVectorize.geojson"))
-    assertEquals(expected,geojson.toString())
+    val expected = parse(IOUtils.toString(getClass.getResource("/org/openeo/geotrellis/TestVectorize.geojson"))) match {
+      case Right(json) => json
+    }
+    assertEquals(expected,geojson)
   }
 }
