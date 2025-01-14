@@ -610,15 +610,16 @@ class OpenEOProcesses extends Serializable {
    * Only first band is taken into account, other bands are ignored.
    *
    * @param datacube
+   * @param tileSizeFactor by default 4
    * @return
    */
-  def vectorize[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): (Array[(String, List[PolygonFeature[Int]])], CRS) = {
+  def vectorize[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K],tileSizeFactor: Int = 4): (Array[(String, List[PolygonFeature[Int]])], CRS) = {
     val layout = datacube.metadata.layout
     val maxExtent = datacube.metadata.extent
     //naive approach: combine tiles and hope that we don't exceed the max size
     //if we exceed the max, vectorize will run on separate tiles, and we'll need to merge results
-    val newCols = Math.min(256,layout.cols)
-    val newRows = Math.min(256,layout.rows)
+    val newCols = Math.min(256 * tileSizeFactor,layout.cols)
+    val newRows = Math.min(256 * tileSizeFactor,layout.rows)
     val overlap = 8
 
     val retiled = retileGeneric(datacube,newCols.toInt,newRows.toInt,overlap,overlap)

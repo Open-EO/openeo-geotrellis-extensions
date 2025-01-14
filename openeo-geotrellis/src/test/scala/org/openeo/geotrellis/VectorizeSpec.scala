@@ -74,7 +74,7 @@ class VectorizeSpec {
     val croppedCube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = cube._1.crop(newExtent, Options(force = true, clamp = true))
 
     val openEOProcesses = new OpenEOProcesses()
-    val (features: Array[(String, List[PolygonFeature[Int]])], crs: CRS) = openEOProcesses.vectorize(ContextRDD(croppedCube, croppedCube.metadata.copy(extent = newExtent)))
+    val (features: Array[(String, List[PolygonFeature[Int]])], crs: CRS) = openEOProcesses.vectorize(ContextRDD(croppedCube, croppedCube.metadata.copy(extent = newExtent)),1)
     val geojson:Json = openEOProcesses.featuresToGeojson(features, crs)
     val expected = IOUtils.toString(getClass.getResource("/org/openeo/geotrellis/TestVectorize.geojson"))
     assertEquals(expected,geojson.toString())
