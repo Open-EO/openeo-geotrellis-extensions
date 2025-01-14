@@ -21,7 +21,7 @@ class BatchJobProgressListener extends SparkListener {
     import BatchJobProgressListener.logger
 
     private val stagesInformation = new mutable.LinkedHashMap[String,mutable.Map[String,Any]]()
-    private val executorInformation = new mutable.LinkedHashMap[String,mutable.Map[String,Long]]
+    private val executorInformation = new mutable.LinkedHashMap[String,Long]
 
     override def onStageSubmitted( stageSubmitted:SparkListenerStageSubmitted):Unit = {
         logger.info(s"Starting stage: ${stageSubmitted.stageInfo.stageId} - ${stageSubmitted.stageInfo.name}. \nStages may combine multiple processes." )
@@ -50,7 +50,7 @@ class BatchJobProgressListener extends SparkListener {
           }
           val megabytes = taskMetrics.shuffleWriteMetrics.bytesWritten.toFloat/(1024.0*1024.0)
           val name = stageCompleted.stageInfo.name
-          val message = f"Stage ${stageCompleted.stageInfo.stageId} produced $megabytes%.2f MB in $timeString - ${name}."
+          val message = f"Stage ${stageCompleted.stageInfo.stageId} produced $megabytes%.2f MB in $timeString - $name."
 //          logger.info(f"Stage ${stageCompleted.stageInfo.stageId} produced $megabytes%.2f MB in $timeString - ${name}.");
           logs = ("info",message) :: logs
           val accumulators = stageCompleted.stageInfo.accumulables;
@@ -74,11 +74,13 @@ class BatchJobProgressListener extends SparkListener {
   override def onExecutorAdded(executorAdded: SparkListenerExecutorAdded): Unit = {
     val startTime = executorAdded.time
     val executorId = executorAdded.executorId
+    executorInformation += (executorId -> startTime)
 
   }
-  override def onExecutorRemoved(executorAdded: SparkListenerExecutorRemoved): Unit = {
-    val endTime = executorAdded.time
-    val executorId = executorAdded.executorId
+  override def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit = {
+    val executorId = executorRemoved.executorId
+    val executorTime = executorRemoved.time-executorInformation(executorId)
+    executorInformation += (executorId -> executorTime)
   }
 
   override def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd):Unit={
@@ -88,6 +90,9 @@ class BatchJobProgressListener extends SparkListener {
       }
       (x._1 + 1, x._2.plus(duration))
     }
+    val executorTime = executorInformation.foldLeft(0L)((x,y) => {
+      x + (y._2)
+    })
     val ordered = stagesInformation.toSeq.sortWith((a,b) =>{
       val DurationA = a._2.getOrElse("duration",0) match {
         case n:Duration => n}
@@ -99,12 +104,11 @@ class BatchJobProgressListener extends SparkListener {
     } else {
       totalDuration.toMillis.toFloat / 1000.0 + " seconds"
     }
-    logger.info(f" ${totalStages} stages finished in ${timeString}")
-    val thresholdDurationLogging = totalDuration.toMillis * 0.8
+    logger.info(f" \nSummary of the executed stages: \nTotal number of stages: $totalStages \nTotal stage runtime: $timeString\nTotal executor allocation time: $executorTime \nLogs of the longest stages:")
     var tempDuration = 0.0
     var i = 0
     var maxDurationToLog = ordered.head._2.getOrElse("duration",0) match {case n:Duration => n}
-    while (tempDuration < thresholdDurationLogging){
+    while (tempDuration < totalDuration.toMillis * 0.8){
       val stageInfo = ordered(i)._2
       val logs = stageInfo.getOrElse("logs","") match {case s:List[(String, String)] => s}
       for (log <- logs){

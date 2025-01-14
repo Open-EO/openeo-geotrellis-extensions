@@ -33,7 +33,7 @@ import org.openeo.geotrelliscommon.{ConfigurableSpaceTimePartitioner, DataCubePa
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection, Link}
 import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
-import org.openeo.sparklisteners.GetInfoSparkListener
+import org.openeo.sparklisteners.{BatchJobProgressListener, GetInfoSparkListener}
 import ucar.nc2.NetcdfFile
 import ucar.nc2.util.CompareNetcdf2
 
@@ -1218,6 +1218,9 @@ class FileLayerProviderTest extends RasterMatchers{
     val listener = new GetInfoSparkListener()
     sc.addSparkListener(listener)
 
+    val ProgressListener = new BatchJobProgressListener()
+    sc.addSparkListener(ProgressListener)
+
     val (datacubeParams,result) = keysForLargeArea()
 
     val allTiles = result._1.collect()
@@ -1250,6 +1253,9 @@ class FileLayerProviderTest extends RasterMatchers{
 
     val listener = new GetInfoSparkListener()
     sc.addSparkListener(listener)
+
+    val ProgressListener = new BatchJobProgressListener()
+    sc.addSparkListener(ProgressListener)
 
     val (datacubeParams,result) = keysForLargeArea(true)
 
