@@ -31,10 +31,10 @@ import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
 import org.openeo.geotrellis.{LayerFixtures, MergeCubesSpec, OpenEOProcessScriptBuilder, OpenEOProcesses, ProjectedPolygons, TestOpenEOProcessScriptBuilder}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ConfigurableSpaceTimePartitioner, SparseSpaceTimePartitioner, DataCubeParameters, ResampledTile}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ConfigurableSpaceTimePartitioner, DataCubeParameters, ResampledTile, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.Link
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
-import org.openeo.sparklisteners.GetInfoSparkListener
+import org.openeo.sparklisteners.{BatchJobProgressListener, GetInfoSparkListener}
 
 import java.net.URI
 import java.time.LocalTime.MIDNIGHT
@@ -545,7 +545,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val crs = CRS.fromEpsgCode(32631)
     val boundingBox = ProjectedExtent(Extent(640860, 5676170, 666460, 5701770), crs)
     val dataCubeParameters = new DataCubeParameters
-
+    val ProgressListener = new BatchJobProgressListener()
+    sc.addSparkListener(ProgressListener)
     val listener = new GetInfoSparkListener()
     SparkContext.getOrCreate().addSparkListener(listener)
     // dataCubeParameters.tileSize = 2048 (This requires increased spark.kryoserializer.buffer.max)
@@ -713,6 +714,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
   @Test
   def testL1CMultibandTileMask(): Unit = {
+    val listener = new BatchJobProgressListener()
+    sc.addSparkListener(listener)
     val dilationDistance = 5
 
     val creoL1CLayerProvider = FileLayerProvider(
