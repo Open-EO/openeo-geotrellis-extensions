@@ -31,27 +31,24 @@ class BatchJobProgressListener extends SparkListener {
         val taskMetrics = stageCompleted.stageInfo.taskMetrics
         val stageInformation = new mutable.LinkedHashMap[String,Any]()
         var logs = List[(String, String)]()
+        stageInformation += ("duration" -> Duration.ofMillis(taskMetrics.executorRunTime))
         if(stageCompleted.stageInfo.failureReason.isDefined){
-          stageInformation += ("duration" -> Duration.ofMillis(taskMetrics.executorRunTime))
           val message =
             f"""A part of the process graph failed, and will be retried, the reason was: "${stageCompleted.stageInfo.failureReason.get}"
                |Your job may still complete if the failure was caused by a transient error, but will take more time. A common cause of transient errors is too little executor memory (overhead). Too low executor-memory can be seen by a high 'garbage collection' time, which was: ${Duration.ofMillis(taskMetrics.jvmGCTime).toSeconds / 1000.0} seconds.
                |""".stripMargin
-//          logger.warn(message)
           logs = ("warn", message) :: logs
 
         }else{
           val duration = Duration.ofMillis(taskMetrics.executorRunTime)
-          stageInformation += ("duration" -> Duration.ofMillis(taskMetrics.executorRunTime))
           val timeString = if(duration.toSeconds>60) {
-            duration.toMinutes + " minutes"
+            duration.toMinutes + " m"
           } else {
-            duration.toMillis.toFloat / 1000.0 + " seconds"
+            duration.toMillis.toFloat / 1000.0 + " s"
           }
           val megabytes = taskMetrics.shuffleWriteMetrics.bytesWritten.toFloat/(1024.0*1024.0)
           val name = stageCompleted.stageInfo.name
-          val message = f"Stage ${stageCompleted.stageInfo.stageId} produced $megabytes%.2f MB in $timeString - $name."
-//          logger.info(f"Stage ${stageCompleted.stageInfo.stageId} produced $megabytes%.2f MB in $timeString - ${name}.");
+          val message = f"Stage ${stageCompleted.stageInfo.stageId}: in $timeString - $megabytes%.2f MB  - $name."
           logs = ("info",message) :: logs
           val accumulators = stageCompleted.stageInfo.accumulables;
           val chunkCounts = accumulators.filter(_._2.name.get.startsWith("ChunkCount"));
@@ -60,7 +57,6 @@ class BatchJobProgressListener extends SparkListener {
             val megapixel = totalChunks.get.asInstanceOf[Long] * 256 * 256 / (1024 * 1024)
             if(taskMetrics.executorRunTime > 0) {
               val messageSpeed = f"load_collection: data was loaded with an average speed of: ${megapixel.toFloat/ duration.toSeconds.toFloat}%.3f Megapixel per second."
-//              logger.info(f"load_collection: data was loaded with an average speed of: ${megapixel.toFloat/ duration.toSeconds.toFloat}%.3f Megapixel per second.")
               logs = ("info",messageSpeed) :: logs
             };
           }
@@ -93,18 +89,25 @@ class BatchJobProgressListener extends SparkListener {
     val executorTime = executorInformation.foldLeft(0L)((x,y) => {
       x + (y._2)
     })
+    val executorString = if (executorTime > 60*1000 ){
+      f"${(executorTime /(60*1000)).toInt}"
+    }else{
+      f"${executorTime / 1000} seconds"
+    }
     val ordered = stagesInformation.toSeq.sortWith((a,b) =>{
-      val DurationA = a._2.getOrElse("duration",0) match {
-        case n:Duration => n}
+      val DurationA = a._2.getOrElse("duration",0) match {case n:Duration => n}
       val DurationB = b._2.getOrElse("duration",0) match {case n:Duration => n}
-      DurationA.toMillis < DurationB.toMillis
+      DurationA.toMillis > DurationB.toMillis
     })
     val timeString = if(totalDuration.toSeconds>60) {
       totalDuration.toMinutes + " minutes"
     } else {
       totalDuration.toMillis.toFloat / 1000.0 + " seconds"
     }
-    logger.info(f" \nSummary of the executed stages: \nTotal number of stages: $totalStages \nTotal stage runtime: $timeString\nTotal executor allocation time: $executorTime \nLogs of the longest stages:")
+    logger.info(f"Summary of the executed stages with the Logs of the longest stages:")
+    logger.info(f"Total number of stages: $totalStages")
+    logger.info(f"Total stage runtime: $timeString")
+    logger.info(f"Total executor allocation time: $executorString")
     var tempDuration = 0.0
     var i = 0
     var maxDurationToLog = ordered.head._2.getOrElse("duration",0) match {case n:Duration => n}
