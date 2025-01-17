@@ -75,7 +75,7 @@ class BatchJobProgressListener extends SparkListener {
   }
   override def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit = {
     val executorId = executorRemoved.executorId
-    val executorTime = executorRemoved.time-executorInformation(executorId)
+    val executorTime = if(executorInformation.contains(executorId)){executorRemoved.time-executorInformation(executorId)}else{0L}
     executorInformation += (executorId -> executorTime)
   }
 
@@ -90,7 +90,7 @@ class BatchJobProgressListener extends SparkListener {
       x + (y._2)
     })
     val executorString = if (executorTime > 60*1000 ){
-      f"${(executorTime /(60*1000)).toInt}"
+      f"${(executorTime /(60*1000)).toInt} minutes"
     }else{
       f"${executorTime / 1000} seconds"
     }
