@@ -47,13 +47,13 @@ object CreoS3Utils {
       .build();
   }
 
-  def getCreoS3Client(): S3Client = {
+  def getCreoS3Client(region: Region = cloudFerroRegion): S3Client = {
     S3Client.builder()
       .credentialsProvider(credentialsProvider)
       .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
       .overrideConfiguration(overrideConfig)
       .forcePathStyle(true)
-      .region(cloudFerroRegion)
+      .region(region)
       .endpointOverride(URI.create(sys.env("SWIFT_URL")))
       .build()
   }

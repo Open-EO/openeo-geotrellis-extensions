@@ -2,6 +2,7 @@ package org.openeo.geotrellis
 
 import geotrellis.store.s3.AmazonS3URI
 import geotrellis.store.s3.util.{S3RangeReader, S3RangeReaderProvider}
+import org.openeo.geotrellis.creo.CreoS3Utils
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 
@@ -40,7 +41,7 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
           }
           s3Client(Region.of("RegionOne"), uri)
         } else if (s3Uri.getBucket.toLowerCase().startsWith("lcfm")) {
-          s3Client(Region.of("waw3-1"), URI.create("https://s3.waw3-1.cloudferro.com"))
+          CreoS3Utils.getCreoS3Client(Region.of("waw3-1"))
         } else s3Client(Region.of("RegionOne"), swiftEndpoint)
       else s3Client(bucketRegion(s3Uri.getBucket))
 
