@@ -5,8 +5,10 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.ClassRule
 import org.junit.jupiter.api.{AfterAll, BeforeAll}
 import org.junit.rules.ExternalResource
+import org.slf4j.{Logger, LoggerFactory}
 
 protected trait LocalSparkContextBase {
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[LocalSparkContextBase])
   protected var _sc: Option[SparkContext] = None
 
   implicit def sc: SparkContext = {
@@ -14,7 +16,9 @@ protected trait LocalSparkContextBase {
       val conf = new SparkConf()
         .set("spark.kryoserializer.buffer.max", "512m")
         .set("spark.rdd.compress", "true")
+        .set("spark.ui.enabled", "true")
       _sc = Some(SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName, conf))
+      if (sc.uiWebUrl.isDefined) logger.info("Spark uiWebUrl: " + sc.uiWebUrl.get)
     }
     _sc.get
   }
