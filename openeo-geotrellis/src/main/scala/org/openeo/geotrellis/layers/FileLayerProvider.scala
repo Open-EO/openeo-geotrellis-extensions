@@ -322,6 +322,15 @@ object FileLayerProvider {
     }
   }
 
+  def vsis3ToS3(path: String): String = {
+    val vsis3Prefix = "/vsis3/eodata/"
+    if (path.toLowerCase().startsWith(vsis3Prefix)) {
+      "S3://EODATA/" + path.substring(vsis3Prefix.length)
+    } else {
+      path
+    }
+  }
+
   // important: make sure to implement object equality for CacheKey's members
   private case class CacheKey(openSearch: OpenSearchClient, openSearchCollectionId: String, rootPath: Path,
                               pathDateExtractor: PathDateExtractor)
@@ -1481,7 +1490,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           if(experimental) {
             GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(theResolution), resampleMethod=Some(resampleMethod)), targetCellType = targetCellType)
           }else{
-            val geotiffPath = GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/"))
+            val geotiffPath = GeoTiffPath(vsis3ToS3(dataPath))
             if (noResampleOnRead) {
               val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)
               val geotiffRasterSource = GeoTiffRasterSource(geotiffPath, targetCellType)
@@ -1495,7 +1504,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod),te = Some(targetExtent.extent))
             GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType)
           }else{
-            val geotiffPath = GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/"))
+            val geotiffPath = GeoTiffPath(vsis3ToS3(dataPath))
             if (noResampleOnRead) {
               val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)
               val geotiffRasterSource = GeoTiffReprojectRasterSource(geotiffPath, targetExtent.crs, tiffAlignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType = targetCellType)
