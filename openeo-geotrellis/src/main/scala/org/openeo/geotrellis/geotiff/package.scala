@@ -153,7 +153,7 @@ package object geotiff {
     // Remove the executorAttemptDirectory part from the path:
     val destinationPath = parentDirectory.resolve(relativeFilePath.substring(relativeFilePath.indexOf("/") + 1))
     if (geoTiffResultObject.fileExists) {
-      CreoS3Utils.waitTillPathAvailable(Path.of(geoTiffResultObject.correctPath))
+      CreoS3Utils.waitTillPathAvailable(geoTiffResultObject.correctPath)
       if (!CreoS3Utils.isS3(parentDirectory.toString)) {
         Files.createDirectories(destinationPath.getParent)
       }
@@ -162,6 +162,7 @@ package object geotiff {
 
     geoTiffResultObject.gdalInfoPath match {
       case Some(gdalInfoPath) =>
+        CreoS3Utils.waitTillPathAvailable(gdalInfoPath)
         updateGdalInfoJsonFile(gdalInfoPath, destinationPath.toString)
         val gdalInfoDestinationPath = gdalInfoPath.replaceFirst(executorAttemptDirectoryPrefix + "\\d+/", "")
         CreoS3Utils.moveOverwriteWithRetries(gdalInfoPath, gdalInfoDestinationPath)

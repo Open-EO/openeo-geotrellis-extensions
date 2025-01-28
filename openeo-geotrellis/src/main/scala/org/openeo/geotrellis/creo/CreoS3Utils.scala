@@ -214,10 +214,10 @@ object CreoS3Utils {
     assetDelete(pathOrigin)
   }
 
-  def waitTillPathAvailable(path: Path): Unit = {
+  def waitTillPathAvailable(path: String): Unit = {
     var retry = 0
     val maxTries = 20
-    while (!assetExists(path.toString)) {
+    while (!assetExists(path)) {
       if (retry < maxTries) {
         retry += 1
         val seconds = 5
@@ -246,6 +246,7 @@ object CreoS3Utils {
         } catch {
           case e: Exception =>
             // Here if another executor wrote the file between the delete and the move statement.
+            logger.info("moveOverwriteWithRetries exception: " + e + f" (try $try_count)")
             try_count += 1
             if (try_count > 5) {
               throw e
