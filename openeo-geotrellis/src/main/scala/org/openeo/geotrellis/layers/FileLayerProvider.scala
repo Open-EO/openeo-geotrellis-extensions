@@ -1473,6 +1473,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             Some(ProjectedExtent(featureExtentInLayoutGet.extent, targetExtent.crs))
         }
         SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, targetProjectedExtent, Some(theResolution))
+      }else if(dataPath.endsWith(".zarr")) {
+        val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod),te = Some(targetExtent.extent))
+        GDALRasterSource(GDALPath(dataPath),options = warpOptions, targetCellType = targetCellType)
       }
       else {
         def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {
