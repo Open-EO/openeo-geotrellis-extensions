@@ -251,6 +251,7 @@ object CreoS3Utils {
             if (try_count > 5) {
               throw e
             }
+            Thread.sleep(1000)
         }
       }
     }
