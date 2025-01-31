@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.layers
 
+import akka.http.scaladsl.server.PathMatcher0
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
@@ -15,6 +16,8 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
+import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveInputStream}
+import org.apache.commons.io.FileUtils
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
@@ -23,7 +26,7 @@ import org.junit.jupiter.api._
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.TestImplicits._
-import org.openeo.geotrellis.file.PyramidFactory
+import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory}
 import org.openeo.geotrellis.geotiff._
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
@@ -37,6 +40,7 @@ import org.openeo.sparklisteners.{BatchJobProgressListener, GetInfoSparkListener
 import ucar.nc2.NetcdfFile
 import ucar.nc2.util.CompareNetcdf2
 
+import java.io.{File, FileInputStream, FileOutputStream}
 import java.net.{URI, URL}
 import java.nio.file.{Files, Path, Paths}
 import java.time.ZoneOffset.UTC
@@ -984,6 +988,65 @@ class FileLayerProviderTest extends RasterMatchers{
     //the cube only covers 2 tiles, but we have 2 source products, so times 2
     assertEquals(2*cols*rows,count,0.1)
     println(s"Count: $count")
+  }
+
+  def unpackTarFile(filePath:Path, outputDir:Path):Unit ={
+    val tarInputStream = new TarArchiveInputStream(new FileInputStream(filePath))
+    try {
+      var entry: TarArchiveEntry = tarInputStream.getNextTarEntry
+      while (entry != null) {
+        val outputFile = new File(outputDir, entry.getName)
+        if (entry.isDirectory) {
+          outputFile.mkdirs()
+        } else {
+          outputFile.getParentFile.mkdirs()
+          val outputStream = new FileOutputStream(outputFile)
+          try {
+
+            val buffer = new Array[Byte](1024)
+            var bytesRead = tarInputStream.read(buffer)
+            while (bytesRead != -1) {
+              outputStream.write(buffer, 0, bytesRead)
+              bytesRead = tarInputStream.read(buffer)
+            }
+          } finally {
+            outputStream.close()
+          }
+        }
+        entry = tarInputStream.getNextTarEntry
+      }
+    } finally {
+      tarInputStream.close()
+    }
+  }
+
+  @Test
+  def testReadKeysToRasterSources(@TempDir tempDir: Path):Unit = {
+    val Filename = "zarrExample.tar"
+    val url = new URL(s"https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/$Filename")
+    FileUtils.copyURLToFile(url, tempDir.resolve(Filename).toFile)
+    val tarFile = tempDir resolve Filename
+    unpackTarFile(tarFile,tempDir)
+    val date = LocalDate.of(2020, 3, 15).atStartOfDay(UTC)
+    val crs = CRS.fromEpsgCode(32631)
+    val extent = Extent(xmin = 55.0, ymin = 30.0, xmax = 60.0, ymax = 35.0)
+    val feature = OpenSearchResponses.Feature(id="zarrExample",bbox=extent,nominalDate=date,links=Array(Link(tempDir.resolve("exampleZarr.zarr").toUri,title=Some("IMG_DATA_Zarr"),bandNames = Some(Seq("NO2")))),resolution = None)
+    val openEOSearchClient = new FixedFeaturesOpenSearchClient()
+    openEOSearchClient.addFeature(feature)
+    val zarFileLayerProvider = FileLayerProvider(
+      openSearch = openEOSearchClient,
+      openSearchCollectionId = "zarrExample",
+      NonEmptyList.one("NO2"),
+      rootPath = tempDir,
+      maxSpatialResolution = sentinel5PMaxSpatialResolution,
+      new Sentinel5PPathDateExtractor(maxDepth = 3),
+      layoutScheme = sentinel5PLayoutScheme,
+    )
+    val boundingBox = ProjectedExtent(extent,crs )
+    ProjectedExtent(Extent(5.085980189812683,51.0353667302808,5.146073667675196,51.05305736567695).reproject(LatLng,crs),crs )
+    val raster = zarFileLayerProvider.readKeysToRasterSources(from=date,to=date, boundingBox = boundingBox, polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())), polygons_crs = crs, zoom = 0, sc = sc, datacubeParams = None)
+    assertEquals(extent,raster._2.extent)
+    assertEquals(crs,raster._2.crs)
   }
 
   @Test
