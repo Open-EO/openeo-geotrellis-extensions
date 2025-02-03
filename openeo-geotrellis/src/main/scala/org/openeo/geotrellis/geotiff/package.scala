@@ -140,14 +140,20 @@ package object geotiff {
     CreoS3Utils.writeStringToFile(jsonFilePath, strAgain)
   }
 
+  private def extractExecutorAttemptDirectory(parentDirectory: Path, geoTiffResultObject: GeoTiffResultObject): String = {
+    val relativeFilePath = parentDirectory.relativize(Path.of(geoTiffResultObject.correctPath)).toString
+    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception(relativeFilePath)
+    relativeFilePath.substring(0, relativeFilePath.indexOf("/"))
+  }
+
   private def moveFromExecutorAttemptDirectory(parentDirectory: Path, geoTiffResultObject: GeoTiffResultObject): String = {
     // Move output file to standard location. (On S3, a move is more a copy and delete):
     val relativeFilePath = parentDirectory.relativize(Path.of(geoTiffResultObject.correctPath)).toString
-    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception()
+    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception(relativeFilePath)
     // Remove the executorAttemptDirectory part from the path:
     val destinationPath = parentDirectory.resolve(relativeFilePath.substring(relativeFilePath.indexOf("/") + 1))
     if (geoTiffResultObject.fileExists) {
-      CreoS3Utils.waitTillPathAvailable(Path.of(geoTiffResultObject.correctPath))
+      CreoS3Utils.waitTillPathAvailable(geoTiffResultObject.correctPath)
       if (!CreoS3Utils.isS3(parentDirectory.toString)) {
         Files.createDirectories(destinationPath.getParent)
       }
@@ -156,6 +162,7 @@ package object geotiff {
 
     geoTiffResultObject.gdalInfoPath match {
       case Some(gdalInfoPath) =>
+        CreoS3Utils.waitTillPathAvailable(gdalInfoPath)
         updateGdalInfoJsonFile(gdalInfoPath, destinationPath.toString)
         val gdalInfoDestinationPath = gdalInfoPath.replaceFirst(executorAttemptDirectoryPrefix + "\\d+/", "")
         CreoS3Utils.moveOverwriteWithRetries(gdalInfoPath, gdalInfoDestinationPath)
@@ -241,7 +248,7 @@ package object geotiff {
     }.persist()
 
     val keys = toBeGrouped.map(_._1).distinct().collect() // TODO: Extent metadata to be able to get keys
-    val res = toBeGrouped.groupByKey(new ByKeyPartitioner(keys)).map { case ((filename: String, timestamp: String, tiffBands:Int), sequence) =>
+    val geotiffResults = toBeGrouped.groupByKey(new ByKeyPartitioner(keys)).map { case ((filename: String, timestamp: String, tiffBands:Int), sequence) =>
       val cellTypes = sequence.map(_._2._1).toSet
       val tiffs: Predef.Map[Int, Array[Byte]] = sequence.map(tuple => (tuple._1, tuple._2._2)).toMap
       val bandIndices = sequence.map(_._3).toSet.toList.asJava
@@ -265,13 +272,17 @@ package object geotiff {
         tileLayout, compression, cellTypes.head, tiffBands, segmentCount, fo,
       )
       (geoTiffResultObject, timestamp, croppedExtent, bandIndices)
-    }.collect().map {
+    }.collect()
+    val res = geotiffResults.map {
       case (geoTiffResultObject, timestamp, croppedExtent, bandIndices) =>
         val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path), geoTiffResultObject)
         (destinationPath.toString, timestamp, croppedExtent, bandIndices)
     }.toList.asJava
 
-    cleanUpExecutorAttemptDirectory(path)
+    if (geotiffResults.nonEmpty) {
+      val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(Path.of(path), geotiffResults.head._1)
+      CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
+    }
     toBeGrouped.unpersist()
 
     res
@@ -329,7 +340,7 @@ package object geotiff {
         }
       }
       // groupByKey does a shuffle, so we can partition at the same time
-      val res = rdd_per_band.groupByKey(partitioner).map { case ((name, bandIndex), tiles) =>
+      val geotiffResults = rdd_per_band.groupByKey(partitioner).map { case ((name, bandIndex), tiles) =>
         val fixedPath =
           if (path.endsWith("out")) {
             val executorAttemptDirectory = createExecutorAttemptDirectory(path.substring(0, path.length - 3))
@@ -351,7 +362,8 @@ package object geotiff {
 
         (stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, None, None, compression, Some(fo)),
           Collections.singletonList(bandIndex))
-      }.collect().map {
+      }.collect()
+      val res = geotiffResults.map {
         case (geoTiffResultObject, bandIndices) =>
           if (path.endsWith("out")) {
             val beforeOut = path.substring(0, path.length - "out".length)
@@ -362,9 +374,12 @@ package object geotiff {
           }
       }.toList.sortBy(_._1).asJava
 
-      if (path.endsWith("out")) {
-        val beforeOut = path.substring(0, path.length - "out".length)
-        cleanUpExecutorAttemptDirectory(beforeOut)
+      val beforeOut = if (path.endsWith("out")) {
+        path.substring(0, path.length - "out".length)
+      } else path
+      if (geotiffResults.nonEmpty) {
+        val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(Path.of(beforeOut), geotiffResults.head._1)
+        CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
       }
 
       res
@@ -813,7 +828,7 @@ package object geotiff {
 
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
-    val res = rdd.flatMap {
+    val geotiffResults = rdd.flatMap {
       case (key, tile) => features.filter { case (_, extent) =>
         val tileBounds = layout.mapTransform(extent)
 
@@ -828,13 +843,16 @@ package object geotiff {
         val filePath = executorAttemptDirectory + "/" + newFilePath(Path.of(path).getFileName.toString, tileId)
 
         (stitchAndWriteToTiff(tiles, filePath, layout, crs, extent, croppedExtent, cropDimensions, compression), extent)
-      }.collect().map {
-        case (geoTiffResultObject, croppedExtent) =>
-          val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path).getParent, geoTiffResultObject)
-          (destinationPath.toString, croppedExtent)
-      }.toList.asJava
-
-    cleanUpExecutorAttemptDirectory(Path.of(path).getParent.toString)
+      }.collect()
+    val res = geotiffResults.map {
+      case (geoTiffResultObject, croppedExtent) =>
+        val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path).getParent, geoTiffResultObject)
+        (destinationPath.toString, croppedExtent)
+    }.toList.asJava
+    if (geotiffResults.nonEmpty) {
+      val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(Path.of(path).getParent, geotiffResults.head._1)
+      CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
+    }
 
     res
   }
