@@ -801,7 +801,7 @@ package object geotiff {
     }
 
     val geoTiff = MultibandGeoTiff(adjusted, contextRDD.metadata.crs, GeoTiffOptions(compression))
-      .withOverviews(NearestNeighbor, List(4, 8, 16))
+      .withOverviews(NearestNeighbor)
 
     writeGeoTiff(geoTiff, path, gtiffOptions = None)
     adjusted.extent
