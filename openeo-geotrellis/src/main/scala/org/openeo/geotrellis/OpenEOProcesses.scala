@@ -880,10 +880,11 @@ class OpenEOProcesses extends Serializable {
     ContextRDD(filtered,data.metadata.copy(bounds = newBounds))
   }
 
-  def transfromSparceSpaceTimePartition(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey]):Option[SparseSpaceTimePartitioner]= {
-    val index = data.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.asInstanceOf[SparseSpaceTimePartitioner]
+  def transfromSparseSpaceTimePartition(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey]):Option[SparseSpaceTimePartitioner]= {
+    val index = data.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+    if (!index.isInstanceOf[SparseSpaceTimePartitioner]) return None
     var spaceTimeKeys = Array.empty[SpaceTimeKey]
-    val keys = index.theKeys
+    val keys = index.asInstanceOf[SparseSpaceTimePartitioner].theKeys
     if (keys.isEmpty) return None
     keys.get.foreach(key => {
       val extent = data.metadata(key.spatialKey)
@@ -912,7 +913,7 @@ class OpenEOProcesses extends Serializable {
         val index = target.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
         val theIndex = index match {
           case partitioner: SparseSpaceTimePartitioner =>
-            transfromSparceSpaceTimePartition(data,target).getOrElse(new ConfigurableSpaceTimePartitioner(partitioner.indexReduction))
+            transfromSparseSpaceTimePartition(data,target).getOrElse(new ConfigurableSpaceTimePartitioner(partitioner.indexReduction))
           case _ =>
             index
         }
