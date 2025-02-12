@@ -11,6 +11,9 @@ class GTiffOptionsTest {
   def testTags(): Unit = {
     val options = new GTiffOptions
     options.addHeadTag("PROCESSING_SOFTWARE", "0.6.1a1")
+    options.addHeadTag("license", "CC-BY 4.0 - https://creativecommons.org/licenses/by/4.0/")
+    options.addHeadTag("version", "v010")
+    options.addHeadTag("references", "https://land.copernicus.eu/")
 
     val bandNames = Seq("VV", "VH", "mask", "local_incidence_angle")
 
@@ -18,7 +21,13 @@ class GTiffOptionsTest {
       options.addBandTag(index, "DESCRIPTION", bandName)
     }
 
-    assertEquals(Map("PROCESSING_SOFTWARE" -> "0.6.1a1"), options.tags.headTags)
+    assertEquals(Seq(
+      "license" -> "CC-BY 4.0 - https://creativecommons.org/licenses/by/4.0/",
+      "PROCESSING_SOFTWARE" -> "0.6.1a1",
+      "references" -> "https://land.copernicus.eu/",
+      "version" -> "v010"
+    ), options.tags.headTags.toSeq)
+
     assertEquals(List(
       Map("DESCRIPTION" -> "VV"),
       Map("DESCRIPTION" -> "VH"),
@@ -28,7 +37,10 @@ class GTiffOptionsTest {
 
     val expectedGdalMetadataXml =
       <GDALMetadata>
+        <Item name="license">CC-BY 4.0 - https://creativecommons.org/licenses/by/4.0/</Item>
         <Item name="PROCESSING_SOFTWARE">0.6.1a1</Item>
+        <Item name="references">https://land.copernicus.eu/</Item>
+        <Item name="version">v010</Item>
         <Item name="DESCRIPTION" sample="0" role="description">VV</Item>
         <Item name="DESCRIPTION" sample="1" role="description">VH</Item>
         <Item name="DESCRIPTION" sample="2" role="description">mask</Item>

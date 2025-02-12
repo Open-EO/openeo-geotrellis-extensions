@@ -5,6 +5,7 @@ import geotrellis.raster.io.geotiff.Tags
 import geotrellis.raster.render.{ColorMap, DoubleColorMap, IndexedColorMap}
 
 import scala.collection.JavaConverters._
+import scala.collection.immutable.SortedMap
 
 //noinspection ScalaUnusedSymbol
 class GTiffOptions extends Serializable {
@@ -12,7 +13,7 @@ class GTiffOptions extends Serializable {
   var filenamePrefix = "openEO" // Example using default prefix: "openEO_2017-01-02Z.tif"
   var colorMap: Option[ColorMap] = Option.empty
   var filepathPerBand: Option[util.ArrayList[String]] = Option.empty
-  var tags: Tags = Tags.empty
+  var tags: Tags = Tags(SortedMap()(Ordering.by(_.toLowerCase)), List())
   var overviews:String = "OFF"
   var resampleMethod:String = "near"
   var separateAssetPerBand = false
