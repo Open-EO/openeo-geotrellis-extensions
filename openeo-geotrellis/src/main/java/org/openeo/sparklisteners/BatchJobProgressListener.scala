@@ -21,7 +21,7 @@ class BatchJobProgressListener extends SparkListener {
     import BatchJobProgressListener.logger
 
     private val stagesInformation = new mutable.LinkedHashMap[String,mutable.Map[String,Any]]()
-    private val executorInformation = new mutable.LinkedHashMap[String,Long]
+    private val executorInformation = new mutable.LinkedHashMap[String,(Long,Long)]
 
     override def onStageSubmitted( stageSubmitted:SparkListenerStageSubmitted):Unit = {
         logger.info(s"Starting stage: ${stageSubmitted.stageInfo.stageId} - ${stageSubmitted.stageInfo.name}. \nStages may combine multiple processes." )
@@ -68,15 +68,21 @@ class BatchJobProgressListener extends SparkListener {
 
 
   override def onExecutorAdded(executorAdded: SparkListenerExecutorAdded): Unit = {
-    val startTime = executorAdded.time
+    val time = executorAdded.time
     val executorId = executorAdded.executorId
-    executorInformation += (executorId -> startTime)
+    if (executorInformation.contains(executorId)){
+      val (addedTime,removedTime) = executorInformation(executorId)
+      executorInformation += (executorId -> (addedTime+time,removedTime))
+    } else executorInformation += (executorId -> (time,0L))
 
   }
   override def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit = {
+    val time = executorRemoved.time
     val executorId = executorRemoved.executorId
-    val executorTime = if(executorInformation.contains(executorId)){executorRemoved.time-executorInformation(executorId)}else{0L}
-    executorInformation += (executorId -> executorTime)
+    if(executorInformation.contains(executorId)){
+      val (addedTime,removedTime) = executorInformation(executorId)
+      executorInformation += (executorId -> (addedTime,removedTime))
+    }else executorInformation += (executorId ->(0L,time))
   }
 
   override def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd):Unit={
@@ -87,7 +93,8 @@ class BatchJobProgressListener extends SparkListener {
       (x._1 + 1, x._2.plus(duration))
     }
     val executorTime = executorInformation.foldLeft(0L)((x,y) => {
-      x + (y._2)
+      val (_,(added,removed)) = y
+      x + added - removed
     })
     val executorString = if (executorTime > 60*1000 ){
       f"${(executorTime /(60*1000)).toInt} minutes"
@@ -99,8 +106,10 @@ class BatchJobProgressListener extends SparkListener {
       val DurationB = b._2.getOrElse("duration",0) match {case n:Duration => n}
       DurationA.toMillis > DurationB.toMillis
     })
-    val timeString = if(totalDuration.toSeconds>60) {
+    val timeString = if(totalDuration.toMinutes>5) {
       totalDuration.toMinutes + " minutes"
+    } else if(totalDuration.toSeconds > 60) {
+      totalDuration.toMinutes + " minutes and " + (totalDuration.toSeconds-60*totalDuration.toMinutes) + " seconds"
     } else {
       totalDuration.toMillis.toFloat / 1000.0 + " seconds"
     }
@@ -108,22 +117,30 @@ class BatchJobProgressListener extends SparkListener {
     logger.info(f"Total number of stages: $totalStages")
     logger.info(f"Total stage runtime: $timeString")
     logger.info(f"Total executor allocation time: $executorString")
-    var tempDuration = 0.0
-    var i = 0
-    var maxDurationToLog = ordered.head._2.getOrElse("duration",0) match {case n:Duration => n}
-    while (tempDuration < totalDuration.toMillis * 0.8){
-      val stageInfo = ordered(i)._2
-      val logs = stageInfo.getOrElse("logs","") match {case s:List[(String, String)] => s}
-      for (log <- logs){
-        log match {
-          case ("warn",s) => logger.warn(s)
-          case ("info",s) => logger.info(s)
-        }
+    if (totalStages > 0) {
+      var tempDuration = 0.0
+      var i = 0
+      var maxDurationToLog = ordered.head._2.getOrElse("duration", 0) match {
+        case n: Duration => n
       }
-      val duration = stageInfo.getOrElse("duration",0.0) match {case v:Duration => v}
-      tempDuration += duration.toMillis
-      maxDurationToLog = duration
-      i += 1
+      while (tempDuration < totalDuration.toMillis * 0.8) {
+        val stageInfo = ordered(i)._2
+        val logs = stageInfo.getOrElse("logs", "") match {
+          case s: List[(String, String)] => s
+        }
+        for (log <- logs) {
+          log match {
+            case ("warn", s) => logger.warn(s)
+            case ("info", s) => logger.info(s)
+          }
+        }
+        val duration = stageInfo.getOrElse("duration", 0.0) match {
+          case v: Duration => v
+        }
+        tempDuration += duration.toMillis
+        maxDurationToLog = duration
+        i += 1
+      }
     }
   }
 }
