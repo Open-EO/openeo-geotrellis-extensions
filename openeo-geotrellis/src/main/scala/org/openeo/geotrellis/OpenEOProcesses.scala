@@ -107,7 +107,7 @@ object OpenEOProcesses{
     // then calculate the max indexReduction that remains under this amount of records.
     val tileSizeInMb: Double = (nrBands * tileSize * cellTypeBits).toDouble / (8 * 1024 * 1024)
     val maxRecordsPerPartition: Double = math.min(maxPartitionSizeInMb / tileSizeInMb, 1024)
-    val indexReduction = math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt
+    val indexReduction = math.max(math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt - 1, 1)
     t match {
       case spaceTag if spaceTag == ClassTag(classOf[SpatialKey]) => {
         logger.info(s"Creating ConfigurableSpatialPartitionerReduceZ($indexReduction) based on tile size: $tileSize, band count: $nrBands, cell type bits: $cellTypeBits, tileSizeInMb: $tileSizeInMb")
@@ -899,6 +899,28 @@ class OpenEOProcesses extends Serializable {
     ContextRDD(filtered,data.metadata.copy(bounds = newBounds))
   }
 
+  def transfromSparseSpaceTimePartition(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey]):Option[SparseSpaceTimePartitioner]= {
+    val index = data.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+    if (!index.isInstanceOf[SparseSpaceTimePartitioner]) return None
+    var spaceTimeKeys = Array.empty[SpaceTimeKey]
+    val keys = index.asInstanceOf[SparseSpaceTimePartitioner].theKeys
+    if (keys.isEmpty) return None
+    keys.get.foreach(key => {
+      val extent = data.metadata(key.spatialKey)
+      val targetExtent = { //reproject extent in source CRS to target CRS via ProjectedExtent
+        ProjectedExtent(extent, data.metadata.crs).reproject(target.metadata.crs)
+      }
+      val targetBounds = target.metadata(targetExtent).coordsIter.toSeq
+      val newSpaceTimeKeys = targetBounds.map(spatialComponent => {
+        SpaceTimeKey(spatialKey = SpatialKey(spatialComponent._1,spatialComponent._2), temporalKey = key.temporalKey)
+      }).toArray
+      spaceTimeKeys = spaceTimeKeys ++ newSpaceTimeKeys
+    })
+    val indexReduction = target.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.asInstanceOf[SparseSpaceTimePartitioner].indexReduction
+    val indices = spaceTimeKeys.map(SparseSpaceTimePartitioner.toIndex(_,indexReduction = indexReduction)).distinct.sorted
+    Some(new SparseSpaceTimePartitioner(indices,indexReduction,Some(spaceTimeKeys)))
+  }
+
   def resampleCubeSpatial(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey], method:ResampleMethod): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
     if(target.metadata.crs.equals(data.metadata.crs) && target.metadata.layout.equals(data.metadata.layout)) {
       logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
@@ -910,7 +932,7 @@ class OpenEOProcesses extends Serializable {
         val index = target.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
         val theIndex = index match {
           case partitioner: SparseSpaceTimePartitioner =>
-            new ConfigurableSpaceTimePartitioner(partitioner.indexReduction)
+            transfromSparseSpaceTimePartition(data,target).getOrElse(new ConfigurableSpaceTimePartitioner(partitioner.indexReduction))
           case _ =>
             index
         }
@@ -937,15 +959,20 @@ class OpenEOProcesses extends Serializable {
   }
 
   def resampleCubeSpatial_spatial(data: MultibandTileLayerRDD[SpatialKey],crs:CRS,layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpatialKey]) = {
-    if(crs.equals(data.metadata.crs) && layout.equals(data.metadata.layout)) {
-      logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
-      (0,data)
-    }else if(partitioner==null) {
-      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, crs, Right(layout), 16, method, new SpacePartitioner(data.metadata.bounds))
-      filterNegativeSpatialKeys_spatial(reprojected)
-    }else{
-      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, crs, Right(layout), 16, method, partitioner)
-      filterNegativeSpatialKeys_spatial(reprojected)
+    try {
+      if (crs.equals(data.metadata.crs) && layout.equals(data.metadata.layout)) {
+        logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
+        (0, data)
+      } else if (partitioner == null) {
+        val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, crs, Right(layout), 16, method, new SpacePartitioner(data.metadata.bounds))
+        filterNegativeSpatialKeys_spatial(reprojected)
+      } else {
+        val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, crs, Right(layout), 16, method, partitioner)
+        filterNegativeSpatialKeys_spatial(reprojected)
+      }
+    } catch {
+      case e:GeoAttrsError => throw new IllegalStateException(s"Unexpected error during resample_cube_spatial or merge_cubes of a spatial cube (${data.name}) , resampling from: ${data.metadata.crs} / ${data.metadata.layout} to ${layout} / ${crs}")
+      case e:Any => throw e
     }
   }
 
@@ -1278,7 +1305,7 @@ class OpenEOProcesses extends Serializable {
       MultibandTile(filter.createMask(tile.tile).crop(originalBounds))
     })
     val updatedMetadata = datacube.metadata.copy(cellType = BitCellType)
-    ContextRDD(mask, updatedMetadata)
+    ContextRDD(new ShuffledRDD[SpaceTimeKey, MultibandTile,MultibandTile](mask,mask.partitioner.get), updatedMetadata)
   }
 
   def mergeTiles(tiles: MultibandTileLayerRDD[SpaceTimeKey]): MultibandTileLayerRDD[SpaceTimeKey] = {

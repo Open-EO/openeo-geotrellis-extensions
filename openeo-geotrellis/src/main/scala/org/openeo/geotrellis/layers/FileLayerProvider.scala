@@ -7,11 +7,11 @@ import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CropOptions, CroppedTile, EmptyName, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, SourcePath, StringName, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CropOptions, CroppedTile, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.clip.ClipToGrid
 import geotrellis.spark.clip.ClipToGrid.clipFeatureToExtent
@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory
 
 import java.io.{IOException, Serializable}
 import java.net.URI
-import java.nio.file.{Path, Paths}
+import java.nio.file.{Files, Path, Paths}
 import java.time._
 import java.time.temporal.ChronoUnit.{DAYS, SECONDS}
 import java.util
@@ -319,6 +319,15 @@ object FileLayerProvider {
         // Ignore GDAL init error so that tests that don't require it will be ok.
         // Tests that require it will still crash when it is not installed.
         logger.warn("GDAL library not found: " + e.getMessage)
+    }
+  }
+
+  def vsis3ToS3(path: String): String = {
+    val vsis3Prefix = "/vsis3/eodata/"
+    if (path.toLowerCase().startsWith(vsis3Prefix)) {
+      "S3://EODATA/" + path.substring(vsis3Prefix.length)
+    } else {
+      path
     }
   }
 
@@ -1000,7 +1009,29 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       val commonCellType = arbitraryRasterSource.cellType
       if (commonCellType.isInstanceOf[NoNoData]) commonCellType.withDefaultNoData() else commonCellType
     } catch {
-      case e: Exception => throw new IOException(s"Exception while determining data type of asset ${arbitraryRasterSource.name} in collection $openSearchCollectionId. Detailed message: ${e.getMessage}", e)
+      case e: Exception => {
+        // Geotrellis GDALException errors are not descriptive enough. Attempt to add some more useful information.
+        var fileExistsMessage = ""
+        try {
+          val path = Paths.get(arbitraryRasterSource.name match {
+            case p: SourcePath => {
+              if (p.value.startsWith("NETCDF:")) {
+                // Netcdf files can specify a variable using NETCDF:/file/path:variablename
+                p.value.replace("NETCDF:", "").split(":").head
+              } else {
+                p.value
+              }
+            }
+            case _ => "Path could not be determined"
+          })
+          fileExistsMessage = s"File ${if (Files.exists(path)) "exists" else "does not exist"}: $path."
+        } catch {
+          case e2: Exception => {
+            fileExistsMessage = s"Exception while trying to determine if RasterSource path exists: ${e2.getMessage}."
+          }
+        }
+        throw new IOException(s"Exception while reading RasterSource ${arbitraryRasterSource.name} in collection $openSearchCollectionId. Detailed message: ${e.getMessage}. $fileExistsMessage", e)
+      }
     }
   }
 
@@ -1442,6 +1473,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             Some(ProjectedExtent(featureExtentInLayoutGet.extent, targetExtent.crs))
         }
         SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, targetProjectedExtent, Some(theResolution))
+      }else if(dataPath.endsWith(".zarr")) {
+        val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod),te = Some(targetExtent.extent))
+        GDALRasterSource(GDALPath(dataPath),options = warpOptions, targetCellType = targetCellType)
       }
       else {
         def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {
@@ -1459,7 +1493,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           if(experimental) {
             GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(theResolution), resampleMethod=Some(resampleMethod)), targetCellType = targetCellType)
           }else{
-            val geotiffPath = GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/"))
+            val geotiffPath = GeoTiffPath(vsis3ToS3(dataPath))
             if (noResampleOnRead) {
               val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)
               val geotiffRasterSource = GeoTiffRasterSource(geotiffPath, targetCellType)
@@ -1473,7 +1507,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod),te = Some(targetExtent.extent))
             GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType)
           }else{
-            val geotiffPath = GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/"))
+            val geotiffPath = GeoTiffPath(vsis3ToS3(dataPath))
             if (noResampleOnRead) {
               val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)
               val geotiffRasterSource = GeoTiffReprojectRasterSource(geotiffPath, targetExtent.crs, tiffAlignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType = targetCellType)

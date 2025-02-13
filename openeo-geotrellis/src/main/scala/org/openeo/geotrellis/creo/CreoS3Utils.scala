@@ -2,6 +2,7 @@ package org.openeo.geotrellis.creo
 
 import geotrellis.store.s3.AmazonS3URI
 import org.apache.commons.io.FileUtils
+import org.apache.commons.io.filefilter.TrueFileFilter
 import org.openeo.geotrelliss3.S3Utils
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
@@ -29,8 +30,14 @@ object CreoS3Utils {
 
   private val cloudFerroRegion: Region = Region.of("RegionOne")
 
-  def getAsyncClient(): S3AsyncClient = {
-    S3AsyncClient.builder() // used to be crtBuilder
+  lazy val getAsyncClient: S3AsyncClient = {
+    // Might log this warning:
+    // "
+    // The provided DefaultS3AsyncClient is not an instance of S3CrtAsyncClient,
+    // and thus multipart upload/download feature is not enabled and resumable file upload is not supported.
+    // To benefit from maximum throughput, consider using S3AsyncClient.crtBuilder().build() instead.
+    // "
+    S3AsyncClient.builder() // used to be crtBuilder, but then gave error
       .credentialsProvider(credentialsProvider)
       .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
       .overrideConfiguration(overrideConfig)
@@ -40,13 +47,13 @@ object CreoS3Utils {
       .build();
   }
 
-  def getCreoS3Client(): S3Client = {
+  def getCreoS3Client(region: Region = cloudFerroRegion): S3Client = {
     S3Client.builder()
       .credentialsProvider(credentialsProvider)
       .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
       .overrideConfiguration(overrideConfig)
       .forcePathStyle(true)
-      .region(cloudFerroRegion)
+      .region(region)
       .endpointOverride(URI.create(sys.env("SWIFT_URL")))
       .build()
   }
@@ -111,6 +118,12 @@ object CreoS3Utils {
         val p = Path.of(path)
         if (Files.exists(p)) {
           if (Files.isDirectory(p)) {
+            val files_in_directory = FileUtils
+              .listFilesAndDirs(p.toFile, TrueFileFilter.INSTANCE, TrueFileFilter.INSTANCE)
+              .asScala
+              .filter(_.isFile)
+            // Ideally, the directory should be empty.
+            if (files_in_directory.nonEmpty) logger.warn(f"Deleting files_in_directory: $files_in_directory")
             FileUtils.deleteDirectory(p.toFile)
           } else {
             throw new IllegalArgumentException(f"Can only delete directory here: $path")
@@ -201,10 +214,10 @@ object CreoS3Utils {
     assetDelete(pathOrigin)
   }
 
-  def waitTillPathAvailable(path: Path): Unit = {
+  def waitTillPathAvailable(path: String): Unit = {
     var retry = 0
     val maxTries = 20
-    while (!assetExists(path.toString)) {
+    while (!assetExists(path)) {
       if (retry < maxTries) {
         retry += 1
         val seconds = 5
@@ -233,16 +246,18 @@ object CreoS3Utils {
         } catch {
           case e: Exception =>
             // Here if another executor wrote the file between the delete and the move statement.
+            logger.info("moveOverwriteWithRetries exception: " + e + f" (try $try_count)")
             try_count += 1
             if (try_count > 5) {
               throw e
             }
+            Thread.sleep(1000)
         }
       }
     }
   }
 
-  def uploadToS3(localFile: Path, s3Path: String) = {
+  def uploadToS3(localFile: Path, s3Path: String): String = {
     val s3Uri = toAmazonS3URI(s3Path)
     val objectRequest = PutObjectRequest.builder
       .bucket(s3Uri.getBucket)
@@ -267,7 +282,7 @@ object CreoS3Utils {
       .build
 
     val transferManager = S3TransferManager.builder
-      .s3Client(CreoS3Utils.getAsyncClient())
+      .s3Client(CreoS3Utils.getAsyncClient)
       .build
     val fileUpload = transferManager.uploadFile(uploadFileRequest)
 
@@ -277,7 +292,7 @@ object CreoS3Utils {
 
   def uploadToS3TryFirstWithStreaming(localPath: Path, s3Path: String): String = {
     // Streaming to s3 still has issues. This function often runs on executors, su SparkContext is not accessible.
-    val try_streaming = sys.env.getOrElse("TRY_SWIFT_STREAMING", "false").toBoolean
+    val try_streaming = sys.env.getOrElse("TRY_SWIFT_STREAMING", "true").toBoolean
     if (try_streaming) {
       // TODO: Streaming to s3 could cause error, so disable on prod for the moment
       // py4j.protocol.Py4JJavaError: An error occurred while calling z:org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters.
@@ -286,13 +301,43 @@ object CreoS3Utils {
         logger.info(f"uploadToS3TryFirstWithStreaming: Try to upload with streaming")
         uploadToS3LargeFile(localPath, s3Path)
       } catch {
-        case e: Exception =>
+        case e: Throwable =>
           logger.warn(f"uploadToS3TryFirstWithStreaming: Failed to upload with streaming, trying with regular upload: $e")
           uploadToS3(localPath, s3Path)
       }
-      uploadToS3LargeFile(localPath, s3Path)
     } else {
       uploadToS3(localPath, s3Path)
+    }
+  }
+
+  def readFileAsString(path: String): String = {
+    if (isS3(path)) {
+      val s3Uri = toAmazonS3URI(path)
+      val objectRequest = GetObjectRequest.builder
+        .bucket(s3Uri.getBucket)
+        .key(s3Uri.getKey)
+        .build
+      val response = getCreoS3Client().getObject(objectRequest)
+      val content = response.readAllBytes()
+      new String(content)
+    } else {
+      Files.readString(Path.of(path))
+    }
+  }
+
+  def writeStringToFile(path: String, content: String): Unit = {
+    if (isS3(path)) {
+      val s3Uri = toAmazonS3URI(path)
+      val objectRequest = PutObjectRequest.builder
+        .bucket(s3Uri.getBucket)
+        .key(s3Uri.getKey)
+        .build
+      val tempFile = Files.createTempFile("tmp_writeStringToFile", ".txt")
+      Files.writeString(tempFile, content)
+      getCreoS3Client().putObject(objectRequest, tempFile)
+      Files.delete(tempFile)
+    } else {
+      Files.writeString(Path.of(path), content)
     }
   }
 }

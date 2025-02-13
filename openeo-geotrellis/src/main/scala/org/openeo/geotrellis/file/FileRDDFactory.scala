@@ -5,7 +5,7 @@ import geotrellis.proj4.LatLng
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.vector._
-import org.apache.spark.SparkContext
+import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
@@ -110,7 +110,7 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
    * Variant of `loadSpatialFeatureRDD` that allows working with the data in JavaRDD format in PySpark context:
    * (e.g. oscars response is JSON-serialized)
    */
-  def loadSpatialFeatureJsonRDD(polygons: ProjectedPolygons, from_datetime: String, until_datetime: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters = null): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey]) = {
+  def loadSpatialFeatureJsonRDD(polygons: ProjectedPolygons, from_datetime: String, until_datetime: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters = null): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey], Partitioner) = {
     import org.openeo.geotrellis.file.FileRDDFactory.{jsonObject, toJson}
     val crdd = loadSpatialFeatureRDD(polygons, from_datetime, until_datetime, zoom, tileSize, dataCubeParameters)
     val jrdd = crdd.map { case (key, feature) => jsonObject(
@@ -128,7 +128,7 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
       )
     )}.toJavaRDD()
 
-    (jrdd, crdd.metadata)
+    (jrdd, crdd.metadata, crdd.partitioner.get)
   }
 }
 

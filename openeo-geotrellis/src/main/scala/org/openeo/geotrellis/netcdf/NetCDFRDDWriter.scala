@@ -566,7 +566,7 @@ object NetCDFRDDWriter {
     val uploadFileRequest = UploadFileRequest.builder().putObjectRequest(putRequest).source(Paths.get(localPath)).build
 
     val transferManager = S3TransferManager.builder()
-      .s3Client(CreoS3Utils.getAsyncClient())
+      .s3Client(CreoS3Utils.getAsyncClient)
       .build();
     val fileUpload = transferManager.uploadFile(uploadFileRequest)
 

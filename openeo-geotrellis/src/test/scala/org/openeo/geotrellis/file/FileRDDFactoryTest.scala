@@ -84,7 +84,7 @@ class FileRDDFactoryTest extends RasterMatchers {
     val from = ZonedDateTime.parse("2022-06-18T00:00:00+00:00", ISO_OFFSET_DATE_TIME)
     val until = ZonedDateTime.parse(until_datetime, ISO_OFFSET_DATE_TIME)
 
-    val (javaRdd, _) = fileRddFactory.loadSpatialFeatureJsonRDD(
+    val (javaRdd, _,_) = fileRddFactory.loadSpatialFeatureJsonRDD(
       ProjectedPolygons.fromExtent(Extent(399960.0, 1590240.0, 509760.0, 1700040.0), crs = "EPSG:32628")
         .reproject(LatLng),
       from_datetime = ISO_OFFSET_DATE_TIME format from,

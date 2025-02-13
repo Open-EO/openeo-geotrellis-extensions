@@ -48,10 +48,15 @@ object DatacubeSupport {
         val layoutExtent: Extent = {
           val p = boundingBox.crs.proj4jCrs.getProjection
           if (globalBounds.isDefined) {
-            var reprojected: Extent = globalBounds.get.reproject(boundingBox.crs)
-            if (multiple_polygons_flag) {
-              reprojected = globalBounds.get.extent.buffer(0.1).reprojectAsPolygon(globalBounds.get.crs, boundingBox.crs, 0.01).getEnvelopeInternal
-            }
+            var inputBounds = globalBounds.get
+
+            var reprojected: Extent =
+              if(!inputBounds.extent.isEmpty) {
+                inputBounds.reprojectAsPolygon(boundingBox.crs).getEnvelopeInternal
+              }  else{
+                inputBounds.reproject(boundingBox.crs)
+              }
+
             if (!reprojected.covers(boundingBox.extent)) {
               logger.warn(f"Trying to construct a datacube with a bounds ${boundingBox.extent} that is not entirely inside the global bounds: ${reprojected}. ")
               reprojected = reprojected.expandToInclude(boundingBox.extent)
