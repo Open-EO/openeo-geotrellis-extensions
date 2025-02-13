@@ -1058,7 +1058,7 @@ package object geotiff {
     val outputBufferString = outputBuffer.toString().trim
     if (exitCode == 0) {
       val gdalInfoPath = Path.of(rasterFilePath.toString + GDALINFO_SUFFIX)
-      Files.write(gdalInfoPath, outputBufferString.getBytes(StandardCharsets.US_ASCII))
+      Files.write(gdalInfoPath, outputBufferString.getBytes(StandardCharsets.UTF_8))
       Some(gdalInfoPath)
     }
     else {
