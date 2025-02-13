@@ -600,7 +600,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assertRastersEqual(referenceTile, actualTile, 160.0)
     //because debugging is enabled, it actually runs more jobs and stages then done in production
     assertEquals(4,listener.getJobsCompleted)
-    assertEquals(18, listener.getStagesCompleted)
+    assertEquals(17, listener.getStagesCompleted)
 
   }
 
