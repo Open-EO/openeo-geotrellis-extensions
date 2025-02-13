@@ -5,6 +5,7 @@ import geotrellis.raster._
 import geotrellis.spark._
 import geotrellis.util._
 import geotrellis.vector._
+import org.apache.spark.Partitioner
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd._
 
@@ -22,6 +23,9 @@ abstract class RasterLayer[K](implicit ev0: ClassTag[K], ev1: Component[K, Proje
 
   def partitionBy(partitionStrategy: PartitionStrategy): RasterLayer[K] =
     withRDD(rdd.partitionBy(partitionStrategy.producePartitioner(rdd.getNumPartitions).get))
+
+  def partitionByPartitioner(partitioner: Partitioner): RasterLayer[K] =
+    withRDD(rdd.partitionBy(partitioner))
 
   def toProtoRDD(): JavaRDD[Array[Byte]]
 

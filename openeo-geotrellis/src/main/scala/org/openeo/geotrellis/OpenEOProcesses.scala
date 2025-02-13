@@ -880,6 +880,28 @@ class OpenEOProcesses extends Serializable {
     ContextRDD(filtered,data.metadata.copy(bounds = newBounds))
   }
 
+  def transfromSparseSpaceTimePartition(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey]):Option[SparseSpaceTimePartitioner]= {
+    val index = data.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+    if (!index.isInstanceOf[SparseSpaceTimePartitioner]) return None
+    var spaceTimeKeys = Array.empty[SpaceTimeKey]
+    val keys = index.asInstanceOf[SparseSpaceTimePartitioner].theKeys
+    if (keys.isEmpty) return None
+    keys.get.foreach(key => {
+      val extent = data.metadata(key.spatialKey)
+      val targetExtent = { //reproject extent in source CRS to target CRS via ProjectedExtent
+        ProjectedExtent(extent, data.metadata.crs).reproject(target.metadata.crs)
+      }
+      val targetBounds = target.metadata(targetExtent).coordsIter.toSeq
+      val newSpaceTimeKeys = targetBounds.map(spatialComponent => {
+        SpaceTimeKey(spatialKey = SpatialKey(spatialComponent._1,spatialComponent._2), temporalKey = key.temporalKey)
+      }).toArray
+      spaceTimeKeys = spaceTimeKeys ++ newSpaceTimeKeys
+    })
+    val indexReduction = target.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.asInstanceOf[SparseSpaceTimePartitioner].indexReduction
+    val indices = spaceTimeKeys.map(SparseSpaceTimePartitioner.toIndex(_,indexReduction = indexReduction)).distinct.sorted
+    Some(new SparseSpaceTimePartitioner(indices,indexReduction,Some(spaceTimeKeys)))
+  }
+
   def resampleCubeSpatial(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey], method:ResampleMethod): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
     if(target.metadata.crs.equals(data.metadata.crs) && target.metadata.layout.equals(data.metadata.layout)) {
       logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
@@ -891,7 +913,7 @@ class OpenEOProcesses extends Serializable {
         val index = target.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
         val theIndex = index match {
           case partitioner: SparseSpaceTimePartitioner =>
-            new ConfigurableSpaceTimePartitioner(partitioner.indexReduction)
+            transfromSparseSpaceTimePartition(data,target).getOrElse(new ConfigurableSpaceTimePartitioner(partitioner.indexReduction))
           case _ =>
             index
         }

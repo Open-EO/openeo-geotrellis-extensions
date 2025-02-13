@@ -153,7 +153,7 @@ package object geotiff {
     // Remove the executorAttemptDirectory part from the path:
     val destinationPath = parentDirectory.resolve(relativeFilePath.substring(relativeFilePath.indexOf("/") + 1))
     if (geoTiffResultObject.fileExists) {
-      CreoS3Utils.waitTillPathAvailable(Path.of(geoTiffResultObject.correctPath))
+      CreoS3Utils.waitTillPathAvailable(geoTiffResultObject.correctPath)
       if (!CreoS3Utils.isS3(parentDirectory.toString)) {
         Files.createDirectories(destinationPath.getParent)
       }
@@ -162,6 +162,7 @@ package object geotiff {
 
     geoTiffResultObject.gdalInfoPath match {
       case Some(gdalInfoPath) =>
+        CreoS3Utils.waitTillPathAvailable(gdalInfoPath)
         updateGdalInfoJsonFile(gdalInfoPath, destinationPath.toString)
         val gdalInfoDestinationPath = gdalInfoPath.replaceFirst(executorAttemptDirectoryPrefix + "\\d+/", "")
         CreoS3Utils.moveOverwriteWithRetries(gdalInfoPath, gdalInfoDestinationPath)
@@ -800,7 +801,7 @@ package object geotiff {
     }
 
     val geoTiff = MultibandGeoTiff(adjusted, contextRDD.metadata.crs, GeoTiffOptions(compression))
-      .withOverviews(NearestNeighbor, List(4, 8, 16))
+      .withOverviews(NearestNeighbor)
 
     writeGeoTiff(geoTiff, path, gtiffOptions = None)
     adjusted.extent
@@ -1057,7 +1058,7 @@ package object geotiff {
     val outputBufferString = outputBuffer.toString().trim
     if (exitCode == 0) {
       val gdalInfoPath = Path.of(rasterFilePath.toString + GDALINFO_SUFFIX)
-      Files.write(gdalInfoPath, outputBufferString.getBytes(StandardCharsets.US_ASCII))
+      Files.write(gdalInfoPath, outputBufferString.getBytes(StandardCharsets.UTF_8))
       Some(gdalInfoPath)
     }
     else {
