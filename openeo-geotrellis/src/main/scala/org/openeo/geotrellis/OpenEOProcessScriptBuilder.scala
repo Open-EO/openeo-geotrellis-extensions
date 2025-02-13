@@ -1648,7 +1648,7 @@ class OpenEOProcessScriptBuilder {
       }
 
       if (input.size <= theActualIndex) {
-        throw new IllegalArgumentException("Invalid band index " + index + ", only " + input.size + " bands available.")
+        throw new IllegalArgumentException(s"Invalid band index $theActualIndex, only ${input.size} bands available.")
       }
       Seq(input(theActualIndex))
     }
