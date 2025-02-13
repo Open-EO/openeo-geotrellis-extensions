@@ -94,7 +94,12 @@ class BatchJobProgressListener extends SparkListener {
     }
     val executorTime = executorInformation.foldLeft(0L)((x,y) => {
       val (_,(added,removed)) = y
-      x + added - removed
+      val removedTime = if (removed == 0L) {
+        applicationEnd.time
+      } else {
+        removed
+      }
+      x + removedTime - added
     })
     val executorString = if (executorTime > 60*1000 ){
       f"${(executorTime /(60*1000)).toInt} minutes"
