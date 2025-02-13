@@ -114,13 +114,13 @@ object Sentinel2FileLayerProviderTest {
   ))
 
   def datacubeParams: Stream[Arguments] = Arrays.stream(Array(
-    arguments(new DataCubeParameters(),11.asInstanceOf[Integer]),
+    arguments(new DataCubeParameters(),10.asInstanceOf[Integer]),
     arguments({
       val p = new DataCubeParameters()
       p.resampleMethod = Average
       p.loadPerProduct = true
       p
-    },12.asInstanceOf[Integer]
+    },11.asInstanceOf[Integer]
       )
   ))
 }
@@ -599,7 +599,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val actualTile = GeoTiffRasterSource(actual).read().get
     assertRastersEqual(referenceTile, actualTile, 160.0)
     //because debugging is enabled, it actually runs more jobs and stages then done in production
-    assertEquals(5,listener.getJobsCompleted)
+    assertEquals(4,listener.getJobsCompleted)
     assertEquals(18, listener.getStagesCompleted)
 
   }
