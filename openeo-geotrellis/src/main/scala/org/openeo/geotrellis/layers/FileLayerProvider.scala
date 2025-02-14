@@ -34,6 +34,7 @@ import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, C
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.LoggerFactory
+import software.amazon.awssdk.core.exception.AbortedException
 
 import java.io.{IOException, Serializable}
 import java.net.URI
@@ -104,12 +105,14 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     selectedBands flatMap { rs =>
       try Some(retryWithBackoff(maxRetries, reprojectRasterSourceAttemptFailed(rs))(rs.reproject(crs)))
       catch {
-        // reading the CRS from a GDALRasterSource can fail
-        case e: Exception =>
-          if (softErrors) {
-            logger.warn(s"ignoring soft error for ${rs.name}", e)
+
+        case e: AbortedException => throw e
+        case e:Exception if softErrors =>
+          {
+            logger.warn(s"load_collection: ignoring soft error for ${rs.name} - ${e.getMessage}", e)
             None
-          } else throw new IOException(s"Error while reading: ${rs.name}", e)
+          }
+        case e: Exception => throw new IOException(s"load_collection: Error while reading: ${rs.name} - ${e.getMessage}", e)
       }
     }
   }
@@ -186,11 +189,13 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
         logger.debug(s"finished reading $bounds from ${source.name}")
         raster
       } catch {
-        case e: Exception =>
-          if (softErrors) {
-            logger.warn(s"ignoring soft error for ${source.name}", e)
-            None
-          } else throw new IOException(s"Error while reading $bounds from ${source.name}", e)
+        case e: AbortedException => throw e
+        case e:Exception if softErrors =>
+        {
+          logger.warn(s"load_collection: ignoring soft error for ${source.name} - ${e.getMessage}", e)
+          None
+        }
+        case e: Exception => throw new IOException(s"load_collection: Error while reading $bounds from: ${source.name} - ${e.getMessage}", e)
       }
     }
 
