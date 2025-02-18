@@ -1587,6 +1587,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             // Sentinel 2 bands can have negative values now.
             case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => None
             case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
+            case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
             case _ => None
           }
 
