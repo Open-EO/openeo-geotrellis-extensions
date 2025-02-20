@@ -301,6 +301,29 @@ class NetCDFRDDWriterTest extends RasterMatchers{
   }
 
   @Test
+  def testWriteNetCDFUnsigned(): Unit = {
+    val dcParams = new DataCubeParameters()
+    dcParams.layoutScheme = "FloatingLayoutScheme"
+    val options = new NetCDFOptions
+    options.setBandNames(new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")))
+
+    val layerDefault= LayerFixtures.aSpacetimeTileLayerRddShortFillValue(20,20)
+    NetCDFRDDWriter.writeRasters(layerDefault,"/tmp/stitched.nc",options)
+    val ds = NetcdfDataset.openDataset("/tmp/stitched.nc",true,null)
+    val b04 = ds.findVariable("TOC-B04_10M")
+    val fillValueDefault = b04.findAttributeIgnoreCase("_fillValue")
+    Assert.assertEquals(-1.toShort,fillValueDefault.getValue(0))
+
+    val layerChosen= LayerFixtures.aSpacetimeTileLayerRddShortFillValue(20,20,fillValue = 9)
+    NetCDFRDDWriter.writeRasters(layerChosen,"/tmp/stitched.nc",options)
+    val dsChosen = NetcdfDataset.openDataset("/tmp/stitched.nc",true,null)
+    val b04Chosen = dsChosen.findVariable("TOC-B04_10M")
+    val fillValueChosen = b04Chosen.findAttributeIgnoreCase("_fillValue")
+    Assert.assertEquals(9.toShort,fillValueChosen.getValue(0))
+
+  }
+
+  @Test
   def testWriteSingleNetCDFSpatial(): Unit = {
 
     val dcParams = new DataCubeParameters()
