@@ -880,24 +880,22 @@ class OpenEOProcesses extends Serializable {
     ContextRDD(filtered,data.metadata.copy(bounds = newBounds))
   }
 
-  def transfromSparseSpaceTimePartition(data: MultibandTileLayerRDD[SpaceTimeKey], target: MultibandTileLayerRDD[SpaceTimeKey]):Option[SparseSpaceTimePartitioner]= {
-    val index = data.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
-    if (!index.isInstanceOf[SparseSpaceTimePartitioner]) return None
-    var spaceTimeKeys = Array.empty[SpaceTimeKey]
-    val keys = index.asInstanceOf[SparseSpaceTimePartitioner].theKeys
+  def transformSparseSpaceTimePartition(keys: Option[Array[SpaceTimeKey]],
+                                        dataLayout: TileLayerMetadata[SpaceTimeKey],
+                                        targetLayout: TileLayerMetadata[SpaceTimeKey],
+                                        indexReduction: Int,
+                                       ):Option[SparseSpaceTimePartitioner]= {
     if (keys.isEmpty) return None
-    keys.get.foreach(key => {
-      val extent = data.metadata(key.spatialKey)
+    val spaceTimeKeys = keys.get.flatMap(key => {
+      val extent = dataLayout(key.spatialKey)
       val targetExtent = { //reproject extent in source CRS to target CRS via ProjectedExtent
-        ProjectedExtent(extent, data.metadata.crs).reproject(target.metadata.crs)
+        ProjectedExtent(extent, dataLayout.crs).reproject(targetLayout.crs)
       }
-      val targetBounds = target.metadata(targetExtent).coordsIter.toSeq
-      val newSpaceTimeKeys = targetBounds.map(spatialComponent => {
+      val targetBounds = targetLayout(targetExtent).coordsIter.toSeq
+      targetBounds.map(spatialComponent => {
         SpaceTimeKey(spatialKey = SpatialKey(spatialComponent._1,spatialComponent._2), temporalKey = key.temporalKey)
-      }).toArray
-      spaceTimeKeys = spaceTimeKeys ++ newSpaceTimeKeys
-    })
-    val indexReduction = target.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.asInstanceOf[SparseSpaceTimePartitioner].indexReduction
+      })
+    }).distinct
     val indices = spaceTimeKeys.map(SparseSpaceTimePartitioner.toIndex(_,indexReduction = indexReduction)).distinct.sorted
     Some(new SparseSpaceTimePartitioner(indices,indexReduction,Some(spaceTimeKeys)))
   }
@@ -913,7 +911,16 @@ class OpenEOProcesses extends Serializable {
         val index = target.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
         val theIndex = index match {
           case partitioner: SparseSpaceTimePartitioner =>
-            transfromSparseSpaceTimePartition(data,target).getOrElse(new ConfigurableSpaceTimePartitioner(partitioner.indexReduction))
+            data.partitioner.get match {
+              case dataPartitioner: SpacePartitioner[SpaceTimeKey] =>
+                dataPartitioner.index match {
+                  case dataIndex:SparseSpaceTimePartitioner => {
+                    transformSparseSpaceTimePartition(dataIndex.theKeys,data.metadata,target.metadata,partitioner.indexReduction).getOrElse(new ConfigurableSpaceTimePartitioner(partitioner.indexReduction))
+                  }
+                  case _ => new ConfigurableSpaceTimePartitioner(partitioner.indexReduction)
+                }
+              case _ => new ConfigurableSpaceTimePartitioner(partitioner.indexReduction)
+            }
           case _ =>
             index
         }
