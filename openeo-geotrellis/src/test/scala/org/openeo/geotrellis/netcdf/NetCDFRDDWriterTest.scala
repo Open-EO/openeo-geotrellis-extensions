@@ -301,7 +301,7 @@ class NetCDFRDDWriterTest extends RasterMatchers{
   }
 
   @Test
-  def testWriteNetCDFUnsigned(): Unit = {
+  def testWriteNetCDFFillValue(): Unit = {
     val dcParams = new DataCubeParameters()
     dcParams.layoutScheme = "FloatingLayoutScheme"
     val options = new NetCDFOptions
