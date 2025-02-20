@@ -10,6 +10,7 @@ import geotrellis.util.GetComponent
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.Partitioner
 import org.apache.spark.rdd.{CoGroupedRDD, RDD}
+import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 import org.slf4j.LoggerFactory
 
 import java.time.ZonedDateTime
@@ -47,18 +48,24 @@ object DatacubeSupport {
         val layoutExtent: Extent = {
           val p = boundingBox.crs.proj4jCrs.getProjection
           if (globalBounds.isDefined) {
-            var reprojected: Extent = globalBounds.get.reproject(boundingBox.crs)
-            if (multiple_polygons_flag) {
-              reprojected = globalBounds.get.extent.buffer(0.1).reprojectAsPolygon(globalBounds.get.crs, boundingBox.crs, 0.01).getEnvelopeInternal
-            }
+            var inputBounds = globalBounds.get
+
+            var reprojected: Extent =
+              if(!inputBounds.extent.isEmpty) {
+                inputBounds.reprojectAsPolygon(boundingBox.crs).getEnvelopeInternal
+              }  else{
+                inputBounds.reproject(boundingBox.crs)
+              }
+
             if (!reprojected.covers(boundingBox.extent)) {
               logger.warn(f"Trying to construct a datacube with a bounds ${boundingBox.extent} that is not entirely inside the global bounds: ${reprojected}. ")
               reprojected = reprojected.expandToInclude(boundingBox.extent)
             }
-            if (p.getName == "utm") {
+            val x = maxSpatialResolution.width
+            val y = maxSpatialResolution.height
+            if (p.getName == "utm" && x < 100 && y < 100) {
+              // TODO: This statement is mostly for Sentinel-2. Can we remove this if-branch?
               //this forces utm projection to always round to 10m, which is fine for sentinel-2, but perhaps not generally desired?
-              val x = maxSpatialResolution.width
-              val y = maxSpatialResolution.height
               Extent(x * Math.floor(reprojected.xmin / x), y * Math.floor(reprojected.ymin / y), x * Math.ceil(reprojected.xmax / x), y * Math.ceil(reprojected.ymax / y))
             }else{
               if (reprojected.width < maxSpatialResolution.width || reprojected.height < maxSpatialResolution.height) {
@@ -152,31 +159,36 @@ object DatacubeSupport {
 
       if(maxKeys > 4) {
 
-        val spatialCount = cached.map(_.spatialKey).countApproxDistinct()
-        val isSparse: Boolean = spatialCount < 0.5 * maxKeys
-        logger.info(s"Datacube is sparse: $isSparse, requiring $spatialCount keys out of $maxKeys. ")
-        if (isSparse) {
-          val keys = cached.distinct().collect()
+        if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution == "ByMonth") {
+          new ConfigurableSpaceTimePartitioner(reduction, SfCurveZSpaceTimeKeyIndex.byMonth(null))
+        }else{
+          val spatialCount = cached.map(_.spatialKey).countApproxDistinct()
+          val isSparse: Boolean = spatialCount < 0.5 * maxKeys
+          logger.info(s"Datacube is sparse: $isSparse, requiring $spatialCount keys out of $maxKeys. ")
+          if (isSparse) {
+            val keys = cached.distinct().collect()
 
-          if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
-            val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
-            new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
+            if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
+              val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
+              new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
+            } else {
+              val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
+              new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
+            }
           } else {
-            val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
-            new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
-          }
-        } else {
-          if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
-            val indices = cached.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
-            new SparseSpaceOnlyPartitioner(indices, reduction)
-          } else if (reduction != SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION) {
-            val indices = cached.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
-            new SparseSpaceTimePartitioner(indices, reduction)
-          }
-          else {
-            new ConfigurableSpaceTimePartitioner(reduction)
+            if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
+              val indices = cached.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
+              new SparseSpaceOnlyPartitioner(indices, reduction)
+            } else if (reduction != SpaceTimeByMonthPartitioner.DEFAULT_INDEX_REDUCTION) {
+              val indices = cached.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.collect().sorted
+              new SparseSpaceTimePartitioner(indices, reduction)
+            }
+            else {
+              new ConfigurableSpaceTimePartitioner(reduction)
+            }
           }
         }
+
       }else{
         new ConfigurableSpaceTimePartitioner(reduction)
       }

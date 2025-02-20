@@ -10,6 +10,12 @@ import geotrellis.vector.ProjectedExtent
 import java.util.zip.Deflater.BEST_COMPRESSION
 
 object TestImplicits {
+
+  import scala.language.implicitConversions
+  implicit def fileToString(file: java.io.File): String = file.getAbsolutePath
+  implicit def fileToString(file: better.files.File): String = file.toString
+  implicit def fileToString(file: java.nio.file.Path): String = file.toString
+
   implicit class TileGeoTiffOutputMethods(spatialLayer: TileLayerRDD[SpatialKey]) {
     def writeGeoTiff(path: String, bbox: ProjectedExtent = null): Unit = {
       val Raster(tile, extent) =
@@ -25,8 +31,7 @@ object TestImplicits {
   implicit class MultibandTileGeoTiffOutputMethods(spatialLayer: MultibandTileLayerRDD[SpatialKey]) {
     def writeGeoTiff(path: String, bbox: ProjectedExtent = null): Unit = {
       val maybeBBox = Option(bbox).map(_.reproject(spatialLayer.metadata.crs))
-      org.openeo.geotrellis.geotiff.saveRDD(spatialLayer,-1,path,6,maybeBBox)
-
+      org.openeo.geotrellis.geotiff.saveRDD(spatialLayer, -1, path, 6, maybeBBox)
     }
   }
 }

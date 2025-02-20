@@ -5,7 +5,7 @@ import _root_.io.circe.HCursor
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.vector._
 import geotrellis.vector.io.json.{JsonCRS, JsonFeatureCollection, NamedCRS}
-import org.geotools.data.Query
+import org.geotools.api.data.Query
 import org.geotools.data.shapefile.ShapefileDataStore
 import org.geotools.data.simple.SimpleFeatureIterator
 
@@ -25,6 +25,7 @@ case class ProjectedPolygons(geometries: Array[Geometry], crs: CRS) {
 
   def polygons: Array[MultiPolygon] = geometries.filter(_.isInstanceOf[MultiPolygon]).map(_.asInstanceOf[MultiPolygon])
   def extent: ProjectedExtent = ProjectedExtent(polygons.toSeq.extent,crs)
+  def reproject(crs: CRS): ProjectedPolygons = ProjectedPolygons.reproject(this, crs)
 }
 
 object ProjectedPolygons {
@@ -52,7 +53,6 @@ object ProjectedPolygons {
     }
   }
 
-  // FIXME: make this an instance method
   def reproject(projectedPolygons: ProjectedPolygons,epsg_code:Int): ProjectedPolygons = {
     val targetCRS = CRS.fromEpsgCode(epsg_code)
     reproject(projectedPolygons, targetCRS)

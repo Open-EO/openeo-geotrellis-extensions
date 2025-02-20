@@ -31,10 +31,10 @@ import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
 import org.openeo.geotrellis.{LayerFixtures, MergeCubesSpec, OpenEOProcessScriptBuilder, OpenEOProcesses, ProjectedPolygons, TestOpenEOProcessScriptBuilder}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ConfigurableSpaceTimePartitioner, DataCubeParameters, ResampledTile}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ConfigurableSpaceTimePartitioner, DataCubeParameters, ResampledTile, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.Link
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
-import org.openeo.sparklisteners.GetInfoSparkListener
+import org.openeo.sparklisteners.{BatchJobProgressListener, GetInfoSparkListener}
 
 import java.net.URI
 import java.time.LocalTime.MIDNIGHT
@@ -114,13 +114,13 @@ object Sentinel2FileLayerProviderTest {
   ))
 
   def datacubeParams: Stream[Arguments] = Arrays.stream(Array(
-    arguments(new DataCubeParameters(),8.asInstanceOf[Integer]),
+    arguments(new DataCubeParameters(),10.asInstanceOf[Integer]),
     arguments({
       val p = new DataCubeParameters()
       p.resampleMethod = Average
       p.loadPerProduct = true
       p
-    },9.asInstanceOf[Integer]
+    },11.asInstanceOf[Integer]
       )
   ))
 }
@@ -277,7 +277,10 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   @ParameterizedTest
   @MethodSource(Array("datacubeParams"))
   def multibandWithSpacetimeMask(parameters: DataCubeParameters, expectedNBStages: Int): Unit = {
-    val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
+
+    val refPath = s"org/openeo/geotrellis/Sentinel2FileLayerProvider_multiband_reference_${parameters.resampleMethod.toString.toLowerCase}.tif"
+
+    val date = ZonedDateTime.of(LocalDate.of(2024, 4, 22), MIDNIGHT, UTC)
     val bbox = ProjectedExtent(Extent(1.90283, 50.9579, 1.97116, 51.0034), LatLng)
 
     var mask = sceneclassificationLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
@@ -294,7 +297,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     mask = p.mapBands(mask, builder)
     mask.toSpatial(date).writeGeoTiff(f"tmp/Sentinel2FileLayerProvider_multiband_mask_${parameters.hashCode()}.tif", bbox)
 
-    var layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 14,datacubeParams = Option.empty)
+    var layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 13,datacubeParams = Option.empty)
 
     val originalCount = layer.count()
     parameters.maskingCube = Some(mask)
@@ -302,7 +305,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val listener = new GetInfoSparkListener()
     SparkContext.getOrCreate().addSparkListener(listener)
 
-    layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 14,datacubeParams = Some(parameters))
+    layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 13,datacubeParams = Some(parameters))
+    print(layer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index)
     assertTrue(layer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[ConfigurableSpaceTimePartitioner])
     val maskedCount = layer.count()
     SparkContext.getOrCreate().removeSparkListener(listener)
@@ -316,7 +320,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
     val resultTiff = GeoTiff.readMultiband(f"tmp/Sentinel2FileLayerProvider_multiband_${parameters.hashCode()}.tif")
 
-    val refFile = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/Sentinel2FileLayerProvider_multiband_reference.tif")
+    val refFile = Thread.currentThread().getContextClassLoader.getResource(refPath)
     val refTiff = GeoTiff.readMultiband(refFile.getPath)
 
 
@@ -528,6 +532,9 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assertRastersEqual(referenceTile,actualTile,160.0)
   }
 
+  /**
+   * Test simulates the very common case where an 'scl dilation mask' is applied at load time.
+   */
   @Test
   def testToSclDilationMaskOnS2TileEdge(): Unit = {
     val ref = "https://artifactory.vgt.vito.be/artifactory/testdata-public/toscldilationmask_masked_ref.tif"
@@ -538,8 +545,12 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val crs = CRS.fromEpsgCode(32631)
     val boundingBox = ProjectedExtent(Extent(640860, 5676170, 666460, 5701770), crs)
     val dataCubeParameters = new DataCubeParameters
+    val ProgressListener = new BatchJobProgressListener()
+    sc.addSparkListener(ProgressListener)
+    val listener = new GetInfoSparkListener()
+    SparkContext.getOrCreate().addSparkListener(listener)
     // dataCubeParameters.tileSize = 2048 (This requires increased spark.kryoserializer.buffer.max)
-    val layer = tocLayerProviderUTM.readMultibandTileLayer(
+    val sclCube = sceneclassificationLayerProviderUTM.readMultibandTileLayer(
       from = date,
       to = date,
       boundingBox,
@@ -549,31 +560,48 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       sc,
       Some(dataCubeParameters)
     )
-    val spatialLayer: RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]] = layer.toSpatial(date)
 
     // Create mask.
-    val sclLayer = MultibandTileLayerRDD(layer.mapValues(t => MultibandTile(Seq(t.band(3)))), layer.metadata)
+
     val mask1Values = util.Arrays.asList(2, 4, 5, 6, 7)
     val mask2Values = util.Arrays.asList(3, 8, 9, 10, 11)
     val erosionKernelSize = 0
     val kernel1Size = 17
     val kernel2Size = 201
-    val mask: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().toSclDilationMask(sclLayer, erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
-    val spatialMask = mask.toSpatial(date)
+    val mask: MultibandTileLayerRDD[SpaceTimeKey] = new OpenEOProcesses().toSclDilationMask(sclCube, erosionKernelSize, mask1Values, mask2Values, kernel1Size, kernel2Size)
+
+    dataCubeParameters.setMaskingCube(mask)
+    val rgbCube = tocLayerProviderUTM.readMultibandTileLayer(
+      from = date,
+      to = date,
+      boundingBox,
+      polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())),
+      polygons_crs = crs,
+      zoom = 0,
+      sc,
+      Some(dataCubeParameters)
+    )
+    val maskedCube: RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]] = rgbCube.toSpatial(date)
 
     // Apply Mask.
-    val maskedLayer: MultibandTileLayerRDD[SpatialKey] = new OpenEOProcesses().rasterMask_spatial_spatial(spatialLayer, spatialMask, NODATA)
-    val reprojectedBoundingBox = boundingBox.reproject(spatialLayer.metadata.crs)
+    val reprojectedBoundingBox = boundingBox.reproject(maskedCube.metadata.crs)
 
     // Compare results.
-    maskedLayer.sparseStitch(reprojectedBoundingBox) match {
-      case Some(stitched) => MultibandGeoTiff(stitched.crop(reprojectedBoundingBox), maskedLayer.metadata.crs).write(actual)
+    maskedCube.sparseStitch(reprojectedBoundingBox) match {
+      case Some(stitched) => MultibandGeoTiff(stitched.crop(reprojectedBoundingBox), maskedCube.metadata.crs).write(actual)
       case _ => throw new IllegalStateException("nothing to sparse-stitch")
     }
+    SparkContext.getOrCreate().removeSparkListener(listener)
+
+    listener.printStatus()
 
     val referenceTile = GeoTiffRasterSource(ref).read().get
     val actualTile = GeoTiffRasterSource(actual).read().get
     assertRastersEqual(referenceTile, actualTile, 160.0)
+    //because debugging is enabled, it actually runs more jobs and stages then done in production
+    assertEquals(4,listener.getJobsCompleted)
+    assertEquals(17, listener.getStagesCompleted)
+
   }
 
   @Test
@@ -686,6 +714,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
   @Test
   def testL1CMultibandTileMask(): Unit = {
+    val listener = new BatchJobProgressListener()
+    sc.addSparkListener(listener)
     val dilationDistance = 5
 
     val creoL1CLayerProvider = FileLayerProvider(

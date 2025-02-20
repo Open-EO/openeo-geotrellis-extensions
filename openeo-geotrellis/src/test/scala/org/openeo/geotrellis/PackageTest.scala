@@ -43,7 +43,7 @@ class PackageTest {
 
   @Test
   def testFileMove(): Unit = {
-    val refFile = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/Sentinel2FileLayerProvider_multiband_reference.tif")
+    val refFile = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/Sentinel2FileLayerProvider_multiband_reference_average.tif")
     val refTiff = GeoTiff.readMultiband(refFile.getPath)
     val p = Path.of(f"tmp/testFileMove/")
     Files.createDirectories(p)

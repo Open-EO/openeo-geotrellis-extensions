@@ -263,7 +263,11 @@ public class TestOpenEOProcessScriptBuilder {
         builder.expressionStart(operator, args);
         builder.argumentStart("x");
         builder.argumentEnd();
-        builder.constantArgument("y", 10);
+        builder.argumentStart("y");
+        Map<String,Object> arg = map1("x",10);
+        builder.expressionStart("constant",arg);
+        builder.expressionEnd("constant",arg);
+        builder.argumentEnd();
         builder.expressionEnd(operator, args);
 
         Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();

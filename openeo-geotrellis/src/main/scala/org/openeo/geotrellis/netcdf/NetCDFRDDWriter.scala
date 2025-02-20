@@ -269,7 +269,7 @@ object NetCDFRDDWriter {
     logger.info(s"Writing NetCDF from rdd with : ${count} elements and ${rdd.getNumPartitions} partitions.")
 
     val elementsPartitionRatio =
-      if(rdd.getNumPartitions>0) {
+      if(rdd.getNumPartitions == 0) {
         1000 // just a large number
       } else{
         count / rdd.getNumPartitions
@@ -566,7 +566,7 @@ object NetCDFRDDWriter {
     val uploadFileRequest = UploadFileRequest.builder().putObjectRequest(putRequest).source(Paths.get(localPath)).build
 
     val transferManager = S3TransferManager.builder()
-      .s3Client(CreoS3Utils.getAsyncClient())
+      .s3Client(CreoS3Utils.getAsyncClient)
       .build();
     val fileUpload = transferManager.uploadFile(uploadFileRequest)
 

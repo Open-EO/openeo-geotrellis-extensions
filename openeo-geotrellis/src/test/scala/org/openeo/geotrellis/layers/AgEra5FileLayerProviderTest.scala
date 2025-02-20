@@ -1,22 +1,24 @@
 package org.openeo.geotrellis.layers
 
+import better.files.File.apply
 import cats.data.NonEmptyList
 import geotrellis.layer.FloatingLayoutScheme
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.junit.Assert._
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import org.openeo.geotrellis.TestImplicits._
-import org.openeo.geotrellis.{LocalSparkContext, ProjectedPolygons}
+import org.openeo.geotrellis.{LocalSparkContextJupyter, ProjectedPolygons}
 import org.openeo.opensearch.backends.Agera5SearchClient
 
 import java.time.{LocalDate, ZoneId}
 import java.util
 import scala.collection.JavaConverters.asScalaBuffer
 
-object AgEra5FileLayerProviderTest extends LocalSparkContext
+object AgEra5FileLayerProviderTest extends LocalSparkContextJupyter
 
 class AgEra5FileLayerProviderTest {
   import AgEra5FileLayerProviderTest._
@@ -41,7 +43,7 @@ class AgEra5FileLayerProviderTest {
 
 
   @Test
-  def agEra5FileLayerProvider(): Unit = {
+  def agEra5FileLayerProvider(@TempDir tempDir: java.nio.file.Path): Unit = {
 
     val projectedExtent = ProjectedExtent(extent, LatLng)
     val projectedPolygons = ProjectedPolygons.fromExtent(projectedExtent.extent, s"EPSG:${projectedExtent.crs.epsgCode.get}")
@@ -68,11 +70,11 @@ class AgEra5FileLayerProviderTest {
     assertEquals(LatLng, spatialLayer.metadata.crs)
     assertEquals(extent, spatialLayer.metadata.extent)
     spatialLayer
-      .writeGeoTiff(s"/tmp/agEra5FileLayerProvider.tif", projectedExtent)
+      .writeGeoTiff((better.files.File.apply(tempDir) / "agEra5FileLayerProvider.tif"), projectedExtent)
   }
 
   @Test
-  def agEra5UTM(): Unit = {
+  def agEra5UTM(@TempDir tempDir: java.nio.file.Path): Unit = {
     val utm31 = CRS.fromEpsgCode(32631)
     val projectedExtent = ProjectedExtent(ProjectedExtent(extent, LatLng).reproject(utm31),utm31)
     val projectedPolygons = ProjectedPolygons.fromExtent(projectedExtent.extent, s"EPSG:${projectedExtent.crs.epsgCode.get}")
@@ -98,7 +100,7 @@ class AgEra5FileLayerProviderTest {
     assertEquals(FloatConstantNoDataCellType, spatialLayer.metadata.cellType)
     assertEquals(utm31, spatialLayer.metadata.crs)
 
-    spatialLayer.writeGeoTiff(s"/tmp/agEra5WithOpensearchClient2.tif", projectedExtent)
+    spatialLayer.writeGeoTiff((tempDir / "agEra5WithOpensearchClient2.tif").toString(), projectedExtent)
     assertEquals(projectedExtent.extent, spatialLayer.metadata.extent)
   }
 

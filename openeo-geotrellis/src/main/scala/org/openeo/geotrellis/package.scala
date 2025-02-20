@@ -135,7 +135,7 @@ package object geotrellis {
    * This function could have default 664 for example.
    */
   def getTempFile(prefix: String, suffix: String): Path = {
-    val prefixNonNull = if (prefix == null) "" else suffix
+    val prefixNonNull = if (prefix == null) "" else prefix
     val suffixNonNull = if (suffix == null) ".tmp" else suffix
     val tmpdirProp = sun.security.action.GetPropertyAction.privilegedGetProperty("java.io.tmpdir")
     val tmpdir = Paths.get(tmpdirProp)

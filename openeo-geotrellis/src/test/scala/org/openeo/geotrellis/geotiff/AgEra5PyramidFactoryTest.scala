@@ -38,8 +38,6 @@ object AgEra5PyramidFactoryTest extends LocalSparkContext {
 class AgEra5PyramidFactoryTest {
   import AgEra5PyramidFactoryTest._
 
-  private implicit val sc: SparkContext = AgEra5PyramidFactoryTest.sc
-
   private def getSiblings(dewPointTemperatureFile: String): Seq[String] = {
     val dewPointTemperatureMarker = "dewpoint-temperature"
 

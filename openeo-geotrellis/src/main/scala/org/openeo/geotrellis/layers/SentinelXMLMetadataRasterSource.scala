@@ -35,7 +35,9 @@ object SentinelXMLMetadataRasterSource {
     val theResolution = cellSize.getOrElse(CellSize(10, 10))
 
     val path = CreoFeatureCollection.loadMetadata(xlmPath)
-    assert(path != null)
+    if (path == null) {
+      throw new Exception("Could not load metadata file for angle bands: " + xlmPath)
+    }
     val xmlDoc = XML.load(path)
     val angles = xmlDoc \\ "Tile_Angles"
     val meanSun = angles \ "Mean_Sun_Angle"

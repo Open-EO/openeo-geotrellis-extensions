@@ -7,11 +7,11 @@ import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CropOptions, CroppedTile, EmptyName, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, SourcePath, StringName, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CropOptions, CroppedTile, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.clip.ClipToGrid
 import geotrellis.spark.clip.ClipToGrid.clipFeatureToExtent
@@ -34,10 +34,12 @@ import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, C
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.{Logger, LoggerFactory}
+import org.slf4j.LoggerFactory
+import software.amazon.awssdk.core.exception.AbortedException
 
 import java.io.{IOException, Serializable}
 import java.net.URI
-import java.nio.file.{Path, Paths}
+import java.nio.file.{Files, Path, Paths}
 import java.time._
 import java.time.temporal.ChronoUnit.{DAYS, SECONDS}
 import java.util
@@ -104,12 +106,14 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     selectedBands flatMap { rs =>
       try Some(retryWithBackoff(maxRetries, reprojectRasterSourceAttemptFailed(rs))(rs.reproject(crs)))
       catch {
-        // reading the CRS from a GDALRasterSource can fail
-        case e: Exception =>
-          if (softErrors) {
-            logger.warn(s"ignoring soft error for ${rs.name}", e)
+
+        case e: AbortedException => throw e
+        case e:Exception if softErrors =>
+          {
+            logger.warn(s"load_collection: ignoring soft error for ${rs.name} - ${e.getMessage}", e)
             None
-          } else throw new IOException(s"Error while reading: ${rs.name}", e)
+          }
+        case e: Exception => throw new IOException(s"load_collection: Error while reading: ${rs.name} - ${e.getMessage}", e)
       }
     }
   }
@@ -186,11 +190,13 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
         logger.debug(s"finished reading $bounds from ${source.name}")
         raster
       } catch {
-        case e: Exception =>
-          if (softErrors) {
-            logger.warn(s"ignoring soft error for ${source.name}", e)
-            None
-          } else throw new IOException(s"Error while reading $bounds from ${source.name}", e)
+        case e: AbortedException => throw e
+        case e:Exception if softErrors =>
+        {
+          logger.warn(s"load_collection: ignoring soft error for ${source.name} - ${e.getMessage}", e)
+          None
+        }
+        case e: Exception => throw new IOException(s"load_collection: Error while reading $bounds from: ${source.name} - ${e.getMessage}", e)
       }
     }
 
@@ -319,6 +325,15 @@ object FileLayerProvider {
         // Ignore GDAL init error so that tests that don't require it will be ok.
         // Tests that require it will still crash when it is not installed.
         logger.warn("GDAL library not found: " + e.getMessage)
+    }
+  }
+
+  def vsis3ToS3(path: String): String = {
+    val vsis3Prefix = "/vsis3/eodata/"
+    if (path.toLowerCase().startsWith(vsis3Prefix)) {
+      "S3://EODATA/" + path.substring(vsis3Prefix.length)
+    } else {
+      path
     }
   }
 
@@ -1000,7 +1015,29 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       val commonCellType = arbitraryRasterSource.cellType
       if (commonCellType.isInstanceOf[NoNoData]) commonCellType.withDefaultNoData() else commonCellType
     } catch {
-      case e: Exception => throw new IOException(s"Exception while determining data type of asset ${arbitraryRasterSource.name} in collection $openSearchCollectionId. Detailed message: ${e.getMessage}", e)
+      case e: Exception => {
+        // Geotrellis GDALException errors are not descriptive enough. Attempt to add some more useful information.
+        var fileExistsMessage = ""
+        try {
+          val path = Paths.get(arbitraryRasterSource.name match {
+            case p: SourcePath => {
+              if (p.value.startsWith("NETCDF:")) {
+                // Netcdf files can specify a variable using NETCDF:/file/path:variablename
+                p.value.replace("NETCDF:", "").split(":").head
+              } else {
+                p.value
+              }
+            }
+            case _ => "Path could not be determined"
+          })
+          fileExistsMessage = s"File ${if (Files.exists(path)) "exists" else "does not exist"}: $path."
+        } catch {
+          case e2: Exception => {
+            fileExistsMessage = s"Exception while trying to determine if RasterSource path exists: ${e2.getMessage}."
+          }
+        }
+        throw new IOException(s"Exception while reading RasterSource ${arbitraryRasterSource.name} in collection $openSearchCollectionId. Detailed message: ${e.getMessage}. $fileExistsMessage", e)
+      }
     }
   }
 
@@ -1456,6 +1493,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             Some(ProjectedExtent(featureExtentInLayoutGet.extent, targetExtent.crs))
         }
         SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, targetProjectedExtent, Some(theResolution))
+      }else if(dataPath.endsWith(".zarr")) {
+        val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod),te = Some(targetExtent.extent))
+        GDALRasterSource(GDALPath(dataPath),options = warpOptions, targetCellType = targetCellType)
       }
       else {
         def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {
@@ -1473,7 +1513,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           if(experimental) {
             GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(theResolution), resampleMethod=Some(resampleMethod)), targetCellType = targetCellType)
           }else{
-            val geotiffPath = GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/"))
+            val geotiffPath = GeoTiffPath(vsis3ToS3(dataPath))
             if (noResampleOnRead) {
               val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)
               val geotiffRasterSource = GeoTiffRasterSource(geotiffPath, targetCellType)
@@ -1487,7 +1527,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod),te = Some(targetExtent.extent))
             GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType)
           }else{
-            val geotiffPath = GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/"))
+            val geotiffPath = GeoTiffPath(vsis3ToS3(dataPath))
             if (noResampleOnRead) {
               val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)
               val geotiffRasterSource = GeoTiffReprojectRasterSource(geotiffPath, targetExtent.crs, tiffAlignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType = targetCellType)
@@ -1548,20 +1588,23 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       (if (byLinkTitle) getBandAssetsByLinkTitle else getBandAssetsByBandInfo).map {
         case Some((link, bandIndex)) =>
           val path = deriveFilePath(link.href)
+          val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
 
           //special case handling for data that does not declare nodata properly
           val targetCellType = link.title match {
             // An un-used band called "IMG_DATA_Band_SCL_60m_Tile1_Unit" exists, so not specifying the resulution in the if-check.
             case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
             case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(UShortConstantNoDataCellType))
+            case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(UShortConstantNoDataCellType)) // TODO: get info from Link object
+            case Some(title) if fromLoadStac && Seq("SCL_20m", "SCL_60m").contains(title) => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0))) // TODO: get info from Link object
             case _ => None
           }
 
-          val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
           val targetTargetCellType: Option[TargetCellType] = link.title match {
             // Sentinel 2 bands can have negative values now.
             case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => None
             case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
+            case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(ShortConstantNoDataCellType)) // TODO: get info from Link object
             case _ => None
           }
 

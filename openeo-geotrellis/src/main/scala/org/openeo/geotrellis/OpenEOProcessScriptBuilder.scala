@@ -1118,6 +1118,7 @@ class OpenEOProcessScriptBuilder {
           case "date_shift" => dateShift(arguments)
           case "date_replace_component" => dateReplaceComponent(arguments)
           case "if" => ifProcess(arguments)
+          case "constant" if hasX => constantFunction(arguments)
           // Comparison operators
           case "gt" if hasXY => xyFunction(Greater.apply, convertBitCells = false)
           case "lt" if hasXY => xyFunction(Less.apply, convertBitCells = false)
@@ -1647,7 +1648,7 @@ class OpenEOProcessScriptBuilder {
       }
 
       if (input.size <= theActualIndex) {
-        throw new IllegalArgumentException("Invalid band index " + index + ", only " + input.size + " bands available.")
+        throw new IllegalArgumentException(s"Invalid band index $theActualIndex, only ${input.size} bands available.")
       }
       Seq(input(theActualIndex))
     }
@@ -1748,5 +1749,16 @@ class OpenEOProcessScriptBuilder {
       }
     }
     clipFunction
+  }
+
+  private def constantFunction(arguments:java.util.Map[String,Object]): OpenEOProcess = {
+    val (value, dataType) = arguments.get("x") match {
+      case x: java.lang.Short => (x, ShortConstantNoDataCellType)
+      case x: Integer => (x,IntConstantNoDataCellType)
+      case x: java.lang.Float =>(x,FloatConstantNoDataCellType)
+      case x: java.lang.Double => (x, DoubleConstantNoDataCellType)
+    }
+    resultingDataType = dataType
+    wrapSimpleProcess(createConstantTileFunction(value))
   }
 }

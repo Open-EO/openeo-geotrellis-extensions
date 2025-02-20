@@ -5,20 +5,20 @@ import geotrellis.proj4.LatLng
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.vector._
-import org.apache.spark.SparkContext
+import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DatacubeSupport.layerMetadata
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, DatacubeSupport, parseToInclusiveTemporalInterval}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.openeo.opensearch.backends.{CreodiasClient, OscarsClient}
 import org.slf4j.LoggerFactory
 
 import java.net.URL
-import java.time.{LocalTime, ZonedDateTime}
+import java.time.ZonedDateTime
 import java.util
 import scala.collection.JavaConverters._
 
@@ -40,13 +40,9 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
   private def getFeatures(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, sc: SparkContext): Seq[Feature] = {
     require(zoom >= 0)
 
-    val dateRange = // retain backwards compatibility for from == to
-      if (from isEqual to) (from `with` LocalTime.MIN, from `with` LocalTime.MAX)
-      else (from, to)
-
     val overlappingFeatures: Seq[Feature] = openSearch.getProducts(
       openSearchCollectionId,
-      Some(dateRange),
+      Some((from, to)),
       boundingBox,
       attributeValues = attributeValues.asScala.toMap,
       correlationId, ""
@@ -54,12 +50,10 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
     overlappingFeatures
   }
 
-
-  def loadSpatialFeatureRDD(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters): ContextRDD[SpaceTimeKey, Feature, TileLayerMetadata[SpaceTimeKey]] = {
+  private def loadSpatialFeatureRDD(polygons: ProjectedPolygons, from_datetime: String, until_datetime: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters): ContextRDD[SpaceTimeKey, Feature, TileLayerMetadata[SpaceTimeKey]] = {
     val sc = SparkContext.getOrCreate()
 
-    val from = ZonedDateTime.parse(from_date)
-    val to = ZonedDateTime.parse(to_date)
+    val (from, to) = parseToInclusiveTemporalInterval(from_datetime, until_datetime)
 
     val bbox = polygons.polygons.toSeq.extent
 
@@ -116,9 +110,9 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
    * Variant of `loadSpatialFeatureRDD` that allows working with the data in JavaRDD format in PySpark context:
    * (e.g. oscars response is JSON-serialized)
    */
-  def loadSpatialFeatureJsonRDD(polygons: ProjectedPolygons, from_date: String, to_date: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters = null): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey]) = {
+  def loadSpatialFeatureJsonRDD(polygons: ProjectedPolygons, from_datetime: String, until_datetime: String, zoom: Int, tileSize: Int = 256, dataCubeParameters: DataCubeParameters = null): (JavaRDD[String], TileLayerMetadata[SpaceTimeKey], Partitioner) = {
     import org.openeo.geotrellis.file.FileRDDFactory.{jsonObject, toJson}
-    val crdd = loadSpatialFeatureRDD(polygons, from_date, to_date, zoom, tileSize, dataCubeParameters)
+    val crdd = loadSpatialFeatureRDD(polygons, from_datetime, until_datetime, zoom, tileSize, dataCubeParameters)
     val jrdd = crdd.map { case (key, feature) => jsonObject(
       "key" -> toJson(key),
       "key_extent" -> toJson(crdd.metadata.mapTransform.keyToExtent(key)),
@@ -134,7 +128,7 @@ class FileRDDFactory(openSearch: OpenSearchClient, openSearchCollectionId: Strin
       )
     )}.toJavaRDD()
 
-    return (jrdd, crdd.metadata)
+    (jrdd, crdd.metadata, crdd.partitioner.get)
   }
 }
 
