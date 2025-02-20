@@ -1573,20 +1573,23 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       (if (byLinkTitle) getBandAssetsByLinkTitle else getBandAssetsByBandInfo).map {
         case Some((link, bandIndex)) =>
           val path = deriveFilePath(link.href)
+          val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
 
           //special case handling for data that does not declare nodata properly
           val targetCellType = link.title match {
             // An un-used band called "IMG_DATA_Band_SCL_60m_Tile1_Unit" exists, so not specifying the resulution in the if-check.
             case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
             case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(UShortConstantNoDataCellType))
+            case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(UShortConstantNoDataCellType)) // TODO: get info from Link object
+            case Some(title) if fromLoadStac && Seq("SCL_20m", "SCL_60m").contains(title) => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0))) // TODO: get info from Link object
             case _ => None
           }
 
-          val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
           val targetTargetCellType: Option[TargetCellType] = link.title match {
             // Sentinel 2 bands can have negative values now.
             case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => None
             case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
+            case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(ShortConstantNoDataCellType)) // TODO: get info from Link object
             case _ => None
           }
 
