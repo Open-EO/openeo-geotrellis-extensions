@@ -393,8 +393,12 @@ package object intern {
       j <- (i + 1) until polygons.length
     } {
       val (p, q) = (polygons(i), polygons(j))
-      if (p.intersects(q) && p.intersection(q).getArea > threshold) {
-        return true
+      try{
+        if (p.intersects(q) && p.intersection(q).getArea > threshold) {
+          return true
+        }
+      }catch {
+        case e: TopologyException => logger.warn(s"A topology exception occurred while determining the overlap between two polygons: ${p.toGeoJson()} - ${q.toGeoJson()}. Processing will continue, but aggregate_spatial results may be inaccurate.",e)
       }
     }
 
