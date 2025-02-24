@@ -10,6 +10,7 @@ import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.render.IndexedColorMap
 import geotrellis.raster.resample._
 import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
+import geotrellis.raster.crop._
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.store.s3._
@@ -360,7 +361,7 @@ package object geotiff {
           ))))
         }
 
-        (stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, None, None, compression, Some(fo)),
+        (stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, Some(extent), None, compression, Some(fo)),
           Collections.singletonList(bandIndex))
       }.collect()
       val res = geotiffResults.map {
@@ -873,7 +874,7 @@ package object geotiff {
     val adjusted = {
       val cropped =
         croppedExtent match {
-          case Some(extraExtent) => stitched.crop(extraExtent)
+          case Some(extraExtent) => stitched.crop(extraExtent, Crop.Options(clamp = false))
           case None => stitched
         }
 

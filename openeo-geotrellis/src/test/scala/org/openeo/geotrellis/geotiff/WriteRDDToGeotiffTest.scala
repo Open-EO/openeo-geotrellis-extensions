@@ -1,13 +1,14 @@
 package org.openeo.geotrellis.geotiff
 
 import better.files.File.apply
-import geotrellis.layer.{CRSWorldExtent, SpaceTimeKey, SpatialKey, ZoomedLayoutScheme}
-import geotrellis.proj4.LatLng
+import cats.data.NonEmptyList
+import geotrellis.layer.{CRSWorldExtent, FloatingLayoutScheme, SpaceTimeKey, SpatialKey, ZoomedLayoutScheme}
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.render.ColorMap.Options
 import geotrellis.raster.render.DoubleColorMap
-import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, ColorMaps, MultibandTile, Raster, Tile, TileLayout, isData}
+import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, CellSize, ColorMaps, MultibandTile, Raster, Tile, TileLayout, isData}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector._
@@ -15,14 +16,20 @@ import geotrellis.vector.io.json.GeoJson
 import org.apache.spark.{SparkConf, SparkContext, SparkEnv}
 import org.junit.Assert._
 import org.junit.jupiter.api.io.TempDir
-import org.junit.jupiter.api.{BeforeAll, Test}
+import org.junit.jupiter.api.{BeforeAll, Disabled, Test}
 import org.junit.rules.TemporaryFolder
 import org.junit.{AfterClass, Rule}
+import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
+import org.openeo.geotrelliscommon.DataCubeParameters
+import org.openeo.opensearch.OpenSearchClient
 import org.slf4j.{Logger, LoggerFactory}
 
+import java.net.URL
 import java.nio.file.{Files, Path, Paths}
-import java.time.{LocalTime, ZoneOffset, ZonedDateTime}
+import java.time.LocalTime.MIDNIGHT
+import java.time.ZoneOffset.UTC
+import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
 import java.util.zip.Deflater._
 import scala.annotation.meta.getter
@@ -607,5 +614,43 @@ class WriteRDDToGeotiffTest {
     }
 
     assertFalse(isData(rasterValueAt(pointOutsideOfGeometry)))
+  }
+
+  @Disabled("Needs /eodata mounted. Kept to run manualy. TODO: Use synthetic data.")
+  @Test
+  def testAvoidCroppingAwayNoData(): Unit = {
+
+    val openSearchClient = OpenSearchClient(new URL("https://catalogue.dataspace.copernicus.eu/resto"))
+    val layerProvider = FileLayerProvider(
+      openSearchClient,
+      "GLOBAL-MOSAICS",
+      openSearchLinkTitles = NonEmptyList.of("VV"),
+      rootPath = "/eodata/Global-Mosaics/Sentinel-1",
+      CellSize(20, 20),
+      SplitYearMonthDayPathDateExtractor,
+      layoutScheme = FloatingLayoutScheme(256),
+    )
+    val bbox = ProjectedExtent(Extent(466000, 8170000, 509760, 8171000), CRS.fromEpsgCode(32643))
+    val layer = layerProvider.readMultibandTileLayer(
+      from = ZonedDateTime.of(LocalDate.of(2019, 12, 31), MIDNIGHT, UTC),
+      to = ZonedDateTime.of(LocalDate.of(2020, 2, 1), MIDNIGHT, UTC),
+      bbox,
+      sc = sc,
+    )
+
+    val outDir = Paths.get("tmp/testAvoidCroppingAwayNoData/").toAbsolutePath
+    new Directory(outDir.toFile).deepList().foreach(_.delete())
+    Files.createDirectories(outDir)
+
+    val options = new GTiffOptions()
+    options.separateAssetPerBand = true
+    options.addBandTag(0, "DESCRIPTION", "VV")
+    val paths = saveRDD(layer.toSpatial(layer.keys.collect().head.time), 0, outDir.toString + "/out", formatOptions = options)
+    assertEquals(1, paths.size())
+
+    val result = GeoTiff.readMultiband(outDir.resolve("openEO_VV.tif").toString).raster.tile
+    val arrayTile = result.band(0).toArrayTile()
+    assertEquals(2188, arrayTile.dimensions.cols)
+    assertEquals(50, arrayTile.dimensions.rows)
   }
 }
