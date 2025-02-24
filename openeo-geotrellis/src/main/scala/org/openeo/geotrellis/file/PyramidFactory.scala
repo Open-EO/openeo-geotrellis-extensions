@@ -1,19 +1,19 @@
 package org.openeo.geotrellis.file
 
 import cats.data.NonEmptyList
-import geotrellis.layer.{FloatingLayoutScheme, LayoutScheme, SpaceTimeKey, ZoomedLayoutScheme}
+import geotrellis.layer.{FloatingLayoutScheme, LayoutScheme, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, WebMercator}
-import geotrellis.raster.CellSize
+import geotrellis.raster.{CellSize, FloatConstantNoDataCellType}
 import geotrellis.spark.MultibandTileLayerRDD
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrelliscommon.DataCubeParameters
+import org.openeo.geotrelliscommon.DatacubeSupport.layerMetadata
 import org.openeo.opensearch.OpenSearchClient
 import org.slf4j.LoggerFactory
 
-import java.net.URL
 import java.time.ZonedDateTime
 import java.util
 import scala.collection.JavaConverters._
@@ -80,6 +80,24 @@ class PyramidFactory(openSearchClient: OpenSearchClient,
     experimental = experimental,
     maxSoftErrorsRatio = maxSoftErrorsRatio,
   )
+
+  //noinspection ScalaUnusedSymbol
+  def empty_datacube_seq(polygons: ProjectedPolygons, from_date: String, to_date: String, dataCubeParameters: DataCubeParameters): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+    val sc = SparkContext.getOrCreate()
+
+    val metadata: TileLayerMetadata[SpaceTimeKey] = layerMetadata(
+      ProjectedExtent(polygons.polygons.toSeq.extent, polygons.crs),
+      ZonedDateTime.parse(from_date),
+      ZonedDateTime.parse(to_date),
+      zoom = 0,
+      FloatConstantNoDataCellType,
+      FloatingLayoutScheme(dataCubeParameters.tileSize),
+      maxSpatialResoluton = CellSize(10, 10), // TODO: avoid hard coding?
+      dataCubeParameters.globalExtent,
+    )
+
+    Seq((0, MultibandTileLayerRDD(sc.emptyRDD, metadata)))
+  }
 
   def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
                    metadata_properties: util.Map[String, Any], correlationId: String):
