@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.file
 
 import cats.data.NonEmptyList
-import geotrellis.layer.{FloatingLayoutScheme, LayoutScheme, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme}
+import geotrellis.layer.{FloatingLayoutScheme, LayoutScheme, SpaceTimeKey, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, WebMercator}
 import geotrellis.raster.{CellSize, FloatConstantNoDataCellType}
 import geotrellis.spark.MultibandTileLayerRDD
@@ -83,47 +83,40 @@ class PyramidFactory(openSearchClient: OpenSearchClient,
 
   //noinspection ScalaUnusedSymbol
   def empty_datacube_seq(polygons: ProjectedPolygons, from_date: String, to_date: String,
-                         maxSpatialResolution: CellSize, dataCubeParameters: DataCubeParameters)
-  : Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
-    val sc = SparkContext.getOrCreate()
-
-    val metadata: TileLayerMetadata[SpaceTimeKey] = DatacubeSupport.layerMetadata(
-      ProjectedExtent(polygons.polygons.toSeq.extent, polygons.crs),
-      ZonedDateTime.parse(from_date),
-      ZonedDateTime.parse(to_date),
-      zoom = 0,
-      FloatConstantNoDataCellType,
-      FloatingLayoutScheme(dataCubeParameters.tileSize),
-      maxSpatialResolution,
-      dataCubeParameters.globalExtent,
+                         dataCubeParameters: DataCubeParameters) : Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
+    Seq(
+      emptyLayer(ProjectedExtent(polygons.polygons.toSeq.extent, polygons.crs), from_date, to_date, zoom = 0,
+        FloatingLayoutScheme(dataCubeParameters.tileSize)
+      )
     )
-
-    Seq(0 -> MultibandTileLayerRDD(sc.emptyRDD, metadata))
   }
 
   //noinspection ScalaUnusedSymbol
-  def empty_pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String, to_date: String,
-                        maxSpatialResolution: CellSize): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
-    // TODO: reduce code duplication with empty_datacube_seq
+  def empty_pyramid_seq(bbox: Extent, bbox_srs: String, from_date: String,
+                        to_date: String): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
     val zoomedLayoutScheme = ZoomedLayoutScheme(crs)
     val maxZoom = zoomedLayoutScheme.zoom(0, 0, maxSpatialResolution)
 
+    for (zoom <- maxZoom to 0 by -1)
+      yield emptyLayer(ProjectedExtent(bbox, CRS.fromName(bbox_srs)), from_date, to_date, zoom, zoomedLayoutScheme)
+  }
+
+  private def emptyLayer(projectedExtent: ProjectedExtent, from_date: String, to_date: String, zoom: Int,
+                         layoutScheme: LayoutScheme): (Int, MultibandTileLayerRDD[SpaceTimeKey]) = {
     val sc = SparkContext.getOrCreate()
 
-    for (zoom <- maxZoom to 0 by -1) yield {
-      val metadata = DatacubeSupport.layerMetadata(
-        ProjectedExtent(bbox, CRS.fromName(bbox_srs)),
-        ZonedDateTime.parse(from_date),
-        ZonedDateTime.parse(to_date),
-        zoom,
-        FloatConstantNoDataCellType,
-        zoomedLayoutScheme,
-        maxSpatialResolution,
-        globalBounds = None,
-      )
+    val metadata = DatacubeSupport.layerMetadata(
+      projectedExtent,
+      ZonedDateTime.parse(from_date),
+      ZonedDateTime.parse(to_date),
+      zoom,
+      FloatConstantNoDataCellType,
+      layoutScheme,
+      maxSpatialResolution,
+      globalBounds = None,
+    )
 
-      zoom -> MultibandTileLayerRDD[SpaceTimeKey](sc.emptyRDD, metadata)
-    }
+    zoom -> MultibandTileLayerRDD(sc.emptyRDD, metadata)
   }
 
   def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
