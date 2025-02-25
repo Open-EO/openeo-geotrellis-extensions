@@ -173,6 +173,8 @@ abstract class TiledRasterLayer[K: SpatialComponent: Encoder: Decoder: ClassTag:
     partitionStrategy: PartitionStrategy
   ): TiledRasterLayer[K]
 
+  def addTemporal(temporalKey:TemporalKey):TiledRasterLayer[SpaceTimeKey]
+
   def pyramid(resampleMethod: ResampleMethod, partitionStrategy: PartitionStrategy): Array[_] // Array[TiledRasterLayer[K]]
 
   def focal(
