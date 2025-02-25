@@ -851,7 +851,7 @@ package object geotiff {
         (destinationPath.toString, croppedExtent)
     }.toList.asJava
     for ((geotiffResult, _) <- geotiffResults) {
-      val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(Path.of(path), geotiffResult)
+      val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(Path.of(path).getParent, geotiffResult)
       CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
     }
 
