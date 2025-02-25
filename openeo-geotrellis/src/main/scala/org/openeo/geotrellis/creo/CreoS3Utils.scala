@@ -136,7 +136,7 @@ object CreoS3Utils {
   def assetDelete(path: String): Unit = {
     if (isS3(path)) {
       val s3Uri = toAmazonS3URI(path)
-      val keys = Seq(path)
+      val keys = Seq(s3Uri.getKey)
       val deleteObjectsRequest = DeleteObjectsRequest.builder
         .bucket(s3Uri.getBucket)
         .delete(Delete.builder.objects(keys.map(key => ObjectIdentifier.builder.key(key).build).asJavaCollection).build)
