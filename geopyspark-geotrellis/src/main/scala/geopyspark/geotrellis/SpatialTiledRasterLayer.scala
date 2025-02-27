@@ -130,7 +130,7 @@ class SpatialTiledRasterLayer(
     SpatialTiledRasterLayer(zoom, tileLayer)
   }
 
-  def addTemporal(temporalKey:TemporalKey): TiledRasterLayer[SpaceTimeKey] = {
+  def toTemporalLayer(temporalKey:TemporalKey): TiledRasterLayer[SpaceTimeKey] = {
     val bounds = rdd.metadata.bounds.get
     val spaceTimeBound = Bounds[SpaceTimeKey](SpaceTimeKey(bounds.minKey,temporalKey),SpaceTimeKey(bounds.maxKey,temporalKey))
     val newMetadata = rdd.metadata.copy(bounds = spaceTimeBound)

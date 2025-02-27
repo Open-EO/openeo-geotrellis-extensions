@@ -15,7 +15,7 @@ object TestTiledRasterLayer{
   var sc: SparkContext = _
 
   @BeforeClass
-  def setupSpark() = {
+  def setupSpark():Unit = {
     sc = {
       val conf = new SparkConf().setMaster("local[8]").setAppName(getClass.getSimpleName)
         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
@@ -31,29 +31,23 @@ object TestTiledRasterLayer{
 }
 
 
-class TestTiledRasterLayer {
+class TestTiledRasterLayer{
 
   @Test
-  def testAddTemporal():Unit= {
-    val (rdd,_) = LayerFixtures.aSpacetimeTileLayerRdd(10,10,5)
+  def testToTemporalLayer():Unit= {
+    val (rdd,_) = LayerFixtures.aSpacetimeTileLayerRdd(10,10)
     val bounds = rdd.metadata.bounds.get
     val tempKey = TemporalKey(ZonedDateTime.parse("2017-01-01T00:00:00Z"))
     val temporalLayer = TemporalTiledRasterLayer(1,rdd)
     val spatialLayer = temporalLayer.toSpatialLayer()
-    val spatialWithTemp = spatialLayer.addTemporal(tempKey)
+    val spatialWithTemp = spatialLayer.toTemporalLayer(tempKey)
     spatialWithTemp.rdd.map(p => {
-      assert(p._1.isInstanceOf[SpaceTimeKey])
-      assertEquals(tempKey,p._1.temporalKey)
-    }).collect
-    val temporalWithTemp = temporalLayer.addTemporal(tempKey)
-    temporalWithTemp.rdd.map(p => {
       assert(p._1.isInstanceOf[SpaceTimeKey])
       assertEquals(tempKey,p._1.temporalKey)
     }).collect
     val boundsWithTemp = KeyBounds[SpaceTimeKey](SpaceTimeKey(bounds.minKey.spatialKey,tempKey),SpaceTimeKey(bounds.maxKey.spatialKey,tempKey))
     val metadataWithTemp = rdd.metadata.copy(bounds = boundsWithTemp)
     assertEquals(metadataWithTemp,spatialWithTemp.rdd.metadata)
-    assertEquals(metadataWithTemp,temporalWithTemp.rdd.metadata)
 
   }
 }
