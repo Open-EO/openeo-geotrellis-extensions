@@ -50,6 +50,7 @@ import java.util.Formatter
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.io.Source
+import scala.reflect.io.Directory
 
 object FileLayerProviderTest {
   private var _sc: Option[SparkContext] = None
@@ -1216,8 +1217,9 @@ class FileLayerProviderTest extends RasterMatchers{
   @ParameterizedTest
   @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:3035", "EPSG:4326"))
   def testMissingS2DateLine(crsName: String): Unit = {
-    if ((crsName == "EPSG:3035" || crsName == "EPSG:4326") && System.getenv("PROJ_LIB") == null) {
-      println("PROJ_LIB is not set in the environment variables. Skipping this test")
+    if ((crsName == "EPSG:3035" || crsName == "EPSG:4326") &&
+      (System.getenv("PROJ_LIB") == null || !Files.exists(Paths.get(System.getenv("PROJ_LIB"))))) {
+      println("PROJ_LIB  environment variable does not point to directory. Skipping this test")
       // A typical value would be: PROJ_LIB=/usr/share/proj
       return
     }
