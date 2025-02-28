@@ -1427,12 +1427,24 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       else if (!featureIsUTM) feature.crs.get
       else targetExtent.crs // Avoid conversion imprecision by intersecting directly in the target CRS
 
-      val featureExtentInCommonCRS = feature.rasterExtent.get.reproject(feature.crs.get, commonCrs)
+      var featureExtentInCommonCRS = feature.rasterExtent.get.reproject(feature.crs.get, commonCrs)
+//      if (commonCrs == CRS.fromName("EPSG:4326") && featureExtentInCommonCRS.width > 180) {
+//        featureExtentInCommonCRS = Extent( // TODO
+//          featureExtentInCommonCRS.xmax,
+//          featureExtentInCommonCRS.ymin,
+//          featureExtentInCommonCRS.xmin + 360,
+//          featureExtentInCommonCRS.ymax,
+//        )
+//      }
       val targetExtentInCommonCRS = targetExtent.extent.reproject(targetExtent.crs, commonCrs)
+      healthCheckExtent(ProjectedExtent(featureExtentInCommonCRS, commonCrs))
 
       val intersection = featureExtentInCommonCRS.intersection(targetExtentInCommonCRS).map(_.buffer(1.0))
       val intersectionTargetCrs = intersection match {
-        case None => targetExtent.extent.reproject(targetExtent.crs, targetExtent.crs)
+        case None =>
+          logger.warn(s"Feature extent $featureExtentInCommonCRS and target extent $targetExtentInCommonCRS do not intersect.")
+          // TODO: Discard the feature?
+          targetExtent.extent
         case Some(value) => value.reproject(commonCrs, targetExtent.crs)
       }
       val tmp = expandToCellSize(intersectionTargetCrs, theResolution)

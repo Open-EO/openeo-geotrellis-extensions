@@ -221,11 +221,14 @@ package object geotrellis {
       })
   }
 
+  /**
+   * Python equivalent: health_check_extent
+   */
   def healthCheckExtent(projectedExtent: ProjectedExtent)(implicit logger: Logger): Boolean = {
     val horizontal_tolerance = 1.1
     val polygonIsUTM = projectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
     if (polygonIsUTM) {
-      // This is an extend that has the highest sensible values for northern and/or southern hemisphere UTM zones
+      // This is an extent that has the highest sensible values for northern and/or southern hemisphere UTM zones
       val utmProjectedBoundsOriginal = Extent(166021.44, 0000000.00, 833978.56, 10000000)
       val utmProjectedBounds = utmProjectedBoundsOriginal.buffer(
         utmProjectedBoundsOriginal.width * horizontal_tolerance, 0)
