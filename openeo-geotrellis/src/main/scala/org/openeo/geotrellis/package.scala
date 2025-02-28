@@ -244,4 +244,21 @@ package object geotrellis {
     }
     true
   }
+
+  /**
+   * DANGER. Might crash system if no memory limit is specified.
+   */
+  def trigger_JVM_OOM(): Unit = {
+    val oneGBinBytes = 1024 * 1024 * 1024
+    val arr = (0 until 200).map(_ => {
+      val memoryBlob = new Array[Int](oneGBinBytes) // 4Gb
+      // Optionally, fill the array with some data to ensure it's actually allocated
+      // This step is not strictly necessary for allocation but can be useful for testing
+      for (i <- memoryBlob.indices) {
+        memoryBlob(i) = 1
+      }
+      memoryBlob
+    })
+    print(arr) // use arr to make sure it does not get optimized away
+  }
 }

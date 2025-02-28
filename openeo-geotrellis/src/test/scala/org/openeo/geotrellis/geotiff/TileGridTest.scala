@@ -32,6 +32,8 @@ object TileGridTest {
       .setMaster("local[*]")
       .setAppName(PngTest.getClass.getName)
       .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+      .set("spark.driver.memory", "2G")
+      .set("spark.executor.memory", "2G")
       // .set("spark.kryo.registrationRequired", "true") // this requires e.g. RasterSource to be registered too
       .set("spark.kryo.registrator", Seq(
         classOf[geotrellis.spark.store.kryo.KryoRegistrator].getName,
