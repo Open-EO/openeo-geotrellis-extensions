@@ -143,14 +143,14 @@ package object geotiff {
 
   private def extractExecutorAttemptDirectory(parentDirectory: Path, geoTiffResultObject: GeoTiffResultObject): String = {
     val relativeFilePath = parentDirectory.relativize(Path.of(geoTiffResultObject.correctPath)).toString
-    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception(relativeFilePath)
+    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception("Bad relativeFilePath:" + relativeFilePath)
     parentDirectory + "/" + relativeFilePath.substring(0, relativeFilePath.indexOf("/"))
   }
 
   private def moveFromExecutorAttemptDirectory(parentDirectory: Path, geoTiffResultObject: GeoTiffResultObject): String = {
     // Move output file to standard location. (On S3, a move is more a copy and delete):
     val relativeFilePath = parentDirectory.relativize(Path.of(geoTiffResultObject.correctPath)).toString
-    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception(relativeFilePath)
+    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception("Bad relativeFilePath:" + relativeFilePath)
     // Remove the executorAttemptDirectory part from the path:
     val destinationPath = parentDirectory.resolve(relativeFilePath.substring(relativeFilePath.indexOf("/") + 1))
     if (geoTiffResultObject.fileExists) {
@@ -375,12 +375,12 @@ package object geotiff {
           }
       }.toList.sortBy(_._1).asJava
 
-      val beforeOut = if (path.endsWith("out")) {
-        path.substring(0, path.length - "out".length)
-      } else path
-      for ((geotiffResult, _) <- geotiffResults) {
-        val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(Path.of(beforeOut), geotiffResult)
-        CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
+      if (path.endsWith("out")) {
+        val beforeOut = path.substring(0, path.length - "out".length)
+        for ((geotiffResult, _) <- geotiffResults) {
+          val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(Path.of(beforeOut), geotiffResult)
+          CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
+        }
       }
 
       res
