@@ -228,6 +228,7 @@ package object geotrellis {
   def healthCheckExtent(projectedExtent: ProjectedExtent)(implicit logger: Logger): Boolean = {
     // positive width and height is already enforced in Extent.
     val horizontal_tolerance = 1.1
+    val vertical_tolerance = 1.1
     val polygonIsUTM = projectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
     if (polygonIsUTM) {
       // This is an extent that has the highest sensible values for northern and/or southern hemisphere UTM zones
@@ -241,8 +242,8 @@ package object geotrellis {
     } else if (projectedExtent.crs == LatLng) {
       if ((projectedExtent.extent.xmin < -180 * horizontal_tolerance)
         || (projectedExtent.extent.xmax > +180 * horizontal_tolerance)
-        || (projectedExtent.extent.ymin < -90)
-        || (projectedExtent.extent.ymax > +90)) {
+        || (projectedExtent.extent.ymin < -90 * vertical_tolerance)
+        || (projectedExtent.extent.ymax > +90 * vertical_tolerance)) {
         logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
         return false
       }
@@ -252,7 +253,9 @@ package object geotrellis {
         || (projectedExtent.extent.ymin < 1137678.21)
         || (projectedExtent.extent.ymax > 6872461.46)) {
         logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
-        return false
+        // TODO: Like many extends, it is possible to work far outside the bounds of the CRS.
+        // Best to make a distinction between official bounds and invalid bounds.
+        // return false
       }
     } else if (projectedExtent.crs == CRS.fromName("EPSG:3857")) {
       if ((projectedExtent.extent.xmin < -20037508.34)
@@ -266,11 +269,35 @@ package object geotrellis {
     true
   }
 
+  /**
+   * Will give the same angle meaning, but as positive value.
+   */
+  private def to_0_360_range(x: Double): Double = {
+    (x + 360 * 10) % 360
+  }
+
   def safeReproject(inputProjectedExtent: ProjectedExtent, targetCrs: CRS): ProjectedExtent = {
-    val reprojected = inputProjectedExtent.extent.reproject(inputProjectedExtent.crs, targetCrs)
-    // TODO: Fix width wrap when projecting over anti meridian in LatLon
+    if (inputProjectedExtent.crs == targetCrs) return inputProjectedExtent
+    var reprojected = inputProjectedExtent.extent.reproject(inputProjectedExtent.crs, targetCrs)
+    // TODO: Needed for webmercator too?
+    if (targetCrs == LatLng && reprojected.width > 180 && reprojected.width < 360) {
+      // Fix width wrap when projecting over anti meridian in LatLon.
+      // Reprojecting an extent could make the left and the right side swap differently over the antimeridian.
+      // A single point will always work, so consider that as the source of truth
+      // When we experience a problem because the extent does not fit in [-180, 180] range, convert it to the [0-360] range.
+      val centerReprojected = inputProjectedExtent.extent.center.reproject(inputProjectedExtent.crs, targetCrs)
+      val reprojectedCenter = reprojected.center
+      if (Math.abs(centerReprojected.x - reprojectedCenter.x) > 10) {
+        val swapped = Extent(to_0_360_range(reprojected.xmax), reprojected.ymin, to_0_360_range(reprojected.xmin), reprojected.ymax)
+        val swappedCenter = swapped.center
+        if (Math.abs(centerReprojected.x - swappedCenter.x) < 10) {
+          reprojected = swapped
+        }
+      }
+    }
     ProjectedExtent(reprojected, targetCrs)
   }
+
   /**
    * DANGER. Might crash system if no memory limit is specified.
    */

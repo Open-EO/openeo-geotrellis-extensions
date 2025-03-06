@@ -1215,7 +1215,7 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @ParameterizedTest
-  @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:3035", "EPSG:4326"))
+  @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:3035", "EPSG:4326", "EPSG:3857"))
   def testMissingS2DateLine(crsName: String): Unit = {
     if ((crsName == "EPSG:3035" || crsName == "EPSG:4326") &&
       (System.getenv("PROJ_LIB") == null || !Files.exists(Paths.get(System.getenv("PROJ_LIB"))))) {
