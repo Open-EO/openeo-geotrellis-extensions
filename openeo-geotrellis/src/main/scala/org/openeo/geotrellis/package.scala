@@ -3,6 +3,7 @@ package org.openeo
 import _root_.geotrellis.raster._
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent, ExecutionScheduledEvent}
 import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy => FailsafeRetryPolicy}
+import org.apache.spark.SparkContext
 import org.slf4j.Logger
 import scalaj.http.{HttpResponse, HttpStatusException}
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
@@ -234,5 +235,16 @@ package object geotrellis {
       memoryBlob
     })
     print(arr) // use arr to make sure it does not get optimized away
+  }
+
+  //noinspection ScalaUnusedSymbol
+  def trigger_JVM_OOM_executor(): Unit = {
+    val sc = SparkContext.getOrCreate()
+    val rdd = sc.parallelize(1 to 4)
+    rdd.map(x => {
+      trigger_JVM_OOM()
+      x + 1
+    }
+    ).collect()
   }
 }
