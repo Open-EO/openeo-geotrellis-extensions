@@ -1,5 +1,6 @@
 package org.openeo
 
+import _root_.geotrellis.proj4.CRS
 import _root_.geotrellis.proj4.LatLng
 import _root_.geotrellis.raster._
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent, ExecutionScheduledEvent}
@@ -225,6 +226,7 @@ package object geotrellis {
    * Python equivalent: health_check_extent
    */
   def healthCheckExtent(projectedExtent: ProjectedExtent)(implicit logger: Logger): Boolean = {
+    // positive width and height is already enforced in Extent.
     val horizontal_tolerance = 1.1
     val polygonIsUTM = projectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
     if (polygonIsUTM) {
@@ -241,6 +243,22 @@ package object geotrellis {
         || (projectedExtent.extent.xmax > +180 * horizontal_tolerance)
         || (projectedExtent.extent.ymin < -90)
         || (projectedExtent.extent.ymax > +90)) {
+        logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
+        return false
+      }
+    } else if (projectedExtent.crs == CRS.fromName("EPSG:3035")) {
+      if ((projectedExtent.extent.xmin < 1908523.29)
+        || (projectedExtent.extent.xmax > 6901611.5)
+        || (projectedExtent.extent.ymin < 1137678.21)
+        || (projectedExtent.extent.ymax > 6872461.46)) {
+        logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
+        return false
+      }
+    } else if (projectedExtent.crs == CRS.fromName("EPSG:3857")) {
+      if ((projectedExtent.extent.xmin < -20037508.34)
+        || (projectedExtent.extent.xmax > 20037508.34)
+        || (projectedExtent.extent.ymin < -20048966.1)
+        || (projectedExtent.extent.ymax > 20048966.1)) {
         logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
         return false
       }

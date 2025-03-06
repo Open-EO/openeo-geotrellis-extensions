@@ -22,10 +22,14 @@ object PackageTest {
   def testHealthCheckExtentParamsOk: java.util.stream.Stream[Arguments] = java.util.Arrays.stream(Array(
     arguments(ProjectedExtent(Extent(40, 40, 50, 50), LatLng)),
     arguments(ProjectedExtent(Extent(11000, 40, 22000, 50), CRS.fromName("EPSG:32631"))),
+    arguments(ProjectedExtent(Extent(3134600, 3977500, 3134601, 3977501), CRS.fromName("EPSG:3035"))),
+    arguments(ProjectedExtent(Extent(565400, 6660100, 565401, 6660101), CRS.fromName("EPSG:3857"))),
   ))
   def testHealthCheckExtentParamsNok: java.util.stream.Stream[Arguments] = java.util.Arrays.stream(Array(
     arguments(ProjectedExtent(Extent(-400, 40, -300, 50), LatLng)),
     arguments(ProjectedExtent(Extent(5000111, 40, 5000222, 50), CRS.fromName("EPSG:32631"))),
+    arguments(ProjectedExtent(Extent(6441000, 13573000, 6441001, 13573001), CRS.fromName("EPSG:3035"))),
+    arguments(ProjectedExtent(Extent(99000111, 99000111, 99000222, 99000222), CRS.fromName("EPSG:3857"))),
   ))
 }
 

@@ -1411,7 +1411,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     val featureExtentInLayout: Option[GridExtent[Long]]=
     if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
-
+      if (!healthCheckExtent(ProjectedExtent(feature.rasterExtent.get, feature.crs.get))) {
+        throw new IllegalArgumentException(s"Feature extent ${feature.rasterExtent.get} is invalid in CRS ${feature.crs}.")
+      }
+      if (!healthCheckExtent(targetExtent)) {
+        throw new IllegalArgumentException(s"Target extent $targetExtent is invalid.")
+      }
       /**
        * Several edge cases to cover:
        *  - if feature extent is whole world, it may be invalid in target crs
@@ -1428,16 +1433,18 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       else targetExtent.crs // Avoid conversion imprecision by intersecting directly in the target CRS
 
       var featureExtentInCommonCRS = feature.rasterExtent.get.reproject(feature.crs.get, commonCrs)
-//      if (commonCrs == CRS.fromName("EPSG:4326") && featureExtentInCommonCRS.width > 180) {
-//        featureExtentInCommonCRS = Extent( // TODO
-//          featureExtentInCommonCRS.xmax,
-//          featureExtentInCommonCRS.ymin,
-//          featureExtentInCommonCRS.xmin + 360,
-//          featureExtentInCommonCRS.ymax,
-//        )
-//      }
+      //      if (commonCrs == CRS.fromName("EPSG:4326") && featureExtentInCommonCRS.width > 180) {
+      //        featureExtentInCommonCRS = Extent( // TODO
+      //          featureExtentInCommonCRS.xmax,
+      //          featureExtentInCommonCRS.ymin,
+      //          featureExtentInCommonCRS.xmin + 360,
+      //          featureExtentInCommonCRS.ymax,
+      //        )
+      //      }
       val targetExtentInCommonCRS = targetExtent.extent.reproject(targetExtent.crs, commonCrs)
-      healthCheckExtent(ProjectedExtent(featureExtentInCommonCRS, commonCrs))
+      if (!healthCheckExtent(ProjectedExtent(featureExtentInCommonCRS, commonCrs))) {
+        throw new IllegalArgumentException(s"Feature extent $featureExtentInCommonCRS is invalid in common CRS $commonCrs.")
+      }
 
       val intersection = featureExtentInCommonCRS.intersection(targetExtentInCommonCRS).map(_.buffer(1.0))
       val intersectionTargetCrs = intersection match {
@@ -1448,7 +1455,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         case Some(value) => value.reproject(commonCrs, targetExtent.crs)
       }
       val tmp = expandToCellSize(intersectionTargetCrs, theResolution)
-      healthCheckExtent(ProjectedExtent(tmp, targetExtent.crs))
+      if (!healthCheckExtent(ProjectedExtent(tmp, targetExtent.crs))) {
+        throw new IllegalArgumentException(s"Feature extent $featureExtentInCommonCRS is invalid in target CRS ${targetExtent.crs}.")
+      }
 
       val alignedToTargetExtent = re.createAlignedRasterExtent(tmp)
       Some(alignedToTargetExtent.toGridType[Long])
