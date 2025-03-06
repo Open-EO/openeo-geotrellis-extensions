@@ -266,6 +266,11 @@ package object geotrellis {
     true
   }
 
+  def safeReproject(inputProjectedExtent: ProjectedExtent, targetCrs: CRS): ProjectedExtent = {
+    val reprojected = inputProjectedExtent.extent.reproject(inputProjectedExtent.crs, targetCrs)
+    // TODO: Fix width wrap when projecting over anti meridian in LatLon
+    ProjectedExtent(reprojected, targetCrs)
+  }
   /**
    * DANGER. Might crash system if no memory limit is specified.
    */

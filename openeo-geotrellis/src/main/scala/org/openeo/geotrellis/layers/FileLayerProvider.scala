@@ -28,7 +28,7 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
-import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtent, sortableSourceName}
+import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtent, safeReproject, sortableSourceName}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
@@ -1411,7 +1411,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     val featureExtentInLayout: Option[GridExtent[Long]]=
     if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
-      if (!healthCheckExtent(ProjectedExtent(feature.rasterExtent.get, feature.crs.get))) {
+      val featureProjectedExtent = ProjectedExtent(feature.rasterExtent.get, feature.crs.get)
+      if (!healthCheckExtent(featureProjectedExtent)) {
         throw new IllegalArgumentException(s"Feature extent ${feature.rasterExtent.get} is invalid in CRS ${feature.crs}.")
       }
       if (!healthCheckExtent(targetExtent)) {
@@ -1432,7 +1433,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       else if (!featureIsUTM) feature.crs.get
       else targetExtent.crs // Avoid conversion imprecision by intersecting directly in the target CRS
 
-      var featureExtentInCommonCRS = feature.rasterExtent.get.reproject(feature.crs.get, commonCrs)
+      var featureExtentInCommonCRS = safeReproject(featureProjectedExtent, commonCrs)
       //      if (commonCrs == CRS.fromName("EPSG:4326") && featureExtentInCommonCRS.width > 180) {
       //        featureExtentInCommonCRS = Extent( // TODO
       //          featureExtentInCommonCRS.xmax,
@@ -1441,12 +1442,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       //          featureExtentInCommonCRS.ymax,
       //        )
       //      }
-      val targetExtentInCommonCRS = targetExtent.extent.reproject(targetExtent.crs, commonCrs)
-      if (!healthCheckExtent(ProjectedExtent(featureExtentInCommonCRS, commonCrs))) {
+      val targetExtentInCommonCRS = safeReproject(targetExtent, commonCrs)
+      if (!healthCheckExtent(featureExtentInCommonCRS)) {
         throw new IllegalArgumentException(s"Feature extent $featureExtentInCommonCRS is invalid in common CRS $commonCrs.")
       }
 
-      val intersection = featureExtentInCommonCRS.intersection(targetExtentInCommonCRS).map(_.buffer(1.0))
+      val intersection = featureExtentInCommonCRS.extent.intersection(targetExtentInCommonCRS.extent).map(_.buffer(1.0))
       val intersectionTargetCrs = intersection match {
         case None =>
           logger.warn(s"Feature extent $featureExtentInCommonCRS and target extent $targetExtentInCommonCRS do not intersect.")
