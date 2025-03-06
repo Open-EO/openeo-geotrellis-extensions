@@ -3,12 +3,11 @@ package org.openeo.geotrellis
 import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{ByteCellType, ByteUserDefinedNoDataCellType, FloatUserDefinedNoDataCellType, UByteCellType, UByteUserDefinedNoDataCellType}
-import org.junit.Assert._
 import org.openeo.geotrellis.geotiff._
 
 import java.nio.file.{Files, Path}
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue, assertFalse}
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
@@ -73,5 +72,24 @@ class PackageTest {
   @MethodSource(Array("testHealthCheckExtentParamsNok"))
   def testHealthCheckExtentNok(projectedExtent: ProjectedExtent): Unit = {
     assertFalse(healthCheckExtent(projectedExtent))
+  }
+
+  @Test
+  def testisExtentValidInCrsEurope(): Unit = {
+    val extent = ProjectedExtent(Extent(0, 40, 10, 50), LatLng)
+    assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32601")))
+    assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32631")))
+    assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:3035")))
+    assertTrue(isExtentValidInCrs(extent, LatLng))
+  }
+
+  @Test
+  def testisExtentValidInCrsAntimeridian(): Unit = {
+    val extent = ProjectedExtent(Extent(178.1, 70.3, 178.9, 70.9), LatLng)
+    assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32601")))
+    assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32660")))
+    assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32631")))
+    assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:3035")))
+    assertTrue(isExtentValidInCrs(extent, LatLng))
   }
 }

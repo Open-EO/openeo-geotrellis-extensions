@@ -28,7 +28,7 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
-import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtent, safeReproject, sortableSourceName}
+import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtent, isExtentValidInCrs, safeReproject, sortableSourceName}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
@@ -1427,10 +1427,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
        *  If one of the CRSes can cover the whole world (non-UTM), this will be used as common CRS.
        *  We give priority to use the target CRS as common one, because the intersection will be converted to it anyway
        */
-      val featureIsUTM = feature.crs.get.proj4jCrs.getProjection.getName == "utm"
-      val targetIsUTM = targetExtent.crs.proj4jCrs.getProjection.getName == "utm"
-      val commonCrs = if (!targetIsUTM) targetExtent.crs
-      else if (!featureIsUTM) feature.crs.get
+      val commonCrs = if (isExtentValidInCrs(featureProjectedExtent, targetExtent.crs)) targetExtent.crs
+      else if (isExtentValidInCrs(targetExtent, feature.crs.get)) feature.crs.get
       else targetExtent.crs // Avoid conversion imprecision by intersecting directly in the target CRS
 
       var featureExtentInCommonCRS = safeReproject(featureProjectedExtent, commonCrs)

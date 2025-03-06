@@ -1,11 +1,10 @@
 package org.openeo
 
-import _root_.geotrellis.proj4.CRS
-import _root_.geotrellis.proj4.LatLng
+import _root_.geotrellis.proj4.{CRS, LatLng, WebMercator}
 import _root_.geotrellis.raster._
-import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent, ExecutionScheduledEvent}
-import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy => FailsafeRetryPolicy}
 import _root_.geotrellis.vector._
+import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
+import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy => FailsafeRetryPolicy}
 import org.slf4j.Logger
 import scalaj.http.{HttpResponse, HttpStatusException}
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
@@ -227,10 +226,10 @@ package object geotrellis {
    */
   def healthCheckExtent(projectedExtent: ProjectedExtent)(implicit logger: Logger): Boolean = {
     // positive width and height is already enforced in Extent.
-    val horizontal_tolerance = 1.1
-    val vertical_tolerance = 1.1
     val polygonIsUTM = projectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
     if (polygonIsUTM) {
+      val horizontal_tolerance = 4.0
+
       // This is an extent that has the highest sensible values for northern and/or southern hemisphere UTM zones
       val utmProjectedBoundsOriginal = Extent(166021.44, 0000000.00, 833978.56, 10000000)
       val utmProjectedBounds = utmProjectedBoundsOriginal.buffer(
@@ -239,7 +238,9 @@ package object geotrellis {
         logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
         return false
       }
-    } else if (projectedExtent.crs == LatLng) {
+    } else if (projectedExtent.crs == LatLng) { // EPSG:4326
+      val horizontal_tolerance = 1.1
+      val vertical_tolerance = 1.1
       if ((projectedExtent.extent.xmin < -180 * horizontal_tolerance)
         || (projectedExtent.extent.xmax > +180 * horizontal_tolerance)
         || (projectedExtent.extent.ymin < -90 * vertical_tolerance)
@@ -253,11 +254,9 @@ package object geotrellis {
         || (projectedExtent.extent.ymin < 1137678.21)
         || (projectedExtent.extent.ymax > 6872461.46)) {
         logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
-        // TODO: Like many extends, it is possible to work far outside the bounds of the CRS.
-        // Best to make a distinction between official bounds and invalid bounds.
-        // return false
+        return false
       }
-    } else if (projectedExtent.crs == CRS.fromName("EPSG:3857")) {
+    } else if (projectedExtent.crs == WebMercator) { // EPSG:3857 same as EPSG:900913?
       if ((projectedExtent.extent.xmin < -20037508.34)
         || (projectedExtent.extent.xmax > 20037508.34)
         || (projectedExtent.extent.ymin < -20048966.1)
@@ -267,6 +266,11 @@ package object geotrellis {
       }
     }
     true
+  }
+
+  def isExtentValidInCrs(extent: ProjectedExtent, targetCrs: CRS)(implicit logger: Logger): Boolean = {
+    val reprojected = safeReproject(extent, targetCrs)
+    healthCheckExtent(reprojected)
   }
 
   /**
