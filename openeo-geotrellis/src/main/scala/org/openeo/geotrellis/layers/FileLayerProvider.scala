@@ -1431,15 +1431,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       else if (isExtentValidInCrs(targetExtent, feature.crs.get)) feature.crs.get
       else targetExtent.crs // Avoid conversion imprecision by intersecting directly in the target CRS
 
-      var featureExtentInCommonCRS = safeReproject(featureProjectedExtent, commonCrs)
-      //      if (commonCrs == CRS.fromName("EPSG:4326") && featureExtentInCommonCRS.width > 180) {
-      //        featureExtentInCommonCRS = Extent( // TODO
-      //          featureExtentInCommonCRS.xmax,
-      //          featureExtentInCommonCRS.ymin,
-      //          featureExtentInCommonCRS.xmin + 360,
-      //          featureExtentInCommonCRS.ymax,
-      //        )
-      //      }
+      val featureExtentInCommonCRS = safeReproject(featureProjectedExtent, commonCrs)
       val targetExtentInCommonCRS = safeReproject(targetExtent, commonCrs)
       if (!healthCheckExtent(featureExtentInCommonCRS)) {
         throw new IllegalArgumentException(s"Feature extent $featureExtentInCommonCRS is invalid in common CRS $commonCrs.")
