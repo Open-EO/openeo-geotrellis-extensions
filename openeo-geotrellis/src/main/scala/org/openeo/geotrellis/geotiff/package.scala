@@ -143,14 +143,14 @@ package object geotiff {
 
   private def extractExecutorAttemptDirectory(parentDirectory: Path, geoTiffResultObject: GeoTiffResultObject): String = {
     val relativeFilePath = parentDirectory.relativize(Path.of(geoTiffResultObject.correctPath)).toString
-    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception(relativeFilePath)
+    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception("Bad relativeFilePath:" + relativeFilePath)
     parentDirectory + "/" + relativeFilePath.substring(0, relativeFilePath.indexOf("/"))
   }
 
   private def moveFromExecutorAttemptDirectory(parentDirectory: Path, geoTiffResultObject: GeoTiffResultObject): String = {
     // Move output file to standard location. (On S3, a move is more a copy and delete):
     val relativeFilePath = parentDirectory.relativize(Path.of(geoTiffResultObject.correctPath)).toString
-    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception(relativeFilePath)
+    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception("Bad relativeFilePath:" + relativeFilePath)
     // Remove the executorAttemptDirectory part from the path:
     val destinationPath = parentDirectory.resolve(relativeFilePath.substring(relativeFilePath.indexOf("/") + 1))
     if (geoTiffResultObject.fileExists) {
@@ -313,7 +313,7 @@ package object geotiff {
                                zLevel: Int = 6,
                                cropBounds: Option[Extent] = Option.empty[Extent],
                                formatOptions: GTiffOptions = new GTiffOptions
-                              ): java.util.List[(String, java.util.List[Int])] = {
+                              ): java.util.List[(String, Extent, java.util.List[Int])] = {
     formatOptions.assertNoConflicts()
     if (formatOptions.separateAssetPerBand) {
       val bandLabels = formatOptions.tags.bandTags.map(_("DESCRIPTION"))
@@ -369,24 +369,26 @@ package object geotiff {
           if (path.endsWith("out")) {
             val beforeOut = path.substring(0, path.length - "out".length)
             val destinationPath = moveFromExecutorAttemptDirectory(Path.of(beforeOut), geoTiffResultObject)
-            (destinationPath.toString, bandIndices)
+            (destinationPath, extent, bandIndices)
           } else {
-            (geoTiffResultObject.correctPath, bandIndices)
+            (geoTiffResultObject.correctPath, extent, bandIndices)
           }
       }.toList.sortBy(_._1).asJava
 
-      val beforeOut = if (path.endsWith("out")) {
-        path.substring(0, path.length - "out".length)
-      } else path
-      for ((geotiffResult, _) <- geotiffResults) {
-        val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(Path.of(beforeOut), geotiffResult)
-        CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
+      if (path.endsWith("out")) {
+        val beforeOut = path.substring(0, path.length - "out".length)
+        for ((geotiffResult, _) <- geotiffResults) {
+          val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(Path.of(beforeOut), geotiffResult)
+          CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
+        }
       }
 
       res
     } else {
-      val tmp = saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions).asScala
-      tmp.map(t => (t, (0 until bandCount).toList.asJava)).asJava
+      val tiffPaths = saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions).asScala
+      tiffPaths.map { case (tiffPath, extent) =>
+        (tiffPath, extent, (0 until bandCount).toList.asJava)
+      }.asJava
     }
   }
 
@@ -479,7 +481,7 @@ package object geotiff {
     def levelFor(extent: Extent, cellSize: CellSize): LayoutLevel = ???
   }
 
-  def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K], bandCount:Int, path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent], formatOptions:GTiffOptions = new GTiffOptions):java.util.List[String] = {
+  def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, zLevel: Int = 6, cropBounds: Option[Extent] = None, formatOptions: GTiffOptions = new GTiffOptions): java.util.List[(String, Extent)] = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
@@ -552,7 +554,8 @@ package object geotiff {
           updateGdalInfoJsonFile(gdalInfoPath, geoTiffResultObject.correctPath)
         case None => // do nothing
       }
-      return Collections.singletonList(geoTiffResultObject.correctPath)
+
+      Collections.singletonList((geoTiffResultObject.correctPath, croppedExtent))
     }finally {
       preprocessedRdd.unpersist()
     }
@@ -654,7 +657,7 @@ package object geotiff {
 
           (name, extent, tileBounds)
         }.filter { case (_, _, tileBounds) =>
-          if (KeyBounds(tileBounds).includes(key.getComponent[SpatialKey])) true else false
+          KeyBounds(tileBounds).includes(key.getComponent[SpatialKey])
         }.map { case (name, extent, tileBounds) =>
           val re = preprocessedRdd.metadata.toRasterExtent()
           val gridBounds = re.gridBoundsFor(extent, clamp = true)
@@ -833,7 +836,7 @@ package object geotiff {
       case (key, tile) => features.filter { case (_, extent) =>
         val tileBounds = layout.mapTransform(extent)
 
-        if (KeyBounds(tileBounds).includes(key)) true else false
+        KeyBounds(tileBounds).includes(key)
       }.map { case (name, extent) =>
         ((name, extent), (key, tile))
       }
