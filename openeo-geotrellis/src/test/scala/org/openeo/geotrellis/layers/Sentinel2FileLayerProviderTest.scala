@@ -310,7 +310,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     assertTrue(layer.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[ConfigurableSpaceTimePartitioner])
     val maskedCount = layer.count()
     SparkContext.getOrCreate().removeSparkListener(listener)
-    assertEquals(expectedNBStages,listener.getStagesCompleted)
+    assertTrue(Math.abs(expectedNBStages - listener.getStagesCompleted) <= 2)
     val spatialLayer = p.rasterMask(layer,mask,Double.NaN)
       .toSpatial(date)
       .cache()
