@@ -1,14 +1,41 @@
 package org.openeo.geotrellis
 
 import geotrellis.raster.io.geotiff.GeoTiff
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{ByteCellType, ByteUserDefinedNoDataCellType, FloatUserDefinedNoDataCellType, UByteCellType, UByteUserDefinedNoDataCellType}
-import org.junit.Assert._
-import org.junit.Test
 import org.openeo.geotrellis.geotiff._
 
 import java.nio.file.{Files, Path}
+import geotrellis.vector.{Extent, ProjectedExtent}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue, assertFalse}
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments.arguments
+import org.junit.jupiter.params.provider.{Arguments, MethodSource}
+import org.openeo.geotrellis.layers.FileLayerProvider
+import org.slf4j.{Logger, LoggerFactory}
+
+object PackageTest {
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
+
+  def testHealthCheckExtentParamsOk: java.util.stream.Stream[Arguments] = java.util.Arrays.stream(Array(
+    arguments(ProjectedExtent(Extent(40, 40, 50, 50), LatLng)),
+    arguments(ProjectedExtent(Extent(11000, 40, 22000, 50), CRS.fromName("EPSG:32631"))),
+    arguments(ProjectedExtent(Extent(3134600, 3977500, 3134601, 3977501), CRS.fromName("EPSG:3035"))),
+    arguments(ProjectedExtent(Extent(565400, 6660100, 565401, 6660101), CRS.fromName("EPSG:3857"))),
+  ))
+  def testHealthCheckExtentParamsNok: java.util.stream.Stream[Arguments] = java.util.Arrays.stream(Array(
+    arguments(ProjectedExtent(Extent(-400, 40, -300, 50), LatLng)),
+    arguments(ProjectedExtent(Extent(5000111, 40, 5000222, 50), CRS.fromName("EPSG:32631"))),
+    arguments(ProjectedExtent(Extent(6441000, 13573000, 6441001, 13573001), CRS.fromName("EPSG:3035"))),
+    arguments(ProjectedExtent(Extent(99000111, 99000111, 99000222, 99000222), CRS.fromName("EPSG:3857"))),
+  ))
+}
 
 class PackageTest {
+
+  import PackageTest._
+
   @Test
   def testToSigned(): Unit = {
     assertEquals(ByteCellType, toSigned(UByteCellType))
@@ -34,5 +61,35 @@ class PackageTest {
       val refTiff2 = GeoTiff.readMultiband(dst.toString)
       assertEquals(refTiff2.cellSize, refTiff.cellSize)
     }
+  }
+
+  @ParameterizedTest
+  @MethodSource(Array("testHealthCheckExtentParamsOk"))
+  def testHealthCheckExtentOk(projectedExtent: ProjectedExtent): Unit = {
+    assert(healthCheckExtent(projectedExtent))
+  }
+  @ParameterizedTest
+  @MethodSource(Array("testHealthCheckExtentParamsNok"))
+  def testHealthCheckExtentNok(projectedExtent: ProjectedExtent): Unit = {
+    assertFalse(healthCheckExtent(projectedExtent))
+  }
+
+  @Test
+  def testisExtentValidInCrsEurope(): Unit = {
+    val extent = ProjectedExtent(Extent(0, 40, 10, 50), LatLng)
+    assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32601")))
+    assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32631")))
+    assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:3035")))
+    assertTrue(isExtentValidInCrs(extent, LatLng))
+  }
+
+  @Test
+  def testisExtentValidInCrsAntimeridian(): Unit = {
+    val extent = ProjectedExtent(Extent(178.1, 70.3, 178.9, 70.9), LatLng)
+    assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32601")))
+    assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32660")))
+    assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32631")))
+    assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:3035")))
+    assertTrue(isExtentValidInCrs(extent, LatLng))
   }
 }

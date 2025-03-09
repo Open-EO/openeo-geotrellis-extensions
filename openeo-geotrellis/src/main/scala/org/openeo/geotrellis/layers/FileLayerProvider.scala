@@ -28,11 +28,12 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
-import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, sortableSourceName}
+import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtent, isExtentValidInCrs, safeReproject, sortableSourceName}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
+import org.slf4j.{Logger, LoggerFactory}
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.exception.AbortedException
 
@@ -301,7 +302,7 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 
 object FileLayerProvider {
 
-  private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
 
 
 
@@ -1408,24 +1409,64 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val theResolution = targetResolution.getOrElse(maxSpatialResolution)
     val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
 
-    val featureExtentInLayout: Option[GridExtent[Long]]=
-    if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
+    val featureExtentInLayout: Option[GridExtent[Long]] = if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
+      val tmp2 = if (sys.env.getOrElse("USE_OLD_FEATURE_EXTENT_INTERSECTION", "false").toBoolean) {
+        // TODO: Remove this after it has been deployed for a while
+        /**
+         * Several edge cases to cover:
+         *  - if feature extent is whole world, it may be invalid in target crs
+         *  - if feature is in utm, target extent may be invalid in feature crs
+         *    this is why we take intersection
+         */
+        val targetExtentInLatLon = targetExtent.reproject(feature.crs.get)
+        val featureExtentInLatLon = feature.rasterExtent.get.reproject(feature.crs.get, LatLng)
 
-      /**
-       * Several edge cases to cover:
-       *  - if feature extent is whole world, it may be invalid in target crs
-       *  - if feature is in utm, target extent may be invalid in feature crs
-       *  this is why we take intersection
-       */
-      val targetExtentInLatLon = targetExtent.reproject(feature.crs.get)
-      val featureExtentInLatLon = feature.rasterExtent.get.reproject(feature.crs.get,LatLng)
+        val intersection = featureExtentInLatLon.intersection(targetExtentInLatLon).map(_.buffer(1.0)).getOrElse(featureExtentInLatLon)
+        expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), theResolution)
+      } else {
+        val featureProjectedExtent = ProjectedExtent(feature.rasterExtent.get, feature.crs.get)
+        if (!healthCheckExtent(featureProjectedExtent)) {
+          throw new IllegalArgumentException(s"Feature extent ${feature.rasterExtent.get} is invalid in CRS ${feature.crs}.")
+        }
+        if (!healthCheckExtent(targetExtent)) {
+          throw new IllegalArgumentException(s"Target extent $targetExtent is invalid.")
+        }
+        /**
+         * Several edge cases to cover:
+         *  - if feature extent is whole world, it may be invalid in target crs
+         *  - if feature is in utm, target extent may be invalid in feature crs
+         *    this is why we take intersection.
+         *    We convert both extents to a common CRS before taking the intersection.
+         *    If one of the CRSes can cover the whole world (non-UTM), this will be used as common CRS.
+         *    We give priority to use the target CRS as common one, because the intersection will be converted to it anyway
+         */
+        val commonCrs = if (isExtentValidInCrs(featureProjectedExtent, targetExtent.crs)) targetExtent.crs
+        else if (isExtentValidInCrs(targetExtent, feature.crs.get)) feature.crs.get
+        else targetExtent.crs // Avoid conversion imprecision by intersecting directly in the target CRS
 
-      val intersection = featureExtentInLatLon.intersection(targetExtentInLatLon).map(_.buffer(1.0)).getOrElse(featureExtentInLatLon)
-      val tmp = expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), theResolution)
+        val featureExtentInCommonCRS = safeReproject(featureProjectedExtent, commonCrs)
+        val targetExtentInCommonCRS = safeReproject(targetExtent, commonCrs)
+        if (!healthCheckExtent(featureExtentInCommonCRS)) {
+          throw new IllegalArgumentException(s"Feature extent $featureExtentInCommonCRS is invalid in common CRS $commonCrs.")
+        }
 
-      val alignedToTargetExtent = re.createAlignedRasterExtent(tmp)
+        val intersection = featureExtentInCommonCRS.extent.intersection(targetExtentInCommonCRS.extent).map(_.buffer(1.0))
+        val intersectionTargetCrs = intersection match {
+          case None =>
+            logger.warn(s"Feature extent $featureExtentInCommonCRS and target extent $targetExtentInCommonCRS do not intersect.")
+            // TODO: Discard the feature?
+            targetExtent.extent
+          case Some(value) => value.reproject(commonCrs, targetExtent.crs)
+        }
+        val tmp = expandToCellSize(intersectionTargetCrs, theResolution)
+        if (!healthCheckExtent(ProjectedExtent(tmp, targetExtent.crs))) {
+          throw new IllegalArgumentException(s"Feature extent $featureExtentInCommonCRS is invalid in target CRS ${targetExtent.crs}.")
+        }
+        tmp
+      }
+      val alignedToTargetExtent = re.createAlignedRasterExtent(tmp2)
       Some(alignedToTargetExtent.toGridType[Long])
-    }else{
+    } else {
       Some(re.toGridType[Long])
     }
 
