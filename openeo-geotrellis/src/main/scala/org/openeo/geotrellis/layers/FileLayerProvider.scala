@@ -1447,20 +1447,19 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         val featureExtentInCommonCRS = safeReproject(featureProjectedExtent, commonCrs)
         val targetExtentInCommonCRS = safeReproject(targetExtent, commonCrs)
         if (!healthCheckExtent(featureExtentInCommonCRS)) {
-          throw new IllegalArgumentException(s"Feature extent $featureExtentInCommonCRS is invalid in common CRS $commonCrs.")
+          throw new IllegalArgumentException(s"Item extent $featureExtentInCommonCRS (${feature.id}) is invalid in common CRS $commonCrs.")
         }
 
         val intersection = featureExtentInCommonCRS.extent.intersection(targetExtentInCommonCRS.extent).map(_.buffer(1.0))
         val intersectionTargetCrs = intersection match {
           case None =>
-            logger.warn(s"Feature extent $featureExtentInCommonCRS and target extent $targetExtentInCommonCRS do not intersect.")
-            // TODO: Discard the feature?
-            targetExtent.extent
+            logger.warn(s"Feature extent $featureExtentInCommonCRS (${feature.id}) and target extent $targetExtentInCommonCRS do not intersect.")
+            return None // Discard the feature
           case Some(value) => value.reproject(commonCrs, targetExtent.crs)
         }
         val tmp = expandToCellSize(intersectionTargetCrs, theResolution)
         if (!healthCheckExtent(ProjectedExtent(tmp, targetExtent.crs))) {
-          throw new IllegalArgumentException(s"Feature extent $featureExtentInCommonCRS is invalid in target CRS ${targetExtent.crs}.")
+          throw new IllegalArgumentException(s"Item extent $tmp (${feature.id}) is invalid in common CRS $commonCrs.")
         }
         tmp
       }

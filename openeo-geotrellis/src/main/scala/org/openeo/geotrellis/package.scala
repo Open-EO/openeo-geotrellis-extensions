@@ -236,7 +236,7 @@ package object geotrellis {
       val utmProjectedBounds = utmProjectedBoundsOriginal.buffer(
         utmProjectedBoundsOriginal.width * horizontal_tolerance, 0)
       if (!projectedExtent.extent.intersects(utmProjectedBounds)) {
-        logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
+        logger.warn("Extent not within its CRS limits: " + projectedExtent)
         return false
       }
     } else if (projectedExtent.crs == LatLng) { // EPSG:4326
@@ -246,7 +246,7 @@ package object geotrellis {
         || (projectedExtent.extent.xmax > +180 * horizontal_tolerance)
         || (projectedExtent.extent.ymin < -90 * vertical_tolerance)
         || (projectedExtent.extent.ymax > +90 * vertical_tolerance)) {
-        logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
+        logger.warn("Extent not within its CRS limits: " + projectedExtent)
         return false
       }
     } else if (projectedExtent.crs == CRS.fromName("EPSG:3035")) {
@@ -254,7 +254,7 @@ package object geotrellis {
         || (projectedExtent.extent.xmax > 6901611.5)
         || (projectedExtent.extent.ymin < 1137678.21)
         || (projectedExtent.extent.ymax > 6872461.46)) {
-        logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
+        logger.warn("Extent not within its CRS limits: " + projectedExtent)
         return false
       }
     } else if (projectedExtent.crs == WebMercator) { // EPSG:3857 same as EPSG:900913?
@@ -262,7 +262,7 @@ package object geotrellis {
         || (projectedExtent.extent.xmax > 20037508.34)
         || (projectedExtent.extent.ymin < -20048966.1)
         || (projectedExtent.extent.ymax > 20048966.1)) {
-        logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
+        logger.warn("Extent not within its CRS limits: " + projectedExtent)
         return false
       }
     }
