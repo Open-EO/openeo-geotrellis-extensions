@@ -1410,7 +1410,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
 
     val featureExtentInLayout: Option[GridExtent[Long]] = if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
-      val tmp2 = if (sys.env.getOrElse("USE_OLD_FEATURE_EXTENT_INTERSECTION", "false").toBoolean) {
+      val tmp2 = if (sys.env.getOrElse("USE_OLD_FEATURE_EXTENT_INTERSECTION", "true").toBoolean) {
         // TODO: Remove this after it has been deployed for a while
         /**
          * Several edge cases to cover:
