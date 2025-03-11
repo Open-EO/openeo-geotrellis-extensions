@@ -1215,7 +1215,7 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @ParameterizedTest
-  @ValueSource(strings = Array("EPSG:32601", "EPSG:4326", "EPSG:3857")) // TODO: "EPSG:32660", 
+  @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:4326", "EPSG:3857"))
   def testMissingS2DateLine(crsName: String): Unit = {
     // Requesting EPSG:3035 (LAEA) does not make sense at the antimeridian.
     if ((crsName == "EPSG:3035" || crsName == "EPSG:4326"|| crsName == "EPSG:3857") &&

@@ -271,7 +271,10 @@ package object geotrellis {
 
   def isExtentValidInCrs(extent: ProjectedExtent, targetCrs: CRS)(implicit logger: Logger): Boolean = {
     val reprojected = safeReproject(extent, targetCrs)
-    healthCheckExtent(reprojected)
+    if (!healthCheckExtent(reprojected)) return false
+    val reprojectedBack = safeReproject(reprojected, extent.crs)
+    if (!healthCheckExtent(reprojectedBack)) return false
+    reprojectedBack.extent.equalsExact(extent.extent, 0.01 * extent.extent.width) // Max 1% difference
   }
 
   /**
