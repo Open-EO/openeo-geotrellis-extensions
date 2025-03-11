@@ -48,14 +48,20 @@ object CreoS3Utils {
   }
 
   def getCreoS3Client(region: Region = cloudFerroRegion): S3Client = {
+    val endpointURI = if (region != cloudFerroRegion) this.getCFEndpoin(region) else URI.create(sys.env("SWIFT_URL"))
     S3Client.builder()
       .credentialsProvider(credentialsProvider)
       .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
       .overrideConfiguration(overrideConfig)
       .forcePathStyle(true)
       .region(region)
-      .endpointOverride(URI.create(sys.env("SWIFT_URL")))
+      .endpointOverride(endpointURI)
       .build()
+  }
+
+  //CloudFerro endpoints follow a structure based on region names.
+  def getCFEndpoin(region: Region): URI = {
+    URI.create(s"https://s3.${region}.cloudferro.com")
   }
 
   private def credentialsProvider = {
