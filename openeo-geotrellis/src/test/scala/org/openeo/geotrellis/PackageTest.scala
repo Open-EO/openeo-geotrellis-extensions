@@ -75,7 +75,7 @@ class PackageTest {
   }
 
   @Test
-  def testisExtentValidInCrsEurope(): Unit = {
+  def testIsExtentValidInCrsEurope(): Unit = {
     val extent = ProjectedExtent(Extent(0, 40, 10, 50), LatLng)
     assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32601")))
     assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32631")))
@@ -84,7 +84,7 @@ class PackageTest {
   }
 
   @Test
-  def testisExtentValidInCrsAntimeridian(): Unit = {
+  def testIsExtentValidInCrsAntimeridian(): Unit = {
     val extent = ProjectedExtent(Extent(178.1, 70.3, 178.9, 70.9), LatLng)
     assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32601")))
     assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32660")))

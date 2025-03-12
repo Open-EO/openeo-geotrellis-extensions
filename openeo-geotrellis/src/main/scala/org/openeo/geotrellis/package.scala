@@ -274,7 +274,7 @@ package object geotrellis {
     if (!healthCheckExtent(reprojected)) return false
     val reprojectedBack = safeReproject(reprojected, extent.crs)
     if (!healthCheckExtent(reprojectedBack)) return false
-    reprojectedBack.extent.equalsExact(extent.extent, 0.01 * extent.extent.width) // Max 1% difference
+    reprojectedBack.extent.equalsExact(extent.extent, 0.3 * extent.extent.width) // Max 30% difference
   }
 
   /**
