@@ -1426,12 +1426,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         re.createAlignedRasterExtent(tmp)
       } else {
         val featureProjectedExtent = ProjectedExtent(feature.rasterExtent.get, feature.crs.get)
-        if (!healthCheckExtent(featureProjectedExtent)) {
-          throw new IllegalArgumentException(s"Feature extent ${feature.rasterExtent.get} is invalid in CRS ${feature.crs}.")
-        }
-        if (!healthCheckExtent(targetExtent)) {
-          throw new IllegalArgumentException(s"Target extent $targetExtent is invalid.")
-        }
+        healthCheckExtentAssert(featureProjectedExtent, s"Feature extent ${feature.rasterExtent.get} should be valid in CRS ${feature.crs}.")
+        healthCheckExtentAssert(targetExtent, s"Target extent $targetExtent should be valid: ${targetExtent.extent}.")
+
         /**
          * Several edge cases to cover:
          *  - if feature extent is whole world, it may be invalid in target crs
@@ -1447,9 +1444,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
         val featureExtentInCommonCRS = safeReproject(featureProjectedExtent, commonCrs)
         val targetExtentInCommonCRS = safeReproject(targetExtent, commonCrs)
-        if (!healthCheckExtent(featureExtentInCommonCRS)) {
-          throw new IllegalArgumentException(s"Item extent $featureExtentInCommonCRS (${feature.id}) is invalid in common CRS $commonCrs.")
-        }
+        healthCheckExtentAssert(featureExtentInCommonCRS, s"Item extent $featureExtentInCommonCRS (${feature.id}) should be valid in CRS $commonCrs.")
 
         val intersection = featureExtentInCommonCRS.extent.intersection(targetExtentInCommonCRS.extent)
         val intersectionTargetCrs = intersection match {
@@ -1467,9 +1462,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           tmp.xmin - theResolution.width * pixelBuffer._1, tmp.ymin - theResolution.height * pixelBuffer._2,
           tmp.xmax + theResolution.width * pixelBuffer._1, tmp.ymax + theResolution.height * pixelBuffer._2,
         )
-        if (!healthCheckExtent(ProjectedExtent(tmp, targetExtent.crs))) {
-          throw new IllegalArgumentException(s"Item extent $tmp (${feature.id}) is invalid in common CRS $commonCrs.")
-        }
+        healthCheckExtentAssert(ProjectedExtent(tmp, targetExtent.crs), s"Item extent $tmp (${feature.id}) should be valid CRS $commonCrs.")
         re.createAlignedRasterExtent(tmp)
       }
       Some(alignedToTargetExtent.toGridType[Long])

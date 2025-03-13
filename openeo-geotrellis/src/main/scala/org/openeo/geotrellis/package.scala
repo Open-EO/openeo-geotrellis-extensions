@@ -222,10 +222,22 @@ package object geotrellis {
       })
   }
 
+
+  def healthCheckExtentAssert(projectedExtent: ProjectedExtent, messagePrefix: String): Unit = {
+    val message = healthCheckExtentMessage(projectedExtent)
+    if (message.isDefined) {
+      throw new IllegalArgumentException(messagePrefix + message.get)
+    }
+  }
+
+  def healthCheckExtent(projectedExtent: ProjectedExtent): Boolean = {
+    healthCheckExtentMessage(projectedExtent).isEmpty
+  }
+
   /**
    * Python equivalent: health_check_extent
    */
-  def healthCheckExtent(projectedExtent: ProjectedExtent)(implicit logger: Logger): Boolean = {
+  private def healthCheckExtentMessage(projectedExtent: ProjectedExtent): Option[String] = {
     // positive width and height is already enforced in Extent.
     val polygonIsUTM = projectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
     if (polygonIsUTM) {
@@ -236,8 +248,7 @@ package object geotrellis {
       val utmProjectedBounds = utmProjectedBoundsOriginal.buffer(
         utmProjectedBoundsOriginal.width * horizontal_tolerance, 0)
       if (!utmProjectedBounds.contains(projectedExtent.extent)) {
-        logger.warn("Extent not within its CRS limits: " + projectedExtent)
-        return false
+        return Some("Extent not within its CRS limits: " + projectedExtent)
       }
     } else if (projectedExtent.crs == LatLng) { // EPSG:4326
       val horizontal_tolerance = 1.1
@@ -246,27 +257,24 @@ package object geotrellis {
         || (projectedExtent.extent.xmax > +360 * horizontal_tolerance) // Allow 0-360 range too
         || (projectedExtent.extent.ymin < -90 * vertical_tolerance)
         || (projectedExtent.extent.ymax > +90 * vertical_tolerance)) {
-        logger.warn("Extent not within its CRS limits: " + projectedExtent)
-        return false
+        return Some("Extent not within its CRS limits: " + projectedExtent)
       }
     } else if (projectedExtent.crs == CRS.fromName("EPSG:3035")) {
       if ((projectedExtent.extent.xmin < 1908523.29)
         || (projectedExtent.extent.xmax > 6901611.5)
         || (projectedExtent.extent.ymin < 1137678.21)
         || (projectedExtent.extent.ymax > 6872461.46)) {
-        logger.warn("Extent not within its CRS limits: " + projectedExtent)
-        return false
+        return Some("Extent not within its CRS limits: " + projectedExtent)
       }
     } else if (projectedExtent.crs == WebMercator) { // EPSG:3857 same as EPSG:900913?
       if ((projectedExtent.extent.xmin < -20037508.34)
         || (projectedExtent.extent.xmax > 20037508.34)
         || (projectedExtent.extent.ymin < -20048966.1)
         || (projectedExtent.extent.ymax > 20048966.1)) {
-        logger.warn("Extent not within its CRS limits: " + projectedExtent)
-        return false
+        return Some("Extent not within its CRS limits: " + projectedExtent)
       }
     }
-    true
+    None
   }
 
   def isExtentValidInCrs(extent: ProjectedExtent, targetCrs: CRS)(implicit logger: Logger): Boolean = {
