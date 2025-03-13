@@ -235,7 +235,7 @@ package object geotrellis {
       val utmProjectedBoundsOriginal = Extent(166021.44, 0000000.00, 833978.56, 10000000)
       val utmProjectedBounds = utmProjectedBoundsOriginal.buffer(
         utmProjectedBoundsOriginal.width * horizontal_tolerance, 0)
-      if (!projectedExtent.extent.intersects(utmProjectedBounds)) {
+      if (!utmProjectedBounds.contains(projectedExtent.extent)) {
         logger.warn("Extent not within its CRS limits: " + projectedExtent)
         return false
       }
@@ -243,7 +243,7 @@ package object geotrellis {
       val horizontal_tolerance = 1.1
       val vertical_tolerance = 1.1
       if ((projectedExtent.extent.xmin < -180 * horizontal_tolerance)
-        || (projectedExtent.extent.xmax > +180 * horizontal_tolerance)
+        || (projectedExtent.extent.xmax > +360 * horizontal_tolerance) // Allow 0-360 range too
         || (projectedExtent.extent.ymin < -90 * vertical_tolerance)
         || (projectedExtent.extent.ymax > +90 * vertical_tolerance)) {
         logger.warn("Extent not within its CRS limits: " + projectedExtent)
@@ -270,11 +270,16 @@ package object geotrellis {
   }
 
   def isExtentValidInCrs(extent: ProjectedExtent, targetCrs: CRS)(implicit logger: Logger): Boolean = {
+    if (targetCrs == CRS.fromEpsgCode(4326)) {
+      // LatLon covers the whole world, so it's always valid
+      // Function would work fine without this check too.
+      return true
+    }
     val reprojected = safeReproject(extent, targetCrs)
     if (!healthCheckExtent(reprojected)) return false
     val reprojectedBack = safeReproject(reprojected, extent.crs)
     if (!healthCheckExtent(reprojectedBack)) return false
-    reprojectedBack.extent.equalsExact(extent.extent, 0.3 * extent.extent.width) // Max 30% difference
+    reprojectedBack.extent.intersects(extent.extent) // Easy check for unknown CRSes
   }
 
   /**
