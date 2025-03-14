@@ -34,7 +34,8 @@ import spire.math.Integral
 import spire.syntax.cfor.cfor
 
 import java.io.IOException
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Files, NoSuchFileException, Path, Paths}
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Collections, Map, List => JList}
@@ -1001,6 +1002,7 @@ package object geotiff {
     var gdalInfoPathName:Option[Path] = None
     if (fileExists) {
       gtiffOptions.foreach(options => embedGdalMetadata(tempFile, options.tagsAsGdalMetadataXml))
+      convertToCog(tempFile, geoTiff.imageData)
       gdalInfoPathName = createGdalInfo(tempFile)
     } else {
       logger.warn("writeGeoTiff() File was not created: " + path)
@@ -1124,6 +1126,51 @@ package object geotiff {
       if (exitCode == 0) logger.debug(s"wrote $gdalMetadata to $geotiffPath")
       else logger.warn(s"${args mkString " "} failed; output was: $outputBuffer")
     } finally Files.delete(tempFile)
+  }
+
+  def convertToCog(geotiffPath: Path, imageData: GeoTiffImageData): Unit = {
+    // TODO: reduce code duplication with embedGdalMetadata()
+    import scala.sys.process._
+
+    val (tileWidth, tileHeight) = (
+      imageData.segmentLayout.tileLayout.tileCols,
+      imageData.segmentLayout.tileLayout.tileRows
+    )
+
+    // TODO: assert DEFLATE compressed?
+
+    if (tileWidth != tileHeight) {
+      throw new IllegalStateException(s"tile width $tileWidth != tile height $tileHeight")
+    }
+
+    val outputBuffer = new StringBuilder
+    val processLogger = ProcessLogger(line => outputBuffer appendAll line)
+
+    // gdal_translate requires input and output files to be different
+    val tempFile = Files.createTempFile("gdal_translate_to_COG_", ".tif.tmp")
+    try {
+      val args = Seq(
+        "gdal_translate",
+        "-of", "COG",
+        "-co", "COMPRESS=DEFLATE",
+        "-co", s"BLOCKSIZE=$tileWidth",
+        geotiffPath.toString,
+        tempFile.toString,
+      )
+
+      val exitCode = args ! processLogger
+
+      if (exitCode == 0) logger.debug(s"converted $tempFile to COG; output was: $outputBuffer")
+      else logger.warn(s"${args mkString " "} failed; output was: $outputBuffer")
+
+      Files.move(tempFile, geotiffPath, REPLACE_EXISTING)
+    } finally {
+      try Files.delete(tempFile)
+      catch {
+        case _: NoSuchFileException => // it was rightfully moved
+        case e: IOException => logger.warn(f"deleting $tempFile failed", e)
+      }
+    }
   }
 
   def assertSafeToUseInFilePath(filepath: String): Unit = {
