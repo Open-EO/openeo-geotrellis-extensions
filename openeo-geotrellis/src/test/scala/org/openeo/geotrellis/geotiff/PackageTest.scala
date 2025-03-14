@@ -1,6 +1,6 @@
 package org.openeo.geotrellis.geotiff
 
-import geotrellis.raster.io.geotiff.MultibandGeoTiff
+import geotrellis.raster.io.geotiff.{MultibandGeoTiff, SinglebandGeoTiff}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue}
 import org.junit.jupiter.api.{Disabled, Test}
 import org.junit.jupiter.api.io.TempDir
@@ -40,4 +40,24 @@ class PackageTest {
 
   private def processingSoftware(geotiff: Path): Option[String] =
     MultibandGeoTiff(geotiff.toString).tags.headTags.get("PROCESSING_SOFTWARE")
+
+  @Test
+  def testConvertToCog(@TempDir tempDir: Path): Unit = {
+    val geotiffCopy = tempDir.resolve("copy.tif")
+    Files.copy(getClass.getResourceAsStream("/org/openeo/geotrellis/cgls_ndvi300.tif"), geotiffCopy)
+
+    val tiffBefore = SinglebandGeoTiff(geotiffCopy.toString)
+
+    assertEquals(512, tiffBefore.imageData.segmentLayout.tileLayout.tileCols)
+    assertEquals(512, tiffBefore.imageData.segmentLayout.tileLayout.tileRows)
+
+    convertToCog(geotiffCopy, blockSize = 256)
+
+    val tiffAfter = SinglebandGeoTiff(geotiffCopy.toString)
+
+    assertEquals(256, tiffAfter.imageData.segmentLayout.tileLayout.tileCols)
+    assertEquals(256, tiffAfter.imageData.segmentLayout.tileLayout.tileRows)
+
+    // additional COG checks here
+  }
 }

@@ -1002,7 +1002,15 @@ package object geotiff {
     var gdalInfoPathName:Option[Path] = None
     if (fileExists) {
       gtiffOptions.foreach(options => embedGdalMetadata(tempFile, options.tagsAsGdalMetadataXml))
-      convertToCog(tempFile, geoTiff.imageData)
+
+      val (tileWidth, tileHeight) = (
+        geoTiff.imageData.segmentLayout.tileLayout.tileCols,
+        geoTiff.imageData.segmentLayout.tileLayout.tileRows
+      )
+
+      if (tileWidth != tileHeight) throw new AssertionError(s"tile width $tileWidth != tile height $tileHeight")
+      convertToCog(tempFile, blockSize = tileWidth)
+
       gdalInfoPathName = createGdalInfo(tempFile)
     } else {
       logger.warn("writeGeoTiff() File was not created: " + path)
@@ -1128,20 +1136,8 @@ package object geotiff {
     } finally Files.delete(tempFile)
   }
 
-  def convertToCog(geotiffPath: Path, imageData: GeoTiffImageData): Unit = {
-    // TODO: reduce code duplication with embedGdalMetadata()
+  def convertToCog(geotiffPath: Path, blockSize: Int): Unit = {
     import scala.sys.process._
-
-    val (tileWidth, tileHeight) = (
-      imageData.segmentLayout.tileLayout.tileCols,
-      imageData.segmentLayout.tileLayout.tileRows
-    )
-
-    // TODO: assert DEFLATE compressed?
-
-    if (tileWidth != tileHeight) {
-      throw new IllegalStateException(s"tile width $tileWidth != tile height $tileHeight")
-    }
 
     val outputBuffer = new StringBuilder
     val processLogger = ProcessLogger(line => outputBuffer appendAll line)
@@ -1149,11 +1145,14 @@ package object geotiff {
     // gdal_translate requires input and output files to be different
     val tempFile = Files.createTempFile("gdal_translate_to_COG_", ".tif.tmp")
     try {
+      // https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Byoc.html#gdal-example-command
       val args = Seq(
         "gdal_translate",
         "-of", "COG",
         "-co", "COMPRESS=DEFLATE",
-        "-co", s"BLOCKSIZE=$tileWidth",
+        "-co", s"BLOCKSIZE=$blockSize", // 512 by default so apply original
+        "-co", "RESAMPLING=AVERAGE",
+        "-co", "OVERVIEWS=IGNORE_EXISTING",
         geotiffPath.toString,
         tempFile.toString,
       )
