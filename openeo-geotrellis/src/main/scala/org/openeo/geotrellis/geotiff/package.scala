@@ -1151,16 +1151,19 @@ package object geotiff {
         "-of", "COG",
         "-co", "COMPRESS=DEFLATE",
         "-co", s"BLOCKSIZE=$blockSize", // 512 by default so apply original
-        "-co", "RESAMPLING=AVERAGE",
-        "-co", "OVERVIEWS=IGNORE_EXISTING",
+        "-co", "OVERVIEWS=FORCE_USE_EXISTING",
         geotiffPath.toString,
         tempFile.toString,
       )
 
-      val exitCode = args ! processLogger
+      val exitCode = Process(
+        args,
+        cwd = None,
+        "GDAL_PAM_ENABLED" -> "NO" // make sure to embed the color map in the tiff
+      ) ! processLogger
 
       if (exitCode == 0) logger.debug(s"converted $tempFile to COG; output was: $outputBuffer")
-      else logger.warn(s"${args mkString " "} failed; output was: $outputBuffer")
+      else throw new IOException(s"${args mkString " "} failed; output was: $outputBuffer")
 
       Files.move(tempFile, geotiffPath, REPLACE_EXISTING)
     } finally {
