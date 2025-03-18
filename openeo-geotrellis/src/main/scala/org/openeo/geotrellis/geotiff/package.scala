@@ -1169,9 +1169,8 @@ package object geotiff {
 
       Files.move(tempFile, geotiffPath, REPLACE_EXISTING)
     } finally {
-      try Files.delete(tempFile)
+      try Files.deleteIfExists(tempFile)
       catch {
-        case _: NoSuchFileException => // it was rightfully moved
         case e: IOException => logger.warn(f"deleting $tempFile failed", e)
       }
     }
