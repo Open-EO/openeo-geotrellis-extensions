@@ -1160,7 +1160,6 @@ package object geotiff {
         args,
         cwd = None,
         "GDAL_PAM_ENABLED" -> "NO", // make sure to embed the color map in the tiff
-        "PROJ_LIB" -> "/usr/share/proj", // TODO: set in Dockerfile?
       ) ! processLogger
 
       if (exitCode == 0) logger.debug(s"converted $tempFile to COG; output was: $outputBuffer")
