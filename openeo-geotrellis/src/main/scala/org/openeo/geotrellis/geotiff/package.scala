@@ -1162,8 +1162,10 @@ package object geotiff {
         "GDAL_PAM_ENABLED" -> "NO", // make sure to embed the color map in the tiff
       ) ! processLogger
 
-      if (exitCode == 0) logger.debug(s"converted $tempFile to COG; output was: $outputBuffer")
-      else throw new IOException(s"${args mkString " "} failed; output was: $outputBuffer")
+      if (exitCode == 0) {
+        val logMethod: String => Unit = if (outputBuffer contains "ERROR") logger.warn else logger.debug
+        logMethod(s"converted $tempFile to COG; output was: $outputBuffer")
+      } else throw new IOException(s"${args mkString " "} failed; output was: $outputBuffer")
 
       Files.move(tempFile, geotiffPath, REPLACE_EXISTING)
     } finally {
