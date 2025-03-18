@@ -141,8 +141,7 @@
                     <threadCount>3</threadCount>
                     <environmentVariables>
                         <PATH>../venv/bin:${env.PATH}</PATH>
-                        <LD_LIBRARY_PATH>/tmp_epod/gdal:../venv/lib/python3.8/site-packages/jep</LD_LIBRARY_PATH>
-                        <PROJ_LIB>/tmp_epod/gdal/data</PROJ_LIB>
+                        <LD_LIBRARY_PATH>../venv/lib/python3.8/site-packages/jep</LD_LIBRARY_PATH>
                     </environmentVariables>
                     <reuseForks>false</reuseForks>
                     <includes>

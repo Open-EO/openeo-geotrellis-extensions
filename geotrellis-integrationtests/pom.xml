@@ -218,7 +218,7 @@
                     <environmentVariables>
                         <PATH>../venv/bin:${env.PATH}</PATH>
                         <CPL_LOG>/dev/null</CPL_LOG>
-                        <LD_LIBRARY_PATH>/tmp_epod/gdal:../venv/lib/python3.8/site-packages/jep</LD_LIBRARY_PATH>
+                        <LD_LIBRARY_PATH>../venv/lib/python3.8/site-packages/jep</LD_LIBRARY_PATH>
                     </environmentVariables>
                     <reuseForks>false</reuseForks>
                     <includes>
