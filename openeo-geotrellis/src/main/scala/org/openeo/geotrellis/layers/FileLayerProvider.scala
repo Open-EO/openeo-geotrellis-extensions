@@ -1426,8 +1426,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         re.createAlignedRasterExtent(tmp)
       } else {
         val featureProjectedExtent = ProjectedExtent(feature.rasterExtent.get, feature.crs.get)
-        healthCheckExtentAssert(featureProjectedExtent, s"Feature extent ${feature.rasterExtent.get} should be valid in CRS ${feature.crs}.")
-        healthCheckExtentAssert(targetExtent, s"Target extent $targetExtent should be valid: ${targetExtent.extent}.")
+        healthCheckExtentAssert(featureProjectedExtent, s"Feature extent should be valid: ")
+        healthCheckExtentAssert(targetExtent, s"Target extent should be valid: ")
 
         /**
          * Several edge cases to cover:
@@ -1444,7 +1444,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
         val featureExtentInCommonCRS = safeReproject(featureProjectedExtent, commonCrs)
         val targetExtentInCommonCRS = safeReproject(targetExtent, commonCrs)
-        healthCheckExtentAssert(featureExtentInCommonCRS, s"Item extent $featureExtentInCommonCRS (${feature.id}) should be valid in CRS $commonCrs.")
+        healthCheckExtentAssert(featureExtentInCommonCRS, s"Item extent (${feature.id}) should be valid in common CRS: ")
 
         val intersection = featureExtentInCommonCRS.extent.intersection(targetExtentInCommonCRS.extent)
         val intersectionTargetCrs = intersection match {
@@ -1462,7 +1462,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           tmp.xmin - theResolution.width * pixelBuffer._1, tmp.ymin - theResolution.height * pixelBuffer._2,
           tmp.xmax + theResolution.width * pixelBuffer._1, tmp.ymax + theResolution.height * pixelBuffer._2,
         )
-        healthCheckExtentAssert(ProjectedExtent(tmp, targetExtent.crs), s"Item extent $tmp (${feature.id}) should be valid CRS $commonCrs.")
+        healthCheckExtentAssert(ProjectedExtent(tmp, targetExtent.crs), s"Item extent (${feature.id}) should be valid in target CRS: ")
         re.createAlignedRasterExtent(tmp)
       }
       Some(alignedToTargetExtent.toGridType[Long])
