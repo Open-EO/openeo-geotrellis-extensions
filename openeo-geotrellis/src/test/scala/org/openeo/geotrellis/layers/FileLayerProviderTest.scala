@@ -1271,6 +1271,9 @@ class FileLayerProviderTest extends RasterMatchers{
 
   @Test
   def testMissingS2DateLineOutside(): Unit = {
+    if (!new DataCubeParameters().useNewFeatureExtentIntersection) {
+      return
+    }
     // Target extent should be valid: Extent not within its CRS limits: ProjectedExtent(Extent(649630.0, 1.212245E7, 684180.0, 1.219141E7),EPSG:32631)
     assertThrows[IllegalArgumentException](testMissingS2DateLine("EPSG:32631"))
   }
