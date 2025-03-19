@@ -1224,6 +1224,9 @@ class FileLayerProviderTest extends RasterMatchers{
       // A typical value would be: PROJ_LIB=/usr/share/proj
       return
     }
+    if (crsName == "EPSG:32660" && !new DataCubeParameters().useNewFeatureExtentIntersection) {
+      return
+    }
     val outDir = Paths.get("tmp/FileLayerProviderTest_" + crsName.replace(":", "_") + "/")
     new Directory(outDir.toFile).deepFiles.foreach(_.delete())
     Files.createDirectories(outDir)

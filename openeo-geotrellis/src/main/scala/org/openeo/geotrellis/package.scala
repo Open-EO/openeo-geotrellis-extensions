@@ -6,6 +6,7 @@ import _root_.geotrellis.vector._
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
 import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy => FailsafeRetryPolicy}
 import org.apache.spark.SparkContext
+import org.locationtech.proj4j.{BasicCoordinateTransform, ProjCoordinate}
 import org.slf4j.Logger
 import scalaj.http.{HttpResponse, HttpStatusException}
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
@@ -291,7 +292,7 @@ package object geotrellis {
   }
 
   /**
-   * Will give the same angle meaning, but as positive value.
+   * Will give actual angle, but as positive value.
    */
   private def to_0_360_range(x: Double): Double = {
     (x + 360 * 10) % 360

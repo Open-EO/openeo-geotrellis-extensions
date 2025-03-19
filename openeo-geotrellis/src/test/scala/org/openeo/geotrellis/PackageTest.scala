@@ -1,13 +1,13 @@
 package org.openeo.geotrellis
 
 import geotrellis.raster.io.geotiff.GeoTiff
-import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.proj4.{CRS, LatLng, Sinusoidal, WebMercator}
 import geotrellis.raster.{ByteCellType, ByteUserDefinedNoDataCellType, FloatUserDefinedNoDataCellType, UByteCellType, UByteUserDefinedNoDataCellType}
 import org.openeo.geotrellis.geotiff._
 
 import java.nio.file.{Files, Path}
 import geotrellis.vector.{Extent, ProjectedExtent}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue, assertFalse}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
@@ -107,19 +107,22 @@ class PackageTest {
     assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32632"))) // europe
     assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:3035"))) // europe LAEA
     assertTrue(isExtentValidInCrs(extent, LatLng))
+    assertTrue(isExtentValidInCrs(extent, Sinusoidal))
+    assertTrue(isExtentValidInCrs(extent, WebMercator))
 
-    assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32601"))) // antimeridian
-    assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32660"))) // antimeridian
+    assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32601"))) // utm antimeridian
+    assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32660"))) // utm antimeridian
   }
 
   @ParameterizedTest
   @MethodSource(Array("testIsExtentValidInCrsAntimeridianParameters"))
   def testIsExtentValidInCrsAntimeridian(crs: CRS): Unit = {
-    val extentAntimeridian = ProjectedExtent(Extent(179, 70, 181, 71), LatLng)
+    val extentAntimeridian = ProjectedExtent(Extent(179, 70, 185, 71), LatLng)
     val extent = safeReproject(extentAntimeridian, crs)
-    assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32601"))) // antimeridian
-    assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32660"))) // antimeridian
+    assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32601"))) // utm antimeridian
+    assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32660"))) // utm antimeridian
     assertTrue(isExtentValidInCrs(extent, LatLng))
+    // assertTrue(isExtentValidInCrs(extent, WebMercator)) // Not every CRS has explicit antimerisian wrapping.
 
     assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32631"))) // europe
     assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:3035"))) // europe LAEA
@@ -136,9 +139,11 @@ class PackageTest {
     assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32734")))
     assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32735")))
     assertTrue(isExtentValidInCrs(extent, LatLng))
+    assertTrue(isExtentValidInCrs(extent, Sinusoidal))
+    assertTrue(isExtentValidInCrs(extent, WebMercator))
 
-    assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32601"))) // antimeridian
-    assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32660"))) // antimeridian
+    assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32601"))) // utm antimeridian
+    assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32660"))) // utm antimeridian
 
     // An extent at the other side of the world is surprisingly accurate in Belgian Lambert 72
     // assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:31370")))

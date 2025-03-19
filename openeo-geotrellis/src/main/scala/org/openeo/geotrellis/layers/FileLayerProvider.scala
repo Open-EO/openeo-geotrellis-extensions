@@ -1410,7 +1410,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
 
     val featureExtentInLayout: Option[GridExtent[Long]] = if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
-      val alignedToTargetExtent = if (sys.env.getOrElse("USE_OLD_FEATURE_EXTENT_INTERSECTION", "false").toBoolean) {
+      val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection)) {
         // TODO: Remove this after it has been deployed for a while
         /**
          * Several edge cases to cover:
@@ -1431,12 +1431,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
         /**
          * Several edge cases to cover:
-         *  - if feature extent is whole world, it may be invalid in target crs
+         *  - if feature extent is whole world, it may be invalid in target crs (tested in readDataCubeWithOpensearchClientUTM)
          *  - if feature is in utm, target extent may be invalid in feature crs
          *    this is why we take intersection.
          *    We convert both extents to a common CRS before taking the intersection.
-         *    If one of the CRSes can cover the whole world (non-UTM), this will be used as common CRS.
-         *    We give priority to use the target CRS as common one, because the intersection will be converted to it anyway
+         *    We give priority to use the target CRS as common CRS, because the intersection will be converted to it anyway
+         *    In case the feature extent is invalid in the target CRS, we use the feature CRS as common CRS
          */
         val commonCrs = if (isExtentValidInCrs(featureProjectedExtent, targetExtent.crs)) targetExtent.crs
         else if (isExtentValidInCrs(targetExtent, feature.crs.get)) feature.crs.get
@@ -1455,7 +1455,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         }
         var tmp = expandToCellSize(intersectionTargetCrs, theResolution)
         val dcp = datacubeParams.getOrElse(new DataCubeParameters())
-        val p = math.max(0, dcp.maskingStrategyParameters
+        val p = math.max(1, dcp.maskingStrategyParameters
           .getOrDefault("erosion_kernel_size", 0.asInstanceOf[Object]).asInstanceOf[Integer]) * 1.0
         val pixelBuffer = (math.max(p, dcp.pixelBufferX), math.max(p, dcp.pixelBufferY))
         tmp = Extent(
