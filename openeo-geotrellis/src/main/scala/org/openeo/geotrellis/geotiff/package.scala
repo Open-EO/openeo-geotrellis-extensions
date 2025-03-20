@@ -35,6 +35,7 @@ import spire.syntax.cfor.cfor
 
 import java.io.IOException
 import java.nio.file.{Files, Path, Paths}
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Collections, Map, List => JList}
@@ -54,6 +55,7 @@ package object geotiff {
 
   private val logger = LoggerFactory.getLogger(getClass)
   private val secondsPerDay = 86400L
+  private val gdalProjLib = Option(System.getenv("OPENEO_GDAL_PROJ_LIB")).getOrElse("/usr/share/proj")
 
   class SetAccumulator[T](var value: Set[T]) extends AccumulatorV2[T, Set[T]] {
     def this() = this(Set.empty[T])
@@ -1001,6 +1003,15 @@ package object geotiff {
     var gdalInfoPathName:Option[Path] = None
     if (fileExists) {
       gtiffOptions.foreach(options => embedGdalMetadata(tempFile, options.tagsAsGdalMetadataXml))
+
+      val (tileWidth, tileHeight) = (
+        geoTiff.imageData.segmentLayout.tileLayout.tileCols,
+        geoTiff.imageData.segmentLayout.tileLayout.tileRows
+      )
+
+      if (tileWidth != tileHeight) throw new AssertionError(s"tile width $tileWidth != tile height $tileHeight")
+      convertToCog(tempFile, blockSize = tileWidth)
+
       gdalInfoPathName = createGdalInfo(tempFile)
     } else {
       logger.warn("writeGeoTiff() File was not created: " + path)
@@ -1124,6 +1135,47 @@ package object geotiff {
       if (exitCode == 0) logger.debug(s"wrote $gdalMetadata to $geotiffPath")
       else logger.warn(s"${args mkString " "} failed; output was: $outputBuffer")
     } finally Files.delete(tempFile)
+  }
+
+  def convertToCog(geotiffPath: Path, blockSize: Int): Unit = {
+    import scala.sys.process._
+
+    val outputBuffer = new StringBuilder
+    val processLogger = ProcessLogger(line => outputBuffer appendAll line)
+
+    // gdal_translate requires input and output files to be different
+    val tempFile = Files.createTempFile("gdal_translate_to_COG_", ".tif.tmp")
+    try {
+      // https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Byoc.html#gdal-example-command
+      val args = Seq(
+        "gdal_translate",
+        "-of", "COG",
+        "-co", "COMPRESS=DEFLATE",
+        "-co", s"BLOCKSIZE=$blockSize", // 512 by default so apply original
+        "-co", "OVERVIEWS=FORCE_USE_EXISTING",
+        geotiffPath.toString,
+        tempFile.toString,
+      )
+
+      val exitCode = Process(
+        args,
+        cwd = None,
+        "GDAL_PAM_ENABLED" -> "NO", // make sure to embed the color map in the tiff
+        "PROJ_LIB" -> gdalProjLib,
+      ) ! processLogger
+
+      if (exitCode == 0) {
+        val logMethod: String => Unit = if (outputBuffer contains "ERROR") logger.warn else logger.debug
+        logMethod(s"converted $tempFile to COG; output was: $outputBuffer")
+      } else throw new IOException(s"${args mkString " "} failed; output was: $outputBuffer")
+
+      Files.move(tempFile, geotiffPath, REPLACE_EXISTING)
+    } finally {
+      try Files.deleteIfExists(tempFile)
+      catch {
+        case e: IOException => logger.warn(f"deleting $tempFile failed", e)
+      }
+    }
   }
 
   def assertSafeToUseInFilePath(filepath: String): Unit = {

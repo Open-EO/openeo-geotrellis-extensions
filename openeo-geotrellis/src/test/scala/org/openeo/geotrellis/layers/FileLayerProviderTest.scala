@@ -36,7 +36,6 @@ import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, Feature
 import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.openeo.sparklisteners.{BatchJobProgressListener, GetInfoSparkListener}
-import org.opentest4j.AssertionFailedError
 import ucar.nc2.NetcdfFile
 import ucar.nc2.util.CompareNetcdf2
 
@@ -1217,13 +1216,7 @@ class FileLayerProviderTest extends RasterMatchers{
   @ParameterizedTest
   @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:4326", "EPSG:3857"))
   def testMissingS2DateLine(crsName: String): Unit = {
-    // Requesting EPSG:3035 (LAEA) does not make sense at the antimeridian.
-    if ((crsName == "EPSG:3035" || crsName == "EPSG:4326"|| crsName == "EPSG:3857") &&
-      (System.getenv("PROJ_LIB") == null || !Files.exists(Paths.get(System.getenv("PROJ_LIB"))))) {
-      println("PROJ_LIB  environment variable does not point to directory. Skipping this test")
-      // A typical value would be: PROJ_LIB=/usr/share/proj
-      return
-    }
+    // typically requires PROJ_LIB to be set
     if (crsName == "EPSG:32660" && !new DataCubeParameters().useNewFeatureExtentIntersection) {
       return
     }

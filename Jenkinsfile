@@ -13,7 +13,7 @@ def maven_version            =  '3.5.4'
 def node_label               =  'default'
 def wipeout_workspace        =  true
 
-def maven_image              = "vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.4.0"
+def maven_image              = "vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.3"
 
 
 pipeline {
@@ -193,7 +193,7 @@ void build(tests = true){
     def publishable_branches = ["master", "develop", "109-upgrade-to-spark-33"]
 
     List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-11-openjdk"]
-    docker.image(env.MAVEN_IMAGE).inside('-v /home/jenkins/.m2:/root/.m2 -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root') {
+    docker.image(env.MAVEN_IMAGE).inside('-v /home/jenkins/.m2:/root/.m2 -v /localdata/M2:/localdata/M2 -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root') {
         withEnv(jdkEnv) {
             sh "dnf install -y maven git java-11-openjdk-devel gdal-3.8.4"
             def server = Artifactory.server('vitoartifactory')
