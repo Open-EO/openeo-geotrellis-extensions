@@ -34,7 +34,7 @@ import spire.math.Integral
 import spire.syntax.cfor.cfor
 
 import java.io.IOException
-import java.nio.file.{Files, NoSuchFileException, Path, Paths}
+import java.nio.file.{Files, Path, Paths}
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.time.Duration
 import java.time.format.DateTimeFormatter
@@ -55,6 +55,7 @@ package object geotiff {
 
   private val logger = LoggerFactory.getLogger(getClass)
   private val secondsPerDay = 86400L
+  private val gdalProjLib = Option(System.getenv("OPENEO_GDAL_PROJ_LIB")).getOrElse("/usr/share/proj")
 
   class SetAccumulator[T](var value: Set[T]) extends AccumulatorV2[T, Set[T]] {
     def this() = this(Set.empty[T])
@@ -1160,7 +1161,7 @@ package object geotiff {
         args,
         cwd = None,
         "GDAL_PAM_ENABLED" -> "NO", // make sure to embed the color map in the tiff
-        "PROJ_LIB" -> "/usr/share/proj", // TODO: make configurable?
+        "PROJ_LIB" -> gdalProjLib,
       ) ! processLogger
 
       if (exitCode == 0) {
