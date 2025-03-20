@@ -191,15 +191,15 @@ class FileLayerProviderTest extends RasterMatchers{
     val metadata: TileLayerMetadata[SpaceTimeKey] = result._2
     // Create the sparse Partitioner.
     val sparsePartitioner: SpacePartitioner[SpaceTimeKey] = DatacubeSupport.createPartitioner(Some(params),rs.keys,metadata).get
-    assert(sparsePartitioner.index.getClass == classOf[SparseSpaceTimePartitioner])
+    assertEquals(classOf[SparseSpaceTimePartitioner], sparsePartitioner.index.getClass)
     val sparsePartitionerIndex = sparsePartitioner.index.asInstanceOf[SparseSpaceTimePartitioner]
 
     // Create the default Space Partitioner.
 
     val defaultPartitioner: SpacePartitioner[SpaceTimeKey] = SpacePartitioner[SpaceTimeKey](metadata.bounds)
-    assert(defaultPartitioner.index == SpaceTimeByMonthPartitioner)
+    assertEquals(SpaceTimeByMonthPartitioner, defaultPartitioner.index)
 
-    assert(sparsePartitioner.numPartitions <= defaultPartitioner.numPartitions)
+    assertTrue(sparsePartitioner.numPartitions <= defaultPartitioner.numPartitions)
 
     val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map {
       _.reproject(polygons_crs, metadata.crs)
@@ -212,7 +212,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
     // Ensure that the sparsePartitioner only creates partitions for the required spacetime regions.
     val requiredRegions = requiredSpacetimeKeys.map(k => sparsePartitionerIndex.toIndex(k))
-    assert(requiredRegions.distinct.collect().sorted sameElements sparsePartitioner.regions.sorted)
+    assertTrue(requiredRegions.distinct.collect().sorted sameElements sparsePartitioner.regions.sorted)
 
     // Even though both RDDs have a different number of partitions, the keys for both RDDs are the same.
     // This means that the default partitioner has many empty partitions that have no source.
@@ -222,7 +222,7 @@ class FileLayerProviderTest extends RasterMatchers{
     // Keys corresponding with NoDataTiles are removed from the final RDD.
     // Which means those few partitions will still be empty.
     val partitionKeys = requiredSpacetimeKeys.collect().sorted.toSet
-    assert(sparseKeys.toSet.subsetOf(partitionKeys))
+    assertTrue(sparseKeys.toSet.subsetOf(partitionKeys))
 
     // Ensure that the regions in sparsePartitioner are a subset of the default Partitioner.
     sparsePartitioner.regions.toSet.subsetOf(defaultPartitioner.regions.toSet)
@@ -262,7 +262,7 @@ class FileLayerProviderTest extends RasterMatchers{
     val sparseMergedLayer = sparseBaseLayer.merge(sparseBaseLayer2)
     val sparseMergedLayerKeys = sparseMergedLayer.keys.collect().toSet
 
-    assert(defaultMergedLayerKeys.nonEmpty)
+    assertTrue(defaultMergedLayerKeys.nonEmpty)
     assertEquals(defaultMergedLayerKeys, sparseMergedLayerKeys)
   }
 
@@ -290,7 +290,7 @@ class FileLayerProviderTest extends RasterMatchers{
     val defaultMaskedLayerKeys = defaultMaskedLayer.keys.collect().toSet
     val sparseMaskedLayerKeys = sparseMaskedLayer.keys.collect().toSet
 
-    assert(defaultMaskedLayerKeys.nonEmpty)
+    assertTrue(defaultMaskedLayerKeys.nonEmpty)
     assertEquals(defaultMaskedLayerKeys, sparseMaskedLayerKeys)
   }
 
@@ -1251,19 +1251,19 @@ class FileLayerProviderTest extends RasterMatchers{
     )
 
     val layer_collected = layer.collect()
-    assert(layer_collected.nonEmpty)
+    assertTrue(layer_collected.nonEmpty)
     var found10 = false // SCL value for 'snow or ice'
     for {
       (_, multiBandTile) <- layer_collected
       tile <- multiBandTile.bands
     } {
-      assert(!tile.isNoDataTile)
+      assertTrue(!tile.isNoDataTile)
       val values = tile.toArrayDouble()
       if (values.contains(10.0)) {
         found10 = true
       }
     }
-    assert(found10)
+    assertTrue(found10)
     val cubeSpatial = layer.toSpatial()
     cubeSpatial.writeGeoTiff(outDir + "/testMissingS2DateLine_" + crsName.replace(":", "_") + ".tiff")
   }
