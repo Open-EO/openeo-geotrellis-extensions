@@ -6,6 +6,7 @@ import geotrellis.raster.render.RGBA
 import geotrellis.raster.{MultibandTile, UByteCellType}
 import geotrellis.spark._
 import geotrellis.vector.{Extent, ProjectedExtent}
+import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.creo.CreoS3Utils.uploadToS3
 import org.openeo.geotrellis.geotiff.SRDD
 
@@ -14,8 +15,8 @@ import java.nio.file.{Files, Paths}
 
 package object png {
   def saveStitched(srdd: SRDD, path: String, cropBounds: Extent, options: PngOptions): String = {
-    val tilesByRow = Option(cropBounds).foldLeft(srdd)(_ crop _)
-        .groupBy { case (SpatialKey(_, row), _) => row }
+    val tilesByRow: RDD[(Int, Iterable[(SpatialKey, MultibandTile)])] = Option(cropBounds).foldLeft(srdd)(_ crop _)
+        .groupBy({ case (SpatialKey(_, row), _) => row }, srdd.partitioner.map(_.numPartitions).getOrElse(10))
 
     val scanLinesByRow = tilesByRow
       .mapValues(toScanLines)
