@@ -1,29 +1,27 @@
 package org.openeo.geotrellis.layers
 
 import cats.data.NonEmptyList
-
-import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import com.azavea.gdal.GDALWarp
-import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutTileSource, TileLayerMetadata, TileToLayoutOps}
+import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, TileLayerMetadata}
 import geotrellis.proj4.util.UTM
-import geotrellis.proj4.{LatLng, WebMercator}
-import geotrellis.raster.{CellSize, GridExtent, RasterExtent, RasterSource, TileLayout, UByteUserDefinedNoDataCellType}
-import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
+import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
+import geotrellis.raster.{CellSize, RasterSource, UByteUserDefinedNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.summary.polygonal._
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.hadoop.fs.Path
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.{AfterClass, Test}
-import org.openeo.geotrellis.{LocalSparkContext, MergeCubesSpec, ProjectedPolygons}
 import org.openeo.geotrellis.TestImplicits._
+import org.openeo.geotrellis.{LocalSparkContext, MergeCubesSpec, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.backends.GlobalNetCDFSearchClient
 
 import java.nio.file.{Files, Paths}
+import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util
 import scala.collection.JavaConverters._
 
@@ -201,7 +199,7 @@ class GlobalNetCdfFileLayerProviderTest {
   }
 
   /**
-   * Test if fetching an UTM extent from a LatLng feature works fine
+   * Test if fetching an UTM extent from a global LatLng feature works fine
    */
   @Test
   def readDataCubeWithOpensearchClientUTM(): Unit = {
@@ -231,6 +229,39 @@ class GlobalNetCdfFileLayerProviderTest {
       "org/openeo/geotrellis/GlobalNetCdfFileLayerProviderTest/readDataCubeWithOpensearchClientUTM.tif")
     val refTiff = GeoTiff.readMultiband(refFile.getPath)
     val geotiff = GeoTiff.readMultiband("tmp/readDataCubeWithOpensearchClientUTM.tif")
+
+    val mse = MergeCubesSpec.simpleMeanSquaredError(geotiff.tile.band(0), refTiff.tile.band(0))
+    println("MSE = " + mse)
+    assertTrue(mse < 0.1)
+  }
+
+  /**
+   * Test if fetching an LAEA extent from a global LatLng feature works fine
+   */
+  @Test
+  def readDataCubeWithOpensearchClientLAEA(): Unit = {
+    val date = LocalDate.of(2017, 1, 10).atStartOfDay(ZoneId.of("UTC"))
+    val boundingBox = ProjectedExtent(Extent(3778000, 2937000, 4078000, 3181000), CRS.fromName("EPSG:3035"))
+    val parameters = new DataCubeParameters()
+    parameters.layoutScheme = "FloatingLayoutScheme"
+
+    val polygons = ProjectedPolygons.fromExtent(boundingBox.extent, boundingBox.crs.toString())
+    val layer = multibandFileLayerProvider(CellSize(868.4867662708275, 994.5852785776369)).readMultibandTileLayer(
+      date, date, boundingBox, polygons.polygons, polygons.crs, layerProvider.maxZoom, sc, Option(parameters)).cache()
+
+    val (_, arbitraryTile) = layer.first()
+    assertEquals(2, arbitraryTile.bandCount)
+
+    Files.createDirectories(Paths.get("tmp/"))
+
+    layer
+      .toSpatial(date)
+      .writeGeoTiff("tmp/readDataCubeWithOpensearchClientLAEA.tif")
+
+    val refFile = Thread.currentThread().getContextClassLoader.getResource(
+      "org/openeo/geotrellis/GlobalNetCdfFileLayerProviderTest/readDataCubeWithOpensearchClientLAEA.tif")
+    val refTiff = GeoTiff.readMultiband(refFile.getPath)
+    val geotiff = GeoTiff.readMultiband("tmp/readDataCubeWithOpensearchClientLAEA.tif")
 
     val mse = MergeCubesSpec.simpleMeanSquaredError(geotiff.tile.band(0), refTiff.tile.band(0))
     println("MSE = " + mse)

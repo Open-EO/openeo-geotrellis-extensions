@@ -1215,13 +1215,16 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @ParameterizedTest
-  @ValueSource(strings = Array("EPSG:32601", "EPSG:4326", "EPSG:3857")) // TODO: "EPSG:32660", 
+  @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:4326", "EPSG:3857"))
   def testMissingS2DateLine(crsName: String): Unit = {
     // Requesting EPSG:3035 (LAEA) does not make sense at the antimeridian.
     if ((crsName == "EPSG:3035" || crsName == "EPSG:4326"|| crsName == "EPSG:3857") &&
       (System.getenv("PROJ_LIB") == null || !Files.exists(Paths.get(System.getenv("PROJ_LIB"))))) {
       println("PROJ_LIB  environment variable does not point to directory. Skipping this test")
       // A typical value would be: PROJ_LIB=/usr/share/proj
+      return
+    }
+    if (crsName == "EPSG:32660" && !new DataCubeParameters().useNewFeatureExtentIntersection) {
       return
     }
     val outDir = Paths.get("tmp/FileLayerProviderTest_" + crsName.replace(":", "_") + "/")
@@ -1268,7 +1271,11 @@ class FileLayerProviderTest extends RasterMatchers{
 
   @Test
   def testMissingS2DateLineOutside(): Unit = {
-    assertThrows[AssertionFailedError](testMissingS2DateLine("EPSG:32631"))
+    if (!new DataCubeParameters().useNewFeatureExtentIntersection) {
+      return
+    }
+    // Target extent should be valid: Extent not within its CRS limits: ProjectedExtent(Extent(649630.0, 1.212245E7, 684180.0, 1.219141E7),EPSG:32631)
+    assertThrows[IllegalArgumentException](testMissingS2DateLine("EPSG:32631"))
   }
 
   private def keysForLargeArea(useBBox:Boolean=false) = {

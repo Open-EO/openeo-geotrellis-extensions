@@ -28,7 +28,7 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
-import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtent, isExtentValidInCrs, safeReproject, sortableSourceName}
+import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtentAssert, isExtentValidInCrs, safeReproject, sortableSourceName}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
@@ -1410,7 +1410,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
 
     val featureExtentInLayout: Option[GridExtent[Long]] = if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
-      val tmp2 = if (sys.env.getOrElse("USE_OLD_FEATURE_EXTENT_INTERSECTION", "true").toBoolean) {
+      val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection)) {
         // TODO: Remove this after it has been deployed for a while
         /**
          * Several edge cases to cover:
@@ -1422,23 +1422,21 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         val featureExtentInLatLon = feature.rasterExtent.get.reproject(feature.crs.get, LatLng)
 
         val intersection = featureExtentInLatLon.intersection(targetExtentInLatLon).map(_.buffer(1.0)).getOrElse(featureExtentInLatLon)
-        expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), theResolution)
+        val tmp = expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), theResolution)
+        re.createAlignedRasterExtent(tmp)
       } else {
         val featureProjectedExtent = ProjectedExtent(feature.rasterExtent.get, feature.crs.get)
-        if (!healthCheckExtent(featureProjectedExtent)) {
-          throw new IllegalArgumentException(s"Feature extent ${feature.rasterExtent.get} is invalid in CRS ${feature.crs}.")
-        }
-        if (!healthCheckExtent(targetExtent)) {
-          throw new IllegalArgumentException(s"Target extent $targetExtent is invalid.")
-        }
+        healthCheckExtentAssert(featureProjectedExtent, s"Feature extent should be valid: ")
+        healthCheckExtentAssert(targetExtent, s"Target extent should be valid: ")
+
         /**
          * Several edge cases to cover:
-         *  - if feature extent is whole world, it may be invalid in target crs
+         *  - if feature extent is whole world, it may be invalid in target crs (tested in readDataCubeWithOpensearchClientUTM)
          *  - if feature is in utm, target extent may be invalid in feature crs
          *    this is why we take intersection.
          *    We convert both extents to a common CRS before taking the intersection.
-         *    If one of the CRSes can cover the whole world (non-UTM), this will be used as common CRS.
-         *    We give priority to use the target CRS as common one, because the intersection will be converted to it anyway
+         *    We give priority to use the target CRS as common CRS, because the intersection will be converted to it anyway
+         *    In case the feature extent is invalid in the target CRS, we use the feature CRS as common CRS
          */
         val commonCrs = if (isExtentValidInCrs(featureProjectedExtent, targetExtent.crs)) targetExtent.crs
         else if (isExtentValidInCrs(targetExtent, feature.crs.get)) feature.crs.get
@@ -1446,25 +1444,28 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
         val featureExtentInCommonCRS = safeReproject(featureProjectedExtent, commonCrs)
         val targetExtentInCommonCRS = safeReproject(targetExtent, commonCrs)
-        if (!healthCheckExtent(featureExtentInCommonCRS)) {
-          throw new IllegalArgumentException(s"Feature extent $featureExtentInCommonCRS is invalid in common CRS $commonCrs.")
-        }
+        healthCheckExtentAssert(featureExtentInCommonCRS, s"Item extent (${feature.id}) should be valid in common CRS: ")
 
-        val intersection = featureExtentInCommonCRS.extent.intersection(targetExtentInCommonCRS.extent).map(_.buffer(1.0))
+        val intersection = featureExtentInCommonCRS.extent.intersection(targetExtentInCommonCRS.extent)
         val intersectionTargetCrs = intersection match {
           case None =>
-            logger.warn(s"Feature extent $featureExtentInCommonCRS and target extent $targetExtentInCommonCRS do not intersect.")
-            // TODO: Discard the feature?
-            targetExtent.extent
+            // Item, Asset and Feature mean the same thing in this context.
+            logger.warn(s"Item extent $featureExtentInCommonCRS (${feature.id}) and target extent $targetExtentInCommonCRS do not intersect.")
+            return None // Discard the feature
           case Some(value) => value.reproject(commonCrs, targetExtent.crs)
         }
-        val tmp = expandToCellSize(intersectionTargetCrs, theResolution)
-        if (!healthCheckExtent(ProjectedExtent(tmp, targetExtent.crs))) {
-          throw new IllegalArgumentException(s"Feature extent $featureExtentInCommonCRS is invalid in target CRS ${targetExtent.crs}.")
-        }
-        tmp
+        var tmp = expandToCellSize(intersectionTargetCrs, theResolution)
+        val dcp = datacubeParams.getOrElse(new DataCubeParameters())
+        val p = math.max(1, dcp.maskingStrategyParameters
+          .getOrDefault("erosion_kernel_size", 0.asInstanceOf[Object]).asInstanceOf[Integer]) * 1.0
+        val pixelBuffer = (math.max(p, dcp.pixelBufferX), math.max(p, dcp.pixelBufferY))
+        tmp = Extent(
+          tmp.xmin - theResolution.width * pixelBuffer._1, tmp.ymin - theResolution.height * pixelBuffer._2,
+          tmp.xmax + theResolution.width * pixelBuffer._1, tmp.ymax + theResolution.height * pixelBuffer._2,
+        )
+        healthCheckExtentAssert(ProjectedExtent(tmp, targetExtent.crs), s"Item extent (${feature.id}) should be valid in target CRS: ")
+        re.createAlignedRasterExtent(tmp)
       }
-      val alignedToTargetExtent = re.createAlignedRasterExtent(tmp2)
       Some(alignedToTargetExtent.toGridType[Long])
     } else {
       Some(re.toGridType[Long])

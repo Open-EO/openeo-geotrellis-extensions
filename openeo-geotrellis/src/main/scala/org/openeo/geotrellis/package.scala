@@ -6,6 +6,7 @@ import _root_.geotrellis.vector._
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
 import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy => FailsafeRetryPolicy}
 import org.apache.spark.SparkContext
+import org.locationtech.proj4j.{BasicCoordinateTransform, ProjCoordinate}
 import org.slf4j.Logger
 import scalaj.http.{HttpResponse, HttpStatusException}
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
@@ -222,10 +223,23 @@ package object geotrellis {
       })
   }
 
+
+  def healthCheckExtentAssert(projectedExtent: ProjectedExtent, messagePrefix: String): Unit = {
+    val message = healthCheckExtentMessage(projectedExtent)
+    // Ideally this would log the current load_collection / load_stac ID that is being executed
+    if (message.isDefined) {
+      throw new IllegalArgumentException(messagePrefix + message.get)
+    }
+  }
+
+  def healthCheckExtent(projectedExtent: ProjectedExtent): Boolean = {
+    healthCheckExtentMessage(projectedExtent).isEmpty
+  }
+
   /**
    * Python equivalent: health_check_extent
    */
-  def healthCheckExtent(projectedExtent: ProjectedExtent)(implicit logger: Logger): Boolean = {
+  private def healthCheckExtentMessage(projectedExtent: ProjectedExtent): Option[String] = {
     // positive width and height is already enforced in Extent.
     val polygonIsUTM = projectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
     if (polygonIsUTM) {
@@ -235,47 +249,51 @@ package object geotrellis {
       val utmProjectedBoundsOriginal = Extent(166021.44, 0000000.00, 833978.56, 10000000)
       val utmProjectedBounds = utmProjectedBoundsOriginal.buffer(
         utmProjectedBoundsOriginal.width * horizontal_tolerance, 0)
-      if (!projectedExtent.extent.intersects(utmProjectedBounds)) {
-        logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
-        return false
+      if (!utmProjectedBounds.contains(projectedExtent.extent)) {
+        return Some("Extent not within its CRS limits: " + projectedExtent)
       }
     } else if (projectedExtent.crs == LatLng) { // EPSG:4326
       val horizontal_tolerance = 1.1
       val vertical_tolerance = 1.1
       if ((projectedExtent.extent.xmin < -180 * horizontal_tolerance)
-        || (projectedExtent.extent.xmax > +180 * horizontal_tolerance)
+        || (projectedExtent.extent.xmax > +360 * horizontal_tolerance) // Allow 0-360 range too
         || (projectedExtent.extent.ymin < -90 * vertical_tolerance)
         || (projectedExtent.extent.ymax > +90 * vertical_tolerance)) {
-        logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
-        return false
+        return Some("Extent not within its CRS limits: " + projectedExtent)
       }
     } else if (projectedExtent.crs == CRS.fromName("EPSG:3035")) {
       if ((projectedExtent.extent.xmin < 1908523.29)
         || (projectedExtent.extent.xmax > 6901611.5)
         || (projectedExtent.extent.ymin < 1137678.21)
         || (projectedExtent.extent.ymax > 6872461.46)) {
-        logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
-        return false
+        return Some("Extent not within its CRS limits: " + projectedExtent)
       }
     } else if (projectedExtent.crs == WebMercator) { // EPSG:3857 same as EPSG:900913?
       if ((projectedExtent.extent.xmin < -20037508.34)
         || (projectedExtent.extent.xmax > 20037508.34)
         || (projectedExtent.extent.ymin < -20048966.1)
         || (projectedExtent.extent.ymax > 20048966.1)) {
-        logger.warn("healthCheckExtent dangerous extent: " + projectedExtent)
-        return false
+        return Some("Extent not within its CRS limits: " + projectedExtent)
       }
     }
-    true
+    None
   }
 
   def isExtentValidInCrs(extent: ProjectedExtent, targetCrs: CRS)(implicit logger: Logger): Boolean = {
+    if (targetCrs == CRS.fromEpsgCode(4326)) {
+      // LatLon covers the whole world, so it's always valid
+      // Function would work fine without this check too.
+      return true
+    }
     val reprojected = safeReproject(extent, targetCrs)
-    healthCheckExtent(reprojected)
+    if (!healthCheckExtent(reprojected)) return false
+    val reprojectedBack = safeReproject(reprojected, extent.crs)
+    if (!healthCheckExtent(reprojectedBack)) return false
+    reprojectedBack.extent.intersects(extent.extent) // Easy check for unknown CRSes
   }
 
   /**
-   * Will give the same angle meaning, but as positive value.
+   * Will give actual angle, but as positive value.
    */
   private def to_0_360_range(x: Double): Double = {
     (x + 360 * 10) % 360
