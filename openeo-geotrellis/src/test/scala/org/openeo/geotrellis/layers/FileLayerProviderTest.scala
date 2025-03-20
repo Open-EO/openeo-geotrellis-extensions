@@ -1217,13 +1217,7 @@ class FileLayerProviderTest extends RasterMatchers{
   @ParameterizedTest
   @ValueSource(strings = Array("EPSG:32601", "EPSG:4326", "EPSG:3857")) // TODO: "EPSG:32660", 
   def testMissingS2DateLine(crsName: String): Unit = {
-    // Requesting EPSG:3035 (LAEA) does not make sense at the antimeridian.
-    if ((crsName == "EPSG:3035" || crsName == "EPSG:4326"|| crsName == "EPSG:3857") &&
-      (System.getenv("PROJ_LIB") == null || !Files.exists(Paths.get(System.getenv("PROJ_LIB"))))) {
-      println("PROJ_LIB  environment variable does not point to directory. Skipping this test")
-      // A typical value would be: PROJ_LIB=/usr/share/proj
-      return
-    }
+    // typically requires PROJ_LIB to be set
     val outDir = Paths.get("tmp/FileLayerProviderTest_" + crsName.replace(":", "_") + "/")
     new Directory(outDir.toFile).deepFiles.foreach(_.delete())
     Files.createDirectories(outDir)
