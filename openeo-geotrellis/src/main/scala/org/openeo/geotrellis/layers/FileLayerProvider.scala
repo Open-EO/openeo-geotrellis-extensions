@@ -1449,7 +1449,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         val intersection = featureExtentInCommonCRS.extent.intersection(targetExtentInCommonCRS.extent)
         val intersectionTargetCrs = intersection match {
           case None =>
-            logger.warn(s"Feature extent $featureExtentInCommonCRS (${feature.id}) and target extent $targetExtentInCommonCRS do not intersect.")
+            // Item, Asset and Feature mean the same thing in this context.
+            logger.warn(s"Item extent $featureExtentInCommonCRS (${feature.id}) and target extent $targetExtentInCommonCRS do not intersect.")
             return None // Discard the feature
           case Some(value) => value.reproject(commonCrs, targetExtent.crs)
         }
