@@ -552,7 +552,7 @@ class BatchProcessingServiceTest {
     import java.util.concurrent.TimeUnit._
 
     while (true) {
-      SECONDS.sleep(10)
+      SECONDS.sleep(30)
       val batchProcesses = batchRequestIds.map(batchProcessingService.get_batch_process)
       println(s"[${LocalTime.now()}] intermediary statuses: $batchProcesses")
 

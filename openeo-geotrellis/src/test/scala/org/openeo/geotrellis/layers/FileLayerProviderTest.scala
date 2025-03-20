@@ -1,6 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import akka.http.scaladsl.server.PathMatcher0
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
@@ -20,7 +19,7 @@ import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveInp
 import org.apache.commons.io.FileUtils
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue, fail => jupiterFail}
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api._
 import org.junit.jupiter.params.ParameterizedTest
