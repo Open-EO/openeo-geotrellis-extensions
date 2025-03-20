@@ -16,7 +16,7 @@ import java.nio.file.{Files, Paths}
 package object png {
   def saveStitched(srdd: SRDD, path: String, cropBounds: Extent, options: PngOptions): String = {
     val tilesByRow: RDD[(Int, Iterable[(SpatialKey, MultibandTile)])] = Option(cropBounds).foldLeft(srdd)(_ crop _)
-        .groupBy({ case (SpatialKey(_, row), _) => row }, srdd.partitioner.map(_.numPartitions).getOrElse(10))
+        .groupBy(t=> t._1.row, srdd.partitioner.map(_.numPartitions).getOrElse(10))
 
     val scanLinesByRow = tilesByRow
       .mapValues(toScanLines)
