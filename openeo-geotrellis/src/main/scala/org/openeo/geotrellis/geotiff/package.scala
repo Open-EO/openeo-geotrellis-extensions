@@ -1160,6 +1160,7 @@ package object geotiff {
         args,
         cwd = None,
         "GDAL_PAM_ENABLED" -> "NO", // make sure to embed the color map in the tiff
+        "PROJ_LIB" -> "/usr/share/proj", // TODO: make configurable?
       ) ! processLogger
 
       if (exitCode == 0) {
