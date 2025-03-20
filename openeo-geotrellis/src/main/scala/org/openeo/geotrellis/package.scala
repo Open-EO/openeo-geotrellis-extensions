@@ -226,6 +226,7 @@ package object geotrellis {
 
   def healthCheckExtentAssert(projectedExtent: ProjectedExtent, messagePrefix: String): Unit = {
     val message = healthCheckExtentMessage(projectedExtent)
+    // Ideally this would log the current load_collection / load_stac ID that is being executed
     if (message.isDefined) {
       throw new IllegalArgumentException(messagePrefix + message.get)
     }
