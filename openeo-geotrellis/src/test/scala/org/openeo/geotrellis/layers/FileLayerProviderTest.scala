@@ -1,6 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import akka.http.scaladsl.server.PathMatcher0
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
@@ -192,15 +191,15 @@ class FileLayerProviderTest extends RasterMatchers{
     val metadata: TileLayerMetadata[SpaceTimeKey] = result._2
     // Create the sparse Partitioner.
     val sparsePartitioner: SpacePartitioner[SpaceTimeKey] = DatacubeSupport.createPartitioner(Some(params),rs.keys,metadata).get
-    assert(sparsePartitioner.index.getClass == classOf[SparseSpaceTimePartitioner])
+    assertEquals(classOf[SparseSpaceTimePartitioner], sparsePartitioner.index.getClass)
     val sparsePartitionerIndex = sparsePartitioner.index.asInstanceOf[SparseSpaceTimePartitioner]
 
     // Create the default Space Partitioner.
 
     val defaultPartitioner: SpacePartitioner[SpaceTimeKey] = SpacePartitioner[SpaceTimeKey](metadata.bounds)
-    assert(defaultPartitioner.index == SpaceTimeByMonthPartitioner)
+    assertEquals(SpaceTimeByMonthPartitioner, defaultPartitioner.index)
 
-    assert(sparsePartitioner.numPartitions <= defaultPartitioner.numPartitions)
+    assertTrue(sparsePartitioner.numPartitions <= defaultPartitioner.numPartitions)
 
     val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map {
       _.reproject(polygons_crs, metadata.crs)
@@ -213,7 +212,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
     // Ensure that the sparsePartitioner only creates partitions for the required spacetime regions.
     val requiredRegions = requiredSpacetimeKeys.map(k => sparsePartitionerIndex.toIndex(k))
-    assert(requiredRegions.distinct.collect().sorted sameElements sparsePartitioner.regions.sorted)
+    assertTrue(requiredRegions.distinct.collect().sorted sameElements sparsePartitioner.regions.sorted)
 
     // Even though both RDDs have a different number of partitions, the keys for both RDDs are the same.
     // This means that the default partitioner has many empty partitions that have no source.
@@ -223,7 +222,7 @@ class FileLayerProviderTest extends RasterMatchers{
     // Keys corresponding with NoDataTiles are removed from the final RDD.
     // Which means those few partitions will still be empty.
     val partitionKeys = requiredSpacetimeKeys.collect().sorted.toSet
-    assert(sparseKeys.toSet.subsetOf(partitionKeys))
+    assertTrue(sparseKeys.toSet.subsetOf(partitionKeys))
 
     // Ensure that the regions in sparsePartitioner are a subset of the default Partitioner.
     sparsePartitioner.regions.toSet.subsetOf(defaultPartitioner.regions.toSet)
@@ -263,7 +262,7 @@ class FileLayerProviderTest extends RasterMatchers{
     val sparseMergedLayer = sparseBaseLayer.merge(sparseBaseLayer2)
     val sparseMergedLayerKeys = sparseMergedLayer.keys.collect().toSet
 
-    assert(defaultMergedLayerKeys.nonEmpty)
+    assertTrue(defaultMergedLayerKeys.nonEmpty)
     assertEquals(defaultMergedLayerKeys, sparseMergedLayerKeys)
   }
 
@@ -291,7 +290,7 @@ class FileLayerProviderTest extends RasterMatchers{
     val defaultMaskedLayerKeys = defaultMaskedLayer.keys.collect().toSet
     val sparseMaskedLayerKeys = sparseMaskedLayer.keys.collect().toSet
 
-    assert(defaultMaskedLayerKeys.nonEmpty)
+    assertTrue(defaultMaskedLayerKeys.nonEmpty)
     assertEquals(defaultMaskedLayerKeys, sparseMaskedLayerKeys)
   }
 
@@ -1215,9 +1214,12 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @ParameterizedTest
-  @ValueSource(strings = Array("EPSG:32601", "EPSG:4326", "EPSG:3857")) // TODO: "EPSG:32660", 
+  @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:4326", "EPSG:3857"))
   def testMissingS2DateLine(crsName: String): Unit = {
     // typically requires PROJ_LIB to be set
+    if (crsName == "EPSG:32660" && !new DataCubeParameters().useNewFeatureExtentIntersection) {
+      return
+    }
     val outDir = Paths.get("tmp/FileLayerProviderTest_" + crsName.replace(":", "_") + "/")
     new Directory(outDir.toFile).deepFiles.foreach(_.delete())
     Files.createDirectories(outDir)
@@ -1243,26 +1245,30 @@ class FileLayerProviderTest extends RasterMatchers{
     )
 
     val layer_collected = layer.collect()
-    assert(layer_collected.nonEmpty)
+    assertTrue(layer_collected.nonEmpty)
     var found10 = false // SCL value for 'snow or ice'
     for {
       (_, multiBandTile) <- layer_collected
       tile <- multiBandTile.bands
     } {
-      assert(!tile.isNoDataTile)
+      assertTrue(!tile.isNoDataTile)
       val values = tile.toArrayDouble()
       if (values.contains(10.0)) {
         found10 = true
       }
     }
-    assert(found10)
+    assertTrue(found10)
     val cubeSpatial = layer.toSpatial()
     cubeSpatial.writeGeoTiff(outDir + "/testMissingS2DateLine_" + crsName.replace(":", "_") + ".tiff")
   }
 
   @Test
   def testMissingS2DateLineOutside(): Unit = {
-    assertThrows[Exception](testMissingS2DateLine("EPSG:32631"))
+    if (!new DataCubeParameters().useNewFeatureExtentIntersection) {
+      return
+    }
+    // Target extent should be valid: Extent not within its CRS limits: ProjectedExtent(Extent(649630.0, 1.212245E7, 684180.0, 1.219141E7),EPSG:32631)
+    assertThrows[IllegalArgumentException](testMissingS2DateLine("EPSG:32631"))
   }
 
   private def keysForLargeArea(useBBox:Boolean=false) = {
