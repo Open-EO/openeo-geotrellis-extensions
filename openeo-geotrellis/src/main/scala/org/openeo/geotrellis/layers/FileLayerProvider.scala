@@ -1503,9 +1503,14 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, sentinelXmlAngleBandIndex: Int): RasterSource = {
       if(dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
+        var warpOptionsOvr = Some(OverviewStrategy.DEFAULT)
+        if (dataPath.endsWith("SCL_20m.jp2")) {
+          // The overviews in the S2 SCL bands can be wrong, so we need to use the original resolution.
+          warpOptionsOvr = Some(geotrellis.raster.io.geotiff.Base)
+        }
         val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
         val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod),
-          te = featureExtentInLayout.map(_.extent), teCRS = Some(targetExtent.crs)
+          te = featureExtentInLayout.map(_.extent), teCRS = Some(targetExtent.crs), ovr = warpOptionsOvr
         )
         if (cloudPath.isDefined) {
           GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType)
