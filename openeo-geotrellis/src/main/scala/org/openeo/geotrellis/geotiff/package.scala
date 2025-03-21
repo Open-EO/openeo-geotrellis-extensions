@@ -36,6 +36,7 @@ import spire.syntax.cfor.cfor
 import java.io.IOException
 import java.nio.file.{Files, Path, Paths}
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
+import java.nio.file.attribute.PosixFilePermissions
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Collections, Map, List => JList}
@@ -1169,7 +1170,14 @@ package object geotiff {
         logMethod(s"converted $tempFile to COG; output was: $outputBuffer")
       } else throw new IOException(s"${args mkString " "} failed; output was: $outputBuffer")
 
+      val originalFilePermissions = Files.getPosixFilePermissions(geotiffPath)
+      if (logger.isDebugEnabled) {
+        val tempFilePermissions = Files.getPosixFilePermissions(tempFile)
+        logger.debug(s"restoring $tempFile permissions from ${PosixFilePermissions.toString(tempFilePermissions)}" +
+          s" to ${PosixFilePermissions.toString(originalFilePermissions)}")
+      }
       Files.move(tempFile, geotiffPath, REPLACE_EXISTING)
+      Files.setPosixFilePermissions(geotiffPath, originalFilePermissions)
     } finally {
       try Files.deleteIfExists(tempFile)
       catch {

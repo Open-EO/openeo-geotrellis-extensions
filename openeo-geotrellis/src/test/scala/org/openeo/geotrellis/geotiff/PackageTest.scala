@@ -46,6 +46,7 @@ class PackageTest {
   def testConvertToCog(@TempDir tempDir: Path): Unit = {
     val geotiffCopy = tempDir.resolve("copy.tif")
     Files.copy(getClass.getResourceAsStream("/org/openeo/geotrellis/cgls_ndvi300.tif"), geotiffCopy)
+    val originalFilePermissions = Files.getPosixFilePermissions(geotiffCopy)
 
     val tiffBefore = GeoTiff.readSingleband(geotiffCopy.toString)
 
@@ -54,6 +55,7 @@ class PackageTest {
     assertEquals(512, tiffBefore.imageData.segmentLayout.tileLayout.tileRows)
 
     convertToCog(geotiffCopy, blockSize = 256)
+    assertEquals(originalFilePermissions, Files.getPosixFilePermissions(geotiffCopy))
 
     val tiffAfter = GeoTiff.readSingleband(geotiffCopy.toString)
 
