@@ -911,8 +911,8 @@ class OpenEOProcesses extends Serializable {
         val index = target.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
         val theIndex = index match {
           case partitioner: SparseSpaceTimePartitioner =>
-            data.partitioner.get match {
-              case dataPartitioner: SpacePartitioner[SpaceTimeKey] =>
+            data.partitioner match {
+              case Some(dataPartitioner: SpacePartitioner[SpaceTimeKey]) =>
                 dataPartitioner.index match {
                   case dataIndex:SparseSpaceTimePartitioner => {
                     transformSparseSpaceTimePartition(dataIndex.theKeys,data.metadata,target.metadata,partitioner.indexReduction).getOrElse(new ConfigurableSpaceTimePartitioner(partitioner.indexReduction))
