@@ -290,6 +290,7 @@ package object geotrellis {
   }
 
   def isExtentValidInCrs(extent: ProjectedExtent, targetCrs: CRS): Boolean = {
+    if (extent.crs == targetCrs) return true
     if (targetCrs == CRS.fromEpsgCode(4326)) {
       // LatLon covers the whole world, so it's always valid
       // Function would work fine without this check too.
