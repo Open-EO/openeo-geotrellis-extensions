@@ -236,6 +236,11 @@ package object geotrellis {
     healthCheckExtentMessage(projectedExtent).isEmpty
   }
 
+  def isCrsCoveredInHealthCheck(crs: CRS): Boolean = {
+    if (crs.proj4jCrs.getProjection.getName == "utm") return true
+    Seq(LatLng, CRS.fromName("EPSG:3035"), CRS.fromName("EPSG:31370"), WebMercator).contains(crs)
+  }
+
   /**
    * Python equivalent: health_check_extent
    */

@@ -28,7 +28,7 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
-import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtentAssert, isExtentValidInCrs, safeReproject, sortableSourceName}
+import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtentAssert, isCrsCoveredInHealthCheck, isExtentValidInCrs, safeReproject, sortableSourceName}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
@@ -1410,7 +1410,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
 
     val featureExtentInLayout: Option[GridExtent[Long]] = if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
-      val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection)) {
+      val useNewFeatureExtentIntersectionPossible = isCrsCoveredInHealthCheck(feature.crs.get) && isCrsCoveredInHealthCheck(targetExtent.crs)
+      val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection) && useNewFeatureExtentIntersectionPossible) {
+        logger.info("Using old intersection method between Feature/Item and target extent.")
         // TODO: Remove this after it has been deployed for a while
         /**
          * Several edge cases to cover:
