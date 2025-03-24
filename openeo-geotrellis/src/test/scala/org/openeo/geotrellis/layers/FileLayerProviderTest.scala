@@ -1286,7 +1286,7 @@ class FileLayerProviderTest extends RasterMatchers{
       val layer_collected = layer.collect()
       assertTrue(layer_collected.isEmpty)
     }
-    // java.lang.IllegalArgumentException: Item extent (.../S2B_MSIL1C_20240402T000609_N0510_R016_T60WWD_20240402T001958.SAFE) should be valid in common CRS: Extent not within its CRS limits: ProjectedExtent(Extent(821243.3198641445, 1.2053183684812058E7, 950718.5147571294, 1.2182657499823662E7),EPSG:32632)
+    // java.lang.IllegalArgumentException: Could not find data for your load_collection request with catalog ID "Sentinel2". The catalog query had correlation ID "" and returned 4 results.
     assertThrows[IllegalArgumentException](testImpossibleIntersectionInternal())
   }
 
