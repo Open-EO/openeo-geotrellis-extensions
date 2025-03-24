@@ -1442,7 +1442,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         else if (isExtentValidInCrs(targetExtent, feature.crs.get)) feature.crs.get
         else {
           // Avoid conversion imprecision by intersecting directly in the target CRS
-          logger.warn(s"Feature and target extent are not valid within each others range. There might be some imprecision.")
+          logger.warn(s"Feature/Item and target extent are not valid within each others range. There might be some imprecision.")
           targetExtent.crs
         }
 
