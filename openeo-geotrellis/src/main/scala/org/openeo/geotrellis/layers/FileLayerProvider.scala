@@ -1440,7 +1440,11 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
          */
         val commonCrs = if (isExtentValidInCrs(featureProjectedExtent, targetExtent.crs)) targetExtent.crs
         else if (isExtentValidInCrs(targetExtent, feature.crs.get)) feature.crs.get
-        else targetExtent.crs // Avoid conversion imprecision by intersecting directly in the target CRS
+        else {
+          // Avoid conversion imprecision by intersecting directly in the target CRS
+          logger.warn(s"Feature and target extent are not valid within each others range. There might be some imprecision.")
+          targetExtent.crs
+        }
 
         val featureExtentInCommonCRS = safeReproject(featureProjectedExtent, commonCrs)
         val targetExtentInCommonCRS = safeReproject(targetExtent, commonCrs)
