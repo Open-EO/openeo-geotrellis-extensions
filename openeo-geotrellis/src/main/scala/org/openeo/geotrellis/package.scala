@@ -240,6 +240,7 @@ package object geotrellis {
    * Python equivalent: health_check_extent
    */
   private def healthCheckExtentMessage(projectedExtent: ProjectedExtent): Option[String] = {
+    // TODO: Find way to use general library https://github.com/locationtech/proj4j/issues/113
     // positive width and height is already enforced in Extent.
     val polygonIsUTM = projectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
     if (polygonIsUTM) {
@@ -268,6 +269,15 @@ package object geotrellis {
         || (projectedExtent.extent.ymax > 6872461.46)) {
         return Some("Extent not within its CRS limits: " + projectedExtent)
       }
+    } else if (projectedExtent.crs == CRS.fromName("EPSG:31370")) { // Lambert
+      val horizontal_tolerance = 2.0
+      val vertical_tolerance = 2.0
+      val projectedBoundsOriginal = Extent(14637.25, 20909.21, 297133.13, 246424.28)
+      val projectedBounds = projectedBoundsOriginal.buffer(
+        projectedBoundsOriginal.width * horizontal_tolerance, projectedBoundsOriginal.height * vertical_tolerance)
+      if (!projectedBounds.contains(projectedExtent.extent)) {
+        return Some("Extent not within its CRS limits: " + projectedExtent)
+      }
     } else if (projectedExtent.crs == WebMercator) { // EPSG:3857 same as EPSG:900913?
       if ((projectedExtent.extent.xmin < -20037508.34)
         || (projectedExtent.extent.xmax > 20037508.34)
@@ -279,7 +289,7 @@ package object geotrellis {
     None
   }
 
-  def isExtentValidInCrs(extent: ProjectedExtent, targetCrs: CRS)(implicit logger: Logger): Boolean = {
+  def isExtentValidInCrs(extent: ProjectedExtent, targetCrs: CRS): Boolean = {
     if (targetCrs == CRS.fromEpsgCode(4326)) {
       // LatLon covers the whole world, so it's always valid
       // Function would work fine without this check too.

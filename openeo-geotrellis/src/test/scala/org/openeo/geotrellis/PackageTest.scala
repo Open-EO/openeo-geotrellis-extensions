@@ -102,6 +102,7 @@ class PackageTest {
   def testIsExtentValidInCrsBelgium(crs: CRS): Unit = {
     val extentBelgium: ProjectedExtent = ProjectedExtent(Extent(2.5, 49.5, 6.5, 51.5), CRS.fromName("EPSG:4326"))
     val extent = safeReproject(extentBelgium, crs)
+    healthCheckExtentAssert(extent, "Input extent should at least be valid: ")
     assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32630"))) // europe
     assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32631"))) // europe
     assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32632"))) // europe
@@ -119,16 +120,16 @@ class PackageTest {
   def testIsExtentValidInCrsAntimeridian(crs: CRS): Unit = {
     val extentAntimeridian = ProjectedExtent(Extent(179, 70, 185, 71), LatLng)
     val extent = safeReproject(extentAntimeridian, crs)
+    healthCheckExtentAssert(extent, "Input extent should at least be valid: ")
     assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32601"))) // utm antimeridian
     assertTrue(isExtentValidInCrs(extent, CRS.fromName("EPSG:32660"))) // utm antimeridian
     assertTrue(isExtentValidInCrs(extent, LatLng))
-    // assertTrue(isExtentValidInCrs(extent, WebMercator)) // Not every CRS has explicit antimerisian wrapping.
+    // assertTrue(isExtentValidInCrs(extent, WebMercator)) // Not every CRS has explicit antimeridian wrapping.
 
     assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32631"))) // europe
     assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:3035"))) // europe LAEA
 
-    // An extent at the other side of the world is surprisingly accurate in Belgian Lambert 72
-    // assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:31370")))
+    assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:31370")))
   }
 
   @ParameterizedTest
@@ -145,7 +146,12 @@ class PackageTest {
     assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32601"))) // utm antimeridian
     assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:32660"))) // utm antimeridian
 
-    // An extent at the other side of the world is surprisingly accurate in Belgian Lambert 72
-    // assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:31370")))
+    assertFalse(isExtentValidInCrs(extent, CRS.fromName("EPSG:31370")))
+  }
+
+  @Test
+  def testWoldToLambert() = {
+    val extentWorld = ProjectedExtent(Extent(-180, -90, 180, 90), LatLng)
+    assertFalse(isExtentValidInCrs(extentWorld, CRS.fromName("EPSG:31370")))
   }
 }

@@ -16,7 +16,7 @@ import org.apache.hadoop.fs.Path
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.{AfterClass, Test}
 import org.openeo.geotrellis.TestImplicits._
-import org.openeo.geotrellis.{LocalSparkContext, MergeCubesSpec, ProjectedPolygons}
+import org.openeo.geotrellis.{LocalSparkContext, MergeCubesSpec, ProjectedPolygons, safeReproject}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.backends.GlobalNetCDFSearchClient
 
@@ -241,7 +241,8 @@ class GlobalNetCdfFileLayerProviderTest {
   @Test
   def readDataCubeWithOpensearchClientLAEA(): Unit = {
     val date = LocalDate.of(2017, 1, 10).atStartOfDay(ZoneId.of("UTC"))
-    val boundingBox = ProjectedExtent(Extent(3778000, 2937000, 4078000, 3181000), CRS.fromName("EPSG:3035"))
+    val boundingBoxOrig = ProjectedExtent(Extent(3778000, 2937000, 4078000, 3181000), CRS.fromName("EPSG:3035"))
+    val boundingBox = safeReproject(boundingBoxOrig, CRS.fromName("EPSG:31370"))
     val parameters = new DataCubeParameters()
     parameters.layoutScheme = "FloatingLayoutScheme"
 
