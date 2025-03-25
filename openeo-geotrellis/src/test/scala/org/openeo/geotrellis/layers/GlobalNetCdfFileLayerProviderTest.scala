@@ -241,8 +241,7 @@ class GlobalNetCdfFileLayerProviderTest {
   @Test
   def readDataCubeWithOpensearchClientLAEA(): Unit = {
     val date = LocalDate.of(2017, 1, 10).atStartOfDay(ZoneId.of("UTC"))
-    val boundingBoxOrig = ProjectedExtent(Extent(3778000, 2937000, 4078000, 3181000), CRS.fromName("EPSG:3035"))
-    val boundingBox = safeReproject(boundingBoxOrig, CRS.fromName("EPSG:31370"))
+    val boundingBox = ProjectedExtent(Extent(3778000, 2937000, 4078000, 3181000), CRS.fromName("EPSG:3035"))
     val parameters = new DataCubeParameters()
     parameters.layoutScheme = "FloatingLayoutScheme"
 
