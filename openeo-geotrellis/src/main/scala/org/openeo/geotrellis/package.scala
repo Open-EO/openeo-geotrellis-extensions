@@ -18,6 +18,7 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
 import software.amazon.awssdk.services.s3.{S3Client, S3Configuration}
 
+import java.lang
 import java.net.{SocketException, SocketTimeoutException, URI}
 import java.nio.file.{Path, Paths}
 import java.time.temporal.ChronoUnit
@@ -236,11 +237,26 @@ package object geotrellis {
     healthCheckExtentMessage(projectedExtent).isEmpty
   }
 
+  def isCrsCoveredInHealthCheck(crs: CRS): Boolean = {
+    if (crs.proj4jCrs.getProjection.getName == "utm") return true
+    Seq(LatLng, CRS.fromName("EPSG:3035"), CRS.fromName("EPSG:31370"), WebMercator).contains(crs)
+  }
+
   /**
    * Python equivalent: health_check_extent
    */
   private def healthCheckExtentMessage(projectedExtent: ProjectedExtent): Option[String] = {
+    // TODO: Find way to use general library https://github.com/locationtech/proj4j/issues/113
+    // A quick workaround might be to use pyproj trough Jep
     // positive width and height is already enforced in Extent.
+    if (lang.Double.isNaN(projectedExtent.extent.xmin) || lang.Double.isNaN(projectedExtent.extent.xmax) ||
+      lang.Double.isNaN(projectedExtent.extent.ymin) || lang.Double.isNaN(projectedExtent.extent.ymax)) {
+      return Some("Extent contains NaN values: " + projectedExtent)
+    }
+    if (lang.Double.isInfinite(projectedExtent.extent.xmin) || lang.Double.isInfinite(projectedExtent.extent.xmax) ||
+      lang.Double.isInfinite(projectedExtent.extent.ymin) || lang.Double.isInfinite(projectedExtent.extent.ymax)) {
+      return Some("Extent contains infinite values: " + projectedExtent)
+    }
     val polygonIsUTM = projectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
     if (polygonIsUTM) {
       val horizontal_tolerance = 4.0
@@ -268,6 +284,15 @@ package object geotrellis {
         || (projectedExtent.extent.ymax > 6872461.46)) {
         return Some("Extent not within its CRS limits: " + projectedExtent)
       }
+    } else if (projectedExtent.crs == CRS.fromName("EPSG:31370")) { // Lambert
+      val horizontal_tolerance = 2.0
+      val vertical_tolerance = 2.0
+      val projectedBoundsOriginal = Extent(14637.25, 20909.21, 297133.13, 246424.28)
+      val projectedBounds = projectedBoundsOriginal.buffer(
+        projectedBoundsOriginal.width * horizontal_tolerance, projectedBoundsOriginal.height * vertical_tolerance)
+      if (!projectedBounds.contains(projectedExtent.extent)) {
+        return Some("Extent not within its CRS limits: " + projectedExtent)
+      }
     } else if (projectedExtent.crs == WebMercator) { // EPSG:3857 same as EPSG:900913?
       if ((projectedExtent.extent.xmin < -20037508.34)
         || (projectedExtent.extent.xmax > 20037508.34)
@@ -279,17 +304,25 @@ package object geotrellis {
     None
   }
 
-  def isExtentValidInCrs(extent: ProjectedExtent, targetCrs: CRS)(implicit logger: Logger): Boolean = {
+  def isExtentValidInCrs(extent: ProjectedExtent, targetCrs: CRS): Boolean = {
+    if (extent.crs == targetCrs) return true
     if (targetCrs == CRS.fromEpsgCode(4326)) {
       // LatLon covers the whole world, so it's always valid
       // Function would work fine without this check too.
       return true
     }
-    val reprojected = safeReproject(extent, targetCrs)
-    if (!healthCheckExtent(reprojected)) return false
-    val reprojectedBack = safeReproject(reprojected, extent.crs)
-    if (!healthCheckExtent(reprojectedBack)) return false
-    reprojectedBack.extent.intersects(extent.extent) // Easy check for unknown CRSes
+    try {
+      // Instead of reprojecting and back to check the validity, is would be
+      // better to project the extent to LatLng and see if it fits in the CRS.area_of_use extent.
+      // A valid extent in UTM EPSG:32660 might be invalid in LatLng tough, because it crosses the 180deg border
+      val reprojected = safeReproject(extent, targetCrs)
+      if (!healthCheckExtent(reprojected)) return false
+      val reprojectedBack = safeReproject(reprojected, extent.crs)
+      if (!healthCheckExtent(reprojectedBack)) return false
+      reprojectedBack.extent.intersects(extent.extent) // Easy check for unknown CRSes
+    } catch {
+      case _: Throwable => false
+    }
   }
 
   /**

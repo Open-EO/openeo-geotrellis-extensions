@@ -16,7 +16,7 @@ import org.apache.hadoop.fs.Path
 import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.{AfterClass, Test}
 import org.openeo.geotrellis.TestImplicits._
-import org.openeo.geotrellis.{LocalSparkContext, MergeCubesSpec, ProjectedPolygons}
+import org.openeo.geotrellis.{LocalSparkContext, MergeCubesSpec, ProjectedPolygons, safeReproject}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.backends.GlobalNetCDFSearchClient
 

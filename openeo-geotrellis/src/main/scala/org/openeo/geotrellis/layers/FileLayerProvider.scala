@@ -28,7 +28,7 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
-import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtentAssert, isExtentValidInCrs, safeReproject, sortableSourceName}
+import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtentAssert, isCrsCoveredInHealthCheck, isExtentValidInCrs, safeReproject, sortableSourceName}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
@@ -1410,7 +1410,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
 
     val featureExtentInLayout: Option[GridExtent[Long]] = if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
-      val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection)) {
+      val useNewFeatureExtentIntersectionPossible = isCrsCoveredInHealthCheck(feature.crs.get) && isCrsCoveredInHealthCheck(targetExtent.crs)
+      val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection) && useNewFeatureExtentIntersectionPossible) {
+        logger.info("Using old intersection method between Feature/Item and target extent.")
         // TODO: Remove this after it has been deployed for a while
         /**
          * Several edge cases to cover:
@@ -1440,7 +1442,10 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
          */
         val commonCrs = if (isExtentValidInCrs(featureProjectedExtent, targetExtent.crs)) targetExtent.crs
         else if (isExtentValidInCrs(targetExtent, feature.crs.get)) feature.crs.get
-        else targetExtent.crs // Avoid conversion imprecision by intersecting directly in the target CRS
+        else {
+          logger.warn(s"Feature/Item and target extent are not valid within each others range. Using LatLng as fallback.")
+          LatLng
+        }
 
         val featureExtentInCommonCRS = safeReproject(featureProjectedExtent, commonCrs)
         val targetExtentInCommonCRS = safeReproject(targetExtent, commonCrs)
@@ -1450,7 +1455,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         val intersectionTargetCrs = intersection match {
           case None =>
             // Item, Asset and Feature mean the same thing in this context.
-            logger.warn(s"Item extent $featureExtentInCommonCRS (${feature.id}) and target extent $targetExtentInCommonCRS do not intersect.")
+            logger.warn(s"Item extent $featureExtentInCommonCRS and target extent $targetExtentInCommonCRS do not intersect. Discarding (${feature.id})")
             return None // Discard the feature
           case Some(value) => value.reproject(commonCrs, targetExtent.crs)
         }

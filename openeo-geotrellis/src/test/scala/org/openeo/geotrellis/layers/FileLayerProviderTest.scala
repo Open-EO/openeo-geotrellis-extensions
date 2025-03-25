@@ -1226,9 +1226,9 @@ class FileLayerProviderTest extends RasterMatchers{
 
     val extent = Extent(178.1, 70.3, 178.9, 70.9)
     val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, LatLng.proj4jCrs.toString)
-    val utmCrs = CRS.fromName(crsName)
-    val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, utmCrs)
-    val poly2 = ProjectedPolygons(Array(reprojected), utmCrs)
+    val specificCrs = CRS.fromName(crsName)
+    val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, specificCrs)
+    val poly2 = ProjectedPolygons(Array(reprojected), specificCrs)
 
     if (crsName == "EPSG:4326") {
       val poly2GeoJson = poly2.polygons.head.toGeoJson
@@ -1260,6 +1260,34 @@ class FileLayerProviderTest extends RasterMatchers{
     assertTrue(found10)
     val cubeSpatial = layer.toSpatial()
     cubeSpatial.writeGeoTiff(outDir + "/testMissingS2DateLine_" + crsName.replace(":", "_") + ".tiff")
+  }
+
+  /**
+   * Test a case where the catalog would return Features that are outside the valid extent of the requested CRS
+   */
+  @Test
+  def testImpossibleIntersection(): Unit = {
+    val crsName = "EPSG:32632"
+    val extent = Extent(3.3, 50.6, 7.6, 51.6) // Belgium, which is invalid with the available features
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, LatLng.proj4jCrs.toString)
+    val utmCrs = CRS.fromName(crsName)
+    val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, utmCrs)
+    val poly2 = ProjectedPolygons(Array(reprojected), utmCrs)
+
+    def testImpossibleIntersectionInternal(): Unit = {
+      val layer = LayerFixtures.sentinel2Cube(
+        LocalDate.of(2024, 4, 2),
+        poly2,
+        "/org/openeo/geotrellis/testMissingS2DateLine.json",
+        new DataCubeParameters,
+        java.util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data"),
+      )
+
+      val layer_collected = layer.collect()
+      assertTrue(layer_collected.isEmpty)
+    }
+    // java.lang.IllegalArgumentException: Could not find data for your load_collection request with catalog ID "Sentinel2". The catalog query had correlation ID "" and returned 4 results.
+    assertThrows[IllegalArgumentException](testImpossibleIntersectionInternal())
   }
 
   @Test
