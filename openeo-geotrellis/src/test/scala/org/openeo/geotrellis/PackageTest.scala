@@ -150,8 +150,14 @@ class PackageTest {
   }
 
   @Test
-  def testWoldToLambert() = {
+  def testWoldToLambert(): Unit = {
     val extentWorld = ProjectedExtent(Extent(-180, -90, 180, 90), LatLng)
     assertFalse(isExtentValidInCrs(extentWorld, CRS.fromName("EPSG:31370")))
+  }
+
+  @Test
+  def testInvalidExtent(): Unit = {
+    assertFalse(healthCheckExtent(ProjectedExtent(Extent(0, -10, Float.PositiveInfinity, 10), LatLng)))
+    assertFalse(healthCheckExtent(ProjectedExtent(Extent(0, -10, Float.NaN, 10), LatLng)))
   }
 }
