@@ -28,7 +28,7 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
-import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtentAssert, isCrsCoveredInHealthCheck, isExtentValidInCrs, safeReproject, sortableSourceName}
+import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtentAssert, healthCheckExtentWarn, isCrsCoveredInHealthCheck, isExtentValidInCrs, safeReproject, sortableSourceName}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
@@ -1428,8 +1428,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         re.createAlignedRasterExtent(tmp)
       } else {
         val featureProjectedExtent = ProjectedExtent(feature.rasterExtent.get, feature.crs.get)
-        healthCheckExtentAssert(featureProjectedExtent, s"Feature extent should be valid: ")
-        healthCheckExtentAssert(targetExtent, s"Target extent should be valid: ")
+        healthCheckExtentWarn(featureProjectedExtent, s"Feature/Item extent should be valid: ")
+        healthCheckExtentWarn(targetExtent, s"Target extent should be valid: ")
 
         /**
          * Several edge cases to cover:
@@ -1449,7 +1449,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
         val featureExtentInCommonCRS = safeReproject(featureProjectedExtent, commonCrs)
         val targetExtentInCommonCRS = safeReproject(targetExtent, commonCrs)
-        healthCheckExtentAssert(featureExtentInCommonCRS, s"Item extent (${feature.id}) should be valid in common CRS: ")
+        healthCheckExtentWarn(featureExtentInCommonCRS, s"Item extent (${feature.id}) should be valid in common CRS: ")
 
         val intersection = featureExtentInCommonCRS.extent.intersection(targetExtentInCommonCRS.extent)
         val intersectionTargetCrs = intersection match {
@@ -1468,7 +1468,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           tmp.xmin - theResolution.width * pixelBuffer._1, tmp.ymin - theResolution.height * pixelBuffer._2,
           tmp.xmax + theResolution.width * pixelBuffer._1, tmp.ymax + theResolution.height * pixelBuffer._2,
         )
-        healthCheckExtentAssert(ProjectedExtent(tmp, targetExtent.crs), s"Item extent (${feature.id}) should be valid in target CRS: ")
+        healthCheckExtentWarn(ProjectedExtent(tmp, targetExtent.crs), s"Item extent (${feature.id}) should be valid in target CRS: ")
         re.createAlignedRasterExtent(tmp)
       }
       Some(alignedToTargetExtent.toGridType[Long])

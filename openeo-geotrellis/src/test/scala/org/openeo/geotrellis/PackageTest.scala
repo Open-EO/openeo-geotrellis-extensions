@@ -160,4 +160,10 @@ class PackageTest {
     assertFalse(healthCheckExtent(ProjectedExtent(Extent(0, -10, Float.PositiveInfinity, 10), LatLng)))
     assertFalse(healthCheckExtent(ProjectedExtent(Extent(0, -10, Float.NaN, 10), LatLng)))
   }
+
+  @Test
+  def testTolerance(): Unit = {
+    val pe = ProjectedExtent(Extent(2580000.0, 1360000.0, 7350000.0, 5445000.0), CRS.fromName("EPSG:3035"))
+    healthCheckExtentAssert(pe, "Extent should be considered valid: ")
+  }
 }
