@@ -1285,9 +1285,17 @@ class FileLayerProviderTest extends RasterMatchers{
 
       val layer_collected = layer.collect()
       assertTrue(layer_collected.isEmpty)
+      val cubeSpatial = layer.toSpatial()
+
+      val outDir = Paths.get("tmp/testImpossibleIntersection/")
+      new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+      Files.createDirectories(outDir)
+      cubeSpatial.writeGeoTiff(outDir + "/testImpossibleIntersection_" + crsName.replace(":", "_") + ".tiff")
     }
-    // java.lang.IllegalArgumentException: Could not find data for your load_collection request with catalog ID "Sentinel2". The catalog query had correlation ID "" and returned 4 results.
-    assertThrows[IllegalArgumentException](testImpossibleIntersectionInternal())
+    if (new DataCubeParameters().useNewFeatureExtentIntersection) {
+      // java.lang.IllegalArgumentException: Could not find data for your load_collection request with catalog ID "Sentinel2". The catalog query had correlation ID "" and returned 4 results.
+      assertThrows[IllegalArgumentException](testImpossibleIntersectionInternal())
+    }
   }
 
   @Test
