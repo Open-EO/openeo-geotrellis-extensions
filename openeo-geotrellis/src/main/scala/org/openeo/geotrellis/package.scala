@@ -233,6 +233,14 @@ package object geotrellis {
     }
   }
 
+  def healthCheckExtentWarn(projectedExtent: ProjectedExtent, messagePrefix: String)(implicit logger: Logger): Unit = {
+    val message = healthCheckExtentMessage(projectedExtent)
+    // Ideally this would log the current load_collection / load_stac ID that is being executed
+    if (message.isDefined) {
+      logger.warn(messagePrefix + message.get)
+    }
+  }
+
   def healthCheckExtent(projectedExtent: ProjectedExtent): Boolean = {
     healthCheckExtentMessage(projectedExtent).isEmpty
   }
@@ -278,26 +286,30 @@ package object geotrellis {
         return Some("Extent not within its CRS limits: " + projectedExtent)
       }
     } else if (projectedExtent.crs == CRS.fromName("EPSG:3035")) {
-      if ((projectedExtent.extent.xmin < 1908523.29)
-        || (projectedExtent.extent.xmax > 6901611.5)
-        || (projectedExtent.extent.ymin < 1137678.21)
-        || (projectedExtent.extent.ymax > 6872461.46)) {
+      val horizontal_buffer = 0.1
+      val vertical_buffer = 0.1
+      val projectedBoundsOriginal = Extent(1908523.29, 1137678.21, 6901611.5, 6872461.46)
+      val projectedBounds = projectedBoundsOriginal.buffer(
+        projectedBoundsOriginal.width * horizontal_buffer, projectedBoundsOriginal.height * vertical_buffer)
+      if (!projectedBounds.contains(projectedExtent.extent)) {
         return Some("Extent not within its CRS limits: " + projectedExtent)
       }
     } else if (projectedExtent.crs == CRS.fromName("EPSG:31370")) { // Lambert
-      val horizontal_tolerance = 2.0
-      val vertical_tolerance = 2.0
+      val horizontal_buffer = 2.0
+      val vertical_buffer = 2.0
       val projectedBoundsOriginal = Extent(14637.25, 20909.21, 297133.13, 246424.28)
       val projectedBounds = projectedBoundsOriginal.buffer(
-        projectedBoundsOriginal.width * horizontal_tolerance, projectedBoundsOriginal.height * vertical_tolerance)
+        projectedBoundsOriginal.width * horizontal_buffer, projectedBoundsOriginal.height * vertical_buffer)
       if (!projectedBounds.contains(projectedExtent.extent)) {
         return Some("Extent not within its CRS limits: " + projectedExtent)
       }
     } else if (projectedExtent.crs == WebMercator) { // EPSG:3857 same as EPSG:900913?
-      if ((projectedExtent.extent.xmin < -20037508.34)
-        || (projectedExtent.extent.xmax > 20037508.34)
-        || (projectedExtent.extent.ymin < -20048966.1)
-        || (projectedExtent.extent.ymax > 20048966.1)) {
+      val horizontal_tolerance = 1.1
+      val vertical_tolerance = 1.1
+      val projectedBoundsOriginal = Extent(-20037508.34, -20048966.1, 20037508.34, 20048966.1)
+      val projectedBounds = projectedBoundsOriginal.buffer(
+        projectedBoundsOriginal.width * horizontal_tolerance, projectedBoundsOriginal.height * vertical_tolerance)
+      if (!projectedBounds.contains(projectedExtent.extent)) {
         return Some("Extent not within its CRS limits: " + projectedExtent)
       }
     }
