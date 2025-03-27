@@ -1050,9 +1050,13 @@ package object geotiff {
   val GDALINFO_SUFFIX = "_gdalinfo.json"
 
   private def createGdalInfo(rasterFilePath: Path): Option[Path] = {
-    // Allow to quickly disable gdalinfo on executor if something goes wrong
+    // gdalinfo json files are used to generate stac metadata
+    // A gdalinfo file is generated just after the tiff file is written to avoid re-downloading it from S3.
+    // Some users might like to load the gdalinfo files directly, they can use attach_gdalinfo_assets=True
     val gdalinfo_on_executor = sys.env.getOrElse("GDALINFO_ON_EXECUTOR", "true").toBoolean
     if (!gdalinfo_on_executor) {
+      // Allow to quickly disable gdalinfo on executor if something goes wrong
+      // openeo-geopyspark-driver will then call gedalinfo by itself.
       return None
     }
     import scala.sys.process._
