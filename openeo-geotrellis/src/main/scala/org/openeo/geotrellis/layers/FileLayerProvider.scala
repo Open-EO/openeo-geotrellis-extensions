@@ -1420,11 +1420,14 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
          *  - if feature is in utm, target extent may be invalid in feature crs
          *    this is why we take intersection
          */
-        val targetExtentInLatLon = targetExtent.reproject(feature.crs.get)
-        val featureExtentInLatLon = feature.rasterExtent.get.reproject(feature.crs.get, LatLng)
+        val targetExtentInLatLon = targetExtent.reproject(LatLng)
+//        val featureExtentInLatLon = feature.rasterExtent.get.reproject(feature.crs.get, LatLng)
+        val featureExtentInLatLon = safeReproject(ProjectedExtent(feature.rasterExtent.get, feature.crs.get), LatLng).extent
 
         val intersection = featureExtentInLatLon.intersection(targetExtentInLatLon).map(_.buffer(1.0)).getOrElse(featureExtentInLatLon)
-        val tmp = expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), theResolution)
+        val intersectionTargetCRS = safeReproject(ProjectedExtent(intersection, LatLng), targetExtent.crs).extent
+        val intersectionBack = safeReproject(ProjectedExtent(intersection, targetExtent.crs), LatLng).extent
+        val tmp = expandToCellSize(intersectionTargetCRS, theResolution)
         re.createAlignedRasterExtent(tmp)
       } else {
         val featureProjectedExtent = ProjectedExtent(feature.rasterExtent.get, feature.crs.get)

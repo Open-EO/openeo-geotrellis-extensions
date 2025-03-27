@@ -6,12 +6,13 @@ import geotrellis.raster.{ByteCellType, ByteUserDefinedNoDataCellType, FloatUser
 import org.openeo.geotrellis.geotiff._
 
 import java.nio.file.{Files, Path}
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector.{Extent, MultiPolygon, Point, Polygon, ProjectedExtent, ReprojectGeometry}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
+import org.locationtech.proj4j.{BasicCoordinateTransform, ProjCoordinate}
 import org.openeo.geotrellis.layers.FileLayerProvider
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -165,5 +166,22 @@ class PackageTest {
   def testTolerance(): Unit = {
     val pe = ProjectedExtent(Extent(2580000.0, 1360000.0, 7350000.0, 5445000.0), CRS.fromName("EPSG:3035"))
     healthCheckExtentAssert(pe, "Extent should be considered valid: ")
+  }
+
+
+
+  @Test
+  def testAntimeridianWrap(): Unit = {
+    val e = Extent(178, 20, 180.1, 21)
+    val polygon = e.toPolygon()
+    val polygonLatLng = ProjectedPolygons(Array(MultiPolygon(polygon)), LatLng)
+    val polygonUtm = safeReprojectPolygons(polygonLatLng, CRS.fromName("EPSG:32660"))
+    val polygonBack = safeReprojectPolygons(polygonUtm, LatLng)
+//    assertTrue(projectedPolygonsEquals(polygonBack, polygonLatLng))
+
+    val polygonExtent = ProjectedExtent(e, LatLng)
+    val polygonExtentUtm = safeReproject(polygonExtent, CRS.fromName("EPSG:32660"))
+    val polygonExtentBack = safeReproject(polygonExtentUtm, LatLng)
+    print(polygonExtentBack)
   }
 }

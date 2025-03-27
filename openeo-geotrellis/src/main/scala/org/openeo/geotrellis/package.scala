@@ -344,9 +344,71 @@ package object geotrellis {
     (x + 360 * 10) % 360
   }
 
+  /**
+   * Will give actual angle, but in the LatLng extent.
+   */
+  private def to_min180_180_range(x: Double): Double = {
+    val n = (x + 360 * 10) % 360
+    if (n > 180) n - 360 else n
+  }
+
+  import _root_.geotrellis.proj4._
+
+  object SafeTransform {
+    def apply(src: CRS, dest: CRS): (Double, Double) => (Double, Double) =
+      src.alternateTransform(dest) match {
+        case Some(f) => f
+        case None => SafeProj4Transform(src, dest)
+      }
+  }
+
+  object SafeProj4Transform {
+    def apply(src: CRS, dest: CRS): Transform =
+      if (src == dest) {
+        (x: Double, y: Double) => (x, y)
+      } else {
+        val t = new BasicCoordinateTransform(src.proj4jCrs, dest.proj4jCrs)
+
+        { (x: Double, y: Double) =>
+          val xNew = if (src == LatLng) to_min180_180_range(x) else x
+          val srcP = new ProjCoordinate(xNew, y)
+          val destP = new ProjCoordinate
+          t.transform(srcP, destP)
+          (destP.x, destP.y)
+        }
+      }
+  }
+
+  def safeReprojectPolygons(inputProjectedExtent: ProjectedPolygons, targetCrs: CRS): ProjectedPolygons = {
+    if (inputProjectedExtent.crs == targetCrs) return inputProjectedExtent
+    lazy val transform = SafeTransform(inputProjectedExtent.crs, targetCrs)
+    ProjectedPolygons(inputProjectedExtent.polygons.map(_.reproject(transform)), targetCrs)
+  }
+
+
+
+  //  // Check if it is safe to reproject and back:
+  //  val polygon = new ProjectedPolygons(Array(extent.extent.toPolygon()), extent.crs)
+  //  val polygonProjected = safeReprojectPolygons(polygon, targetCrs)
+  //  val polygonProjectedBack = safeReprojectPolygons(polygonProjected, extent.crs)
+  //  projectedPolygonsEquals(polygonProjectedBack, polygon)
+
+
+  def projectedPolygonsEquals(p1: ProjectedPolygons, p2: ProjectedPolygons): Boolean = {
+    if (p1.crs != p2.crs) return false
+    if (p1.polygons.length != p2.polygons.length) return false
+    p1.polygons.zip(p2.polygons)
+      .map { case (a, b) => a.equalsExact(b, 0.001) }
+      .forall(identity)
+  }
+
   def safeReproject(inputProjectedExtent: ProjectedExtent, targetCrs: CRS): ProjectedExtent = {
     if (inputProjectedExtent.crs == targetCrs) return inputProjectedExtent
-    var reprojected = inputProjectedExtent.extent.reproject(inputProjectedExtent.crs, targetCrs)
+//     val reprojectedPolygon = inputProjectedExtent.extent.reprojectAsPolygon(inputProjectedExtent.crs, targetCrs, 0.01)
+    val polygons = ProjectedPolygons(Array(inputProjectedExtent.extent.toPolygon()), "EPSG:" + inputProjectedExtent.crs.epsgCode.get)
+    val reprojectedPolygon = safeReprojectPolygons(polygons, targetCrs)
+    val envelope = reprojectedPolygon.polygons(0).getEnvelopeInternal
+    var reprojected = Extent(envelope.getMinX, envelope.getMinY, envelope.getMaxX, envelope.getMaxY)
     // TODO: Needed for webmercator too?
     if (targetCrs == LatLng && reprojected.width > 180 && reprojected.width < 360) {
       // Fix width wrap when projecting over anti meridian in LatLon.

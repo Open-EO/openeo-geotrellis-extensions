@@ -1217,9 +1217,9 @@ class FileLayerProviderTest extends RasterMatchers{
   @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:4326", "EPSG:3857"))
   def testMissingS2DateLine(crsName: String): Unit = {
     // typically requires PROJ_LIB to be set
-    if (crsName == "EPSG:32660" && !new DataCubeParameters().useNewFeatureExtentIntersection) {
-      return
-    }
+//    if (crsName == "EPSG:32660" && !new DataCubeParameters().useNewFeatureExtentIntersection) {
+//      return
+//    }
     val outDir = Paths.get("tmp/FileLayerProviderTest_" + crsName.replace(":", "_") + "/")
     new Directory(outDir.toFile).deepFiles.foreach(_.delete())
     Files.createDirectories(outDir)
