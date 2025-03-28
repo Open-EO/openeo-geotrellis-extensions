@@ -1,27 +1,22 @@
 package org.openeo.geotrellis.zarr
 
-import better.files.File.apply
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
-import geotrellis.raster.io.geotiff.GeoTiff
-import geotrellis.raster.{ByteArrayTile, ColorMaps, MultibandTile, Raster, TileLayout}
+import geotrellis.raster.{ByteArrayTile, ColorMaps, MultibandTile, TileLayout}
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.spark._
 import geotrellis.vector.Extent
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.Assert.{assertArrayEquals, assertEquals, assertTrue}
 import org.junit.jupiter.api.io.TempDir
 import org.junit.rules.TemporaryFolder
 import org.junit.{AfterClass, Rule}
 import org.junit.jupiter.api.{BeforeAll, Test}
-import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, zarr}
-import org.openeo.geotrellis.geotiff.{GTiffOptions, WriteRDDToGeotiffTest, saveRDD, saveRDDTemporal}
+import org.openeo.geotrellis.{LayerFixtures,zarr}
+import org.openeo.geotrellis.geotiff.{GTiffOptions, WriteRDDToGeotiffTest}
 import org.slf4j.{Logger, LoggerFactory}
 
-import java.nio.file.{Files, Path}
+import java.nio.file.Path
 import java.time.ZonedDateTime
-import java.util
 import scala.annotation.meta.getter
 
 object ZarrWriterTest{
@@ -30,7 +25,7 @@ object ZarrWriterTest{
   var sc: SparkContext = _
 
   @BeforeAll
-  def setupSpark() = {
+  def setupSpark(): Unit = {
     sc = {
       val conf = new SparkConf().setMaster("local[8]").setAppName(getClass.getSimpleName)
         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
