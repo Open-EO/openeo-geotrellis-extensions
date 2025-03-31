@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.zarr
 
+import better.files.File.apply
 import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{ByteArrayTile, ColorMaps, MultibandTile, TileLayout}
@@ -11,7 +12,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.rules.TemporaryFolder
 import org.junit.{AfterClass, Rule}
 import org.junit.jupiter.api.{BeforeAll, Test}
-import org.openeo.geotrellis.{LayerFixtures,zarr}
+import org.openeo.geotrellis.{LayerFixtures, zarr}
 import org.openeo.geotrellis.geotiff.{GTiffOptions, WriteRDDToGeotiffTest}
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -64,8 +65,7 @@ class ZarrWriterTest {
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(ZarrWriterTest.sc,MultibandTile(imageTile),TileLayout(layoutCols,layoutRows,256,256),LatLng)
 
-//    val filename = (tempDir / "out.zarr").toString()
-    val filename = "/home/elien/IdeaProjects/openeo-geotrellis-extensions/openeo-geotrellis/src/main/scala/org/openeo/geotrellis/zarr/outSingle.zarr"
+    val filename = (tempDir / "out.zarr").toString()
     zarr.ZarrWriter.saveZarr(tileLayerRDD,filename,1)
   }
 
@@ -82,13 +82,12 @@ class ZarrWriterTest {
     val thirdBand = imageTile.map{x => if(x >= 5 ) 50 else 200 }
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(ZarrWriterTest.sc,MultibandTile(imageTile,secondBand,thirdBand),TileLayout(layoutCols,layoutRows,256,256),LatLng)
-//    val filename = (tempDir / "outMultiBand.zarr").toString()
-    val filename = "/home/elien/IdeaProjects/openeo-geotrellis-extensions/openeo-geotrellis/src/main/scala/org/openeo/geotrellis/zarr/outMulti.zarr"
+    val filename = (tempDir / "outMultiBand.zarr").toString()
     zarr.ZarrWriter.saveZarr(tileLayerRDD.withContext{_.repartition(layoutCols*layoutRows)},filename,3)
   }
 
   @Test
-  def testWriteSpaceTime():Unit ={
+  def testWriteSpaceTime(@TempDir tempDir:Path):Unit ={
     val date1 = ZonedDateTime.parse("1990-01-02T00:00:00Z")
     val extentTAP3857 = Extent(564389 - 10, 6659413 - 10, 565503 + 10, 6660301 + 10)
 
@@ -101,8 +100,7 @@ class ZarrWriterTest {
         crs = CRS.fromName("EPSG:3857"),
         dates = Some(dates)
       )
-      //    val filename = (tempDir / "outMultiBand.zarr").toString()
-      val filename = "/home/elien/IdeaProjects/openeo-geotrellis-extensions/openeo-geotrellis/src/main/scala/org/openeo/geotrellis/zarr/outMultiTemp.zarr"
+      val filename = (tempDir / "outMultiBand.zarr").toString()
       zarr.ZarrWriter.saveZarr(dataCubeContextRDD,filename,1)
     }
   }
