@@ -1158,6 +1158,7 @@ package object geotiff {
         "-co", "COMPRESS=DEFLATE",
         "-co", s"BLOCKSIZE=$blockSize", // 512 by default so apply original
         "-co", "OVERVIEWS=FORCE_USE_EXISTING",
+        "-co", "BIGTIFF=YES",
         geotiffPath.toString,
         tempFile.toString,
       )
