@@ -1170,6 +1170,7 @@ package object geotiff {
         "-co", s"BLOCKYSIZE=$blockSize",
         "-co", "INTERLEAVE=BAND",
         "-co", "TILED=YES",
+        "-co", "COPY_SRC_OVERVIEWS=YES",
         "-co", "BIGTIFF=YES",
         geotiffPath.toString,
         tempFile.toString,
