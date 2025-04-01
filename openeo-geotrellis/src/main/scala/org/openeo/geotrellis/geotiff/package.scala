@@ -1002,16 +1002,26 @@ package object geotiff {
     geoTiff.write(tempFile.toString, optimizedOrder = true)
     val fileExists = Files.exists(tempFile)
     var gdalInfoPathName:Option[Path] = None
+
     if (fileExists) {
-      gtiffOptions.foreach(options => embedGdalMetadata(tempFile, options.tagsAsGdalMetadataXml))
+      gtiffOptions.foreach { options =>
+        val lowerCaseTagNames = for {
+          bandTags <- options.tags.bandTags
+          (key, _) <- bandTags
+        } yield key.toLowerCase
 
-      val (tileWidth, tileHeight) = (
-        geoTiff.imageData.segmentLayout.tileLayout.tileCols,
-        geoTiff.imageData.segmentLayout.tileLayout.tileRows
-      )
+        if (lowerCaseTagNames.contains("scale") || lowerCaseTagNames.contains("offset")) {
+          embedGdalMetadata(tempFile, options.tagsAsGdalMetadataXml)
 
-      if (tileWidth != tileHeight) throw new AssertionError(s"tile width $tileWidth != tile height $tileHeight")
-      convertToCog(tempFile, blockSize = tileWidth)
+          val (tileWidth, tileHeight) = (
+            geoTiff.imageData.segmentLayout.tileLayout.tileCols,
+            geoTiff.imageData.segmentLayout.tileLayout.tileRows
+          )
+
+          if (tileWidth != tileHeight) throw new AssertionError(s"tile width $tileWidth != tile height $tileHeight")
+          convertToCog(tempFile, geoTiff.bandCount, blockSize = tileWidth)
+        }
+      }
 
       gdalInfoPathName = createGdalInfo(tempFile)
     } else {
@@ -1142,7 +1152,7 @@ package object geotiff {
     } finally Files.delete(tempFile)
   }
 
-  def convertToCog(geotiffPath: Path, blockSize: Int): Unit = {
+  def convertToCog(geotiffPath: Path, bandCount: Int, blockSize: Int): Unit = {
     import scala.sys.process._
 
     val outputBuffer = new StringBuilder
@@ -1151,8 +1161,21 @@ package object geotiff {
     // gdal_translate requires input and output files to be different
     val tempFile = Files.createTempFile("gdal_translate_to_COG_", ".tif.tmp")
     try {
-      // https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Byoc.html#gdal-example-command
-      val args = Seq(
+      // TODO: set ZLEVEL?
+      val args = if (bandCount > 3) Seq(
+        "gdal_translate",
+        "-of", "GTiff",
+        "-co", "COMPRESS=DEFLATE",
+        "-co", s"BLOCKXSIZE=$blockSize",
+        "-co", s"BLOCKYSIZE=$blockSize",
+        "-co", "INTERLEAVE=BAND",
+        "-co", "TILED=YES",
+        "-co", "COPY_SRC_OVERVIEWS=YES",
+        "-co", "BIGTIFF=YES",
+        geotiffPath.toString,
+        tempFile.toString,
+      ) else Seq(
+        // https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Byoc.html#gdal-example-command
         "gdal_translate",
         "-of", "COG",
         "-co", "COMPRESS=DEFLATE",
