@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.geotiff
 
 import geotrellis.proj4.LatLng
-import geotrellis.raster.io.geotiff.GeoTiff
+import geotrellis.raster.io.geotiff.{GeoTiff, Tiled}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue}
 import org.junit.jupiter.api.{Disabled, Test}
 import org.junit.jupiter.api.io.TempDir
@@ -51,8 +51,7 @@ class PackageTest {
     val tiffBefore = GeoTiff.readSingleband(geotiffCopy.toString)
 
     assertEquals(LatLng, tiffBefore.crs)
-    assertEquals(512, tiffBefore.imageData.segmentLayout.tileLayout.tileCols)
-    assertEquals(512, tiffBefore.imageData.segmentLayout.tileLayout.tileRows)
+    assertEquals(Tiled(512, 512), tiffBefore.options.storageMethod)
 
     convertToCog(geotiffCopy, tiffBefore.bandCount, blockSize = 256)
     assertEquals(originalFilePermissions, Files.getPosixFilePermissions(geotiffCopy))
@@ -60,9 +59,8 @@ class PackageTest {
     val tiffAfter = GeoTiff.readSingleband(geotiffCopy.toString)
 
     assertEquals(LatLng, tiffAfter.crs)
-    assertEquals(256, tiffAfter.imageData.segmentLayout.tileLayout.tileCols)
-    assertEquals(256, tiffAfter.imageData.segmentLayout.tileLayout.tileRows)
-
+    assertEquals(Tiled(256, 256), tiffAfter.options.storageMethod)
+    assertEquals(tiffBefore.getOverviewsCount, tiffAfter.getOverviewsCount)
     // additional COG checks here
   }
 }

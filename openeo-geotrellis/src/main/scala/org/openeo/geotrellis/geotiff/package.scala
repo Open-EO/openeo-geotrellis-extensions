@@ -1161,9 +1161,20 @@ package object geotiff {
     // gdal_translate requires input and output files to be different
     val tempFile = Files.createTempFile("gdal_translate_to_COG_", ".tif.tmp")
     try {
-      // FIXME: if bandCount > 3, instead do: gdal_translate -of GTiff -co INTERLEAVE=BAND ...
-      // https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Byoc.html#gdal-example-command
-      val args = Seq(
+      // TODO: set ZLEVEL?
+      val args = if (bandCount > 3) Seq(
+        "gdal_translate",
+        "-of", "GTiff",
+        "-co", "COMPRESS=DEFLATE",
+        "-co", s"BLOCKXSIZE=$blockSize",
+        "-co", s"BLOCKYSIZE=$blockSize",
+        "-co", "INTERLEAVE=BAND",
+        "-co", "TILED=YES",
+        "-co", "BIGTIFF=YES",
+        geotiffPath.toString,
+        tempFile.toString,
+      ) else Seq(
+        // https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Byoc.html#gdal-example-command
         "gdal_translate",
         "-of", "COG",
         "-co", "COMPRESS=DEFLATE",
