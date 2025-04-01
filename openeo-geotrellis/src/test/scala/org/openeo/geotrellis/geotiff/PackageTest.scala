@@ -54,7 +54,7 @@ class PackageTest {
     assertEquals(512, tiffBefore.imageData.segmentLayout.tileLayout.tileCols)
     assertEquals(512, tiffBefore.imageData.segmentLayout.tileLayout.tileRows)
 
-    convertToCog(geotiffCopy, blockSize = 256)
+    convertToCog(geotiffCopy, tiffBefore.bandCount, blockSize = 256)
     assertEquals(originalFilePermissions, Files.getPosixFilePermissions(geotiffCopy))
 
     val tiffAfter = GeoTiff.readSingleband(geotiffCopy.toString)
