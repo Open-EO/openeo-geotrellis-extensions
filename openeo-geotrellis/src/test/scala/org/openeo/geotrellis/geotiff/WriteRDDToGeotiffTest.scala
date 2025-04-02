@@ -8,7 +8,7 @@ import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.render.ColorMap.Options
 import geotrellis.raster.render.DoubleColorMap
-import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, CellSize, ColorMaps, MultibandTile, Raster, Tile, TileLayout, isData}
+import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, CellSize, ColorMaps, MultibandTile, Raster, Tile, TileLayout, UByteArrayTile, isData}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector._
@@ -82,7 +82,7 @@ class WriteRDDToGeotiffTest {
     val layoutRows = 4
 
     val intImage = LayerFixtures.createTextImage( layoutCols*256, layoutRows*256)
-    val imageTile = ByteArrayTile(intImage,layoutCols*256, layoutRows*256)
+    val imageTile = UByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(WriteRDDToGeotiffTest.sc,MultibandTile(imageTile),TileLayout(layoutCols,layoutRows,256,256),LatLng)
     val filename = (tempDir / "out.tif").toString()
@@ -90,7 +90,7 @@ class WriteRDDToGeotiffTest {
     saveRDD(tileLayerRDD.withContext{_.repartition(layoutCols*layoutRows)},1,filename,formatOptions = allOverviewOptions)
 
     val tiff = GeoTiff.readSingleband(filename)
-    assertTrue(tiff.options.colorMap.isDefined)
+    assertTrue(s"no color map in $filename", tiff.options.colorMap.isDefined)
     assertEquals("Band Name",tiff.tags.bandTags(0).get("BAND").get)
     assertEquals(layoutCols * layoutRows,tiff.imageData.segmentBytes.length)
     assertEquals(8*256,tiff.imageData.segmentLayout.totalCols)

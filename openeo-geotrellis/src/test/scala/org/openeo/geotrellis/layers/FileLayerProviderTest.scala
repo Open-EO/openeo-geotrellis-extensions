@@ -1,6 +1,5 @@
 package org.openeo.geotrellis.layers
 
-import akka.http.scaladsl.server.PathMatcher0
 import cats.data.NonEmptyList
 import geotrellis.layer.{FloatingLayoutScheme, LayoutTileSource, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
@@ -50,6 +49,7 @@ import java.util.Formatter
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.io.Source
+import scala.reflect.io.Directory
 
 object FileLayerProviderTest {
   private var _sc: Option[SparkContext] = None
@@ -191,15 +191,15 @@ class FileLayerProviderTest extends RasterMatchers{
     val metadata: TileLayerMetadata[SpaceTimeKey] = result._2
     // Create the sparse Partitioner.
     val sparsePartitioner: SpacePartitioner[SpaceTimeKey] = DatacubeSupport.createPartitioner(Some(params),rs.keys,metadata).get
-    assert(sparsePartitioner.index.getClass == classOf[SparseSpaceTimePartitioner])
+    assertEquals(classOf[SparseSpaceTimePartitioner], sparsePartitioner.index.getClass)
     val sparsePartitionerIndex = sparsePartitioner.index.asInstanceOf[SparseSpaceTimePartitioner]
 
     // Create the default Space Partitioner.
 
     val defaultPartitioner: SpacePartitioner[SpaceTimeKey] = SpacePartitioner[SpaceTimeKey](metadata.bounds)
-    assert(defaultPartitioner.index == SpaceTimeByMonthPartitioner)
+    assertEquals(SpaceTimeByMonthPartitioner, defaultPartitioner.index)
 
-    assert(sparsePartitioner.numPartitions <= defaultPartitioner.numPartitions)
+    assertTrue(sparsePartitioner.numPartitions <= defaultPartitioner.numPartitions)
 
     val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map {
       _.reproject(polygons_crs, metadata.crs)
@@ -212,7 +212,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
     // Ensure that the sparsePartitioner only creates partitions for the required spacetime regions.
     val requiredRegions = requiredSpacetimeKeys.map(k => sparsePartitionerIndex.toIndex(k))
-    assert(requiredRegions.distinct.collect().sorted sameElements sparsePartitioner.regions.sorted)
+    assertTrue(requiredRegions.distinct.collect().sorted sameElements sparsePartitioner.regions.sorted)
 
     // Even though both RDDs have a different number of partitions, the keys for both RDDs are the same.
     // This means that the default partitioner has many empty partitions that have no source.
@@ -222,7 +222,7 @@ class FileLayerProviderTest extends RasterMatchers{
     // Keys corresponding with NoDataTiles are removed from the final RDD.
     // Which means those few partitions will still be empty.
     val partitionKeys = requiredSpacetimeKeys.collect().sorted.toSet
-    assert(sparseKeys.toSet.subsetOf(partitionKeys))
+    assertTrue(sparseKeys.toSet.subsetOf(partitionKeys))
 
     // Ensure that the regions in sparsePartitioner are a subset of the default Partitioner.
     sparsePartitioner.regions.toSet.subsetOf(defaultPartitioner.regions.toSet)
@@ -262,7 +262,7 @@ class FileLayerProviderTest extends RasterMatchers{
     val sparseMergedLayer = sparseBaseLayer.merge(sparseBaseLayer2)
     val sparseMergedLayerKeys = sparseMergedLayer.keys.collect().toSet
 
-    assert(defaultMergedLayerKeys.nonEmpty)
+    assertTrue(defaultMergedLayerKeys.nonEmpty)
     assertEquals(defaultMergedLayerKeys, sparseMergedLayerKeys)
   }
 
@@ -290,7 +290,7 @@ class FileLayerProviderTest extends RasterMatchers{
     val defaultMaskedLayerKeys = defaultMaskedLayer.keys.collect().toSet
     val sparseMaskedLayerKeys = sparseMaskedLayer.keys.collect().toSet
 
-    assert(defaultMaskedLayerKeys.nonEmpty)
+    assertTrue(defaultMaskedLayerKeys.nonEmpty)
     assertEquals(defaultMaskedLayerKeys, sparseMaskedLayerKeys)
   }
 
@@ -1159,7 +1159,7 @@ class FileLayerProviderTest extends RasterMatchers{
     cubeSpatial.writeGeoTiff(f"$outDir/testPixelValueOffsetNeededCorner.tiff")
     val arr = cubeSpatial.collect().array
     assertTrue(isNoData(arr(1)._2.toArrayTile().band(0).get(162, 250)))
-    assertEquals(172, arr(0)._2.toArrayTile().band(0).get(5, 5), 1)
+    assertEquals(187, arr(0)._2.toArrayTile().band(0).get(160, 5), 1)
   }
 
   @Test
@@ -1174,7 +1174,7 @@ class FileLayerProviderTest extends RasterMatchers{
     cubeSpatial.writeGeoTiff(f"$outDir/testPixelValueOffsetNeededDark.tiff")
     val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
 
-    assertEquals(888, band.get(0, 0), 1)
+    assertEquals(682, band.get(20, 140), 1)
     assertEquals(-582, band.get(133, 151), 1)
   }
 
@@ -1211,6 +1211,100 @@ class FileLayerProviderTest extends RasterMatchers{
     cubeSpatial.writeGeoTiff(outDir + "/testMissingS2.tiff")
     val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
     assertEquals(8, band.get(200, 200))
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:4326", "EPSG:3857"))
+  def testMissingS2DateLine(crsName: String): Unit = {
+    // typically requires PROJ_LIB to be set
+    if (crsName == "EPSG:32660" && !new DataCubeParameters().useNewFeatureExtentIntersection) {
+      return
+    }
+    val outDir = Paths.get("tmp/FileLayerProviderTest_" + crsName.replace(":", "_") + "/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    Files.createDirectories(outDir)
+
+    val extent = Extent(178.1, 70.3, 178.9, 70.9)
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, LatLng.proj4jCrs.toString)
+    val specificCrs = CRS.fromName(crsName)
+    val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, specificCrs)
+    val poly2 = ProjectedPolygons(Array(reprojected), specificCrs)
+
+    if (crsName == "EPSG:4326") {
+      val poly2GeoJson = poly2.polygons.head.toGeoJson
+      // geojson only officially suports latLon
+      Files.writeString(Paths.get(outDir + "/polygons.geojson"), poly2GeoJson)
+    }
+
+    val layer = LayerFixtures.sentinel2Cube(
+      LocalDate.of(2024, 4, 2),
+      poly2,
+      "/org/openeo/geotrellis/testMissingS2DateLine.json",
+      new DataCubeParameters,
+      java.util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data"),
+    )
+
+    val layer_collected = layer.collect()
+    assertTrue(layer_collected.nonEmpty)
+    var found10 = false // SCL value for 'snow or ice'
+    for {
+      (_, multiBandTile) <- layer_collected
+      tile <- multiBandTile.bands
+    } {
+      assertTrue(!tile.isNoDataTile)
+      val values = tile.toArrayDouble()
+      if (values.contains(10.0)) {
+        found10 = true
+      }
+    }
+    assertTrue(found10)
+    val cubeSpatial = layer.toSpatial()
+    cubeSpatial.writeGeoTiff(outDir + "/testMissingS2DateLine_" + crsName.replace(":", "_") + ".tiff")
+  }
+
+  /**
+   * Test a case where the catalog would return Features that are outside the valid extent of the requested CRS
+   */
+  @Test
+  def testImpossibleIntersection(): Unit = {
+    val crsName = "EPSG:32632"
+    val extent = Extent(3.3, 50.6, 7.6, 51.6) // Belgium, which is invalid with the available features
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, LatLng.proj4jCrs.toString)
+    val utmCrs = CRS.fromName(crsName)
+    val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, utmCrs)
+    val poly2 = ProjectedPolygons(Array(reprojected), utmCrs)
+
+    def testImpossibleIntersectionInternal(): Unit = {
+      val layer = LayerFixtures.sentinel2Cube(
+        LocalDate.of(2024, 4, 2),
+        poly2,
+        "/org/openeo/geotrellis/testMissingS2DateLine.json",
+        new DataCubeParameters,
+        java.util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data"),
+      )
+
+      val layer_collected = layer.collect()
+      assertTrue(layer_collected.isEmpty)
+      val cubeSpatial = layer.toSpatial()
+
+      val outDir = Paths.get("tmp/testImpossibleIntersection/")
+      new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+      Files.createDirectories(outDir)
+      cubeSpatial.writeGeoTiff(outDir + "/testImpossibleIntersection_" + crsName.replace(":", "_") + ".tiff")
+    }
+    if (new DataCubeParameters().useNewFeatureExtentIntersection) {
+      // java.lang.IllegalArgumentException: Could not find data for your load_collection request with catalog ID "Sentinel2". The catalog query had correlation ID "" and returned 4 results.
+      assertThrows[IllegalArgumentException](testImpossibleIntersectionInternal())
+    }
+  }
+
+  @Test
+  def testMissingS2DateLineOutside(): Unit = {
+    if (!new DataCubeParameters().useNewFeatureExtentIntersection) {
+      return
+    }
+    // Target extent should be valid: Extent not within its CRS limits: ProjectedExtent(Extent(649630.0, 1.212245E7, 684180.0, 1.219141E7),EPSG:32631)
+    assertThrows[IllegalArgumentException](testMissingS2DateLine("EPSG:32631"))
   }
 
   private def keysForLargeArea(useBBox:Boolean=false) = {

@@ -1,8 +1,12 @@
 package org.openeo
 
+import _root_.geotrellis.proj4.{CRS, LatLng, WebMercator}
 import _root_.geotrellis.raster._
-import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent, ExecutionScheduledEvent}
+import _root_.geotrellis.vector._
+import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
 import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy => FailsafeRetryPolicy}
+import org.apache.spark.SparkContext
+import org.locationtech.proj4j.{BasicCoordinateTransform, ProjCoordinate}
 import org.slf4j.Logger
 import scalaj.http.{HttpResponse, HttpStatusException}
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
@@ -14,6 +18,7 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
 import software.amazon.awssdk.services.s3.{S3Client, S3Configuration}
 
+import java.lang
 import java.net.{SocketException, SocketTimeoutException, URI}
 import java.nio.file.{Path, Paths}
 import java.time.temporal.ChronoUnit
@@ -217,5 +222,175 @@ package object geotrellis {
       .get(() => {
         httpResponseCallback
       })
+  }
+
+
+  def healthCheckExtentAssert(projectedExtent: ProjectedExtent, messagePrefix: String): Unit = {
+    val message = healthCheckExtentMessage(projectedExtent)
+    // Ideally this would log the current load_collection / load_stac ID that is being executed
+    if (message.isDefined) {
+      throw new IllegalArgumentException(messagePrefix + message.get)
+    }
+  }
+
+  def healthCheckExtentWarn(projectedExtent: ProjectedExtent, messagePrefix: String)(implicit logger: Logger): Unit = {
+    val message = healthCheckExtentMessage(projectedExtent)
+    // Ideally this would log the current load_collection / load_stac ID that is being executed
+    if (message.isDefined) {
+      logger.warn(messagePrefix + message.get)
+    }
+  }
+
+  def healthCheckExtent(projectedExtent: ProjectedExtent): Boolean = {
+    healthCheckExtentMessage(projectedExtent).isEmpty
+  }
+
+  def isCrsCoveredInHealthCheck(crs: CRS): Boolean = {
+    if (crs.proj4jCrs.getProjection.getName == "utm") return true
+    Seq(LatLng, CRS.fromName("EPSG:3035"), CRS.fromName("EPSG:31370"), WebMercator).contains(crs)
+  }
+
+  /**
+   * Python equivalent: health_check_extent
+   */
+  private def healthCheckExtentMessage(projectedExtent: ProjectedExtent): Option[String] = {
+    // TODO: Find way to use general library https://github.com/locationtech/proj4j/issues/113
+    // A quick workaround might be to use pyproj trough Jep
+    // positive width and height is already enforced in Extent.
+    if (lang.Double.isNaN(projectedExtent.extent.xmin) || lang.Double.isNaN(projectedExtent.extent.xmax) ||
+      lang.Double.isNaN(projectedExtent.extent.ymin) || lang.Double.isNaN(projectedExtent.extent.ymax)) {
+      return Some("Extent contains NaN values: " + projectedExtent)
+    }
+    if (lang.Double.isInfinite(projectedExtent.extent.xmin) || lang.Double.isInfinite(projectedExtent.extent.xmax) ||
+      lang.Double.isInfinite(projectedExtent.extent.ymin) || lang.Double.isInfinite(projectedExtent.extent.ymax)) {
+      return Some("Extent contains infinite values: " + projectedExtent)
+    }
+    val polygonIsUTM = projectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
+    if (polygonIsUTM) {
+      val horizontal_tolerance = 4.0
+
+      // This is an extent that has the highest sensible values for northern and/or southern hemisphere UTM zones
+      val utmProjectedBoundsOriginal = Extent(166021.44, 0000000.00, 833978.56, 10000000)
+      val utmProjectedBounds = utmProjectedBoundsOriginal.buffer(
+        utmProjectedBoundsOriginal.width * horizontal_tolerance, 0)
+      if (!utmProjectedBounds.contains(projectedExtent.extent)) {
+        return Some("Extent not within its CRS limits: " + projectedExtent)
+      }
+    } else if (projectedExtent.crs == LatLng) { // EPSG:4326
+      val horizontal_tolerance = 1.1
+      val vertical_tolerance = 1.1
+      if ((projectedExtent.extent.xmin < -180 * horizontal_tolerance)
+        || (projectedExtent.extent.xmax > +360 * horizontal_tolerance) // Allow 0-360 range too
+        || (projectedExtent.extent.ymin < -90 * vertical_tolerance)
+        || (projectedExtent.extent.ymax > +90 * vertical_tolerance)) {
+        return Some("Extent not within its CRS limits: " + projectedExtent)
+      }
+    } else if (projectedExtent.crs == CRS.fromName("EPSG:3035")) {
+      val horizontal_buffer = 0.1
+      val vertical_buffer = 0.1
+      val projectedBoundsOriginal = Extent(1908523.29, 1137678.21, 6901611.5, 6872461.46)
+      val projectedBounds = projectedBoundsOriginal.buffer(
+        projectedBoundsOriginal.width * horizontal_buffer, projectedBoundsOriginal.height * vertical_buffer)
+      if (!projectedBounds.contains(projectedExtent.extent)) {
+        return Some("Extent not within its CRS limits: " + projectedExtent)
+      }
+    } else if (projectedExtent.crs == CRS.fromName("EPSG:31370")) { // Lambert
+      val horizontal_buffer = 2.0
+      val vertical_buffer = 2.0
+      val projectedBoundsOriginal = Extent(14637.25, 20909.21, 297133.13, 246424.28)
+      val projectedBounds = projectedBoundsOriginal.buffer(
+        projectedBoundsOriginal.width * horizontal_buffer, projectedBoundsOriginal.height * vertical_buffer)
+      if (!projectedBounds.contains(projectedExtent.extent)) {
+        return Some("Extent not within its CRS limits: " + projectedExtent)
+      }
+    } else if (projectedExtent.crs == WebMercator) { // EPSG:3857 same as EPSG:900913?
+      val horizontal_tolerance = 1.1
+      val vertical_tolerance = 1.1
+      val projectedBoundsOriginal = Extent(-20037508.34, -20048966.1, 20037508.34, 20048966.1)
+      val projectedBounds = projectedBoundsOriginal.buffer(
+        projectedBoundsOriginal.width * horizontal_tolerance, projectedBoundsOriginal.height * vertical_tolerance)
+      if (!projectedBounds.contains(projectedExtent.extent)) {
+        return Some("Extent not within its CRS limits: " + projectedExtent)
+      }
+    }
+    None
+  }
+
+  def isExtentValidInCrs(extent: ProjectedExtent, targetCrs: CRS): Boolean = {
+    if (extent.crs == targetCrs) return true
+    if (targetCrs == CRS.fromEpsgCode(4326)) {
+      // LatLon covers the whole world, so it's always valid
+      // Function would work fine without this check too.
+      return true
+    }
+    try {
+      // Instead of reprojecting and back to check the validity, is would be
+      // better to project the extent to LatLng and see if it fits in the CRS.area_of_use extent.
+      // A valid extent in UTM EPSG:32660 might be invalid in LatLng tough, because it crosses the 180deg border
+      val reprojected = safeReproject(extent, targetCrs)
+      if (!healthCheckExtent(reprojected)) return false
+      val reprojectedBack = safeReproject(reprojected, extent.crs)
+      if (!healthCheckExtent(reprojectedBack)) return false
+      reprojectedBack.extent.intersects(extent.extent) // Easy check for unknown CRSes
+    } catch {
+      case _: Throwable => false
+    }
+  }
+
+  /**
+   * Will give actual angle, but as positive value.
+   */
+  private def to_0_360_range(x: Double): Double = {
+    (x + 360 * 10) % 360
+  }
+
+  def safeReproject(inputProjectedExtent: ProjectedExtent, targetCrs: CRS): ProjectedExtent = {
+    if (inputProjectedExtent.crs == targetCrs) return inputProjectedExtent
+    var reprojected = inputProjectedExtent.extent.reproject(inputProjectedExtent.crs, targetCrs)
+    // TODO: Needed for webmercator too?
+    if (targetCrs == LatLng && reprojected.width > 180 && reprojected.width < 360) {
+      // Fix width wrap when projecting over anti meridian in LatLon.
+      // Reprojecting an extent could make the left and the right side swap differently over the antimeridian.
+      // A single point will always work, so consider that as the source of truth
+      // When we experience a problem because the extent does not fit in [-180, 180] range, convert it to the [0-360] range.
+      val centerReprojected = inputProjectedExtent.extent.center.reproject(inputProjectedExtent.crs, targetCrs)
+      val reprojectedCenter = reprojected.center
+      if (Math.abs(centerReprojected.x - reprojectedCenter.x) > 10) {
+        val swapped = Extent(to_0_360_range(reprojected.xmax), reprojected.ymin, to_0_360_range(reprojected.xmin), reprojected.ymax)
+        val swappedCenter = swapped.center
+        if (Math.abs(centerReprojected.x - swappedCenter.x) < 10) {
+          reprojected = swapped
+        }
+      }
+    }
+    ProjectedExtent(reprojected, targetCrs)
+  }
+
+  /**
+   * DANGER. Might crash system if no memory limit is specified.
+   */
+  def trigger_JVM_OOM(): Unit = {
+    val oneGBinBytes = 1024 * 1024 * 1024
+    val arr = (0 until 200).map(_ => {
+      val memoryBlob = new Array[Int](oneGBinBytes) // 4Gb
+      // Optionally, fill the array with some data to ensure it's actually allocated
+      // This step is not strictly necessary for allocation but can be useful for testing
+      for (i <- memoryBlob.indices) {
+        memoryBlob(i) = 1
+      }
+      memoryBlob
+    })
+    print(arr) // use arr to make sure it does not get optimized away
+  }
+
+  //noinspection ScalaUnusedSymbol
+  def trigger_JVM_OOM_executor(): Unit = {
+    val sc = SparkContext.getOrCreate()
+    val rdd = sc.parallelize(1 to 4)
+    rdd.map(x => {
+      trigger_JVM_OOM()
+      x + 1
+    }
+    ).collect()
   }
 }

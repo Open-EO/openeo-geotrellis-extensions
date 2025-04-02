@@ -8,6 +8,7 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import java.util
 import java.util.Collections
 
+//noinspection ScalaUnusedSymbol
 class DataCubeParameters extends Serializable {
   var tileSize: Int = 256
   var maskingStrategyParameters: util.Map[String, Object] = Collections.emptyMap()
@@ -20,6 +21,7 @@ class DataCubeParameters extends Serializable {
   var pixelBufferX:Double = 0.0
   var pixelBufferY:Double = 0.0
   var noResampleOnRead: Boolean = false
+  var useNewFeatureExtentIntersection: Boolean = false
   var timeDimensionFilter: Option[Object] = Option.empty
   var allowEmptyCube: Boolean = false
   var loadPerProduct: Boolean = false
@@ -52,6 +54,10 @@ class DataCubeParameters extends Serializable {
 
   def setNoResampleOnRead(noResample:Boolean):Unit = {
     noResampleOnRead = noResample
+  }
+
+  def setUseNewFeatureExtentIntersection(v: Boolean): Unit = {
+    useNewFeatureExtentIntersection = v
   }
 
   def setTimeDimensionFilter(conditionProcessScriptBuilder:Object):Unit = {

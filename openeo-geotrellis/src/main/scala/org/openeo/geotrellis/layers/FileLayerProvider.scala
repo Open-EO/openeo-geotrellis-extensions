@@ -28,11 +28,12 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
-import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, sortableSourceName}
+import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtentAssert, healthCheckExtentWarn, isCrsCoveredInHealthCheck, isExtentValidInCrs, safeReproject, sortableSourceName}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
+import org.slf4j.{Logger, LoggerFactory}
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.exception.AbortedException
 
@@ -301,7 +302,7 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 
 object FileLayerProvider {
 
-  private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
 
 
 
@@ -1408,24 +1409,70 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val theResolution = targetResolution.getOrElse(maxSpatialResolution)
     val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
 
-    val featureExtentInLayout: Option[GridExtent[Long]]=
-    if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
+    val featureExtentInLayout: Option[GridExtent[Long]] = if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
+      val useNewFeatureExtentIntersectionPossible = isCrsCoveredInHealthCheck(feature.crs.get) && isCrsCoveredInHealthCheck(targetExtent.crs)
+      val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection) && useNewFeatureExtentIntersectionPossible) {
+        // logger.info("Using old intersection method between Feature/Item and target extent.")
+        // TODO: Remove this after it has been deployed for a while
+        /**
+         * Several edge cases to cover:
+         *  - if feature extent is whole world, it may be invalid in target crs
+         *  - if feature is in utm, target extent may be invalid in feature crs
+         *    this is why we take intersection
+         */
+        val targetExtentInLatLon = targetExtent.reproject(feature.crs.get)
+        val featureExtentInLatLon = feature.rasterExtent.get.reproject(feature.crs.get, LatLng)
 
-      /**
-       * Several edge cases to cover:
-       *  - if feature extent is whole world, it may be invalid in target crs
-       *  - if feature is in utm, target extent may be invalid in feature crs
-       *  this is why we take intersection
-       */
-      val targetExtentInLatLon = targetExtent.reproject(feature.crs.get)
-      val featureExtentInLatLon = feature.rasterExtent.get.reproject(feature.crs.get,LatLng)
+        val intersection = featureExtentInLatLon.intersection(targetExtentInLatLon).map(_.buffer(1.0)).getOrElse(featureExtentInLatLon)
+        val tmp = expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), theResolution)
+        re.createAlignedRasterExtent(tmp)
+      } else {
+        val featureProjectedExtent = ProjectedExtent(feature.rasterExtent.get, feature.crs.get)
+        healthCheckExtentWarn(featureProjectedExtent, s"Feature/Item extent should be valid: ")
+        healthCheckExtentWarn(targetExtent, s"Target extent should be valid: ")
 
-      val intersection = featureExtentInLatLon.intersection(targetExtentInLatLon).map(_.buffer(1.0)).getOrElse(featureExtentInLatLon)
-      val tmp = expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), theResolution)
+        /**
+         * Several edge cases to cover:
+         *  - if feature extent is whole world, it may be invalid in target crs (tested in readDataCubeWithOpensearchClientUTM)
+         *  - if feature is in utm, target extent may be invalid in feature crs
+         *    this is why we take intersection.
+         *    We convert both extents to a common CRS before taking the intersection.
+         *    We give priority to use the target CRS as common CRS, because the intersection will be converted to it anyway
+         *    In case the feature extent is invalid in the target CRS, we use the feature CRS as common CRS
+         */
+        val commonCrs = if (isExtentValidInCrs(featureProjectedExtent, targetExtent.crs)) targetExtent.crs
+        else if (isExtentValidInCrs(targetExtent, feature.crs.get)) feature.crs.get
+        else {
+          logger.warn(s"Feature/Item and target extent are not valid within each others range. Using LatLng as fallback.")
+          LatLng
+        }
 
-      val alignedToTargetExtent = re.createAlignedRasterExtent(tmp)
+        val featureExtentInCommonCRS = safeReproject(featureProjectedExtent, commonCrs)
+        val targetExtentInCommonCRS = safeReproject(targetExtent, commonCrs)
+        healthCheckExtentWarn(featureExtentInCommonCRS, s"Item extent (${feature.id}) should be valid in common CRS: ")
+
+        val intersection = featureExtentInCommonCRS.extent.intersection(targetExtentInCommonCRS.extent)
+        val intersectionTargetCrs = intersection match {
+          case None =>
+            // Item, Asset and Feature mean the same thing in this context.
+            logger.warn(s"Item extent $featureExtentInCommonCRS and target extent $targetExtentInCommonCRS do not intersect. Discarding (${feature.id})")
+            return None // Discard the feature
+          case Some(value) => value.reproject(commonCrs, targetExtent.crs)
+        }
+        var tmp = expandToCellSize(intersectionTargetCrs, theResolution)
+        val dcp = datacubeParams.getOrElse(new DataCubeParameters())
+        val p = math.max(1, dcp.maskingStrategyParameters
+          .getOrDefault("erosion_kernel_size", 0.asInstanceOf[Object]).asInstanceOf[Integer]) * 1.0
+        val pixelBuffer = (math.max(p, dcp.pixelBufferX), math.max(p, dcp.pixelBufferY))
+        tmp = Extent(
+          tmp.xmin - theResolution.width * pixelBuffer._1, tmp.ymin - theResolution.height * pixelBuffer._2,
+          tmp.xmax + theResolution.width * pixelBuffer._1, tmp.ymax + theResolution.height * pixelBuffer._2,
+        )
+        healthCheckExtentWarn(ProjectedExtent(tmp, targetExtent.crs), s"Item extent (${feature.id}) should be valid in target CRS: ")
+        re.createAlignedRasterExtent(tmp)
+      }
       Some(alignedToTargetExtent.toGridType[Long])
-    }else{
+    } else {
       Some(re.toGridType[Long])
     }
 
@@ -1461,9 +1508,14 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, sentinelXmlAngleBandIndex: Int): RasterSource = {
       if(dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
+        var warpOptionsOvr = Some(OverviewStrategy.DEFAULT)
+        if (dataPath.endsWith("SCL_20m.jp2")) {
+          // The overviews in the S2 SCL bands can be wrong, so we need to use the original resolution.
+          warpOptionsOvr = Some(geotrellis.raster.io.geotiff.Base)
+        }
         val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
         val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod),
-          te = featureExtentInLayout.map(_.extent), teCRS = Some(targetExtent.crs)
+          te = featureExtentInLayout.map(_.extent), teCRS = Some(targetExtent.crs), ovr = warpOptionsOvr
         )
         if (cloudPath.isDefined) {
           GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType)
