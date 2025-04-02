@@ -24,11 +24,11 @@ class variableAttribute(name:String) extends ZarrAttributes {
   }
 }
 
-class dataAttribute[K: SpatialComponent: Boundable : ClassTag](metadata: TileLayerMetadata[K],nBands:Int) extends ZarrAttributes {
+class dataAttribute[K: SpatialComponent: Boundable : ClassTag](metadata: TileLayerMetadata[K],nBands:Int,hasTempDim:Boolean) extends ZarrAttributes {
   private val crs: CRS = metadata.crs
   private val bbox: Extent = metadata.extent
   private val dimensions: Array[String] = Array("y","x")
-  private val hasTemp: Boolean = metadata.bounds.get.minKey.isInstanceOf[SpaceTimeKey]
+  private val hasTemp: Boolean = hasTempDim
 
   def toMap:java.util.HashMap[String,Object] = {
     val attributes = new java.util.HashMap[String,Object]()
@@ -61,13 +61,15 @@ class dataAttribute[K: SpatialComponent: Boundable : ClassTag](metadata: TileLay
     val extent = new java.util.HashMap[String,Object]()
     if (hasTemp) {
       val tempExtent =  new java.util.HashMap[String,Object]()
-      val key = metadata.bounds.get.asInstanceOf[KeyBounds[SpaceTimeKey]]
-      key.minKey.temporalKey
-      val minTemp = key.minKey.temporalKey.time.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) + "T" + key.minKey.temporalKey.time.format(DateTimeFormatter.ofPattern("HH:mm:ss")) +"Z"
-      val maxTemp = key.maxKey.temporalKey.time.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) + "T" + key.maxKey.temporalKey.time.format(DateTimeFormatter.ofPattern("HH:mm:ss")) +"Z"
-      val tempArray = Array(minTemp,maxTemp)
-      tempExtent.put("interval", Array(tempArray))
-      extent.put("temporal",tempExtent)
+      if (metadata.bounds.nonEmpty) {
+        val key = metadata.bounds.get.asInstanceOf[KeyBounds[SpaceTimeKey]]
+        key.minKey.temporalKey
+        val minTemp = key.minKey.temporalKey.time.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) + "T" + key.minKey.temporalKey.time.format(DateTimeFormatter.ofPattern("HH:mm:ss")) + "Z"
+        val maxTemp = key.maxKey.temporalKey.time.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) + "T" + key.maxKey.temporalKey.time.format(DateTimeFormatter.ofPattern("HH:mm:ss")) + "Z"
+        val tempArray = Array(minTemp, maxTemp)
+        tempExtent.put("interval", Array(tempArray))
+        extent.put("temporal", tempExtent)
+      }
     }
     val spatialExtent =  new java.util.HashMap[String,Object]()
     spatialExtent.put("bbox", Array(Array(bbox.ymin,bbox.xmin,bbox.ymax,bbox.xmax)))

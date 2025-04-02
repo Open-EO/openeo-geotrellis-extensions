@@ -34,19 +34,19 @@ object ZarrWriter {
       (Array[Int](metadata.rows.toInt, metadata.cols.toInt),Array[Int](tileRows, tileCols))
     }
 
-    writeZAttr(groupPath, new dataAttribute(metadata,nBands))
 
     val xValues = for (x <- 0 until metadata.cols.toInt) yield metadata.extent.xmin + x * metadata.cellwidth + metadata.cellwidth / 2.0
     val yValues = for (y <- 0 until metadata.rows.toInt) yield metadata.extent.ymax - y * metadata.cellheight - metadata.cellheight / 2.0
     val keys = rdd.keys.collect()
-    val (timeValues: Map[Long,Int],shape,chunk) = keys match {
+    val (timeValues: Map[Long,Int],shape,chunk,hasTemp) = keys match {
       case m: Array[SpaceTimeKey] =>
         val tempKey = m.map(_.temporalKey.instant)
         val dist = tempKey.distinct
         writeVariables(path,"time",dist)
-        (dist.zipWithIndex.toMap, dist.length+:shapeBands, 1+:chunkBands)
-      case _ => (Map[Long,Int](),shapeBands,chunkBands)
+        (dist.zipWithIndex.toMap, dist.length+:shapeBands, 1+:chunkBands,true)
+      case _ => (Map[Long,Int](),shapeBands,chunkBands, false)
     }
+    writeZAttr(groupPath, new dataAttribute(metadata,nBands,hasTemp))
     val zarrHeader = new ZarrHeader(shape, chunk, zarrType.toString, byteOrder, fillValue.getOrElse(0), compressor, ".")
     writeZArray(groupPath, zarrHeader)
 
