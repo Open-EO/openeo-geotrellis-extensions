@@ -1298,6 +1298,36 @@ class FileLayerProviderTest extends RasterMatchers{
     }
   }
 
+  /**
+   * Test a case where the catalog would return Features that are outside the valid extent of the requested CRS
+   */
+  @Test
+  def testAntimerideanArtifacts(): Unit = {
+    val projectedExtent = ProjectedExtent(Extent(380300, 7696400, 393300, 7704800), CRS.fromName( "EPSG:32601"))
+    val poly2 = ProjectedPolygons(Array(MultiPolygon(projectedExtent.extent.toPolygon())), projectedExtent.crs)
+
+    val layer = LayerFixtures.sentinel2CubeCDSEGeneric(
+      (
+        ZonedDateTime.of(LocalDate.of(2020, 7, 31), java.time.LocalTime.MIDNIGHT, UTC),
+        ZonedDateTime.of(LocalDate.of(2020, 9, 1), java.time.LocalTime.MIDNIGHT, UTC)
+      ),
+      poly2,
+      CreodiasClient(),
+//      "/org/openeo/geotrellis/testAntimerideanArtifacts.json",
+      new DataCubeParameters,
+      java.util.Arrays.asList("VV"),
+    )
+
+      val layer_collected = layer.collect()
+      assertTrue(layer_collected.isEmpty)
+      val cubeSpatial = layer.toSpatial()
+
+      val outDir = Paths.get("tmp/testAntimerideanArtifacts/")
+      new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+      Files.createDirectories(outDir)
+      cubeSpatial.writeGeoTiff(outDir + "/testAntimerideanArtifacts_" + projectedExtent.crs.toString().replace(":", "_") + ".tiff")
+  }
+
   @Test
   def testMissingS2DateLineOutside(): Unit = {
     if (!new DataCubeParameters().useNewFeatureExtentIntersection) {
