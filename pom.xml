@@ -41,6 +41,11 @@
                 <artifactId>scala-library</artifactId>
                 <version>${scala.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.scalableminds</groupId>
+                <artifactId>blosc-java</artifactId>
+                <version>0.1-1.21.4</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
