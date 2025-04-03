@@ -41,11 +41,6 @@
                 <artifactId>scala-library</artifactId>
                 <version>${scala.version}</version>
             </dependency>
-            <dependency>
-                <groupId>org.blosc</groupId>
-                <artifactId>jblosc</artifactId>
-                <version>v1.0.0b2</version>
-            </dependency>
         </dependencies>
     </dependencyManagement>
 
