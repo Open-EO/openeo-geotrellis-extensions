@@ -1298,13 +1298,19 @@ class FileLayerProviderTest extends RasterMatchers{
     }
   }
 
-  /**
-   * Test a case where the catalog would return Features that are outside the valid extent of the requested CRS
-   */
   @Test
   def testAntimerideanArtifacts(): Unit = {
-    val projectedExtent = ProjectedExtent(Extent(380300, 7696400, 393300, 7704800), CRS.fromName( "EPSG:32601"))
+    val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
     val poly2 = ProjectedPolygons(Array(MultiPolygon(projectedExtent.extent.toPolygon())), projectedExtent.crs)
+
+    val txt = Source.fromResource("org/openeo/geotrellis/testAntimerideanArtifacts.json").mkString
+    val mockedFeatures = CreoFeatureCollection.parse(txt)
+    val client = new MockOpenSearchFeatures(mockedFeatures.features)
+
+    val inputFile = "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWB_1_0/VV.tif"
+    val basePathArtifactory = "https://artifactory.vgt.vito.be/artifactory/testdata-public"
+    // copy to local /eodata:
+    FileUtils.copyURLToFile(new URL(basePathArtifactory + inputFile), new File(inputFile))
 
     val layer = LayerFixtures.sentinel2CubeCDSEGeneric(
       (
@@ -1312,20 +1318,26 @@ class FileLayerProviderTest extends RasterMatchers{
         ZonedDateTime.of(LocalDate.of(2020, 9, 1), java.time.LocalTime.MIDNIGHT, UTC)
       ),
       poly2,
-      CreodiasClient(),
-//      "/org/openeo/geotrellis/testAntimerideanArtifacts.json",
+      client,
       new DataCubeParameters,
       java.util.Arrays.asList("VV"),
     )
 
-      val layer_collected = layer.collect()
-      assertTrue(layer_collected.isEmpty)
-      val cubeSpatial = layer.toSpatial()
+    val layer_collected = layer.collect()
+    assertTrue(layer_collected.nonEmpty)
+    val cubeSpatial = layer.toSpatial()
 
-      val outDir = Paths.get("tmp/testAntimerideanArtifacts/")
-      new Directory(outDir.toFile).deepFiles.foreach(_.delete())
-      Files.createDirectories(outDir)
-      cubeSpatial.writeGeoTiff(outDir + "/testAntimerideanArtifacts_" + projectedExtent.crs.toString().replace(":", "_") + ".tiff")
+    val outDir = Paths.get("tmp/testAntimerideanArtifacts/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    Files.createDirectories(outDir)
+    cubeSpatial.writeGeoTiff(outDir + "/testAntimerideanArtifacts.tiff")
+
+    val tiffPath = outDir + "/testAntimerideanArtifacts.tiff"
+    val result = GeoTiff.readMultiband(tiffPath).raster.tile
+    val band = result.toArrayTile().band(0)
+    val value = band.get(7500, 10000)
+    assertEquals(0.02, value, 1) // TODO: Update actual value, smaller delta
+    // Maybe better check: assertTrue(value != -2.147483648E9)
   }
 
   @Test
