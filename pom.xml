@@ -44,7 +44,7 @@
             <dependency>
                 <groupId>org.blosc</groupId>
                 <artifactId>jblosc</artifactId>
-                <version>1.21.1</version>
+                <version>v1.0.0b2</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
