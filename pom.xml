@@ -42,9 +42,9 @@
                 <version>${scala.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.scalableminds</groupId>
-                <artifactId>blosc-java</artifactId>
-                <version>0.1-1.21.4</version>
+                <groupId>org.blosc</groupId>
+                <artifactId>jblosc</artifactId>
+                <version>1.21.1</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
