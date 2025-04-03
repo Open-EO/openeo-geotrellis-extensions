@@ -463,7 +463,7 @@ for p in l:
                                bandNames: util.List[String] = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data", "S2_Level-2A_Tile1_Metadata##1", "S2_Level-2A_Tile1_Metadata##0")
                               ): MultibandTileLayerRDD[SpaceTimeKey] = {
     val factory = new PyramidFactory(
-      client, "GLOBAL-MOSAICS", bandNames,
+      client, "<fakeOpenSearchCollectionId>", bandNames,
       null,
       maxSpatialResolution = if (projected_polygons_native_crs.crs == LatLng)
         CellSize(0.0001471299295632278, 0.0001471299295632278) else CellSize(10, 10),
