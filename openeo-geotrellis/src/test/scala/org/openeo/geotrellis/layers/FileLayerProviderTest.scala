@@ -1309,7 +1309,8 @@ class FileLayerProviderTest extends RasterMatchers{
 
     val inputFile = "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWB_1_0/VV.tif"
     val basePathArtifactory = "https://artifactory.vgt.vito.be/artifactory/testdata-public"
-    // copy to local /eodata:
+    // copy to local /eodata. YOu might need to create /eodata first:
+    // sudo mkdir /eodata && sudo chmod +777 /eodata
     FileUtils.copyURLToFile(new URL(basePathArtifactory + inputFile), new File(inputFile))
 
     val layer = LayerFixtures.sentinel2CubeCDSEGeneric(
@@ -1330,9 +1331,9 @@ class FileLayerProviderTest extends RasterMatchers{
     val outDir = Paths.get("tmp/testAntimerideanArtifacts/")
     new Directory(outDir.toFile).deepFiles.foreach(_.delete())
     Files.createDirectories(outDir)
-    cubeSpatial.writeGeoTiff(outDir + "/testAntimerideanArtifacts.tiff")
-
     val tiffPath = outDir + "/testAntimerideanArtifacts.tiff"
+    cubeSpatial.writeGeoTiff(tiffPath)
+
     val result = GeoTiff.readMultiband(tiffPath).raster.tile
     val band = result.toArrayTile().band(0)
     val value = band.get(7500, 10000)
