@@ -1,6 +1,6 @@
 package org.openeo
 
-import _root_.geotrellis.proj4.{CRS, LatLng, WebMercator}
+import _root_.geotrellis.proj4.{CRS, LatLng, Sinusoidal, WebMercator}
 import _root_.geotrellis.raster._
 import _root_.geotrellis.vector._
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
@@ -316,10 +316,10 @@ package object geotrellis {
     None
   }
 
-  def isExtentValidInCrs(extent: ProjectedExtent, targetCrs: CRS): Boolean = {
+  def isExtentValidInCrs(extent: ProjectedExtent, targetCrs: CRS)(implicit logger: Logger): Boolean = {
     if (extent.crs == targetCrs) return true
-    if (targetCrs == CRS.fromEpsgCode(4326)) {
-      // LatLon covers the whole world, so it's always valid
+    if (targetCrs == CRS.fromEpsgCode(4326) || targetCrs == Sinusoidal) {
+      // LatLon and Sinusoidal cover the whole world, so it's always valid
       // Function would work fine without this check too.
       return true
     }
@@ -333,7 +333,10 @@ package object geotrellis {
       if (!healthCheckExtent(reprojectedBack)) return false
       reprojectedBack.extent.intersects(extent.extent) // Easy check for unknown CRSes
     } catch {
-      case _: Throwable => false
+      case e: Throwable =>
+        logger.warn(s"Error while checking if extent is valid in CRS: $targetCrs. " +
+          s"Extent: $extent. Error: ${e.getMessage}")
+        false
     }
   }
 
