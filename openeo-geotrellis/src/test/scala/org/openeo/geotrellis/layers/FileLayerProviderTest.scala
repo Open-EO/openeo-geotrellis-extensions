@@ -1303,24 +1303,10 @@ class FileLayerProviderTest extends RasterMatchers{
     val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
     val poly2 = ProjectedPolygons(Array(MultiPolygon(projectedExtent.extent.toPolygon())), projectedExtent.crs)
 
-    val txt = Source.fromResource("org/openeo/geotrellis/testAntimerideanArtifacts.json").mkString
-    val mockedFeatures = CreoFeatureCollection.parse(txt)
-    val client = new MockOpenSearchFeatures(mockedFeatures.features)
-
-    val inputFile = "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWB_1_0/VV.tif"
-    val basePathArtifactory = "https://artifactory.vgt.vito.be/artifactory/testdata-public"
-    // copy to local /eodata. YOu might need to create /eodata first:
-    // sudo mkdir /eodata && sudo chmod +777 /eodata
-    FileUtils.copyURLToFile(new URL(basePathArtifactory + inputFile), new File(inputFile))
-
-    val layer = LayerFixtures.sentinel2CubeCDSEGeneric(
-      (
-        ZonedDateTime.of(LocalDate.of(2020, 7, 31), java.time.LocalTime.MIDNIGHT, UTC),
-        ZonedDateTime.of(LocalDate.of(2020, 9, 1), java.time.LocalTime.MIDNIGHT, UTC)
-      ),
+    val layer = LayerFixtures.creodiasCube(
+      LocalDate.of(2020, 8, 1),
       poly2,
-      client,
-      new DataCubeParameters,
+      "/org/openeo/geotrellis/testAntimerideanArtifacts.json",
       java.util.Arrays.asList("VV"),
     )
 
