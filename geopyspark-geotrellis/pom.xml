@@ -84,6 +84,24 @@
             </exclusions>
         </dependency>
         <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>5.8.1</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.vintage</groupId>
+            <artifactId>junit-vintage-engine</artifactId>
+            <version>5.8.1</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.locationtech.geotrellis</groupId>
+            <artifactId>geotrellis-spark-testkit_${scala.binary.version}</artifactId>
+            <version>${geotrellis.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.locationtech.geotrellis</groupId>
             <artifactId>geotrellis-s3-spark_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>
@@ -105,6 +123,21 @@
                     <artifactId>*</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.openeo</groupId>
+            <artifactId>openeo-geotrellis</artifactId>
+            <version>${parent.version}</version>
+            <!-- Extra include, just for test classes-->
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.openeo</groupId>
+            <artifactId>openeo-geotrellis</artifactId>
+            <version>${parent.version}</version>
+            <!-- Extra include, just for test classes-->
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>com.azavea.geotrellis</groupId>
@@ -144,6 +177,7 @@
                         <LD_LIBRARY_PATH>../venv/lib/python3.8/site-packages/jep</LD_LIBRARY_PATH>
                         <PROJ_LIB>/usr/share/proj</PROJ_LIB>
                     </environmentVariables>
+                    <argLine>--add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/sun.security.action=ALL-UNNAMED</argLine>
                     <reuseForks>false</reuseForks>
                     <includes>
                         <include>**/Test*.*</include>

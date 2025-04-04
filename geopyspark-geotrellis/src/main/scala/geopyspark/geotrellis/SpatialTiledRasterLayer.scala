@@ -130,6 +130,14 @@ class SpatialTiledRasterLayer(
     SpatialTiledRasterLayer(zoom, tileLayer)
   }
 
+  def toTemporalLayer(temporalKey:TemporalKey): TiledRasterLayer[SpaceTimeKey] = {
+    val bounds = rdd.metadata.bounds.get
+    val spaceTimeBound = Bounds[SpaceTimeKey](SpaceTimeKey(bounds.minKey,temporalKey),SpaceTimeKey(bounds.maxKey,temporalKey))
+    val newMetadata = rdd.metadata.copy(bounds = spaceTimeBound)
+    val newRdd = rdd.map(p => (SpaceTimeKey(p._1,temporalKey),p._2))
+    TemporalTiledRasterLayer(zoomLevel, ContextRDD(newRdd,newMetadata))
+  }
+
   def pyramid(resampleMethod: ResampleMethod, partitionStrategy: PartitionStrategy): Array[TiledRasterLayer[SpatialKey]] = {
     require(! rdd.metadata.bounds.isEmpty, "Can not pyramid an empty RDD")
 
