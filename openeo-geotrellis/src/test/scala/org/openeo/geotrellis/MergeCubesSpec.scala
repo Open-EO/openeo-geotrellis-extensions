@@ -7,7 +7,7 @@ import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import org.apache.spark.{SparkConf, SparkContext}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue, fail}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertNotEquals, assertTrue, fail}
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
@@ -480,6 +480,7 @@ class MergeCubesSpec {
     val c1Keys = sparseLayer1.map(_._1.spatialKey).distinct().collect()
     print(c1Keys)
     val sparseLayer2 = LayerFixtures.sentinel2B04LayerSparse
+    assertNotEquals(sparseLayer1.metadata.crs,sparseLayer2.metadata.crs)
     val merged = new OpenEOProcesses().mergeCubes(sparseLayer1,sparseLayer2,operator=null)
     val localTiles = merged.collect()
     assertTrue(merged.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
@@ -496,6 +497,7 @@ class MergeCubesSpec {
     val idx2 = Seq( SpatialKey(3, 1), SpatialKey(6, 2), SpatialKey(1, 3))
     val collection = aSpacetimeTileLayerRdd(8,4,4,crs = CRS.fromName("EPSG:4087"))
     val sparseLayer2 = collection._1.withContext{_.filter(t => idx2.contains(t._1.spatialKey))}
+    assertTrue(sparseLayer2.partitioner.isEmpty)
     val merged = new OpenEOProcesses().mergeCubes(sparseLayer1,sparseLayer2,operator=null)
     assertTrue(merged.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
   }
