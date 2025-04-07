@@ -1412,7 +1412,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val featureExtentInLayout: Option[GridExtent[Long]] = if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
       val useNewFeatureExtentIntersectionPossible = isCrsCoveredInHealthCheck(feature.crs.get) && isCrsCoveredInHealthCheck(targetExtent.crs)
       val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection) && useNewFeatureExtentIntersectionPossible) {
-        logger.info("Using old intersection method between Feature/Item and target extent.")
+        // logger.info("Using old intersection method between Feature/Item and target extent.")
         // TODO: Remove this after it has been deployed for a while
         /**
          * Several edge cases to cover:

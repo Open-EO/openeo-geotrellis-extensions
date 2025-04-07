@@ -423,7 +423,7 @@ package object geotrellis {
       if (Math.abs(centerReprojected.x - reprojectedCenter.x) > 10) {
         val swapped = Extent(to_0_360_range(reprojected.xmax), reprojected.ymin, to_0_360_range(reprojected.xmin), reprojected.ymax)
         val swappedCenter = swapped.center
-        if (Math.abs(centerReprojected.x - swappedCenter.x) < 10) {
+        if (Math.abs(to_0_360_range(centerReprojected.x) - swappedCenter.x) < 10) {
           reprojected = swapped
         }
       }

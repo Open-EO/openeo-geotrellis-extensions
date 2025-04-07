@@ -1299,6 +1299,35 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @Test
+  def testAntimerideanArtifacts(): Unit = {
+    val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
+    val poly2 = ProjectedPolygons(Array(MultiPolygon(projectedExtent.extent.toPolygon())), projectedExtent.crs)
+
+    val layer = LayerFixtures.creodiasCube(
+      LocalDate.of(2020, 8, 1),
+      poly2,
+      "/org/openeo/geotrellis/testAntimerideanArtifacts.json",
+      java.util.Arrays.asList("VV"),
+    )
+
+    val layer_collected = layer.collect()
+    assertTrue(layer_collected.nonEmpty)
+    val cubeSpatial = layer.toSpatial()
+
+    val outDir = Paths.get("tmp/testAntimerideanArtifacts/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    Files.createDirectories(outDir)
+    val tiffPath = outDir + "/testAntimerideanArtifacts.tiff"
+    cubeSpatial.writeGeoTiff(tiffPath)
+
+    val result = GeoTiff.readMultiband(tiffPath).raster.tile
+    val band = result.toArrayTile().band(0)
+    val value = band.get(7500, 10000)
+    assertEquals(0.02, value, 1) // TODO: Update actual value, smaller delta
+    // Maybe better check: assertTrue(value != -2.147483648E9)
+  }
+
+  @Test
   def testMissingS2DateLineOutside(): Unit = {
     if (!new DataCubeParameters().useNewFeatureExtentIntersection) {
       return
