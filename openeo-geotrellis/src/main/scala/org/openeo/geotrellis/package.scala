@@ -1,6 +1,7 @@
 package org.openeo
 
 import _root_.geotrellis.proj4.{CRS, LatLng, Sinusoidal, WebMercator}
+import _root_.geotrellis.proj4._
 import _root_.geotrellis.raster._
 import _root_.geotrellis.vector._
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
@@ -356,8 +357,6 @@ package object geotrellis {
     if (n > 180) n - 360 else n
   }
 
-  import _root_.geotrellis.proj4._
-
   object SafeTransform {
     def apply(src: CRS, dest: CRS): (Double, Double) => (Double, Double) =
       src.alternateTransform(dest) match {
@@ -422,9 +421,9 @@ package object geotrellis {
   def safeReproject(inputProjectedExtent: ProjectedExtent, targetCrs: CRS)(implicit logger: Logger): ProjectedExtent = {
     if (inputProjectedExtent.crs == targetCrs) return inputProjectedExtent
 //     val reprojectedPolygon = inputProjectedExtent.extent.reprojectAsPolygon(inputProjectedExtent.crs, targetCrs, 0.01)
-    val polygons = ProjectedPolygons(Array(inputProjectedExtent.extent.toPolygon()), "EPSG:" + inputProjectedExtent.crs.epsgCode.get)
+    val polygons = ProjectedPolygons(inputProjectedExtent)
     val reprojectedPolygon = safeReprojectPolygons(polygons, targetCrs)
-    val envelope = reprojectedPolygon.polygons(0).getEnvelopeInternal
+    val envelope = reprojectedPolygon.getFlatMultiPolygon.getEnvelopeInternal
     var reprojected = Extent(envelope.getMinX, envelope.getMinY, envelope.getMaxX, envelope.getMaxY)
     // TODO: Needed for webmercator too?
     if (targetCrs == LatLng && reprojected.width > 180 && reprojected.width < 360) {
@@ -442,9 +441,7 @@ package object geotrellis {
         }
       }
     }
-    val projectedExtent = ProjectedExtent(reprojected, targetCrs)
-    // dumpGeoJson(toGeoJsonDebug(projectedExtent), Some("projectedExtent_" + projectedExtent))
-    projectedExtent
+    ProjectedExtent(reprojected, targetCrs)
   }
 
   def toGeoJsonDebug(polygons: ProjectedPolygons): String = {
@@ -459,18 +456,15 @@ package object geotrellis {
   }
 
   def toGeoJsonDebug(geometry: Geometry): String = {
-    val pp = ProjectedPolygons(Array(geometry), LatLng)
-    toGeoJsonDebug(pp)
+    toGeoJsonDebug(ProjectedPolygons(Array(geometry), LatLng))
   }
 
   def toGeoJsonDebug(inputProjectedExtent: ProjectedExtent): String = {
-    val pp = ProjectedPolygons(Array(inputProjectedExtent.extent.toPolygon()), "EPSG:" + inputProjectedExtent.crs.epsgCode.get)
-    toGeoJsonDebug(pp)
+    toGeoJsonDebug(ProjectedPolygons(inputProjectedExtent))
   }
 
   def toGeoJsonDebug(extent: Extent): String = {
-    val pe = ProjectedExtent(extent, LatLng)
-    toGeoJsonDebug(pe)
+    toGeoJsonDebug(ProjectedExtent(extent, LatLng))
   }
 
   def dumpGeoJson(str: String, name: Option[String] = None): Unit = {
@@ -482,7 +476,6 @@ package object geotrellis {
 
     Files.write(Paths.get(path), str.getBytes(Charset.forName("UTF-8")), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
   }
-
 
   /**
    * DANGER. Might crash system if no memory limit is specified.

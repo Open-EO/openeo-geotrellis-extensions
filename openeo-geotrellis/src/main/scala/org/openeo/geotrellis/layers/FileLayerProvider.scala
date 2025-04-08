@@ -28,7 +28,7 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
-import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, healthCheckExtentAssert, healthCheckExtentWarn, isCrsCoveredInHealthCheck, isExtentValidInCrs, safeReproject, sortableSourceName}
+import org.openeo.geotrellis._
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
@@ -913,7 +913,8 @@ object FileLayerProvider {
         val productCRSOrDefault = eoProductFeature.data._2.crs.getOrElse(targetCRS)
         eoProductFeature.mapGeom(productGeometry => {
           try {
-            val intersection = productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
+            val productGeometryProjected = safeReprojectPolygons(ProjectedPolygons(productGeometry, LatLng), productCRSOrDefault)
+            val intersection = productGeometryProjected.getFlatMultiPolygon.intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
             if (intersection.isValid && intersection.getArea > 0.0) {
               intersection.reproject(productCRSOrDefault, targetCRS)
             } else {
@@ -1420,14 +1421,11 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
          *  - if feature is in utm, target extent may be invalid in feature crs
          *    this is why we take intersection
          */
-        val targetExtentInLatLon = targetExtent.reproject(LatLng)
-//        val featureExtentInLatLon = feature.rasterExtent.get.reproject(feature.crs.get, LatLng)
-        val featureExtentInLatLon = safeReproject(ProjectedExtent(feature.rasterExtent.get, feature.crs.get), LatLng).extent
+        val targetExtentInLatLon = targetExtent.reproject(feature.crs.get)
+        val featureExtentInLatLon = feature.rasterExtent.get.reproject(feature.crs.get, LatLng)
 
         val intersection = featureExtentInLatLon.intersection(targetExtentInLatLon).map(_.buffer(1.0)).getOrElse(featureExtentInLatLon)
-        val intersectionTargetCRS = safeReproject(ProjectedExtent(intersection, LatLng), targetExtent.crs).extent
-        val intersectionBack = safeReproject(ProjectedExtent(intersection, targetExtent.crs), LatLng).extent
-        val tmp = expandToCellSize(intersectionTargetCRS, theResolution)
+        val tmp = expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), theResolution)
         re.createAlignedRasterExtent(tmp)
       } else {
         val featureProjectedExtent = ProjectedExtent(feature.rasterExtent.get, feature.crs.get)

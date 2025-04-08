@@ -173,7 +173,7 @@ class PackageTest {
   def testAntimeridianWrap(): Unit = {
     val e = Extent(178, 20, 180.1, 21)
     val polygon = e.toPolygon()
-    val polygonLatLng = ProjectedPolygons(Array(MultiPolygon(polygon)), LatLng)
+    val polygonLatLng = ProjectedPolygons(polygon, LatLng)
     val polygonUtm = safeReprojectPolygons(polygonLatLng, CRS.fromName("EPSG:32660"))
     val polygonBack = safeReprojectPolygons(polygonUtm, LatLng)
 //    assertTrue(projectedPolygonsEquals(polygonBack, polygonLatLng))
@@ -193,7 +193,7 @@ class PackageTest {
 
     val targetExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
     dumpGeoJson(toGeoJsonDebug(targetExtent), Some("targetExtent"))
-    val targetExtentPolygon = ProjectedPolygons(Array(MultiPolygon(targetExtent.extent.toPolygon())), targetExtent.crs)
+    val targetExtentPolygon = ProjectedPolygons(targetExtent)
     val targetExtentLatLng = safeReprojectPolygons(targetExtentPolygon, LatLng)
     val targetExtentLatLngMp = targetExtentLatLng.getFlatMultiPolygon
     dumpGeoJson(toGeoJsonDebug(targetExtentLatLngMp), Some("targetExtentLatLngMp"))

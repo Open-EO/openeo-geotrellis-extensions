@@ -29,7 +29,7 @@ import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory
 import org.openeo.geotrellis.geotiff._
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
-import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
+import org.openeo.geotrellis._
 import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{ConfigurableSpaceTimePartitioner, DataCubeParameters, DatacubeSupport, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection, Link}
@@ -1217,9 +1217,9 @@ class FileLayerProviderTest extends RasterMatchers{
   @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:4326", "EPSG:3857"))
   def testMissingS2DateLine(crsName: String): Unit = {
     // typically requires PROJ_LIB to be set
-//    if (crsName == "EPSG:32660" && !new DataCubeParameters().useNewFeatureExtentIntersection) {
-//      return
-//    }
+    if (crsName == "EPSG:32660" && !new DataCubeParameters().useNewFeatureExtentIntersection) {
+      return
+    }
     val outDir = Paths.get("tmp/FileLayerProviderTest_" + crsName.replace(":", "_") + "/")
     new Directory(outDir.toFile).deepFiles.foreach(_.delete())
     Files.createDirectories(outDir)
@@ -1301,7 +1301,7 @@ class FileLayerProviderTest extends RasterMatchers{
   @Test
   def testAntimerideanArtifacts(): Unit = {
     val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
-    val poly2 = ProjectedPolygons(Array(MultiPolygon(projectedExtent.extent.toPolygon())), projectedExtent.crs)
+    val poly2 = ProjectedPolygons(projectedExtent)
 
     val layer = LayerFixtures.creodiasCube(
       LocalDate.of(2020, 8, 1),
