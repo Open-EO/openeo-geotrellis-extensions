@@ -26,7 +26,7 @@ import org.apache.spark.util.AccumulatorV2
 import org.openeo.geotrellis
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.fixedTimeOffset
-import org.openeo.geotrellis.stac.STACItem
+import org.openeo.geotrellis.stac.{Item, Asset, STACItem}
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
@@ -40,6 +40,7 @@ import java.nio.file.attribute.PosixFilePermissions
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Collections, Map, List => JList}
+import java.util.stream.Collectors
 import scala.collection.JavaConverters._
 import scala.reflect._
 
@@ -107,13 +108,18 @@ package object geotiff {
                      ): java.util.List[(String, String, Extent)] = {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, temporal)")
     formatOptions.assertNoConflicts()
-    val ret = saveRDDTemporalAllowAssetPerBand(rdd, path, zLevel, cropBounds, formatOptions).asScala
+    val ret = saveRDDTemporalAllowAssetPerBand(rdd, path, zLevel, cropBounds, formatOptions)
     logger.warn("Calling backwards compatibility version for saveRDDTemporalConsiderAssetPerBand")
     //    val duplicates = ret.groupBy(_._2).filter(_._2.size > 1)
     //    if (duplicates.nonEmpty) {
     //      throw new Exception(s"Multiple returned files with same timestamp: ${duplicates.keys.mkString(", ")}")
     //    }
-    ret.map(t => (t._1, t._2, t._3)).asJava
+    ret.stream()
+      .flatMap { item =>
+        item.assets.values().stream()
+          .map[(String, String, Extent)] { asset => (asset.path, item.timestamp, item.bbox) }
+      }
+      .collect(Collectors.toList())
   }
 
   private val executorAttemptDirectoryPrefix = "executorAttemptDirectory"
@@ -198,7 +204,7 @@ package object geotiff {
                                           zLevel: Int = 6,
                                           cropBounds: Option[Extent] = Option.empty[Extent],
                                           formatOptions: GTiffOptions = new GTiffOptions
-                                         ): java.util.List[(String, String, Extent, java.util.List[Int])] = {
+                                         ): java.util.List[Item] = {
     formatOptions.assertNoConflicts()
     val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
@@ -280,8 +286,20 @@ package object geotiff {
     val res = geotiffResults.map {
       case (geoTiffResultObject, timestamp, croppedExtent, bandIndices) =>
         val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path), geoTiffResultObject)
-        (destinationPath.toString, timestamp, croppedExtent, bandIndices)
-    }.toList.asJava
+        (destinationPath, timestamp, croppedExtent, bandIndices)
+    }
+
+    val items = res
+      .groupBy { case (_, timestamp, _, _) => timestamp }
+      .map { case (timestamp, geotiffs) =>
+        val assets = geotiffs
+          .map { case (path, _, _, bandIndices) => s"openEO_$bandIndices" -> Asset(path, bandIndices) } // TODO: better asset key?
+          .toMap
+
+        Item(id = timestamp, timestamp, bbox = croppedExtent, assets.asJava) // TODO: better item id?
+      }
+
+    items foreach println
 
     for ((geotiffResult, _, _, _) <- geotiffResults) {
       val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(Path.of(path), geotiffResult)
@@ -289,7 +307,7 @@ package object geotiff {
     }
     toBeGrouped.unpersist()
 
-    res
+    items.toList.asJava
   }
 
 
