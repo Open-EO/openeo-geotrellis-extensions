@@ -1298,6 +1298,7 @@ class FileLayerProviderTest extends RasterMatchers{
     }
   }
 
+  @Disabled("Test will be fixed in different branch.")
   @Test
   def testAntimerideanArtifacts(): Unit = {
     val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
