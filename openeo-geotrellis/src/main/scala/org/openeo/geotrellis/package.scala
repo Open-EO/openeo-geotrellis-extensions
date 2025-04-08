@@ -422,18 +422,18 @@ package object geotrellis {
     pp
   }
 
-  def projectedPolygonsEquals(p1: ProjectedPolygons, p2: ProjectedPolygons): Boolean = {
+  def projectedPolygonsEquals(p1: ProjectedPolygons, p2: ProjectedPolygons, tolerance: Double = 0.001): Boolean = {
     if (p1.crs != p2.crs) return false
     if (p1.polygons.length != p2.polygons.length) return false
     p1.polygons.zip(p2.polygons)
-      .map { case (a, b) => a.equalsExact(b, 0.001) }
+      .map { case (a, b) => a.equalsExact(b, tolerance) }
       .forall(identity)
   }
 
   def safeReproject(inputProjectedExtent: ProjectedExtent, targetCrs: CRS)(implicit logger: Logger): ProjectedExtent = {
     if (inputProjectedExtent.crs == targetCrs) return inputProjectedExtent
     val transform = SafeTransform(inputProjectedExtent.crs, targetCrs)
-    val reprojectedPolygon = reprojectExtentAsPolygon(inputProjectedExtent.extent, transform, 0.01) // TODO: Adapt relError to CRS
+    val reprojectedPolygon = reprojectExtentAsPolygon(inputProjectedExtent.extent, transform, 0.001) // TODO: Adapt relError to CRS
     val envelope = reprojectedPolygon.getEnvelopeInternal
     var reprojected = Extent(envelope.getMinX, envelope.getMinY, envelope.getMaxX, envelope.getMaxY)
     val inputIsUTM = inputProjectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
@@ -463,6 +463,7 @@ package object geotrellis {
     val str = polygons.getFlatMultiPolygon.toGeoJson()
     var j = SimpleJson.parse(str)
     val crs = polygons.crs.proj4jCrs.getName
+    // GeoJson officially only supports LatLng, but qgis works with custom CRSes too:
     j = j + ("crs" -> Map("type" -> "name", "properties" -> Map("name" -> crs)))
     SimpleJson.serialize(j)
   }

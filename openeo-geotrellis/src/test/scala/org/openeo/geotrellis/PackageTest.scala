@@ -176,16 +176,17 @@ class PackageTest {
     val polygonLatLng = ProjectedPolygons(polygon, LatLng)
     val polygonUtm = safeReprojectPolygons(polygonLatLng, CRS.fromName("EPSG:32660"))
     val polygonBack = safeReprojectPolygons(polygonUtm, LatLng)
-//    assertTrue(projectedPolygonsEquals(polygonBack, polygonLatLng))
+    assertTrue(projectedPolygonsEquals(polygonBack, polygonLatLng))
 
     val polygonExtent = ProjectedExtent(e, LatLng)
     val polygonExtentUtm = safeReproject(polygonExtent, CRS.fromName("EPSG:32660"))
     val polygonExtentBack = safeReproject(polygonExtentUtm, LatLng)
+    assertTrue(polygonExtent.extent.equalsExact(polygonExtentBack.extent, 2)) // reprojecting extent is inaccurate
     print(polygonExtentBack)
   }
 
   @Test
-  def testSafeReproject(): Unit = {
+  def testSafesafeReprojectPolygons(): Unit = {
     val products = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/testAntimerideanArtifacts.json").getPath)
     val productsLatLng = safeReprojectPolygons(products, LatLng)
     val productsLatLngMp = productsLatLng.getFlatMultiPolygon
