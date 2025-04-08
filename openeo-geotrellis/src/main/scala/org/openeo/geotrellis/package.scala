@@ -1,6 +1,5 @@
 package org.openeo
 
-import _root_.geotrellis.proj4.{CRS, LatLng, Sinusoidal, WebMercator}
 import _root_.geotrellis.proj4._
 import _root_.geotrellis.raster._
 import _root_.geotrellis.vector._
@@ -336,8 +335,9 @@ package object geotrellis {
       reprojectedBack.extent.intersects(extent.extent) // Easy check for unknown CRSes
     } catch {
       case e: Throwable =>
-        logger.warn(s"Error while checking if extent is valid in CRS: $targetCrs. " +
-          s"Extent: $extent. Error: ${e.getMessage}")
+        // TODO: Might give too mush logs, so keep disabled
+        // logger.warn(s"Error while checking if extent is valid in CRS: $targetCrs. " +
+        //   s"Extent: $extent. Error: ${e.getMessage}")
         false
     }
   }
@@ -358,27 +358,27 @@ package object geotrellis {
   }
 
   object SafeTransform {
+    object SafeProj4Transform {
+      def apply(src: CRS, dest: CRS): Transform =
+        if (src == dest) {
+          (x: Double, y: Double) => (x, y)
+        } else {
+          val t = new BasicCoordinateTransform(src.proj4jCrs, dest.proj4jCrs)
+
+          { (x: Double, y: Double) =>
+            val xNew = if (src == LatLng) to_min180_180_range(x) else x
+            val srcP = new ProjCoordinate(xNew, y)
+            val destP = new ProjCoordinate
+            t.transform(srcP, destP)
+            (destP.x, destP.y)
+          }
+        }
+    }
+
     def apply(src: CRS, dest: CRS): (Double, Double) => (Double, Double) =
       src.alternateTransform(dest) match {
         case Some(f) => f
         case None => SafeProj4Transform(src, dest)
-      }
-  }
-
-  object SafeProj4Transform {
-    def apply(src: CRS, dest: CRS): Transform =
-      if (src == dest) {
-        (x: Double, y: Double) => (x, y)
-      } else {
-        val t = new BasicCoordinateTransform(src.proj4jCrs, dest.proj4jCrs)
-
-        { (x: Double, y: Double) =>
-          val xNew = if (src == LatLng) to_min180_180_range(x) else x
-          val srcP = new ProjCoordinate(xNew, y)
-          val destP = new ProjCoordinate
-          t.transform(srcP, destP)
-          (destP.x, destP.y)
-        }
       }
   }
 
