@@ -450,7 +450,7 @@ for p in l:
 
       for (artifactoryPath <- artifactoryPaths) {
         if (artifactoryPath.startsWith(pathFromJson)) {
-          txt = txt.replace(pathFromJson, basePath + pathFromJson)
+          txt = txt.replace('"' + pathFromJson + '"', '"' + basePath + pathFromJson + '"')
 
           // Only download when needed for current test:
           val jp2File = new File(basePath, artifactoryPath)
