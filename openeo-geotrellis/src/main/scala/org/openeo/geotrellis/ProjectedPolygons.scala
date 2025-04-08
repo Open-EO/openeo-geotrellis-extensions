@@ -24,12 +24,30 @@ case class ProjectedPolygons(geometries: Array[Geometry], crs: CRS) {
   }
 
   def polygons: Array[MultiPolygon] = geometries.filter(_.isInstanceOf[MultiPolygon]).map(_.asInstanceOf[MultiPolygon])
+
+  def getFlatMultiPolygon: MultiPolygon = {
+    MultiPolygon(geometries.flatMap {
+      case multiPolygon: MultiPolygon => multiPolygon.polygons
+      case polygon: Polygon => Array(polygon)
+      case _ => Array.empty[Polygon] // ignore non polygon
+    })
+  }
+
   def extent: ProjectedExtent = ProjectedExtent(polygons.toSeq.extent,crs)
   def reproject(crs: CRS): ProjectedPolygons = ProjectedPolygons.reproject(this, crs)
 }
 
 object ProjectedPolygons {
   private type JList[T] = java.util.List[T]
+
+  def apply(pe: ProjectedExtent): ProjectedPolygons = {
+    // Wrap in MultiPolygon for backwards compatibility
+    new ProjectedPolygons(Array(MultiPolygon(pe.extent.toPolygon())), pe.crs)
+  }
+
+  def apply(geometry: Geometry, crs: CRS): ProjectedPolygons = {
+    new ProjectedPolygons(Array(geometry), crs)
+  }
 
   def apply(polygons: Array[MultiPolygon], crs: CRS): ProjectedPolygons = {
     ProjectedPolygons(polygons.toArray[Geometry], crs)
