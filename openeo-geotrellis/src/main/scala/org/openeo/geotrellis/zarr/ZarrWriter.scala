@@ -17,7 +17,7 @@ import scala.reflect.ClassTag
 
 object ZarrWriter {
 
-  def saveZarr[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K],path:String, nBands:Int):Unit= {
+  def saveZarr[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K],path:String, zarrOptions: ZarrOptions):Unit= {
     val groupPath = path + "/" + getGroupName(path)
     writeFile(groupPath,FILENAME_DOT_ZGROUP,null)
     val metadata = rdd.metadata
@@ -28,6 +28,7 @@ object ZarrWriter {
     val tileCols = metadata.tileCols
     val byteOrder = ByteOrder.BIG_ENDIAN
     val compressor = CompressorFactory.createDefaultCompressor()
+    val nBands = zarrOptions.numberBands
     val (shapeBands,chunkBands) = if (nBands > 1) {
       (Array[Int](nBands,metadata.rows.toInt, metadata.cols.toInt),Array[Int](1,tileRows, tileCols))
     } else{
@@ -46,7 +47,7 @@ object ZarrWriter {
         (dist.zipWithIndex.toMap, dist.length+:shapeBands, 1+:chunkBands,true)
       case _ => (Map[Long,Int](),shapeBands,chunkBands, false)
     }
-    writeFile(groupPath,FILENAME_DOT_ZATTRS, new dataAttribute(metadata,nBands,hasTemp))
+    writeFile(groupPath,FILENAME_DOT_ZATTRS, new dataAttribute(metadata,zarrOptions,hasTemp))
     val zarrHeader = new ZarrHeader(shape, chunk, zarrType.toString, byteOrder, fillValue.getOrElse(0), compressor, ".")
     writeFile(groupPath, FILENAME_DOT_ZARRAY, zarrHeader)
 

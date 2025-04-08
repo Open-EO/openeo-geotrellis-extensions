@@ -24,7 +24,7 @@ class variableAttribute(name:String) extends ZarrAttributes {
   }
 }
 
-class dataAttribute[K: SpatialComponent: Boundable : ClassTag](metadata: TileLayerMetadata[K],nBands:Int,hasTempDim:Boolean) extends ZarrAttributes {
+class dataAttribute[K: SpatialComponent: Boundable : ClassTag](metadata: TileLayerMetadata[K],zarrOptions: ZarrOptions,hasTempDim:Boolean) extends ZarrAttributes {
   private val crs: CRS = metadata.crs
   private val bbox: Extent = metadata.extent
   private val dimensions: Array[String] = Array("y","x")
@@ -49,8 +49,8 @@ class dataAttribute[K: SpatialComponent: Boundable : ClassTag](metadata: TileLay
 
   private def addDimensions(attributes: java.util.HashMap[String,Object]): java.util.HashMap[String,Object] = {
     val tempDim = if (hasTemp) {"time" +: dimensions} else dimensions
-    val bandDim = if (nBands > 1) {
-      attributes.put("COLOR_INTERPRETATION", Array.fill(nBands)("Undefined"))
+    val bandDim = if (zarrOptions.numberBands > 1) {
+      attributes.put("COLOR_INTERPRETATION", zarrOptions.bandNames)
       "Band" +: tempDim
     } else tempDim
     attributes.put("_ARRAY_DIMENSIONS", bandDim)
