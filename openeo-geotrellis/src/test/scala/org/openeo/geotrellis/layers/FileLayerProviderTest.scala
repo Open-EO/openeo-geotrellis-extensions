@@ -1213,28 +1213,26 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(8, band.get(200, 200))
   }
 
-  @ParameterizedTest
-  @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:4326", "EPSG:3857"))
-  def testMissingS2DateLine(crsName: String): Unit = {
-    // typically requires PROJ_LIB to be set
-    if (crsName == "EPSG:32660" && !new DataCubeParameters().useNewFeatureExtentIntersection) {
-      return
-    }
-    val outDir = Paths.get("tmp/FileLayerProviderTest_" + crsName.replace(":", "_") + "/")
+
+  /**
+   * Writes a tiff files and check if it contains expected pixels
+   */
+  private def testMissingS2DateLineInternal(extent: Extent,
+                                            specificCrs: CRS,
+                                            name: String,
+                                           ): Unit = {
+    val uniqueName = name + "_" + specificCrs.toString.replace(":", "_")
+    val outDir = Paths.get("tmp/FileLayerProviderTest_" + uniqueName + "/")
     new Directory(outDir.toFile).deepFiles.foreach(_.delete())
     Files.createDirectories(outDir)
 
-    val extent = Extent(178.1, 70.3, 178.9, 70.9)
     val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, LatLng.proj4jCrs.toString)
-    val specificCrs = CRS.fromName(crsName)
     val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, specificCrs)
     val poly2 = ProjectedPolygons(Array(reprojected), specificCrs)
 
-    if (crsName == "EPSG:4326") {
-      val poly2GeoJson = poly2.polygons.head.toGeoJson
-      // geojson only officially suports latLon
-      Files.writeString(Paths.get(outDir + "/polygons.geojson"), poly2GeoJson)
-    }
+    val poly2GeoJson = toGeoJsonDebug(poly2)
+    // geojson only officially supports latLon, but QGIS handles custom CRSes
+    Files.writeString(Paths.get(outDir + "/" + uniqueName + ".geojson"), poly2GeoJson)
 
     val layer = LayerFixtures.sentinel2Cube(
       LocalDate.of(2024, 4, 2),
@@ -1259,7 +1257,23 @@ class FileLayerProviderTest extends RasterMatchers{
     }
     assertTrue(found10)
     val cubeSpatial = layer.toSpatial()
-    cubeSpatial.writeGeoTiff(outDir + "/testMissingS2DateLine_" + crsName.replace(":", "_") + ".tiff")
+    cubeSpatial.writeGeoTiff(outDir + "/" + uniqueName + ".tiff")
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:4326", "EPSG:3857"))
+  def testMissingS2DateLine(crsName: String): Unit = {
+    // typically requires PROJ_LIB to be set
+    if (crsName == "EPSG:32660" && !new DataCubeParameters().useNewFeatureExtentIntersection) {
+      return
+    }
+
+    for (tup <- Seq(
+      (Extent(178.1, 70.3, 178.9, 70.9), "left"),
+      (Extent(-179.9, 70.1, -179.2, 71.3), "right"),
+    )) {
+      testMissingS2DateLineInternal(tup._1, CRS.fromName(crsName), tup._2)
+    }
   }
 
   /**
@@ -1292,10 +1306,11 @@ class FileLayerProviderTest extends RasterMatchers{
       Files.createDirectories(outDir)
       cubeSpatial.writeGeoTiff(outDir + "/testImpossibleIntersection_" + crsName.replace(":", "_") + ".tiff")
     }
-    if (new DataCubeParameters().useNewFeatureExtentIntersection) {
-      // java.lang.IllegalArgumentException: Could not find data for your load_collection request with catalog ID "Sentinel2". The catalog query had correlation ID "" and returned 4 results.
-      assertThrows[IllegalArgumentException](testImpossibleIntersectionInternal())
-    }
+
+    // Throwing this could also be valid:
+    // java.lang.IllegalArgumentException: Could not find data for your load_collection request with catalog ID "Sentinel2". The catalog query had correlation ID "" and returned 4 results.
+    // Right now, no error is thrown, but the result is empty. To avoid premature errors in confusing cases
+    testImpossibleIntersectionInternal()
   }
 
   @Test
@@ -1303,11 +1318,14 @@ class FileLayerProviderTest extends RasterMatchers{
     val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
     val poly2 = ProjectedPolygons(projectedExtent)
 
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.useNewFeatureExtentIntersection2 = true
     val layer = LayerFixtures.creodiasCube(
       LocalDate.of(2020, 8, 1),
       poly2,
       "/org/openeo/geotrellis/testAntimerideanArtifacts.json",
       java.util.Arrays.asList("VV"),
+      dataCubeParameters,
     )
 
     val layer_collected = layer.collect()

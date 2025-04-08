@@ -895,7 +895,7 @@ object FileLayerProvider {
     sc.parallelize(keys.toSeq, 1).map((_, null))
   }
 
-  private def featuresRDD(geometricFeatures: Seq[vector.Feature[Geometry, (RasterSource, Feature)]], metadata: TileLayerMetadata[SpaceTimeKey], targetCRS: CRS, workingPartitioner: SpacePartitioner[SpatialKey], maybeKeys: Option[RDD[(SpatialKey, Iterable[Geometry])]] ,sc: SparkContext) = {
+  private def featuresRDD(geometricFeatures: Seq[vector.Feature[Geometry, (RasterSource, Feature)]], metadata: TileLayerMetadata[SpaceTimeKey], targetCRS: CRS, workingPartitioner: SpacePartitioner[SpatialKey], maybeKeys: Option[RDD[(SpatialKey, Iterable[Geometry])]], sc: SparkContext, datacubeParams: Option[DataCubeParameters]) = {
     val emptyPoint = Point(0.0, 0.0)
     val cubeExtent = metadata.extent
 
@@ -913,8 +913,12 @@ object FileLayerProvider {
         val productCRSOrDefault = eoProductFeature.data._2.crs.getOrElse(targetCRS)
         eoProductFeature.mapGeom(productGeometry => {
           try {
-            val productGeometryProjected = safeReprojectPolygons(ProjectedPolygons(productGeometry, LatLng), productCRSOrDefault)
-            val intersection = productGeometryProjected.getFlatMultiPolygon.intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
+            val intersection = if (datacubeParams.getOrElse(new DataCubeParameters).useNewFeatureExtentIntersection2) {
+                val productGeometryProjected = safeReprojectPolygons(ProjectedPolygons(productGeometry, LatLng), productCRSOrDefault)
+                productGeometryProjected.getFlatMultiPolygon.intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
+            } else {
+              productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
+            }
             if (intersection.isValid && intersection.getArea > 0.0) {
               intersection.reproject(productCRSOrDefault, targetCRS)
             } else {
@@ -1154,7 +1158,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       } else {
         None
       }
-    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] =  featuresRDD(geometricFeatures, metadata, targetCRS, workingPartitioner,keysIfSparse, sc)
+    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] =  featuresRDD(geometricFeatures, metadata, targetCRS, workingPartitioner,keysIfSparse, sc, datacubeParams)
 
 
     val filteredSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = applySpatialMask(datacubeParams, griddedRasterSources,metadata)
@@ -1456,8 +1460,11 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         val intersectionTargetCrs = intersection match {
           case None =>
             // Item, Asset and Feature mean the same thing in this context.
-            logger.warn(s"Item extent $featureExtentInCommonCRS and target extent $targetExtentInCommonCRS do not intersect. Discarding (${feature.id})")
-            return None // Discard the feature
+            logger.warn(s"Item extent $featureExtentInCommonCRS and target extent $targetExtentInCommonCRS do not intersect. (${feature.id})")
+            // return None // Discard the feature
+            // TODO: feature.rasterExtent is not accurate when going over the antimeridian.
+            // TODO: Fall back to feature.geometry? Now the fallback is to load the whole tile (Just like old intersection code)
+            targetExtent.extent
           case Some(value) => value.reproject(commonCrs, targetExtent.crs)
         }
         var tmp = expandToCellSize(intersectionTargetCrs, theResolution)

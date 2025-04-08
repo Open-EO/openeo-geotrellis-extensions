@@ -3,6 +3,7 @@ package org.openeo
 import _root_.geotrellis.proj4._
 import _root_.geotrellis.raster._
 import _root_.geotrellis.vector._
+import _root_.geotrellis.vector.reproject.Reproject._
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
 import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy => FailsafeRetryPolicy}
 import org.apache.spark.SparkContext
@@ -26,6 +27,7 @@ import java.time.temporal.ChronoUnit
 import java.time.{Duration, Instant}
 import java.util.concurrent.ConcurrentHashMap
 import scala.compat.java8.FunctionConverters._
+import scala.reflect.io.Directory
 
 
 package object geotrellis {
@@ -392,22 +394,32 @@ package object geotrellis {
     polygonCopy
   }
 
+  private def projectedPolygonWrapAntimeridian(inputProjectedPolygons: ProjectedPolygons): ProjectedPolygons = {
+    if (inputProjectedPolygons.crs != LatLng) throw new IllegalArgumentException("Only LatLng CRS is supported for wrapping")
+    val geometries = inputProjectedPolygons.geometries.map {
+      case polygon: Polygon => polygonWrapAntimeridian(polygon)
+      case multiPolygon: MultiPolygon =>
+        MultiPolygon(multiPolygon.polygons.map(polygonWrapAntimeridian))
+      case geometry: Geometry =>
+        // logger.info("Was only expecting (Multi)Polygon, but got: " + geometry)
+        geometry
+    }
+    ProjectedPolygons(geometries, inputProjectedPolygons.crs)
+  }
+
   def safeReprojectPolygons(inputProjectedPolygons: ProjectedPolygons, targetCrs: CRS)(implicit logger: Logger): ProjectedPolygons = {
     if (inputProjectedPolygons.crs == targetCrs) return inputProjectedPolygons
+    // TODO, this should refine the polygon till a maximum error. Just like refine here:
+    // https://github.com/pomadchin/geotrellis/blob/b071b33/vector/src/main/scala/geotrellis/vector/reproject/Reproject.scala#L94
     lazy val transform = SafeTransform(inputProjectedPolygons.crs, targetCrs)
-    var geometries = inputProjectedPolygons.geometries.map(_.reproject(transform))
-    if (targetCrs == LatLng) {
-      geometries = geometries.map {
-        case polygon: Polygon => polygonWrapAntimeridian(polygon)
-        case multiPolygon: MultiPolygon =>
-          MultiPolygon(multiPolygon.polygons.map(polygonWrapAntimeridian))
-        case geometry: Geometry =>
-          // Disable log before merging
-          logger.info("Was only expecting (Multi)Polygon, but got: " + geometry)
-          geometry
-      }
+    val geometries = inputProjectedPolygons.geometries.map(_.reproject(transform))
+    var pp = ProjectedPolygons(geometries, targetCrs)
+    val inputIsUTM = inputProjectedPolygons.crs.proj4jCrs.getProjection.getName == "utm"
+    if (inputIsUTM && targetCrs == LatLng) {
+      // When the extent was utm, some wrapping may have occurred
+      pp = projectedPolygonWrapAntimeridian(pp)
     }
-    ProjectedPolygons(geometries, targetCrs)
+    pp
   }
 
   def projectedPolygonsEquals(p1: ProjectedPolygons, p2: ProjectedPolygons): Boolean = {
@@ -420,13 +432,13 @@ package object geotrellis {
 
   def safeReproject(inputProjectedExtent: ProjectedExtent, targetCrs: CRS)(implicit logger: Logger): ProjectedExtent = {
     if (inputProjectedExtent.crs == targetCrs) return inputProjectedExtent
-//     val reprojectedPolygon = inputProjectedExtent.extent.reprojectAsPolygon(inputProjectedExtent.crs, targetCrs, 0.01)
-    val polygons = ProjectedPolygons(inputProjectedExtent)
-    val reprojectedPolygon = safeReprojectPolygons(polygons, targetCrs)
-    val envelope = reprojectedPolygon.getFlatMultiPolygon.getEnvelopeInternal
+    val transform = SafeTransform(inputProjectedExtent.crs, targetCrs)
+    val reprojectedPolygon = reprojectExtentAsPolygon(inputProjectedExtent.extent, transform, 0.01) // TODO: Adapt relError to CRS
+    val envelope = reprojectedPolygon.getEnvelopeInternal
     var reprojected = Extent(envelope.getMinX, envelope.getMinY, envelope.getMaxX, envelope.getMaxY)
-    // TODO: Needed for webmercator too?
-    if (targetCrs == LatLng && reprojected.width > 180 && reprojected.width < 360) {
+    val inputIsUTM = inputProjectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
+    // utm for sure does not cover the world width. TODO: Also swap when coming from WebMercator or some other niche projections
+    if (targetCrs == LatLng && inputIsUTM && reprojected.width > 180 && reprojected.width < 360) {
       // Fix width wrap when projecting over anti meridian in LatLon.
       // Reprojecting an extent could make the left and the right side swap differently over the antimeridian.
       // A single point will always work, so consider that as the source of truth
@@ -468,7 +480,8 @@ package object geotrellis {
   }
 
   def dumpGeoJson(str: String, name: Option[String] = None): Unit = {
-    //    val str = toGeoJsonDebug(polygons)
+    val outDir = Paths.get("tmp/")
+    Files.createDirectories(outDir)
     var path = "tmp/" + name.getOrElse("dumpGeoJson")
     if (!path.endsWith("json")) {
       path = path + ".geojson"
