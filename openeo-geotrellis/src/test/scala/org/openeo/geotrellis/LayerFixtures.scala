@@ -501,7 +501,7 @@ for p in l:
       pathDateExtractor = SplitYearMonthDayPathDateExtractor
     )
 
-  def createLayerWithGaps(layoutCols:Int,layoutRows:Int, extent:Extent = defaultExtent ) = {
+  def createLayerWithGaps(layoutCols:Int,layoutRows:Int, extent:Extent = defaultExtent , crs:CRS = LatLng) = {
 
     val intImage = createTextImage(layoutCols * 256, layoutRows * 256)
     val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
@@ -509,7 +509,7 @@ for p in l:
     val secondBand = imageTile.map { x => if (x >= 5) 10 else 100 }
     val thirdBand = imageTile.map { x => if (x >= 5) 50 else 200 }
 
-    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, MultibandTile(imageTile, secondBand, thirdBand), TileLayout(layoutCols, layoutRows, 256, 256), LatLng)
+    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, MultibandTile(imageTile, secondBand, thirdBand), TileLayout(layoutCols, layoutRows, 256, 256), crs)
     print(tileLayerRDD.keys.collect())
     // Remove some tiles at the left of the image:
     val filtered: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = tileLayerRDD.withContext {
@@ -521,11 +521,12 @@ for p in l:
   /**
    * Returned cube intentionally has missing Tiles.
    */
-  def aSpacetimeTileLayerRdd(layoutCols: Int, layoutRows: Int, nbDates:Int = 2, extent:Extent = defaultExtent): (RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], ByteArrayTile) = {
+  def aSpacetimeTileLayerRdd(layoutCols: Int, layoutRows: Int, nbDates:Int = 2, extent:Extent = defaultExtent, crs:CRS= LatLng): (RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], ByteArrayTile) = {
     val (imageTile: ByteArrayTile, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(
       layoutCols,
       layoutRows,
       extent,
+      crs,
     )
     val startDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
     val temporal = filtered.flatMap(tuple => {
@@ -585,8 +586,8 @@ for p in l:
     (ContextRDD(temporal, temporalMetadata), imageTile)
   }
 
-  def aSparseSpacetimeTileLayerRdd(desiredKeys:Seq[SpatialKey] = Seq(SpatialKey(0,0),SpatialKey(3,1),SpatialKey(7,2))): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val collection = aSpacetimeTileLayerRdd(8,4,4)
+  def aSparseSpacetimeTileLayerRdd(desiredKeys:Seq[SpatialKey] = Seq(SpatialKey(0,0),SpatialKey(3,1),SpatialKey(7,2)), crs:CRS =LatLng): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val collection = aSpacetimeTileLayerRdd(8,4,4,crs= crs)
 
     val allKeys = collection._1.map(_._1).filter(k => desiredKeys.contains(k.spatialKey)).collect().toArray
 
