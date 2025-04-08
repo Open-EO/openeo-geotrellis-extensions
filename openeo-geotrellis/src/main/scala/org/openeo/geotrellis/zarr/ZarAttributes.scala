@@ -41,7 +41,7 @@ class dataAttribute[K: SpatialComponent: Boundable : ClassTag](metadata: TileLay
     val crsMap = new java.util.HashMap[String,Object]()
     if (crs.toWKT().isDefined) crsMap.put("wkt",crs.toWKT().get)
     crsMap.put("code",crs.proj4jCrs.getName)
-    crsMap.put("proj:bbox",Array(bbox.ymin,bbox.xmin,bbox.ymax,bbox.xmax))
+    crsMap.put("proj:bbox",Array(bbox.xmin,bbox.ymin,bbox.xmax,bbox.ymax))
     crsMap.put("proj:shape",Array(metadata.rows.toInt,metadata.cols.toInt))
     attributes.put("_CRS",crsMap)
     attributes
@@ -72,7 +72,7 @@ class dataAttribute[K: SpatialComponent: Boundable : ClassTag](metadata: TileLay
       }
     }
     val spatialExtent =  new java.util.HashMap[String,Object]()
-    spatialExtent.put("bbox", Array(Array(bbox.ymin,bbox.xmin,bbox.ymax,bbox.xmax)))
+    spatialExtent.put("bbox", Array(Array(bbox.xmin,bbox.ymin,bbox.xmax,bbox.ymax)))
     extent.put("spatial",spatialExtent)
     attributes.put("extent",extent)
     attributes

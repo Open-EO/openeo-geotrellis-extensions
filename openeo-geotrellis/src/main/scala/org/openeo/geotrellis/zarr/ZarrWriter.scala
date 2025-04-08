@@ -19,7 +19,7 @@ object ZarrWriter {
 
   def saveZarr[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K],path:String, nBands:Int):Unit= {
     val groupPath = path + "/" + getGroupName(path)
-    writeZGroup(groupPath)
+    writeFile(groupPath,FILENAME_DOT_ZGROUP,null)
     val metadata = rdd.metadata
     val cellType = metadata.cellType
     val (zarrType: DataType,fillValue:Option[Number]) = toZarrType(cellType)
@@ -46,13 +46,13 @@ object ZarrWriter {
         (dist.zipWithIndex.toMap, dist.length+:shapeBands, 1+:chunkBands,true)
       case _ => (Map[Long,Int](),shapeBands,chunkBands, false)
     }
-    writeZAttr(groupPath, new dataAttribute(metadata,nBands,hasTemp))
+    writeFile(groupPath,FILENAME_DOT_ZATTRS, new dataAttribute(metadata,nBands,hasTemp))
     val zarrHeader = new ZarrHeader(shape, chunk, zarrType.toString, byteOrder, fillValue.getOrElse(0), compressor, ".")
-    writeZArray(groupPath, zarrHeader)
+    writeFile(groupPath, FILENAME_DOT_ZARRAY, zarrHeader)
 
     writeVariables(path,"x",xValues.toArray)
     writeVariables(path,"y",yValues.toArray)
-    writeZGroup(path)
+    writeFile(path,FILENAME_DOT_ZGROUP,null)
 
 
     rdd.foreach{ case (k, multibandTileLayer) =>
@@ -88,37 +88,16 @@ object ZarrWriter {
     }
   }
 
-  private def writeZArray(path: String, zarrHeader: ZarrHeader): Unit = {
-    try {
-      val os = new FileSystemStore(Paths.get(path)).getOutputStream(FILENAME_DOT_ZARRAY)
-      val writer = new OutputStreamWriter(os)
-      try ZarrUtils.toJson(zarrHeader, writer, true)
-      finally {
-        if (os != null) os.close()
-        if (writer != null) writer.close()
-      }
+  private def writeFile(path:String,fileExtension:String,content:Any):Unit = {
+    val toWrite = content match {
+      case attributes: ZarrAttributes => attributes.toMap
+      case zarrHeader: ZarrHeader => zarrHeader
+      case null => Map((ZARR_FORMAT, 2))
     }
-
-  }
-
-  private def writeZGroup(path:String): Unit = {
-    val singletonMap: Map[String, Int] = Map((ZARR_FORMAT, 2))
     try {
-      val os: OutputStream = new FileSystemStore(Paths.get(path)).getOutputStream(FILENAME_DOT_ZGROUP)
-      val writer: OutputStreamWriter = new OutputStreamWriter(os)
-      try ZarrUtils.toJson(singletonMap.asJava, writer, true)
-      finally {
-        if (os != null) os.close()
-        if (writer != null) writer.close()
-      }
-    }
-  }
-
-  private def writeZAttr(path:String, attributes: ZarrAttributes):Unit = {
-    try {
-      val os = new FileSystemStore(Paths.get(path)).getOutputStream(FILENAME_DOT_ZATTRS)
+      val os = new FileSystemStore(Paths.get(path)).getOutputStream(fileExtension)
       val writer = new OutputStreamWriter(os)
-      try ZarrUtils.toJson(attributes.toMap, writer, true)
+      try ZarrUtils.toJson(toWrite, writer, true)
       finally {
         if (os != null) os.close()
         if (writer != null) writer.close()
@@ -128,7 +107,7 @@ object ZarrWriter {
 
   private def writeVariables[T <: AnyVal](path:String, name: String, value:Array[T]): Unit = {
     val variablePath = path + "/" + name
-    writeZAttr(variablePath,new variableAttribute(name))
+    writeFile(variablePath, FILENAME_DOT_ZATTRS,new variableAttribute(name))
     val store = new FileSystemStore(Paths.get(variablePath))
     val compressor = CompressorFactory.createDefaultCompressor()
     val byteOrder = ByteOrder.BIG_ENDIAN
@@ -141,7 +120,7 @@ object ZarrWriter {
       case _:Array[Double] => DataType.f4
     }
     val zarHeader = new ZarrHeader(shape, shape, dataTypeZarr.toString, byteOrder, 0, compressor, ".")
-    writeZArray(variablePath,zarHeader)
+    writeFile(variablePath, FILENAME_DOT_ZARRAY, zarHeader)
     val chunkReaderWriter = ChunkReaderWriter.create(compressor, dataTypeZarr, byteOrder, shape, 0, store)
     chunkReaderWriter.write("0", source)
   }
