@@ -61,6 +61,10 @@ class DataCubeParameters extends Serializable {
     useNewFeatureExtentIntersection = v
   }
 
+  def setUseNewFeatureExtentIntersection2(v: Boolean): Unit = {
+    useNewFeatureExtentIntersection2 = v
+  }
+
   def setTimeDimensionFilter(conditionProcessScriptBuilder:Object):Unit = {
     timeDimensionFilter = Some(conditionProcessScriptBuilder)
   }
