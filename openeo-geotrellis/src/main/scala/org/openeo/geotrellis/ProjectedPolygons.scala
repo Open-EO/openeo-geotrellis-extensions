@@ -41,7 +41,8 @@ object ProjectedPolygons {
   private type JList[T] = java.util.List[T]
 
   def apply(pe: ProjectedExtent): ProjectedPolygons = {
-    new ProjectedPolygons(Array(pe.extent.toPolygon()), pe.crs)
+    // Wrap in MultiPolygon for backwards compatibility
+    new ProjectedPolygons(Array(MultiPolygon(pe.extent.toPolygon())), pe.crs)
   }
 
   def apply(geometry: Geometry, crs: CRS): ProjectedPolygons = {
