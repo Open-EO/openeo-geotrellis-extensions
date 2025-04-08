@@ -20,7 +20,8 @@ import software.amazon.awssdk.services.s3.{S3Client, S3Configuration}
 
 import java.lang
 import java.net.{SocketException, SocketTimeoutException, URI}
-import java.nio.file.{Path, Paths}
+import java.nio.charset.Charset
+import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 import java.time.temporal.ChronoUnit
 import java.time.{Duration, Instant}
 import java.util.concurrent.ConcurrentHashMap
@@ -382,20 +383,33 @@ package object geotrellis {
       }
   }
 
-  def safeReprojectPolygons(inputProjectedExtent: ProjectedPolygons, targetCrs: CRS): ProjectedPolygons = {
-    if (inputProjectedExtent.crs == targetCrs) return inputProjectedExtent
-    lazy val transform = SafeTransform(inputProjectedExtent.crs, targetCrs)
-    ProjectedPolygons(inputProjectedExtent.polygons.map(_.reproject(transform)), targetCrs)
+  def polygonWrapAntimeridian(polygon: Polygon): Polygon = {
+    // TODO: Split polygon across antimeridian instead?
+    val polygonCopy = polygon.copy().asInstanceOf[Polygon]
+    if (polygon.extent.width > 180 && polygon.extent.width < 360) {
+      // Documentation says CoordinateSequenceFilter should be used, but that has a complex interface
+      polygonCopy.getCoordinates.foreach(c => c.x = to_0_360_range(c.x))
+    }
+    polygonCopy
   }
 
-
-
-  //  // Check if it is safe to reproject and back:
-  //  val polygon = new ProjectedPolygons(Array(extent.extent.toPolygon()), extent.crs)
-  //  val polygonProjected = safeReprojectPolygons(polygon, targetCrs)
-  //  val polygonProjectedBack = safeReprojectPolygons(polygonProjected, extent.crs)
-  //  projectedPolygonsEquals(polygonProjectedBack, polygon)
-
+  def safeReprojectPolygons(inputProjectedPolygons: ProjectedPolygons, targetCrs: CRS)(implicit logger: Logger): ProjectedPolygons = {
+    if (inputProjectedPolygons.crs == targetCrs) return inputProjectedPolygons
+    lazy val transform = SafeTransform(inputProjectedPolygons.crs, targetCrs)
+    var geometries = inputProjectedPolygons.geometries.map(_.reproject(transform))
+    if (targetCrs == LatLng) {
+      geometries = geometries.map {
+        case polygon: Polygon => polygonWrapAntimeridian(polygon)
+        case multiPolygon: MultiPolygon =>
+          MultiPolygon(multiPolygon.polygons.map(polygonWrapAntimeridian))
+        case geometry: Geometry =>
+          // Disable log before merging
+          logger.info("Was only expecting (Multi)Polygon, but got: " + geometry)
+          geometry
+      }
+    }
+    ProjectedPolygons(geometries, targetCrs)
+  }
 
   def projectedPolygonsEquals(p1: ProjectedPolygons, p2: ProjectedPolygons): Boolean = {
     if (p1.crs != p2.crs) return false
@@ -405,7 +419,7 @@ package object geotrellis {
       .forall(identity)
   }
 
-  def safeReproject(inputProjectedExtent: ProjectedExtent, targetCrs: CRS): ProjectedExtent = {
+  def safeReproject(inputProjectedExtent: ProjectedExtent, targetCrs: CRS)(implicit logger: Logger): ProjectedExtent = {
     if (inputProjectedExtent.crs == targetCrs) return inputProjectedExtent
 //     val reprojectedPolygon = inputProjectedExtent.extent.reprojectAsPolygon(inputProjectedExtent.crs, targetCrs, 0.01)
     val polygons = ProjectedPolygons(Array(inputProjectedExtent.extent.toPolygon()), "EPSG:" + inputProjectedExtent.crs.epsgCode.get)
@@ -428,8 +442,47 @@ package object geotrellis {
         }
       }
     }
-    ProjectedExtent(reprojected, targetCrs)
+    val projectedExtent = ProjectedExtent(reprojected, targetCrs)
+    // dumpGeoJson(toGeoJsonDebug(projectedExtent), Some("projectedExtent_" + projectedExtent))
+    projectedExtent
   }
+
+  def toGeoJsonDebug(polygons: ProjectedPolygons): String = {
+    if (polygons.geometries.length != 1) {
+      throw new IllegalArgumentException("Only one geometry is supported at the moment.")
+    }
+    val str = polygons.getFlatMultiPolygon.toGeoJson()
+    var j = SimpleJson.parse(str)
+    val crs = polygons.crs.proj4jCrs.getName
+    j = j + ("crs" -> Map("type" -> "name", "properties" -> Map("name" -> crs)))
+    SimpleJson.serialize(j)
+  }
+
+  def toGeoJsonDebug(geometry: Geometry): String = {
+    val pp = ProjectedPolygons(Array(geometry), LatLng)
+    toGeoJsonDebug(pp)
+  }
+
+  def toGeoJsonDebug(inputProjectedExtent: ProjectedExtent): String = {
+    val pp = ProjectedPolygons(Array(inputProjectedExtent.extent.toPolygon()), "EPSG:" + inputProjectedExtent.crs.epsgCode.get)
+    toGeoJsonDebug(pp)
+  }
+
+  def toGeoJsonDebug(extent: Extent): String = {
+    val pe = ProjectedExtent(extent, LatLng)
+    toGeoJsonDebug(pe)
+  }
+
+  def dumpGeoJson(str: String, name: Option[String] = None): Unit = {
+    //    val str = toGeoJsonDebug(polygons)
+    var path = "tmp/" + name.getOrElse("dumpGeoJson")
+    if (!path.endsWith("json")) {
+      path = path + ".geojson"
+    }
+
+    Files.write(Paths.get(path), str.getBytes(Charset.forName("UTF-8")), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+  }
+
 
   /**
    * DANGER. Might crash system if no memory limit is specified.

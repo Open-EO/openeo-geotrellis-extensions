@@ -24,6 +24,15 @@ case class ProjectedPolygons(geometries: Array[Geometry], crs: CRS) {
   }
 
   def polygons: Array[MultiPolygon] = geometries.filter(_.isInstanceOf[MultiPolygon]).map(_.asInstanceOf[MultiPolygon])
+
+  def getFlatMultiPolygon: MultiPolygon = {
+    MultiPolygon(geometries.flatMap {
+      case multiPolygon: MultiPolygon => multiPolygon.polygons
+      case polygon: Polygon => Array(polygon)
+      case _ => Array.empty[Polygon] // ignore non polygon
+    })
+  }
+
   def extent: ProjectedExtent = ProjectedExtent(polygons.toSeq.extent,crs)
   def reproject(crs: CRS): ProjectedPolygons = ProjectedPolygons.reproject(this, crs)
 }

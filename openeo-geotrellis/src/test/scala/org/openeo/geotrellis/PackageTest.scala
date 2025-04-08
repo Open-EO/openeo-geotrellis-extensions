@@ -1,20 +1,19 @@
 package org.openeo.geotrellis
 
-import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.proj4.{CRS, LatLng, Sinusoidal, WebMercator}
+import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.{ByteCellType, ByteUserDefinedNoDataCellType, FloatUserDefinedNoDataCellType, UByteCellType, UByteUserDefinedNoDataCellType}
-import org.openeo.geotrellis.geotiff._
-
-import java.nio.file.{Files, Path}
-import geotrellis.vector.{Extent, MultiPolygon, Point, Polygon, ProjectedExtent, ReprojectGeometry}
+import geotrellis.vector._
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
-import org.locationtech.proj4j.{BasicCoordinateTransform, ProjCoordinate}
+import org.openeo.geotrellis.geotiff._
 import org.openeo.geotrellis.layers.FileLayerProvider
 import org.slf4j.{Logger, LoggerFactory}
+
+import java.nio.file.{Files, Path}
 
 object PackageTest {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
@@ -183,5 +182,24 @@ class PackageTest {
     val polygonExtentUtm = safeReproject(polygonExtent, CRS.fromName("EPSG:32660"))
     val polygonExtentBack = safeReproject(polygonExtentUtm, LatLng)
     print(polygonExtentBack)
+  }
+
+  @Test
+  def testSafeReproject(): Unit = {
+    val products = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/testAntimerideanArtifacts.json").getPath)
+    val productsLatLng = safeReprojectPolygons(products, LatLng)
+    val productsLatLngMp = productsLatLng.getFlatMultiPolygon
+    dumpGeoJson(toGeoJsonDebug(productsLatLngMp), Some("productsLatLngMp"))
+
+    val targetExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
+    dumpGeoJson(toGeoJsonDebug(targetExtent), Some("targetExtent"))
+    val targetExtentPolygon = ProjectedPolygons(Array(MultiPolygon(targetExtent.extent.toPolygon())), targetExtent.crs)
+    val targetExtentLatLng = safeReprojectPolygons(targetExtentPolygon, LatLng)
+    val targetExtentLatLngMp = targetExtentLatLng.getFlatMultiPolygon
+    dumpGeoJson(toGeoJsonDebug(targetExtentLatLngMp), Some("targetExtentLatLngMp"))
+
+    val intersection = productsLatLngMp.intersection(targetExtentLatLngMp)
+    dumpGeoJson(toGeoJsonDebug(intersection), Some("intersection"))
+    assertTrue(intersection.getArea > 0)
   }
 }
