@@ -341,15 +341,30 @@ object LayerFixtures {
     new ContextRDD(cube.partitionBy(partitioner),cube.metadata)
   }
 
-  /**
-   * Creates a Sentinel-2 cube by downloading data locally.
-   */
   def sentinel2Cube(localDate: LocalDate,
                     projected_polygons_native_crs: ProjectedPolygons,
                     jsonPath: String,
                     dataCubeParameters: DataCubeParameters = new DataCubeParameters,
                     bandNames: util.List[String] = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data", "S2_Level-2A_Tile1_Metadata##1", "S2_Level-2A_Tile1_Metadata##0")
-                   ) = {
+                   ): MultibandTileLayerRDD[SpaceTimeKey] = {
+    creodiasCube(
+      localDate,
+      projected_polygons_native_crs,
+      jsonPath,
+      bandNames,
+      dataCubeParameters,
+    )
+  }
+
+  /**
+   * Creates a Sentinel-2 cube by downloading data locally.
+   */
+  def creodiasCube(localDate: LocalDate,
+                    projected_polygons_native_crs: ProjectedPolygons,
+                    jsonPath: String,
+                   bandNames: util.List[String],
+                    dataCubeParameters: DataCubeParameters = new DataCubeParameters,
+                   ): MultibandTileLayerRDD[SpaceTimeKey] = {
     val jsonPathFull = getClass.getResource(jsonPath)
 
     val fileSource = Source.fromURL(jsonPathFull)
@@ -425,21 +440,26 @@ for p in l:
       "/eodata/Sentinel-2/MSI/L1C/2024/04/02/S2B_MSIL1C_20240402T000609_N0510_R016_T60WWD_20240402T001958.SAFE/manifest.safe",
       "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T01WCU_20240402T003652.SAFE/GRANULE/L2A_T01WCU_A036936_20240402T000609/IMG_DATA/R20m/T01WCU_20240402T000609_SCL_20m.jp2",
       "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T60WWD_20240402T003652.SAFE/manifest.safe",
+      // testAntimerideanArtifacts:
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWB_1_0/VV.tif",
     )
 
-    for (path <- artifactoryPaths) {
-      val jp2File = new File(basePath, path)
-      if (!jp2File.exists()) {
-        println("Copy from artifactory to: " + jp2File)
-        FileUtils.copyURLToFile(new URL(basePathArtifactory + path), jp2File)
-      }
-    }
-
-    val folders = artifactoryPaths.map(x => x.substring(0, x.indexOf(".SAFE") + ".SAFE".length))
-    val matches = "/eodata/.*?.SAFE".r.findAllIn(txt).toList
+    val matches = "\"(/eodata/.*?)\"".r.findAllIn(txt).toList
     for (m <- matches) {
-      if (folders.contains(m)) {
-        txt = txt.replace(m, basePath + m)
+      val pathFromJson = m.substring(1, m.length - 1)
+
+      for (artifactoryPath <- artifactoryPaths) {
+        if (artifactoryPath.startsWith(pathFromJson)) {
+          txt = txt.replace('"' + pathFromJson + '"', '"' + basePath + pathFromJson + '"')
+
+          // Only download when needed for current test:
+          val jp2File = new File(basePath, artifactoryPath)
+          if (!jp2File.exists()) {
+            println("Copy from artifactory to: " + jp2File)
+            FileUtils.copyURLToFile(new URL(basePathArtifactory + artifactoryPath), jp2File)
+          }
+
+        }
       }
     }
 
@@ -453,25 +473,16 @@ for p in l:
     val ZonedFromDate = ZonedDateTime.of(localFromDate, java.time.LocalTime.MIDNIGHT, UTC)
     val zonedToDate = ZonedDateTime.of(localToDate, java.time.LocalTime.MIDNIGHT, UTC)
 
-    sentinel2CubeCDSEGeneric((ZonedFromDate, zonedToDate), projected_polygons_native_crs, client, dataCubeParameters, bandNames)
-  }
-
-  def sentinel2CubeCDSEGeneric(dateInterval: (ZonedDateTime, ZonedDateTime),
-                               projected_polygons_native_crs: ProjectedPolygons,
-                               client: OpenSearchClient = CreodiasClient(),
-                               dataCubeParameters: DataCubeParameters = new DataCubeParameters,
-                               bandNames: util.List[String] = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data", "S2_Level-2A_Tile1_Metadata##1", "S2_Level-2A_Tile1_Metadata##0")
-                              ): MultibandTileLayerRDD[SpaceTimeKey] = {
     val factory = new PyramidFactory(
-      client, "Sentinel2", bandNames,
+      client, "<fakeOpenSearchCollectionId>", bandNames,
       null,
       maxSpatialResolution = if (projected_polygons_native_crs.crs == LatLng)
         CellSize(0.0001471299295632278, 0.0001471299295632278) else CellSize(10, 10),
     )
     factory.crs = projected_polygons_native_crs.crs
 
-    val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format dateInterval._1
-    val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format dateInterval._2
+    val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format ZonedFromDate
+    val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format zonedToDate
 
     val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
       projected_polygons_native_crs,
@@ -490,7 +501,7 @@ for p in l:
       pathDateExtractor = SplitYearMonthDayPathDateExtractor
     )
 
-  def createLayerWithGaps(layoutCols:Int,layoutRows:Int, extent:Extent = defaultExtent ) = {
+  def createLayerWithGaps(layoutCols:Int,layoutRows:Int, extent:Extent = defaultExtent , crs:CRS = LatLng) = {
 
     val intImage = createTextImage(layoutCols * 256, layoutRows * 256)
     val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
@@ -498,7 +509,7 @@ for p in l:
     val secondBand = imageTile.map { x => if (x >= 5) 10 else 100 }
     val thirdBand = imageTile.map { x => if (x >= 5) 50 else 200 }
 
-    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, MultibandTile(imageTile, secondBand, thirdBand), TileLayout(layoutCols, layoutRows, 256, 256), LatLng)
+    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, MultibandTile(imageTile, secondBand, thirdBand), TileLayout(layoutCols, layoutRows, 256, 256), crs)
     print(tileLayerRDD.keys.collect())
     // Remove some tiles at the left of the image:
     val filtered: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = tileLayerRDD.withContext {
@@ -510,11 +521,12 @@ for p in l:
   /**
    * Returned cube intentionally has missing Tiles.
    */
-  def aSpacetimeTileLayerRdd(layoutCols: Int, layoutRows: Int, nbDates:Int = 2, extent:Extent = defaultExtent): (RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], ByteArrayTile) = {
+  def aSpacetimeTileLayerRdd(layoutCols: Int, layoutRows: Int, nbDates:Int = 2, extent:Extent = defaultExtent, crs:CRS= LatLng): (RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], ByteArrayTile) = {
     val (imageTile: ByteArrayTile, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(
       layoutCols,
       layoutRows,
       extent,
+      crs,
     )
     val startDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
     val temporal = filtered.flatMap(tuple => {
@@ -574,8 +586,8 @@ for p in l:
     (ContextRDD(temporal, temporalMetadata), imageTile)
   }
 
-  def aSparseSpacetimeTileLayerRdd(desiredKeys:Seq[SpatialKey] = Seq(SpatialKey(0,0),SpatialKey(3,1),SpatialKey(7,2))): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val collection = aSpacetimeTileLayerRdd(8,4,4)
+  def aSparseSpacetimeTileLayerRdd(desiredKeys:Seq[SpatialKey] = Seq(SpatialKey(0,0),SpatialKey(3,1),SpatialKey(7,2)), crs:CRS =LatLng): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val collection = aSpacetimeTileLayerRdd(8,4,4,crs= crs)
 
     val allKeys = collection._1.map(_._1).filter(k => desiredKeys.contains(k.spatialKey)).collect().toArray
 
@@ -628,7 +640,7 @@ for p in l:
   }
 
 
-  val cglsNDVI300 = {
+  lazy val cglsNDVI300 = {
     val dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2019/201906*/*/*.nc"
     val netcdfVariables = java.util.Arrays.asList("NDVI")
     val dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+"
