@@ -9,7 +9,7 @@ import geotrellis.raster.io.geotiff.compression.{Compression, DeflateCompression
 import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.render.IndexedColorMap
 import geotrellis.raster.resample._
-import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
+import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterExtent, Tile, TileLayout, ubyteNODATA, UByteConstantTile}
 import geotrellis.raster.crop._
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
@@ -869,7 +869,18 @@ package object geotiff {
                                    croppedExtent: Option[Extent], cropDimensions: Option[java.util.ArrayList[Int]],
                                    compression: Compression, formatOptions: Option[GTiffOptions] = None
                                   ): GeoTiffResultObject = {
-    val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).stitch()
+    val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).sparseStitch() match {
+      case Some(stitched) => stitched
+      case _ => {
+        logger.error("stitchAndWriteToTiff(): sparseStitch returned None. Recovering by writing an empty raster.")
+        if (tiles.isEmpty) {
+          val noDataTile = UByteConstantTile(ubyteNODATA, 256, 256)
+          Raster(MultibandTile(noDataTile), layout.extent)
+        } else {
+          Raster(tiles.head._2, layout.extent)
+        }
+      }
+    }
 
     val re = raster.rasterExtent
     val alignedExtent = re.createAlignedGridExtent(geometry.extent).extent
