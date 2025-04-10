@@ -1718,6 +1718,16 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       overlappingFeatures=overlappingFeatures.filter(f=>condition.inputFunction.asInstanceOf[AnyProcess].apply(Map("value"->f.nominalDate)).apply(f.nominalDate).asInstanceOf[Boolean])
     }
 
+    if (datacubeParams.getOrElse(new DataCubeParameters()).useNewFeatureExtentIntersection2) {
+      overlappingFeatures = overlappingFeatures.map(f => {
+        f.geometry match {
+          case None => f
+          case Some(geom) =>
+            val pp = ProjectedPolygons(geom, LatLng).splitPolygonsOnWrapPoint()
+            f.copy(geometry = Some(pp.getFlatMultiPolygon))
+        }
+      })
+    }
 
     val reprojectedBoundingBox: ProjectedExtent = targetBoundingBox(boundingBox, layoutScheme)
     val overlappingRasterSources = (for {
