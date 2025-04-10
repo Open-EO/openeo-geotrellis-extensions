@@ -7,7 +7,9 @@ import _root_.geotrellis.vector.reproject.Reproject._
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
 import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy => FailsafeRetryPolicy}
 import org.apache.spark.SparkContext
+import org.locationtech.jts.geom.Geometry
 import org.locationtech.proj4j.{BasicCoordinateTransform, ProjCoordinate}
+import org.openeo.opensearch.OpenSearchResponses.{Feature, FeatureCollection}
 import org.slf4j.Logger
 import scalaj.http.{HttpResponse, HttpStatusException}
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
@@ -347,14 +349,16 @@ package object geotrellis {
   /**
    * Will give actual angle, but as positive value.
    */
-  private def to_0_360_range(x: Double): Double = {
+  def to_0_360_range(x: Double): Double = {
+    if (x <= 360 && x >= 0) return x // 0/360 should be kept, even if it means the same
     (x + 360 * 10) % 360
   }
 
   /**
    * Will give actual angle, but in the LatLng extent.
    */
-  private def to_min180_180_range(x: Double): Double = {
+  def to_min180_180_range(x: Double): Double = {
+    if (x <= 180 && x >= -180) return x // The sign of 180 should be kept, even if it means the same
     val n = (x + 360 * 10) % 360
     if (n > 180) n - 360 else n
   }
@@ -394,7 +398,7 @@ package object geotrellis {
     polygonCopy
   }
 
-  private def projectedPolygonWrapAntimeridian(inputProjectedPolygons: ProjectedPolygons): ProjectedPolygons = {
+  def projectedPolygonWrapAntimeridian(inputProjectedPolygons: ProjectedPolygons): ProjectedPolygons = {
     if (inputProjectedPolygons.crs != LatLng) throw new IllegalArgumentException("Only LatLng CRS is supported for wrapping")
     val geometries = inputProjectedPolygons.geometries.map {
       case polygon: Polygon => polygonWrapAntimeridian(polygon)
@@ -457,14 +461,38 @@ package object geotrellis {
   }
 
   def toGeoJsonDebug(polygons: ProjectedPolygons): String = {
-    if (polygons.geometries.length != 1) {
-      throw new IllegalArgumentException("Only one geometry is supported at the moment.")
-    }
     val str = polygons.getFlatMultiPolygon.toGeoJson()
     var j = SimpleJson.parse(str)
     val crs = polygons.crs.proj4jCrs.getName
     // GeoJson officially only supports LatLng, but qgis works with custom CRSes too:
     j = j + ("crs" -> Map("type" -> "name", "properties" -> Map("name" -> crs)))
+    SimpleJson.serialize(j)
+  }
+
+  def toGeoJsonDebug(featureCollection: FeatureCollection): String = {
+    val j = Map("type" -> "FeatureCollection", "features" -> featureCollection.features.map(f => {
+      val pp = ProjectedPolygons(f.geometry.toArray, f.crs.getOrElse(LatLng))
+      Map(
+        "type" -> "Feature",
+        "id" -> f.id,
+        "geometry" -> SimpleJson.parse(toGeoJsonDebug(pp)),
+        "properties" -> f.generalProperties
+      )
+    }))
+    SimpleJson.serialize(j)
+  }
+
+  def toGeoJsonDebug(geometries: Array[_root_.geotrellis.vector.Feature[Geometry, (RasterSource, Feature)]]): String = {
+    val j = Map("type" -> "FeatureCollection",
+      "crs" -> Map("type" -> "name", "properties" -> Map("name" -> geometries.head.data._1.crs.proj4jCrs.getName)),
+      "features" -> geometries.map(f => {
+        val pp = ProjectedPolygons(f.geom, f.data._1.crs)
+        Map(
+          "type" -> "Feature",
+          "id" -> f.data._2.id,
+          "geometry" -> SimpleJson.parse(toGeoJsonDebug(pp)),
+        )
+      }).distinct)
     SimpleJson.serialize(j)
   }
 

@@ -14,6 +14,7 @@ import scala.collection.JavaConverters._
 import scala.io.Source
 
 case class ProjectedPolygons(geometries: Array[Geometry], crs: CRS) {
+  import ProjectedPolygons._
   def areaInSquareMeters: Double ={
     if(polygons.nonEmpty) {
       ProjectedPolygons.areaInSquareMeters(GeometryCollection(polygons), crs)
@@ -31,6 +32,32 @@ case class ProjectedPolygons(geometries: Array[Geometry], crs: CRS) {
       case polygon: Polygon => Array(polygon)
       case _ => Array.empty[Polygon] // ignore non polygon
     })
+  }
+
+  def splitPolygonsOnWrapPoint(): ProjectedPolygons = {
+    // TODO: Support WebMercator, Sinusoidal and any other CRSes that go around the world
+    if (this.crs != LatLng) return this.copy()
+    val centerPolygon = Extent(-180, -90 * 100, 180, 90 * 100).toPolygon()
+
+
+    val newGeometries = geometries.map {
+      case multiPolygon: MultiPolygon =>
+        MultiPolygon(multiPolygon.polygons
+          .map(splitGeometry(_, centerPolygon))
+          .flatMap(_.polygons)
+          .map(polygon_to_min180_180_range)
+        )
+      case polygon: Polygon =>
+        val multiPolygon = splitGeometry(polygon, centerPolygon)
+        MultiPolygon(multiPolygon.polygons.map(polygon_to_min180_180_range))
+      case point: Point =>
+        // Here just to make case return Geometry instead of MultiPolygon
+        // I did not encounter a Point here yet.
+        Point(to_min180_180_range(point.x), point.y)
+      case geom =>
+        throw new IllegalArgumentException("Unsupported geometry type: " + geom.getClass)
+    }
+    this.copy(geometries = newGeometries)
   }
 
   def extent: ProjectedExtent = ProjectedExtent(polygons.toSeq.extent,crs)
@@ -198,5 +225,30 @@ object ProjectedPolygons {
 
     val reprojectedGeometry = geometry.reproject(crs, targetCrs)
     reprojectedGeometry.getArea
+  }
+
+  def polygon_to_min180_180_range(p: Polygon): Polygon = {
+    // Documentation says CoordinateSequenceFilter should be used, but that has a complex interface
+    p.getCoordinates.foreach(c => c.x = to_min180_180_range(c.x))
+    val isPolygonInWesternHemisphere = p.getCoordinates.exists(c => c.x < 0 && c.x > -180) // Don't use <= here
+    p.getCoordinates.foreach(c => {
+      var newX = c.x
+      if (isPolygonInWesternHemisphere && newX == 180) newX = -180
+      else if (!isPolygonInWesternHemisphere && newX == -180) newX = 180
+      c.x = newX
+    })
+    p
+  }
+
+  def splitGeometry(inputPolygon: Polygon, intersector: Polygon): MultiPolygon = {
+    val intersect = inputPolygon.intersection(intersector) match {
+      case multiPolygon: MultiPolygon => multiPolygon.polygons.filter(!_.isEmpty)
+      case polygon: Polygon => Array(polygon).filter(!_.isEmpty)
+    }
+    val difference = inputPolygon.difference(intersector) match {
+      case multiPolygon: MultiPolygon => multiPolygon.polygons.filter(!_.isEmpty)
+      case polygon: Polygon => Array(polygon).filter(!_.isEmpty)
+    }
+    MultiPolygon(intersect ++ difference)
   }
 }

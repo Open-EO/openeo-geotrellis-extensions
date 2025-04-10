@@ -203,4 +203,17 @@ class PackageTest {
     dumpGeoJson(toGeoJsonDebug(intersection), Some("intersection"))
     assertTrue(intersection.getArea > 0)
   }
+
+  @Test
+  def testRangeConversion() = {
+    assertEquals(to_min180_180_range(182), -178)
+
+    assertEquals(to_min180_180_range(180), 180) // edge case
+    assertEquals(to_min180_180_range(-180), -180) // edge case
+
+    assertEquals(to_0_360_range(-60), 300)
+    assertEquals(to_0_360_range(180), 180)
+    assertEquals(to_0_360_range(0), 0) // edge case
+    assertEquals(to_0_360_range(360), 360) // edge case
+  }
 }

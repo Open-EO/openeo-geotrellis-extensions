@@ -20,6 +20,7 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
+import geotrellis.vector.reproject.Reproject.reprojectExtentAsPolygon
 import net.jodah.failsafe.{Failsafe, RetryPolicy}
 import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import org.apache.spark.SparkContext
@@ -914,8 +915,18 @@ object FileLayerProvider {
         eoProductFeature.mapGeom(productGeometry => {
           try {
             val intersection = if (datacubeParams.getOrElse(new DataCubeParameters).useNewFeatureExtentIntersection2) {
-                val productGeometryProjected = safeReprojectPolygons(ProjectedPolygons(productGeometry, LatLng), productCRSOrDefault)
-                productGeometryProjected.getFlatMultiPolygon.intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
+              val productGeometryProjected = safeReprojectPolygons(ProjectedPolygons(productGeometry, LatLng), productCRSOrDefault)
+
+              val transform = SafeTransform(targetCRS, productCRSOrDefault)
+              val cubeExtentPolygon = reprojectExtentAsPolygon(cubeExtent, transform, 0.001) // TODO: Adapt relError to CRS
+
+              var pp = ProjectedPolygons(cubeExtentPolygon, productCRSOrDefault)
+              val inputIsUTM = targetCRS.proj4jCrs.getProjection.getName == "utm"
+              if (inputIsUTM && productCRSOrDefault == LatLng) {
+                // When the extent was utm, some wrapping may have occurred
+                pp = projectedPolygonWrapAntimeridian(pp)
+              }
+              productGeometryProjected.getFlatMultiPolygon.intersection(pp.getFlatMultiPolygon)
             } else {
               productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
             }

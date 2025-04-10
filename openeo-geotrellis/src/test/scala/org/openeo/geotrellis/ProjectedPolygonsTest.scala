@@ -4,6 +4,8 @@ import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.vector._
 import org.junit.Assert._
 import org.junit.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.ComputeStatsGeotrellisAdapterTest.{polygon1, polygon2}
 
 import scala.collection.JavaConverters._
@@ -44,5 +46,25 @@ class ProjectedPolygonsTest() {
     val delta = expectedArea * 0.01
 
     assertEquals(expectedArea, pp.areaInSquareMeters, delta) // https://github.com/locationtech/geotrellis/issues/3289
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = Array(
+    "/org/openeo/geotrellis/geojson/alaska_triangle.json",
+    "/org/openeo/geotrellis/geojson/bering_sea_triangle.json",
+    "/org/openeo/geotrellis/geojson/europe_triangle.json",
+    "/org/openeo/geotrellis/geojson/russia_triangle.json",
+    "/org/openeo/geotrellis/geojson/zigzag_shape.json",
+  ))
+  def testSplitPolygonsOnWrapPoint(path: String): Unit = {
+    val pp = ProjectedPolygons.fromVectorFile(getClass.getResource(path).getPath)
+    val ppSplit = pp.splitPolygonsOnWrapPoint()
+
+    // Prepare to manually inspect output in QGIS:
+    dumpGeoJson(toGeoJsonDebug(ppSplit), Some(path.substring(path.lastIndexOf("/") + 1) + "_split"))
+
+    // Test polygon validity:
+    ppSplit.geometries.foreach(_.isValid)
+    assertTrue(ppSplit.getFlatMultiPolygon.union().getArea > 0)
   }
 }
