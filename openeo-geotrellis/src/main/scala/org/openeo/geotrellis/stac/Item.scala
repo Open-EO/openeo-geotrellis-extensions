@@ -4,4 +4,4 @@ import geotrellis.vector.Extent
 
 import java.util
 
-case class Item(id: String, timestamp: String, bbox: Extent, assets: util.Map[String, Asset])
+case class Item(id: String, datetime: String, bbox: Extent, assets: util.Map[String, Asset])

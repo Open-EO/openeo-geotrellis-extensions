@@ -39,7 +39,7 @@ import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.attribute.PosixFilePermissions
 import java.time.Duration
 import java.time.format.DateTimeFormatter
-import java.util.{ArrayList, Collections, Map, List => JList}
+import java.util.{ArrayList, Collections, Map, UUID, List => JList}
 import java.util.stream.Collectors
 import scala.collection.JavaConverters._
 import scala.reflect._
@@ -117,7 +117,7 @@ package object geotiff {
     ret.stream()
       .flatMap { item =>
         item.assets.values().stream()
-          .map[(String, String, Extent)] { asset => (asset.path, item.timestamp, item.bbox) }
+          .map[(String, String, Extent)] { asset => (asset.path, item.datetime, item.bbox) }
       }
       .collect(Collectors.toList())
   }
@@ -293,13 +293,14 @@ package object geotiff {
       .groupBy { case (_, timestamp, _, _) => timestamp }
       .map { case (timestamp, geotiffs) =>
         val assets = geotiffs
-          .map { case (path, _, _, bandIndices) => s"openEO_$bandIndices" -> Asset(path, bandIndices) } // TODO: better asset key?
+          .map { case (path, _, _, bandIndices) =>
+            val assetKey = if (formatOptions.separateAssetPerBand) f"openEO_${bandLabels(bandIndices.get(0))}" else "openEO"
+            assetKey -> Asset(path, bandIndices)
+          }
           .toMap
 
-        Item(id = timestamp, timestamp, bbox = croppedExtent, assets.asJava) // TODO: better item id?
+        Item(id = UUID.randomUUID().toString, datetime=timestamp, bbox = croppedExtent, assets.asJava)
       }
-
-    items foreach println
 
     for ((geotiffResult, _, _, _) <- geotiffResults) {
       val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(Path.of(path), geotiffResult)
