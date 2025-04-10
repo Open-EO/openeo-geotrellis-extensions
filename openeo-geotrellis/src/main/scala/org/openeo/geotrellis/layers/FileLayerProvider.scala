@@ -1724,7 +1724,15 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           case None => f
           case Some(geom) =>
             val pp = ProjectedPolygons(geom, LatLng).splitPolygonsOnWrapPoint()
-            f.copy(geometry = Some(pp.getFlatMultiPolygon))
+            var ps = pp.getFlatMultiPolygon.polygons
+            if (openSearchCollectionId == "GLOBAL-MOSAICS" && f.id.length > 7) {
+              // This collection has huge chunks of nodata in tiles around the antimeridian, causing artifacts.
+              // Remove the polygons that cross the line to mitigate this
+              val tileIdGuess = f.id.substring(f.id.length - 9, f.id.length - 7)
+              if (tileIdGuess == "60") ps = ps.filter(p => p.getCoordinate.x > 0)
+              if (tileIdGuess == "01") ps = ps.filter(p => p.getCoordinate.x < 0)
+            }
+            f.copy(geometry = Some(MultiPolygon(ps)))
         }
       })
     }
