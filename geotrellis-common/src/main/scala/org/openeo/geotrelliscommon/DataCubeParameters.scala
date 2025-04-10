@@ -22,6 +22,7 @@ class DataCubeParameters extends Serializable {
   var pixelBufferY:Double = 0.0
   var noResampleOnRead: Boolean = false
   var useNewFeatureExtentIntersection: Boolean = false
+  var useNewFeatureExtentIntersection2: Boolean = false
   var timeDimensionFilter: Option[Object] = Option.empty
   var allowEmptyCube: Boolean = false
   var loadPerProduct: Boolean = false
@@ -58,6 +59,10 @@ class DataCubeParameters extends Serializable {
 
   def setUseNewFeatureExtentIntersection(v: Boolean): Unit = {
     useNewFeatureExtentIntersection = v
+  }
+
+  def setUseNewFeatureExtentIntersection2(v: Boolean): Unit = {
+    useNewFeatureExtentIntersection2 = v
   }
 
   def setTimeDimensionFilter(conditionProcessScriptBuilder:Object):Unit = {
