@@ -835,7 +835,7 @@ package object geotiff {
 
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
-    val geotiffResults = rdd.flatMap {
+    val groupedRDD = rdd.flatMap {
       case (key, tile) => features.filter { case (_, extent) =>
         val tileBounds = layout.mapTransform(extent)
 
@@ -844,7 +844,8 @@ package object geotiff {
         ((name, extent), (key, tile))
       }
     }.groupByKey()
-      .map { case ((tileId, extent), tiles) =>
+    val geotiffResults = groupedRDD.map {
+      case ((tileId, extent), tiles) =>
         // Each executor writes to a unique folder to avoid conflicts:
         val executorAttemptDirectory = createExecutorAttemptDirectory(Path.of(path).getParent)
         val filePath = executorAttemptDirectory + "/" + newFilePath(Path.of(path).getFileName.toString, tileId)
@@ -869,7 +870,7 @@ package object geotiff {
                                    croppedExtent: Option[Extent], cropDimensions: Option[java.util.ArrayList[Int]],
                                    compression: Compression, formatOptions: Option[GTiffOptions] = None
                                   ): GeoTiffResultObject = {
-    val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).sparseStitch() match {
+    val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).sparseStitch(geometry.extent) match {
       case Some(stitched) => stitched
       case _ => {
         logger.error("stitchAndWriteToTiff(): sparseStitch returned None. Recovering by writing an empty raster.")
