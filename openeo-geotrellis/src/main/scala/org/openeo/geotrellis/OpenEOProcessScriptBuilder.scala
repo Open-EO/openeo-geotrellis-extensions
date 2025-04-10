@@ -3,7 +3,7 @@ package org.openeo.geotrellis
 import ai.catboost.CatBoostModel
 import ai.catboost.spark.CatBoostClassificationModel
 import geotrellis.raster.mapalgebra.local._
-import geotrellis.raster.{ArrayTile, BitCellType, ByteUserDefinedNoDataCellType, CellType, ConstantTile, Dimensions, DoubleConstantNoDataCellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantNoDataCellType, ShortConstantTile, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortUserDefinedNoDataCellType, isData, isNoData}
+import geotrellis.raster.{ArrayTile, BitCellType, BitConstantTile, ByteUserDefinedNoDataCellType, CellType, ConstantTile, Dimensions, DoubleConstantNoDataCellType, DoubleConstantTile, FloatConstantNoDataCellType, FloatConstantTile, IntConstantNoDataCellType, IntConstantTile, MultibandTile, MutableArrayTile, NODATA, ShortConstantNoDataCellType, ShortConstantTile, Tile, UByteCells, UByteConstantTile, UByteUserDefinedNoDataCellType, UShortCells, UShortUserDefinedNoDataCellType, isData, isNoData}
 import org.apache.commons.math3.exception.NotANumberException
 import org.apache.commons.math3.stat.descriptive.rank.Percentile
 import org.apache.commons.math3.stat.descriptive.rank.Percentile.EstimationType
@@ -21,11 +21,10 @@ import java.time.temporal.{ChronoUnit, TemporalAccessor}
 import java.time.{Duration, ZonedDateTime}
 import java.util
 import scala.Double.NaN
-import scala.collection.JavaConversions.mapAsScalaMap
+import scala.collection.JavaConverters.mapAsScalaMap
 import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.collection.{immutable, mutable}
-import scala.math.BigDecimal
 import scala.util.Try
 import scala.util.control.Breaks.{break, breakable}
 
@@ -633,6 +632,37 @@ class OpenEOProcessScriptBuilder {
     contextStack.head.getOrElse(name, null).asInstanceOf[OpenEOProcess]
   }
 
+  private def arrayContains(arguments:java.util.Map[String,Object]) : OpenEOProcess = {
+    val value = getProcessArg("value")
+    val data = getProcessArg("data")
+
+    val arrayContainsProcess = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
+      val value_input: Seq[Tile] = evaluateToTiles(value, context, tiles)
+      val data_input: Seq[Tile] = evaluateToTiles(data, context, tiles)
+      if (value_input.size != 1) {
+        throw new IllegalArgumentException("The value argument of the array_contains function should resolve to exactly one input.")
+      }
+      val the_value = value_input.head
+      val tile = MultibandTile(data_input)
+
+      val mutableResult:MutableArrayTile = ArrayTile.empty(BitCellType,tile.cols,tile.rows)
+      for (column <- Range(0, tile.cols)) {
+        for (row <- Range(0, tile.rows)) {
+          breakable {
+            for (band <- tile.bands) {
+              if (band.get(column, row) == the_value.get(column, row)) {
+                mutableResult.set(column, row, 1)
+                break
+              }
+            }
+          }
+        }
+      }
+      Seq(mutableResult)
+    }
+
+    arrayContainsProcess
+  }
 
   private def arrayFind(arguments:java.util.Map[String,Object]) : OpenEOProcess = {
     val storedArgs = contextStack.head
@@ -1203,6 +1233,7 @@ class OpenEOProcessScriptBuilder {
           case "array_modify" => arrayModifyFunction(arguments)
           case "array_interpolate_linear" => applyListFunction("data", linearInterpolation, dataTypeMode = PRESERVE_DATATYPE_MODE)
           case "array_find" => arrayFind(arguments)
+          case "array_contains" => arrayContains(arguments)
           case "linear_scale_range" => linearScaleRangeFunction(arguments)
           case "quantiles" => quantilesFunction(arguments, ignoreNoData)
           case "array_concat" => arrayConcatFunction(arguments)
