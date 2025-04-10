@@ -415,7 +415,7 @@ package object geotrellis {
     if (inputProjectedPolygons.crs == targetCrs) return inputProjectedPolygons
     // TODO, this should refine the polygon till a maximum error. Just like refine here:
     // https://github.com/pomadchin/geotrellis/blob/b071b33/vector/src/main/scala/geotrellis/vector/reproject/Reproject.scala#L94
-    lazy val transform = SafeTransform(inputProjectedPolygons.crs, targetCrs)
+    val transform = SafeTransform(inputProjectedPolygons.crs, targetCrs)
     val geometries = inputProjectedPolygons.geometries.map(_.reproject(transform))
     var pp = ProjectedPolygons(geometries, targetCrs)
     val inputIsUTM = inputProjectedPolygons.crs.proj4jCrs.getProjection.getName == "utm"

@@ -926,7 +926,11 @@ object FileLayerProvider {
                 // When the extent was utm, some wrapping may have occurred
                 pp = projectedPolygonWrapAntimeridian(pp)
               }
-              productGeometryProjected.getFlatMultiPolygon.intersection(pp.getFlatMultiPolygon)
+              var mp = productGeometryProjected.getFlatMultiPolygon.intersection(pp.getFlatMultiPolygon)
+              if (productCRSOrDefault.proj4jCrs.getProjection.getName == "utm") {
+                mp = mp.buffer(100).union() // TODO: Based on resolution, or
+              }
+              mp
             } else {
               productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
             }
@@ -1427,7 +1431,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     val featureExtentInLayout: Option[GridExtent[Long]] = if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
       val useNewFeatureExtentIntersectionPossible = isCrsCoveredInHealthCheck(feature.crs.get) && isCrsCoveredInHealthCheck(targetExtent.crs)
-      val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection) && useNewFeatureExtentIntersectionPossible) {
+      val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection) || !useNewFeatureExtentIntersectionPossible) {
         // logger.info("Using old intersection method between Feature/Item and target extent.")
         // TODO: Remove this after it has been deployed for a while
         /**

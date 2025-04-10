@@ -1315,13 +1315,19 @@ class FileLayerProviderTest extends RasterMatchers{
 
   @Test
   def testAntimerideanArtifacts(): Unit = {
+    val outDir = Paths.get("tmp/testAntimerideanArtifacts/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    Files.createDirectories(outDir)
+
     val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
     val poly2 = ProjectedPolygons(projectedExtent)
+    dumpGeoJson(toGeoJsonDebug(poly2), Some("testAntimerideanArtifacts"))
 
     val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.useNewFeatureExtentIntersection = true
     dataCubeParameters.useNewFeatureExtentIntersection2 = true
     val layer = LayerFixtures.creodiasCube(
-      LocalDate.of(2020, 8, 1),
+      LocalDate.of(2020, 7, 31),
       poly2,
       "/org/openeo/geotrellis/testAntimerideanArtifacts.json",
       java.util.Arrays.asList("VV"),
@@ -1332,9 +1338,6 @@ class FileLayerProviderTest extends RasterMatchers{
     assertTrue(layer_collected.nonEmpty)
     val cubeSpatial = layer.toSpatial()
 
-    val outDir = Paths.get("tmp/testAntimerideanArtifacts/")
-    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
-    Files.createDirectories(outDir)
     val tiffPath = outDir + "/testAntimerideanArtifacts.tiff"
     cubeSpatial.writeGeoTiff(tiffPath)
 
