@@ -229,12 +229,13 @@ object ProjectedPolygons {
 
   def polygon_to_min180_180_range(p: Polygon): Polygon = {
     // Documentation says CoordinateSequenceFilter should be used, but that has a complex interface
-    p.getCoordinates.foreach(c => c.x = to_min180_180_range(c.x))
-    val isPolygonInWesternHemisphere = p.getCoordinates.exists(c => c.x < 0 && c.x > -180) // Don't use <= here
+    val clearlyWesternHemisphere = p.getCoordinates.exists(c => (c.x < 0 && c.x > -180) || (c.x > +180 && c.x < +360))
+    val clearlyEasternHemisphere = p.getCoordinates.exists(c => (c.x > 0 && c.x < +180) || (c.x < -180 && c.x > -360))
     p.getCoordinates.foreach(c => {
-      var newX = c.x
-      if (isPolygonInWesternHemisphere && newX == 180) newX = -180
-      else if (!isPolygonInWesternHemisphere && newX == -180) newX = 180
+      var newX = to_min180_180_range(c.x)
+      // Solve ambiguous coordinates when we know. Otherwise keep them as they where
+      if (clearlyWesternHemisphere && newX == 180) newX = -180
+      if (clearlyEasternHemisphere && newX == -180) newX = 180
       c.x = newX
     })
     p

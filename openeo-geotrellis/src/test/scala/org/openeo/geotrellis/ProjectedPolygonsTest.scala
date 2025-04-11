@@ -54,6 +54,8 @@ class ProjectedPolygonsTest() {
     "/org/openeo/geotrellis/geojson/bering_sea_triangle.json",
     "/org/openeo/geotrellis/geojson/europe_triangle.json",
     "/org/openeo/geotrellis/geojson/russia_triangle.json",
+    "/org/openeo/geotrellis/geojson/world_extent.json",
+    "/org/openeo/geotrellis/geojson/world_extent_bigger.json",
     "/org/openeo/geotrellis/geojson/zigzag_shape.json",
   ))
   def testSplitPolygonsOnWrapPoint(path: String): Unit = {
