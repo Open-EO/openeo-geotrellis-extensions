@@ -915,6 +915,7 @@ object FileLayerProvider {
         eoProductFeature.mapGeom(productGeometry => {
           try {
             val intersection = if (datacubeParams.getOrElse(new DataCubeParameters).useNewFeatureExtentIntersection2) {
+              // TODO: Reproject with tesslation?
               val productGeometryProjected = safeReprojectPolygons(ProjectedPolygons(productGeometry, LatLng), productCRSOrDefault)
 
               val transform = SafeTransform(targetCRS, productCRSOrDefault)
