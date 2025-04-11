@@ -547,7 +547,7 @@ class WriteRDDToGeotiffTest {
 
     val ret = saveSamples(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
       DeflateCompression(BEST_COMPRESSION))
-    assertTrue(ret.get(0)._2.contains("T"))
+    assertTrue(ret.get(0).datetime.contains("T"))
   }
 
   @Test

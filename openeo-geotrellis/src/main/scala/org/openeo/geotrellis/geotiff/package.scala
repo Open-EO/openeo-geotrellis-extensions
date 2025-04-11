@@ -85,10 +85,10 @@ package object geotiff {
   def saveStitched(rdd: SRDD, path: String, cropBounds: Map[String, Double], compression: Compression): Extent =
     saveStitched(rdd, path, Some(cropBounds), None, compression)
 
-  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, compression: Compression): java.util.List[(String, Extent)] =
+  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, compression: Compression): JList[(String, Extent)] =
     saveStitchedTileGrid(rdd, path, tileGrid, None, None, compression)
 
-  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, cropBounds: Map[String, Double], compression: Compression): java.util.List[(String, Extent)] =
+  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, cropBounds: Map[String, Double], compression: Compression): JList[(String, Extent)] =
     saveStitchedTileGrid(rdd, path, tileGrid, Some(cropBounds), None, compression)
 
   def saveRDDTiled(rdd:MultibandTileLayerRDD[SpaceTimeKey], path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]):Unit = {
@@ -105,7 +105,7 @@ package object geotiff {
                       zLevel: Int = 6,
                       cropBounds: Option[Extent] = Option.empty[Extent],
                       formatOptions: GTiffOptions = new GTiffOptions
-                     ): java.util.List[(String, String, Extent)] = {
+                     ): JList[(String, String, Extent)] = {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, temporal)")
     formatOptions.assertNoConflicts()
     val ret = saveRDDTemporalAllowAssetPerBand(rdd, path, zLevel, cropBounds, formatOptions)
@@ -204,7 +204,7 @@ package object geotiff {
                                           zLevel: Int = 6,
                                           cropBounds: Option[Extent] = Option.empty[Extent],
                                           formatOptions: GTiffOptions = new GTiffOptions
-                                         ): java.util.List[Item] = {
+                                         ): JList[Item] = {
     formatOptions.assertNoConflicts()
     val preProcessResult: (GridBounds[Int], Extent, RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
@@ -299,7 +299,7 @@ package object geotiff {
           }
           .toMap
 
-        Item(id = UUID.randomUUID().toString, datetime=timestamp, bbox = croppedExtent, assets.asJava)
+        Item(id = s"${UUID.randomUUID()}_$timestamp", datetime=timestamp, bbox = croppedExtent, assets.asJava)
       }
 
     for ((geotiffResult, _, _, _) <- geotiffResults) {
@@ -318,7 +318,7 @@ package object geotiff {
               zLevel: Int = 6,
               cropBounds: Option[Extent] = Option.empty[Extent],
               formatOptions: GTiffOptions = new GTiffOptions
-             ): java.util.List[String] = {
+             ): JList[String] = {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, spatial, $bandCount)")
     val tmp = saveRDDAllowAssetPerBand(rdd, bandCount, path, zLevel, cropBounds, formatOptions).asScala
     logger.warn("Calling backwards compatibility version for saveRDDAllowAssetPerBand")
@@ -335,7 +335,7 @@ package object geotiff {
                                zLevel: Int = 6,
                                cropBounds: Option[Extent] = Option.empty[Extent],
                                formatOptions: GTiffOptions = new GTiffOptions
-                              ): java.util.List[(String, Extent, java.util.List[Int])] = {
+                              ): JList[(String, Extent, JList[Int])] = {
     formatOptions.assertNoConflicts()
     if (formatOptions.separateAssetPerBand) {
       val bandLabels = formatOptions.tags.bandTags.map(_("DESCRIPTION"))
@@ -503,7 +503,7 @@ package object geotiff {
     def levelFor(extent: Extent, cellSize: CellSize): LayoutLevel = ???
   }
 
-  def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, zLevel: Int = 6, cropBounds: Option[Extent] = None, formatOptions: GTiffOptions = new GTiffOptions): java.util.List[(String, Extent)] = {
+  def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, zLevel: Int = 6, cropBounds: Option[Extent] = None, formatOptions: GTiffOptions = new GTiffOptions): JList[(String, Extent)] = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
@@ -840,7 +840,7 @@ package object geotiff {
                             cropBounds: Option[Map[String, Double]],
                             cropDimensions: Option[ArrayList[Int]],
                             compression: Compression)
-  : java.util.List[(String, Extent)] = {
+  : JList[(String, Extent)] = {
     val features = TileGrid.computeFeaturesForTileGrid(tileGrid, ProjectedExtent(rdd.metadata.extent,rdd.metadata.crs))
 
     def newFilePath(path: String, tileId: String) = {
@@ -951,47 +951,22 @@ package object geotiff {
                   polygons: ProjectedPolygons,
                   sampleNames: JList[String],
                   compression: Compression,
-                 ): JList[(String, String, Extent)] =
-    saveSamples(rdd, path, polygons, sampleNames, compression, None)
-
-  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                  path: String,
-                  polygons: ProjectedPolygons,
-                  sampleNames: JList[String],
-                  compression: Compression,
-                  filenamePrefix: Option[String],
-                 ): JList[(String, String, Extent)] = {
+                  filenamePrefix: Option[String] = None,
+                 ): JList[Item] = {
     val reprojected = ProjectedPolygons.reproject(polygons, rdd.metadata.crs)
     val features = sampleNames.asScala.zip(reprojected.polygons)
-    groupByFeatureAndWriteToTiff(rdd, Option.empty, features, path, Option.empty, compression, filenamePrefix)
+    groupByFeatureAndWriteToTiff(rdd, cropBounds = None, features, path, cropDimensions = None, compression, filenamePrefix)
   }
 
   def saveStitchedTileGridTemporal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                                    path: String,
                                    tileGrid: String,
                                    compression: Compression,
-                                   filenamePrefix: Option[String],
-                                  ): java.util.List[(String, String, Extent)] =
-    geotrellis.geotiff.saveStitchedTileGridTemporal(rdd, path, tileGrid, Option.empty, Option.empty, compression, filenamePrefix)
-
-  def saveStitchedTileGridTemporal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                                   path: String,
-                                   tileGrid: String,
-                                   compression: Compression,
-                                  ): java.util.List[(String, String, Extent)] =
-    geotrellis.geotiff.saveStitchedTileGridTemporal(rdd, path, tileGrid, Option.empty, Option.empty, compression)
-
-  def saveStitchedTileGridTemporal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
-                                   path: String,
-                                   tileGrid: String,
-                                   cropBounds: Option[Map[String, Double]],
-                                   cropDimensions: Option[ArrayList[Int]],
-                                   compression: Compression,
                                    filenamePrefix: Option[String] = None,
-                                  ): java.util.List[(String, String, Extent)] = {
+                                  ): JList[Item] = {
     val features = TileGrid.computeFeaturesForTileGrid(tileGrid, ProjectedExtent(rdd.metadata.extent, rdd.metadata.crs))
-      .map { case (s, extent) => (s, extent.toPolygon()) }
-    groupByFeatureAndWriteToTiff(rdd, cropBounds, features, path, cropDimensions, compression, filenamePrefix)
+      .map { case (name, extent) => (name, extent.toPolygon()) }
+    groupByFeatureAndWriteToTiff(rdd, cropBounds = None, features, path, cropDimensions = None, compression, filenamePrefix)
   }
 
   private def groupByFeatureAndWriteToTiff(rdd: MultibandTileLayerRDD[SpaceTimeKey],
@@ -1001,7 +976,7 @@ package object geotiff {
                                            cropDimensions: Option[ArrayList[Int]],
                                            compression: Compression,
                                            filenamePrefix: Option[String] = None,
-                                          ): java.util.List[(String, String, Extent)] = {
+                                          ): JList[Item] = {
     val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
 
     val croppedExtent = cropBounds.map(toExtent)
@@ -1009,7 +984,7 @@ package object geotiff {
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
 
-    rdd
+    val ret = rdd
       .flatMap { case (key, tile) => featuresBC.value
         .filter { case (_, geometry) => layout.mapTransform.keysForGeometry(geometry) contains key.spatialKey }
         .map { case (name, geometry) => ((name, (geometry, key.time)), (key.spatialKey, tile)) }
@@ -1020,10 +995,16 @@ package object geotiff {
         val filePath = Paths.get(path).resolve(filename).toString
         val timestamp = time format DateTimeFormatter.ISO_ZONED_DATE_TIME
         (stitchAndWriteToTiff(tiles, filePath, layout, crs, geometry, croppedExtent, cropDimensions, compression).correctPath,
-          timestamp, geometry.extent)
+          timestamp, geometry.extent, name)
       }
       .collect()
-      .toList.asJava
+
+    val items = for {
+      (path, timestamp, extent, name) <- ret
+    } yield Item(id = f"${UUID.randomUUID()}_${timestamp}_$name", datetime = timestamp, bbox = extent,
+      assets = Collections.singletonMap("openEO", Asset(path)))
+
+    items.toList.asJava
   }
 
   private[geotrellis] case class GeoTiffResultObject(correctPath: String, fileExists: Boolean, gdalInfoPath: Option[String])
