@@ -2,7 +2,7 @@ package org.openeo.geotrellis
 
 import _root_.io.circe.DecodingFailure
 import _root_.io.circe.HCursor
-import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.proj4.{CRS, LatLng, Transform}
 import geotrellis.vector._
 import geotrellis.vector.io.json.{JsonCRS, JsonFeatureCollection, NamedCRS}
 import org.geotools.api.data.Query
@@ -251,5 +251,51 @@ object ProjectedPolygons {
       case polygon: Polygon => Array(polygon).filter(!_.isEmpty)
     }
     MultiPolygon(intersect ++ difference)
+  }
+
+  /**
+   * Inspired on:
+   * https://github.com/pomadchin/geotrellis/blob/b071b33/vector/src/main/scala/geotrellis/vector/reproject/Reproject.scala#L94
+   */
+  def reprojectPolygonRefined(polygon: Polygon, transform: Transform, relError: Double): Polygon = {
+    import math.{abs, pow, sqrt}
+
+    def refine(p0: (Point, (Double, Double)), p1: (Point, (Double, Double))): List[(Point, (Double, Double))] = {
+      val ((a, (x0, y0)), (b, (x1, y1))) = (p0, p1)
+      val m = Point(0.5 * (a.x + b.x), 0.5 * (a.y + b.y))
+      val (x2, y2) = transform(m.x, m.y)
+
+      val deflect = abs((y2 - y1) * x0 - (x2 - x1) * y0 + x2 * y1 - y2 * x1) / sqrt(pow(y2 - y1, 2) + pow(x2 - x1, 2))
+      val length = sqrt(pow(x0 - x1, 2) + pow(y0 - y1, 2))
+
+      val p2 = m -> (x2, y2)
+      if (java.lang.Double.isNaN(deflect)) {
+        throw new IllegalArgumentException(s"Encountered NaN during a refinement step: ($deflect / $length). Input $polygon is likely not in source projection.")
+      } else if (deflect / length < relError) {
+        List(p0, p2)  // TODO: Is this correct?
+      } else {
+        refine(p0, p2) ++ (p2 :: refine(p2, p1))
+      }
+    }
+
+    if (polygon.getNumInteriorRing > 0) {
+      throw new IllegalArgumentException("Interior rings are not supported yet.")
+    }
+    val shell = polygon.getExteriorRing // TODO: interior rings too!
+    val pts = shell.getCoordinates.map(p => Point(p.x, p.y))
+      .map { p => (p, transform(p.x, p.y)) }
+    val refined = pts.sliding(2).flatMap { case Array(p0, p1) => refine(p0, p1) }.toList ++ List(pts(0))
+    Polygon(refined.map { case (_, (x, y)) => Point(x, y) })
+  }
+
+  def reprojectGeometryRefined(geom: Geometry, transform: Transform, relError: Double): Geometry = {
+    geom match {
+      case polygon: Polygon => reprojectPolygonRefined(polygon, transform, 0.001)
+      case multiPolygon: MultiPolygon =>
+        MultiPolygon(multiPolygon.polygons.map(reprojectPolygonRefined(_, transform, 0.001)))
+      case geometry: Geometry =>
+        // logger.info("Was only expecting (Multi)Polygon, but got: " + geometry)
+        geometry
+    }
   }
 }

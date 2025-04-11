@@ -9,6 +9,7 @@ import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy => FailsafeRe
 import org.apache.spark.SparkContext
 import org.locationtech.jts.geom.Geometry
 import org.locationtech.proj4j.{BasicCoordinateTransform, ProjCoordinate}
+import org.openeo.geotrellis.ProjectedPolygons.{reprojectGeometryRefined, reprojectPolygonRefined}
 import org.openeo.opensearch.OpenSearchResponses.{Feature, FeatureCollection}
 import org.slf4j.Logger
 import scalaj.http.{HttpResponse, HttpStatusException}
@@ -411,12 +412,13 @@ package object geotrellis {
     ProjectedPolygons(geometries, inputProjectedPolygons.crs)
   }
 
-  def safeReprojectPolygons(inputProjectedPolygons: ProjectedPolygons, targetCrs: CRS)(implicit logger: Logger): ProjectedPolygons = {
+  def safeReprojectPolygons(inputProjectedPolygons: ProjectedPolygons, targetCrs: CRS): ProjectedPolygons = {
     if (inputProjectedPolygons.crs == targetCrs) return inputProjectedPolygons
-    // TODO, this should refine the polygon till a maximum error. Just like refine here:
-    // https://github.com/pomadchin/geotrellis/blob/b071b33/vector/src/main/scala/geotrellis/vector/reproject/Reproject.scala#L94
     val transform = SafeTransform(inputProjectedPolygons.crs, targetCrs)
-    val geometries = inputProjectedPolygons.geometries.map(_.reproject(transform))
+    // val geometries = inputProjectedPolygons.geometries.map(_.reproject(transform))
+    val geometries = inputProjectedPolygons.geometries.map {
+      reprojectGeometryRefined(_, transform, 0.001)
+    }
     var pp = ProjectedPolygons(geometries, targetCrs)
     val inputIsUTM = inputProjectedPolygons.crs.proj4jCrs.getProjection.getName == "utm"
     if (inputIsUTM && targetCrs == LatLng) {

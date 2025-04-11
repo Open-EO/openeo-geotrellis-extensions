@@ -1,12 +1,13 @@
 package org.openeo.geotrellis
 
-import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.proj4.{CRS, LatLng, Transform}
 import geotrellis.vector._
 import org.junit.Assert._
 import org.junit.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.ComputeStatsGeotrellisAdapterTest.{polygon1, polygon2}
+import org.openeo.geotrellis.ProjectedPolygons.reprojectPolygonRefined
 
 import scala.collection.JavaConverters._
 
@@ -66,7 +67,25 @@ class ProjectedPolygonsTest() {
     dumpGeoJson(toGeoJsonDebug(ppSplit), Some(path.substring(path.lastIndexOf("/") + 1) + "_split"))
 
     // Test polygon validity:
-    ppSplit.geometries.foreach(_.isValid)
+    // ppSplit.geometries.foreach(g => assertTrue(g.isValid)) // TODO: Fix for world_extent_bigger.json
     assertTrue(ppSplit.getFlatMultiPolygon.union().getArea > 0)
+  }
+
+  @Test
+  def testReprojectPolygonWithTesslation(): Unit = {
+    val path = "/org/openeo/geotrellis/geojson/belgium_lowres.json"
+    val pp = ProjectedPolygons.fromVectorFile(getClass.getResource(path).getPath)
+    val targetCrs = CRS.fromEpsgCode(32631)
+    val transform = SafeTransform(LatLng, targetCrs)
+    val p = pp.getFlatMultiPolygon
+
+    val ppReprojectedOld = safeReprojectPolygons(pp, targetCrs)
+    val pReprojected = reprojectPolygonRefined(p.polygons.head, transform, 1.0)
+    val ppReprojected = ProjectedPolygons(pReprojected, targetCrs)
+    assertTrue(pReprojected.union().getArea > 0)
+
+    // Prepare to manually inspect output in QGIS:
+    dumpGeoJson(toGeoJsonDebug(ppReprojectedOld), Some(path.substring(path.lastIndexOf("/") + 1) + "_reprojectedOld_" + targetCrs))
+    dumpGeoJson(toGeoJsonDebug(ppReprojected), Some(path.substring(path.lastIndexOf("/") + 1) + "_reprojected_" + targetCrs))
   }
 }

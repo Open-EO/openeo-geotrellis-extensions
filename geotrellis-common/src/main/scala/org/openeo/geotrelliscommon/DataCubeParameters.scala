@@ -22,7 +22,7 @@ class DataCubeParameters extends Serializable {
   var pixelBufferY:Double = 0.0
   var noResampleOnRead: Boolean = false
   var useNewFeatureExtentIntersection: Boolean = false
-  var useNewFeatureExtentIntersection2: Boolean = false
+  var useNewFeatureExtentIntersection2: Boolean = true
   var timeDimensionFilter: Option[Object] = Option.empty
   var allowEmptyCube: Boolean = false
   var loadPerProduct: Boolean = false
