@@ -915,7 +915,6 @@ object FileLayerProvider {
         eoProductFeature.mapGeom(productGeometry => {
           try {
             val intersection = if (datacubeParams.getOrElse(new DataCubeParameters).useNewFeatureExtentIntersection2) {
-              // TODO: Reproject with tesslation?
               val productGeometryProjected = safeReprojectPolygons(ProjectedPolygons(productGeometry, LatLng), productCRSOrDefault)
 
               val transform = SafeTransform(targetCRS, productCRSOrDefault)
@@ -928,9 +927,9 @@ object FileLayerProvider {
                 pp = projectedPolygonWrapAntimeridian(pp)
               }
               var mp = productGeometryProjected.getFlatMultiPolygon.intersection(pp.getFlatMultiPolygon)
-              if (productCRSOrDefault.proj4jCrs.getProjection.getName == "utm") {
-                mp = mp.buffer(100).union() // TODO: Based on resolution, or
-              }
+//              if (productCRSOrDefault.proj4jCrs.getProjection.getName == "utm") {
+//                mp = mp.buffer(100).union() // TODO: Based on resolution, or
+//              }
               mp
             } else {
               productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
@@ -1728,7 +1727,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         f.geometry match {
           case None => f
           case Some(geom) =>
-            val pp = ProjectedPolygons(geom, LatLng).splitPolygonsOnWrapPoint()
+            // buffer to avoid artifacts. TODO: Is there a better way to fix this?
+            val pp = ProjectedPolygons(geom.buffer(0.001), LatLng).splitPolygonsOnWrapPoint()
             var ps = pp.getFlatMultiPolygon.polygons
             if (openSearchCollectionId == "GLOBAL-MOSAICS" && f.id.length > 7) {
               // This collection has huge chunks of nodata in tiles around the antimeridian, causing artifacts.

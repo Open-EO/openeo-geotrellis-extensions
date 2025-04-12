@@ -272,7 +272,7 @@ object ProjectedPolygons {
       if (java.lang.Double.isNaN(deflect)) {
         throw new IllegalArgumentException(s"Encountered NaN during a refinement step: ($deflect / $length). Input $polygon is likely not in source projection.")
       } else if (deflect / length < relError) {
-        List(p0, p2)  // TODO: Is this correct?
+        List(p2)
       } else {
         refine(p0, p2) ++ (p2 :: refine(p2, p1))
       }
@@ -284,7 +284,7 @@ object ProjectedPolygons {
     val shell = polygon.getExteriorRing // TODO: interior rings too!
     val pts = shell.getCoordinates.map(p => Point(p.x, p.y))
       .map { p => (p, transform(p.x, p.y)) }
-    val refined = pts.sliding(2).flatMap { case Array(p0, p1) => refine(p0, p1) }.toList ++ List(pts(0))
+    val refined = pts.sliding(2).flatMap { case Array(p0, p1) => p0 :: refine(p0, p1) }.toList ++ List(pts(0))
     Polygon(refined.map { case (_, (x, y)) => Point(x, y) })
   }
 
