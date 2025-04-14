@@ -922,7 +922,7 @@ package object geotiff {
     if (fo.overviews.toUpperCase == "ALL" ||
       fo.overviews.toUpperCase == "AUTO" && (gridBounds.width > 1024 || gridBounds.height > 1024)
     ) {
-      geotiff = geotiff.withOverviews(NearestNeighbor, List(4, 8, 16))
+      geotiff = geotiff.withOverviews(NearestNeighbor, List(4, 8, 16), blockSize = 256)
     }
     writeGeoTiff(geotiff, filePath, Some(fo))
   }
