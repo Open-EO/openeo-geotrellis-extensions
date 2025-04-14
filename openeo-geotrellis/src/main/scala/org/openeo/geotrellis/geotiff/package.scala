@@ -320,12 +320,17 @@ package object geotiff {
               formatOptions: GTiffOptions = new GTiffOptions
              ): JList[String] = {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, spatial, $bandCount)")
-    val tmp = saveRDDAllowAssetPerBand(rdd, bandCount, path, zLevel, cropBounds, formatOptions).asScala
+    val tmp = saveRDDAllowAssetPerBand(rdd, bandCount, path, zLevel, cropBounds, formatOptions)
     logger.warn("Calling backwards compatibility version for saveRDDAllowAssetPerBand")
     //    if (tmp.size() > 1) {
     //      throw new Exception("Multiple returned files, probably meant to call saveRDDAllowAssetPerBand")
     //    }
-    tmp.map(_._1).asJava
+    tmp.stream()
+      .flatMap { item =>
+        item.assets.values().stream()
+          .map[String] { asset => asset.path }
+      }
+      .collect(Collectors.toList())
   }
 
   //noinspection ScalaWeakerAccess
@@ -335,7 +340,7 @@ package object geotiff {
                                zLevel: Int = 6,
                                cropBounds: Option[Extent] = Option.empty[Extent],
                                formatOptions: GTiffOptions = new GTiffOptions
-                              ): JList[(String, Extent, JList[Int])] = {
+                              ): JList[Item] = {
     formatOptions.assertNoConflicts()
     if (formatOptions.separateAssetPerBand) {
       val bandLabels = formatOptions.tags.bandTags.map(_("DESCRIPTION"))
@@ -395,7 +400,7 @@ package object geotiff {
           } else {
             (geoTiffResultObject.correctPath, extent, bandIndices)
           }
-      }.toList.sortBy(_._1).asJava
+      }
 
       if (path.endsWith("out")) {
         val beforeOut = path.substring(0, path.length - "out".length)
@@ -405,12 +410,18 @@ package object geotiff {
         }
       }
 
-      res
+      val assets = res.map { case (path, _, bandIndices) =>
+        val bandNames = bandIndices.asScala.map(bandLabels.apply)
+        s"openEO_${bandNames mkString "_"}" -> Asset(path, bandIndices)
+      }.toMap.asJava
+
+      Collections.singletonList(Item(id = UUID.randomUUID().toString, datetime = null, bbox = extent, assets))
+      // TODO: restore asset ordering?
     } else {
-      val tiffPaths = saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions).asScala
-      tiffPaths.map { case (tiffPath, extent) =>
-        (tiffPath, extent, (0 until bandCount).toList.asJava)
-      }.asJava
+      val (tiffPath, extent) = saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions)
+      val assets = Collections.singletonMap("openEO", Asset(tiffPath, (0 until bandCount).asJava))
+
+      Collections.singletonList(Item(id = UUID.randomUUID().toString, datetime = null, bbox = extent, assets))
     }
   }
 
@@ -503,7 +514,7 @@ package object geotiff {
     def levelFor(extent: Extent, cellSize: CellSize): LayoutLevel = ???
   }
 
-  def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, zLevel: Int = 6, cropBounds: Option[Extent] = None, formatOptions: GTiffOptions = new GTiffOptions): JList[(String, Extent)] = {
+  private def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, zLevel: Int = 6, cropBounds: Option[Extent] = None, formatOptions: GTiffOptions = new GTiffOptions): (String, Extent) = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
@@ -577,13 +588,10 @@ package object geotiff {
         case None => // do nothing
       }
 
-      Collections.singletonList((geoTiffResultObject.correctPath, croppedExtent))
-    }finally {
+      (geoTiffResultObject.correctPath, croppedExtent)
+    } finally {
       preprocessedRdd.unpersist()
     }
-
-
-
   }
 
   private def getCompressedTiles[K: SpatialComponent : Boundable : ClassTag](preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]],gridBounds: GridBounds[Int], compression: Compression): (collection.Map[Int, Array[Byte]], CellType, Double, Int) = {
