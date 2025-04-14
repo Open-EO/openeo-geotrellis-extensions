@@ -85,10 +85,10 @@ package object geotiff {
   def saveStitched(rdd: SRDD, path: String, cropBounds: Map[String, Double], compression: Compression): Item =
     saveStitched(rdd, path, Some(cropBounds), None, compression)
 
-  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, compression: Compression): JList[(String, Extent)] =
+  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, compression: Compression): JList[Item] =
     saveStitchedTileGrid(rdd, path, tileGrid, None, None, compression)
 
-  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, cropBounds: Map[String, Double], compression: Compression): JList[(String, Extent)] =
+  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, cropBounds: Map[String, Double], compression: Compression): JList[Item] =
     saveStitchedTileGrid(rdd, path, tileGrid, Some(cropBounds), None, compression)
 
   def saveRDDTiled(rdd:MultibandTileLayerRDD[SpaceTimeKey], path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]):Unit = {
@@ -850,7 +850,7 @@ package object geotiff {
                             cropBounds: Option[Map[String, Double]],
                             cropDimensions: Option[ArrayList[Int]],
                             compression: Compression)
-  : JList[(String, Extent)] = {
+  : JList[Item] = {
     val features = TileGrid.computeFeaturesForTileGrid(tileGrid, ProjectedExtent(rdd.metadata.extent,rdd.metadata.crs))
 
     def newFilePath(path: String, tileId: String) = {
@@ -879,19 +879,25 @@ package object geotiff {
         val executorAttemptDirectory = createExecutorAttemptDirectory(Path.of(path).getParent)
         val filePath = executorAttemptDirectory + "/" + newFilePath(Path.of(path).getFileName.toString, tileId)
 
-        (stitchAndWriteToTiff(tiles, filePath, layout, crs, extent, croppedExtent, cropDimensions, compression), extent)
+        (stitchAndWriteToTiff(tiles, filePath, layout, crs, extent, croppedExtent, cropDimensions, compression), tileId, extent)
       }.collect()
     val res = geotiffResults.map {
-      case (geoTiffResultObject, croppedExtent) =>
+      case (geoTiffResultObject, tileId, croppedExtent) =>
         val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path).getParent, geoTiffResultObject)
-        (destinationPath.toString, croppedExtent)
-    }.toList.asJava
-    for ((geotiffResult, _) <- geotiffResults) {
+        (destinationPath, tileId, croppedExtent)
+    }
+
+    val items = res.map { case (path, tileId, extent) =>
+      Item(id = s"${UUID.randomUUID()}_$tileId", datetime = null, bbox = extent,
+        assets = Collections.singletonMap("openEO", Asset(path)))
+    }
+
+    for ((geotiffResult, _, _) <- geotiffResults) {
       val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(Path.of(path).getParent, geotiffResult)
       CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
     }
 
-    res
+    items.toList.asJava
   }
 
   private def stitchAndWriteToTiff(tiles: Iterable[(SpatialKey, MultibandTile)], filePath: String,

@@ -72,7 +72,12 @@ class TileGridTest {
     )
 
     // TODO: check if extents (in the layer CRS) are 10000m wide/high (in UTM)
-    Assert.assertEquals(expectedPaths, tiles.asScala.map { case (path, _) => path }.toSet)
+    val actualPaths = for {
+      item <- tiles.asScala
+      asset <- item.assets.values().asScala
+    } yield asset.path
+
+    Assert.assertEquals(expectedPaths, actualPaths.toSet)
 
     val extent = bbox.reproject(spatialLayer.metadata.crs)
     val cropBounds = mapAsJavaMap(Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax))
@@ -86,7 +91,12 @@ class TileGridTest {
     )
 
     // TODO: also check extents
-    Assert.assertEquals(expectedCroppedPaths, croppedTiles.asScala.map { case (path, _) => path }.toSet)
+    val actualCroppedPaths = for {
+      item <- croppedTiles.asScala
+      asset <- item.assets.values().asScala
+    } yield asset.path
+
+    Assert.assertEquals(expectedCroppedPaths, actualCroppedPaths.toSet)
   }
 
 
