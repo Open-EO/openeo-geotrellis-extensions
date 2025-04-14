@@ -341,32 +341,8 @@ object LayerFixtures {
     new ContextRDD(cube.partitionBy(partitioner),cube.metadata)
   }
 
-  def sentinel2Cube(localDate: LocalDate,
-                    projected_polygons_native_crs: ProjectedPolygons,
-                    jsonPath: String,
-                    dataCubeParameters: DataCubeParameters = new DataCubeParameters,
-                    bandNames: util.List[String] = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data", "S2_Level-2A_Tile1_Metadata##1", "S2_Level-2A_Tile1_Metadata##0")
-                   ): MultibandTileLayerRDD[SpaceTimeKey] = {
-    creodiasCube(
-      localDate,
-      projected_polygons_native_crs,
-      jsonPath,
-      bandNames,
-      dataCubeParameters,
-    )
-  }
-
-  /**
-   * Creates a Sentinel-2 cube by downloading data locally.
-   */
-  def creodiasCube(localDate: LocalDate,
-                    projected_polygons_native_crs: ProjectedPolygons,
-                    jsonPath: String,
-                   bandNames: util.List[String],
-                    dataCubeParameters: DataCubeParameters = new DataCubeParameters,
-                   ): MultibandTileLayerRDD[SpaceTimeKey] = {
+  def loadFeaturesWithArtifactoryMock(jsonPath: String): OpenSearchClient = {
     val jsonPathFull = getClass.getResource(jsonPath)
-
     val fileSource = Source.fromURL(jsonPathFull)
     var txt = try fileSource.mkString
     finally fileSource.close()
@@ -441,7 +417,14 @@ for p in l:
       "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T01WCU_20240402T003652.SAFE/GRANULE/L2A_T01WCU_A036936_20240402T000609/IMG_DATA/R20m/T01WCU_20240402T000609_SCL_20m.jp2",
       "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T60WWD_20240402T003652.SAFE/manifest.safe",
       // testAntimerideanArtifacts:
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_01WCS_0_0/VV.tif",
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_01WDS_0_0/VV.tif",
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_01WCT_0_0/VV.tif",
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWB_0_0/VV.tif",
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWC_0_0/VV.tif",
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWC_1_0/VV.tif",
       "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWB_1_0/VV.tif",
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_01WDT_0_0/VV.tif",
     )
 
     val matches = "\"(/eodata/.*?)\"".r.findAllIn(txt).toList
@@ -463,9 +446,35 @@ for p in l:
       }
     }
 
-
     val mockedFeatures = CreoFeatureCollection.parse(txt)
-    val client = new MockOpenSearchFeatures(mockedFeatures.features)
+    new MockOpenSearchFeatures(mockedFeatures.features)
+  }
+
+  def sentinel2Cube(localDate: LocalDate,
+                    projected_polygons_native_crs: ProjectedPolygons,
+                    jsonPath: String,
+                    dataCubeParameters: DataCubeParameters = new DataCubeParameters,
+                    bandNames: util.List[String] = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data", "S2_Level-2A_Tile1_Metadata##1", "S2_Level-2A_Tile1_Metadata##0")
+                   ): MultibandTileLayerRDD[SpaceTimeKey] = {
+    creodiasCube(
+      localDate,
+      projected_polygons_native_crs,
+      jsonPath,
+      bandNames,
+      dataCubeParameters,
+    )
+  }
+
+  /**
+   * Creates a Sentinel-2 cube by downloading data locally.
+   */
+  def creodiasCube(localDate: LocalDate,
+                    projected_polygons_native_crs: ProjectedPolygons,
+                    jsonPath: String,
+                   bandNames: util.List[String],
+                    dataCubeParameters: DataCubeParameters = new DataCubeParameters,
+                   ): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val client = loadFeaturesWithArtifactoryMock(jsonPath)
     //    val client = CreodiasClient() // More difficult to capture a nodata piece
 
     val localFromDate = localDate

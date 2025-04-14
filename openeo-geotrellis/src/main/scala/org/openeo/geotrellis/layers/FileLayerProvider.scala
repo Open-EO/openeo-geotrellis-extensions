@@ -1727,8 +1727,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         f.geometry match {
           case None => f
           case Some(geom) =>
-            // buffer to avoid artifacts. TODO: Is there a better way to fix this?
-            val pp = ProjectedPolygons(geom.buffer(0.001), LatLng).splitPolygonsOnWrapPoint()
+            val pp = ProjectedPolygons(geom, LatLng).splitPolygonsOnWrapPoint()
             var ps = pp.getFlatMultiPolygon.polygons
             if (openSearchCollectionId == "GLOBAL-MOSAICS" && f.id.length > 7) {
               // This collection has huge chunks of nodata in tiles around the antimeridian, causing artifacts.

@@ -415,10 +415,10 @@ package object geotrellis {
   def safeReprojectPolygons(inputProjectedPolygons: ProjectedPolygons, targetCrs: CRS): ProjectedPolygons = {
     if (inputProjectedPolygons.crs == targetCrs) return inputProjectedPolygons
     val transform = SafeTransform(inputProjectedPolygons.crs, targetCrs)
-    // val geometries = inputProjectedPolygons.geometries.map(_.reproject(transform))
-    val geometries = inputProjectedPolygons.geometries.map {
-      reprojectGeometryRefined(_, transform, 0.001)
-    }
+    val geometries = inputProjectedPolygons.geometries.map(_.reproject(transform))
+    // val geometries = inputProjectedPolygons.geometries.map {
+    //   reprojectGeometryRefined(_, transform, 0.001)
+    // }
     var pp = ProjectedPolygons(geometries, targetCrs)
     val inputIsUTM = inputProjectedPolygons.crs.proj4jCrs.getProjection.getName == "utm"
     if (inputIsUTM && targetCrs == LatLng) {
@@ -486,6 +486,7 @@ package object geotrellis {
 
   def toGeoJsonDebug(geometries: Array[_root_.geotrellis.vector.Feature[Geometry, (RasterSource, Feature)]]): String = {
     val j = Map("type" -> "FeatureCollection",
+      // Hack: This uses CRS of first feature:
       "crs" -> Map("type" -> "name", "properties" -> Map("name" -> geometries.head.data._1.crs.proj4jCrs.getName)),
       "features" -> geometries.map(f => {
         val pp = ProjectedPolygons(f.geom, f.data._1.crs)
