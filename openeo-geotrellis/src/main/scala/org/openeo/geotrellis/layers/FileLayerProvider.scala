@@ -1727,16 +1727,27 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         f.geometry match {
           case None => f
           case Some(geom) =>
-            val pp = ProjectedPolygons(geom, LatLng).splitPolygonsOnWrapPoint()
-            var ps = pp.getFlatMultiPolygon.polygons
+            var pp = ProjectedPolygons(geom, LatLng)
             if (openSearchCollectionId == "GLOBAL-MOSAICS" && f.id.length > 7) {
+              val tileIdGuess = f.id.substring(f.id.length - 9, f.id.length - 7)
+              val crs = CRS.fromName("EPSG:326" + tileIdGuess)
+
+              // The geom in the catalog does not take into account curvature.
+              // Doing a basic projection and a refined projection back fixes this.
+              pp = pp
+                .safeReproject(crs, refine = false)
+                .safeReproject(LatLng, refine = true)
+                .splitPolygonsOnWrapPoint()
+              dumpGeoJson(toGeoJsonDebug(pp), Some(f.id.substring(f.id.lastIndexOf("/") + 1) + "_bend"))
+
+              var ps = pp.getFlatMultiPolygon.polygons
               // This collection has huge chunks of nodata in tiles around the antimeridian, causing artifacts.
               // Remove the polygons that cross the line to mitigate this
-              val tileIdGuess = f.id.substring(f.id.length - 9, f.id.length - 7)
               if (tileIdGuess == "60") ps = ps.filter(p => p.getCoordinate.x > 0)
               if (tileIdGuess == "01") ps = ps.filter(p => p.getCoordinate.x < 0)
+              ProjectedPolygons(MultiPolygon(ps), LatLng)
             }
-            f.copy(geometry = Some(MultiPolygon(ps)))
+            f.copy(geometry = Some(pp.getFlatMultiPolygon))
         }
       })
     }

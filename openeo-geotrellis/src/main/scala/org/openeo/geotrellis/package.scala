@@ -412,13 +412,16 @@ package object geotrellis {
     ProjectedPolygons(geometries, inputProjectedPolygons.crs)
   }
 
-  def safeReprojectPolygons(inputProjectedPolygons: ProjectedPolygons, targetCrs: CRS): ProjectedPolygons = {
+  def safeReprojectPolygons(inputProjectedPolygons: ProjectedPolygons, targetCrs: CRS, refine:Boolean = false): ProjectedPolygons = {
     if (inputProjectedPolygons.crs == targetCrs) return inputProjectedPolygons
     val transform = SafeTransform(inputProjectedPolygons.crs, targetCrs)
-    val geometries = inputProjectedPolygons.geometries.map(_.reproject(transform))
-    // val geometries = inputProjectedPolygons.geometries.map {
-    //   reprojectGeometryRefined(_, transform, 0.001)
-    // }
+    val geometries = if (refine) {
+      inputProjectedPolygons.geometries.map {
+        reprojectGeometryRefined(_, transform, 0.001)
+      }
+    } else {
+      inputProjectedPolygons.geometries.map(_.reproject(transform))
+    }
     var pp = ProjectedPolygons(geometries, targetCrs)
     val inputIsUTM = inputProjectedPolygons.crs.proj4jCrs.getProjection.getName == "utm"
     if (inputIsUTM && targetCrs == LatLng) {

@@ -62,6 +62,7 @@ case class ProjectedPolygons(geometries: Array[Geometry], crs: CRS) {
 
   def extent: ProjectedExtent = ProjectedExtent(polygons.toSeq.extent,crs)
   def reproject(crs: CRS): ProjectedPolygons = ProjectedPolygons.reproject(this, crs)
+  def safeReproject(crs: CRS, refine: Boolean): ProjectedPolygons = safeReprojectPolygons(this, crs, refine)
 }
 
 object ProjectedPolygons {
