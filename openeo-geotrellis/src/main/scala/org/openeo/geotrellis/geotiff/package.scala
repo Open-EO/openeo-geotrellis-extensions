@@ -79,10 +79,10 @@ package object geotiff {
   )
 
   // ~ SpatialTiledRasterLayer in GeoPySpark but supports compression
-  def saveStitched(rdd: SRDD, path: String, compression: Compression): Extent =
+  def saveStitched(rdd: SRDD, path: String, compression: Compression): Item =
     saveStitched(rdd, path, None, None, compression)
 
-  def saveStitched(rdd: SRDD, path: String, cropBounds: Map[String, Double], compression: Compression): Extent =
+  def saveStitched(rdd: SRDD, path: String, cropBounds: Map[String, Double], compression: Compression): Item =
     saveStitched(rdd, path, Some(cropBounds), None, compression)
 
   def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, compression: Compression): JList[(String, Extent)] =
@@ -811,7 +811,7 @@ package object geotiff {
                     path: String,
                     cropBounds: Option[Map[String, Double]],
                     cropDimensions: Option[ArrayList[Int]],
-                    compression: Compression): Extent = {
+                    compression: Compression): Item = {
     val contextRDD = ContextRDD(rdd, rdd.metadata)
 
     val stitched: Raster[MultibandTile] = contextRDD.stitch()
@@ -838,7 +838,9 @@ package object geotiff {
       .withOverviews(NearestNeighbor)
 
     writeGeoTiff(geoTiff, path, gtiffOptions = None)
-    adjusted.extent
+
+    Item(id = UUID.randomUUID().toString, datetime = null, bbox = adjusted.extent,
+      Collections.singletonMap("openEO", Asset(path)))
   }
 
   def saveStitchedTileGrid(
