@@ -37,6 +37,7 @@ case class ProjectedPolygons(geometries: Array[Geometry], crs: CRS) {
   def splitPolygonsOnWrapPoint(): ProjectedPolygons = {
     // TODO: Support WebMercator, Sinusoidal and any other CRSes that go around the world
     if (this.crs != LatLng) return this.copy()
+    // Add some buffer in the south and north even tough polygons should not get there.
     val centerPolygon = Extent(-180, -90 * 100, 180, 90 * 100).toPolygon()
 
 
@@ -45,7 +46,7 @@ case class ProjectedPolygons(geometries: Array[Geometry], crs: CRS) {
         MultiPolygon(multiPolygon.polygons
           .map(splitGeometry(_, centerPolygon))
           .flatMap(_.polygons)
-          .map(polygon_to_min180_180_range)
+          .map(polygon_to_min180_180_range)  // The range supported by proj4j
         )
       case polygon: Polygon =>
         val multiPolygon = splitGeometry(polygon, centerPolygon)
@@ -259,6 +260,21 @@ object ProjectedPolygons {
    * https://github.com/pomadchin/geotrellis/blob/b071b33/vector/src/main/scala/geotrellis/vector/reproject/Reproject.scala#L94
    */
   def reprojectPolygonRefined(polygon: Polygon, transform: Transform, relError: Double): Polygon = {
+    var interiorRings = List[LineString]()
+    for (ringNr <- 0 until polygon.getNumInteriorRing) {
+      val shell = polygon.getInteriorRingN(ringNr).asInstanceOf[LineString]
+      interiorRings = interiorRings :+ reprojectRingRefined(shell, transform, relError)
+    }
+    val shell = polygon.getExteriorRing
+    val refined = reprojectRingRefined(shell, transform, relError)
+    Polygon(refined, interiorRings)
+  }
+
+  /**
+   * Inspired on:
+   * https://github.com/pomadchin/geotrellis/blob/b071b33/vector/src/main/scala/geotrellis/vector/reproject/Reproject.scala#L94
+   */
+  private def reprojectRingRefined(shell: LineString, transform: Transform, relError: Double): LineString = {
     import math.{abs, pow, sqrt}
 
     def refine(p0: (Point, (Double, Double)), p1: (Point, (Double, Double))): List[(Point, (Double, Double))] = {
@@ -271,22 +287,17 @@ object ProjectedPolygons {
 
       val p2 = m -> (x2, y2)
       if (java.lang.Double.isNaN(deflect)) {
-        throw new IllegalArgumentException(s"Encountered NaN during a refinement step: ($deflect / $length). Input $polygon is likely not in source projection.")
+        throw new IllegalArgumentException(s"Encountered NaN during a refinement step: ($deflect / $length). Input $shell is likely not in source projection.")
       } else if (deflect / length < relError) {
         List(p2)
       } else {
         refine(p0, p2) ++ (p2 :: refine(p2, p1))
       }
     }
-
-    if (polygon.getNumInteriorRing > 0) {
-      throw new IllegalArgumentException("Interior rings are not supported yet.")
-    }
-    val shell = polygon.getExteriorRing // TODO: interior rings too!
     val pts = shell.getCoordinates.map(p => Point(p.x, p.y))
       .map { p => (p, transform(p.x, p.y)) }
     val refined = pts.sliding(2).flatMap { case Array(p0, p1) => p0 :: refine(p0, p1) }.toList ++ List(pts(0))
-    Polygon(refined.map { case (_, (x, y)) => Point(x, y) })
+    LineString(refined.map { case (_, (x, y)) => Point(x, y) })
   }
 
   def reprojectGeometryRefined(geom: Geometry, transform: Transform, relError: Double): Geometry = {

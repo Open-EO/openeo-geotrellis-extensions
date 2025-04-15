@@ -71,9 +71,12 @@ class ProjectedPolygonsTest() {
     assertTrue(ppSplit.getFlatMultiPolygon.union().getArea > 0)
   }
 
-  @Test
-  def testReprojectPolygonWithTesslation(): Unit = {
-    val path = "/org/openeo/geotrellis/geojson/belgium_lowres.json"
+  @ParameterizedTest
+  @ValueSource(strings = Array(
+    "/org/openeo/geotrellis/geojson/belgium_lowres.json",
+    "/org/openeo/geotrellis/geojson/swiss_holes.json",
+  ))
+  def testReprojectPolygonWithTesslation(path: String): Unit = {
     val pp = ProjectedPolygons.fromVectorFile(getClass.getResource(path).getPath)
     val targetCrs = CRS.fromEpsgCode(32631)
     val transform = SafeTransform(LatLng, targetCrs)

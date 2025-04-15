@@ -3,6 +3,7 @@ package org.openeo
 import _root_.geotrellis.proj4._
 import _root_.geotrellis.raster._
 import _root_.geotrellis.vector._
+import _root_.geotrellis.vector.io.json._
 import _root_.geotrellis.vector.reproject.Reproject._
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
 import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy => FailsafeRetryPolicy}
@@ -475,31 +476,9 @@ package object geotrellis {
   }
 
   def toGeoJsonDebug(featureCollection: FeatureCollection): String = {
-    val j = Map("type" -> "FeatureCollection", "features" -> featureCollection.features.map(f => {
-      val pp = ProjectedPolygons(f.geometry.toArray, f.crs.getOrElse(LatLng))
-      Map(
-        "type" -> "Feature",
-        "id" -> f.id,
-        "geometry" -> SimpleJson.parse(toGeoJsonDebug(pp)),
-        "properties" -> f.generalProperties
-      )
-    }))
-    SimpleJson.serialize(j)
-  }
-
-  def toGeoJsonDebug(geometries: Array[_root_.geotrellis.vector.Feature[Geometry, (RasterSource, Feature)]]): String = {
-    val j = Map("type" -> "FeatureCollection",
-      // Hack: This uses CRS of first feature:
-      "crs" -> Map("type" -> "name", "properties" -> Map("name" -> geometries.head.data._1.crs.proj4jCrs.getName)),
-      "features" -> geometries.map(f => {
-        val pp = ProjectedPolygons(f.geom, f.data._1.crs)
-        Map(
-          "type" -> "Feature",
-          "id" -> f.data._2.id,
-          "geometry" -> SimpleJson.parse(toGeoJsonDebug(pp)),
-        )
-      }).distinct)
-    SimpleJson.serialize(j)
+    // Only supports LatLng
+    val featureJSON = featureCollection.features.map(f => _root_.geotrellis.vector.Feature(f.geometry.get, Map("id" -> f.id)))
+    JsonFeatureCollection(featureJSON).asJson.toString()
   }
 
   def toGeoJsonDebug(geometry: Geometry): String = {
@@ -507,6 +486,7 @@ package object geotrellis {
   }
 
   def toGeoJsonDebug(inputProjectedExtent: ProjectedExtent): String = {
+    // Does not reproject refined. Could also have antimeridian issues. For debugging only
     toGeoJsonDebug(ProjectedPolygons(inputProjectedExtent))
   }
 

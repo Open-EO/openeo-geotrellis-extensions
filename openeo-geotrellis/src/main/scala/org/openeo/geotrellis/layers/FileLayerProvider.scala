@@ -926,11 +926,7 @@ object FileLayerProvider {
                 // When the extent was utm, some wrapping may have occurred
                 pp = projectedPolygonWrapAntimeridian(pp)
               }
-              var mp = productGeometryProjected.getFlatMultiPolygon.intersection(pp.getFlatMultiPolygon)
-//              if (productCRSOrDefault.proj4jCrs.getProjection.getName == "utm") {
-//                mp = mp.buffer(100).union() // TODO: Based on resolution, or
-//              }
-              mp
+              productGeometryProjected.getFlatMultiPolygon.intersection(pp.getFlatMultiPolygon)
             } else {
               productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
             }
