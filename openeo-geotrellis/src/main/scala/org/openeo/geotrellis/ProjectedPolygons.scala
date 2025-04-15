@@ -256,7 +256,7 @@ object ProjectedPolygons {
   }
 
   /**
-   * Inspired on:
+   * Inspired on reprojectExtentAsPolygon from geotrellis. I could not find an equivalent for polygons in geotrellis self:
    * https://github.com/pomadchin/geotrellis/blob/b071b33/vector/src/main/scala/geotrellis/vector/reproject/Reproject.scala#L94
    */
   def reprojectPolygonRefined(polygon: Polygon, transform: Transform, relError: Double): Polygon = {
@@ -271,7 +271,7 @@ object ProjectedPolygons {
   }
 
   /**
-   * Inspired on:
+   * Inspired on reprojectExtentAsPolygon from geotrellis. I could not find an equivalent for polygons in geotrellis self:
    * https://github.com/pomadchin/geotrellis/blob/b071b33/vector/src/main/scala/geotrellis/vector/reproject/Reproject.scala#L94
    */
   private def reprojectRingRefined(shell: LineString, transform: Transform, relError: Double): LineString = {
