@@ -480,7 +480,7 @@ class OpenEOProcesses extends Serializable {
       }else{
         if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
           val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
-          if (index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
+          if (index.isInstanceOf[SparseSpaceOnlyPartitioner] || index == ByTileSpacetimePartitioner) {
             index//a space only partitioner does not care about time, so can be reused as-is
           } else {
             SpaceTimeByMonthPartitioner
@@ -537,7 +537,7 @@ class OpenEOProcesses extends Serializable {
 
     val tilesByInterval: RDD[(SpaceTimeKey, MultibandTile)] =
       if(reduce) {
-        if(datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] && datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
+        if(datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] && (datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[SparseSpaceOnlyPartitioner] || datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index == ByTileSpacetimePartitioner )) {
           filteredCube.mapPartitions(elements =>{
             val byNewKey= elements.flatMap(mapToNewKey).toStream.groupBy(_._1)
             byNewKey.mapValues(v=>aggregateTiles(v.map(_._2))).iterator
@@ -547,9 +547,7 @@ class OpenEOProcesses extends Serializable {
             mapToNewKey(tuple)
           }).groupByKey(partitioner).mapValues( aggregateTiles)
         }
-
       }else{
-
         filteredCube.flatMap(tuple => {
           mapToNewKey(tuple)
         }).groupByKey(partitioner).flatMap( t => {
@@ -574,7 +572,7 @@ class OpenEOProcesses extends Serializable {
     val metadata = if(reduce) datacube.metadata.copy(bounds = newBounds,cellType = outputCellType) else datacube.metadata.copy(cellType = outputCellType)
     sc.clearCallSite()
     val aggregatedCube = ContextRDD(filledRDD, metadata)
-    aggregatedCube.name = "aggregate_temporal result"
+    aggregatedCube.name = s"aggregate_temporal of $datacube.name"
     return aggregatedCube
   }
 
@@ -719,7 +717,7 @@ class OpenEOProcesses extends Serializable {
         implicit val newIndex: PartitionerIndex[K] = new SparseSpaceOnlyPartitioner(newIndices,leftPart.index.asInstanceOf[SparseSpaceOnlyPartitioner].indexReduction).asInstanceOf[PartitionerIndex[K]]
         SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
       }
-      else if(leftPart.index == rightPart.index && leftPart.index == ByTileSpatialPartitioner ) {
+      else if(leftPart.index == rightPart.index && (leftPart.index == ByTileSpatialPartitioner || leftPart.index == ByTileSpacetimePartitioner)) {
         leftPart
       }
       else if(leftPart.index == rightPart.index && leftPart.index.isInstanceOf[ConfigurableSpaceTimePartitioner] ) {

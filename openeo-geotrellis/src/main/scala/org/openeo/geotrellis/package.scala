@@ -3,11 +3,15 @@ package org.openeo
 import _root_.geotrellis.proj4._
 import _root_.geotrellis.raster._
 import _root_.geotrellis.vector._
+import _root_.geotrellis.vector.io.json._
 import _root_.geotrellis.vector.reproject.Reproject._
 import net.jodah.failsafe.event.{ExecutionAttemptedEvent, ExecutionCompletedEvent}
 import net.jodah.failsafe.{ExecutionContext, Failsafe, RetryPolicy => FailsafeRetryPolicy}
 import org.apache.spark.SparkContext
+import org.locationtech.jts.geom.Geometry
 import org.locationtech.proj4j.{BasicCoordinateTransform, ProjCoordinate}
+import org.openeo.geotrellis.ProjectedPolygons.{reprojectGeometryRefined, reprojectPolygonRefined}
+import org.openeo.opensearch.OpenSearchResponses.{Feature, FeatureCollection}
 import org.slf4j.Logger
 import scalaj.http.{HttpResponse, HttpStatusException}
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
@@ -347,14 +351,16 @@ package object geotrellis {
   /**
    * Will give actual angle, but as positive value.
    */
-  private def to_0_360_range(x: Double): Double = {
+  def to_0_360_range(x: Double): Double = {
+    if (x <= 360 && x >= 0) return x // 0/360 should be kept, even if it means the same
     (x + 360 * 10) % 360
   }
 
   /**
    * Will give actual angle, but in the LatLng extent.
    */
-  private def to_min180_180_range(x: Double): Double = {
+  def to_min180_180_range(x: Double): Double = {
+    if (x <= 180 && x >= -180) return x // The sign of 180 should be kept, even if it means the same
     val n = (x + 360 * 10) % 360
     if (n > 180) n - 360 else n
   }
@@ -385,7 +391,7 @@ package object geotrellis {
   }
 
   def polygonWrapAntimeridian(polygon: Polygon): Polygon = {
-    // TODO: Split polygon across antimeridian instead?
+    // This trick is mainly for GLOBAL-MOSAICS, where a product geometry is not split on the antimeridian
     val polygonCopy = polygon.copy().asInstanceOf[Polygon]
     if (polygon.extent.width > 180 && polygon.extent.width < 360) {
       // Documentation says CoordinateSequenceFilter should be used, but that has a complex interface
@@ -394,7 +400,7 @@ package object geotrellis {
     polygonCopy
   }
 
-  private def projectedPolygonWrapAntimeridian(inputProjectedPolygons: ProjectedPolygons): ProjectedPolygons = {
+  def projectedPolygonWrapAntimeridian(inputProjectedPolygons: ProjectedPolygons): ProjectedPolygons = {
     if (inputProjectedPolygons.crs != LatLng) throw new IllegalArgumentException("Only LatLng CRS is supported for wrapping")
     val geometries = inputProjectedPolygons.geometries.map {
       case polygon: Polygon => polygonWrapAntimeridian(polygon)
@@ -407,12 +413,16 @@ package object geotrellis {
     ProjectedPolygons(geometries, inputProjectedPolygons.crs)
   }
 
-  def safeReprojectPolygons(inputProjectedPolygons: ProjectedPolygons, targetCrs: CRS)(implicit logger: Logger): ProjectedPolygons = {
+  def safeReprojectPolygons(inputProjectedPolygons: ProjectedPolygons, targetCrs: CRS, refine:Boolean = false): ProjectedPolygons = {
     if (inputProjectedPolygons.crs == targetCrs) return inputProjectedPolygons
-    // TODO, this should refine the polygon till a maximum error. Just like refine here:
-    // https://github.com/pomadchin/geotrellis/blob/b071b33/vector/src/main/scala/geotrellis/vector/reproject/Reproject.scala#L94
-    lazy val transform = SafeTransform(inputProjectedPolygons.crs, targetCrs)
-    val geometries = inputProjectedPolygons.geometries.map(_.reproject(transform))
+    val transform = SafeTransform(inputProjectedPolygons.crs, targetCrs)
+    val geometries = if (refine) {
+      inputProjectedPolygons.geometries.map {
+        reprojectGeometryRefined(_, transform, 0.001)
+      }
+    } else {
+      inputProjectedPolygons.geometries.map(_.reproject(transform))
+    }
     var pp = ProjectedPolygons(geometries, targetCrs)
     val inputIsUTM = inputProjectedPolygons.crs.proj4jCrs.getProjection.getName == "utm"
     if (inputIsUTM && targetCrs == LatLng) {
@@ -456,10 +466,21 @@ package object geotrellis {
     ProjectedExtent(reprojected, targetCrs)
   }
 
-  def toGeoJsonDebug(polygons: ProjectedPolygons): String = {
-    if (polygons.geometries.length != 1) {
-      throw new IllegalArgumentException("Only one geometry is supported at the moment.")
+  def safeReprojectToPolygon(inputProjectedExtent: ProjectedExtent, targetCrs: CRS)(implicit logger: Logger): ProjectedPolygons = {
+    if (inputProjectedExtent.crs == targetCrs) return ProjectedPolygons(inputProjectedExtent.extent.toPolygon(), inputProjectedExtent.crs)
+    val transform = SafeTransform(inputProjectedExtent.crs, targetCrs)
+    val reprojectedPolygon = reprojectExtentAsPolygon(inputProjectedExtent.extent, transform, 0.001) // TODO: Adapt relError to CRS
+    val inputIsUTM = inputProjectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
+
+    var pp = ProjectedPolygons(reprojectedPolygon, targetCrs)
+    if (inputIsUTM && targetCrs == LatLng) {
+      // When the extent was utm, some wrapping may have occurred
+      pp = projectedPolygonWrapAntimeridian(pp)
     }
+    pp
+  }
+
+  def toGeoJsonDebug(polygons: ProjectedPolygons): String = {
     val str = polygons.getFlatMultiPolygon.toGeoJson()
     var j = SimpleJson.parse(str)
     val crs = polygons.crs.proj4jCrs.getName
@@ -468,11 +489,18 @@ package object geotrellis {
     SimpleJson.serialize(j)
   }
 
+  def toGeoJsonDebug(featureCollection: FeatureCollection): String = {
+    // Only supports LatLng
+    val featureJSON = featureCollection.features.map(f => _root_.geotrellis.vector.Feature(f.geometry.get, Map("id" -> f.id)))
+    JsonFeatureCollection(featureJSON).asJson.toString()
+  }
+
   def toGeoJsonDebug(geometry: Geometry): String = {
     toGeoJsonDebug(ProjectedPolygons(Array(geometry), LatLng))
   }
 
   def toGeoJsonDebug(inputProjectedExtent: ProjectedExtent): String = {
+    // Does not reproject refined. Could also have antimeridian issues. For debugging only
     toGeoJsonDebug(ProjectedPolygons(inputProjectedExtent))
   }
 
