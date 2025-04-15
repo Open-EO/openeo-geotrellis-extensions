@@ -472,7 +472,6 @@ package object geotrellis {
     val reprojectedPolygon = reprojectExtentAsPolygon(inputProjectedExtent.extent, transform, 0.001) // TODO: Adapt relError to CRS
     val inputIsUTM = inputProjectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
 
-
     var pp = ProjectedPolygons(reprojectedPolygon, targetCrs)
     if (inputIsUTM && targetCrs == LatLng) {
       // When the extent was utm, some wrapping may have occurred
