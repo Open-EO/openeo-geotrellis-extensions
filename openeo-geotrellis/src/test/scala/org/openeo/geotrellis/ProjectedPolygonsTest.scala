@@ -67,7 +67,11 @@ class ProjectedPolygonsTest() {
     dumpGeoJson(toGeoJsonDebug(ppSplit), Some(path.substring(path.lastIndexOf("/") + 1) + "_split"))
 
     // Test polygon validity:
-    // ppSplit.geometries.foreach(g => assertTrue(g.isValid)) // TODO: Fix for world_extent_bigger.json
+    if (path != "/org/openeo/geotrellis/geojson/world_extent_bigger.json") {
+      // world_extent_bigger goes larger than the world extent, so after cutting it will intersect itself
+      // A workaround could be to make the ProjectedExtent, but it works like this
+      ppSplit.geometries.foreach(g => assertTrue(g.isValid))
+    }
     assertTrue(ppSplit.getFlatMultiPolygon.union().getArea > 0)
   }
 
