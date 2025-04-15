@@ -1738,14 +1738,13 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
                 .safeReproject(crs, refine = false)
                 .safeReproject(LatLng, refine = true)
                 .splitPolygonsOnWrapPoint()
-              dumpGeoJson(toGeoJsonDebug(pp), Some(f.id.substring(f.id.lastIndexOf("/") + 1) + "_bend"))
 
               var ps = pp.getFlatMultiPolygon.polygons
               // This collection has huge chunks of nodata in tiles around the antimeridian, causing artifacts.
               // Remove the polygons that cross the line to mitigate this
               if (tileIdGuess == "60") ps = ps.filter(p => p.getCoordinate.x > 0)
               if (tileIdGuess == "01") ps = ps.filter(p => p.getCoordinate.x < 0)
-              ProjectedPolygons(MultiPolygon(ps), LatLng)
+              pp = ProjectedPolygons(MultiPolygon(ps), LatLng)
             }
             f.copy(geometry = Some(pp.getFlatMultiPolygon))
         }
