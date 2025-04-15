@@ -24,6 +24,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api._
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
+import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory}
 import org.openeo.geotrellis.geotiff._
@@ -49,6 +50,7 @@ import java.util.Formatter
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.io.Source
+import scala.jdk.CollectionConverters.mapAsJavaMapConverter
 import scala.reflect.io.Directory
 
 object FileLayerProviderTest {
@@ -1315,13 +1317,19 @@ class FileLayerProviderTest extends RasterMatchers{
 
   @Test
   def testAntimerideanArtifacts(): Unit = {
+    val outDir = Paths.get("tmp/testAntimerideanArtifacts/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    Files.createDirectories(outDir)
+
     val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
     val poly2 = ProjectedPolygons(projectedExtent)
+    dumpGeoJson(toGeoJsonDebug(poly2), Some("testAntimerideanArtifacts"))
 
     val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.useNewFeatureExtentIntersection = true
     dataCubeParameters.useNewFeatureExtentIntersection2 = true
     val layer = LayerFixtures.creodiasCube(
-      LocalDate.of(2020, 8, 1),
+      LocalDate.of(2020, 7, 31),
       poly2,
       "/org/openeo/geotrellis/testAntimerideanArtifacts.json",
       java.util.Arrays.asList("VV"),
@@ -1332,15 +1340,60 @@ class FileLayerProviderTest extends RasterMatchers{
     assertTrue(layer_collected.nonEmpty)
     val cubeSpatial = layer.toSpatial()
 
-    val outDir = Paths.get("tmp/testAntimerideanArtifacts/")
-    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
-    Files.createDirectories(outDir)
     val tiffPath = outDir + "/testAntimerideanArtifacts.tiff"
     cubeSpatial.writeGeoTiff(tiffPath)
 
     val result = GeoTiff.readMultiband(tiffPath).raster.tile
     val band = result.toArrayTile().band(0)
-    val value = band.get(7500, 10000)
+    val value = band.get(7500, 10000) // Read on location where artifact would be
+    assertEquals(0.02, value, 1) // TODO: Update actual value, smaller delta
+    // Maybe better check: assertTrue(value != -2.147483648E9)
+  }
+
+  @Test
+  def testAntimerideanArtifacts2(): Unit = {
+    val outDir = Paths.get("tmp/testAntimerideanArtifacts2/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    Files.createDirectories(outDir)
+
+    val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
+    val spatialExtent = ProjectedPolygons(projectedExtent).reproject(CRS.fromName("EPSG:32660"))
+    dumpGeoJson(toGeoJsonDebug(spatialExtent), Some("testAntimerideanArtifacts2"))
+    // DataCubeParameters taken from running as sync job.
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.tileSize = 256
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.partitionerIndexReduction = 6
+    dataCubeParameters.useNewFeatureExtentIntersection = true
+    dataCubeParameters.useNewFeatureExtentIntersection2 = true
+    dataCubeParameters.globalExtent = Some(ProjectedExtent(Extent(526300.0, 7682200.0, 646340.0, 7802240.0), CRS.fromName("EPSG:32660")))
+
+    val factory = new PyramidFactory(
+      loadFeaturesWithArtifactoryMock("/org/openeo/geotrellis/testAntimerideanArtifacts2.json"),
+      "GLOBAL-MOSAICS",
+      java.util.Arrays.asList("VV"),
+      "/eodata",
+      maxSpatialResolution = CellSize(20, 20)
+    )
+    factory.crs = spatialExtent.crs
+
+    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
+      spatialExtent,
+      "2020-07-31T23:59:59Z",
+      "2020-09-01T00:00:00Z",
+      scala.collection.Map[String, Any]("productType" -> "S1SAR_L3_IW_MCM").asJava,
+      "", dataCubeParameters = dataCubeParameters
+    )
+    val layer = cube.head._2
+    val cubeSpatial = layer.toSpatial()
+
+    val tiffPath = outDir + "/testAntimerideanArtifacts2.tiff"
+    cubeSpatial.writeGeoTiff(tiffPath)
+
+    // Read back and check values:
+    val result = GeoTiff.readMultiband(tiffPath).raster.tile
+    val band = result.toArrayTile().band(0)
+    val value = band.get(4600, 5115) // Read on location where artifact would be
     assertEquals(0.02, value, 1) // TODO: Update actual value, smaller delta
     // Maybe better check: assertTrue(value != -2.147483648E9)
   }
