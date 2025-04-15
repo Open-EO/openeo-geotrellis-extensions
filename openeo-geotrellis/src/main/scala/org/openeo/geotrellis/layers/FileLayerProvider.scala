@@ -917,16 +917,10 @@ object FileLayerProvider {
             val intersection = if (datacubeParams.getOrElse(new DataCubeParameters).useNewFeatureExtentIntersection2) {
               val productGeometryProjected = safeReprojectPolygons(ProjectedPolygons(productGeometry, LatLng), productCRSOrDefault)
 
-              val transform = SafeTransform(targetCRS, productCRSOrDefault)
-              val cubeExtentPolygon = reprojectExtentAsPolygon(cubeExtent, transform, 0.001) // TODO: Adapt relError to CRS
+              val cubeExtentCrs = ProjectedExtent(cubeExtent, targetCRS)
+              val cubeExtentPolygon = safeReprojectToPolygon(cubeExtentCrs, productCRSOrDefault)
 
-              var pp = ProjectedPolygons(cubeExtentPolygon, productCRSOrDefault)
-              val inputIsUTM = targetCRS.proj4jCrs.getProjection.getName == "utm"
-              if (inputIsUTM && productCRSOrDefault == LatLng) {
-                // When the extent was utm, some wrapping may have occurred
-                pp = projectedPolygonWrapAntimeridian(pp)
-              }
-              productGeometryProjected.getFlatMultiPolygon.intersection(pp.getFlatMultiPolygon)
+              productGeometryProjected.getFlatMultiPolygon.intersection(cubeExtentPolygon.getFlatMultiPolygon)
             } else {
               productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
             }

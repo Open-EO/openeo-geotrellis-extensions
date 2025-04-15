@@ -391,7 +391,7 @@ package object geotrellis {
   }
 
   def polygonWrapAntimeridian(polygon: Polygon): Polygon = {
-    // TODO: Split polygon across antimeridian instead?
+    // This trick is mainly for GLOBAL-MOSAICS, where a product geometry is not split on the antimeridian
     val polygonCopy = polygon.copy().asInstanceOf[Polygon]
     if (polygon.extent.width > 180 && polygon.extent.width < 360) {
       // Documentation says CoordinateSequenceFilter should be used, but that has a complex interface
@@ -464,6 +464,21 @@ package object geotrellis {
       }
     }
     ProjectedExtent(reprojected, targetCrs)
+  }
+
+  def safeReprojectToPolygon(inputProjectedExtent: ProjectedExtent, targetCrs: CRS)(implicit logger: Logger): ProjectedPolygons = {
+    if (inputProjectedExtent.crs == targetCrs) return ProjectedPolygons(inputProjectedExtent.extent.toPolygon(), inputProjectedExtent.crs)
+    val transform = SafeTransform(inputProjectedExtent.crs, targetCrs)
+    val reprojectedPolygon = reprojectExtentAsPolygon(inputProjectedExtent.extent, transform, 0.001) // TODO: Adapt relError to CRS
+    val inputIsUTM = inputProjectedExtent.crs.proj4jCrs.getProjection.getName == "utm"
+
+
+    var pp = ProjectedPolygons(reprojectedPolygon, targetCrs)
+    if (inputIsUTM && targetCrs == LatLng) {
+      // When the extent was utm, some wrapping may have occurred
+      pp = projectedPolygonWrapAntimeridian(pp)
+    }
+    pp
   }
 
   def toGeoJsonDebug(polygons: ProjectedPolygons): String = {
