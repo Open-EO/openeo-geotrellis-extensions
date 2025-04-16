@@ -17,6 +17,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.geotiff.preProcess
+import org.openeo.geotrellis.stac.{Asset, Item}
 import org.openeo.geotrellis.{OpenEOProcesses, ProjectedPolygons, TemporalResolution}
 import org.openeo.geotrelliscommon.ByKeyPartitioner
 import org.slf4j.LoggerFactory
@@ -33,7 +34,7 @@ import java.nio.file.{Files, Path, Paths}
 import java.time.format.DateTimeFormatter
 import java.time.{Duration, ZoneOffset, ZonedDateTime}
 import java.util
-import java.util.{ArrayList, Collections}
+import java.util.{ArrayList, Collections, UUID}
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 
@@ -71,7 +72,7 @@ object NetCDFRDDWriter {
     override def iterator: Iterator[(K, V)] = tiles.iterator
   }
 
-  def writeRasters(rdd:Object,path:String,options:NetCDFOptions): java.util.List[String] = {
+  def writeRasters(rdd:Object,path:String,options:NetCDFOptions): java.util.List[Item] = {
 
     rdd match {
       case rdd1 if rdd.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
@@ -89,7 +90,7 @@ object NetCDFRDDWriter {
                        dimensionNames: java.util.Map[String,String],
                        attributes: java.util.Map[String,String],
                        zLevel:Int
-                      ): java.util.List[String] = {
+                      ): java.util.List[Item] = {
     saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, zLevel)
   }
 
@@ -99,12 +100,12 @@ object NetCDFRDDWriter {
                        dimensionNames: java.util.Map[String,String],
                        attributes: java.util.Map[String,String],
                        zLevel:Int
-                 ): java.util.List[String] = {
+                 ): java.util.List[Item] = {
 
     saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, zLevel)
   }
 
-  def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], path:String, options:NetCDFOptions): java.util.List[String] = {
+  def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], path:String, options:NetCDFOptions): java.util.List[Item] = {
     saveSingleNetCDFGeneric(rdd,path,options.bandNames.orNull,options.dimensionNames.orNull,options.attributes.orNull,options.zLevel,options.cropBounds)
   }
 
@@ -115,7 +116,7 @@ object NetCDFRDDWriter {
                        attributes: java.util.Map[String,String],
                        zLevel:Int,
                        cropBounds:Option[Extent]= None
-                      ): java.util.List[String] = {
+                      ): java.util.List[Item] = {
 
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
     val extent = preProcessResult._2
@@ -243,22 +244,25 @@ object NetCDFRDDWriter {
     cachedRDD.unpersist(blocking = false)
 
     val finalPath =
-    if (path.startsWith("s3:/")) {
-      // TODO: Change spark-jobs-staging-disabled back to spark-jobs-staging
-      if(rdd.context.getConf.get("spark.kubernetes.namespace","nothing").equals("spark-jobs-staging-disabled")) {
-        uploadToS3LargeFile(path, intermediatePath)
-      }else{
-        uploadToS3(path, intermediatePath)
+      if (path.startsWith("s3:/")) {
+        // TODO: Change spark-jobs-staging-disabled back to spark-jobs-staging
+        if(rdd.context.getConf.get("spark.kubernetes.namespace","nothing").equals("spark-jobs-staging-disabled")) {
+          uploadToS3LargeFile(path, intermediatePath)
+        }else{
+          uploadToS3(path, intermediatePath)
+        }
+      }else if(forceTempFile) {
+        Files.move(Paths.get(intermediatePath),Paths.get(path),java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        path
       }
-    }else if(forceTempFile) {
-      Files.move(Paths.get(intermediatePath),Paths.get(path),java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-      path
-    }
-    else{
-      path
-    }
+      else{
+        path
+      }
 
-    return Collections.singletonList(finalPath)
+    val item = Item(id = UUID.randomUUID().toString, bbox = extent, datetime = null,
+      assets = Collections.singletonMap("openEO", Asset(finalPath)))
+
+    Collections.singletonList(item)
   }
 
 
@@ -313,7 +317,7 @@ object NetCDFRDDWriter {
                   polygons: ProjectedPolygons,
                   sampleNames: ArrayList[String],
                   bandNames: ArrayList[String],
-                 ): java.util.List[(String, Extent)] =
+                 ): java.util.List[Item] =
     saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null)
 
   // Overload to avoid: "multiple overloaded alternatives of method saveSamples define default arguments"
@@ -323,7 +327,7 @@ object NetCDFRDDWriter {
                   sampleNames: ArrayList[String],
                   bandNames: ArrayList[String],
                   filenamePrefix: Option[String],
-                  ): java.util.List[(String, Extent)] =
+                  ): java.util.List[Item] =
     saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null, filenamePrefix)
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
@@ -333,7 +337,7 @@ object NetCDFRDDWriter {
                   bandNames: ArrayList[String],
                   dimensionNames: java.util.Map[String, String],
                   attributes: java.util.Map[String, String],
-                 ): java.util.List[(String, Extent)] =
+                 ): java.util.List[Item] =
     saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames, attributes, None)
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
@@ -344,7 +348,7 @@ object NetCDFRDDWriter {
                   dimensionNames: java.util.Map[String,String],
                   attributes: java.util.Map[String,String],
                   filenamePrefix: Option[String],
-                 ): java.util.List[(String, Extent)] = {
+                 ): java.util.List[Item] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.zip(reprojected.polygons)
     logger.info(s"Using metadata: ${rdd.metadata}.")
@@ -360,7 +364,7 @@ object NetCDFRDDWriter {
                   dimensionNames: java.util.Map[String,String],
                   attributes: java.util.Map[String,String],
                   filenamePrefix: Option[String] = None,
-                 ): java.util.List[(String, Extent)] = {
+                 ): java.util.List[Item] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
     groupByFeatureAndWriteToNetCDFSpatial(rdd,  features,path,bandNames,dimensionNames,attributes, filenamePrefix)
@@ -371,7 +375,7 @@ object NetCDFRDDWriter {
                                            dimensionNames: java.util.Map[String,String],
                                            attributes: java.util.Map[String,String],
                                            filenamePrefix: Option[String] = None,
-                                           ): java.util.List[(String, Extent)] = {
+                                           ): java.util.List[Item] = {
     val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
 
     val crs = rdd.metadata.crs
@@ -380,22 +384,21 @@ object NetCDFRDDWriter {
     //logger.info(s"Writing ${groupedBySample.keys.count()} samples to disk.")
     groupedBySample.map { case (name, tiles: Iterable[(Long, Raster[MultibandTile])]) =>
         val outputAsPath: Path = getSamplePath(name, path, filenamePrefix)
-        val filePath = outputAsPath.toString
 
         // Sort by date before writing.
-        val sorted = tiles.toSeq.sortBy(_._1)
-        val dates = sorted.map(  t=> ZonedDateTime.ofInstant(t._1, ZoneOffset.UTC))
-        logger.info(s"Writing ${name} with dates ${dates}.")
+        val sorted = tiles.toSeq.sortBy { case (instant, _) => instant }
+        val dates = sorted.map { case (instant, _) => ZonedDateTime.ofInstant(instant, ZoneOffset.UTC) }
+        logger.info(s"Writing $name with dates $dates.")
         val extent = sorted.head._2.extent
-        try{
-          (writeToDisk(sorted.map(_._2), dates, filePath, bandNames, crs, dimensionNames, attributes),extent)
-        }catch {
-          case t: IOException => {
-            (handleSampleWriteError(t, name, outputAsPath),extent)
-          }
-          case t: Throwable =>  throw t
+
+        val assetPath = try {
+          writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes)
+        } catch {
+          case e: IOException => handleSampleWriteError(e, name, outputAsPath)
         }
 
+        Item(id = UUID.randomUUID().toString, datetime = null , bbox = extent,
+          assets = Collections.singletonMap("openEO", Asset(path = assetPath)))
       }.collect()
       .toList.asJava
   }
@@ -464,7 +467,7 @@ object NetCDFRDDWriter {
                                            dimensionNames: java.util.Map[String,String],
                                            attributes: java.util.Map[String,String],
                                            filenamePrefix: Option[String],
-                                           ): java.util.List[(String, Extent)] = {
+                                           ): java.util.List[Item] = {
     val featuresBC: Broadcast[List[(String, Extent)]] = SparkContext.getOrCreate().broadcast(features)
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
@@ -474,17 +477,19 @@ object NetCDFRDDWriter {
         val outputAsPath: Path = getSamplePath(name, path, filenamePrefix)
         val sample: Raster[MultibandTile] = stitchAndCropTiles(tiles, extent, layout)
 
-        try{
-          (writeToDisk(Seq(sample), dates = null, outputAsPath.toString, bandNames, crs, dimensionNames, attributes),
-            extent.extent)
+        val assetPath = try {
+          writeToDisk(Seq(sample), dates = null, outputAsPath.toString, bandNames, crs, dimensionNames, attributes)
         } catch {
-          case t: IOException => (handleSampleWriteError(t, name, outputAsPath), extent.extent)
+          case e: IOException => handleSampleWriteError(e, name, outputAsPath)
         }
+
+        Item(id = UUID.randomUUID().toString, datetime = null, bbox = extent.extent,
+          assets = Collections.singletonMap("openEO", Asset(assetPath)))
       }.collect()
       .toList.asJava
   }
 
-  private def handleSampleWriteError(t: IOException, sampleName: String, outputAsPath: Path) = {
+  private def handleSampleWriteError(t: IOException, sampleName: String, outputAsPath: Path): String = {
     logger.error("Failed to write sample: " + sampleName, t)
     val theFile = outputAsPath.toFile
     if (theFile.exists()) {
