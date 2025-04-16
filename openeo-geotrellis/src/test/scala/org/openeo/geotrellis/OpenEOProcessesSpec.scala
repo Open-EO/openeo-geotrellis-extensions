@@ -31,7 +31,7 @@ import org.openeo.geotrellis.aggregate_polygon.intern.splitOverlappingPolygons
 import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD}
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, SparseSpaceOnlyPartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, DatacubeSupport, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner}
 import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.nio.file.{Files, Paths}
@@ -502,11 +502,12 @@ class OpenEOProcessesSpec extends RasterMatchers {
   def aggregateTemporalTest(pixelType: PixelType, index: PartitionerIndex[SpaceTimeKey]): Unit = {
     val outDir = "/tmp/aggregateTemporalTest/"
     Files.createDirectories(Paths.get(outDir))
-    var layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType)
+    var cube: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType)
     if(index != null) {
-      layer = layer.withContext(_.partitionBy(new SpacePartitioner[SpaceTimeKey](layer.metadata.bounds)(implicitly, implicitly, index)))
+      cube = cube.withContext(_.partitionBy(new SpacePartitioner[SpaceTimeKey](cube.metadata.bounds)(implicitly, implicitly, index)))
     }
-    val bounds = layer.metadata.bounds
+
+    val bounds = cube.metadata.bounds
     val middleDate = SpaceTimeKey(0, 0, (bounds.get.minKey.instant + bounds.get.maxKey.instant) / 2).time
 
     // intervals is a list of start,end-pairs
@@ -514,12 +515,22 @@ class OpenEOProcessesSpec extends RasterMatchers {
       .map(DateTimeFormatter.ISO_INSTANT.format(_))
     val labels = (intervals.indices.collect { case i if i % 2 == 0 => intervals(i) }).toList
 
-    val resultTiles: Array[MultibandTile] = new OpenEOProcesses().aggregateTemporal(layer,
+    val aggregatedCube = new OpenEOProcesses().aggregateTemporal(cube,
       intervals.asJava,
       labels.asJava,
-      TestOpenEOProcessScriptBuilder.createMedian(true,layer.metadata.cellType),
+      TestOpenEOProcessScriptBuilder.createMedian(true, cube.metadata.cellType),
       java.util.Collections.emptyMap()
-    ).values.collect()
+    )
+
+    assertTrue(aggregatedCube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
+    val aggregatedIndex = aggregatedCube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+    index match {
+      case value: ByTileSpacetimePartitioner =>
+        assertTrue(aggregatedIndex.isInstanceOf[ByTileSpacetimePartitioner])
+      case _ =>
+        assertTrue(aggregatedIndex == SpaceTimeByMonthPartitioner)
+    }
+    val resultTiles: Array[MultibandTile] = aggregatedCube.values.collect()
 
     val validTile = resultTiles.find(_ != null).get
     val emptyTile = ArrayMultibandTile.empty(validTile.cellType, validTile.bandCount, validTile.cols, validTile.rows)
@@ -534,7 +545,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
       case _ => throw new IllegalStateException(s"pixelType $pixelType not supported")
     }
 
-    GeoTiff(Raster(MultibandTile(filledResult), layer.metadata.extent), layer.metadata.crs)
+    GeoTiff(Raster(MultibandTile(filledResult), cube.metadata.extent), cube.metadata.crs)
       .write(outDir + pixelType + ".tiff", optimizedOrder = true)
 
     val builder = new SparkAggregateScriptBuilder
@@ -543,11 +554,11 @@ class OpenEOProcessesSpec extends RasterMatchers {
     builder.expressionEnd("max", emptyMap)
     builder.expressionEnd("mean", emptyMap)
 
-    val geometries = ProjectedPolygons.fromExtent(layer.metadata.extent, layer.metadata.crs.toString())
+    val geometries = ProjectedPolygons.fromExtent(cube.metadata.extent, cube.metadata.crs.toString())
     val splitPolygons = splitOverlappingPolygons(geometries.polygons)
     val outDirSpacial = outDir + pixelType
-    new AggregatePolygonProcess().aggregateSpatialGeneric(scriptBuilder = builder, datacube = layer, polygonsWithIndexMapping = splitPolygons,
-      geometries.crs, bandCount = new OpenEOProcesses().RDDBandCount(layer), outDirSpacial)
+    new AggregatePolygonProcess().aggregateSpatialGeneric(scriptBuilder = builder, datacube = cube, polygonsWithIndexMapping = splitPolygons,
+      geometries.crs, bandCount = new OpenEOProcesses().RDDBandCount(cube), outDirSpacial)
 
     val groupedStats = parseCSV(outDirSpacial)
     for ((_, stats) <- groupedStats) pixelType match {
