@@ -289,14 +289,98 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     val ds = NetcdfDataset.openDataset("/tmp/stitched.nc",true,null)
     val b04 = ds.findVariable("TOC-B04_10M")
 
-    Assert.assertEquals(10, ds.findDimension("t").getLength)
+
+  }
+
+  @Test
+  def testWriteNetCDFAttributes(): Unit = {
+    val dcParams = new DataCubeParameters()
+    dcParams.layoutScheme = "FloatingLayoutScheme"
+    val options = new NetCDFOptions
+    options.setBandNames(new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")))
+
+    val layerDefault= LayerFixtures.aSpacetimeTileLayerRddShortFillValue(20,20)
+    val sampleFilenames: util.List[String] = NetCDFRDDWriter.writeRasters(layerDefault,"/tmp/stitched.nc",options)
+    val expectedPaths = List("/tmp/stitched.nc")
+    Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
+
+    val ds = NetcdfDataset.openDataset("/tmp/stitched.nc",true,null)
+    val b04 = ds.findVariable("TOC-B04_10M")
+
+    Assert.assertEquals(2, ds.findDimension("t").getLength)
+
+    val unsigned = b04.findAttributeIgnoreCase("_Unsigned")
+    Assert.assertEquals("true",unsigned.getValue(0))
+
+    val longName = b04.findAttributeIgnoreCase("long_name")
+    Assert.assertEquals("TOC-B04_10M",longName.getValue(0))
+
+    val units = b04.findAttributeIgnoreCase("units")
+    Assert.assertEquals("",units.getValue(0))
+
+    val fillValueDefault = b04.findAttributeIgnoreCase("_fillValue")
+    Assert.assertEquals(-1.toShort,fillValueDefault.getValue(0))
+
+
+    val gridMapping = b04.findAttributeIgnoreCase("grid_mapping")
+    Assert.assertEquals("crs",gridMapping.getValue(0))
+
 
     val chunking = b04.findAttributeIgnoreCase("_ChunkSizes")
+    Assert.assertEquals(1,chunking.getValue(0))
     Assert.assertEquals(256,chunking.getValue(1))
     Assert.assertEquals(256,chunking.getValue(2))
+
     Assert.assertEquals("t",b04.getDimension(0).getShortName)
     Assert.assertEquals("y",b04.getDimension(1).getShortName)
     Assert.assertEquals("x",b04.getDimension(2).getShortName)
+
+    Assert.assertEquals(2,b04.getShape(0))
+    Assert.assertEquals(1024,b04.getShape(1))
+    Assert.assertEquals(1024,b04.getShape(2))
+
+    Assert.assertEquals("uint",b04.getDataType.toString)
+    Assert.assertEquals(4,b04.getElementSize)
+
+
+    val layerChosen= LayerFixtures.aSpacetimeTileLayerRddShortFillValue(20,20,fillValue = 9)
+    val sampleFilenamesChosen: util.List[String] = NetCDFRDDWriter.writeRasters(layerChosen,"/tmp/stitched.nc",options)
+    Assert.assertEquals(sampleFilenamesChosen.asScala.groupBy(identity), expectedPaths.groupBy(identity))
+
+    val dsChosen = NetcdfDataset.openDataset("/tmp/stitched.nc",true,null)
+    val b04Chosen = dsChosen.findVariable("TOC-B04_10M")
+
+    Assert.assertEquals(2, dsChosen.findDimension("t").getLength)
+
+    val unsignedChosen = b04Chosen.findAttributeIgnoreCase("_Unsigned")
+    Assert.assertEquals("true",unsignedChosen.getValue(0))
+
+    val longNameChosen = b04Chosen.findAttributeIgnoreCase("long_name")
+    Assert.assertEquals("TOC-B04_10M",longNameChosen.getValue(0))
+    val unitsChosen = b04Chosen.findAttributeIgnoreCase("units")
+    Assert.assertEquals("",unitsChosen.getValue(0))
+
+    val fillValueChosen = b04Chosen.findAttributeIgnoreCase("_fillValue")
+    Assert.assertEquals(9.toShort,fillValueChosen.getValue(0))
+
+    val gridMappingChosen = b04Chosen.findAttributeIgnoreCase("grid_mapping")
+    Assert.assertEquals("crs",gridMappingChosen.getValue(0))
+
+    val chunkingChosen = b04Chosen.findAttributeIgnoreCase("_ChunkSizes")
+    Assert.assertEquals(1,chunkingChosen.getValue(0))
+    Assert.assertEquals(256,chunkingChosen.getValue(1))
+    Assert.assertEquals(256,chunkingChosen.getValue(2))
+
+    Assert.assertEquals("t",b04Chosen.getDimension(0).getShortName)
+    Assert.assertEquals("y",b04Chosen.getDimension(1).getShortName)
+    Assert.assertEquals("x",b04Chosen.getDimension(2).getShortName)
+
+    Assert.assertEquals(2,b04Chosen.getShape(0))
+    Assert.assertEquals(1024,b04Chosen.getShape(1))
+    Assert.assertEquals(1024,b04Chosen.getShape(2))
+
+    Assert.assertEquals("uint",b04Chosen.getDataType.toString)
+    Assert.assertEquals(4,b04Chosen.getElementSize)
 
   }
 

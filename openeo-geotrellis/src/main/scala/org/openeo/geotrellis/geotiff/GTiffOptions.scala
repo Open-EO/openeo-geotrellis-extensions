@@ -5,6 +5,7 @@ import geotrellis.raster.io.geotiff.Tags
 import geotrellis.raster.render.{ColorMap, DoubleColorMap, IndexedColorMap}
 
 import scala.collection.JavaConverters._
+import scala.collection.immutable.SortedMap
 
 //noinspection ScalaUnusedSymbol
 class GTiffOptions extends Serializable {
@@ -12,7 +13,7 @@ class GTiffOptions extends Serializable {
   var filenamePrefix = "openEO" // Example using default prefix: "openEO_2017-01-02Z.tif"
   var colorMap: Option[ColorMap] = Option.empty
   var filepathPerBand: Option[util.ArrayList[String]] = Option.empty
-  var tags: Tags = Tags.empty
+  var tags: Tags = Tags(SortedMap()(Ordering.by(_.toLowerCase)), List())
   var overviews:String = "OFF"
   var resampleMethod:String = "near"
   var separateAssetPerBand = false
@@ -72,19 +73,33 @@ class GTiffOptions extends Serializable {
   }
 
   def addHeadTag(tagName: String, value: String): Unit = {
-    tags = Tags(tags.headTags + (tagName -> value), tags.bandTags)
+    tags = tags.copy(headTags = tags.headTags + (tagName -> value))
   }
 
   def addBandTag(bandIndex: Int, tagName: String, value: String): Unit = {
-    val emptyMap = Map.empty[String, String]
-    var newBandTags = Vector.fill[Map[String,String]](math.max(bandIndex+1,tags.bandTags.size))(emptyMap)
-    newBandTags =  newBandTags.zipAll(tags.bandTags,emptyMap,emptyMap).map(elem => elem._1 ++ elem._2)
-    newBandTags = newBandTags.updated(bandIndex, newBandTags(bandIndex) + (tagName -> value))
-    tags = Tags(tags.headTags ,newBandTags.toList)
+    require(bandIndex >= 0)
+
+    val existingTags = tags.bandTags
+    val existingMaxIndex = existingTags.size - 1
+    val newMaxIndex = existingMaxIndex max bandIndex
+
+    val expanded = (0 to newMaxIndex).toList
+      .map { i =>
+        if (i <= existingMaxIndex) existingTags(i)
+        else SortedMap[String, String]()(Ordering.by(_.toLowerCase)) // pad with empty map
+      }
+      .zipWithIndex
+
+    // add tag at proper index
+    val updated = expanded.map { case (existingTags, i) =>
+      if (i == bandIndex) existingTags.updated(tagName, value) else existingTags
+    }
+
+    tags = tags.copy(bandTags = updated)
   }
 
   def setBandTags(newBandTags: List[Map[String, String]]): Unit = {
-    tags = Tags(tags.headTags, newBandTags)
+    tags = tags.copy(bandTags = newBandTags.map(tags => SortedMap(tags.toSeq: _*)(Ordering.by(_.toLowerCase))))
   }
 
   def tagsAsGdalMetadataXml: xml.Elem = {

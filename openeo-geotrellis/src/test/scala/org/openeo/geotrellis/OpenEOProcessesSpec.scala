@@ -650,4 +650,107 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
   }
 
+  @Test def testSparseSpaceTimePartitionerSameSizeAligned():Unit = {
+    val time = ZonedDateTime.now()
+    val dataExtent = Extent(708050.0, 9895390.0, 801490.0, 9983710.0)
+    val dataLayout = LayoutDefinition(GridExtent[Long](extent=dataExtent,cellSize= CellSize(10.0,10.0)),73,69)
+    val dataKeyBound = KeyBounds(SpaceTimeKey(1, 1, time), SpaceTimeKey(256, 256, time))
+    val dataTileLayerMetadata = TileLayerMetadata(IntConstantNoDataCellType,dataLayout,dataExtent,CRS.fromEpsgCode(32632),dataKeyBound)
+
+    val targetExtent = Extent(708050.0, 9895390.0, 801490.0, 9983710.0)
+    val targetLayout = LayoutDefinition(GridExtent[Long](extent=targetExtent,cellSize= CellSize(10.0,10.0)),73,69)
+    val targetKeyBound = KeyBounds(SpaceTimeKey(1, 1, time), SpaceTimeKey(256, 256, time))
+    val targetTileLayerMetadata = TileLayerMetadata(IntConstantNoDataCellType,targetLayout,targetExtent,CRS.fromEpsgCode(32632),targetKeyBound)
+    val keys = Some(Array(SpaceTimeKey(0,0,time),SpaceTimeKey(0,2,time),SpaceTimeKey(1,0,time),SpaceTimeKey(2,1,time),SpaceTimeKey(4,4,time)))
+
+    val result = new OpenEOProcesses().transformSparseSpaceTimePartition(keys,dataTileLayerMetadata,targetTileLayerMetadata,8)
+    assertEquals(5,result.get.theKeys.get.length)
+    val resultKeys = result.get.theKeys.get
+    keys.get.foreach(expected =>{
+      assert(resultKeys.contains(expected))
+    })
+
+  }
+
+  @Test def testSparseSpaceTimePartitionerSameSize():Unit = {
+    val time = ZonedDateTime.now()
+    val dataExtent = Extent(xmin=708040.0, ymin=9891560.0, xmax=805320.0, ymax=9983720.0)
+    val dataLayout = LayoutDefinition(GridExtent[Long](extent=dataExtent,cellSize= CellSize(10.0,10.0)),73,69)
+    val dataKeyBound = KeyBounds(SpaceTimeKey(1, 1, time), SpaceTimeKey(256, 256, time))
+    val dataTileLayerMetadata = TileLayerMetadata(IntConstantNoDataCellType,dataLayout,dataExtent,CRS.fromEpsgCode(32632),dataKeyBound)
+
+    val targetExtent = Extent(708050.0, 9895390.0, 801490.0, 9983710.0)
+    val targetLayout = LayoutDefinition(GridExtent[Long](extent=targetExtent,cellSize= CellSize(10.0,10.0)),73,69)
+    val targetKeyBound = KeyBounds(SpaceTimeKey(1, 1, time), SpaceTimeKey(256, 256, time))
+    val targetTileLayerMetadata = TileLayerMetadata(IntConstantNoDataCellType,targetLayout,targetExtent,CRS.fromEpsgCode(32632),targetKeyBound)
+    val spaceTimeKeys = Some(Array(SpaceTimeKey(0,0,time),SpaceTimeKey(0,2,time),SpaceTimeKey(1,0,time),SpaceTimeKey(4,4,time)))
+
+    val result = new OpenEOProcesses().transformSparseSpaceTimePartition(spaceTimeKeys,dataTileLayerMetadata,targetTileLayerMetadata,8)
+    assertEquals(14,result.get.theKeys.get.length)
+    val expectedKeys = Array(
+      SpaceTimeKey(0,0,time),SpaceTimeKey(-1,0,time),SpaceTimeKey(0,-1,time),SpaceTimeKey(-1,-1,time),
+      SpaceTimeKey(0,2,time),SpaceTimeKey(-1,2,time),SpaceTimeKey(0,1,time),SpaceTimeKey(-1,1,time),
+      SpaceTimeKey(1,0,time),SpaceTimeKey(1,-1,time),
+      SpaceTimeKey(4,4,time),SpaceTimeKey(3,4,time),SpaceTimeKey(4,3,time),SpaceTimeKey(3,3,time))
+    val resultKeys = result.get.theKeys.get
+    expectedKeys.foreach(expected =>{
+      assert(resultKeys.contains(expected))
+    })
+  }
+
+  @Test def testSparseSpaceTimePartitionerDifferentSizeAligned():Unit = {
+    val time = ZonedDateTime.now()
+    val dataExtent = Extent(708050.0, 9895390.0, 801490.0, 9983710.0)
+    val dataLayout = LayoutDefinition(GridExtent[Long](extent=dataExtent,cellSize= CellSize(20.0,20.0)),73,69)
+    val dataKeyBound = KeyBounds(SpaceTimeKey(1, 1, time), SpaceTimeKey(256, 256, time))
+    val dataTileLayerMetadata = TileLayerMetadata(IntConstantNoDataCellType,dataLayout,dataExtent,CRS.fromEpsgCode(32632),dataKeyBound)
+
+    val targetExtent = Extent(708050.0, 9895390.0, 801490.0, 9983710.0)
+    val targetLayout = LayoutDefinition(GridExtent[Long](extent=targetExtent,cellSize= CellSize(10.0,10.0)),73,69)
+    val targetKeyBound = KeyBounds(SpaceTimeKey(1, 1, time), SpaceTimeKey(256, 256, time))
+    val targetTileLayerMetadata = TileLayerMetadata(IntConstantNoDataCellType,targetLayout,targetExtent,CRS.fromEpsgCode(32632),targetKeyBound)
+    val keys = Some(Array(SpaceTimeKey(0,0,time),SpaceTimeKey(0,2,time),SpaceTimeKey(1,0,time),SpaceTimeKey(2,1,time),SpaceTimeKey(4,4,time)))
+
+    val result = new OpenEOProcesses().transformSparseSpaceTimePartition(keys,dataTileLayerMetadata,targetTileLayerMetadata,8)
+    assertEquals(20,result.get.theKeys.get.length)
+    val expectedKeys = Array(
+      SpaceTimeKey(0,0,time),SpaceTimeKey(1,0,time),SpaceTimeKey(0,1,time),SpaceTimeKey(1,1,time),
+      SpaceTimeKey(0,4,time),SpaceTimeKey(1,4,time),SpaceTimeKey(0,5,time),SpaceTimeKey(1,5,time),
+      SpaceTimeKey(2,0,time),SpaceTimeKey(3,0,time),SpaceTimeKey(2,1,time),SpaceTimeKey(3,1,time),
+      SpaceTimeKey(8,8,time),SpaceTimeKey(9,8,time),SpaceTimeKey(8,9,time),SpaceTimeKey(9,9,time))
+    val resultKeys = result.get.theKeys.get
+    expectedKeys.foreach(expected =>{
+      assert(resultKeys.contains(expected))
+    })
+
+  }
+
+  @Test
+  def testSparseSpaceTimePartitionerDifferentSize():Unit = {
+    val time = ZonedDateTime.now()
+    val dataExtent = Extent(xmin=708040.0, ymin=9891560.0, xmax=805320.0, ymax=9983720.0)
+    val dataLayout = LayoutDefinition(GridExtent[Long](extent=dataExtent,cellSize= CellSize(20.0,20.0)),73,69)
+    val dataKeyBound = KeyBounds(SpaceTimeKey(1, 1, time), SpaceTimeKey(256, 256, time))
+    val dataTileLayerMetadata = TileLayerMetadata(IntConstantNoDataCellType,dataLayout,dataExtent,CRS.fromEpsgCode(32632),dataKeyBound)
+
+    val targetExtent = Extent(708050.0, 9895390.0, 801490.0, 9983710.0)
+    val targetLayout = LayoutDefinition(GridExtent[Long](extent=targetExtent,cellSize= CellSize(10.0,10.0)),73,69)
+    val targetKeyBound = KeyBounds(SpaceTimeKey(1, 1, time), SpaceTimeKey(256, 256, time))
+    val targetTileLayerMetadata = TileLayerMetadata(IntConstantNoDataCellType,targetLayout,targetExtent,CRS.fromEpsgCode(32632),targetKeyBound)
+    val spaceTimeKeys = Some(Array(SpaceTimeKey(0,0,time),SpaceTimeKey(0,2,time),SpaceTimeKey(1,0,time),SpaceTimeKey(4,4,time)))
+
+    val result = new OpenEOProcesses().transformSparseSpaceTimePartition(spaceTimeKeys,dataTileLayerMetadata,targetTileLayerMetadata,8)
+    assertEquals(33,result.get.theKeys.get.length)
+    val expectedKeys = Array(
+      SpaceTimeKey(0,0,time),SpaceTimeKey(1,0,time),SpaceTimeKey(0,1,time),SpaceTimeKey(1,1,time),SpaceTimeKey(0,-1,time),SpaceTimeKey(1,-1,time),SpaceTimeKey(-1,0,time),SpaceTimeKey(-1,1,time),SpaceTimeKey(-1,-1,time),
+      SpaceTimeKey(0,4,time),SpaceTimeKey(1,4,time),SpaceTimeKey(0,5,time),SpaceTimeKey(1,5,time),SpaceTimeKey(0,3,time),SpaceTimeKey(1,3,time),SpaceTimeKey(-1,4,time),SpaceTimeKey(-1,5,time),SpaceTimeKey(-1,3,time),
+      SpaceTimeKey(2,0,time),SpaceTimeKey(3,0,time),SpaceTimeKey(2,1,time),SpaceTimeKey(3,1,time),SpaceTimeKey(2,-1,time),SpaceTimeKey(3,-1,time),
+      SpaceTimeKey(8,8,time),SpaceTimeKey(9,8,time),SpaceTimeKey(8,9,time),SpaceTimeKey(9,9,time),SpaceTimeKey(8,7,time),SpaceTimeKey(9,7,time),SpaceTimeKey(7,8,time),SpaceTimeKey(7,9,time),SpaceTimeKey(7,7,time))
+    val resultKeys = result.get.theKeys.get
+    expectedKeys.foreach(expected =>{
+      assert(resultKeys.contains(expected))
+    })
+  }
+
+
 }

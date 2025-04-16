@@ -64,6 +64,9 @@ abstract class TiledRasterLayer[K: SpatialComponent: Encoder: Decoder: ClassTag:
   def partitionBy(partitionStrategy: PartitionStrategy) =
     withRDD(rdd.partitionBy(partitionStrategy.producePartitioner(rdd.getNumPartitions).get))
 
+  def partitionByPartitioner(partitioner: Partitioner) =
+    withRDD(rdd.partitionBy(partitioner))
+
   def bands(band: Int): TiledRasterLayer[K] =
     withRDD(rdd.mapValues { multibandTile => multibandTile.subsetBands(band) })
 

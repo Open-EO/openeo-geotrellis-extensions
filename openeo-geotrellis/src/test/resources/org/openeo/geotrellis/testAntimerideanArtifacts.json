@@ -1,0 +1,102 @@
+{
+  "type": "FeatureCollection",
+  "properties": {
+    "id": "323bc6cc-1677-5546-b53f-d1c42d133ce8",
+    "totalResults": null,
+    "exactCount": 0,
+    "startIndex": 1,
+    "itemsPerPage": 1000
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "id": "117b31b6-5284-4f94-9219-47e6dff49841",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              179.446311851824,
+              68.494266212394
+            ],
+            [
+              179.547791910153,
+              69.3909626901652
+            ],
+            [
+              182.086672726415,
+              69.3350337120443
+            ],
+            [
+              181.884817709891,
+              68.4408743547124
+            ],
+            [
+              179.446311851824,
+              68.494266212394
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "collection": "GLOBAL-MOSAICS",
+        "status": "ONLINE",
+        "license": {
+          "licenseId": "unlicensed",
+          "hasToBeSigned": "never",
+          "grantedCountries": null,
+          "grantedOrganizationCountries": null,
+          "grantedFlags": null,
+          "viewService": "public",
+          "signatureQuota": -1,
+          "description": {
+            "shortName": "No license"
+          }
+        },
+        "parentIdentifier": null,
+        "title": "Sentinel-1_IW_mosaic_2020_M08_60WWB_1_0",
+        "description": null,
+        "organisationName": null,
+        "startDate": "2020-08-01T00:00:00.000000Z",
+        "completionDate": "2020-08-31T23:59:59.000000Z",
+        "productType": "S1SAR_L3_IW_MCM",
+        "processingLevel": null,
+        "platform": "SENTINEL-1",
+        "instrument": null,
+        "resolution": 0,
+        "sensorMode": null,
+        "orbitNumber": 0,
+        "quicklook": null,
+        "thumbnail": null,
+        "updated": "2024-08-01T17:30:08.103198Z",
+        "published": "2024-08-01T17:30:08.103198Z",
+        "snowCover": 0,
+        "cloudCover": 0,
+        "gmlgeometry": "<gml:Polygon srsName=\"EPSG:4326\"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>179.446311851824,68.494266212394 179.547791910153,69.3909626901652 182.086672726415,69.3350337120443 181.884817709891,68.4408743547124 179.446311851824,68.494266212394</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>",
+        "centroid": {
+          "type": "Point",
+          "coordinates": [
+            180.741831860768,
+            68.9182971727693
+          ]
+        },
+        "productIdentifier": "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWB_1_0",
+        "services": {
+          "download": {
+            "url": "https://catalogue.dataspace.copernicus.eu/download/117b31b6-5284-4f94-9219-47e6dff49841",
+            "mimeType": "application/octet-stream",
+            "size": -1
+          }
+        },
+        "links": [
+          {
+            "rel": "self",
+            "type": "application/json",
+            "title": "GeoJSON link for 117b31b6-5284-4f94-9219-47e6dff49841",
+            "href": "https://catalogue.dataspace.copernicus.eu/resto/collections/GLOBAL-MOSAICS/117b31b6-5284-4f94-9219-47e6dff49841.json"
+          }
+        ]
+      }
+    }
+  ]
+}

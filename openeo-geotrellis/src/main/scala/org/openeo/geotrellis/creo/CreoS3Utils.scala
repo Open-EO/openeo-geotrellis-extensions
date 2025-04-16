@@ -47,15 +47,21 @@ object CreoS3Utils {
       .build();
   }
 
-  def getCreoS3Client(): S3Client = {
+  def getCreoS3Client(region: Region = cloudFerroRegion): S3Client = {
+    val endpointURI = if (region != cloudFerroRegion) this.getCFEndpoin(region) else URI.create(sys.env("SWIFT_URL"))
     S3Client.builder()
       .credentialsProvider(credentialsProvider)
       .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
       .overrideConfiguration(overrideConfig)
       .forcePathStyle(true)
-      .region(cloudFerroRegion)
-      .endpointOverride(URI.create(sys.env("SWIFT_URL")))
+      .region(region)
+      .endpointOverride(endpointURI)
       .build()
+  }
+
+  //CloudFerro endpoints follow a structure based on region names.
+  def getCFEndpoin(region: Region): URI = {
+    URI.create(s"https://s3.${region}.cloudferro.com")
   }
 
   private def credentialsProvider = {
@@ -136,7 +142,7 @@ object CreoS3Utils {
   def assetDelete(path: String): Unit = {
     if (isS3(path)) {
       val s3Uri = toAmazonS3URI(path)
-      val keys = Seq(path)
+      val keys = Seq(s3Uri.getKey)
       val deleteObjectsRequest = DeleteObjectsRequest.builder
         .bucket(s3Uri.getBucket)
         .delete(Delete.builder.objects(keys.map(key => ObjectIdentifier.builder.key(key).build).asJavaCollection).build)
@@ -214,10 +220,10 @@ object CreoS3Utils {
     assetDelete(pathOrigin)
   }
 
-  def waitTillPathAvailable(path: Path): Unit = {
+  def waitTillPathAvailable(path: String): Unit = {
     var retry = 0
     val maxTries = 20
-    while (!assetExists(path.toString)) {
+    while (!assetExists(path)) {
       if (retry < maxTries) {
         retry += 1
         val seconds = 5
@@ -246,10 +252,12 @@ object CreoS3Utils {
         } catch {
           case e: Exception =>
             // Here if another executor wrote the file between the delete and the move statement.
+            logger.info("moveOverwriteWithRetries exception: " + e + f" (try $try_count)")
             try_count += 1
             if (try_count > 5) {
               throw e
             }
+            Thread.sleep(1000)
         }
       }
     }

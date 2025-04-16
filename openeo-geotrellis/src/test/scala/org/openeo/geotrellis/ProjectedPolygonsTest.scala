@@ -1,10 +1,13 @@
 package org.openeo.geotrellis
 
-import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.proj4.{CRS, LatLng, Transform}
 import geotrellis.vector._
 import org.junit.Assert._
 import org.junit.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.ComputeStatsGeotrellisAdapterTest.{polygon1, polygon2}
+import org.openeo.geotrellis.ProjectedPolygons.reprojectPolygonRefined
 
 import scala.collection.JavaConverters._
 
@@ -44,5 +47,52 @@ class ProjectedPolygonsTest() {
     val delta = expectedArea * 0.01
 
     assertEquals(expectedArea, pp.areaInSquareMeters, delta) // https://github.com/locationtech/geotrellis/issues/3289
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = Array(
+    "/org/openeo/geotrellis/geojson/alaska_triangle.json",
+    "/org/openeo/geotrellis/geojson/bering_sea_triangle.json",
+    "/org/openeo/geotrellis/geojson/europe_triangle.json",
+    "/org/openeo/geotrellis/geojson/russia_triangle.json",
+    "/org/openeo/geotrellis/geojson/world_extent.json",
+    "/org/openeo/geotrellis/geojson/world_extent_bigger.json",
+    "/org/openeo/geotrellis/geojson/zigzag_shape.json",
+  ))
+  def testSplitPolygonsOnWrapPoint(path: String): Unit = {
+    val pp = ProjectedPolygons.fromVectorFile(getClass.getResource(path).getPath)
+    val ppSplit = pp.splitPolygonsOnWrapPoint()
+
+    // Prepare to manually inspect output in QGIS:
+    dumpGeoJson(toGeoJsonDebug(ppSplit), Some(path.substring(path.lastIndexOf("/") + 1) + "_split"))
+
+    // Test polygon validity:
+    if (path != "/org/openeo/geotrellis/geojson/world_extent_bigger.json") {
+      // world_extent_bigger goes larger than the world extent, so after cutting it will intersect itself
+      // A workaround could be to make the ProjectedExtent, but it works like this
+      ppSplit.geometries.foreach(g => assertTrue(g.isValid))
+    }
+    assertTrue(ppSplit.getFlatMultiPolygon.union().getArea > 0)
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = Array(
+    "/org/openeo/geotrellis/geojson/belgium_lowres.json",
+    "/org/openeo/geotrellis/geojson/swiss_holes.json",
+  ))
+  def testReprojectPolygonWithTesslation(path: String): Unit = {
+    val pp = ProjectedPolygons.fromVectorFile(getClass.getResource(path).getPath)
+    val targetCrs = CRS.fromEpsgCode(32631)
+    val transform = SafeTransform(LatLng, targetCrs)
+    val p = pp.getFlatMultiPolygon
+
+    val ppReprojectedOld = safeReprojectPolygons(pp, targetCrs)
+    val pReprojected = reprojectPolygonRefined(p.polygons.head, transform, 1.0)
+    val ppReprojected = ProjectedPolygons(pReprojected, targetCrs)
+    assertTrue(pReprojected.union().getArea > 0)
+
+    // Prepare to manually inspect output in QGIS:
+    dumpGeoJson(toGeoJsonDebug(ppReprojectedOld), Some(path.substring(path.lastIndexOf("/") + 1) + "_reprojectedOld_" + targetCrs))
+    dumpGeoJson(toGeoJsonDebug(ppReprojected), Some(path.substring(path.lastIndexOf("/") + 1) + "_reprojected_" + targetCrs))
   }
 }

@@ -7,12 +7,11 @@ import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
-import geotrellis.raster.{StringName, EmptyName}
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CropOptions, CroppedTile, EmptyName, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, SourcePath, StringName, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CropOptions, CroppedTile, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.clip.ClipToGrid
 import geotrellis.spark.clip.ClipToGrid.clipFeatureToExtent
@@ -21,6 +20,7 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
+import geotrellis.vector.reproject.Reproject.reprojectExtentAsPolygon
 import net.jodah.failsafe.{Failsafe, RetryPolicy}
 import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import org.apache.spark.SparkContext
@@ -29,12 +29,14 @@ import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
-import org.openeo.geotrellis.{OpenEOProcessScriptBuilder, sortableSourceName}
+import org.openeo.geotrellis._
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
 import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
+import org.slf4j.{Logger, LoggerFactory}
 import org.slf4j.LoggerFactory
+import software.amazon.awssdk.core.exception.AbortedException
 
 import java.io.{IOException, Serializable}
 import java.net.URI
@@ -105,12 +107,14 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     selectedBands flatMap { rs =>
       try Some(retryWithBackoff(maxRetries, reprojectRasterSourceAttemptFailed(rs))(rs.reproject(crs)))
       catch {
-        // reading the CRS from a GDALRasterSource can fail
-        case e: Exception =>
-          if (softErrors) {
-            logger.warn(s"ignoring soft error for ${rs.name}", e)
+
+        case e: AbortedException => throw e
+        case e:Exception if softErrors =>
+          {
+            logger.warn(s"load_collection: ignoring soft error for ${rs.name} - ${e.getMessage}", e)
             None
-          } else throw new IOException(s"Error while reading: ${rs.name}", e)
+          }
+        case e: Exception => throw new IOException(s"load_collection: Error while reading: ${rs.name} - ${e.getMessage}", e)
       }
     }
   }
@@ -187,11 +191,13 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
         logger.debug(s"finished reading $bounds from ${source.name}")
         raster
       } catch {
-        case e: Exception =>
-          if (softErrors) {
-            logger.warn(s"ignoring soft error for ${source.name}", e)
-            None
-          } else throw new IOException(s"Error while reading $bounds from ${source.name}", e)
+        case e: AbortedException => throw e
+        case e:Exception if softErrors =>
+        {
+          logger.warn(s"load_collection: ignoring soft error for ${source.name} - ${e.getMessage}", e)
+          None
+        }
+        case e: Exception => throw new IOException(s"load_collection: Error while reading $bounds from: ${source.name} - ${e.getMessage}", e)
       }
     }
 
@@ -297,7 +303,7 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
 
 object FileLayerProvider {
 
-  private val logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
 
 
 
@@ -320,6 +326,15 @@ object FileLayerProvider {
         // Ignore GDAL init error so that tests that don't require it will be ok.
         // Tests that require it will still crash when it is not installed.
         logger.warn("GDAL library not found: " + e.getMessage)
+    }
+  }
+
+  def vsis3ToS3(path: String): String = {
+    val vsis3Prefix = "/vsis3/eodata/"
+    if (path.toLowerCase().startsWith(vsis3Prefix)) {
+      "S3://EODATA/" + path.substring(vsis3Prefix.length)
+    } else {
+      path
     }
   }
 
@@ -881,7 +896,7 @@ object FileLayerProvider {
     sc.parallelize(keys.toSeq, 1).map((_, null))
   }
 
-  private def featuresRDD(geometricFeatures: Seq[vector.Feature[Geometry, (RasterSource, Feature)]], metadata: TileLayerMetadata[SpaceTimeKey], targetCRS: CRS, workingPartitioner: SpacePartitioner[SpatialKey], maybeKeys: Option[RDD[(SpatialKey, Iterable[Geometry])]] ,sc: SparkContext) = {
+  private def featuresRDD(geometricFeatures: Seq[vector.Feature[Geometry, (RasterSource, Feature)]], metadata: TileLayerMetadata[SpaceTimeKey], targetCRS: CRS, workingPartitioner: SpacePartitioner[SpatialKey], maybeKeys: Option[RDD[(SpatialKey, Iterable[Geometry])]], sc: SparkContext, datacubeParams: Option[DataCubeParameters]) = {
     val emptyPoint = Point(0.0, 0.0)
     val cubeExtent = metadata.extent
 
@@ -899,7 +914,16 @@ object FileLayerProvider {
         val productCRSOrDefault = eoProductFeature.data._2.crs.getOrElse(targetCRS)
         eoProductFeature.mapGeom(productGeometry => {
           try {
-            val intersection = productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
+            val intersection = if (datacubeParams.getOrElse(new DataCubeParameters).useNewFeatureExtentIntersection2) {
+              val productGeometryProjected = safeReprojectPolygons(ProjectedPolygons(productGeometry, LatLng), productCRSOrDefault)
+
+              val cubeExtentCrs = ProjectedExtent(cubeExtent, targetCRS)
+              val cubeExtentPolygon = safeReprojectToPolygon(cubeExtentCrs, productCRSOrDefault)
+
+              productGeometryProjected.getFlatMultiPolygon.intersection(cubeExtentPolygon.getFlatMultiPolygon)
+            } else {
+              productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
+            }
             if (intersection.isValid && intersection.getArea > 0.0) {
               intersection.reproject(productCRSOrDefault, targetCRS)
             } else {
@@ -1002,12 +1026,27 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       if (commonCellType.isInstanceOf[NoNoData]) commonCellType.withDefaultNoData() else commonCellType
     } catch {
       case e: Exception => {
-        val path = Paths.get(arbitraryRasterSource.name match {
-          case StringName(value) => value.replace("NETCDF:", "").split(":").head
-          case EmptyName => ""
-        })
-        val fileExistsMessage = s"File ${if (Files.exists(path)) "exists" else "does not exist"}: $path."
-        throw new IOException(s"Exception while reading RasterSource ${arbitraryRasterSource.name} in collection $openSearchCollectionId. $fileExistsMessage Detailed message: ${e.getMessage}", e)
+        // Geotrellis GDALException errors are not descriptive enough. Attempt to add some more useful information.
+        var fileExistsMessage = ""
+        try {
+          val path = Paths.get(arbitraryRasterSource.name match {
+            case p: SourcePath => {
+              if (p.value.startsWith("NETCDF:")) {
+                // Netcdf files can specify a variable using NETCDF:/file/path:variablename
+                p.value.replace("NETCDF:", "").split(":").head
+              } else {
+                p.value
+              }
+            }
+            case _ => "Path could not be determined"
+          })
+          fileExistsMessage = s"File ${if (Files.exists(path)) "exists" else "does not exist"}: $path."
+        } catch {
+          case e2: Exception => {
+            fileExistsMessage = s"Exception while trying to determine if RasterSource path exists: ${e2.getMessage}."
+          }
+        }
+        throw new IOException(s"Exception while reading RasterSource ${arbitraryRasterSource.name} in collection $openSearchCollectionId. Detailed message: ${e.getMessage}. $fileExistsMessage", e)
       }
     }
   }
@@ -1124,7 +1163,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       } else {
         None
       }
-    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] =  featuresRDD(geometricFeatures, metadata, targetCRS, workingPartitioner,keysIfSparse, sc)
+    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] =  featuresRDD(geometricFeatures, metadata, targetCRS, workingPartitioner,keysIfSparse, sc, datacubeParams)
 
 
     val filteredSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = applySpatialMask(datacubeParams, griddedRasterSources,metadata)
@@ -1380,24 +1419,73 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val theResolution = targetResolution.getOrElse(maxSpatialResolution)
     val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
 
-    val featureExtentInLayout: Option[GridExtent[Long]]=
-    if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
+    val featureExtentInLayout: Option[GridExtent[Long]] = if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
+      val useNewFeatureExtentIntersectionPossible = isCrsCoveredInHealthCheck(feature.crs.get) && isCrsCoveredInHealthCheck(targetExtent.crs)
+      val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection) || !useNewFeatureExtentIntersectionPossible) {
+        // logger.info("Using old intersection method between Feature/Item and target extent.")
+        // TODO: Remove this after it has been deployed for a while
+        /**
+         * Several edge cases to cover:
+         *  - if feature extent is whole world, it may be invalid in target crs
+         *  - if feature is in utm, target extent may be invalid in feature crs
+         *    this is why we take intersection
+         */
+        val targetExtentInLatLon = targetExtent.reproject(feature.crs.get)
+        val featureExtentInLatLon = feature.rasterExtent.get.reproject(feature.crs.get, LatLng)
 
-      /**
-       * Several edge cases to cover:
-       *  - if feature extent is whole world, it may be invalid in target crs
-       *  - if feature is in utm, target extent may be invalid in feature crs
-       *  this is why we take intersection
-       */
-      val targetExtentInLatLon = targetExtent.reproject(feature.crs.get)
-      val featureExtentInLatLon = feature.rasterExtent.get.reproject(feature.crs.get,LatLng)
+        val intersection = featureExtentInLatLon.intersection(targetExtentInLatLon).map(_.buffer(1.0)).getOrElse(featureExtentInLatLon)
+        val tmp = expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), theResolution)
+        re.createAlignedRasterExtent(tmp)
+      } else {
+        val featureProjectedExtent = ProjectedExtent(feature.rasterExtent.get, feature.crs.get)
+        healthCheckExtentWarn(featureProjectedExtent, s"Feature/Item extent should be valid: ")
+        healthCheckExtentWarn(targetExtent, s"Target extent should be valid: ")
 
-      val intersection = featureExtentInLatLon.intersection(targetExtentInLatLon).map(_.buffer(1.0)).getOrElse(featureExtentInLatLon)
-      val tmp = expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), theResolution)
+        /**
+         * Several edge cases to cover:
+         *  - if feature extent is whole world, it may be invalid in target crs (tested in readDataCubeWithOpensearchClientUTM)
+         *  - if feature is in utm, target extent may be invalid in feature crs
+         *    this is why we take intersection.
+         *    We convert both extents to a common CRS before taking the intersection.
+         *    We give priority to use the target CRS as common CRS, because the intersection will be converted to it anyway
+         *    In case the feature extent is invalid in the target CRS, we use the feature CRS as common CRS
+         */
+        val commonCrs = if (isExtentValidInCrs(featureProjectedExtent, targetExtent.crs)) targetExtent.crs
+        else if (isExtentValidInCrs(targetExtent, feature.crs.get)) feature.crs.get
+        else {
+          logger.warn(s"Feature/Item and target extent are not valid within each others range. Using LatLng as fallback.")
+          LatLng
+        }
 
-      val alignedToTargetExtent = re.createAlignedRasterExtent(tmp)
+        val featureExtentInCommonCRS = safeReproject(featureProjectedExtent, commonCrs)
+        val targetExtentInCommonCRS = safeReproject(targetExtent, commonCrs)
+        healthCheckExtentWarn(featureExtentInCommonCRS, s"Item extent (${feature.id}) should be valid in common CRS: ")
+
+        val intersection = featureExtentInCommonCRS.extent.intersection(targetExtentInCommonCRS.extent)
+        val intersectionTargetCrs = intersection match {
+          case None =>
+            // Item, Asset and Feature mean the same thing in this context.
+            logger.warn(s"Item extent $featureExtentInCommonCRS and target extent $targetExtentInCommonCRS do not intersect. (${feature.id})")
+            // return None // Discard the feature
+            // TODO: feature.rasterExtent is not accurate when going over the antimeridian.
+            // TODO: Fall back to feature.geometry? Now the fallback is to load the whole tile (Just like old intersection code)
+            targetExtent.extent
+          case Some(value) => value.reproject(commonCrs, targetExtent.crs)
+        }
+        var tmp = expandToCellSize(intersectionTargetCrs, theResolution)
+        val dcp = datacubeParams.getOrElse(new DataCubeParameters())
+        val p = math.max(1, dcp.maskingStrategyParameters
+          .getOrDefault("erosion_kernel_size", 0.asInstanceOf[Object]).asInstanceOf[Integer]) * 1.0
+        val pixelBuffer = (math.max(p, dcp.pixelBufferX), math.max(p, dcp.pixelBufferY))
+        tmp = Extent(
+          tmp.xmin - theResolution.width * pixelBuffer._1, tmp.ymin - theResolution.height * pixelBuffer._2,
+          tmp.xmax + theResolution.width * pixelBuffer._1, tmp.ymax + theResolution.height * pixelBuffer._2,
+        )
+        healthCheckExtentWarn(ProjectedExtent(tmp, targetExtent.crs), s"Item extent (${feature.id}) should be valid in target CRS: ")
+        re.createAlignedRasterExtent(tmp)
+      }
       Some(alignedToTargetExtent.toGridType[Long])
-    }else{
+    } else {
       Some(re.toGridType[Long])
     }
 
@@ -1433,9 +1521,14 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType], targetExtent:ProjectedExtent, sentinelXmlAngleBandIndex: Int): RasterSource = {
       if(dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
+        var warpOptionsOvr = Some(OverviewStrategy.DEFAULT)
+        if (dataPath.endsWith("SCL_20m.jp2")) {
+          // The overviews in the S2 SCL bands can be wrong, so we need to use the original resolution.
+          warpOptionsOvr = Some(geotrellis.raster.io.geotiff.Base)
+        }
         val alignPixels = !dataPath.contains("NETCDF:") //align target pixels does not yet work with CGLS global netcdfs
         val warpOptions = GDALWarpOptions(alignTargetPixels = alignPixels, cellSize = Some(theResolution), targetCRS = Some(targetExtent.crs), resampleMethod = Some(resampleMethod),
-          te = featureExtentInLayout.map(_.extent), teCRS = Some(targetExtent.crs)
+          te = featureExtentInLayout.map(_.extent), teCRS = Some(targetExtent.crs), ovr = warpOptionsOvr
         )
         if (cloudPath.isDefined) {
           GDALCloudRasterSource(cloudPath.get._1.replace("/vsis3", ""), vsisToHttpsCreo(cloudPath.get._2), GDALPath(dataPath.replace("/vsis3", "")), options = warpOptions, targetCellType = targetCellType)
@@ -1450,6 +1543,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             Some(ProjectedExtent(featureExtentInLayoutGet.extent, targetExtent.crs))
         }
         SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, targetProjectedExtent, Some(theResolution))
+      }else if(dataPath.endsWith(".zarr")) {
+        val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod),te = Some(targetExtent.extent))
+        GDALRasterSource(GDALPath(dataPath),options = warpOptions, targetCellType = targetCellType)
       }
       else {
         def alignmentFromDataPath(dataPath: String, projectedExtent: ProjectedExtent): TargetRegion = {
@@ -1467,7 +1563,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           if(experimental) {
             GDALRasterSource(dataPath, options = GDALWarpOptions(alignTargetPixels = true, cellSize = Some(theResolution), resampleMethod=Some(resampleMethod)), targetCellType = targetCellType)
           }else{
-            val geotiffPath = GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/"))
+            val geotiffPath = GeoTiffPath(vsis3ToS3(dataPath))
             if (noResampleOnRead) {
               val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)
               val geotiffRasterSource = GeoTiffRasterSource(geotiffPath, targetCellType)
@@ -1481,7 +1577,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             val warpOptions = GDALWarpOptions(alignTargetPixels = false, cellSize = Some(theResolution), targetCRS=Some(targetExtent.crs), resampleMethod = Some(resampleMethod),te = Some(targetExtent.extent))
             GDALRasterSource(dataPath.replace("/vsis3/eodata/","/vsis3/EODATA/").replace("https", "/vsicurl/https"), options = warpOptions, targetCellType = targetCellType)
           }else{
-            val geotiffPath = GeoTiffPath(dataPath.replace("/vsis3/eodata/","S3://EODATA/"))
+            val geotiffPath = GeoTiffPath(vsis3ToS3(dataPath))
             if (noResampleOnRead) {
               val tiffAlignment = alignmentFromDataPath(dataPath, targetExtent)
               val geotiffRasterSource = GeoTiffReprojectRasterSource(geotiffPath, targetExtent.crs, tiffAlignment, resampleMethod, OverviewStrategy.DEFAULT, targetCellType = targetCellType)
@@ -1542,20 +1638,23 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       (if (byLinkTitle) getBandAssetsByLinkTitle else getBandAssetsByBandInfo).map {
         case Some((link, bandIndex)) =>
           val path = deriveFilePath(link.href)
+          val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
 
           //special case handling for data that does not declare nodata properly
           val targetCellType = link.title match {
             // An un-used band called "IMG_DATA_Band_SCL_60m_Tile1_Unit" exists, so not specifying the resulution in the if-check.
             case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0)))
             case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(UShortConstantNoDataCellType))
+            case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(UShortConstantNoDataCellType)) // TODO: get info from Link object
+            case Some(title) if fromLoadStac && Seq("SCL_20m", "SCL_60m").contains(title) => Some(ConvertTargetCellType(UByteUserDefinedNoDataCellType(0))) // TODO: get info from Link object
             case _ => None
           }
 
-          val pixelValueOffset: Double = link.pixelValueOffset.getOrElse(0)
           val targetTargetCellType: Option[TargetCellType] = link.title match {
             // Sentinel 2 bands can have negative values now.
             case Some(title) if title.contains("SCENECLASSIFICATION_20M") || title.contains("Band_SCL_") => None
             case Some(title) if title.startsWith("IMG_DATA_") => Some(ConvertTargetCellType(ShortConstantNoDataCellType))
+            case Some(title) if fromLoadStac && title.endsWith("0m") && pixelValueOffset < 0 => Some(ConvertTargetCellType(ShortConstantNoDataCellType)) // TODO: get info from Link object
             case _ => None
           }
 
@@ -1613,6 +1712,34 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       overlappingFeatures=overlappingFeatures.filter(f=>condition.inputFunction.asInstanceOf[AnyProcess].apply(Map("value"->f.nominalDate)).apply(f.nominalDate).asInstanceOf[Boolean])
     }
 
+    if (datacubeParams.getOrElse(new DataCubeParameters()).useNewFeatureExtentIntersection2) {
+      overlappingFeatures = overlappingFeatures.map(f => {
+        f.geometry match {
+          case None => f
+          case Some(geom) =>
+            var pp = ProjectedPolygons(geom, LatLng)
+            if (openSearchCollectionId == "GLOBAL-MOSAICS" && f.id.length > 7) {
+              val tileIdGuess = f.id.substring(f.id.length - 9, f.id.length - 7)
+              val crs = CRS.fromName("EPSG:326" + tileIdGuess)
+
+              // The geom in the catalog does not take into account curvature.
+              // Doing a basic projection and a refined projection back fixes this.
+              pp = pp
+                .safeReproject(crs, refine = false)
+                .safeReproject(LatLng, refine = true)
+                .splitPolygonsOnWrapPoint()
+
+              var ps = pp.getFlatMultiPolygon.polygons
+              // This collection has huge chunks of nodata in tiles around the antimeridian, causing artifacts.
+              // Remove the polygons that cross the line to mitigate this
+              if (tileIdGuess == "60") ps = ps.filter(p => p.getCoordinate.x > 0)
+              if (tileIdGuess == "01") ps = ps.filter(p => p.getCoordinate.x < 0)
+              pp = ProjectedPolygons(MultiPolygon(ps), LatLng)
+            }
+            f.copy(geometry = Some(pp.getFlatMultiPolygon))
+        }
+      })
+    }
 
     val reprojectedBoundingBox: ProjectedExtent = targetBoundingBox(boundingBox, layoutScheme)
     val overlappingRasterSources = (for {

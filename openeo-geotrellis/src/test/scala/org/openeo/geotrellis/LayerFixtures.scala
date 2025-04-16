@@ -16,8 +16,12 @@ import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory}
 import org.openeo.geotrellis.layers.{FileLayerProvider, MockOpenSearchFeatures, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrelliscommon.{DataCubeParameters, SparseSpaceTimePartitioner}
+import org.openeo.opensearch.OpenSearchClient
+import org.openeo.opensearch.OpenSearchResponses.CreoFeatureCollection
+import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureBuilder}
+import spire.math.UShort
 
 import java.awt.image.DataBufferByte
 import java.io.File
@@ -337,14 +341,8 @@ object LayerFixtures {
     new ContextRDD(cube.partitionBy(partitioner),cube.metadata)
   }
 
-  /**
-   * Creates a Sentinel-2 cube by downloading data locally.
-   */
-  def sentinel2Cube(localDate: LocalDate, projected_polygons_native_crs: ProjectedPolygons, jsonPath: String,
-                    dataCubeParameters: DataCubeParameters = new DataCubeParameters,
-                    bandNames: util.List[String] = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data", "S2_Level-2A_Tile1_Metadata##1", "S2_Level-2A_Tile1_Metadata##0")) = {
+  def loadFeaturesWithArtifactoryMock(jsonPath: String): OpenSearchClient = {
     val jsonPathFull = getClass.getResource(jsonPath)
-
     val fileSource = Source.fromURL(jsonPathFull)
     var txt = try fileSource.mkString
     finally fileSource.close()
@@ -352,7 +350,27 @@ object LayerFixtures {
     // Use artifactory to avoid heavy git repo
     val basePathArtifactory = "https://artifactory.vgt.vito.be/artifactory/testdata-public"
 
-    for (rest <- Seq(
+    /*
+    To upload new files;
+    - mount /eodata
+    - change openeo-opensearch-client to use fs instead of s3
+    - run this Python script, and copy the printed paths here:
+root = Path("/tmp/EODATA/")
+l = set(filter(lambda p: p.is_file(), root.rglob("*.*")))
+l = {f for f in l if os.stat(f).st_size > 0}
+l = set(map(lambda p: os.path.relpath(p, root), l))
+for p in l:
+    cmd = f'curl -uUSERNAME:PASS -T {root / p} "https://artifactory.vgt.vito.be/artifactory/testdata-public/eodata/{p}"'
+    print(cmd)
+    code = os.system(cmd)
+    if code != 0:
+        raise Exception("Failed: " + cmd)
+print("\n")
+for p in l:
+    print(f'"/eodata/{p}",')
+     */
+
+    val artifactoryPaths = Set(
       "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/manifest.safe",
       "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/MTD_MSIL2A.xml",
       "/eodata/Sentinel-2/MSI/L2A/2023/01/17/S2B_MSIL2A_20230117T104259_N0509_R008_T31UGS_20230117T120337.SAFE/GRANULE/L2A_T31UGS_A030636_20230117T104258/MTD_TL.xml",
@@ -387,36 +405,97 @@ object LayerFixtures {
       "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/GRANULE/L2A_T04WDD_A036821_20240324T230529/MTD_TL.xml",
       "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/manifest.safe",
       "/eodata/Sentinel-2/MSI/L2A/2024/03/24/S2B_MSIL2A_20240324T230529_N0510_R044_T04WDD_20240324T234241.SAFE/MTD_MSIL2A.xml",
-    )) {
-      val jp2File = new File(basePath, rest)
-      if (!jp2File.exists()) {
-        println("Copy from artifactory to: " + jp2File)
-        FileUtils.copyURLToFile(new URL(basePathArtifactory + rest), jp2File)
+      // testMissingS2DateLine
+      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T01WCU_20240402T003652.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T01WCU_20240402T003652.SAFE/MTD_MSIL2A.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T60WWD_20240402T003652.SAFE/MTD_MSIL2A.xml",
+      "/eodata/Sentinel-2/MSI/L1C/2024/04/02/S2B_MSIL1C_20240402T000609_N0510_R016_T01WCU_20240402T001958.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L1C/2024/04/02/S2B_MSIL1C_20240402T000609_N0510_R016_T01WCU_20240402T001958.SAFE/MTD_MSIL1C.xml",
+      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T60WWD_20240402T003652.SAFE/GRANULE/L2A_T60WWD_A036936_20240402T000609/IMG_DATA/R20m/T60WWD_20240402T000609_SCL_20m.jp2",
+      "/eodata/Sentinel-2/MSI/L1C/2024/04/02/S2B_MSIL1C_20240402T000609_N0510_R016_T60WWD_20240402T001958.SAFE/MTD_MSIL1C.xml",
+      "/eodata/Sentinel-2/MSI/L1C/2024/04/02/S2B_MSIL1C_20240402T000609_N0510_R016_T60WWD_20240402T001958.SAFE/manifest.safe",
+      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T01WCU_20240402T003652.SAFE/GRANULE/L2A_T01WCU_A036936_20240402T000609/IMG_DATA/R20m/T01WCU_20240402T000609_SCL_20m.jp2",
+      "/eodata/Sentinel-2/MSI/L2A/2024/04/02/S2B_MSIL2A_20240402T000609_N0510_R016_T60WWD_20240402T003652.SAFE/manifest.safe",
+      // testAntimerideanArtifacts:
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_01WCS_0_0/VV.tif",
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_01WDS_0_0/VV.tif",
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_01WCT_0_0/VV.tif",
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWB_0_0/VV.tif",
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWC_0_0/VV.tif",
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWC_1_0/VV.tif",
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWB_1_0/VV.tif",
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_01WDT_0_0/VV.tif",
+    )
+
+    val matches = "\"(/eodata/.*?)\"".r.findAllIn(txt).toList
+    for (m <- matches) {
+      val pathFromJson = m.substring(1, m.length - 1)
+
+      for (artifactoryPath <- artifactoryPaths) {
+        if (artifactoryPath.startsWith(pathFromJson)) {
+          txt = txt.replace('"' + pathFromJson + '"', '"' + basePath + pathFromJson + '"')
+
+          // Only download when needed for current test:
+          val jp2File = new File(basePath, artifactoryPath)
+          if (!jp2File.exists()) {
+            println("Copy from artifactory to: " + jp2File)
+            FileUtils.copyURLToFile(new URL(basePathArtifactory + artifactoryPath), jp2File)
+          }
+
+        }
       }
     }
-    txt = txt.replace("\"/eodata/", "\"" + basePath + "/eodata/")
-    val mockedFeatures = CreoFeatureCollection.parse(txt)
-    val client = new MockOpenSearchFeatures(mockedFeatures.features)
-    //    val client = CreodiasClient() // More difficult to capture a nodata piece
 
-    val factory = new PyramidFactory(
-      client, "Sentinel2", bandNames,
-      null,
-      maxSpatialResolution = CellSize(10, 10),
+    val mockedFeatures = CreoFeatureCollection.parse(txt)
+    new MockOpenSearchFeatures(mockedFeatures.features)
+  }
+
+  def sentinel2Cube(localDate: LocalDate,
+                    projected_polygons_native_crs: ProjectedPolygons,
+                    jsonPath: String,
+                    dataCubeParameters: DataCubeParameters = new DataCubeParameters,
+                    bandNames: util.List[String] = util.Arrays.asList("IMG_DATA_Band_B04_10m_Tile1_Data", "S2_Level-2A_Tile1_Metadata##1", "S2_Level-2A_Tile1_Metadata##0")
+                   ): MultibandTileLayerRDD[SpaceTimeKey] = {
+    creodiasCube(
+      localDate,
+      projected_polygons_native_crs,
+      jsonPath,
+      bandNames,
+      dataCubeParameters,
     )
-    factory.crs = projected_polygons_native_crs.crs
+  }
+
+  /**
+   * Creates a Sentinel-2 cube by downloading data locally.
+   */
+  def creodiasCube(localDate: LocalDate,
+                    projected_polygons_native_crs: ProjectedPolygons,
+                    jsonPath: String,
+                   bandNames: util.List[String],
+                    dataCubeParameters: DataCubeParameters = new DataCubeParameters,
+                   ): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val client = loadFeaturesWithArtifactoryMock(jsonPath)
+    //    val client = CreodiasClient() // More difficult to capture a nodata piece
 
     val localFromDate = localDate
     val localToDate = localDate.plusDays(1)
     val ZonedFromDate = ZonedDateTime.of(localFromDate, java.time.LocalTime.MIDNIGHT, UTC)
     val zonedToDate = ZonedDateTime.of(localToDate, java.time.LocalTime.MIDNIGHT, UTC)
+
+    val factory = new PyramidFactory(
+      client, "<fakeOpenSearchCollectionId>", bandNames,
+      null,
+      maxSpatialResolution = if (projected_polygons_native_crs.crs == LatLng)
+        CellSize(0.0001471299295632278, 0.0001471299295632278) else CellSize(10, 10),
+    )
+    factory.crs = projected_polygons_native_crs.crs
+
     val from_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format ZonedFromDate
     val to_date = DateTimeFormatter.ISO_OFFSET_DATE_TIME format zonedToDate
 
-
     val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
       projected_polygons_native_crs,
-      from_date, to_date, Collections.emptyMap(), "",dataCubeParameters = dataCubeParameters
+      from_date, to_date, Collections.emptyMap(), "", dataCubeParameters = dataCubeParameters
     )
     cube.head._2
   }
@@ -431,7 +510,7 @@ object LayerFixtures {
       pathDateExtractor = SplitYearMonthDayPathDateExtractor
     )
 
-  def createLayerWithGaps(layoutCols:Int,layoutRows:Int, extent:Extent = defaultExtent ) = {
+  def createLayerWithGaps(layoutCols:Int,layoutRows:Int, extent:Extent = defaultExtent , crs:CRS = LatLng) = {
 
     val intImage = createTextImage(layoutCols * 256, layoutRows * 256)
     val imageTile = ByteArrayTile(intImage, layoutCols * 256, layoutRows * 256)
@@ -439,7 +518,7 @@ object LayerFixtures {
     val secondBand = imageTile.map { x => if (x >= 5) 10 else 100 }
     val thirdBand = imageTile.map { x => if (x >= 5) 50 else 200 }
 
-    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, MultibandTile(imageTile, secondBand, thirdBand), TileLayout(layoutCols, layoutRows, 256, 256), LatLng)
+    val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, MultibandTile(imageTile, secondBand, thirdBand), TileLayout(layoutCols, layoutRows, 256, 256), crs)
     print(tileLayerRDD.keys.collect())
     // Remove some tiles at the left of the image:
     val filtered: ContextRDD[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]] = tileLayerRDD.withContext {
@@ -451,11 +530,12 @@ object LayerFixtures {
   /**
    * Returned cube intentionally has missing Tiles.
    */
-  def aSpacetimeTileLayerRdd(layoutCols: Int, layoutRows: Int, nbDates:Int = 2, extent:Extent = defaultExtent): (RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], ByteArrayTile) = {
+  def aSpacetimeTileLayerRdd(layoutCols: Int, layoutRows: Int, nbDates:Int = 2, extent:Extent = defaultExtent, crs:CRS= LatLng): (RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], ByteArrayTile) = {
     val (imageTile: ByteArrayTile, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(
       layoutCols,
       layoutRows,
       extent,
+      crs,
     )
     val startDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
     val temporal = filtered.flatMap(tuple => {
@@ -471,6 +551,26 @@ object LayerFixtures {
       newBounds,
     )
     (ContextRDD(temporal, temporalMetadata), imageTile)
+  }
+
+
+  def aSpacetimeTileLayerRddShortFillValue(layoutCols: Int, layoutRows: Int, nbDates:Int = 2, fillValue:Short = UShort.MaxValue.toShort): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+    val imageTile = IntArrayTile.fill(40000,1024, 1024).convert(UShortUserDefinedNoDataCellType(fillValue)).mutable
+    val filtered: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, MultibandTile(imageTile, imageTile, imageTile), TileLayout(layoutCols, layoutRows, 256, 256), LatLng)
+    val startDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
+    val temporal = filtered.flatMap(tuple => {
+      (1 to nbDates).map(index => (SpaceTimeKey(tuple._1, TemporalKey( startDate.plusDays(index) )), tuple._2))
+    }).repartition(layoutCols * layoutRows)
+    val spatialM = filtered.metadata
+    val newBounds = KeyBounds[SpaceTimeKey](SpaceTimeKey(spatialM.bounds.get._1,TemporalKey(0L)),SpaceTimeKey(spatialM.bounds.get._2,TemporalKey(0L)))
+    val temporalMetadata = new TileLayerMetadata[SpaceTimeKey](
+      spatialM.cellType,
+      spatialM.layout,
+      spatialM.extent,
+      spatialM.crs,
+      newBounds,
+    )
+    ContextRDD(temporal, temporalMetadata)
   }
 
   def aSpacetimeTileLayerHoursRdd(layoutCols: Int, layoutRows: Int, nbDates:Int = 2, extent:Extent = defaultExtent): (RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], ByteArrayTile) = {
@@ -495,8 +595,8 @@ object LayerFixtures {
     (ContextRDD(temporal, temporalMetadata), imageTile)
   }
 
-  def aSparseSpacetimeTileLayerRdd(desiredKeys:Seq[SpatialKey] = Seq(SpatialKey(0,0),SpatialKey(3,1),SpatialKey(7,2))): MultibandTileLayerRDD[SpaceTimeKey] = {
-    val collection = aSpacetimeTileLayerRdd(8,4,4)
+  def aSparseSpacetimeTileLayerRdd(desiredKeys:Seq[SpatialKey] = Seq(SpatialKey(0,0),SpatialKey(3,1),SpatialKey(7,2)), crs:CRS =LatLng): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val collection = aSpacetimeTileLayerRdd(8,4,4,crs= crs)
 
     val allKeys = collection._1.map(_._1).filter(k => desiredKeys.contains(k.spatialKey)).collect().toArray
 
@@ -549,7 +649,7 @@ object LayerFixtures {
   }
 
 
-  val cglsNDVI300 = {
+  lazy val cglsNDVI300 = {
     val dataGlob = "/data/MTDA/BIOPAR/BioPar_NDVI300_V1_Global/2019/201906*/*/*.nc"
     val netcdfVariables = java.util.Arrays.asList("NDVI")
     val dateRegex = raw".+_(\d{4})(\d{2})(\d{2})0000_.+"

@@ -13,7 +13,7 @@ def maven_version            =  '3.5.4'
 def node_label               =  'default'
 def wipeout_workspace        =  true
 
-def maven_image              = "vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.4.0"
+def maven_image              = "vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.3"
 
 
 pipeline {

@@ -30,12 +30,10 @@ object SentinelHubException {
        |request: ${request.method} $queryString"""
       .stripMargin
 
-    if(requestBody!=null) {
-      message +  s"""with (possibly abbreviated) body: ${requestBody.slice(0,20000)}..."""
-    }else{
+    if (requestBody != null)
+      s"$message with (possibly abbreviated) body: ${requestBody.slice(0, 20000)}..."
+    else
       message
-    }
-
   }
 
   case class SentinelHubError(message: String)

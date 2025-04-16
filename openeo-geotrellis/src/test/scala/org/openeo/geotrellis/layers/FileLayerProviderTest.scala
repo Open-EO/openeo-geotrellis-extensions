@@ -15,6 +15,8 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.summary.polygonal._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
+import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveInputStream}
+import org.apache.commons.io.FileUtils
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
@@ -22,12 +24,13 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api._
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
+import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
 import org.openeo.geotrellis.TestImplicits._
-import org.openeo.geotrellis.file.PyramidFactory
+import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory}
 import org.openeo.geotrellis.geotiff._
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
-import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
+import org.openeo.geotrellis._
 import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{ConfigurableSpaceTimePartitioner, DataCubeParameters, DatacubeSupport, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection, Link}
@@ -38,6 +41,7 @@ import org.slf4j.{Logger, LoggerFactory}
 import ucar.nc2.NetcdfFile
 import ucar.nc2.util.CompareNetcdf2
 
+import java.io.{File, FileInputStream, FileOutputStream}
 import java.net.{URI, URL}
 import java.nio.file.{Files, Path, Paths}
 import java.time.ZoneOffset.UTC
@@ -47,6 +51,8 @@ import java.util.Formatter
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.io.Source
+import scala.jdk.CollectionConverters.mapAsJavaMapConverter
+import scala.reflect.io.Directory
 
 object FileLayerProviderTest {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[FileLayerProviderTest])
@@ -193,15 +199,15 @@ class FileLayerProviderTest extends RasterMatchers{
     val metadata: TileLayerMetadata[SpaceTimeKey] = result._2
     // Create the sparse Partitioner.
     val sparsePartitioner: SpacePartitioner[SpaceTimeKey] = DatacubeSupport.createPartitioner(Some(params),rs.keys,metadata).get
-    assert(sparsePartitioner.index.getClass == classOf[SparseSpaceTimePartitioner])
+    assertEquals(classOf[SparseSpaceTimePartitioner], sparsePartitioner.index.getClass)
     val sparsePartitionerIndex = sparsePartitioner.index.asInstanceOf[SparseSpaceTimePartitioner]
 
     // Create the default Space Partitioner.
 
     val defaultPartitioner: SpacePartitioner[SpaceTimeKey] = SpacePartitioner[SpaceTimeKey](metadata.bounds)
-    assert(defaultPartitioner.index == SpaceTimeByMonthPartitioner)
+    assertEquals(SpaceTimeByMonthPartitioner, defaultPartitioner.index)
 
-    assert(sparsePartitioner.numPartitions <= defaultPartitioner.numPartitions)
+    assertTrue(sparsePartitioner.numPartitions <= defaultPartitioner.numPartitions)
 
     val requiredKeys: RDD[(SpatialKey, Iterable[Geometry])] = sc.parallelize(polygons).map {
       _.reproject(polygons_crs, metadata.crs)
@@ -214,7 +220,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
     // Ensure that the sparsePartitioner only creates partitions for the required spacetime regions.
     val requiredRegions = requiredSpacetimeKeys.map(k => sparsePartitionerIndex.toIndex(k))
-    assert(requiredRegions.distinct.collect().sorted sameElements sparsePartitioner.regions.sorted)
+    assertTrue(requiredRegions.distinct.collect().sorted sameElements sparsePartitioner.regions.sorted)
 
     // Even though both RDDs have a different number of partitions, the keys for both RDDs are the same.
     // This means that the default partitioner has many empty partitions that have no source.
@@ -224,7 +230,7 @@ class FileLayerProviderTest extends RasterMatchers{
     // Keys corresponding with NoDataTiles are removed from the final RDD.
     // Which means those few partitions will still be empty.
     val partitionKeys = requiredSpacetimeKeys.collect().sorted.toSet
-    assert(sparseKeys.toSet.subsetOf(partitionKeys))
+    assertTrue(sparseKeys.toSet.subsetOf(partitionKeys))
 
     // Ensure that the regions in sparsePartitioner are a subset of the default Partitioner.
     sparsePartitioner.regions.toSet.subsetOf(defaultPartitioner.regions.toSet)
@@ -264,7 +270,7 @@ class FileLayerProviderTest extends RasterMatchers{
     val sparseMergedLayer = sparseBaseLayer.merge(sparseBaseLayer2)
     val sparseMergedLayerKeys = sparseMergedLayer.keys.collect().toSet
 
-    assert(defaultMergedLayerKeys.nonEmpty)
+    assertTrue(defaultMergedLayerKeys.nonEmpty)
     assertEquals(defaultMergedLayerKeys, sparseMergedLayerKeys)
   }
 
@@ -292,7 +298,7 @@ class FileLayerProviderTest extends RasterMatchers{
     val defaultMaskedLayerKeys = defaultMaskedLayer.keys.collect().toSet
     val sparseMaskedLayerKeys = sparseMaskedLayer.keys.collect().toSet
 
-    assert(defaultMaskedLayerKeys.nonEmpty)
+    assertTrue(defaultMaskedLayerKeys.nonEmpty)
     assertEquals(defaultMaskedLayerKeys, sparseMaskedLayerKeys)
   }
 
@@ -992,6 +998,65 @@ class FileLayerProviderTest extends RasterMatchers{
     println(s"Count: $count")
   }
 
+  def unpackTarFile(filePath:Path, outputDir:Path):Unit ={
+    val tarInputStream = new TarArchiveInputStream(new FileInputStream(filePath))
+    try {
+      var entry: TarArchiveEntry = tarInputStream.getNextTarEntry
+      while (entry != null) {
+        val outputFile = new File(outputDir, entry.getName)
+        if (entry.isDirectory) {
+          outputFile.mkdirs()
+        } else {
+          outputFile.getParentFile.mkdirs()
+          val outputStream = new FileOutputStream(outputFile)
+          try {
+
+            val buffer = new Array[Byte](1024)
+            var bytesRead = tarInputStream.read(buffer)
+            while (bytesRead != -1) {
+              outputStream.write(buffer, 0, bytesRead)
+              bytesRead = tarInputStream.read(buffer)
+            }
+          } finally {
+            outputStream.close()
+          }
+        }
+        entry = tarInputStream.getNextTarEntry
+      }
+    } finally {
+      tarInputStream.close()
+    }
+  }
+
+  @Test
+  def testReadKeysToRasterSources(@TempDir tempDir: Path):Unit = {
+    val Filename = "zarrExample.tar"
+    val url = new URL(s"https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/$Filename")
+    FileUtils.copyURLToFile(url, tempDir.resolve(Filename).toFile)
+    val tarFile = tempDir resolve Filename
+    unpackTarFile(tarFile,tempDir)
+    val date = LocalDate.of(2020, 3, 15).atStartOfDay(UTC)
+    val crs = CRS.fromEpsgCode(32631)
+    val extent = Extent(xmin = 55.0, ymin = 30.0, xmax = 60.0, ymax = 35.0)
+    val feature = OpenSearchResponses.Feature(id="zarrExample",bbox=extent,nominalDate=date,links=Array(Link(tempDir.resolve("exampleZarr.zarr").toUri,title=Some("IMG_DATA_Zarr"),bandNames = Some(Seq("NO2")))),resolution = None)
+    val openEOSearchClient = new FixedFeaturesOpenSearchClient()
+    openEOSearchClient.addFeature(feature)
+    val zarFileLayerProvider = FileLayerProvider(
+      openSearch = openEOSearchClient,
+      openSearchCollectionId = "zarrExample",
+      NonEmptyList.one("NO2"),
+      rootPath = tempDir,
+      maxSpatialResolution = sentinel5PMaxSpatialResolution,
+      new Sentinel5PPathDateExtractor(maxDepth = 3),
+      layoutScheme = sentinel5PLayoutScheme,
+    )
+    val boundingBox = ProjectedExtent(extent,crs )
+    ProjectedExtent(Extent(5.085980189812683,51.0353667302808,5.146073667675196,51.05305736567695).reproject(LatLng,crs),crs )
+    val raster = zarFileLayerProvider.readKeysToRasterSources(from=date,to=date, boundingBox = boundingBox, polygons = Array(MultiPolygon(boundingBox.extent.toPolygon())), polygons_crs = crs, zoom = 0, sc = sc, datacubeParams = None)
+    assertEquals(extent,raster._2.extent)
+    assertEquals(crs,raster._2.crs)
+  }
+
   @Test
   def testSinglePoint(): Unit = {
     val date = LocalDate.of(2019, 9, 25).atStartOfDay(UTC)
@@ -1102,7 +1167,7 @@ class FileLayerProviderTest extends RasterMatchers{
     cubeSpatial.writeGeoTiff(f"$outDir/testPixelValueOffsetNeededCorner.tiff")
     val arr = cubeSpatial.collect().array
     assertTrue(isNoData(arr(1)._2.toArrayTile().band(0).get(162, 250)))
-    assertEquals(172, arr(0)._2.toArrayTile().band(0).get(5, 5), 1)
+    assertEquals(187, arr(0)._2.toArrayTile().band(0).get(160, 5), 1)
   }
 
   @Test
@@ -1117,7 +1182,7 @@ class FileLayerProviderTest extends RasterMatchers{
     cubeSpatial.writeGeoTiff(f"$outDir/testPixelValueOffsetNeededDark.tiff")
     val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
 
-    assertEquals(888, band.get(0, 0), 1)
+    assertEquals(682, band.get(20, 140), 1)
     assertEquals(-582, band.get(133, 151), 1)
   }
 
@@ -1154,6 +1219,198 @@ class FileLayerProviderTest extends RasterMatchers{
     cubeSpatial.writeGeoTiff(outDir + "/testMissingS2.tiff")
     val band = cubeSpatial.collect().array(0)._2.toArrayTile().band(0)
     assertEquals(8, band.get(200, 200))
+  }
+
+
+  /**
+   * Writes a tiff files and check if it contains expected pixels
+   */
+  private def testMissingS2DateLineInternal(extent: Extent,
+                                            specificCrs: CRS,
+                                            name: String,
+                                           ): Unit = {
+    val uniqueName = name + "_" + specificCrs.toString.replace(":", "_")
+    val outDir = Paths.get("tmp/FileLayerProviderTest_" + uniqueName + "/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    Files.createDirectories(outDir)
+
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, LatLng.proj4jCrs.toString)
+    val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, specificCrs)
+    val poly2 = ProjectedPolygons(Array(reprojected), specificCrs)
+
+    val poly2GeoJson = toGeoJsonDebug(poly2)
+    // geojson only officially supports latLon, but QGIS handles custom CRSes
+    Files.writeString(Paths.get(outDir + "/" + uniqueName + ".geojson"), poly2GeoJson)
+
+    val layer = LayerFixtures.sentinel2Cube(
+      LocalDate.of(2024, 4, 2),
+      poly2,
+      "/org/openeo/geotrellis/testMissingS2DateLine.json",
+      new DataCubeParameters,
+      java.util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data"),
+    )
+
+    val layer_collected = layer.collect()
+    assertTrue(layer_collected.nonEmpty)
+    var found10 = false // SCL value for 'snow or ice'
+    for {
+      (_, multiBandTile) <- layer_collected
+      tile <- multiBandTile.bands
+    } {
+      assertTrue(!tile.isNoDataTile)
+      val values = tile.toArrayDouble()
+      if (values.contains(10.0)) {
+        found10 = true
+      }
+    }
+    assertTrue(found10)
+    val cubeSpatial = layer.toSpatial()
+    cubeSpatial.writeGeoTiff(outDir + "/" + uniqueName + ".tiff")
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:4326", "EPSG:3857"))
+  def testMissingS2DateLine(crsName: String): Unit = {
+    // typically requires PROJ_LIB to be set
+    if (crsName == "EPSG:32660" && !new DataCubeParameters().useNewFeatureExtentIntersection) {
+      return
+    }
+
+    for (tup <- Seq(
+      (Extent(178.1, 70.3, 178.9, 70.9), "left"),
+      (Extent(-179.9, 70.1, -179.2, 71.3), "right"),
+    )) {
+      testMissingS2DateLineInternal(tup._1, CRS.fromName(crsName), tup._2)
+    }
+  }
+
+  /**
+   * Test a case where the catalog would return Features that are outside the valid extent of the requested CRS
+   */
+  @Test
+  def testImpossibleIntersection(): Unit = {
+    val crsName = "EPSG:32632"
+    val extent = Extent(3.3, 50.6, 7.6, 51.6) // Belgium, which is invalid with the available features
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, LatLng.proj4jCrs.toString)
+    val utmCrs = CRS.fromName(crsName)
+    val reprojected = projected_polygons_native_crs.polygons.head.reproject(projected_polygons_native_crs.crs, utmCrs)
+    val poly2 = ProjectedPolygons(Array(reprojected), utmCrs)
+
+    def testImpossibleIntersectionInternal(): Unit = {
+      val layer = LayerFixtures.sentinel2Cube(
+        LocalDate.of(2024, 4, 2),
+        poly2,
+        "/org/openeo/geotrellis/testMissingS2DateLine.json",
+        new DataCubeParameters,
+        java.util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data"),
+      )
+
+      val layer_collected = layer.collect()
+      assertTrue(layer_collected.isEmpty)
+      val cubeSpatial = layer.toSpatial()
+
+      val outDir = Paths.get("tmp/testImpossibleIntersection/")
+      new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+      Files.createDirectories(outDir)
+      cubeSpatial.writeGeoTiff(outDir + "/testImpossibleIntersection_" + crsName.replace(":", "_") + ".tiff")
+    }
+
+    // Throwing this could also be valid:
+    // java.lang.IllegalArgumentException: Could not find data for your load_collection request with catalog ID "Sentinel2". The catalog query had correlation ID "" and returned 4 results.
+    // Right now, no error is thrown, but the result is empty. To avoid premature errors in confusing cases
+    testImpossibleIntersectionInternal()
+  }
+
+  @Test
+  def testAntimerideanArtifacts(): Unit = {
+    val outDir = Paths.get("tmp/testAntimerideanArtifacts/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    Files.createDirectories(outDir)
+
+    val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
+    val poly2 = ProjectedPolygons(projectedExtent)
+    dumpGeoJson(toGeoJsonDebug(poly2), Some("testAntimerideanArtifacts"))
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.useNewFeatureExtentIntersection = true
+    dataCubeParameters.useNewFeatureExtentIntersection2 = true
+    val layer = LayerFixtures.creodiasCube(
+      LocalDate.of(2020, 7, 31),
+      poly2,
+      "/org/openeo/geotrellis/testAntimerideanArtifacts.json",
+      java.util.Arrays.asList("VV"),
+      dataCubeParameters,
+    )
+
+    val layer_collected = layer.collect()
+    assertTrue(layer_collected.nonEmpty)
+    val cubeSpatial = layer.toSpatial()
+
+    val tiffPath = outDir + "/testAntimerideanArtifacts.tiff"
+    cubeSpatial.writeGeoTiff(tiffPath)
+
+    val result = GeoTiff.readMultiband(tiffPath).raster.tile
+    val band = result.toArrayTile().band(0)
+    val value = band.get(7500, 10000) // Read on location where artifact would be
+    assertEquals(0.02, value, 1) // TODO: Update actual value, smaller delta
+    // Maybe better check: assertTrue(value != -2.147483648E9)
+  }
+
+  @Test
+  def testAntimerideanArtifacts2(): Unit = {
+    val outDir = Paths.get("tmp/testAntimerideanArtifacts2/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    Files.createDirectories(outDir)
+
+    val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
+    val spatialExtent = ProjectedPolygons(projectedExtent).reproject(CRS.fromName("EPSG:32660"))
+    dumpGeoJson(toGeoJsonDebug(spatialExtent), Some("testAntimerideanArtifacts2"))
+    // DataCubeParameters taken from running as sync job.
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.tileSize = 256
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.partitionerIndexReduction = 6
+    dataCubeParameters.useNewFeatureExtentIntersection = true
+    dataCubeParameters.useNewFeatureExtentIntersection2 = true
+    dataCubeParameters.globalExtent = Some(ProjectedExtent(Extent(526300.0, 7682200.0, 646340.0, 7802240.0), CRS.fromName("EPSG:32660")))
+
+    val factory = new PyramidFactory(
+      loadFeaturesWithArtifactoryMock("/org/openeo/geotrellis/testAntimerideanArtifacts2.json"),
+      "GLOBAL-MOSAICS",
+      java.util.Arrays.asList("VV"),
+      "/eodata",
+      maxSpatialResolution = CellSize(20, 20)
+    )
+    factory.crs = spatialExtent.crs
+
+    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
+      spatialExtent,
+      "2020-07-31T23:59:59Z",
+      "2020-09-01T00:00:00Z",
+      scala.collection.Map[String, Any]("productType" -> "S1SAR_L3_IW_MCM").asJava,
+      "", dataCubeParameters = dataCubeParameters
+    )
+    val layer = cube.head._2
+    val cubeSpatial = layer.toSpatial()
+
+    val tiffPath = outDir + "/testAntimerideanArtifacts2.tiff"
+    cubeSpatial.writeGeoTiff(tiffPath)
+
+    // Read back and check values:
+    val result = GeoTiff.readMultiband(tiffPath).raster.tile
+    val band = result.toArrayTile().band(0)
+    val value = band.get(4600, 5115) // Read on location where artifact would be
+    assertEquals(0.02, value, 1) // TODO: Update actual value, smaller delta
+    // Maybe better check: assertTrue(value != -2.147483648E9)
+  }
+
+  @Test
+  def testMissingS2DateLineOutside(): Unit = {
+    if (!new DataCubeParameters().useNewFeatureExtentIntersection) {
+      return
+    }
+    // Target extent should be valid: Extent not within its CRS limits: ProjectedExtent(Extent(649630.0, 1.212245E7, 684180.0, 1.219141E7),EPSG:32631)
+    assertThrows[IllegalArgumentException](testMissingS2DateLine("EPSG:32631"))
   }
 
   private def keysForLargeArea(useBBox:Boolean=false) = {
@@ -1429,5 +1686,16 @@ class FileLayerProviderTest extends RasterMatchers{
     val string = formatter.toString
     println(string)
     println(comparison)
+  }
+
+  @Test
+  def testVsis3ToS3(): Unit = {
+    assertEquals(FileLayerProvider.vsis3ToS3(
+      "/vsis3/eodata/auxdata/test.tif"),
+      "S3://EODATA/auxdata/test.tif")
+
+    assertEquals(FileLayerProvider.vsis3ToS3(
+      "/vsis3/EODATA/auxdata/ESA_WORLD_COVER/2021/ESA_WorldCover_10m_2021_v200_N51E012/ESA_WorldCover_10m_2021_v200_N51E012_Map.tif"),
+      "S3://EODATA/auxdata/ESA_WORLD_COVER/2021/ESA_WorldCover_10m_2021_v200_N51E012/ESA_WorldCover_10m_2021_v200_N51E012_Map.tif")
   }
 }

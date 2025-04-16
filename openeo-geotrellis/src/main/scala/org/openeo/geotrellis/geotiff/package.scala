@@ -9,7 +9,8 @@ import geotrellis.raster.io.geotiff.compression.{Compression, DeflateCompression
 import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.render.IndexedColorMap
 import geotrellis.raster.resample._
-import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
+import geotrellis.raster.{ArrayTile, CellSize, CellType, GridBounds, GridExtent, MultibandTile, Raster, RasterExtent, Tile, TileLayout, ubyteNODATA, UByteConstantTile}
+import geotrellis.raster.crop._
 import geotrellis.spark._
 import geotrellis.spark.pyramid.Pyramid
 import geotrellis.store.s3._
@@ -34,6 +35,8 @@ import spire.syntax.cfor.cfor
 
 import java.io.IOException
 import java.nio.file.{Files, Path, Paths}
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
+import java.nio.file.attribute.PosixFilePermissions
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.{ArrayList, Collections, Map, List => JList}
@@ -53,6 +56,7 @@ package object geotiff {
 
   private val logger = LoggerFactory.getLogger(getClass)
   private val secondsPerDay = 86400L
+  private val gdalProjLib = Option(System.getenv("OPENEO_GDAL_PROJ_LIB")).getOrElse("/usr/share/proj")
 
   class SetAccumulator[T](var value: Set[T]) extends AccumulatorV2[T, Set[T]] {
     def this() = this(Set.empty[T])
@@ -140,14 +144,20 @@ package object geotiff {
     CreoS3Utils.writeStringToFile(jsonFilePath, strAgain)
   }
 
+  private def extractExecutorAttemptDirectory(parentDirectory: Path, geoTiffResultObject: GeoTiffResultObject): String = {
+    val relativeFilePath = parentDirectory.relativize(Path.of(geoTiffResultObject.correctPath)).toString
+    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception("Bad relativeFilePath:" + relativeFilePath)
+    parentDirectory + "/" + relativeFilePath.substring(0, relativeFilePath.indexOf("/"))
+  }
+
   private def moveFromExecutorAttemptDirectory(parentDirectory: Path, geoTiffResultObject: GeoTiffResultObject): String = {
     // Move output file to standard location. (On S3, a move is more a copy and delete):
     val relativeFilePath = parentDirectory.relativize(Path.of(geoTiffResultObject.correctPath)).toString
-    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception()
+    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception("Bad relativeFilePath:" + relativeFilePath)
     // Remove the executorAttemptDirectory part from the path:
     val destinationPath = parentDirectory.resolve(relativeFilePath.substring(relativeFilePath.indexOf("/") + 1))
     if (geoTiffResultObject.fileExists) {
-      CreoS3Utils.waitTillPathAvailable(Path.of(geoTiffResultObject.correctPath))
+      CreoS3Utils.waitTillPathAvailable(geoTiffResultObject.correctPath)
       if (!CreoS3Utils.isS3(parentDirectory.toString)) {
         Files.createDirectories(destinationPath.getParent)
       }
@@ -156,6 +166,7 @@ package object geotiff {
 
     geoTiffResultObject.gdalInfoPath match {
       case Some(gdalInfoPath) =>
+        CreoS3Utils.waitTillPathAvailable(gdalInfoPath)
         updateGdalInfoJsonFile(gdalInfoPath, destinationPath.toString)
         val gdalInfoDestinationPath = gdalInfoPath.replaceFirst(executorAttemptDirectoryPrefix + "\\d+/", "")
         CreoS3Utils.moveOverwriteWithRetries(gdalInfoPath, gdalInfoDestinationPath)
@@ -241,7 +252,7 @@ package object geotiff {
     }.persist()
 
     val keys = toBeGrouped.map(_._1).distinct().collect() // TODO: Extent metadata to be able to get keys
-    val res = toBeGrouped.groupByKey(new ByKeyPartitioner(keys)).map { case ((filename: String, timestamp: String, tiffBands:Int), sequence) =>
+    val geotiffResults = toBeGrouped.groupByKey(new ByKeyPartitioner(keys)).map { case ((filename: String, timestamp: String, tiffBands:Int), sequence) =>
       val cellTypes = sequence.map(_._2._1).toSet
       val tiffs: Predef.Map[Int, Array[Byte]] = sequence.map(tuple => (tuple._1, tuple._2._2)).toMap
       val bandIndices = sequence.map(_._3).toSet.toList.asJava
@@ -265,13 +276,17 @@ package object geotiff {
         tileLayout, compression, cellTypes.head, tiffBands, segmentCount, fo,
       )
       (geoTiffResultObject, timestamp, croppedExtent, bandIndices)
-    }.collect().map {
+    }.collect()
+    val res = geotiffResults.map {
       case (geoTiffResultObject, timestamp, croppedExtent, bandIndices) =>
         val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path), geoTiffResultObject)
         (destinationPath.toString, timestamp, croppedExtent, bandIndices)
     }.toList.asJava
 
-    cleanUpExecutorAttemptDirectory(path)
+    for ((geotiffResult, _, _, _) <- geotiffResults) {
+      val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(Path.of(path), geotiffResult)
+      CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
+    }
     toBeGrouped.unpersist()
 
     res
@@ -301,7 +316,7 @@ package object geotiff {
                                zLevel: Int = 6,
                                cropBounds: Option[Extent] = Option.empty[Extent],
                                formatOptions: GTiffOptions = new GTiffOptions
-                              ): java.util.List[(String, java.util.List[Int])] = {
+                              ): java.util.List[(String, Extent, java.util.List[Int])] = {
     formatOptions.assertNoConflicts()
     if (formatOptions.separateAssetPerBand) {
       val bandLabels = formatOptions.tags.bandTags.map(_("DESCRIPTION"))
@@ -329,7 +344,7 @@ package object geotiff {
         }
       }
       // groupByKey does a shuffle, so we can partition at the same time
-      val res = rdd_per_band.groupByKey(partitioner).map { case ((name, bandIndex), tiles) =>
+      val geotiffResults = rdd_per_band.groupByKey(partitioner).map { case ((name, bandIndex), tiles) =>
         val fixedPath =
           if (path.endsWith("out")) {
             val executorAttemptDirectory = createExecutorAttemptDirectory(path.substring(0, path.length - 3))
@@ -349,28 +364,34 @@ package object geotiff {
           ))))
         }
 
-        (stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, None, None, compression, Some(fo)),
+        (stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, Some(extent), None, compression, Some(fo)),
           Collections.singletonList(bandIndex))
-      }.collect().map {
+      }.collect()
+      val res = geotiffResults.map {
         case (geoTiffResultObject, bandIndices) =>
           if (path.endsWith("out")) {
             val beforeOut = path.substring(0, path.length - "out".length)
             val destinationPath = moveFromExecutorAttemptDirectory(Path.of(beforeOut), geoTiffResultObject)
-            (destinationPath.toString, bandIndices)
+            (destinationPath, extent, bandIndices)
           } else {
-            (geoTiffResultObject.correctPath, bandIndices)
+            (geoTiffResultObject.correctPath, extent, bandIndices)
           }
       }.toList.sortBy(_._1).asJava
 
       if (path.endsWith("out")) {
         val beforeOut = path.substring(0, path.length - "out".length)
-        cleanUpExecutorAttemptDirectory(beforeOut)
+        for ((geotiffResult, _) <- geotiffResults) {
+          val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(Path.of(beforeOut), geotiffResult)
+          CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
+        }
       }
 
       res
     } else {
-      val tmp = saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions).asScala
-      tmp.map(t => (t, (0 until bandCount).toList.asJava)).asJava
+      val tiffPaths = saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions).asScala
+      tiffPaths.map { case (tiffPath, extent) =>
+        (tiffPath, extent, (0 until bandCount).toList.asJava)
+      }.asJava
     }
   }
 
@@ -463,7 +484,7 @@ package object geotiff {
     def levelFor(extent: Extent, cellSize: CellSize): LayoutLevel = ???
   }
 
-  def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K], bandCount:Int, path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent], formatOptions:GTiffOptions = new GTiffOptions):java.util.List[String] = {
+  def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, zLevel: Int = 6, cropBounds: Option[Extent] = None, formatOptions: GTiffOptions = new GTiffOptions): java.util.List[(String, Extent)] = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
@@ -536,7 +557,8 @@ package object geotiff {
           updateGdalInfoJsonFile(gdalInfoPath, geoTiffResultObject.correctPath)
         case None => // do nothing
       }
-      return Collections.singletonList(geoTiffResultObject.correctPath)
+
+      Collections.singletonList((geoTiffResultObject.correctPath, croppedExtent))
     }finally {
       preprocessedRdd.unpersist()
     }
@@ -638,7 +660,7 @@ package object geotiff {
 
           (name, extent, tileBounds)
         }.filter { case (_, _, tileBounds) =>
-          if (KeyBounds(tileBounds).includes(key.getComponent[SpatialKey])) true else false
+          KeyBounds(tileBounds).includes(key.getComponent[SpatialKey])
         }.map { case (name, extent, tileBounds) =>
           val re = preprocessedRdd.metadata.toRasterExtent()
           val gridBounds = re.gridBoundsFor(extent, clamp = true)
@@ -786,7 +808,7 @@ package object geotiff {
     }
 
     val geoTiff = MultibandGeoTiff(adjusted, contextRDD.metadata.crs, GeoTiffOptions(compression))
-      .withOverviews(NearestNeighbor, List(4, 8, 16))
+      .withOverviews(NearestNeighbor)
 
     writeGeoTiff(geoTiff, path, gtiffOptions = None)
     adjusted.extent
@@ -813,28 +835,32 @@ package object geotiff {
 
     val layout = rdd.metadata.layout
     val crs = rdd.metadata.crs
-    val res = rdd.flatMap {
+    val groupedRDD = rdd.flatMap {
       case (key, tile) => features.filter { case (_, extent) =>
         val tileBounds = layout.mapTransform(extent)
 
-        if (KeyBounds(tileBounds).includes(key)) true else false
+        KeyBounds(tileBounds).includes(key)
       }.map { case (name, extent) =>
         ((name, extent), (key, tile))
       }
     }.groupByKey()
-      .map { case ((tileId, extent), tiles) =>
+    val geotiffResults = groupedRDD.map {
+      case ((tileId, extent), tiles) =>
         // Each executor writes to a unique folder to avoid conflicts:
         val executorAttemptDirectory = createExecutorAttemptDirectory(Path.of(path).getParent)
         val filePath = executorAttemptDirectory + "/" + newFilePath(Path.of(path).getFileName.toString, tileId)
 
         (stitchAndWriteToTiff(tiles, filePath, layout, crs, extent, croppedExtent, cropDimensions, compression), extent)
-      }.collect().map {
-        case (geoTiffResultObject, croppedExtent) =>
-          val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path).getParent, geoTiffResultObject)
-          (destinationPath.toString, croppedExtent)
-      }.toList.asJava
-
-    cleanUpExecutorAttemptDirectory(Path.of(path).getParent.toString)
+      }.collect()
+    val res = geotiffResults.map {
+      case (geoTiffResultObject, croppedExtent) =>
+        val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path).getParent, geoTiffResultObject)
+        (destinationPath.toString, croppedExtent)
+    }.toList.asJava
+    for ((geotiffResult, _) <- geotiffResults) {
+      val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(Path.of(path).getParent, geotiffResult)
+      CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
+    }
 
     res
   }
@@ -844,7 +870,18 @@ package object geotiff {
                                    croppedExtent: Option[Extent], cropDimensions: Option[java.util.ArrayList[Int]],
                                    compression: Compression, formatOptions: Option[GTiffOptions] = None
                                   ): GeoTiffResultObject = {
-    val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).stitch()
+    val raster: Raster[MultibandTile] = ContextSeq(tiles, layout).sparseStitch(geometry.extent) match {
+      case Some(stitched) => stitched
+      case _ => {
+        logger.error("stitchAndWriteToTiff(): sparseStitch returned None. Recovering by writing an empty raster.")
+        if (tiles.isEmpty) {
+          val noDataTile = UByteConstantTile(ubyteNODATA, 256, 256)
+          Raster(MultibandTile(noDataTile), layout.extent)
+        } else {
+          Raster(tiles.head._2, layout.extent)
+        }
+      }
+    }
 
     val re = raster.rasterExtent
     val alignedExtent = re.createAlignedGridExtent(geometry.extent).extent
@@ -855,7 +892,7 @@ package object geotiff {
     val adjusted = {
       val cropped =
         croppedExtent match {
-          case Some(extraExtent) => stitched.crop(extraExtent)
+          case Some(extraExtent) => stitched.crop(extraExtent, Crop.Options(clamp = false))
           case None => stitched
         }
 
@@ -885,7 +922,7 @@ package object geotiff {
     if (fo.overviews.toUpperCase == "ALL" ||
       fo.overviews.toUpperCase == "AUTO" && (gridBounds.width > 1024 || gridBounds.height > 1024)
     ) {
-      geotiff = geotiff.withOverviews(NearestNeighbor, List(4, 8, 16))
+      geotiff = geotiff.withOverviews(NearestNeighbor, List(4, 8, 16), blockSize = 256)
     }
     writeGeoTiff(geotiff, filePath, Some(fo))
   }
@@ -977,8 +1014,27 @@ package object geotiff {
     geoTiff.write(tempFile.toString, optimizedOrder = true)
     val fileExists = Files.exists(tempFile)
     var gdalInfoPathName:Option[Path] = None
+
     if (fileExists) {
-      gtiffOptions.foreach(options => embedGdalMetadata(tempFile, options.tagsAsGdalMetadataXml))
+      gtiffOptions.foreach { options =>
+        val lowerCaseTagNames = for {
+          bandTags <- options.tags.bandTags
+          (key, _) <- bandTags
+        } yield key.toLowerCase
+
+        if (lowerCaseTagNames.contains("scale") || lowerCaseTagNames.contains("offset")) {
+          embedGdalMetadata(tempFile, options.tagsAsGdalMetadataXml)
+
+          val (tileWidth, tileHeight) = (
+            geoTiff.imageData.segmentLayout.tileLayout.tileCols,
+            geoTiff.imageData.segmentLayout.tileLayout.tileRows
+          )
+
+          if (tileWidth != tileHeight) throw new AssertionError(s"tile width $tileWidth != tile height $tileHeight")
+          convertToCog(tempFile, geoTiff.bandCount, blockSize = tileWidth)
+        }
+      }
+
       gdalInfoPathName = createGdalInfo(tempFile)
     } else {
       logger.warn("writeGeoTiff() File was not created: " + path)
@@ -1016,9 +1072,13 @@ package object geotiff {
   val GDALINFO_SUFFIX = "_gdalinfo.json"
 
   private def createGdalInfo(rasterFilePath: Path): Option[Path] = {
-    // Allow to quickly disable gdalinfo on executor if something goes wrong
+    // gdalinfo json files are used to generate stac metadata
+    // A gdalinfo file is generated just after the tiff file is written to avoid re-downloading it from S3.
+    // Some users might like to load the gdalinfo files directly, they can use attach_gdalinfo_assets=True
     val gdalinfo_on_executor = sys.env.getOrElse("GDALINFO_ON_EXECUTOR", "true").toBoolean
     if (!gdalinfo_on_executor) {
+      // Allow to quickly disable gdalinfo on executor if something goes wrong
+      // openeo-geopyspark-driver will then call gedalinfo by itself.
       return None
     }
     import scala.sys.process._
@@ -1040,7 +1100,7 @@ package object geotiff {
     val outputBufferString = outputBuffer.toString().trim
     if (exitCode == 0) {
       val gdalInfoPath = Path.of(rasterFilePath.toString + GDALINFO_SUFFIX)
-      Files.write(gdalInfoPath, outputBufferString.getBytes(StandardCharsets.US_ASCII))
+      Files.write(gdalInfoPath, outputBufferString.getBytes(StandardCharsets.UTF_8))
       Some(gdalInfoPath)
     }
     else {
@@ -1102,6 +1162,68 @@ package object geotiff {
       if (exitCode == 0) logger.debug(s"wrote $gdalMetadata to $geotiffPath")
       else logger.warn(s"${args mkString " "} failed; output was: $outputBuffer")
     } finally Files.delete(tempFile)
+  }
+
+  def convertToCog(geotiffPath: Path, bandCount: Int, blockSize: Int): Unit = {
+    import scala.sys.process._
+
+    val outputBuffer = new StringBuilder
+    val processLogger = ProcessLogger(line => outputBuffer appendAll line)
+
+    // gdal_translate requires input and output files to be different
+    val tempFile = Files.createTempFile("gdal_translate_to_COG_", ".tif.tmp")
+    try {
+      // TODO: set ZLEVEL?
+      val args = if (bandCount > 3) Seq(
+        "gdal_translate",
+        "-of", "GTiff",
+        "-co", "COMPRESS=DEFLATE",
+        "-co", s"BLOCKXSIZE=$blockSize",
+        "-co", s"BLOCKYSIZE=$blockSize",
+        "-co", "INTERLEAVE=BAND",
+        "-co", "TILED=YES",
+        "-co", "COPY_SRC_OVERVIEWS=YES",
+        "-co", "BIGTIFF=YES",
+        geotiffPath.toString,
+        tempFile.toString,
+      ) else Seq(
+        // https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Byoc.html#gdal-example-command
+        "gdal_translate",
+        "-of", "COG",
+        "-co", "COMPRESS=DEFLATE",
+        "-co", s"BLOCKSIZE=$blockSize", // 512 by default so apply original
+        "-co", "OVERVIEWS=FORCE_USE_EXISTING",
+        "-co", "BIGTIFF=YES",
+        geotiffPath.toString,
+        tempFile.toString,
+      )
+
+      val exitCode = Process(
+        args,
+        cwd = None,
+        "GDAL_PAM_ENABLED" -> "NO", // make sure to embed the color map in the tiff
+        "PROJ_LIB" -> gdalProjLib,
+      ) ! processLogger
+
+      if (exitCode == 0) {
+        val logMethod: String => Unit = if (outputBuffer contains "ERROR") logger.warn else logger.debug
+        logMethod(s"converted $tempFile to COG; output was: $outputBuffer")
+      } else throw new IOException(s"${args mkString " "} failed; output was: $outputBuffer")
+
+      val originalFilePermissions = Files.getPosixFilePermissions(geotiffPath)
+      if (logger.isDebugEnabled) {
+        val tempFilePermissions = Files.getPosixFilePermissions(tempFile)
+        logger.debug(s"restoring $tempFile permissions from ${PosixFilePermissions.toString(tempFilePermissions)}" +
+          s" to ${PosixFilePermissions.toString(originalFilePermissions)}")
+      }
+      Files.move(tempFile, geotiffPath, REPLACE_EXISTING)
+      Files.setPosixFilePermissions(geotiffPath, originalFilePermissions)
+    } finally {
+      try Files.deleteIfExists(tempFile)
+      catch {
+        case e: IOException => logger.warn(f"deleting $tempFile failed", e)
+      }
+    }
   }
 
   def assertSafeToUseInFilePath(filepath: String): Unit = {

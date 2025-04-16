@@ -12,6 +12,11 @@
     <artifactId>geotrellis-integrationtests</artifactId>
     <dependencies>
         <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+            <version>2.15.2</version>
+        </dependency>
+        <dependency>
             <groupId>org.locationtech.proj4j</groupId>
             <artifactId>proj4j</artifactId>
             <version>1.1.5</version>
@@ -180,21 +185,15 @@
             <scope>runtime</scope>
         </dependency>
         <dependency>
-            <groupId>org.codehaus.jackson</groupId>
-            <artifactId>jackson-mapper-asl</artifactId>
-            <version>1.9.13</version>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
             <groupId>ai.catboost</groupId>
-            <artifactId>catboost-spark_3.2_2.12</artifactId>
-            <version>1.0.4</version>
+            <artifactId>catboost-spark_3.5_2.12</artifactId>
+            <version>1.2.7</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>ai.catboost</groupId>
             <artifactId>catboost-prediction</artifactId>
-            <version>1.0.4</version>
+            <version>1.2.7</version>
             <scope>compile</scope>
         </dependency>
     </dependencies>
@@ -219,7 +218,7 @@
                     <environmentVariables>
                         <PATH>../venv/bin:${env.PATH}</PATH>
                         <CPL_LOG>/dev/null</CPL_LOG>
-                        <LD_LIBRARY_PATH>/tmp_epod/gdal:../venv/lib/python3.8/site-packages/jep</LD_LIBRARY_PATH>
+                        <LD_LIBRARY_PATH>../venv/lib/python3.8/site-packages/jep</LD_LIBRARY_PATH>
                     </environmentVariables>
                     <reuseForks>false</reuseForks>
                     <includes>
