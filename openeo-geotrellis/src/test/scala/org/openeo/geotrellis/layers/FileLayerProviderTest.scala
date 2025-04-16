@@ -17,7 +17,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveInputStream}
 import org.apache.commons.io.FileUtils
-import org.apache.spark.SparkContext
+import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.jupiter.api.io.TempDir
@@ -37,6 +37,7 @@ import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, Feature
 import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.openeo.sparklisteners.{BatchJobProgressListener, GetInfoSparkListener}
+import org.slf4j.{Logger, LoggerFactory}
 import ucar.nc2.NetcdfFile
 import ucar.nc2.util.CompareNetcdf2
 
@@ -54,16 +55,21 @@ import scala.jdk.CollectionConverters.mapAsJavaMapConverter
 import scala.reflect.io.Directory
 
 object FileLayerProviderTest {
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[FileLayerProviderTest])
   private var _sc: Option[SparkContext] = None
 
   private def sc: SparkContext = {
     if (_sc.isEmpty) {
       println("Creating SparkContext")
 
+      val conf = new SparkConf()
+        .set("spark.ui.enabled", "true")
       val sc = SparkUtils.createLocalSparkContext(
         "local[1]",
-        appName = classOf[FileLayerProviderTest].getName
+        appName = classOf[FileLayerProviderTest].getName,
+        conf,
       )
+      if (sc.uiWebUrl.isDefined) logger.info("Spark uiWebUrl: " + sc.uiWebUrl.get)
       _sc = Some(sc)
     }
     _sc.get
