@@ -62,7 +62,7 @@ package object geotrelliscommon {
   object SparseSpaceOnlyPartitioner {
     // Shift by 8 removes the last 8 bytes: 256 tiles max in one partition.
     def toIndex(key: SpaceTimeKey, indexReduction:Int = 8): BigInt = Z2(key.col,key.row).z >> indexReduction
-    def toIndex(key: SpatialKey, indexReduction:Int = 8): BigInt = Z2(key.col,key.row).z >> indexReduction
+    def toIndex(key: SpatialKey, indexReduction:Int): BigInt = Z2(key.col,key.row).z >> indexReduction
   }
 
   object SparseSpaceTimePartitioner {

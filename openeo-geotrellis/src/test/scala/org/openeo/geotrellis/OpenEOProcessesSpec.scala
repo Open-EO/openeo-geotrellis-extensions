@@ -31,7 +31,7 @@ import org.openeo.geotrellis.aggregate_polygon.intern.splitOverlappingPolygons
 import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD}
-import org.openeo.geotrelliscommon.SparseSpaceOnlyPartitioner
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, SparseSpaceOnlyPartitioner}
 import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.nio.file.{Files, Paths}
@@ -133,6 +133,13 @@ object OpenEOProcessesSpec {
     tile.set(0, 0, 1)
     tile.set(0, 1, tile.cellType.noDataValue)
     tile
+  }
+
+  def aggregateTemporalTestParams(): java.util.stream.Stream[Arguments] = {
+    val pixelTypes = PixelType.values()
+    val p1 = new ByTileSpacetimePartitioner()
+    pixelTypes.flatMap(pt => Seq( arguments(pt, null),arguments(pt, p1))).toStream.asJava.stream()
+
   }
 }
 
@@ -489,12 +496,16 @@ class OpenEOProcessesSpec extends RasterMatchers {
     listener
   }
 
+
   @ParameterizedTest
-  @EnumSource(classOf[PixelType])
-  def aggregateTemporalTest(pixelType: PixelType): Unit = {
+  @MethodSource(Array("aggregateTemporalTestParams"))
+  def aggregateTemporalTest(pixelType: PixelType, index: PartitionerIndex[SpaceTimeKey]): Unit = {
     val outDir = "/tmp/aggregateTemporalTest/"
     Files.createDirectories(Paths.get(outDir))
-    val layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType)
+    var layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType)
+    if(index != null) {
+      layer = layer.withContext(_.partitionBy(new SpacePartitioner[SpaceTimeKey](layer.metadata.bounds)(implicitly, implicitly, index)))
+    }
     val bounds = layer.metadata.bounds
     val middleDate = SpaceTimeKey(0, 0, (bounds.get.minKey.instant + bounds.get.maxKey.instant) / 2).time
 
