@@ -1400,13 +1400,13 @@ class FileLayerProviderTest extends RasterMatchers{
 
   @Test
   def testAntimerideanArtifacts3(): Unit = {
-    val outDir = Paths.get("tmp/testAntimerideanArtifacts2/")
+    val outDir = Paths.get("tmp/testAntimerideanArtifacts3/")
     new Directory(outDir.toFile).deepFiles.foreach(_.delete())
     Files.createDirectories(outDir)
 
     val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
     val spatialExtent = ProjectedPolygons(projectedExtent).reproject(CRS.fromName("EPSG:32660"))
-    dumpGeoJson(toGeoJsonDebug(spatialExtent), Some("testAntimerideanArtifacts2"))
+    dumpGeoJson(toGeoJsonDebug(spatialExtent), Some("testAntimerideanArtifacts3"))
     // DataCubeParameters taken from running as sync job.
     val dataCubeParameters = new DataCubeParameters
     dataCubeParameters.tileSize = 128 // only difference with testAntimerideanArtifacts2
@@ -1435,7 +1435,7 @@ class FileLayerProviderTest extends RasterMatchers{
     val layer = cube.head._2
     val cubeSpatial = layer.toSpatial()
 
-    val tiffPath = outDir + "/testAntimerideanArtifacts2.tiff"
+    val tiffPath = outDir + "/testAntimerideanArtifacts3.tiff"
     cubeSpatial.writeGeoTiff(tiffPath)
 
     // Read back and check values:

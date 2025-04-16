@@ -259,14 +259,14 @@ object ProjectedPolygons {
    * Inspired on reprojectExtentAsPolygon from geotrellis. I could not find an equivalent for polygons in geotrellis self:
    * https://github.com/pomadchin/geotrellis/blob/b071b33/vector/src/main/scala/geotrellis/vector/reproject/Reproject.scala#L94
    */
-  def reprojectPolygonRefined(polygon: Polygon, transform: Transform, relError: Double): Polygon = {
+  def reprojectPolygonRefined(polygon: Polygon, transform: Transform, absError: Double): Polygon = {
     var interiorRings = List[LineString]()
     for (ringNr <- 0 until polygon.getNumInteriorRing) {
       val shell = polygon.getInteriorRingN(ringNr).asInstanceOf[LineString]
-      interiorRings = interiorRings :+ reprojectRingRefined(shell, transform, relError)
+      interiorRings = interiorRings :+ reprojectRingRefined(shell, transform, absError)
     }
     val shell = polygon.getExteriorRing
-    val refined = reprojectRingRefined(shell, transform, relError)
+    val refined = reprojectRingRefined(shell, transform, absError)
     Polygon(refined, interiorRings)
   }
 
@@ -274,7 +274,7 @@ object ProjectedPolygons {
    * Inspired on reprojectExtentAsPolygon from geotrellis. I could not find an equivalent for polygons in geotrellis self:
    * https://github.com/pomadchin/geotrellis/blob/b071b33/vector/src/main/scala/geotrellis/vector/reproject/Reproject.scala#L94
    */
-  private def reprojectRingRefined(shell: LineString, transform: Transform, relError: Double): LineString = {
+  private def reprojectRingRefined(shell: LineString, transform: Transform, absError: Double): LineString = {
     import math.{abs, pow, sqrt}
 
     def refine(p0: (Point, (Double, Double)), p1: (Point, (Double, Double))): List[(Point, (Double, Double))] = {
@@ -288,7 +288,7 @@ object ProjectedPolygons {
       val p2 = m -> (x2, y2)
       if (java.lang.Double.isNaN(deflect)) {
         throw new IllegalArgumentException(s"Encountered NaN during a refinement step: ($deflect / $length). Input $shell is likely not in source projection.")
-      } else if (deflect / length < relError) {
+      } else if (deflect < absError) {
         List(p2)
       } else {
         refine(p0, p2) ++ (p2 :: refine(p2, p1))
@@ -300,11 +300,11 @@ object ProjectedPolygons {
     LineString(refined.map { case (_, (x, y)) => Point(x, y) })
   }
 
-  def reprojectGeometryRefined(geom: Geometry, transform: Transform, relError: Double): Geometry = {
+  def reprojectGeometryRefined(geom: Geometry, transform: Transform, absError: Double): Geometry = {
     geom match {
-      case polygon: Polygon => reprojectPolygonRefined(polygon, transform, 0.001)
+      case polygon: Polygon => reprojectPolygonRefined(polygon, transform, absError)
       case multiPolygon: MultiPolygon =>
-        MultiPolygon(multiPolygon.polygons.map(reprojectPolygonRefined(_, transform, 0.001)))
+        MultiPolygon(multiPolygon.polygons.map(reprojectPolygonRefined(_, transform, absError)))
       case geometry: Geometry =>
         // logger.info("Was only expecting (Multi)Polygon, but got: " + geometry)
         geometry

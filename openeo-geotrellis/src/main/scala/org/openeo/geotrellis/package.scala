@@ -416,9 +416,20 @@ package object geotrellis {
   def safeReprojectPolygons(inputProjectedPolygons: ProjectedPolygons, targetCrs: CRS, refine:Boolean = false): ProjectedPolygons = {
     if (inputProjectedPolygons.crs == targetCrs) return inputProjectedPolygons
     val transform = SafeTransform(inputProjectedPolygons.crs, targetCrs)
+    val targetIsUTM = targetCrs.proj4jCrs.getProjection.getName == "utm"
     val geometries = if (refine) {
+      // TODO: Better heuristic for absError.
+      //  Based on layer resolution?
+      //  10cm everywhere? -> Only for equidistant projections.
+      val absError = if (targetCrs == LatLng) {
+        0.0001
+      } else if (targetIsUTM) {
+        0.01 // utm defines distances in meters
+      } else {
+        0.1 // TODO
+      }
       inputProjectedPolygons.geometries.map {
-        reprojectGeometryRefined(_, transform, 0.001)
+        reprojectGeometryRefined(_, transform, absError)
       }
     } else {
       inputProjectedPolygons.geometries.map(_.reproject(transform))
