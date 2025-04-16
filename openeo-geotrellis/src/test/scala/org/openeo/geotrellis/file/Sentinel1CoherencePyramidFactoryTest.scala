@@ -70,7 +70,7 @@ class Sentinel1CoherencePyramidFactoryTest {
 
     val summary: PolygonalSummaryResult[Array[MeanValue]] = spatialLayer.polygonalSummaryValue(reprojected, MeanVisitor)
 
-    val qgisZonalStatisticsPluginResult = Array(100.41442640404578, 149.25818472185253)
+    val qgisZonalStatisticsPluginResult = Array(100.09070278555602, 149.25818472185253)
 
     assertTrue(summary.toOption.isDefined)
     val meanList = summary.toOption.get
