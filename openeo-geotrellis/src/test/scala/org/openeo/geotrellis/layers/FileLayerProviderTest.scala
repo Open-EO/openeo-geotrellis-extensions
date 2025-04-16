@@ -1236,11 +1236,14 @@ class FileLayerProviderTest extends RasterMatchers{
     // geojson only officially supports latLon, but QGIS handles custom CRSes
     Files.writeString(Paths.get(outDir + "/" + uniqueName + ".geojson"), poly2GeoJson)
 
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.useNewFeatureExtentIntersection = true
+
     val layer = LayerFixtures.sentinel2Cube(
       LocalDate.of(2024, 4, 2),
       poly2,
       "/org/openeo/geotrellis/testMissingS2DateLine.json",
-      new DataCubeParameters,
+      dataCubeParameters,
       java.util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data"),
     )
 
@@ -1266,10 +1269,6 @@ class FileLayerProviderTest extends RasterMatchers{
   @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:4326", "EPSG:3857"))
   def testMissingS2DateLine(crsName: String): Unit = {
     // typically requires PROJ_LIB to be set
-    if (crsName == "EPSG:32660" && !new DataCubeParameters().useNewFeatureExtentIntersection) {
-      return
-    }
-
     for (tup <- Seq(
       (Extent(178.1, 70.3, 178.9, 70.9), "left"),
       (Extent(-179.9, 70.1, -179.2, 71.3), "right"),
@@ -1345,9 +1344,8 @@ class FileLayerProviderTest extends RasterMatchers{
 
     val result = GeoTiff.readMultiband(tiffPath).raster.tile
     val band = result.toArrayTile().band(0)
-    val value = band.get(7500, 10000) // Read on location where artifact would be
-    assertEquals(0.02, value, 1) // TODO: Update actual value, smaller delta
-    // Maybe better check: assertTrue(value != -2.147483648E9)
+    val value = band.getDouble(7500, 10000) // Read on location where artifact would be
+    assertEquals(0.0303, value, 0.1)
   }
 
   @Test
@@ -1393,9 +1391,8 @@ class FileLayerProviderTest extends RasterMatchers{
     // Read back and check values:
     val result = GeoTiff.readMultiband(tiffPath).raster.tile
     val band = result.toArrayTile().band(0)
-    val value = band.get(4600, 5115) // Read on location where artifact would be
-    assertEquals(0.02, value, 1) // TODO: Update actual value, smaller delta
-    // Maybe better check: assertTrue(value != -2.147483648E9)
+    val value = band.getDouble(4600, 5115) // Read on location where artifact would be
+    assertEquals(0.0281, value, 0.1)
   }
 
   @Test
@@ -1441,9 +1438,8 @@ class FileLayerProviderTest extends RasterMatchers{
     // Read back and check values:
     val result = GeoTiff.readMultiband(tiffPath).raster.tile
     val band = result.toArrayTile().band(0)
-    val value = band.get(4444, 5118) // Read on location where artifact would be
-    assertEquals(0.02, value, 1) // TODO: Update actual value, smaller delta
-    // Maybe better check: assertTrue(value != -2.147483648E9)
+    val value = band.getDouble(4444, 5118) // Read on location where artifact would be
+    assertEquals(0.0227, value, 0.1)
   }
 
   @Test
