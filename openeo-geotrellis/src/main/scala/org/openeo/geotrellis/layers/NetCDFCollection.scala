@@ -107,7 +107,8 @@ object NetCDFCollection {
     val spatialBounds = KeyBounds(layout.mapTransform(extent))
     val temporalBounds = KeyBounds(SpaceTimeKey(spatialBounds.minKey,TemporalKey(LocalDate.of(1990,1,1).atStartOfDay(ZoneId.of("UTC")))),SpaceTimeKey(spatialBounds.maxKey,TemporalKey(LocalDate.now().atStartOfDay(ZoneId.of("UTC")))))
 
-    val partitioner: Partitioner = new SpacePartitioner(temporalBounds)(implicitly, implicitly, ByTileSpacetimePartitioner)
+    val keys: Array[SpatialKey] =  items.map(_.geometry.get).clipToGrid(layout).map(_._1).distinct().collect()
+    val partitioner: Partitioner = new SpacePartitioner(temporalBounds)(implicitly, implicitly, new ByTileSpacetimePartitioner(Some(keys)))
 
     val metadata = TileLayerMetadata[SpaceTimeKey](cellType, layout, extent, crs(0), temporalBounds)
     val retiled: RDD[(SpaceTimeKey, MultibandTile)] = features.tileToLayout(metadata).partitionBy(partitioner)

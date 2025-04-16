@@ -173,8 +173,6 @@ class OpenEOProcesses extends Serializable {
   }
 
     private def transformTimeDimension[KT](datacube: MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder: OpenEOProcessScriptBuilder, context: util.Map[String, Any], reduce:Boolean=false): RDD[(KT, MultibandTile)] = {
-
-
       val expectedCellType = datacube.metadata.cellType
       val applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[KT, MultibandTile] =
         if(reduce){
@@ -191,8 +189,6 @@ class OpenEOProcesses extends Serializable {
     }
 
   private def transformTimeDimension[KT](datacube: MultibandTileLayerRDD[SpaceTimeKey],applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[KT, MultibandTile],  reduce:Boolean ): RDD[(KT, MultibandTile)] = {
-
-
     val index: Option[PartitionerIndex[SpaceTimeKey]] =
       if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
         Some(datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index)
@@ -201,15 +197,15 @@ class OpenEOProcesses extends Serializable {
       }
     logger.info(s"Applying callback on time dimension of cube with partitioner: ${datacube.partitioner.getOrElse("no partitioner")} - index: ${index.getOrElse("no index")} and metadata ${datacube.metadata}")
     val rdd: RDD[(SpaceTimeKey, MultibandTile)] =
-      if (index.isDefined && (index.get.isInstanceOf[SparseSpaceOnlyPartitioner] || index.get == ByTileSpacetimePartitioner )) {
+      if (index.isDefined && (index.get.isInstanceOf[SparseSpaceOnlyPartitioner] || index.get.isInstanceOf[ByTileSpacetimePartitioner] )) {
         datacube
       } else {
-        val keys: Option[Array[SpaceTimeKey]] = findPartitionerKeys(datacube)
+        val keys: Option[Array[SpaceTimeKey]] = findPartitionerSpatialKeys(datacube)
         val spatiallyGroupingIndex =
           if(keys.isDefined){
             new SparseSpaceOnlyPartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, 0, keys)
           }else{
-            ByTileSpacetimePartitioner
+            new ByTileSpacetimePartitioner()
           }
         logger.info(f"Regrouping data cube along the time dimension, with index $spatiallyGroupingIndex. Cube metadata: ${datacube.metadata}")
         val partitioner: Partitioner = new SpacePartitioner(datacube.metadata.bounds)(implicitly, implicitly, spatiallyGroupingIndex)
@@ -289,10 +285,10 @@ class OpenEOProcesses extends Serializable {
 
     val newBounds = retiled.metadata.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]].toSpatial
 
-    val keys = findPartitionerKeys(datacube)
+    val keys = findPartitionerSpatialKeys(datacube)
     val spatiallyGroupingIndex =
       if(keys.isDefined){
-        val spatialKeys: Array[SpatialKey] = keys.get.map(_.spatialKey).distinct
+        val spatialKeys: Array[SpatialKey] = keys.get
         new SparseSpatialPartitioner(spatialKeys.map(ByTileSpatialPartitioner.toIndex).distinct.sorted, 0, Some(spatialKeys))
       }else{
         ByTileSpatialPartitioner
@@ -306,11 +302,11 @@ class OpenEOProcesses extends Serializable {
   private def groupOnTimeDimension(datacube: MultibandTileLayerRDD[SpaceTimeKey]) = {
     val targetBounds = datacube.metadata.bounds.asInstanceOf[KeyBounds[SpaceTimeKey]].toSpatial
 
-    val keys: Option[Array[SpaceTimeKey]] = findPartitionerKeys(datacube)
+    val keys: Option[Array[SpatialKey]] = findPartitionerSpatialKeys(datacube)
 
     val index =
       if (keys.isDefined) {
-        new SparseSpatialPartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, 0, keys.map(_.map(_.spatialKey)))
+        new SparseSpatialPartitioner(keys.get.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = 0)).distinct.sorted, 0, keys)
       } else {
         ByTileSpatialPartitioner
       }
@@ -322,6 +318,20 @@ class OpenEOProcesses extends Serializable {
     groupedOnTime
   }
 
+  def findPartitionerSpatialKeys(datacube: MultibandTileLayerRDD[SpaceTimeKey]): Option[Array[SpatialKey]] = {
+    val keys: Option[Array[SpaceTimeKey]] = if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
+      val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+      index match {
+        case value: SpatialKeysProvider =>
+          value.spatialKeys
+        case _ =>
+          Option.empty
+      }
+    } else {
+      Option.empty
+    }
+    keys
+  }
 
   def findPartitionerKeys(datacube: MultibandTileLayerRDD[SpaceTimeKey]): Option[Array[SpaceTimeKey]] = {
     val keys: Option[Array[SpaceTimeKey]] = if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
@@ -461,9 +471,9 @@ class OpenEOProcesses extends Serializable {
 
     val filteredCube = filterNegativeSpatialKeys(datacube)
 
-    val keys = findPartitionerKeys(filteredCube).map(_.filter( k => k.row >= 0 && k.col >= 0 ))
+    val keys = findPartitionerSpatialKeys(filteredCube).map(_.filter( k => k.row >= 0 && k.col >= 0 ))
     val allPossibleKeys: immutable.Seq[SpatialKey] = if(keys.isDefined) {
-      keys.get.map(_.spatialKey).distinct.toList
+      keys.get.distinct.toList
     } else{
       filteredCube.metadata.tileBounds
         .coordsIter
@@ -480,7 +490,7 @@ class OpenEOProcesses extends Serializable {
       }else{
         if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
           val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
-          if (index.isInstanceOf[SparseSpaceOnlyPartitioner] || index == ByTileSpacetimePartitioner) {
+          if (index.isInstanceOf[SparseSpaceOnlyPartitioner] || index.isInstanceOf[ByTileSpacetimePartitioner]) {
             index//a space only partitioner does not care about time, so can be reused as-is
           } else {
             SpaceTimeByMonthPartitioner

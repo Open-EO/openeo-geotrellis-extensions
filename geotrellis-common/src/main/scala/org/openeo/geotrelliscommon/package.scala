@@ -46,7 +46,7 @@ package object geotrelliscommon {
 
   }
 
-  object ByTileSpacetimePartitioner extends PartitionerIndex[SpaceTimeKey] {
+  class ByTileSpacetimePartitioner(val theKeys: Option[Array[SpatialKey]] = Option.empty) extends PartitionerIndex[SpaceTimeKey] with SpatialKeysProvider {
     private def toZ(key: SpaceTimeKey): Z2 = Z2(key.col, key.row)
 
     def toIndex(key: SpaceTimeKey): BigInt = toZ(key).z
@@ -54,11 +54,15 @@ package object geotrelliscommon {
     def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] =
       Z2.zranges(ZRange(toZ(keyRange._1), toZ(keyRange._2))).map(r => (BigInt(r.lower), BigInt(r.upper)))
 
+    override def spatialKeys: Option[Array[SpatialKey]] = {
+      theKeys
+    }
   }
 
   object SparseSpaceOnlyPartitioner {
     // Shift by 8 removes the last 8 bytes: 256 tiles max in one partition.
     def toIndex(key: SpaceTimeKey, indexReduction:Int = 8): BigInt = Z2(key.col,key.row).z >> indexReduction
+    def toIndex(key: SpatialKey, indexReduction:Int = 8): BigInt = Z2(key.col,key.row).z >> indexReduction
   }
 
   object SparseSpaceTimePartitioner {
@@ -68,7 +72,12 @@ package object geotrelliscommon {
     def toIndex(key: SpaceTimeKey, indexReduction:Int = 8): BigInt = keyIndex.toIndex(key) >> indexReduction
   }
 
-  class SparseSpaceTimePartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpaceTimeKey]] = Option.empty) extends PartitionerIndex[SpaceTimeKey] {
+
+  trait SpatialKeysProvider {
+    def spatialKeys: Option[Array[SpatialKey]]
+  }
+
+  class SparseSpaceTimePartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpaceTimeKey]] = Option.empty) extends PartitionerIndex[SpaceTimeKey] with SpatialKeysProvider {
 
     def toIndex(key: SpaceTimeKey): BigInt = SparseSpaceTimePartitioner.toIndex(key, indexReduction)
 
@@ -99,6 +108,15 @@ package object geotrelliscommon {
 
 
     override def toString = s"SparseSpaceTimePartitioner ${indices.length} ${theKeys.isDefined}"
+
+    override def spatialKeys: Option[Array[SpatialKey]] = {
+      if (theKeys.isDefined) {
+        Some(theKeys.get.map(_.spatialKey))
+      } else {
+        None
+      }
+    }
+
   }
 
   class SparseSpaceOnlyPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpaceTimeKey]] = Option.empty ) extends PartitionerIndex[SpaceTimeKey] {
