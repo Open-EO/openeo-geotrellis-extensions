@@ -1399,6 +1399,54 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @Test
+  def testAntimerideanArtifacts3(): Unit = {
+    val outDir = Paths.get("tmp/testAntimerideanArtifacts2/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    Files.createDirectories(outDir)
+
+    val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
+    val spatialExtent = ProjectedPolygons(projectedExtent).reproject(CRS.fromName("EPSG:32660"))
+    dumpGeoJson(toGeoJsonDebug(spatialExtent), Some("testAntimerideanArtifacts2"))
+    // DataCubeParameters taken from running as sync job.
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.tileSize = 128 // only difference with testAntimerideanArtifacts2
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.partitionerIndexReduction = 6
+    dataCubeParameters.useNewFeatureExtentIntersection = true
+    dataCubeParameters.useNewFeatureExtentIntersection2 = true
+    dataCubeParameters.globalExtent = Some(ProjectedExtent(Extent(526300.0, 7682200.0, 646340.0, 7802240.0), CRS.fromName("EPSG:32660")))
+
+    val factory = new PyramidFactory(
+      loadFeaturesWithArtifactoryMock("/org/openeo/geotrellis/testAntimerideanArtifacts2.json"),
+      "GLOBAL-MOSAICS",
+      java.util.Arrays.asList("VV"),
+      "/eodata",
+      maxSpatialResolution = CellSize(20, 20)
+    )
+    factory.crs = spatialExtent.crs
+
+    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
+      spatialExtent,
+      "2020-07-31T23:59:59Z",
+      "2020-09-01T00:00:00Z",
+      scala.collection.Map[String, Any]("productType" -> "S1SAR_L3_IW_MCM").asJava,
+      "", dataCubeParameters = dataCubeParameters
+    )
+    val layer = cube.head._2
+    val cubeSpatial = layer.toSpatial()
+
+    val tiffPath = outDir + "/testAntimerideanArtifacts2.tiff"
+    cubeSpatial.writeGeoTiff(tiffPath)
+
+    // Read back and check values:
+    val result = GeoTiff.readMultiband(tiffPath).raster.tile
+    val band = result.toArrayTile().band(0)
+    val value = band.get(4444, 5118) // Read on location where artifact would be
+    assertEquals(0.02, value, 1) // TODO: Update actual value, smaller delta
+    // Maybe better check: assertTrue(value != -2.147483648E9)
+  }
+
+  @Test
   def testMissingS2DateLineOutside(): Unit = {
     if (!new DataCubeParameters().useNewFeatureExtentIntersection) {
       return
