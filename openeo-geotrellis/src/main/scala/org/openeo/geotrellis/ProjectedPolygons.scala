@@ -66,7 +66,8 @@ case class ProjectedPolygons(geometries: Array[Geometry], crs: CRS) {
   def safeReproject(crs: CRS, refine: Boolean): ProjectedPolygons = safeReprojectPolygons(this, crs, refine)
 
   def riskOfCrossingAntimeridian: Boolean = {
-    val p = this.getFlatMultiPolygon.reproject(crs, LatLng) // Without refining
+    val transform = SafeTransform(crs, LatLng)  // be sure 0-360 polygons don't cause issues.
+    val p = this.getFlatMultiPolygon.reproject(transform) // Without refining
     val xList = p.getCoordinates.map(c => to_min180_180_range(c.x))
     val allCloseToZeroMeridian = xList.forall(x => Math.abs(x) <= 90)
     if (allCloseToZeroMeridian) {

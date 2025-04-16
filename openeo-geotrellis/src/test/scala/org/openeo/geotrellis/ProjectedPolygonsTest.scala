@@ -106,11 +106,12 @@ class ProjectedPolygonsTest() {
     ))), CRS.fromName("EPSG:32660"))
     dumpGeoJson(toGeoJsonDebug(pp), Some("testRefineToLatLngOverAntimeridian"))
 
-    val ppReprojected = pp.safeReproject(LatLng, refine = true)
-    ppReprojected.splitPolygonsOnWrapPoint()
+    val ppReprojected = projectedPolygonWrapAntimeridian(pp.safeReproject(LatLng, refine = true))
     val pReprojected = ppReprojected.getFlatMultiPolygon
     assertTrue(pReprojected.union().getArea > 0)
     // Prepare to manually inspect output in QGIS:
     dumpGeoJson(toGeoJsonDebug(ppReprojected), Some("testRefineToLatLngOverAntimeridian_reprojected"))
+    ppReprojected.splitPolygonsOnWrapPoint()  // test if error is thrown.
+    // TODO: Compare with reference geojson?
   }
 }
