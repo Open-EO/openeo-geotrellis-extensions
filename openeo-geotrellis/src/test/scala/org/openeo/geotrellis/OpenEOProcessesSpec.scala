@@ -438,12 +438,15 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
   @Test
   def medianComposite(): Unit = {
-    val withoutPartitioner = medianCompositeImpl(false)
-    val withPartitioner = medianCompositeImpl(true)
+    val withoutPartitioner = medianCompositeImpl(None)
+    val sparsePartitioner = medianCompositeImpl(Some( new SparseSpaceOnlyPartitioner(Array[BigInt](0, 1, 2, 3, 4), 8)))
+    val byTilePartitioner = medianCompositeImpl(Some( new ByTileSpacetimePartitioner()))
     println("withoutPartitioner:")
     withoutPartitioner.printStatus()
-    println("withPartitioner:")
-    withPartitioner.printStatus()
+    println("sparsePartitioner:")
+    sparsePartitioner.printStatus()
+    println("byTilePartitioner:")
+    byTilePartitioner.printStatus()
     // Measurements at 2022-01-18:
 
     // [stagesCompleted]  | no #90 fix | #90 fix
@@ -458,20 +461,22 @@ class OpenEOProcessesSpec extends RasterMatchers {
     // assertEquals(withoutPartitioner.getStagesCompleted, withPartitioner.getStagesCompleted)
     // might need to change threshold in the future:
     assertTrue(
-      "withPartitioner.getTasksCompleted should be smaller than 15. Actually: " + withPartitioner.getTasksCompleted,
-      withPartitioner.getTasksCompleted < 15,
+      "sparsePartitioner.getTasksCompleted should be smaller than 15. Actually: " + sparsePartitioner.getTasksCompleted,
+      sparsePartitioner.getTasksCompleted < 15,
+    )
+    assertTrue(
+      "byTilePartitioner.getTasksCompleted should be smaller than 6. Actually: " + byTilePartitioner.getTasksCompleted,
+      byTilePartitioner.getTasksCompleted < 6,
     )
   }
 
-  def medianCompositeImpl(usePartitioner: Boolean): GetInfoSparkListener = {
+  def medianCompositeImpl(partitioner: Option[PartitionerIndex[SpaceTimeKey]]): GetInfoSparkListener = {
     var layer: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.sentinel2B04Layer
 
-    if (usePartitioner) {
+    if (partitioner.isDefined) {
       type K = SpaceTimeKey
       val kb: Bounds[K] = layer.metadata.getComponent[Bounds[K]]
-      val newIndices: Array[BigInt] = Array[BigInt](0, 1, 2, 3, 4)
-      implicit val newIndex: PartitionerIndex[K] = new SparseSpaceOnlyPartitioner(newIndices, 8).asInstanceOf[PartitionerIndex[K]]
-      val p = SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
+      val p = SpacePartitioner[K](kb)(implicitly,implicitly,partitioner.get)
 
       val tmp = layer.partitionBy(p)
       layer = MultibandTileLayerRDD[SpaceTimeKey](tmp, layer.metadata)
