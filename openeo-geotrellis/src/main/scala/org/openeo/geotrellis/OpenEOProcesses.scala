@@ -547,7 +547,7 @@ class OpenEOProcesses extends Serializable {
 
     val tilesByInterval: RDD[(SpaceTimeKey, MultibandTile)] =
       if(reduce) {
-        if(datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] && (datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[SparseSpaceOnlyPartitioner] || datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index == ByTileSpacetimePartitioner )) {
+        if(datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] && (datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[SparseSpaceOnlyPartitioner] || datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[ByTileSpacetimePartitioner] )) {
           filteredCube.mapPartitions(elements =>{
             val byNewKey= elements.flatMap(mapToNewKey).toStream.groupBy(_._1)
             byNewKey.mapValues(v=>aggregateTiles(v.map(_._2))).iterator

@@ -458,7 +458,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     // assertEquals(withoutPartitioner.getStagesCompleted, withPartitioner.getStagesCompleted)
     // might need to change threshold in the future:
     assertTrue(
-      "withPartitioner.getTasksCompleted should be smaller than 13. Actually: " + withPartitioner.getTasksCompleted,
+      "withPartitioner.getTasksCompleted should be smaller than 15. Actually: " + withPartitioner.getTasksCompleted,
       withPartitioner.getTasksCompleted < 15,
     )
   }
@@ -471,7 +471,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
       val kb: Bounds[K] = layer.metadata.getComponent[Bounds[K]]
       val newIndices: Array[BigInt] = Array[BigInt](0, 1, 2, 3, 4)
       implicit val newIndex: PartitionerIndex[K] = new SparseSpaceOnlyPartitioner(newIndices, 8).asInstanceOf[PartitionerIndex[K]]
-      val p = SpacePartitioner[K](kb)
+      val p = SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
 
       val tmp = layer.partitionBy(p)
       layer = MultibandTileLayerRDD[SpaceTimeKey](tmp, layer.metadata)
