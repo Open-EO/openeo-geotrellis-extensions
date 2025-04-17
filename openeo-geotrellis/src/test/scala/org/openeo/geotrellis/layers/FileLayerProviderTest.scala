@@ -17,7 +17,7 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveInputStream}
 import org.apache.commons.io.FileUtils
-import org.apache.spark.SparkContext
+import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
 import org.junit.jupiter.api.io.TempDir
@@ -37,6 +37,7 @@ import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, Feature
 import org.openeo.opensearch.backends.CreodiasClient
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.openeo.sparklisteners.{BatchJobProgressListener, GetInfoSparkListener}
+import org.slf4j.{Logger, LoggerFactory}
 import ucar.nc2.NetcdfFile
 import ucar.nc2.util.CompareNetcdf2
 
@@ -54,16 +55,21 @@ import scala.jdk.CollectionConverters.mapAsJavaMapConverter
 import scala.reflect.io.Directory
 
 object FileLayerProviderTest {
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[FileLayerProviderTest])
   private var _sc: Option[SparkContext] = None
 
   private def sc: SparkContext = {
     if (_sc.isEmpty) {
       println("Creating SparkContext")
 
+      val conf = new SparkConf()
+        .set("spark.ui.enabled", "true")
       val sc = SparkUtils.createLocalSparkContext(
         "local[1]",
-        appName = classOf[FileLayerProviderTest].getName
+        appName = classOf[FileLayerProviderTest].getName,
+        conf,
       )
+      if (sc.uiWebUrl.isDefined) logger.info("Spark uiWebUrl: " + sc.uiWebUrl.get)
       _sc = Some(sc)
     }
     _sc.get
@@ -1236,11 +1242,14 @@ class FileLayerProviderTest extends RasterMatchers{
     // geojson only officially supports latLon, but QGIS handles custom CRSes
     Files.writeString(Paths.get(outDir + "/" + uniqueName + ".geojson"), poly2GeoJson)
 
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.useNewFeatureExtentIntersection = true
+
     val layer = LayerFixtures.sentinel2Cube(
       LocalDate.of(2024, 4, 2),
       poly2,
       "/org/openeo/geotrellis/testMissingS2DateLine.json",
-      new DataCubeParameters,
+      dataCubeParameters,
       java.util.Arrays.asList("IMG_DATA_Band_SCL_20m_Tile1_Data"),
     )
 
@@ -1266,10 +1275,6 @@ class FileLayerProviderTest extends RasterMatchers{
   @ValueSource(strings = Array("EPSG:32601", "EPSG:32660", "EPSG:4326", "EPSG:3857"))
   def testMissingS2DateLine(crsName: String): Unit = {
     // typically requires PROJ_LIB to be set
-    if (crsName == "EPSG:32660" && !new DataCubeParameters().useNewFeatureExtentIntersection) {
-      return
-    }
-
     for (tup <- Seq(
       (Extent(178.1, 70.3, 178.9, 70.9), "left"),
       (Extent(-179.9, 70.1, -179.2, 71.3), "right"),
@@ -1345,9 +1350,8 @@ class FileLayerProviderTest extends RasterMatchers{
 
     val result = GeoTiff.readMultiband(tiffPath).raster.tile
     val band = result.toArrayTile().band(0)
-    val value = band.get(7500, 10000) // Read on location where artifact would be
-    assertEquals(0.02, value, 1) // TODO: Update actual value, smaller delta
-    // Maybe better check: assertTrue(value != -2.147483648E9)
+    val value = band.getDouble(7500, 10000) // Read on location where artifact would be
+    assertEquals(0.0303, value, 0.1)
   }
 
   @Test
@@ -1393,9 +1397,55 @@ class FileLayerProviderTest extends RasterMatchers{
     // Read back and check values:
     val result = GeoTiff.readMultiband(tiffPath).raster.tile
     val band = result.toArrayTile().band(0)
-    val value = band.get(4600, 5115) // Read on location where artifact would be
-    assertEquals(0.02, value, 1) // TODO: Update actual value, smaller delta
-    // Maybe better check: assertTrue(value != -2.147483648E9)
+    val value = band.getDouble(4600, 5115) // Read on location where artifact would be
+    assertEquals(0.0281, value, 0.1)
+  }
+
+  @Test
+  def testAntimerideanArtifacts3(): Unit = {
+    val outDir = Paths.get("tmp/testAntimerideanArtifacts3/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    Files.createDirectories(outDir)
+
+    val projectedExtent = ProjectedExtent(Extent(300000, 7690200, 409800, 7800000), CRS.fromName("EPSG:32601"))
+    val spatialExtent = ProjectedPolygons(projectedExtent).reproject(CRS.fromName("EPSG:32660"))
+    dumpGeoJson(toGeoJsonDebug(spatialExtent), Some("testAntimerideanArtifacts3"))
+    // DataCubeParameters taken from running as sync job.
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.tileSize = 128 // only difference with testAntimerideanArtifacts2
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.partitionerIndexReduction = 6
+    dataCubeParameters.useNewFeatureExtentIntersection = true
+    dataCubeParameters.useNewFeatureExtentIntersection2 = true
+    dataCubeParameters.globalExtent = Some(ProjectedExtent(Extent(526300.0, 7682200.0, 646340.0, 7802240.0), CRS.fromName("EPSG:32660")))
+
+    val factory = new PyramidFactory(
+      loadFeaturesWithArtifactoryMock("/org/openeo/geotrellis/testAntimerideanArtifacts2.json"),
+      "GLOBAL-MOSAICS",
+      java.util.Arrays.asList("VV"),
+      "/eodata",
+      maxSpatialResolution = CellSize(20, 20)
+    )
+    factory.crs = spatialExtent.crs
+
+    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(
+      spatialExtent,
+      "2020-07-31T23:59:59Z",
+      "2020-09-01T00:00:00Z",
+      scala.collection.Map[String, Any]("productType" -> "S1SAR_L3_IW_MCM").asJava,
+      "", dataCubeParameters = dataCubeParameters
+    )
+    val layer = cube.head._2
+    val cubeSpatial = layer.toSpatial()
+
+    val tiffPath = outDir + "/testAntimerideanArtifacts3.tiff"
+    cubeSpatial.writeGeoTiff(tiffPath)
+
+    // Read back and check values:
+    val result = GeoTiff.readMultiband(tiffPath).raster.tile
+    val band = result.toArrayTile().band(0)
+    val value = band.getDouble(4444, 5118) // Read on location where artifact would be
+    assertEquals(0.0227, value, 0.1)
   }
 
   @Test

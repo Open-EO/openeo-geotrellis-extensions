@@ -392,8 +392,10 @@ package object geotrellis {
 
   def polygonWrapAntimeridian(polygon: Polygon): Polygon = {
     // This trick is mainly for GLOBAL-MOSAICS, where a product geometry is not split on the antimeridian
+    // Should only be called when you know the Polygon should not be covering more than half of the world.
+    // For example when projecting from UTM.
     val polygonCopy = polygon.copy().asInstanceOf[Polygon]
-    if (polygon.extent.width > 180 && polygon.extent.width < 360) {
+    if (polygon.extent.width > 180) {
       // Documentation says CoordinateSequenceFilter should be used, but that has a complex interface
       polygonCopy.getCoordinates.foreach(c => c.x = to_0_360_range(c.x))
     }
@@ -416,16 +418,17 @@ package object geotrellis {
   def safeReprojectPolygons(inputProjectedPolygons: ProjectedPolygons, targetCrs: CRS, refine:Boolean = false): ProjectedPolygons = {
     if (inputProjectedPolygons.crs == targetCrs) return inputProjectedPolygons
     val transform = SafeTransform(inputProjectedPolygons.crs, targetCrs)
+    val inputIsUTM = inputProjectedPolygons.crs.proj4jCrs.getProjection.getName == "utm"
+    val treatXIn360 = inputIsUTM && targetCrs == LatLng && inputProjectedPolygons.riskOfCrossingAntimeridian
     val geometries = if (refine) {
       inputProjectedPolygons.geometries.map {
-        reprojectGeometryRefined(_, transform, 0.001)
+        reprojectGeometryRefined(_, transform, 0.001, treatXIn360 = treatXIn360)
       }
     } else {
       inputProjectedPolygons.geometries.map(_.reproject(transform))
     }
     var pp = ProjectedPolygons(geometries, targetCrs)
-    val inputIsUTM = inputProjectedPolygons.crs.proj4jCrs.getProjection.getName == "utm"
-    if (inputIsUTM && targetCrs == LatLng) {
+    if (treatXIn360) {
       // When the extent was utm, some wrapping may have occurred
       pp = projectedPolygonWrapAntimeridian(pp)
     }

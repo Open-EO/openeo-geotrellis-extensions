@@ -16,9 +16,11 @@ import org.junit.Assert._
 import org.junit.{AfterClass, BeforeClass, Test}
 
 import java.net.URL
+import java.nio.file.{Files, Paths}
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
+import scala.reflect.io.Directory
 
 object Sentinel1CoherenceFileLayerProviderTest {
   private var sc: SparkContext = _
@@ -36,6 +38,10 @@ class Sentinel1CoherenceFileLayerProviderTest {
 
   @Test
   def polygonalMean(): Unit = {
+    val outDir = Paths.get("tmp/Sentinel1CoherenceFileLayerProviderTest/")
+    new Directory(outDir.toFile).deepFiles.foreach(_.delete())
+    Files.createDirectories(outDir)
+
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
 
     val polygon = Polygon((5.333628277543832, 51.125675727017786), (5.275056319942021, 51.120766442610417), (5.271964011621427, 51.148274537190268), (5.329808367265453, 51.150784833330405), (5.333628277543832, 51.125675727017786))
@@ -47,11 +53,14 @@ class Sentinel1CoherenceFileLayerProviderTest {
       .toSpatial(date)
       .cache()
 
+    val tiffPath = outDir + "/polygonalMean.tiff" // Band 1: VH, Band 2: VV
+    org.openeo.geotrellis.geotiff.saveRDD(spatialLayer, -1, tiffPath, 6, None)
+
     val reprojected = polygon.reproject(LatLng, spatialLayer.metadata.crs)
 
     val summary: PolygonalSummaryResult[Array[MeanValue]] = spatialLayer.polygonalSummaryValue(reprojected, MeanVisitor)
 
-    val qgisZonalStatisticsPluginResult = Array(149.25818472185253, 100.41442640404578)
+    val qgisZonalStatisticsPluginResult = Array(100.09070278555602, 149.25818472185253)
 
     assertTrue(summary.toOption.isDefined)
     val meanList = summary.toOption.get
