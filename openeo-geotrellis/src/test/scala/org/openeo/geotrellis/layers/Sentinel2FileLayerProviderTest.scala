@@ -598,9 +598,9 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val referenceTile = GeoTiffRasterSource(ref).read().get
     val actualTile = GeoTiffRasterSource(actual).read().get
     assertRastersEqual(referenceTile, actualTile, 160.0)
-    //because debugging is enabled, it actually runs more jobs and stages then done in production
-    assertEquals(4,listener.getJobsCompleted)
-    assertEquals(17, listener.getStagesCompleted)
+    //because debug logging is enabled during tests, it actually runs more jobs and stages than done in production
+    assertEquals(5, listener.getJobsCompleted)
+    assertEquals(18, listener.getStagesCompleted)
 
   }
 
