@@ -434,6 +434,7 @@ object FileLayerProvider {
             val filtered = prepareMask(theMask, metadata, partitioner)
 
             if (logger.isDebugEnabled) {
+              // the number of jobs/stages effectively depends on whether logging is correctly configured
               logger.debug(s"SpacetimeMask mask reduces the input to: ${filtered.countApproxDistinct()} keys.")
             }
 
