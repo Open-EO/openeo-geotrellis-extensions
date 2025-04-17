@@ -73,26 +73,45 @@ class ProjectedPolygonsTest() {
       ppSplit.geometries.foreach(g => assertTrue(g.isValid))
     }
     assertTrue(ppSplit.getFlatMultiPolygon.union().getArea > 0)
+    println(pp.riskOfCrossingAntimeridian)
   }
 
   @ParameterizedTest
   @ValueSource(strings = Array(
     "/org/openeo/geotrellis/geojson/belgium_lowres.json",
     "/org/openeo/geotrellis/geojson/swiss_holes.json",
+    "/org/openeo/geotrellis/geojson/bering_sea_triangle.json",
   ))
   def testReprojectPolygonWithTesslation(path: String): Unit = {
     val pp = ProjectedPolygons.fromVectorFile(getClass.getResource(path).getPath)
     val targetCrs = CRS.fromEpsgCode(32631)
-    val transform = SafeTransform(LatLng, targetCrs)
-    val p = pp.getFlatMultiPolygon
 
     val ppReprojectedOld = safeReprojectPolygons(pp, targetCrs)
-    val pReprojected = reprojectPolygonRefined(p.polygons.head, transform, 1.0)
-    val ppReprojected = ProjectedPolygons(pReprojected, targetCrs)
-    assertTrue(pReprojected.union().getArea > 0)
+    val ppReprojected = pp.safeReproject(targetCrs, refine = true)
+    assertTrue(ppReprojected.getFlatMultiPolygon.union().getArea > 0)
 
     // Prepare to manually inspect output in QGIS:
     dumpGeoJson(toGeoJsonDebug(ppReprojectedOld), Some(path.substring(path.lastIndexOf("/") + 1) + "_reprojectedOld_" + targetCrs))
     dumpGeoJson(toGeoJsonDebug(ppReprojected), Some(path.substring(path.lastIndexOf("/") + 1) + "_reprojected_" + targetCrs))
+  }
+
+  @Test
+  def testRefineToLatLngOverAntimeridian(): Unit = {
+    val pointBegin = Point(611000, 7666000)
+    val pp = ProjectedPolygons(Polygon(LineString(Seq(
+      pointBegin,
+      Point(599000, 7801000),
+      Point(728000, 7751000),
+      pointBegin,
+    ))), CRS.fromName("EPSG:32660"))
+    dumpGeoJson(toGeoJsonDebug(pp), Some("testRefineToLatLngOverAntimeridian"))
+
+    val ppReprojected = projectedPolygonWrapAntimeridian(pp.safeReproject(LatLng, refine = true))
+    val pReprojected = ppReprojected.getFlatMultiPolygon
+    assertTrue(pReprojected.union().getArea > 0)
+    // Prepare to manually inspect output in QGIS:
+    dumpGeoJson(toGeoJsonDebug(ppReprojected), Some("testRefineToLatLngOverAntimeridian_reprojected"))
+    ppReprojected.splitPolygonsOnWrapPoint()  // test if error is thrown.
+    // TODO: Compare with reference geojson?
   }
 }

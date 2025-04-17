@@ -915,7 +915,7 @@ object FileLayerProvider {
         eoProductFeature.mapGeom(productGeometry => {
           try {
             val intersection = if (datacubeParams.getOrElse(new DataCubeParameters).useNewFeatureExtentIntersection2) {
-              val productGeometryProjected = safeReprojectPolygons(ProjectedPolygons(productGeometry, LatLng), productCRSOrDefault)
+              val productGeometryProjected = ProjectedPolygons(productGeometry, LatLng).safeReproject(productCRSOrDefault, refine = true)
 
               val cubeExtentCrs = ProjectedExtent(cubeExtent, targetCRS)
               val cubeExtentPolygon = safeReprojectToPolygon(cubeExtentCrs, productCRSOrDefault)

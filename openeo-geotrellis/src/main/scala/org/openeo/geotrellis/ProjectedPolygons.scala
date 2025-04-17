@@ -64,6 +64,27 @@ case class ProjectedPolygons(geometries: Array[Geometry], crs: CRS) {
   def extent: ProjectedExtent = ProjectedExtent(polygons.toSeq.extent,crs)
   def reproject(crs: CRS): ProjectedPolygons = ProjectedPolygons.reproject(this, crs)
   def safeReproject(crs: CRS, refine: Boolean): ProjectedPolygons = safeReprojectPolygons(this, crs, refine)
+
+  def riskOfCrossingAntimeridian: Boolean = {
+    val transform = SafeTransform(crs, LatLng)  // be sure 0-360 polygons don't cause issues.
+    val p = this.getFlatMultiPolygon.reproject(transform) // Without refining
+    val xList = p.getCoordinates.map(c => to_min180_180_range(c.x))
+    val allCloseToZeroMeridian = xList.forall(x => Math.abs(x) <= 90)
+    if (allCloseToZeroMeridian) {
+      false
+    } else {
+      val closeToAntimeridian = xList.exists(x => Math.abs(x) > 178)
+      if (closeToAntimeridian) {
+        // We did not reproject refined for this one, so take some margin
+        true
+      } else {
+        // If the polygon crosses both sides, it should cross the antimeridian
+        val westernHemisphere = xList.exists(x => x < 0)
+        val easternHemisphere = xList.exists(x => x < 0)
+        westernHemisphere && easternHemisphere
+      }
+    }
+  }
 }
 
 object ProjectedPolygons {
@@ -230,7 +251,6 @@ object ProjectedPolygons {
   }
 
   def polygon_to_min180_180_range(p: Polygon): Polygon = {
-    // Documentation says CoordinateSequenceFilter should be used, but that has a complex interface
     val clearlyWesternHemisphere = p.getCoordinates.exists(c => (c.x < 0 && c.x > -180) || (c.x > +180 && c.x < +360))
     val clearlyEasternHemisphere = p.getCoordinates.exists(c => (c.x > 0 && c.x < +180) || (c.x < -180 && c.x > -360))
     p.getCoordinates.foreach(c => {
@@ -259,14 +279,14 @@ object ProjectedPolygons {
    * Inspired on reprojectExtentAsPolygon from geotrellis. I could not find an equivalent for polygons in geotrellis self:
    * https://github.com/pomadchin/geotrellis/blob/b071b33/vector/src/main/scala/geotrellis/vector/reproject/Reproject.scala#L94
    */
-  def reprojectPolygonRefined(polygon: Polygon, transform: Transform, relError: Double): Polygon = {
+  def reprojectPolygonRefined(polygon: Polygon, transform: Transform, relError: Double, treatXIn360: Boolean): Polygon = {
     var interiorRings = List[LineString]()
     for (ringNr <- 0 until polygon.getNumInteriorRing) {
       val shell = polygon.getInteriorRingN(ringNr).asInstanceOf[LineString]
-      interiorRings = interiorRings :+ reprojectRingRefined(shell, transform, relError)
+      interiorRings = interiorRings :+ reprojectRingRefined(shell, transform, relError, treatXIn360)
     }
     val shell = polygon.getExteriorRing
-    val refined = reprojectRingRefined(shell, transform, relError)
+    val refined = reprojectRingRefined(shell, transform, relError, treatXIn360)
     Polygon(refined, interiorRings)
   }
 
@@ -274,13 +294,17 @@ object ProjectedPolygons {
    * Inspired on reprojectExtentAsPolygon from geotrellis. I could not find an equivalent for polygons in geotrellis self:
    * https://github.com/pomadchin/geotrellis/blob/b071b33/vector/src/main/scala/geotrellis/vector/reproject/Reproject.scala#L94
    */
-  private def reprojectRingRefined(shell: LineString, transform: Transform, relError: Double): LineString = {
+  private def reprojectRingRefined(shell: LineString, transform: Transform, relError: Double, treatXIn360: Boolean): LineString = {
     import math.{abs, pow, sqrt}
 
     def refine(p0: (Point, (Double, Double)), p1: (Point, (Double, Double))): List[(Point, (Double, Double))] = {
-      val ((a, (x0, y0)), (b, (x1, y1))) = (p0, p1)
+      val ((a, (x0_orig, y0)), (b, (x1_orig, y1))) = (p0, p1)
+      val x0 = if (treatXIn360) to_0_360_range(x0_orig) else x0_orig
+      val x1 = if (treatXIn360) to_0_360_range(x1_orig) else x1_orig
+
       val m = Point(0.5 * (a.x + b.x), 0.5 * (a.y + b.y))
-      val (x2, y2) = transform(m.x, m.y)
+      val (x2_orig, y2) = transform(m.x, m.y)
+      val x2 = if (treatXIn360) to_0_360_range(x2_orig) else x2_orig
 
       val deflect = abs((y2 - y1) * x0 - (x2 - x1) * y0 + x2 * y1 - y2 * x1) / sqrt(pow(y2 - y1, 2) + pow(x2 - x1, 2))
       val length = sqrt(pow(x0 - x1, 2) + pow(y0 - y1, 2))
@@ -300,11 +324,11 @@ object ProjectedPolygons {
     LineString(refined.map { case (_, (x, y)) => Point(x, y) })
   }
 
-  def reprojectGeometryRefined(geom: Geometry, transform: Transform, relError: Double): Geometry = {
+  def reprojectGeometryRefined(geom: Geometry, transform: Transform, relError: Double, treatXIn360: Boolean = false): Geometry = {
     geom match {
-      case polygon: Polygon => reprojectPolygonRefined(polygon, transform, 0.001)
+      case polygon: Polygon => reprojectPolygonRefined(polygon, transform, relError, treatXIn360)
       case multiPolygon: MultiPolygon =>
-        MultiPolygon(multiPolygon.polygons.map(reprojectPolygonRefined(_, transform, 0.001)))
+        MultiPolygon(multiPolygon.polygons.map(reprojectPolygonRefined(_, transform, relError, treatXIn360)))
       case geometry: Geometry =>
         // logger.info("Was only expecting (Multi)Polygon, but got: " + geometry)
         geometry
