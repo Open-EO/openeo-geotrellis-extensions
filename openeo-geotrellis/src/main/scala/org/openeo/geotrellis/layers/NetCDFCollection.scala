@@ -4,7 +4,7 @@ import com.azavea.gdal.GDALWarp
 import geotrellis.layer.{KeyBounds, LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TemporalProjectedExtent, TileBounds, TileLayerMetadata}
 import geotrellis.proj4.LatLng
 import geotrellis.raster.{CellSize, IntCellType, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
-import geotrellis.raster.gdal.{DefaultDomain, GDALException, GDALRasterSource, MalformedProjectionException}
+import geotrellis.raster.gdal.{DefaultDomain, GDALException, GDALRasterSource, GDALWarpOptions, MalformedProjectionException}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
@@ -58,7 +58,7 @@ object NetCDFCollection {
           }
           try{
 
-            val rs = GDALRasterSource(gdalNetCDFLink)
+            val rs = GDALRasterSource(gdalNetCDFLink,new GDALWarpOptions(outputFormat = None))
 
             /**
              * Retrieving metadata using dataset directly, because sometimes metadata is so large that it doesn't fit the array allocated by GDALWarp
