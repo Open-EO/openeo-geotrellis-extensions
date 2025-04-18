@@ -472,7 +472,7 @@ class OpenEOProcesses extends Serializable {
     val filteredCube = filterNegativeSpatialKeys(datacube)
 
     val keys = findPartitionerSpatialKeys(filteredCube).map(_.filter( k => k.row >= 0 && k.col >= 0 ))
-    val allPossibleKeys: immutable.Seq[SpatialKey] = if(keys.isDefined) {
+    val allPossibleKeys: immutable.Seq[SpatialKey] = if(keys.isDefined && keys.get.nonEmpty) {
       keys.get.distinct.toList
     } else{
       filteredCube.metadata.tileBounds

@@ -14,12 +14,15 @@ import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, DataCubeParameters}
 import org.openeo.opensearch.OpenSearchClient
+import org.slf4j.{Logger, LoggerFactory}
 
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util
 import scala.collection.immutable
 
 object NetCDFCollection {
+
+  private implicit val logger: Logger = LoggerFactory.getLogger("NetCDFCollection")
 
   def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
                    metadata_properties: util.Map[String, Any], correlationId: String, dataCubeParameters: DataCubeParameters,osClient:OpenSearchClient): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
@@ -112,7 +115,10 @@ object NetCDFCollection {
 
     val metadata = TileLayerMetadata[SpaceTimeKey](cellType, layout, extent, crs(0), temporalBounds)
     val retiled: RDD[(SpaceTimeKey, MultibandTile)] = features.tileToLayout(metadata).partitionBy(partitioner)
-    ContextRDD(retiled,metadata)
+    logger.info(s"Created cube for netCDF samples with metadata ${metadata} and partitioner ${partitioner.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index}")
+    val cRDD = ContextRDD(retiled,metadata)
+    cRDD.name = s"load_stac netCDFCollection ${items.first().id} "
+    cRDD
 
 
   }
