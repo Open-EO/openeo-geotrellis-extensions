@@ -19,6 +19,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{BeforeAll, Disabled, Test}
 import org.junit.rules.TemporaryFolder
 import org.junit.{AfterClass, Rule}
+import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
@@ -616,13 +617,11 @@ class WriteRDDToGeotiffTest {
     assertFalse(isData(rasterValueAt(pointOutsideOfGeometry)))
   }
 
-  @Disabled("Needs /eodata mounted. Kept to run manualy. TODO: Use synthetic data.")
   @Test
   def testAvoidCroppingAwayNoData(): Unit = {
 
-    val openSearchClient = OpenSearchClient(new URL("https://catalogue.dataspace.copernicus.eu/resto"))
     val layerProvider = FileLayerProvider(
-      openSearchClient,
+      loadFeaturesWithArtifactoryMock("/org/openeo/geotrellis/testAvoidCroppingAwayNoData.json"),
       "GLOBAL-MOSAICS",
       openSearchLinkTitles = NonEmptyList.of("VV"),
       rootPath = "/eodata/Global-Mosaics/Sentinel-1",

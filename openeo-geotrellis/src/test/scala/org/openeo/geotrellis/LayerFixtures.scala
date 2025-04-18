@@ -425,6 +425,8 @@ for p in l:
       "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWC_1_0/VV.tif",
       "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_60WWB_1_0/VV.tif",
       "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/08/01/Sentinel-1_IW_mosaic_2020_M08_01WDT_0_0/VV.tif",
+      // testAvoidCroppingAwayNoData:
+      "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2020/01/01/Sentinel-1_IW_mosaic_2020_M01_43XDB_0_0/VV.tif",
     )
 
     val matches = "\"(/eodata/.*?)\"".r.findAllIn(txt).toList
