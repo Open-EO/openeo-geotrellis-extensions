@@ -57,6 +57,8 @@ package object geotrelliscommon {
     override def spatialKeys: Option[Array[SpatialKey]] = {
       theKeys
     }
+
+    override def toString = s"ByTileSpacetimePartitioner ${theKeys.map(_.length).getOrElse(0)}"
   }
 
   object SparseSpaceOnlyPartitioner {
