@@ -3,12 +3,12 @@ package org.openeo.geotrellis.layers
 import com.azavea.gdal.GDALWarp
 import geotrellis.layer.{KeyBounds, LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TemporalProjectedExtent, TileBounds, TileLayerMetadata}
 import geotrellis.proj4.LatLng
-import geotrellis.raster.{CellSize, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
+import geotrellis.raster.{CellSize, IntCellType, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
 import geotrellis.raster.gdal.{DefaultDomain, GDALException, GDALRasterSource, MalformedProjectionException}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
@@ -107,7 +107,7 @@ object NetCDFCollection {
     val spatialBounds = KeyBounds(layout.mapTransform(extent))
     val temporalBounds = KeyBounds(SpaceTimeKey(spatialBounds.minKey,TemporalKey(LocalDate.of(1990,1,1).atStartOfDay(ZoneId.of("UTC")))),SpaceTimeKey(spatialBounds.maxKey,TemporalKey(LocalDate.now().atStartOfDay(ZoneId.of("UTC")))))
 
-    val keys: Array[SpatialKey] =  items.map(i => i.geometry.getOrElse(i.bbox.toPolygon())).clipToGrid(layout).map(_._1).distinct().collect()
+    val keys: Array[SpatialKey] =  items.map(i => i.geometry.getOrElse(i.bbox.toPolygon())).map(_.reproject(LatLng,crs(0))).clipToGrid(layout).map(_._1).distinct().collect()
     val partitioner: Partitioner = new SpacePartitioner(temporalBounds)(implicitly, implicitly, new ByTileSpacetimePartitioner(Some(keys)))
 
     val metadata = TileLayerMetadata[SpaceTimeKey](cellType, layout, extent, crs(0), temporalBounds)
