@@ -1253,6 +1253,8 @@ public class TestOpenEOProcessScriptBuilder {
         ByteArrayTile tile2 = ByteConstantNoDataArrayTile.fromBytes(new byte[]{5,10,5,0,5,10,5,0,5,10,5,0,5,10,5,0}, 4, 4);
         ByteArrayTile tile3 = ByteConstantNoDataArrayTile.fromBytes(new byte[]{0,5,10,0,5,10,5,0,5,10,5,0,5,10,5,0}, 4, 4);
 
+        assertEquals(BitCellType$.MODULE$, builder.resultingDataType());
+
         Tile result = transformation.apply(JavaConverters.asScalaBuffer(Arrays.asList(tile0, tile1, tile2, tile3))).head();
         BitArrayTile expectedResult = BitArrayTile.fromBytes(new byte[]{(byte)153, (byte)153}, 4, 4);
         assertTileEquals(expectedResult, result);

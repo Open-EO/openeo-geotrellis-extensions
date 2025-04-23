@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ShortArrayTile, Tile}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotNull}
 
+import java.nio.charset.Charset
 import java.util
 import scala.collection.mutable.ArrayBuffer
 
@@ -102,19 +103,47 @@ class OpenEOProcessGraphBuilderTest {
     assert(result)
   }
 
+  @Test
+  def testArrayFind(): Unit = {
+    val graphPath = IOUtils.toString(getClass.getResource("/org/openeo/geotrellis/testArrayFindProcessGraph.json"), Charset.defaultCharset())
+    val visitor = (new GeotrellisTileProcessGraphVisitor).create()
+    val graph = new ObjectMapper().readValue(graphPath,classOf[util.Map[String,Object]])
+    println(graph)
+    visitor._acceptDict(graph)
+    //    val processes = visitor.processes
+    //    assert(processes.size==4)
+    //    for (process <- processes) {
+    //      print(process)
+    //    }
+  }
+
+
+  @Test
+  def testArrayContains(): Unit = {
+    val graphPath = IOUtils.toString(getClass.getResource("/org/openeo/geotrellis/testArrayContainsProcessGraph.json"), Charset.defaultCharset())
+    val visitor = (new GeotrellisTileProcessGraphVisitor).create()
+    val graph = new ObjectMapper().readValue(graphPath,classOf[util.Map[String,Object]])
+    println(graph)
+    visitor.acceptProcessGraph(graph)
+//    val processes = visitor.processes
+//    assert(processes.size==4)
+//    for (process <- processes) {
+//      print(process)
+//    }
+  }
 
 
   @Test
   def testAcceptDict(): Unit ={
-    val graphPath = IOUtils.toString(getClass.getResource("/org/openeo/geotrellis/ProcessGraphBuilderGraph.json"))
+    val graphPath = IOUtils.toString(getClass.getResource("/org/openeo/geotrellis/ProcessGraphBuilderGraph.json"), Charset.defaultCharset())
     val visitor = (new GeotrellisTileProcessGraphVisitor).create()
     val graph = new ObjectMapper().readValue(graphPath,classOf[util.Map[String,Object]])
     visitor._acceptDict(graph)
     val processes = visitor.processes
     assert(processes.size==4)
-    for (process <- processes)
+    for (process <- processes) {
       print(process)
-
+    }
 
     assert(true)
   }

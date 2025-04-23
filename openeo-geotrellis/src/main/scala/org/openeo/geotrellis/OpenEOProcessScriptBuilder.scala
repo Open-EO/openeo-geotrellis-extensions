@@ -25,7 +25,6 @@ import scala.collection.JavaConversions.mapAsScalaMap
 import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.collection.{immutable, mutable}
-import scala.math.BigDecimal
 import scala.util.Try
 import scala.util.control.Breaks.{break, breakable}
 
@@ -647,8 +646,8 @@ class OpenEOProcessScriptBuilder {
       val tile = MultibandTile(dataInput)
 
       val mutableResult:MutableArrayTile = ArrayTile.empty(BitCellType,tile.cols,tile.rows)
-      for (column <- Range(0, tile.cols)) {
-        for (row <- Range(0, tile.rows)) {
+      cfor(0)(_ < tile.rows, _ + 1) { row =>
+        cfor(0)(_ < tile.cols, _ + 1) { column =>
           breakable {
             for (band <- tile.bands) {
               if (band.get(column, row) == theValue.get(column, row)) {
@@ -1252,7 +1251,7 @@ class OpenEOProcessScriptBuilder {
 
     if(operator != "linear_scale_range") {
       //TODO: generalize to other operations that result in a specific datatype?
-      if(Array("gt","lt","lte","gte","eq","neq","between","any","and","all","or", "is_nodata", "is_nan").contains(operator)) {
+      if(Array("gt","lt","lte","gte","eq","neq","between","any","and","all","or", "is_nodata", "is_nan", "array_contains").contains(operator)) {
         resultingDataType = BitCellType
       }
     }
