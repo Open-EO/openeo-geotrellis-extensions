@@ -672,7 +672,6 @@ class OpenEOProcessScriptBuilder {
     val reverse = (arguments.getOrDefault("reverse",Boolean.box(false).asInstanceOf[Object]) == Boolean.box(true) || arguments.getOrDefault("reverse",None) == "true" )
     resultingDataType = ShortConstantNoDataCellType
 
-
     val arrayfindProcess = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
       val value_input: Seq[Tile] = evaluateToTiles(value, context, tiles)
       val data_input: Seq[Tile] = evaluateToTiles(data, context, tiles)

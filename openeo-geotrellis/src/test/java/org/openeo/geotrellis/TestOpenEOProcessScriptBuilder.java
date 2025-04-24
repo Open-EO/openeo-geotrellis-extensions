@@ -1257,6 +1257,7 @@ public class TestOpenEOProcessScriptBuilder {
 
         Tile result = transformation.apply(JavaConverters.asScalaBuffer(Arrays.asList(tile0, tile1, tile2, tile3))).head();
         BitArrayTile expectedResult = BitArrayTile.fromBytes(new byte[]{(byte)153, (byte)153}, 4, 4);
+        System.out.println(transformation);
         assertTileEquals(expectedResult, result);
     }
 
