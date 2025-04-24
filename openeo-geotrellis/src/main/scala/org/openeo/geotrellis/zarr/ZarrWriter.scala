@@ -9,15 +9,22 @@ import geotrellis.raster.{BitCellType, ByteCellType, ByteConstantNoDataCellType,
 import geotrellis.spark.MultibandTileLayerRDD
 import ucar.ma2.Array.factory
 
-import java.io.{OutputStream, OutputStreamWriter}
+import java.io.OutputStreamWriter
 import java.nio.ByteOrder
 import java.nio.file.Paths
-import scala.jdk.CollectionConverters.mapAsJavaMapConverter
 import scala.reflect.ClassTag
 
 object ZarrWriter {
 
-  def saveZarr[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K],path:String, zarrOptions: ZarrOptions):Unit= {
+  def saveZarr(rdd:MultibandTileLayerRDD[SpaceTimeKey],path:String, zarrOptions: ZarrOptions):Unit = {
+    saveZarrGeneric(rdd,path,zarrOptions)
+  }
+
+  def saveZarrSpatial(rdd:MultibandTileLayerRDD[SpatialKey],path:String, zarrOptions: ZarrOptions):Unit = {
+    saveZarrGeneric(rdd,path,zarrOptions)
+  }
+
+  def saveZarrGeneric[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K],path:String, zarrOptions: ZarrOptions):Unit= {
     val groupPath = path + "/" + getGroupName(path)
     writeFile(groupPath,FILENAME_DOT_ZGROUP,null)
     val metadata = rdd.metadata
