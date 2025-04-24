@@ -422,6 +422,7 @@ package object geotrellis {
     val treatXIn360 = inputIsUTM && targetCrs == LatLng && inputProjectedPolygons.riskOfCrossingAntimeridian
     val geometries = if (refine) {
       inputProjectedPolygons.geometries.map {
+        // TODO: Make allowed error dependent on resolution.
         reprojectGeometryRefined(_, transform, 0.001, treatXIn360 = treatXIn360)
       }
     } else {
@@ -514,7 +515,10 @@ package object geotrellis {
   def dumpGeoJson(str: String, name: Option[String] = None): Unit = {
     val outDir = Paths.get("tmp/")
     Files.createDirectories(outDir)
-    var path = "tmp/" + name.getOrElse("dumpGeoJson")
+    var path = name.getOrElse("dumpGeoJson")
+    if (!path.contains("tmp/")) {
+      path = "tmp/" + path
+    }
     if (!path.endsWith("json")) {
       path = path + ".geojson"
     }

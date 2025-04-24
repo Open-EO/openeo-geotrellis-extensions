@@ -324,6 +324,11 @@ object ProjectedPolygons {
     LineString(refined.map { case (_, (x, y)) => Point(x, y) })
   }
 
+  /**
+   * Refinement here is some kind of adaptive tesselation.
+   * Splitting lines in 2 till the error caused by bending edges is accounted for.
+   * The resolution will be higher at the end.
+   */
   def reprojectGeometryRefined(geom: Geometry, transform: Transform, relError: Double, treatXIn360: Boolean = false): Geometry = {
     geom match {
       case polygon: Polygon => reprojectPolygonRefined(polygon, transform, relError, treatXIn360)
