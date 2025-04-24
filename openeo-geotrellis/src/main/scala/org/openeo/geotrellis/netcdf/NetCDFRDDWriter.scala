@@ -782,8 +782,8 @@ object NetCDFRDDWriter {
   }
 
   private def addNetcdfBandsMetadata(netcdfFile: NetcdfFileWriter, variableName: String, bandsMetadata:java.util.Map[String,String]): Unit = {
-    if (bandsMetadata.containsKey("SCALE")) netcdfFile.addVariableAttribute(variableName,"raster:scale",bandsMetadata.get("SCALE"))
-    if (bandsMetadata.containsKey("OFFSET")) netcdfFile.addVariableAttribute(variableName,"raster:offset",bandsMetadata.get("OFFSET"))
+    if (bandsMetadata.containsKey("SCALE")) netcdfFile.addVariableAttribute(variableName,"scale_factor",bandsMetadata.get("SCALE"))
+    if (bandsMetadata.containsKey("OFFSET")) netcdfFile.addVariableAttribute(variableName,"add_offset",bandsMetadata.get("OFFSET"))
   }
 
 
