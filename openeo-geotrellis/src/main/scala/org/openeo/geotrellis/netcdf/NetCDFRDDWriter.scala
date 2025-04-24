@@ -615,7 +615,7 @@ object NetCDFRDDWriter {
                                   bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
                                   zLevel: Int = 6, writeTimeDimension: Boolean = true) = {
 
-    logger.info(s"Writing netCDF to $path with bands $bandNames, $cellType, $crs, $rasterExtent")
+    logger.info(s"Writing netCDF to $path with bands $bandNames, $cellType, $crs, $rasterExtent, $dimensionNames, attributes $attributes, bands metadata $bandsMetadata, zLevel $zLevel")
     val theChunking = new OpenEOChunking(zLevel)
     val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4_classic,path, theChunking)
 
@@ -782,8 +782,8 @@ object NetCDFRDDWriter {
   }
 
   private def addNetcdfBandsMetadata(netcdfFile: NetcdfFileWriter, variableName: String, bandsMetadata:java.util.Map[String,String]): Unit = {
-    if (bandsMetadata.containsKey("SCALE")) netcdfFile.addVariableAttribute(variableName,"scale_factor",bandsMetadata.get("SCALE"))
-    if (bandsMetadata.containsKey("OFFSET")) netcdfFile.addVariableAttribute(variableName,"add_offset",bandsMetadata.get("OFFSET"))
+    if (bandsMetadata.containsKey("SCALE")) netcdfFile.addVariableAttribute(variableName,"scale_factor",bandsMetadata.get("SCALE").toFloat)
+    if (bandsMetadata.containsKey("OFFSET")) netcdfFile.addVariableAttribute(variableName,"add_offset",bandsMetadata.get("OFFSET").toFloat)
   }
 
 
