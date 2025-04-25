@@ -331,12 +331,17 @@ class WriteRDDToGeotiffTest {
     options.addBandTag(0, "DESCRIPTION", "B01")
     options.addBandTag(1, "DESCRIPTION", "B02")
     options.addBandTag(2, "DESCRIPTION", "B03")
+    options.overviews = "ALL"
+    options.resampleMethod = "min"
+
     val paths = saveRDD(filtered.withContext {
       _.repartition(layoutCols * layoutRows)
     }, 3, filename, formatOptions = options)
     assertEquals(3, paths.size())
 
-    GeoTiff.readMultiband(outDir.resolve("openEO_B01.tif").toString).raster.tile
+    val tiff = GeoTiff.readMultiband(outDir.resolve("openEO_B01.tif").toString)
+    assertEquals(3, tiff.overviews.length)
+    tiff.raster.tile
     GeoTiff.readMultiband(outDir.resolve("openEO_B02.tif").toString).raster.tile
     GeoTiff.readMultiband(outDir.resolve("openEO_B03.tif").toString).raster.tile
 
