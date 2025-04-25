@@ -497,16 +497,7 @@ package object geotiff {
       val overviews =
         if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
           //create overviews
-          val method = formatOptions.resampleMethod match {
-            case "near" => NearestNeighbor
-            case "mode" => Mode
-            case "average" => Average
-            case "bilinear" => Bilinear
-            case "max" => Max
-            case "min" => Min
-            case "med" => Median
-            case _ => NearestNeighbor
-          }
+          val method = getOverviewResampleMethod(formatOptions)
           val levels = LocalLayoutScheme.inferLayoutLevel(preprocessedRdd.metadata)
 
           if(levels>1) {
@@ -567,7 +558,20 @@ package object geotiff {
 
   }
 
-  private def getCompressedTiles[K: SpatialComponent : Boundable : ClassTag](preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]],gridBounds: GridBounds[Int], compression: Compression): (collection.Map[Int, Array[Byte]], CellType, Double, Int) = {
+  private def getOverviewResampleMethod(formatOptions: GTiffOptions): ResampleMethod = {
+    formatOptions.resampleMethod match {
+      case "near" => NearestNeighbor
+      case "mode" => Mode
+      case "average" => Average
+      case "bilinear" => Bilinear
+      case "max" => Max
+      case "min" => Min
+      case "med" => Median
+      case _ => NearestNeighbor
+    }
+  }
+
+  private def getCompressedTiles[K: SpatialComponent : Boundable : ClassTag](preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]], gridBounds: GridBounds[Int], compression: Compression): (collection.Map[Int, Array[Byte]], CellType, Double, Int) = {
     val tileLayout = preprocessedRdd.metadata.tileLayout
 
     val totalCols = math.ceil(gridBounds.width.toDouble / tileLayout.tileCols).toInt
@@ -922,7 +926,7 @@ package object geotiff {
     if (fo.overviews.toUpperCase == "ALL" ||
       fo.overviews.toUpperCase == "AUTO" && (gridBounds.width > 1024 || gridBounds.height > 1024)
     ) {
-      geotiff = geotiff.withOverviews(NearestNeighbor, List(4, 8, 16), blockSize = 256)
+      geotiff = geotiff.withOverviews(getOverviewResampleMethod(fo), List(4, 8, 16), blockSize = 256)
     }
     writeGeoTiff(geotiff, filePath, Some(fo))
   }
