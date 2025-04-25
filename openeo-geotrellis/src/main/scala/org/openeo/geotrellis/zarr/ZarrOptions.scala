@@ -6,16 +6,19 @@ class ZarrOptions  extends Serializable {
   var bandNames = Array.fill(1)("Undefined")
   var numberBands = 1
 
-  def setBands(nBands:Int, names:Option[util.ArrayList[String]]):Unit = {
+  def setBands(nBands:Int, names:util.ArrayList[String]):Unit = {
     this.numberBands = nBands
     this.bandNames =
-      if (names.isDefined){
-        if (names.get.size()==nBands) {
-          names.get.asScala.toArray[String]
-        } else {
-          Array.fill(nBands)("Undefined")
-        }
-      } else Array.fill(nBands)("Undefined")
+      if (names.size()==nBands) {
+        names.asScala.toArray[String]
+      } else {
+        Array.fill(nBands)("Undefined")
+      }
+  }
+
+  def setBands(nBands:Int): Unit = {
+    this.numberBands = nBands
+    this.bandNames = Array.fill(nBands)("Undefined")
   }
 
 }

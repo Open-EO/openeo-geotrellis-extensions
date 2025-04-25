@@ -71,7 +71,7 @@ class ZarrWriterTest {
     val zarrOptions = new ZarrOptions
 
     val filename = (tempDir / "out.zarr").toString()
-    zarr.ZarrWriter.saveZarr(tileLayerRDD,filename,zarrOptions)
+    zarr.ZarrWriter.saveZarrGeneric(tileLayerRDD,filename,zarrOptions)
 
     val store = new FileSystemStore(filename,null)
     val inputStream = store.getInputStream("out/.zattrs")
@@ -139,11 +139,11 @@ class ZarrWriterTest {
     val secondBand = imageTile.map{x => if(x >= 5 ) 10 else 100 }
     val thirdBand = imageTile.map{x => if(x >= 5 ) 50 else 200 }
     val zarrOptions = new ZarrOptions
-    zarrOptions.setBands(3, Some(new java.util.ArrayList(java.util.Arrays.asList("B01","B02","B04"))))
+    zarrOptions.setBands(3, new java.util.ArrayList(java.util.Arrays.asList("B01","B02","B04")))
 
     val tileLayerRDD = TileLayerRDDBuilders.createMultibandTileLayerRDD(ZarrWriterTest.sc,MultibandTile(imageTile,secondBand,thirdBand),TileLayout(layoutCols,layoutRows,256,256),LatLng)
     val filename = (tempDir / "out.zarr").toString()
-    zarr.ZarrWriter.saveZarr(tileLayerRDD.withContext{_.repartition(layoutCols*layoutRows)},filename,zarrOptions)
+    zarr.ZarrWriter.saveZarrGeneric(tileLayerRDD.withContext{_.repartition(layoutCols*layoutRows)},filename,zarrOptions)
 
     val store = new FileSystemStore(filename,null)
     val inputStream = store.getInputStream("out/.zattrs")
