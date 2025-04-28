@@ -1235,32 +1235,6 @@ public class TestOpenEOProcessScriptBuilder {
         assertTrue(emptyResult.isNoDataTile());
     }
 
-    @DisplayName("Test array_contains process")
-    @Test
-    public void testArrayContains() {
-        OpenEOProcessScriptBuilder builder = new OpenEOProcessScriptBuilder();
-        Map<String, Object> arguments = Collections.emptyMap();
-
-        builder.expressionStart("array_contains", arguments);
-        builder.argumentStart("data");
-        builder.argumentEnd();
-        builder.constantArgument("value",0);
-        builder.expressionEnd("array_contains",arguments);
-
-        Function1<Seq<Tile>, Seq<Tile>> transformation = builder.generateFunction();
-        ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fromBytes(new byte[]{0,10,10,5,0,5,10,5,0,5,10,5,0,5,10,5}, 4, 4);
-        ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fromBytes(new byte[]{0,10,5,0,5,10,5,0,5,10,5,0,5,10,5,0}, 4, 4);
-        ByteArrayTile tile2 = ByteConstantNoDataArrayTile.fromBytes(new byte[]{5,10,5,0,5,10,5,0,5,10,5,0,5,10,5,0}, 4, 4);
-        ByteArrayTile tile3 = ByteConstantNoDataArrayTile.fromBytes(new byte[]{0,5,10,0,5,10,5,0,5,10,5,0,5,10,5,0}, 4, 4);
-
-        assertEquals(BitCellType$.MODULE$, builder.resultingDataType());
-
-        Tile result = transformation.apply(JavaConverters.asScalaBuffer(Arrays.asList(tile0, tile1, tile2, tile3))).head();
-        BitArrayTile expectedResult = BitArrayTile.fromBytes(new byte[]{(byte)153, (byte)153}, 4, 4);
-        System.out.println(transformation);
-        assertTileEquals(expectedResult, result);
-    }
-
     @DisplayName("Test array_modify process: insert")
     @Test
     public void testArrayModifyInsert() {

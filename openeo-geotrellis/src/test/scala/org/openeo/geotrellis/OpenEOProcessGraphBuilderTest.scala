@@ -1,15 +1,13 @@
 package org.openeo.geotrellis
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import geotrellis.raster.{BitArrayTile, ByteArrayFiller, ByteArrayTile, ByteConstantNoDataCellType, ShortArrayTile, ShortConstantNoDataCellType, Tile}
 import org.apache.commons.io.IOUtils
 import org.junit.Test
-import com.fasterxml.jackson.databind.ObjectMapper
-import geotrellis.raster.{BitArrayTile, ByteArrayFiller, ByteArrayTile, ByteConstantNoDataArrayTile, ByteConstantNoDataCellType, ShortArrayTile, ShortConstantNoDataCellType, ShortConstantNoDataCellType$, Tile}
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertNotNull}
 
-import java.net.URL
 import java.nio.charset.Charset
 import java.util
-import java.util.Arrays
 import scala.collection.JavaConverters
 import scala.collection.mutable.ArrayBuffer
 
