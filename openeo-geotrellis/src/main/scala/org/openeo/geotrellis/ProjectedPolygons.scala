@@ -2,7 +2,7 @@ package org.openeo.geotrellis
 
 import _root_.io.circe.DecodingFailure
 import _root_.io.circe.HCursor
-import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.proj4.{CRS, LatLng, Transform}
 import geotrellis.vector._
 import geotrellis.vector.io.json.{JsonCRS, JsonFeatureCollection, NamedCRS}
 import org.geotools.api.data.Query
@@ -14,6 +14,7 @@ import scala.collection.JavaConverters._
 import scala.io.Source
 
 case class ProjectedPolygons(geometries: Array[Geometry], crs: CRS) {
+  import ProjectedPolygons._
   def areaInSquareMeters: Double ={
     if(polygons.nonEmpty) {
       ProjectedPolygons.areaInSquareMeters(GeometryCollection(polygons), crs)
@@ -33,8 +34,57 @@ case class ProjectedPolygons(geometries: Array[Geometry], crs: CRS) {
     })
   }
 
+  def splitPolygonsOnWrapPoint(): ProjectedPolygons = {
+    // TODO: Support WebMercator, Sinusoidal and any other CRSes that go around the world
+    if (this.crs != LatLng) return this.copy()
+    // Add some buffer in the south and north even tough polygons should not get there.
+    val centerPolygon = Extent(-180, -90 * 100, 180, 90 * 100).toPolygon()
+
+
+    val newGeometries = geometries.map {
+      case multiPolygon: MultiPolygon =>
+        MultiPolygon(multiPolygon.polygons
+          .map(splitGeometry(_, centerPolygon))
+          .flatMap(_.polygons)
+          .map(polygon_to_min180_180_range)  // The range supported by proj4j
+        )
+      case polygon: Polygon =>
+        val multiPolygon = splitGeometry(polygon, centerPolygon)
+        MultiPolygon(multiPolygon.polygons.map(polygon_to_min180_180_range))
+      case point: Point =>
+        // Here just to make case return Geometry instead of MultiPolygon
+        // I did not encounter a Point here yet.
+        Point(to_min180_180_range(point.x), point.y)
+      case geom =>
+        throw new IllegalArgumentException("Unsupported geometry type: " + geom.getClass)
+    }
+    this.copy(geometries = newGeometries)
+  }
+
   def extent: ProjectedExtent = ProjectedExtent(polygons.toSeq.extent,crs)
   def reproject(crs: CRS): ProjectedPolygons = ProjectedPolygons.reproject(this, crs)
+  def safeReproject(crs: CRS, refine: Boolean): ProjectedPolygons = safeReprojectPolygons(this, crs, refine)
+
+  def riskOfCrossingAntimeridian: Boolean = {
+    val transform = SafeTransform(crs, LatLng)  // be sure 0-360 polygons don't cause issues.
+    val p = this.getFlatMultiPolygon.reproject(transform) // Without refining
+    val xList = p.getCoordinates.map(c => to_min180_180_range(c.x))
+    val allCloseToZeroMeridian = xList.forall(x => Math.abs(x) <= 90)
+    if (allCloseToZeroMeridian) {
+      false
+    } else {
+      val closeToAntimeridian = xList.exists(x => Math.abs(x) > 178)
+      if (closeToAntimeridian) {
+        // We did not reproject refined for this one, so take some margin
+        true
+      } else {
+        // If the polygon crosses both sides, it should cross the antimeridian
+        val westernHemisphere = xList.exists(x => x < 0)
+        val easternHemisphere = xList.exists(x => x < 0)
+        westernHemisphere && easternHemisphere
+      }
+    }
+  }
 }
 
 object ProjectedPolygons {
@@ -198,5 +248,95 @@ object ProjectedPolygons {
 
     val reprojectedGeometry = geometry.reproject(crs, targetCrs)
     reprojectedGeometry.getArea
+  }
+
+  def polygon_to_min180_180_range(p: Polygon): Polygon = {
+    val clearlyWesternHemisphere = p.getCoordinates.exists(c => (c.x < 0 && c.x > -180) || (c.x > +180 && c.x < +360))
+    val clearlyEasternHemisphere = p.getCoordinates.exists(c => (c.x > 0 && c.x < +180) || (c.x < -180 && c.x > -360))
+    p.getCoordinates.foreach(c => {
+      var newX = to_min180_180_range(c.x)
+      // Solve ambiguous coordinates when we know. Otherwise keep them as they where
+      if (clearlyWesternHemisphere && newX == 180) newX = -180
+      if (clearlyEasternHemisphere && newX == -180) newX = 180
+      c.x = newX
+    })
+    p
+  }
+
+  def splitGeometry(inputPolygon: Polygon, intersector: Polygon): MultiPolygon = {
+    val intersect = inputPolygon.intersection(intersector) match {
+      case multiPolygon: MultiPolygon => multiPolygon.polygons.filter(!_.isEmpty)
+      case polygon: Polygon => Array(polygon).filter(!_.isEmpty)
+    }
+    val difference = inputPolygon.difference(intersector) match {
+      case multiPolygon: MultiPolygon => multiPolygon.polygons.filter(!_.isEmpty)
+      case polygon: Polygon => Array(polygon).filter(!_.isEmpty)
+    }
+    MultiPolygon(intersect ++ difference)
+  }
+
+  /**
+   * Inspired on reprojectExtentAsPolygon from geotrellis. I could not find an equivalent for polygons in geotrellis self:
+   * https://github.com/pomadchin/geotrellis/blob/b071b33/vector/src/main/scala/geotrellis/vector/reproject/Reproject.scala#L94
+   */
+  def reprojectPolygonRefined(polygon: Polygon, transform: Transform, relError: Double, treatXIn360: Boolean): Polygon = {
+    var interiorRings = List[LineString]()
+    for (ringNr <- 0 until polygon.getNumInteriorRing) {
+      val shell = polygon.getInteriorRingN(ringNr).asInstanceOf[LineString]
+      interiorRings = interiorRings :+ reprojectRingRefined(shell, transform, relError, treatXIn360)
+    }
+    val shell = polygon.getExteriorRing
+    val refined = reprojectRingRefined(shell, transform, relError, treatXIn360)
+    Polygon(refined, interiorRings)
+  }
+
+  /**
+   * Inspired on reprojectExtentAsPolygon from geotrellis. I could not find an equivalent for polygons in geotrellis self:
+   * https://github.com/pomadchin/geotrellis/blob/b071b33/vector/src/main/scala/geotrellis/vector/reproject/Reproject.scala#L94
+   */
+  private def reprojectRingRefined(shell: LineString, transform: Transform, relError: Double, treatXIn360: Boolean): LineString = {
+    import math.{abs, pow, sqrt}
+
+    def refine(p0: (Point, (Double, Double)), p1: (Point, (Double, Double))): List[(Point, (Double, Double))] = {
+      val ((a, (x0_orig, y0)), (b, (x1_orig, y1))) = (p0, p1)
+      val x0 = if (treatXIn360) to_0_360_range(x0_orig) else x0_orig
+      val x1 = if (treatXIn360) to_0_360_range(x1_orig) else x1_orig
+
+      val m = Point(0.5 * (a.x + b.x), 0.5 * (a.y + b.y))
+      val (x2_orig, y2) = transform(m.x, m.y)
+      val x2 = if (treatXIn360) to_0_360_range(x2_orig) else x2_orig
+
+      val deflect = abs((y2 - y1) * x0 - (x2 - x1) * y0 + x2 * y1 - y2 * x1) / sqrt(pow(y2 - y1, 2) + pow(x2 - x1, 2))
+      val length = sqrt(pow(x0 - x1, 2) + pow(y0 - y1, 2))
+
+      val p2 = m -> (x2, y2)
+      if (java.lang.Double.isNaN(deflect)) {
+        throw new IllegalArgumentException(s"Encountered NaN during a refinement step: ($deflect / $length). Input $shell is likely not in source projection.")
+      } else if (deflect / length < relError) {
+        List(p2)
+      } else {
+        refine(p0, p2) ++ (p2 :: refine(p2, p1))
+      }
+    }
+    val pts = shell.getCoordinates.map(p => Point(p.x, p.y))
+      .map { p => (p, transform(p.x, p.y)) }
+    val refined = pts.sliding(2).flatMap { case Array(p0, p1) => p0 :: refine(p0, p1) }.toList ++ List(pts(0))
+    LineString(refined.map { case (_, (x, y)) => Point(x, y) })
+  }
+
+  /**
+   * Refinement here is some kind of adaptive tesselation.
+   * Splitting lines in 2 till the error caused by bending edges is accounted for.
+   * The resolution will be higher at the end.
+   */
+  def reprojectGeometryRefined(geom: Geometry, transform: Transform, relError: Double, treatXIn360: Boolean = false): Geometry = {
+    geom match {
+      case polygon: Polygon => reprojectPolygonRefined(polygon, transform, relError, treatXIn360)
+      case multiPolygon: MultiPolygon =>
+        MultiPolygon(multiPolygon.polygons.map(reprojectPolygonRefined(_, transform, relError, treatXIn360)))
+      case geometry: Geometry =>
+        // logger.info("Was only expecting (Multi)Polygon, but got: " + geometry)
+        geometry
+    }
   }
 }

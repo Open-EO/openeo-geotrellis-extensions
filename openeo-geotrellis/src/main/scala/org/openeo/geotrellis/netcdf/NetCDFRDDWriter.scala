@@ -89,24 +89,26 @@ object NetCDFRDDWriter {
                        bandNames: ArrayList[String],
                        dimensionNames: java.util.Map[String,String],
                        attributes: java.util.Map[String,String],
-                       zLevel:Int
+                       bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
+                       zLevel:Int,
                       ): java.util.List[Item] = {
-    saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, zLevel)
+    saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, bandsMetadata, zLevel)
   }
 
   def saveSingleNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                   path: String,
                   bandNames: ArrayList[String],
-                       dimensionNames: java.util.Map[String,String],
-                       attributes: java.util.Map[String,String],
-                       zLevel:Int
+                  dimensionNames: java.util.Map[String,String],
+                  attributes: java.util.Map[String,String],
+                  bandsMetadata:java.util.Map[String,java.util.Map[String,String]],
+                  zLevel:Int,
                  ): java.util.List[Item] = {
 
-    saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, zLevel)
+    saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, bandsMetadata, zLevel)
   }
 
   def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], path:String, options:NetCDFOptions): java.util.List[Item] = {
-    saveSingleNetCDFGeneric(rdd,path,options.bandNames.orNull,options.dimensionNames.orNull,options.attributes.orNull,options.zLevel,options.cropBounds)
+    saveSingleNetCDFGeneric(rdd,path,options.bandNames.orNull,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull, options.zLevel, options.cropBounds)
   }
 
   def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K],
@@ -114,8 +116,9 @@ object NetCDFRDDWriter {
                        bandNames: ArrayList[String],
                        dimensionNames: java.util.Map[String,String],
                        attributes: java.util.Map[String,String],
+                       bandsMetadata:java.util.Map[String,java.util.Map[String,String]],
                        zLevel:Int,
-                       cropBounds:Option[Extent]= None
+                       cropBounds:Option[Extent]= None,
                       ): java.util.List[Item] = {
 
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
@@ -189,7 +192,7 @@ object NetCDFRDDWriter {
 
 
       if(netcdfFile == null){
-        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, actualBandNames, preProcessedRdd.metadata.crs, cellType, dimensionNames, temporalResolution, attributes, zLevel, writeTimeDimension = dates.nonEmpty)
+        netcdfFile = setupNetCDF(intermediatePath, rasterExtent, null, actualBandNames, preProcessedRdd.metadata.crs, cellType, dimensionNames, temporalResolution, attributes, bandsMetadata, zLevel, writeTimeDimension = dates.nonEmpty)
       }
 
 
@@ -318,7 +321,7 @@ object NetCDFRDDWriter {
                   sampleNames: ArrayList[String],
                   bandNames: ArrayList[String],
                  ): java.util.List[Item] =
-    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null)
+    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null, bandsMetadata = null)
 
   // Overload to avoid: "multiple overloaded alternatives of method saveSamples define default arguments"
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
@@ -328,7 +331,7 @@ object NetCDFRDDWriter {
                   bandNames: ArrayList[String],
                   filenamePrefix: Option[String],
                   ): java.util.List[Item] =
-    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null, filenamePrefix)
+    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames = null, attributes = null, bandsMetadata = null, filenamePrefix)
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                   path: String,
@@ -338,7 +341,18 @@ object NetCDFRDDWriter {
                   dimensionNames: java.util.Map[String, String],
                   attributes: java.util.Map[String, String],
                  ): java.util.List[Item] =
-    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames, attributes, None)
+    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames, attributes, bandsMetadata = null, None)
+
+  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                  path: String,
+                  polygons: ProjectedPolygons,
+                  sampleNames: ArrayList[String],
+                  bandNames: ArrayList[String],
+                  dimensionNames: java.util.Map[String, String],
+                  attributes: java.util.Map[String, String],
+                  bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
+                 ): java.util.List[Item] =
+    saveSamples(rdd, path, polygons, sampleNames, bandNames, dimensionNames, attributes, bandsMetadata, None)
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                   path: String,
@@ -347,13 +361,14 @@ object NetCDFRDDWriter {
                   bandNames: ArrayList[String],
                   dimensionNames: java.util.Map[String,String],
                   attributes: java.util.Map[String,String],
+                  bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
                   filenamePrefix: Option[String],
                  ): java.util.List[Item] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.zip(reprojected.polygons)
     logger.info(s"Using metadata: ${rdd.metadata}.")
     logger.info(s"Using features: ${features}.")
-    groupByFeatureAndWriteToNetCDF(rdd, features, path, bandNames, dimensionNames, attributes, filenamePrefix)
+    groupByFeatureAndWriteToNetCDF(rdd, features, path, bandNames, dimensionNames, attributes, bandsMetadata, filenamePrefix)
   }
 
   def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
@@ -363,17 +378,19 @@ object NetCDFRDDWriter {
                   bandNames: ArrayList[String],
                   dimensionNames: java.util.Map[String,String],
                   attributes: java.util.Map[String,String],
+                  bandsMetadata:java.util.Map[String,java.util.Map[String,String]],
                   filenamePrefix: Option[String] = None,
                  ): java.util.List[Item] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
-    groupByFeatureAndWriteToNetCDFSpatial(rdd,  features,path,bandNames,dimensionNames,attributes, filenamePrefix)
+    groupByFeatureAndWriteToNetCDFSpatial(rdd,  features,path,bandNames,dimensionNames,attributes, bandsMetadata, filenamePrefix)
   }
 
   private def groupByFeatureAndWriteToNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey], features: Seq[(String, Geometry)],
                                            path:String,bandNames: ArrayList[String],
                                            dimensionNames: java.util.Map[String,String],
                                            attributes: java.util.Map[String,String],
+                                           bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
                                            filenamePrefix: Option[String] = None,
                                            ): java.util.List[Item] = {
     val featuresBC: Broadcast[Seq[(String, Geometry)]] = SparkContext.getOrCreate().broadcast(features)
@@ -392,7 +409,7 @@ object NetCDFRDDWriter {
         val extent = sorted.head._2.extent
 
         val assetPath = try {
-          writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes)
+          writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
         } catch {
           case e: IOException => handleSampleWriteError(e, name, outputAsPath)
         }
@@ -466,6 +483,7 @@ object NetCDFRDDWriter {
                                            path:String, bandNames: ArrayList[String],
                                            dimensionNames: java.util.Map[String,String],
                                            attributes: java.util.Map[String,String],
+                                           bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
                                            filenamePrefix: Option[String],
                                            ): java.util.List[Item] = {
     val featuresBC: Broadcast[List[(String, Extent)]] = SparkContext.getOrCreate().broadcast(features)
@@ -478,7 +496,7 @@ object NetCDFRDDWriter {
         val sample: Raster[MultibandTile] = stitchAndCropTiles(tiles, extent, layout)
 
         val assetPath = try {
-          writeToDisk(Seq(sample), dates = null, outputAsPath.toString, bandNames, crs, dimensionNames, attributes)
+          writeToDisk(Seq(sample), dates = null, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
         } catch {
           case e: IOException => handleSampleWriteError(e, name, outputAsPath)
         }
@@ -510,7 +528,8 @@ object NetCDFRDDWriter {
   def writeToDisk(rasters: Seq[Raster[MultibandTile]], dates:Seq[ZonedDateTime], path:String,
                   bandNames: ArrayList[String],
                   crs:CRS, dimensionNames: java.util.Map[String,String],
-                  attributes: java.util.Map[String,String]): String = {
+                  attributes: java.util.Map[String,String],
+                  bandsMetadata: java.util.Map[String,java.util.Map[String,String]]): String = {
     val areas = rasters.map(raster => raster.extent.area)
     logger.info(s"Writing ${rasters.size} rasters to disk. Areas: ${areas.mkString(",")}")
     val maxExtent: Extent = rasters.map(_._2).reduce((a, b) => if (a.area > b.area) a else b)
@@ -542,7 +561,7 @@ object NetCDFRDDWriter {
         Duration.between(fixedTimeOffset, time).getSeconds % secondsPerDay != 0
     }) TemporalResolution.days else TemporalResolution.seconds
 
-    val netcdfFile: NetcdfFileWriter = setupNetCDF(intermediatePath, rasterExtent, dates, bandNames, crs, aRaster.cellType, dimensionNames, temporalResolution, attributes, writeTimeDimension = dates != null)
+    val netcdfFile: NetcdfFileWriter = setupNetCDF(intermediatePath, rasterExtent, dates, bandNames, crs, aRaster.cellType, dimensionNames, temporalResolution, attributes, bandsMetadata, writeTimeDimension = dates != null)
     try{
 
       for (bandIndex <- bandNames.asScala.indices) {
@@ -597,9 +616,11 @@ object NetCDFRDDWriter {
                                   bandNames: util.List[String], crs: CRS, cellType: CellType,
                                   dimensionNames: java.util.Map[String, String],
                                   temporalResolution: TemporalResolution.Value,
-                                  attributes: java.util.Map[String, String], zLevel: Int = 6, writeTimeDimension: Boolean = true) = {
+                                  attributes: java.util.Map[String, String],
+                                  bandsMetadata: java.util.Map[String,java.util.Map[String,String]],
+                                  zLevel: Int = 6, writeTimeDimension: Boolean = true) = {
 
-    logger.info(s"Writing netCDF to $path with bands $bandNames, $cellType, $crs, $rasterExtent")
+    logger.info(s"Writing netCDF to $path with bands $bandNames, $cellType, $crs, $rasterExtent, $dimensionNames, attributes $attributes, bands metadata $bandsMetadata, zLevel $zLevel")
     val theChunking = new OpenEOChunking(zLevel)
     val netcdfFile: NetcdfFileWriter = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf4_classic,path, theChunking)
 
@@ -696,6 +717,7 @@ object NetCDFRDDWriter {
     for (bandName <- bandNames.asScala) {
       val varName = bandName.replace("/","_")
       addNetcdfVariable(netcdfFile, bandDimension, varName, netcdfType, null, varName, "", null, nodata.getOrElse(0), null)
+      if (bandsMetadata!=null) addNetcdfBandsMetadata(netcdfFile,varName,bandsMetadata.getOrDefault(bandName, java.util.Collections.emptyMap[String,String]()))
       netcdfFile.addVariableAttribute(varName, "grid_mapping", "crs")
       if(rasterExtent.cols>256 && rasterExtent.rows>256){
         val chunking = new ArrayInt.D1(if(writeTimeDimension) 3 else 2,false)
@@ -762,6 +784,11 @@ object NetCDFRDDWriter {
     if (axis != null) netcdfFile.addVariableAttribute(variableName, "axis", axis)
     if (fillValue != Integer.MIN_VALUE) netcdfFile.addVariableAttribute(variableName, "_FillValue", fillValue)
     if (coordinates != null) netcdfFile.addVariableAttribute(variableName, "coordinates", coordinates)
+  }
+
+  private def addNetcdfBandsMetadata(netcdfFile: NetcdfFileWriter, variableName: String, bandsMetadata:java.util.Map[String,String]): Unit = {
+    if (bandsMetadata.containsKey("SCALE")) netcdfFile.addVariableAttribute(variableName,"scale_factor",bandsMetadata.get("SCALE").toFloat)
+    if (bandsMetadata.containsKey("OFFSET")) netcdfFile.addVariableAttribute(variableName,"add_offset",bandsMetadata.get("OFFSET").toFloat)
   }
 
 

@@ -203,4 +203,41 @@ class PackageTest {
     dumpGeoJson(toGeoJsonDebug(intersection), Some("intersection"))
     assertTrue(intersection.getArea > 0)
   }
+
+  @Test
+  def testSafeReprojectToPolygonFromLatLng(): Unit = {
+    val projectedExtent = ProjectedExtent(Extent(179, 40, 181, 50), LatLng)
+    dumpGeoJson(toGeoJsonDebug(projectedExtent), Some("projectedExtentUtm"))
+
+    val polygonUtm = safeReprojectToPolygon(projectedExtent, CRS.fromName("EPSG:32601"))
+    dumpGeoJson(toGeoJsonDebug(polygonUtm), Some("projectedExtentUtm_toUtm"))
+    assertTrue(polygonUtm.getFlatMultiPolygon.getArea > 0)
+    // assure extent is not wrapped the wrong way around the world:
+    assertTrue(polygonUtm.getFlatMultiPolygon.extent.width < 200000)
+  }
+
+  @Test
+  def testSafeReprojectToPolygonToLatLng(): Unit = {
+    val projectedExtent = ProjectedExtent(Extent(158510, 4429670, 356670, 5546300), CRS.fromName("EPSG:32601"))
+    dumpGeoJson(toGeoJsonDebug(projectedExtent), Some("projectedExtentUtm"))
+
+    val polygonUtm = safeReprojectToPolygon(projectedExtent, LatLng)
+    dumpGeoJson(toGeoJsonDebug(polygonUtm), Some("projectedExtentUtm_toLatLng"))
+    assertTrue(polygonUtm.getFlatMultiPolygon.getArea > 0)
+    // assure extent is not wrapped the wrong way around the world:
+    assertTrue(polygonUtm.getFlatMultiPolygon.extent.width < 10)
+  }
+
+  @Test
+  def testRangeConversion(): Unit = {
+    assertEquals(to_min180_180_range(182), -178)
+
+    assertEquals(to_min180_180_range(180), 180) // edge case
+    assertEquals(to_min180_180_range(-180), -180) // edge case
+
+    assertEquals(to_0_360_range(-60), 300)
+    assertEquals(to_0_360_range(180), 180)
+    assertEquals(to_0_360_range(0), 0) // edge case
+    assertEquals(to_0_360_range(360), 360) // edge case
+  }
 }

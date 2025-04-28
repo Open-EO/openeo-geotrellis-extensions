@@ -46,7 +46,7 @@ package object geotrelliscommon {
 
   }
 
-  object ByTileSpacetimePartitioner extends PartitionerIndex[SpaceTimeKey] {
+  class ByTileSpacetimePartitioner(val theKeys: Option[Array[SpatialKey]] = Option.empty) extends PartitionerIndex[SpaceTimeKey] with SpatialKeysProvider {
     private def toZ(key: SpaceTimeKey): Z2 = Z2(key.col, key.row)
 
     def toIndex(key: SpaceTimeKey): BigInt = toZ(key).z
@@ -54,11 +54,17 @@ package object geotrelliscommon {
     def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] =
       Z2.zranges(ZRange(toZ(keyRange._1), toZ(keyRange._2))).map(r => (BigInt(r.lower), BigInt(r.upper)))
 
+    override def spatialKeys: Option[Array[SpatialKey]] = {
+      theKeys
+    }
+
+    override def toString = s"ByTileSpacetimePartitioner ${theKeys.map(_.length).getOrElse(0)}"
   }
 
   object SparseSpaceOnlyPartitioner {
     // Shift by 8 removes the last 8 bytes: 256 tiles max in one partition.
     def toIndex(key: SpaceTimeKey, indexReduction:Int = 8): BigInt = Z2(key.col,key.row).z >> indexReduction
+    def toIndex(key: SpatialKey, indexReduction:Int): BigInt = Z2(key.col,key.row).z >> indexReduction
   }
 
   object SparseSpaceTimePartitioner {
@@ -68,7 +74,12 @@ package object geotrelliscommon {
     def toIndex(key: SpaceTimeKey, indexReduction:Int = 8): BigInt = keyIndex.toIndex(key) >> indexReduction
   }
 
-  class SparseSpaceTimePartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpaceTimeKey]] = Option.empty) extends PartitionerIndex[SpaceTimeKey] {
+
+  trait SpatialKeysProvider {
+    def spatialKeys: Option[Array[SpatialKey]]
+  }
+
+  class SparseSpaceTimePartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpaceTimeKey]] = Option.empty) extends PartitionerIndex[SpaceTimeKey] with SpatialKeysProvider {
 
     def toIndex(key: SpaceTimeKey): BigInt = SparseSpaceTimePartitioner.toIndex(key, indexReduction)
 
@@ -99,9 +110,14 @@ package object geotrelliscommon {
 
 
     override def toString = s"SparseSpaceTimePartitioner ${indices.length} ${theKeys.isDefined}"
+
+    override def spatialKeys: Option[Array[SpatialKey]] = {
+      theKeys.map(_.map(_.spatialKey).distinct)
+    }
+
   }
 
-  class SparseSpaceOnlyPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpaceTimeKey]] = Option.empty ) extends PartitionerIndex[SpaceTimeKey] {
+  class SparseSpaceOnlyPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpaceTimeKey]] = Option.empty ) extends PartitionerIndex[SpaceTimeKey] with SpatialKeysProvider {
 
     def toIndex(key: SpaceTimeKey): BigInt = SparseSpaceOnlyPartitioner.toIndex(key, indexReduction)
 
@@ -123,9 +139,11 @@ package object geotrelliscommon {
       val state = Seq( indexReduction)
       state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
     }
+
+    override def spatialKeys: Option[Array[SpatialKey]] = theKeys.map(_.map(_.spatialKey).distinct)
   }
 
-  class SparseSpatialPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpatialKey]] = Option.empty ) extends PartitionerIndex[SpatialKey] {
+  class SparseSpatialPartitioner (val indices: Array[BigInt], val indexReduction:Int = 8, val theKeys: Option[Array[SpatialKey]] = Option.empty ) extends PartitionerIndex[SpatialKey] with SpatialKeysProvider {
 
     def toIndex(key: SpatialKey): BigInt = Z2(key.col,key.row).z >> indexReduction
 
@@ -147,6 +165,8 @@ package object geotrelliscommon {
       val state = Seq( indexReduction)
       state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
     }
+
+    override def spatialKeys: Option[Array[SpatialKey]] = theKeys
   }
 
   class ConfigurableSpatialPartitioner(val indexReduction:Int = 4) extends PartitionerIndex[SpatialKey] {

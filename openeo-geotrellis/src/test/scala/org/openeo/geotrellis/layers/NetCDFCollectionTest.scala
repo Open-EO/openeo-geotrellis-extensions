@@ -1,13 +1,16 @@
 package org.openeo.geotrellis.layers
 
 import com.azavea.gdal.GDALWarp
+import geotrellis.layer.SpaceTimeKey
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{CellSize, RasterExtent, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType}
+import geotrellis.spark.partition.{SpacePartitioner, SpatialPartitioner}
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.Extent
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.{AfterAll, Disabled, Test}
 import org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, SpatialKeysProvider}
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 
 import java.time.ZonedDateTime
@@ -52,6 +55,10 @@ class NetCDFCollectionTest {
     )
 
     val cube = NetCDFCollection.loadCollection(osClient, sc)
+
+    val index = cube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+    assert(index.asInstanceOf[SpatialKeysProvider].spatialKeys.get.length > 100)
+
     assertEquals(2331,cube.count())
     assertEquals(Extent(603901.4819578232, 5656508.552285681, 653638.1910088382, 5687527.3439567955),cube.metadata.extent)
     assertEquals(crs,cube.metadata.crs)

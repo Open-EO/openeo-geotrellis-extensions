@@ -8,6 +8,8 @@ import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.render.ColorMap.Options
 import geotrellis.raster.render.DoubleColorMap
+import geotrellis.raster.resample.Min
+import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, CellSize, ColorMaps, MultibandTile, Raster, Tile, TileLayout, UByteArrayTile, isData}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
@@ -19,6 +21,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.{BeforeAll, Disabled, Test}
 import org.junit.rules.TemporaryFolder
 import org.junit.{AfterClass, Rule}
+import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
@@ -59,7 +62,7 @@ object WriteRDDToGeotiffTest{
   def tearDownSpark(): Unit = sc.stop()
 }
 
-class WriteRDDToGeotiffTest {
+class WriteRDDToGeotiffTest extends RasterMatchers {
 
   import WriteRDDToGeotiffTest._
 
@@ -330,16 +333,25 @@ class WriteRDDToGeotiffTest {
     options.addBandTag(0, "DESCRIPTION", "B01")
     options.addBandTag(1, "DESCRIPTION", "B02")
     options.addBandTag(2, "DESCRIPTION", "B03")
+    options.overviews = "ALL"
+    options.resampleMethod = "min"
+
     val paths = saveRDD(filtered.withContext {
       _.repartition(layoutCols * layoutRows)
     }, 3, filename, formatOptions = options)
     assertEquals(3, paths.size())
 
-    GeoTiff.readMultiband(outDir.resolve("openEO_B01.tif").toString).raster.tile
+    val tiff = GeoTiff.readMultiband(outDir.resolve("openEO_B01.tif").toString)
+    assertEquals(3, tiff.overviews.length)
+    tiff.raster.tile
     GeoTiff.readMultiband(outDir.resolve("openEO_B02.tif").toString).raster.tile
     GeoTiff.readMultiband(outDir.resolve("openEO_B03.tif").toString).raster.tile
 
-    val result = GeoTiff.readMultiband(paths.get(0)).raster.tile
+    val firstResult = GeoTiff.readMultiband(paths.get(0))
+    val result = firstResult.raster.tile
+    val resultOverview = firstResult.overviews(0).raster.tile
+
+    assertTilesEqual(result.resample(resultOverview.cols,resultOverview.rows, Min),resultOverview)
 
     //crop away the area where data was removed, and check if rest of geotiff is still fine
     val croppedReference = imageTile.crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArrayTile()
@@ -616,13 +628,11 @@ class WriteRDDToGeotiffTest {
     assertFalse(isData(rasterValueAt(pointOutsideOfGeometry)))
   }
 
-  @Disabled("Needs /eodata mounted. Kept to run manualy. TODO: Use synthetic data.")
   @Test
   def testAvoidCroppingAwayNoData(): Unit = {
 
-    val openSearchClient = OpenSearchClient(new URL("https://catalogue.dataspace.copernicus.eu/resto"))
     val layerProvider = FileLayerProvider(
-      openSearchClient,
+      loadFeaturesWithArtifactoryMock("/org/openeo/geotrellis/testAvoidCroppingAwayNoData.json"),
       "GLOBAL-MOSAICS",
       openSearchLinkTitles = NonEmptyList.of("VV"),
       rootPath = "/eodata/Global-Mosaics/Sentinel-1",

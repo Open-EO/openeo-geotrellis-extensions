@@ -240,6 +240,7 @@ class NetCDFRDDWriterTest extends RasterMatchers{
       new util.ArrayList(util.Arrays.asList("B04", "B03", "B02")),
       null,
       null,
+      null,
       Some("prefixTest"),
     ).stream()
       .flatMap { item =>
@@ -272,7 +273,7 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(date,date.plusDays(10),bbox,Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs,13,sc,datacubeParams = Some(dcParams))
 
 
-    val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.saveSingleNetCDF(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M")),null,null,6))
+    val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.saveSingleNetCDF(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M")),null,null,null,6))
     val expectedPaths = util.Collections.singletonList("/tmp/stitched.nc")
 
     Assert.assertEquals(expectedPaths, sampleFilenames)
@@ -405,7 +406,7 @@ class NetCDFRDDWriterTest extends RasterMatchers{
 
     val (image,layer) = LayerFixtures.createLayerWithGaps(5,5)
 
-    val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.saveSingleNetCDFSpatial(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")),null,null,6))
+    val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.saveSingleNetCDFSpatial(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")),null,null,null,6))
     val expectedPaths = util.Collections.singletonList("/tmp/stitched.nc")
 
     Assert.assertEquals(expectedPaths, sampleFilenames)
@@ -441,7 +442,7 @@ class NetCDFRDDWriterTest extends RasterMatchers{
         dataCubeContextRDD,
         "tmp/testWriteSingleNetCDFMultipleSamplesOnADay_" + date2.toString.replace(":", "_") + ".nc",
         new util.ArrayList(util.Arrays.asList("band")),
-        null, null, 6
+        null, null, null, 6
       ))
       val ds = NetcdfDataset.openDataset(sampleFilenames.get(0), true, null)
       // When the samples are in the same day, they should still be separate
@@ -487,11 +488,66 @@ class NetCDFRDDWriterTest extends RasterMatchers{
         new util.ArrayList(util.Arrays.asList("b1", "b2")),
         LatLng, cellType, dimMapping,
         TemporalResolution.days,
-        attributes
+        attributes, null
       )
       Assert.assertEquals("my netcdf file",file.findGlobalAttribute("title").getStringValue())
       Assert.assertNotNull(file.findVariable("myTimeDim"))
       Assert.assertNotNull(file.findVariable("crs"))
+      file.close()
+    }
+    setup(UByteUserDefinedNoDataCellType(5))
+    setup(FloatConstantNoDataCellType)
+
+    //boolean not supported by library
+    //setup(BitCellType)
+    setup(UShortCellType)
+    setup(IntUserDefinedNoDataCellType(255))
+  }
+
+
+  @Test
+  def testNetCDFBandAttributes(): Unit = {
+    def setup(cellType:CellType) = {
+
+      val dimMapping = new util.HashMap[String, String]()
+      dimMapping.put("t","myTimeDim")
+      val attributes = new util.HashMap[String, String]()
+      attributes.put("title","my netcdf file")
+      val bandMetadata = new util.HashMap[String,util.Map[String,String]]()
+      val metadataB1 = new util.HashMap[String,String]()
+      metadataB1.put("SCALE","1.23")
+      metadataB1.put("OFFSET","4.56")
+      bandMetadata.put("b1",metadataB1)
+      val file = NetCDFRDDWriter.setupNetCDF(
+        "test.nc",
+        RasterExtent(Extent(0, 0, 10, 10), 512, 512),
+        Seq(ZonedDateTime.parse("2021-05-01T00:00:00Z"), ZonedDateTime.parse("2021-05-10T00:00:00Z")),
+        new util.ArrayList(util.Arrays.asList("b1", "b2")),
+        LatLng, cellType, dimMapping,
+        TemporalResolution.days,
+        attributes, bandMetadata
+      )
+      Assert.assertEquals("my netcdf file",file.findGlobalAttribute("title").getStringValue())
+      Assert.assertNotNull(file.findVariable("myTimeDim"))
+      Assert.assertNotNull(file.findVariable("crs"))
+      Assert.assertNotNull(file.findVariable("b1"))
+      val b1 = file.findVariable("b1")
+      Assert.assertNotNull(b1.findAttribute("long_name"))
+      Assert.assertNotNull(b1.findAttribute("units"))
+      Assert.assertNotNull(b1.findAttribute("_FillValue"))
+      Assert.assertNotNull(b1.findAttribute("scale_factor"))
+      Assert.assertNotNull(b1.findAttribute("add_offset"))
+      Assert.assertNotNull(b1.findAttribute("grid_mapping"))
+      Assert.assertNotNull(b1.findAttribute("_ChunkSizes"))
+      Assert.assertNotNull(file.findVariable("b2"))
+      val b2 = file.findVariable("b2")
+      Assert.assertNotNull(b2.findAttribute("long_name"))
+      Assert.assertNotNull(b2.findAttribute("units"))
+      Assert.assertNotNull(b2.findAttribute("_FillValue"))
+      Assert.assertNull(b2.findAttribute("scale_factor"))
+      Assert.assertNull(b2.findAttribute("add_offset"))
+      Assert.assertNotNull(b2.findAttribute("grid_mapping"))
+      Assert.assertNotNull(b2.findAttribute("_ChunkSizes"))
       file.close()
     }
     setup(UByteUserDefinedNoDataCellType(5))

@@ -3,23 +3,26 @@ package org.openeo.geotrellis.layers
 import com.azavea.gdal.GDALWarp
 import geotrellis.layer.{KeyBounds, LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TemporalProjectedExtent, TileBounds, TileLayerMetadata}
 import geotrellis.proj4.LatLng
-import geotrellis.raster.{CellSize, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
-import geotrellis.raster.gdal.{DefaultDomain, GDALException, GDALRasterSource, MalformedProjectionException}
+import geotrellis.raster.{CellSize, IntCellType, MultibandTile, Raster, RasterExtent, Tile, TileLayout}
+import geotrellis.raster.gdal.{DefaultDomain, GDALException, GDALRasterSource, GDALWarpOptions, MalformedProjectionException}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
-import geotrellis.vector.{Extent, ProjectedExtent}
+import geotrellis.vector._
 import org.apache.spark.{Partitioner, SparkContext}
 import org.apache.spark.rdd.RDD
 import org.openeo.geotrellis.ProjectedPolygons
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, DataCubeParameters}
 import org.openeo.opensearch.OpenSearchClient
+import org.slf4j.{Logger, LoggerFactory}
 
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util
 import scala.collection.immutable
 
 object NetCDFCollection {
+
+  private implicit val logger: Logger = LoggerFactory.getLogger("NetCDFCollection")
 
   def datacube_seq(polygons:ProjectedPolygons, from_date: String, to_date: String,
                    metadata_properties: util.Map[String, Any], correlationId: String, dataCubeParameters: DataCubeParameters,osClient:OpenSearchClient): Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = {
@@ -55,7 +58,7 @@ object NetCDFCollection {
           }
           try{
 
-            val rs = GDALRasterSource(gdalNetCDFLink)
+            val rs = GDALRasterSource(gdalNetCDFLink,new GDALWarpOptions(outputFormat = None))
 
             /**
              * Retrieving metadata using dataset directly, because sometimes metadata is so large that it doesn't fit the array allocated by GDALWarp
@@ -107,11 +110,15 @@ object NetCDFCollection {
     val spatialBounds = KeyBounds(layout.mapTransform(extent))
     val temporalBounds = KeyBounds(SpaceTimeKey(spatialBounds.minKey,TemporalKey(LocalDate.of(1990,1,1).atStartOfDay(ZoneId.of("UTC")))),SpaceTimeKey(spatialBounds.maxKey,TemporalKey(LocalDate.now().atStartOfDay(ZoneId.of("UTC")))))
 
-    val partitioner: Partitioner = new SpacePartitioner(temporalBounds)(implicitly, implicitly, ByTileSpacetimePartitioner)
+    val keys: Array[SpatialKey] =  items.map(i => i.geometry.getOrElse(i.bbox.toPolygon())).map(_.reproject(LatLng,crs(0))).clipToGrid(layout).map(_._1).distinct().collect()
+    val partitioner: Partitioner = new SpacePartitioner(temporalBounds)(implicitly, implicitly, new ByTileSpacetimePartitioner(Some(keys)))
 
     val metadata = TileLayerMetadata[SpaceTimeKey](cellType, layout, extent, crs(0), temporalBounds)
     val retiled: RDD[(SpaceTimeKey, MultibandTile)] = features.tileToLayout(metadata).partitionBy(partitioner)
-    ContextRDD(retiled,metadata)
+    logger.info(s"Created cube for netCDF samples with metadata ${metadata} and partitioner ${partitioner.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index}")
+    val cRDD = ContextRDD(retiled,metadata)
+    cRDD.name = s"load_stac netCDFCollection ${items.first().id} "
+    cRDD
 
 
   }

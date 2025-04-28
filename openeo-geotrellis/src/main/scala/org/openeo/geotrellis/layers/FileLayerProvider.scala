@@ -20,6 +20,7 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
+import geotrellis.vector.reproject.Reproject.reprojectExtentAsPolygon
 import net.jodah.failsafe.{Failsafe, RetryPolicy}
 import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import org.apache.spark.SparkContext
@@ -433,6 +434,7 @@ object FileLayerProvider {
             val filtered = prepareMask(theMask, metadata, partitioner)
 
             if (logger.isDebugEnabled) {
+              // the number of jobs/stages effectively depends on whether logging is correctly configured
               logger.debug(s"SpacetimeMask mask reduces the input to: ${filtered.countApproxDistinct()} keys.")
             }
 
@@ -914,8 +916,12 @@ object FileLayerProvider {
         eoProductFeature.mapGeom(productGeometry => {
           try {
             val intersection = if (datacubeParams.getOrElse(new DataCubeParameters).useNewFeatureExtentIntersection2) {
-                val productGeometryProjected = safeReprojectPolygons(ProjectedPolygons(productGeometry, LatLng), productCRSOrDefault)
-                productGeometryProjected.getFlatMultiPolygon.intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
+              val productGeometryProjected = ProjectedPolygons(productGeometry, LatLng).safeReproject(productCRSOrDefault, refine = true)
+
+              val cubeExtentCrs = ProjectedExtent(cubeExtent, targetCRS)
+              val cubeExtentPolygon = safeReprojectToPolygon(cubeExtentCrs, productCRSOrDefault)
+
+              productGeometryProjected.getFlatMultiPolygon.intersection(cubeExtentPolygon.getFlatMultiPolygon)
             } else {
               productGeometry.reproject(LatLng, productCRSOrDefault).intersection(cubeExtent.reprojectAsPolygon(targetCRS, productCRSOrDefault, 0.01))
             }
@@ -1416,7 +1422,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     val featureExtentInLayout: Option[GridExtent[Long]] = if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
       val useNewFeatureExtentIntersectionPossible = isCrsCoveredInHealthCheck(feature.crs.get) && isCrsCoveredInHealthCheck(targetExtent.crs)
-      val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection) && useNewFeatureExtentIntersectionPossible) {
+      val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection) || !useNewFeatureExtentIntersectionPossible) {
         // logger.info("Using old intersection method between Feature/Item and target extent.")
         // TODO: Remove this after it has been deployed for a while
         /**
@@ -1707,6 +1713,34 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       overlappingFeatures=overlappingFeatures.filter(f=>condition.inputFunction.asInstanceOf[AnyProcess].apply(Map("value"->f.nominalDate)).apply(f.nominalDate).asInstanceOf[Boolean])
     }
 
+    if (datacubeParams.getOrElse(new DataCubeParameters()).useNewFeatureExtentIntersection2) {
+      overlappingFeatures = overlappingFeatures.map(f => {
+        f.geometry match {
+          case None => f
+          case Some(geom) =>
+            var pp = ProjectedPolygons(geom, LatLng)
+            if (openSearchCollectionId == "GLOBAL-MOSAICS" && f.id.length > 7) {
+              val tileIdGuess = f.id.substring(f.id.length - 9, f.id.length - 7)
+              val crs = CRS.fromName("EPSG:326" + tileIdGuess)
+
+              // The geom in the catalog does not take into account curvature.
+              // Doing a basic projection and a refined projection back fixes this.
+              pp = pp
+                .safeReproject(crs, refine = false)
+                .safeReproject(LatLng, refine = true)
+                .splitPolygonsOnWrapPoint()
+
+              var ps = pp.getFlatMultiPolygon.polygons
+              // This collection has huge chunks of nodata in tiles around the antimeridian, causing artifacts.
+              // Remove the polygons that cross the line to mitigate this
+              if (tileIdGuess == "60") ps = ps.filter(p => p.getCoordinate.x > 0)
+              if (tileIdGuess == "01") ps = ps.filter(p => p.getCoordinate.x < 0)
+              pp = ProjectedPolygons(MultiPolygon(ps), LatLng)
+            }
+            f.copy(geometry = Some(pp.getFlatMultiPolygon))
+        }
+      })
+    }
 
     val reprojectedBoundingBox: ProjectedExtent = targetBoundingBox(boundingBox, layoutScheme)
     val overlappingRasterSources = (for {
