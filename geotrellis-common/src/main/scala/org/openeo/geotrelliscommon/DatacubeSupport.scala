@@ -1,12 +1,12 @@
 package org.openeo.geotrelliscommon
 
-import geotrellis.layer.{Boundable, Bounds, FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutLevel, LayoutScheme, Metadata, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme}
+import geotrellis.layer.{Boundable, Bounds, FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutLevel, LayoutScheme, Metadata, SpaceTimeKey, SpatialKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.CRS
-import geotrellis.raster.{CellSize, CellType, MultibandTile, NODATA, doubleNODATA, isData}
+import geotrellis.raster.{CellSize, CellType, DoubleCellType, MultibandTile, NODATA, doubleNODATA, isData}
 import geotrellis.spark.join.SpatialJoin
 import geotrellis.spark.partition.{PartitionerIndex, SpacePartitioner}
 import geotrellis.spark.{MultibandTileLayerRDD, _}
-import geotrellis.util.GetComponent
+import geotrellis.util._
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import org.apache.spark.Partitioner
 import org.apache.spark.rdd.{CoGroupedRDD, RDD}
@@ -195,8 +195,7 @@ object DatacubeSupport {
 
 
     }
-    Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,
-      ClassTag(classOf[SpaceTimeKey]), partitionerIndex))
+    Some(SpacePartitioner(metadata.bounds)(SpaceTimeKey.Boundable,ClassTag(classOf[SpaceTimeKey]), partitionerIndex))
   }
 
 
@@ -206,7 +205,7 @@ object DatacubeSupport {
    replacement: java.lang.Double,
    ignoreKeysWithoutMask: Boolean = false,
   ): RDD[(K, MultibandTile)] with Metadata[M] = {
-    val joined = if (ignoreKeysWithoutMask) {
+    val joined: RDD[(K, (MultibandTile, Option[MultibandTile]))] with Metadata[_ >: M with Bounds[K]] = if (ignoreKeysWithoutMask) {
       //inner join, try to preserve partitioner
       val tmpRdd: RDD[(K, (MultibandTile, Option[MultibandTile]))] =
         if(datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[K]]){
@@ -228,7 +227,7 @@ object DatacubeSupport {
 
       ContextRDD(tmpRdd, datacube.metadata)
     } else {
-      SpatialJoin.leftOuterJoin(datacube, mask)
+      outerJoin(datacube,mask).withContext(_.filter(_._2._1.isDefined).map(t => (t._1,(t._2._1.get,t._2._2))))
     }
     val replacementInt: Int = if (replacement == null) NODATA else replacement.intValue()
     val replacementDouble: Double = if (replacement == null) doubleNODATA else replacement
@@ -252,6 +251,143 @@ object DatacubeSupport {
     })
 
     new ContextRDD(masked, datacube.metadata)
+  }
+
+  def maybeBandCount[K](cube: RDD[(K, MultibandTile)]): Option[Int] = {
+    if (cube.isInstanceOf[OpenEORasterCube[K]] && cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount > 0) {
+      val count = cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount
+      logger.info(s"Computed band count ${count} from metadata of ${cube}")
+      return Some(count)
+    }else{
+      return None
+    }
+  }
+
+  def getManyBandsIndexGeneric[K]()(implicit t:ClassTag[K]):PartitionerIndex[K] = {
+    import reflect.ClassTag
+    val spacetimeKeyTag = classOf[SpaceTimeKey]
+    val index: PartitionerIndex[K] = t match {
+      case strtag if strtag == ClassTag(spacetimeKeyTag) => SpaceTimeByMonthPartitioner.asInstanceOf[PartitionerIndex[K]]
+      case _ => ByTileSpatialPartitioner.asInstanceOf[PartitionerIndex[K]]
+    }
+    index
+  }
+
+
+  def maybeCellType[K](cube: RDD[(K, MultibandTile)]): Option[CellType] = {
+    if (cube.isInstanceOf[MultibandTileLayerRDD[K]]) {
+      return Some(cube.asInstanceOf[MultibandTileLayerRDD[K]].metadata.cellType)
+    }
+    return None
+  }
+
+  def maybeTileSize[K](cube: RDD[(K, MultibandTile)]): Option[Int] = {
+    if (cube.isInstanceOf[MultibandTileLayerRDD[K]]) {
+      return Some(cube.asInstanceOf[MultibandTileLayerRDD[K]].metadata.tileLayout.tileSize)
+    }
+    return None
+  }
+
+  /**
+   * Determines the appropriate partitioner index for the maximum partition size based on the input parameters.
+   *
+   * @param nrBands              The number of bands in the tile.
+   * @param tileSize             The size of the tile in number of pixels (cols*rows).
+   * @param cellTypeBits         The number of bits used for the cell type (e.g., 8 for Byte, 16 for Short, etc.).
+   * @param maxPartitionSizeInMb The maximum size of each partition in megabytes. Default is 500.0 MB.
+   * @return A partitioner index of type `PartitionerIndex[K]` tailored to ensure the partitions adhere to the specified maximum size.
+   */
+  def getPartitionerIndexForMaxPartitionSize[K](nrBands: Int, tileSize: Int, cellTypeBits: Int, maxPartitionSizeInMb: Double = 500.0)(implicit t:ClassTag[K]): PartitionerIndex[K] = {
+    // Estimate the maximum amount of records required to hit maxPartitionSizeInMb,
+    // then calculate the max indexReduction that remains under this amount of records.
+    val tileSizeInMb: Double = (nrBands * tileSize * cellTypeBits).toDouble / (8 * 1024 * 1024)
+    val maxRecordsPerPartition: Double = math.min(maxPartitionSizeInMb / tileSizeInMb, 1024)
+    val indexReduction = math.max(math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt - 1, 1)
+    t match {
+      case spaceTag if spaceTag == ClassTag(classOf[SpatialKey]) => {
+        logger.info(s"Creating ConfigurableSpatialPartitionerReduceZ($indexReduction) based on tile size: $tileSize, band count: $nrBands, cell type bits: $cellTypeBits, tileSizeInMb: $tileSizeInMb")
+        new ConfigurableSpatialPartitionerReduceZ(indexReduction).asInstanceOf[PartitionerIndex[K]]
+      }
+      case _ => {
+        logger.info(s"Creating ConfigurableSpaceTimePartitioner($indexReduction) based on tile size: $tileSize, band count: $nrBands, cell type bits: $cellTypeBits, tileSizeInMb: $tileSizeInMb")
+        new ConfigurableSpaceTimePartitioner(indexReduction).asInstanceOf[PartitionerIndex[K]]
+      }
+    }
+  }
+
+  def outerJoin[K: Boundable: PartitionerIndex: ClassTag,
+    M: GetComponent[*, Bounds[K]],
+    M1: GetComponent[*, Bounds[K]]
+  ](leftCube: RDD[(K, MultibandTile)] with Metadata[M], rightCube: RDD[(K, MultibandTile)] with Metadata[M1]): RDD[(K, (Option[MultibandTile], Option[MultibandTile]))] with Metadata[Bounds[K]] = {
+
+    val kbLeft: Bounds[K] = leftCube.metadata.getComponent[Bounds[K]]
+    val kbRight: Bounds[K] = rightCube.metadata.getComponent[Bounds[K]]
+    val kb: Bounds[K] = kbLeft.combine(kbRight)
+
+    val leftCount = maybeBandCount(leftCube)
+    val rightCount = maybeBandCount(rightCube)
+    //fairly arbitrary heuristic if we're going to create a cube with a high number of bands
+    val manyBands = leftCount.getOrElse(1) + rightCount.getOrElse(1) > 25
+
+    val part =if( leftCube.partitioner.isDefined && rightCube.partitioner.isDefined && leftCube.partitioner.get.isInstanceOf[SpacePartitioner[K]] && rightCube.partitioner.get.isInstanceOf[SpacePartitioner[K]]) {
+      val leftPart = leftCube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
+      val rightPart = rightCube.partitioner.get.asInstanceOf[SpacePartitioner[K]]
+      logger.info(s"Merging cubes with spatial indices: ${leftPart.index} - ${rightPart.index}")
+      if(leftPart.index == rightPart.index && leftPart.index.isInstanceOf[SparseSpaceTimePartitioner]) {
+        val newIndices: Array[BigInt] = (leftPart.index.asInstanceOf[SparseSpaceTimePartitioner].indices ++ rightPart.index.asInstanceOf[SparseSpaceTimePartitioner].indices).distinct.sorted
+        implicit val newIndex: PartitionerIndex[K] = new SparseSpaceTimePartitioner(newIndices,leftPart.index.asInstanceOf[SparseSpaceTimePartitioner].indexReduction).asInstanceOf[PartitionerIndex[K]]
+        SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
+      }else if(leftPart.index == rightPart.index && leftPart.index.isInstanceOf[SparseSpaceOnlyPartitioner]) {
+        val newIndices: Array[BigInt] = (leftPart.index.asInstanceOf[SparseSpaceOnlyPartitioner].indices ++ rightPart.index.asInstanceOf[SparseSpaceOnlyPartitioner].indices).distinct.sorted
+        implicit val newIndex: PartitionerIndex[K] = new SparseSpaceOnlyPartitioner(newIndices,leftPart.index.asInstanceOf[SparseSpaceOnlyPartitioner].indexReduction).asInstanceOf[PartitionerIndex[K]]
+        SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
+      }
+      else if(leftPart.index == rightPart.index && (leftPart.index == ByTileSpatialPartitioner || leftPart.index.isInstanceOf[ByTileSpacetimePartitioner])) {
+        leftPart
+      }
+      else if(leftPart.index == rightPart.index && leftPart.index.isInstanceOf[ConfigurableSpaceTimePartitioner] ) {
+        leftPart
+      }
+      else if(leftPart.index == rightPart.index && leftPart.index.isInstanceOf[ConfigurableSpatialPartitionerReduceZ] ) {
+        val indexReduction: Int = leftPart.index.asInstanceOf[ConfigurableSpatialPartitionerReduceZ].indexReduction
+        logger.info(s"Using ConfigurableSpatialPartitionerReduceZ with indexReduction: ${indexReduction}")
+        leftPart
+      }
+      else if(leftPart.index == rightPart.index  && leftPart.index.isInstanceOf[SparseSpatialPartitioner] ) {
+        val newIndices: Array[BigInt] = (leftPart.index.asInstanceOf[SparseSpatialPartitioner].indices ++ rightPart.index.asInstanceOf[SparseSpatialPartitioner].indices).distinct.sorted
+        implicit val newIndex: PartitionerIndex[K] = new SparseSpatialPartitioner(newIndices,leftPart.index.asInstanceOf[SparseSpatialPartitioner].indexReduction).asInstanceOf[PartitionerIndex[K]]
+        SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
+      }
+      else{
+        SpacePartitioner[K](kb)
+      }
+    } else {
+      // At least one partitioner is undefined.
+      logger.info(s"Merging cubes with partitioners: ${leftCube.partitioner} - ${rightCube.partitioner} - many band case detected: $manyBands")
+      if(manyBands) {
+        val index: PartitionerIndex[K] = getManyBandsIndexGeneric[K]()
+        SpacePartitioner[K](kb)(implicitly,implicitly,index)
+      } else {
+        val nrBands = leftCount.getOrElse(10) + rightCount.getOrElse(10)
+        val outputCellType = maybeCellType(leftCube).getOrElse(DoubleCellType).union(maybeCellType(rightCube).getOrElse(DoubleCellType))
+        val tileSize = maybeTileSize(leftCube).getOrElse(128 * 128)
+        val newIndex = getPartitionerIndexForMaxPartitionSize[K](nrBands, tileSize, outputCellType.bits)
+        SpacePartitioner[K](kb)(implicitly, implicitly, newIndex)
+      }
+    }
+
+    val joinRdd =
+      new CoGroupedRDD[K](List(part(leftCube), part(rightCube)), part)
+        .flatMapValues { case Array(l, r) =>
+          if (l.isEmpty)
+            for (v <- r.iterator) yield (None, Some(v))
+          else if (r.isEmpty)
+            for (v <- l.iterator) yield (Some(v), None)
+          else
+            for (v <- l.iterator; w <- r.iterator) yield (Some(v), Some(w))
+        }.asInstanceOf[RDD[(K, (Option[MultibandTile], Option[MultibandTile]))]]
+
+    ContextRDD(joinRdd, part.bounds)
   }
 
   def applyDataMask(datacubeParams: Option[DataCubeParameters],
