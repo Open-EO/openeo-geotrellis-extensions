@@ -36,23 +36,26 @@ object ZarrWriter {
     val byteOrder = ByteOrder.BIG_ENDIAN
     val compressor = CompressorFactory.createDefaultCompressor()
     val nBands = zarrOptions.numberBands
-    val (shapeBands,chunkBands) = if (nBands > 1) {
-      (Array[Int](nBands,metadata.rows.toInt, metadata.cols.toInt),Array[Int](1,tileRows, tileCols))
-    } else{
-      (Array[Int](metadata.rows.toInt, metadata.cols.toInt),Array[Int](tileRows, tileCols))
-    }
 
 
     val xValues = for (x <- 0 until metadata.cols.toInt) yield metadata.extent.xmin + x * metadata.cellwidth + metadata.cellwidth / 2.0
     val yValues = for (y <- 0 until metadata.rows.toInt) yield metadata.extent.ymax - y * metadata.cellheight - metadata.cellheight / 2.0
     val keys = rdd.keys.collect()
-    val (timeValues: Map[Long,Int],shape,chunk,hasTemp) = keys match {
+    val shapeOri = Array[Int](metadata.rows.toInt, metadata.cols.toInt)
+    val chunkOri = Array[Int](tileRows, tileCols)
+    val (timeValues: Map[Long,Int],shapeTemp,chunkTemp,hasTemp) = keys match {
       case m: Array[SpaceTimeKey] =>
         val tempKey = m.map(_.temporalKey.instant)
         val dist = tempKey.distinct
         writeVariables(path,"time",dist)
-        (dist.zipWithIndex.toMap, dist.length+:shapeBands, 1+:chunkBands,true)
-      case _ => (Map[Long,Int](),shapeBands,chunkBands, false)
+        (dist.zipWithIndex.toMap, dist.length+:shapeOri, 1+:chunkOri,true)
+      case _ => (Map[Long,Int](),shapeOri,chunkOri, false)
+    }
+
+    val (shape,chunk) = if (nBands > 1) {
+      (nBands+:shapeTemp,1+:chunkTemp)
+    } else{
+      (shapeTemp,chunkTemp)
     }
     writeFile(groupPath,FILENAME_DOT_ZATTRS, new dataAttribute(metadata,zarrOptions,hasTemp))
     val zarrHeader = new ZarrHeader(shape, chunk, zarrType.toString, byteOrder, fillValue.getOrElse(0), compressor, ".")
@@ -100,7 +103,10 @@ object ZarrWriter {
     val toWrite = content match {
       case attributes: ZarrAttributes => attributes.toMap
       case zarrHeader: ZarrHeader => zarrHeader
-      case null => Map((ZARR_FORMAT, 2))
+      case null =>
+        val varMap = new java.util.HashMap[String,Int]()
+        varMap.put(ZARR_FORMAT, 2)
+        varMap
     }
     try {
       val os = new FileSystemStore(Paths.get(path)).getOutputStream(fileExtension)
@@ -147,15 +153,17 @@ object ZarrWriter {
     (0 until bandCount).foreach(nTiles => {
       val band = multibandTileLayer.band(nTiles)
       val dataType = ucar.ma2.DataType.getType(band.toArray().getClass.getComponentType, false)
-      val (chunkBands,indexBands) = if (nBands > 1)
-        (Array[Int](1, tileRows, tileCols),Array(nTiles, spatialKey.row, spatialKey.col)) else
-        (Array[Int](tileRows, tileCols),Array(spatialKey.row, spatialKey.col))
-      val (chunk,index) = k match {
-        case _:SpatialKey => (chunkBands,indexBands)
+      val chunkOri = Array[Int](tileRows, tileCols)
+      val indexOri = Array(spatialKey.row, spatialKey.col)
+      val (chunkTemp,indexTemp) = k match {
+        case _:SpatialKey => (chunkOri,indexOri)
         case key:SpaceTimeKey =>
           val timeIndex= timeValues(key.temporalKey.instant)
-          (1 +: chunkBands, timeIndex +: indexBands)
+          (1 +: chunkOri, timeIndex +: indexOri)
       }
+      val (chunk,index) = if (nBands > 1)
+        (1+:chunkTemp,nTiles+:indexTemp) else
+        (chunkTemp,indexTemp)
       val source = factory(dataType, chunk, band.toArray())
       val chunkFilename = ZarrUtils.createChunkFilename(index, ".")
       val chunkReaderWriter = ChunkReaderWriter.create(compressor, zarrType, byteOrder, chunk, fillValue.getOrElse(0), store)
