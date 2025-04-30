@@ -976,34 +976,14 @@ class OpenEOProcesses extends Serializable {
     leftCube.sparkContext.setCallSite("merge_cubes - (x,y,bands,t) + (x,y,bands)")
     val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,ResampleMethods.NearestNeighbor,rightCube.partitioner.orNull)._2
     checkMetadataCompatible(leftCube.metadata,resampled.metadata)
-    val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](leftCube, resampled)
-    if(operator == null) {
-      val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
-      //TODO: what if extent of joined cube is larger than left cube?
-      val updatedMetadata = leftCube.metadata.copy(cellType = outputCellType)
-      return new ContextRDD(rdd.mapValues({case (l,r) =>
-        if(swapOperands) {
-          MultibandTile( r.bands.map(t=>safeConvert(t,updatedMetadata.cellType))  ++ l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
-        }else{
-          MultibandTile(l.bands.map(t=>safeConvert(t,updatedMetadata.cellType)) ++ r.bands.map(t=>safeConvert(t,updatedMetadata.cellType)))
-        }
-      }), updatedMetadata)
-    }else{
 
-      val binaryOp = tileBinaryOp.getOrElse(operator, throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, tileBinaryOp.keys.toString())))
-      return new ContextRDD(rdd.mapValues({case (l,r) =>
-        if(l.bandCount != r.bandCount){
-          if(l.bandCount==0) {
-            r
-          }else if(r.bandCount==0) {
-            l
-          }
-          throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.bandCount, r.bandCount))
-        }else{
-          MultibandTile(l.bands.zip(r.bands).map(t => binaryOp.apply(if(swapOperands){Seq(t._2, t._1)} else Seq(t._1, t._2))))
-        }
+    val resampledSpaceTime = leftCube.cartesian(resampled).filter(a => a._1._1.spatialKey == a._2._1).map(a => (a._1._1, a._2._2))
+    val resampledSpaceTimeCube = MultibandTileLayerRDD[SpaceTimeKey](resampledSpaceTime, leftCube.metadata)
 
-      }), leftCube.metadata)
+    if (swapOperands) {
+      mergeCubes(resampledSpaceTimeCube, leftCube, operator)
+    } else {
+      mergeCubes(leftCube, resampledSpaceTimeCube, operator)
     }
   }
 

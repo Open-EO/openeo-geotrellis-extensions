@@ -359,7 +359,6 @@ class MergeCubesSpec {
     }
   }
 
-
   @Test def testMergeCubeDifference_SpatialSpaceTime(): Unit = {
     val band1: ByteArrayTile = ByteArrayTile.fill(2.toByte, 256, 256)
     val band2: ByteArrayTile = ByteArrayTile.fill(3.toByte, 256, 256)
@@ -388,6 +387,116 @@ class MergeCubesSpec {
       }
     }
   }
+
+  @Test def testMergeCubeDifference_SpatialSpaceTime_non_overlapping(): Unit = {
+    val band1: ByteArrayTile = ByteArrayTile.fill(2.toByte, 64, 64)
+    val band2: ByteArrayTile = ByteArrayTile.fill(3.toByte, 64, 64)
+    val band3: ByteArrayTile = ByteArrayTile.fill(5.toByte, 256, 256)
+    val band4: ByteArrayTile = ByteArrayTile.fill(8.toByte, 256, 256)
+    val cube1: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = LayerFixtures.buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"))
+    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(MergeCubesSpec.sc,MultibandTile(band3,band4),cube1.metadata.tileLayout)
+
+    val processes = new OpenEOProcesses()
+    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1,cube1.metadata.bounds.get),cube1.metadata), cube2, "subtract",true)
+    val mergedTimes: Array[TemporalKey] = merged.map((p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey).collect
+    assertEquals(2, mergedTimes.size)
+    import scala.collection.JavaConversions._
+    for (item <- merged.toJavaRDD.collect) {
+      assertEquals(2, item._2.bandCount)
+      val month: Int = item._1.temporalKey.time.getMonthValue
+      if (month == 1) {
+        assertEquals(3, item._2.band(0).get(0, 0))
+        assertEquals(5, item._2.band(1).get(0, 0))
+      }
+      else {
+        if (month == 2) {
+          assertEquals(3, item._2.band(0).get(0, 0))
+          assertEquals(5, item._2.band(1).get(0, 0))
+        }
+
+      }
+    }
+  }
+
+
+  @Test def testMergeCube_SpatialSpaceTime(): Unit = {
+    val band1: ByteArrayTile = ByteArrayTile.fill(2.toByte, 16, 16)
+    val band2: ByteArrayTile = ByteArrayTile.fill(3.toByte, 16, 16)
+    val band3: ByteArrayTile = ByteArrayTile.fill(5.toByte, 32, 32)
+    val band4: ByteArrayTile = ByteArrayTile.fill(8.toByte, 32, 32)
+    val cube1: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = LayerFixtures.buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"))
+    val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(MergeCubesSpec.sc,MultibandTile(band3,band4),cube1.metadata.tileLayout)
+
+    val processes = new OpenEOProcesses()
+    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1,cube1.metadata.bounds.get),cube1.metadata), cube2, operator = null, swapOperands = false)
+    val tupleToKey: ((SpaceTimeKey, MultibandTile)) => TemporalKey = (p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey
+    val mergedTimes: Array[TemporalKey] = merged.map(tupleToKey).collect
+    assertEquals(2, mergedTimes.size)
+    import scala.collection.JavaConversions._
+    for (item <- merged.toJavaRDD.collect) {
+      assertEquals(4, item._2.bandCount)
+      val month: Int = item._1.temporalKey.time.getMonthValue
+      if (month == 1) {
+        assertEquals(2, item._2.band(0).get(0, 0))
+        assertEquals(3, item._2.band(1).get(0, 0))
+        assertEquals(5, item._2.band(2).get(0, 0))
+        assertEquals(8, item._2.band(3).get(0, 0))
+      }
+      else {
+        if (month == 2) {
+          assertEquals(2, item._2.band(0).get(0, 0))
+          assertEquals(3, item._2.band(1).get(0, 0))
+          assertEquals(5, item._2.band(2).get(0, 0))
+          assertEquals(8, item._2.band(3).get(0, 0))
+        }
+      }
+    }
+  }
+
+  @Test def testMergeCube_SpatialSpaceTime_missing_tiles(): Unit = {
+    val band1: ByteArrayTile = ByteArrayTile.fill(2.toByte, 64, 64)
+    val band2: ByteArrayTile = ByteArrayTile.fill(3.toByte, 64, 64)
+    val band3: ByteArrayTile = ByteArrayTile.fill(5.toByte, 256, 256)
+    val band4: ByteArrayTile = ByteArrayTile.fill(8.toByte, 256, 256)
+
+    val cube1Raw: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = LayerFixtures.buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"))
+
+    val cube2Layout = LayoutDefinition(RasterExtent(cube1Raw.metadata.extent, 256, 256), 64, 64)
+    val cube2Raw = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate(), MultibandTile(band3, band4), cube2Layout.tileLayout)
+
+    val processes = new OpenEOProcesses()
+    val cube1 = ContextRDD(processes.applySpacePartitioner(cube1Raw, cube1Raw.metadata.bounds.get), cube1Raw.metadata)
+    val cube2  = ContextRDD(cube2Raw.filter(k => k._1.col != k._1.row), cube2Raw.metadata)
+    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = processes.mergeCubes_SpaceTime_Spatial(cube1, cube2, operator = null, swapOperands = false)
+    val tupleToKey: ((SpaceTimeKey, MultibandTile)) => TemporalKey = (p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey
+    val mergedTimes: Array[TemporalKey] = merged.map(tupleToKey).collect
+    assertEquals(2, mergedTimes.size)
+    import scala.collection.JavaConversions._
+    for (item <- merged.toJavaRDD.collect) {
+      assertEquals(4, item._2.bandCount)
+      val month: Int = item._1.temporalKey.time.getMonthValue
+      if (month == 1) {
+        assertEquals(2, item._2.band(0).get(0, 0))
+        assertEquals(3, item._2.band(1).get(0, 0))
+        assertEquals(-2147483648, item._2.band(2).get(0, 0))
+        assertEquals(5, item._2.band(2).get(80, 0))
+        assertEquals(-2147483648, item._2.band(3).get(0, 0))
+        assertEquals(8, item._2.band(3).get(80, 0))
+      }
+      else {
+        if (month == 2) {
+          assertEquals(2, item._2.band(0).get(0, 1))
+          assertEquals(3, item._2.band(1).get(0, 1))
+          assertEquals(-2147483648, item._2.band(2).get(0, 0))
+          assertEquals(5, item._2.band(2).get(80, 0))
+          assertEquals(-2147483648, item._2.band(3).get(0, 0))
+          assertEquals(8, item._2.band(3).get(80, 0))
+        }
+      }
+    }
+  }
+
+
 
   @Test def testMergeCubeFullOverlapNoOp(): Unit = {
     val band1: ByteArrayTile = ByteArrayTile.fill(1.toByte, 256, 256)
