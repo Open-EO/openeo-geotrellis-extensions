@@ -977,7 +977,16 @@ class OpenEOProcesses extends Serializable {
     val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,ResampleMethods.NearestNeighbor,rightCube.partitioner.orNull)._2
     checkMetadataCompatible(leftCube.metadata,resampled.metadata)
 
-    val resampledSpaceTime = leftCube.cartesian(resampled).filter(a => a._1._1.spatialKey == a._2._1).map(a => (a._1._1, a._2._2))
+    val distinctTemporalKeys = findPartitionerKeys(leftCube) match {
+      case Some(array: Array[SpaceTimeKey]) => sc.parallelize(array.map(spaceTimeKey => spaceTimeKey.temporalKey))
+      case None => leftCube.map(a => a._1.temporalKey).distinct()
+    }
+
+    val resampledSpaceTime = distinctTemporalKeys
+      .cartesian(resampled)
+      .map {
+        case (temporalKey, (spatialKey, tile)) => (SpaceTimeKey(spatialKey, temporalKey), tile)
+      }
     val resampledSpaceTimeCube = MultibandTileLayerRDD[SpaceTimeKey](resampledSpaceTime, leftCube.metadata)
 
     if (swapOperands) {
