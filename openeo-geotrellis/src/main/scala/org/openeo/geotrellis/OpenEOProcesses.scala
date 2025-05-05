@@ -730,6 +730,17 @@ class OpenEOProcesses extends Serializable {
       else if(leftPart.index == rightPart.index && (leftPart.index == ByTileSpatialPartitioner || leftPart.index.isInstanceOf[ByTileSpacetimePartitioner])) {
         leftPart
       }
+      else if( rightPart.index.isInstanceOf[ByTileSpacetimePartitioner] && leftPart.index.isInstanceOf[ByTileSpacetimePartitioner]) {
+        val rightKeys = rightPart.index.asInstanceOf[SpatialKeysProvider].spatialKeys
+        val leftKeys = leftPart.index.asInstanceOf[SpatialKeysProvider].spatialKeys
+        if(rightKeys.isDefined && leftKeys.isDefined) {
+          val newIndex: PartitionerIndex[K] = new ByTileSpacetimePartitioner(Some((rightKeys.get ++ leftKeys.get).distinct.sorted)).asInstanceOf[PartitionerIndex[K]]
+          SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
+        }else{
+          val newIndex: PartitionerIndex[K] = new ByTileSpacetimePartitioner().asInstanceOf[PartitionerIndex[K]]
+          SpacePartitioner[K](kb)(implicitly,implicitly,newIndex)
+        }
+      }
       else if(leftPart.index == rightPart.index && leftPart.index.isInstanceOf[ConfigurableSpaceTimePartitioner] ) {
         leftPart
       }
