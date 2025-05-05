@@ -1,0 +1,12 @@
+{
+  "find": {
+    "process_id": "array_find",
+    "arguments": {
+      "data": {
+        "from_parameter": "data"
+      },
+      "value": 5
+    },
+    "result": true
+  }
+}

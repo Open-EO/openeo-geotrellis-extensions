@@ -1,0 +1,12 @@
+{
+  "contains": {
+    "process_id": "array_contains",
+    "arguments": {
+      "data": {
+        "from_parameter": "data"
+      },
+      "value": 5
+    },
+    "result": true
+  }
+}

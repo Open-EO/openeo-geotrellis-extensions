@@ -31,7 +31,6 @@ import java.time.temporal.ChronoUnit
 import java.time.{Duration, Instant}
 import java.util.concurrent.ConcurrentHashMap
 import scala.compat.java8.FunctionConverters._
-import scala.reflect.io.Directory
 
 
 package object geotrellis {
