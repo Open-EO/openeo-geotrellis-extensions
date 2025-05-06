@@ -63,7 +63,7 @@ object DatacubeSupport {
             }
             val x = maxSpatialResolution.width
             val y = maxSpatialResolution.height
-            if (p.getName == "utm" && x < 50 && y < 50) {
+            if (p.getName == "utm" && x < 100 && y < 100) {
               // TODO: This statement is mostly for Sentinel-2. Can we remove this if-branch?
               //this forces utm projection to always round to 10m, which is fine for sentinel-2, but perhaps not generally desired?
               Extent(x * Math.floor(reprojected.xmin / x), y * Math.floor(reprojected.ymin / y), x * Math.ceil(reprojected.xmax / x), y * Math.ceil(reprojected.ymax / y))
