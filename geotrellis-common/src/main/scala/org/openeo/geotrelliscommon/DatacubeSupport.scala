@@ -1,6 +1,6 @@
 package org.openeo.geotrelliscommon
 
-import geotrellis.layer.{Boundable, Bounds, FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutLevel, LayoutScheme, Metadata, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme}
+import geotrellis.layer.{Boundable, Bounds, FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutLevel, LayoutScheme, Metadata, SpaceTimeKey, SpatialComponent, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.CRS
 import geotrellis.raster.{CellSize, CellType, MultibandTile, NODATA, doubleNODATA, isData}
 import geotrellis.spark.join.SpatialJoin
@@ -305,5 +305,13 @@ object DatacubeSupport {
       })
     }
     filtered
+  }
+
+  def maybePartitionerIndex[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): Option[PartitionerIndex[K]] = {
+    if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[K]]) {
+      Some(datacube.partitioner.get.asInstanceOf[SpacePartitioner[K]].index)
+    } else {
+      Option.empty[PartitionerIndex[K]]
+    }
   }
 }

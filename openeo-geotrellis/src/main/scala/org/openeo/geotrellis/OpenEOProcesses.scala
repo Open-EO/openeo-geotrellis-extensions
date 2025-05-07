@@ -27,6 +27,7 @@ import org.apache.spark.{Partitioner, SparkContext}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.{MaxIgnoreNoData, MinIgnoreNoData, OpenEOProcess, safeConvert}
 import org.openeo.geotrellis.focal._
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.ContextSeq
+import org.openeo.geotrelliscommon.DatacubeSupport.maybePartitionerIndex
 import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ByTileSpatialPartitioner, ConfigurableSpaceTimePartitioner, ConfigurableSpatialPartitionerReduceZ, DatacubeSupport, FFTConvolve, OpenEORasterCube, OpenEORasterCubeMetadata, SCLConvolutionFilter, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner, SparseSpatialPartitioner, SpatialKeysProvider}
 import org.slf4j.LoggerFactory
 
@@ -158,7 +159,7 @@ class OpenEOProcesses extends Serializable {
    * @return
    */
   def applyTimeDimension(datacube:MultibandTileLayerRDD[SpaceTimeKey], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any]):MultibandTileLayerRDD[SpaceTimeKey] = {
-    datacube.context.setCallSite(s"apply_dimension target='t' ")
+    datacube.context.setCallSite(s"apply_dimension target='t' ${maybePartitionerIndex(datacube)}")
     try{
       val rdd = transformTimeDimension[SpaceTimeKey](datacube, scriptBuilder, context)
       if(datacube.partitioner.isDefined) {
@@ -189,12 +190,7 @@ class OpenEOProcesses extends Serializable {
     }
 
   private def transformTimeDimension[KT](datacube: MultibandTileLayerRDD[SpaceTimeKey],applyToTimeseries: Iterable[(SpaceTimeKey, MultibandTile)] => Map[KT, MultibandTile],  reduce:Boolean ): RDD[(KT, MultibandTile)] = {
-    val index: Option[PartitionerIndex[SpaceTimeKey]] =
-      if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
-        Some(datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index)
-      } else {
-        None
-      }
+    val index: Option[PartitionerIndex[SpaceTimeKey]] = maybePartitionerIndex(datacube)
     logger.info(s"Applying callback on time dimension of cube with partitioner: ${datacube.partitioner.getOrElse("no partitioner")} - index: ${index.getOrElse("no index")} and metadata ${datacube.metadata}")
     val rdd: RDD[(SpaceTimeKey, MultibandTile)] =
       if (index.isDefined && (index.get.isInstanceOf[SparseSpaceOnlyPartitioner] || index.get.isInstanceOf[ByTileSpacetimePartitioner] )) {
@@ -238,9 +234,7 @@ class OpenEOProcesses extends Serializable {
       tileSize = 128//right value here depends on how many bands we're going to create, but can be a high number
     }
 
-    val index = if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
-      datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
-    }
+    val index = maybePartitionerIndex(datacube)
     SparkContext.getOrCreate().setCallSite(s"apply_dimension target='bands' TileSize: $tileSize Input index: $index ")
 
     val retiled =
@@ -460,10 +454,11 @@ class OpenEOProcesses extends Serializable {
     return aggregateTemporal(datacube, intervals, labels, scriptBuilder, context,true)
   }
   def aggregateTemporal(datacube:MultibandTileLayerRDD[SpaceTimeKey], intervals:java.lang.Iterable[String],labels:java.lang.Iterable[String], scriptBuilder:OpenEOProcessScriptBuilder,context: java.util.Map[String,Any], reduce:Boolean ) :MultibandTileLayerRDD[SpaceTimeKey] = {
+    val incomingIndex: Option[PartitionerIndex[SpaceTimeKey]] = maybePartitionerIndex(datacube)
     if(reduce) {
-      datacube.sparkContext.setCallSite(s"aggregate_temporal $intervals")
+      datacube.sparkContext.setCallSite(s"aggregate_temporal ${incomingIndex}  ${intervals.toString.slice(0,100)}...")
     }else{
-      datacube.sparkContext.setCallSite(s"apply_neighborhood over time intervals")
+      datacube.sparkContext.setCallSite(s"apply_neighborhood over time intervals on ${incomingIndex}")
     }
     val timePeriods: Seq[Iterable[Instant]] = JavaConverters.iterableAsScalaIterableConverter(intervals).asScala.map(s => Instant.parse(s)).grouped(2).toList
     val labelsDates = labels.asScala.map(ZonedDateTime.parse(_))
@@ -486,16 +481,16 @@ class OpenEOProcesses extends Serializable {
 
     val index: PartitionerIndex[SpaceTimeKey] =
       if(keys.isDefined) {
-        if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] &&  datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[ByTileSpacetimePartitioner]) {
-          datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+        if (incomingIndex.get.isInstanceOf[ByTileSpacetimePartitioner]) {
+          incomingIndex.get
         }else{
           new SparseSpaceTimePartitioner(theNewKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4,Some(theNewKeys))
         }
       }else{
-        if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
-          val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
-          if (index.isInstanceOf[SparseSpaceOnlyPartitioner] || index.isInstanceOf[ByTileSpacetimePartitioner]) {
-            index//a space only partitioner does not care about time, so can be reused as-is
+        if (incomingIndex.isDefined) {
+
+          if (incomingIndex.get.isInstanceOf[SparseSpaceOnlyPartitioner] || incomingIndex.get.isInstanceOf[ByTileSpacetimePartitioner]) {
+            incomingIndex.get//a space only partitioner does not care about time, so can be reused as-is
           } else {
             SpaceTimeByMonthPartitioner
           }
@@ -508,7 +503,7 @@ class OpenEOProcesses extends Serializable {
     val minKey = allKeys.reduce((a,b)=>SpaceTimeKey.Boundable.minBound(a,b))
     val maxKey = allKeys.reduce((a,b)=>SpaceTimeKey.Boundable.maxBound(a,b))
     val newBounds = new KeyBounds(minKey,maxKey)
-    logger.info(s"aggregate_temporal results in ${allPossibleSpacetime.size} keys, using partitioner index: ${index} with bounds ${newBounds}" )
+    logger.info(s"aggregate_temporal on ${incomingIndex} results in ${allPossibleSpacetime.size} keys, using partitioner index: ${index} with bounds ${newBounds}" )
     val partitioner: SpacePartitioner[SpaceTimeKey] = SpacePartitioner[SpaceTimeKey](newBounds)(implicitly,implicitly, index)
 
 
