@@ -19,7 +19,7 @@ import java.net.URI
  */
 
 class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
-  @transient lazy val swiftEndpoint = new URI(sys.env.getOrElse("SWIFT_URL", "https://s3.waw2-1.cloudferro.com"))
+  @transient lazy val swiftEndpoint = new URI(sys.env.getOrElse("SWIFT_URL", "https://s3.waw3-1.cloudferro.com"))
   @transient lazy val s3Endpoint = sys.env.getOrElse("AWS_S3_ENDPOINT", null)
   @transient lazy val s3Https = sys.env.getOrElse("AWS_HTTPS","NO").toUpperCase.equals("YES")
 
@@ -44,7 +44,11 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
           CreoS3Utils.getCreoS3Client(Region.of("waw3-1"))
         } else if (s3Uri.getBucket.toLowerCase().startsWith("hr-vpp-products-") || s3Uri.getBucket.toLowerCase() == "topography") {
           CreoS3Utils.getCreoS3Client(Region.of("waw3-1"))
-        } else s3Client(Region.of("RegionOne"), swiftEndpoint)
+        } else if (swiftEndpoint.toString.contains("waw4-1")) {
+          //Hack while transitioning from single region to multi region setup
+          s3Client(Region.of("waw3-1"), new URI("https://s3.waw3-1.cloudferro.com"))
+        }
+        else s3Client(Region.of("RegionOne"), swiftEndpoint)
       else s3Client(bucketRegion(s3Uri.getBucket))
 
     rangeReader(uri, theClient)
