@@ -312,9 +312,9 @@ class OpenEOProcesses extends Serializable {
     groupedOnTime
   }
 
-  def findPartitionerSpatialKeys(datacube: MultibandTileLayerRDD[SpaceTimeKey]): Option[Array[SpatialKey]] = {
+  def findPartitionerSpatialKeys[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): Option[Array[SpatialKey]] = {
     val keys: Option[Array[SpatialKey]] = if (datacube.partitioner.isDefined && (datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] || datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpatialKey]])) {
-      val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+      val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[K]].index
       index match {
         case value: SpatialKeysProvider =>
           value.spatialKeys
@@ -923,6 +923,7 @@ class OpenEOProcesses extends Serializable {
       logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
       (0,data)
     }else{
+      logger.info(s"resample_cube_spatial: input cube: ${this.cubeStatistics(data)}")
       //construct a partitioner that is compatible with data cube
       val targetPartitioner =
       if(target.partitioner.isDefined && target.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
@@ -962,9 +963,11 @@ class OpenEOProcesses extends Serializable {
       logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
       (0,data)
     }else if(partitioner==null) {
+      logger.info(s"resample_cube_spatial: input cube: ${this.cubeStatistics(data)}")
       val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, crs, Right(layout), 16, method, new SpacePartitioner(data.metadata.bounds))
       filterNegativeSpatialKeys(reprojected)
     }else{
+      logger.info(s"resample_cube_spatial: input cube: ${this.cubeStatistics(data)}")
       val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, crs, Right(layout), 16, method, partitioner)
       filterNegativeSpatialKeys(reprojected)
     }
@@ -1320,6 +1323,39 @@ class OpenEOProcesses extends Serializable {
 
   def mergeTiles(tiles: MultibandTileLayerRDD[SpaceTimeKey]): MultibandTileLayerRDD[SpaceTimeKey] = {
     ContextRDD(tiles.groupByKey().mapValues { iter => iter.reduce { _ merge _ } }, tiles.metadata)
+  }
+
+  def cubeStatistics(cube: Object): util.Map[String,Any] = {
+    cube match {
+      case rdd1 if cube.asInstanceOf[MultibandTileLayerRDD[SpatialKey]].metadata.bounds.get.maxKey.isInstanceOf[SpatialKey] =>
+        cubeStatisticsGeneric(rdd1.asInstanceOf[MultibandTileLayerRDD[SpatialKey]])
+      case rdd2 if cube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey] =>
+        cubeStatisticsGeneric(rdd2.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]])
+      case _ => throw new IllegalArgumentException(s"Unsupported cube type for statistics: ${cube}")
+    }
+  }
+
+  def cubeStatisticsGeneric[K: SpatialComponent: ClassTag](cube: MultibandTileLayerRDD[K]): util.Map[String,Any] = {
+    val bandCount = maybeBandCount(cube).getOrElse(-1)
+    val keyCount: Int =
+    if(cube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]) {
+      findPartitionerKeys(cube).map(_.length).getOrElse(-1)
+    }else{
+      findPartitionerSpatialKeys(cube).map(_.length).getOrElse(-1)
+    }
+    val estimatedSize =
+      if(keyCount >=0 && bandCount >=0)
+        cube.metadata.cellType.bits * cube.metadata.layout.tileLayout.tileSize * keyCount * bandCount / (8*1024*1024)
+      else -1
+
+    Map(
+      "partition_count" -> cube.partitions.length,
+      "partitioner_index" -> maybePartitionerIndex(cube),
+      "key_count" -> keyCount,
+      "spatial_key_count" -> findPartitionerSpatialKeys(cube).map(_.length).getOrElse(-1),
+      "band_count" -> bandCount,
+      "size_estimate_mb" -> estimatedSize
+    ).asJava
   }
 }
 
