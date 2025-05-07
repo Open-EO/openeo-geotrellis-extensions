@@ -3,6 +3,7 @@ package org.openeo.geotrellis
 import geotrellis.store.s3.AmazonS3URI
 import geotrellis.store.s3.util.{S3RangeReader, S3RangeReaderProvider}
 import org.openeo.geotrellis.creo.CreoS3Utils
+import org.openeo.workspace.WorkspaceRepository
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 
@@ -28,8 +29,12 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
     val isCloudFerro = s3Endpoint != null &&
       (s3Endpoint.toLowerCase.contains("cloudferro") || s3Endpoint.toLowerCase.endsWith(".dataspace.copernicus.eu"))
 
+    val maybeWorkspace = WorkspaceRepository.get().getWorkspaceByBucket(s3Uri.getBucket)
     val theClient: S3Client =
-      if (isCloudFerro)
+
+      if(maybeWorkspace.isDefined && maybeWorkspace.get.bucketEndpoint.isDefined) {
+        s3Client(Region.of(maybeWorkspace.get.bucketRegion), URI.create(maybeWorkspace.get.bucketEndpoint.get))
+      }else if(isCloudFerro)
         if (s3Uri.getBucket.toLowerCase().equals("eodata") || s3Uri.getBucket.toLowerCase().equals("hrvpp")) {
           var uri = new URI(s3Endpoint)
           if(uri.getScheme == null) {
