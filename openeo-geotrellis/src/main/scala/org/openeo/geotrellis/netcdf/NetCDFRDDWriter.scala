@@ -94,6 +94,13 @@ object NetCDFRDDWriter {
     saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, bandsMetadata, zLevel)
   }
 
+  def saveSingleNetCDFSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
+                               path: String,
+                               options:NetCDFOptions,
+                             ): java.util.List[String] = {
+    saveSingleNetCDFSpatial(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull,options.zLevel)
+  }
+
   def saveSingleNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                   path: String,
                   bandNames: ArrayList[String],
@@ -104,6 +111,13 @@ object NetCDFRDDWriter {
                  ): java.util.List[String] = {
 
     saveSingleNetCDFGeneric(rdd,path,bandNames, dimensionNames, attributes, bandsMetadata, zLevel)
+  }
+
+  def saveSingleNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                       path: String,
+                       options:NetCDFOptions,
+                      ): java.util.List[String] = {
+    saveSingleNetCDF(rdd, path, options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull,options.zLevel)
   }
 
   def saveSingleNetCDFGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], path:String, options:NetCDFOptions): java.util.List[String] = {
@@ -367,6 +381,17 @@ object NetCDFRDDWriter {
     groupByFeatureAndWriteToNetCDF(rdd, features, path, bandNames, dimensionNames, attributes, bandsMetadata, filenamePrefix)
   }
 
+  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                  path: String,
+                  polygons:ProjectedPolygons,
+                  sampleNames: ArrayList[String],
+                  options:NetCDFOptions,
+                  filenamePrefix: Option[String],
+                 ): java.util.List[(String, Extent)] = {
+    if (options.bandNames.isEmpty) logger.error("Couldn't find bandNames in options. It cannot be empty")
+    saveSamples(rdd, path, polygons, sampleNames, options.bandNames.get, options.dimensionNames.orNull, options.attributes.orNull, options.bandsMetadata.orNull,filenamePrefix)
+  }
+
   def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
                   path: String,
                   polygons:ProjectedPolygons,
@@ -380,6 +405,17 @@ object NetCDFRDDWriter {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
     val features = sampleNames.asScala.toList.zip(reprojected.polygons.map(_.extent))
     groupByFeatureAndWriteToNetCDFSpatial(rdd,  features,path,bandNames,dimensionNames,attributes, bandsMetadata, filenamePrefix)
+  }
+
+  def saveSamplesSpatial(rdd: MultibandTileLayerRDD[SpatialKey],
+                         path: String,
+                         polygons:ProjectedPolygons,
+                         sampleNames: ArrayList[String],
+                         options:NetCDFOptions,
+                         filenamePrefix: Option[String],
+                        ): java.util.List[(String, Extent)] = {
+    if (options.bandNames.isEmpty) logger.error("Couldn't find bandNames in options. It cannot be empty")
+    saveSamplesSpatial(rdd,path,polygons,sampleNames,options.bandNames.get,options.dimensionNames.orNull,options.attributes.orNull,options.bandsMetadata.orNull,filenamePrefix)
   }
 
   private def groupByFeatureAndWriteToNetCDF(rdd: MultibandTileLayerRDD[SpaceTimeKey], features: Seq[(String, Geometry)],
