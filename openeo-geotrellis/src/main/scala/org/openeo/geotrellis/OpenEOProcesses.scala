@@ -951,7 +951,13 @@ class OpenEOProcesses extends Serializable {
       }else{
         target.partitioner
       }
-      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, target.metadata.crs, Right(target.metadata.layout), 16, method, targetPartitioner)
+
+      var bufferSize = 16
+      if(method == NearestNeighbor && target.metadata.crs == data.metadata.crs && target.metadata.cellSize.resolution < data.metadata.cellSize.resolution) {
+        //bufferSize 0 is cheaper, but can only be used under strict conditions, the current selection is rather strict to be safe, potentially can be relaxed
+        bufferSize = 0
+      }
+      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, target.metadata.crs, Right(target.metadata.layout), bufferSize, method, targetPartitioner)
       filterNegativeSpatialKeys(reprojected)
     }
   }
