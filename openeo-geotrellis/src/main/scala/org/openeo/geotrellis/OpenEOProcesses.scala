@@ -486,7 +486,11 @@ class OpenEOProcesses extends Serializable {
 
     val index: PartitionerIndex[SpaceTimeKey] =
       if(keys.isDefined) {
-        new SparseSpaceTimePartitioner(theNewKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4,Some(theNewKeys))
+        if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]] &&  datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[ByTileSpacetimePartitioner]) {
+          datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+        }else{
+          new SparseSpaceTimePartitioner(theNewKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4,Some(theNewKeys))
+        }
       }else{
         if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]]) {
           val index = datacube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
