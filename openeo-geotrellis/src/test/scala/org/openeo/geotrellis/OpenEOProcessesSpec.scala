@@ -138,7 +138,8 @@ object OpenEOProcessesSpec {
   def aggregateTemporalTestParams(): java.util.stream.Stream[Arguments] = {
     val pixelTypes = PixelType.values()
     val p1 = new ByTileSpacetimePartitioner()
-    pixelTypes.flatMap(pt => Seq( arguments(pt, null),arguments(pt, p1))).toStream.asJava.stream()
+    val p2 = new ByTileSpacetimePartitioner(Some(Array(SpatialKey(0,0),SpatialKey(1,1))))
+    pixelTypes.flatMap(pt => Seq( arguments(pt, null),arguments(pt, p1),arguments(pt, p2))).toStream.asJava.stream()
 
   }
 }
