@@ -46,7 +46,7 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
           CreoS3Utils.getCreoS3Client(Region.of("waw3-1"))
         } else if (swiftEndpoint.toString.contains("waw4-1")) {
           //Hack while transitioning from single region to multi region setup
-          s3Client(Region.of("waw3-1"), new URI("https://s3.waw3-1.cloudferro.com"))
+          CreoS3Utils.getCreoS3Client(Region.of("waw3-1"))
         }
         else s3Client(Region.of("RegionOne"), swiftEndpoint)
       else s3Client(bucketRegion(s3Uri.getBucket))

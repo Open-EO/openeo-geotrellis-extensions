@@ -49,7 +49,7 @@ object CreoS3Utils {
 
   def getCreoS3Client(region: Region = cloudFerroRegion): S3Client = {
     val endpointURI = if (region != cloudFerroRegion) this.getCFEndpoin(region) else URI.create(sys.env("SWIFT_URL"))
-    val credProvider = if (region == Region.of("waw3-1")) credentialsProviderWAW31 else credentialsProvider
+    val credProvider = if (region.toString.contains("waw")) credentialsProviderWAW else credentialsProvider
     S3Client.builder()
       .credentialsProvider(credProvider)
       .serviceConfiguration(S3Configuration.builder().checksumValidationEnabled(false).build())
@@ -72,7 +72,8 @@ object CreoS3Utils {
     credentialsProvider
   }
 
-  private def credentialsProviderWAW31 = {
+  private def credentialsProviderWAW = {
+    //EC2 credentials in CFC are usable across regions
     val s3AccessKeyId = sys.env.getOrElse("WAW31_ACCESS_KEY_ID", "")
     val s3SecretKey = sys.env.getOrElse("WAW31_SECRET_ACCESS_KEY", "")
     val credentialsProvider = StaticCredentialsProvider.create(AwsBasicCredentials.create(s3AccessKeyId, s3SecretKey))
