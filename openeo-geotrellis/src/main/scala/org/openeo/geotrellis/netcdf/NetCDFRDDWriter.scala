@@ -502,6 +502,7 @@ object NetCDFRDDWriter {
         logger.info(s"Writing ${name} with dates ${dates}.")
         val extent = sorted.head._2.extent
         try{
+          setupAssetMetadata(rdd.metadata,sorted.map(_._2),dates=dates, bandNames,addBandsStats = addBandsStatistics)
           (writeToDisk(sorted.map(_._2), dates, filePath, bandNames, crs, dimensionNames, attributes, bandsMetadata),extent)
         }catch {
           case t: IOException => {
@@ -591,6 +592,7 @@ object NetCDFRDDWriter {
         val sample: Raster[MultibandTile] = stitchAndCropTiles(tiles, extent, layout)
 
         try{
+          setupAssetMetadata(rdd.metadata,Seq(sample),dates=null, bandNames, addBandsStatistics)
           (writeToDisk(Seq(sample), dates = null, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata),
             extent.extent)
         } catch {
@@ -884,6 +886,99 @@ object NetCDFRDDWriter {
     if (bandsMetadata.containsKey("OFFSET")) netcdfFile.addVariableAttribute(variableName,"add_offset",bandsMetadata.get("OFFSET").toFloat)
   }
 
+  private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], rasters: Seq[Raster[MultibandTile]], dates: Seq[ZonedDateTime], bandNames: ArrayList[String], addBandsStats: Boolean = false): Map[String, Any] = {
+    var assetMetadata = if (dates != null) {
+      Map("time" -> Map("type" -> "temporal", "extent" -> Array(dates.head, dates.last), "values" -> dates.toArray))
+    } else Map[String,Any]()
+    val nodata: Option[AnyVal] = metadata.cellType match {
+      case BitCellType => None
+      case ByteCellType => None
+      case UByteCellType => None
+      case ShortCellType => None
+      case UShortCellType => None
+      case IntCellType => None
+      case FloatCellType => None
+      case DoubleCellType => None
+      case ByteConstantNoDataCellType => Some(byteNODATA)
+      case UByteConstantNoDataCellType => Some(ubyteNODATA)
+      case ShortConstantNoDataCellType => Some(shortNODATA)
+      case UShortConstantNoDataCellType => Some(ushortNODATA)
+      case IntConstantNoDataCellType => Some(NODATA)
+      case FloatConstantNoDataCellType => Some(floatNODATA.toFloat)
+      case DoubleConstantNoDataCellType => Some(doubleNODATA.toDouble)
+      case ct: ByteUserDefinedNoDataCellType => Some(ct.noDataValue)
+      case ct: UByteUserDefinedNoDataCellType => Some(ct.widenedNoData.asInt)
+      case ct: ShortUserDefinedNoDataCellType => Some(ct.noDataValue)
+      case ct: UShortUserDefinedNoDataCellType => Some(ct.widenedNoData.asInt.toShort)
+      case ct: IntUserDefinedNoDataCellType => Some(ct.widenedNoData.asInt)
+      case ct: FloatUserDefinedNoDataCellType => Some(ct.noDataValue)
+      case ct: DoubleUserDefinedNoDataCellType => Some(ct.noDataValue)
+    }
+    val bands = if (addBandsStats) {
+      addBandsStatistics(rasters, bandNames, nodata)
+    } else {
+      var map = Array[Map[String,Any]]()
+      bandNames.forEach(name => map = map :+ Map("name" -> name))
+      map
+    }
+    assetMetadata += ("raster:bands" -> bands,
+      "proj:bbox" -> Array(metadata.extent.xmin, metadata.extent.ymin, metadata.extent.xmax, metadata.extent.ymax),
+      "proj:epsg" -> metadata.crs.epsgCode.getOrElse(metadata.crs.proj4jCrs.getName),
+      "proj:shape" -> Array(metadata.layout.tileRows, metadata.layout.tileCols),
+    )
+    assetMetadata
+  }
+
+  private def addBandsStatistics(rasters:Seq[Raster[MultibandTile]], bandNames: ArrayList[String], noData:Option[AnyVal]): Array[Map[String,Any]] = {
+    var stats = Array[Map[String,Any]]()
+    for (bandId <- 0 until bandNames.size()){
+      val rasterBand = rasters.map(raster => {
+        raster.tile.band(bandId).toArrayTile() match {
+          case t: BitArrayTile =>
+            val a = t.convert(UByteUserDefinedNoDataCellType(255.byteValue())).asInstanceOf[UByteArrayTile].array
+            if (noData.isDefined) a.filter(x => !x.equals(noData.get)) else a
+          case t: ByteArrayTile =>
+            if (noData.isDefined) t.array.filter(x => !x.equals(noData.get)) else t.array
+          case t: UByteArrayTile =>
+            if (noData.isDefined) t.array.filter(x => !x.equals(noData.get)) else t.array
+          case t: ShortArrayTile =>
+            if (noData.isDefined) t.array.filter(x => !x.equals(noData.get)) else t.array
+          case t: UShortArrayTile =>
+            if (noData.isDefined) t.array.filter(x => !x.equals(noData.get)) else t.array
+          case t: IntArrayTile =>
+            if (noData.isDefined) t.array.filter(x => !x.equals(noData.get)) else t.array
+          case t: FloatArrayTile =>
+            if (noData.isDefined) t.array.filter(x => !x.equals(noData.get)) else t.array
+          case t: DoubleArrayTile =>
+            if (noData.isDefined) t.array.filter(x => !x.equals(noData.get)) else t.array
+          case _ => throw new Exception
+        }
+      })
+      val statistics = rasterBand.head match {
+        case _:Array[Byte] =>
+          val bandArray = rasterBand.foldLeft(Array[Byte]())((array, y) => Array.concat(array, y.asInstanceOf[Array[Byte]]))
+          ByteArrayTile(bandArray,1,bandArray.length).statistics
+        case _:Array[Short] =>
+          val bandArray = rasterBand.foldLeft(Array[Short]())((array, y) => Array.concat(array, y.asInstanceOf[Array[Short]]))
+          ShortArrayTile(bandArray,1,bandArray.length).statistics
+        case _:Array[Int] =>
+          val bandArray = rasterBand.foldLeft(Array[Int]())((array, y) => Array.concat(array, y.asInstanceOf[Array[Int]]))
+          IntArrayTile(bandArray,1,bandArray.length).statistics
+        case _:Array[Float] =>
+          val bandArray = rasterBand.foldLeft(Array[Float]())((array, y) => Array.concat(array, y.asInstanceOf[Array[Float]]))
+          FloatArrayTile(bandArray,1,bandArray.length).statistics
+        case _:Array[Double] =>
+          val bandArray = rasterBand.foldLeft(Array[Double]())((array, y) => Array.concat(array, y.asInstanceOf[Array[Double]]))
+          DoubleArrayTile(bandArray,1,bandArray.length).statistics
+      }
+      if (statistics.isDefined) {
+        val bandStats: Map[String, Number] = Map("mean" -> statistics.get.mean, "max" -> statistics.get.zmax, "min" -> statistics.get.zmin, "stddev" -> statistics.get.stddev)
+        val rasterBands = Map("name" -> bandNames.get(bandId), "statistics" -> bandStats)
+        stats +:= rasterBands
+      }
+    }
+    stats
+  }
 
   @throws[IOException]
   @throws[InvalidRangeException]
