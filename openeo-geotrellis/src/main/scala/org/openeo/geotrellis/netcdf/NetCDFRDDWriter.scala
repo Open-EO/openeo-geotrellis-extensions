@@ -888,7 +888,7 @@ object NetCDFRDDWriter {
   }
 
   private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], dates: List[Int], bandNames: ArrayList[String], addBandsStats: Boolean, statistics:scala.collection.mutable.Map[String,scala.collection.mutable.Map[String, AnyVal]]): Map[String, Any] = {
-    var assetMetadata = if (dates != null) {
+    var assetMetadata = if (dates.nonEmpty) {
       Map("time" -> Map("type" -> "temporal", "extent" -> Array(dates.head, dates.last), "values" -> dates.toArray))
     } else Map[String,Any]()
     val bands = if (addBandsStats) {
