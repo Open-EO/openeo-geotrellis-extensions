@@ -196,7 +196,7 @@ object NetCDFRDDWriter {
       }else{
         path
       }
-
+    var statistics = scala.collection.mutable.Map[String,scala.collection.mutable.Map[String, AnyVal]]() // bandName -> (statName -> values)
     var netcdfFile: NetcdfFileWriter = null
     for(tuple <- cachedRDD.toLocalIterator){
 
@@ -256,6 +256,7 @@ object NetCDFRDDWriter {
               tile = tile.crop(rasterExtent.cols-gridExtent.colMin,rasterExtent.rows-gridExtent.rowMin,raster.CropOptions(force=true))
               logger.debug(s"Cropping output tile to avoid going out of variable (${variable}) bounds ${gridExtent}.")
             }
+            if (addBandsStatistics) bandsStatistics(tile,statistics,variable)
             try{
               writeTile(variable, origin, tile, netcdfFile)
             }catch {
@@ -272,7 +273,7 @@ object NetCDFRDDWriter {
         netcdfFile.flush()
       }
     }
-
+    val assets = setupAssetMetadata(rdd.metadata,dates,bandNames,addBandsStatistics,statistics)
     if(dates.nonEmpty) {
       val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
       writeTime(timeDimName, netcdfFile, dates)
@@ -501,8 +502,8 @@ object NetCDFRDDWriter {
         val dates = sorted.map(  t=> ZonedDateTime.ofInstant(t._1, ZoneOffset.UTC))
         logger.info(s"Writing ${name} with dates ${dates}.")
         val extent = sorted.head._2.extent
+        val assets = setupAssetMetadata(rdd.metadata,sorted.map(_._2),dates=dates, bandNames,addBandsStats = addBandsStatistics)
         try{
-          setupAssetMetadata(rdd.metadata,sorted.map(_._2),dates=dates, bandNames,addBandsStats = addBandsStatistics)
           (writeToDisk(sorted.map(_._2), dates, filePath, bandNames, crs, dimensionNames, attributes, bandsMetadata),extent)
         }catch {
           case t: IOException => {
@@ -886,7 +887,28 @@ object NetCDFRDDWriter {
     if (bandsMetadata.containsKey("OFFSET")) netcdfFile.addVariableAttribute(variableName,"add_offset",bandsMetadata.get("OFFSET").toFloat)
   }
 
-  private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], rasters: Seq[Raster[MultibandTile]], dates: Seq[ZonedDateTime], bandNames: ArrayList[String], addBandsStats: Boolean = false): Map[String, Any] = {
+  private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], dates: List[Int], bandNames: ArrayList[String], addBandsStats: Boolean, statistics:scala.collection.mutable.Map[String,scala.collection.mutable.Map[String, AnyVal]]): Map[String, Any] = {
+    var assetMetadata = if (dates != null) {
+      Map("time" -> Map("type" -> "temporal", "extent" -> Array(dates.head, dates.last), "values" -> dates.toArray))
+    } else Map[String,Any]()
+    val bands = if (addBandsStats) {
+      var map = Array[Map[String,Any]]()
+      statistics.foreach {case (name,stats) => map = map:+ Map("name" -> name, "statistics" -> Map("max" -> stats.get("max"),"min"-> stats.get("min"), "mean"-> stats.get("mean")))}
+      map
+    } else {
+      var map = Array[Map[String,Any]]()
+      bandNames.forEach(name => map = map :+ Map("name" -> name))
+      map
+    }
+    assetMetadata += ("raster:bands" -> bands,
+      "proj:bbox" -> Array(metadata.extent.xmin, metadata.extent.ymin, metadata.extent.xmax, metadata.extent.ymax),
+      "proj:epsg" -> metadata.crs.epsgCode.getOrElse(metadata.crs.proj4jCrs.getName),
+      "proj:shape" -> Array(metadata.layout.tileRows, metadata.layout.tileCols),
+    )
+    assetMetadata
+  }
+
+  private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], rasters: Seq[Raster[MultibandTile]], dates: Seq[ZonedDateTime], bandNames: ArrayList[String], addBandsStats: Boolean): Map[String, Any] = {
     var assetMetadata = if (dates != null) {
       Map("time" -> Map("type" -> "temporal", "extent" -> Array(dates.head, dates.last), "values" -> dates.toArray))
     } else Map[String,Any]()
@@ -915,7 +937,7 @@ object NetCDFRDDWriter {
       case ct: DoubleUserDefinedNoDataCellType => Some(ct.noDataValue)
     }
     val bands = if (addBandsStats) {
-      addBandsStatistics(rasters, bandNames, nodata)
+      bandsStatistics(rasters, bandNames, nodata)
     } else {
       var map = Array[Map[String,Any]]()
       bandNames.forEach(name => map = map :+ Map("name" -> name))
@@ -929,7 +951,42 @@ object NetCDFRDDWriter {
     assetMetadata
   }
 
-  private def addBandsStatistics(rasters:Seq[Raster[MultibandTile]], bandNames: ArrayList[String], noData:Option[AnyVal]): Array[Map[String,Any]] = {
+  private def bandsStatistics(tile:Tile, statistics: collection.mutable.Map[String, scala.collection.mutable.Map[String, AnyVal]], bandName:String):collection.mutable.Map[String, scala.collection.mutable.Map[String, AnyVal]] = {
+    val statsTile = tile.statistics
+    if (statsTile.isDefined) {
+      if (statistics.contains(bandName)) {
+        val isHigher = statistics.get(bandName).get("max") match {
+          case max: Double => statsTile.get.zmax > max
+          case max: Float => statsTile.get.zmax > max
+          case max: Long => statsTile.get.zmax > max
+          case max: Int => statsTile.get.zmax > max
+          case max: Short => statsTile.get.zmax > max
+        }
+        if (isHigher) {
+          statistics.getOrElse(bandName, collection.mutable.Map()).update("max", statsTile.get.zmax)
+        }
+        val islower = statistics.get(bandName).get("min") match {
+          case min: Double => statsTile.get.zmin < min
+          case min: Float => statsTile.get.zmin < min
+          case min: Long => statsTile.get.zmin < min
+          case min: Int => statsTile.get.zmin < min
+          case min: Short => statsTile.get.zmin < min
+        }
+        if (islower) {
+          statistics.getOrElse(bandName, collection.mutable.Map()).update("min", statsTile.get.zmin)
+        }
+        val tempMean = statistics.get(bandName).get("mean").asInstanceOf[Double]
+        val tempCells = statistics.get(bandName).get("cells").asInstanceOf[Long]
+        val gcd = BigInt(statsTile.get.dataCells).gcd(BigInt(tempCells))
+        val newMean = ((tempCells / gcd).toInt * tempMean + (statsTile.get.dataCells / gcd).toInt * statsTile.get.mean) / ((tempCells / gcd).toInt + (statsTile.get.dataCells / gcd).toInt)
+        statistics.getOrElse(bandName, collection.mutable.Map()).update("mean", newMean)
+        statistics.getOrElse(bandName, collection.mutable.Map()).update("cells", tempCells + statsTile.get.dataCells)
+      } else statistics += (bandName -> collection.mutable.Map("max" -> statsTile.get.zmax, "min" -> statsTile.get.zmin, "mean" -> statsTile.get.mean, "cells" -> statsTile.get.dataCells))
+    }
+    statistics
+  }
+
+  private def bandsStatistics(rasters:Seq[Raster[MultibandTile]], bandNames: ArrayList[String], noData:Option[AnyVal]): Array[Map[String,Any]] = {
     var stats = Array[Map[String,Any]]()
     for (bandId <- 0 until bandNames.size()){
       val rasterBand = rasters.map(raster => {
