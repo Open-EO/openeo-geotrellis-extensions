@@ -972,11 +972,54 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
-  def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator:String, swapOperands:Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+  def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator: String, swapOperands: Boolean): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    mergeCubes_SpaceTime_Spatial(leftCube, rightCube, operator, swapOperands, outerJoin = false)
+  }
+
+  def mergeCubes_SpaceTime_Spatial(leftCube: MultibandTileLayerRDD[SpaceTimeKey], rightCube: MultibandTileLayerRDD[SpatialKey], operator: String, swapOperands: Boolean, outerJoin: Boolean = false): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
     leftCube.sparkContext.setCallSite("merge_cubes - (x,y,bands,t) + (x,y,bands)")
     val resampled = resampleCubeSpatial_spatial(rightCube,leftCube.metadata.crs,leftCube.metadata.layout,ResampleMethods.NearestNeighbor,rightCube.partitioner.orNull)._2
     checkMetadataCompatible(leftCube.metadata,resampled.metadata)
+    if (outerJoin) {
+      mergeCubes_SpaceTime_Spatial_OuterJoin(leftCube, operator, swapOperands, resampled)
+    } else {
+      mergeCubes_SpaceTime_Spatial_InnerJoin(leftCube, operator, swapOperands, resampled)
+    }
+  }
 
+  private def mergeCubes_SpaceTime_Spatial_InnerJoin(leftCube: MultibandTileLayerRDD[SpaceTimeKey], operator: String, swapOperands: Boolean, resampled: MultibandTileLayerRDD[SpatialKey]): ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = {
+    val rdd = new SpatialToSpacetimeJoinRdd[MultibandTile](leftCube, resampled)
+    if (operator == null) {
+      val outputCellType = leftCube.metadata.cellType.union(resampled.metadata.cellType)
+      //TODO: what if extent of joined cube is larger than left cube?
+      val updatedMetadata = leftCube.metadata.copy(cellType = outputCellType)
+      return new ContextRDD(rdd.mapValues({ case (l, r) =>
+        if (swapOperands) {
+          MultibandTile(r.bands.map(t => safeConvert(t, updatedMetadata.cellType)) ++ l.bands.map(t => safeConvert(t, updatedMetadata.cellType)))
+        } else {
+          MultibandTile(l.bands.map(t => safeConvert(t, updatedMetadata.cellType)) ++ r.bands.map(t => safeConvert(t, updatedMetadata.cellType)))
+        }
+      }), updatedMetadata)
+    } else {
+      val binaryOp = tileBinaryOp.getOrElse(operator, throw new UnsupportedOperationException("The operator: %s is not supported when merging cubes. Supported operators are: %s".format(operator, tileBinaryOp.keys.toString())))
+      return new ContextRDD(rdd.mapValues({ case (l, r) =>
+        if (l.bandCount != r.bandCount) {
+          if (l.bandCount == 0) {
+            r
+          } else if (r.bandCount == 0) {
+            l
+          }
+          throw new IllegalArgumentException("Merging cubes with an overlap resolver is only supported when band counts are the same. I got: %d and %d".format(l.bandCount, r.bandCount))
+        } else {
+          MultibandTile(l.bands.zip(r.bands).map(t => binaryOp.apply(if (swapOperands) {
+            Seq(t._2, t._1)
+          } else Seq(t._1, t._2))))
+        }
+      }), leftCube.metadata)
+    }
+  }
+
+  private def mergeCubes_SpaceTime_Spatial_OuterJoin(leftCube: MultibandTileLayerRDD[SpaceTimeKey], operator: String, swapOperands: Boolean, resampled: MultibandTileLayerRDD[SpatialKey]) = {
     val distinctTemporalKeys = findPartitionerKeys(leftCube) match {
       case Some(array: Array[SpaceTimeKey]) => sc.parallelize(array.map(spaceTimeKey => spaceTimeKey.temporalKey))
       case None => leftCube.map(a => a._1.temporalKey).distinct()
@@ -996,7 +1039,7 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
-  def checkMetadataCompatible[_](left:TileLayerMetadata[_],right:TileLayerMetadata[_]): Unit = {
+  def checkMetadataCompatible[_](left:TileLayerMetadata[_], right:TileLayerMetadata[_]): Unit = {
     if(!left.layout.equals(right.layout)) {
       throw new IllegalArgumentException(s"merge_cubes: Merging cubes with incompatible layout, please use resample_cube_spatial to align layouts. LayoutLeft: ${left.layout} Layout (right): ${right.layout}")
     }

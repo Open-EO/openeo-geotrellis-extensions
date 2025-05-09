@@ -367,7 +367,7 @@ class MergeCubesSpec {
     val cube1: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = LayerFixtures.buildSpatioTemporalDataCube(util.Arrays.asList(band1, band2), Seq("2020-01-01T00:00:00Z", "2020-02-02T00:00:00Z"))
     val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(MergeCubesSpec.sc,MultibandTile(band3,band4),cube1.metadata.tileLayout)
     val processes = new OpenEOProcesses()
-    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1,cube1.metadata.bounds.get),cube1.metadata), cube2, "subtract",true)
+    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1, cube1.metadata.bounds.get), cube1.metadata), cube2, "subtract", swapOperands=true, outerJoin=true)
     val mergedTimes: Array[TemporalKey] = merged.map((p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey).collect
     assertEquals(2, mergedTimes.size)
     import scala.collection.JavaConversions._
@@ -397,7 +397,7 @@ class MergeCubesSpec {
     val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(MergeCubesSpec.sc,MultibandTile(band3,band4),cube1.metadata.tileLayout)
 
     val processes = new OpenEOProcesses()
-    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1,cube1.metadata.bounds.get),cube1.metadata), cube2, "subtract",true)
+    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1, cube1.metadata.bounds.get), cube1.metadata), cube2, "subtract", true, true)
     val mergedTimes: Array[TemporalKey] = merged.map((p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey).collect
     assertEquals(2, mergedTimes.size)
     import scala.collection.JavaConversions._
@@ -428,7 +428,7 @@ class MergeCubesSpec {
     val cube2: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(MergeCubesSpec.sc,MultibandTile(band3,band4),cube1.metadata.tileLayout)
 
     val processes = new OpenEOProcesses()
-    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1,cube1.metadata.bounds.get),cube1.metadata), cube2, operator = null, swapOperands = false)
+    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = processes.mergeCubes_SpaceTime_Spatial(ContextRDD(processes.applySpacePartitioner(cube1, cube1.metadata.bounds.get), cube1.metadata), cube2, operator = null, swapOperands = false, true)
     val tupleToKey: ((SpaceTimeKey, MultibandTile)) => TemporalKey = (p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey
     val mergedTimes: Array[TemporalKey] = merged.map(tupleToKey).collect
     assertEquals(2, mergedTimes.size)
@@ -467,7 +467,7 @@ class MergeCubesSpec {
     val processes = new OpenEOProcesses()
     val cube1 = ContextRDD(processes.applySpacePartitioner(cube1Raw, cube1Raw.metadata.bounds.get), cube1Raw.metadata)
     val cube2  = ContextRDD(cube2Raw.filter(k => k._1.col != k._1.row), cube2Raw.metadata)
-    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = processes.mergeCubes_SpaceTime_Spatial(cube1, cube2, operator = null, swapOperands = false)
+    val merged: ContextRDD[SpaceTimeKey, MultibandTile, TileLayerMetadata[SpaceTimeKey]] = processes.mergeCubes_SpaceTime_Spatial(cube1, cube2, operator = null, swapOperands = false, outerJoin = true)
     val tupleToKey: ((SpaceTimeKey, MultibandTile)) => TemporalKey = (p: Tuple2[SpaceTimeKey, MultibandTile]) => p._1.temporalKey
     val mergedTimes: Array[TemporalKey] = merged.map(tupleToKey).collect
     assertEquals(2, mergedTimes.size)
