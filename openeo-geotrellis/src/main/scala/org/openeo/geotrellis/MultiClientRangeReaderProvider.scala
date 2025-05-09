@@ -44,6 +44,9 @@ class MultiClientRangeReaderProvider extends S3RangeReaderProvider {
           CreoS3Utils.getCreoS3Client(Region.of("waw3-1"))
         } else if (s3Uri.getBucket.toLowerCase().startsWith("hr-vpp-products-") || s3Uri.getBucket.toLowerCase() == "topography") {
           CreoS3Utils.getCreoS3Client(Region.of("waw3-1"))
+        } else if (s3Uri.getBucket.toLowerCase().contains("waw4-1")) {
+          //For moved buckets we should still go to waw4-1
+          CreoS3Utils.getCreoS3Client(Region.of("waw4-1"))
         } else if (swiftEndpoint.toString.contains("waw4-1") || swiftEndpoint.toString.contains("otc")) {
           //Hack while transitioning from single region to multi region setup
           CreoS3Utils.getCreoS3Client(Region.of("waw3-1"))
