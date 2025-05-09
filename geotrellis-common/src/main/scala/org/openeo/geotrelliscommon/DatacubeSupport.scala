@@ -321,8 +321,6 @@ object DatacubeSupport {
     val maxRecordsPerPartition: Double = math.min(maxPartitionSizeInMb / tileSizeInMb, 1024)
     var indexReduction = math.max(math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt - 1, 1)
 
-    println(indexReduction)
-
     def computeIndices(cartesian: Seq[SpaceTimeKey], indexReduction: Int): (Array[BigInt], Int) = {
 
       val allIndices = cartesian.map(k => SparseSpaceTimePartitioner.toIndex(k, indexReduction = indexReduction))
@@ -330,7 +328,6 @@ object DatacubeSupport {
       val indices = counts.keys.toArray
       (indices, counts.values.max)
     }
-
 
     var indices: Array[BigInt] = null
     var maxCount = 0

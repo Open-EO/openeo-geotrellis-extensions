@@ -5,7 +5,7 @@ import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, TileLayout, UByteConstantNoDataCellType}
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
 import jp.ne.opt.chronoscala.Imports.richZonedDateTime
-import org.junit.Assert.assertEquals
+import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.{Ignore, Test}
 import software.amazon.awssdk.services.s3.model.ParquetInput
 
@@ -90,10 +90,11 @@ class DataCubeSupportSpec {
 
     var (indexReduction: Int, indices: Array[BigInt]) = DatacubeSupport.optimalReductionForSparseKeys(cartesian, maxPartitionSizeInMb, tileSize, cellTypeBits, nrBands)
 
-    println(indexReduction)
-    println(indices.length)
-    println(cartesian.length)
-
+    assertEquals(19, indexReduction)
+    assertEquals(288,indices.length)
+    for (i <- 1 until indices.length) {
+      assertTrue(indices(i) > indices(i-1))
+    }
 
   }
 
