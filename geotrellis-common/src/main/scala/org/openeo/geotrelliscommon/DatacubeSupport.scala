@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory
 
 import java.time.ZonedDateTime
 import scala.reflect.ClassTag
+import scala.util.control.Breaks.{break, breakable}
 
 object DatacubeSupport {
 
@@ -172,8 +173,8 @@ object DatacubeSupport {
               val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
               new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
             } else {
-              val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
-              new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
+              val (indexReduction, indices) =  optimalReductionForSparseKeys(keys,64,metadata.tileCols,metadata.cellType.bits, 6)
+              new SparseSpaceTimePartitioner(indices, indexReduction, theKeys = Some(keys))
             }
           } else {
             if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
@@ -313,5 +314,41 @@ object DatacubeSupport {
     } else {
       Option.empty[PartitionerIndex[K]]
     }
+  }
+
+  def optimalReductionForSparseKeys(sparseKeys: Seq[SpaceTimeKey], maxPartitionSizeInMb: Int, tileSize: Int, cellTypeBits: Int, bandCount: Int) = {
+    val tileSizeInMb: Double = (bandCount * tileSize * cellTypeBits).toDouble / (8 * 1024 * 1024)
+    val maxRecordsPerPartition: Double = math.min(maxPartitionSizeInMb / tileSizeInMb, 1024)
+    var indexReduction = math.max(math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt - 1, 1)
+
+    println(indexReduction)
+
+    def computeIndices(cartesian: Seq[SpaceTimeKey], indexReduction: Int): (Array[BigInt], Int) = {
+
+      val allIndices = cartesian.map(k => SparseSpaceTimePartitioner.toIndex(k, indexReduction = indexReduction))
+      val counts = allIndices.groupBy(identity).mapValues(_.size)
+      val indices = counts.keys.toArray
+      (indices, counts.values.max)
+    }
+
+
+    var indices: Array[BigInt] = null
+    var maxCount = 0
+
+    breakable {
+      while (true) {
+        indexReduction += 1
+        val (newIndices, newMaxCount) = computeIndices(sparseKeys, indexReduction)
+
+        if (newMaxCount < maxRecordsPerPartition) {
+          indices = newIndices
+          maxCount = newMaxCount
+        } else {
+          indexReduction -= 1
+          break
+        }
+      }
+    }
+    (indexReduction, indices.sorted)
   }
 }

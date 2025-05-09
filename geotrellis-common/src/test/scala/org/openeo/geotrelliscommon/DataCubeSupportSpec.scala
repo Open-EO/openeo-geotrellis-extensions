@@ -1,13 +1,17 @@
 package org.openeo.geotrelliscommon
 
-import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, SpaceTimeKey, TileLayerMetadata}
+import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, SpaceTimeKey, SpatialKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.{CellSize, CellType, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, TileLayout, UByteConstantNoDataCellType}
 import geotrellis.vector.{Extent, MultiPolygon, ProjectedExtent}
+import jp.ne.opt.chronoscala.Imports.richZonedDateTime
 import org.junit.Assert.assertEquals
 import org.junit.{Ignore, Test}
+import software.amazon.awssdk.services.s3.model.ParquetInput
 
-import java.time.{LocalDate, ZoneId}
+import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import scala.util.Random
+import scala.util.control.Breaks.{break, breakable}
 
 class DataCubeSupportSpec {
 
@@ -56,4 +60,42 @@ class DataCubeSupportSpec {
     assertEquals(0,newMetadata.bounds.get.minKey.col)
 
   }
+
+  @Test
+  def optimizeReduction(): Unit = {
+
+    var startDate: ZonedDateTime = LocalDate.parse("2020-01-02").atStartOfDay(ZoneId.systemDefault())
+
+    val dates: Seq[ZonedDateTime] = for {
+      i <- 0 to 30
+    } yield startDate.plusDays(i * 10)
+
+
+    val bounds = new KeyBounds[SpatialKey](
+      SpatialKey(0, 0),
+      SpatialKey(403, 751)
+    )
+    val randomKeys: Seq[SpatialKey] = (1 to 4000).map { _ =>
+      val col = Random.nextFloat() * bounds.maxKey.col
+      val row = Random.nextFloat() * bounds.maxKey.row
+      SpatialKey(col.toInt, row.toInt)
+    }.distinct
+
+    val cartesian: Seq[SpaceTimeKey] = dates.flatMap(date => randomKeys.map(k => SpaceTimeKey(k.col, k.row, date)))
+
+    val nrBands = 2
+    val tileSize = 128
+    val cellTypeBits = 32
+    val maxPartitionSizeInMb = 10
+
+    var (indexReduction: Int, indices: Array[BigInt]) = DatacubeSupport.optimalReductionForSparseKeys(cartesian, maxPartitionSizeInMb, tileSize, cellTypeBits, nrBands)
+
+    println(indexReduction)
+    println(indices.length)
+    println(cartesian.length)
+
+
+  }
+
+
 }
