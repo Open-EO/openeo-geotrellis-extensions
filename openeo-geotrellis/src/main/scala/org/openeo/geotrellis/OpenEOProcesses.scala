@@ -1339,7 +1339,7 @@ class OpenEOProcesses extends Serializable {
     val bandCount = maybeBandCount(cube).getOrElse(-1)
     val keyCount: Int =
     if(cube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]].metadata.bounds.get.maxKey.isInstanceOf[SpaceTimeKey]) {
-      findPartitionerKeys(cube).map(_.length).getOrElse(-1)
+      findPartitionerKeys(cube.asInstanceOf[MultibandTileLayerRDD[SpaceTimeKey]]).map(_.length).getOrElse(-1)
     }else{
       findPartitionerSpatialKeys(cube).map(_.length).getOrElse(-1)
     }
