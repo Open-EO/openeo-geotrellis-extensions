@@ -84,10 +84,22 @@ package object geotiff {
   def saveStitched(rdd: SRDD, path: String, cropBounds: Map[String, Double], compression: Compression): Extent =
     saveStitched(rdd, path, Some(cropBounds), None, compression)
 
+  def saveStitched(rdd:SRDD, path: String, cropBound:Map[String, Double], compression:Compression, options: GTiffOptions ):Extent =
+    saveStitched(rdd, path, Some(cropBound), None, compression)
+
+  def saveStitched(rdd:SRDD, path: String, compression:Compression, options: GTiffOptions ):Extent =
+    saveStitched(rdd, path, None, None, compression)
+
   def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, compression: Compression): java.util.List[(String, Extent)] =
     saveStitchedTileGrid(rdd, path, tileGrid, None, None, compression)
 
   def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, cropBounds: Map[String, Double], compression: Compression): java.util.List[(String, Extent)] =
+    saveStitchedTileGrid(rdd, path, tileGrid, Some(cropBounds), None, compression)
+
+  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, compression: Compression, options:GTiffOptions): java.util.List[(String, Extent)] =
+    saveStitchedTileGrid(rdd, path, tileGrid, None, None, compression)
+
+  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, cropBounds: Map[String, Double], compression: Compression, options:GTiffOptions): java.util.List[(String, Extent)] =
     saveStitchedTileGrid(rdd, path, tileGrid, Some(cropBounds), None, compression)
 
   def saveRDDTiled(rdd:MultibandTileLayerRDD[SpaceTimeKey], path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]):Unit = {
@@ -936,6 +948,15 @@ package object geotiff {
                   polygons: ProjectedPolygons,
                   sampleNames: JList[String],
                   compression: Compression,
+                  options: GTiffOptions,
+                 ): JList[(String, String, Extent)] =
+    saveSamples(rdd, path, polygons, sampleNames, compression, Some(options.filenamePrefix))
+
+  def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                  path: String,
+                  polygons: ProjectedPolygons,
+                  sampleNames: JList[String],
+                  compression: Compression,
                  ): JList[(String, String, Extent)] =
     saveSamples(rdd, path, polygons, sampleNames, compression, None)
 
@@ -965,6 +986,14 @@ package object geotiff {
                                    compression: Compression,
                                   ): java.util.List[(String, String, Extent)] =
     geotrellis.geotiff.saveStitchedTileGridTemporal(rdd, path, tileGrid, Option.empty, Option.empty, compression)
+
+  def saveStitchedTileGridTemporal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
+                                   path: String,
+                                   tileGrid: String,
+                                   compression: Compression,
+                                   options: GTiffOptions,
+                                  ): java.util.List[(String, String, Extent)] =
+    geotrellis.geotiff.saveStitchedTileGridTemporal(rdd, path, tileGrid, Option.empty, Option.empty, compression, Some(options.filenamePrefix))
 
   def saveStitchedTileGridTemporal(rdd: MultibandTileLayerRDD[SpaceTimeKey],
                                    path: String,
