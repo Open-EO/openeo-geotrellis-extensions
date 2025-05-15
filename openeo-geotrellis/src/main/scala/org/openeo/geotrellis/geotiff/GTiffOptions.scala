@@ -14,9 +14,10 @@ class GTiffOptions extends Serializable {
   var colorMap: Option[ColorMap] = Option.empty
   var filepathPerBand: Option[util.ArrayList[String]] = Option.empty
   var tags: Tags = Tags(SortedMap()(Ordering.by(_.toLowerCase)), List())
-  var overviews:String = "OFF"
+  var overviews:String = "AUTO"
   var resampleMethod:String = "near"
   var separateAssetPerBand = false
+  var tileSize:Int = 256
 
   def setFilenamePrefix(name: String): Unit = {
     assertSafeToUseInFilePath(name)
@@ -50,6 +51,10 @@ class GTiffOptions extends Serializable {
 
   def setResampleMethod(method:String): Unit = {
     resampleMethod = method
+  }
+
+  def setTileSize(size:Int): Unit = {
+    tileSize = size
   }
 
   /**
