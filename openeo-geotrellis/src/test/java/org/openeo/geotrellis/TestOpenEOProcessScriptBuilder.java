@@ -1492,8 +1492,10 @@ public class TestOpenEOProcessScriptBuilder {
 
         Seq<Tile> result = transformation.apply(JavaConverters.asScalaBuffer(Arrays.asList(nodataTile,tile0,tile1,tile2,tile3)));
 
+        UShortUserDefinedNoDataCellType expectedCelltype = UShortUserDefinedNoDataCellType.apply((short) 65535);
+        assertEquals(expectedCelltype,builder.resultingDataType());
         assertTrue(result.apply(0).isNoDataTile());
-        assertEquals(UShortUserDefinedNoDataCellType.apply((short)65535),result.apply(1).cellType());
+        assertEquals(expectedCelltype,result.apply(1).cellType());
 
         assertEquals(100,result.apply(1).get(0,0));
         assertEquals(300,result.apply(2).get(0,0));
