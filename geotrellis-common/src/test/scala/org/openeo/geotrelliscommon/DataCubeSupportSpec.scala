@@ -99,4 +99,50 @@ class DataCubeSupportSpec {
   }
 
 
+  @Test
+  def optimizeReductionWithDenseArea(): Unit = {
+
+    var startDate: ZonedDateTime = LocalDate.parse("2020-01-02").atStartOfDay(ZoneId.systemDefault())
+
+    val dates: Seq[ZonedDateTime] = for {
+      i <- 0 to 30
+    } yield startDate.plusDays(i * 10)
+
+
+    val bounds = new KeyBounds[SpatialKey](
+      SpatialKey(0, 0),
+      SpatialKey(403, 751)
+    )
+    val randomKeys: Seq[SpatialKey] = (1 to 4000).map { _ =>
+      val col = Random.nextFloat() * bounds.maxKey.col
+      val row = Random.nextFloat() * bounds.maxKey.row
+      SpatialKey(col.toInt, row.toInt)
+    }.distinct
+
+    // mix in an area with dense keys
+    val denseKeys:Seq[SpatialKey] =
+      for {
+        i <- 10 to 20
+        j <- 301 to 320
+      } yield SpatialKey(i,j)
+
+    val cartesian: Seq[SpaceTimeKey] = dates.flatMap(date => (randomKeys ++ denseKeys).distinct.map(k => SpaceTimeKey(k.col, k.row, date)))
+
+    val nrBands = 2
+    val tileSize = 128
+    val cellTypeBits = 32
+    val maxPartitionSizeInMb = 10
+
+    var (indexReduction: Int, indices: Array[BigInt]) = DatacubeSupport.optimalReductionForSparseKeys(cartesian, maxPartitionSizeInMb, tileSize, cellTypeBits, nrBands)
+
+    assertTrue(indexReduction <=17)
+    assertTrue(indexReduction > 15)
+    assertEquals(1848,indices.length)
+    for (i <- 1 until indices.length) {
+      assertTrue(indices(i) > indices(i-1))
+    }
+
+  }
+
+
 }
