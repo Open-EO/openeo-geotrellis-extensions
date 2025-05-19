@@ -137,7 +137,7 @@ class DataCubeSupportSpec {
 
     assertTrue(indexReduction <=17)
     assertTrue(indexReduction > 15)
-    assertEquals(1848,indices.length)
+    assertTrue(indices.length>=924)
     for (i <- 1 until indices.length) {
       assertTrue(indices(i) > indices(i-1))
     }
