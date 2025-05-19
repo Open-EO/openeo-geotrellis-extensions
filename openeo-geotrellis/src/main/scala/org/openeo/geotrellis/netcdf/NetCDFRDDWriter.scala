@@ -11,7 +11,7 @@ import geotrellis.spark.store.hadoop.KeyPartitioner
 import geotrellis.store.s3.AmazonS3URI
 import geotrellis.util._
 import geotrellis.vector._
-import org.apache.spark.SparkContext
+import org.apache.spark.{SparkContext, TaskContext}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
@@ -408,7 +408,12 @@ object NetCDFRDDWriter {
           (writeToDisk(sorted.map(_._2), dates, filePath, bandNames, crs, dimensionNames, attributes, bandsMetadata),extent)
         }catch {
           case t: IOException => {
-            (handleSampleWriteError(t, name, outputAsPath),extent)
+            if(TaskContext.get().attemptNumber()<2){
+              logger.warn(s"save_result netCDF: Failed to write sample: $name error: ${t.getMessage}", t)
+              throw t
+            }else{
+              (handleSampleWriteError(t, name, outputAsPath),extent)
+            }
           }
           case t: Throwable =>  throw t
         }
@@ -503,7 +508,7 @@ object NetCDFRDDWriter {
   }
 
   private def handleSampleWriteError(t: IOException, sampleName: String, outputAsPath: Path) = {
-    logger.error("Failed to write sample: " + sampleName, t)
+    logger.error(s"save_result netCDF: Failed to write sample: $sampleName error: ${t.getMessage}", t)
     val theFile = outputAsPath.toFile
     if (theFile.exists()) {
       val failedPath = outputAsPath.resolveSibling(outputAsPath.getFileName().toString + "_FAILED")
