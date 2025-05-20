@@ -67,7 +67,7 @@ object DatacubeSupport {
             if (p.getName == "utm" && x < 100 && y < 100) {
               // TODO: This statement is mostly for Sentinel-2. Can we remove this if-branch?
               //this forces utm projection to always round to 10m, which is fine for sentinel-2, but perhaps not generally desired?
-              Extent(x * Math.floor(reprojected.xmin / x), y * Math.floor(reprojected.ymin / y), x * Math.ceil(reprojected.xmax / x), y * Math.ceil(reprojected.ymax / y))
+              Extent(x * Math.floor(reprojected.xmin / x), y * Math.floor(reprojected.ymin / y), x * Math.floor(reprojected.xmax / x), y * Math.floor(reprojected.ymax / y))
             } else {
               if (reprojected.width < maxSpatialResolution.width || reprojected.height < maxSpatialResolution.height) {
                 Extent(reprojected.xmin, reprojected.ymin, Math.max(reprojected.xmax, reprojected.xmin + maxSpatialResolution.width), Math.max(reprojected.ymax, reprojected.ymin + maxSpatialResolution.height))
