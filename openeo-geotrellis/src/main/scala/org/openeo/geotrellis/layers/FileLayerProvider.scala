@@ -1321,8 +1321,10 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       }
 
       val layoutDefinition = metadata.layout
-      val resample = math.abs(layoutDefinition.cellSize.resolution - maxSpatialResolution.resolution) >= 0.0000001 * layoutDefinition.cellSize.resolution
-      val reduction = if (resample) 1 else 5
+      val resample2 = math.abs(layoutDefinition.cellSize.resolution - maxSpatialResolution.resolution) >= 0.0000001 * layoutDefinition.cellSize.resolution
+      logger.info(s"(###) Resample: ${resample2} based on cell size ${layoutDefinition.cellSize.resolution} and maxSpatialResolution ${maxSpatialResolution.resolution} vs layoutDefinition.cellSize.resolution ${layoutDefinition.cellSize.resolution}")
+      val reduction = if (resample2) 1 else 5
+      val resample = true  // TODO remove this
       //resampling is still needed in case bounding boxes are not aligned with pixels
       // https://github.com/Open-EO/openeo-geotrellis-extensions/issues/69
       val theResampleMethod = datacubeParams.map(_.resampleMethod).getOrElse(NearestNeighbor)
