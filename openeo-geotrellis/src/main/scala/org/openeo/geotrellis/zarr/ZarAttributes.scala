@@ -49,11 +49,7 @@ class dataAttribute[K: SpatialComponent: Boundable : ClassTag](metadata: TileLay
 
   private def addDimensions(attributes: java.util.HashMap[String,Object]): java.util.HashMap[String,Object] = {
     val tempDim = if (hasTemp) {"time" +: dimensions} else dimensions
-    val bandDim = if (zarrOptions.numberBands > 1) {
-      attributes.put("COLOR_INTERPRETATION", zarrOptions.bandNames)
-      "Band" +: tempDim
-    } else tempDim
-    attributes.put("_ARRAY_DIMENSIONS", bandDim)
+    attributes.put("_ARRAY_DIMENSIONS", tempDim)
     attributes
   }
 
