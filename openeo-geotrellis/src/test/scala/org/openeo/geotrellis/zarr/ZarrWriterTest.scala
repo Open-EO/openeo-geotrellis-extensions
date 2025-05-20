@@ -50,15 +50,6 @@ class ZarrWriterTest {
   @(Rule @getter)
   val temporaryFolder = new TemporaryFolder
 
-  val allOverviewOptions = {
-    val opts = new GTiffOptions()
-    opts.setColorMap(ColorMaps.IGBP)
-    opts.addHeadTag("Copyright", "The unit test.")
-    opts.addBandTag(0, "BAND", "Band Name")
-    opts.overviews = "ALL"
-    opts
-  }
-
   @Test
   def testWriteSingleBandRDD(@TempDir tempDir: Path): Unit ={
     val layoutCols = 8
