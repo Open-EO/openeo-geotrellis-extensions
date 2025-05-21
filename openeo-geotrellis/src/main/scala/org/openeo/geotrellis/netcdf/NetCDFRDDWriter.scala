@@ -415,7 +415,10 @@ object NetCDFRDDWriter {
               (handleSampleWriteError(t, name, outputAsPath),extent)
             }
           }
-          case t: Throwable =>  throw t
+          case t: Throwable =>
+            logger.error(s"save_result netCDF: Failed to write sample: $name error: ${t.getMessage}", t)
+            throw t
+
         }
 
       }.collect()
