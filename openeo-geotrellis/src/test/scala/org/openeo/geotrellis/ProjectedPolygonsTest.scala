@@ -60,6 +60,17 @@ class ProjectedPolygonsTest {
     assertEquals(expectedArea, pp.areaInSquareMeters, delta) // https://github.com/locationtech/geotrellis/issues/3289
   }
 
+  @Test
+  def areaInSquareMetersUnclosedExterior(): Unit = {
+    // Gives an error with two squares. Other sets of squares extracted from the same parquet did not cause an error.
+    val pp = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/geojson/areaInSquareMetersUnclosedExterior.geojson").getPath)
+
+    val expectedArea = 666 // unknown
+    val delta = expectedArea * 0.01
+
+    assertEquals(expectedArea, pp.areaInSquareMeters, delta)
+  }
+
   def outlineEquals(a: MultiPolygon, b: MultiPolygon, threshold: Double): Boolean = {
     if (a.getNumGeometries != b.getNumGeometries) {
       return false
