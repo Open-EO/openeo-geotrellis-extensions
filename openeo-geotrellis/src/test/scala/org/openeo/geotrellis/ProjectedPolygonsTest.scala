@@ -62,10 +62,12 @@ class ProjectedPolygonsTest {
 
   @Test
   def areaInSquareMetersUnclosedExterior(): Unit = {
-    // Gives an error with two squares. Other sets of squares extracted from the same parquet did not cause an error.
+    // Source is in EPSG:32634. For calculating the area, it got first reprojected to another CRS using
+    // the bounding box of all polygons. This bounding box needed to be reprojected to LatLng first.
     val pp = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/geojson/areaInSquareMetersUnclosedExterior.geojson").getPath)
+    assertTrue(pp.getFlatMultiPolygon.isValid)
 
-    val expectedArea = 666 // unknown
+    val expectedArea = 819778.71
     val delta = expectedArea * 0.01
 
     assertEquals(expectedArea, pp.areaInSquareMeters, delta)
