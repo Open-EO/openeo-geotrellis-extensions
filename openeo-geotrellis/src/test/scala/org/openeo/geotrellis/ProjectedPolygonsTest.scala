@@ -61,6 +61,23 @@ class ProjectedPolygonsTest {
   }
 
   @Test
+  def areaInSquareMetersChangeStandardParallels(): Unit = {
+    // Drastically changing the bounding box with empty polygons changes the
+    // standard parallels used to calculate the area, but this has no significant influence on the calculations
+    val pp = ProjectedPolygons(MultiPolygon(
+      Extent(xmin = 4.0, ymin = 51.0, xmax = 5.0, ymax = 52.0).toPolygon(),
+      Extent(xmin = 1.0, ymin = 70.0, xmax = 1.0, ymax = 70.0).toPolygon(),
+      Extent(xmin = 170.0, ymin = -60.0, xmax = 170.0, ymax = -60.0).toPolygon(),
+    ), CRS.fromEpsgCode(4326))
+
+    // Same area as in the previous test:
+    val expectedArea = 7725459381.443416
+    val delta = expectedArea * 0.0001
+
+    assertEquals(expectedArea, pp.areaInSquareMeters, delta)
+  }
+
+  @Test
   def areaInSquareMetersUnclosedExterior(): Unit = {
     // Source is in EPSG:32634. For calculating the area, it got first reprojected to another CRS using
     // the bounding box of all polygons. This bounding box needed to be reprojected to LatLng first.
