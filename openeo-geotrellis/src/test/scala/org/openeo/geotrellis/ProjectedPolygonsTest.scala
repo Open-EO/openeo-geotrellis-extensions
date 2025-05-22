@@ -60,6 +60,36 @@ class ProjectedPolygonsTest {
     assertEquals(expectedArea, pp.areaInSquareMeters, delta) // https://github.com/locationtech/geotrellis/issues/3289
   }
 
+  @Test
+  def areaInSquareMetersChangeStandardParallels(): Unit = {
+    // Drastically changing the bounding box with empty polygons changes the
+    // standard parallels used to calculate the area, but this has no significant influence on the calculations
+    val pp = ProjectedPolygons(MultiPolygon(
+      Extent(xmin = 4.0, ymin = 51.0, xmax = 5.0, ymax = 52.0).toPolygon(),
+      Extent(xmin = 1.0, ymin = 70.0, xmax = 1.0, ymax = 70.0).toPolygon(),
+      Extent(xmin = 170.0, ymin = -60.0, xmax = 170.0, ymax = -60.0).toPolygon(),
+    ), CRS.fromEpsgCode(4326))
+
+    // Same area as in the previous test:
+    val expectedArea = 7725459381.443416
+    val delta = expectedArea * 0.0001
+
+    assertEquals(expectedArea, pp.areaInSquareMeters, delta)
+  }
+
+  @Test
+  def areaInSquareMetersUnclosedExterior(): Unit = {
+    // Source is in EPSG:32634. For calculating the area, it got first reprojected to another CRS using
+    // the bounding box of all polygons. This bounding box needed to be reprojected to LatLng first.
+    val pp = ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/geojson/areaInSquareMetersUnclosedExterior.geojson").getPath)
+    assertTrue(pp.getFlatMultiPolygon.isValid)
+
+    val expectedArea = 819778.71
+    val delta = expectedArea * 0.01
+
+    assertEquals(expectedArea, pp.areaInSquareMeters, delta)
+  }
+
   def outlineEquals(a: MultiPolygon, b: MultiPolygon, threshold: Double): Boolean = {
     if (a.getNumGeometries != b.getNumGeometries) {
       return false
