@@ -181,7 +181,7 @@ object ZarrWriter {
       val source = factory(dataType, chunk, band.toArray())
       val chunkFilename = ZarrUtils.createChunkFilename(index, ".")
       if (bandCount > 1) {
-        if (bandCount!= options.numberBands) throw new Exception(s"the expected number of band is ${options.numberBands}, but was $bandCount")
+        if (bandCount != options.numberBands) throw new Exception(s"save_result zarr: the expected number of band is ${options.numberBands}, but was $bandCount")
         val bandName = options.bandNames(nTiles)
         val store = new FileSystemStore(Paths.get(path + "/" + bandName))
         val chunkReaderWriter = ChunkReaderWriter.create(compressor, zarrType, byteOrder, chunk, fillValue.getOrElse(0), store)
@@ -202,11 +202,11 @@ object ZarrWriter {
 
   private def checkBandNames(bandNames: Array[String]):Unit = {
     for (bandName <- bandNames){
-      if (bandName == "Undefined") throw new IllegalArgumentException("Band names are not defined")
-      if (bandName == "") throw new IllegalArgumentException("Band names cannot be empty")
+      if (bandName == "Undefined") throw new IllegalArgumentException("save_result zarr: Band names are not defined")
+      if (bandName == "") throw new IllegalArgumentException("save_result zarr: Band names cannot be empty")
       for (character <- bandName) {
         if (!(character.isLetterOrDigit || character=='-' || character == '_'))
-          throw new IllegalArgumentException(s"Band names can only contain a-z, A-Z, 0-9, - or _, but had character $character")
+          throw new IllegalArgumentException(s"save_result zarr: Band names can only contain a-z, A-Z, 0-9, - or _, but had character $character")
       }
     }
   }
