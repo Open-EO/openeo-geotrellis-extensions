@@ -33,6 +33,12 @@ class DataCubeParameters extends Serializable {
    */
   var maxPartitionSize: Option[Int] = None
 
+  /**
+   * Whether to filter out MultibandTiles that are empty (i.e. all bands are NODATA),
+   * or to keep them as EmptyMultiBandTiles.
+   */
+  var retainNoDataTiles: Boolean = false
+
   override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube, $resampleMethod, $pixelBufferX, $pixelBufferY)"
 
   def setPartitionerIndexReduction(reduction:Int): Unit = partitionerIndexReduction = reduction
