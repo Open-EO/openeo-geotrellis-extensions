@@ -4,7 +4,7 @@ import better.files.File.apply
 import cats.data.NonEmptyList
 import geotrellis.layer.{CRSWorldExtent, FloatingLayoutScheme, SpaceTimeKey, SpatialKey, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.io.geotiff.GeoTiff
+import geotrellis.raster.io.geotiff.{GeoTiff, Tiled}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.raster.render.ColorMap.Options
 import geotrellis.raster.render.DoubleColorMap
@@ -383,10 +383,30 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     options.addBandTag(0, "DESCRIPTION", "B01")
     options.addBandTag(1, "DESCRIPTION", "B02")
     options.addBandTag(2, "DESCRIPTION", "B03")
+    options.setOverview("ALL")
+    options.setTileSize(128)
     val paths = saveRDD(filtered.withContext {
       _.repartition(layoutCols * layoutRows)
     }, 3, filename, formatOptions = options)
+    val expectedPaths = Set(
+      outDir + "/testA/A/B02.tiff",
+      outDir + "/testA/B01.tiff",
+      outDir + "/testB/B03.tiff",
+    )
+    assertEquals(expectedPaths, paths.asScala.toSet)
     assertEquals(3, paths.size())
+
+    for (path <- expectedPaths){
+      val tile = GeoTiff.readMultiband(path)
+      assertEquals(3,tile.overviews.size)
+      assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
+      assertEquals(512,tile.overviews(0).tile.cols)
+      assertEquals(256,tile.overviews(0).tile.rows)
+      assertEquals(256,tile.overviews(1).tile.cols)
+      assertEquals(128,tile.overviews(1).tile.rows)
+      assertEquals(128,tile.overviews(2).tile.cols)
+      assertEquals(64,tile.overviews(2).tile.rows)
+    }
 
     GeoTiff.readMultiband(outDir.resolve("testA/B01.tiff").toString).raster.tile
     GeoTiff.readMultiband(outDir.resolve("testA/A/B02.tiff").toString).raster.tile
@@ -560,6 +580,63 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     val ret = saveSamples(tileLayerRDD, outDir.toString, tiltedRectangle, sampleNames,
       DeflateCompression(BEST_COMPRESSION))
     assertTrue(ret.get(0)._2.contains("T"))
+  }
+
+  @Test
+  def testSaveSamplesWithOptions(@TempDir outDir: Path): Unit = {
+    val layoutCols = 8
+    val layoutRows = 4
+    val (imageTile: ByteArrayTile, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(layoutCols, layoutRows)
+
+    val date = ZonedDateTime.of(LocalDate.of(2023, 4, 5), MIDNIGHT, UTC)
+
+    val tileLayerRDD = TileLayerRDDBuilders
+      .createSpaceTimeTileLayerRDD(Seq((imageTile, date),(imageTile, date.plusDays(1)),(imageTile, date.plusDays(2))), TileLayout(layoutCols, layoutRows, 256, 256),
+        ByteConstantNoDataCellType)(WriteRDDToGeotiffTest.sc)
+      .withContext(_.mapValues(MultibandTile(_)))
+
+    val geometriesPath = getClass.getResource("/org/openeo/geotrellis/geotiff/ll_ur_polygon.geojson").getPath
+
+    // its extent differs substantially from its shape
+    val tiltedRectangle = ProjectedPolygons.fromVectorFile(geometriesPath)
+
+    val sampleNames = tiltedRectangle.polygons.indices
+      .map(_.toString + "-testName")
+      .asJava
+
+    val gtiffOptions = new GTiffOptions
+    gtiffOptions.setOverview("ALL")
+    gtiffOptions.setTileSize(128)
+
+
+    val tiles = saveSamples(tileLayerRDD, outDir + "/", tiltedRectangle, sampleNames,
+      DeflateCompression(BEST_COMPRESSION),gtiffOptions)
+
+    val expectedPaths = List(
+      outDir + "/openEO_2023-04-05Z_0-testName.tif",
+      outDir + "/openEO_2023-04-06Z_0-testName.tif",
+      outDir + "/openEO_2023-04-07Z_0-testName.tif",
+    )
+    val paths = tiles.asScala.map { case (path, _, _) => path }.toSet
+
+    for (path <- paths){
+      assertTrue(expectedPaths.contains(path))
+    }
+    assertEquals(3,paths.size)
+
+    for (path <- expectedPaths) {
+      val tile = GeoTiff.readMultiband(path)
+      assertEquals(3,tile.overviews.size)
+      assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
+      assertEquals(22,tile.overviews(0).tile.cols)
+      assertEquals(36,tile.overviews(0).tile.rows)
+      assertEquals(11,tile.overviews(1).tile.cols)
+      assertEquals(18,tile.overviews(1).tile.rows)
+      assertEquals(6,tile.overviews(2).tile.cols)
+      assertEquals(9,tile.overviews(2).tile.rows)
+    }
+
+    assertTrue(tiles.get(0)._2.contains("T"))
   }
 
   @Test

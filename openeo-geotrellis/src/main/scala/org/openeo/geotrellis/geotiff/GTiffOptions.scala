@@ -49,6 +49,10 @@ class GTiffOptions extends Serializable {
     colorMap = Some(new IndexedColorMap(colors.asScala))
   }
 
+  def setOverview(overview:String):Unit ={
+    overviews = overview
+  }
+
   def setResampleMethod(method:String): Unit = {
     resampleMethod = method
   }
