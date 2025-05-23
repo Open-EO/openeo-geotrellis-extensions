@@ -224,7 +224,7 @@ class PyramidFactory private (rasterSources: => Seq[(RasterSource, ZonedDateTime
       tiledLayoutSource.source.extent.interiorIntersects(tiledLayoutSource.layout.extent)
     })
     FileLayerProvider.readMultibandTileLayer(filteredSources, layerMetadata,
-      Array(MultiPolygon(toPolygon(theBoundingBox.extent))), theBoundingBox.crs, sc, retainNoDataTiles = false,
+      Array(MultiPolygon(toPolygon(theBoundingBox.extent))), theBoundingBox.crs, sc,
       datacubeParams = Some(params))
 
   }

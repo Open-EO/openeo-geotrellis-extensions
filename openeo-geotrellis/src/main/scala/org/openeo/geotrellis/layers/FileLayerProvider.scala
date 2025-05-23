@@ -345,9 +345,9 @@ object FileLayerProvider {
   def apply(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
             maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
             bandIndices: Seq[Int] = Seq(), correlationId: String = "", experimental: Boolean = false,
-            retainNoDataTiles: Boolean = false, maxSoftErrorsRatio: Double = 0.0): FileLayerProvider = new FileLayerProvider(
+            maxSoftErrorsRatio: Double = 0.0): FileLayerProvider = new FileLayerProvider(
     openSearch, openSearchCollectionId, openSearchLinkTitles, rootPath, maxSpatialResolution, pathDateExtractor,
-    attributeValues, layoutScheme, bandIndices, correlationId, experimental, retainNoDataTiles, maxSoftErrorsRatio,
+    attributeValues, layoutScheme, bandIndices, correlationId, experimental, maxSoftErrorsRatio,
     disambiguateConstructors = null
   )
 
@@ -394,13 +394,13 @@ object FileLayerProvider {
     tiledLayoutSourceRDD
   }
 
-  def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon], polygons_crs: CRS, sc: SparkContext, retainNoDataTiles: Boolean, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = None): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+  def readMultibandTileLayer(rasterSources: RDD[LayoutTileSource[SpaceTimeKey]], metadata: TileLayerMetadata[SpaceTimeKey], polygons: Array[MultiPolygon], polygons_crs: CRS, sc: SparkContext, cloudFilterStrategy: CloudFilterStrategy = NoCloudFilterStrategy, useSparsePartitioner: Boolean = true, datacubeParams : Option[DataCubeParameters] = None): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
     val polygonsRDD = sc.parallelize(polygons).map {
       _.reproject(polygons_crs, metadata.crs)
     }
     // The requested polygons dictate which SpatialKeys will be read from the source files/streams.
     var requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] = polygonsRDD.clipToGrid(metadata.layout).groupByKey()
-
+    val retainNoDataTiles = datacubeParams.exists(_.retainNoDataTiles)
     tileSourcesToDataCube(rasterSources, metadata, requiredSpatialKeys, sc, retainNoDataTiles, cloudFilterStrategy, useSparsePartitioner, datacubeParams)
   }
 
@@ -678,7 +678,19 @@ object FileLayerProvider {
       }
       MultibandTile(mergedBands.toSeq.sortBy(_._1).flatMap(_._2.get.bands))
 
-    } ).filter { case (_, tile) => retainNoDataTiles ||  !tile.bands.forall(_.isNoDataTile) }
+    } )
+    val withEmptyTiles = if (retainNoDataTiles) {
+      tiledRDD.map { case (key, tile) =>
+        if (tile.bands.forall(_.isNoDataTile)) {
+          (key, new EmptyMultibandTile(tile.cols, tile.rows, tile.cellType, tile.bandCount))
+        } else {
+          (key, tile)
+        }
+      }
+    } else {
+      tiledRDD
+    }
+    tiledRDD = withEmptyTiles.filter { case (_, tile) => retainNoDataTiles ||  !tile.bands.forall(_.isNoDataTile) }
 
     rasterRegionRDD.sparkContext.setCallSite("load_collection: apply mask pixel wise")
     tiledRDD = DatacubeSupport.applyDataMask(datacubeParams,tiledRDD,metadata, pixelwiseMasking = true)
@@ -708,24 +720,34 @@ object FileLayerProvider {
       rasterRegionRDD
         .groupByKey(partitioner)
         .mapPartitions(partitionIterator => {
-          var totalPixelsPartition = 0
-          val startTime = System.currentTimeMillis()
+          val loadedRDD = {
+            var totalPixelsPartition = 0
+            val startTime = System.currentTimeMillis()
 
-          val (loadedPartitions,partitionPixels) = loadPartition(partitionIterator, cloudFilterStrategy, totalChunksAcc, tracker,crs,layout )
-          totalPixelsPartition += partitionPixels
+            val (loadedPartitions, partitionPixels) = loadPartition(partitionIterator, cloudFilterStrategy, totalChunksAcc, tracker, crs, layout)
+            totalPixelsPartition += partitionPixels
 
-          val durationMillis = System.currentTimeMillis() - startTime
-          if (totalPixelsPartition > 0) {
-            val secondsPerChunk = (durationMillis / 1000.0) / (totalPixelsPartition / (256 * 256))
-            loadingTimeAcc.add(secondsPerChunk)
+            val durationMillis = System.currentTimeMillis() - startTime
+            if (totalPixelsPartition > 0) {
+              val secondsPerChunk = (durationMillis / 1000.0) / (totalPixelsPartition / (256 * 256))
+              loadingTimeAcc.add(secondsPerChunk)
+            }
+            loadedPartitions
           }
-          loadedPartitions
-
-        }
-          .filter { case (_, tile) => retainNoDataTiles || tile.isDefined && !tile.get.bands.forall(_.isNoDataTile) }
-          .map(t => (t._1,t._2.get)).iterator,
-          preservesPartitioning = true)
-
+          val withEmptyTiles = if (retainNoDataTiles) {
+            loadedRDD.map { case (key, tile) =>
+              if (tile.get.bands.forall(_.isNoDataTile)) {
+                (key, Some(new EmptyMultibandTile(tile.get.cols, tile.get.rows, tile.get.cellType, tile.get.bandCount)))
+              } else {
+                (key, tile)
+              }
+            }
+          } else {
+            loadedRDD
+          }
+          withEmptyTiles.filter { case (_, tile) => tile.isDefined && (retainNoDataTiles || !tile.get.bands.forall(_.isNoDataTile)) }
+            .map(t => (t._1, t._2.get)).iterator
+        }, preservesPartitioning = true)
     tiledRDD = DatacubeSupport.applyDataMask(datacubeParams,tiledRDD,metadata, pixelwiseMasking = true)
 
     val cRDD = ContextRDD(tiledRDD, metadata)
@@ -969,8 +991,7 @@ object FileLayerProvider {
 class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
                         maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any], layoutScheme: LayoutScheme,
                         bandIndices: Seq[Int], correlationId: String, experimental: Boolean,
-                        retainNoDataTiles: Boolean, maxSoftErrorsRatio: Double,
-                        disambiguateConstructors: Null) extends LayerProvider { // workaround for: constructors have the same type after erasure
+                        maxSoftErrorsRatio: Double, disambiguateConstructors: Null) extends LayerProvider { // workaround for: constructors have the same type after erasure
 
   import DatacubeSupport._
   import FileLayerProvider._
@@ -980,7 +1001,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   def this(openSearch: OpenSearchClient, openSearchCollectionId: String, openSearchLinkTitles: NonEmptyList[String], rootPath: String,
            maxSpatialResolution: CellSize, pathDateExtractor: PathDateExtractor, attributeValues: Map[String, Any] = Map(), layoutScheme: LayoutScheme = ZoomedLayoutScheme(WebMercator, 256),
            bandIds: Seq[Seq[Int]] = Seq(), correlationId: String = "", experimental: Boolean = false,
-           retainNoDataTiles: Boolean = false, maxSoftErrorsRatio: Double = 0.0) = this(openSearch, openSearchCollectionId,
+           maxSoftErrorsRatio: Double = 0.0) = this(openSearch, openSearchCollectionId,
            openSearchLinkTitles = NonEmptyList.fromListUnsafe(for {
              (title, bandIndices) <- openSearchLinkTitles.toList.zipAll(bandIds, thisElem = "", thatElem = Seq(0))
              _ <- bandIndices
@@ -988,7 +1009,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
            rootPath, maxSpatialResolution, pathDateExtractor, attributeValues, layoutScheme,
            bandIndices = bandIds.flatten,
            correlationId, experimental,
-           retainNoDataTiles, maxSoftErrorsRatio, disambiguateConstructors = null)
+           maxSoftErrorsRatio, disambiguateConstructors = null)
 
   assert(bandIndices.isEmpty || bandIndices.size == openSearchLinkTitles.size)
 
@@ -1357,8 +1378,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       val theMaskStrategy: CloudFilterStrategy = maskStrategy.getOrElse(NoCloudFilterStrategy)
 
       //convert to raster region
+      val retainNoDataTiles = datacubeParams.exists(_.retainNoDataTiles)
       val cube=
-        if(!datacubeParams.map(_.loadPerProduct).getOrElse(false) || theMaskStrategy != NoCloudFilterStrategy ){
+        if(!datacubeParams.exists(_.loadPerProduct) || theMaskStrategy != NoCloudFilterStrategy ){
           rasterRegionsToTiles(regions, metadata, retainNoDataTiles, theMaskStrategy, partitioner, datacubeParams)
         }else{
           rasterRegionsToTilesLoadPerProductStrategy(regions, metadata, retainNoDataTiles, NoCloudFilterStrategy, partitioner, datacubeParams, openSearchLinkTitlesWithBandId.size,readKeysToRasterSourcesResult._4, softErrors)
