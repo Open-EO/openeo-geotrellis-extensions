@@ -169,6 +169,27 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @Test
+  def retainNoDataTilesTest(): Unit = {
+    val bbox1 = ProjectedExtent(Extent(xmin = 0.0, ymin = 0.0, xmax = 30.0, ymax = 10.0), LatLng)
+    val bbox2 = ProjectedExtent(Extent(xmin = 50.0, ymin = 20.0, xmax = 60.0, ymax = 40.0), LatLng)
+    val fullBbox = ProjectedExtent(bbox1.extent.combine(bbox2.extent), LatLng)
+    val date = LocalDate.of(2020, 1, 1).atStartOfDay(ZoneId.of("UTC"))
+
+    val params = new DataCubeParameters()
+    params.layoutScheme = "FloatingLayoutScheme"
+    params.globalExtent = Some(fullBbox)
+    params.tileSize = 64
+    params.retainNoDataTiles = true
+
+    val polygons1 = MultiPolygon(fullBbox.extent.toPolygon())
+    val (rasterSources1, metadata1) = _getSentinel5PRasterSources(fullBbox, date, 0)
+    val resultRetainNoDatatiles = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
+      fullBbox.crs, sc, NoCloudFilterStrategy, datacubeParams=Some(params))
+    val resultRetainNoDatatilesColl = resultRetainNoDatatiles.collect()
+    assertEquals(1, resultRetainNoDatatilesColl.count(_._2.isInstanceOf[EmptyMultibandTile]))
+  }
+
+  @Test
   def sparsePartitionerTest(): Unit = {
     val bbox1 = ProjectedExtent(Extent(xmin = 0.0, ymin = 0.0, xmax = 30.0, ymax = 10.0), LatLng)
     val bbox2 = ProjectedExtent(Extent(xmin = 50.0, ymin = 20.0, xmax = 60.0, ymax = 40.0), LatLng)
@@ -245,10 +266,10 @@ class FileLayerProviderTest extends RasterMatchers{
     val polygons1 = MultiPolygon(bbox1.extent.toPolygon())
     val (rasterSources1, metadata1) = _getSentinel5PRasterSources(bbox1, date, zoom)
     val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
-      bbox1.crs, sc, retainNoDataTiles = false,
+      bbox1.crs, sc,
       NoCloudFilterStrategy)
     val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
-      bbox1.crs, sc, retainNoDataTiles = false,
+      bbox1.crs, sc,
       NoCloudFilterStrategy,
       useSparsePartitioner = false)
 
@@ -257,10 +278,10 @@ class FileLayerProviderTest extends RasterMatchers{
     val polygons2 = MultiPolygon(bbox2.extent.toPolygon())
     val (rasterSources2, metadata2) = _getSentinel5PRasterSources(bbox1, date, zoom)
     val sparseBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources2, metadata2, Array(polygons2),
-      bbox2.crs, sc, retainNoDataTiles = false,
+      bbox2.crs, sc,
       NoCloudFilterStrategy)
     val defaultBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources2, metadata2, Array(polygons2),
-      bbox2.crs, sc, retainNoDataTiles = false,
+      bbox2.crs, sc,
       NoCloudFilterStrategy,
       useSparsePartitioner = false)
 
@@ -282,10 +303,10 @@ class FileLayerProviderTest extends RasterMatchers{
     val polygons = MultiPolygon(bbox.extent.toPolygon())
     val (rasterSources, metadata) = _getSentinel5PRasterSources(bbox, date, 8)
     val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(polygons),
-      bbox.crs, sc, retainNoDataTiles = false,
+      bbox.crs, sc,
       NoCloudFilterStrategy)
     val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(polygons),
-      bbox.crs, sc, retainNoDataTiles = false,
+      bbox.crs, sc,
       NoCloudFilterStrategy,
       useSparsePartitioner = false)
 
