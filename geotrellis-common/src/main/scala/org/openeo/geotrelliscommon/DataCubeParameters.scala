@@ -92,4 +92,8 @@ class DataCubeParameters extends Serializable {
   def setAllowEmptyCube(allowEmpty:Boolean):Unit = {
     allowEmptyCube = allowEmpty
   }
+
+  def setRetainNoDataTiles(retain:Boolean):Unit = {
+    retainNoDataTiles = retain
+  }
 }
