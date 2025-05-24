@@ -628,12 +628,12 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
       val tile = GeoTiff.readMultiband(path)
       assertEquals(3,tile.overviews.size)
       assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
-      assertEquals(22,tile.overviews(0).tile.cols)
-      assertEquals(36,tile.overviews(0).tile.rows)
-      assertEquals(11,tile.overviews(1).tile.cols)
-      assertEquals(18,tile.overviews(1).tile.rows)
-      assertEquals(6,tile.overviews(2).tile.cols)
-      assertEquals(9,tile.overviews(2).tile.rows)
+      assertEquals(9,tile.overviews(0).tile.cols)
+      assertEquals(8,tile.overviews(0).tile.rows)
+      assertEquals(5,tile.overviews(1).tile.cols)
+      assertEquals(4,tile.overviews(1).tile.rows)
+      assertEquals(3,tile.overviews(2).tile.cols)
+      assertEquals(2,tile.overviews(2).tile.rows)
     }
 
     assertTrue(tiles.get(0)._2.contains("T"))

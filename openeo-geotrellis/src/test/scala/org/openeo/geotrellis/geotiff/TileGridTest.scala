@@ -116,12 +116,12 @@ class TileGridTest {
       val tile = GeoTiff.readMultiband(path)
       Assert.assertEquals(3,tile.overviews.size)
       Assert.assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
-      Assert.assertEquals(250,tile.overviews(0).tile.cols)
-      Assert.assertEquals(250,tile.overviews(0).tile.rows)
-      Assert.assertEquals(125,tile.overviews(1).tile.cols)
-      Assert.assertEquals(125,tile.overviews(1).tile.rows)
-      Assert.assertEquals(63,tile.overviews(2).tile.cols)
-      Assert.assertEquals(63,tile.overviews(2).tile.rows)
+      Assert.assertEquals(421,tile.overviews(0).tile.cols)
+      Assert.assertEquals(421,tile.overviews(0).tile.rows)
+      Assert.assertEquals(210,tile.overviews(1).tile.cols)
+      Assert.assertEquals(210,tile.overviews(1).tile.rows)
+      Assert.assertEquals(105,tile.overviews(2).tile.cols)
+      Assert.assertEquals(105,tile.overviews(2).tile.rows)
     }
 
     val extent = bbox.reproject(spatialLayer.metadata.crs)
@@ -141,12 +141,12 @@ class TileGridTest {
       val tile = GeoTiff.readMultiband(path)
       Assert.assertEquals(3,tile.overviews.size)
       Assert.assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
-      Assert.assertEquals(250,tile.overviews(0).tile.cols)
-      Assert.assertEquals(250,tile.overviews(0).tile.rows)
-      Assert.assertEquals(125,tile.overviews(1).tile.cols)
-      Assert.assertEquals(125,tile.overviews(1).tile.rows)
-      Assert.assertEquals(63,tile.overviews(2).tile.cols)
-      Assert.assertEquals(63,tile.overviews(2).tile.rows)
+      Assert.assertEquals(421,tile.overviews(0).tile.cols)
+      Assert.assertEquals(421,tile.overviews(0).tile.rows)
+      Assert.assertEquals(210,tile.overviews(1).tile.cols)
+      Assert.assertEquals(210,tile.overviews(1).tile.rows)
+      Assert.assertEquals(105,tile.overviews(2).tile.cols)
+      Assert.assertEquals(105,tile.overviews(2).tile.rows)
     }
   }
 
