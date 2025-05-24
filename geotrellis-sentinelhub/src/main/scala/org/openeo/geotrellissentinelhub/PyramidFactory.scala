@@ -475,7 +475,7 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
               logger.info(s"Sentinelhub datacube requires approximately ${spatialKeyCount} spatial keys.")
             }
 
-            var requiredKeysRdd: RDD[SpaceTimeKey] = requiredSpatialKeysForFeatures.map { case (SpatialKey(col, row), Feature(_, date)) => SpaceTimeKey(col, row, date)}.filter(k=> k.col>=0&&k.row>=0)
+            var requiredKeysRdd: RDD[SpaceTimeKey] = requiredSpatialKeysForFeatures.map { case (SpatialKey(col, row), Feature(_, date)) => SpaceTimeKey(col, row, date)}.filter(k=> k.col>=0&&k.row>=0&&k.col<layout.tileLayout.layoutCols&&k.row<layout.tileLayout.layoutRows)
             requiredKeysRdd = applySpaceTimeMask(Some(dataCubeParameters), requiredKeysRdd,metadata)
             val partitioner = DatacubeSupport.createPartitioner(Some(dataCubeParameters), requiredKeysRdd, metadata)
             val approxRequests = requiredKeysRdd.countApproxDistinct()
