@@ -6,6 +6,14 @@ This library implements openEO processes using the Geotrellis Spark API.
 It is used in combination with https://github.com/Open-EO/openeo-geopyspark-driver to provide a complete openEO backend.
 
 
+## Running unit tests
+
+While the most important tests can be executed anywhere, without requiring dependencies, there are some exceptions:
+
+ * geotrellis-sentinelhub requires environment variables SENTINELHUB_CLIENT_ID and SENTINELHUB_CLIENT_SECRET to be set.
+ * Some tests expect the Terrascope archive to be available under /data/MTDA
+
+
 ## Releasing new major version
 Setup clean local git repository with up to date develop and master branch.
 Ensure git flow plugin is installed.
