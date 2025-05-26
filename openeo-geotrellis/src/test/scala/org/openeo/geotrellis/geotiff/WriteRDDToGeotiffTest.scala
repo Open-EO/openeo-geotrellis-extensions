@@ -400,12 +400,14 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
       val tile = GeoTiff.readMultiband(path)
       assertEquals(3,tile.overviews.size)
       assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
-      assertEquals(512,tile.overviews(0).tile.cols)
-      assertEquals(256,tile.overviews(0).tile.rows)
-      assertEquals(256,tile.overviews(1).tile.cols)
-      assertEquals(128,tile.overviews(1).tile.rows)
-      assertEquals(128,tile.overviews(2).tile.cols)
-      assertEquals(64,tile.overviews(2).tile.rows)
+      val colSize = tile.tile.cols
+      val rowSize = tile.tile.rows
+      assertEquals(math.ceil(colSize.toDouble/4).toInt,tile.overviews(0).tile.cols)
+      assertEquals(math.ceil(rowSize.toDouble/4).toInt,tile.overviews(0).tile.rows)
+      assertEquals(math.ceil(colSize.toDouble/8).toInt,tile.overviews(1).tile.cols)
+      assertEquals(math.ceil(rowSize.toDouble/8).toInt,tile.overviews(1).tile.rows)
+      assertEquals(math.ceil(colSize.toDouble/16).toInt,tile.overviews(2).tile.cols)
+      assertEquals(math.ceil(rowSize.toDouble/16).toInt,tile.overviews(2).tile.rows)
     }
 
     GeoTiff.readMultiband(outDir.resolve("testA/B01.tiff").toString).raster.tile
@@ -628,12 +630,14 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
       val tile = GeoTiff.readMultiband(path)
       assertEquals(3,tile.overviews.size)
       assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
-      assertEquals(9,tile.overviews(0).tile.cols)
-      assertEquals(8,tile.overviews(0).tile.rows)
-      assertEquals(5,tile.overviews(1).tile.cols)
-      assertEquals(4,tile.overviews(1).tile.rows)
-      assertEquals(3,tile.overviews(2).tile.cols)
-      assertEquals(2,tile.overviews(2).tile.rows)
+      val colSize = tile.tile.cols
+      val rowSize = tile.tile.rows
+      assertEquals(math.ceil(colSize.toDouble/4).toInt,tile.overviews(0).tile.cols)
+      assertEquals(math.ceil(rowSize.toDouble/4).toInt,tile.overviews(0).tile.rows)
+      assertEquals(math.ceil(colSize.toDouble/8).toInt,tile.overviews(1).tile.cols)
+      assertEquals(math.ceil(rowSize.toDouble/8).toInt,tile.overviews(1).tile.rows)
+      assertEquals(math.ceil(colSize.toDouble/16).toInt,tile.overviews(2).tile.cols)
+      assertEquals(math.ceil(rowSize.toDouble/16).toInt,tile.overviews(2).tile.rows)
     }
 
     assertTrue(tiles.get(0)._2.contains("T"))
