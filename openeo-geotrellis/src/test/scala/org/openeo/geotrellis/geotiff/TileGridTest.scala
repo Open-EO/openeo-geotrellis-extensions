@@ -1,6 +1,7 @@
 package org.openeo.geotrellis.geotiff
 
 import geotrellis.proj4.{CRS, LatLng}
+import geotrellis.raster.io.geotiff.{GeoTiff, Tiled}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
@@ -88,6 +89,71 @@ class TileGridTest {
     Assert.assertEquals(expectedCroppedPaths, croppedTiles.asScala.map { case (path, _) => path }.toSet)
   }
 
+  @Test
+  def testSaveStitchWithTileGridsWithOptions(@TempDir outDir: Path): Unit = {
+    val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
+    val bbox = ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng)
+    val layer = rgbLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+
+    val spatialLayer = layer
+      .toSpatial()
+      .persist(DISK_ONLY)
+
+    val gtiffOptions = new GTiffOptions
+    gtiffOptions.setTileSize(128)
+
+    val tiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched.tiff", "10km", DeflateCompression(6),gtiffOptions)
+    val expectedPaths = Set(
+      outDir + "/testSaveStitched-31UDS_3_4.tiff",
+      outDir + "/testSaveStitched-31UDS_2_4.tiff",
+      outDir + "/testSaveStitched-31UDS_3_5.tiff",
+      outDir + "/testSaveStitched-31UDS_2_5.tiff",
+    )
+    // TODO: check if extents (in the layer CRS) are 10000m wide/high (in UTM)
+    Assert.assertEquals(expectedPaths, tiles.asScala.map { case (path, _) => path }.toSet)
+
+    for (path <- expectedPaths){
+      val tile = GeoTiff.readMultiband(path)
+      Assert.assertEquals(3,tile.overviews.size)
+      Assert.assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
+      val colSize = tile.tile.cols
+      val rowSize = tile.tile.rows
+      Assert.assertEquals(math.ceil(colSize.toDouble/4).toInt,tile.overviews(0).tile.cols)
+      Assert.assertEquals(math.ceil(rowSize.toDouble/4).toInt,tile.overviews(0).tile.rows)
+      Assert.assertEquals(math.ceil(colSize.toDouble/8).toInt,tile.overviews(1).tile.cols)
+      Assert.assertEquals(math.ceil(rowSize.toDouble/8).toInt,tile.overviews(1).tile.rows)
+      Assert.assertEquals(math.ceil(colSize.toDouble/16).toInt,tile.overviews(2).tile.cols)
+      Assert.assertEquals(math.ceil(rowSize.toDouble/16).toInt,tile.overviews(2).tile.rows)
+    }
+
+    val extent = bbox.reproject(spatialLayer.metadata.crs)
+    val cropBounds = mapAsJavaMap(Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax))
+
+    val croppedTiles = geotiff.saveStitchedTileGrid(spatialLayer, outDir + "/testSaveStitched_cropped.tiff", "10km", cropBounds, DeflateCompression(6),gtiffOptions)
+    val expectedCroppedPaths = Set(
+      outDir + "/testSaveStitched_cropped-31UDS_3_4.tiff",
+      outDir + "/testSaveStitched_cropped-31UDS_2_4.tiff",
+      outDir + "/testSaveStitched_cropped-31UDS_3_5.tiff",
+      outDir + "/testSaveStitched_cropped-31UDS_2_5.tiff",
+    )
+
+    Assert.assertEquals(expectedCroppedPaths, croppedTiles.asScala.map { case (path, _) => path }.toSet)
+
+    for (path <- expectedCroppedPaths){
+      val tile = GeoTiff.readMultiband(path)
+      Assert.assertEquals(3,tile.overviews.size)
+      Assert.assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
+      val colSize = tile.tile.cols
+      val rowSize = tile.tile.rows
+      Assert.assertEquals(math.ceil(colSize.toDouble/4).toInt,tile.overviews(0).tile.cols)
+      Assert.assertEquals(math.ceil(rowSize.toDouble/4).toInt,tile.overviews(0).tile.rows)
+      Assert.assertEquals(math.ceil(colSize.toDouble/8).toInt,tile.overviews(1).tile.cols)
+      Assert.assertEquals(math.ceil(rowSize.toDouble/8).toInt,tile.overviews(1).tile.rows)
+      Assert.assertEquals(math.ceil(colSize.toDouble/16).toInt,tile.overviews(2).tile.cols)
+      Assert.assertEquals(math.ceil(rowSize.toDouble/16).toInt,tile.overviews(2).tile.rows)
+    }
+  }
+
 
   @Test
   def testGetFeatures():Unit = {
@@ -149,6 +215,44 @@ class TileGridTest {
     )
 
     Assert.assertEquals(expectedTiles, tiles.asScala.map { case (path, timestamp, _) => (path, timestamp) }.toSet)
+  }
+
+  @Test
+  def testSaveStitchWithTileGridsTemporalWithOptions(@TempDir outDir: Path): Unit = {
+    val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
+    val isoFormattedDate = date format ISO_ZONED_DATE_TIME
+    val utm31 = CRS.fromEpsgCode(32631)
+    val bbox = ProjectedExtent(ProjectedExtent(Extent(1.95, 50.95, 2.05, 51.05), LatLng).reproject(utm31), utm31)
+
+    val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(from = date, to = date, bbox, sc = sc)
+    val gtiffOptions = new GTiffOptions
+    gtiffOptions.setOverview("ALL")
+    gtiffOptions.setTileSize(128)
+
+    val tiles = geotiff.saveStitchedTileGridTemporal(layer, outDir + "/", "10km", DeflateCompression(6),gtiffOptions)
+    val expectedTiles = Set(
+      (outDir + "/openEO_2020-04-05Z_31UDS_3_4.tif", isoFormattedDate),
+      (outDir + "/openEO_2020-04-05Z_31UDS_2_4.tif", isoFormattedDate),
+      (outDir + "/openEO_2020-04-05Z_31UDS_3_5.tif", isoFormattedDate),
+      (outDir + "/openEO_2020-04-05Z_31UDS_2_5.tif", isoFormattedDate)
+    )
+
+    Assert.assertEquals(expectedTiles, tiles.asScala.map { case (path, timestamp, _) => (path, timestamp) }.toSet)
+
+
+    for (path <- expectedTiles){
+      val tile = GeoTiff.readMultiband(path._1)
+      Assert.assertEquals(3,tile.overviews.size)
+      Assert.assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
+      val colSize = tile.tile.cols
+      val rowSize = tile.tile.rows
+      Assert.assertEquals(math.ceil(colSize.toDouble/4).toInt,tile.overviews(0).tile.cols)
+      Assert.assertEquals(math.ceil(rowSize.toDouble/4).toInt,tile.overviews(0).tile.rows)
+      Assert.assertEquals(math.ceil(colSize.toDouble/8).toInt,tile.overviews(1).tile.cols)
+      Assert.assertEquals(math.ceil(rowSize.toDouble/8).toInt,tile.overviews(1).tile.rows)
+      Assert.assertEquals(math.ceil(colSize.toDouble/16).toInt,tile.overviews(2).tile.cols)
+      Assert.assertEquals(math.ceil(rowSize.toDouble/16).toInt,tile.overviews(2).tile.rows)
+    }
   }
 
   @Test
