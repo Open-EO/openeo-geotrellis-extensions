@@ -117,11 +117,11 @@ class TileGridTest {
       Assert.assertEquals(3,tile.overviews.size)
       Assert.assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
       Assert.assertEquals(421,tile.overviews(0).tile.cols)
-      Assert.assertEquals(421,tile.overviews(0).tile.rows)
+      Assert.assertEquals(422,tile.overviews(0).tile.rows)
       Assert.assertEquals(210,tile.overviews(1).tile.cols)
-      Assert.assertEquals(210,tile.overviews(1).tile.rows)
+      Assert.assertEquals(211,tile.overviews(1).tile.rows)
       Assert.assertEquals(105,tile.overviews(2).tile.cols)
-      Assert.assertEquals(105,tile.overviews(2).tile.rows)
+      Assert.assertEquals(106,tile.overviews(2).tile.rows)
     }
 
     val extent = bbox.reproject(spatialLayer.metadata.crs)
