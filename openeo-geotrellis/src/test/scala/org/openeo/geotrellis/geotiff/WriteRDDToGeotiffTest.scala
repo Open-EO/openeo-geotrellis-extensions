@@ -740,4 +740,37 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     assertEquals(2188, arrayTile.dimensions.cols)
     assertEquals(50, arrayTile.dimensions.rows)
   }
+
+  @Test
+  def testSaveStitchWithTileGridsTemporalWithOptions(@TempDir outDir: Path): Unit = {
+    val layoutCols = 8
+    val layoutRows = 4
+    val (_, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(layoutCols, layoutRows)
+
+    val extent = filtered.metadata.extent
+    val cropBounds = mapAsJavaMap(Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax))
+
+    val filename = outDir + "/out"
+    val options = new GTiffOptions()
+    options.separateAssetPerBand = true
+
+    options.setOverview("ALL")
+    options.setTileSize(128)
+    saveStitched(filtered.withContext {
+      _.repartition(layoutCols * layoutRows)
+    }, filename, cropBounds, DeflateCompression(6), formatOptions = options)
+
+    val tile = GeoTiff.readMultiband(filename)
+    assertEquals(4,tile.overviews.size)
+    assertEquals(Tiled(128,128),tile.overviews.head.options.storageMethod)
+    assertEquals(896,tile.overviews(0).tile.cols)
+    assertEquals(512,tile.overviews(0).tile.rows)
+    assertEquals(448,tile.overviews(1).tile.cols)
+    assertEquals(256,tile.overviews(1).tile.rows)
+    assertEquals(224,tile.overviews(2).tile.cols)
+    assertEquals(128,tile.overviews(2).tile.rows)
+    assertEquals(112,tile.overviews(3).tile.cols)
+    assertEquals(64,tile.overviews(3).tile.rows)
+  }
+
 }
