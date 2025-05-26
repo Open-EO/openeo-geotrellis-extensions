@@ -169,7 +169,7 @@ object DatacubeSupport {
           if (isSparse) {
             val keys = cached.distinct().collect()
 
-            if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
+            if (keys.length < 40 || (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay")) {
               val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
               new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
             } else {
@@ -318,7 +318,7 @@ object DatacubeSupport {
 
   def optimalReductionForSparseKeys(sparseKeys: Seq[SpaceTimeKey], maxPartitionSizeInMb: Int, tileSize: Int, cellTypeBits: Int, bandCount: Int) = {
     val tileSizeInMb: Double = (bandCount * tileSize * cellTypeBits).toDouble / (8 * 1024 * 1024)
-    val maxRecordsPerPartition: Double = math.min(maxPartitionSizeInMb / tileSizeInMb, 1024)
+    val maxRecordsPerPartition: Double = math.min(math.min(maxPartitionSizeInMb / tileSizeInMb, 1024),sparseKeys.length)
     var indexReduction = math.max(math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt - 1, 1)
 
     def computeIndices(cartesian: Seq[SpaceTimeKey], indexReduction: Int): (Array[BigInt], Int) = {
