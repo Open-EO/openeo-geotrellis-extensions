@@ -182,12 +182,94 @@
                 <version>3.2.2</version>
                 <executions>
                     <execution>
+                        <id>shade-libs</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <outputFile>target/assembly/${project.artifactId}-libs.jar</outputFile>
+                            <artifactSet>
+                                <excludes>
+                                    <exclude>org.openeo:*</exclude>
+                                </excludes>
+                            </artifactSet>
+                            <relocations>
+                                <relocation>
+                                    <pattern>com.typesafe.scalalogging</pattern>
+                                    <shadedPattern>org.locationtech.geopyspark.shaded.com.typesafe.scalalogging</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>shapeless</pattern>
+                                    <shadedPattern>org.locationtech.geopyspark.shaded.shapeless</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.apache.avro</pattern>
+                                    <shadedPattern>org.locationtech.geopyspark.shaded.org.apache.avro</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <!--https://github.com/typelevel/cats/issues/3628-->
+                                    <pattern>cats.kernel</pattern>
+                                    <shadedPattern>org.locationtech.geopyspark.shaded.cats.kernel</shadedPattern>
+                                </relocation>
+                            </relocations>
+                            <filters>
+                            <filter>
+                                <artifact>*:*</artifact>
+                                <excludes>
+                                    <exclude>META-INF/license/*</exclude>
+                                    <exclude>META-INF/*.SF</exclude>
+                                    <exclude>META-INF/*.DSA</exclude>
+                                    <exclude>META-INF/*.RSA</exclude>
+                                </excludes>
+                            </filter>
+                            <filter>
+                                <artifact>org.locationtech.geotrellis:geotrellis-s3_${scala.binary.version}</artifact>
+                                <excludes>
+                                    <exclude>META-INF/services/geotrellis.util.RangeReaderProvider</exclude>
+                                </excludes>
+                            </filter>
+                            <filter>
+                                <artifact>org.locationtech.geotrellis:geotrellis-util_${scala.binary.version}</artifact>
+                                <excludes>
+                                    <exclude>META-INF/services/geotrellis.util.RangeReaderProvider</exclude>
+                                </excludes>
+                            </filter>
+                        </filters>
+                        <transformers>
+                            <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                <manifestEntries>
+                                    <!--These vendor properties are needed for JAI to work! -->
+                                    <Specification-Vendor>Vito</Specification-Vendor>
+                                    <Specification-Title>${project.artifactId}</Specification-Title>
+                                    <Specification-Version>${project.version}</Specification-Version>
+                                    <Implementation-Vendor>Vito</Implementation-Vendor>
+                                    <Implementation-Title>${project.artifactId}</Implementation-Title>
+                                    <Implementation-Version>${project.version}</Implementation-Version>
+                                </manifestEntries>
+                            </transformer>
+                            <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
+                            <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                <resource>META-INF/registryFile.jai</resource>
+                            </transformer>
+                            <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                <resource>reference.conf</resource>
+                            </transformer>
+                        </transformers>
+                        </configuration>
+                    </execution>
+                    <execution>
                         <phase>package</phase>
                         <goals>
                             <goal>shade</goal>
                         </goals>
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <artifactSet>
+                                <includes>
+                                    <include>org.openeo:*</include>
+                                </includes>
+                            </artifactSet>
                             <relocations>
                                 <relocation>
                                     <pattern>com.typesafe.scalalogging</pattern>
