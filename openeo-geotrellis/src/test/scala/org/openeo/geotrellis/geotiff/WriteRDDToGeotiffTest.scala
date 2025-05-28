@@ -619,7 +619,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
       outDir + "/openEO_2023-04-06Z_0-testName.tif",
       outDir + "/openEO_2023-04-07Z_0-testName.tif",
     )
-    val paths = tiles.asScala.map { case (path, _, _) => path }.toSet
+    val paths = tiles.asScala.map { case item => item.assets.values().iterator().next().path }.toSet
 
     for (path <- paths){
       assertTrue(expectedPaths.contains(path))
@@ -640,7 +640,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
       assertEquals(math.ceil(rowSize.toDouble/16).toInt,tile.overviews(2).tile.rows)
     }
 
-    assertTrue(tiles.get(0)._2.contains("T"))
+    assertTrue(tiles.get(0).datetime.contains("T"))
   }
 
   @Test

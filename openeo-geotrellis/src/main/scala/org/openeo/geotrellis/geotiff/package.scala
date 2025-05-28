@@ -85,10 +85,10 @@ package object geotiff {
   def saveStitched(rdd: SRDD, path: String, cropBounds: Map[String, Double], compression: Compression): Item =
     saveStitched(rdd, path, Some(cropBounds), None, compression)
 
-  def saveStitched(rdd:SRDD, path: String, compression:Compression, formatOptions: GTiffOptions ):Extent =
+  def saveStitched(rdd:SRDD, path: String, compression:Compression, formatOptions: GTiffOptions ):Item =
     saveStitched(rdd, path, None, None, compression, Some(formatOptions))
 
-  def saveStitched(rdd:SRDD, path: String, cropBound:Map[String, Double], compression:Compression, formatOptions: GTiffOptions ):Extent =
+  def saveStitched(rdd:SRDD, path: String, cropBound:Map[String, Double], compression:Compression, formatOptions: GTiffOptions ):Item =
     saveStitched(rdd, path, Some(cropBound), None, compression, Some(formatOptions))
 
   def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, compression: Compression): JList[Item] =
@@ -97,10 +97,10 @@ package object geotiff {
   def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, cropBounds: Map[String, Double], compression: Compression): JList[Item] =
     saveStitchedTileGrid(rdd, path, tileGrid, Some(cropBounds), None, compression)
 
-  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, compression: Compression, formatOptions:GTiffOptions): java.util.List[(String, Extent)] =
+  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, compression: Compression, formatOptions:GTiffOptions): JList[Item] =
     saveStitchedTileGrid(rdd, path, tileGrid, None, None, compression, Some(formatOptions))
 
-  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, cropBounds: Map[String, Double], compression: Compression, formatOptions:GTiffOptions): java.util.List[(String, Extent)] =
+  def saveStitchedTileGrid(rdd: SRDD, path: String, tileGrid: String, cropBounds: Map[String, Double], compression: Compression, formatOptions:GTiffOptions): JList[Item] =
     saveStitchedTileGrid(rdd, path, tileGrid, Some(cropBounds), None, compression, Some(formatOptions))
 
   def saveRDDTiled(rdd:MultibandTileLayerRDD[SpaceTimeKey], path:String,zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]):Unit = {
@@ -993,7 +993,7 @@ package object geotiff {
                   sampleNames: JList[String],
                   compression: Compression,
                   formatOptions: GTiffOptions,
-                 ): JList[(String, String, Extent)] =
+                 ): JList[Item] =
     saveSamples(rdd, path, polygons, sampleNames, compression,Some(formatOptions))
 
   def saveSamples(rdd: MultibandTileLayerRDD[SpaceTimeKey],

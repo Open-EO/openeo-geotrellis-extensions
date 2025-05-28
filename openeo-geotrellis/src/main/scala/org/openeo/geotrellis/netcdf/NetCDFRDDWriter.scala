@@ -33,7 +33,7 @@ import java.io.IOException
 import java.nio.file.{Files, Path, Paths}
 import java.time.format.DateTimeFormatter
 import java.time.{Duration, ZoneOffset, ZonedDateTime}
-import java.util
+import java.{io, util}
 import java.util.{ArrayList, Collections, UUID}
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
@@ -415,7 +415,7 @@ object NetCDFRDDWriter {
               logger.warn(s"save_result netCDF: Failed to write sample: $name error: ${t.getMessage}", t)
               throw t
             }else{
-              (handleSampleWriteError(t, name, outputAsPath),extent)
+              handleSampleWriteError(t, name, outputAsPath)
             }
           }
           case t: Throwable =>

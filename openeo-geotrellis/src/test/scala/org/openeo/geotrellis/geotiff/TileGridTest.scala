@@ -121,7 +121,7 @@ class TileGridTest {
       outDir + "/testSaveStitched-31UDS_2_5.tiff",
     )
     // TODO: check if extents (in the layer CRS) are 10000m wide/high (in UTM)
-    Assert.assertEquals(expectedPaths, tiles.asScala.map { case (path, _) => path }.toSet)
+    Assert.assertEquals(expectedPaths, tiles.asScala.map { case item => item.assets.values().iterator().next().path }.toSet)
 
     for (path <- expectedPaths){
       val tile = GeoTiff.readMultiband(path)
@@ -148,7 +148,7 @@ class TileGridTest {
       outDir + "/testSaveStitched_cropped-31UDS_2_5.tiff",
     )
 
-    Assert.assertEquals(expectedCroppedPaths, croppedTiles.asScala.map { case (path, _) => path }.toSet)
+    Assert.assertEquals(expectedCroppedPaths, croppedTiles.asScala.map { case item => item.assets.values().iterator().next().path }.toSet)
 
     for (path <- expectedCroppedPaths){
       val tile = GeoTiff.readMultiband(path)
@@ -253,7 +253,7 @@ class TileGridTest {
       (outDir + "/openEO_2020-04-05Z_31UDS_2_5.tif", isoFormattedDate)
     )
 
-    Assert.assertEquals(expectedTiles, tiles.asScala.map { case (path, timestamp, _) => (path, timestamp) }.toSet)
+    Assert.assertEquals(expectedTiles, tiles.asScala.map { case  item => (item.assets.values().iterator().next().path, item.datetime ) }.toSet)
 
 
     for (path <- expectedTiles){
