@@ -408,7 +408,7 @@ object NetCDFRDDWriter {
         logger.info(s"Writing $name with dates $dates.")
         val extent = sorted.head._2.extent
         val assetPath = try{
-          (writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata),extent)
+          writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
         }catch {
           case t: IOException => {
             if(TaskContext.get().attemptNumber()<2){
