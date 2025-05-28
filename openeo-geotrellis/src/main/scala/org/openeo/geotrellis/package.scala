@@ -31,7 +31,6 @@ import java.time.temporal.ChronoUnit
 import java.time.{Duration, Instant}
 import java.util.concurrent.ConcurrentHashMap
 import scala.compat.java8.FunctionConverters._
-import scala.reflect.io.Directory
 
 
 package object geotrellis {
@@ -207,8 +206,9 @@ package object geotrellis {
         logger.error(s"Failed after ${execution.getAttemptCount} attempt(s) in context: '$context'" + e.getMessage)
       })
 
+    //https://github.com/Open-EO/openeo-geopyspark-driver/issues/1169: 498 is unexpected code used by CF
     val isRateLimitingResponse: (HttpResponse[R], Throwable) => Boolean =
-      (response, _ /* ignore exceptions, those are handled in shakyConnectionRetryPolicy */) => response.code == 429
+      (response, _ /* ignore exceptions, those are handled in shakyConnectionRetryPolicy */) => (response.code == 429 || response.code == 498)
     val rateLimitingRetryPolicy = new FailsafeRetryPolicy[HttpResponse[R]]()
       .handleIf(isRateLimitingResponse.asJava)
       .withMaxAttempts(5)

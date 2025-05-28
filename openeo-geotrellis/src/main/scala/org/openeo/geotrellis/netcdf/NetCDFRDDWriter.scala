@@ -11,7 +11,7 @@ import geotrellis.spark.store.hadoop.KeyPartitioner
 import geotrellis.store.s3.AmazonS3URI
 import geotrellis.util._
 import geotrellis.vector._
-import org.apache.spark.SparkContext
+import org.apache.spark.{SparkContext, TaskContext}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
@@ -407,11 +407,21 @@ object NetCDFRDDWriter {
         val dates = sorted.map { case (instant, _) => ZonedDateTime.ofInstant(instant, ZoneOffset.UTC) }
         logger.info(s"Writing $name with dates $dates.")
         val extent = sorted.head._2.extent
+        val assetPath = try{
+          (writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata),extent)
+        }catch {
+          case t: IOException => {
+            if(TaskContext.get().attemptNumber()<2){
+              logger.warn(s"save_result netCDF: Failed to write sample: $name error: ${t.getMessage}", t)
+              throw t
+            }else{
+              (handleSampleWriteError(t, name, outputAsPath),extent)
+            }
+          }
+          case t: Throwable =>
+            logger.error(s"save_result netCDF: Failed to write sample: $name error: ${t.getMessage}", t)
+            throw t
 
-        val assetPath = try {
-          writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
-        } catch {
-          case e: IOException => handleSampleWriteError(e, name, outputAsPath)
         }
 
         Item(id = UUID.randomUUID().toString, datetime = null , bbox = extent,
@@ -508,7 +518,7 @@ object NetCDFRDDWriter {
   }
 
   private def handleSampleWriteError(t: IOException, sampleName: String, outputAsPath: Path): String = {
-    logger.error("Failed to write sample: " + sampleName, t)
+    logger.error(s"save_result netCDF: Failed to write sample: $sampleName error: ${t.getMessage}", t)
     val theFile = outputAsPath.toFile
     if (theFile.exists()) {
       val failedPath = outputAsPath.resolveSibling(outputAsPath.getFileName().toString + "_FAILED")
@@ -532,7 +542,7 @@ object NetCDFRDDWriter {
                   bandsMetadata: java.util.Map[String,java.util.Map[String,String]]): String = {
     val areas = rasters.map(raster => raster.extent.area)
     logger.info(s"Writing ${rasters.size} rasters to disk. Areas: ${areas.mkString(",")}")
-    val maxExtent: Extent = rasters.map(_._2).reduce((a, b) => if (a.area > b.area) a else b)
+    val maxExtent:Extent = rasters.map(_._2).reduce((a, b) => a.union(b).extent)
     logger.info(s"Cropping rasters to max extent: $maxExtent")
     val equalRasters = rasters.map(raster =>
       if (raster.extent != maxExtent) raster.crop(maxExtent, CropOptions(clamp = false, force = true)) else raster

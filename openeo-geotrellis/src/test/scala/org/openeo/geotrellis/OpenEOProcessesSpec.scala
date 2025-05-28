@@ -138,7 +138,8 @@ object OpenEOProcessesSpec {
   def aggregateTemporalTestParams(): java.util.stream.Stream[Arguments] = {
     val pixelTypes = PixelType.values()
     val p1 = new ByTileSpacetimePartitioner()
-    pixelTypes.flatMap(pt => Seq( arguments(pt, null),arguments(pt, p1))).toStream.asJava.stream()
+    val p2 = new ByTileSpacetimePartitioner(Some(Array(SpatialKey(0,0),SpatialKey(1,1))))
+    pixelTypes.flatMap(pt => Seq( arguments(pt, null),arguments(pt, p1),arguments(pt, p2))).toStream.asJava.stream()
 
   }
 }
@@ -651,6 +652,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val doubles = result(key0).band(0).toArrayDouble
     assertEquals(0.5, doubles(0), 0.0)
     assertTrue(result(SpatialKey(1,0)).isInstanceOf[EmptyMultibandTile])
+    assertEquals(FloatConstantNoDataCellType,result(SpatialKey(1,0)).cellType)
     // this test fails, because ndvi function doesn't really know the band count
     //assertEquals(1,result(SpatialKey(1,0)).bandCount)
   }

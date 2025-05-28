@@ -15,6 +15,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.locationtech.jts.geom.TopologyException
 import org.openeo.geotrellis.OpenEOProcesses
 import org.openeo.geotrellis.file.AbstractPyramidFactory._
 
@@ -38,10 +39,15 @@ object AbstractPyramidFactory {
 
 
     def doBuffer(polygon:MultiPolygon): MultiPolygon = {
-      polygon.buffer(bufferDistance) match {
-        case polygon: Polygon => MultiPolygon(polygon)
-        case multiPolygon: MultiPolygon => multiPolygon
+      try{
+        polygon.buffer(bufferDistance) match {
+          case polygon: Polygon => MultiPolygon(polygon)
+          case multiPolygon: MultiPolygon => multiPolygon
+        }
+      }catch {
+        case e: TopologyException => polygon //avoid failing entire job on bad input geometry
       }
+
     }
 
     val intersectsPolygons: Array[MultiPolygon] =

@@ -24,8 +24,9 @@ class CustomizableHttpRangeReaderProvider extends RangeReaderProvider {
   override def rangeReader(uri: URI): RangeReader = {
     val credentials = credentialsFromFile.get(uri.getHost)
 
+    //TODO scalaj is deprecated, replace with use of built-in java HttpClient
     val request = credentials.foldLeft(
-      Http(uri.toString)
+      Http(uri.toASCIIString)
         .option(HttpOptions.followRedirects(true))
         .timeout(connTimeoutMs = 10000, readTimeoutMs = 40000)
     ) { case (http, Credentials(username, password)) =>

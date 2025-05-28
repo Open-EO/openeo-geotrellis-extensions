@@ -1,12 +1,14 @@
 package org.openeo.geotrellis
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import geotrellis.raster.{BitArrayTile, ByteArrayFiller, ByteArrayTile, ByteConstantNoDataCellType, ShortArrayTile, ShortConstantNoDataCellType, Tile}
 import org.apache.commons.io.IOUtils
 import org.junit.Test
-import com.fasterxml.jackson.databind.ObjectMapper
-import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ShortArrayTile, Tile}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertNotNull}
+import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertNotNull}
 
+import java.nio.charset.Charset
 import java.util
+import scala.collection.JavaConverters
 import scala.collection.mutable.ArrayBuffer
 
 class OpenEOProcessGraphBuilderTest {
@@ -68,11 +70,10 @@ class OpenEOProcessGraphBuilderTest {
   }
 
   def assertTileEquals(expected: Tile, actual: Tile):Unit = {
-    assertEquals(1,1)
     assertEquals(expected.cols, actual.cols)
     assertEquals(expected.rows, actual.rows)
     assertEquals(expected.cellType, actual.cellType)
-    assert(expected.toArray sameElements  actual.toArray)
+    assertArrayEquals(expected.toArray, actual.toArray)
   }
 
   def fillShortArrayTile(cols: Int, rows: Int, values: Int *)= {
@@ -102,19 +103,38 @@ class OpenEOProcessGraphBuilderTest {
     assert(result)
   }
 
+  @Test
+  def testArrayFind(): Unit = {
+    val transformation = org.openeo.geotrellis.testutil.fromUrl(getClass.getResource("/org/openeo/geotrellis/testArrayFindProcessGraph.json"))
+    val tile0 = ByteArrayTile.fill(10.toByte, 4, 4)
+    val tile1 = ByteArrayTile.fill(5.toByte, 4, 4)
+    val result = transformation.apply(JavaConverters.asScalaBuffer(util.Arrays.asList(tile0, tile1)))
+    val expectedResult = ByteArrayTile.fill(1.toByte, 4, 4)
+    assertTileEquals(expectedResult.convert(ShortConstantNoDataCellType), result.head)
+  }
+
+  @Test
+  def testArrayContains(): Unit = {
+    val transformation = org.openeo.geotrellis.testutil.fromUrl(getClass.getResource("/org/openeo/geotrellis/testArrayContainsProcessGraph.json"))
+    val tile0 = ByteArrayTile.fill(10.toByte, 4, 4)
+    val tile1 = ByteArrayTile.fill(5.toByte, 4, 4)
+    val result = transformation.apply(JavaConverters.asScalaBuffer(util.Arrays.asList(tile0, tile1)))
+    val expectedResult = new BitArrayTile(Array.ofDim[Byte](((4 * 4) + 7) / 8).fill(255.toByte), 4, 4) // BitArrayTile.fill(1, 4, 4) seems bugged
+    assertTileEquals(expectedResult, result.head)
+  }
 
 
   @Test
   def testAcceptDict(): Unit ={
-    val graphPath = IOUtils.toString(getClass.getResource("/org/openeo/geotrellis/ProcessGraphBuilderGraph.json"))
+    val graphPath = IOUtils.toString(getClass.getResource("/org/openeo/geotrellis/ProcessGraphBuilderGraph.json"), Charset.defaultCharset())
     val visitor = (new GeotrellisTileProcessGraphVisitor).create()
     val graph = new ObjectMapper().readValue(graphPath,classOf[util.Map[String,Object]])
     visitor._acceptDict(graph)
     val processes = visitor.processes
     assert(processes.size==4)
-    for (process <- processes)
+    for (process <- processes) {
       print(process)
-
+    }
 
     assert(true)
   }

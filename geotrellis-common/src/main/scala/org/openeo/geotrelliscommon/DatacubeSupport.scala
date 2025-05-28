@@ -1,6 +1,6 @@
 package org.openeo.geotrelliscommon
 
-import geotrellis.layer.{Boundable, Bounds, FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutLevel, LayoutScheme, Metadata, SpaceTimeKey, TileLayerMetadata, ZoomedLayoutScheme}
+import geotrellis.layer.{Boundable, Bounds, FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutLevel, LayoutScheme, Metadata, SpaceTimeKey, SpatialComponent, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.proj4.CRS
 import geotrellis.raster.{CellSize, CellType, MultibandTile, NODATA, doubleNODATA, isData}
 import geotrellis.spark.join.SpatialJoin
@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory
 
 import java.time.ZonedDateTime
 import scala.reflect.ClassTag
+import scala.util.control.Breaks.{break, breakable}
 
 object DatacubeSupport {
 
@@ -40,7 +41,7 @@ object DatacubeSupport {
   }
 
   // note: make sure to express boundingBox and maxSpatialResolution in the same units
-  def getLayout(layoutScheme: LayoutScheme, boundingBox: ProjectedExtent, zoom: Int, maxSpatialResolution: CellSize, globalBounds:Option[ProjectedExtent] = Option.empty, multiple_polygons_flag: Boolean = false) = {
+  def getLayout(layoutScheme: LayoutScheme, boundingBox: ProjectedExtent, zoom: Int, maxSpatialResolution: CellSize, globalBounds: Option[ProjectedExtent] = Option.empty, multiple_polygons_flag: Boolean = false) = {
     val LayoutLevel(_, worldLayout) = layoutScheme match {
       case scheme: ZoomedLayoutScheme => scheme.levelForZoom(zoom)
       case scheme: FloatingLayoutScheme => {
@@ -48,12 +49,12 @@ object DatacubeSupport {
         val layoutExtent: Extent = {
           val p = boundingBox.crs.proj4jCrs.getProjection
           if (globalBounds.isDefined) {
-            var inputBounds = globalBounds.get
+            val inputBounds = globalBounds.get
 
             var reprojected: Extent =
-              if(!inputBounds.extent.isEmpty) {
+              if (!inputBounds.extent.isEmpty) {
                 inputBounds.reprojectAsPolygon(boundingBox.crs).getEnvelopeInternal
-              }  else{
+              } else {
                 inputBounds.reproject(boundingBox.crs)
               }
 
@@ -67,7 +68,7 @@ object DatacubeSupport {
               // TODO: This statement is mostly for Sentinel-2. Can we remove this if-branch?
               //this forces utm projection to always round to 10m, which is fine for sentinel-2, but perhaps not generally desired?
               Extent(x * Math.floor(reprojected.xmin / x), y * Math.floor(reprojected.ymin / y), x * Math.ceil(reprojected.xmax / x), y * Math.ceil(reprojected.ymax / y))
-            }else{
+            } else {
               if (reprojected.width < maxSpatialResolution.width || reprojected.height < maxSpatialResolution.height) {
                 Extent(reprojected.xmin, reprojected.ymin, Math.max(reprojected.xmax, reprojected.xmin + maxSpatialResolution.width), Math.max(reprojected.ymax, reprojected.ymin + maxSpatialResolution.height))
               } else {
@@ -75,11 +76,11 @@ object DatacubeSupport {
               }
             }
 
-          }else{
+          } else {
             if (p.getName == "utm") {
               //for utm, we return an extent that goes beyond the utm zone bounds, to avoid negative spatial keys
               if (p.getSouthernHemisphere)
-              //official extent: Extent(166021.4431, 1116915.0440, 833978.5569, 10000000.0000) -> round to 10m + extend
+                //official extent: Extent(166021.4431, 1116915.0440, 833978.5569, 10000000.0000) -> round to 10m + extend
                 Extent(0.0, 1000000.0, 833970.0 + 100000.0, 10000000.0000 + 100000.0)
               else {
                 //official extent: Extent(166021.4431, 0.0000, 833978.5569, 9329005.1825) -> round to 10m + extend
@@ -168,12 +169,12 @@ object DatacubeSupport {
           if (isSparse) {
             val keys = cached.distinct().collect()
 
-            if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
+            if (keys.length < 40 || (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay")) {
               val indices = keys.map(SparseSpaceOnlyPartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
               new SparseSpaceOnlyPartitioner(indices, reduction, theKeys = Some(keys))
             } else {
-              val indices = keys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = reduction)).distinct.sorted
-              new SparseSpaceTimePartitioner(indices, reduction, theKeys = Some(keys))
+              val (indexReduction, indices) =  optimalReductionForSparseKeys(keys,datacubeParams.map(_.maxPartitionSize.getOrElse(64)).getOrElse(64),metadata.tileCols,metadata.cellType.bits, 6)
+              new SparseSpaceTimePartitioner(indices, indexReduction, theKeys = Some(keys))
             }
           } else {
             if (datacubeParams.isDefined && datacubeParams.get.partitionerTemporalResolution != "ByDay") {
@@ -305,5 +306,46 @@ object DatacubeSupport {
       })
     }
     filtered
+  }
+
+  def maybePartitionerIndex[K: SpatialComponent: ClassTag](datacube: MultibandTileLayerRDD[K]): Option[PartitionerIndex[K]] = {
+    if (datacube.partitioner.isDefined && datacube.partitioner.get.isInstanceOf[SpacePartitioner[K]]) {
+      Some(datacube.partitioner.get.asInstanceOf[SpacePartitioner[K]].index)
+    } else {
+      Option.empty[PartitionerIndex[K]]
+    }
+  }
+
+  def optimalReductionForSparseKeys(sparseKeys: Seq[SpaceTimeKey], maxPartitionSizeInMb: Int, tileSize: Int, cellTypeBits: Int, bandCount: Int) = {
+    val tileSizeInMb: Double = (bandCount * tileSize * cellTypeBits).toDouble / (8 * 1024 * 1024)
+    val maxRecordsPerPartition: Double = math.min(math.min(maxPartitionSizeInMb / tileSizeInMb, 1024),sparseKeys.length)
+    var indexReduction = math.max(math.ceil(math.log(maxRecordsPerPartition) / math.log(2)).toInt - 1, 1)
+
+    def computeIndices(cartesian: Seq[SpaceTimeKey], indexReduction: Int): (Array[BigInt], Int) = {
+
+      val allIndices = cartesian.map(k => SparseSpaceTimePartitioner.toIndex(k, indexReduction = indexReduction))
+      val counts = allIndices.groupBy(identity).mapValues(_.size)
+      val indices = counts.keys.toArray
+      (indices, counts.values.max)
+    }
+
+    var indices: Array[BigInt] = null
+    var maxCount = 0
+
+    breakable {
+      while (true) {
+        indexReduction += 1
+        val (newIndices, newMaxCount) = computeIndices(sparseKeys, indexReduction)
+
+        if (newMaxCount < maxRecordsPerPartition) {
+          indices = newIndices
+          maxCount = newMaxCount
+        } else {
+          indexReduction -= 1
+          break
+        }
+      }
+    }
+    (indexReduction, indices.sorted)
   }
 }

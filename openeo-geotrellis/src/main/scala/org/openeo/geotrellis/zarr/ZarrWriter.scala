@@ -25,8 +25,16 @@ object ZarrWriter {
   }
 
   def saveZarrGeneric[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K],path:String, zarrOptions: ZarrOptions):Unit= {
-    val groupPath = path + "/" + getGroupName(path)
-    writeFile(groupPath,FILENAME_DOT_ZGROUP,null)
+    if (zarrOptions.numberBands > 1) {
+      checkBandNames(zarrOptions.bandNames)
+      for (bandName <- zarrOptions.bandNames){
+        val groupPath = path + "/" + bandName
+        writeFile(groupPath, FILENAME_DOT_ZGROUP, null)
+      }
+    } else{
+      val groupPath = path + "/" + getGroupName(path)
+      writeFile(groupPath, FILENAME_DOT_ZGROUP, null)
+    }
     val metadata = rdd.metadata
     val cellType = metadata.cellType
     val (zarrType: DataType,fillValue:Option[Number]) = toZarrType(cellType)
@@ -35,28 +43,41 @@ object ZarrWriter {
     val tileCols = metadata.tileCols
     val byteOrder = ByteOrder.BIG_ENDIAN
     val compressor = CompressorFactory.createDefaultCompressor()
-    val nBands = zarrOptions.numberBands
-    val (shapeBands,chunkBands) = if (nBands > 1) {
-      (Array[Int](nBands,metadata.rows.toInt, metadata.cols.toInt),Array[Int](1,tileRows, tileCols))
-    } else{
-      (Array[Int](metadata.rows.toInt, metadata.cols.toInt),Array[Int](tileRows, tileCols))
-    }
 
 
     val xValues = for (x <- 0 until metadata.cols.toInt) yield metadata.extent.xmin + x * metadata.cellwidth + metadata.cellwidth / 2.0
     val yValues = for (y <- 0 until metadata.rows.toInt) yield metadata.extent.ymax - y * metadata.cellheight - metadata.cellheight / 2.0
     val keys = rdd.keys.collect()
+    val shapeOri = Array[Int](metadata.rows.toInt, metadata.cols.toInt)
+    val chunkOri = Array[Int](tileRows, tileCols)
     val (timeValues: Map[Long,Int],shape,chunk,hasTemp) = keys match {
       case m: Array[SpaceTimeKey] =>
         val tempKey = m.map(_.temporalKey.instant)
         val dist = tempKey.distinct
         writeVariables(path,"time",dist)
-        (dist.zipWithIndex.toMap, dist.length+:shapeBands, 1+:chunkBands,true)
-      case _ => (Map[Long,Int](),shapeBands,chunkBands, false)
+        (dist.zipWithIndex.toMap, dist.length+:shapeOri, 1+:chunkOri,true)
+      case _ => (Map[Long,Int](),shapeOri,chunkOri, false)
     }
-    writeFile(groupPath,FILENAME_DOT_ZATTRS, new dataAttribute(metadata,zarrOptions,hasTemp))
+
+    if (zarrOptions.numberBands > 1) {
+      for (bandName <- zarrOptions.bandNames){
+        val groupPath = path + "/" + bandName
+        writeFile(groupPath,FILENAME_DOT_ZATTRS, new dataAttribute(metadata,zarrOptions,hasTemp))
+      }
+    } else{
+      val groupPath = path + "/" + getGroupName(path)
+      writeFile(groupPath,FILENAME_DOT_ZATTRS, new dataAttribute(metadata,zarrOptions,hasTemp))
+    }
     val zarrHeader = new ZarrHeader(shape, chunk, zarrType.toString, byteOrder, fillValue.getOrElse(0), compressor, ".")
-    writeFile(groupPath, FILENAME_DOT_ZARRAY, zarrHeader)
+    if (zarrOptions.numberBands > 1) {
+      for (bandName <- zarrOptions.bandNames){
+        val groupPath = path + "/" + bandName
+        writeFile(groupPath, FILENAME_DOT_ZARRAY, zarrHeader)
+      }
+    } else{
+      val groupPath = path + "/" + getGroupName(path)
+      writeFile(groupPath, FILENAME_DOT_ZARRAY, zarrHeader)
+    }
 
     writeVariables(path,"x",xValues.toArray)
     writeVariables(path,"y",yValues.toArray)
@@ -64,7 +85,7 @@ object ZarrWriter {
 
 
     rdd.foreach{ case (k, multibandTileLayer) =>
-      writeData(multibandTileLayer,k,groupPath,nBands,tileRows,tileCols,zarrType,fillValue,timeValues)
+      writeData(multibandTileLayer,k,path,zarrOptions,tileRows,tileCols,zarrType,fillValue,timeValues)
     }
 
   }
@@ -100,7 +121,10 @@ object ZarrWriter {
     val toWrite = content match {
       case attributes: ZarrAttributes => attributes.toMap
       case zarrHeader: ZarrHeader => zarrHeader
-      case null => Map((ZARR_FORMAT, 2))
+      case null =>
+        val varMap = new java.util.HashMap[String,Int]()
+        varMap.put(ZARR_FORMAT, 2)
+        varMap
     }
     try {
       val os = new FileSystemStore(Paths.get(path)).getOutputStream(fileExtension)
@@ -133,7 +157,7 @@ object ZarrWriter {
     chunkReaderWriter.write("0", source)
   }
 
-  private def writeData[K: SpatialComponent: Boundable : ClassTag](multibandTileLayer: MultibandTile, k:K, groupPath:String, nBands:Int, tileRows:Int, tileCols:Int, zarrType:DataType, fillValue:Option[Number], timeValues:Map[Long,Int]): Unit = {
+  private def writeData[K: SpatialComponent: Boundable : ClassTag](multibandTileLayer: MultibandTile, k:K, path:String, options: ZarrOptions, tileRows:Int, tileCols:Int, zarrType:DataType, fillValue:Option[Number], timeValues:Map[Long,Int]): Unit = {
     val spatialKey:SpatialKey = k match {
       case key: SpatialKey => key
       case key: SpaceTimeKey => key.spatialKey
@@ -141,25 +165,32 @@ object ZarrWriter {
     val bandCount = multibandTileLayer.bandCount
     val compressor = CompressorFactory.createDefaultCompressor()
 
-    val store = new FileSystemStore(Paths.get(groupPath))
     val byteOrder = ByteOrder.BIG_ENDIAN
 
     (0 until bandCount).foreach(nTiles => {
       val band = multibandTileLayer.band(nTiles)
       val dataType = ucar.ma2.DataType.getType(band.toArray().getClass.getComponentType, false)
-      val (chunkBands,indexBands) = if (nBands > 1)
-        (Array[Int](1, tileRows, tileCols),Array(nTiles, spatialKey.row, spatialKey.col)) else
-        (Array[Int](tileRows, tileCols),Array(spatialKey.row, spatialKey.col))
+      val chunkOri = Array[Int](tileRows, tileCols)
+      val indexOri = Array(spatialKey.row, spatialKey.col)
       val (chunk,index) = k match {
-        case _:SpatialKey => (chunkBands,indexBands)
+        case _:SpatialKey => (chunkOri,indexOri)
         case key:SpaceTimeKey =>
           val timeIndex= timeValues(key.temporalKey.instant)
-          (1 +: chunkBands, timeIndex +: indexBands)
+          (1 +: chunkOri, timeIndex +: indexOri)
       }
       val source = factory(dataType, chunk, band.toArray())
       val chunkFilename = ZarrUtils.createChunkFilename(index, ".")
-      val chunkReaderWriter = ChunkReaderWriter.create(compressor, zarrType, byteOrder, chunk, fillValue.getOrElse(0), store)
-      chunkReaderWriter.write(chunkFilename, source)
+      if (bandCount > 1) {
+        if (bandCount != options.numberBands) throw new Exception(s"save_result zarr: the expected number of band is ${options.numberBands}, but was $bandCount")
+        val bandName = options.bandNames(nTiles)
+        val store = new FileSystemStore(Paths.get(path + "/" + bandName))
+        val chunkReaderWriter = ChunkReaderWriter.create(compressor, zarrType, byteOrder, chunk, fillValue.getOrElse(0), store)
+        chunkReaderWriter.write(chunkFilename, source)
+      } else{
+        val store = new FileSystemStore(Paths.get(path + "/" + getGroupName( path)))
+        val chunkReaderWriter = ChunkReaderWriter.create(compressor, zarrType, byteOrder, chunk, fillValue.getOrElse(0), store)
+        chunkReaderWriter.write(chunkFilename, source)
+      }
 
     })
   }
@@ -167,6 +198,17 @@ object ZarrWriter {
   private def getGroupName(path:String):String = {
     val split = path.split("/").last
     split.substring(0,split.length-5)
+  }
+
+  private def checkBandNames(bandNames: Array[String]):Unit = {
+    for (bandName <- bandNames){
+      if (bandName == "Undefined") throw new IllegalArgumentException("save_result zarr: Band names are not defined")
+      if (bandName == "") throw new IllegalArgumentException("save_result zarr: Band names cannot be empty")
+      for (character <- bandName) {
+        if (!(character.isLetterOrDigit || character=='-' || character == '_'))
+          throw new IllegalArgumentException(s"save_result zarr: Band names can only contain a-z, A-Z, 0-9, - or _, but had character $character")
+      }
+    }
   }
 }
 

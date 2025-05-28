@@ -51,8 +51,13 @@ package object geotrelliscommon {
 
     def toIndex(key: SpaceTimeKey): BigInt = toZ(key).z
 
-    def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] =
-      Z2.zranges(ZRange(toZ(keyRange._1), toZ(keyRange._2))).map(r => (BigInt(r.lower), BigInt(r.upper)))
+    def indexRanges(keyRange: (SpaceTimeKey, SpaceTimeKey)): Seq[(BigInt, BigInt)] = {
+      if(theKeys.isDefined) {
+        theKeys.get.map(k => Z2(k.col,k.row).z).map(k => (BigInt(k),BigInt(k)))
+      }else{
+        Z2.zranges(ZRange(toZ(keyRange._1), toZ(keyRange._2))).map(r => (BigInt(r.lower), BigInt(r.upper)))
+      }
+    }
 
     override def spatialKeys: Option[Array[SpatialKey]] = {
       theKeys
