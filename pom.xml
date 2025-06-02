@@ -65,6 +65,7 @@
                 <module>openeo-logging</module>
                 <module>geopyspark-geotrellis</module>
                 <module>geotrellis-integrationtests</module>
+                <module>openeo-dependencies</module>
             </modules>
         </profile>
         <profile>
