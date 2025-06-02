@@ -679,16 +679,11 @@ object FileLayerProvider {
       MultibandTile(mergedBands.toSeq.sortBy(_._1).flatMap(_._2.get.bands))
 
     } )
-    val withEmptyTiles = if (retainNoDataTiles) {
-      tiledRDD.map { case (key, tile) =>
-        if (tile.bands.forall(_.isNoDataTile)) {
-          (key, new EmptyMultibandTile(tile.cols, tile.rows, tile.cellType, tile.bandCount))
-        } else {
-          (key, tile)
-        }
-      }
-    } else {
-      tiledRDD
+    val withEmptyTiles = tiledRDD.mapValues {
+      case tile if retainNoDataTiles && tile.bands.forall(_.isNoDataTile) =>
+        new EmptyMultibandTile(tile.cols, tile.rows, tile.cellType, tile.bandCount)
+      case tile =>
+        tile
     }
     tiledRDD = withEmptyTiles.filter { case (_, tile) => retainNoDataTiles ||  !tile.bands.forall(_.isNoDataTile) }
 
