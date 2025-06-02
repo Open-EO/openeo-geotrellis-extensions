@@ -17,10 +17,21 @@ package object testutil {
   }
 
   def fromString(graphPath: String): Seq[Tile] => Seq[Tile] = {
+    val transformation = processBuilderFromString(graphPath).generateFunction()
+    transformation
+  }
+
+  def processBuilderFromUrl(url: URL): OpenEOProcessScriptBuilder = {
+    val graphPath = IOUtils.toString(url, Charset.defaultCharset())
+    processBuilderFromString(graphPath)
+  }
+
+  def processBuilderFromString(graphPath: String): OpenEOProcessScriptBuilder = {
     val visitor = (new GeotrellisTileProcessGraphVisitor).create()
     val graph = new ObjectMapper().readValue(graphPath, classOf[util.Map[String, Object]])
     visitor.acceptProcessGraph(graph)
-    val transformation = visitor.builder.generateFunction()
-    transformation
+    visitor.builder
   }
+
+
 }

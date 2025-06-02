@@ -1,7 +1,7 @@
 package org.openeo.geotrellis
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import geotrellis.raster.{BitArrayTile, ByteArrayFiller, ByteArrayTile, ByteConstantNoDataCellType, ShortArrayTile, ShortConstantNoDataCellType, Tile}
+import geotrellis.raster.{BitArrayTile, ByteArrayFiller, ByteArrayTile, ByteConstantNoDataCellType, FloatArrayTile, FloatConstantNoDataArrayTile, FloatConstantNoDataCellType, ShortArrayTile, ShortConstantNoDataCellType, Tile}
 import org.apache.commons.io.IOUtils
 import org.junit.Test
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertNotNull}
@@ -87,8 +87,8 @@ class OpenEOProcessGraphBuilderTest {
 
   @Test
   def testDereferenceNode(): Unit = {
-    val graphPath = IOUtils.toString(getClass.getResource("/org/openeo/geotrellis/ProcessGraphBuilderGraph.json"))
-    val expectedPath = IOUtils.toString(getClass.getResource("/org/openeo/geotrellis/ProcessGraphBuilderDereference.json"))
+    val graphPath = IOUtils.toString(getClass.getResource("/org/openeo/geotrellis/openeoprocessgraphbuildertest/ProcessGraphBuilderGraph.json"))
+    val expectedPath = IOUtils.toString(getClass.getResource("/org/openeo/geotrellis/openeoprocessgraphbuildertest/ProcessGraphBuilderDereference.json"))
     val processgraph = new ObjectMapper().readValue(graphPath, classOf[util.Map[String, Any]])
     val expected = new ObjectMapper().readValue(expectedPath, classOf[util.Map[String, Any]])
     val visitor = (new GeotrellisTileProcessGraphVisitor).create()
@@ -105,7 +105,7 @@ class OpenEOProcessGraphBuilderTest {
 
   @Test
   def testArrayFind(): Unit = {
-    val transformation = org.openeo.geotrellis.testutil.fromUrl(getClass.getResource("/org/openeo/geotrellis/testArrayFindProcessGraph.json"))
+    val transformation = org.openeo.geotrellis.testutil.fromUrl(getClass.getResource("/org/openeo/geotrellis/openeoprocessgraphbuildertest/testArrayFindProcessGraph.json"))
     val tile0 = ByteArrayTile.fill(10.toByte, 4, 4)
     val tile1 = ByteArrayTile.fill(5.toByte, 4, 4)
     val result = transformation.apply(JavaConverters.asScalaBuffer(util.Arrays.asList(tile0, tile1)))
@@ -115,7 +115,7 @@ class OpenEOProcessGraphBuilderTest {
 
   @Test
   def testArrayContains(): Unit = {
-    val transformation = org.openeo.geotrellis.testutil.fromUrl(getClass.getResource("/org/openeo/geotrellis/testArrayContainsProcessGraph.json"))
+    val transformation = org.openeo.geotrellis.testutil.fromUrl(getClass.getResource("/org/openeo/geotrellis/openeoprocessgraphbuildertest/testArrayContainsProcessGraph.json"))
     val tile0 = ByteArrayTile.fill(10.toByte, 4, 4)
     val tile1 = ByteArrayTile.fill(5.toByte, 4, 4)
     val result = transformation.apply(JavaConverters.asScalaBuffer(util.Arrays.asList(tile0, tile1)))
@@ -126,7 +126,7 @@ class OpenEOProcessGraphBuilderTest {
 
   @Test
   def testAcceptDict(): Unit ={
-    val graphPath = IOUtils.toString(getClass.getResource("/org/openeo/geotrellis/ProcessGraphBuilderGraph.json"), Charset.defaultCharset())
+    val graphPath = IOUtils.toString(getClass.getResource("/org/openeo/geotrellis/openeoprocessgraphbuildertest/ProcessGraphBuilderGraph.json"), Charset.defaultCharset())
     val visitor = (new GeotrellisTileProcessGraphVisitor).create()
     val graph = new ObjectMapper().readValue(graphPath,classOf[util.Map[String,Object]])
     visitor._acceptDict(graph)
@@ -137,6 +137,17 @@ class OpenEOProcessGraphBuilderTest {
     }
 
     assert(true)
+  }
+
+  @Test
+  def testMultiplyProcessGraph(): Unit ={
+    val builder = org.openeo.geotrellis.testutil.processBuilderFromUrl(getClass.getResource("/org/openeo/geotrellis/openeoprocessgraphbuildertest/testMultiplyProcessGraph.json"))
+
+    val result = builder.generateFunction().apply(JavaConverters.asScalaBuffer(util.Arrays.asList(ByteArrayTile.fill(10.toByte, 4, 4))))
+    assertEquals(FloatConstantNoDataCellType, builder.resultingDataType)
+    val expectedResult =  FloatArrayTile.fill(2.0f,4,4)
+    assertTileEquals(expectedResult, result.head)
+
   }
 
 }

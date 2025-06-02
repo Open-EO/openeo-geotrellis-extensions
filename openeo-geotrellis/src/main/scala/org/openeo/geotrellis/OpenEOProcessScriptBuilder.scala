@@ -967,6 +967,7 @@ class OpenEOProcessScriptBuilder {
     value match {
       case x: java.lang.Byte => UByteUserDefinedNoDataCellType(255.byteValue())
       case x: java.lang.Short => ShortConstantNoDataCellType
+      case x: Integer if x == 1 => FloatConstantNoDataCellType
       case x: Integer => IntConstantNoDataCellType
       case x: java.lang.Float => FloatConstantNoDataCellType
       case x if BigDecimal(x.doubleValue()).precision <= 7 => FloatConstantNoDataCellType

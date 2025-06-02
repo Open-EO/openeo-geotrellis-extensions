@@ -1,0 +1,10 @@
+{
+  "find": {
+    "process_id": "multiply",
+    "arguments": {
+      "x": 1,
+      "y": 2
+    },
+    "result": true
+  }
+}
