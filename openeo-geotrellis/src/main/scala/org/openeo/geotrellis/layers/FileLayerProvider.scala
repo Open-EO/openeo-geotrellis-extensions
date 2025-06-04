@@ -80,6 +80,23 @@ object BandCompositeRasterSource {
       .`with`(util.Collections.singletonList(retryPolicy))
       .get(f _)
   }
+
+  def readBounds(source: RasterSource, bounds: GridBounds[Long], softErrors:Boolean, bands: Seq[Int] = Seq(0)): Option[Raster[MultibandTile]] = {
+    try {
+      logger.debug(s"reading $bounds from ${source.name}")
+      val raster = source.read(bounds, bands) map { case Raster(multibandTile, extent) => Raster(multibandTile, extent) }
+      logger.debug(s"finished reading $bounds from ${source.name}")
+      raster
+    } catch {
+      case e: AbortedException => throw e
+      case e:Exception if softErrors =>
+      {
+        logger.warn(s"load_collection: ignoring soft error for ${source.name} - ${e.getMessage}", e)
+        None
+      }
+      case e: Exception => throw new IOException(s"load_collection: Error while reading $bounds from: ${source.name} - ${e.getMessage}", e)
+    }
+  }
 }
 
 
@@ -177,6 +194,8 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     else None
   }
 
+
+
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     var selectedSources: GenSeq[RasterSource] = reprojectedSources(bands)
 
@@ -184,29 +203,13 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       selectedSources = selectedSources.par
     }
 
-    def readBounds(source: RasterSource): Option[Raster[Tile]] = {
-      try {
-        logger.debug(s"reading $bounds from ${source.name}")
-        val raster = source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
-        logger.debug(s"finished reading $bounds from ${source.name}")
-        raster
-      } catch {
-        case e: AbortedException => throw e
-        case e:Exception if softErrors =>
-        {
-          logger.warn(s"load_collection: ignoring soft error for ${source.name} - ${e.getMessage}", e)
-          None
-        }
-        case e: Exception => throw new IOException(s"load_collection: Error while reading $bounds from: ${source.name} - ${e.getMessage}", e)
-      }
-    }
 
     def readBoundsAttemptFailed(source: RasterSource)(e: Exception): Unit =
       logger.warn(s"attempt to read $bounds from ${source.name} failed", e)
 
-    val singleBandRasters = selectedSources
+    val singleBandRasters: GenSeq[Raster[Tile]] = selectedSources
       .map(rs => retryWithBackoff(maxRetries, readBoundsAttemptFailed(rs)) {
-        readBounds(rs)
+        BandCompositeRasterSource.readBounds(rs, bounds, softErrors).map(_.mapTile(_.band(0)))
       })
       .collect { case Some(raster) => raster }
 
@@ -274,8 +277,8 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    val rasters = sourcesWithBandIds
-      .map { s => s._1.read(bounds, s._2) }
+    val rasters: Seq[Raster[MultibandTile]] = sourcesWithBandIds
+      .map { s => BandCompositeRasterSource.readBounds(s._1,bounds,false,s._2) }
       .collect { case Some(raster) => raster }
 
     if (rasters.size == sources.size) Some(Raster(MultibandTile(rasters.flatMap(_.tile.convert(cellType).bands)), rasters.head.extent))
