@@ -200,7 +200,9 @@ void build(skipTests = false, skipSentinelHubTests = false){
             sh "dnf -y install dnf-plugins-core"
             sh "dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo"
             sh "dnf -y install docker-ce docker-ce-cli containerd.io"
+            sh "systemctl start docker"
             sh "docker ps"
+            sh "docker run hello-world"
             def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
             def snapshotRepo = 'libs-snapshot-public'
