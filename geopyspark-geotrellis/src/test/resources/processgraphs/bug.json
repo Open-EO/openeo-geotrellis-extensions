@@ -1,0 +1,118 @@
+{
+  "loadcollection1": {
+    "process_id": "load_collection",
+    "arguments": {
+      "bands": [
+        "B04"
+      ],
+      "id": "SENTINEL2_L2A",
+      "properties": {
+        "eo:cloud_cover": {
+          "process_graph": {
+            "lte1": {
+              "process_id": "lte",
+              "arguments": {
+                "x": {
+                  "from_parameter": "value"
+                },
+                "y": 20
+              },
+              "result": true
+            }
+          }
+        }
+      },
+      "spatial_extent": {
+        "west": 8.908,
+        "south": 53.791,
+        "east": 8.96,
+        "north": 54.016
+      },
+      "temporal_extent": [
+        "2022-10-01",
+        "2022-12-01"
+      ]
+    }
+  },
+  "reducedimension1": {
+    "process_id": "reduce_dimension",
+    "arguments": {
+      "data": {
+        "from_node": "loadcollection1"
+      },
+      "dimension": "t",
+      "reducer": {
+        "process_graph": {
+          "min1": {
+            "process_id": "min",
+            "arguments": {
+              "data": {
+                "from_parameter": "data"
+              }
+            },
+            "result": true
+          }
+        }
+      }
+    }
+  },
+  "applyneighborhood1": {
+    "process_id": "apply_neighborhood",
+    "arguments": {
+      "data": {
+        "from_node": "reducedimension1"
+      },
+      "overlap": [
+        {
+          "dimension": "x",
+          "value": 32,
+          "unit": "px"
+        },
+        {
+          "dimension": "y",
+          "value": 32,
+          "unit": "px"
+        }
+      ],
+      "process": {
+        "process_graph": {
+          "runudf1": {
+            "process_id": "run_udf",
+            "arguments": {
+              "data": {
+                "from_parameter": "data"
+              },
+              "runtime": "Python",
+              "udf": "import functools\nimport sys\nfrom openeo.udf import XarrayDataCube\nfrom typing import Dict\nimport xarray as xr\nfrom openeo.udf.debug import inspect\n\n# The onnx_deps folder contains the extrcted contents of the dependencies archive provided in the job options\nsys.path.insert(0, \"onnx_deps\") \nimport onnxruntime as ort\n\n@functools.lru_cache(maxsize=5)\ndef _load_ort_session(model_name: str):\n    \"\"\"\n    Loads an ONNX model from the onnx_models folder and returns an ONNX runtime session.\n\n    Extracting the model loading code into a separate function allows us to cache the loaded model.\n    This prevents the model from being loaded for every chunk of data that is processed, but only once per executor.\n\n    Should you have to download the model from a remote location, you can add the download code here, and cache the model.\n\n    Make sure that the arguments of the method you add the @functools.lru_cache decorator to are hashable.\n    Be carefull with using this decorator for class methods, as the self argument is not hashable. In that case, you can use a static method.\n\n    More information on this functool can be found here: https://docs.python.org/3/library/functools.html#functools.lru_cache\n    \"\"\"\n    # the onnx_models folder contians the content of the model archive provided in the job options\n    return ort.InferenceSession(f\"onnx_models/{model_name}\") \n\ndef apply_datacube(cube: xr.DataArray, context: Dict) -> xr.DataArray:\n    inspect(cube)\n    cube = cube.transpose(\"bands\", \"y\", \"x\")  # Make sure the data is in the correct order\n\n    input_np = cube.values  # Only perform inference for the first date and get the numpy array\n    input_np = input_np.reshape(1,1,256,256)  # Neural network expects shape (1, 1, 256, 256)\n    inspect(input_np)\n    # Load the model\n    ort_session = _load_ort_session(\"test_model.onnx\") #name of the model in the archive\n\n    # Perform inference\n    ort_inputs = {ort_session.get_inputs()[0].name: input_np}\n    ort_outputs = ort_session.run(None, ort_inputs)\n    output_np = ort_outputs[0].reshape(1,256,256)  # Reshape the output to the expected shape\n\n    # Convert the output back to an xarray DataArray\n    output_data = xr.DataArray(\n        output_np,\n        dims=[\"bands\", \"y\", \"x\"],\n    ) \n    inspect(output_data)\n    # The input data did not contain a time dimension in this case, so we do not add it to the output. \n    # If the input data contains a time dimension, you should add it here:\n    # output_data = output_data.expand_dims(\n    #     dim={\n    #         \"t\": [\"2000-01-01\"], \n    #     },\n    # )\n\n\n    return output_data\n"
+            },
+            "result": true
+          }
+        }
+      },
+      "size": [
+        {
+          "dimension": "x",
+          "value": 256,
+          "unit": "px"
+        },
+        {
+          "dimension": "y",
+          "value": 256,
+          "unit": "px"
+        }
+      ]
+    }
+  },
+  "saveresult1": {
+    "process_id": "save_result",
+    "arguments": {
+      "data": {
+        "from_node": "applyneighborhood1"
+      },
+      "format": "netCDF",
+      "options": {
+      }
+    },
+    "result": true
+  }
+}
