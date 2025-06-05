@@ -40,7 +40,6 @@ pipeline {
     parameters {
       booleanParam(name: 'skip_tests', defaultValue: false, description: 'Check this if you want to skip running tests.')
       booleanParam(name: 'skip_sentinelhub_tests', defaultValue: false, description: 'Check this if you want to skip running Sentinel Hub tests.')
-
     }
     stages {
         stage('Checkout') {
@@ -208,9 +207,13 @@ void build(skipTests = false, skipSentinelHubTests = false){
             rtMaven.deployer server: server, releaseRepo: 'libs-release-public', snapshotRepo: snapshotRepo
             rtMaven.tool = maven
             if (skipTests) {
+                print "Maven will skip all tests"
                 rtMaven.opts += ' -DskipTests=true'
             } else if (skipSentinelHubTests) {
+                print "Maven will only skip Sentinel Hub tests"
                 rtMaven.opts += ' -DskipSentinelHubTests=true'
+            } else {
+                print "Maven will run all tests"
             }
             rtMaven.deployer.deployArtifacts = true
             //use '--projects StatisticsMapReduce' in 'goals' to build specific module
@@ -227,7 +230,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
                         print e.message
                     }
                 }
-            }catch(err){
+            } catch(err){
                 notification.fail()
 
                 throw err

@@ -1,6 +1,4 @@
-package geopyspark.geotrellis
-
-import org.junit.Test
+package org.openeo.geotrellis.processgraph
 
 import java.io.File
 import java.lang.management.ManagementFactory
@@ -20,7 +18,7 @@ object ProcessGraphRunner {
     val processGraphName = processGraph.getName
 
     val currentDir = System.getProperty("user.dir")
-    val outputDir = currentDir + "/target/processgraphs/results/" + processGraphName.replaceFirst(".json", "")
+    val outputDir = currentDir + "/target/processgraph/results/" + processGraphName.replaceFirst(".json", "")
     new File(outputDir).mkdirs()
 
     val classPath = System.getProperty("java.class.path")
@@ -36,7 +34,7 @@ object ProcessGraphRunner {
     val jars = classPath.split(":").filter(_.endsWith(".jar")).filter(_.contains(hostM2RepositoryFolder)).map(f => f.replaceFirst(hostM2RepositoryFolder, dockerM2RepositoryFolder)).reduce((acc, e) => acc + ":" + e)
     val folders = classPath.split(":").filter(!_.endsWith(".jar")).map(f => f.replaceFirst(hostCodeFolder, dockerCodeFolder)).reduce((acc, e) => acc + ":" + e)
 
-    val dockerClassPath = "/code/geotrellis-extensions/target/geotrellis-extensions-2.4.0_2.12-SNAPSHOT.jar:" + folders + ":" + jars
+    val dockerClassPath = folders + ":" + jars
 
     val debug = ManagementFactory.getRuntimeMXBean().getInputArguments().stream().anyMatch(_.contains("-agentlib:jdwp"))
 
