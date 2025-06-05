@@ -39,6 +39,8 @@ pipeline {
     }
     parameters {
       booleanParam(name: 'skip_tests', defaultValue: false, description: 'Check this if you want to skip running tests.')
+      booleanParam(name: 'skip_sentinelhub_tests', defaultValue: false, description: 'Check this if you want to skip running Sentinel Hub tests.')
+
     }
     stages {
         stage('Checkout') {
@@ -189,7 +191,7 @@ String updateMavenVersion(){
     return v_snapshot
 }
 
-void build(tests = true){
+void build(skipTests = false, skipSentinelHubTests = false){
     def publishable_branches = ["master", "develop", "109-upgrade-to-spark-33"]
 
     List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-11-openjdk"]
@@ -205,8 +207,10 @@ void build(tests = true){
             }
             rtMaven.deployer server: server, releaseRepo: 'libs-release-public', snapshotRepo: snapshotRepo
             rtMaven.tool = maven
-            if (!tests) {
+            if (skipTests) {
                 rtMaven.opts += ' -DskipTests=true'
+            } else if (skipSentinelHubTests) {
+                rtMaven.opts += ' -DskipSentinelHubTests=true'
             }
             rtMaven.deployer.deployArtifacts = true
             //use '--projects StatisticsMapReduce' in 'goals' to build specific module
@@ -229,7 +233,7 @@ void build(tests = true){
                 throw err
             }
             finally {
-                if (tests) {
+                if (!skipTests) {
                     junit '*/target/*-reports/*.xml'
                 }
             }
