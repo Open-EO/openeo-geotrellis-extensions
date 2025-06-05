@@ -59,7 +59,7 @@ pipeline {
             steps {
                 script {
                     rel_version = getMavenVersion()
-                    build( !params.skip_tests)
+                    build( params.skip_tests, params.skip_sentinelhub_tests)
                     utils.setWorkspacePermissions()
                 }
             }
@@ -117,7 +117,7 @@ pipeline {
                         sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${rel_version}"
                     }
                     echo "releasing version ${rel_version}"
-                    build(tests = false)
+                    build(skipTests = true)
 
                     withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m", "HADOOP_CONF_DIR=/etc/hadoop/conf/"]) {
                         withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'BobDeBouwer', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD']]) {
