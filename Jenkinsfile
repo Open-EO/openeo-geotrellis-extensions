@@ -196,7 +196,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
     List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-11-openjdk"]
     docker.image(env.MAVEN_IMAGE).inside('-v /home/jenkins/.m2:/root/.m2 -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root') {
         withEnv(jdkEnv) {
-            sh "dnf install -y maven git java-11-openjdk-devel gdal-3.8.4"
+            sh "dnf install -y maven git java-11-openjdk-devel gdal-3.8.4 docker"
             def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
             def snapshotRepo = 'libs-snapshot-public'
