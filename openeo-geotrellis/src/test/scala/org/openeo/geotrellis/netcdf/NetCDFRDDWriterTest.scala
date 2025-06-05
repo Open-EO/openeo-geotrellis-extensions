@@ -17,6 +17,7 @@ import org.junit.Assert.{assertFalse, assertTrue}
 import org.junit._
 import org.junit.rules.TemporaryFolder
 import org.openeo.geotrellis.TemporalResolution
+import org.openeo.geotrellis.stac.Item
 import org.openeo.geotrellis.{LayerFixtures, ProjectedPolygons}
 import org.openeo.geotrelliscommon.{ByKeyPartitioner, DataCubeParameters, SparseSpaceTimePartitioner}
 import org.slf4j.LoggerFactory
@@ -27,7 +28,7 @@ import java.time.ZoneOffset.UTC
 import java.time.{LocalDate, ZonedDateTime}
 import java.util
 import scala.annotation.meta.getter
-import scala.collection.JavaConverters.asScalaBufferConverter
+import scala.collection.JavaConverters._
 import scala.io.Source
 
 
@@ -97,18 +98,17 @@ class NetCDFRDDWriterTest extends RasterMatchers{
 
     val targetDir = temporaryFolder.getRoot.toString
 
-    val sampleFilenames: util.List[(String, Extent)] = NetCDFRDDWriter.saveSamples(layer, targetDir, polygonsUTM31,
+    val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.saveSamples(layer, targetDir, polygonsUTM31,
       sampleNameList, new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M",
-        "SCENECLASSIFICATION_20M")),
-      Some("prefixTest"))
+        "SCENECLASSIFICATION_20M")), Some("prefixTest")))
 
-    val expectedPaths = List(s"$targetDir/prefixTest_0.nc", s"$targetDir/prefixTest_1.nc")
+    val expectedPaths = util.Arrays.asList(s"$targetDir/prefixTest_0.nc", s"$targetDir/prefixTest_1.nc")
 
-    Assert.assertEquals(sampleFilenames.asScala.map(_._1).groupBy(identity), expectedPaths.groupBy(identity))
+    Assert.assertEquals(expectedPaths, sampleFilenames)
 
     // note: tests first geometry only
     val bandName = "TOC-B04_10M"
-    val rasterSource = GDALRasterSource(s"""NETCDF:"${expectedPaths.head}":$bandName""")
+    val rasterSource = GDALRasterSource(s"""NETCDF:"${expectedPaths.get(0)}":$bandName""")
     val Some(multiBandRaster) = rasterSource.read()
     val raster = multiBandRaster.mapTile(_.band(0)) // first timestamp
 
@@ -176,12 +176,12 @@ class NetCDFRDDWriterTest extends RasterMatchers{
 
     val targetDir = temporaryFolder.getRoot.toString
 
-    val sampleFilenames: util.List[(String, Extent)] = NetCDFRDDWriter.saveSamples(
+    val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.saveSamples(
       layer, targetDir, polygons, sampleNameList, bandNames
-    )
+    ))
 
-    val raster1: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:${sampleFilenames.get(0)._1}:TOC-B04_10M""").read().get
-    val raster2: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:${sampleFilenames.get(1)._1}:TOC-B04_10M""").read().get
+    val raster1: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:${sampleFilenames.get(0)}:TOC-B04_10M""").read().get
+    val raster2: Raster[MultibandTile] = GDALRasterSource(s"""NETCDF:${sampleFilenames.get(1)}:TOC-B04_10M""").read().get
 
     // Compare raster extents.
     //assert(raster1.extent.width == 2560.0)
@@ -242,14 +242,20 @@ class NetCDFRDDWriterTest extends RasterMatchers{
       null,
       null,
       Some("prefixTest"),
-    ).asScala
+    ).stream()
+      .flatMap { item =>
+        item.assets.values().stream().map[(String, Extent)] { asset =>
+          (asset.path, item.bbox)
+        }
+      }
+      .collect(util.stream.Collectors.toSet())
 
     val expectedSamples = Set(
       ("/tmp/prefixTest_0.nc", polygonsUTM31.polygons(0).extent),
       ("/tmp/prefixTest_1.nc", polygonsUTM31.polygons(1).extent),
     )
 
-    Assert.assertEquals(expectedSamples, samples.toSet)
+    Assert.assertEquals(expectedSamples.asJava, samples)
   }
 
   @Ignore
@@ -267,11 +273,18 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     val layer = LayerFixtures.sentinel2TocLayerProviderUTM.readMultibandTileLayer(date,date.plusDays(10),bbox,Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs,13,sc,datacubeParams = Some(dcParams))
 
 
-    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSingleNetCDF(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M")),null,null,null,6)
-    val expectedPaths = List("/tmp/stitched.nc")
+    val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.saveSingleNetCDF(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M", "SCENECLASSIFICATION_20M")),null,null,null,6))
+    val expectedPaths = util.Collections.singletonList("/tmp/stitched.nc")
 
-    Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
+    Assert.assertEquals(expectedPaths, sampleFilenames)
   }
+
+  private def assetFileNames(items: util.List[Item]): util.List[String] =
+    items.stream()
+      .flatMap { item =>
+        item.assets.values().stream().map[String] { asset => asset.path }
+      }
+      .collect(util.stream.Collectors.toList())
 
   @Test
   def testWriteSingleNetCDFLarge(): Unit = {
@@ -283,10 +296,10 @@ class NetCDFRDDWriterTest extends RasterMatchers{
 
     val options = new NetCDFOptions
     options.setBandNames(new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")))
-    val sampleFilenames: util.List[String] = NetCDFRDDWriter.writeRasters(layer,"/tmp/stitched.nc",options)
-    val expectedPaths = List("/tmp/stitched.nc")
+    val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.writeRasters(layer,"/tmp/stitched.nc",options))
+    val expectedPaths = util.Collections.singletonList("/tmp/stitched.nc")
 
-    Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
+    Assert.assertEquals(expectedPaths, sampleFilenames)
     val ds = NetcdfDataset.openDataset("/tmp/stitched.nc",true,null)
     val b04 = ds.findVariable("TOC-B04_10M")
 
@@ -301,9 +314,9 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     options.setBandNames(new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")))
 
     val layerDefault= LayerFixtures.aSpacetimeTileLayerRddShortFillValue(20,20)
-    val sampleFilenames: util.List[String] = NetCDFRDDWriter.writeRasters(layerDefault,"/tmp/stitched.nc",options)
-    val expectedPaths = List("/tmp/stitched.nc")
-    Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
+    val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.writeRasters(layerDefault,"/tmp/stitched.nc",options))
+    val expectedPaths = util.Collections.singletonList("/tmp/stitched.nc")
+    Assert.assertEquals(expectedPaths, sampleFilenames)
 
     val ds = NetcdfDataset.openDataset("/tmp/stitched.nc",true,null)
     val b04 = ds.findVariable("TOC-B04_10M")
@@ -345,8 +358,8 @@ class NetCDFRDDWriterTest extends RasterMatchers{
 
 
     val layerChosen= LayerFixtures.aSpacetimeTileLayerRddShortFillValue(20,20,fillValue = 9)
-    val sampleFilenamesChosen: util.List[String] = NetCDFRDDWriter.writeRasters(layerChosen,"/tmp/stitched.nc",options)
-    Assert.assertEquals(sampleFilenamesChosen.asScala.groupBy(identity), expectedPaths.groupBy(identity))
+    val sampleFilenamesChosen: util.List[String] = assetFileNames(NetCDFRDDWriter.writeRasters(layerChosen,"/tmp/stitched.nc",options))
+    Assert.assertEquals(expectedPaths, sampleFilenamesChosen)
 
     val dsChosen = NetcdfDataset.openDataset("/tmp/stitched.nc",true,null)
     val b04Chosen = dsChosen.findVariable("TOC-B04_10M")
@@ -393,10 +406,10 @@ class NetCDFRDDWriterTest extends RasterMatchers{
 
     val (image,layer) = LayerFixtures.createLayerWithGaps(5,5)
 
-    val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSingleNetCDFSpatial(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")),null,null,null,6)
-    val expectedPaths = List("/tmp/stitched.nc")
+    val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.saveSingleNetCDFSpatial(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")),null,null,null,6))
+    val expectedPaths = util.Collections.singletonList("/tmp/stitched.nc")
 
-    Assert.assertEquals(sampleFilenames.asScala.groupBy(identity), expectedPaths.groupBy(identity))
+    Assert.assertEquals(expectedPaths, sampleFilenames)
     val ds = NetcdfDataset.openDataset("/tmp/stitched.nc",true,null)
     val b04 = ds.findVariable("TOC-B04_10M")
 
@@ -425,12 +438,12 @@ class NetCDFRDDWriterTest extends RasterMatchers{
         crs = CRS.fromName("EPSG:3857"),
         dates = Some(dates)
       )
-      val sampleFilenames: util.List[String] = NetCDFRDDWriter.saveSingleNetCDF(
+      val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.saveSingleNetCDF(
         dataCubeContextRDD,
         "tmp/testWriteSingleNetCDFMultipleSamplesOnADay_" + date2.toString.replace(":", "_") + ".nc",
         new util.ArrayList(util.Arrays.asList("band")),
         null, null, null, 6
-      )
+      ))
       val ds = NetcdfDataset.openDataset(sampleFilenames.get(0), true, null)
       // When the samples are in the same day, they should still be separate
       Assert.assertEquals(dates.length, ds.findDimension("t").getLength)
@@ -452,7 +465,7 @@ class NetCDFRDDWriterTest extends RasterMatchers{
 
     val options = new NetCDFOptions
     options.setBandNames(new util.ArrayList(util.Arrays.asList("NDVI")))
-    val sampleFilenames: util.List[String] = NetCDFRDDWriter.writeRasters(layer,"/tmp/cgls_ndvi300.nc",options)
+    val sampleFilenames: util.List[String] = assetFileNames(NetCDFRDDWriter.writeRasters(layer,"/tmp/cgls_ndvi300.nc",options))
 
     val referenceTile = GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/cgls_ndvi300.tiff").read().get
     val actualTile = GDALRasterSource("/tmp/cgls_ndvi300.nc").read().get

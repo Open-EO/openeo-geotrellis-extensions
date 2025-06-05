@@ -13,6 +13,7 @@ import org.junit.jupiter.api.{BeforeAll, Test}
 import org.junit.{AfterClass, Assert}
 import org.openeo.geotrellis.LayerFixtures.rgbLayerProvider
 import org.openeo.geotrellis.png.PngTest
+import org.openeo.geotrellis.stac.Item
 import org.openeo.geotrellis.tile_grid.TileGrid
 import org.openeo.geotrellis.{LayerFixtures, geotiff}
 
@@ -72,7 +73,12 @@ class TileGridTest {
     )
 
     // TODO: check if extents (in the layer CRS) are 10000m wide/high (in UTM)
-    Assert.assertEquals(expectedPaths, tiles.asScala.map { case (path, _) => path }.toSet)
+    val actualPaths = for {
+      item <- tiles.asScala
+      asset <- item.assets.values().asScala
+    } yield asset.path
+
+    Assert.assertEquals(expectedPaths, actualPaths.toSet)
 
     val extent = bbox.reproject(spatialLayer.metadata.crs)
     val cropBounds = mapAsJavaMap(Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax))
@@ -86,7 +92,12 @@ class TileGridTest {
     )
 
     // TODO: also check extents
-    Assert.assertEquals(expectedCroppedPaths, croppedTiles.asScala.map { case (path, _) => path }.toSet)
+    val actualCroppedPaths = for {
+      item <- croppedTiles.asScala
+      asset <- item.assets.values().asScala
+    } yield asset.path
+
+    Assert.assertEquals(expectedCroppedPaths, actualCroppedPaths.toSet)
   }
 
   @Test
@@ -110,7 +121,7 @@ class TileGridTest {
       outDir + "/testSaveStitched-31UDS_2_5.tiff",
     )
     // TODO: check if extents (in the layer CRS) are 10000m wide/high (in UTM)
-    Assert.assertEquals(expectedPaths, tiles.asScala.map { case (path, _) => path }.toSet)
+    Assert.assertEquals(expectedPaths, tiles.asScala.map { case item => item.assets.values().iterator().next().path }.toSet)
 
     for (path <- expectedPaths){
       val tile = GeoTiff.readMultiband(path)
@@ -137,7 +148,7 @@ class TileGridTest {
       outDir + "/testSaveStitched_cropped-31UDS_2_5.tiff",
     )
 
-    Assert.assertEquals(expectedCroppedPaths, croppedTiles.asScala.map { case (path, _) => path }.toSet)
+    Assert.assertEquals(expectedCroppedPaths, croppedTiles.asScala.map { case item => item.assets.values().iterator().next().path }.toSet)
 
     for (path <- expectedCroppedPaths){
       val tile = GeoTiff.readMultiband(path)
@@ -214,7 +225,12 @@ class TileGridTest {
       ("/tmp/openEO_2020-04-05Z_31UDS_2_5.tif", isoFormattedDate)
     )
 
-    Assert.assertEquals(expectedTiles, tiles.asScala.map { case (path, timestamp, _) => (path, timestamp) }.toSet)
+    val actualTiles = for {
+      item <- tiles.asScala
+      asset <- item.assets.values().asScala
+    } yield (asset.path, item.datetime)
+
+    Assert.assertEquals(expectedTiles, actualTiles.toSet)
   }
 
   @Test
@@ -237,7 +253,7 @@ class TileGridTest {
       (outDir + "/openEO_2020-04-05Z_31UDS_2_5.tif", isoFormattedDate)
     )
 
-    Assert.assertEquals(expectedTiles, tiles.asScala.map { case (path, timestamp, _) => (path, timestamp) }.toSet)
+    Assert.assertEquals(expectedTiles, tiles.asScala.map { case  item => (item.assets.values().iterator().next().path, item.datetime ) }.toSet)
 
 
     for (path <- expectedTiles){
@@ -272,7 +288,12 @@ class TileGridTest {
       ("/tmp/testPrefix_2020-04-05Z_31UDS_2_5.tif", isoFormattedDate)
     )
 
-    Assert.assertEquals(expectedTiles, tiles.asScala.map { case (path, timestamp, _) => (path, timestamp) }.toSet)
+    val actualTiles = for {
+      item <- tiles.asScala
+      asset <- item.assets.values().asScala
+    } yield (asset.path, item.datetime)
+
+    Assert.assertEquals(expectedTiles, actualTiles.toSet)
   }
 
   @Test
