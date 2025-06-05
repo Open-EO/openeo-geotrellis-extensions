@@ -199,7 +199,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
             sh "dnf install -y maven git java-11-openjdk-devel gdal-3.8.4"
             sh "dnf -y install dnf-plugins-core"
             sh "dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo"
-            sh "dnf install docker-ce docker-ce-cli containerd.io"
+            sh "dnf -y install docker-ce docker-ce-cli containerd.io"
             sh "docker ps"
             def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
