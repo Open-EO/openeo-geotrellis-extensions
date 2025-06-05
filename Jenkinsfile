@@ -197,6 +197,9 @@ void build(skipTests = false, skipSentinelHubTests = false){
     docker.image(env.MAVEN_IMAGE).inside('-v /home/jenkins/.m2:/root/.m2 -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root') {
         withEnv(jdkEnv) {
             sh "dnf install -y maven git java-11-openjdk-devel gdal-3.8.4 docker"
+            sh "dnf -y install dnf-plugins-core"
+            sh "dnf-3 config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo"
+            sh "dnf install docker-ce docker-ce-cli containerd.io"
             sh "docker ps"
             def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
