@@ -1,5 +1,8 @@
 package org.openeo.geotrellis.processgraph
 
+import org.openeo.geotrellis.layers.FileLayerProvider
+import org.slf4j.{Logger, LoggerFactory}
+
 import java.io.File
 import java.lang.management.ManagementFactory
 import java.net.ServerSocket
@@ -14,12 +17,20 @@ object ProcessGraphRunner {
   }
 
   def run(processGraph: File): Unit = {
+
+    val logger: Logger = LoggerFactory.getLogger("docker-issues")
+
     val hostGraphFolder = processGraph.getParent
     val processGraphName = processGraph.getName
 
     val currentDir = System.getProperty("user.dir")
     val outputDir = currentDir + "/target/processgraph/results/" + processGraphName.replaceFirst(".json", "")
+
+    logger.error(f"Output dir: ${outputDir}")
+
     new File(outputDir).mkdirs()
+
+    logger.error(f"Output dir: ${outputDir} (OK)")
 
     val classPath = System.getProperty("java.class.path")
     val aM2RepositoryJar = classPath.split(":").filter(_.contains(".m2/repository")).head
@@ -36,7 +47,13 @@ object ProcessGraphRunner {
 
     val dockerClassPath = folders + ":" + jars
 
+    logger.error("Checking if running in debug mode")
     val debug = ManagementFactory.getRuntimeMXBean().getInputArguments().stream().anyMatch(_.contains("-agentlib:jdwp"))
+    if (debug) {
+      logger.error("Running in debug mode")
+    } else {
+      logger.error("Not running in debug mode")
+    }
 
     val dockerImage = "vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
 //    val dockerImage = "run_process_graph_locally2"
@@ -51,9 +68,9 @@ object ProcessGraphRunner {
       } else {
         f"docker run -v ${outputDir}:/out -v ${hostGraphFolder}:/graphs -v ${hostM2RepositoryFolder}:${dockerM2RepositoryFolder} -v ${hostCodeFolder}:${dockerCodeFolder} ${dockerImage} /graphs/${processGraphName} /out ${dockerClassPath}"
       }
-    println(cmd)
-    val output = cmd.!!
-    println(output)
+    logger.error(f"Prepared command: $cmd")
+//    val output = cmd.!!
+//    println(output)
   }
 
   @tailrec
