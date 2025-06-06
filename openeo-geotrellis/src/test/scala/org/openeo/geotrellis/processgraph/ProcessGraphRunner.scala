@@ -34,8 +34,20 @@ object ProcessGraphRunner {
 
     val classPath = System.getProperty("java.class.path")
     logger.error(f"Classpath: $classPath")
-    val aM2RepositoryJar = classPath.split(":").filter(_.contains(".m2/repository")).head
-    val hostM2RepositoryFolder = aM2RepositoryJar.substring(0, aM2RepositoryJar.indexOf(".m2/repository") + ".m2/repository".length)
+
+    val m2Dev = ".m2/repository"
+    val m2Jenkins = "/localdata/M2"
+
+    val aM2RepositoryJar = classPath.split(":").filter(cpe => {
+      cpe.contains(m2Dev) || cpe.contains(m2Jenkins)
+    }).head
+
+    val hostM2RepositoryFolder = {
+      if (aM2RepositoryJar.contains(m2Dev))
+        aM2RepositoryJar.substring(0, aM2RepositoryJar.indexOf(m2Dev) + m2Dev.length)
+      else
+        aM2RepositoryJar.substring(0, aM2RepositoryJar.indexOf(m2Jenkins) + m2Jenkins.length)
+    }
     logger.error(f"M2 folder: $hostM2RepositoryFolder")
 
     val dockerM2RepositoryFolder = "/repository"
