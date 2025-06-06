@@ -86,8 +86,8 @@ object ProcessGraphRunner {
         f"docker run -v ${outputDir}:/out -v ${hostGraphFolder}:/graphs -v ${hostM2RepositoryFolder}:${dockerM2RepositoryFolder} -v ${hostCodeFolder}:${dockerCodeFolder} ${dockerImage} /graphs/${processGraphName} /out ${dockerClassPath}"
       }
     logger.error(f"Prepared command: $cmd")
-//    val output = cmd.!!
-//    println(output)
+    val output = cmd.!!
+    println(output)
   }
 
   @tailrec
