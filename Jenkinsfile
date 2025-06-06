@@ -9,9 +9,9 @@ def build_container_image    = (config.build_container_image == true) ?: false
 def docker_registry_dev      = config.docker_registry_dev ?: globalDefaults.docker_registry_dev()
 def docker_registry_prod     = config.docker_registry_prod ?: globalDefaults.docker_registry_prod()
 def jdk_version              = 11
-def maven_version            =  '3.5.4'
-def node_label               =  'default'
-def wipeout_workspace        =  true
+def maven_version            = '3.5.4'
+def node_label               = 'default'
+def wipeout_workspace        = true
 
 def maven_image              = "vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.3"
 
@@ -219,6 +219,9 @@ void build(skipTests = false, skipSentinelHubTests = false){
             } else {
                 print "Maven will run all tests"
             }
+
+            rtMaven.opts += ' -Dtest=org.openeo.geotrellis.processgraph.TestProcessGraphJson'
+
             rtMaven.deployer.deployArtifacts = true
             //use '--projects StatisticsMapReduce' in 'goals' to build specific module
             try {
