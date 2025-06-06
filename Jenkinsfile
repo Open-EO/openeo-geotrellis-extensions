@@ -220,8 +220,6 @@ void build(skipTests = false, skipSentinelHubTests = false){
                 print "Maven will run all tests"
             }
 
-            rtMaven.opts += ' -Dtest=org.openeo.geotrellis.processgraph.TestProcessGraphJson'
-
             rtMaven.deployer.deployArtifacts = true
             //use '--projects StatisticsMapReduce' in 'goals' to build specific module
             try {
