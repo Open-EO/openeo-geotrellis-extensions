@@ -200,6 +200,8 @@ void build(skipTests = false, skipSentinelHubTests = false){
             sh "dnf -y install dnf-plugins-core"
             sh "dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo"
             sh "dnf -y install docker-ce docker-ce-cli containerd.io"
+            sh "ls -al /root/.m2"
+            sh "fail"
             sh "docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
             def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
