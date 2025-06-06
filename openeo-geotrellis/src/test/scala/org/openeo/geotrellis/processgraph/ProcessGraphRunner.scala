@@ -33,19 +33,24 @@ object ProcessGraphRunner {
     logger.error(f"Output dir: ${outputDir} (OK)")
 
     val classPath = System.getProperty("java.class.path")
+    logger.error(f"Classpath: $classPath")
     val aM2RepositoryJar = classPath.split(":").filter(_.contains(".m2/repository")).head
     val hostM2RepositoryFolder = aM2RepositoryJar.substring(0, aM2RepositoryJar.indexOf(".m2/repository") + ".m2/repository".length)
+    logger.error(f"M2 folder: $hostM2RepositoryFolder")
+
     val dockerM2RepositoryFolder = "/repository"
 
     val p1 = classPath.split(":").filter(!_.endsWith(".jar")).minBy(_.length)
     val p2 = classPath.split(":").filter(!_.endsWith(".jar")).maxBy(_.length)
 
     val hostCodeFolder = Range(0, p1.length).filter(i => p1.substring(0, i) == p2.substring(0, i)).map(i => p1.substring(0, i)).filter(_.endsWith("/")).maxBy(_.length)
+    logger.error(f"Code folder: $hostCodeFolder")
     val dockerCodeFolder = "/code/"
     val jars = classPath.split(":").filter(_.endsWith(".jar")).filter(_.contains(hostM2RepositoryFolder)).map(f => f.replaceFirst(hostM2RepositoryFolder, dockerM2RepositoryFolder)).reduce((acc, e) => acc + ":" + e)
     val folders = classPath.split(":").filter(!_.endsWith(".jar")).map(f => f.replaceFirst(hostCodeFolder, dockerCodeFolder)).reduce((acc, e) => acc + ":" + e)
 
     val dockerClassPath = folders + ":" + jars
+    logger.error(f"Docker classpath: $dockerClassPath")
 
     logger.error("Checking if running in debug mode")
     val debug = ManagementFactory.getRuntimeMXBean().getInputArguments().stream().anyMatch(_.contains("-agentlib:jdwp"))
