@@ -127,7 +127,7 @@
         <dependency>
             <groupId>org.openeo</groupId>
             <artifactId>openeo-geotrellis</artifactId>
-            <version>${parent.version}</version>
+            <version>${project.parent.version}</version>
             <!-- Extra include, just for test classes-->
             <type>test-jar</type>
             <scope>test</scope>
@@ -135,7 +135,7 @@
         <dependency>
             <groupId>org.openeo</groupId>
             <artifactId>openeo-geotrellis</artifactId>
-            <version>${parent.version}</version>
+            <version>${project.parent.version}</version>
             <!-- Extra include, just for test classes-->
             <scope>test</scope>
         </dependency>
