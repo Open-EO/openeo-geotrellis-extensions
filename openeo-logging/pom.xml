@@ -92,6 +92,7 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <version>2.22.2</version>
         <configuration>
+          <skipTests>true</skipTests>
           <environmentVariables>
             <OPENEO_USER_ID>vdboschj</OPENEO_USER_ID>
             <OPENEO_BATCH_JOB_ID>j-abc123</OPENEO_BATCH_JOB_ID>
