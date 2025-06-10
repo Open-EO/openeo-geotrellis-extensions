@@ -1,13 +1,11 @@
 package org.openeo.geotrellis.processgraph
 
-import org.openeo.geotrellis.layers.FileLayerProvider
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.File
 import java.lang.management.ManagementFactory
 import java.net.ServerSocket
 import scala.annotation.tailrec
-import scala.reflect.io.File
 import scala.sys.process._
 import scala.util.Using
 
@@ -37,7 +35,7 @@ object ProcessGraphRunner {
     logger.error(f"full Classpath: $classPath")
 
     classPath.split(":").foreach(
-      cpe => println(f"Check ${cpe}: ${File(cpe).exists}")
+      cpe => println(f"Check ${cpe}: ${new File(cpe).exists}")
     )
 
     val m2Dev = ".m2/repository"
