@@ -7,6 +7,7 @@ import java.io.File
 import java.lang.management.ManagementFactory
 import java.net.ServerSocket
 import scala.annotation.tailrec
+import scala.reflect.io.File
 import scala.sys.process._
 import scala.util.Using
 
@@ -35,6 +36,10 @@ object ProcessGraphRunner {
     val classPath = System.getProperty("java.class.path")
     logger.error(f"full Classpath: $classPath")
 
+    classPath.split(":").foreach(
+      cpe => println(f"Check ${cpe}: ${File(cpe).exists}")
+    )
+
     val m2Dev = ".m2/repository"
     val m2Jenkins = "/localdata/M2"
 
@@ -50,7 +55,7 @@ object ProcessGraphRunner {
     }
     logger.error(f"M2 folder: $hostM2RepositoryFolder")
 
-    val dockerM2RepositoryFolder = "/m2repo"
+    val dockerM2RepositoryFolder = "/repository"
 
     val p1 = classPath.split(":").filter(!_.endsWith(".jar")).minBy(_.length)
     val p2 = classPath.split(":").filter(!_.endsWith(".jar")).maxBy(_.length)
