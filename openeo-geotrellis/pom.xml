@@ -292,14 +292,7 @@
                     </systemPropertyVariables>
                     <reuseForks>false</reuseForks>
                     <includes>
-                        <include>**/Test*.*</include>
-                        <include>**/*Test.*</include>
-                        <include>**/*Tests.*</include>
-                        <include>**/*TestCase.*</include>
-
-                        <include>**/Spec*.*</include>
-                        <include>**/*Spec.*</include>
-                        <include>**/*Specs.*</include>
+                        <include>**/TestProcessGraph*.*</include>
                     </includes>
                 </configuration>
             </plugin>
