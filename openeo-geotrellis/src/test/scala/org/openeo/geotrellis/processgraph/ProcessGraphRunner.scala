@@ -33,7 +33,7 @@ object ProcessGraphRunner {
     logger.error(f"Output dir: ${outputDir} (OK)")
 
     val classPath = System.getProperty("java.class.path")
-    logger.error(f"Classpath: $classPath")
+    logger.error(f"full Classpath: $classPath")
 
     val m2Dev = ".m2/repository"
     val m2Jenkins = "/localdata/M2"
@@ -50,7 +50,7 @@ object ProcessGraphRunner {
     }
     logger.error(f"M2 folder: $hostM2RepositoryFolder")
 
-    val dockerM2RepositoryFolder = "/repository"
+    val dockerM2RepositoryFolder = "/m2repo"
 
     val p1 = classPath.split(":").filter(!_.endsWith(".jar")).minBy(_.length)
     val p2 = classPath.split(":").filter(!_.endsWith(".jar")).maxBy(_.length)
