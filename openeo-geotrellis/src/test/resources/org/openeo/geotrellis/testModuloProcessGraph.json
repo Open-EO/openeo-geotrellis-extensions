@@ -1,0 +1,12 @@
+{
+  "mod": {
+    "process_id": "mod",
+    "arguments": {
+      "x": {
+        "from_parameter": "data"
+      },
+      "y": 4
+    },
+    "result": true
+  }
+}
