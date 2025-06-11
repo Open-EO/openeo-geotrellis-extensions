@@ -1449,7 +1449,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val theResolution = targetResolution.getOrElse(maxSpatialResolution)
     val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
 
-    val featureExtentInLayout: Option[GridExtent[Long]] = computeItemExtentInTargetLayout(feature, re, targetExtent, theResolution, datacubeParams)
+    val featureExtentInLayout: Option[GridExtent[Long]] = computeItemExtentInTargetLayout(feature, re, targetExtent, datacubeParams)
 
     var predefinedExtent: Option[GridExtent[Long]] = None
     /**
@@ -1658,7 +1658,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     }
   }
 
-  private def computeItemExtentInTargetLayout(item: Feature, re: RasterExtent, targetExtent: ProjectedExtent, theResolution: CellSize, datacubeParams: Option[DataCubeParameters]) = {
+  private def computeItemExtentInTargetLayout(item: Feature, re: RasterExtent, targetExtent: ProjectedExtent, datacubeParams: Option[DataCubeParameters]) = {
     if (item.rasterExtent.isDefined && item.crs.isDefined) {
       val useNewFeatureExtentIntersectionPossible = isCrsCoveredInHealthCheck(item.crs.get) && isCrsCoveredInHealthCheck(targetExtent.crs)
       val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection) || !useNewFeatureExtentIntersectionPossible) {
@@ -1674,7 +1674,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         val featureExtentInLatLon = item.rasterExtent.get.reproject(item.crs.get, LatLng)
 
         val intersection = featureExtentInLatLon.intersection(targetExtentInLatLon).map(_.buffer(1.0)).getOrElse(featureExtentInLatLon)
-        val tmp = expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), theResolution)
+        val tmp = expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), re.cellSize)
         re.createAlignedRasterExtent(tmp)
       } else {
         val featureProjectedExtent = ProjectedExtent(item.rasterExtent.get, item.crs.get)
@@ -1712,14 +1712,14 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             targetExtent.extent
           case Some(value) => value.reproject(commonCrs, targetExtent.crs)
         }
-        var tmp = expandToCellSize(intersectionTargetCrs, theResolution)
+        var tmp = expandToCellSize(intersectionTargetCrs, re.cellSize)
         val dcp = datacubeParams.getOrElse(new DataCubeParameters())
         val p = math.max(1, dcp.maskingStrategyParameters
           .getOrDefault("erosion_kernel_size", 0.asInstanceOf[Object]).asInstanceOf[Integer]) * 1.0
         val pixelBuffer = (math.max(p, dcp.pixelBufferX), math.max(p, dcp.pixelBufferY))
         tmp = Extent(
-          tmp.xmin - theResolution.width * pixelBuffer._1, tmp.ymin - theResolution.height * pixelBuffer._2,
-          tmp.xmax + theResolution.width * pixelBuffer._1, tmp.ymax + theResolution.height * pixelBuffer._2,
+          tmp.xmin - re.cols * pixelBuffer._1, tmp.ymin - re.rows * pixelBuffer._2,
+          tmp.xmax + re.cols * pixelBuffer._1, tmp.ymax + re.rows * pixelBuffer._2,
         )
         healthCheckExtentWarn(ProjectedExtent(tmp, targetExtent.crs), s"Item extent (${item.id}) should be valid in target CRS: ")
         re.createAlignedRasterExtent(tmp)
