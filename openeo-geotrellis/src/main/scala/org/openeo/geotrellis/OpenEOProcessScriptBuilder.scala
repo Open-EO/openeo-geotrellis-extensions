@@ -11,7 +11,7 @@ import org.apache.commons.math3.stat.ranking.NaNStrategy
 import org.apache.spark.ml
 import org.apache.spark.mllib.linalg
 import org.apache.spark.mllib.tree.model.RandomForestModel
-import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase}
+import org.openeo.geotrellis.mapalgebra.{AddIgnoreNodata, LogBase, Modulo}
 import org.slf4j.LoggerFactory
 import spire.math.UShort
 import spire.syntax.cfor.cfor
@@ -1178,6 +1178,7 @@ class OpenEOProcessScriptBuilder {
           case "multiply" if hasData => reduceFunction("data", Multiply.apply) // legacy 0.4 style
           case "divide" if hasXY => xyFunction(Divide.apply,forceFloat = true)
           case "divide" if hasData => reduceFunction("data", Divide.apply) // legacy 0.4 style
+          case "mod" if hasXY => xyFunction(Modulo.apply)
           case "power" => xyFunction(Pow.apply, xArgName = "base", yArgName = "p",forceFloat = true)
           case "exp" => mapFunction("p", Exp.apply)
           case "normalized_difference" if hasXY => xyFunction((x, y) => Divide(Subtract(x, y), Add(x, y)),forceFloat = true)

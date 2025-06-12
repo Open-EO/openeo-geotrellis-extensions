@@ -7,6 +7,7 @@ import geotrellis.raster.{CellSize, IntCellType, MultibandTile, Raster, RasterEx
 import geotrellis.raster.gdal.{DefaultDomain, GDALException, GDALRasterSource, GDALWarpOptions, MalformedProjectionException}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
 import geotrellis.spark._
+import geotrellis.spark.tiling.Tiler
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
 import org.apache.spark.{Partitioner, SparkContext}
@@ -114,7 +115,7 @@ object NetCDFCollection {
     val partitioner: Partitioner = new SpacePartitioner(temporalBounds)(implicitly, implicitly, new ByTileSpacetimePartitioner(Some(keys)))
 
     val metadata = TileLayerMetadata[SpaceTimeKey](cellType, layout, extent, crs(0), temporalBounds)
-    val retiled: RDD[(SpaceTimeKey, MultibandTile)] = features.tileToLayout(metadata).partitionBy(partitioner)
+    val retiled: RDD[(SpaceTimeKey, MultibandTile)] = features.tileToLayout(metadata, Tiler.Options(partitioner=partitioner))
     logger.info(s"Created cube for netCDF samples with metadata ${metadata} and partitioner ${partitioner.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index}")
     val cRDD = ContextRDD(retiled,metadata)
     cRDD.name = s"load_stac netCDFCollection ${items.first().id} "
