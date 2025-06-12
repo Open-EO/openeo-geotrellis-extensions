@@ -36,42 +36,68 @@ object ProcessGraphRunner {
     val classPath = System.getProperty("java.class.path")
     logger.error(f"full Classpath: $classPath")
 
+
     classPath.split(":").foreach(
       cpe => println(f"Check ${cpe}: ${new File(cpe).exists}")
     )
 
-    val m2Dev = ".m2/repository"
-    val m2Jenkins = "/localdata/M2"
-
-    val aM2RepositoryJar = classPath.split(":").filter(cpe => {
-      cpe.contains(m2Dev) || cpe.contains(m2Jenkins)
-    }).head
-
-    val hostM2RepositoryFolder = {
-      if (aM2RepositoryJar.contains(m2Dev))
-        aM2RepositoryJar.substring(0, aM2RepositoryJar.indexOf(m2Dev) + m2Dev.length)
-      else
-        aM2RepositoryJar.substring(0, aM2RepositoryJar.indexOf(m2Jenkins) + m2Jenkins.length)
+    def findCommonPrefix(strings: Array[String]): String = {
+      if (strings.length < 2) {
+        ""
+      } else {
+        val first = strings.head
+        val last = strings.last
+        val maxSize = Math.min(first.length, last.length)
+        var i = 0
+        while (i < maxSize && (first.charAt(i) == last.charAt(i))) {
+          i += 1
+        }
+        first.substring(0, i)
+      }
     }
-    logger.error(f"M2 folder: $hostM2RepositoryFolder")
-    val p = FileSystems.getDefault.getPath(hostM2RepositoryFolder)
-    Files.walk(p).iterator().asScala
-      .filter(Files.isRegularFile(_))
-      .filter(f => f.toFile.getAbsolutePath.endsWith(".jar"))
-      .foreach(p =>logger.error(p.toFile.getAbsolutePath))
 
-    val dockerM2RepositoryFolder = "/m2repo"
 
-    val p1 = classPath.split(":").filter(!_.endsWith(".jar")).minBy(_.length)
-    val p2 = classPath.split(":").filter(!_.endsWith(".jar")).maxBy(_.length)
+    val jarParts = classPath.split(":").filter(_.endsWith(".jar")).groupBy(s => s.substring(0, s.indexOf("/", 1))).map(e => findCommonPrefix(e._2))
 
-    val hostCodeFolder = Range(0, p1.length).filter(i => p1.substring(0, i) == p2.substring(0, i)).map(i => p1.substring(0, i)).filter(_.endsWith("/")).maxBy(_.length)
-    logger.error(f"Code folder: $hostCodeFolder")
-    val dockerCodeFolder = "/code/"
-    val jars = classPath.split(":").filter(_.endsWith(".jar")).filter(_.contains(hostM2RepositoryFolder)).map(f => f.replaceFirst(hostM2RepositoryFolder, dockerM2RepositoryFolder)).reduce((acc, e) => acc + ":" + e)
-    val folders = classPath.split(":").filter(!_.endsWith(".jar")).map(f => f.replaceFirst(hostCodeFolder, dockerCodeFolder)).reduce((acc, e) => acc + ":" + e)
+    val folderParts = classPath.split(":").filter(!_.endsWith(".jar")).groupBy(s => s.substring(0, s.indexOf("/", 1))).map(e => findCommonPrefix(e._2))
 
-    val dockerClassPath = folders + ":" + jars
+    var modifiedClassPath = classPath.split(":")
+
+    val jarMapping = jarParts.zipWithIndex.map { case (jarPart, i) => (jarPart, f"/jars${i}/") }
+    val folderMapping = folderParts.zipWithIndex.map { case (folderPart, i) => (folderPart, f"/code${i}/") }
+
+    jarMapping.foreach {
+      case (jarPart, replacement) =>
+        modifiedClassPath = modifiedClassPath.map(mcpe => if (mcpe.endsWith(".jar") && mcpe.startsWith(jarPart)) {
+          mcpe.replaceFirst(jarPart, replacement)
+        } else {
+          mcpe
+        })
+    }
+
+    folderMapping.foreach {
+      case (folderPart, replacement) =>
+        modifiedClassPath = modifiedClassPath.map(mcpe =>
+          if (!mcpe.endsWith(".jar") && mcpe.startsWith(folderPart)) {
+            mcpe.replaceFirst(folderPart, replacement)
+          } else {
+            mcpe
+          })
+    }
+    modifiedClassPath = modifiedClassPath.filter(f => !f.startsWith("/opt"))
+
+    Stream(jarMapping, folderMapping).flatten
+      .foreach(f => {
+        val file = new File(f._1)
+        val bool = file.canExecute()
+        println(bool)
+      })
+
+    val classPathMappings = Stream(jarMapping, folderMapping).flatten
+      .filter(f => !f._1.startsWith("/opt"))
+      .map { case (a, b) => f"-v ${a}:${b}" }.mkString(" ")
+
+    val dockerClassPath = modifiedClassPath.mkString(":")
     logger.error(f"Docker classpath: $dockerClassPath")
 
     logger.error("Checking if running in debug mode")
@@ -83,7 +109,7 @@ object ProcessGraphRunner {
     }
 
     val dockerImage = "vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
-//    val dockerImage = "run_process_graph_locally2"
+    //    val dockerImage = "run_process_graph_locally2"
 
     val cmd =
       if (debug) {
@@ -91,9 +117,9 @@ object ProcessGraphRunner {
         val sparkUIPort = findFirstOpenPort(4040)
         println(f"Waiting for remote debugger on port ${debugPort}")
         println(f"SparkUI will be available at http://localhost:${sparkUIPort}")
-        f"docker run -p ${debugPort}:5005 -p ${sparkUIPort}:4040 -v ${outputDir}:/out -v ${hostGraphFolder}:/graphs -v ${hostM2RepositoryFolder}:${dockerM2RepositoryFolder} -v ${hostCodeFolder}:${dockerCodeFolder} ${dockerImage} /graphs/${processGraphName} /out ${dockerClassPath} DEBUG"
+        f"docker run -p ${debugPort}:5005 -p ${sparkUIPort}:4040 -v ${outputDir}:/out -v ${hostGraphFolder}:/graphs ${classPathMappings} ${dockerImage} /graphs/${processGraphName} /out ${dockerClassPath} DEBUG"
       } else {
-        f"docker run -v ${outputDir}:/out -v ${hostGraphFolder}:/graphs -v ${hostM2RepositoryFolder}:${dockerM2RepositoryFolder} -v ${hostCodeFolder}:${dockerCodeFolder} ${dockerImage} /graphs/${processGraphName} /out ${dockerClassPath}"
+        f"docker run -v ${outputDir}:/out -v ${hostGraphFolder}:/graphs ${classPathMappings} ${dockerImage} /graphs/${processGraphName} /out ${dockerClassPath}"
       }
     logger.error(f"Prepared command: $cmd")
     val output = cmd.!!
