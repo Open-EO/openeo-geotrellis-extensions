@@ -201,7 +201,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
             sh "dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo"
             sh "dnf -y install docker-ce"
             sh "docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
-            sh "mkdir -p /localdata/M2"
+            sh "mkdir -p /amazing"
             sh "ls -al /root/.m2/repository"
             sh "echo '/usr/share/maven/conf/settings.xml'"
             sh "cat /usr/share/maven/conf/settings.xml"
@@ -233,7 +233,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
                         [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'SentinelHubBatchS3'],
                         [$class: 'UsernamePasswordMultiBinding', credentialsId: 'SentinelHubGeodatadev', usernameVariable: 'SENTINELHUB_CLIENT_ID', passwordVariable: 'SENTINELHUB_CLIENT_SECRET']
                 ]) {
-                    buildInfo = rtMaven.run pom: 'pom.xml', goals: ' -P default,wmts,integrationtests -U clean install' + rtMaven.opts
+                    buildInfo = rtMaven.run pom: 'pom.xml', goals: '-DlocalRepository=/amazing -P default,wmts,integrationtests -U clean install' + rtMaven.opts
                     try {
                         if (rtMaven.deployer.deployArtifacts)
                             server.publishBuildInfo buildInfo
