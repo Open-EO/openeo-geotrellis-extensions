@@ -55,7 +55,10 @@ object ProcessGraphRunner {
     }
     logger.error(f"M2 folder: $hostM2RepositoryFolder")
     val p = FileSystems.getDefault.getPath(hostM2RepositoryFolder)
-    Files.walk(p).iterator().asScala.filter(Files.isRegularFile(_)).foreach(p =>logger.error(p.toFile.getAbsolutePath))
+    Files.walk(p).iterator().asScala
+      .filter(Files.isRegularFile(_))
+      .filter(f => f.toFile.getAbsolutePath.endsWith(".jar"))
+      .foreach(p =>logger.error(p.toFile.getAbsolutePath))
 
     val dockerM2RepositoryFolder = "/m2repo"
 
