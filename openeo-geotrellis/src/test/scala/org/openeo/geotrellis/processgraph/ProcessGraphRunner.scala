@@ -5,7 +5,9 @@ import org.slf4j.{Logger, LoggerFactory}
 import java.io.File
 import java.lang.management.ManagementFactory
 import java.net.ServerSocket
+import java.nio.file.{FileSystems, Files, Path}
 import scala.annotation.tailrec
+import scala.jdk.CollectionConverters.asScalaIteratorConverter
 import scala.sys.process._
 import scala.util.Using
 
@@ -52,8 +54,10 @@ object ProcessGraphRunner {
         aM2RepositoryJar.substring(0, aM2RepositoryJar.indexOf(m2Jenkins) + m2Jenkins.length)
     }
     logger.error(f"M2 folder: $hostM2RepositoryFolder")
+    val p = FileSystems.getDefault.getPath("/some/path/here")
+    Files.walk(p).iterator().asScala.filter(Files.isRegularFile(_)).foreach(p =>logger.error(p.toFile.getAbsolutePath))
 
-    val dockerM2RepositoryFolder = "/repository"
+    val dockerM2RepositoryFolder = "/m2repo"
 
     val p1 = classPath.split(":").filter(!_.endsWith(".jar")).minBy(_.length)
     val p2 = classPath.split(":").filter(!_.endsWith(".jar")).maxBy(_.length)
