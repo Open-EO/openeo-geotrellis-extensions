@@ -194,14 +194,13 @@ void build(skipTests = false, skipSentinelHubTests = false){
     def publishable_branches = ["master", "develop", "109-upgrade-to-spark-33"]
 
     List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-11-openjdk"]
-    docker.image(env.MAVEN_IMAGE).inside('-v /var/run/docker.sock:/var/run/docker.sock -v /home/jenkins/.m2:/root/.m2 -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root') {
+    docker.image(env.MAVEN_IMAGE).inside('--mount source=m2repovol,target=/amazing -v /var/run/docker.sock:/var/run/docker.sock -v /home/jenkins/.m2:/root/.m2 -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root') {
         withEnv(jdkEnv) {
             sh "dnf install -y maven git java-11-openjdk-devel gdal-3.8.4"
             sh "dnf -y install dnf-plugins-core"
             sh "dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo"
             sh "dnf -y install docker-ce"
             sh "docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
-            sh "mkdir -p /amazing"
             sh "ls -al /root/.m2/repository"
             sh "echo '/usr/share/maven/conf/settings.xml'"
             sh "cat /usr/share/maven/conf/settings.xml"
