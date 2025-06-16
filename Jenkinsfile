@@ -194,14 +194,14 @@ void build(skipTests = false, skipSentinelHubTests = false){
     def publishable_branches = ["master", "develop", "109-upgrade-to-spark-33"]
 
     List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-11-openjdk"]
-    docker.image(env.MAVEN_IMAGE).inside('-v /home/jenkins/.m2:/root/.m2 -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root') {
+    docker.image(env.MAVEN_IMAGE).inside('--privileged -v /home/jenkins/.m2:/root/.m2 -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root') {
         withEnv(jdkEnv) {
             sh "dnf install -y maven git java-11-openjdk-devel gdal-3.8.4"
             sh "dnf -y install dnf-plugins-core"
             sh "dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo"
             sh "dnf -y install docker-ce docker-ce-cli containerd.io"
-            //sh "dockerd"
-            //sh "docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
+            sh "dockerd"
+            sh "docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
             def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
             def snapshotRepo = 'libs-snapshot-public'
