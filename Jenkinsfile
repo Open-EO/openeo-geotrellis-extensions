@@ -201,10 +201,6 @@ void build(skipTests = false, skipSentinelHubTests = false){
             sh "dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo"
             sh "dnf -y install docker-ce"
             sh "docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
-            sh "echo '/usr/share/maven/conf/settings.xml'"
-            sh "cat /usr/share/maven/conf/settings.xml"
-            sh "echo '/root/.m2/settings.xml'"
-            sh "cat /root/.m2/settings.xml"
             def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
             def snapshotRepo = 'libs-snapshot-public'
