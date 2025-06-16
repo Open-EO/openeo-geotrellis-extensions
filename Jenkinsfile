@@ -205,7 +205,6 @@ void build(skipTests = false, skipSentinelHubTests = false){
             sh "cat /usr/share/maven/conf/settings.xml"
             sh "echo '/root/.m2/settings.xml'"
             sh "cat /root/.m2/settings.xml"
-            sh "fail"
             def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
             def snapshotRepo = 'libs-snapshot-public'
