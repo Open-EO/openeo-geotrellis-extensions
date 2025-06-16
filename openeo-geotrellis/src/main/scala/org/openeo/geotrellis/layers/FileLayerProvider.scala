@@ -80,6 +80,23 @@ object BandCompositeRasterSource {
       .`with`(util.Collections.singletonList(retryPolicy))
       .get(f _)
   }
+
+  def readBounds(source: RasterSource, bounds: GridBounds[Long], softErrors:Boolean, bands: Seq[Int] = Seq(0)): Option[Raster[MultibandTile]] = {
+    try {
+      logger.debug(s"reading $bounds from ${source.name}")
+      val raster = source.read(bounds, bands) map { case Raster(multibandTile, extent) => Raster(multibandTile, extent) }
+      logger.debug(s"finished reading $bounds from ${source.name}")
+      raster
+    } catch {
+      case e: AbortedException => throw e
+      case e:Exception if softErrors =>
+      {
+        logger.warn(s"load_collection: ignoring soft error for ${source.name} - ${e.getMessage}", e)
+        None
+      }
+      case e: Exception => throw new IOException(s"load_collection: Error while reading $bounds from: ${source.name} - ${e.getMessage}", e)
+    }
+  }
 }
 
 
@@ -177,6 +194,8 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     else None
   }
 
+
+
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
     var selectedSources: GenSeq[RasterSource] = reprojectedSources(bands)
 
@@ -184,29 +203,13 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       selectedSources = selectedSources.par
     }
 
-    def readBounds(source: RasterSource): Option[Raster[Tile]] = {
-      try {
-        logger.debug(s"reading $bounds from ${source.name}")
-        val raster = source.read(bounds, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
-        logger.debug(s"finished reading $bounds from ${source.name}")
-        raster
-      } catch {
-        case e: AbortedException => throw e
-        case e:Exception if softErrors =>
-        {
-          logger.warn(s"load_collection: ignoring soft error for ${source.name} - ${e.getMessage}", e)
-          None
-        }
-        case e: Exception => throw new IOException(s"load_collection: Error while reading $bounds from: ${source.name} - ${e.getMessage}", e)
-      }
-    }
 
     def readBoundsAttemptFailed(source: RasterSource)(e: Exception): Unit =
       logger.warn(s"attempt to read $bounds from ${source.name} failed", e)
 
-    val singleBandRasters = selectedSources
+    val singleBandRasters: GenSeq[Raster[Tile]] = selectedSources
       .map(rs => retryWithBackoff(maxRetries, readBoundsAttemptFailed(rs)) {
-        readBounds(rs)
+        BandCompositeRasterSource.readBounds(rs, bounds, softErrors).map(_.mapTile(_.band(0)))
       })
       .collect { case Some(raster) => raster }
 
@@ -274,8 +277,8 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
   }
 
   override def read(bounds: GridBounds[Long], bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    val rasters = sourcesWithBandIds
-      .map { s => s._1.read(bounds, s._2) }
+    val rasters: Seq[Raster[MultibandTile]] = sourcesWithBandIds
+      .map { s => BandCompositeRasterSource.readBounds(s._1,bounds,false,s._2) }
       .collect { case Some(raster) => raster }
 
     if (rasters.size == sources.size) Some(Raster(MultibandTile(rasters.flatMap(_.tile.convert(cellType).bands)), rasters.head.extent))
@@ -679,16 +682,11 @@ object FileLayerProvider {
       MultibandTile(mergedBands.toSeq.sortBy(_._1).flatMap(_._2.get.bands))
 
     } )
-    val withEmptyTiles = if (retainNoDataTiles) {
-      tiledRDD.map { case (key, tile) =>
-        if (tile.bands.forall(_.isNoDataTile)) {
-          (key, new EmptyMultibandTile(tile.cols, tile.rows, tile.cellType, tile.bandCount))
-        } else {
-          (key, tile)
-        }
-      }
-    } else {
-      tiledRDD
+    val withEmptyTiles = tiledRDD.mapValues {
+      case tile if retainNoDataTiles && tile.bands.forall(_.isNoDataTile) =>
+        new EmptyMultibandTile(tile.cols, tile.rows, tile.cellType, tile.bandCount)
+      case tile =>
+        tile
     }
     tiledRDD = withEmptyTiles.filter { case (_, tile) => retainNoDataTiles ||  !tile.bands.forall(_.isNoDataTile) }
 
@@ -1429,88 +1427,29 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     case _ => href.toString
   }
 
+  private def expandToCellSize(extent: Extent, cellSize: CellSize): Extent =
+    Extent(
+      extent.xmin,
+      extent.ymin,
+      math.max(extent.xmax, extent.xmin + cellSize.width),
+      math.max(extent.ymax, extent.ymin + cellSize.height),
+    )
+
+  /**
+   *
+   * @param feature
+   * @param targetExtent The target extent to read from 'feature'
+   * @param datacubeParams Data cube parameters
+   * @param targetResolution Target resolution to read.
+   * @return
+   */
   private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Option[(BandCompositeRasterSource, Feature)] = {
-    def expandToCellSize(extent: Extent, cellSize: CellSize): Extent =
-      Extent(
-        extent.xmin,
-        extent.ymin,
-        math.max(extent.xmax, extent.xmin + cellSize.width),
-        math.max(extent.ymax, extent.ymin + cellSize.height),
-      )
 
     val noResampleOnRead = datacubeParams.exists(_.noResampleOnRead)
     val theResolution = targetResolution.getOrElse(maxSpatialResolution)
     val re = RasterExtent(expandToCellSize(targetExtent.extent,theResolution), theResolution)
 
-    val featureExtentInLayout: Option[GridExtent[Long]] = if (feature.rasterExtent.isDefined && feature.crs.isDefined) {
-      val useNewFeatureExtentIntersectionPossible = isCrsCoveredInHealthCheck(feature.crs.get) && isCrsCoveredInHealthCheck(targetExtent.crs)
-      val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection) || !useNewFeatureExtentIntersectionPossible) {
-        // logger.info("Using old intersection method between Feature/Item and target extent.")
-        // TODO: Remove this after it has been deployed for a while
-        /**
-         * Several edge cases to cover:
-         *  - if feature extent is whole world, it may be invalid in target crs
-         *  - if feature is in utm, target extent may be invalid in feature crs
-         *    this is why we take intersection
-         */
-        val targetExtentInLatLon = targetExtent.reproject(feature.crs.get)
-        val featureExtentInLatLon = feature.rasterExtent.get.reproject(feature.crs.get, LatLng)
-
-        val intersection = featureExtentInLatLon.intersection(targetExtentInLatLon).map(_.buffer(1.0)).getOrElse(featureExtentInLatLon)
-        val tmp = expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), theResolution)
-        re.createAlignedRasterExtent(tmp)
-      } else {
-        val featureProjectedExtent = ProjectedExtent(feature.rasterExtent.get, feature.crs.get)
-        healthCheckExtentWarn(featureProjectedExtent, s"Feature/Item extent should be valid: ")
-        healthCheckExtentWarn(targetExtent, s"Target extent should be valid: ")
-
-        /**
-         * Several edge cases to cover:
-         *  - if feature extent is whole world, it may be invalid in target crs (tested in readDataCubeWithOpensearchClientUTM)
-         *  - if feature is in utm, target extent may be invalid in feature crs
-         *    this is why we take intersection.
-         *    We convert both extents to a common CRS before taking the intersection.
-         *    We give priority to use the target CRS as common CRS, because the intersection will be converted to it anyway
-         *    In case the feature extent is invalid in the target CRS, we use the feature CRS as common CRS
-         */
-        val commonCrs = if (isExtentValidInCrs(featureProjectedExtent, targetExtent.crs)) targetExtent.crs
-        else if (isExtentValidInCrs(targetExtent, feature.crs.get)) feature.crs.get
-        else {
-          logger.warn(s"Feature/Item and target extent are not valid within each others range. Using LatLng as fallback.")
-          LatLng
-        }
-
-        val featureExtentInCommonCRS = safeReproject(featureProjectedExtent, commonCrs)
-        val targetExtentInCommonCRS = safeReproject(targetExtent, commonCrs)
-        healthCheckExtentWarn(featureExtentInCommonCRS, s"Item extent (${feature.id}) should be valid in common CRS: ")
-
-        val intersection = featureExtentInCommonCRS.extent.intersection(targetExtentInCommonCRS.extent)
-        val intersectionTargetCrs = intersection match {
-          case None =>
-            // Item, Asset and Feature mean the same thing in this context.
-            logger.warn(s"Item extent $featureExtentInCommonCRS and target extent $targetExtentInCommonCRS do not intersect. (${feature.id})")
-            // return None // Discard the feature
-            // TODO: feature.rasterExtent is not accurate when going over the antimeridian.
-            // TODO: Fall back to feature.geometry? Now the fallback is to load the whole tile (Just like old intersection code)
-            targetExtent.extent
-          case Some(value) => value.reproject(commonCrs, targetExtent.crs)
-        }
-        var tmp = expandToCellSize(intersectionTargetCrs, theResolution)
-        val dcp = datacubeParams.getOrElse(new DataCubeParameters())
-        val p = math.max(1, dcp.maskingStrategyParameters
-          .getOrDefault("erosion_kernel_size", 0.asInstanceOf[Object]).asInstanceOf[Integer]) * 1.0
-        val pixelBuffer = (math.max(p, dcp.pixelBufferX), math.max(p, dcp.pixelBufferY))
-        tmp = Extent(
-          tmp.xmin - theResolution.width * pixelBuffer._1, tmp.ymin - theResolution.height * pixelBuffer._2,
-          tmp.xmax + theResolution.width * pixelBuffer._1, tmp.ymax + theResolution.height * pixelBuffer._2,
-        )
-        healthCheckExtentWarn(ProjectedExtent(tmp, targetExtent.crs), s"Item extent (${feature.id}) should be valid in target CRS: ")
-        re.createAlignedRasterExtent(tmp)
-      }
-      Some(alignedToTargetExtent.toGridType[Long])
-    } else {
-      Some(re.toGridType[Long])
-    }
+    val featureExtentInLayout: Option[GridExtent[Long]] = computeItemExtentInTargetLayout(feature, re, targetExtent, datacubeParams)
 
     var predefinedExtent: Option[GridExtent[Long]] = None
     /**
@@ -1719,7 +1658,79 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     }
   }
 
-  def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int,datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Seq[(RasterSource,Feature)] = {
+  private def computeItemExtentInTargetLayout(item: Feature, re: RasterExtent, targetExtent: ProjectedExtent, datacubeParams: Option[DataCubeParameters]) = {
+    if (item.rasterExtent.isDefined && item.crs.isDefined) {
+      val useNewFeatureExtentIntersectionPossible = isCrsCoveredInHealthCheck(item.crs.get) && isCrsCoveredInHealthCheck(targetExtent.crs)
+      val alignedToTargetExtent = if (!datacubeParams.exists(_.useNewFeatureExtentIntersection) || !useNewFeatureExtentIntersectionPossible) {
+        // logger.info("Using old intersection method between Feature/Item and target extent.")
+        // TODO: Remove this after it has been deployed for a while
+        /**
+         * Several edge cases to cover:
+         *  - if feature extent is whole world, it may be invalid in target crs
+         *  - if feature is in utm, target extent may be invalid in feature crs
+         *    this is why we take intersection
+         */
+        val targetExtentInLatLon = targetExtent.reproject(item.crs.get)
+        val featureExtentInLatLon = item.rasterExtent.get.reproject(item.crs.get, LatLng)
+
+        val intersection = featureExtentInLatLon.intersection(targetExtentInLatLon).map(_.buffer(1.0)).getOrElse(featureExtentInLatLon)
+        val tmp = expandToCellSize(intersection.reproject(LatLng, targetExtent.crs), re.cellSize)
+        re.createAlignedRasterExtent(tmp)
+      } else {
+        val featureProjectedExtent = ProjectedExtent(item.rasterExtent.get, item.crs.get)
+        healthCheckExtentWarn(featureProjectedExtent, s"Feature/Item extent should be valid: ")
+        healthCheckExtentWarn(targetExtent, s"Target extent should be valid: ")
+
+        /**
+         * Several edge cases to cover:
+         *  - if feature extent is whole world, it may be invalid in target crs (tested in readDataCubeWithOpensearchClientUTM)
+         *  - if feature is in utm, target extent may be invalid in feature crs
+         *    this is why we take intersection.
+         *    We convert both extents to a common CRS before taking the intersection.
+         *    We give priority to use the target CRS as common CRS, because the intersection will be converted to it anyway
+         *    In case the feature extent is invalid in the target CRS, we use the feature CRS as common CRS
+         */
+        val commonCrs = if (isExtentValidInCrs(featureProjectedExtent, targetExtent.crs)) targetExtent.crs
+        else if (isExtentValidInCrs(targetExtent, item.crs.get)) item.crs.get
+        else {
+          logger.warn(s"Feature/Item and target extent are not valid within each others range. Using LatLng as fallback.")
+          LatLng
+        }
+
+        val featureExtentInCommonCRS = safeReproject(featureProjectedExtent, commonCrs)
+        val targetExtentInCommonCRS = safeReproject(targetExtent, commonCrs)
+        healthCheckExtentWarn(featureExtentInCommonCRS, s"Item extent (${item.id}) should be valid in common CRS: ")
+
+        val intersection = featureExtentInCommonCRS.extent.intersection(targetExtentInCommonCRS.extent)
+        val intersectionTargetCrs = intersection match {
+          case None =>
+            // Item, Asset and Feature mean the same thing in this context.
+            logger.warn(s"Item extent $featureExtentInCommonCRS and target extent $targetExtentInCommonCRS do not intersect. (${item.id})")
+            // return None // Discard the feature
+            // TODO: feature.rasterExtent is not accurate when going over the antimeridian.
+            // TODO: Fall back to feature.geometry? Now the fallback is to load the whole tile (Just like old intersection code)
+            targetExtent.extent
+          case Some(value) => value.reproject(commonCrs, targetExtent.crs)
+        }
+        var tmp = expandToCellSize(intersectionTargetCrs, re.cellSize)
+        val dcp = datacubeParams.getOrElse(new DataCubeParameters())
+        val p = math.max(1, dcp.maskingStrategyParameters
+          .getOrDefault("erosion_kernel_size", 0.asInstanceOf[Object]).asInstanceOf[Integer]) * 1.0
+        val pixelBuffer = (math.max(p, dcp.pixelBufferX), math.max(p, dcp.pixelBufferY))
+        tmp = Extent(
+          tmp.xmin - re.cols * pixelBuffer._1, tmp.ymin - re.rows * pixelBuffer._2,
+          tmp.xmax + re.cols * pixelBuffer._1, tmp.ymax + re.rows * pixelBuffer._2,
+        )
+        healthCheckExtentWarn(ProjectedExtent(tmp, targetExtent.crs), s"Item extent (${item.id}) should be valid in target CRS: ")
+        re.createAlignedRasterExtent(tmp)
+      }
+      Some(alignedToTargetExtent.toGridType[Long])
+    } else {
+      Some(re.toGridType[Long])
+    }
+  }
+
+  def loadRasterSourceRDD(boundingBox: ProjectedExtent, from: ZonedDateTime, to: ZonedDateTime, zoom: Int, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Seq[(RasterSource,Feature)] = {
     require(zoom >= 0) // TODO: remove zoom and sc parameters
 
     var overlappingFeatures: Seq[Feature] = openSearch.getProducts(

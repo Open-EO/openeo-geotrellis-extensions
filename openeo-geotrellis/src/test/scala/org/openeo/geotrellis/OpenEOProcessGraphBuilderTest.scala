@@ -1,7 +1,7 @@
 package org.openeo.geotrellis
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import geotrellis.raster.{BitArrayTile, ByteArrayFiller, ByteArrayTile, ByteConstantNoDataCellType, ShortArrayTile, ShortConstantNoDataCellType, Tile}
+import geotrellis.raster.{BitArrayTile, ByteArrayFiller, ByteArrayTile, ByteConstantNoDataCellType, DoubleArrayTile, IntArrayTile, ShortArrayTile, ShortConstantNoDataCellType, Tile}
 import org.apache.commons.io.IOUtils
 import org.junit.Test
 import org.junit.jupiter.api.Assertions.{assertArrayEquals, assertEquals, assertNotNull}
@@ -137,6 +137,20 @@ class OpenEOProcessGraphBuilderTest {
     }
 
     assert(true)
+  }
+
+  @Test
+  def testModulo(): Unit = {
+    val transformation = org.openeo.geotrellis.testutil.fromUrl(getClass.getResource("/org/openeo/geotrellis/testModuloProcessGraph.json"))
+    val tile0 = ByteArrayTile.fill(16.toByte, 4, 4)
+    val tile1 = ByteArrayTile.fill(17.toByte, 4, 4)
+    val tile2 = DoubleArrayTile.fill(17.5, 4, 4)
+    val result: Seq[Tile] = transformation.apply(JavaConverters.asScalaBuffer(util.Arrays.asList(tile0, tile1)))
+    assertTileEquals(IntArrayTile.fill(0, 4, 4), result(0))
+    assertTileEquals(IntArrayTile.fill(1, 4, 4), result(1))
+
+    val resultDouble: Seq[Tile] = transformation.apply(JavaConverters.asScalaBuffer(util.Arrays.asList(tile2)))
+    assertTileEquals(DoubleArrayTile.fill(1.5, 4, 4), resultDouble.head)
   }
 
 }
