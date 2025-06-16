@@ -227,7 +227,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
                         [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'SentinelHubBatchS3'],
                         [$class: 'UsernamePasswordMultiBinding', credentialsId: 'SentinelHubGeodatadev', usernameVariable: 'SENTINELHUB_CLIENT_ID', passwordVariable: 'SENTINELHUB_CLIENT_SECRET']
                 ]) {
-                    buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts,integrationtests -U version' + rtMaven.opts
+                    buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts,integrationtests -U -Dmaven.repo.local=/root/.m2 clean install' + rtMaven.opts
                     try {
                         if (rtMaven.deployer.deployArtifacts)
                             server.publishBuildInfo buildInfo
