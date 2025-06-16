@@ -196,13 +196,10 @@ void build(skipTests = false, skipSentinelHubTests = false){
     List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-11-openjdk"]
     docker.image(env.MAVEN_IMAGE).inside('-v /home/jenkins/.m2:/root/.m2 -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root') {
         withEnv(jdkEnv) {
-            sh "whoami"
             sh "dnf install -y maven git java-11-openjdk-devel gdal-3.8.4"
             sh "dnf -y install dnf-plugins-core"
             sh "dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo"
             sh "dnf -y install docker-ce docker-ce-cli containerd.io"
-            sh "su jenkins"
-            sh "whoami"
             //sh "dockerd"
             //sh "docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
             def server = Artifactory.server('vitoartifactory')
@@ -248,7 +245,9 @@ void build(skipTests = false, skipSentinelHubTests = false){
                 if (!skipTests) {
                     junit '*/target/*-reports/*.xml'
                 }
-                sh "ls -al /"
+                sh "pwd"
+                sh "ls -al"
+                //sh "chown -R jenkins:vito /var/lib/jenkins/workspace/c-openeo-geopyspark-driver-tests"
             }
         }
     }
