@@ -5,7 +5,7 @@ import org.slf4j.{Logger, LoggerFactory}
 import java.io.File
 import java.lang.management.ManagementFactory
 import java.net.ServerSocket
-import java.nio.file.{FileSystems, Files, Path}
+import java.nio.file.{FileSystems, Files, Path, Paths}
 import scala.annotation.tailrec
 import scala.jdk.CollectionConverters.asScalaIteratorConverter
 import scala.sys.process._
@@ -52,7 +52,8 @@ object ProcessGraphRunner {
         while (i < maxSize && (first.charAt(i) == last.charAt(i))) {
           i += 1
         }
-        first.substring(0, i)
+        val commonPart = first.substring(0, i)
+        commonPart.substring(0, commonPart.lastIndexOf("/"))
       }
     }
 
@@ -109,7 +110,6 @@ object ProcessGraphRunner {
     }
 
     val dockerImage = "vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
-    //    val dockerImage = "run_process_graph_locally2"
 
     val cmd =
       if (debug) {
