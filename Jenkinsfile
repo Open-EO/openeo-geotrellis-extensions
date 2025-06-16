@@ -194,10 +194,8 @@ void build(skipTests = false, skipSentinelHubTests = false){
     def publishable_branches = ["master", "develop"]
 
     List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-11-openjdk"]
-    docker.image(env.MAVEN_IMAGE).inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/root/lol -v /home/jenkins/.m2:/root/.m2:rw,z -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root') {
+    docker.image(env.MAVEN_IMAGE).inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/localdata/M2:rw,z -v /home/jenkins/.m2:/root/.m2:rw,z -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root') {
         withEnv(jdkEnv) {
-            sh "ls -al /root/lol"
-            sh "ls -al /root/.m2"
             sh "dnf install -y maven git java-11-openjdk-devel"
             sh "dnf -y install dnf-plugins-core"
             sh "dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo"
