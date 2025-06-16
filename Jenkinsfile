@@ -245,9 +245,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
                 if (!skipTests) {
                     junit '*/target/*-reports/*.xml'
                 }
-                sh "pwd"
-                sh "ls -al"
-                //sh "chown -R jenkins:vito /var/lib/jenkins/workspace/c-openeo-geopyspark-driver-tests"
+                sh "chown -R jenkins:vito ."
             }
         }
     }
