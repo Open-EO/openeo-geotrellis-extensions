@@ -27,7 +27,7 @@ object ProcessGraphRunner {
 
     new File(outputDir).mkdirs()
 
-    logger.info(f"Output dir: ${outputDir}")
+    logger.info(f"Output dir: $outputDir")
 
     val classPath = System.getProperty("java.class.path")
 
@@ -51,16 +51,16 @@ object ProcessGraphRunner {
     val folderParts = classPath.split(":").filter(!_.endsWith(".jar")).groupBy(s => s.substring(0, s.indexOf("/", 1))).map(e => findCommonPrefix(e._2))
 
 
-    val jarMapping = jarParts.zipWithIndex.map { case (jarPart, i) => (jarPart, f"/jars${i}/") }
-    val folderMapping = folderParts.zipWithIndex.map { case (folderPart, i) => (folderPart, f"/code${i}/") }
+    val jarMapping = jarParts.zipWithIndex.map { case (jarPart, i) => (jarPart, f"/jars$i/") }
+    val folderMapping = folderParts.zipWithIndex.map { case (folderPart, i) => (folderPart, f"/code$i/") }
 
     var modifiedClassPath = classPath.split(":")
     jarMapping.foreach {
       case (jarPart, replacement) =>
-        modifiedClassPath = modifiedClassPath.map(mcpe => if (mcpe.endsWith(".jar") && mcpe.startsWith(jarPart)) {
-          mcpe.replaceFirst(jarPart, replacement)
+        modifiedClassPath = modifiedClassPath.map(classPathElement => if (classPathElement.endsWith(".jar") && classPathElement.startsWith(jarPart)) {
+          classPathElement.replaceFirst(jarPart, replacement)
         } else {
-          mcpe
+          classPathElement
         })
     }
 
@@ -77,11 +77,11 @@ object ProcessGraphRunner {
 
     val classPathMappings = Stream(jarMapping, folderMapping).flatten
       .filter(f => !f._1.startsWith("/opt"))
-      .map { case (a, b) => f"-v ${a}:${b}" }.mkString(" ")
+      .map { case (a, b) => f"-v $a:$b" }.mkString(" ")
 
     val dockerClassPath = modifiedClassPath.mkString(":")
 
-    val debug = ManagementFactory.getRuntimeMXBean().getInputArguments().stream().anyMatch(_.contains("-agentlib:jdwp"))
+    val debug = ManagementFactory.getRuntimeMXBean.getInputArguments.stream().anyMatch(_.contains("-agentlib:jdwp"))
 
     val dockerImage = "vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
 
@@ -89,11 +89,11 @@ object ProcessGraphRunner {
       if (debug) {
         val debugPort = findFirstOpenPort(5005)
         val sparkUIPort = findFirstOpenPort(4040)
-        println(f"Waiting for remote debugger on port ${debugPort}")
-        println(f"SparkUI will be available at http://localhost:${sparkUIPort}")
-        f"docker run -p ${debugPort}:5005 -p ${sparkUIPort}:4040 -v ${outputDir}:/out -v ${hostGraphFolder}:/graphs ${classPathMappings} ${dockerImage} /graphs/${processGraphName} /out ${dockerClassPath} DEBUG"
+        println(f"Waiting for remote debugger on port $debugPort")
+        println(f"SparkUI will be available at http://localhost:$sparkUIPort")
+        f"docker run -p $debugPort:5005 -p $sparkUIPort:4040 -v $outputDir:/out -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath DEBUG"
       } else {
-        f"docker run -v ${outputDir}:/out -v ${hostGraphFolder}:/graphs ${classPathMappings} ${dockerImage} /graphs/${processGraphName} /out ${dockerClassPath}"
+        f"docker run -v $outputDir:/out -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath"
       }
     logger.debug(f"Prepared command: $cmd")
     val output = cmd.!!
