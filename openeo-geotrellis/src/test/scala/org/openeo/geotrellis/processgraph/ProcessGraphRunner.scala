@@ -83,7 +83,6 @@ object ProcessGraphRunner {
     val debug = ManagementFactory.getRuntimeMXBean.getInputArguments.stream().anyMatch(_.contains("-agentlib:jdwp"))
 
     val dockerImage = "vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
-//    val dockerImage = "pgth"
 
     val cmd =
       if (debug) {

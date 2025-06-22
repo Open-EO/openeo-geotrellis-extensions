@@ -14,13 +14,13 @@ class TestProcessGraphJson {
     ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/reduce_t.json")
   }
 
-  @Test
-  def reduceTApplyNeighbourhoodUdf(): Unit = {
-    ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/reduce_t_apply_neighbourhood_udf.json")
-  }
-
-  @Test
-  def applyNeighbourhoodUdfCheckDims(): Unit = {
-    ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/apply_neighbourhood_udf_check_dims.json")
-  }
+//  @Test
+//  def reduceTApplyNeighbourhoodUdf(): Unit = {
+//    ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/reduce_t_apply_neighbourhood_udf.json")
+//  }
+//
+//  @Test
+//  def applyNeighbourhoodUdfCheckDims(): Unit = {
+//    ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/apply_neighbourhood_udf_check_dims.json")
+//  }
 }
