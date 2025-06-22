@@ -9,6 +9,10 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
+    <properties>
+        <skipSentinelHubTests>false</skipSentinelHubTests>
+    </properties>
+
     <artifactId>geotrellis-sentinelhub</artifactId>
     <dependencies>
         <dependency>
@@ -157,6 +161,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>2.22.2</version>
                 <configuration>
+                    <skipTests>${skipSentinelHubTests}</skipTests>
                     <trimStackTrace>false</trimStackTrace>
                     <systemPropertyVariables>
                         <software.amazon.awssdk.http.service.impl>software.amazon.awssdk.http.apache.ApacheSdkHttpService</software.amazon.awssdk.http.service.impl>
