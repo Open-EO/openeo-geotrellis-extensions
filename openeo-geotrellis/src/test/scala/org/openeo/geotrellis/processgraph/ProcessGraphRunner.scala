@@ -50,9 +50,8 @@ object ProcessGraphRunner {
     val jarParts = classPath.split(":").filter(_.endsWith(".jar")).groupBy(s => s.substring(0, s.indexOf("/", 1))).map(e => findCommonPrefix(e._2))
     val folderParts = classPath.split(":").filter(!_.endsWith(".jar")).groupBy(s => s.substring(0, s.indexOf("/", 1))).map(e => findCommonPrefix(e._2))
 
-
-    val jarMapping = jarParts.zipWithIndex.map { case (jarPart, i) => (jarPart, f"/jars$i/") }
-    val folderMapping = folderParts.zipWithIndex.map { case (folderPart, i) => (folderPart, f"/code$i/") }
+    val jarMapping = jarParts.zipWithIndex.map { case (jarPart, i) => (jarPart, f"/jars$i") }
+    val folderMapping = folderParts.zipWithIndex.map { case (folderPart, i) => (folderPart, f"/code$i") }
 
     var modifiedClassPath = classPath.split(":")
     jarMapping.foreach {
@@ -84,6 +83,7 @@ object ProcessGraphRunner {
     val debug = ManagementFactory.getRuntimeMXBean.getInputArguments.stream().anyMatch(_.contains("-agentlib:jdwp"))
 
     val dockerImage = "vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
+//    val dockerImage = "pgth"
 
     val cmd =
       if (debug) {
