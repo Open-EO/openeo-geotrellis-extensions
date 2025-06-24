@@ -1104,6 +1104,7 @@ package object geotiff {
   private[geotrellis] case class GeoTiffResultObject(correctPath: String, fileExists: Boolean, gdalInfoPath: Option[String])
 
   private[geotrellis] def writeGeoTiff(geoTiff: MultibandGeoTiff, path: String, gtiffOptions: Option[GTiffOptions]): GeoTiffResultObject = {
+    logger.error("TESTING jar-path-feature!")
     val tempFile = getTempFile(FilenameUtils.getBaseName(path) + "_", ".tif")
     geoTiff.write(tempFile.toString, optimizedOrder = true)
     val fileExists = Files.exists(tempFile)
