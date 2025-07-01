@@ -23,7 +23,7 @@ class DataCubeParameters extends Serializable {
   var noResampleOnRead: Boolean = false
   var useNewFeatureExtentIntersection: Boolean = false
   var useNewFeatureExtentIntersection2: Boolean = false
-  var timeDimensionFilter: Option[Object] = Option.empty
+  var timeDimensionFilter: Option[java.io.Serializable] = Option.empty
   var allowEmptyCube: Boolean = false
   var loadPerProduct: Boolean = false
   /**
@@ -85,7 +85,7 @@ class DataCubeParameters extends Serializable {
     useNewFeatureExtentIntersection2 = v
   }
 
-  def setTimeDimensionFilter(conditionProcessScriptBuilder:Object):Unit = {
+  def setTimeDimensionFilter(conditionProcessScriptBuilder:java.io.Serializable):Unit = {
     timeDimensionFilter = Some(conditionProcessScriptBuilder)
   }
 

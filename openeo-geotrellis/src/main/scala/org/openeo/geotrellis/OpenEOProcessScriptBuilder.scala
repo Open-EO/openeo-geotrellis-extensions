@@ -511,7 +511,7 @@ object OpenEOProcessScriptBuilder{
 /**
   * Builder to help converting an OpenEO process graph into a transformation of Geotrellis tiles.
   */
-class OpenEOProcessScriptBuilder {
+class OpenEOProcessScriptBuilder extends java.io.Serializable {
 
   import OpenEOProcessScriptBuilder._
 
