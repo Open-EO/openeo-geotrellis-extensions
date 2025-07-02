@@ -905,8 +905,12 @@ object NetCDFRDDWriter {
       }}
       map
     } else {
-      var map = Array[Map[String,Any]]()
-      bandNames.forEach(name => map = map :+ Map("name" -> name))
+      val map = new java.util.ArrayList[java.util.HashMap[String,Any]]()
+      bandNames.forEach(name => {
+        val rasterBands = new java.util.HashMap[String,Any]()
+        rasterBands.put("name", name)
+        map.add(rasterBands)
+      })
       map
     }
     assetMetadata.put("bands", bands)
@@ -924,8 +928,12 @@ object NetCDFRDDWriter {
     val bands = if (addBandsStats) {
       bandsStatistics(rasters, bandNames)
     } else {
-      var map = Array[Map[String,Any]]()
-      bandNames.forEach(name => map = map :+ Map("name" -> name))
+      val map = new java.util.ArrayList[java.util.HashMap[String,Any]]()
+      bandNames.forEach(name => {
+        val rasterBands = new java.util.HashMap[String,Any]()
+        rasterBands.put("name", name)
+        map.add(rasterBands)
+      })
       map
     }
     assetMetadata.put("bands", bands)

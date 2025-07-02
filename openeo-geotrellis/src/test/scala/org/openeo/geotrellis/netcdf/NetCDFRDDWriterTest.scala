@@ -161,7 +161,7 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     val sampleNameList = new util.ArrayList[String]()
     sampleNames.foreach(sampleNameList.add)
 
-    def testStatistics(arrayTile: IntArrayTile, expectedStatistics: util.HashMap[String, Any]):Unit = {
+    def testStatistics(arrayTile: IntArrayTile, expectedStatistics: util.HashMap[String, Any],addStatistics:Boolean=true):Unit = {
       val layer = LayerFixtures.aSpacetimeTileLayerRddShortArrayTile(arrayTile,20,10,5,256)
 
       val samples = NetCDFRDDWriter.saveSamples(
@@ -173,7 +173,7 @@ class NetCDFRDDWriterTest extends RasterMatchers{
         null,
         null,
         null,
-        addBandsStatistics = true,
+        addBandsStatistics = addStatistics,
         Some("prefixTest"),
       )
 
@@ -191,9 +191,11 @@ class NetCDFRDDWriterTest extends RasterMatchers{
         Assert.assertEquals(3, bands.size())
         bands.forEach(band => {
           Assert.assertTrue(band.containsKey("name"))
-          Assert.assertTrue(band.containsKey("statistics"))
-          val statistics = band.get("statistics").asInstanceOf[util.HashMap[String, Number]]
-          Assert.assertEquals(expectedStatistics, statistics)
+          Assert.assertEquals(addStatistics,band.containsKey("statistics"))
+          if (addStatistics) {
+            val statistics = band.get("statistics").asInstanceOf[util.HashMap[String, Number]]
+            Assert.assertEquals(expectedStatistics, statistics)
+          }
         })
       })
     }
@@ -204,6 +206,8 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     testStatistics(arrayTile = arrayTile1, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)))
     val arrayTile2 = IntArrayTile(Array.fill(arrayDim*arrayDim/2)(256) ++ Array.fill(arrayDim*arrayDim/8)(30) ++ Array.fill(arrayDim*arrayDim/8)(10) ++ Array.fill(arrayDim*arrayDim/4)(256),arrayDim,arrayDim)
     testStatistics(arrayTile = arrayTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.25, "min", 10.0, "max", 30.0, "mean", 20.0, "stddev", 10)))
+    val arrayTile5 = IntArrayTile(Array.fill(arrayDim*arrayDim/4)(0) ++ Array.fill(arrayDim*arrayDim/2)(30) ++ Array.fill(arrayDim*arrayDim/4)(256),arrayDim,arrayDim)
+    testStatistics(arrayTile = arrayTile5, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.75, "min", 0.0, "max", 30.0, "mean", 20.0, "stddev", 14.142135623730951)),addStatistics = false)
   }
 
 
@@ -346,7 +350,7 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     val dcParams = new DataCubeParameters()
     dcParams.layoutScheme = "FloatingLayoutScheme"
 
-    def testStatistics(imageTile:Tile,expectedStatistics:util.HashMap[String,Any]):Unit = {
+    def testStatistics(imageTile:Tile,expectedStatistics:util.HashMap[String,Any],addStatistics:Boolean = true):Unit = {
       val layer = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, MultibandTile(imageTile, imageTile, imageTile), TileLayout(imageTile.cols/256, imageTile.rows/256, 256, 256), LatLng)
 
       val samples = NetCDFRDDWriter.saveSamplesSpatial(
@@ -358,7 +362,7 @@ class NetCDFRDDWriterTest extends RasterMatchers{
         null,
         null,
         null,
-        addBandsStatistics = true,
+        addBandsStatistics = addStatistics,
         Some("prefixTest"),
       )
 
@@ -376,9 +380,11 @@ class NetCDFRDDWriterTest extends RasterMatchers{
         Assert.assertEquals(3, bands.size())
         bands.forEach(band => {
           Assert.assertTrue(band.containsKey("name"))
-          Assert.assertTrue(band.containsKey("statistics"))
-          val statistics = band.get("statistics").asInstanceOf[util.HashMap[String, Number]]
-          Assert.assertEquals(expectedStatistics, statistics)
+          Assert.assertEquals(addStatistics,band.containsKey("statistics"))
+          if (addStatistics) {
+            val statistics = band.get("statistics").asInstanceOf[util.HashMap[String, Number]]
+            Assert.assertEquals(expectedStatistics, statistics)
+          }
         })
       })
     }
@@ -397,6 +403,9 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     testStatistics(imageTile = imageTile3, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 1, "min", 10, "max", 256, "mean", 197.0, "stddev",102.3132444994293)))
     val imageTile4 = IntArrayTile(Array.fill(arrayDim*arrayDim/2)(256) ++ Array.fill(arrayDim*arrayDim/8)(30) ++ Array.fill(arrayDim*arrayDim/8)(10) ++ Array.fill(arrayDim*arrayDim/4)(256),arrayDim,arrayDim)
     testStatistics(imageTile = imageTile4, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 1, "min", 10, "max", 256, "mean", 197.0, "stddev",102.3132444994293)))
+    val arrayTile5 = IntArrayTile(Array.fill(arrayDim*arrayDim/4)(0) ++ Array.fill(arrayDim*arrayDim/2)(30) ++ Array.fill(arrayDim*arrayDim/4)(256),arrayDim,arrayDim)
+    val imageTile5 = arrayTile5.convert(UShortUserDefinedNoDataCellType(256)).mutable
+    testStatistics(imageTile = imageTile5, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.75, "min", 0.0, "max", 30.0, "mean", 20.0, "stddev", 14.142135623730951)),addStatistics = false)
   }
 
   @Ignore
@@ -571,10 +580,10 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     val dcParams = new DataCubeParameters()
     dcParams.layoutScheme = "FloatingLayoutScheme"
 
-    def testStatistics(imageTile:Tile,expectedStatistics:util.HashMap[String,Any]):Unit = {
+    def testStatistics(imageTile:Tile,expectedStatistics:util.HashMap[String,Any],addStatistics:Boolean = true):Unit = {
       val layer = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, MultibandTile(imageTile, imageTile, imageTile), TileLayout(imageTile.cols/256, imageTile.rows/256, 256, 256), LatLng)
 
-      val items = NetCDFRDDWriter.saveSingleNetCDFSpatial(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")),null,null,null,6,addBandsStatistics = true)
+      val items = NetCDFRDDWriter.saveSingleNetCDFSpatial(layer,"/tmp/stitched.nc", new util.ArrayList(util.Arrays.asList("TOC-B04_10M", "TOC-B03_10M", "TOC-B02_10M")),null,null,null,6,addBandsStatistics = addStatistics)
       Assert.assertEquals(1,items.size())
       items.forEach(item => {
         Assert.assertEquals(1,item.assets.size())
@@ -589,9 +598,11 @@ class NetCDFRDDWriterTest extends RasterMatchers{
         Assert.assertEquals(3, bands.size())
         bands.forEach(band => {
           Assert.assertTrue(band.containsKey("name"))
-          Assert.assertTrue(band.containsKey("statistics"))
-          val statistics = band.get("statistics").asInstanceOf[util.HashMap[String, Number]]
-          Assert.assertEquals(expectedStatistics, statistics)
+          Assert.assertEquals(addStatistics,band.containsKey("statistics"))
+          if (addStatistics) {
+            val statistics = band.get("statistics").asInstanceOf[util.HashMap[String, Number]]
+            Assert.assertEquals(expectedStatistics, statistics)
+          }
         })
       })
     }
@@ -610,8 +621,9 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     testStatistics(imageTile = imageTile3, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 1, "min", 10, "max", 256, "mean", 197.0, "stddev",102.3132444994293)))
     val imageTile4 = IntArrayTile(Array.fill(arrayDim*arrayDim/2)(256) ++ Array.fill(arrayDim*arrayDim/8)(30) ++ Array.fill(arrayDim*arrayDim/8)(10) ++ Array.fill(arrayDim*arrayDim/4)(256),arrayDim,arrayDim)
     testStatistics(imageTile = imageTile4, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 1, "min", 10, "max", 256, "mean", 197.0, "stddev",102.3132444994293)))
-
-
+    val arrayTile5 = IntArrayTile(Array.fill(arrayDim*arrayDim/4)(0) ++ Array.fill(arrayDim*arrayDim/2)(30) ++ Array.fill(arrayDim*arrayDim/4)(256),arrayDim,arrayDim)
+    val imageTile5 = arrayTile5.convert(UShortUserDefinedNoDataCellType(256)).mutable
+    testStatistics(imageTile = imageTile5, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.75, "min", 0.0, "max", 30.0, "mean", 20.0, "stddev", 14.142135623730951)),addStatistics = false)
   }
 
   @Test
