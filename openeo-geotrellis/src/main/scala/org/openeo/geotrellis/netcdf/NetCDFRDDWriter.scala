@@ -515,7 +515,7 @@ object NetCDFRDDWriter {
         val dates = sorted.map { case (instant, _) => ZonedDateTime.ofInstant(instant, ZoneOffset.UTC) }
         logger.info(s"Writing $name with dates $dates.")
         val extent = sorted.head._2.extent
-        val assetsMetadata = setupAssetMetadata(rdd.metadata,sorted.map(_._2),dates=dates, bandNames,addBandsStats = addBandsStatistics) // path 2
+        val assetsMetadata = setupAssetMetadata(rdd.metadata,sorted.map(_._2),dates=dates, bandNames,addBandsStats = addBandsStatistics)
         val assetPath = try{
           writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
         }catch {
