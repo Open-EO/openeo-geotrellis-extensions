@@ -454,7 +454,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     val layoutRows = 4
     val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
 
-    val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGaps/")
+    val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGapsOverview/")
     new Directory(outDir.toFile).deepList().foreach(_.delete())
     Files.createDirectories(outDir)
 
@@ -507,7 +507,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     val layoutRows = 4
     val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
 
-    val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGapsSeparateAssetPerBand/")
+    val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGapsSeparateAssetPerBandOverview/")
     new Directory(outDir.toFile).deepList().foreach(_.delete())
     Files.createDirectories(outDir)
 

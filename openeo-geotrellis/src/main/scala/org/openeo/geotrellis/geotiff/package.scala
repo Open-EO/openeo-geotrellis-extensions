@@ -257,7 +257,7 @@ package object geotiff {
             // ':' is not valid in a Windows filename
             DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time).replace(":", "").replace("-", "")
           }
-          val overviews = if (formatOptions.overviews=="ALL"){
+          val overviews = if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
             val decimationFactor = 4
             val rasterTile = Raster(tile,croppedExtent)
             val resampleMethod = getOverviewResampleMethod(formatOptions)
@@ -285,7 +285,7 @@ package object geotiff {
 
       val segmentCount = bandSegmentCount * tiffBands
 
-      val geotiffMultibandTiles = if (formatOptions.overviews=="ALL") {
+      val geotiffMultibandTiles = if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
         val overviewSequence: Predef.Map[Int, Array[Byte]] = sequence.map(tuple => (tuple._1, tuple._2._3)).toMap
         val overviewLayout = TileLayout(tileLayout.layoutCols, tileLayout.layoutRows, tileLayout.tileCols, tileLayout.tileRows)
         val overviewGeotiff = toTiff(overviewSequence, GridBounds(0,0,gridBounds.colMax/4,gridBounds.rowMax/4), overviewLayout, compression, cellTypes.head, tiffBands, segmentCount)
