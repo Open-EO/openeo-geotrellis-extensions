@@ -1,0 +1,76 @@
+{
+  "loadcollection1": {
+    "process_id": "load_collection",
+    "arguments": {
+      "id": "TestCollection-LonLat4x4",
+      "temporal_extent": [
+        "2023-06-01",
+        "2023-08-01"
+      ],
+      "spatial_extent": {
+        "west": 0.0,
+        "south": 0.0,
+        "east": 1.0,
+        "north": 2.0
+      },
+      "bands": [
+        "Flat:0",
+        "Flat:1"
+      ]
+    }
+  },
+  "ndvi1": {
+    "process_id": "ndvi",
+    "arguments": {
+      "data": {
+        "from_node": "loadcollection1"
+      },
+      "red": "Flat:0",
+      "nir": "Flat:1"
+    }
+  },
+  "applyneighborhood1": {
+    "process_id": "apply_neighborhood",
+    "arguments": {
+      "data": {
+        "from_node": "ndvi1"
+      },
+      "process": {
+        "process_graph": {
+          "runudf1": {
+            "process_id": "run_udf",
+            "arguments": {
+              "data": {
+                "from_parameter": "data"
+              },
+              "runtime": "Python",
+              "udf": "import xarray as xr\nfrom openeo.udf import inspect\nfrom openeo.metadata import CollectionMetadata\n\ndef apply_metadata(metadata: CollectionMetadata, context: dict) -> CollectionMetadata:\n    inspect(message=f\"apply_metadata: {metadata=}\")\n    return metadata\n\ndef apply_datacube(cube: xr.DataArray, context: dict) -> xr.DataArray:\n    inspect(message=f\"apply_datacube: {cube.dims=}\")\n    return cube"
+            },
+            "result": true
+          }
+        }
+      },
+      "size": [
+        {
+          "dimension": "x",
+          "value": 64,
+          "unit": "px"
+        },
+        {
+          "dimension": "y",
+          "value": 64,
+          "unit": "px"
+        }
+      ]
+    }
+  },  "saveresult1": {
+    "process_id": "save_result",
+    "arguments": {
+      "data": {
+        "from_node": "applyneighborhood1"
+      },
+      "format": "GTiff"
+    },
+    "result": true
+  }
+}
