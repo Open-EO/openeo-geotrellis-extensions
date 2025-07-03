@@ -94,7 +94,7 @@ object BandCompositeRasterSource {
         logger.warn(s"load_collection: ignoring soft error for ${source.name} - ${e.getMessage}", e)
         None
       }
-      case e: Exception => throw new IOException(s"load_collection: Error while reading $bounds from: ${source.name} - ${e.getMessage}", e)
+      case e: Exception => throw new IOException(s"load_collection: Error while reading $bounds from: ${source.name} - ${e.getMessage}")
     }
   }
 }
