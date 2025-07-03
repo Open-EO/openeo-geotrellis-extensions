@@ -23,6 +23,7 @@ import org.junit.rules.TemporaryFolder
 import org.junit.{AfterClass, Rule}
 import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
+import org.openeo.geotrellis.stac.Asset
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient
@@ -449,6 +450,33 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
 
 
   @Test
+  def testWriteMultibandTemporalRDDWithGapsOverviews(): Unit = {
+    val layoutCols = 8
+    val layoutRows = 4
+    val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
+
+    val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGaps/")
+    new Directory(outDir.toFile).deepList().foreach(_.delete())
+    Files.createDirectories(outDir)
+
+    val options = new GTiffOptions()
+    options.setOverview("ALL")
+    saveRDDTemporal(layer, outDir.toString,formatOptions = options)
+    val result = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z.tif").toString)
+    assertEquals(3,result.overviews.size)
+    //    assertEquals(Tiled(128,128),result.overviews.head.options.storageMethod)
+    val colSize = result.tile.cols
+    val rowSize = result.tile.rows
+    assertEquals(math.ceil(colSize.toDouble/4).toInt,result.overviews(0).tile.cols)
+    assertEquals(math.ceil(rowSize.toDouble/4).toInt,result.overviews(0).tile.rows)
+    assertEquals(math.ceil(colSize.toDouble/8).toInt,result.overviews(1).tile.cols)
+    assertEquals(math.ceil(rowSize.toDouble/8).toInt,result.overviews(1).tile.rows)
+    assertEquals(math.ceil(colSize.toDouble/16).toInt,result.overviews(2).tile.cols)
+    assertEquals(math.ceil(rowSize.toDouble/16).toInt,result.overviews(2).tile.rows)
+  }
+
+
+  @Test
   def testWriteMultibandTemporalRDDWithGapsSeparateAssetPerBand(): Unit = {
     val layoutCols = 8
     val layoutRows = 4
@@ -473,6 +501,55 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z_B02.tif").toString).raster.tile
     GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z_B03.tif").toString).raster.tile
   }
+
+  @Test
+  def testWriteMultibandTemporalRDDWithGapsSeparateAssetPerBandOverview(): Unit = {
+    val layoutCols = 8
+    val layoutRows = 4
+    val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
+
+    val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGapsSeparateAssetPerBand/")
+    new Directory(outDir.toFile).deepList().foreach(_.delete())
+    Files.createDirectories(outDir)
+
+    val options = new GTiffOptions()
+    options.separateAssetPerBand = true
+    options.addBandTag(0, "DESCRIPTION", "B01")
+    options.addBandTag(1, "DESCRIPTION", "B02")
+    options.addBandTag(2, "DESCRIPTION", "B03")
+    options.setOverview("ALL")
+    val tiles = saveRDDTemporalAllowAssetPerBand(layer, outDir.toString, formatOptions = options)
+
+    val expectedPaths = List(
+      outDir + "/openEO_2017-01-02Z_B01.tif",
+      outDir + "/openEO_2017-01-02Z_B02.tif",
+      outDir + "/openEO_2017-01-02Z_B03.tif",
+      outDir + "/openEO_2017-01-03Z_B01.tif",
+      outDir + "/openEO_2017-01-03Z_B02.tif",
+      outDir + "/openEO_2017-01-03Z_B03.tif",
+    )
+
+    val assets = tiles.asScala.map { case item => item.assets}.toSet
+    val paths = assets.foldLeft(List[String]())((temp,asset) => asset.asScala.values.toList.map(_.path)++temp) //assets.flatMap(asset => asset.)
+    for (path <- paths){
+      assertTrue(expectedPaths.contains(path))
+    }
+    assertEquals(6,paths.size)
+
+    for (path <- expectedPaths) {
+      val tile = GeoTiff.readMultiband(path)
+      assertEquals(3,tile.overviews.size)
+      val colSize = tile.tile.cols
+      val rowSize = tile.tile.rows
+      assertEquals(math.ceil(colSize.toDouble/4).toInt,tile.overviews(0).tile.cols)
+      assertEquals(math.ceil(rowSize.toDouble/4).toInt,tile.overviews(0).tile.rows)
+      assertEquals(math.ceil(colSize.toDouble/8).toInt,tile.overviews(1).tile.cols)
+      assertEquals(math.ceil(rowSize.toDouble/8).toInt,tile.overviews(1).tile.rows)
+      assertEquals(math.ceil(colSize.toDouble/16).toInt,tile.overviews(2).tile.cols)
+      assertEquals(math.ceil(rowSize.toDouble/16).toInt,tile.overviews(2).tile.rows)
+    }
+  }
+
 
   @Test
   def testWriteMultibandTemporalRDDWithGapsFilepathPerBand(): Unit = {

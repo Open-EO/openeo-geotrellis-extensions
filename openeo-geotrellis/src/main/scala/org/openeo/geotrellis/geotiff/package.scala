@@ -287,8 +287,8 @@ package object geotiff {
 
       val geotiffMultibandTiles = if (formatOptions.overviews=="ALL") {
         val overviewSequence: Predef.Map[Int, Array[Byte]] = sequence.map(tuple => (tuple._1, tuple._2._3)).toMap
-        val overviewLayout = TileLayout(tileLayout.layoutCols, tileLayout.layoutRows, tileLayout.tileCols / 4, tileLayout.tileRows / 4)
-        val overviewGeotiff = toTiff(overviewSequence, gridBounds, overviewLayout, compression, cellTypes.head, tiffBands, segmentCount)
+        val overviewLayout = TileLayout(tileLayout.layoutCols, tileLayout.layoutRows, tileLayout.tileCols, tileLayout.tileRows)
+        val overviewGeotiff = toTiff(overviewSequence, GridBounds(0,0,gridBounds.colMax/4,gridBounds.rowMax/4), overviewLayout, compression, cellTypes.head, tiffBands, segmentCount)
         val overviewMultiband = MultibandGeoTiff(Raster(MultibandTile(overviewGeotiff.bands), croppedExtent), preprocessedRdd.metadata.crs)
         val resampleMethod = getOverviewResampleMethod(formatOptions)
         val computedOverviews = overviewMultiband.withOverviews(resampleMethod, decimations = List(1, 2, 4), blockSize = formatOptions.tileSize).overviews
