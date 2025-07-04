@@ -286,7 +286,7 @@ package object geotiff {
       val segmentCount = bandSegmentCount * tiffBands
 
       val geotiffMultibandTiles = if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
-        logger.info(s"Write overviews for ${filename} TESTING")
+        logger.info(s"Write overviews for ${filename}")
         val overviewSequence: Predef.Map[Int, Array[Byte]] = sequence.map(tuple => (tuple._1, tuple._2._3)).toMap
         val overviewLayout = TileLayout(tileLayout.layoutCols, tileLayout.layoutRows, tileLayout.tileCols, tileLayout.tileRows)
         val overviewGeotiff = toTiff(overviewSequence, GridBounds(0,0,gridBounds.colMax/4,gridBounds.rowMax/4), overviewLayout, compression, cellTypes.head, tiffBands, segmentCount)
@@ -294,10 +294,7 @@ package object geotiff {
         val resampleMethod = getOverviewResampleMethod(formatOptions)
         val computedOverviews = overviewMultiband.withOverviews(resampleMethod, decimations = List(1, 2, 4), blockSize = formatOptions.tileSize).overviews
         computedOverviews.map(overview => GeoTiffMultibandTile(overview.tile))
-      } else {
-        logger.info(s"Did not write overviews for ${filename} TESTING")
-        Nil
-      }
+      } else Nil
       // Each executor writes to a unique folder to avoid conflicts:
       val executorAttemptDirectory = createExecutorAttemptDirectory(path)
       val absoluteFilePath = executorAttemptDirectory.resolve(filename)
