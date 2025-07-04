@@ -768,7 +768,7 @@ object FileLayerProvider {
         try{
           source.readBounds(bounds).map(_.mapTile(_.convert(cellType))).toSeq
         } catch {
-          case e: Exception => throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}", e)
+          case e: Exception => throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}")
         }
 
       val totalPixels = allRasters.map(tile => tile.cols * tile.rows * tile.tile.bandCount).sum
