@@ -144,8 +144,8 @@ class NetCDFRDDWriterTest extends RasterMatchers{
   @Test
   def testWriteSamplesWithGlobalBoundsBuffer(): Unit = {
     val utm30 = CRS.fromEpsgCode(32630)
-    val startDate = ZonedDateTime.of(LocalDate.of(2023, 7, 1), MIDNIGHT, UTC)
-    val endDate = ZonedDateTime.of(LocalDate.of(2023, 7, 15), MIDNIGHT, UTC)
+    val startDate = ZonedDateTime.of(LocalDate.of(2025, 6, 1), MIDNIGHT, UTC)
+    val endDate = ZonedDateTime.of(LocalDate.of(2025, 6, 15), MIDNIGHT, UTC)
 
     val polygon1 = new Extent(-0.6, 60.0, -0.597, 60.003).toPolygon()
     val polygon2 = new Extent(-0.6, 61.0, -0.597, 61.003).toPolygon()
