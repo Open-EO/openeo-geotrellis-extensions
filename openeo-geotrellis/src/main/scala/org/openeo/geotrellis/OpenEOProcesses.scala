@@ -956,7 +956,7 @@ class OpenEOProcesses extends Serializable {
       val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, target.metadata.crs, Right(target.metadata.layout), bufferSize, method, targetPartitioner)
       val result = filterNegativeSpatialKeys(reprojected)
       data match {
-        case dataOpenEO: OpenEORasterCube[SpaceTimeKey] if dataOpenEO.openEOMetadata.bandCount > 0 =>
+        case dataOpenEO: OpenEORasterCube[SpaceTimeKey] =>
           (result._1, new OpenEORasterCube[SpaceTimeKey](
             result._2,
             result._2.metadata,
