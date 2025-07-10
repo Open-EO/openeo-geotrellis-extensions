@@ -511,7 +511,7 @@ object OpenEOProcessScriptBuilder{
 /**
   * Builder to help converting an OpenEO process graph into a transformation of Geotrellis tiles.
   */
-class OpenEOProcessScriptBuilder {
+class OpenEOProcessScriptBuilder extends java.io.Serializable {
 
   import OpenEOProcessScriptBuilder._
 
@@ -1313,9 +1313,9 @@ class OpenEOProcessScriptBuilder {
     val doTypeCast = output_range > 1 && (!outMinRaw.isInstanceOf[Double] && !outMinRaw.isInstanceOf[Float]) && (!outMaxRaw.isInstanceOf[Double] && !outMaxRaw.isInstanceOf[Float])
     val targetType: Option[CellType] =
     if(doTypeCast){
-      if(output_range < 254 && outMin >= 0) {
+      if(0 <= outMin && outMax <= 254) {
         Some(UByteUserDefinedNoDataCellType(255.byteValue()))
-      }else if(output_range < 65535 && outMin >= 0){
+      }else if(0 <= outMin && outMax <= 65534){
         Some(UShortUserDefinedNoDataCellType(UShort.MaxValue.toShort))
       }else if (outMax <= Short.MaxValue && outMin >= Short.MinValue + 1) {
         Some(ShortConstantNoDataCellType)

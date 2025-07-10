@@ -16,7 +16,6 @@ import org.junit.rules.TemporaryFolder
 import org.junit.{AfterClass, Rule}
 import org.junit.jupiter.api.{BeforeAll, Test}
 import org.openeo.geotrellis.{LayerFixtures, zarr}
-import org.openeo.geotrellis.geotiff.{GTiffOptions, WriteRDDToGeotiffTest}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.InputStreamReader
@@ -25,7 +24,7 @@ import java.time.ZonedDateTime
 import scala.annotation.meta.getter
 
 object ZarrWriterTest{
-  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[WriteRDDToGeotiffTest])
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[ZarrWriterTest])
 
   var sc: SparkContext = _
 
@@ -116,6 +115,21 @@ class ZarrWriterTest {
     assertTrue(zarray.containsKey("shape"))
     assertEquals(java.util.Arrays.asList(1024,2048),zarray.get("shape"))
     assertTrue(zarray.containsKey("chunks"))
+
+    val inputStreamZmetadata = store.getInputStream(".zmetadata")
+    assertTrue(inputStreamZmetadata!=null)
+    val zmetadata = ZarrUtils.fromJson(new InputStreamReader(inputStreamZmetadata), classOf[java.util.Map[String, java.util.Map[String,_]]])
+    assertTrue(zmetadata.containsKey("metadata"))
+    val metadata = zmetadata.get("metadata")
+    assertEquals(metadata.size(),8)
+    assertTrue(metadata.containsKey(".zgroup"))
+    assertTrue(metadata.containsKey("out/.zarray"))
+    assertTrue(metadata.containsKey("out/.zattrs"))
+    assertTrue(metadata.containsKey("out/.zgroup"))
+    assertTrue(metadata.containsKey("x/.zarray"))
+    assertTrue(metadata.containsKey("x/.zattrs"))
+    assertTrue(metadata.containsKey("y/.zarray"))
+    assertTrue(metadata.containsKey("y/.zattrs"))
   }
 
 
@@ -282,6 +296,27 @@ class ZarrWriterTest {
     val zgroup = ZarrUtils.fromJson(new InputStreamReader(inputStreamZgroup), classOf[java.util.Map[_, _]])
     assertTrue(zgroup.containsKey("zarr_format"))
     assertEquals(2,zgroup.get("zarr_format"))
+
+    val inputStreamZmetadata = store.getInputStream(".zmetadata")
+    assertTrue(inputStreamZmetadata!=null)
+    val zmetadata = ZarrUtils.fromJson(new InputStreamReader(inputStreamZmetadata), classOf[java.util.Map[String, java.util.Map[String,_]]])
+    assertTrue(zmetadata.containsKey("metadata"))
+    val metadata = zmetadata.get("metadata")
+    assertEquals(metadata.size(),14)
+    assertTrue(metadata.containsKey(".zgroup"))
+    assertTrue(metadata.containsKey("B01/.zarray"))
+    assertTrue(metadata.containsKey("B01/.zattrs"))
+    assertTrue(metadata.containsKey("B01/.zgroup"))
+    assertTrue(metadata.containsKey("B02/.zarray"))
+    assertTrue(metadata.containsKey("B02/.zattrs"))
+    assertTrue(metadata.containsKey("B02/.zgroup"))
+    assertTrue(metadata.containsKey("B04/.zarray"))
+    assertTrue(metadata.containsKey("B04/.zattrs"))
+    assertTrue(metadata.containsKey("B04/.zgroup"))
+    assertTrue(metadata.containsKey("x/.zarray"))
+    assertTrue(metadata.containsKey("x/.zattrs"))
+    assertTrue(metadata.containsKey("y/.zarray"))
+    assertTrue(metadata.containsKey("y/.zattrs"))
   }
 
   @Test
@@ -364,6 +399,23 @@ class ZarrWriterTest {
       assertTrue(zarray.containsKey("shape"))
       assertEquals(java.util.Arrays.asList(2,256,256),zarray.get("shape"))
       assertTrue(zarray.containsKey("chunks"))
+
+      val inputStreamZmetadata = store.getInputStream(".zmetadata")
+      assertTrue(inputStreamZmetadata!=null)
+      val zmetadata = ZarrUtils.fromJson(new InputStreamReader(inputStreamZmetadata), classOf[java.util.Map[String, java.util.Map[String,_]]])
+      assertTrue(zmetadata.containsKey("metadata"))
+      val metadata = zmetadata.get("metadata")
+      assertEquals(10,metadata.size())
+      assertTrue(metadata.containsKey(".zgroup"))
+      assertTrue(metadata.containsKey("out/.zarray"))
+      assertTrue(metadata.containsKey("out/.zattrs"))
+      assertTrue(metadata.containsKey("out/.zgroup"))
+      assertTrue(metadata.containsKey("x/.zarray"))
+      assertTrue(metadata.containsKey("x/.zattrs"))
+      assertTrue(metadata.containsKey("y/.zarray"))
+      assertTrue(metadata.containsKey("y/.zattrs"))
+      assertTrue(metadata.containsKey("time/.zarray"))
+      assertTrue(metadata.containsKey("time/.zattrs"))
     }
   }
 }

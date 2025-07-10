@@ -7,14 +7,18 @@ import com.bc.zarr.storage.FileSystemStore
 import geotrellis.layer.{Boundable, SpaceTimeKey, SpatialComponent, SpatialKey}
 import geotrellis.raster.{BitCellType, ByteCellType, ByteConstantNoDataCellType, ByteUserDefinedNoDataCellType, CellType, DoubleCellType, DoubleConstantNoDataCellType, DoubleUserDefinedNoDataCellType, FloatCellType, FloatConstantNoDataCellType, FloatUserDefinedNoDataCellType, IntCellType, IntConstantNoDataCellType, IntUserDefinedNoDataCellType, MultibandTile, NODATA, ShortCellType, ShortConstantNoDataCellType, ShortUserDefinedNoDataCellType, UByteCellType, UByteConstantNoDataCellType, UByteUserDefinedNoDataCellType, UShortCellType, UShortConstantNoDataCellType, UShortUserDefinedNoDataCellType, byteNODATA, doubleNODATA, floatNODATA, shortNODATA, ubyteNODATA, ushortNODATA}
 import geotrellis.spark.MultibandTileLayerRDD
+import org.slf4j.LoggerFactory
 import ucar.ma2.Array.factory
 
 import java.io.OutputStreamWriter
 import java.nio.ByteOrder
 import java.nio.file.Paths
+import java.util.Collections
 import scala.reflect.ClassTag
 
 object ZarrWriter {
+
+  val logger = LoggerFactory.getLogger(ZarrWriter.getClass)
 
   def saveZarr(rdd:MultibandTileLayerRDD[SpaceTimeKey],path:String, zarrOptions: ZarrOptions):Unit = {
     saveZarrGeneric(rdd,path,zarrOptions)
@@ -25,15 +29,14 @@ object ZarrWriter {
   }
 
   def saveZarrGeneric[K: SpatialComponent: Boundable : ClassTag](rdd:MultibandTileLayerRDD[K],path:String, zarrOptions: ZarrOptions):Unit= {
+    val metadataContent = new java.util.HashMap[String,Object]()
     if (zarrOptions.numberBands > 1) {
       checkBandNames(zarrOptions.bandNames)
       for (bandName <- zarrOptions.bandNames){
-        val groupPath = path + "/" + bandName
-        writeFile(groupPath, FILENAME_DOT_ZGROUP, null)
+        writeFile(path, bandName, FILENAME_DOT_ZGROUP, null, metadataContent)
       }
     } else{
-      val groupPath = path + "/" + getGroupName(path)
-      writeFile(groupPath, FILENAME_DOT_ZGROUP, null)
+      writeFile(path, getGroupName(path), FILENAME_DOT_ZGROUP, null, metadataContent)
     }
     val metadata = rdd.metadata
     val cellType = metadata.cellType
@@ -54,40 +57,50 @@ object ZarrWriter {
       case m: Array[SpaceTimeKey] =>
         val tempKey = m.map(_.temporalKey.instant)
         val dist = tempKey.distinct
-        writeVariables(path,"time",dist)
+        writeVariables(path,"time",dist, metadataContent)
         (dist.zipWithIndex.toMap, dist.length+:shapeOri, 1+:chunkOri,true)
       case _ => (Map[Long,Int](),shapeOri,chunkOri, false)
     }
 
     if (zarrOptions.numberBands > 1) {
       for (bandName <- zarrOptions.bandNames){
-        val groupPath = path + "/" + bandName
-        writeFile(groupPath,FILENAME_DOT_ZATTRS, new dataAttribute(metadata,zarrOptions,hasTemp))
+        writeFile(path, bandName,FILENAME_DOT_ZATTRS, new dataAttribute(metadata,zarrOptions,hasTemp), metadataContent)
       }
     } else{
-      val groupPath = path + "/" + getGroupName(path)
-      writeFile(groupPath,FILENAME_DOT_ZATTRS, new dataAttribute(metadata,zarrOptions,hasTemp))
+      writeFile(path, getGroupName(path),FILENAME_DOT_ZATTRS, new dataAttribute(metadata,zarrOptions,hasTemp), metadataContent)
     }
     val zarrHeader = new ZarrHeader(shape, chunk, zarrType.toString, byteOrder, fillValue.getOrElse(0), compressor, ".")
     if (zarrOptions.numberBands > 1) {
       for (bandName <- zarrOptions.bandNames){
-        val groupPath = path + "/" + bandName
-        writeFile(groupPath, FILENAME_DOT_ZARRAY, zarrHeader)
+        writeFile(path, bandName, FILENAME_DOT_ZARRAY, zarrHeader, metadataContent)
       }
     } else{
-      val groupPath = path + "/" + getGroupName(path)
-      writeFile(groupPath, FILENAME_DOT_ZARRAY, zarrHeader)
+      writeFile(path, getGroupName(path), FILENAME_DOT_ZARRAY, zarrHeader, metadataContent)
     }
 
-    writeVariables(path,"x",xValues.toArray)
-    writeVariables(path,"y",yValues.toArray)
-    writeFile(path,FILENAME_DOT_ZGROUP,null)
+    writeVariables(path,"x",xValues.toArray, metadataContent)
+    writeVariables(path,"y",yValues.toArray, metadataContent)
+    writeFile(path,"",FILENAME_DOT_ZGROUP,null, metadataContent)
 
 
     rdd.foreach{ case (k, multibandTileLayer) =>
       writeData(multibandTileLayer,k,path,zarrOptions,tileRows,tileCols,zarrType,fillValue,timeValues)
     }
 
+    try {
+      val metadata = Collections.singletonMap("metadata",metadataContent)
+      val os = new FileSystemStore(Paths.get(path)).getOutputStream(".zmetadata")
+      val writer = new OutputStreamWriter(os)
+      try ZarrUtils.toJson(metadata, writer, true)
+      finally {
+        if (os != null) os.close()
+        if (writer != null) writer.close()
+      }
+    } catch {
+      case t: Throwable =>
+        logger.error(s"save_result zarr: Failed to write to .zmetadata : ${t.getMessage}", t)
+        throw t
+    }
   }
 
   private def toZarrType(cellType: CellType): (DataType, Option[Number])= {
@@ -117,7 +130,7 @@ object ZarrWriter {
     }
   }
 
-  private def writeFile(path:String,fileExtension:String,content:Any):Unit = {
+  private def writeFile(rootPath:String,relPath:String, fileName:String, content:Any, metadataContent:java.util.HashMap[String,Object]):Unit = {
     val toWrite = content match {
       case attributes: ZarrAttributes => attributes.toMap
       case zarrHeader: ZarrHeader => zarrHeader
@@ -126,34 +139,40 @@ object ZarrWriter {
         varMap.put(ZARR_FORMAT, 2)
         varMap
     }
+    val fileRelPath = Paths.get(relPath).resolve(fileName).toString
+    metadataContent.put(fileRelPath,toWrite)
     try {
-      val os = new FileSystemStore(Paths.get(path)).getOutputStream(fileExtension)
+      val os = new FileSystemStore(Paths.get(rootPath,relPath)).getOutputStream(fileName)
       val writer = new OutputStreamWriter(os)
       try ZarrUtils.toJson(toWrite, writer, true)
       finally {
         if (os != null) os.close()
         if (writer != null) writer.close()
       }
+    } catch {
+      case t: Throwable =>
+        logger.error(s"save_result zarr: Failed to write to ${fileRelPath} : ${t.getMessage}", t)
+        throw t
     }
   }
 
-  private def writeVariables[T <: AnyVal](path:String, name: String, value:Array[T]): Unit = {
+  private def writeVariables[T <: AnyVal](path:String, name: String, value:Array[T],metadataContent:java.util.HashMap[String,Object]): Unit = {
     val variablePath = path + "/" + name
-    writeFile(variablePath, FILENAME_DOT_ZATTRS,new variableAttribute(name))
+    writeFile(path, name, FILENAME_DOT_ZATTRS,new variableAttribute(name), metadataContent)
     val store = new FileSystemStore(Paths.get(variablePath))
     val compressor = CompressorFactory.createDefaultCompressor()
     val byteOrder = ByteOrder.BIG_ENDIAN
     val length = value.length
     val shape = Array[Int](length)
-    val dataType = ucar.ma2.DataType.getType(value.getClass.getComponentType, false)
-    val source = factory(dataType, shape, value)
     val dataTypeZarr = value match {
       case _:Array[Long] => DataType.i8
       case _:Array[Double] => DataType.f4
     }
     val zarHeader = new ZarrHeader(shape, shape, dataTypeZarr.toString, byteOrder, 0, compressor, ".")
-    writeFile(variablePath, FILENAME_DOT_ZARRAY, zarHeader)
+    writeFile(path, name, FILENAME_DOT_ZARRAY, zarHeader, metadataContent)
     val chunkReaderWriter = ChunkReaderWriter.create(compressor, dataTypeZarr, byteOrder, shape, 0, store)
+    val dataType = ucar.ma2.DataType.getType(value.getClass.getComponentType, false)
+    val source = factory(dataType, shape, value)
     chunkReaderWriter.write("0", source)
   }
 
