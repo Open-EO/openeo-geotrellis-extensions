@@ -1474,8 +1474,12 @@ class FileLayerProviderTest extends RasterMatchers{
     if (!new DataCubeParameters().useNewFeatureExtentIntersection) {
       return
     }
-    // Target extent should be valid: Extent not within its CRS limits: ProjectedExtent(Extent(649630.0, 1.212245E7, 684180.0, 1.219141E7),EPSG:32631)
-    assertThrows[IllegalArgumentException](testMissingS2DateLine("EPSG:32631"))
+    testMissingS2DateLine("EPSG:32631")
+
+    // Read all text from openeo_capture.log
+    val logFile = Paths.get("openeo_capture.log")
+    val logContent = Files.readString(logFile)
+    assertTrue(logContent.contains("Extent not within its CRS limits"))
   }
 
   private def keysForLargeArea(useBBox:Boolean=false) = {
