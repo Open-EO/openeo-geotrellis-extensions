@@ -118,6 +118,301 @@
     }
   },
   {
+    "id": "TestCollection-LonLat32x32",
+    "_vito": {
+      "data_source": {
+        "type": "testing"
+      }
+    },
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "reference_system": 4326
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "reference_system": 4326
+      },
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "Flat:0",
+          "Flat:1",
+          "Flat:2",
+          "TileCol",
+          "TileRow",
+          "TileColRow:10",
+          "Longitude",
+          "Latitude",
+          "Year",
+          "Month",
+          "Day"
+        ]
+      }
+    },
+    "extent": {
+      "spatial": {
+        "bbox": [
+          [
+            -180,
+            -56,
+            180,
+            83
+          ]
+        ]
+      },
+      "temporal": {
+        "interval": [
+          [
+            "2000-01-01",
+            null
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "TestCollection-LonLat64x64",
+    "_vito": {
+      "data_source": {
+        "type": "testing"
+      }
+    },
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "reference_system": 4326
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "reference_system": 4326
+      },
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "Flat:0",
+          "Flat:1",
+          "Flat:2",
+          "TileCol",
+          "TileRow",
+          "TileColRow:10",
+          "Longitude",
+          "Latitude",
+          "Year",
+          "Month",
+          "Day"
+        ]
+      }
+    },
+    "extent": {
+      "spatial": {
+        "bbox": [
+          [
+            -180,
+            -56,
+            180,
+            83
+          ]
+        ]
+      },
+      "temporal": {
+        "interval": [
+          [
+            "2000-01-01",
+            null
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "TestCollection-LonLat128x128",
+    "_vito": {
+      "data_source": {
+        "type": "testing"
+      }
+    },
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "reference_system": 4326
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "reference_system": 4326
+      },
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "Flat:0",
+          "Flat:1",
+          "Flat:2",
+          "TileCol",
+          "TileRow",
+          "TileColRow:10",
+          "Longitude",
+          "Latitude",
+          "Year",
+          "Month",
+          "Day"
+        ]
+      }
+    },
+    "extent": {
+      "spatial": {
+        "bbox": [
+          [
+            -180,
+            -56,
+            180,
+            83
+          ]
+        ]
+      },
+      "temporal": {
+        "interval": [
+          [
+            "2000-01-01",
+            null
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "TestCollection-LonLat256x256",
+    "_vito": {
+      "data_source": {
+        "type": "testing"
+      }
+    },
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "reference_system": 4326
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "reference_system": 4326
+      },
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "Flat:0",
+          "Flat:1",
+          "Flat:2",
+          "TileCol",
+          "TileRow",
+          "TileColRow:10",
+          "Longitude",
+          "Latitude",
+          "Year",
+          "Month",
+          "Day"
+        ]
+      }
+    },
+    "extent": {
+      "spatial": {
+        "bbox": [
+          [
+            -180,
+            -56,
+            180,
+            83
+          ]
+        ]
+      },
+      "temporal": {
+        "interval": [
+          [
+            "2000-01-01",
+            null
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "TestCollection-LonLat512x512",
+    "_vito": {
+      "data_source": {
+        "type": "testing"
+      }
+    },
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "reference_system": 4326
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "reference_system": 4326
+      },
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "Flat:0",
+          "Flat:1",
+          "Flat:2",
+          "TileCol",
+          "TileRow",
+          "TileColRow:10",
+          "Longitude",
+          "Latitude",
+          "Year",
+          "Month",
+          "Day"
+        ]
+      }
+    },
+    "extent": {
+      "spatial": {
+        "bbox": [
+          [
+            -180,
+            -56,
+            180,
+            83
+          ]
+        ]
+      },
+      "temporal": {
+        "interval": [
+          [
+            "2000-01-01",
+            null
+          ]
+        ]
+      }
+    }
+  },
+  {
     "id": "ESA_WORLDCOVER_10M_2021_V2",
     "license": "https://creativecommons.org/licenses/by/4.0/",
     "providers": [
