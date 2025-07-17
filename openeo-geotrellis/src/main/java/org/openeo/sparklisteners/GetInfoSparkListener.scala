@@ -1,24 +1,29 @@
 package org.openeo.sparklisteners
 
+import org.apache.spark.SparkContext
 import org.apache.spark.scheduler._
-import org.slf4j.{Logger, LoggerFactory}
 
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 
 object GetInfoSparkListener {
-  var instance:Option[GetInfoSparkListener] = None
-  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[GetInfoSparkListener])
+  private lazy val sc = SparkContext.getOrCreate()
+
+  /**
+   * For some reason sc.addSparkListener() can't be called from Python directly.
+   * So this wrapper function is needed:
+   */
+  def addSparkListener(): GetInfoSparkListener = {
+    val listener = new GetInfoSparkListener()
+    sc.addSparkListener(listener)
+    listener
+  }
+
+  def removeSparkListener(listener: GetInfoSparkListener):Unit = {
+    sc.removeSparkListener(listener)
+  }
 }
 
 class GetInfoSparkListener extends SparkListener {
-
-  import GetInfoSparkListener._
-
-  if (instance.isDefined) {
-    logger.warn("There should only be one GetInfoSparkListener instance.")
-  }
-  instance = Some(this)
-
   private val jobsCompleted = new AtomicInteger(0)
   private val stagesCompleted = new AtomicInteger(0)
   private val tasksCompleted = new AtomicInteger(0)
