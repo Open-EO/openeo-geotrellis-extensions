@@ -33,16 +33,16 @@ object NetCDFCollection {
       if (stacItems.nonEmpty) {
         loadCollection(stacItems, sc)
       } else {
-        loadEmptyCollection(polygons, from_date, dataCubeParameters, sc)
+        loadEmptyCollection(polygons, from_date, to_date, dataCubeParameters, sc)
       }
     Seq((0, cube))
   }
 
-  private def loadEmptyCollection(polygons: ProjectedPolygons, from_date: String, dataCubeParameters: DataCubeParameters, sc: SparkContext) = {
+  private def loadEmptyCollection(polygons: ProjectedPolygons, from_date: String, to_date: String, dataCubeParameters: DataCubeParameters, sc: SparkContext) = {
     val boundingBox = polygons.extent
 
     val from = ZonedDateTime.parse(from_date, ISO_OFFSET_DATE_TIME)
-    val to = ZonedDateTime.parse("2025-06-01T00:00Z", ISO_OFFSET_DATE_TIME)
+    val to = ZonedDateTime.parse(to_date, ISO_OFFSET_DATE_TIME)
 
     val scheme = FloatingLayoutScheme(dataCubeParameters.tileSize)
     val maxSpatialResolution = CellSize(10, 10)
