@@ -6,7 +6,7 @@ import geotrellis.raster._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
 import org.apache.spark.SparkContext
-import org.openeo.geotrelliscommon.{DataCubeParameters, OpenEORasterCube, OpenEORasterCubeMetadata}
+import org.openeo.geotrelliscommon.{DataCubeParameters, DatacubeSupport, OpenEORasterCube, OpenEORasterCubeMetadata}
 
 import java.time.ZonedDateTime
 
@@ -17,9 +17,9 @@ object TestUtils {
    */
   def buildPlainSpatioTemporalDataCube(approximatePE: ProjectedExtent,
                                        resolutionInMeters: Double,
-                                       parameters: DataCubeParameters = new DataCubeParameters): OpenEORasterCube[SpaceTimeKey] = {
+                                       datacubeParams: DataCubeParameters = new DataCubeParameters): OpenEORasterCube[SpaceTimeKey] = {
     var projectedExtent = safeReproject(approximatePE, CRS.fromEpsgCode(32631)) // UTM 31N. TODO: Get UTM from PE
-    val tilePixelSize = parameters.tileSize
+    val tilePixelSize = datacubeParams.tileSize
     val resolution = resolutionInMeters * tilePixelSize
     projectedExtent = ProjectedExtent(
       Extent(
@@ -49,24 +49,32 @@ object TestUtils {
     )
 
     implicit val sc: SparkContext = SparkContext.getOrCreate()
-    val rdd = sc.parallelize(gridBounds.coordsIter.toSeq, 100).map {
-      case (col, row) => (SpaceTimeKey(col, row, dateTime), {
-        // TODO: use LatLon coordinates as values
-        val rasterTileLongitude = ShortArrayTile.apply((for {
-          _ <- 0 until tilePixelSize
-          pixel_j <- 0 until tilePixelSize
-        } yield (pixel_j * 1.0 + col).toShort).toArray, tilePixelSize, tilePixelSize)
+    // TODO: Find a way to partition correctly from the beginning, to avoid an extra stage:
+    val keysRDD = sc.parallelize(gridBounds.coordsIter.toSeq, 100).map {
+      case (col, row) => SpaceTimeKey(col, row, dateTime)
+    }
 
-        val rasterTileLatitude = ShortArrayTile.apply((for {
-          pixel_i <- 0 until tilePixelSize
-          _ <- 0 until tilePixelSize
-        } yield (pixel_i * 1.0 + row).toShort).toArray, tilePixelSize, tilePixelSize)
+    val p = DatacubeSupport.createPartitioner(Some(datacubeParams), keysRDD, metadata).get
 
-        val mbt1 = ArrayMultibandTile(Array(rasterTileLongitude, rasterTileLatitude)).asInstanceOf[MultibandTile]
-        mbt1
-      }
-      )
-    }.partitionBy(SpacePartitioner(metadata.bounds))
+    val rdd = keysRDD
+      .map {
+        case SpaceTimeKey(col, row, dateTime) => (SpaceTimeKey(col, row, dateTime), {
+          // TODO: use LatLon coordinates as values
+          val rasterTileLongitude = ShortArrayTile.apply((for {
+            _ <- 0 until tilePixelSize
+            pixel_j <- 0 until tilePixelSize
+          } yield (pixel_j * 1.0 + col).toShort).toArray, tilePixelSize, tilePixelSize)
+
+          val rasterTileLatitude = ShortArrayTile.apply((for {
+            pixel_i <- 0 until tilePixelSize
+            _ <- 0 until tilePixelSize
+          } yield (pixel_i * 1.0 + row).toShort).toArray, tilePixelSize, tilePixelSize)
+
+          val mbt1 = ArrayMultibandTile(Array(rasterTileLongitude, rasterTileLatitude)).asInstanceOf[MultibandTile]
+          mbt1
+        })
+      }.partitionBy(p)
+
 
     new OpenEORasterCube[SpaceTimeKey](
       rdd,
