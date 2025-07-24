@@ -53,7 +53,7 @@ object NetCDFCollection {
       boundingBox, from, to, 0, ShortUserDefinedNoDataCellType(32767), scheme, maxSpatialResolution,
       dataCubeParameters.globalExtent, multiple_polygons_flag
     )
-    ContextRDD(sc.emptyRDD[(SpaceTimeKey, MultibandTile)], metadata)
+    ContextRDD(sc.emptyRDD[(SpaceTimeKey, MultibandTile)], null)
   }
 
   private def loadCollection(stacItems: Seq[OpenSearchResponses.Feature], sc: SparkContext): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
