@@ -39,7 +39,7 @@ class DataCubeParameters extends Serializable {
    */
   var retainNoDataTiles: Boolean = false
 
-  var syntheticDataOverride: Option[Object] = Option.empty
+  var syntheticDataOverride: Option[Boolean] = Option.empty
 
   override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube, $resampleMethod, $pixelBufferX, $pixelBufferY)"
 
@@ -99,7 +99,7 @@ class DataCubeParameters extends Serializable {
     retainNoDataTiles = retain
   }
 
-  def setSyntheticDataOverride(syntheticData: Object) = {
+  def setSyntheticDataOverride(syntheticData: Boolean): Unit = {
     syntheticDataOverride = Some(syntheticData)
   }
 }
