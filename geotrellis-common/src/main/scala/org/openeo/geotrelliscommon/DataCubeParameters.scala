@@ -39,6 +39,9 @@ class DataCubeParameters extends Serializable {
    */
   var retainNoDataTiles: Boolean = false
 
+  /**
+   * Configuration to override asset loading with synthetic data
+   */
   var syntheticDataOverride: Option[Object] = Option.empty
 
   override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube, $resampleMethod, $pixelBufferX, $pixelBufferY)"
