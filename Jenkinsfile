@@ -194,13 +194,14 @@ void build(tests = true){
     def testImage = docker.build("openeo-geotrellis-test-image", "-f ./docker/tests_dockerfile ./docker")
     testImage.inside('-v /home/jenkins/.m2:/home/jenkins/.m2  -v /localdata/M2:/localdata/M2:rw -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro') {
         withEnv(jdkEnv) {
-            def server = Artifactory.server('vitoartifactory')
+            def server = Artifactory.server('vitoartifactory' )
+            server.credentialsId = 'BobDeBouwerArtifactory'
             def rtMaven = Artifactory.newMavenBuild()
             def snapshotRepo = 'libs-snapshot-public'
             def releaseRepo = 'libs-release-public'
             if (!publishable_branches.contains(env.BRANCH_NAME)) {
                 snapshotRepo = 'openeo-branch-builds'
-                releaseRepo = 'openeo-branch-builds'
+                //releaseRepo = 'openeo-branch-builds'
                 rtMaven.opts += " -Drevision=${env.BRANCH_NAME}"
             }
             rtMaven.deployer server: server, releaseRepo: releaseRepo, snapshotRepo: snapshotRepo
