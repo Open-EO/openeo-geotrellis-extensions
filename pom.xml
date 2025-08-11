@@ -58,10 +58,10 @@
             </activation>
             <modules>
                 <module>geotrellis-s3-extensions</module>
-                <module>geotrellis-extensions</module>
-                <module>openeo-geotrellis</module>
                 <module>geotrellis-common</module>
                 <module>snap-integration</module>
+                <module>geotrellis-extensions</module>
+                <module>openeo-geotrellis</module>
                 <module>openeo-logging</module>
                 <module>geopyspark-geotrellis</module>
                 <module>geotrellis-sentinelhub</module>
