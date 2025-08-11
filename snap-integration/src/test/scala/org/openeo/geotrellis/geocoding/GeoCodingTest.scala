@@ -42,25 +42,6 @@ object TestGeoCoding{
 
 class TestGeoCoding {
 
-  @Test
-  def testBasic(): Unit = {
-    // This is a placeholder for the actual test implementation.
-    // You would typically use a testing framework like ScalaTest or JUnit to write your tests.
-    // For example, you could check if a geocoding service returns expected results for given inputs.
-    assert(true) // Replace with actual assertions
-
-
-    val resource = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/geocoding/coherence_master.tif")
-
-    val masterTiff = GeoTiff.readMultiband(resource.toString.stripPrefix("file:")).raster
-    val inputTile = masterTiff.tile
-    val utm = CRS.fromEpsgCode(32631)
-    val raster = new GeoCodingProcess().geocode(inputTile,utm).get
-
-    GeoTiff(raster, utm).write("/tmp/geocoded.tif")
-
-  }
-
 
 
   @Test
@@ -83,8 +64,6 @@ class TestGeoCoding {
     val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = new GeoCodingProcess().geoCode(cube, targetExtent, targetCRS)
 
     saveRDDTemporal(tiledRDD, "/tmp/geocoded_cube.tif")
-
-
 
 
   }
