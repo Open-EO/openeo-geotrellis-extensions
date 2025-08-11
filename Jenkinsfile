@@ -197,11 +197,13 @@ void build(tests = true){
             def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
             def snapshotRepo = 'libs-snapshot-public'
+            def releaseRepo = 'libs-release-public'
             if (!publishable_branches.contains(env.BRANCH_NAME)) {
                 snapshotRepo = 'openeo-branch-builds'
+                releaseRepo = 'openeo-branch-builds'
                 rtMaven.opts += " -Drevision=${env.BRANCH_NAME}"
             }
-            rtMaven.deployer server: server, releaseRepo: 'libs-release-public', snapshotRepo: snapshotRepo
+            rtMaven.deployer server: server, releaseRepo: releaseRepo, snapshotRepo: snapshotRepo
             rtMaven.tool = maven
             if (!tests) {
                 rtMaven.opts += ' -DskipTests=true'
