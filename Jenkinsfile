@@ -191,7 +191,7 @@ void build(tests = true){
     def publishable_branches = ["master", "develop"]
 
     List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-17-openjdk"]
-    def testImage = docker.build("openeo-geotrellis-test-image", "-f tests_dockerfile ./docker")
+    def testImage = docker.build("openeo-geotrellis-test-image", "-f ./docker/tests_dockerfile ./docker")
     testImage.inside('-v /home/jenkins/.m2:/root/.m2 -v /localdata/M2:/localdata/M2 -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro') {
         withEnv(jdkEnv) {
             def server = Artifactory.server('vitoartifactory')
