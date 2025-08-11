@@ -1,0 +1,3 @@
+FROM vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.3
+RUN dnf install -y maven git java-17-openjdk-devel
+USER jenkins
