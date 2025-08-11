@@ -23,7 +23,7 @@ class DataCubeParameters extends Serializable {
   var noResampleOnRead: Boolean = false
   var useNewFeatureExtentIntersection: Boolean = false
   var useNewFeatureExtentIntersection2: Boolean = false
-  var timeDimensionFilter: Option[Object] = Option.empty
+  var timeDimensionFilter: Option[java.io.Serializable] = Option.empty
   var allowEmptyCube: Boolean = false
   var loadPerProduct: Boolean = false
   /**
@@ -38,6 +38,11 @@ class DataCubeParameters extends Serializable {
    * or to keep them as EmptyMultiBandTiles.
    */
   var retainNoDataTiles: Boolean = false
+
+  /**
+   * Configuration to override asset loading with synthetic data
+   */
+  var syntheticDataOverride: Option[Object] = Option.empty
 
   override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube, $resampleMethod, $pixelBufferX, $pixelBufferY)"
 
@@ -85,7 +90,7 @@ class DataCubeParameters extends Serializable {
     useNewFeatureExtentIntersection2 = v
   }
 
-  def setTimeDimensionFilter(conditionProcessScriptBuilder:Object):Unit = {
+  def setTimeDimensionFilter(conditionProcessScriptBuilder:java.io.Serializable):Unit = {
     timeDimensionFilter = Some(conditionProcessScriptBuilder)
   }
 
@@ -95,5 +100,9 @@ class DataCubeParameters extends Serializable {
 
   def setRetainNoDataTiles(retain:Boolean):Unit = {
     retainNoDataTiles = retain
+  }
+
+  def setSyntheticDataOverride(syntheticData: Object): Unit = {
+    syntheticDataOverride = Some(syntheticData)
   }
 }

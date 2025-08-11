@@ -1232,7 +1232,7 @@ class PyramidFactoryTest {
       new DefaultProcessApi(endpoint), authorizer)
 
     val dataCubeParameters = new DataCubeParameters()
-    dataCubeParameters.setTimeDimensionFilter(new Object())
+    dataCubeParameters.setTimeDimensionFilter(new java.lang.String("some time dimension filter"))
 
     val multiPolygons = Array(MultiPolygon(extent.toPolygon()))
 

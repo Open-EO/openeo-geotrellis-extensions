@@ -8,9 +8,10 @@ def build_container_image    = (config.build_container_image == true) ?: false
 
 def docker_registry_dev      = config.docker_registry_dev ?: globalDefaults.docker_registry_dev()
 def docker_registry_prod     = config.docker_registry_prod ?: globalDefaults.docker_registry_prod()
-def maven_version            =  '3.5.4'
-def node_label               =  'default'
-def wipeout_workspace        =  true
+def jdk_version              = 11
+def maven_version            = '3.5.4'
+def node_label               = 'default'
+def wipeout_workspace        = true
 
 def maven_image              = "vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.3"
 
@@ -37,6 +38,7 @@ pipeline {
     }
     parameters {
       booleanParam(name: 'skip_tests', defaultValue: false, description: 'Check this if you want to skip running tests.')
+      booleanParam(name: 'skip_sentinelhub_tests', defaultValue: false, description: 'Check this if you want to skip running Sentinel Hub tests.')
     }
     stages {
         stage('Checkout') {
@@ -55,7 +57,7 @@ pipeline {
             steps {
                 script {
                     rel_version = getMavenVersion()
-                    build( !params.skip_tests)
+                    build( params.skip_tests, params.skip_sentinelhub_tests)
                     utils.setWorkspacePermissions()
                 }
             }
@@ -113,7 +115,7 @@ pipeline {
                         sh "mvn versions:set -DgenerateBackupPoms=false -DnewVersion=${rel_version}"
                     }
                     echo "releasing version ${rel_version}"
-                    build(tests = false)
+                    build(skipTests = true)
 
                     withMavenEnv(["JAVA_OPTS=-Xmx1536m -Xms512m", "HADOOP_CONF_DIR=/etc/hadoop/conf/"]) {
                         withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'BobDeBouwer', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD']]) {
@@ -187,15 +189,16 @@ String updateMavenVersion(){
     return v_snapshot
 }
 
-void build(tests = true){
+void build(skipTests = false, skipSentinelHubTests = false){
     def publishable_branches = ["master", "develop"]
 
     List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-17-openjdk"]
     def testImage = docker.build("openeo-geotrellis-test-image", "-f ./docker/tests_dockerfile ./docker")
-    testImage.inside('-v /home/jenkins/.m2:/home/jenkins/.m2  -v /localdata/M2:/localdata/M2:rw -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro') {
+    testImage.inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/localdata/M2:rw,z -v /home/jenkins/.m2:/home/jenkins/.m2 :rw,z -v /localdata/M2:/localdata/M2:rw -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro') {
         withEnv(jdkEnv) {
             def server = Artifactory.server('vitoartifactory' )
             server.credentialsId = 'BobDeBouwerArtifactory'
+
             def rtMaven = Artifactory.newMavenBuild()
             def snapshotRepo = 'libs-snapshot-public'
             def releaseRepo = 'libs-release-public'
@@ -206,9 +209,16 @@ void build(tests = true){
             }
             rtMaven.deployer server: server, releaseRepo: releaseRepo, snapshotRepo: snapshotRepo
             rtMaven.tool = maven
-            if (!tests) {
+            if (skipTests) {
+                print "Maven will skip all tests"
                 rtMaven.opts += ' -DskipTests=true'
+            } else if (skipSentinelHubTests) {
+                print "Maven will only skip Sentinel Hub tests"
+                rtMaven.opts += ' -DskipSentinelHubTests=true'
+            } else {
+                print "Maven will run all tests"
             }
+
             rtMaven.deployer.deployArtifacts = true
             //use '--projects StatisticsMapReduce' in 'goals' to build specific module
             try {
@@ -216,7 +226,7 @@ void build(tests = true){
                         [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'SentinelHubBatchS3'],
                         [$class: 'UsernamePasswordMultiBinding', credentialsId: 'SentinelHubGeodatadev', usernameVariable: 'SENTINELHUB_CLIENT_ID', passwordVariable: 'SENTINELHUB_CLIENT_SECRET']
                 ]) {
-                    buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts,integrationtests -U clean install'
+                    buildInfo = rtMaven.run pom: 'pom.xml', goals: '-P default,wmts,integrationtests -U clean install' + rtMaven.opts
                     try {
                         if (rtMaven.deployer.deployArtifacts)
                             server.publishBuildInfo buildInfo
@@ -224,15 +234,16 @@ void build(tests = true){
                         print e.message
                     }
                 }
-            }catch(err){
+            } catch(err){
                 notification.fail()
 
                 throw err
             }
             finally {
-                if (tests) {
+                if (!skipTests) {
                     junit '*/target/*-reports/*.xml'
                 }
+                sh "chown -R jenkins:vito ."
             }
         }
     }

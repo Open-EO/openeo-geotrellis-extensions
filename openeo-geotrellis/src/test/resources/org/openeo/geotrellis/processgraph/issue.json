@@ -1,0 +1,283 @@
+{
+  "sarbackscatter1": {
+    "process_id": "sar_backscatter",
+    "arguments": {
+      "local_incidence_angle": false,
+      "elevation_model": "COPERNICUS_30",
+      "contributing_area": false,
+      "data": {
+        "from_node": "loadcollection1"
+      },
+      "ellipsoid_incidence_angle": false,
+      "noise_removal": true,
+      "coefficient": "sigma0-ellipsoid",
+      "mask": false
+    }
+  },
+  "applydimension1": {
+    "process_id": "apply_dimension",
+    "arguments": {
+      "process": {
+        "process_graph": {
+          "arrayelement2": {
+            "process_id": "array_element",
+            "arguments": {
+              "data": {
+                "from_parameter": "data"
+              },
+              "index": 1
+            }
+          },
+          "arrayelement1": {
+            "process_id": "array_element",
+            "arguments": {
+              "data": {
+                "from_parameter": "data"
+              },
+              "index": 0
+            }
+          },
+          "multiply1": {
+            "process_id": "multiply",
+            "arguments": {
+              "x": 10,
+              "y": {
+                "from_node": "log1"
+              }
+            }
+          },
+          "multiply2": {
+            "process_id": "multiply",
+            "arguments": {
+              "x": 10,
+              "y": {
+                "from_node": "log2"
+              }
+            }
+          },
+          "divide1": {
+            "process_id": "divide",
+            "arguments": {
+              "x": {
+                "from_node": "add1"
+              },
+              "y": 20
+            }
+          },
+          "divide2": {
+            "process_id": "divide",
+            "arguments": {
+              "x": {
+                "from_node": "add2"
+              },
+              "y": 20
+            }
+          },
+          "arraycreate1": {
+            "result": true,
+            "process_id": "array_create",
+            "arguments": {
+              "data": [
+                {
+                  "from_node": "power1"
+                },
+                {
+                  "from_node": "power2"
+                }
+              ]
+            }
+          },
+          "log2": {
+            "process_id": "log",
+            "arguments": {
+              "x": {
+                "from_node": "arrayelement2"
+              },
+              "base": 10
+            }
+          },
+          "add2": {
+            "process_id": "add",
+            "arguments": {
+              "x": {
+                "from_node": "multiply2"
+              },
+              "y": 83
+            }
+          },
+          "add1": {
+            "process_id": "add",
+            "arguments": {
+              "x": {
+                "from_node": "multiply1"
+              },
+              "y": 83
+            }
+          },
+          "power1": {
+            "process_id": "power",
+            "arguments": {
+              "p": {
+                "from_node": "divide1"
+              },
+              "base": 10
+            }
+          },
+          "log1": {
+            "process_id": "log",
+            "arguments": {
+              "x": {
+                "from_node": "arrayelement1"
+              },
+              "base": 10
+            }
+          },
+          "power2": {
+            "process_id": "power",
+            "arguments": {
+              "p": {
+                "from_node": "divide2"
+              },
+              "base": 10
+            }
+          }
+        }
+      },
+      "data": {
+        "from_node": "renamelabels1"
+      },
+      "dimension": "bands"
+    }
+  },
+  "apply1": {
+    "process_id": "apply",
+    "arguments": {
+      "process": {
+        "process_graph": {
+          "linearscalerange1": {
+            "result": true,
+            "process_id": "linear_scale_range",
+            "arguments": {
+              "inputMax": 65534,
+              "inputMin": 1,
+              "x": {
+                "from_parameter": "x"
+              },
+              "outputMin": 1,
+              "outputMax": 65534
+            }
+          }
+        }
+      },
+      "data": {
+        "from_node": "applydimension1"
+      }
+    }
+  },
+  "loadcollection1": {
+    "process_id": "load_collection",
+    "arguments": {
+      "temporal_extent": [
+        "2021-08-04",
+        "2023-06-06"
+      ],
+      "spatial_extent": null,
+      "id": "SENTINEL1_GRD",
+      "bands": [
+        "VV",
+        "VH"
+      ],
+      "properties": {
+        "sat:orbit_state": {
+          "process_graph": {
+            "eq1": {
+              "result": true,
+              "process_id": "eq",
+              "arguments": {
+                "x": {
+                  "from_parameter": "value"
+                },
+                "y": "DESCENDING"
+              }
+            }
+          }
+        },
+        "polarisation": {
+          "process_graph": {
+            "eq2": {
+              "result": true,
+              "process_id": "eq",
+              "arguments": {
+                "x": {
+                  "from_parameter": "value"
+                },
+                "y": "VV&VH"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "loadurl1": {
+    "process_id": "load_url",
+    "arguments": {
+      "format": "Parquet",
+      "url": "https://artifactory.vgt.vito.be/artifactory/auxdata-public/gfmap-temp/openeogfmap_dataframe_SENTINEL1_34UDB_964.parquet"
+    }
+  },
+  "renamelabels1": {
+    "process_id": "rename_labels",
+    "arguments": {
+      "data": {
+        "from_node": "resamplespatial1"
+      },
+      "source": [
+        "VH",
+        "VV"
+      ],
+      "dimension": "bands",
+      "target": [
+        "S1-SIGMA0-VH",
+        "S1-SIGMA0-VV"
+      ]
+    }
+  },
+  "filterspatial1": {
+    "process_id": "filter_spatial",
+    "arguments": {
+      "data": {
+        "from_node": "apply1"
+      },
+      "geometries": {
+        "from_node": "loadurl1"
+      }
+    }
+  },
+  "saveresult1": {
+    "result": true,
+    "process_id": "save_result",
+    "arguments": {
+      "data": {
+        "from_node": "filterspatial1"
+      },
+      "format": "NetCDF",
+      "options": {
+        "feature_id_property": "sample_id",
+        "sample_by_feature": true
+      }
+    }
+  },
+  "resamplespatial1": {
+    "process_id": "resample_spatial",
+    "arguments": {
+      "data": {
+        "from_node": "sarbackscatter1"
+      },
+      "method": "near",
+      "projection": null,
+      "align": "upper-left",
+      "resolution": 20
+    }
+  }
+}

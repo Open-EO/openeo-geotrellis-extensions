@@ -1,3 +1,6 @@
 FROM vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.3
-RUN dnf install -y maven git java-17-openjdk-devel
+RUN dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+RUN dnf install -y maven git java-17-openjdk-devel dnf-plugins-core docker-ce
+RUN docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper
+
 USER jenkins
