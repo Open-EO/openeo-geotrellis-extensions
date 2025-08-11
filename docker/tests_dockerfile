@@ -1,0 +1,4 @@
+FROM vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.3
+RUN groupadd -g 631600010 vito && useradd jenkins -u 631603198 -g 631600010 -m -s /bin/bash
+RUN dnf install -y maven git java-17-openjdk-devel
+USER jenkins
