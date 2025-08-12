@@ -190,6 +190,9 @@
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <artifactSet>
                                 <includes>
+                                    <include>org.esa.snap:*</include>
+                                    <include>javax.media.jai:*</include>
+                                    <include>Jama:*</include>
                                     <include>org.openeo:*</include>
                                 </includes>
                             </artifactSet>

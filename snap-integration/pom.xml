@@ -38,6 +38,21 @@
             <groupId>org.esa.snap</groupId>
             <artifactId>snap-core</artifactId>
             <version>12.0.0</version>
+            <exclusions>
+                <!-- Exclusion to optimize shaded jar size -->
+                <exclusion>
+                    <groupId>org.geotools</groupId>
+                    <artifactId>gt-coverage</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.geotools</groupId>
+                    <artifactId>gt-geojson</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>it.geosolutions.imageio-ext</groupId>
+                    <artifactId>imageio-ext-tiff</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <dependency>
