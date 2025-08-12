@@ -47,7 +47,10 @@
       "data": {
         "from_node": "reducedimension1"
       },
-      "format": "GTiff"
+      "format": "GTiff",
+      "options": {
+        "separate_asset_per_band": true
+      }
     },
     "result": true
   }

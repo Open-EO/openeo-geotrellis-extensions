@@ -259,6 +259,10 @@
             <artifactId>jzarr</artifactId>
             <version>0.3.5</version>
         </dependency>
+        <dependency>
+            <groupId>com.github.luben</groupId>
+            <artifactId>zstd-jni</artifactId>
+        </dependency>
     </dependencies>
     <build>
         <plugins>

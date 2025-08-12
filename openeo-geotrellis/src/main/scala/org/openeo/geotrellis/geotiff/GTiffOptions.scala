@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.geotiff
 
 import java.util
-import geotrellis.raster.io.geotiff.Tags
+import geotrellis.raster.io.geotiff.{DefaultCompression, Tags}
 import geotrellis.raster.render.{ColorMap, DoubleColorMap, IndexedColorMap}
 
 import scala.collection.JavaConverters._
@@ -18,6 +18,9 @@ class GTiffOptions extends Serializable {
   var resampleMethod:String = "near"
   var separateAssetPerBand = false
   var tileSize:Int = 256
+  var compressionMethod = "zstd"
+  var compressionLevel = -1
+  var bigTiff = false
 
   def setFilenamePrefix(name: String): Unit = {
     assertSafeToUseInFilePath(name)
@@ -59,6 +62,25 @@ class GTiffOptions extends Serializable {
 
   def setTileSize(size:Int): Unit = {
     tileSize = size
+  }
+
+  def setCompressionMethod(method: String): Unit = {
+    compressionMethod = method.toLowerCase match {
+      case "zstd" => method.toLowerCase
+      case "deflate" => method.toLowerCase
+      case _ => throw new IllegalArgumentException(f"compression method ${method} is not supported, supported methods are: (zstd, deflate (default))")
+    }
+  }
+
+  def setCompressionLevel(level: Int): Unit = {
+    if ((level < 0 || level > 9) && level != -1) {
+      throw new IllegalArgumentException("Invalid compression level, valid levels are 0-9 or -1 (default)")
+    }
+    compressionLevel = level
+  }
+
+  def setBigTiff(value: Boolean): Unit = {
+    bigTiff = value
   }
 
   /**

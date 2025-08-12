@@ -359,7 +359,7 @@ package object geotiff {
       val layout = rdd.metadata.layout
       val crs = rdd.metadata.crs
       val extent = rdd.metadata.extent
-      val compression = Deflate(zLevel)
+      val compression = determineCompression(formatOptions)
 
       val rdd_per_band = rdd.flatMap { case (key: SpatialKey, multibandTile: MultibandTile) =>
         var bandIndex = -1
@@ -533,7 +533,7 @@ package object geotiff {
     val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3.persist(StorageLevel.MEMORY_AND_DISK)
 
     try{
-      val compression = Deflate(zLevel)
+      val compression = determineCompression(formatOptions)
       val ( tiffs: _root_.scala.collection.Map[Int, _root_.scala.Array[Byte]], cellType: CellType, detectedBandCount: Double, segmentCount: Int) = getCompressedTiles(preprocessedRdd, gridBounds, compression)
 
       val overviews =
@@ -594,6 +594,14 @@ package object geotiff {
       (geoTiffResultObject.correctPath, croppedExtent)
     } finally {
       preprocessedRdd.unpersist()
+    }
+  }
+
+  private def determineCompression(formatOptions: GTiffOptions): Compression = {
+    formatOptions.compressionMethod match {
+      case "zstd" => ZStdCompression(formatOptions.compressionLevel)
+      case "deflate" => DeflateCompression(formatOptions.compressionLevel)
+      case _ => throw new IllegalArgumentException(f"compression method ${formatOptions.compressionMethod} is not supported, supported methods are: (zstd, deflate (default))")
     }
   }
 
@@ -765,7 +773,7 @@ package object geotiff {
 
   private def writeTiff(path: String, tiffs: collection.Map[Int, Array[Byte]],
                         gridBounds: GridBounds[Int], croppedExtent: Extent, crs: CRS,
-                        tileLayout: TileLayout, compression: DeflateCompression, cellType: CellType,
+                        tileLayout: TileLayout, compression: Compression, cellType: CellType,
                         detectedBandCount: Double, segmentCount: Int,
                         formatOptions: GTiffOptions = new GTiffOptions, overviews: List[GeoTiffMultibandTile] = Nil
                        ): GeoTiffResultObject = {
@@ -787,7 +795,7 @@ package object geotiff {
     writeGeoTiff(thegeotiff, path, Some(formatOptions))
   }
 
-  private def toTiff(tiffs:collection.Map[Int, Array[Byte]] , gridBounds: GridBounds[Int], tileLayout: TileLayout, compression: DeflateCompression, cellType: CellType, detectedBandCount: Double, segmentCount: Int) = {
+  private def toTiff(tiffs:collection.Map[Int, Array[Byte]] , gridBounds: GridBounds[Int], tileLayout: TileLayout, compression: Compression, cellType: CellType, detectedBandCount: Double, segmentCount: Int) = {
     val compressor = compression.createCompressor(segmentCount)
     lazy val emptySegment =
       ArrayTile.empty(cellType, tileLayout.tileCols, tileLayout.tileRows).toBytes
