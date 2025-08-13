@@ -13,20 +13,20 @@ import org.slf4j.{Logger, LoggerFactory}
 
 import java.net.URI
 
-class Sentinel2JP2RasterSourceProvider {
+object Sentinel2JP2RasterSourceProvider extends Sentinel2JP2RasterSourceProvider
+
+class Sentinel2JP2RasterSourceProvider extends ItemRasterSourceProvider {
 
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[Sentinel2JP2RasterSourceProvider])
 
 
   private def deriveFilePath(href: URI): String = href.getScheme match {
-
     case _ => href.toString
   }
 
 
-  def canProcess(item: Feature): Boolean = {
-    //check if contains sentinel-2 jp2 files,
-    return true
+  def canProcess(item: Feature, datacubeParams: Option[DataCubeParameters] = Option.empty): Boolean = {
+    item.links.forall(_.href.getPath.endsWith(".jp2")) || (datacubeParams.isDefined && datacubeParams.get.rasterSource.isDefined && datacubeParams.get.rasterSource.get == ""
   }
 
   /**
@@ -34,20 +34,19 @@ class Sentinel2JP2RasterSourceProvider {
    * The RasterSource should be resampled at load time to match the desired resolution and CRS, and should be aligned to the same pixel grid.
    * The extent of the RasterSource does not have to match the targetExtent exactly.
    *
-   *
-   * @param targetExtent The RasterExtent to read from the item, coordinates are provided in `targetCRS`
-   * @param targetCRS The required reference system of the output raster source
+   * @param targetExtent         The RasterExtent to read from the item, coordinates are provided in `targetCRS`
+   * @param targetCRS            The required reference system of the output raster source
    * @param linkTitleToBandIndex The bands to return, provided as an item link title and the corresponding band index to load
-   * @param item The item from which to load the bands.
-   * @param datacubeParams Other parameters that might affect the output.
+   * @param item                 The item from which to load the bands.
+   * @param datacubeParams       Other parameters that might affect the output.
    * @return
    */
-  def getRasterSource(targetExtent: RasterExtent, targetCRS:CRS, linkTitleToBandIndex: Seq[(String, Int)], item: Feature, datacubeParams : Option[DataCubeParameters] = Option.empty): Option[RasterSource] = {
+  def getRasterSource(item: Feature, targetExtent: RasterExtent, targetCRS: CRS, linkTitleToBandIndex: Seq[(String, Int)], datacubeParams: Option[DataCubeParameters] = Option.empty): Option[RasterSource] = {
 
     val theResolution = targetExtent.cellSize
-    val re = RasterExtent(FileLayerProvider.expandToCellSize(targetExtent.extent,theResolution), theResolution)
+    val re = RasterExtent(FileLayerProvider.expandToCellSize(targetExtent.extent, theResolution), theResolution)
 
-    val featureExtentInLayout: Option[GridExtent[Long]] = FileLayerProvider.computeItemExtentInTargetLayout(item, re, ProjectedExtent(re.extent,targetCRS), datacubeParams)
+    val featureExtentInLayout: Option[GridExtent[Long]] = FileLayerProvider.computeItemExtentInTargetLayout(item, re, ProjectedExtent(re.extent, targetCRS), datacubeParams)
 
     var predefinedExtent: Option[GridExtent[Long]] = None
 
@@ -67,8 +66,8 @@ class Sentinel2JP2RasterSourceProvider {
       }
     }
 
-    def rasterSource(dataPath:String, cloudPath:Option[(String,String)], targetCellType:Option[TargetCellType],  sentinelXmlAngleBandIndex: Int): RasterSource = {
-      if(dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
+    def rasterSource(dataPath: String, cloudPath: Option[(String, String)], targetCellType: Option[TargetCellType], sentinelXmlAngleBandIndex: Int): RasterSource = {
+      if (dataPath.endsWith(".jp2") || dataPath.contains("NETCDF:")) {
         var warpOptionsOvr = Some(OverviewStrategy.DEFAULT)
         if (dataPath.endsWith("SCL_20m.jp2")) {
           // The overviews in the S2 SCL bands can be wrong, so we need to use the original resolution.
@@ -83,27 +82,25 @@ class Sentinel2JP2RasterSourceProvider {
           predefinedExtent = featureExtentInLayout
           GDALRasterSource(GDALPath(dataPath.replace("/vsis3/eodata/", "/vsis3/EODATA/").replace("https", "/vsicurl/https")), options = warpOptions, targetCellType = targetCellType)
         }
-      }else if(dataPath.endsWith("MTD_TL.xml")) {
+      } else if (dataPath.endsWith("MTD_TL.xml")) {
         val targetProjectedExtent = featureExtentInLayout match {
           case None => None
           case Some(featureExtentInLayoutGet) =>
             Some(ProjectedExtent(featureExtentInLayoutGet.extent, targetCRS))
         }
         SentinelXMLMetadataRasterSource.forAngleBand(dataPath, sentinelXmlAngleBandIndex, targetProjectedExtent, Some(theResolution))
-      }else{
+      } else {
         null
       }
     }
 
-
-    def getBandAssetsByLinkTitle : Seq[Option[(Link, Int)]] = for {
+    def getBandAssetsByLinkTitle: Seq[Option[(Link, Int)]] = for {
       (title, bandIndex) <- linkTitleToBandIndex.toList
       linkWithTitle = item.links.find(_.title.map(_.toUpperCase) contains title.toUpperCase).orElse {
         logger.warn(s"asset with ID/title $title not found in feature ${item.id}; inserting NODATA band instead")
         None
       }
-    } yield linkWithTitle.map((_,bandIndex))
-
+    } yield linkWithTitle.map((_, bandIndex))
 
     val expectedNumberOfBands = linkTitleToBandIndex.size
 

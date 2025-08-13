@@ -26,6 +26,7 @@ class DataCubeParameters extends Serializable {
   var timeDimensionFilter: Option[java.io.Serializable] = Option.empty
   var allowEmptyCube: Boolean = false
   var loadPerProduct: Boolean = false
+  var rasterSource: Option[String] = Option.empty
   /**
    * A maximum size in megabytes that output partitions should have. Not all code paths support this yet.
    * If set, automatic tuning of other parameters such as index reduction should be applied.
@@ -42,7 +43,7 @@ class DataCubeParameters extends Serializable {
   /**
    * Configuration to override asset loading with synthetic data
    */
-  var syntheticDataOverride: Option[Object] = Option.empty
+  var syntheticDataOverride: Option[SyntheticDataOverride] = None
 
   override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube, $resampleMethod, $pixelBufferX, $pixelBufferY)"
 
@@ -102,7 +103,10 @@ class DataCubeParameters extends Serializable {
     retainNoDataTiles = retain
   }
 
-  def setSyntheticDataOverride(syntheticData: Object): Unit = {
+  def setSyntheticDataOverride(syntheticData: SyntheticDataOverride): Unit = {
     syntheticDataOverride = Some(syntheticData)
   }
 }
+
+case class SyntheticDataOverride(cellType: String, udf: Option[String])
+
