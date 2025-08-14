@@ -37,7 +37,7 @@
         <dependency>
             <groupId>org.esa.snap</groupId>
             <artifactId>snap-core</artifactId>
-            <version>11.0.0</version>
+            <version>8.0.9</version>
             <exclusions>
                 <!-- Exclusion to optimize shaded jar size -->
                 <exclusion>
