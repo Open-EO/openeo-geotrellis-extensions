@@ -21,9 +21,9 @@ import org.slf4j.{Logger, LoggerFactory}
 
 import java.time.{ZoneOffset, ZonedDateTime}
 
-object TestGeoCoding{
+object GeoCodingTest{
 
-  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[TestGeoCoding])
+  private implicit val logger: Logger = LoggerFactory.getLogger(classOf[GeoCodingTest])
   protected var _sc: Option[SparkContext] = None
 
   implicit def sc: SparkContext = {
@@ -40,7 +40,7 @@ object TestGeoCoding{
 
 }
 
-class TestGeoCoding {
+class GeoCodingTest {
 
 
 
@@ -54,7 +54,7 @@ class TestGeoCoding {
     val inputLayout:LayoutDefinition = LayoutDefinition(masterTiff.rasterExtent, 128, 128)
 
 
-    val tiledInput: RDD[(SpaceTimeKey, MultibandTile)] = TestGeoCoding.sc.parallelize(Seq((TemporalProjectedExtent(masterTiff.extent,masterTiff.crs, 0L),masterTiff.tile))).tileToLayout(FloatConstantNoDataCellType,inputLayout)
+    val tiledInput: RDD[(SpaceTimeKey, MultibandTile)] = GeoCodingTest.sc.parallelize(Seq((TemporalProjectedExtent(masterTiff.extent,masterTiff.crs, 0L),masterTiff.tile))).tileToLayout(FloatConstantNoDataCellType,inputLayout)
 
     val inputMetadata = DatacubeSupport.tileLayerMetadata(inputLayout,masterTiff.projectedExtent,ZonedDateTime.now(),ZonedDateTime.now(),FloatConstantNoDataCellType)
 
