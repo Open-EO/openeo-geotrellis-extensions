@@ -437,8 +437,8 @@ package object geotiff {
     }
   }
 
-  def saveRDDTileGrid(rdd:MultibandTileLayerRDD[SpatialKey], bandCount:Int, path:String, tileGrid: String, zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]) = {
-    saveRDDGenericTileGrid(rdd,bandCount, path, tileGrid, zLevel, cropBounds)
+  def saveRDDTileGrid(rdd: MultibandTileLayerRDD[SpatialKey], bandCount: Int, path: String, tileGrid: String, cropBounds: Option[Extent] = Option.empty[Extent], options: GTiffOptions = new GTiffOptions) = {
+    saveRDDGenericTileGrid(rdd, path, tileGrid, cropBounds, options)
   }
 
   private def gridBoundsFor(re: RasterExtent, subExtent: Extent, clamp: Boolean = true): GridBounds[Int] = {
@@ -601,7 +601,7 @@ package object geotiff {
     formatOptions.compressionMethod match {
       case "zstd" => ZStdCompression(formatOptions.compressionLevel)
       case "deflate" => DeflateCompression(formatOptions.compressionLevel)
-      case _ => throw new IllegalArgumentException(f"compression method ${formatOptions.compressionMethod} is not supported, supported methods are: (zstd, deflate (default))")
+      case _ => throw new IllegalArgumentException(f"Compression method ${formatOptions.compressionMethod} is not supported, supported methods are: (zstd, deflate (default))")
     }
   }
 
@@ -688,14 +688,14 @@ package object geotiff {
   }
 
   // This implementation does not properly work, output tiffs are not properly aligned and colors are also incorrect
-  private def saveRDDGenericTileGrid[K: SpatialComponent : Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, tileGrid: String, zLevel: Int = 6, cropBounds: Option[Extent] = Option.empty[Extent]) = {
+  private def saveRDDGenericTileGrid[K: SpatialComponent : Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], path: String, tileGrid: String, cropBounds: Option[Extent] = Option.empty[Extent], options: GTiffOptions = new GTiffOptions): List[String] = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd, cropBounds)
     val croppedExtent: Extent = preProcessResult._2
     val preprocessedRdd: RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]] = preProcessResult._3
 
     val tileLayout = preprocessedRdd.metadata.tileLayout
 
-    val compression = Deflate(zLevel)
+    val compression = determineCompression(options)
 
     val features = TileGrid.computeFeaturesForTileGrid(tileGrid, ProjectedExtent(preprocessedRdd.metadata.extent, preprocessedRdd.metadata.crs))
 
