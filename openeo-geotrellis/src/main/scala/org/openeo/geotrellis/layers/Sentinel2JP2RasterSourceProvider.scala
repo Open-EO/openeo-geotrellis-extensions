@@ -26,7 +26,7 @@ class Sentinel2JP2RasterSourceProvider extends ItemRasterSourceProvider {
 
 
   def canProcess(item: Feature, datacubeParams: Option[DataCubeParameters] = Option.empty): Boolean = {
-    item.links.forall(_.href.getPath.endsWith(".jp2")) || (datacubeParams.isDefined && datacubeParams.get.rasterSource.isDefined && datacubeParams.get.rasterSource.get == ""
+    item.links.forall(_.href.getPath.endsWith(".jp2"))
   }
 
   /**
