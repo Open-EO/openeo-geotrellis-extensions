@@ -155,7 +155,11 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     // rastersource contract: do not read negative gridbounds
     union = union.copy(colMin=math.max(union.colMin,0),rowMin=math.max(union.rowMin,0))
 
-    val fullRaster = read(union).get
+    val maybeRaster = read(union)
+    if(maybeRaster.isDefined) {
+      return Iterator.empty
+    }
+    val fullRaster = maybeRaster.get
     val mappedBounds = bounds.map(b=> b.offset(-union.colMin,-union.rowMin).toGridType[Int])
     return mappedBounds.map(b => fullRaster.crop(b, CropOptions(force = true,clamp=true))).toIterator
 
