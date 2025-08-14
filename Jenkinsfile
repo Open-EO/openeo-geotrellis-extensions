@@ -212,6 +212,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
             if (skipTests) {
                 print "Maven will skip all tests"
                 rtMaven.opts += ' -DskipTests=true'
+                rtMaven.opts += ' -DskipSentinelHubTests=true'
             } else if (skipSentinelHubTests) {
                 print "Maven will only skip Sentinel Hub tests"
                 rtMaven.opts += ' -DskipSentinelHubTests=true'
