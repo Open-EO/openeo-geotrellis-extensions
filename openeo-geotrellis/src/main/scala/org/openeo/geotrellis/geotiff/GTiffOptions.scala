@@ -18,6 +18,9 @@ class GTiffOptions extends Serializable {
   var resampleMethod:String = "near"
   var separateAssetPerBand = false
   var tileSize:Int = 256
+  var compressionMethod:String = "deflate"
+  var compressionLevel:Int = 10
+  var predictor:Int = 2
 
   def setFilenamePrefix(name: String): Unit = {
     assertSafeToUseInFilePath(name)
@@ -60,6 +63,26 @@ class GTiffOptions extends Serializable {
   def setTileSize(size:Int): Unit = {
     tileSize = size
   }
+
+  def setCompressionMethod(method: String): Unit = {
+    compressionMethod = method.toLowerCase() match {
+      case "zstd" | "zstandard" => "zstd"
+      case "deflate" | "deflater" | "default" => "deflate"
+      case _ => throw new IllegalArgumentException(s"Unsupported compression method ${method}, supported values are: zstd, deflate (default)")
+    }
+  }
+
+  def setCompressionLevel(level: Int): Unit = {
+    compressionLevel = level
+  }
+
+  def setPredictor(p: Int): Unit = {
+    if (p < 1 || p > 3) {
+      throw new IllegalArgumentException(s"Unsupported predictor ${p}, supported values are 0-10 or -1")
+    }
+    predictor = p
+  }
+
 
   /**
    * Remove this hack after updating Scala beyond version 2.12.13
