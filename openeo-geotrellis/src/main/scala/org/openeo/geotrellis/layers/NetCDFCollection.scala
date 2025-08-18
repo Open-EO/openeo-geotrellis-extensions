@@ -2,7 +2,7 @@ package org.openeo.geotrellis.layers
 
 import geotrellis.layer.{FloatingLayoutScheme, KeyBounds, LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TemporalProjectedExtent, TileLayerMetadata}
 import geotrellis.proj4.LatLng
-import geotrellis.raster.{CellSize, MultibandTile, Raster, RasterExtent, ShortUserDefinedNoDataCellType, Tile}
+import geotrellis.raster.{CellSize, CellType, MultibandTile, Raster, RasterExtent, ShortUserDefinedNoDataCellType, Tile}
 import geotrellis.raster.gdal.{DefaultDomain, GDALException, GDALRasterSource, GDALWarpOptions}
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods, _}
 import geotrellis.spark.tiling.Tiler
@@ -33,34 +33,40 @@ object NetCDFCollection {
       if (stacItems.nonEmpty) {
         loadCollection(stacItems, sc)
       } else {
-        loadEmptyCollection(polygons, from_date, to_date, dataCubeParameters, sc)
+        if (metadata_properties == null || metadata_properties.isEmpty) {
+          throw new IllegalArgumentException("Unable to load empty stac without metadata")
+        } else {
+          val cellType: CellType = metadata_properties.get("cell_type").asInstanceOf[CellType]
+          if (cellType == null) throw new IllegalArgumentException("metadata_properties is missing cell_type")
+          val cellSize: CellSize = metadata_properties.get("cell_size").asInstanceOf[CellSize]
+          if (cellSize == null) throw new IllegalArgumentException("metadata_properties is missing cell_size")
+          loadEmptyCollection(cellType, cellSize, to_date, dataCubeParameters, sc, polygons, from_date)
+        }
       }
     Seq((0, cube))
   }
 
-  private def loadEmptyCollection(polygons: ProjectedPolygons, from_date: String, to_date: String, dataCubeParameters: DataCubeParameters, sc: SparkContext) = {
+  private def loadEmptyCollection(cellType: CellType, cellSize: CellSize, to_date: String, dataCubeParameters: DataCubeParameters, sc: SparkContext, polygons: ProjectedPolygons, from_date: String) = {
     val boundingBox = polygons.extent
 
     val from = ZonedDateTime.parse(from_date, ISO_OFFSET_DATE_TIME)
     val to = ZonedDateTime.parse(to_date, ISO_OFFSET_DATE_TIME)
 
     val scheme = FloatingLayoutScheme(dataCubeParameters.tileSize)
-    val maxSpatialResolution = CellSize(10, 10)
     val multiple_polygons_flag = polygons.polygons.length > 1
 
     val metadata = DatacubeSupport.layerMetadata(
-
-      boundingBox, from, to, 0, ShortUserDefinedNoDataCellType(32767), scheme, maxSpatialResolution,
+      boundingBox, from, to, 0, cellType, scheme, cellSize,
       dataCubeParameters.globalExtent, multiple_polygons_flag
     )
-    ContextRDD(sc.emptyRDD[(SpaceTimeKey, MultibandTile)], null)
+    ContextRDD(sc.emptyRDD[(SpaceTimeKey, MultibandTile)], metadata)
   }
 
   private def loadCollection(stacItems: Seq[OpenSearchResponses.Feature], sc: SparkContext): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
     val items = sc.parallelize(stacItems)
 
     if (stacItems.isEmpty) {
-      ContextRDD(sc.emptyRDD[(SpaceTimeKey, MultibandTile)], null)
+      throw new IllegalArgumentException("Unable to load empty stac without metadata")
     } else {
       sc.setJobDescription(s"load_stac from netCDFs - ${stacItems.head.id} - ${stacItems.head.links.head.href}")
       val resolutions = items.flatMap(_.resolution).distinct().collect()

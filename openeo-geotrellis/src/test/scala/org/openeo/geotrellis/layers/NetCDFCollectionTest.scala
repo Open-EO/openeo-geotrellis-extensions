@@ -17,6 +17,7 @@ import org.openeo.geotrelliscommon.{DataCubeParameters, SpatialKeysProvider}
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 
 import java.time.ZonedDateTime
+import java.util
 
 object NetCDFCollectionTest {
   private implicit var sc: SparkContext = _
@@ -84,7 +85,11 @@ class NetCDFCollectionTest {
     val p: ProjectedPolygons = ProjectedPolygons(ProjectedExtent(extent, crs))
     val dataCubeParameters: DataCubeParameters = new DataCubeParameters()
     dataCubeParameters.setTileSize(256)
-    val cube = NetCDFCollection.datacube_seq(p, "2021-01-01T00:00:00Z", "2021-01-02T00:00:00Z", null, null, dataCubeParameters, osClient).head._2
+    val meta_data = new util.HashMap[String, Any]
+    meta_data.put("cell_type", ShortUserDefinedNoDataCellType(32767))
+    meta_data.put("cell_size", CellSize(10, 10))
+
+    val cube = NetCDFCollection.datacube_seq(p, "2021-01-01T00:00:00Z", "2021-01-02T00:00:00Z", meta_data, null, dataCubeParameters, osClient).head._2
 
 
     assertEquals(0, cube.count())
