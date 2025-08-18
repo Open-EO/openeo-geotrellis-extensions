@@ -11,13 +11,13 @@ import scala.util.Using
 
 object ProcessGraphRunner {
 
+  val logger: Logger = LoggerFactory.getLogger(ProcessGraphRunner.getClass)
+
   def run(processGraphS: String): Unit = {
     run(new File(getClass.getResource(processGraphS).getFile))
   }
 
   def run(processGraph: File): Unit = {
-
-    val logger: Logger = LoggerFactory.getLogger(ProcessGraphRunner.getClass)
 
     val hostGraphFolder = processGraph.getParent
     val processGraphName = processGraph.getName
@@ -88,15 +88,35 @@ object ProcessGraphRunner {
       if (debug) {
         val debugPort = findFirstOpenPort(5005)
         val sparkUIPort = findFirstOpenPort(4040)
-        println(f"Waiting for remote debugger on port $debugPort")
-        println(f"SparkUI will be available at http://localhost:$sparkUIPort")
-        f"docker run -p $debugPort:5005 -p $sparkUIPort:4040 -v $outputDir:/out -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath DEBUG"
+        logger.info(f"Waiting for remote debugger on port $debugPort")
+        logger.info(f"SparkUI will be available at http://localhost:$sparkUIPort")
+        f"docker run -p $debugPort:5005 -p $sparkUIPort:4040 $credentialsFileMapping -v $outputDir:/out -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath DEBUG"
       } else {
-        f"docker run -v $outputDir:/out -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath"
+        f"docker run -v $outputDir:/out $credentialsFileMapping -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath"
       }
     logger.debug(f"Prepared command: $cmd")
     val output = cmd.!!
     logger.info(output)
+  }
+
+  lazy val awsCredentialsMapping: String = {
+    Option(System.getProperty("http.credentials.file")).getOrElse(Option(System.getenv("HTTP_CREDENTIALS_FILE")).getOrElse("./http_credentials.json"))
+  }
+
+  lazy val credentialsFileMapping: String = {
+    val credentialsFile = {
+      val path = Option(System.getProperty("http.credentials.file")).getOrElse(Option(System.getenv("HTTP_CREDENTIALS_FILE")).getOrElse("./http_credentials.json"))
+      val file = new File(path)
+      if (file.exists()) {
+        Some(file)
+      } else {
+        None
+      }
+    }
+    if (credentialsFile.isEmpty) {
+      logger.warn("No credentials file found")
+    }
+    credentialsFile.map(f => f"-v ${f.getAbsolutePath}:/opt/openeo/http_credentials.json").getOrElse("")
   }
 
   @tailrec

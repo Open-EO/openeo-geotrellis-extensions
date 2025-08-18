@@ -39,7 +39,7 @@ object NetCDFCollection {
     sc.setJobDescription(s"load_stac from netCDFs - ${stacItems.head.id} - ${stacItems.head.links.head.href}")
     val resolutions = items.flatMap(_.resolution).distinct().collect()
     if(resolutions.length != 1) {
-      throw new IllegalArgumentException("All items in a collection must have the same resolution")
+      logger.warn(s"Multiple resolutions found in netCDF collection: ${resolutions.mkString("(", ", ", ")")}. We expect all assets to have the same resolution.")
     }
 
     val crs = items.flatMap(_.crs).distinct().collect()
