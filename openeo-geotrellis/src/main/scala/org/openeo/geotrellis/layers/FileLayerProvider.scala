@@ -156,7 +156,7 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     union = union.copy(colMin=math.max(union.colMin,0),rowMin=math.max(union.rowMin,0))
 
     val maybeRaster = read(union)
-    if(maybeRaster.isDefined) {
+    if (maybeRaster.isEmpty) {
       return Iterator.empty
     }
     val fullRaster = maybeRaster.get
