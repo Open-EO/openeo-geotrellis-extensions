@@ -61,8 +61,8 @@
         </dependency>
         <dependency>
             <groupId>org.geotools</groupId>
-            <artifactId>gt-api</artifactId>
-            <version>${gt-version}</version>
+            <artifactId>gt-opengis</artifactId>
+            <version>28.2</version>
         </dependency>
         <dependency>
             <groupId>org.openeo</groupId>

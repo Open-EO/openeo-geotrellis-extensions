@@ -205,6 +205,7 @@
                             <artifactSet>
                                 <includes>
                                     <include>org.esa.snap:*</include>
+                                    <include>org.geotools:*</include>
                                     <include>javax.media.jai:*</include>
                                     <include>Jama:*</include>
                                     <include>org.openeo:*</include>
