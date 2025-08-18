@@ -904,6 +904,8 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(0,minKey.col)
     assertEquals(0,minKey.row)
     assertEquals(LatLng,result._2.crs)
+    println("Keys: " + all.map(_._1).mkString(", "))
+    println("Environment variables: " + sys.env.mkString(", "))
     assertTrue(Math.abs(12 - all.length) < 5) // Range to make test less flaky
     assertEquals((cols*rows).toInt,all.length)
   }
