@@ -2,4 +2,5 @@ FROM vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.3
 RUN dnf install -y maven git java-11-openjdk-devel dnf-plugins-core
 RUN dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
 RUN dnf install -y docker-ce
+RUN update-alternatives --set javac java-11-openjdk.x86_64
 USER jenkins
