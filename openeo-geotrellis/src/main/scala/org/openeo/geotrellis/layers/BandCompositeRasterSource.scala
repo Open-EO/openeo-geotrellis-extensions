@@ -18,6 +18,38 @@ import scala.collection.GenSeq
 
 // TODO: are these attributes typically propagated as RasterSources are transformed? Maybe we should find another way to
 //  attach e.g. a date to a RasterSource.
+object BandCompositeRasterSource {
+  private val logger = LoggerFactory.getLogger(classOf[BandCompositeRasterSource])
+
+  private def retryWithBackoff[R](maxAttempts: Int = 20, onAttemptFailed: Exception => Unit = _ => ())(f: => R): R = {
+    val retryPolicy = new RetryPolicy[R]
+      .handle(classOf[Exception]) // will otherwise retry Error
+      .withMaxAttempts(maxAttempts)
+      .withBackoff(1, 16, SECONDS)
+      .onFailedAttempt((attempt: ExecutionAttemptedEvent[R]) =>
+        onAttemptFailed(attempt.getLastFailure.asInstanceOf[Exception]))
+
+    Failsafe
+      .`with`(util.Collections.singletonList(retryPolicy))
+      .get(f _)
+  }
+
+  def readBounds(source: RasterSource, bounds: GridBounds[Long], softErrors: Boolean, bands: Seq[Int] = Seq(0)): Option[Raster[MultibandTile]] = {
+    try {
+      logger.debug(s"reading $bounds from ${source.name}")
+      val raster = source.read(bounds, bands) map { case Raster(multibandTile, extent) => Raster(multibandTile, extent) }
+      logger.debug(s"finished reading $bounds from ${source.name}")
+      raster
+    } catch {
+      case e: AbortedException => throw e
+      case e: Exception if softErrors => {
+        logger.warn(s"load_collection: ignoring soft error for ${source.name} - ${e.getMessage}", e)
+        None
+      }
+      case e: Exception => throw new IOException(s"load_collection: Error while reading $bounds from: ${source.name} - ${e.getMessage}", e)
+    }
+  }
+}
 class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource],
                                 override val crs: CRS,
                                 override val attributes: Map[String, String] = Map.empty,
@@ -74,7 +106,11 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
     // rastersource contract: do not read negative gridbounds
     union = union.copy(colMin = math.max(union.colMin, 0), rowMin = math.max(union.rowMin, 0))
 
-    val fullRaster = read(union).get
+    val maybeRaster = read(union)
+    if (maybeRaster.isEmpty) {
+      return Iterator.empty
+    }
+    val fullRaster = maybeRaster.get
     val mappedBounds = bounds.map(b => b.offset(-union.colMin, -union.rowMin).toGridType[Int])
     return mappedBounds.map(b => fullRaster.crop(b, CropOptions(force = true, clamp = true))).toIterator
 
@@ -179,35 +215,3 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
       crs, parallelRead = parallelRead, softErrors = softErrors)
 }
 
-object BandCompositeRasterSource {
-  private val logger = LoggerFactory.getLogger(classOf[BandCompositeRasterSource])
-
-  private def retryWithBackoff[R](maxAttempts: Int = 20, onAttemptFailed: Exception => Unit = _ => ())(f: => R): R = {
-    val retryPolicy = new RetryPolicy[R]
-      .handle(classOf[Exception]) // will otherwise retry Error
-      .withMaxAttempts(maxAttempts)
-      .withBackoff(1, 16, SECONDS)
-      .onFailedAttempt((attempt: ExecutionAttemptedEvent[R]) =>
-        onAttemptFailed(attempt.getLastFailure.asInstanceOf[Exception]))
-
-    Failsafe
-      .`with`(java.util.Collections.singletonList(retryPolicy))
-      .get(f _)
-  }
-
-  def readBounds(source: RasterSource, bounds: GridBounds[Long], softErrors: Boolean, bands: Seq[Int] = Seq(0)): Option[Raster[MultibandTile]] = {
-    try {
-      logger.debug(s"reading $bounds from ${source.name}")
-      val raster = source.read(bounds, bands) map { case Raster(multibandTile, extent) => Raster(multibandTile, extent) }
-      logger.debug(s"finished reading $bounds from ${source.name}")
-      raster
-    } catch {
-      case e: AbortedException => throw e
-      case e: Exception if softErrors => {
-        logger.warn(s"load_collection: ignoring soft error for ${source.name} - ${e.getMessage}", e)
-        None
-      }
-      case e: Exception => throw new IOException(s"load_collection: Error while reading $bounds from: ${source.name} - ${e.getMessage}", e)
-    }
-  }
-}
