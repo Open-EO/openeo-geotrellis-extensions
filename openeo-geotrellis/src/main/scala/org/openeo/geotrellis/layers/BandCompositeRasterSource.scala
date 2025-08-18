@@ -14,6 +14,7 @@ import software.amazon.awssdk.core.exception.AbortedException
 
 import java.io.IOException
 import java.time.temporal.ChronoUnit.SECONDS
+import java.util.Collections
 import scala.collection.GenSeq
 
 // TODO: are these attributes typically propagated as RasterSources are transformed? Maybe we should find another way to
@@ -30,7 +31,7 @@ object BandCompositeRasterSource {
         onAttemptFailed(attempt.getLastFailure.asInstanceOf[Exception]))
 
     Failsafe
-      .`with`(util.Collections.singletonList(retryPolicy))
+      .`with`(Collections.singletonList(retryPolicy))
       .get(f _)
   }
 

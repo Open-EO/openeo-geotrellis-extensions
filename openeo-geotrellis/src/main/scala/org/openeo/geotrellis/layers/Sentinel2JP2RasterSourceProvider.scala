@@ -5,7 +5,7 @@ import geotrellis.proj4.CRS
 import geotrellis.raster.ResampleMethods.NearestNeighbor
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.io.geotiff.OverviewStrategy
-import geotrellis.raster.{CellSize, ConvertTargetCellType, GridExtent, RasterExtent, RasterSource, ShortConstantNoDataCellType, TargetAlignment, TargetCellType, TargetRegion, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
+import geotrellis.raster.{ConvertTargetCellType, GridExtent, RasterExtent, RasterSource, ShortConstantNoDataCellType, TargetCellType, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.vector.ProjectedExtent
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
@@ -44,9 +44,9 @@ class Sentinel2JP2RasterSourceProvider extends ItemRasterSourceProvider {
   def getRasterSource(item: Feature, targetExtent: RasterExtent, targetCRS: CRS, linkTitleToBandIndex: Seq[(String, Int)], datacubeParams: Option[DataCubeParameters] = Option.empty): Option[RasterSource] = {
 
     val theResolution = targetExtent.cellSize
-    val re = RasterExtent(FileLayerProvider.expandToCellSize(targetExtent.extent, theResolution), theResolution)
+    val re = RasterExtent(expandToCellSize(targetExtent.extent, theResolution), theResolution)
 
-    val featureExtentInLayout: Option[GridExtent[Long]] = FileLayerProvider.computeItemExtentInTargetLayout(item, re, ProjectedExtent(re.extent, targetCRS), datacubeParams)
+    val featureExtentInLayout: Option[GridExtent[Long]] = computeItemExtentInTargetLayout(item, re, ProjectedExtent(re.extent, targetCRS), datacubeParams)
 
     var predefinedExtent: Option[GridExtent[Long]] = None
 
