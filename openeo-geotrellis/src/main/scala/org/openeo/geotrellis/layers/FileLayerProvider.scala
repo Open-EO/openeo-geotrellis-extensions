@@ -779,6 +779,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
   private val _rootPath = if(rootPath != null) Paths.get(rootPath) else null
   private val fromLoadStac = openSearch.isInstanceOf[FixedFeaturesOpenSearchClient]
   private val softErrors = maxSoftErrorsRatio > 0.0
+  private val itemRasterSourceProviderChain = List(SyntheticDataItemRasterSourceProvider, Sentinel2JP2RasterSourceProvider, DefaultItemRasterSourceProvider(openSearch, openSearchLinkTitles, rootPath, maxSpatialResolution, bandIndices, experimental, maxSoftErrorsRatio))
 
   private val openSearchLinkTitlesWithBandId: Seq[(String, Int)] = {
     if (bandIndices.nonEmpty) {
@@ -1196,6 +1197,25 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       math.max(extent.ymax, extent.ymin + cellSize.height),
     )
 
+
+  /**
+   *
+   * @param feature          The feature
+   * @param targetExtent     The target extent to read from 'feature'
+   * @param datacubeParams   Data cube parameters
+   * @param targetResolution Target resolution to read.
+   * @return
+   */
+  private def deriveRasterSourcesUsingItemRasterSourceProviders(feature: Feature, targetExtent: ProjectedExtent, datacubeParams: Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Option[(RasterSource, Feature)] = {
+    val rasterExtent = RasterExtent(targetExtent.extent, targetResolution.getOrElse(maxSpatialResolution))
+    itemRasterSourceProviderChain
+      .find(_.canProcess(feature, datacubeParams))
+      .flatMap(
+        _.getRasterSource(feature, targetExtent = rasterExtent, targetExtent.crs, openSearchLinkTitlesWithBandId, datacubeParams)
+      ).map((_, feature))
+  }
+
+
   /**
    *
    * @param feature
@@ -1204,7 +1224,15 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
    * @param targetResolution Target resolution to read.
    * @return
    */
-  private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Option[(BandCompositeRasterSource, Feature)] = {
+  private def deriveRasterSources(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Option[(RasterSource, Feature)] = {
+    if (datacubeParams.exists(_.useRasterSourceProviders)) {
+      deriveRasterSourcesUsingItemRasterSourceProviders(feature, targetExtent, datacubeParams, targetResolution)
+    } else {
+      deriveRasterSourcesLegacy(feature, targetExtent, datacubeParams, targetResolution)
+    }
+  }
+
+  private def deriveRasterSourcesLegacy(feature: Feature, targetExtent:ProjectedExtent, datacubeParams : Option[DataCubeParameters] = Option.empty, targetResolution: Option[CellSize] = Option.empty): Option[(BandCompositeRasterSource, Feature)] = {
 
     val noResampleOnRead = datacubeParams.exists(_.noResampleOnRead)
     val theResolution = targetResolution.getOrElse(maxSpatialResolution)

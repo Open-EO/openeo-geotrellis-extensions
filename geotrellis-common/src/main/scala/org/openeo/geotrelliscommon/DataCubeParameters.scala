@@ -25,6 +25,7 @@ class DataCubeParameters extends Serializable {
   var useNewFeatureExtentIntersection2: Boolean = false
   var timeDimensionFilter: Option[java.io.Serializable] = Option.empty
   var allowEmptyCube: Boolean = false
+  var useRasterSourceProviders: Boolean = false
   var loadPerProduct: Boolean = false
   var rasterSource: Option[String] = Option.empty
   /**
@@ -97,6 +98,10 @@ class DataCubeParameters extends Serializable {
 
   def setAllowEmptyCube(allowEmpty:Boolean):Unit = {
     allowEmptyCube = allowEmpty
+  }
+
+  def setUseRasterSourceProviders(flag: Boolean): Unit = {
+    useRasterSourceProviders = flag
   }
 
   def setRetainNoDataTiles(retain:Boolean):Unit = {
