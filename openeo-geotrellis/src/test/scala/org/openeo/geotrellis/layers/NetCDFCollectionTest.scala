@@ -85,12 +85,8 @@ class NetCDFCollectionTest {
     val p: ProjectedPolygons = ProjectedPolygons(ProjectedExtent(extent, crs))
     val dataCubeParameters: DataCubeParameters = new DataCubeParameters()
     dataCubeParameters.setTileSize(256)
-    val meta_data = new util.HashMap[String, Any]
-    meta_data.put("cell_type", ShortUserDefinedNoDataCellType(32767))
-    meta_data.put("cell_size", CellSize(10, 10))
 
-    val cube = NetCDFCollection.datacube_seq(p, "2021-01-01T00:00:00Z", "2021-01-02T00:00:00Z", meta_data, null, dataCubeParameters, osClient).head._2
-
+    val cube = NetCDFCollection.empty_datacube_seq(p, "2021-01-01T00:00:00Z", "2021-01-02T00:00:00Z", dataCubeParameters, ShortUserDefinedNoDataCellType(32767), CellSize(10, 10)).head._2
 
     assertEquals(0, cube.count())
     assertEquals(Extent(603901.4819578232, 5656508.552285681, 653638.1910088382, 5687527.3439567955), cube.metadata.extent)
