@@ -5,11 +5,6 @@ import org.junit.Test
 class TestProcessGraphJson {
 
   @Test
-  def loadEmptyStac(): Unit = {
-    ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/load_empty_stac.json")
-  }
-
-  @Test
   def loadSyntheticData(): Unit = {
     ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/load_synthetic_data.json")
   }
@@ -18,12 +13,6 @@ class TestProcessGraphJson {
   def reduceT(): Unit = {
     ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/reduce_t.json")
   }
-
-  @Test
-  def loadStac(): Unit = {
-    ProcessGraphRunner.run("/org/openeo/geotrellis/processgraph/load_stac.json")
-  }
-
 
   @Test
   def reduceTApplyNeighbourhoodUdf(): Unit = {

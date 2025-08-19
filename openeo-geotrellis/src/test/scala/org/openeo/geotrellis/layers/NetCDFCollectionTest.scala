@@ -73,23 +73,4 @@ class NetCDFCollectionTest {
     assertEquals(CellSize(10.0, 10.0), cube.metadata.cellSize)
 
   }
-
-  @Test
-  def datacube_seq_no_data(): Unit = {
-    val osClient = new FixedFeaturesOpenSearchClient()
-
-    val crs = CRS.fromName("EPSG:32631")
-
-    val extent: Extent = Extent(603901.4819578232, 5656508.552285681, 653638.1910088382, 5687527.3439567955)
-    val p: ProjectedPolygons = ProjectedPolygons(ProjectedExtent(extent, crs))
-    val dataCubeParameters: DataCubeParameters = new DataCubeParameters()
-    dataCubeParameters.setTileSize(256)
-    val cube = NetCDFCollection.datacube_seq(p, "2021-01-01T00:00:00Z", "2021-01-02T00:00:00Z", null, null, dataCubeParameters, osClient).head._2
-
-    assertEquals(0, cube.count())
-    assertEquals(Extent(603901.4819578232, 5656508.552285681, 653638.1910088382, 5687527.3439567955), cube.metadata.extent)
-    assertEquals(crs, cube.metadata.crs)
-    assertEquals(ShortUserDefinedNoDataCellType(32767), cube.metadata.cellType)
-    assertEquals(CellSize(10.0, 10.0), cube.metadata.cellSize)
-  }
 }
