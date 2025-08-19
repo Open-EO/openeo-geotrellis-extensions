@@ -9,7 +9,7 @@ import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, GridBounds, GridExtent, MultibandTile, Raster, RasterExtent, RasterMetadata, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, TargetAlignment, TargetCellType, TargetRegion, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient
-import org.openeo.geotrellis.layers.FileLayerProvider.{computeItemExtentInTargetLayout, convertNetcdfLinksToGDALFormat, expandToCellSize, vsis3ToS3}
+import org.openeo.geotrellis.layers.FileLayerProvider.{convertNetcdfLinksToGDALFormat, vsis3ToS3}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
