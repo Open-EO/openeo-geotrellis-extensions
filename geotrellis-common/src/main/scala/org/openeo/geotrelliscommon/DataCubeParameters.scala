@@ -21,7 +21,7 @@ class DataCubeParameters extends Serializable {
   var pixelBufferX:Double = 0.0
   var pixelBufferY:Double = 0.0
   var noResampleOnRead: Boolean = false
-  var useNewFeatureExtentIntersection: Boolean = true
+  var useNewFeatureExtentIntersection: Boolean = false
   var useNewFeatureExtentIntersection2: Boolean = true
   var timeDimensionFilter: Option[java.io.Serializable] = Option.empty
   var allowEmptyCube: Boolean = false
