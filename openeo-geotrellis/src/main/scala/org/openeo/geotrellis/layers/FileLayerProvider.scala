@@ -1194,7 +1194,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       } else {
         None
       }
-    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] =  featuresRDD(geometricFeatures, metadata, targetCRS, workingPartitioner,keysIfSparse, sc, datacubeParams)
+    val workingPartitionerIfNotSparse = SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(3))
+    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] =  featuresRDD(geometricFeatures, metadata, targetCRS, workingPartitionerIfNotSparse,keysIfSparse, sc, datacubeParams)
 
 
     val filteredSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = applySpatialMask(datacubeParams, griddedRasterSources,metadata)
