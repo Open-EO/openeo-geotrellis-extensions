@@ -25,6 +25,16 @@
     </repositories>
 
     <dependencies>
+         <dependency>
+            <groupId>javax.media.jai</groupId>
+            <artifactId>jai-core-openjdk</artifactId>
+            <version>1.1.4</version>
+        </dependency>
+        <dependency>
+            <groupId>javax.media.jai</groupId>
+            <artifactId>jai-codec-openjdk</artifactId>
+            <version>1.1.4</version>
+        </dependency>
         <dependency>
             <groupId>org.openeo</groupId>
             <artifactId>geotrellis-s3-extensions</artifactId>
@@ -49,6 +59,10 @@
                     <groupId>org.scala-lang</groupId>
                     <artifactId>*</artifactId>
                 </exclusion>
+                  <exclusion>
+                    <groupId>javax.media.jai</groupId>
+                    <artifactId>jai-core</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
         <dependency>
@@ -59,6 +73,10 @@
                 <exclusion>
                     <groupId>org.scala-lang</groupId>
                     <artifactId>*</artifactId>
+                </exclusion>
+                  <exclusion>
+                    <groupId>javax.media.jai</groupId>
+                    <artifactId>jai-core</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
