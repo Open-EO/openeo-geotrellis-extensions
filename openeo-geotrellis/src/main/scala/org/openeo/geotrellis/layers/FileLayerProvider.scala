@@ -1149,10 +1149,10 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         logger.info(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
 
         val workingPartitioner: Partitioner = {
-          if(spatialKeyCount < 400 && (spatialKeyCount.floatValue() / maxSpatialKeyCount.floatValue() < 0.7)) {
+          if(spatialKeyCount.floatValue() / maxSpatialKeyCount.floatValue() < 0.5) {
             // here we attempt to avoid creating a partitioner with a large amount of empty partitions, in case we are
             // processing a low number of spatial keys. This can happen with sparse data loading.
-            new HashPartitioner(5)
+            new HashPartitioner(math.max((spatialKeyCount / 100).intValue(),1))
           }else{
             SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(3))
           }
