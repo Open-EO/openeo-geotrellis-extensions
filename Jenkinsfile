@@ -197,6 +197,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
     testImage.inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/localdata/M2:rw,z -v /home/jenkins/.m2:/root/.m2:rw,z -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root') {
         withEnv(jdkEnv) {
             sh "docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
+            sh 'current_dir=$(pwd) && git config --global --add safe.directory  $current_dir'
             def server = Artifactory.server('vitoartifactory' )
 
             def rtMaven = Artifactory.newMavenBuild()
