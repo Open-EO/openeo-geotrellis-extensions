@@ -23,7 +23,7 @@ import geotrellis.vector._
 import geotrellis.vector.reproject.Reproject.reprojectExtentAsPolygon
 import net.jodah.failsafe.{Failsafe, RetryPolicy}
 import net.jodah.failsafe.event.ExecutionAttemptedEvent
-import org.apache.spark.SparkContext
+import org.apache.spark.{HashPartitioner, Partitioner, SparkContext}
 import org.apache.spark.rdd.{CoGroupedRDD, RDD}
 import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
@@ -1127,7 +1127,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     sc.setCallSite(s"load_collection: $openSearchCollectionId resolution $maxSpatialResolution construct input product metadata" )
 
-    val workingPartitioner = SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(3))
     val requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] =
       if(maxSpatialKeyCount<=2 && bufferedPolygons.length==1) {
         //reduce complexity for small (synchronous) requests
@@ -1138,20 +1137,28 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           _.reproject(polygons_crs, targetCRS)
         }
 
-
-        val clipped = clipToGridWithErrorHandling(polygonsRDD, metadata)
-
-
-        var requiredSpatialKeysLocal: RDD[(SpatialKey, Iterable[Geometry])] = clipped.groupByKey(workingPartitioner)
+        val clipped: RDD[(SpatialKey, Geometry)] = clipToGridWithErrorHandling(polygonsRDD, metadata)
 
         val spatialKeyCount: Long =
           if (polygons.length == 1) {
             //special case for single bbox request
             maxSpatialKeyCount
           } else {
-            requiredSpatialKeysLocal.map(_._1).countApproxDistinct()
+            clipped.map(_._1).countApproxDistinct()
           }
         logger.info(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
+
+        val workingPartitioner: Partitioner = {
+          if(spatialKeyCount < 400 && (spatialKeyCount.floatValue() / maxSpatialKeyCount.floatValue() < 0.7)) {
+            // here we attempt to avoid creating a partitioner with a large amount of empty partitions, in case we are
+            // processing a low number of spatial keys. This can happen with sparse data loading.
+            new HashPartitioner(5)
+          }else{
+            SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(3))
+          }
+        }
+
+        var requiredSpatialKeysLocal: RDD[(SpatialKey, Iterable[Geometry])] = clipped.groupByKey(workingPartitioner)
 
 
         val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, bufferedPolygons, datacubeParams, spatialKeyCount)
