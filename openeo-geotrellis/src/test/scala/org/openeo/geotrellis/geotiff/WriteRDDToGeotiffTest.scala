@@ -463,7 +463,36 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     saveRDDTemporal(layer, outDir.toString,formatOptions = options)
     val result = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z.tif").toString)
     assertEquals(3,result.overviews.size)
-    //    assertEquals(Tiled(128,128),result.overviews.head.options.storageMethod)
+    val resampled0 = imageTile.resample(256*layoutCols/4,256*layoutRows/4)
+    val overview0 = result.overviews.head.tile.band(0)
+    assertEquals((-1,0),overview0.findMinMax)
+    for (
+      i <- 0 until 256*layoutCols/4;
+      j <- 0 until 256*layoutRows/4;
+      if (overview0.get(i,j) == -1 || overview0.get(i,j) == 0)
+    ) {
+      assertEquals(resampled0.get(i,j), overview0.get(i,j))
+    }
+    val resampled1 = imageTile.resample(256*layoutCols/8,256*layoutRows/8)
+    val overview1 = result.overviews(1).tile.band(0)
+    assertEquals((-1,0),overview1.findMinMax)
+    for (
+      i <- 0 until 256*layoutCols/8;
+      j <- 0 until 256*layoutRows/8;
+      if (overview1.get(i,j) == -1 || overview1.get(i,j) == 0)
+    ) {
+      assertEquals(resampled1.get(i,j), overview1.get(i,j))
+    }
+    val resampled2 = imageTile.resample(256*layoutCols/16,256*layoutRows/16)
+    val overview2 = result.overviews(2).tile.band(0)
+    assertEquals((-1,0),overview2.findMinMax)
+    for (
+      i <- 0 until 256*layoutCols/16;
+      j <- 0 until 256*layoutRows/16;
+      if (overview2.get(i,j) == -1 || overview2.get(i,j) == 0)
+    ) {
+      assertEquals(resampled2.get(i,j), overview2.get(i,j))
+    }
     val colSize = result.tile.cols
     val rowSize = result.tile.rows
     assertEquals(math.ceil(colSize.toDouble/4).toInt,result.overviews(0).tile.cols)
