@@ -1568,9 +1568,9 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(229, ids.size)
 
     assertTrue(Seq(1, 2).contains(listener.getJobsCompleted))
-    assertEquals(5,listener.getStagesCompleted)
-    assertTrue(listener.getTasksCompleted >= 1964) // Range to make test less flaky
-    assertTrue(listener.getTasksCompleted <= 2384)
+    assertEquals(4,listener.getStagesCompleted)
+    assertTrue(listener.getTasksCompleted >= 90) // Range to make test less flaky
+    assertTrue(listener.getTasksCompleted <= 200)
     assertTrue(allTiles.length >= 2384 - 0.1)
     assertTrue(allTiles.length <= 4928 + 0.1)
   }
