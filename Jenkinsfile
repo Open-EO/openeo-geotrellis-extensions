@@ -242,6 +242,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
                     junit '*/target/*-reports/*.xml'
                 }
                 sh "chown -R jenkins:vito ."
+                sh "chown -R jenkins:vito /localdata/M2"
             }
         }
     }
