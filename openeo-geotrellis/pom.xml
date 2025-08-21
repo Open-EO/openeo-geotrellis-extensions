@@ -87,6 +87,12 @@
             <artifactId>geotrellis-spark_${scala.binary.version}</artifactId>
             <version>${geotrellis.version}</version>
             <scope>provided</scope>
+           <exclusions>
+                <exclusion>
+                    <groupId>com.fasterxml.jackson.core</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.apache.spark</groupId>
