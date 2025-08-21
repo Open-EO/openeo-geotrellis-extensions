@@ -921,7 +921,7 @@ object FileLayerProvider {
     sc.parallelize(keys.toSeq, 1).map((_, null))
   }
 
-  private def featuresRDD(geometricFeatures: Seq[vector.Feature[Geometry, (RasterSource, Feature)]], metadata: TileLayerMetadata[SpaceTimeKey], targetCRS: CRS, workingPartitioner: SpacePartitioner[SpatialKey], maybeKeys: Option[RDD[(SpatialKey, Iterable[Geometry])]], sc: SparkContext, datacubeParams: Option[DataCubeParameters]) = {
+  private def featuresRDD(geometricFeatures: Seq[vector.Feature[Geometry, (RasterSource, Feature)]], metadata: TileLayerMetadata[SpaceTimeKey], targetCRS: CRS,  maybeKeys: Option[RDD[(SpatialKey, Iterable[Geometry])]], sc: SparkContext, datacubeParams: Option[DataCubeParameters]) = {
     val emptyPoint = Point(0.0, 0.0)
     val cubeExtent = metadata.extent
 
@@ -972,7 +972,8 @@ object FileLayerProvider {
       joined.map(t=>(t._2.data,t._1))
 
     }else{
-      clippedFeatures.clipToGrid(metadata.layout).partitionBy(workingPartitioner)
+      val metadataCubePartitioner = SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(3))
+      clippedFeatures.clipToGrid(metadata.layout).partitionBy(metadataCubePartitioner)
     }
 
   }
@@ -1194,8 +1195,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       } else {
         None
       }
-    val workingPartitionerIfNotSparse = SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(3))
-    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] =  featuresRDD(geometricFeatures, metadata, targetCRS, workingPartitionerIfNotSparse,keysIfSparse, sc, datacubeParams)
+
+    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] =  featuresRDD(geometricFeatures, metadata, targetCRS, keysIfSparse, sc, datacubeParams)
 
 
     val filteredSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = applySpatialMask(datacubeParams, griddedRasterSources,metadata)
