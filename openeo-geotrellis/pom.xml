@@ -270,6 +270,12 @@
             <groupId>com.bc.zarr</groupId>
             <artifactId>jzarr</artifactId>
             <version>0.3.5</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.fasterxml.jackson.core</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
     </dependencies>
     <build>
