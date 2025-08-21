@@ -1148,7 +1148,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           }
         logger.info(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
 
-        val workingPartitioner: Partitioner = {
+        val metadataCubePartitioner: Partitioner = {
           if(spatialKeyCount.floatValue() / maxSpatialKeyCount.floatValue() < 0.5) {
             // here we attempt to avoid creating a partitioner with a large amount of empty partitions, in case we are
             // processing a low number of spatial keys. This can happen with sparse data loading.
@@ -1158,14 +1158,14 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           }
         }
 
-        var requiredSpatialKeysLocal: RDD[(SpatialKey, Iterable[Geometry])] = clipped.groupByKey(workingPartitioner)
+        var requiredSpatialKeysLocal: RDD[(SpatialKey, Iterable[Geometry])] = clipped.groupByKey(metadataCubePartitioner)
 
 
         val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, bufferedPolygons, datacubeParams, spatialKeyCount)
         metadata = retiledMetadata.getOrElse(metadata)
 
         if (retiledMetadata.isDefined) {
-          requiredSpatialKeysLocal = clipToGridWithErrorHandling(polygonsRDD, retiledMetadata.get).groupByKey(workingPartitioner)
+          requiredSpatialKeysLocal = clipToGridWithErrorHandling(polygonsRDD, retiledMetadata.get).groupByKey(metadataCubePartitioner)
         }
         requiredSpatialKeysLocal
       }
