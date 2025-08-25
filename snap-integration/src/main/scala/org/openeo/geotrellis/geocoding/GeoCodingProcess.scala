@@ -9,7 +9,8 @@ import geotrellis.spark._
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD}
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.rdd.RDD
-import org.esa.snap.core.dataio.geocoding.GeoCodingFactory
+import org.esa.snap.core.dataio.geocoding.GeoRaster
+import org.esa.snap.core.dataio.geocoding.inverse.PixelQuadTreeInverse
 import org.esa.snap.core.datamodel.{Band, GeoPos, PixelPos, ProductData}
 import org.openeo.geotrelliscommon.DatacubeSupport
 import org.slf4j.{Logger, LoggerFactory}
@@ -29,8 +30,13 @@ class GeoCodingProcess extends Serializable {
     latBand.setData(new ProductData.Double(latitudes))
     val lonBand: Band = new Band("latitude", ProductData.TYPE_FLOAT64, inputTile.cols, inputTile.rows)
     lonBand.setData(new ProductData.Double(longitudes))
+
+    val geoCoder: PixelQuadTreeInverse = new PixelQuadTreeInverse.Plugin(false).create().asInstanceOf[PixelQuadTreeInverse]
+    val geoRaster = new GeoRaster(longitudes, latitudes, "lon", "lat", inputTile.cols, inputTile.rows, 0.05)
+    geoCoder.initialize(geoRaster, false, Array.empty[PixelPos])
     //for automatic estimation of pixel size, we need to avoid NaN values in lat/lon bands
-    val geoCoder = GeoCodingFactory.createPixelGeoCoding(latBand,lonBand,0.05)
+    //the method below is cleaner and shorter, but forces dependency on older geotools
+    //val geoCoder = GeoCodingFactory.createPixelGeoCoding(latBand,lonBand,0.05)
 
 
     val pixelPos = new PixelPos()
@@ -41,7 +47,6 @@ class GeoCodingProcess extends Serializable {
     val maxLat = latitudes.max
 
     if (minLat.isNaN || maxLat.isNaN || minLon.isNaN || maxLon.isNaN) {
-
       return None
     }
 
