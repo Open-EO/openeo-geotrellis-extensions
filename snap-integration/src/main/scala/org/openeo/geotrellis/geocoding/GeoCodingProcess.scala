@@ -11,7 +11,7 @@ import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.rdd.RDD
 import org.esa.snap.core.dataio.geocoding.GeoRaster
 import org.esa.snap.core.dataio.geocoding.inverse.PixelQuadTreeInverse
-import org.esa.snap.core.datamodel.{Band, GeoPos, PixelPos, ProductData}
+import org.esa.snap.core.datamodel.{GeoPos, PixelPos}
 import org.openeo.geotrelliscommon.DatacubeSupport
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -26,10 +26,6 @@ class GeoCodingProcess extends Serializable {
     val latitudes = inputTile.band(2).toArrayDouble()
 
     val longitudes = inputTile.band(3).toArrayDouble()
-    val latBand: Band = new Band("latitude", ProductData.TYPE_FLOAT64, inputTile.cols, inputTile.rows)
-    latBand.setData(new ProductData.Double(latitudes))
-    val lonBand: Band = new Band("latitude", ProductData.TYPE_FLOAT64, inputTile.cols, inputTile.rows)
-    lonBand.setData(new ProductData.Double(longitudes))
 
     val geoCoder: PixelQuadTreeInverse = new PixelQuadTreeInverse.Plugin(false).create().asInstanceOf[PixelQuadTreeInverse]
     val geoRaster = new GeoRaster(longitudes, latitudes, "lon", "lat", inputTile.cols, inputTile.rows, 0.05)
