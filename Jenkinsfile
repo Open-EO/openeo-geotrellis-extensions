@@ -193,8 +193,8 @@ String updateMavenVersion(){
 void build(skipTests = false, skipSentinelHubTests = false){
     def publishable_branches = ["master", "develop"]
 
-    List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1", "JAVA_HOME=/usr/lib/jvm/java-11-openjdk"]
-    def testImage = docker.build("openeo-geotrellis-test-image", "-f ./docker/tests_dockerfile ./docker")
+    List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1" ]
+    def testImage = docker.build("openeo-geotrellis-test-image:20250819_1", "-f ./docker/tests_dockerfile ./docker")
     testImage.inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/localdata/M2:rw,z -v /home/jenkins/.m2:/root/.m2:rw,z -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root' ) {
         withEnv(jdkEnv) {
             sh "docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
@@ -209,7 +209,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
             rtMaven.tool = maven
             if (skipTests) {
                 print "Maven will skip all tests"
-                rtMaven.opts += ' -DskipTests=true'
+                rtMaven.opts += ' -DskipTests=true -DskipSentinelHubTests=true'
             } else if (skipSentinelHubTests) {
                 print "Maven will only skip Sentinel Hub tests"
                 rtMaven.opts += ' -DskipSentinelHubTests=true'
@@ -242,6 +242,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
                     junit '*/target/*-reports/*.xml'
                 }
                 sh "chown -R jenkins:vito ."
+                sh "chown -R jenkins:vito /localdata/M2"
             }
         }
     }
