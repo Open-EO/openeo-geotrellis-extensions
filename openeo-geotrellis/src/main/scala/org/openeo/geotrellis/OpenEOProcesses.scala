@@ -486,13 +486,12 @@ class OpenEOProcesses extends Serializable {
         }else{
           val bandCountOption = maybeBandCount(datacube)
           if(reduce && bandCountOption.isDefined) {
-            val estimatedSize = timePeriods.length * bandCountOption.get * datacube.metadata.cellType.bytes
+            val estimatedSize = timePeriods.length * bandCountOption.get* datacube.metadata.tileLayout.tileSize * datacube.metadata.cellType.bytes
             logger.info(s"aggregate_temporal: estimated target partition size of ${estimatedSize/(1024.0*1024.0)} MB")
             if(estimatedSize/(1024*1024) < 3) {
               new ByTileSpacetimePartitioner(allPossibleKeys)
             }else{
-              //TODO determine indextreduction based on estimated size
-              new SparseSpaceTimePartitioner(theNewKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4,Some(theNewKeys))
+              getPartitionerIndexForMaxPartitionSize(bandCountOption.get,datacube.metadata.tileLayout.tileSize,datacube.metadata.cellType.bits, 100.0)
             }
           }else{
             new SparseSpaceTimePartitioner(theNewKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4,Some(theNewKeys))
@@ -582,9 +581,10 @@ class OpenEOProcesses extends Serializable {
     val rows = filteredCube.metadata.tileLayout.tileRows
     val cellType = datacube.metadata.cellType
 
-    val bandCount = RDDBandCount(datacube)
+
     val filledRDD: RDD[(SpaceTimeKey, MultibandTile)] = {
       if(reduce) {
+        val bandCount = RDDBandCount(datacube)
         tilesByInterval.rightOuterJoin(allKeysRDD,partitioner).mapValues(_._1.getOrElse(new EmptyMultibandTile(cols, rows, cellType, bandCount)))
       }else{
         tilesByInterval
