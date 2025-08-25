@@ -17,6 +17,7 @@ import org.openeo.geotrellis.aggregate_polygon.intern.PixelRateValidator.exceeds
 import org.openeo.geotrellis.aggregate_polygon.intern._
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.layers.LayerProvider
+import org.openeo.geotrelliscommon.DatacubeSupport
 import org.slf4j.LoggerFactory
 import spire.syntax.cfor.cfor
 
@@ -155,7 +156,7 @@ class AggregatePolygonProcess() {
       }
     }
     val cellType = datacube.metadata.cellType
-    val maybeLabels = new OpenEOProcesses().maybeBandLabels(datacube)
+    val maybeLabels = DatacubeSupport.maybeBandLabels(datacube)
     aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath,maybeLabels)
   }
 
@@ -211,7 +212,7 @@ class AggregatePolygonProcess() {
         }
         result
     }
-    val maybeLabels = new OpenEOProcesses().maybeBandLabels(datacube)
+    val maybeLabels = DatacubeSupport.maybeBandLabels(datacube)
     val cellType = datacube.metadata.cellType
     aggregateByPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath, maybeLabels)
   }
@@ -316,7 +317,7 @@ class AggregatePolygonProcess() {
         }
       }
       val cellType = datacube.metadata.cellType
-      val maybeLabels = new OpenEOProcesses().maybeBandLabels(datacube)
+      val maybeLabels = DatacubeSupport.maybeBandLabels(datacube)
       pixelRDD.name = s"aggregate_spatial: all pixels by zone ${maybeLabels.map(_.mkString(",")).getOrElse("band labels unknown")} ${cellType.name}"
       aggregateByDateAndPolygon(pixelRDD, scriptBuilder, bandCount, cellType, outputPath,maybeLabels)
 

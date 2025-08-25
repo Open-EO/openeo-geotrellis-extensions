@@ -21,11 +21,10 @@ object GeoCodingProcess {
 
 class GeoCodingProcess extends Serializable {
 
-  def geocode(inputTile: MultibandTile, crs:CRS): Option[Raster[MultibandTile]] = {
+  def geocode(inputTile: MultibandTile, crs:CRS, resolution:CellSize = CellSize(20.0,20.0), lonIndex:Int =3, latIndex:Int = 2): Option[Raster[MultibandTile]] = {
 
-    val latitudes = inputTile.band(2).toArrayDouble()
-
-    val longitudes = inputTile.band(3).toArrayDouble()
+    val latitudes = inputTile.band(latIndex).toArrayDouble()
+    val longitudes = inputTile.band(lonIndex).toArrayDouble()
 
     val geoCoder: PixelQuadTreeInverse = new PixelQuadTreeInverse.Plugin(false).create().asInstanceOf[PixelQuadTreeInverse]
     val geoRaster = new GeoRaster(longitudes, latitudes, "lon", "lat", inputTile.cols, inputTile.rows, 0.05)
@@ -48,7 +47,7 @@ class GeoCodingProcess extends Serializable {
 
     val reprojected = Extent(minLon, minLat, maxLon, maxLat).reproject(LatLng, crs) //.buffer(-10000.0) //.buffer(-20000.0,0.0)
 
-    val re = RasterExtent(reprojected, CellSize(20.0, 20.0))
+    val re = RasterExtent(reprojected, resolution)
     val tile = DoubleArrayTile.ofDim(re.cols, re.rows)
     val coordTransform = Transform(crs, LatLng)
 
@@ -78,13 +77,22 @@ class GeoCodingProcess extends Serializable {
   }
 
   def geoCode(cube: MultibandTileLayerRDD[SpaceTimeKey], targetExtent: Extent, targetCRS: CRS) = {
+
+    val bandLabels = DatacubeSupport.maybeBandLabels(cube).getOrElse{throw new IllegalArgumentException("Band labels missing from input cube, cannot proceed with geocoding.")}
+
+    if( !bandLabels.contains("latitude") || !bandLabels.contains("longitude")){
+      throw new IllegalArgumentException(s"Input cube does not contain latitude and longitude bands, cannot proceed with geocoding. Band labels: ${bandLabels.mkString(",")}")
+    }
+    val latIndex = bandLabels.indexOf("latitude")
+    val lonIndex = bandLabels.indexOf("longitude")
+    val resolution = cube.metadata.cellSize
     val rasters: RDD[(TemporalProjectedExtent, MultibandTile)] = cube.flatMap { case (key: SpaceTimeKey, tile: MultibandTile) => {
 
-      val raster = geocode(tile, targetCRS)
+      val raster = geocode(tile, targetCRS,resolution, lonIndex,latIndex)
       raster.map(r=>(TemporalProjectedExtent(r.extent, targetCRS, key.time), r.tile))
     }
     }
-    val targetLayout: LayoutDefinition = LayoutDefinition(RasterExtent(targetExtent, CellSize(20.0, 20.0)), 256, 256)
+    val targetLayout: LayoutDefinition = LayoutDefinition(RasterExtent(targetExtent, resolution), 256, 256)
     val origBounds = cube.metadata.bounds.get
 
     val md = DatacubeSupport.tileLayerMetadata(targetLayout, ProjectedExtent(targetExtent, targetCRS), origBounds.minKey.time, origBounds.maxKey.time, FloatConstantNoDataCellType)

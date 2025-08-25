@@ -14,6 +14,7 @@ import org.openeo.geotrelliscommon.zcurve.SfCurveZSpaceTimeKeyIndex
 import org.slf4j.LoggerFactory
 
 import java.time.ZonedDateTime
+import scala.collection.Seq
 import scala.reflect.ClassTag
 import scala.util.control.Breaks.{break, breakable}
 
@@ -347,5 +348,14 @@ object DatacubeSupport {
       }
     }
     (indexReduction, indices.sorted)
+  }
+
+  def maybeBandLabels[K](cube: RDD[(K, MultibandTile)]): Option[Seq[String]] = {
+    if (cube.isInstanceOf[OpenEORasterCube[K]] && cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bandCount > 0) {
+      val labels = cube.asInstanceOf[OpenEORasterCube[K]].openEOMetadata.bands
+      return Some(labels)
+    }else{
+      return None
+    }
   }
 }
