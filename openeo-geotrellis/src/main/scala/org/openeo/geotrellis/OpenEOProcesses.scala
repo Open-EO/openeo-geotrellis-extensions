@@ -489,7 +489,7 @@ class OpenEOProcesses extends Serializable {
             val estimatedSize = timePeriods.length * bandCountOption.get* datacube.metadata.tileLayout.tileSize * datacube.metadata.cellType.bytes
             logger.info(s"aggregate_temporal: estimated target partition size of ${estimatedSize/(1024.0*1024.0)} MB")
             if(estimatedSize/(1024*1024) < 3) {
-              new ByTileSpacetimePartitioner(allPossibleKeys)
+              new ByTileSpacetimePartitioner(Some(allPossibleKeys.toArray))
             }else{
               getPartitionerIndexForMaxPartitionSize(bandCountOption.get,datacube.metadata.tileLayout.tileSize,datacube.metadata.cellType.bits, 100.0)
             }
