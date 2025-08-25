@@ -484,7 +484,19 @@ class OpenEOProcesses extends Serializable {
         if (incomingIndex.get.isInstanceOf[ByTileSpacetimePartitioner]) {
           incomingIndex.get
         }else{
-          new SparseSpaceTimePartitioner(theNewKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4,Some(theNewKeys))
+          val bandCountOption = maybeBandCount(datacube)
+          if(reduce && bandCountOption.isDefined) {
+            val estimatedSize = timePeriods.length * bandCountOption.get * datacube.metadata.cellType.bytes
+            logger.info(s"aggregate_temporal: estimated target partition size of ${estimatedSize/(1024.0*1024.0)} MB")
+            if(estimatedSize/(1024*1024) < 3) {
+              new ByTileSpacetimePartitioner(allPossibleKeys)
+            }else{
+              //TODO determine indextreduction based on estimated size
+              new SparseSpaceTimePartitioner(theNewKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4,Some(theNewKeys))
+            }
+          }else{
+            new SparseSpaceTimePartitioner(theNewKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4,Some(theNewKeys))
+          }
         }
       }else{
         if (incomingIndex.isDefined) {
