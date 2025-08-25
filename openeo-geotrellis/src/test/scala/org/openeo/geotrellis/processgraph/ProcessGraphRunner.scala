@@ -47,8 +47,8 @@ object ProcessGraphRunner {
       }
     }
 
-    val jarParts = classPath.split(":").filter(_.endsWith(".jar")).groupBy(s => s.substring(0, s.indexOf("/", 1))).map(e => findCommonPrefix(e._2))
-    val folderParts = classPath.split(":").filter(!_.endsWith(".jar")).groupBy(s => s.substring(0, s.indexOf("/", 1))).map(e => findCommonPrefix(e._2))
+    val jarParts = classPath.split(":").filter(_.endsWith(".jar")).groupBy(s => s.substring(0, s.indexOf("/", 1))).map(e => findCommonPrefix(e._2.sorted))
+    val folderParts = classPath.split(":").filter(!_.endsWith(".jar")).groupBy(s => s.substring(0, s.indexOf("/", 1))).map(e => findCommonPrefix(e._2.sorted))
 
     val jarMapping = jarParts.zipWithIndex.map { case (jarPart, i) => (jarPart, f"/jars$i") }
     val folderMapping = folderParts.zipWithIndex.map { case (folderPart, i) => (folderPart, f"/code$i") }
@@ -90,9 +90,9 @@ object ProcessGraphRunner {
         val sparkUIPort = findFirstOpenPort(4040)
         logger.info(f"Waiting for remote debugger on port $debugPort")
         logger.info(f"SparkUI will be available at http://localhost:$sparkUIPort")
-        f"docker run -p $debugPort:5005 -p $sparkUIPort:4040 $credentialsFileMapping -v $outputDir:/out -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath DEBUG"
+        f"docker run -e LD_LIBRARY_PATH=/opt/venv/lib/python3.11/site-packages/jep -p $debugPort:5005 -p $sparkUIPort:4040 $credentialsFileMapping $optionalDataMapping -v $outputDir:/out -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath DEBUG"
       } else {
-        f"docker run -v $outputDir:/out $credentialsFileMapping -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath"
+        f"docker run -e LD_LIBRARY_PATH=/opt/venv/lib/python3.11/site-packages/jep -v $outputDir:/out $credentialsFileMapping $optionalDataMapping -v $hostGraphFolder:/graphs $classPathMappings $dockerImage /graphs/$processGraphName /out $dockerClassPath"
       }
     logger.debug(f"Prepared command: $cmd")
     val output = cmd.!!
@@ -118,6 +118,19 @@ object ProcessGraphRunner {
     }
     credentialsFile.map(f => f"-v ${f.getAbsolutePath}:/opt/openeo/http_credentials.json").getOrElse("")
   }
+
+  lazy val optionalDataMapping: String = {
+    val dataFolder = {
+      val file = new File("~/localdata")
+      if (file.exists && file.isDirectory) {
+        Some(file)
+      } else {
+        None
+      }
+    }
+    dataFolder.map(f => f"-v ${f.getAbsolutePath}:/data").getOrElse("")
+  }
+
 
   @tailrec
   def findFirstOpenPort(fromPort: Int): Int = {

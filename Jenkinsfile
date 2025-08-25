@@ -212,7 +212,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
             rtMaven.tool = maven
             if (skipTests) {
                 print "Maven will skip all tests"
-                rtMaven.opts += ' -DskipTests=true'
+                rtMaven.opts += ' -DskipTests=true -DskipSentinelHubTests=true'
                 rtMaven.opts += ' -DskipSentinelHubTests=true'
             } else if (skipSentinelHubTests) {
                 print "Maven will only skip Sentinel Hub tests"
@@ -246,6 +246,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
                     junit '*/target/*-reports/*.xml'
                 }
                 sh "chown -R jenkins:vito ."
+                sh "chown -R jenkins:vito /localdata/M2"
             }
         }
     }

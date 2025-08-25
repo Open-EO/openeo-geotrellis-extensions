@@ -10,10 +10,14 @@ import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.locationtech.sfcurve.zorder.{Z2, ZRange}
+import org.slf4j.LoggerFactory
 
 import java.time.ZonedDateTime
 
 object LayerProvider{
+
+  private val logger = LoggerFactory.getLogger(classOf[LayerProvider])
+
   def createMaskLayer(features: Seq[Feature[MultiPolygon, Double]], crs: CRS, metadata: TileLayerMetadata[SpaceTimeKey], sc: SparkContext): RDD[(SpatialKey, Tile)] with Metadata[LayoutDefinition] = {
 
     val rddCount = math.max(10,features.size / 20)
@@ -23,7 +27,12 @@ object LayerProvider{
     val partitioner = {
       val gridBounds = metadata.mapTransform(envelope)
       //negative spatial keys means going out of bounds of
-      val nonNegativeBounds = gridBounds.copy(colMin = math.max(0,gridBounds.colMin),rowMin = math.max(0,gridBounds.rowMin))
+      if (gridBounds.colMax < 0 || gridBounds.rowMax < 0) {
+        logger.warn("Envelope of polygon does not overlap with layout")
+      } else if (gridBounds.colMin < 0 || gridBounds.rowMin < 0) {
+        logger.warn("Envelope of polygon only partially overlaps with layout")
+      }
+      val nonNegativeBounds = gridBounds.copy(colMin = math.max(0,gridBounds.colMin),rowMin = math.max(0,gridBounds.rowMin), colMax = math.max(0, gridBounds.colMax), rowMax = math.max(0, gridBounds.rowMax))
 
       val spatialPartitioner: PartitionerIndex[SpatialKey] = new PartitionerIndex[SpatialKey] {
         private def toZ(key: SpatialKey): Z2 = Z2(key.col >> 5, key.row >> 5)
