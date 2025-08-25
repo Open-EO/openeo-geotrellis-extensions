@@ -35,6 +35,16 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
+            <groupId>org.geotools</groupId>
+            <artifactId>gt-api</artifactId>
+            <version>${gt-version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.geotools</groupId>
+            <artifactId>gt-referencing</artifactId>
+            <version>${gt-version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.esa.snap</groupId>
             <artifactId>snap-core</artifactId>
             <version>12.0.0</version>
@@ -42,11 +52,11 @@
                 <!-- Exclusion to optimize shaded jar size -->
                 <exclusion>
                     <groupId>org.geotools</groupId>
-                    <artifactId>gt-coverage</artifactId>
+                    <artifactId>*</artifactId>
                 </exclusion>
                 <exclusion>
-                    <groupId>org.geotools</groupId>
-                    <artifactId>gt-geojson</artifactId>
+                    <groupId>org.geotools.xsd</groupId>
+                    <artifactId>*</artifactId>
                 </exclusion>
                 <exclusion>
                     <groupId>it.geosolutions.imageio-ext</groupId>
@@ -77,11 +87,7 @@
             <artifactId>geotrellis-common</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <dependency>
-            <groupId>org.geotools</groupId>
-            <artifactId>gt-api</artifactId>
-            <version>${gt-version}</version>
-        </dependency>
+
         <dependency>
             <groupId>org.openeo</groupId>
             <artifactId>openeo-geotrellis</artifactId>
