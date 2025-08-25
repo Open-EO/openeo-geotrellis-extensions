@@ -5,7 +5,7 @@ import geotrellis.proj4.CRS
 import geotrellis.raster
 import geotrellis.raster.crop.Crop.Options
 import geotrellis.raster.io.geotiff._
-import geotrellis.raster.io.geotiff.compression.{Compression, DeflateCompression}
+import geotrellis.raster.io.geotiff.compression.{Compression, DeflateCompression, ZStdCompression}
 import geotrellis.raster.io.geotiff.tags.codes.ColorSpace
 import geotrellis.raster.render.IndexedColorMap
 import geotrellis.raster.resample._
@@ -327,12 +327,11 @@ package object geotiff {
   def saveRDD(rdd: MultibandTileLayerRDD[SpatialKey],
               bandCount: Int,
               path: String,
-              zLevel: Int = 6,
               cropBounds: Option[Extent] = Option.empty[Extent],
               formatOptions: GTiffOptions = new GTiffOptions
              ): JList[String] = {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, spatial, $bandCount)")
-    val tmp = saveRDDAllowAssetPerBand(rdd, bandCount, path, zLevel, cropBounds, formatOptions)
+    val tmp = saveRDDAllowAssetPerBand(rdd, bandCount, path, cropBounds, formatOptions)
     logger.warn("Calling backwards compatibility version for saveRDDAllowAssetPerBand")
     //    if (tmp.size() > 1) {
     //      throw new Exception("Multiple returned files, probably meant to call saveRDDAllowAssetPerBand")
@@ -349,7 +348,6 @@ package object geotiff {
   def saveRDDAllowAssetPerBand(rdd: MultibandTileLayerRDD[SpatialKey],
                                bandCount: Int,
                                path: String,
-                               zLevel: Int = 6,
                                cropBounds: Option[Extent] = Option.empty[Extent],
                                formatOptions: GTiffOptions = new GTiffOptions
                               ): JList[Item] = {
@@ -430,7 +428,7 @@ package object geotiff {
       Collections.singletonList(Item(id = UUID.randomUUID().toString, datetime = null, bbox = extent, assets))
       // TODO: restore asset ordering?
     } else {
-      val (tiffPath, extent) = saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions)
+      val (tiffPath, extent) = saveRDDGeneric(rdd, bandCount, path, cropBounds, formatOptions)
       val assets = Collections.singletonMap("openEO", Asset(tiffPath, (0 until bandCount).asJava))
 
       Collections.singletonList(Item(id = UUID.randomUUID().toString, datetime = null, bbox = extent, assets))
@@ -526,7 +524,7 @@ package object geotiff {
     def levelFor(extent: Extent, cellSize: CellSize): LayoutLevel = ???
   }
 
-  private def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, zLevel: Int = 6, cropBounds: Option[Extent] = None, formatOptions: GTiffOptions = new GTiffOptions): (String, Extent) = {
+  private def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, cropBounds: Option[Extent] = None, formatOptions: GTiffOptions = new GTiffOptions): (String, Extent) = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2
@@ -1133,7 +1131,6 @@ package object geotiff {
           )
 
           if (tileWidth != tileHeight) throw new AssertionError(s"tile width $tileWidth != tile height $tileHeight")
-          convertToCog(tempFile, geoTiff.bandCount, blockSize = tileWidth)
         }
       }
 
