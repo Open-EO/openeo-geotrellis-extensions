@@ -173,7 +173,7 @@ package object geotiff {
     val relativeFilePath = parentDirectory.relativize(Path.of(geoTiffResultObject.correctPath)).toString
     // Remove the executorAttemptDirectory part from the path:
     val destinationPath = parentDirectory.resolve(relativeFilePath.substring(relativeFilePath.indexOf("/") + 1))
-    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) {
+    if (relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) {
       if (geoTiffResultObject.fileExists) {
         CreoS3Utils.waitTillPathAvailable(geoTiffResultObject.correctPath)
         if (!CreoS3Utils.isS3(parentDirectory.toString)) {
