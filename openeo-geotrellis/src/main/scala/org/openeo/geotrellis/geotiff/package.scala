@@ -20,7 +20,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.AccumulatorV2
-import org.apache.spark.{Partitioner, SparkContext}
+import org.apache.spark.{Partitioner, SparkContext, TaskContext}
 import org.openeo.geotrellis
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.netcdf.NetCDFRDDWriter.fixedTimeOffset
@@ -171,24 +171,25 @@ package object geotiff {
   private def moveFromExecutorAttemptDirectory(parentDirectory: Path, geoTiffResultObject: GeoTiffResultObject): String = {
     // Move output file to standard location. (On S3, a move is more a copy and delete):
     val relativeFilePath = parentDirectory.relativize(Path.of(geoTiffResultObject.correctPath)).toString
-    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) throw new Exception("Bad relativeFilePath:" + relativeFilePath)
     // Remove the executorAttemptDirectory part from the path:
     val destinationPath = parentDirectory.resolve(relativeFilePath.substring(relativeFilePath.indexOf("/") + 1))
-    if (geoTiffResultObject.fileExists) {
-      CreoS3Utils.waitTillPathAvailable(geoTiffResultObject.correctPath)
-      if (!CreoS3Utils.isS3(parentDirectory.toString)) {
-        Files.createDirectories(destinationPath.getParent)
+    if (!relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) {
+      if (geoTiffResultObject.fileExists) {
+        CreoS3Utils.waitTillPathAvailable(geoTiffResultObject.correctPath)
+        if (!CreoS3Utils.isS3(parentDirectory.toString)) {
+          Files.createDirectories(destinationPath.getParent)
+        }
+        CreoS3Utils.moveOverwriteWithRetries(geoTiffResultObject.correctPath, destinationPath.toString)
       }
-      CreoS3Utils.moveOverwriteWithRetries(geoTiffResultObject.correctPath, destinationPath.toString)
-    }
 
-    geoTiffResultObject.gdalInfoPath match {
-      case Some(gdalInfoPath) =>
-        CreoS3Utils.waitTillPathAvailable(gdalInfoPath)
-        updateGdalInfoJsonFile(gdalInfoPath, destinationPath.toString)
-        val gdalInfoDestinationPath = gdalInfoPath.replaceFirst(executorAttemptDirectoryPrefix + "\\d+/", "")
-        CreoS3Utils.moveOverwriteWithRetries(gdalInfoPath, gdalInfoDestinationPath)
-      case None => // do nothing
+      geoTiffResultObject.gdalInfoPath match {
+        case Some(gdalInfoPath) =>
+          CreoS3Utils.waitTillPathAvailable(gdalInfoPath)
+          updateGdalInfoJsonFile(gdalInfoPath, destinationPath.toString)
+          val gdalInfoDestinationPath = gdalInfoPath.replaceFirst(executorAttemptDirectoryPrefix + "\\d+/", "")
+          CreoS3Utils.moveOverwriteWithRetries(gdalInfoPath, gdalInfoDestinationPath)
+        case None => // do nothing
+      }
     }
     if (CreoS3Utils.isS3(destinationPath.toString)) {
       destinationPath.toString.replaceFirst("s3:/(?!/)", "s3://")
@@ -382,9 +383,13 @@ package object geotiff {
       // groupByKey does a shuffle, so we can partition at the same time
       val geotiffResults = rdd_per_band.groupByKey(partitioner).map { case ((name, bandIndex), tiles) =>
         val fixedPath =
-          if (path.endsWith("out")) {
-            val executorAttemptDirectory = createExecutorAttemptDirectory(path.substring(0, path.length - 3))
-            executorAttemptDirectory + "/" + name
+          if (path.endsWith("out") ) {
+            if(TaskContext.get().attemptNumber()>0){
+              val executorAttemptDirectory = createExecutorAttemptDirectory(path.substring(0, path.length - 3))
+              executorAttemptDirectory + "/" + name
+            }else{
+              path.substring(0, path.length - 3) + "/" + name
+            }
           }
           else {
             path
@@ -403,7 +408,7 @@ package object geotiff {
         (stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, Some(extent), None, compression, Some(fo)),
           Collections.singletonList(bandIndex))
       }.collect()
-      val res = geotiffResults.par.map {
+      val res = geotiffResults.map {
         case (geoTiffResultObject, bandIndices) =>
           if (path.endsWith("out")) {
             val beforeOut = path.substring(0, path.length - "out".length)
@@ -412,7 +417,7 @@ package object geotiff {
           } else {
             (geoTiffResultObject.correctPath, extent, bandIndices)
           }
-      }.seq
+      }
 
       if (path.endsWith("out")) {
         val beforeOut = path.substring(0, path.length - "out".length)
