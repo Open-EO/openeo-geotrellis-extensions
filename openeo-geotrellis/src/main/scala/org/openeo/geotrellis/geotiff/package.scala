@@ -907,7 +907,7 @@ package object geotiff {
 
         (stitchAndWriteToTiff(tiles, filePath, layout, crs, extent, croppedExtent, cropDimensions, compression, formatOptions), tileId, extent)
     }.collect()
-    val res = geotiffResults.map {
+    val res = geotiffResults.par.map {
       case (geoTiffResultObject, tileId, croppedExtent) =>
         val destinationPath = moveFromExecutorAttemptDirectory(Path.of(path).getParent, geoTiffResultObject)
         (destinationPath, tileId, croppedExtent)
