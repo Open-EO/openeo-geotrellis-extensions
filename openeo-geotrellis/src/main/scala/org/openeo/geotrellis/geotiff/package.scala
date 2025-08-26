@@ -412,7 +412,7 @@ package object geotiff {
           } else {
             (geoTiffResultObject.correctPath, extent, bandIndices)
           }
-      }
+      }.seq
 
       if (path.endsWith("out")) {
         val beforeOut = path.substring(0, path.length - "out".length)
