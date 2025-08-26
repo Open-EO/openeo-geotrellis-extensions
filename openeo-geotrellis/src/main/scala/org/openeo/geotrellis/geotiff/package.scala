@@ -403,7 +403,7 @@ package object geotiff {
         (stitchAndWriteToTiff(tiles, fixedPath, layout, crs, extent, Some(extent), None, compression, Some(fo)),
           Collections.singletonList(bandIndex))
       }.collect()
-      val res = geotiffResults.map {
+      val res = geotiffResults.par.map {
         case (geoTiffResultObject, bandIndices) =>
           if (path.endsWith("out")) {
             val beforeOut = path.substring(0, path.length - "out".length)
