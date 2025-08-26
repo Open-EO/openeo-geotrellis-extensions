@@ -422,8 +422,12 @@ package object geotiff {
       if (path.endsWith("out")) {
         val beforeOut = path.substring(0, path.length - "out".length)
         for ((geotiffResult, _) <- geotiffResults) {
-          val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(Path.of(beforeOut), geotiffResult)
-          CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
+          val outputDirectory = Path.of(beforeOut)
+          val relativeFilePath = outputDirectory.relativize(Path.of(geotiffResult.correctPath)).toString
+          if (relativeFilePath.startsWith(executorAttemptDirectoryPrefix)){
+            val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(outputDirectory, geotiffResult)
+            CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
+          }
         }
       }
 
