@@ -1130,10 +1130,6 @@ package object geotiff {
   private[geotrellis] def writeGeoTiff(geoTiff: MultibandGeoTiff, path: String, gtiffOptions: Option[GTiffOptions]): GeoTiffResultObject = {
     val tempFile = getTempFile(FilenameUtils.getBaseName(path) + "_", ".tif")
     geoTiff.write(tempFile.toString, optimizedOrder = true)
-    if (TaskContext.get().attemptNumber() == 0) {
-      // TODO: Remove this, or find a better way to test first attempt failing.
-      throw new RuntimeException("Test error on TaskContext.get().attemptNumber() == 0")
-    }
     val fileExists = Files.exists(tempFile)
     var gdalInfoPathName: Option[Path] = None
 
