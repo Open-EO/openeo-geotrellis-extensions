@@ -171,9 +171,9 @@ package object geotiff {
   private def moveFromExecutorAttemptDirectory(parentDirectory: Path, geoTiffResultObject: GeoTiffResultObject): String = {
     // Move output file to standard location. (On S3, a move is more a copy and delete):
     val relativeFilePath = parentDirectory.relativize(Path.of(geoTiffResultObject.correctPath)).toString
-    // Remove the executorAttemptDirectory part from the path:
-    val destinationPath = parentDirectory.resolve(relativeFilePath.substring(relativeFilePath.indexOf("/") + 1))
-    if (relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) {
+    val destinationPathCleaned = if (relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) {
+      // Remove the executorAttemptDirectory part from the path:
+      val destinationPath = parentDirectory.resolve(relativeFilePath.substring(relativeFilePath.indexOf("/") + 1))
       if (geoTiffResultObject.fileExists) {
         CreoS3Utils.waitTillPathAvailable(geoTiffResultObject.correctPath)
         if (!CreoS3Utils.isS3(parentDirectory.toString)) {
@@ -190,11 +190,12 @@ package object geotiff {
           CreoS3Utils.moveOverwriteWithRetries(gdalInfoPath, gdalInfoDestinationPath)
         case None => // do nothing
       }
-    }
-    if (CreoS3Utils.isS3(destinationPath.toString)) {
-      destinationPath.toString.replaceFirst("s3:/(?!/)", "s3://")
+      destinationPath
+    } else parentDirectory.resolve(relativeFilePath)
+    if (CreoS3Utils.isS3(destinationPathCleaned.toString)) {
+      destinationPathCleaned.toString.replaceFirst("s3:/(?!/)", "s3://")
     } else {
-      destinationPath.toString
+      destinationPathCleaned.toString
     }
   }
 
