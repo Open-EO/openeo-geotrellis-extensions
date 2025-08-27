@@ -920,12 +920,12 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
              * We use the number of dates as a proxy for the max number of items intersecting a given spatial key.
              * For cases like Sentinel-2, we can however have  items intersecting at a given location on the same date.
              */
-            val maxPartitionSizeBytes = 20 * 1024 * 1024
+            val maxPartitionSizeBytes = 30 * 1024 * 1024
             val sampleCount = math.min(10, overlappingRasterSources.size)
             val averageItemSizeInBytes = overlappingRasterSources.take(sampleCount).map(item => SizeEstimator.estimate(item)).sum / sampleCount
             val estimatedSizePerKey = averageItemSizeInBytes * dates.length
             val maxSpatialKeysPerPartition = maxPartitionSizeBytes / estimatedSizePerKey
-            var indexReduction = math.max(math.ceil(math.log(maxSpatialKeysPerPartition) / math.log(2)).toInt - 1, 1)
+            val indexReduction = math.max(math.ceil(math.log(maxSpatialKeysPerPartition) / math.log(2)).toInt - 1, 1)
             SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(indexReduction))
           }
         }
