@@ -25,7 +25,7 @@ import net.jodah.failsafe.{Failsafe, RetryPolicy}
 import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import org.apache.spark.{HashPartitioner, Partitioner, SparkContext}
 import org.apache.spark.rdd.{CoGroupedRDD, RDD}
-import org.apache.spark.util.LongAccumulator
+import org.apache.spark.util.{LongAccumulator, SizeEstimator}
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
@@ -856,7 +856,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     var overlappingRasterSources: Seq[(RasterSource, Feature)] = loadRasterSourceRDD(ProjectedExtent(alignedExtent.extent,reprojectedBoundingBox.crs), from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
 
-    val dates = overlappingRasterSources.map(_._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))
+    val dates = overlappingRasterSources.map(_._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC"))).distinct
 
     var commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
@@ -913,7 +913,20 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             // processing a low number of spatial keys. This can happen with sparse data loading.
             new HashPartitioner(math.max((spatialKeyCount / 100).intValue(),1))
           }else{
-            SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(3))
+
+            /**
+             * Max size of metadata partition depends on the number of items returned by the catalog.
+             * Too many partitions requires extra executors, often at the very beginning of a job, so we try to limit this.
+             * We use the number of dates as a proxy for the max number of items intersecting a given spatial key.
+             * For cases like Sentinel-2, we can however have  items intersecting at a given location on the same date.
+             */
+            val maxPartitionSizeBytes = 30 * 1024 * 1024
+            val sampleCount = math.min(10, overlappingRasterSources.size)
+            val averageItemSizeInBytes = overlappingRasterSources.take(sampleCount).map(item => SizeEstimator.estimate(item)).sum / sampleCount
+            val estimatedSizePerKey = averageItemSizeInBytes * dates.length
+            val maxSpatialKeysPerPartition = maxPartitionSizeBytes / estimatedSizePerKey
+            val indexReduction = math.max(math.ceil(math.log(maxSpatialKeysPerPartition) / math.log(2)).toInt - 1, 1)
+            SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(indexReduction))
           }
         }
 
