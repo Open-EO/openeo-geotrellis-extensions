@@ -444,10 +444,10 @@ package object geotiff {
 
   private def cleanupTemporaryResults(geotiffResults: Array[GeoTiffResultObject], outputDirectory: String): Unit = {
     for (geotiffResult <- geotiffResults) {
-      val outputDirectory = Path.of(outputDirectory)
-      val relativeFilePath = outputDirectory.relativize(Path.of(geotiffResult.correctPath)).toString
+      val outputDirectoryPath = Path.of(outputDirectory)
+      val relativeFilePath = outputDirectoryPath.relativize(Path.of(geotiffResult.correctPath)).toString
       if (relativeFilePath.startsWith(executorAttemptDirectoryPrefix)) {
-        val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(outputDirectory, geotiffResult)
+        val successfulExecutorAttemptDirectory = extractExecutorAttemptDirectory(outputDirectoryPath, geotiffResult)
         CreoS3Utils.assetDeleteFolders(List(successfulExecutorAttemptDirectory))
       }
     }
