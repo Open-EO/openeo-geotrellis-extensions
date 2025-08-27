@@ -913,7 +913,16 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             // processing a low number of spatial keys. This can happen with sparse data loading.
             new HashPartitioner(math.max((spatialKeyCount / 100).intValue(),1))
           }else{
-            SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(3))
+
+            /**
+             * Max size of metadata partition depends on the number of items returned by the catalog.
+             * Too many partitions requires extra executors, often at the very beginning of a job, so we try to limit this.
+             *
+             */
+            val maxRecordsPerPartition = 4048
+            val maxSpatialKeysPerPartition = maxRecordsPerPartition / overlappingRasterSources
+            var indexReduction = math.max(math.ceil(math.log(maxSpatialKeysPerPartition) / math.log(2)).toInt - 1, 1)
+            SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(indexReduction))
           }
         }
 
