@@ -49,10 +49,13 @@ object WriteRDDToGeotiffTest{
   @BeforeAll
   def setupSpark() = {
     sc = {
-      val conf = new SparkConf().setMaster("local[8]").setAppName(getClass.getSimpleName)
+      val maxFailures = 3
+      val conf = new SparkConf().setMaster(f"local[8, $maxFailures]")
+        .setAppName(getClass.getSimpleName)
         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
         .set("spark.kryo.registrator", classOf[geotrellis.spark.store.kryo.KryoRegistrator].getName)
         .set("spark.ui.enabled", "true")
+        .set("spark.task.maxFailures", maxFailures.toString)
       SparkContext.getOrCreate(conf)
     }
     if (sc.uiWebUrl.isDefined) logger.info("Spark uiWebUrl: " + sc.uiWebUrl.get)

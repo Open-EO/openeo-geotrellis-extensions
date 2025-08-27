@@ -278,16 +278,15 @@ package object geotiff {
 
       val segmentCount = bandSegmentCount * tiffBands
 
-      val thePath =
-      if(TaskContext.get().attemptNumber()>0){
+      val absoluteFilePath = if (TaskContext.get().attemptNumber() > 0) {
         // Each executor writes to a unique folder to avoid conflicts:
         val executorAttemptDirectory = createExecutorAttemptDirectory(path)
-        val absoluteFilePath = executorAttemptDirectory.resolve(filename)
-        absoluteFilePath.toFile.getParentFile.mkdirs().toString
-      }else{
-        Path.of(path).resolve(filename).toString
+        executorAttemptDirectory.resolve(filename)
+      } else {
+        Path.of(path).resolve(filename)
       }
-
+      absoluteFilePath.toFile.getParentFile.mkdirs()
+      val thePath = absoluteFilePath.toString
 
       // filter band tags that match bandIndices
       val fo = formatOptions.deepClone()
@@ -1131,6 +1130,10 @@ package object geotiff {
   private[geotrellis] def writeGeoTiff(geoTiff: MultibandGeoTiff, path: String, gtiffOptions: Option[GTiffOptions]): GeoTiffResultObject = {
     val tempFile = getTempFile(FilenameUtils.getBaseName(path) + "_", ".tif")
     geoTiff.write(tempFile.toString, optimizedOrder = true)
+    if (TaskContext.get().attemptNumber() == 0) {
+      // TODO: Remove this, or find a better way to test first attempt failing.
+      throw new RuntimeException("Test error on TaskContext.get().attemptNumber() == 0")
+    }
     val fileExists = Files.exists(tempFile)
     var gdalInfoPathName: Option[Path] = None
 
