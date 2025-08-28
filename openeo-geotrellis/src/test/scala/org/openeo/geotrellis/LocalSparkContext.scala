@@ -15,10 +15,12 @@ protected trait LocalSparkContextBase {
 
   implicit def sc: SparkContext = {
     if (_sc.isEmpty) {
+      val maxFailures = 1
       var conf = new SparkConf()
         .set("spark.kryoserializer.buffer.max", "512m")
         .set("spark.rdd.compress", "true")
         .set("spark.ui.enabled", "true")
+        .set("spark.task.maxFailures", maxFailures.toString)
       val eventsDir = Paths.get("/tmp/spark-events") // Can be configured with "spark.eventLog.dir"
       if (Files.exists(eventsDir)) {
         Files.list(eventsDir).forEach { path =>
@@ -35,7 +37,7 @@ protected trait LocalSparkContextBase {
          */
         conf = conf.set("spark.eventLog.enabled", "true")
       }
-      _sc = Some(SparkUtils.createLocalSparkContext(sparkMaster = "local[*]", appName = getClass.getSimpleName, conf))
+      _sc = Some(SparkUtils.createLocalSparkContext(sparkMaster = f"local[*, $maxFailures]", appName = getClass.getSimpleName, conf))
       if (sc.uiWebUrl.isDefined) logger.info("Spark uiWebUrl: " + sc.uiWebUrl.get)
     }
     _sc.get

@@ -1,5 +1,6 @@
 package org.openeo.geotrellis.geotiff
 
+import better.files.File
 import better.files.File.apply
 import cats.data.NonEmptyList
 import geotrellis.layer.{CRSWorldExtent, FloatingLayoutScheme, SpaceTimeKey, SpatialKey, ZoomedLayoutScheme}
@@ -49,10 +50,13 @@ object WriteRDDToGeotiffTest{
   @BeforeAll
   def setupSpark() = {
     sc = {
-      val conf = new SparkConf().setMaster("local[8]").setAppName(getClass.getSimpleName)
+      val maxFailures = 3
+      val conf = new SparkConf().setMaster(f"local[8, $maxFailures]")
+        .setAppName(getClass.getSimpleName)
         .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
         .set("spark.kryo.registrator", classOf[geotrellis.spark.store.kryo.KryoRegistrator].getName)
         .set("spark.ui.enabled", "true")
+        .set("spark.task.maxFailures", maxFailures.toString)
       SparkContext.getOrCreate(conf)
     }
     if (sc.uiWebUrl.isDefined) logger.info("Spark uiWebUrl: " + sc.uiWebUrl.get)
@@ -447,6 +451,32 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     assertArrayEquals(croppedReference.toArray(), result2.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArray())
   }
 
+
+  @Test
+  def testWriteMultibandTemporalRDDWithGapsOverwrite(): Unit = {
+    val layoutCols = 8
+    val layoutRows = 4
+    val (layer, imageTile) = LayerFixtures.aSpacetimeTileLayerRdd(layoutCols, layoutRows)
+
+    val outDir = Paths.get("tmp/testWriteMultibandTemporalRDDWithGapsOverwrite/")
+    new Directory(outDir.toFile).deepList().foreach(_.delete())
+    Files.createDirectories(outDir)
+
+    val filename = outDir.resolve("openEO_2017-01-02Z.tif")
+    // Emulate a failing executor writing a corrupt file that will be overwritten:
+    File(filename).write("This file should be overwritten!")
+
+    saveRDDTemporal(layer, outDir.toString)
+    val result = GeoTiff.readMultiband(filename.toString).raster.tile
+
+    //crop away the area where data was removed, and check if rest of geotiff is still fine
+    val croppedReference = imageTile.crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArrayTile()
+
+    val croppedOutput = result.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256)
+    assertArrayEquals(croppedReference.toArray(), croppedOutput.toArray())
+    val result2 = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-03Z.tif").toString).raster.tile
+    assertArrayEquals(croppedReference.toArray(), result2.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArray())
+  }
 
   @Test
   def testWriteMultibandTemporalRDDWithGapsSeparateAssetPerBand(): Unit = {
