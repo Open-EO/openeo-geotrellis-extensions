@@ -287,7 +287,7 @@ package object geotiff {
       val segmentCount = bandSegmentCount * tiffBands
 
       val geotiffMultibandTiles = if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
-        logger.info(s"Add overviews for ${filename}")
+        logger.info(s"Add overviews for ${filename}, with resample method ${getOverviewResampleMethod(formatOptions)}")
         val decimationFactors = List(4,8,16)
         (0 until 3).toList.map(i => {
           val decimationFactor = decimationFactors(i)
