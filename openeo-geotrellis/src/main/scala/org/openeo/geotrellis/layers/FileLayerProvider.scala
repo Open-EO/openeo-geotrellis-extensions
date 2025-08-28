@@ -421,7 +421,7 @@ object FileLayerProvider {
 
     },preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile, SourceName)]) => {
       var mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1)
-        .map(t => (t._1, t._2.toList.sortBy(x => sortableSourceName(x._3)).reverse))
+        .map(t => (t._1, t._2.toList.sortBy(x => sortableSourceName(x._3))))
         .mapValues(x => x.map(_._2).reduceOption(_ merge _))
         .flatMap{case (index,multiband) =>{
           if(multiband.isDefined && multiband.get.bandCount>1) {
