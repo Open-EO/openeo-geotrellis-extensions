@@ -31,7 +31,7 @@ object TestImplicits {
   implicit class MultibandTileGeoTiffOutputMethods(spatialLayer: MultibandTileLayerRDD[SpatialKey]) {
     def writeGeoTiff(path: String, bbox: ProjectedExtent = null): Unit = {
       val maybeBBox = Option(bbox).map(_.reproject(spatialLayer.metadata.crs))
-      org.openeo.geotrellis.geotiff.saveRDD(spatialLayer, -1, path, maybeBBox)
+      org.openeo.geotrellis.geotiff.saveRDD(spatialLayer, -1, path, 6, maybeBBox)
     }
   }
 }

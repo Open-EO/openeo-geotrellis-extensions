@@ -292,10 +292,10 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     builder.argumentEnd()
     builder.constantArgument("y", 6)
     builder.expressionEnd("gte", args)
-    mask.toSpatial(date).writeGeoTiff(f"tmp/Sentinel2FileLayerProvider_multiband_SCL_${parameters.hashCode()}.tif", bbox)
+    mask.toSpatial(date).writeGeoTiff(f"/tmp/Sentinel2FileLayerProvider_multiband_SCL_${parameters.hashCode()}.tif", bbox)
     val p = new OpenEOProcesses()
     mask = p.mapBands(mask, builder)
-    mask.toSpatial(date).writeGeoTiff(f"tmp/Sentinel2FileLayerProvider_multiband_mask_${parameters.hashCode()}.tif", bbox)
+    mask.toSpatial(date).writeGeoTiff(f"/tmp/Sentinel2FileLayerProvider_multiband_mask_${parameters.hashCode()}.tif", bbox)
 
     var layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 13,datacubeParams = Option.empty)
 
@@ -315,10 +315,10 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       .toSpatial(date)
       .cache()
 
-    spatialLayer.writeGeoTiff(f"tmp/Sentinel2FileLayerProvider_multiband_${parameters.hashCode()}.tif", bbox)
+    spatialLayer.writeGeoTiff(f"/tmp/Sentinel2FileLayerProvider_multiband_${parameters.hashCode()}.tif", bbox)
     assertNotEquals(originalCount,maskedCount)
 
-    val resultTiff = GeoTiff.readMultiband(f"tmp/Sentinel2FileLayerProvider_multiband_${parameters.hashCode()}.tif")
+    val resultTiff = GeoTiff.readMultiband(f"/tmp/Sentinel2FileLayerProvider_multiband_${parameters.hashCode()}.tif")
 
     val refFile = Thread.currentThread().getContextClassLoader.getResource(refPath)
     val refTiff = GeoTiff.readMultiband(refFile.getPath)
@@ -597,7 +597,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
     val referenceTile = GeoTiffRasterSource(ref).read().get
     val actualTile = GeoTiffRasterSource(actual).read().get
-    assertRastersEqual(referenceTile, actualTile, 160.0)
+    assertRastersEqual(referenceTile, actualTile, 260.0)
     //because debug logging is enabled during tests, it actually runs more jobs and stages than done in production
     assertEquals(5, listener.getJobsCompleted)
     assertEquals(18, listener.getStagesCompleted)

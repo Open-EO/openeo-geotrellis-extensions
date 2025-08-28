@@ -327,11 +327,12 @@ package object geotiff {
   def saveRDD(rdd: MultibandTileLayerRDD[SpatialKey],
               bandCount: Int,
               path: String,
+              zLevel: Int = 6,
               cropBounds: Option[Extent] = Option.empty[Extent],
               formatOptions: GTiffOptions = new GTiffOptions
              ): JList[String] = {
     rdd.sparkContext.setCallSite(s"save_result(GTiff, spatial, $bandCount)")
-    val tmp = saveRDDAllowAssetPerBand(rdd, bandCount, path, cropBounds, formatOptions)
+    val tmp = saveRDDAllowAssetPerBand(rdd, bandCount, path, zLevel, cropBounds, formatOptions)
     logger.warn("Calling backwards compatibility version for saveRDDAllowAssetPerBand")
     //    if (tmp.size() > 1) {
     //      throw new Exception("Multiple returned files, probably meant to call saveRDDAllowAssetPerBand")
@@ -348,6 +349,7 @@ package object geotiff {
   def saveRDDAllowAssetPerBand(rdd: MultibandTileLayerRDD[SpatialKey],
                                bandCount: Int,
                                path: String,
+                               zLevel: Int = 6,
                                cropBounds: Option[Extent] = Option.empty[Extent],
                                formatOptions: GTiffOptions = new GTiffOptions
                               ): JList[Item] = {
@@ -428,15 +430,15 @@ package object geotiff {
       Collections.singletonList(Item(id = UUID.randomUUID().toString, datetime = null, bbox = extent, assets))
       // TODO: restore asset ordering?
     } else {
-      val (tiffPath, extent) = saveRDDGeneric(rdd, bandCount, path, cropBounds, formatOptions)
+      val (tiffPath, extent) = saveRDDGeneric(rdd, bandCount, path, zLevel, cropBounds, formatOptions)
       val assets = Collections.singletonMap("openEO", Asset(tiffPath, (0 until bandCount).asJava))
 
       Collections.singletonList(Item(id = UUID.randomUUID().toString, datetime = null, bbox = extent, assets))
     }
   }
 
-    def saveRDDTileGrid(rdd: MultibandTileLayerRDD[SpatialKey], bandCount: Int, path: String, tileGrid: String, cropBounds: Option[Extent] = Option.empty[Extent], options: GTiffOptions = new GTiffOptions) = {
-    saveRDDGenericTileGrid(rdd, path, tileGrid, cropBounds, options)
+  def saveRDDTileGrid(rdd:MultibandTileLayerRDD[SpatialKey], bandCount:Int, path:String, tileGrid: String, zLevel:Int=6,cropBounds:Option[Extent]=Option.empty[Extent]) = {
+    saveRDDGenericTileGrid(rdd,path, tileGrid, cropBounds)
   }
 
   private def gridBoundsFor(re: RasterExtent, subExtent: Extent, clamp: Boolean = true): GridBounds[Int] = {
@@ -525,7 +527,7 @@ package object geotiff {
     def levelFor(extent: Extent, cellSize: CellSize): LayoutLevel = ???
   }
 
-  private def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, cropBounds: Option[Extent] = None, formatOptions: GTiffOptions = new GTiffOptions): (String, Extent) = {
+  private def saveRDDGeneric[K: SpatialComponent: Boundable : ClassTag](rdd: MultibandTileLayerRDD[K], bandCount: Int, path: String, zLevel: Int = 6, cropBounds: Option[Extent] = None, formatOptions: GTiffOptions = new GTiffOptions): (String, Extent) = {
     val preProcessResult: (GridBounds[Int], Extent, RDD[(K, MultibandTile)] with Metadata[TileLayerMetadata[K]]) = preProcess(rdd,cropBounds)
     val gridBounds: GridBounds[Int] = preProcessResult._1
     val croppedExtent: Extent = preProcessResult._2

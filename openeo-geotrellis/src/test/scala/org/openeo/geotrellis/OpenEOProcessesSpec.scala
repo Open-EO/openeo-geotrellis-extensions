@@ -402,7 +402,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val resultCube: MultibandTileLayerRDD[SpaceTimeKey] = processes.mergeGroupedByGeometry(groupedAndMaskedByGeometry, datacube.metadata)
 
     // Compare to reference tile.
-    saveRDD(resultCube.toSpatial(times.head),2, "groupByGeometry_2017-01-15_actual.tif", Some(datacube.metadata.extent))
+    saveRDD(resultCube.toSpatial(times.head),2, "groupByGeometry_2017-01-15_actual.tif", 6, Some(datacube.metadata.extent))
     val actualRaster = GeoTiffRasterSource("groupByGeometry_2017-01-15_actual.tif").read().get
     val referenceRaster = GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/testGroupAndMaskByGeometry.tif").read().get
     assertRastersEqual(referenceRaster, actualRaster)

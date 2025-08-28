@@ -54,7 +54,7 @@ class Sentinel1CoherenceFileLayerProviderTest {
       .cache()
 
     val tiffPath = outDir + "/polygonalMean.tiff" // Band 1: VH, Band 2: VV
-    org.openeo.geotrellis.geotiff.saveRDD(spatialLayer, -1, tiffPath, None)
+    org.openeo.geotrellis.geotiff.saveRDD(spatialLayer, -1, tiffPath, 6, None)
 
     val reprojected = polygon.reproject(LatLng, spatialLayer.metadata.crs)
 
