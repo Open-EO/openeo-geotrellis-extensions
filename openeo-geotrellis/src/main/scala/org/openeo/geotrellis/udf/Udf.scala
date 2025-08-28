@@ -47,20 +47,7 @@ object Udf {
       |from openeo_driver.errors import OpenEOApiException
       |""".stripMargin
 
-  private var isInterpreterInitialized = false
-
   case class SpatialExtent(xmin : Double, val ymin : Double, val xmax : Double, ymax: Double, tileCols: Int, tileRows: Int)
-
-  private def createSharedInterpreter(): SharedInterpreter = {
-    if (!isInterpreterInitialized) {
-      val config = new JepConfig()
-      config.redirectStdErr(System.err)
-      config.redirectStdout(System.out)
-      SharedInterpreter.setConfig(config)
-      isInterpreterInitialized = true
-    }
-    new SharedInterpreter
-  }
 
   private def createExtentFromSpatialKey(layoutDefinition: LayoutDefinition,
                                          key: SpatialKey
@@ -200,7 +187,8 @@ object Udf {
             |
             |""".stripMargin
         val (newCellSize, newBandNames) = layer.sparkContext.parallelize(Seq(1)).map(_=>{
-          val interp = createSharedInterpreter()
+
+          val interp = SharedInterpreterFactory.create()
           try {
             interp.exec(DEFAULT_IMPORTS)
             setContextInPython(interp, context)
@@ -292,7 +280,7 @@ object Udf {
         )
 
         val resultTiles = ListBuffer[(TemporalProjectedExtent, MultibandTile)]()
-        val interp: SharedInterpreter = createSharedInterpreter
+        val interp: SharedInterpreter = SharedInterpreterFactory.create()
         try {
           interp.exec(DEFAULT_IMPORTS)
 
@@ -406,7 +394,7 @@ object Udf {
         var resultMultiBandTile = multiBandTile
         var newTileRows: Int = tileRows
         var newTileCols: Int = tileCols
-        val interp = createSharedInterpreter()
+        val interp = SharedInterpreterFactory.create()
         try {
           interp.exec(DEFAULT_IMPORTS)
 
@@ -535,7 +523,7 @@ object Udf {
         var newTileRows: Int = tileRows
         var newTileCols: Int = tileCols
         val resultTiles = ListBuffer[(SpaceTimeKey, MultibandTile)]()
-        val interp: SharedInterpreter = createSharedInterpreter
+        val interp: SharedInterpreter = SharedInterpreterFactory.create()
         try {
           interp.exec(DEFAULT_IMPORTS)
 

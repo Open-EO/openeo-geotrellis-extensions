@@ -1,0 +1,54 @@
+{
+  "loadcollection1": {
+    "process_id": "load_collection",
+    "arguments": {
+      "id": "TestCollection-LonLat4x4",
+      "temporal_extent": [
+        "2023-06-01",
+        "2023-08-01"
+      ],
+      "spatial_extent": {
+        "west": 0.0,
+        "south": 0.0,
+        "east": 1.0,
+        "north": 2.0
+      },
+      "bands": [
+        "Longitude",
+        "Latitude"
+      ]
+    }
+  },
+  "reducedimension1": {
+    "process_id": "reduce_dimension",
+    "arguments": {
+      "data": {
+        "from_node": "loadcollection1"
+      },
+      "dimension": "t",
+      "reducer": {
+        "process_graph": {
+          "min1": {
+            "process_id": "min",
+            "arguments": {
+              "data": {
+                "from_parameter": "data"
+              }
+            },
+            "result": true
+          }
+        }
+      }
+    }
+  },
+  "saveresult1": {
+    "process_id": "save_result",
+    "arguments": {
+      "data": {
+        "from_node": "reducedimension1"
+      },
+      "format": "GTiff"
+    },
+    "result": true
+  }
+}

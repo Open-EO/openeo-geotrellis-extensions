@@ -1,14 +1,17 @@
 package org.openeo.geotrellis.file
 
 import cats.syntax.either._
+import geotrellis.layer.{SpaceTimeKey, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.CellSize
 import geotrellis.raster.testkit.RasterMatchers
 import geotrellis.spark.util.SparkUtils
-import geotrellis.vector.Extent
-import io.circe.Json
+import geotrellis.vector.io.wkt.WKT
+import geotrellis.vector.{Extent, Geometry, MultiPolygon, Polygon, ReprojectGeometry}
+import io.circe.{Json, parser}
 import io.circe.parser.{decode => circeDecode}
-import org.apache.spark.SparkContext
+import org.apache.spark.{Partitioner, SparkContext}
+import org.apache.spark.api.java.JavaRDD
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
 import org.junit.jupiter.params.ParameterizedTest
@@ -43,7 +46,7 @@ class FileRDDFactoryTest extends RasterMatchers {
     val file_rdd_factory = new FileRDDFactory(client, "Sentinel1", attributeValues, "unknown-job", CellSize(10, 10))
     val from_date = "2022-12-01T00:00:00+00:00"
     val to_date = "2022-12-30T00:00:00+00:00"
-    val projected_polygons = ProjectedPolygons.fromExtent(Extent(11.23, 46.9, 11.45, 47), "EPSG:4326")
+    val projected_polygons = ProjectedPolygons.fromExtent(Extent(10.8, 46.0, 11.45, 46.5), "EPSG:4326")
     val polygons_32632 = projected_polygons.extent.reproject(CRS.fromEpsgCode(32632))
     val projected_polygons_32632 = ProjectedPolygons.fromExtent(polygons_32632, "EPSG:32632")
     val dataCubeParameters = new DataCubeParameters()
@@ -62,9 +65,24 @@ class FileRDDFactoryTest extends RasterMatchers {
 
     dataCubeParameters.timeDimensionFilter = Some(builder)
 
-    val res = file_rdd_factory.loadSpatialFeatureJsonRDD(projected_polygons_32632, from_date, to_date, 0, 512, dataCubeParameters)
-    val res_array = res._1.collect().toArray
-    res_array.foreach(x => assert(x.asInstanceOf[String].contains("2022-12-05"))) // only selected date should be here
+    val res: (JavaRDD[String], TileLayerMetadata[SpaceTimeKey], Partitioner) = file_rdd_factory.loadSpatialFeatureJsonRDD(projected_polygons_32632, from_date, to_date, 0, 512, dataCubeParameters)
+    val res_array = res._1.collect().asScala
+
+    val productBounds: Geometry = WKT.read("MULTIPOLYGON (((13.877172 44.690407, 14.278967 46.191269, 10.879353 46.599377, 10.566596 45.099113, 13.877172 44.690407)))")
+    val productBoundsUTM = productBounds.reproject(LatLng, CRS.fromEpsgCode(32632))
+    res_array.foreach(x => assert(x.contains("2022-12-05")))
+    res_array.foreach {jsonString => {
+      val decoded = parser.parse(jsonString).getOrElse(Json.Null)
+
+      val extent = decoded.hcursor.downField("key_extent")
+      val xmin: Double = extent.downField("xmin").as[Double].toOption.get
+      val ymin = extent.downField("ymin").as[Double].toOption.get
+      val xmax = extent.downField("xmax").as[Double].toOption.get
+      val ymax = extent.downField("ymax").as[Double].toOption.get
+
+
+      assert(productBoundsUTM.intersects(new Extent(xmin,ymin,xmax,ymax)))
+    }}// only selected date should be here
   }
 
   @ParameterizedTest
