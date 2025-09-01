@@ -64,7 +64,7 @@ class GeoCodingProcess extends Serializable {
           inputTile.band(0).getDouble(resultPos.x.round.toInt, resultPos.y.round.toInt)
         } catch {
           case e: ArrayIndexOutOfBoundsException =>
-            GeoCodingProcess.logger.error(s"Error retrieving value for pixel position $resultPos: ${e.getMessage}")
+            GeoCodingProcess.logger.error(s"resample_spatial - geocode: Error retrieving value for pixel position $resultPos: ${e.getMessage}")
             Double.NaN
         }
       } else {
@@ -76,23 +76,23 @@ class GeoCodingProcess extends Serializable {
 
   }
 
-  def geoCode(cube: MultibandTileLayerRDD[SpaceTimeKey], targetExtent: Extent, targetCRS: CRS) = {
+  def geoCode(cube: MultibandTileLayerRDD[SpaceTimeKey], targetExtent: Extent, targetCRS: CRS, targetResolution: CellSize) = {
 
     val bandLabels = DatacubeSupport.maybeBandLabels(cube).getOrElse{throw new IllegalArgumentException("Band labels missing from input cube, cannot proceed with geocoding.")}
 
     if( !bandLabels.contains("latitude") || !bandLabels.contains("longitude")){
-      throw new IllegalArgumentException(s"Input cube does not contain latitude and longitude bands, cannot proceed with geocoding. Band labels: ${bandLabels.mkString(",")}")
+      throw new IllegalArgumentException(s"resample_spatial - geocode: Input cube does not contain latitude and longitude bands, cannot proceed with geocoding. Band labels: ${bandLabels.mkString(",")}")
     }
     val latIndex = bandLabels.indexOf("latitude")
     val lonIndex = bandLabels.indexOf("longitude")
-    val resolution = cube.metadata.cellSize
+
     val rasters: RDD[(TemporalProjectedExtent, MultibandTile)] = cube.flatMap { case (key: SpaceTimeKey, tile: MultibandTile) => {
 
       val raster = geocode(tile, targetCRS,resolution, lonIndex,latIndex)
       raster.map(r=>(TemporalProjectedExtent(r.extent, targetCRS, key.time), r.tile))
     }
     }
-    val targetLayout: LayoutDefinition = LayoutDefinition(RasterExtent(targetExtent, resolution), 256, 256)
+    val targetLayout: LayoutDefinition = LayoutDefinition(RasterExtent(targetExtent, targetResolution), 256, 256)
     val origBounds = cube.metadata.bounds.get
 
     val md = DatacubeSupport.tileLayerMetadata(targetLayout, ProjectedExtent(targetExtent, targetCRS), origBounds.minKey.time, origBounds.maxKey.time, FloatConstantNoDataCellType)

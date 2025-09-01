@@ -61,7 +61,7 @@ class GeoCodingTest {
     val cube: MultibandTileLayerRDD[SpaceTimeKey] = ContextRDD(tiledInput,inputMetadata)
     val targetExtent = Extent(1078161.262, 5197478.538, 1176612.520, 5228026.100)
     val targetCRS = CRS.fromEpsgCode(32631)
-    val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = new GeoCodingProcess().geoCode(cube, targetExtent, targetCRS)
+    val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = new GeoCodingProcess().geoCode(cube, targetExtent, targetCRS, CellSize(20.0,20.0))
 
     saveRDDTemporal(tiledRDD, "/tmp/geocoded_cube.tif")
 
