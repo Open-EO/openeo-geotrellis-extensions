@@ -88,7 +88,7 @@ class GeoCodingProcess extends Serializable {
 
     val rasters: RDD[(TemporalProjectedExtent, MultibandTile)] = cube.flatMap { case (key: SpaceTimeKey, tile: MultibandTile) => {
 
-      val raster = geocode(tile, targetCRS,resolution, lonIndex,latIndex)
+      val raster = geocode(tile, targetCRS,targetResolution, lonIndex,latIndex)
       raster.map(r=>(TemporalProjectedExtent(r.extent, targetCRS, key.time), r.tile))
     }
     }
