@@ -86,16 +86,23 @@ class GeoCodingProcess extends Serializable {
     val latIndex = bandLabels.indexOf("latitude")
     val lonIndex = bandLabels.indexOf("longitude")
 
+    val minmaxValues: RDD[Vector[(Double, Double)]] = cube.mapValues(_.subsetBands(lonIndex,latIndex)).map(_._2.bands.map(_.findMinMaxDouble))
+    val minLon = minmaxValues.map(_(0)._1).min()
+    val maxLon = minmaxValues.map(_(0)._2).max()
+    val minLat = minmaxValues.map(_(1)._1).min()
+    val maxLat = minmaxValues.map(_(1)._2).max()
+
+    val localTargetExtent = ProjectedExtent(Extent(minLon, minLat, maxLon, maxLat),LatLng).reproject(targetCRS)
     val rasters: RDD[(TemporalProjectedExtent, MultibandTile)] = cube.flatMap { case (key: SpaceTimeKey, tile: MultibandTile) => {
 
       val raster = geocode(tile, targetCRS,targetResolution, lonIndex,latIndex)
       raster.map(r=>(TemporalProjectedExtent(r.extent, targetCRS, key.time), r.tile))
     }
     }
-    val targetLayout: LayoutDefinition = LayoutDefinition(RasterExtent(targetExtent, targetResolution), 256, 256)
+    val targetLayout: LayoutDefinition = LayoutDefinition(RasterExtent(localTargetExtent, targetResolution), 256, 256)
     val origBounds = cube.metadata.bounds.get
 
-    val md = DatacubeSupport.tileLayerMetadata(targetLayout, ProjectedExtent(targetExtent, targetCRS), origBounds.minKey.time, origBounds.maxKey.time, FloatConstantNoDataCellType)
+    val md = DatacubeSupport.tileLayerMetadata(targetLayout, ProjectedExtent(localTargetExtent, targetCRS), origBounds.minKey.time, origBounds.maxKey.time, FloatConstantNoDataCellType)
 
     val tiled: RDD[(SpaceTimeKey, MultibandTile)] = rasters.tileToLayout(FloatConstantNoDataCellType, targetLayout, Tiler.Options(NearestNeighbor))
     val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = ContextRDD(tiled.groupByKey().mapValues(_.reduce(_ merge (_))), md)

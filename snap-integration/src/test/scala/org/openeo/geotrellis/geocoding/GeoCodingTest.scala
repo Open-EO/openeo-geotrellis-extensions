@@ -7,19 +7,18 @@ import geotrellis.raster.{CellSize, DoubleArrayTile, FloatConstantNoDataCellType
 import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.resample.NearestNeighbor
 import geotrellis.spark.{ContextRDD, MultibandTileLayerRDD, withTilerMethods}
-
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.{Extent, ProjectedExtent}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
-
 import org.junit.jupiter.api.Test
+import org.openeo.geotrellis.OpenEOProcesses
 import org.openeo.geotrellis.geotiff.{saveRDD, saveRDDTemporal}
 import org.openeo.geotrelliscommon.DatacubeSupport
-
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.time.{ZoneOffset, ZonedDateTime}
+import java.util
 
 object GeoCodingTest{
 
@@ -61,7 +60,9 @@ class GeoCodingTest {
     val cube: MultibandTileLayerRDD[SpaceTimeKey] = ContextRDD(tiledInput,inputMetadata)
     val targetExtent = Extent(1078161.262, 5197478.538, 1176612.520, 5228026.100)
     val targetCRS = CRS.fromEpsgCode(32631)
-    val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = new GeoCodingProcess().geoCode(cube, targetExtent, targetCRS, CellSize(20.0,20.0))
+    val wrapped = new OpenEOProcesses().wrapCube(cube)
+    wrapped.openEOMetadata.setBandNames(util.Arrays.asList("VV","VH","latitude","longitude"))
+    val tiledRDD: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = new GeoCodingProcess().geoCode(wrapped, targetExtent, targetCRS, CellSize(20.0,20.0))
 
     saveRDDTemporal(tiledRDD, "/tmp/geocoded_cube.tif")
 
