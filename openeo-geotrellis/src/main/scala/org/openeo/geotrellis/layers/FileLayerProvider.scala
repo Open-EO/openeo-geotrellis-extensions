@@ -20,9 +20,12 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
-import org.apache.spark.SparkContext
-import org.apache.spark.rdd.RDD
-import org.apache.spark.util.LongAccumulator
+import geotrellis.vector.reproject.Reproject.reprojectExtentAsPolygon
+import net.jodah.failsafe.{Failsafe, RetryPolicy}
+import net.jodah.failsafe.event.ExecutionAttemptedEvent
+import org.apache.spark.{HashPartitioner, Partitioner, SparkContext}
+import org.apache.spark.rdd.{CoGroupedRDD, RDD}
+import org.apache.spark.util.{LongAccumulator, SizeEstimator}
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis._
@@ -401,7 +404,7 @@ object FileLayerProvider {
       var totalPixelsPartition = 0
       val startTime = System.currentTimeMillis()
 
-      val (loadedPartitions: Iterator[(SpaceTimeKey, (Int, MultibandTile))],partitionPixels) = loadPartitionBySource(partitionIterator, cloudFilterStrategy, totalChunksAcc, tracker,crs,layout,theCellType )
+      val (loadedPartitions: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))],partitionPixels) = loadPartitionBySource(partitionIterator, cloudFilterStrategy, totalChunksAcc, tracker,crs,layout,theCellType )
       totalPixelsPartition += partitionPixels
 
       val durationMillis = System.currentTimeMillis() - startTime
@@ -413,8 +416,10 @@ object FileLayerProvider {
       }
       loadedPartitions
 
-    },preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile)]) => {
-      var mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1).mapValues(_.map(_._2).reduceOption(_ merge _)).toMap
+    },preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile, SourceName)]) => {
+      var mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1)
+        .map(t => (t._1, t._2.toList.sortBy(x => sortableSourceName(x._3))))
+        .mapValues(x => x.map(_._2).reduceOption(_ merge _))
         .flatMap{case (index,multiband) =>{
           if(multiband.isDefined && multiband.get.bandCount>1) {
             if(index != 0) {
@@ -511,7 +516,7 @@ object FileLayerProvider {
 
   private def loadPartitionBySource(partitionIterator: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])], cloudFilterStrategy: CloudFilterStrategy, totalChunksAcc: LongAccumulator, tracker: BatchJobMetadataTracker, crs :CRS, layout:LayoutDefinition, cellType: CellType )= {
     var totalPixelsPartition = 0
-    val tiles: Iterator[(SpaceTimeKey, (Int,MultibandTile))] = partitionIterator.flatMap((tuple: (SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])) =>{
+    val tiles: Iterator[(SpaceTimeKey, (Int,MultibandTile, SourceName))] = partitionIterator.flatMap((tuple: (SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])) =>{
       val keys = tuple._2.map(_._2).asJavaCollection
       val source = tuple._2.head._3.asInstanceOf[GridBoundsRasterRegion].source
       val bounds = tuple._2.map(_._3.asInstanceOf[GridBoundsRasterRegion].bounds).toSeq
@@ -555,7 +560,7 @@ object FileLayerProvider {
       totalPixelsPartition += totalPixels
       totalChunksAcc.add(totalPixels / (256 * 256))
       tracker.add(PIXEL_COUNTER, totalPixels)
-      keys.iterator().asScala.zip(paddedRasters.map(b=>(theIndex,b.tile)).iterator)
+      keys.iterator().asScala.zip(paddedRasters.map(b=>(theIndex,b.tile,tuple._1)).iterator)
 
     })
     (tiles,totalPixelsPartition)
@@ -672,7 +677,7 @@ object FileLayerProvider {
     sc.parallelize(keys.toSeq, 1).map((_, null))
   }
 
-  private def featuresRDD(geometricFeatures: Seq[vector.Feature[Geometry, (RasterSource, Feature)]], metadata: TileLayerMetadata[SpaceTimeKey], targetCRS: CRS, workingPartitioner: SpacePartitioner[SpatialKey], maybeKeys: Option[RDD[(SpatialKey, Iterable[Geometry])]], sc: SparkContext, datacubeParams: Option[DataCubeParameters]) = {
+  private def featuresRDD(geometricFeatures: Seq[vector.Feature[Geometry, (RasterSource, Feature)]], metadata: TileLayerMetadata[SpaceTimeKey], targetCRS: CRS,  maybeKeys: Option[RDD[(SpatialKey, Iterable[Geometry])]], sc: SparkContext, datacubeParams: Option[DataCubeParameters]) = {
     val emptyPoint = Point(0.0, 0.0)
     val cubeExtent = metadata.extent
 
@@ -723,7 +728,8 @@ object FileLayerProvider {
       joined.map(t=>(t._2.data,t._1))
 
     }else{
-      clippedFeatures.clipToGrid(metadata.layout).partitionBy(workingPartitioner)
+      val metadataCubePartitioner = SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(3))
+      clippedFeatures.clipToGrid(metadata.layout).partitionBy(metadataCubePartitioner)
     }
 
   }
@@ -849,7 +855,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     var overlappingRasterSources: Seq[(RasterSource, Feature)] = loadRasterSourceRDD(ProjectedExtent(alignedExtent.extent,reprojectedBoundingBox.crs), from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
 
-    val dates = overlappingRasterSources.map(_._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))
+    val dates = overlappingRasterSources.map(_._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC"))).distinct
 
     var commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
@@ -879,7 +885,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     sc.setCallSite(s"load_collection: $openSearchCollectionId resolution $maxSpatialResolution construct input product metadata" )
 
-    val workingPartitioner = SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(3))
     val requiredSpatialKeys: RDD[(SpatialKey, Iterable[Geometry])] =
       if(maxSpatialKeyCount<=2 && bufferedPolygons.length==1) {
         //reduce complexity for small (synchronous) requests
@@ -890,27 +895,48 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
           _.reproject(polygons_crs, targetCRS)
         }
 
-
-        val clipped = clipToGridWithErrorHandling(polygonsRDD, metadata)
-
-
-        var requiredSpatialKeysLocal: RDD[(SpatialKey, Iterable[Geometry])] = clipped.groupByKey(workingPartitioner)
+        val clipped: RDD[(SpatialKey, Geometry)] = clipToGridWithErrorHandling(polygonsRDD, metadata)
 
         val spatialKeyCount: Long =
           if (polygons.length == 1) {
             //special case for single bbox request
             maxSpatialKeyCount
           } else {
-            requiredSpatialKeysLocal.map(_._1).countApproxDistinct()
+            clipped.map(_._1).countApproxDistinct()
           }
         logger.info(s"Datacube requires approximately ${spatialKeyCount} spatial keys.")
+
+        val metadataCubePartitioner: Partitioner = {
+          if(spatialKeyCount.floatValue() / maxSpatialKeyCount.floatValue() < 0.5) {
+            // here we attempt to avoid creating a partitioner with a large amount of empty partitions, in case we are
+            // processing a low number of spatial keys. This can happen with sparse data loading.
+            new HashPartitioner(math.max((spatialKeyCount / 100).intValue(),1))
+          }else{
+
+            /**
+             * Max size of metadata partition depends on the number of items returned by the catalog.
+             * Too many partitions requires extra executors, often at the very beginning of a job, so we try to limit this.
+             * We use the number of dates as a proxy for the max number of items intersecting a given spatial key.
+             * For cases like Sentinel-2, we can however have  items intersecting at a given location on the same date.
+             */
+            val maxPartitionSizeBytes = 30 * 1024 * 1024
+            val sampleCount = math.min(10, overlappingRasterSources.size)
+            val averageItemSizeInBytes = overlappingRasterSources.take(sampleCount).map(item => SizeEstimator.estimate(item)).sum / sampleCount
+            val estimatedSizePerKey = averageItemSizeInBytes * dates.length
+            val maxSpatialKeysPerPartition = maxPartitionSizeBytes / estimatedSizePerKey
+            val indexReduction = math.max(math.ceil(math.log(maxSpatialKeysPerPartition) / math.log(2)).toInt - 1, 1)
+            SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(indexReduction))
+          }
+        }
+
+        var requiredSpatialKeysLocal: RDD[(SpatialKey, Iterable[Geometry])] = clipped.groupByKey(metadataCubePartitioner)
 
 
         val retiledMetadata: Option[TileLayerMetadata[SpaceTimeKey]] = DatacubeSupport.optimizeChunkSize(metadata, bufferedPolygons, datacubeParams, spatialKeyCount)
         metadata = retiledMetadata.getOrElse(metadata)
 
         if (retiledMetadata.isDefined) {
-          requiredSpatialKeysLocal = clipToGridWithErrorHandling(polygonsRDD, retiledMetadata.get).groupByKey(workingPartitioner)
+          requiredSpatialKeysLocal = clipToGridWithErrorHandling(polygonsRDD, retiledMetadata.get).groupByKey(metadataCubePartitioner)
         }
         requiredSpatialKeysLocal
       }
@@ -939,7 +965,8 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       } else {
         None
       }
-    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] =  featuresRDD(geometricFeatures, metadata, targetCRS, workingPartitioner,keysIfSparse, sc, datacubeParams)
+
+    val griddedRasterSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] =  featuresRDD(geometricFeatures, metadata, targetCRS, keysIfSparse, sc, datacubeParams)
 
 
     val filteredSources: RDD[(SpatialKey, vector.Feature[Geometry, (RasterSource, Feature)])] = applySpatialMask(datacubeParams, griddedRasterSources,metadata)
