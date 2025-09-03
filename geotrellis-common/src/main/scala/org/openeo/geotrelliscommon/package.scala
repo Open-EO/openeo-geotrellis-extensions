@@ -30,7 +30,7 @@ package object geotrelliscommon {
   class ByKeyPartitioner[K](splits: Array[K]) extends Partitioner {
     override def numPartitions: Int = splits.length
 
-    override def getPartition(key: Any): Int = splits.indexOf(key)
+    override def getPartition(key: Any): Int = splits.indexOf(key.asInstanceOf[K])
   }
 
   /**
@@ -55,7 +55,11 @@ package object geotrelliscommon {
       if(theKeys.isDefined) {
         theKeys.get.map(k => Z2(k.col,k.row).z).map(k => (BigInt(k),BigInt(k)))
       }else{
-        Z2.zranges(ZRange(toZ(keyRange._1), toZ(keyRange._2))).map(r => (BigInt(r.lower), BigInt(r.upper)))
+        val z1:Z2 = toZ(keyRange._1)
+        val z2:Z2 = toZ(keyRange._2)
+        val range: ZRange = ZRange(z1, z2)
+        val s: Seq[IndexRange] = Z2.zranges(range)
+        Z2.zranges(ZRange(z1, z2)).map(r => (BigInt(r.lower), BigInt(r.upper)))
       }
     }
 

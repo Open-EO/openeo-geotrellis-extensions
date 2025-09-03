@@ -10,7 +10,7 @@ trait TileRender {
 
 class RenderSinglebandFromCM(cm: ColorMap) extends TileRender {
   def requiresEncoding() = false
-  override def render(tile: MultibandTile) = tile.band(0).renderPng(cm).bytes
+  override def render(tile: MultibandTile): Array[Byte] = tile.band(0).renderPng(cm).bytes
 }
 object RenderSinglebandFromCM {
   def apply(cm: ColorMap) = new RenderSinglebandFromCM(cm)

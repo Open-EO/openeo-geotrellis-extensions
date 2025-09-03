@@ -12,7 +12,7 @@ import com.google.protobuf.ByteString
 
 
 trait FeatureProtoBuf {
-  implicit def featureCellValueProtoBufCodec = new ProtoBufCodec[Feature[Geometry, CellValue], ProtoFeatureCellValue] {
+  implicit def featureCellValueProtoBufCodec: ProtoBufCodec[Feature[Geometry, CellValue], ProtoFeatureCellValue] = new ProtoBufCodec[Feature[Geometry, CellValue], ProtoFeatureCellValue] {
     def encode(feature: Feature[Geometry, CellValue]): ProtoFeatureCellValue = {
       val geom = feature.geom
       val data = feature.data

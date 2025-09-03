@@ -3,7 +3,7 @@ package geopyspark.geotrellis
 import geotrellis.raster.histogram._
 import geotrellis.raster.render._
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 object ColorMapUtils {
 
@@ -25,7 +25,7 @@ object ColorMapUtils {
     boundaryType: String
   ): ColorMap = {
     val opts = ColorMap.Options(GeoTrellisUtils.getBoundary(boundaryType), importInt(noDataColor), importInt(fallbackColor))
-    ColorMap(breaks.toMap.map{ case (k, v) => (importInt(k), importInt(v)) }, opts)
+    ColorMap(breaks.asScala.toMap.map{ case (k, v) => (importInt(k), importInt(v)) }, opts)
   }
 
   def fromMapDouble(
@@ -35,7 +35,7 @@ object ColorMapUtils {
     boundaryType: String
   ): ColorMap = {
     val opts = ColorMap.Options(GeoTrellisUtils.getBoundary(boundaryType), importInt(noDataColor), importInt(fallbackColor))
-    ColorMap(breaks.toMap.mapValues(importInt(_)), opts)
+    ColorMap(breaks.asScala.toMap.view.mapValues(importInt).toMap, opts)
   }
 
   def fromBreaks(
@@ -45,7 +45,7 @@ object ColorMapUtils {
     boundaryType: String
   ): ColorMap = {
     val opts = ColorMap.Options(GeoTrellisUtils.getBoundary(boundaryType), importInt(noDataColor), importInt(fallbackColor))
-    ColorMap(breaks.toVector.map(importInt(_)), ColorRamp(colors.map(importInt(_))), opts)
+    ColorMap(breaks.asScala.toVector.map(importInt), ColorRamp(colors.asScala.map(importInt)), opts)
   }
 
   def fromBreaksDouble(
@@ -56,7 +56,7 @@ object ColorMapUtils {
     boundaryType: String
   ): ColorMap = {
     val opts = ColorMap.Options(GeoTrellisUtils.getBoundary(boundaryType), importInt(noDataColor), importInt(fallbackColor))
-    ColorMap(breaks.toVector, ColorRamp(colors.map(importInt(_))), opts)
+    ColorMap(breaks.asScala.toVector, ColorRamp(colors.asScala.map(importInt)), opts)
   }
 
   def fromHistogram(
@@ -67,7 +67,7 @@ object ColorMapUtils {
     boundaryType: String
   ): ColorMap = {
     val opts = ColorMap.Options(GeoTrellisUtils.getBoundary(boundaryType), importInt(noDataColor), importInt(fallbackColor))
-    val ramp  = ColorRamp(colors.map(importInt(_)))
+    val ramp  = ColorRamp(colors.asScala.map(importInt))
     ColorMap.fromQuantileBreaks(hist, ramp, opts)
   }
 
@@ -79,7 +79,7 @@ object ColorMapUtils {
     boundaryType: String
   ): ColorMap = {
     val opts = ColorMap.Options(GeoTrellisUtils.getBoundary(boundaryType), importInt(noDataColor), importInt(fallbackColor))
-    val ramp  = ColorRamp(colors.map(importInt(_)))
+    val ramp  = ColorRamp(colors.asScala.map(importInt))
     ColorMap.fromQuantileBreaks(hist, ramp, opts)
   }
 }

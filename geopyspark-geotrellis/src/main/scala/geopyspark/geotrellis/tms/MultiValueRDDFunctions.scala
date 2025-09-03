@@ -23,7 +23,7 @@ class MultiValueRDDFunctions[K, V](self: RDD[(K, V)])
           for (pair <- it if keys contains pair._1) {
             buf += pair
           }
-          buf
+          buf.toSeq
         } : Seq[(K, V)]
         val res = self.context.runJob(self, process, indecies)
         res.toSeq.flatten

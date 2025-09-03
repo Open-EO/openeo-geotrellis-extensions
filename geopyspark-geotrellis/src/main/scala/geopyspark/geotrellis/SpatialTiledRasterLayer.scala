@@ -3,9 +3,11 @@ package geopyspark.geotrellis
 import _root_.io.circe.parser.parse
 import _root_.io.circe.syntax._
 import cats.syntax.either._
+import geopyspark.geotrellis.Constants.{ASPECT, SLOPE}
 import geopyspark.geotrellis.GeoTrellisUtils._
 import geopyspark.util._
-import geotrellis.layer._
+import geotrellis.layer
+import geotrellis.layer.{Bounds, FloatingLayoutScheme, KeyBounds, LayoutDefinition, LayoutLevel, MapKeyTransform, Metadata, SpaceTimeKey, SpatialKey, TemporalKey, TileLayerMetadata, ZoomedLayoutScheme}
 import geotrellis.layer.mask.Mask
 import geotrellis.raster._
 import geotrellis.raster.buffer.BufferedTile
@@ -40,6 +42,7 @@ import spire.syntax.cfor._
 
 import java.util.ArrayList
 import scala.collection.JavaConverters._
+import scala.language.postfixOps
 
 
 class SpatialTiledRasterLayer(
@@ -179,7 +182,7 @@ class SpatialTiledRasterLayer(
     )
 
     val _neighborhood =
-      if (operation == Constants.SLOPE || operation == Constants.ASPECT)
+      if (operation == SLOPE || operation == ASPECT)
         getNeighborhood(neighborhood, 1.0, 0.0, 0.0)
       else
         getNeighborhood(neighborhood, param1, param2, param3)
@@ -597,7 +600,7 @@ object SpatialTiledRasterLayer {
     options: Rasterizer.Options,
     partitionStrategy: PartitionStrategy
   ): SpatialTiledRasterLayer = {
-    val geoms = geomWKB.asScala.map(WKB.read)
+    val geoms = geomWKB.asScala.map(WKB.read).toSeq
     val fullEnvelope = geoms.map(_.extent).reduce(_ combine _)
     val geomRDD = sc.parallelize(geoms)
 
@@ -748,7 +751,7 @@ object SpatialTiledRasterLayer {
   def unionLayers(sc: SparkContext, layers: ArrayList[SpatialTiledRasterLayer]): SpatialTiledRasterLayer = {
     val scalaLayers = layers.asScala
 
-    val result = sc.union(scalaLayers.map(_.rdd))
+    val result = sc.union(scalaLayers.map(_.rdd).toSeq)
 
     val firstLayer = scalaLayers.head
     val zoomLevel = firstLayer.zoomLevel

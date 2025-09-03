@@ -14,6 +14,7 @@ import org.openeo.geotrellis.layers.FileLayerProvider
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.nio.file.{Files, Path}
+import scala.collection.parallel.CollectionConverters._
 
 object PackageTest {
   private implicit val logger: Logger = LoggerFactory.getLogger(classOf[FileLayerProvider])
@@ -166,7 +167,6 @@ class PackageTest {
     val pe = ProjectedExtent(Extent(2580000.0, 1360000.0, 7350000.0, 5445000.0), CRS.fromName("EPSG:3035"))
     healthCheckExtentAssert(pe, "Extent should be considered valid: ")
   }
-
 
 
   @Test

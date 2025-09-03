@@ -7,7 +7,6 @@ import akka.http.scaladsl.Http.ServerBinding
 import akka.stream.ActorMaterializer
 
 import java.net.InetAddress
-import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent._
 import scala.concurrent.duration._
 

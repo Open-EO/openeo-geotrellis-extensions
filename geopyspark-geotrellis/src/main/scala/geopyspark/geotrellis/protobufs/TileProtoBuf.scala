@@ -1,14 +1,12 @@
 package geopyspark.geotrellis.protobufs
 
 import geopyspark.util.ProtoBufCodec
+import geotrellis.raster.{PaddedTile, _}
 import protos.tileMessages._
-import geotrellis.raster._
-
-import geotrellis.raster.PaddedTile
 
 
 trait TileProtoBuf {
-  implicit def tileProtoBufCodec = new ProtoBufCodec[Tile, ProtoTile] {
+  implicit def tileProtoBufCodec: ProtoBufCodec[Tile, ProtoTile] = new ProtoBufCodec[Tile, ProtoTile] {
     private def cellTypeToMessage(ct: CellType): ProtoCellType = {
       ct match {
         case BitCellType =>
@@ -67,42 +65,42 @@ trait TileProtoBuf {
 
     private def messageToCellType(ctm: ProtoCellType): CellType = {
       ctm match {
-        case ProtoCellType(ProtoCellType.DataType.BIT, nd, false) =>
+        case ProtoCellType(ProtoCellType.DataType.BIT, nd, false, _) =>
           BitCellType
 
-        case ProtoCellType(ProtoCellType.DataType.BYTE, nd, true) =>
+        case ProtoCellType(ProtoCellType.DataType.BYTE, nd, true, _) =>
           ByteCells.withNoData(Some(nd.toByte))
-        case ProtoCellType(ProtoCellType.DataType.BYTE, nd, false) =>
+        case ProtoCellType(ProtoCellType.DataType.BYTE, nd, false, _) =>
           ByteCells.withNoData(None)
 
-        case ProtoCellType(ProtoCellType.DataType.UBYTE, nd, true) =>
+        case ProtoCellType(ProtoCellType.DataType.UBYTE, nd, true, _) =>
           UByteCells.withNoData(Some(nd.toByte))
-        case ProtoCellType(ProtoCellType.DataType.UBYTE, nd, false) =>
+        case ProtoCellType(ProtoCellType.DataType.UBYTE, nd, false, _) =>
           UByteCells.withNoData(None)
 
-        case ProtoCellType(ProtoCellType.DataType.SHORT, nd, true) =>
+        case ProtoCellType(ProtoCellType.DataType.SHORT, nd, true, _) =>
           ShortCells.withNoData(Some(nd.toShort))
-        case ProtoCellType(ProtoCellType.DataType.SHORT, nd, false) =>
+        case ProtoCellType(ProtoCellType.DataType.SHORT, nd, false, _) =>
           ShortCells.withNoData(None)
 
-        case ProtoCellType(ProtoCellType.DataType.USHORT, nd, true) =>
+        case ProtoCellType(ProtoCellType.DataType.USHORT, nd, true, _) =>
           UShortCells.withNoData(Some(nd.toShort))
-        case ProtoCellType(ProtoCellType.DataType.USHORT, nd, false) =>
+        case ProtoCellType(ProtoCellType.DataType.USHORT, nd, false, _) =>
           UShortCells.withNoData(None)
 
-        case ProtoCellType(ProtoCellType.DataType.INT, nd, true) =>
+        case ProtoCellType(ProtoCellType.DataType.INT, nd, true, _) =>
           IntCells.withNoData(Some(nd.toInt))
-        case ProtoCellType(ProtoCellType.DataType.INT, nd, false) =>
+        case ProtoCellType(ProtoCellType.DataType.INT, nd, false, _) =>
           IntCells.withNoData(None)
 
-        case ProtoCellType(ProtoCellType.DataType.FLOAT, nd, true) =>
+        case ProtoCellType(ProtoCellType.DataType.FLOAT, nd, true, _) =>
           FloatCells.withNoData(Some(nd.toFloat))
-        case ProtoCellType(ProtoCellType.DataType.FLOAT, nd, false) =>
+        case ProtoCellType(ProtoCellType.DataType.FLOAT, nd, false, _) =>
           FloatCells.withNoData(None)
 
-        case ProtoCellType(ProtoCellType.DataType.DOUBLE, nd, true) =>
+        case ProtoCellType(ProtoCellType.DataType.DOUBLE, nd, true, _) =>
           DoubleCells.withNoData(Some(nd.toDouble))
-        case ProtoCellType(ProtoCellType.DataType.DOUBLE, nd, false) =>
+        case ProtoCellType(ProtoCellType.DataType.DOUBLE, nd, false, _) =>
           DoubleCells.withNoData(None)
       }
     }

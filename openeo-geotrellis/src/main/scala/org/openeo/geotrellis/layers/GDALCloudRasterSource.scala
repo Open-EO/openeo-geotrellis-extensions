@@ -10,8 +10,10 @@ import org.locationtech.jts.geom.{GeometryFactory, PrecisionModel}
 import org.openeo.opensearch.OpenSearchResponses.Feature
 
 import java.util
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable
+import scala.collection.parallel.CollectionConverters._
+import scala.language.postfixOps
 import scala.xml.XML
 
 object GDALCloudRasterSource {

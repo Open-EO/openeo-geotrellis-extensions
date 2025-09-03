@@ -7,7 +7,7 @@ import protos.tileMessages._
 
 trait MultibandTileProtoBuf {
   import TileProtoBuf._
-  implicit def multibandTileProtoBufCodec = new ProtoBufCodec[MultibandTile, ProtoMultibandTile] {
+  implicit def multibandTileProtoBufCodec: ProtoBufCodec[MultibandTile, ProtoMultibandTile] = new ProtoBufCodec[MultibandTile, ProtoMultibandTile] {
     def encode(tile: MultibandTile): ProtoMultibandTile = {
       val tiles = for (i <- 0 until tile.bandCount) yield tile.band(i)
       ProtoMultibandTile(tiles = tiles.map(tileProtoBufCodec.encode))

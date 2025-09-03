@@ -15,7 +15,7 @@
         <dependency>
             <groupId>com.thesamet.scalapb</groupId>
             <artifactId>scalapb-runtime_${scala.binary.version}</artifactId>
-            <version>0.7.0</version>
+            <version>0.11.20</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.scala-lang</groupId>
@@ -30,7 +30,7 @@
         <dependency>
             <groupId>com.typesafe.akka</groupId>
             <artifactId>akka-http-spray-json_${scala.binary.version}</artifactId>
-            <version>10.0.10</version>
+            <version>10.5.3</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.scala-lang</groupId>
@@ -41,6 +41,16 @@
                     <artifactId>scala-compiler</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>com.typesafe.akka</groupId>
+            <artifactId>akka-actor_${scala.binary.version}</artifactId>
+            <version>2.10.5</version>
+        </dependency>
+        <dependency>
+            <groupId>com.typesafe.akka</groupId>
+            <artifactId>akka-stream_${scala.binary.version}</artifactId>
+            <version>2.5.31</version>
         </dependency>
 
         <dependency>
@@ -239,19 +249,18 @@
                         <goals>
                             <goal>run</goal>
                         </goals>
+                        <configuration>
+                            <includeMavenTypes>transitive</includeMavenTypes>
+                            <outputTargets>
+                                <outputTarget>
+                                    <type>scalapb</type>
+                                    <outputOptions>grpc</outputOptions> <!-- more scalapb options can be added here -->
+                                    <pluginArtifact>com.thesamet.scalapb:protoc-gen-scala:0.11.20:sh:unix</pluginArtifact>
+                                </outputTarget>
+                            </outputTargets>
+                        </configuration>
                     </execution>
                 </executions>
-                <configuration>
-                    <includeMavenTypes>transitive</includeMavenTypes>
-                    <outputTargets>
-                        <outputTarget>
-                            <type>scalapb</type>
-                            <outputOptions>grpc</outputOptions> <!-- more scalapb options can be added here -->
-                            <pluginArtifact>com.thesamet.scalapb:protoc-gen-scala:0.9.6:sh:unix</pluginArtifact>
-                            <!--<pluginArtifact>com.thesamet.scalapb:protoc-gen-scala:0.9.6:bat:windows</pluginArtifact>-->
-                        </outputTarget>
-                    </outputTargets>
-                </configuration>
             </plugin>
         </plugins>
     </build>

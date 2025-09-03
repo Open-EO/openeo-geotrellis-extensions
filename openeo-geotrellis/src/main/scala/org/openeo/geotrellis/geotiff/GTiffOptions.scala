@@ -4,7 +4,7 @@ import java.util
 import geotrellis.raster.io.geotiff.Tags
 import geotrellis.raster.render.{ColorMap, DoubleColorMap, IndexedColorMap}
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.collection.immutable.SortedMap
 
 //noinspection ScalaUnusedSymbol
@@ -46,7 +46,7 @@ class GTiffOptions extends Serializable {
   }
 
   def setColorMap(colors: util.ArrayList[Int]): Unit = {
-    colorMap = Some(new IndexedColorMap(colors.asScala))
+    colorMap = Some(new IndexedColorMap(colors.asScala.toSeq))
   }
 
   def setOverview(overview:String):Unit ={

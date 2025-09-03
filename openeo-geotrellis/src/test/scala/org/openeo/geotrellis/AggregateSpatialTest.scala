@@ -18,8 +18,7 @@ import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.util
 import java.util.stream
-import scala.collection.JavaConverters._
-import scala.collection.immutable.Seq
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable
 import scala.io.Source
 
@@ -41,7 +40,7 @@ object AggregateSpatialTest {
 
   }
 
-  def parseCSV(outDir: String, spatioTemporal: Boolean = true): Map[String, scala.Seq[scala.Seq[Double]]] = {
+  def parseCSV(outDir: String, spatioTemporal: Boolean = true): Map[String, scala.Seq[scala.collection.Seq[Double]]] = {
     val stats = mutable.ListBuffer[(String, Int, scala.Seq[Double])]()
 
     if (!Files.exists(Paths.get(outDir))) {
@@ -86,7 +85,7 @@ object AggregateSpatialTest {
         theNumbers.toSeq
       }
 
-      }
+      }.toMap
 
     groupedStats.foreach(println)
     groupedStats

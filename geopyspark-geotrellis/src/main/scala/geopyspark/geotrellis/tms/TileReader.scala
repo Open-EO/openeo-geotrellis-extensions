@@ -4,7 +4,6 @@ import geopyspark.geotrellis.TiledRasterLayer
 import geotrellis.raster._
 import geotrellis.layer._
 import geotrellis.store._
-
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import org.apache.spark.rdd.RDD
 
@@ -12,8 +11,9 @@ import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.collection.concurrent._
-import scala.collection.JavaConversions._
-import scala.util.{Try, Failure, Success}
+import scala.jdk.CollectionConverters._
+import scala.language.postfixOps
+import scala.util.{Failure, Success, Try}
 
 
 trait TileReader {
@@ -271,7 +271,7 @@ object TileReaders {
     system: ActorSystem,
     overzooming: Boolean
   ): TileReader = {
-    val tiles = levels.mapValues(_.rdd)
+    val tiles = levels.asScala.view.mapValues(_.rdd).toMap
     new SpatialRddTileReader(tiles, system, overzooming)
   }
 

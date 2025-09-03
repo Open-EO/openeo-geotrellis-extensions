@@ -7,14 +7,13 @@ import geotrellis.raster.{CellSize, GridBounds, Tile, TileLayout}
 import geotrellis.spark.reproject._
 import geotrellis.vector._
 
-import scala.collection.JavaConversions._
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 
 object GeoTrellisUtils {
   import Constants._
 
-  def seqToIterable[T](seq: Seq[T]): java.util.Iterator[T] = seq.toIterator.asJava
+  def seqToIterable[T](seq: Seq[T]): java.util.Iterator[T] = seq.iterator.asJava
 
   def convertToScalaMap(
     javaMap: java.util.Map[String, Any]
@@ -86,7 +85,7 @@ object GeoTrellisUtils {
 
   implicit class JavaMapExtensions(m: java.util.Map[String, _]) {
     def toExtent: Extent = {
-      val mappedExtent = m.mapValues(x => x.asInstanceOf[Double])
+      val mappedExtent = m.asScala.view.mapValues(x => x.asInstanceOf[Double])
       Extent(
         mappedExtent("xmin"),
         mappedExtent("ymin"),
@@ -95,7 +94,7 @@ object GeoTrellisUtils {
     }
 
     def toTileLayout: TileLayout = {
-      val mappedLayout = m.mapValues(x => x.asInstanceOf[Int])
+      val mappedLayout = m.asScala.view.mapValues(x => x.asInstanceOf[Int])
 
       TileLayout(
         mappedLayout("layoutCols"),

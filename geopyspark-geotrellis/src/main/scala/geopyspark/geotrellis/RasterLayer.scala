@@ -1,15 +1,16 @@
 package geopyspark.geotrellis
 
-import geotrellis.layer._
-import geotrellis.raster._
-import geotrellis.spark._
+
+import geotrellis.layer.LayoutDefinition
+import geotrellis.raster.{CellType, MultibandTile, ResampleMethod}
+import geotrellis.spark.withTileRDDMergeMethods
 import geotrellis.util._
 import geotrellis.vector._
 import org.apache.spark.Partitioner
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd._
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.reflect._
 
 
@@ -35,7 +36,7 @@ abstract class RasterLayer[K](implicit ev0: ClassTag[K], ev1: Component[K, Proje
     withRDD(rdd.mapValues { multibandTile => multibandTile.subsetBands(band) })
 
   def bands(bands: java.util.ArrayList[Int]): RasterLayer[K] =
-    withRDD(rdd.mapValues { multibandTile => multibandTile.subsetBands(bands.asScala) })
+    withRDD(rdd.mapValues { multibandTile => multibandTile.subsetBands(bands.asScala.toSeq) })
 
   def collectMetadata(layoutType: LayoutType): String
   def collectMetadata(layoutDefinition: LayoutDefinition): String

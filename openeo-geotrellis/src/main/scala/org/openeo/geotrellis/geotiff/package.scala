@@ -1013,7 +1013,7 @@ package object geotiff {
                   formatOptions: Option[GTiffOptions],
                  ): JList[Item] = {
     val reprojected = ProjectedPolygons.reproject(polygons, rdd.metadata.crs)
-    val features = sampleNames.asScala.zip(reprojected.polygons)
+    val features = sampleNames.asScala.toSeq.zip(reprojected.polygons)
     groupByFeatureAndWriteToTiff(rdd, cropBounds = None, features, path, cropDimensions = None, compression, formatOptions)
   }
 

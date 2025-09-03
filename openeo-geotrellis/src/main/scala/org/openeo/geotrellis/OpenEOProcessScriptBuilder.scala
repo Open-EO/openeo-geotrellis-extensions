@@ -21,10 +21,9 @@ import java.time.temporal.{ChronoUnit, TemporalAccessor}
 import java.time.{Duration, ZonedDateTime}
 import java.util
 import scala.Double.NaN
-import scala.collection.JavaConversions.mapAsScalaMap
-import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.collection.{immutable, mutable}
+import scala.jdk.CollectionConverters._
 import scala.util.Try
 import scala.util.control.Breaks.{break, breakable}
 
@@ -204,7 +203,7 @@ object OpenEOProcessScriptBuilder{
             bandValues.append(d)
           }
         }
-        val resultValues = f(bandValues)
+        val resultValues = f(bandValues.toSeq)
 
         if(mutableResult.size == 0) {
           mutableResult.appendAll( (0 until resultValues.size).map( d => ArrayTile.empty(tile.cellType,tile.cols,tile.rows)))
@@ -216,7 +215,7 @@ object OpenEOProcessScriptBuilder{
         i += 1
       }
     }
-    return mutableResult
+    mutableResult.toSeq
   }
 
   private def multibandReduce(tile: MultibandTile ,f: Seq[Double] => Double, ignoreNoData: Boolean = true): Seq[Tile] = {
@@ -232,13 +231,13 @@ object OpenEOProcessScriptBuilder{
           }
         }
         if(!bandValues.isEmpty) {
-          val resultValues = f(bandValues)
+          val resultValues = f(bandValues.toSeq)
           mutableResult.setDouble(col, row,resultValues)
         }
         i += 1
       }
     }
-    return Seq(mutableResult)
+    Seq(mutableResult)
   }
 
   // Get `Seq[Tile]` by evaluating given `OpenEOProcess` (if any) on given `Seq[Tile]`
@@ -539,11 +538,11 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
   }
 
   def generateFunction(context: util.Map[String, Any]): Seq[Tile] => Seq[Tile] = {
-    this.generateFunction(context.toMap)
+    this.generateFunction(context.asScala.toMap)
   }
 
   def generateAnyFunction(context: util.Map[String, Any]): Any => Any = {
-    this.inputFunction.asInstanceOf[AnyProcess](context.toMap)
+    this.inputFunction.asInstanceOf[AnyProcess](context.asScala.toMap)
   }
 
   def generateFunction(): Seq[Tile] => Seq[Tile] = {
@@ -983,7 +982,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
   }
 
   def constantArguments(args: java.util.Map[String,Object]): Unit = {
-    for (elem <- mapAsScalaMap(args)) {
+    for (elem <- args.asScala.toMap) {
       if(elem._2.isInstanceOf[Number]){
         constantArgument(elem._1,elem._2.asInstanceOf[Number])
       }else if(elem._2.isInstanceOf[Boolean]){
@@ -1079,7 +1078,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
           //TODO: this branch is specific for boolean constants, but could be made more general
       (context: Map[String, Any]) =>
         (tiles: Seq[Tile]) => {
-          var results = ListBuffer[Any]()
+          val results = ListBuffer[Any]()
           for (i <- 0 until nbElements) {
             val tileFunction = scope.get(i.toString).get.asInstanceOf[AnyProcess]
             val functionResult = tileFunction(context)
@@ -1114,7 +1113,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
 
   def expressionEnd(operator:String,arguments:java.util.Map[String,Object]): Unit = {
     // TODO: this is not only about expressions anymore. Rename it to e.g. "leaveProcess" to be more in line with graph visitor in Python?
-    logger.debug(operator + " process with arguments: " + contextStack.head.mkString(",") + " direct args: " + arguments.mkString(",") + " of types: " + typeStack.head.mkString(","))
+    logger.debug(operator + " process with arguments: " + contextStack.head.mkString(",") + " direct args: " + arguments.asScala.mkString(",") + " of types: " + typeStack.head.mkString(","))
     // Bit of argument sniffing to support multiple versions/variants of processes
     val hasXY = arguments.containsKey("x") && arguments.containsKey("y")
     val hasX = arguments.containsKey("x")
@@ -1128,9 +1127,9 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     resultingDataType = FloatConstantNoDataCellType
 
     //TODO check below can be more generic, needs some work to make sure 'typeStack' holds the right info in a consistent manner
-    val xyConstantComparison = hasXY && ((arguments("x").isInstanceOf[String] && arguments("x") != "dummy" )
+    val xyConstantComparison = hasXY && ((arguments.asScala("x").isInstanceOf[String] && arguments.asScala("x") != "dummy" )
       || typeStack.head.getOrElse("x","") == "boolean"
-      || (arguments("y").isInstanceOf[String]  && arguments("y") != "dummy"  )
+      || (arguments.asScala("y").isInstanceOf[String]  && arguments.asScala("y") != "dummy"  )
       || typeStack.head.getOrElse("y","") == "boolean")
 
     val operation = {
@@ -1629,7 +1628,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     val modelArgument = arguments.getOrDefault("model", null)
     if (!modelArgument.isInstanceOf[util.Map[String, Object]])
       throw new IllegalArgumentException(s"The 'model' argument should contain {'from_parameter': 'context'}, but got: $modelArgument.")
-    val fromParamArgument = modelArgument.asInstanceOf[util.Map[String, Object]].getOrElse("from_parameter", null)
+    val fromParamArgument = modelArgument.asInstanceOf[util.Map[String, Object]].asScala.getOrElse("from_parameter", null)
     if (!fromParamArgument.isInstanceOf[String] || fromParamArgument.asInstanceOf[String] != "context")
       throw new IllegalArgumentException(s"The from_parameter argument in 'model' should refer to 'context', but got: $fromParamArgument.")
   }

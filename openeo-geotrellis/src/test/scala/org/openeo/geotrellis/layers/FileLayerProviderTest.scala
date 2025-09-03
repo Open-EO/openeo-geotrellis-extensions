@@ -51,7 +51,7 @@ import java.util.Formatter
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.io.Source
-import scala.jdk.CollectionConverters.mapAsJavaMapConverter
+import scala.jdk.CollectionConverters._
 import scala.reflect.io.Directory
 
 object FileLayerProviderTest {

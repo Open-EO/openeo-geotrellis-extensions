@@ -186,7 +186,7 @@
         </dependency>
         <dependency>
             <groupId>ai.catboost</groupId>
-            <artifactId>catboost-spark_3.5_2.12</artifactId>
+            <artifactId>catboost-spark_3.5_2.13</artifactId>
             <version>1.2.7</version>
             <scope>compile</scope>
         </dependency>

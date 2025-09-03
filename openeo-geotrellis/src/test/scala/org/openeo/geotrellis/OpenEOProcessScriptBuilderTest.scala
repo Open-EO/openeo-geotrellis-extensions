@@ -4,6 +4,7 @@ import ai.catboost.spark._
 import geotrellis.raster.{FloatArrayTile, FloatCellType, Tile}
 import org.apache.spark.SparkContext
 import org.apache.spark.ml.linalg.{SQLDataTypes, Vectors}
+import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.types.{IntegerType, StructField, StructType}
 import org.apache.spark.sql.{Row, SparkSession}
 import org.junit.Assert.assertEquals
@@ -33,7 +34,8 @@ class OpenEOProcessScriptBuilderTest {
       Row(Vectors.dense(0.13, 0.22, 0.23), 1),
       Row(Vectors.dense(9, 9.6, 9.8), 3)
     )
-    val trainDf = spark.createDataFrame(spark.sparkContext.parallelize(trainData), StructType(srcDataSchema))
+    val rdd: RDD[Row] = spark.sparkContext.parallelize(trainData.toSeq)
+    val trainDf = spark.createDataFrame(rdd, StructType(srcDataSchema.toSeq))
     val trainPool = new Pool(trainDf)
 
     // Fit classifier.
@@ -54,7 +56,7 @@ class OpenEOProcessScriptBuilderTest {
     builder.expressionEnd(predict_expression, arguments)
 
     val context = Map[String,Any]("context" -> model)
-    val result = builder.generateFunction(context).apply(tiles)
+    val result = builder.generateFunction(context).apply(tiles.toSeq)
     SparkContext.getOrCreate.stop()
     result
   }
