@@ -895,7 +895,7 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
 
     val xyProcess = (context: Map[String, Any]) => {
       val theFunction = (arg: Any) => {
-        val dataEvaluated = xVal(context)(null)
+        val dataEvaluated = xVal(context)(null).asInstanceOf[ListBuffer[Any]].toSeq
         if(dataEvaluated.isInstanceOf[Seq[Any]]) {
           dataEvaluated.asInstanceOf[Seq[Boolean]].foldLeft(false)(_|| _)
         }else{
@@ -1434,10 +1434,13 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
     val processFunction = getProcessArg("process")
 
     val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
-      val labels = context.get("array_labels").asInstanceOf[Option[Seq[Any]]]
+      val option = context.get("array_labels")
+      val labels: Option[mutable.Buffer[String]] = option.asInstanceOf[Option[mutable.Buffer[String]]]
       val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
       val mappedValues = data.zipWithIndex.map{
-        case (e, i) => evaluateToTiles(processFunction, context + ("x" -> Seq(e))  + ("index" -> i) + ("data"-> data) + ("parent.data"-> tiles) + ("label" -> labels.map(_(i)).orNull), Seq(e)).head
+        case (e, i) =>
+          val map: Map[String, Any] = context + ("x" -> Seq(e)) + ("index" -> i) + ("data" -> data) + ("parent.data" -> tiles) + ("label" -> labels.map(_(i)).orNull)
+          evaluateToTiles(processFunction, map, Seq(e)).head
       }
 
       mappedValues

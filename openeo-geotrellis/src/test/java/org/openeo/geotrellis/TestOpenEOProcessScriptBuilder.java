@@ -15,7 +15,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import scala.Function1;
-import scala.Tuple2;
 import scala.collection.JavaConverters;
 import scala.collection.Seq;
 import scala.collection.mutable.Buffer;
