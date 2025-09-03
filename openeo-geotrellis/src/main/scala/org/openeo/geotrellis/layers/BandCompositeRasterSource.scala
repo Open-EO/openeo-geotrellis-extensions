@@ -137,20 +137,28 @@ class BandCompositeRasterSource(override val sources: NonEmptyList[RasterSource]
   }
 
   override def read(extent: Extent, bands: Seq[Int]): Option[Raster[MultibandTile]] = {
-    var selectedSources: Seq[RasterSource] = reprojectedSources(bands)
+    val selectedSources: scala.collection.Seq[RasterSource] = reprojectedSources(bands)
 
-    if (parallelRead) {
-      selectedSources = selectedSources.par.asInstanceOf[Seq[RasterSource]]
-    }
+    val singleBandRasters = {
+      if (parallelRead) {
+        selectedSources.par
+          .map {
+            _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
+          }
+          .collect { case Some(raster) => raster }
 
-    val singleBandRasters = selectedSources
-      .map {
-        _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
+      } else {
+        selectedSources
+          .map {
+            _.read(extent, Seq(0)) map { case Raster(multibandTile, extent) => Raster(multibandTile.band(0), extent) }
+          }
+          .collect { case Some(raster) => raster }
+
       }
-      .collect { case Some(raster) => raster }
+    }.iterator.to(Seq)
 
     if (singleBandRasters.size == selectedSources.size)
-      Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType)).seq), singleBandRasters.head.extent))
+      Some(Raster(MultibandTile(singleBandRasters.map(_.tile.convert(cellType))), singleBandRasters.head.extent))
     else None
   }
 
