@@ -187,7 +187,7 @@ object LayerFixtures {
 
 
   def sentinel1Sigma0LayerProviderUTM =
-    FileLayerProvider(
+    new FileLayerProvider(
       client,
       "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
       openSearchLinkTitles = NonEmptyList.of("VV"),
@@ -196,7 +196,9 @@ object LayerFixtures {
       pathDateExtractor,
       layoutScheme = FloatingLayoutScheme(256),
       experimental = false
-    )
+    ){
+      override def determineCelltype(overlappingRasterSources: Seq[(RasterSource, OpenSearchResponses.Feature)]): CellType = FloatConstantNoDataCellType
+    }
 
   def s2_fapar(from_date:String = "2017-11-01T00:00:00Z", to_date:String="2017-11-16T02:00:00Z", polygons:Seq[Polygon],crs:String) = {
     val parameters = new DataCubeParameters
