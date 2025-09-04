@@ -486,7 +486,7 @@ class OpenEOProcesses extends Serializable {
         }else{
           val bandCountOption = maybeBandCount(datacube)
           if(reduce && bandCountOption.isDefined) {
-            val estimatedSize = timePeriods.length * bandCountOption.get* datacube.metadata.tileLayout.tileSize * datacube.metadata.cellType.bytes
+            val estimatedSize = timePeriods.length * bandCountOption.get * datacube.metadata.tileLayout.tileSize * datacube.metadata.cellType.bytes
             logger.info(s"aggregate_temporal: estimated target partition size of ${estimatedSize/(1024.0*1024.0)} MB")
             if(estimatedSize/(1024*1024) < 3) {
               new ByTileSpacetimePartitioner(Some(allPossibleKeys.toArray))
@@ -498,15 +498,15 @@ class OpenEOProcesses extends Serializable {
           }
         }
       }else{
-        if (incomingIndex.isDefined) {
-
-          if (incomingIndex.get.isInstanceOf[SparseSpaceOnlyPartitioner] || incomingIndex.get.isInstanceOf[ByTileSpacetimePartitioner]) {
+        if (incomingIndex.isDefined && (incomingIndex.get.isInstanceOf[SparseSpaceOnlyPartitioner] || incomingIndex.get.isInstanceOf[ByTileSpacetimePartitioner]) ) {
             incomingIndex.get//a space only partitioner does not care about time, so can be reused as-is
-          } else {
+        }else{
+          val bandCountOption = maybeBandCount(datacube)
+          if(bandCountOption.isDefined) {
+            getPartitionerIndexForMaxPartitionSize(bandCountOption.get,datacube.metadata.tileLayout.tileSize,datacube.metadata.cellType.bits, 100.0)
+          }else{
             SpaceTimeByMonthPartitioner
           }
-        }else{
-          SpaceTimeByMonthPartitioner
         }
       }
 

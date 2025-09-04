@@ -27,11 +27,12 @@ import org.junit.jupiter.params.provider.{Arguments, EnumSource, MethodSource}
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.AggregateSpatialTest.{assertEqualTimeseriesStats, parseCSV}
 import org.openeo.geotrellis.LayerFixtures._
+import org.openeo.geotrellis.OpenEOProcessesSpec.getDatesForCube
 import org.openeo.geotrellis.aggregate_polygon.intern.splitOverlappingPolygons
 import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD}
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, DatacubeSupport, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, DatacubeSupport, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.nio.file.{Files, Paths}
@@ -135,11 +136,23 @@ object OpenEOProcessesSpec {
     tile
   }
 
+  private def getDatesForCube() = {
+    val defaultStartDate = ZonedDateTime.parse("2019-01-21T00:00:00Z")
+    val dates = (0 to 4).map(defaultStartDate.plusDays(_)).toList
+    dates
+  }
+
   def aggregateTemporalTestParams(): java.util.stream.Stream[Arguments] = {
     val pixelTypes = PixelType.values()
     val p1 = new ByTileSpacetimePartitioner()
     val p2 = new ByTileSpacetimePartitioner(Some(Array(SpatialKey(0,0),SpatialKey(1,1))))
-    pixelTypes.flatMap(pt => Seq( arguments(pt, null),arguments(pt, p1),arguments(pt, p2))).toStream.asJava.stream()
+    val dates = getDatesForCube()
+
+    val keys = Array(SpatialKey(0, 0), SpatialKey(1, 1)).flatMap(key => dates.map(d => SpaceTimeKey(key, TemporalKey(d))))
+    val reduction = 2
+    val indices = keys.map(k=> SparseSpaceTimePartitioner.toIndex(k,reduction))
+    val p3 = new SparseSpaceTimePartitioner(indices, reduction, Some(keys))
+    pixelTypes.flatMap(pt => Seq( arguments(pt, null),arguments(pt, p1),arguments(pt, p2),arguments(pt, p3))).toStream.asJava.stream()
 
   }
 }
@@ -508,12 +521,16 @@ class OpenEOProcessesSpec extends RasterMatchers {
   def aggregateTemporalTest(pixelType: PixelType, index: PartitionerIndex[SpaceTimeKey]): Unit = {
     val outDir = "/tmp/aggregateTemporalTest/"
     Files.createDirectories(Paths.get(outDir))
-    var cube: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType)
+    val dates: List[ZonedDateTime] = getDatesForCube
+    var cube: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType,dates = Some(dates))
     if(index != null) {
       cube = cube.withContext(_.partitionBy(new SpacePartitioner[SpaceTimeKey](cube.metadata.bounds)(implicitly, implicitly, index)))
     }
 
     val bounds = cube.metadata.bounds
+
+    val wrappedCube = new OpenEOProcesses().wrapCube(cube)
+    wrappedCube.openEOMetadata.setBandNames(util.Arrays.asList("band_1"))
     val middleDate = SpaceTimeKey(0, 0, (bounds.get.minKey.instant + bounds.get.maxKey.instant) / 2).time
 
     // intervals is a list of start,end-pairs
@@ -521,7 +538,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
       .map(DateTimeFormatter.ISO_INSTANT.format(_))
     val labels = (intervals.indices.collect { case i if i % 2 == 0 => intervals(i) }).toList
 
-    val aggregatedCube = new OpenEOProcesses().aggregateTemporal(cube,
+    val aggregatedCube = new OpenEOProcesses().aggregateTemporal(wrappedCube,
       intervals.asJava,
       labels.asJava,
       TestOpenEOProcessScriptBuilder.createMedian(true, cube.metadata.cellType),
@@ -533,8 +550,11 @@ class OpenEOProcessesSpec extends RasterMatchers {
     index match {
       case value: ByTileSpacetimePartitioner =>
         assertTrue(aggregatedIndex.isInstanceOf[ByTileSpacetimePartitioner])
+      case value: SparseSpaceTimePartitioner =>
+        //mapped to byTile Because of the small partition size in this test case
+        assertTrue(aggregatedIndex.isInstanceOf[ByTileSpacetimePartitioner])
       case _ =>
-        assertTrue(aggregatedIndex == SpaceTimeByMonthPartitioner)
+        assertTrue(aggregatedIndex.isInstanceOf[ConfigurableSpaceTimePartitioner])
     }
     val resultTiles: Array[MultibandTile] = aggregatedCube.values.collect()
 
