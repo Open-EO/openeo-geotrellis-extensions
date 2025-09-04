@@ -25,7 +25,7 @@ import net.jodah.failsafe.{Failsafe, RetryPolicy}
 import net.jodah.failsafe.event.ExecutionAttemptedEvent
 import org.apache.spark.{HashPartitioner, Partitioner, SparkContext}
 import org.apache.spark.rdd.{CoGroupedRDD, RDD}
-import org.apache.spark.util.LongAccumulator
+import org.apache.spark.util.{LongAccumulator, SizeEstimator}
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
@@ -407,7 +407,7 @@ object FileLayerProvider {
       var totalPixelsPartition = 0
       val startTime = System.currentTimeMillis()
 
-      val (loadedPartitions: Iterator[(SpaceTimeKey, (Int, MultibandTile))],partitionPixels) = loadPartitionBySource(partitionIterator, cloudFilterStrategy, totalChunksAcc, tracker,crs,layout,theCellType )
+      val (loadedPartitions: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))],partitionPixels) = loadPartitionBySource(partitionIterator, cloudFilterStrategy, totalChunksAcc, tracker,crs,layout,theCellType )
       totalPixelsPartition += partitionPixels
 
       val durationMillis = System.currentTimeMillis() - startTime
@@ -419,8 +419,10 @@ object FileLayerProvider {
       }
       loadedPartitions
 
-    },preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile)]) => {
-      var mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1).mapValues(_.map(_._2).reduceOption(_ merge _))
+    },preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile, SourceName)]) => {
+      var mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1)
+        .map(t => (t._1, t._2.toList.sortBy(x => sortableSourceName(x._3))))
+        .mapValues(x => x.map(_._2).reduceOption(_ merge _))
         .flatMap{case (index,multiband) =>{
           if(multiband.isDefined && multiband.get.bandCount>1) {
             if(index != 0) {
@@ -517,7 +519,7 @@ object FileLayerProvider {
 
   private def loadPartitionBySource(partitionIterator: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])], cloudFilterStrategy: CloudFilterStrategy, totalChunksAcc: LongAccumulator, tracker: BatchJobMetadataTracker, crs :CRS, layout:LayoutDefinition, cellType: CellType )= {
     var totalPixelsPartition = 0
-    val tiles: Iterator[(SpaceTimeKey, (Int,MultibandTile))] = partitionIterator.flatMap((tuple: (SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])) =>{
+    val tiles: Iterator[(SpaceTimeKey, (Int,MultibandTile, SourceName))] = partitionIterator.flatMap((tuple: (SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])) =>{
       val keys = tuple._2.map(_._2).asJavaCollection
       val source = tuple._2.head._3.asInstanceOf[GridBoundsRasterRegion].source
       val bounds = tuple._2.map(_._3.asInstanceOf[GridBoundsRasterRegion].bounds).toSeq
@@ -561,7 +563,7 @@ object FileLayerProvider {
       totalPixelsPartition += totalPixels
       totalChunksAcc.add(totalPixels / (256 * 256))
       tracker.add(PIXEL_COUNTER, totalPixels)
-      keys.iterator().asScala.zip(paddedRasters.map(b=>(theIndex,b.tile)).iterator)
+      keys.iterator().asScala.zip(paddedRasters.map(b=>(theIndex,b.tile,tuple._1)).iterator)
 
     })
     (tiles,totalPixelsPartition)
@@ -856,7 +858,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     var overlappingRasterSources: Seq[(RasterSource, Feature)] = loadRasterSourceRDD(ProjectedExtent(alignedExtent.extent,reprojectedBoundingBox.crs), from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
 
-    val dates = overlappingRasterSources.map(_._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))
+    val dates = overlappingRasterSources.map(_._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC"))).distinct
 
     var commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
@@ -913,7 +915,20 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             // processing a low number of spatial keys. This can happen with sparse data loading.
             new HashPartitioner(math.max((spatialKeyCount / 100).intValue(),1))
           }else{
-            SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(3))
+
+            /**
+             * Max size of metadata partition depends on the number of items returned by the catalog.
+             * Too many partitions requires extra executors, often at the very beginning of a job, so we try to limit this.
+             * We use the number of dates as a proxy for the max number of items intersecting a given spatial key.
+             * For cases like Sentinel-2, we can however have  items intersecting at a given location on the same date.
+             */
+            val maxPartitionSizeBytes = 30 * 1024 * 1024
+            val sampleCount = math.min(10, overlappingRasterSources.size)
+            val averageItemSizeInBytes = overlappingRasterSources.take(sampleCount).map(item => SizeEstimator.estimate(item)).sum / sampleCount
+            val estimatedSizePerKey = averageItemSizeInBytes * dates.length
+            val maxSpatialKeysPerPartition = maxPartitionSizeBytes / estimatedSizePerKey
+            val indexReduction = math.max(math.ceil(math.log(maxSpatialKeysPerPartition) / math.log(2)).toInt - 1, 1)
+            SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(indexReduction))
           }
         }
 
