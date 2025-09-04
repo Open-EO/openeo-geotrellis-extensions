@@ -454,7 +454,7 @@ package object geotiff {
   }
 
   def saveRDDTileGrid(rdd: MultibandTileLayerRDD[SpatialKey], bandCount: Int, path: String, tileGrid: String, zLevel: Int = 6, cropBounds: Option[Extent] = Option.empty[Extent]) = {
-    saveRDDGenericTileGrid(rdd, bandCount, path, tileGrid, zLevel, cropBounds)
+    saveRDDGenericTileGrid(rdd, path, tileGrid, cropBounds=cropBounds)
   }
 
   private def gridBoundsFor(re: RasterExtent, subExtent: Extent, clamp: Boolean = true): GridBounds[Int] = {
@@ -777,7 +777,7 @@ package object geotiff {
 
         val segmentCount = bandSegmentCount * detectedBandCount
         val newPath = newFilePath(path, name)
-        val geoTiffResultObject = writeTiff(newPath, tiffs, gridBounds, extent.intersection(croppedExtent).get, preprocessedRdd.metadata.crs, tileLayout, compression, cellType, detectedBandCount, segmentCount)
+        val geoTiffResultObject = writeTiff(newPath, tiffs, gridBounds, extent.intersection(croppedExtent).get, preprocessedRdd.metadata.crs, tileLayout, compression, cellType, detectedBandCount, segmentCount, formatOptions = options)
         geoTiffResultObject.gdalInfoPath match {
           case Some(gdalInfoPath) =>
             updateGdalInfoJsonFile(gdalInfoPath, geoTiffResultObject.correctPath)
