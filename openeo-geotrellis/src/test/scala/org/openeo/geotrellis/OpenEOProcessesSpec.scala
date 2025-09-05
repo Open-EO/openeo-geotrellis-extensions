@@ -144,15 +144,15 @@ object OpenEOProcessesSpec {
 
   def aggregateTemporalTestParams(): java.util.stream.Stream[Arguments] = {
     val pixelTypes = PixelType.values()
-    val p1 = new ByTileSpacetimePartitioner()
-    val p2 = new ByTileSpacetimePartitioner(Some(Array(SpatialKey(0,0),SpatialKey(1,1))))
+    val byTile = new ByTileSpacetimePartitioner()
+    val byTileWithKeys = new ByTileSpacetimePartitioner(Some(Array(SpatialKey(0,0),SpatialKey(1,1))))
     val dates = getDatesForCube()
 
     val keys = Array(SpatialKey(0, 0), SpatialKey(1, 1)).flatMap(key => dates.map(d => SpaceTimeKey(key, TemporalKey(d))))
     val reduction = 2
     val indices = keys.map(k=> SparseSpaceTimePartitioner.toIndex(k,reduction))
-    val p3 = new SparseSpaceTimePartitioner(indices, reduction, Some(keys))
-    pixelTypes.flatMap(pt => Seq( arguments(pt, null),arguments(pt, p1),arguments(pt, p2),arguments(pt, p3))).toStream.asJava.stream()
+    val sparseWithKeys = new SparseSpaceTimePartitioner(indices, reduction, Some(keys))
+    pixelTypes.flatMap(pt => Seq( arguments(pt, null,1374: java.lang.Integer),arguments(pt, byTile,36: java.lang.Integer),arguments(pt, byTileWithKeys,8: java.lang.Integer),arguments(pt, sparseWithKeys,16: java.lang.Integer))).toStream.asJava.stream()
 
   }
 }
@@ -518,7 +518,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
   @ParameterizedTest
   @MethodSource(Array("aggregateTemporalTestParams"))
-  def aggregateTemporalTest(pixelType: PixelType, index: PartitionerIndex[SpaceTimeKey]): Unit = {
+  def aggregateTemporalTest(pixelType: PixelType, index: PartitionerIndex[SpaceTimeKey], expectedTasks:Int): Unit = {
     val outDir = "/tmp/aggregateTemporalTest/"
     Files.createDirectories(Paths.get(outDir))
     val dates: List[ZonedDateTime] = getDatesForCube
@@ -556,7 +556,13 @@ class OpenEOProcessesSpec extends RasterMatchers {
       case _ =>
         assertTrue(aggregatedIndex.isInstanceOf[ConfigurableSpaceTimePartitioner])
     }
+    val listener = new GetInfoSparkListener()
+    SparkContext.getOrCreate().addSparkListener(listener)
     val resultTiles: Array[MultibandTile] = aggregatedCube.values.collect()
+    SparkContext.getOrCreate().removeSparkListener(listener)
+    println(listener)
+    assertEquals(expectedTasks,listener.getTasksCompleted)
+
 
     val validTile = resultTiles.find(_ != null).get
     val emptyTile = ArrayMultibandTile.empty(validTile.cellType, validTile.bandCount, validTile.cols, validTile.rows)
