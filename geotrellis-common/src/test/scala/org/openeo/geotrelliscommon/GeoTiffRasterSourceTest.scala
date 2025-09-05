@@ -13,7 +13,7 @@ class GeoTiffRasterSourceTest {
 
   @Test
   def readZStdCompressedTif():Unit = {
-    val source = GeoTiffRasterSource(GeoTiffPath.toGeoTiffDataPath("https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis_extrensions/zstd_predictor2.tif"))
+    val source = GeoTiffRasterSource(GeoTiffPath.toGeoTiffDataPath("https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/zstd_predictor2.tif"))
     val raster = source.read().get
     assertEquals(1, raster.tile.bandCount)
     assertEquals(4000, raster.tile.rows)
