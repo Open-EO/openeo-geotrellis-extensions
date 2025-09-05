@@ -8,11 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Add support for reading ZStd compressed GTiff files
+- Add support for reading ZStd compressed GTiff files ([#516](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/516))
 
 ### Changed
 
-- Upgrade Geotrellis library to 3.8.0+9-dbaac792-SNAPSHOT. This may impact kernels (e.g. in SCL dilation masks) in a positive way (more accurate).
+- Upgrade Geotrellis library to 3.8.0+9-dbaac792-SNAPSHOT. This may impact code using kernels (e.g. in SCL dilation masks) in a positive way (more accurate).
+Cfr. Geotrellis [changelog](https://github.com/locationtech/geotrellis/blob/master/CHANGELOG.md)
 
 ### Removed
 

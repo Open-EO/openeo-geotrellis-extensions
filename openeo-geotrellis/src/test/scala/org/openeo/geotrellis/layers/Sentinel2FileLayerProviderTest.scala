@@ -711,7 +711,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   }
 
   @Test
-  def testL1CMultibandTileMask(): Unit = {
+  def testL1CMultibandTileMask(@TempDir tempDir: java.nio.file.Path): Unit = {
     val listener = new BatchJobProgressListener()
     sc.addSparkListener(listener)
     val dilationDistance = 5
@@ -767,7 +767,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
     // Compare the two tiles.
     val referenceTile = GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/l1c_mask_reference.tif").read().get
-    val actualTile = GeoTiffRasterSource("test_L1C_tile_mask.tif").read().get
+    val actualTile = GeoTiffRasterSource(tempDir.resolve("test_L1C_tile_mask.tif").toString).read().get
     // val cloudArea = referenceTile.extent.intersection(mergedPolygon).getArea
     // val cloudPercentage = cloudArea / referenceTile.extent.getArea
     // println("Cloud polygon covers " + cloudArea + " Sq meters of tile with " + referenceTile.extent.getArea + " Sq meters. (" + cloudPercentage*100 +"%)")
