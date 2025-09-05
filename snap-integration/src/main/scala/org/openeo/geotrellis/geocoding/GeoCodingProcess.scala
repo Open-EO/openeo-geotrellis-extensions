@@ -2,6 +2,7 @@ package org.openeo.geotrellis.geocoding
 
 import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, TemporalProjectedExtent, TileLayerMetadata}
 import geotrellis.proj4.{CRS, LatLng, Transform}
+import geotrellis.raster.buffer.BufferedTile
 import geotrellis.raster.resample.NearestNeighbor
 import geotrellis.raster.{CellSize, DoubleArrayTile, FloatConstantNoDataCellType, MultibandTile, Raster, RasterExtent}
 import geotrellis.spark.tiling._
@@ -27,7 +28,7 @@ class GeoCodingProcess extends Serializable {
     val longitudes = inputTile.band(lonIndex).toArrayDouble()
 
     val geoCoder: PixelQuadTreeInverse = new PixelQuadTreeInverse.Plugin(false).create().asInstanceOf[PixelQuadTreeInverse]
-    val geoRaster = new GeoRaster(longitudes, latitudes, "lon", "lat", inputTile.cols, inputTile.rows, 0.05)
+    val geoRaster = new GeoRaster(longitudes, latitudes, "lon", "lat", inputTile.cols, inputTile.rows, 0.02)
     geoCoder.initialize(geoRaster, false, Array.empty[PixelPos])
     //for automatic estimation of pixel size, we need to avoid NaN values in lat/lon bands
     //the method below is cleaner and shorter, but forces dependency on older geotools
@@ -93,9 +94,10 @@ class GeoCodingProcess extends Serializable {
     val maxLat = minmaxValues.map(_(1)._2).max()
 
     val localTargetExtent = ProjectedExtent(Extent(minLon, minLat, maxLon, maxLat),LatLng).reproject(targetCRS)
-    val rasters: RDD[(TemporalProjectedExtent, MultibandTile)] = cube.flatMap { case (key: SpaceTimeKey, tile: MultibandTile) => {
+    val bufferedCube: RDD[(SpaceTimeKey, BufferedTile[MultibandTile])] = cube.bufferTiles(32)
+    val rasters: RDD[(TemporalProjectedExtent, MultibandTile)] = bufferedCube.flatMap { case (key: SpaceTimeKey, tile: BufferedTile[MultibandTile]) => {
 
-      val raster = geocode(tile, targetCRS,targetResolution, lonIndex,latIndex)
+      val raster = geocode(tile.tile, targetCRS,targetResolution, lonIndex,latIndex)
       raster.map(r=>(TemporalProjectedExtent(r.extent, targetCRS, key.time), r.tile))
     }
     }

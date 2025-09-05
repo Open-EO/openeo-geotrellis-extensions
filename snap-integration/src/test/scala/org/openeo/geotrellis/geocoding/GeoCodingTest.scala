@@ -50,7 +50,7 @@ class GeoCodingTest {
 
     val masterTiff = GeoTiff.readMultiband(resource.toString.stripPrefix("file:"))
 
-    val inputLayout:LayoutDefinition = LayoutDefinition(masterTiff.rasterExtent, 128, 128)
+    val inputLayout:LayoutDefinition = LayoutDefinition(masterTiff.rasterExtent, 256, 256)
 
 
     val tiledInput: RDD[(SpaceTimeKey, MultibandTile)] = GeoCodingTest.sc.parallelize(Seq((TemporalProjectedExtent(masterTiff.extent,masterTiff.crs, 0L),masterTiff.tile))).tileToLayout(FloatConstantNoDataCellType,inputLayout)
