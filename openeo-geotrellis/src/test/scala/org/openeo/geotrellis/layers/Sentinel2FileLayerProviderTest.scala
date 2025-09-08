@@ -763,7 +763,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       Some(dataCubeParameters)
       )
     val spatialMaskedLayer = maskedLayer.toSpatial(date)
-    spatialMaskedLayer.writeGeoTiff("test_L1C_tile_mask.tif", boundingBox)
+    spatialMaskedLayer.writeGeoTiff(tempDir.resolve("test_L1C_tile_mask.tif"), boundingBox)
 
     // Compare the two tiles.
     val referenceTile = GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/l1c_mask_reference.tif").read().get
