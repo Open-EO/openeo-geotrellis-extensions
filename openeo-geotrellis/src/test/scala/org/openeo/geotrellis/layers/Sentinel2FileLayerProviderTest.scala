@@ -10,7 +10,7 @@ import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.summary.polygonal.{PolygonalSummaryResult, Summary}
 import geotrellis.raster.summary.types.MeanValue
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{CellSize, MultibandTile, NODATA, PaddedTile, ShortUserDefinedNoDataCellType}
+import geotrellis.raster.{CellSize, MultibandTile, PaddedTile, ShortUserDefinedNoDataCellType}
 import geotrellis.shapefile.ShapeFileReader
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
@@ -23,15 +23,15 @@ import org.apache.spark.util.SizeEstimator
 import org.junit.Assert._
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api._
+import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.junit.{AfterClass, BeforeClass}
 import org.openeo.geotrellis.TestImplicits._
 import org.openeo.geotrellis.geotiff.{GTiffOptions, saveRDD}
-import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
-import org.openeo.geotrellis.{LayerFixtures, MergeCubesSpec, OpenEOProcessScriptBuilder, OpenEOProcesses, ProjectedPolygons, TestOpenEOProcessScriptBuilder}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ConfigurableSpaceTimePartitioner, DataCubeParameters, ResampledTile, SparseSpaceTimePartitioner}
+import org.openeo.geotrellis.{LayerFixtures, OpenEOProcessScriptBuilder, OpenEOProcesses}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ConfigurableSpaceTimePartitioner, DataCubeParameters, ResampledTile}
 import org.openeo.opensearch.OpenSearchResponses.Link
 import org.openeo.opensearch.{OpenSearchClient, OpenSearchResponses}
 import org.openeo.sparklisteners.{BatchJobProgressListener, GetInfoSparkListener}
@@ -109,8 +109,8 @@ object Sentinel2FileLayerProviderTest {
   }
 
   def maskingParams: Stream[Arguments] = Arrays.stream(Array(
-    arguments(Collections.singletonMap("method", "mask_scl_dilation"),"https://artifactory.vgt.vito.be/artifactory/testdata-public/dilation_masked.tif"),
-    arguments(Map("method"->"mask_scl_dilation","erosion_kernel_size"->3,"kernel1_size"->0).asJava.asInstanceOf[util.Map[String,Object]],"https://artifactory.vgt.vito.be/artifactory/testdata-public/masked_erosion.tif")
+    arguments(Collections.singletonMap("method", "mask_scl_dilation"),"https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/dilation_masked.tif"),
+    arguments(Map("method"->"mask_scl_dilation","erosion_kernel_size"->3,"kernel1_size"->0).asJava.asInstanceOf[util.Map[String,Object]],"https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/masked_erosion.tif")
   ))
 
   def datacubeParams: Stream[Arguments] = Arrays.stream(Array(
@@ -148,8 +148,6 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     val spatialLayer = layer
       .toSpatial(date)
       .cache()
-
-    //spatialLayer.withContext(_.mapValues(_.band(0))).writeGeoTiff("/tmp/Sentinel2FileLayerProvider_polygonalMultiplePolygon.tif", ProjectedExtent(layer.metadata.extent,layer.metadata.crs))
 
     val summary = spatialLayer.polygonalSummary(polygons.map{_.reproject(LatLng,layer.metadata.crs)}, MeanVisitor).collect()
     print(summary.size)
@@ -276,7 +274,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
   @ParameterizedTest
   @MethodSource(Array("datacubeParams"))
-  def multibandWithSpacetimeMask(parameters: DataCubeParameters, expectedNBStages: Int): Unit = {
+  def multibandWithSpacetimeMask(parameters: DataCubeParameters, expectedNBStages: Int, @TempDir tempDir: java.nio.file.Path): Unit = {
 
     val refPath = s"org/openeo/geotrellis/Sentinel2FileLayerProvider_multiband_reference_${parameters.resampleMethod.toString.toLowerCase}.tif"
 
@@ -292,10 +290,10 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     builder.argumentEnd()
     builder.constantArgument("y", 6)
     builder.expressionEnd("gte", args)
-    mask.toSpatial(date).writeGeoTiff(f"tmp/Sentinel2FileLayerProvider_multiband_SCL_${parameters.hashCode()}.tif", bbox)
+    mask.toSpatial(date).writeGeoTiff(tempDir.resolve(f"Sentinel2FileLayerProvider_multiband_SCL_${parameters.hashCode()}.tif"), bbox)
     val p = new OpenEOProcesses()
     mask = p.mapBands(mask, builder)
-    mask.toSpatial(date).writeGeoTiff(f"tmp/Sentinel2FileLayerProvider_multiband_mask_${parameters.hashCode()}.tif", bbox)
+    mask.toSpatial(date).writeGeoTiff(tempDir.resolve(f"Sentinel2FileLayerProvider_multiband_mask_${parameters.hashCode()}.tif"), bbox)
 
     var layer = tocLayerProvider.readMultibandTileLayer(from = date, to = date, bbox, Array(MultiPolygon(bbox.extent.toPolygon())),bbox.crs, sc = sc,zoom = 13,datacubeParams = Option.empty)
 
@@ -315,10 +313,10 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       .toSpatial(date)
       .cache()
 
-    spatialLayer.writeGeoTiff(f"tmp/Sentinel2FileLayerProvider_multiband_${parameters.hashCode()}.tif", bbox)
+    spatialLayer.writeGeoTiff(tempDir.resolve(f"Sentinel2FileLayerProvider_multiband_${parameters.hashCode()}.tif"), bbox)
     assertNotEquals(originalCount,maskedCount)
 
-    val resultTiff = GeoTiff.readMultiband(f"tmp/Sentinel2FileLayerProvider_multiband_${parameters.hashCode()}.tif")
+    val resultTiff = GeoTiff.readMultiband(tempDir.resolve(f"Sentinel2FileLayerProvider_multiband_${parameters.hashCode()}.tif"))
 
     val refFile = Thread.currentThread().getContextClassLoader.getResource(refPath)
     val refTiff = GeoTiff.readMultiband(refFile.getPath)
@@ -361,7 +359,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
   @Disabled("TODO: verify output")
   @Test
-  def filterByAttributeValue(): Unit = {
+  def filterByAttributeValue(@TempDir tempDir: java.nio.file.Path): Unit = {
     val date = ZonedDateTime.of(LocalDate.of(2020, 4, 5), MIDNIGHT, UTC)
     val bbox = ProjectedExtent(Extent(4.399681091308594, 51.06869305078254, 4.446201324462891, 51.08233659233106), LatLng)
 
@@ -372,7 +370,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       .toSpatial(date)
       .cache()
 
-    spatialLayer.writeGeoTiff("/tmp/Sentinel2FileLayerProvider_10_UFS.tif", bbox)
+    spatialLayer.writeGeoTiff(tempDir.resolve("Sentinel2FileLayerProvider_10_UFS.tif"), bbox)
   }
 
   @Disabled("TODO: verify output")
@@ -459,7 +457,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   }
 
   @Test
-  def testReadDifferentProjection():Unit = {
+  def testReadDifferentProjection(@TempDir tempDir: java.nio.file.Path):Unit = {
 
     val date = LocalDate.of(2019, 3, 7).atStartOfDay(UTC)
 
@@ -485,7 +483,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
     val reprojectedBoundingBox = boundingBox.reproject(spatialLayer.metadata.crs)
 
-    val output_path = "/tmp/utm32.tif"
+    val output_path = tempDir.resolve("utm32.tif")
     val options = new GTiffOptions()
     options.overviews = "ALL"
     saveRDD(spatialLayer,-1,output_path,cropBounds=Some(reprojectedBoundingBox),formatOptions=options)
@@ -498,9 +496,8 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
   @ParameterizedTest
   @MethodSource(Array("maskingParams"))
-  def testMaskSclDilationOnS2TileEdge(params:util.Map[String,Object],ref:String): Unit = {
+  def testMaskSclDilationOnS2TileEdge(params:util.Map[String,Object],ref:String, @TempDir tempDir: java.nio.file.Path): Unit = {
     val date = LocalDate.of(2019, 3, 7).atStartOfDay(UTC)
-
     val crs = CRS.fromEpsgCode(32631)
     val boundingBox = ProjectedExtent(Extent(640860, 5676170, 666460, 5701770), crs)
 
@@ -522,13 +519,14 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
 
     val reprojectedBoundingBox = boundingBox.reproject(spatialLayer.metadata.crs)
 
+    val actual = tempDir.resolve("masked.tif")
     spatialLayer.sparseStitch(reprojectedBoundingBox) match {
-      case Some(stitched) => MultibandGeoTiff(stitched.crop(reprojectedBoundingBox), spatialLayer.metadata.crs).write("/tmp/masked.tif")
+      case Some(stitched) => MultibandGeoTiff(stitched.crop(reprojectedBoundingBox), spatialLayer.metadata.crs).write(actual)
       case _ => throw new IllegalStateException("nothing to sparse-stitch")
     }
 
     val referenceTile = GeoTiffRasterSource(ref).read().get
-    val actualTile = GeoTiffRasterSource("/tmp/masked.tif").read().get
+    val actualTile = GeoTiffRasterSource(actual.toString).read().get
     assertRastersEqual(referenceTile,actualTile,160.0)
   }
 
@@ -536,9 +534,9 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
    * Test simulates the very common case where an 'scl dilation mask' is applied at load time.
    */
   @Test
-  def testToSclDilationMaskOnS2TileEdge(): Unit = {
-    val ref = "https://artifactory.vgt.vito.be/artifactory/testdata-public/toscldilationmask_masked_ref.tif"
-    val actual = "/tmp/toscldilationmask_masked_actual.tif"
+  def testToSclDilationMaskOnS2TileEdge(@TempDir tempDir: java.nio.file.Path): Unit = {
+    val ref = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/toscldilationmask_masked_ref.tif"
+    val actual = tempDir.resolve("toscldilationmask_masked_actual.tif")
 
     // Create spatialLayer.
     val date = LocalDate.of(2019, 3, 7).atStartOfDay(UTC)
@@ -596,7 +594,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
     listener.printStatus()
 
     val referenceTile = GeoTiffRasterSource(ref).read().get
-    val actualTile = GeoTiffRasterSource(actual).read().get
+    val actualTile = GeoTiffRasterSource(actual.toString).read().get
     assertRastersEqual(referenceTile, actualTile, 160.0)
     //because debug logging is enabled during tests, it actually runs more jobs and stages than done in production
     assertEquals(5, listener.getJobsCompleted)
@@ -713,7 +711,7 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
   }
 
   @Test
-  def testL1CMultibandTileMask(): Unit = {
+  def testL1CMultibandTileMask(@TempDir tempDir: java.nio.file.Path): Unit = {
     val listener = new BatchJobProgressListener()
     sc.addSparkListener(listener)
     val dilationDistance = 5
@@ -765,11 +763,11 @@ class Sentinel2FileLayerProviderTest extends RasterMatchers {
       Some(dataCubeParameters)
       )
     val spatialMaskedLayer = maskedLayer.toSpatial(date)
-    spatialMaskedLayer.writeGeoTiff("test_L1C_tile_mask.tif", boundingBox)
+    spatialMaskedLayer.writeGeoTiff(tempDir.resolve("test_L1C_tile_mask.tif"), boundingBox)
 
     // Compare the two tiles.
-    val referenceTile = GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/l1c_mask_reference.tif").read().get
-    val actualTile = GeoTiffRasterSource("test_L1C_tile_mask.tif").read().get
+    val referenceTile = GeoTiffRasterSource("https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/l1c_mask_reference.tif").read().get
+    val actualTile = GeoTiffRasterSource(tempDir.resolve("test_L1C_tile_mask.tif").toString).read().get
     // val cloudArea = referenceTile.extent.intersection(mergedPolygon).getArea
     // val cloudPercentage = cloudArea / referenceTile.extent.getArea
     // println("Cloud polygon covers " + cloudArea + " Sq meters of tile with " + referenceTile.extent.getArea + " Sq meters. (" + cloudPercentage*100 +"%)")
