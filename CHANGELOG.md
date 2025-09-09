@@ -13,7 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Upgrade Geotrellis library to 3.8.0+9-dbaac792-SNAPSHOT. This may impact code using kernels (e.g. in SCL dilation masks) in a positive way (more accurate).
-Cfr. Geotrellis [changelog](https://github.com/locationtech/geotrellis/blob/master/CHANGELOG.md)
+  Cfr. Geotrellis [changelog](https://github.com/locationtech/geotrellis/blob/master/CHANGELOG.md)
+- aggregate_temporal: performance improvement for 2 cases. This tries to avoid empty or small partitions, 
+  which also results in increased partition sizes, thus has a memory impact. ([#445](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/445))
 
 ### Removed
 
