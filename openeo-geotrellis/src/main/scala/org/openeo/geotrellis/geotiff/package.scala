@@ -863,7 +863,7 @@ package object geotiff {
     tiffTile
   }
 
-  // This implementation is not used anymore
+  // This implementation should not be used anymore (deprecated)
   def saveStitched(
                     rdd: SRDD,
                     path: String,
