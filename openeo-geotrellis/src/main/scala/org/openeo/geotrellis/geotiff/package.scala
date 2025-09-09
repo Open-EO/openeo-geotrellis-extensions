@@ -260,8 +260,10 @@ package object geotiff {
           val overviews = if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
             val decimationFactors = List(4,8,16)
             val resampleMethod = getOverviewResampleMethod(formatOptions)
+            var previousTile = tile.resample(croppedExtent, tileLayout.tileCols / 2, tileLayout.tileRows / 2, resampleMethod)
             decimationFactors.map(decimationFactor => {
-              val resampledTile = tile.resample(croppedExtent, tileLayout.tileCols / decimationFactor, tileLayout.tileRows / decimationFactor, resampleMethod)
+              val resampledTile = previousTile.resample(croppedExtent, tileLayout.tileCols / decimationFactor, tileLayout.tileRows / decimationFactor, resampleMethod)
+              previousTile = resampledTile
               val croppedBytes = raster.CroppedTile(resampledTile, raster.GridBounds(0, 0, tileLayout.tileCols/decimationFactor-1, tileLayout.tileRows/decimationFactor-1)).toBytes()
               theCompressor.compress(croppedBytes,0)
             })
@@ -1003,7 +1005,11 @@ package object geotiff {
     if (fo.overviews.toUpperCase == "ALL" ||
       fo.overviews.toUpperCase == "AUTO" && (gridBounds.width > 1024 || gridBounds.height > 1024)
     ) {
-      geotiff = geotiff.withOverviews(getOverviewResampleMethod(fo), List(4, 8, 16), blockSize = fo.tileSize)
+      val baseOverview = geotiff.buildOverview(getOverviewResampleMethod(fo),2,blockSize = fo.tileSize)
+      val firstOverview = baseOverview.buildOverview(getOverviewResampleMethod(fo),2,blockSize = fo.tileSize)
+      val secondOverview = firstOverview.buildOverview(getOverviewResampleMethod(fo),2,blockSize = fo.tileSize)
+      val thirdOverview = secondOverview.buildOverview(getOverviewResampleMethod(fo),2,blockSize = fo.tileSize)
+      geotiff = MultibandGeoTiff(geotiff.tile,geotiff.extent,geotiff.crs,geotiff.tags,geotiff.options,List(firstOverview,secondOverview,thirdOverview))
     }
     writeGeoTiff(geotiff, filePath, Some(fo))
   }

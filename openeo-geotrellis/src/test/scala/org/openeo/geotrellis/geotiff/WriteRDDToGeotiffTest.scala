@@ -10,7 +10,7 @@ import geotrellis.raster.render.ColorMap.Options
 import geotrellis.raster.render.DoubleColorMap
 import geotrellis.raster.resample.Min
 import geotrellis.raster.testkit.RasterMatchers
-import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, CellSize, ColorMaps, MultibandTile, Raster, Tile, TileLayout, UByteArrayTile, isData}
+import geotrellis.raster.{ByteArrayTile, ByteConstantNoDataCellType, ByteConstantTile, CellSize, ColorMaps, IntArrayTile, MultibandTile, Raster, Tile, TileLayout, UByteArrayTile, isData}
 import geotrellis.spark._
 import geotrellis.spark.testkit.TileLayerRDDBuilders
 import geotrellis.vector._
@@ -447,6 +447,60 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     assertArrayEquals(croppedReference.toArray(), result2.band(0).toArrayTile().crop(2 * 256, 0, layoutCols * 256, layoutRows * 256).toArray())
   }
 
+  @Test
+  def testSaveRDDTemporalOverviewResampleMethod(): Unit = {
+    val outDir = Paths.get("tmp/testSaveRDDTemporalOverviewResampleMethod/")
+    new Directory(outDir.toFile).deepList().foreach(_.delete())
+    Files.createDirectories(outDir)
+
+    val arrayDim = 16
+    val layoutCols = 1
+    val layoutRows = 1
+
+    val rangeArray = Array.range(0,layoutCols*layoutRows*arrayDim*arrayDim)
+    //change med value in overview0 (0,0)
+    rangeArray.update(3,18)
+    rangeArray.update(34,19)
+    //change average, bilinear and max value in overview0 (0,2)
+    rangeArray.update(43,89)
+    //change average, bilinear and min value in overview0 (1,2)
+    rangeArray.update(88,42)
+    // Change near value in overview0 (2,2)
+    rangeArray.update(171,187)
+    rangeArray.update(187,171)
+
+    val arrayTileCount = IntArrayTile(rangeArray,layoutCols*arrayDim,layoutRows*arrayDim)
+    val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTileCount,layoutCols,layoutRows)
+
+    val options = new GTiffOptions()
+    options.setOverview("ALL")
+
+    def testValues(resampleMethod: String, expectedValues0:Array[Int], expectedValues1:Array[Int],expectedValue2:Int) = {
+      options.setResampleMethod(resampleMethod)
+      saveRDDTemporal(layer, outDir.toString, formatOptions = options)
+
+      val result = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z.tif").toString)
+      assertEquals(3, result.overviews.size)
+      val overview0 = result.overviews(0)
+      for (i <- 0 until 4; j <- 0 until 4) {
+        val n = 4 * i + j
+        assertEquals(expectedValues0(n), overview0.tile.band(0).get(j, i))
+      }
+      val overview1 = result.overviews(1)
+      for (i <- 0 until 2; j <- 0 until 2) {
+        val n = 2 * i + j
+        assertEquals(expectedValues1(n), overview1.tile.band(0).get(j, i))
+      }
+      val overview2 = result.overviews(2).tile.band(0).get(0, 0)
+      assertEquals(expectedValue2, overview2)
+    }
+    testValues("near"    ,Array(51,55,59,63,115,119,123,127,179,183,171,191,243,247,251,255),Array( 119, 127,247,255),255)
+    testValues("average" ,Array(25,29,36,37, 89, 93, 94,101,153,157,161,165,217,221,225,229),Array( 59, 67,187,195),127)
+    testValues("bilinear",Array(26,30,37,38, 90, 94, 95,102,154,158,162,166,218,222,226,230),Array( 60, 68,188,196),128)
+    testValues("max"     ,Array(51,55,89,63,115,119,123,127,179,183,187,191,243,247,251,255),Array(119,127,247,255),255)
+    testValues("min"     ,Array( 0, 4, 8,12, 64, 68, 42, 76,128,132,136,140,192,196,200,204),Array(  0,  8,128,136),  0)
+    testValues("med"     ,Array(29,29,33,37, 89, 93, 97,101,153,157,161,165,217,221,225,229),Array( 59, 67,187,195),127)
+  }
 
   @Test
   def testWriteMultibandTemporalRDDWithGapsOverviews(): Unit = {
@@ -463,7 +517,8 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     saveRDDTemporal(layer, outDir.toString,formatOptions = options)
     val result = GeoTiff.readMultiband(outDir.resolve("openEO_2017-01-02Z.tif").toString)
     assertEquals(3,result.overviews.size)
-    val resampled0 = imageTile.resample(256*layoutCols/4,256*layoutRows/4)
+    val resampled = imageTile.resample(256*layoutCols/2,256*layoutRows/2)
+    val resampled0 = resampled.resample(256*layoutCols/4,256*layoutRows/4)
     val overview0 = result.overviews.head.tile.band(0)
     assertEquals((-1,0),overview0.findMinMax)
     for (
@@ -473,7 +528,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     ) {
       assertEquals(resampled0.get(i,j), overview0.get(i,j))
     }
-    val resampled1 = imageTile.resample(256*layoutCols/8,256*layoutRows/8)
+    val resampled1 = resampled0.resample(256*layoutCols/8,256*layoutRows/8)
     val overview1 = result.overviews(1).tile.band(0)
     assertEquals((-1,0),overview1.findMinMax)
     for (
@@ -483,7 +538,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     ) {
       assertEquals(resampled1.get(i,j), overview1.get(i,j))
     }
-    val resampled2 = imageTile.resample(256*layoutCols/16,256*layoutRows/16)
+    val resampled2 = resampled1.resample(256*layoutCols/16,256*layoutRows/16)
     val overview2 = result.overviews(2).tile.band(0)
     assertEquals((-1,0),overview2.findMinMax)
     for (
