@@ -18,5 +18,7 @@ class GeoTiffRasterSourceTest {
     assertEquals(1, raster.tile.bandCount)
     assertEquals(4000, raster.tile.rows)
     assertEquals(4000, raster.tile.cols)
+    assertEquals((0, 128), raster.tile.band(0).findMinMax)
+    assertEquals(2, raster.tile.band(0).get(5, 5))
   }
 }
