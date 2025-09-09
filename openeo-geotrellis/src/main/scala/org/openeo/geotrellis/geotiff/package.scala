@@ -863,6 +863,7 @@ package object geotiff {
     tiffTile
   }
 
+  // This implementation is not used anymore
   def saveStitched(
                     rdd: SRDD,
                     path: String,
