@@ -7,46 +7,40 @@ import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CropOptions, CroppedTile, EmptyName, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, SourcePath, StringName, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.clip.ClipToGrid
 import geotrellis.spark.clip.ClipToGrid.clipFeatureToExtent
-import geotrellis.spark.join.{SpatialJoin, VectorJoin}
+import geotrellis.spark.join.VectorJoin
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
-import geotrellis.vector.reproject.Reproject.reprojectExtentAsPolygon
-import net.jodah.failsafe.{Failsafe, RetryPolicy}
-import net.jodah.failsafe.event.ExecutionAttemptedEvent
-import org.apache.spark.{HashPartitioner, Partitioner, SparkContext}
-import org.apache.spark.rdd.{CoGroupedRDD, RDD}
+import org.apache.spark.rdd.RDD
 import org.apache.spark.util.{LongAccumulator, SizeEstimator}
+import org.apache.spark.{HashPartitioner, Partitioner, SparkContext}
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
-import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
 import org.openeo.geotrellis._
+import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.{Logger, LoggerFactory}
-import org.slf4j.LoggerFactory
-import software.amazon.awssdk.core.exception.AbortedException
 
 import java.io.{IOException, Serializable}
 import java.net.URI
 import java.nio.file.{Files, Path, Paths}
 import java.time._
-import java.time.temporal.ChronoUnit.{DAYS, SECONDS}
-import java.util
+import java.time.temporal.ChronoUnit.DAYS
 import java.util.concurrent.TimeUnit
-import scala.collection.{GenSeq, immutable}
 import scala.collection.JavaConverters._
+import scala.collection.immutable
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
 
@@ -71,7 +65,6 @@ object FileLayerProvider {
 
 
   lazy val sdk = {
-    import _root_.io.opentelemetry.api.OpenTelemetry
     import _root_.io.opentelemetry.api.GlobalOpenTelemetry
     GlobalOpenTelemetry.get()
   }
@@ -860,6 +853,10 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     val dates = overlappingRasterSources.map(_._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC"))).distinct
 
+    //Feature objects will be part of RDD, remove potentially large metadata that is no longer needed beyond this point
+    //Certain STAC items can have large number of links!
+    overlappingRasterSources = overlappingRasterSources.map(source_feature => (source_feature._1,source_feature._2.copy(links = Array.empty, generalProperties = null)))
+
     var commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
     var metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, dates.minBy(_.toEpochSecond), dates.maxBy(_.toEpochSecond), commonCellType)
@@ -922,7 +919,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
              * We use the number of dates as a proxy for the max number of items intersecting a given spatial key.
              * For cases like Sentinel-2, we can however have  items intersecting at a given location on the same date.
              */
-            val maxPartitionSizeBytes = 30 * 1024 * 1024
+            val maxPartitionSizeBytes = 40 * 1024 * 1024
             val sampleCount = math.min(10, overlappingRasterSources.size)
             val averageItemSizeInBytes = overlappingRasterSources.take(sampleCount).map(item => SizeEstimator.estimate(item)).sum / sampleCount
             val estimatedSizePerKey = averageItemSizeInBytes * dates.length
