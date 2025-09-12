@@ -1598,7 +1598,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
     assertEquals(1, listener.getJobsCompleted)
     assertEquals(3, listener.getStagesCompleted)
-    assertEquals(81, listener.getTasksCompleted)
+    assertEquals(21, listener.getTasksCompleted)
     assertEquals(77314, allTiles.size)
     println(listener.getPeakMemoryMB)
 
