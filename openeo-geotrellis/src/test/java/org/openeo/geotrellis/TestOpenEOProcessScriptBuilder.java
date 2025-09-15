@@ -15,9 +15,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import scala.Function1;
+import scala.Tuple2;
 import scala.collection.JavaConverters;
 import scala.collection.Seq;
 import scala.collection.mutable.Buffer;
+import scala.jdk.javaapi.CollectionConverters;
+import scala.jdk.javaapi.CollectionConverters$;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -30,7 +33,7 @@ public class TestOpenEOProcessScriptBuilder {
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         Tile tile1 = fillDoubleArrayTile(4, 2, 3, 10, 6, 3, 9, 15, 0, Double.NaN);
         Tile tile2 = fillDoubleArrayTile(4, 2, 0, 6, 10, 9, 7, 17, 0, Double.NaN);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(tile1, tile2)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile1, tile2)).toSeq());
         assertEquals(1, result.length());
         Tile ndvi = result.apply(0);
         assertDoubleTileEquals(fillDoubleArrayTile(4, 2, 1.0, 0.25, -0.25, -0.5, 0.125, -0.0625, Double.NaN, Double.NaN), ndvi);
@@ -176,7 +179,7 @@ public class TestOpenEOProcessScriptBuilder {
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         Tile tile1 = fillByteArrayTile(3, 3, 9, 10, 11, 12);
         Tile tile2 = fillByteArrayTile(3, 3, 5, 6, 7, 8);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(tile1, tile2)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile1, tile2)).toSeq());
         Tile res = result.apply(0);
         assertTileEquals(fillIntArrayTile(3, 3, 30, 30, 30, 30, 30, 30, 30, 30, 30), res);
     }
@@ -190,7 +193,7 @@ public class TestOpenEOProcessScriptBuilder {
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         Tile tile1 = fillByteArrayTile(3, 3, 9, -10, 11, 12);
         Tile tile2 = fillByteArrayTile(3, 3, 5, 6, 7, 8);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(tile1, tile2)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile1, tile2)).toSeq());
 
         assertTileEquals(fillShortArrayTile(3, 3, 90, -100, 110, 120, 0, 0, 0, 0, 0), result.apply(0));
         assertTileEquals(fillShortArrayTile(3, 3, 50, 60, 70, 80, 0, 0, 0, 0, 0), result.apply(1));
@@ -225,7 +228,7 @@ public class TestOpenEOProcessScriptBuilder {
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         Tile tile1 = fillByteArrayTile(3, 3, 9, -10, 11, 12);
         Tile tile2 = fillByteArrayTile(3, 3, 5, 6, 7, 8);
-        Buffer<Tile> scalaBuffer = JavaConverters.asScala(Arrays.asList(tile1, tile2));
+        Buffer<Tile> scalaBuffer = CollectionConverters.asScala(Arrays.asList(tile1, tile2));
         Seq<Tile> result = transformation.apply(scalaBuffer.toSeq());
 
         assertTileEquals(fillFloatArrayTile(3, 3, 90, -100, 110, 120, 0, 0, 0, 0, 0), result.apply(0));
@@ -248,7 +251,7 @@ public class TestOpenEOProcessScriptBuilder {
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         Tile tile1 = fillByteArrayTile(3, 3, 9, 10, 11, 12);
         Tile tile2 = fillByteArrayTile(3, 3, 5, 6, 7, 8);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(tile1, tile2)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile1, tile2)).toSeq());
 
         assertTileEquals(fillByteArrayTile(3, 3, 81, 100, 121, 144, 0, 0, 0, 0, 0), result.apply(0));
         assertTileEquals(fillByteArrayTile(3, 3, 25, 36, 49, 64, 0, 0, 0, 0, 0), result.apply(1));
@@ -273,7 +276,7 @@ public class TestOpenEOProcessScriptBuilder {
 
         assertEquals(BitCellType$.MODULE$, builder.getOutputCellType());
         Tile tile = fillByteArrayTile(4, 3, 8, 9, 10, 11, 12);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(tile)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile)).toSeq());
         assertEquals(1, result.length());
         Tile res = result.apply(0);
         assertTileEquals(fillBitArrayTile(4, 3, expectedValues), res);
@@ -325,7 +328,7 @@ public class TestOpenEOProcessScriptBuilder {
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         Tile tile0 = fillByteArrayTile(3, 2, 8, 9, 10, 11, 12, 13);
         Tile tile1 = fillByteArrayTile(3, 2, 7, 9, 11, 9, 7, 5);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(tile0, tile1)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile0, tile1)).toSeq());
         assertEquals(1, result.length());
         Tile res = result.apply(0);
         assertTileEquals(fillBitArrayTile(3, 2, expectedValues), res);
@@ -452,7 +455,7 @@ public class TestOpenEOProcessScriptBuilder {
 
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         Tile tile1 = fillByteArrayTile(4, 3, 8, 9, 10, 11, 12);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(tile1)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile1)).toSeq());
         Tile res = result.apply(0);
         assertTileEquals(fillBitArrayTile(4, 3, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1), res);
     }
@@ -473,7 +476,7 @@ public class TestOpenEOProcessScriptBuilder {
 
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         Tile tile1 = fillByteArrayTile(4, 3, 8, 9, 10, 11, 12);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(tile1)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile1)).toSeq());
         Tile res = result.apply(0);
         assertTileEquals(fillBitArrayTile(4, 3, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1), res);
     }
@@ -517,7 +520,7 @@ public class TestOpenEOProcessScriptBuilder {
 
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         Tile tile1 = fillByteArrayTile(4, 3, 8, 9, 10, 11, 12);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(tile1)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile1)).toSeq());
         Tile res = result.apply(0);
         assertTileEquals(fillBitArrayTile(4, 3, expected), res);
     }
@@ -533,7 +536,7 @@ public class TestOpenEOProcessScriptBuilder {
 
         Tile x = fillBitArrayTile(4, 4, 0, 0, 1, 1);
         Tile y = fillBitArrayTile(4, 4, 0, 1, 0, 1);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(x, y)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(x, y)).toSeq());
         assertEquals(1, result.length());
         Tile z = result.apply(0);
         assertEquals("bool", z.cellType().toString());
@@ -569,7 +572,7 @@ public class TestOpenEOProcessScriptBuilder {
 
         Tile x = fillBitArrayTile(4, 4, 0, 0, 1, 1);
         Tile y = fillBitArrayTile(4, 4, 0, 1, 0, 1);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(x, y)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(x, y)).toSeq());
         assertEquals(1, result.length());
         Tile z = result.apply(0);
         assertEquals("bool", z.cellType().toString());
@@ -603,7 +606,7 @@ public class TestOpenEOProcessScriptBuilder {
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         Tile tile0 = fillIntArrayTile(3, 2, 3, 4, 5, 6, 7, 8);
         Tile tile1 = fillIntArrayTile(3, 2, 1, 2, 4, 8, 16, 20);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(tile0, tile1)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile0, tile1)).toSeq());
         assertEquals(1, result.length());
         Tile res = result.apply(0);
 
@@ -615,7 +618,7 @@ public class TestOpenEOProcessScriptBuilder {
         }
 
 
-        Tile doubleResult = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile0.convert(CellType.fromName("float64")), tile1.convert(CellType.fromName("float64")))).toSeq()).apply(0);
+        Tile doubleResult = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile0.convert(CellType.fromName("float64")), tile1.convert(CellType.fromName("float64")))).toSeq()).apply(0);
         assertTileEquals(expectedTile.convert(CellType.fromName("float64")), doubleResult);
     }
 
@@ -646,7 +649,7 @@ public class TestOpenEOProcessScriptBuilder {
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         Tile tile0 = fillBitArrayTile(3, 2, 0,1,1,0);
         Tile tile1 = fillBitArrayTile(3, 2, 1,1,0,0);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(tile0, tile1)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile0, tile1)).toSeq());
         assertEquals(1, result.length());
         Tile res = result.apply(0);
         ArrayTile expectedTile = fillByteArrayTile(3, 2, expectedValues).convert(new ByteUserDefinedNoDataCellType(((Integer)127).byteValue()));
@@ -685,7 +688,7 @@ public class TestOpenEOProcessScriptBuilder {
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         DoubleArrayTile tile1 = fillDoubleArrayTile(4, 2, 3, 10, 6, 3, 9, 15, 0, Double.NaN);
         DoubleArrayTile tile2 = fillDoubleArrayTile(4, 2, 0, 6, 10, 9, 7, 17, 0, Double.NaN);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile1, (Tile)tile2)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile1, (Tile)tile2)).toSeq());
         assertEquals(1, result.length());
         Tile ndvi = result.apply(0);
         assertDoubleTileEquals(fillDoubleArrayTile(4, 2, 1.0, 0.25, -0.25, -0.5, 0.125, -0.0625, Double.NaN, Double.NaN), ndvi);
@@ -701,7 +704,7 @@ public class TestOpenEOProcessScriptBuilder {
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         Tile tile0 = fillIntArrayTile(3, 2, 3, 4, 5, 6, 7, 8);
         Tile tile1 = fillIntArrayTile(3, 2, 1, 2, 4, 8, 16, 20);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(tile0, tile1)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile0, tile1)).toSeq());
         assertEquals(1, result.length());
         Tile res = result.apply(0);
         assertTileEquals(fillIntArrayTile(3, 2, expectedValues), res);
@@ -780,7 +783,7 @@ public class TestOpenEOProcessScriptBuilder {
         ByteArrayTile value = ByteConstantNoDataArrayTile.fill((byte) 1, 4, 4);
         value.set(0, 0, 0);
         value.set(1, 0, 0);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile0, (Tile)value)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile0, (Tile)value)).toSeq());
         Tile res = result.apply(0);
         tile0.set(0,0,nodataVal);
         tile0.set(1,0,nodataVal);
@@ -819,7 +822,7 @@ public class TestOpenEOProcessScriptBuilder {
         tile0.setDouble(1, 0, 5.5);
         tile0.setDouble(1, 1, 5.5);
 
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile0)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile0)).toSeq());
         Tile res = result.apply(0);
         tile0.setDouble(2,0,1.5);
         tile0.setDouble(1,0,1.5);
@@ -860,7 +863,7 @@ public class TestOpenEOProcessScriptBuilder {
         tile0.setDouble(1, 0, 5.5);
         tile0.setDouble(1, 1, 5.5);
 
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile0,(Tile)tile0)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile0,(Tile)tile0)).toSeq());
         FloatArrayTile expected = FloatArrayTile.fill( 1.5f, 4, 4);
         expected.setDouble(2,0,Float.NaN);
         expected.setDouble(1,0,5.5);
@@ -889,12 +892,12 @@ public class TestOpenEOProcessScriptBuilder {
         Tile tile_timestep1 = ByteConstantNoDataArrayTile.fill((byte)5, 4, 4);
 
         // Then selecting all first pixels from a list of one timestep just returns us that tile.
-        Seq<Tile> single_input = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile_timestep0.mutable().copy())).toSeq());
+        Seq<Tile> single_input = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile_timestep0.mutable().copy())).toSeq());
         assertTileEquals(tile_timestep0, single_input.apply(0));
 
         // When a second timestep is added that has actual values, the Nodata from the first tile will still be selected.
         // Because ignore_nodata is set to false.
-        Seq<Tile> multiple_input = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile_timestep0.mutable().copy(), tile_timestep1.mutable().copy())).toSeq());
+        Seq<Tile> multiple_input = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile_timestep0.mutable().copy(), tile_timestep1.mutable().copy())).toSeq());
         assertEquals(scala.Int.MinValue(), multiple_input.apply(0).get(0,0));
         // Including the one non-NoData value in timestep 0.
         assertEquals(3, multiple_input.apply(0).get(2,2));
@@ -925,11 +928,11 @@ public class TestOpenEOProcessScriptBuilder {
         ByteArrayTile tile_timestep1 = ByteConstantNoDataArrayTile.fill((byte)5, 4, 4);
 
         // Then selecting all first pixels from a list of one timestep just returns us that tile, even if it has NoData values.
-        Seq<Tile> single_input = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile_timestep0.mutable().copy())).toSeq());
+        Seq<Tile> single_input = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile_timestep0.mutable().copy())).toSeq());
         assertTileEquals(tile_timestep0, single_input.apply(0));
 
         // When a second timestep is added that has actual values, those will be selected as first instead of the NoData values.
-        Seq<Tile> multiple_input = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile_timestep0.mutable().copy(), (Tile)tile_timestep1.mutable().copy())).toSeq());
+        Seq<Tile> multiple_input = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile_timestep0.mutable().copy(), (Tile)tile_timestep1.mutable().copy())).toSeq());
         assertEquals(5, multiple_input.apply(0).get(0,0));
         // Except for the one non-NoData value in timestep 0.
         assertEquals(3, multiple_input.apply(0).get(2,2));
@@ -965,12 +968,12 @@ public class TestOpenEOProcessScriptBuilder {
         tile_timestep1.set(2,2,3);
 
         // Then selecting all last pixels from a list of one timestep just returns us that tile.
-        Seq<Tile> single_input = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile_timestep1.mutable().copy())).toSeq());
+        Seq<Tile> single_input = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile_timestep1.mutable().copy())).toSeq());
         assertTileEquals(tile_timestep1, single_input.apply(0));
 
         // When a second timestep is prepended that has actual values, the Nodata from the last tile will be selected.
         // Because ignore_nodata is set to false.
-        Seq<Tile> multiple_input = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile_timestep0.mutable().copy(), (Tile)tile_timestep1.mutable().copy())).toSeq());
+        Seq<Tile> multiple_input = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile_timestep0.mutable().copy(), (Tile)tile_timestep1.mutable().copy())).toSeq());
         assertEquals(scala.Int.MinValue(), multiple_input.apply(0).get(0,0));
         // Including the one non-NoData value in timestep 1.
         assertEquals(3, multiple_input.apply(0).get(2,2));
@@ -1001,11 +1004,11 @@ public class TestOpenEOProcessScriptBuilder {
         tile_timestep1.set(2,2,3);
 
         // Then selecting all last pixels from a list of one timestep just returns us that tile.
-        Seq<Tile> single_input = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile_timestep1.mutable().copy())).toSeq());
+        Seq<Tile> single_input = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile_timestep1.mutable().copy())).toSeq());
         assertTileEquals(tile_timestep1, single_input.apply(0));
 
         // When a second timestep is prepended that has actual values, those will be selected as last instead of the NoData values.
-        Seq<Tile> multiple_input = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile_timestep0.mutable().copy(), (Tile)tile_timestep1.mutable().copy())).toSeq());
+        Seq<Tile> multiple_input = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile_timestep0.mutable().copy(), (Tile)tile_timestep1.mutable().copy())).toSeq());
         assertEquals(5, multiple_input.apply(0).get(0,0));
         // Except for the one non-NoData value in timestep 1.
         assertEquals(3, multiple_input.apply(0).get(2,2));
@@ -1030,7 +1033,7 @@ public class TestOpenEOProcessScriptBuilder {
     private void testUnary( String processName, String argName, double... expectedValues) {
         OpenEOProcessScriptBuilder builder = buildUnaryProcess(processName, argName);
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
-        Seq<Tile> result1 = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)fillFloatArrayTile(3, 3, 0, 3.5, -0.4, -3.5, Double.NaN))).toSeq());
+        Seq<Tile> result1 = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)fillFloatArrayTile(3, 3, 0, 3.5, -0.4, -3.5, Double.NaN))).toSeq());
         assertTileEquals(fillFloatArrayTile(3, 3, expectedValues), result1.head());
 
     }
@@ -1051,7 +1054,7 @@ public class TestOpenEOProcessScriptBuilder {
         OpenEOProcessScriptBuilder builder = buildUnaryProcess(processName, argName);
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
 
-        Seq<Tile> result1 = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)fillFloatArrayTile(3, 3, 0, 3.5, -0.4, -3.5, Double.NaN))).toSeq());
+        Seq<Tile> result1 = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)fillFloatArrayTile(3, 3, 0, 3.5, -0.4, -3.5, Double.NaN))).toSeq());
 
         assertTileEquals(fillShortArrayTile(3, 3, expectedValues).convert(IntConstantNoDataCellType$.MODULE$), result1.head());
 
@@ -1072,7 +1075,7 @@ public class TestOpenEOProcessScriptBuilder {
         tile0.setDouble(0,0, 5.0);
         tile0.setDouble(2,1, 4.0);
         tile0.setDouble(2,2, 17.0);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile0, (Tile)tile0)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile0, (Tile)tile0)).toSeq());
         Tile res = result.apply(0);
         int expected_values[] = {0, 1, 1, 1, 1, 0, 1, 1, 0};
 
@@ -1084,7 +1087,7 @@ public class TestOpenEOProcessScriptBuilder {
         isNanBuilder.argumentStart("x");
         isNanBuilder.argumentEnd();
         isNanBuilder.expressionEnd("is_nan", dummyMap("x"));
-        Seq<Tile> result2 = isNanBuilder.generateFunction().apply(JavaConverters.asScala(Arrays.asList((Tile)tile0, (Tile)tile0)).toSeq());
+        Seq<Tile> result2 = isNanBuilder.generateFunction().apply(CollectionConverters.asScala(Arrays.asList((Tile)tile0, (Tile)tile0)).toSeq());
 
         assertTileEquals(fillBitArrayTile(3, 3, expected_values), result2.head());
     }
@@ -1110,7 +1113,7 @@ public class TestOpenEOProcessScriptBuilder {
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
         ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile0, (Tile)tile1)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile0, (Tile)tile1)).toSeq());
         Tile res = result.apply(0);
         assertTileEquals(tile1, res);
         assertEquals(ByteConstantNoDataCellType$.MODULE$,res.cellType());
@@ -1136,7 +1139,7 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(ByteConstantNoDataCellType$.MODULE$,builder.getOutputCellType());
         ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
         ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile0, (Tile)tile1)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile0, (Tile)tile1)).toSeq());
         Tile res = result.apply(0);
         assertTileEquals(tile1, res);
     }
@@ -1170,7 +1173,7 @@ public class TestOpenEOProcessScriptBuilder {
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
         ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile0, (Tile)tile1)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile0, (Tile)tile1)).toSeq());
         ArrayTile expectedResult = ShortConstantNoDataArrayTile.fill((short) 1, 4, 4);
         assertTileEquals(expectedResult, result.head());
 
@@ -1206,7 +1209,7 @@ public class TestOpenEOProcessScriptBuilder {
 
         ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
         ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile0, (Tile)tile1,(Tile)tile1)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile0, (Tile)tile1,(Tile)tile1)).toSeq());
         ByteArrayTile expectedResult = ByteConstantNoDataArrayTile.fill((byte) 2, 4, 4);
         assertTileEquals(expectedResult.convert(ShortConstantNoDataCellType$.MODULE$), result.head());
 
@@ -1231,7 +1234,7 @@ public class TestOpenEOProcessScriptBuilder {
         ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
 
 
-        Tile emptyResult = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)tile0, (Tile)tile1)).toSeq()).head();
+        Tile emptyResult = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)tile0, (Tile)tile1)).toSeq()).head();
         assertTrue(emptyResult.isNoDataTile());
     }
 
@@ -1256,7 +1259,7 @@ public class TestOpenEOProcessScriptBuilder {
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         Tile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
         Tile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(tile0, tile1)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile0, tile1)).toSeq());
         assertEquals(3,result.size());
         Tile res = result.apply(0);
         assertTileEquals(tile0, res);
@@ -1339,7 +1342,7 @@ public class TestOpenEOProcessScriptBuilder {
         Tile t3 = ByteConstantNoDataArrayTile.fill((byte) 3, 4, 4);
         Tile t4 = ByteConstantNoDataArrayTile.fill((byte) 4, 4, 4);
         Tile t5 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(t0, t1, t2, t3, t4, t5)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(t0, t1, t2, t3, t4, t5)).toSeq());
         assertEquals(5, result.size());
         assertTileEquals(t4, result.apply(0));
         assertTileEquals(t2, result.apply(1));
@@ -1420,7 +1423,7 @@ public class TestOpenEOProcessScriptBuilder {
         assertEquals(constantType,builder.getOutputCellType());
         Tile t0 = ByteConstantNoDataArrayTile.fill((byte) 0, 4, 4).convert(constantType);
         Tile t1 = ByteConstantNoDataArrayTile.fill((byte) 1, 4, 4).convert(constantType);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList((Tile)t0, (Tile)t1)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList((Tile)t0, (Tile)t1)).toSeq());
         assertEquals(6, result.size());
         assertTileEquals(t1, result.apply(0));
         assertTileEquals(t0, result.apply(1));
@@ -1439,7 +1442,7 @@ public class TestOpenEOProcessScriptBuilder {
         ByteArrayTile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
         ByteArrayTile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
         ByteArrayTile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(nodataTile,nodataTile,tile0, nodataTile,tile1, nodataTile,nodataTile,tile0,nodataTile).stream().map(byteArrayTile -> (Tile)(byteArrayTile.copy())).collect(Collectors.toList())).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(nodataTile,nodataTile,tile0, nodataTile,tile1, nodataTile,nodataTile,tile0,nodataTile).stream().map(byteArrayTile -> (Tile)(byteArrayTile.copy())).collect(Collectors.toList())).toSeq());
         assertEquals(9,result.size());
         assertTrue(result.apply(0).isNoDataTile());
         assertTrue(result.apply(1).isNoDataTile());
@@ -1465,7 +1468,7 @@ public class TestOpenEOProcessScriptBuilder {
         Tile tile3 = FloatConstantNoDataArrayTile.fill(1.9f, 4, 4);
         Tile nodataTile = new ByteConstantTile((byte)123, 4, 4, ByteUserDefinedNoDataCellType.apply((byte)123));
 
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(nodataTile,tile0,tile1,tile2,tile3)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(nodataTile,tile0,tile1,tile2,tile3)).toSeq());
 
         assertTrue(result.apply(0).isNoDataTile());
 
@@ -1490,7 +1493,7 @@ public class TestOpenEOProcessScriptBuilder {
         Tile tile3 = FloatConstantNoDataArrayTile.fill(19f, 4, 4);
         Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
 
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(nodataTile,tile0,tile1,tile2,tile3)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(nodataTile,tile0,tile1,tile2,tile3)).toSeq());
 
         UShortUserDefinedNoDataCellType expectedCelltype = UShortUserDefinedNoDataCellType.apply((short) 65535);
         assertEquals(expectedCelltype,builder.resultingDataType());
@@ -1515,18 +1518,18 @@ public class TestOpenEOProcessScriptBuilder {
         Tile tile3 = ByteConstantNoDataArrayTile.fill((byte)19, 4, 4);
         Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
 
-        Seq<Tile> result = createMedian(null,tile0.cellType()).generateFunction().apply(JavaConverters.asScala(Arrays.asList((Tile)nodataTile.mutable().copy(),(Tile)tile1.mutable().copy(),(Tile)nodataTile,(Tile)tile1,(Tile)tile1,(Tile)tile2,nodataTile,(Tile)tile3,(Tile)tile0)).toSeq());
+        Seq<Tile> result = createMedian(null,tile0.cellType()).generateFunction().apply(CollectionConverters.asScala(Arrays.asList((Tile)nodataTile.mutable().copy(),(Tile)tile1.mutable().copy(),(Tile)nodataTile,(Tile)tile1,(Tile)tile1,(Tile)tile2,nodataTile,(Tile)tile3,(Tile)tile0)).toSeq());
         assertEquals(ByteConstantNoDataCellType.withDefaultNoData(),result.apply(0).cellType());
 
         assertEquals(3,result.apply(0).get(0,0));
 
-        Seq<Tile> result_nodata = createMedian(false,tile0.cellType()).generateFunction().apply(JavaConverters.asScala(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)).toSeq());
+        Seq<Tile> result_nodata = createMedian(false,tile0.cellType()).generateFunction().apply(CollectionConverters.asScala(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)).toSeq());
         assertTrue(result_nodata.apply(0).isNoDataTile());
 
-        Seq<Tile> single_input = createMedian(true,tile0.cellType()).generateFunction().apply(JavaConverters.asScala(Arrays.asList((Tile)tile2.mutable().copy())).toSeq());
+        Seq<Tile> single_input = createMedian(true,tile0.cellType()).generateFunction().apply(CollectionConverters.asScala(Arrays.asList((Tile)tile2.mutable().copy())).toSeq());
         assertEquals(-10,single_input.apply(0).get(0,0));
 
-        Seq<Tile> even_input = createMedian(true,tile0.cellType()).generateFunction().apply(JavaConverters.asScala(Arrays.asList(tile2.mutable().copy(),tile1)).toSeq());
+        Seq<Tile> even_input = createMedian(true,tile0.cellType()).generateFunction().apply(CollectionConverters.asScala(Arrays.asList(tile2.mutable().copy(),tile1)).toSeq());
         assertEquals(-3.0,even_input.apply(0).get(0,0));
     }
 
@@ -1540,18 +1543,18 @@ public class TestOpenEOProcessScriptBuilder {
         Tile nodataTile = FloatConstantNoDataArrayTile.empty(4, 4);
 
         FloatConstantNoDataCellType$ ct = FloatConstantNoDataCellType$.MODULE$;
-        Seq<Tile> result = createStandardDeviation(null, ct).generateFunction().apply(JavaConverters.asScala(Arrays.asList((Tile)nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)).toSeq());
+        Seq<Tile> result = createStandardDeviation(null, ct).generateFunction().apply(CollectionConverters.asScala(Arrays.asList((Tile)nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)).toSeq());
         assertEquals(FloatConstantNoDataArrayTile.empty(0, 0).cellType(), result.apply(0).cellType());
 
         assertEquals(9.261029243469238,result.apply(0).getDouble(0,0));
 
-        Seq<Tile> result_nodata = createStandardDeviation(false,ct).generateFunction().apply(JavaConverters.asScala(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)).toSeq());
+        Seq<Tile> result_nodata = createStandardDeviation(false,ct).generateFunction().apply(CollectionConverters.asScala(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)).toSeq());
         assertTrue(result_nodata.apply(0).isNoDataTile());
 
-        Seq<Tile> input1 = createStandardDeviation(true,ct).generateFunction().apply(JavaConverters.asScala(Arrays.asList(tile2.mutable().copy(), tile3)).toSeq());
+        Seq<Tile> input1 = createStandardDeviation(true,ct).generateFunction().apply(CollectionConverters.asScala(Arrays.asList(tile2.mutable().copy(), tile3)).toSeq());
         assertEquals(20.50609588623047, input1.apply(0).getDouble(0,0));
 
-        Seq<Tile> input2 = createStandardDeviation(true,ct).generateFunction().apply(JavaConverters.asScala(Arrays.asList(tile2.mutable().copy(),tile1, nodataTile)).toSeq());
+        Seq<Tile> input2 = createStandardDeviation(true,ct).generateFunction().apply(CollectionConverters.asScala(Arrays.asList(tile2.mutable().copy(),tile1, nodataTile)).toSeq());
         assertEquals(9.192388534545898, input2.apply(0).getDouble(0,0));
     }
 
@@ -1565,22 +1568,19 @@ public class TestOpenEOProcessScriptBuilder {
         Tile tile3 = ByteConstantNoDataArrayTile.fill((byte)19, 4, 4);
         Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
 
-        Seq<Tile> result = createQuantiles(null,2).generateFunction().apply(JavaConverters.asScala(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)).toSeq());
+        Seq<Tile> result = createQuantiles(null,2).generateFunction().apply(CollectionConverters.asScala(Arrays.asList(nodataTile.mutable().copy(),tile1.mutable().copy(),nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)).toSeq());
         assertEquals(ByteConstantNoDataCellType.withDefaultNoData(),result.apply(0).cellType());
 
         assertEquals(3,result.apply(0).get(0,0));
 
-        //Seq<Tile> result_nodata = createQuantiles(false,2).generateFunction().apply(JavaConverters.asScala(Arrays.asList(tile1.mutable().copy(),tile1.mutable().copy(),tile1,tile2,nodataTile,tile3,tile0)));
-        //assertTrue(result_nodata.apply(0).isNoDataTile());
-
-        Seq<Tile> single_input = createQuantiles(true,2).generateFunction().apply(JavaConverters.asScala(Arrays.asList(tile2)).toSeq());
+        Seq<Tile> single_input = createQuantiles(true,2).generateFunction().apply(CollectionConverters.asScala(Arrays.asList(tile2)).toSeq());
         assertEquals(-10,single_input.apply(0).get(0,0));
 
-        Seq<Tile> even_input = createQuantiles(true,2).generateFunction().apply(JavaConverters.asScala(Arrays.asList(tile2,tile1)).toSeq());
+        Seq<Tile> even_input = createQuantiles(true,2).generateFunction().apply(CollectionConverters.asScala(Arrays.asList(tile2,tile1)).toSeq());
         assertEquals(-3.0,even_input.apply(0).get(0,0));
 
-        Seq<Tile> quartiles = createQuantiles(null,4).generateFunction().apply(JavaConverters.asScala(Arrays.asList(nodataTile,tile1,nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)).toSeq().toSeq());
-        Object[] elements = JavaConverters.seqAsJavaListConverter(quartiles).asJava().stream().map(v1 -> v1.get(0, 0)).toArray();
+        Seq<Tile> quartiles = createQuantiles(null,4).generateFunction().apply(CollectionConverters.asScala(Arrays.asList(nodataTile,tile1,nodataTile,tile1,tile1,tile2,nodataTile,tile3,tile0)).toSeq().toSeq());
+        Object[] elements = CollectionConverters.asJava(quartiles).stream().map(v1 -> v1.get(0, 0)).toArray();
         //nd,3,nd,3,3,-10,nd,19,nd
         // -10,1 ,3 3 3 19 nd nd nd nd
 
@@ -1598,8 +1598,8 @@ public class TestOpenEOProcessScriptBuilder {
         List<Tile> tiles = Arrays.stream(values).mapToObj(d -> FloatConstantNoDataArrayTile.fill((float)d, 4, 4).mutable()).collect(Collectors.toList());
 
 
-        Seq<Tile> result = createQuantiles(null,10).generateFunction().apply(JavaConverters.asScala(tiles).toSeq());
-        Collection<Tile> javaCollection = JavaConverters.asJavaCollection(result);
+        Seq<Tile> result = createQuantiles(null,10).generateFunction().apply(CollectionConverters.asScala(tiles).toSeq());
+        Collection<Tile> javaCollection = CollectionConverters.asJavaCollection(result);
         double[] quantiles = javaCollection.stream().mapToDouble(t -> t.getDouble(0, 0)).toArray();
         double[] expected = {0.01131441444158554, 0.014035594649612904, 0.015291771851480007, 0.015623917803168297, 0.01615156978368759, 0.016581697389483452, 0.01708749309182167, 0.018107332289218903, 0.022564664483070374};
 
@@ -1621,8 +1621,8 @@ public class TestOpenEOProcessScriptBuilder {
         Tile tile3 = FloatConstantNoDataArrayTile.fill(3.5f, 4, 4);
         Tile nodataTile = FloatConstantNoDataArrayTile.empty(4, 4);
 
-        Seq<Tile> result1 = transformation1.apply(JavaConverters.asScala(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)).toSeq());
-        Seq<Tile> result2 = transformation2.apply(JavaConverters.asScala(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)).toSeq());
+        Seq<Tile> result1 = transformation1.apply(CollectionConverters.asScala(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)).toSeq());
+        Seq<Tile> result2 = transformation2.apply(CollectionConverters.asScala(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)).toSeq());
 
         assertTrue(result1.apply(0).isNoDataTile());
         assertEquals(1, result1.apply(1).getDouble(0,0));
@@ -1653,19 +1653,19 @@ public class TestOpenEOProcessScriptBuilder {
         Tile tile2 = FloatConstantNoDataArrayTile.fill(4, 4, 4);
         Tile tile3 = FloatConstantNoDataArrayTile.fill(Float.NaN, 4, 4);
 
-        Seq<Tile> result1 = createCount(false).generateFunction().apply(JavaConverters.asScala(Arrays.asList((Tile)tile0.mutable().copy(), (Tile)tile1.mutable().copy(), (Tile)tile2.mutable().copy(), (Tile)tile3.mutable().copy())).toSeq());
+        Seq<Tile> result1 = createCount(false).generateFunction().apply(CollectionConverters.asScala(Arrays.asList((Tile)tile0.mutable().copy(), (Tile)tile1.mutable().copy(), (Tile)tile2.mutable().copy(), (Tile)tile3.mutable().copy())).toSeq());
 
         assertEquals(3, result1.apply(0).get(0, 0));
 
-        Seq<Tile> result2 = createCount(true).generateFunction().apply(JavaConverters.asScala(Arrays.asList((Tile)tile0.mutable().copy(), (Tile)tile1.mutable().copy(), (Tile)tile2.mutable().copy(), (Tile)tile3.mutable().copy())).toSeq());
+        Seq<Tile> result2 = createCount(true).generateFunction().apply(CollectionConverters.asScala(Arrays.asList((Tile)tile0.mutable().copy(), (Tile)tile1.mutable().copy(), (Tile)tile2.mutable().copy(), (Tile)tile3.mutable().copy())).toSeq());
 
         assertEquals(4, result2.apply(0).get(0, 0));
 
-        Seq<Tile> result3 = createCount("gt", 2.0, false).generateFunction().apply(JavaConverters.asScala(Arrays.asList((Tile)tile0.mutable().copy(), (Tile)tile1.mutable().copy(), (Tile)tile2.mutable().copy(), (Tile)tile3.mutable().copy())).toSeq());
+        Seq<Tile> result3 = createCount("gt", 2.0, false).generateFunction().apply(CollectionConverters.asScala(Arrays.asList((Tile)tile0.mutable().copy(), (Tile)tile1.mutable().copy(), (Tile)tile2.mutable().copy(), (Tile)tile3.mutable().copy())).toSeq());
 
         assertEquals(2, result3.apply(0).get(0, 0));
 
-        Seq<Tile> result4 = createCount("eq", 3.0, true).generateFunction().apply(JavaConverters.asScala(Arrays.asList((Tile)tile0.mutable().copy(), (Tile)tile1.mutable().copy(), (Tile)tile2.mutable().copy(), (Tile)tile3.mutable().copy())).toSeq());
+        Seq<Tile> result4 = createCount("eq", 3.0, true).generateFunction().apply(CollectionConverters.asScala(Arrays.asList((Tile)tile0.mutable().copy(), (Tile)tile1.mutable().copy(), (Tile)tile2.mutable().copy(), (Tile)tile3.mutable().copy())).toSeq());
 
         assertEquals(3, result4.apply(0).get(0, 0));
     }
@@ -1715,10 +1715,15 @@ public class TestOpenEOProcessScriptBuilder {
 
         builder.expressionEnd("predict_random_forest",arguments);
 
-        Map<String, Object> javaContext = new HashMap<String, Object>() {{ put("context", model); }};
+        Map<String,Object> javaMap = new HashMap<>();
+        javaMap.put("context", model);
 
-        Seq<Tile> result = builder
-                .generateFunction(javaContext)
+        scala.collection.immutable.Map<String, Object> scalaContext =
+                scala.collection.immutable.Map.from(scala.jdk.CollectionConverters.MapHasAsScala(javaMap).asScala());
+
+        Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> seqSeqFunction1 = builder
+                .generateFunction(scalaContext);
+        Seq<Tile> result = seqSeqFunction1
                 .apply(tiles.toSeq());
         SparkContext.getOrCreate().stop();
         return result;
@@ -1740,14 +1745,14 @@ public class TestOpenEOProcessScriptBuilder {
                 tile2.setDouble(col, row, (random.nextDouble() * 10));
             }
         }
-        scala.collection.mutable.Buffer<Tile> tiles = JavaConverters.asScala(Arrays.asList(tile0, tile1, tile2));
+        scala.collection.mutable.Buffer<Tile> tiles = CollectionConverters.asScala(Arrays.asList(tile0, tile1, tile2));
         Seq<Tile> result = predictWithDefaultRandomForestClassifier(tiles, random);
         assertEquals(FloatCellType.withDefaultNoData(),result.apply(0).cellType());
-        assertEquals(8, result.apply(0).get(0,0));
-        assertEquals(4, result.apply(0).get(0,1));
-        assertEquals(4, result.apply(0).get(0,2));
+        assertEquals(0, result.apply(0).get(0,0));
+        assertEquals(1, result.apply(0).get(0,1));
+        assertEquals(0, result.apply(0).get(0,2));
         assertEquals(1, result.apply(0).get(3,2));
-        assertEquals(9, result.apply(0).get(3,3));
+        assertEquals(1, result.apply(0).get(3,3));
     }
 
     @DisplayName("Test predict_random_forest with the wrong arguments.")
@@ -1764,14 +1769,14 @@ public class TestOpenEOProcessScriptBuilder {
                 tile1.setDouble(col, row, (random.nextDouble() * 10));
             }
         }
-        scala.collection.mutable.Buffer<Tile> tiles = JavaConverters.asScala(Arrays.asList(tile0, tile1));
+        scala.collection.mutable.Buffer<Tile> tiles = CollectionConverters.asScala(Arrays.asList(tile0, tile1));
         assertThrows(IllegalArgumentException.class, () -> predictWithDefaultRandomForestClassifier(tiles, random));
 
         // NoData cells.
         FloatArrayTile emptyTile0 = FloatArrayTile.empty(4,4);
         FloatArrayTile emptyTile1 = FloatArrayTile.empty(4,4);
         FloatArrayTile emptyTile2 = FloatArrayTile.empty(4,4);
-        scala.collection.mutable.Buffer<Tile> emptyTiles = JavaConverters.asScala(Arrays.asList(emptyTile0, emptyTile1, emptyTile2));
+        scala.collection.mutable.Buffer<Tile> emptyTiles = CollectionConverters.asScala(Arrays.asList(emptyTile0, emptyTile1, emptyTile2));
         Seq<Tile> result = predictWithDefaultRandomForestClassifier(emptyTiles, random);
         double noDataValue = emptyTile0.get(0,0);
         assertEquals(noDataValue, result.apply(0).get(0,0));
@@ -1801,7 +1806,7 @@ public class TestOpenEOProcessScriptBuilder {
         Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction();
         Tile tile0 = ByteConstantNoDataArrayTile.fill((byte) 10, 4, 4);
         Tile tile1 = ByteConstantNoDataArrayTile.fill((byte) 5, 4, 4);
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(tile0, tile1)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(tile0, tile1)).toSeq());
         Tile res = result.apply(0);
         assertTileEquals(tile0, res);
     }
@@ -1955,7 +1960,7 @@ public class TestOpenEOProcessScriptBuilder {
             Tile tile3 = FloatConstantNoDataArrayTile.fill(1.9f, 4, 4);
             Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
 
-            Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)).toSeq());
+            Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)).toSeq());
 
             assertTrue(result.apply(0).isNoDataTile());
 
@@ -1972,14 +1977,14 @@ public class TestOpenEOProcessScriptBuilder {
     @DisplayName("Test array_apply with date difference process")
     public void testArrayApplyDateDifference(boolean fixedDate) {
         OpenEOProcessScriptBuilder builder = createArrayApplyDateDifference(fixedDate);
-        Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction(Collections.singletonMap("array_labels",JavaConverters.asScala(Arrays.asList("2022-01-04T04:00:00Z","2022-01-05T00:00:00Z","2016-02-29T00:00:00Z","2019-06-15T00:00:00Z","2030-12-31T00:00:00Z"))));
+        Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction(Collections.singletonMap("array_labels",CollectionConverters.asScala(Arrays.asList("2022-01-04T04:00:00Z","2022-01-05T00:00:00Z","2016-02-29T00:00:00Z","2019-06-15T00:00:00Z","2030-12-31T00:00:00Z"))));
         Tile tile0 = FloatConstantNoDataArrayTile.fill(1, 4, 4);
         Tile tile1 = FloatConstantNoDataArrayTile.fill(3, 4, 4);
         Tile tile2 = FloatConstantNoDataArrayTile.fill(-1, 4, 4);
         Tile tile3 = FloatConstantNoDataArrayTile.fill(1.9f, 4, 4);
         Tile nodataTile = ByteConstantNoDataArrayTile.empty(4, 4);
 
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)).toSeq());
 
         if (fixedDate) {
             assertEquals(-2.16666, result.apply(0).getDouble(0, 0),0.001);
@@ -2110,14 +2115,14 @@ public class TestOpenEOProcessScriptBuilder {
         builder.argumentEnd();
         builder.expressionEnd("array_apply", Collections.EMPTY_MAP);
 
-        Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction(Collections.singletonMap("array_labels",JavaConverters.asScala(Arrays.asList("2022-01-04T04:00:00Z","2022-01-05T00:00:00Z","2022-01-14T00:00:00Z","2022-01-16T00:00:00Z","2022-01-21T00:00:00Z"))));
+        Function1<scala.collection.immutable.Seq<Tile>, scala.collection.immutable.Seq<Tile>> transformation = builder.generateFunction(Collections.singletonMap("array_labels",CollectionConverters.asScala(Arrays.asList("2022-01-04T04:00:00Z","2022-01-05T00:00:00Z","2022-01-14T00:00:00Z","2022-01-16T00:00:00Z","2022-01-21T00:00:00Z"))));
         Tile tile0 = FloatConstantNoDataArrayTile.fill(5, 1, 1);
         Tile tile1 = FloatConstantNoDataArrayTile.fill(3, 1, 1);
         Tile tile2 = FloatConstantNoDataArrayTile.fill(1, 1, 1);
         Tile tile3 = FloatConstantNoDataArrayTile.fill(1.9f, 1, 1);
         Tile nodataTile = ByteConstantNoDataArrayTile.empty(1, 1);
 
-        Seq<Tile> result = transformation.apply(JavaConverters.asScala(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)).toSeq());
+        Seq<Tile> result = transformation.apply(CollectionConverters.asScala(Arrays.asList(nodataTile, tile0, tile1, tile2, tile3)).toSeq());
         BitConstantTile trueTile = new BitConstantTile(true, 1, 1);
         assertTileEquals(trueTile,result.apply(0));
         assertTileEquals(trueTile,result.apply(1));

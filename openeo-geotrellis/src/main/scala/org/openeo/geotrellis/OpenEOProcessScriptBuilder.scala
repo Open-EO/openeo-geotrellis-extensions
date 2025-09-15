@@ -1435,7 +1435,11 @@ class OpenEOProcessScriptBuilder extends java.io.Serializable {
 
     val bandFunction = (context: Map[String, Any]) => (tiles: Seq[Tile]) => {
       val option = context.get("array_labels")
-      val labels: Option[mutable.Buffer[String]] = option.asInstanceOf[Option[mutable.Buffer[String]]]
+      val labels: Option[collection.Seq[Any]] = option match {
+        case x: Option[mutable.Buffer[Any]] => x
+        case y: Option[List[Any]] => y
+        case _ => None
+      }
       val data: Seq[Tile] = evaluateToTiles(inputFunction, context, tiles)
       val mappedValues = data.zipWithIndex.map{
         case (e, i) =>

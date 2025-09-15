@@ -32,8 +32,7 @@ import org.openeo.geotrellis.aggregate_polygon.intern.splitOverlappingPolygons
 import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
 import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD}
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, DatacubeSupport, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.nio.file.{Files, Paths}
@@ -606,7 +605,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val middleDate = SpaceTimeKey(0, 0, (bounds.get.minKey.instant + bounds.get.maxKey.instant) / 2).time
 
     // intervals is a list of start,end-pairs
-    val intervals = List(middleDate.plusYears(-30), middleDate, middleDate, middleDate.plusYears(1000))
+    val intervals = ListBuffer(middleDate.plusYears(-30), middleDate, middleDate, middleDate.plusYears(1000))
       .map(DateTimeFormatter.ISO_INSTANT.format(_))
     val labels = (intervals.indices.collect { case i if i % 2 == 0 => intervals(i) }).toList
 
