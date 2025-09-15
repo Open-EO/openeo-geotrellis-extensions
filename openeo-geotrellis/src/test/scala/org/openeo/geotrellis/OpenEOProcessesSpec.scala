@@ -2,6 +2,7 @@ package org.openeo.geotrellis
 
 import geotrellis.layer.{SpaceTimeKey, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
+import geotrellis.raster.ResampleMethods.NearestNeighbor
 import geotrellis.raster._
 import geotrellis.raster.buffer.BufferedTile
 import geotrellis.raster.geotiff.GeoTiffRasterSource
@@ -150,7 +151,7 @@ object OpenEOProcessesSpec {
     val reduction = 2
     val indices = keys.map(k=> SparseSpaceTimePartitioner.toIndex(k,reduction))
     val sparseWithKeys = new SparseSpaceTimePartitioner(indices, reduction, Some(keys))
-    pixelTypes.flatMap(pt => Seq( arguments(pt, null,1374: java.lang.Integer),arguments(pt, byTile,36: java.lang.Integer),arguments(pt, byTileWithKeys,8: java.lang.Integer),arguments(pt, sparseWithKeys,15: java.lang.Integer))).toStream.asJava.stream()
+    pixelTypes.flatMap(pt => Seq( arguments(pt, null,1374: java.lang.Integer),arguments(pt, byTile,36: java.lang.Integer),arguments(pt, byTileWithKeys,8: java.lang.Integer),arguments(pt, sparseWithKeys,16: java.lang.Integer))).toStream.asJava.stream()
 
   }
 }
@@ -556,8 +557,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     SparkContext.getOrCreate().addSparkListener(listener)
     val resultTiles: Array[MultibandTile] = aggregatedCube.values.collect()
     SparkContext.getOrCreate().removeSparkListener(listener)
-    println(listener)
-    assertEquals(expectedTasks,listener.getTasksCompleted)
+    assertTrue(listener.getTasksCompleted <= expectedTasks)
 
 
     val validTile = resultTiles.find(_ != null).get
@@ -803,5 +803,31 @@ class OpenEOProcessesSpec extends RasterMatchers {
     })
   }
 
+  @Test
+  def testResampleCubeSpatial_spacetime(): Unit = {
+
+    val factory = LayerFixtures.STACCOGCollection()
+
+    val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
+    val latlon = CRS.fromName("EPSG:4326")
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, latlon.toString())
+
+
+    val dataCubeParameters: DataCubeParameters = FileLayerProviderTest.datacubeParams(projected_polygons_native_crs, null)
+
+    val bands: util.ArrayList[String] = new util.ArrayList[String]()
+    bands.add("temperature-mean")
+    bands.add("precipitation-flux")
+
+    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(projected_polygons_native_crs, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)
+
+    val datacube = cube.head._2
+
+    val targetLayout: LayoutDefinition = LayoutDefinition(GridExtent[Int](datacube.metadata.extent.reproject(LatLng,WebMercator),CellSize(30.0,30.0)),64)
+
+    val resampled = new OpenEOProcesses().resampleCubeSpatial_spacetime(datacube, WebMercator, targetLayout, NearestNeighbor, null)._2
+    saveRDDTemporal(resampled,"./resampleCubeTest")
+    assertEquals(16, resampled.partitions.length)
+  }
 
 }

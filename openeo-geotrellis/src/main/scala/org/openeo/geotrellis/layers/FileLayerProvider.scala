@@ -20,12 +20,9 @@ import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
-import geotrellis.vector.reproject.Reproject.reprojectExtentAsPolygon
-import net.jodah.failsafe.{Failsafe, RetryPolicy}
-import net.jodah.failsafe.event.ExecutionAttemptedEvent
-import org.apache.spark.{HashPartitioner, Partitioner, SparkContext}
-import org.apache.spark.rdd.{CoGroupedRDD, RDD}
+import org.apache.spark.rdd.RDD
 import org.apache.spark.util.{LongAccumulator, SizeEstimator}
+import org.apache.spark.{HashPartitioner, Partitioner, SparkContext}
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
 import org.openeo.geotrellis._
@@ -857,6 +854,10 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     val dates = overlappingRasterSources.map(_._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC"))).distinct
 
+    //Feature objects will be part of RDD, remove potentially large metadata that is no longer needed beyond this point
+    //Certain STAC items can have large number of links!
+    overlappingRasterSources = overlappingRasterSources.map(source_feature => (source_feature._1,source_feature._2.copy(links = Array.empty, generalProperties = null)))
+
     var commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
     var metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, dates.minBy(_.toEpochSecond), dates.maxBy(_.toEpochSecond), commonCellType)
@@ -919,7 +920,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
              * We use the number of dates as a proxy for the max number of items intersecting a given spatial key.
              * For cases like Sentinel-2, we can however have  items intersecting at a given location on the same date.
              */
-            val maxPartitionSizeBytes = 30 * 1024 * 1024
+            val maxPartitionSizeBytes = 40 * 1024 * 1024
             val sampleCount = math.min(10, overlappingRasterSources.size)
             val averageItemSizeInBytes = overlappingRasterSources.take(sampleCount).map(item => SizeEstimator.estimate(item)).sum / sampleCount
             val estimatedSizePerKey = averageItemSizeInBytes * dates.length
@@ -1065,16 +1066,24 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     clipped
   }
 
+  def nextPowerOfTwo(n: Int): Int = {
+    if (n <= 0) 1
+    else 1 << (32 - Integer.numberOfLeadingZeros(n - 1))
+  }
+
   def selectLayoutScheme(extent: ProjectedExtent, multiple_polygons_flag: Boolean, datacubeParams: Option[DataCubeParameters]) = {
     val selectedLayoutScheme = if (layoutScheme.isInstanceOf[FloatingLayoutScheme]) {
       if( (extent.extent.width <= maxSpatialResolution.width) || (extent.extent.height <= maxSpatialResolution.height ) ){
         FloatingLayoutScheme(32)
       }else{val rasterExtent = RasterExtent(extent.extent, maxSpatialResolution)
         val minTiles = math.min(math.floor(rasterExtent.rows / 256), math.floor(rasterExtent.cols / 256)).toInt
-        val tileSize = {
+        val tileSize:Int = {
           if (datacubeParams.isDefined && datacubeParams.get.tileSize != 256) {
             datacubeParams.get.tileSize
-          } else if ( experimental && !multiple_polygons_flag && minTiles >= 8) {
+          }else if(rasterExtent.cols<256 && rasterExtent.rows<256) {
+            math.max(nextPowerOfTwo(rasterExtent.cols), nextPowerOfTwo(rasterExtent.rows)).toInt
+          }
+          else if ( experimental && !multiple_polygons_flag && minTiles >= 8) {
             1024
           } else if ( !multiple_polygons_flag && minTiles >= 2) {
             512

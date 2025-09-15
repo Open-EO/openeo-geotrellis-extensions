@@ -1,6 +1,7 @@
 package org.openeo.geotrellis
 
 import geotrellis.layer.SpatialKey._
+import geotrellis.layer.TileLayerMetadata.toLayoutDefinition
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata, _}
 import geotrellis.proj4.CRS
 import io.circe.Json
@@ -976,7 +977,8 @@ class OpenEOProcesses extends Serializable {
       (0,data)
     }else if(partitioner==null) {
       logger.info(s"resample_cube_spatial: input cube: ${this.cubeStatistics(data)}")
-      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, crs, Right(layout), 16, method, new SpacePartitioner(data.metadata.bounds))
+      val repartitioned: MultibandTileLayerRDD[SpaceTimeKey] = repartitionBeforeResample(data, crs, layout)
+      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(repartitioned, crs, Right(layout), 16, method, new SpacePartitioner(data.metadata.bounds))
       filterNegativeSpatialKeys(reprojected)
     }else{
       logger.info(s"resample_cube_spatial: input cube: ${this.cubeStatistics(data)}")
@@ -985,7 +987,26 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
-  def resampleCubeSpatial_spatial(data: MultibandTileLayerRDD[SpatialKey],crs:CRS,layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpatialKey]) = {
+  private def repartitionBeforeResample(cube: MultibandTileLayerRDD[SpaceTimeKey], targetCRS: CRS, targetLayout: LayoutDefinition):MultibandTileLayerRDD[SpaceTimeKey]  = {
+
+    val resolutionFactor = toLayoutDefinition(cube.metadata).reproject(cube.metadata.crs, targetCRS).cellwidth / targetLayout.cellwidth
+    val repartitionedCube =
+      if (resolutionFactor > 20.0 ) {
+        val newTileSizeMegaByte = cube.metadata.tileLayout.tileSize * resolutionFactor *resolutionFactor * cube.metadata.cellType.bits /(8*1024*1024)
+        logger.info(s"resample_cube_spatial: Repartitioning cube with resolution factor: ${resolutionFactor}, estimated new tile size in MB: ${newTileSizeMegaByte}")
+
+        val spatiallyGroupingIndex = new ConfigurableSpaceTimePartitioner(indexReduction = 0)
+        val partitioner: Partitioner = new SpacePartitioner(cube.metadata.bounds)(implicitly, implicitly, spatiallyGroupingIndex)
+        //regular partitionBy doesn't work because Partitioners appear to be equal while they're not
+        cube.withContext(c=> new ShuffledRDD[SpaceTimeKey,MultibandTile,MultibandTile](c, partitioner))
+      } else {
+        cube
+      }
+
+    repartitionedCube
+  }
+
+  def resampleCubeSpatial_spatial(data: MultibandTileLayerRDD[SpatialKey], crs:CRS, layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpatialKey]) = {
     try {
       if (crs.equals(data.metadata.crs) && layout.equals(data.metadata.layout)) {
         logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")

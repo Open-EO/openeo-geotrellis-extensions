@@ -87,6 +87,18 @@ object FileLayerProviderTest {
       _sc = None
     }
   }
+
+  def datacubeParams(polygonsAOI: ProjectedPolygons, resampleMethod: ResampleMethod) = {
+    val dataCubeParameters: DataCubeParameters = new DataCubeParameters
+    dataCubeParameters.partitionerIndexReduction = 6
+    dataCubeParameters.globalExtent = Some(polygonsAOI.extent)
+    if(resampleMethod!=null) {
+      dataCubeParameters.setResampleMethod(resampleMethod)
+    }
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.loadPerProduct = true
+    dataCubeParameters
+  }
 }
 
 class MockOpenSearchFeatures(val mockedFeatures: Array[OpenSearchResponses.Feature]) extends OpenSearchClient {
@@ -1598,7 +1610,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
     assertEquals(1, listener.getJobsCompleted)
     assertEquals(3, listener.getStagesCompleted)
-    assertEquals(81, listener.getTasksCompleted)
+    assertEquals(21, listener.getTasksCompleted)
     assertEquals(77314, allTiles.size)
     println(listener.getPeakMemoryMB)
 
@@ -1724,17 +1736,7 @@ class FileLayerProviderTest extends RasterMatchers{
       f"$outDir/testSinglebandCOGViaSTACResampled.nc", referenceFile)
   }
 
-  private def datacubeParams(polygonsAOI: ProjectedPolygons, resampleMethod: ResampleMethod) = {
-    val dataCubeParameters: DataCubeParameters = new DataCubeParameters
-    dataCubeParameters.partitionerIndexReduction = 6
-    dataCubeParameters.globalExtent = Some(polygonsAOI.extent)
-    if(resampleMethod!=null) {
-      dataCubeParameters.setResampleMethod(resampleMethod)
-    }
-    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
-    dataCubeParameters.loadPerProduct = true
-    dataCubeParameters
-  }
+
 
   private def writeToNetCDFAndCompare(polygonAOI: ProjectedPolygons, dataCubeParameters: DataCubeParameters, bands: util.ArrayList[String], factory: PyramidFactory, outLocation: String, referenceFile: String): Unit = {
     val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(polygonAOI, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)
