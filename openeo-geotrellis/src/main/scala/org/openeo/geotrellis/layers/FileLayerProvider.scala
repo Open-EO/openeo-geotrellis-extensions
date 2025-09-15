@@ -1065,16 +1065,24 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     clipped
   }
 
+  def nextPowerOfTwo(n: Int): Int = {
+    if (n <= 0) 1
+    else 1 << (32 - Integer.numberOfLeadingZeros(n - 1))
+  }
+
   def selectLayoutScheme(extent: ProjectedExtent, multiple_polygons_flag: Boolean, datacubeParams: Option[DataCubeParameters]) = {
     val selectedLayoutScheme = if (layoutScheme.isInstanceOf[FloatingLayoutScheme]) {
       if( (extent.extent.width <= maxSpatialResolution.width) || (extent.extent.height <= maxSpatialResolution.height ) ){
         FloatingLayoutScheme(32)
       }else{val rasterExtent = RasterExtent(extent.extent, maxSpatialResolution)
         val minTiles = math.min(math.floor(rasterExtent.rows / 256), math.floor(rasterExtent.cols / 256)).toInt
-        val tileSize = {
+        val tileSize:Int = {
           if (datacubeParams.isDefined && datacubeParams.get.tileSize != 256) {
             datacubeParams.get.tileSize
-          } else if ( experimental && !multiple_polygons_flag && minTiles >= 8) {
+          }else if(rasterExtent.cols<256 && rasterExtent.rows<256) {
+            math.max(nextPowerOfTwo(rasterExtent.cols), nextPowerOfTwo(rasterExtent.rows)).toInt
+          }
+          else if ( experimental && !multiple_polygons_flag && minTiles >= 8) {
             1024
           } else if ( !multiple_polygons_flag && minTiles >= 2) {
             512

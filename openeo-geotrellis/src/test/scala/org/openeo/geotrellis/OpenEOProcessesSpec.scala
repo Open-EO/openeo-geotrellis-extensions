@@ -2,6 +2,7 @@ package org.openeo.geotrellis
 
 import geotrellis.layer.{SpaceTimeKey, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
+import geotrellis.raster.ResampleMethods.NearestNeighbor
 import geotrellis.raster._
 import geotrellis.raster.buffer.BufferedTile
 import geotrellis.raster.geotiff.GeoTiffRasterSource
@@ -23,7 +24,7 @@ import org.junit.Assert._
 import org.junit.jupiter.api.{AfterAll, BeforeAll, DisplayName}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
-import org.junit.jupiter.params.provider.{Arguments, EnumSource, MethodSource}
+import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.junit.{AfterClass, BeforeClass, Test}
 import org.openeo.geotrellis.AggregateSpatialTest.{assertEqualTimeseriesStats, parseCSV}
 import org.openeo.geotrellis.LayerFixtures._
@@ -31,8 +32,9 @@ import org.openeo.geotrellis.OpenEOProcessesSpec.getDatesForCube
 import org.openeo.geotrellis.aggregate_polygon.intern.splitOverlappingPolygons
 import org.openeo.geotrellis.aggregate_polygon.{AggregatePolygonProcess, SparkAggregateScriptBuilder}
 import org.openeo.geotrellis.file.Sentinel2RadiometryPyramidFactory
-import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD}
-import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, DatacubeSupport, SpaceTimeByMonthPartitioner, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
+import org.openeo.geotrellis.geotiff.{ContextSeq, saveRDD, saveRDDTemporal}
+import org.openeo.geotrellis.layers.FileLayerProviderTest
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, ConfigurableSpaceTimePartitioner, DataCubeParameters, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.sparklisteners.GetInfoSparkListener
 
 import java.nio.file.{Files, Paths}
@@ -806,5 +808,31 @@ class OpenEOProcessesSpec extends RasterMatchers {
     })
   }
 
+  @Test
+  def testResampleCubeSpatial_spacetime(): Unit = {
+
+    val factory = LayerFixtures.STACCOGCollection()
+
+    val extent = Extent(-162.2501, 70.1839, -161.2879, 70.3401)
+    val latlon = CRS.fromName("EPSG:4326")
+    val projected_polygons_native_crs = ProjectedPolygons.fromExtent(extent, latlon.toString())
+
+
+    val dataCubeParameters: DataCubeParameters = FileLayerProviderTest.datacubeParams(projected_polygons_native_crs, null)
+
+    val bands: util.ArrayList[String] = new util.ArrayList[String]()
+    bands.add("temperature-mean")
+    bands.add("precipitation-flux")
+
+    val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(projected_polygons_native_crs, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)
+
+    val datacube = cube.head._2
+
+    val targetLayout: LayoutDefinition = LayoutDefinition(GridExtent[Int](datacube.metadata.extent.reproject(LatLng,WebMercator),CellSize(30.0,30.0)),64)
+
+    val resampled = new OpenEOProcesses().resampleCubeSpatial_spacetime(datacube, WebMercator, targetLayout, NearestNeighbor, null)._2
+    saveRDDTemporal(resampled,"./resampleCubeTest")
+    assertEquals(16, resampled.partitions.length)
+  }
 
 }
