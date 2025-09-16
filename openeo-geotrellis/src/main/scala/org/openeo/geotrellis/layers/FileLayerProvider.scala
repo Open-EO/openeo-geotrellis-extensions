@@ -1075,14 +1075,15 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val selectedLayoutScheme = if (layoutScheme.isInstanceOf[FloatingLayoutScheme]) {
       if( (extent.extent.width <= maxSpatialResolution.width) || (extent.extent.height <= maxSpatialResolution.height ) ){
         FloatingLayoutScheme(32)
-      }else{val rasterExtent = RasterExtent(extent.extent, maxSpatialResolution)
+      }else{
+        val rasterExtent = RasterExtent(datacubeParams.map(_.globalExtent.getOrElse(extent)).getOrElse(extent).extent, maxSpatialResolution)
         val minTiles = math.min(math.floor(rasterExtent.rows / 256), math.floor(rasterExtent.cols / 256)).toInt
         val tileSize:Int = {
           if (datacubeParams.isDefined && datacubeParams.get.tileSize != 256) {
             datacubeParams.get.tileSize
-          }else if(rasterExtent.cols<256 && rasterExtent.rows<256) {
+          }/*else if(rasterExtent.cols<256 && rasterExtent.rows<256) {
             math.max(nextPowerOfTwo(rasterExtent.cols), nextPowerOfTwo(rasterExtent.rows)).toInt
-          }
+          }*/
           else if ( experimental && !multiple_polygons_flag && minTiles >= 8) {
             1024
           } else if ( !multiple_polygons_flag && minTiles >= 2) {
