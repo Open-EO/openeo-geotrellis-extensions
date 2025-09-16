@@ -17,7 +17,7 @@ import org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder
 import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
 import java.util
-import java.util.stream
+import java.util.{TimeZone, stream}
 import scala.jdk.CollectionConverters._
 import scala.collection.mutable
 import scala.io.Source
@@ -28,6 +28,7 @@ object AggregateSpatialTest {
 
   @BeforeClass
   def setUpSpark(): Unit = {
+    TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
     sc = {
 
       val conf = new SparkConf().set("spark.driver.bindAddress", "127.0.0.1")
