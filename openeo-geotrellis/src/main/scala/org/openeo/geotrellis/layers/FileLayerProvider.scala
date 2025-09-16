@@ -1080,9 +1080,9 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
         val tileSize:Int = {
           if (datacubeParams.isDefined && datacubeParams.get.tileSize != 256) {
             datacubeParams.get.tileSize
-          }/*else if(rasterExtent.cols<256 && rasterExtent.rows<256) {
-            math.max(nextPowerOfTwo(rasterExtent.cols), nextPowerOfTwo(rasterExtent.rows)).toInt
-          }*/
+          }else if(rasterExtent.cols<256 && rasterExtent.rows<256) {
+            math.max(16, math.max(nextPowerOfTwo(rasterExtent.cols), nextPowerOfTwo(rasterExtent.rows))).toInt
+          }
           else if ( experimental && !multiple_polygons_flag && minTiles >= 8) {
             1024
           } else if ( !multiple_polygons_flag && minTiles >= 2) {
