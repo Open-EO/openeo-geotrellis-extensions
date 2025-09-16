@@ -488,7 +488,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     if (partitioner.isDefined) {
       type K = SpaceTimeKey
       val kb: Bounds[K] = layer.metadata.getComponent[Bounds[K]]
-      val p = SpacePartitioner[K](kb)
+      val p = SpacePartitioner[K](kb)(implicitly,implicitly,partitioner.get)
 
       val tmp = layer.partitionBy(p)
       layer = MultibandTileLayerRDD[SpaceTimeKey](tmp, layer.metadata)
@@ -522,7 +522,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     val dates: List[ZonedDateTime] = getDatesForCube
     var cube: MultibandTileLayerRDD[SpaceTimeKey] = LayerFixtures.randomNoiseLayer(pixelType,dates = Some(dates))
     if(index != null) {
-      cube = cube.withContext(_.partitionBy(new SpacePartitioner[SpaceTimeKey](cube.metadata.bounds)))
+      cube = cube.withContext(_.partitionBy(new SpacePartitioner[SpaceTimeKey](cube.metadata.bounds)(implicitly, implicitly, index)))
     }
 
     val bounds = cube.metadata.bounds
@@ -545,7 +545,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
 
     assertTrue(aggregatedCube.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
     val aggregatedIndex = aggregatedCube.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
-    index match {
+    aggregatedIndex match {
       case value: ByTileSpacetimePartitioner =>
         assertTrue(aggregatedIndex.isInstanceOf[ByTileSpacetimePartitioner])
       case value: SparseSpaceTimePartitioner =>
@@ -558,6 +558,7 @@ class OpenEOProcessesSpec extends RasterMatchers {
     SparkContext.getOrCreate().addSparkListener(listener)
     val resultTiles: Array[MultibandTile] = aggregatedCube.values.collect()
     SparkContext.getOrCreate().removeSparkListener(listener)
+    println(f"${listener.getTasksCompleted} vs ${expectedTasks}")
     assertTrue(listener.getTasksCompleted <= expectedTasks)
 
 
