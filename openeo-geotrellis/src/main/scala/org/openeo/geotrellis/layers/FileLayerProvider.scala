@@ -1599,7 +1599,45 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       feature <- overlappingFeatures
     } yield  deriveRasterSources(feature,reprojectedBoundingBox, datacubeParams,targetResolution)).flatMap(_.toList)
 
-    BatchJobMetadataTracker.tracker("").addInputProducts(openSearchCollectionId,overlappingRasterSources.map(_._2.id).asJava)
+    val tracker = BatchJobMetadataTracker.tracker("")
+    tracker.addInputProducts(
+      openSearchCollectionId,
+      overlappingRasterSources.map { case (_, feature) => feature.id }.asJava
+    )
+
+    // TODO: put them in the tracker as well (or the path to the file with them in)
+    val stacItems = for ((_, inputFeature) <- overlappingRasterSources) yield {
+      // FIXME: add bbox but only if geometry present
+      // FIXME: add derived_from only if self link present
+      // TODO: properties, links and assets
+      def toStacAssetEntry(link: Link): Option[String] =
+        link.title.map { title => s""""$title": {"href": "${link.href}"}""" }
+
+      // TODO: add derived_from only if selfUrl is present
+
+      val stacItem =
+        s"""{
+           |  "type": "Feature",
+           |  "stac_version": "1.1.0",
+           |  "id": "${inputFeature.id}",
+           |  "geometry": ${inputFeature.geometry.map(_.toGeoJson()) getOrElse "null"},
+           |  "properties": {},
+           |  "links": [{
+           |    "rel": "derived_from",
+           |    "href": "${inputFeature.selfUrl getOrElse "???"}",
+           |    "title": "${inputFeature.id}"
+           |  }],
+           |  "assets": {${inputFeature.links.flatMap(toStacAssetEntry) mkString ",\n"}}
+           |}""".stripMargin
+
+      stacItem
+    }
+
+    val derivedFromDocument = Files.createTempFile("input_items_", ".json")
+    Files.write(derivedFromDocument, s"[\n${stacItems.mkString(",\n")}\n]\n".getBytes("UTF-8"))
+
+    println(s"wrote input STAC items to $derivedFromDocument")
+
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
     //  into account; it's more efficient to filter out the redundant ones
 
