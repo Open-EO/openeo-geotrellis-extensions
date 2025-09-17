@@ -17,20 +17,20 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveInputStream}
 import org.apache.commons.io.FileUtils
-import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.rdd.RDD
+import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
-import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api._
+import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
 import org.openeo.geotrellis.TestImplicits._
+import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory}
 import org.openeo.geotrellis.geotiff._
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
-import org.openeo.geotrellis._
 import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{ConfigurableSpaceTimePartitioner, DataCubeParameters, DatacubeSupport, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection, Link}
@@ -353,7 +353,8 @@ class FileLayerProviderTest extends RasterMatchers{
     val expected = size match {
       case 69854 => 512 // 1024 if experimental flag set
       case 1589 => 512
-      case _ => 256
+      case 489 => 256
+      case _ => 128
     }
     assertEquals(expected,scheme.asInstanceOf[FloatingLayoutScheme].tileRows)
 
