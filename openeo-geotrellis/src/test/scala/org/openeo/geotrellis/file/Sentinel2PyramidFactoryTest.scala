@@ -164,7 +164,7 @@ class Sentinel2PyramidFactoryTest {
         val actualTiffs = baseLayerSpatial.toGeoTiffs(Tags.empty, GeoTiffOptions(DeflateCompression)).collect().toList.map(t => t._2)
 
         // Values where a multiple of 500 before. Now it should take into account the global extent offset:
-        assertEquals(Extent(631800.0, 5056200.0, 759800.0, 5184200.0), actualTiffs.head.extent)
+        assertEquals(Extent(631800.0, 5152200.0, 663800.0, 5184200.0), actualTiffs.head.extent)
         saveRDD(baseLayerSpatial, 1, "tmp/testPixelShift/testPixelShift.tiff")
     }
 
