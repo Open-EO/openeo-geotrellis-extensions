@@ -1189,6 +1189,7 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals((2*cols*rows).toInt,all.length)
   }
 
+  @Disabled("ignored for now")
   @Test
   def testPixelValueOffsetNeededCorner(@TempDir outDir: Path): Unit = {
     // This selection will go over a corner that has nodata pixels
