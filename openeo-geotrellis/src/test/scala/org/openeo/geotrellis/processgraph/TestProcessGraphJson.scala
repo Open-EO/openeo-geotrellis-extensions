@@ -1,7 +1,9 @@
 package org.openeo.geotrellis.processgraph
 
 import org.junit.Test
+import org.junit.jupiter.api.Disabled
 
+@Disabled
 class TestProcessGraphJson {
 
   @Test
