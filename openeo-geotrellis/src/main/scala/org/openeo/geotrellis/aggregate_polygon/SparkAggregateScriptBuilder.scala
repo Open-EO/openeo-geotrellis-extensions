@@ -1,6 +1,7 @@
 package org.openeo.geotrellis.aggregate_polygon
 
 import org.apache.spark.sql.Column
+import org.apache.spark.sql.classic.ColumnConversions.toRichColumn
 import org.apache.spark.sql.functions._
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder
 import org.slf4j.LoggerFactory

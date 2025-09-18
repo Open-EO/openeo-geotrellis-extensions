@@ -10,7 +10,7 @@
         <gt-version>32.0</gt-version>
         <hadoop.version>3.1.1</hadoop.version>
         <avro.version>1.7.7</avro.version>
-        <spark.version>3.5.3</spark.version>
+        <spark.version>4.0.1</spark.version>
         <scala.binary.version>2.13</scala.binary.version>
         <scala.version>2.13.16</scala.version>
         <geotrellis.version>3.8.0+11-ee576022-SNAPSHOT</geotrellis.version>
@@ -82,10 +82,10 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.1</version>
+                <version>3.9.0</version>
                 <configuration>
-                    <source>11</source>
-                    <target>11</target>
+                    <source>21</source>
+                    <target>21</target>
                     <encoding>UTF-8</encoding>
                 </configuration>
             </plugin>
