@@ -13,6 +13,7 @@ import java.time.LocalTime
 import scala.annotation.meta.getter
 import scala.collection.JavaConverters._
 
+@Ignore("Batch Processing API V1 was sunset on September 17, 2025; we were no longer using it at this point")
 class BatchProcessingServiceTest {
   private val endpoint = "https://services.sentinel-hub.com" // TODO: this depends on the dataset
   private val authorizer = new MemoizedAuthApiAccessTokenAuthorizer(Utils.clientId, Utils.clientSecret)
