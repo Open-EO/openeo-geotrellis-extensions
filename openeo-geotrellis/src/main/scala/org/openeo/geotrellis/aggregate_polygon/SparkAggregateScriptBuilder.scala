@@ -1,8 +1,7 @@
 package org.openeo.geotrellis.aggregate_polygon
 
 import org.apache.spark.sql.Column
-import org.apache.spark.sql.classic.ColumnConversions.toRichColumn
-import org.apache.spark.sql.functions._
+import org.apache.spark.sql.functions.{avg, count, countDistinct, first, kurtosis, last, lit, max, median, min, not, percentile_approx, product, skewness, stddev, sum, variance, when}
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder
 import org.slf4j.LoggerFactory
 
