@@ -8,12 +8,12 @@ def build_container_image    = (config.build_container_image == true) ?: false
 
 def docker_registry_dev      = config.docker_registry_dev ?: globalDefaults.docker_registry_dev()
 def docker_registry_prod     = config.docker_registry_prod ?: globalDefaults.docker_registry_prod()
-def jdk_version              = 21
+def jdk_version              = 11
 def maven_version            = '3.5.4'
 def node_label               = 'default'
 def wipeout_workspace        = true
 
-def maven_image              = "vito-docker.artifactory.vgt.vito.be/almalinux9-spark-py-openeo:3.5.4"
+def maven_image              = "vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.3"
 
 
 pipeline {
@@ -27,7 +27,6 @@ pipeline {
         DEFAULT_MAVEN_OPTS = "${default_maven_opts}"
         DOCKER_REGISTRY_DEV = "${docker_registry_dev}"
         DOCKER_REGISTRY_PROD = "${docker_registry_prod}"
-        JDK_VERSION = "${jdk_version}"
         JOB_BASE_NAME = "${env.JOB_BASE_NAME}"
         JOB_NAME = "${env.JOB_NAME}"
         JOB_URL = "${env.JOB_URL}"
@@ -57,7 +56,7 @@ pipeline {
         stage('Build and Test') {
             steps {
                 script {
-                    def rel_version = getMavenVersion()
+                    rel_version = getMavenVersion()
                     build( params.skip_tests, params.skip_sentinelhub_tests)
                     utils.setWorkspacePermissions()
                 }
@@ -198,14 +197,17 @@ void build(skipTests = false, skipSentinelHubTests = false){
     testImage.inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/localdata/M2:rw,z -v /home/jenkins/.m2:/root/.m2:rw,z -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root' ) {
         withEnv(jdkEnv) {
             sh "docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
+            sh 'current_dir=$(pwd) && git config --global --add safe.directory  $current_dir'
             def server = Artifactory.server('vitoartifactory')
             def rtMaven = Artifactory.newMavenBuild()
             def snapshotRepo = 'libs-snapshot-public'
+            def releaseRepo = 'libs-release-public'
             if (!publishable_branches.contains(env.BRANCH_NAME)) {
                 snapshotRepo = 'openeo-branch-builds'
+                //releaseRepo = 'openeo-branch-builds'
                 rtMaven.opts += " -Drevision=${env.BRANCH_NAME}"
             }
-            rtMaven.deployer server: server, releaseRepo: 'libs-release-public', snapshotRepo: snapshotRepo
+            rtMaven.deployer server: server, releaseRepo: releaseRepo, snapshotRepo: snapshotRepo
             rtMaven.tool = maven
             if (skipTests) {
                 print "Maven will skip all tests"
@@ -250,7 +252,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
 
 void withMavenEnv(List envVars = [], def body) {
     String mvntool = tool name: maven, type: 'hudson.tasks.Maven$MavenInstallation'
-    String jdktool = tool name: "OpenJDK 21 Centos7", type: 'hudson.model.JDK'
+    String jdktool = tool name: "OpenJDK 11 Centos7", type: 'hudson.model.JDK'
 
     List mvnEnv = ["PATH+MVN=${mvntool}/bin", "PATH+JDK=${jdktool}/bin", "JAVA_HOME=${jdktool}", "MAVEN_HOME=${mvntool}"]
 
