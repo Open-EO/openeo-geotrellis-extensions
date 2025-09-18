@@ -250,7 +250,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
 
 void withMavenEnv(List envVars = [], def body) {
     String mvntool = tool name: maven, type: 'hudson.tasks.Maven$MavenInstallation'
-    String jdktool = tool name: "OpenJDK 11 Centos7", type: 'hudson.model.JDK'
+    String jdktool = tool name: "OpenJDK 21 Centos7", type: 'hudson.model.JDK'
 
     List mvnEnv = ["PATH+MVN=${mvntool}/bin", "PATH+JDK=${jdktool}/bin", "JAVA_HOME=${jdktool}", "MAVEN_HOME=${mvntool}"]
 
