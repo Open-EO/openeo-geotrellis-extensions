@@ -34,8 +34,7 @@ class OpenEOProcessScriptBuilderTest {
       Row(Vectors.dense(0.13, 0.22, 0.23), 1),
       Row(Vectors.dense(9, 9.6, 9.8), 3)
     )
-    val rdd: RDD[Row] = spark.sparkContext.parallelize(trainData.toSeq)
-    val trainDf = spark.createDataFrame(rdd, StructType(srcDataSchema.toSeq))
+    val trainDf = spark.createDataFrame(spark.sparkContext.parallelize(trainData.toSeq), StructType(srcDataSchema.toSeq))
     val trainPool = new Pool(trainDf)
 
     // Fit classifier.
