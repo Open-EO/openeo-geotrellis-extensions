@@ -3,7 +3,7 @@ package org.openeo.geotrellis.aggregate_polygon.intern
 import java.time.{Duration, ZonedDateTime}
 import geotrellis.layer.{SpaceTimeKey, TileLayerMetadata}
 import geotrellis.vector.{Extent, ProjectedExtent}
-import javax.ws.rs.BadRequestException
+import jakarta.ws.rs.BadRequestException
 import org.apache.spark.SparkContext
 import org.slf4j.LoggerFactory
 
