@@ -42,7 +42,7 @@ object MultibandZonal {
   def histogram[K: ClassTag](rdd: RDD[(K, MultibandTile)], zonesTileRdd: RDD[(K, Tile)], partitioner: Option[Partitioner] = None): Map[Int, MultibandHistogram[Int]] =
     partitioner
       .fold(rdd.join(zonesTileRdd))(rdd.join(zonesTileRdd, _))
-      .map((t: (K, (MultibandTile, Tile))) => t._2._1.bands.map(b =>IntZonalHistogram(b, t._2._2).toSeq ).reduce( _ ++ _).groupBy(_._1).mapValues(_.map(_._2).toSeq).toMap )
+      .map((t: (K, (MultibandTile, Tile))) => t._2._1.bands.map(b =>IntZonalHistogram(b, t._2._2).toSeq ).reduce( _ ++ _).groupBy(_._1).view.mapValues(_.map(_._2).toSeq).toMap )
       .fold(Map[Int, MultibandHistogram[Int]]())(mergeMaps)
 
   def histogramDouble[K: ClassTag](rdd: RDD[(K, MultibandTile)], zonestileRdd: RDD[(K, Tile)], partitioner: Option[Partitioner] = None): Map[Int, MultibandHistogram[Double]] =

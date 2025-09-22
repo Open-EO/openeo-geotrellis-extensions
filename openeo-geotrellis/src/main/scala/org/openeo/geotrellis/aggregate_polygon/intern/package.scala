@@ -241,7 +241,7 @@ package object intern {
       val histogramsForDate = MultibandZonal.histogram(dataLayer.toSpatial(date),zoneLayer, zoneLayer.partitioner)
       val doubleHistograms = histogramsForDate
         .filter { case (zone, _) => zone != Int.MinValue } // noDataValue for IntConstantNoDataCellType of mask layer
-        .mapValues(_.map((hist: Histogram[Int]) => toDouble(withoutNoData(hist)) { digital => digital.doubleValue() })).toMap
+        .view.mapValues(_.map((hist: Histogram[Int]) => toDouble(withoutNoData(hist)) { digital => digital.doubleValue() })).toMap
 
       doubleHistograms
     }
