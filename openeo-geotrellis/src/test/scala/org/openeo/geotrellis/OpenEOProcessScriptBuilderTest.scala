@@ -4,7 +4,6 @@ import ai.catboost.spark._
 import geotrellis.raster.{FloatArrayTile, FloatCellType, Tile}
 import org.apache.spark.SparkContext
 import org.apache.spark.ml.linalg.{SQLDataTypes, Vectors}
-import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.types.{IntegerType, StructField, StructType}
 import org.apache.spark.sql.{Row, SparkSession}
 import org.junit.Assert.assertEquals
