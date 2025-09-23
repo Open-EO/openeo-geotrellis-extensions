@@ -12,7 +12,7 @@
         <avro.version>1.7.7</avro.version>
         <spark.version>3.5.3</spark.version>
         <scala.binary.version>2.12</scala.binary.version>
-        <scala.version>2.12.18</scala.version>
+        <scala.version>2.12.20</scala.version>
         <geotrellis.version>3.8.0+9-dbaac792-SNAPSHOT</geotrellis.version>
         <gdal-bindings.version>3.8.0</gdal-bindings.version>
         <commons-compress-version>1.10</commons-compress-version>
