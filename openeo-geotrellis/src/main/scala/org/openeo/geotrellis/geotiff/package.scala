@@ -1032,10 +1032,11 @@ package object geotiff {
     if (fo.overviews.toUpperCase == "ALL" ||
       fo.overviews.toUpperCase == "AUTO" && (gridBounds.width > 1024 || gridBounds.height > 1024)
     ) {
-      val baseOverview = geotiff.buildOverview(getOverviewResampleMethod(fo),2,blockSize = fo.tileSize)
-      val firstOverview = baseOverview.buildOverview(getOverviewResampleMethod(fo),2,blockSize = fo.tileSize)
-      val secondOverview = firstOverview.buildOverview(getOverviewResampleMethod(fo),2,blockSize = fo.tileSize)
-      val thirdOverview = secondOverview.buildOverview(getOverviewResampleMethod(fo),2,blockSize = fo.tileSize)
+      val resampleMethod = getOverviewResampleMethod(fo)
+      val baseOverview = geotiff.buildOverview(resampleMethod,2,blockSize = fo.tileSize)
+      val firstOverview = baseOverview.buildOverview(resampleMethod,2,blockSize = fo.tileSize)
+      val secondOverview = firstOverview.buildOverview(resampleMethod,2,blockSize = fo.tileSize)
+      val thirdOverview = secondOverview.buildOverview(resampleMethod,2,blockSize = fo.tileSize)
       geotiff = MultibandGeoTiff(geotiff.tile,geotiff.extent,geotiff.crs,geotiff.tags,geotiff.options,List(firstOverview,secondOverview,thirdOverview))
     }
     writeGeoTiff(geotiff, filePath, Some(fo))
