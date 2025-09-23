@@ -402,6 +402,13 @@ class PyramidFactory(collectionId: String, datasetId: String, catalogApi: Catalo
                 case (id, Feature(_, FeatureData(_, selfUrl))) => new ProductIdAndUrl(id, selfUrl.orNull)
               }.toList.asJava
             )
+            // TODO: save input features as STAC as well
+            val selfUrls = for {
+              Feature(_, metadata) <- features.values
+              selfUrl <- metadata.selfUrl
+            } yield selfUrl
+
+          for (selfUrl <- selfUrls) println(f"write STAC item collection with derived_from $selfUrl")
 
             // In test over England, there where up to 0.003 deviations on long line segments due to curvature
             // change between CRS. Here we convert that distance to the value in the polygon specific CRS.

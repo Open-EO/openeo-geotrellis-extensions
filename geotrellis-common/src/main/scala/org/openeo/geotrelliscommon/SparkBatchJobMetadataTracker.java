@@ -5,6 +5,8 @@ import org.apache.spark.util.AccumulatorV2;
 import org.apache.spark.util.DoubleAccumulator;
 import org.apache.spark.util.LongAccumulator;
 
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +18,7 @@ public class SparkBatchJobMetadataTracker extends BatchJobMetadataTracker {
     private Map<String, AccumulatorV2<Long, Long>> counters = new HashMap<>();
     private Map<String, AccumulatorV2<Double, Double>> doubleCounters = new HashMap<>();
     private Map<String, List<ProductIdAndUrl>> inputProducts = new HashMap<>();
+    private List<InternalFile> internalFiles = new ArrayList<>();
 
     @Override
     public void registerCounter(String name) {
@@ -49,6 +52,11 @@ public class SparkBatchJobMetadataTracker extends BatchJobMetadataTracker {
     }
 
     @Override
+    public void addInternalFile(Path path, String mediaType) {
+        internalFiles.add(new InternalFile(path, mediaType));
+    }
+
+    @Override
     public Map<String, Object> asDict() {
         Map<String, Object> result = new HashMap<>();
         doubleCounters.forEach((key, value) -> {
@@ -59,6 +67,7 @@ public class SparkBatchJobMetadataTracker extends BatchJobMetadataTracker {
         });
         //needs to go under 'derived-from links
         result.put("links", inputProducts);
+        result.put("internal_files", internalFiles);
         return result;
     }
 }

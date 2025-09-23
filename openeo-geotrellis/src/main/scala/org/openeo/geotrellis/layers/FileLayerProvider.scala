@@ -1623,38 +1623,44 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
       overlappingRasterSources.map { case (_, feature) => feature.id }.asJava
     )
 
-    // TODO: put them in the tracker as well (or the path to the file with them in)
-    val stacItems = for ((_, inputFeature) <- overlappingRasterSources) yield {
-      // FIXME: add bbox but only if geometry present
-      // FIXME: add derived_from only if self link present
-      // TODO: properties, links and assets
-      def toStacAssetEntry(link: Link): Option[String] =
-        link.title.map { title => s""""$title": {"href": "${link.href}"}""" }
+    def writeDerivedFromDocument(targetFile: Path, inputFeatures: Seq[Feature]): Unit = {
+      import java.net.URL
+      import _root_.io.circe._
+      import _root_.io.circe.syntax._
+      import geotrellis.vector._
+      import org.openeo.opensearch.OpenSearchResponses.Feature
 
-      // TODO: add derived_from only if selfUrl is present
+      def asDerivedFromFeature(inputFeature: Feature): Map[String, Json] = {
+        def asDerivedFromLink(selfUrl: URL): Map[String, String] = Map(
+          "rel" -> "derived_from",
+          "href" -> selfUrl.toString,
+          "title" -> inputFeature.id,
+        )
 
-      val stacItem =
-        s"""{
-           |  "type": "Feature",
-           |  "stac_version": "1.1.0",
-           |  "id": "${inputFeature.id}",
-           |  "geometry": ${inputFeature.geometry.map(_.toGeoJson()) getOrElse "null"},
-           |  "properties": {},
-           |  "links": [{
-           |    "rel": "derived_from",
-           |    "href": "${inputFeature.selfUrl getOrElse "???"}",
-           |    "title": "${inputFeature.id}"
-           |  }],
-           |  "assets": {${inputFeature.links.flatMap(toStacAssetEntry) mkString ",\n"}}
-           |}""".stripMargin
+        Map(
+          "type" -> "Feature".asJson,
+          "stac_version" -> "1.1.0".asJson,
+          "id" -> inputFeature.id.asJson,
+          "geometry" -> inputFeature.geometry.getOrElse(inputFeature.bbox.toPolygon()).asJson,
+          "bbox" -> Seq(
+            inputFeature.bbox.xmin, inputFeature.bbox.ymin,
+            inputFeature.bbox.xmax, inputFeature.bbox.ymax
+          ).asJson,
+          "properties" -> Map[String, Json]().asJson,
+          "links" -> inputFeature.selfUrl.map(selfUrl => Seq(asDerivedFromLink(selfUrl))).getOrElse(Seq()).asJson,
+          "assets" -> Map[String, Json]().asJson,
+        )
+      }
 
-      stacItem
+      val derivedFromDocument = inputFeatures.map(asDerivedFromFeature).asJson
+      Files.write(targetFile, derivedFromDocument.noSpaces.getBytes("UTF-8"))
     }
 
     val derivedFromDocument = Files.createTempFile("input_items_", ".json")
-    Files.write(derivedFromDocument, s"[\n${stacItems.mkString(",\n")}\n]\n".getBytes("UTF-8"))
+    writeDerivedFromDocument(derivedFromDocument, overlappingRasterSources.map { case (_, feature) => feature })
+    logger.debug(s"wrote input STAC items to $derivedFromDocument")
 
-    println(s"wrote input STAC items to $derivedFromDocument")
+    tracker.addInternalFile(derivedFromDocument, "application/json") // TODO: ultimately, "application/geo+json" for an ItemCollection
 
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
     //  into account; it's more efficient to filter out the redundant ones

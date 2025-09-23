@@ -1,6 +1,8 @@
 package org.openeo.geotrelliscommon;
 
 import java.io.Serializable;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -26,6 +28,24 @@ public abstract class BatchJobMetadataTracker implements Serializable {
         @Override
         public String toString() {
             return String.format("%s: %s", id, selfUrl);
+        }
+    }
+
+    public static class InternalFile implements Serializable {
+        private transient String path;
+        private transient String mediaType;
+
+        public InternalFile(Path path, String mediaType) {
+            this.path = path.toString();
+            this.mediaType = mediaType;
+        }
+
+        public Path getPath() {
+            return Paths.get(path);
+        }
+
+        public String getMediaType() {
+            return mediaType;
         }
     }
 
@@ -68,6 +88,9 @@ public abstract class BatchJobMetadataTracker implements Serializable {
         public void addInputProductsWithUrls(String collection, List<ProductIdAndUrl> productIdAndUrls) {}
 
         @Override
+        public void addInternalFile(Path path, String mediaType) {}
+
+        @Override
         public Map<String, Object> asDict() {
             return Collections.emptyMap();
         }
@@ -101,6 +124,8 @@ public abstract class BatchJobMetadataTracker implements Serializable {
      * Different name than 'addInputProducts' to avoid "both methods have same erasure" compiler error.
      */
     public abstract void addInputProductsWithUrls(String collection, List<ProductIdAndUrl> productIdAndUrls);
+
+    public abstract void addInternalFile(Path path, String mediaType);
 
     public abstract Map<String, Object> asDict();
 }
