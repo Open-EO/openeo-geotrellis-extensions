@@ -12,7 +12,7 @@
         <avro.version>1.7.7</avro.version>
         <spark.version>3.5.3</spark.version>
         <scala.binary.version>2.12</scala.binary.version>
-        <scala.version>2.12.18</scala.version>
+        <scala.version>2.12.20</scala.version>
         <geotrellis.version>3.8.0+9-dbaac792-SNAPSHOT</geotrellis.version>
         <gdal-bindings.version>3.8.0</gdal-bindings.version>
         <commons-compress-version>1.10</commons-compress-version>
@@ -45,11 +45,6 @@
                 <artifactId>slf4j-api</artifactId>
                 <version>2.0.7</version>
                 <scope>provided</scope>
-            </dependency>
-            <dependency>
-                <groupId>com.github.luben</groupId>
-                <artifactId>zstd-jni</artifactId>
-                <version>1.5.7-3</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
