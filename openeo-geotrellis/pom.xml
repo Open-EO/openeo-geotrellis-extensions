@@ -215,6 +215,12 @@
             <groupId>org.typelevel</groupId>
             <artifactId>spire_2.13</artifactId>
             <version>0.17.0</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.typelevel</groupId>
+                    <artifactId>cats-kernel_${scala.binary.version}</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>edu.ucar</groupId>
