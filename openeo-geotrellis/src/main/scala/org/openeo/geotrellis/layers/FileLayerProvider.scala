@@ -7,46 +7,40 @@ import geotrellis.layer.{TemporalKeyExtractor, ZoomedLayoutScheme, _}
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.raster.RasterRegion.GridBoundsRasterRegion
 import geotrellis.raster.ResampleMethods.NearestNeighbor
-import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, CropOptions, CroppedTile, EmptyName, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MosaicRasterSource, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ResampleMethod, ResampleTarget, ShortConstantNoDataCellType, SourceName, SourcePath, StringName, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.raster.gdal.{GDALPath, GDALRasterSource, GDALWarpOptions}
 import geotrellis.raster.geotiff.{GeoTiffPath, GeoTiffRasterSource, GeoTiffReprojectRasterSource, GeoTiffResampleRasterSource}
 import geotrellis.raster.io.geotiff.OverviewStrategy
 import geotrellis.raster.rasterize.Rasterizer
+import geotrellis.raster.{CellSize, CellType, ConvertTargetCellType, FloatConstantNoDataCellType, FloatConstantTile, GridBounds, GridExtent, MultibandTile, NoNoData, PaddedTile, Raster, RasterExtent, RasterMetadata, RasterRegion, RasterSource, ShortConstantNoDataCellType, SourceName, SourcePath, TargetAlignment, TargetCellType, TargetRegion, Tile, UByteUserDefinedNoDataCellType, UShortConstantNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.clip.ClipToGrid
 import geotrellis.spark.clip.ClipToGrid.clipFeatureToExtent
-import geotrellis.spark.join.{SpatialJoin, VectorJoin}
+import geotrellis.spark.join.VectorJoin
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
-import geotrellis.vector.reproject.Reproject.reprojectExtentAsPolygon
-import net.jodah.failsafe.{Failsafe, RetryPolicy}
-import net.jodah.failsafe.event.ExecutionAttemptedEvent
+import org.apache.spark.rdd.RDD
+import org.apache.spark.util.{LongAccumulator, SizeEstimator}
 import org.apache.spark.{HashPartitioner, Partitioner, SparkContext}
-import org.apache.spark.rdd.{CoGroupedRDD, RDD}
-import org.apache.spark.util.LongAccumulator
 import org.locationtech.jts.geom.Geometry
 import org.openeo.geotrellis.OpenEOProcessScriptBuilder.AnyProcess
-import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
 import org.openeo.geotrellis._
+import org.openeo.geotrellis.file.{AbstractPyramidFactory, FixedFeaturesOpenSearchClient}
 import org.openeo.geotrelliscommon.DatacubeSupport.prepareMask
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, ResampledTile, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, ByKeyPartitioner, CloudFilterStrategy, ConfigurableSpatialPartitioner, DataCubeParameters, DatacubeSupport, L1CCloudFilterStrategy, MaskTileLoader, NoCloudFilterStrategy, SCLConvolutionFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner, autoUtmEpsg}
 import org.openeo.opensearch.OpenSearchClient
 import org.openeo.opensearch.OpenSearchResponses.{Feature, Link}
 import org.slf4j.{Logger, LoggerFactory}
-import org.slf4j.LoggerFactory
-import software.amazon.awssdk.core.exception.AbortedException
 
 import java.io.{IOException, Serializable}
 import java.net.URI
 import java.nio.file.{Files, Path, Paths}
 import java.time._
-import java.time.temporal.ChronoUnit.{DAYS, SECONDS}
-import java.util
+import java.time.temporal.ChronoUnit.DAYS
 import java.util.concurrent.TimeUnit
-import scala.collection.{GenSeq, immutable}
 import scala.collection.JavaConverters._
+import scala.collection.immutable
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
 
@@ -71,7 +65,6 @@ object FileLayerProvider {
 
 
   lazy val sdk = {
-    import _root_.io.opentelemetry.api.OpenTelemetry
     import _root_.io.opentelemetry.api.GlobalOpenTelemetry
     GlobalOpenTelemetry.get()
   }
@@ -407,7 +400,7 @@ object FileLayerProvider {
       var totalPixelsPartition = 0
       val startTime = System.currentTimeMillis()
 
-      val (loadedPartitions: Iterator[(SpaceTimeKey, (Int, MultibandTile))],partitionPixels) = loadPartitionBySource(partitionIterator, cloudFilterStrategy, totalChunksAcc, tracker,crs,layout,theCellType )
+      val (loadedPartitions: Iterator[(SpaceTimeKey, (Int, MultibandTile, SourceName))],partitionPixels) = loadPartitionBySource(partitionIterator, cloudFilterStrategy, totalChunksAcc, tracker,crs,layout,theCellType )
       totalPixelsPartition += partitionPixels
 
       val durationMillis = System.currentTimeMillis() - startTime
@@ -419,8 +412,10 @@ object FileLayerProvider {
       }
       loadedPartitions
 
-    },preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile)]) => {
-      var mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1).mapValues(_.map(_._2).reduceOption(_ merge _))
+    },preservesPartitioning = true).groupByKey(partitioner).mapValues((tiles: Iterable[(Int, MultibandTile, SourceName)]) => {
+      var mergedBands: Map[Int, Option[MultibandTile]] = tiles.groupBy(_._1)
+        .map(t => (t._1, t._2.toList.sortBy(x => sortableSourceName(x._3))))
+        .mapValues(x => x.map(_._2).reduceOption(_ merge _))
         .flatMap{case (index,multiband) =>{
           if(multiband.isDefined && multiband.get.bandCount>1) {
             if(index != 0) {
@@ -517,7 +512,7 @@ object FileLayerProvider {
 
   private def loadPartitionBySource(partitionIterator: Iterator[(SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])], cloudFilterStrategy: CloudFilterStrategy, totalChunksAcc: LongAccumulator, tracker: BatchJobMetadataTracker, crs :CRS, layout:LayoutDefinition, cellType: CellType )= {
     var totalPixelsPartition = 0
-    val tiles: Iterator[(SpaceTimeKey, (Int,MultibandTile))] = partitionIterator.flatMap((tuple: (SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])) =>{
+    val tiles: Iterator[(SpaceTimeKey, (Int,MultibandTile, SourceName))] = partitionIterator.flatMap((tuple: (SourceName, Iterable[(Seq[Int], SpaceTimeKey, RasterRegion)])) =>{
       val keys = tuple._2.map(_._2).asJavaCollection
       val source = tuple._2.head._3.asInstanceOf[GridBoundsRasterRegion].source
       val bounds = tuple._2.map(_._3.asInstanceOf[GridBoundsRasterRegion].bounds).toSeq
@@ -561,7 +556,7 @@ object FileLayerProvider {
       totalPixelsPartition += totalPixels
       totalChunksAcc.add(totalPixels / (256 * 256))
       tracker.add(PIXEL_COUNTER, totalPixels)
-      keys.iterator().asScala.zip(paddedRasters.map(b=>(theIndex,b.tile)).iterator)
+      keys.iterator().asScala.zip(paddedRasters.map(b=>(theIndex,b.tile,tuple._1)).iterator)
 
     })
     (tiles,totalPixelsPartition)
@@ -856,7 +851,11 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
 
     var overlappingRasterSources: Seq[(RasterSource, Feature)] = loadRasterSourceRDD(ProjectedExtent(alignedExtent.extent,reprojectedBoundingBox.crs), from, to, zoom, datacubeParams, Some(worldLayout.cellSize))
 
-    val dates = overlappingRasterSources.map(_._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC")))
+    val dates = overlappingRasterSources.map(_._2.nominalDate.toLocalDate.atStartOfDay(ZoneId.of("UTC"))).distinct
+
+    //Feature objects will be part of RDD, remove potentially large metadata that is no longer needed beyond this point
+    //Certain STAC items can have large number of links!
+    overlappingRasterSources = overlappingRasterSources.map(source_feature => (source_feature._1,source_feature._2.copy(links = Array.empty, generalProperties = null)))
 
     var commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
@@ -913,7 +912,20 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
             // processing a low number of spatial keys. This can happen with sparse data loading.
             new HashPartitioner(math.max((spatialKeyCount / 100).intValue(),1))
           }else{
-            SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(3))
+
+            /**
+             * Max size of metadata partition depends on the number of items returned by the catalog.
+             * Too many partitions requires extra executors, often at the very beginning of a job, so we try to limit this.
+             * We use the number of dates as a proxy for the max number of items intersecting a given spatial key.
+             * For cases like Sentinel-2, we can however have  items intersecting at a given location on the same date.
+             */
+            val maxPartitionSizeBytes = 40 * 1024 * 1024
+            val sampleCount = math.min(10, overlappingRasterSources.size)
+            val averageItemSizeInBytes = overlappingRasterSources.take(sampleCount).map(item => SizeEstimator.estimate(item)).sum / sampleCount
+            val estimatedSizePerKey = averageItemSizeInBytes * dates.length
+            val maxSpatialKeysPerPartition = maxPartitionSizeBytes / estimatedSizePerKey
+            val indexReduction = math.max(math.ceil(math.log(maxSpatialKeysPerPartition) / math.log(2)).toInt - 1, 1)
+            SpacePartitioner(metadata.bounds.get.toSpatial)(implicitly,implicitly,new ConfigurableSpatialPartitioner(indexReduction))
           }
         }
 
@@ -1053,16 +1065,25 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     clipped
   }
 
+  def nextPowerOfTwo(n: Int): Int = {
+    if (n <= 0) 1
+    else 1 << (32 - Integer.numberOfLeadingZeros(n - 1))
+  }
+
   def selectLayoutScheme(extent: ProjectedExtent, multiple_polygons_flag: Boolean, datacubeParams: Option[DataCubeParameters]) = {
     val selectedLayoutScheme = if (layoutScheme.isInstanceOf[FloatingLayoutScheme]) {
       if( (extent.extent.width <= maxSpatialResolution.width) || (extent.extent.height <= maxSpatialResolution.height ) ){
         FloatingLayoutScheme(32)
-      }else{val rasterExtent = RasterExtent(extent.extent, maxSpatialResolution)
+      }else{
+        val rasterExtent = RasterExtent(datacubeParams.map(_.globalExtent.getOrElse(extent).reproject(extent.crs)).getOrElse(extent.extent), maxSpatialResolution)
         val minTiles = math.min(math.floor(rasterExtent.rows / 256), math.floor(rasterExtent.cols / 256)).toInt
-        val tileSize = {
+        val tileSize:Int = {
           if (datacubeParams.isDefined && datacubeParams.get.tileSize != 256) {
             datacubeParams.get.tileSize
-          } else if ( experimental && !multiple_polygons_flag && minTiles >= 8) {
+          }else if(rasterExtent.cols<256 && rasterExtent.rows<256) {
+            math.max(16, math.max(nextPowerOfTwo(rasterExtent.cols), nextPowerOfTwo(rasterExtent.rows))).toInt
+          }
+          else if ( experimental && !multiple_polygons_flag && minTiles >= 8) {
             1024
           } else if ( !multiple_polygons_flag && minTiles >= 2) {
             512

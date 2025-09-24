@@ -1,10 +1,11 @@
 package org.openeo.geotrellis
 
-import io.circe.syntax.EncoderOps
-import io.circe.Json
 import geotrellis.layer.SpatialKey._
+import geotrellis.layer.TileLayerMetadata.toLayoutDefinition
 import geotrellis.layer.{Metadata, SpaceTimeKey, TileLayerMetadata, _}
 import geotrellis.proj4.CRS
+import io.circe.Json
+import io.circe.syntax.EncoderOps
 import geotrellis.raster._
 import geotrellis.raster.buffer.{BufferSizes, BufferedTile}
 import geotrellis.raster.crop.Crop
@@ -20,7 +21,6 @@ import geotrellis.spark.{MultibandTileLayerRDD, _}
 import geotrellis.util._
 import geotrellis.vector.Extent.toPolygon
 import geotrellis.vector._
-import geotrellis.vector.io.json.JsonFeatureCollection
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd._
 import org.apache.spark.{Partitioner, SparkContext}
@@ -484,18 +484,29 @@ class OpenEOProcesses extends Serializable {
         if (incomingIndex.get.isInstanceOf[ByTileSpacetimePartitioner]) {
           incomingIndex.get
         }else{
-          new SparseSpaceTimePartitioner(theNewKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4,Some(theNewKeys))
+          val bandCountOption = maybeBandCount(datacube)
+          if(reduce && bandCountOption.isDefined) {
+            val estimatedSize = timePeriods.length * bandCountOption.get * datacube.metadata.tileLayout.tileSize * datacube.metadata.cellType.bytes
+            logger.info(s"aggregate_temporal: estimated target partition size of ${estimatedSize/(1024.0*1024.0)} MB")
+            if(estimatedSize/(1024*1024) < 3) {
+              new ByTileSpacetimePartitioner(Some(allPossibleKeys.toArray))
+            }else{
+              getPartitionerIndexForMaxPartitionSize(bandCountOption.get,datacube.metadata.tileLayout.tileSize,datacube.metadata.cellType.bits, 100.0)
+            }
+          }else{
+            new SparseSpaceTimePartitioner(theNewKeys.map(SparseSpaceTimePartitioner.toIndex(_, indexReduction = 4)).distinct.sorted, 4,Some(theNewKeys))
+          }
         }
       }else{
-        if (incomingIndex.isDefined) {
-
-          if (incomingIndex.get.isInstanceOf[SparseSpaceOnlyPartitioner] || incomingIndex.get.isInstanceOf[ByTileSpacetimePartitioner]) {
+        if (incomingIndex.isDefined && (incomingIndex.get.isInstanceOf[SparseSpaceOnlyPartitioner] || incomingIndex.get.isInstanceOf[ByTileSpacetimePartitioner]) ) {
             incomingIndex.get//a space only partitioner does not care about time, so can be reused as-is
-          } else {
+        }else{
+          val bandCountOption = maybeBandCount(datacube)
+          if(bandCountOption.isDefined) {
+            getPartitionerIndexForMaxPartitionSize(bandCountOption.get,datacube.metadata.tileLayout.tileSize,datacube.metadata.cellType.bits, 100.0)
+          }else{
             SpaceTimeByMonthPartitioner
           }
-        }else{
-          SpaceTimeByMonthPartitioner
         }
       }
 
@@ -570,9 +581,10 @@ class OpenEOProcesses extends Serializable {
     val rows = filteredCube.metadata.tileLayout.tileRows
     val cellType = datacube.metadata.cellType
 
-    val bandCount = RDDBandCount(datacube)
+
     val filledRDD: RDD[(SpaceTimeKey, MultibandTile)] = {
       if(reduce) {
+        val bandCount = RDDBandCount(datacube)
         tilesByInterval.rightOuterJoin(allKeysRDD,partitioner).mapValues(_._1.getOrElse(new EmptyMultibandTile(cols, rows, cellType, bandCount)))
       }else{
         tilesByInterval
@@ -964,7 +976,8 @@ class OpenEOProcesses extends Serializable {
       (0,data)
     }else if(partitioner==null) {
       logger.info(s"resample_cube_spatial: input cube: ${this.cubeStatistics(data)}")
-      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(data, crs, Right(layout), 16, method, new SpacePartitioner(data.metadata.bounds))
+      val repartitioned: MultibandTileLayerRDD[SpaceTimeKey] = repartitionBeforeResample(data, crs, layout)
+      val reprojected = org.openeo.geotrellis.reproject.TileRDDReproject(repartitioned, crs, Right(layout), 16, method, new SpacePartitioner(data.metadata.bounds))
       filterNegativeSpatialKeys(reprojected)
     }else{
       logger.info(s"resample_cube_spatial: input cube: ${this.cubeStatistics(data)}")
@@ -973,7 +986,26 @@ class OpenEOProcesses extends Serializable {
     }
   }
 
-  def resampleCubeSpatial_spatial(data: MultibandTileLayerRDD[SpatialKey],crs:CRS,layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpatialKey]) = {
+  private def repartitionBeforeResample(cube: MultibandTileLayerRDD[SpaceTimeKey], targetCRS: CRS, targetLayout: LayoutDefinition):MultibandTileLayerRDD[SpaceTimeKey]  = {
+
+    val resolutionFactor = toLayoutDefinition(cube.metadata).reproject(cube.metadata.crs, targetCRS).cellwidth / targetLayout.cellwidth
+    val repartitionedCube =
+      if (resolutionFactor > 20.0 ) {
+        val newTileSizeMegaByte = cube.metadata.tileLayout.tileSize * resolutionFactor *resolutionFactor * cube.metadata.cellType.bits /(8*1024*1024)
+        logger.info(s"resample_cube_spatial: Repartitioning cube with resolution factor: ${resolutionFactor}, estimated new tile size in MB: ${newTileSizeMegaByte}")
+
+        val spatiallyGroupingIndex = new ConfigurableSpaceTimePartitioner(indexReduction = 0)
+        val partitioner: Partitioner = new SpacePartitioner(cube.metadata.bounds)(implicitly, implicitly, spatiallyGroupingIndex)
+        //regular partitionBy doesn't work because Partitioners appear to be equal while they're not
+        cube.withContext(c=> new ShuffledRDD[SpaceTimeKey,MultibandTile,MultibandTile](c, partitioner))
+      } else {
+        cube
+      }
+
+    repartitionedCube
+  }
+
+  def resampleCubeSpatial_spatial(data: MultibandTileLayerRDD[SpatialKey], crs:CRS, layout:LayoutDefinition, method:ResampleMethod, partitioner:Partitioner): (Int, MultibandTileLayerRDD[SpatialKey]) = {
     try {
       if (crs.equals(data.metadata.crs) && layout.equals(data.metadata.layout)) {
         logger.info(s"resample_cube_spatial: No resampling required for cube: ${data.metadata}")
