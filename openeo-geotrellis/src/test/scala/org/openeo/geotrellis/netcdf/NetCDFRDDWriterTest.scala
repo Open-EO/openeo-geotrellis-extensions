@@ -155,7 +155,7 @@ class NetCDFRDDWriterTest extends RasterMatchers{
     )
 
     def testStatistics(arrayTile: IntArrayTile, expectedStatistics: util.HashMap[String, Any]= null, polygon:Geometry=polygon0, expectedShape:Array[Int]=Array(512,512), addStatistics:Boolean=true):Unit = {
-      val layer = LayerFixtures.aSpacetimeTileLayerRddShortArrayTile(arrayTile, 20, 10, nbDates = 5, fillValue = 256)
+      val layer = LayerFixtures.aSpacetimeTileLayerRddArrayTile(arrayTile, 1, 1, nbDates = 5)
       val polygons = ProjectedPolygons(polygon,CRS.fromEpsgCode(4326))
       val sampleNames = polygons.polygons.indices.map(_.toString)
 
@@ -202,11 +202,11 @@ class NetCDFRDDWriterTest extends RasterMatchers{
       ),
     )
     val arrayDim = 512
-    val arrayTile0 = IntArrayTile(Array.fill(arrayDim*arrayDim/4)(0) ++ Array.fill(arrayDim*arrayDim/2)(30) ++ Array.fill(arrayDim*arrayDim/4)(256),arrayDim,arrayDim)
+    val arrayTile0 = IntArrayTile(Array.fill(arrayDim*arrayDim/4)(0) ++ Array.fill(arrayDim*arrayDim/2)(30) ++ Array.fill(arrayDim*arrayDim/4)(256),arrayDim,arrayDim, noDataValue = 256)
     testStatistics(arrayTile = arrayTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 75, "min", 0.0, "max", 30.0, "mean", 20.0, "stddev", 14.142135623730951)))
-    val arrayTile1 = IntArrayTile(Array.fill(arrayDim*arrayDim)(256),arrayDim,arrayDim)
+    val arrayTile1 = IntArrayTile(Array.fill(arrayDim*arrayDim)(256),arrayDim,arrayDim, noDataValue = 256)
     testStatistics(arrayTile = arrayTile1, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0)))
-    val arrayTile2 = IntArrayTile(Array.fill(arrayDim*arrayDim/2)(256) ++ Array.fill(arrayDim*arrayDim/8)(30) ++ Array.fill(arrayDim*arrayDim/8)(10) ++ Array.fill(arrayDim*arrayDim/4)(256),arrayDim,arrayDim)
+    val arrayTile2 = IntArrayTile(Array.fill(arrayDim*arrayDim/2)(256) ++ Array.fill(arrayDim*arrayDim/8)(30) ++ Array.fill(arrayDim*arrayDim/8)(10) ++ Array.fill(arrayDim*arrayDim/4)(256),arrayDim,arrayDim, noDataValue = 256)
     testStatistics(arrayTile = arrayTile2, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 25, "min", 10.0, "max", 30.0, "mean", 20.0, "stddev", 10)))
     testStatistics(arrayTile = arrayTile0,addStatistics = false)
     testStatistics(arrayTile = arrayTile0, expectedStatistics = new util.HashMap[String, Any](util.Map.of("valid_percent", 100, "min", 0.0, "max", 30.0, "mean", 15.0, "stddev", 15.0)),polygon = polygon1, expectedShape = Array(86,52))
