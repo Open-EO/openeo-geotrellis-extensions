@@ -212,6 +212,11 @@
             <version>5.1.0</version>
         </dependency>
         <dependency>
+            <groupId>org.typelevel</groupId>
+            <artifactId>spire_2.13</artifactId>
+            <version>0.17.0</version>
+        </dependency>
+        <dependency>
             <groupId>edu.ucar</groupId>
             <artifactId>netcdf4</artifactId>
             <version>5.1.0</version>
