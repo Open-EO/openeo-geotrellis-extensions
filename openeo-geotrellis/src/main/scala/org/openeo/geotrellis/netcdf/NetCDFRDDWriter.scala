@@ -197,7 +197,7 @@ object NetCDFRDDWriter {
       }else{
         path
       }
-    val histograms = collection.mutable.Map[String,(StreamingHistogram,Int)]()
+    val bandHistograms = collection.mutable.Map[String,(StreamingHistogram,Int)]()
     var netcdfFile: NetcdfFileWriter = null
     for(tuple <- cachedRDD.toLocalIterator){
 
@@ -257,7 +257,7 @@ object NetCDFRDDWriter {
               tile = tile.crop(rasterExtent.cols-gridExtent.colMin,rasterExtent.rows-gridExtent.rowMin,raster.CropOptions(force=true))
               logger.debug(s"Cropping output tile to avoid going out of variable (${variable}) bounds ${gridExtent}.")
             }
-            if (addBandsStatistics) bandsStatistics(tile,histograms,variable)
+            if (addBandsStatistics) bandsStatistics(tile, bandHistograms, variable)
             try{
               writeTile(variable, origin, tile, netcdfFile)
             }catch {
@@ -274,7 +274,7 @@ object NetCDFRDDWriter {
         netcdfFile.flush()
       }
     }
-    val assetsMetadata = setupAssetMetadata(rdd.metadata,dates,bandNames,addBandsStatistics,histograms)
+    val assetsMetadata = setupAssetMetadata(rdd.metadata, dates, bandNames, preProcessResult._1, extent, addBandsStatistics, bandHistograms)
     if(dates.nonEmpty) {
       val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
       writeTime(timeDimName, netcdfFile, dates)
@@ -614,7 +614,7 @@ object NetCDFRDDWriter {
       .map { case ((name, extent), tiles) =>
         val outputAsPath: Path = getSamplePath(name, path, filenamePrefix)
         val sample: Raster[MultibandTile] = stitchAndCropTiles(tiles, extent, layout)
-        val assetMetadata = setupAssetMetadata(rdd.metadata,Seq(sample),dates=null, bandNames, addBandsStatistics) // path 2
+        val assetMetadata = setupAssetMetadata(rdd.metadata, Seq(sample), dates=null, bandNames, addBandsStatistics)
         val assetPath = try {
           writeToDisk(Seq(sample), dates = null, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
         } catch {
@@ -888,35 +888,35 @@ object NetCDFRDDWriter {
     if (bandsMetadata.containsKey("OFFSET")) netcdfFile.addVariableAttribute(variableName,"add_offset",bandsMetadata.get("OFFSET").toFloat)
   }
 
-  private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], dates: List[Int], bandNames: ArrayList[String], addBandsStats: Boolean, histograms:scala.collection.mutable.Map[String,(StreamingHistogram,Int)]): java.util.Map[String, Any] = {
+  private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], dates: List[Int], bandNames: ArrayList[String], gridBounds: GridBounds[Int], extent: Extent, addBandsStats: Boolean, histograms:scala.collection.mutable.Map[String,(StreamingHistogram,Int)]): java.util.Map[String, Any] = {
     val assetMetadata = if (dates.nonEmpty) {
       new util.HashMap[String,Any](util.Map.of("time", new util.HashMap[String,Any](util.Map.of("type", "temporal", "extent",Array(dates.head, dates.last), "values", dates.toArray))))
     } else new java.util.HashMap[String,Any]()
     val bands = if (addBandsStats) {
-      val map = new util.ArrayList[util.Map[String,Any]]()
-      histograms.foreach {case (name,histogramAndSize) => {
-        val statistics = histogramAndSize._1.statistics()
-        val mapStatistics = if (statistics.isDefined) {
-          new util.HashMap[String, Any](util.Map.of("max", statistics.get.zmax, "min", statistics.get.zmin, "mean", statistics.get.mean,"stddev",statistics.get.stddev, "valid_percent", statistics.get.dataCells.toDouble/histogramAndSize._2))
-        } else new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0))
-        val band = new util.HashMap[String,Any](util.Map.of("name", name, "statistics", mapStatistics))
-        map.add(band)
+      val maps = new util.ArrayList[util.Map[String,Any]]()
+      histograms.foreach {case (banName,(histogram,size)) => {
+        val statistics = histogram.statistics()
+        val mapStatistics = statistics.fold(new util.HashMap[String, Any](util.Map.of("valid_percent", 0.0))){ statistics =>
+          new util.HashMap[String, Any](util.Map.of("max", statistics.zmax, "min", statistics.zmin, "mean", statistics.mean,"stddev",statistics.stddev, "valid_percent", statistics.dataCells.toDouble/size*100))
+        }
+        val band = new util.HashMap[String,Any](util.Map.of("name", banName, "statistics", mapStatistics))
+        maps.add(band)
 
       }}
-      map
+      maps
     } else {
-      val map = new java.util.ArrayList[java.util.HashMap[String,Any]]()
+      val maps = new java.util.ArrayList[java.util.HashMap[String,Any]]()
       bandNames.forEach(name => {
         val rasterBands = new java.util.HashMap[String,Any]()
         rasterBands.put("name", name)
-        map.add(rasterBands)
+        maps.add(rasterBands)
       })
-      map
+      maps
     }
     assetMetadata.put("bands", bands)
-    assetMetadata.put("proj:bbox", Array(metadata.extent.xmin, metadata.extent.ymin, metadata.extent.xmax, metadata.extent.ymax))
-    assetMetadata.put("proj:epsg", metadata.crs.epsgCode.getOrElse(metadata.crs.proj4jCrs.getName))
-    assetMetadata.put("proj:shape", Array(metadata.layout.tileRows, metadata.layout.tileCols))
+    assetMetadata.put("proj:bbox", Array(extent.xmin, extent.ymin, extent.xmax, extent.ymax))
+    if (metadata.crs.epsgCode.nonEmpty) assetMetadata.put("proj:epsg", metadata.crs.epsgCode.get)
+    assetMetadata.put("proj:shape", Array(gridBounds.height, gridBounds.width))
     assetMetadata
   }
 
@@ -928,28 +928,27 @@ object NetCDFRDDWriter {
     val bands = if (addBandsStats) {
       bandsStatistics(rasters, bandNames)
     } else {
-      val map = new java.util.ArrayList[java.util.HashMap[String,Any]]()
+      val maps = new util.ArrayList[java.util.HashMap[String,Any]]()
       bandNames.forEach(name => {
         val rasterBands = new java.util.HashMap[String,Any]()
         rasterBands.put("name", name)
-        map.add(rasterBands)
+        maps.add(rasterBands)
       })
-      map
+      maps
     }
     assetMetadata.put("bands", bands)
-    assetMetadata.put("proj:bbox",Array(metadata.extent.xmin, metadata.extent.ymin, metadata.extent.xmax, metadata.extent.ymax))
-    assetMetadata.put("proj:epsg", metadata.crs.epsgCode.getOrElse(metadata.crs.proj4jCrs.getName))
-    assetMetadata.put("proj:shape", Array(metadata.layout.tileRows, metadata.layout.tileCols))
+    assetMetadata.put("proj:bbox",Array(rasters.head.extent.xmin, rasters.head.extent.ymin, rasters.head.extent.xmax, rasters.head.extent.ymax))
+    if (metadata.crs.epsgCode.nonEmpty) assetMetadata.put("proj:epsg", metadata.crs.epsgCode.get)
+    assetMetadata.put("proj:shape", Array(rasters.head.rows, rasters.head.cols))
     assetMetadata
   }
 
-  private def bandsStatistics(tile:Tile, histograms:collection.mutable.Map[String,(StreamingHistogram,Int)], bandName:String):collection.mutable.Map[String,(StreamingHistogram,Int)] = {
-    val result = if (histograms.contains(bandName)) {
-      val (histogram,size) = histograms(bandName)
+  private def bandsStatistics(tile:Tile, bandHistograms:collection.mutable.Map[String,(StreamingHistogram,Int)], bandName:String): Unit = {
+    val result = if (bandHistograms.contains(bandName)) {
+      val (histogram,size) = bandHistograms(bandName)
       (histogram.merge(tile.histogramDouble()),size+tile.size)
     } else (StreamingHistogram(tile.histogramDouble()),tile.size)
-    histograms.update(bandName,result)
-    histograms
+    bandHistograms.update(bandName,result)
   }
 
   private def bandsStatistics(rasters:Seq[Raster[MultibandTile]], bandNames: ArrayList[String]): java.util.ArrayList[java.util.HashMap[String,Any]] = {
@@ -958,16 +957,16 @@ object NetCDFRDDWriter {
       val histogramsAndSizes = rasters.map(raster => {
         (raster.tile.band(bandId).histogramDouble(),raster.tile.size)
       })
-      val (result,size )= histogramsAndSizes.foldLeft((StreamingHistogram(),0))((tempResult,histogramAndSize) => {
-        (tempResult._1.merge(histogramAndSize._1),tempResult._2+histogramAndSize._2)
-      })
+      val (result,size )= histogramsAndSizes.foldLeft((StreamingHistogram(),0)) {
+        case ((accHistogram, accSize), (histogram, size)) => {
+          (accHistogram.merge(histogram), accSize + size)
+        }
+      }
       val statistics = result.statistics()
       val rasterBands = new java.util.HashMap[String,Any]()
-      val bandStats = if (statistics.isDefined) {
-        new java.util.HashMap[String,Any](java.util.Map.of("mean", statistics.get.mean, "max", statistics.get.zmax, "min", statistics.get.zmin, "stddev", statistics.get.stddev, "valid_percent", statistics.get.dataCells.toDouble/size))
-      }else{
-        new java.util.HashMap[String,Any](java.util.Map.of("valid_percent", 0.0))
-      }
+      val bandStats = statistics.fold(new java.util.HashMap[String,Any](java.util.Map.of("valid_percent", 0.0)))(statistics => {
+        new java.util.HashMap[String, Any](java.util.Map.of("mean", statistics.mean, "max", statistics.zmax, "min", statistics.zmin, "stddev", statistics.stddev, "valid_percent", statistics.dataCells.toDouble / size*100))
+      })
       rasterBands.put("statistics",bandStats)
       rasterBands.put("name",bandNames.get(bandId))
       stats.add(rasterBands)
@@ -991,8 +990,8 @@ object NetCDFRDDWriter {
       case ShortConstantNoDataCellType => (DataType.SHORT,Some(shortNODATA))
       case UShortConstantNoDataCellType => (DataType.USHORT,Some(ushortNODATA))
       case IntConstantNoDataCellType => (DataType.INT,Some(NODATA))
-      case FloatConstantNoDataCellType => (DataType.FLOAT,Some(floatNODATA.toFloat))
-      case DoubleConstantNoDataCellType => (DataType.DOUBLE,Some(doubleNODATA.toDouble))
+      case FloatConstantNoDataCellType => (DataType.FLOAT,Some(floatNODATA))
+      case DoubleConstantNoDataCellType => (DataType.DOUBLE,Some(doubleNODATA))
       case ct: ByteUserDefinedNoDataCellType => (DataType.BYTE,Some(ct.noDataValue))
       case ct: UByteUserDefinedNoDataCellType => (DataType.UBYTE,Some(ct.widenedNoData.asInt))
       case ct: ShortUserDefinedNoDataCellType => (DataType.SHORT,Some(ct.noDataValue))
