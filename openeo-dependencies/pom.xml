@@ -96,6 +96,14 @@
             <scope>provided</scope>
             <exclusions>
                 <exclusion>
+                    <groupId>org.scala-lang.modules</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.scala-lang</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
                     <groupId>net.java.dev.jets3t</groupId>
                     <artifactId>jets3t</artifactId>
                 </exclusion>
@@ -112,6 +120,14 @@
             <scope>provided</scope>
             <exclusions>
                 <exclusion>
+                    <groupId>org.scala-lang.modules</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.scala-lang</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
                     <groupId>net.java.dev.jets3t</groupId>
                     <artifactId>jets3t</artifactId>
                 </exclusion>
@@ -127,6 +143,14 @@
             <version>${spark.version}</version>
             <scope>provided</scope>
             <exclusions>
+                <exclusion>
+                    <groupId>org.scala-lang.modules</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.scala-lang</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
                 <exclusion>
                     <groupId>com.fasterxml.jackson.core</groupId>
                     <artifactId>*</artifactId>
