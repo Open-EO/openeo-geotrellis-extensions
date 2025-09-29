@@ -631,14 +631,17 @@ object FileLayerProvider {
 
                 override def loadData: Option[MultibandTile] = {
                   for {
-                    raster <- rasterRegion.raster if raster.cellType.isInstanceOf[NoNoData]
-                    tile = raster.tile
+                    Raster(tile, _) <- rasterRegion.raster
                   } yield {
-                    val noDataCellType =
-                      if (tile.cellType.isFloatingPoint) tile.cellType.withDefaultNoData()
-                      else tile.cellType.withNoData(Some(0))
+                    tile.cellType match {
+                      case cellType: NoNoData =>
+                        val noDataCellType =
+                          if (cellType.isFloatingPoint) cellType.withDefaultNoData()
+                          else cellType withNoData Some(0)
 
-                    tile.convert(noDataCellType)
+                        tile convert noDataCellType
+                      case _ => tile
+                    }
                   }
                 }
               }).map((_, sourceName))
