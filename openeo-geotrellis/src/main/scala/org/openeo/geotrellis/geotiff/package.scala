@@ -259,6 +259,17 @@ package object geotiff {
             // ':' is not valid in a Windows filename
             DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time).replace(":", "").replace("-", "")
           }
+          val overviews = if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
+            val decimationFactors = List(4,8,16)
+            val resampleMethod = getOverviewResampleMethod(formatOptions)
+            var previousTile = tile.resample(croppedExtent, tileLayout.tileCols / 2, tileLayout.tileRows / 2, resampleMethod)
+            decimationFactors.map(decimationFactor => {
+              val resampledTile = previousTile.resample(croppedExtent, tileLayout.tileCols / decimationFactor, tileLayout.tileRows / decimationFactor, resampleMethod)
+              previousTile = resampledTile
+              val croppedBytes = raster.CroppedTile(resampledTile, raster.GridBounds(0, 0, tileLayout.tileCols/decimationFactor-1, tileLayout.tileRows/decimationFactor-1)).toBytes()
+              theCompressor.compress(croppedBytes,0)
+            })
+          } else List(Array[Byte]())
 
           val bandPiece = if (formatOptions.separateAssetPerBand) "_" + bandLabels(bandIndex) else ""
           val filename = formatOptions.filepathPerBand match {
@@ -267,7 +278,7 @@ package object geotiff {
           }
           val timestamp = DateTimeFormatter.ISO_ZONED_DATE_TIME.format(key.time)
           val tiffBands = if (formatOptions.separateAssetPerBand) 1 else multibandTile.bandCount
-          ((filename, timestamp, tiffBands), (index, (multibandTile.cellType, compressedBytes), bandIndex))
+          ((filename, timestamp, tiffBands), (index, (multibandTile.cellType, compressedBytes, overviews), bandIndex))
       }
     }.persist()
 
@@ -279,6 +290,19 @@ package object geotiff {
 
       val segmentCount = bandSegmentCount * tiffBands
 
+      val geotiffMultibandTiles = if(formatOptions.overviews.toUpperCase == "ALL" || (formatOptions.overviews.toUpperCase == "AUTO" && (gridBounds.width>1024 || gridBounds.height>1024 )) ) {
+        logger.info(s"Add overviews for ${filename}, with resample method ${getOverviewResampleMethod(formatOptions)}")
+        val decimationFactors = List(4,8,16)
+        (0 until 3).toList.map(i => {
+          val decimationFactor = decimationFactors(i)
+          val overviewSequence: Predef.Map[Int, Array[Byte]] = sequence.map(tuple => (tuple._1, tuple._2._3(i))).toMap
+          val overviewLayout = TileLayout(tileLayout.layoutCols, tileLayout.layoutRows, tileLayout.tileCols / decimationFactor, tileLayout.tileRows / decimationFactor)
+          toTiff(overviewSequence, GridBounds(0, 0, gridBounds.colMax / decimationFactor, gridBounds.rowMax / decimationFactor), overviewLayout, compression, cellTypes.head, tiffBands, segmentCount)
+        })
+
+      } else Nil
+      // Each executor writes to a unique folder to avoid conflicts:
+      val executorAttemptDirectory = createExecutorAttemptDirectory(path)
       val absoluteFilePath = if (TaskContext.get().attemptNumber() > 0) {
         // Each executor writes to a unique folder to avoid conflicts:
         val executorAttemptDirectory = createExecutorAttemptDirectory(path)
@@ -297,7 +321,7 @@ package object geotiff {
       fo.setBandTags(newBandTags)
 
       val geoTiffResultObject = writeTiff(thePath, tiffs, gridBounds, croppedExtent, preprocessedRdd.metadata.crs,
-        tileLayout, compression, cellTypes.head, tiffBands, segmentCount, fo,
+        tileLayout, compression, cellTypes.head, tiffBands, segmentCount, fo, geotiffMultibandTiles
       )
       (geoTiffResultObject, timestamp, croppedExtent, bandIndices)
     }.collect()
@@ -807,7 +831,7 @@ package object geotiff {
       new GeoTiffOptions(colorSpace = theColorspace)
     }
 
-    val thegeotiff = new MultibandGeoTiff(tiffTile, croppedExtent, crs, formatOptions.tags, options, overviews = overviews.map(o => MultibandGeoTiff(o, croppedExtent, crs, options = options.copy(subfileType = Some(ReducedImage))))) //.withOverviews(NearestNeighbor, List(4, 8, 16))
+    val thegeotiff = new MultibandGeoTiff(tiffTile, croppedExtent, crs, formatOptions.tags, options, overviews = overviews.map(o => MultibandGeoTiff(o, croppedExtent, crs, options = options.copy(subfileType = Some(ReducedImage)))))
 
     writeGeoTiff(thegeotiff, path, Some(formatOptions))
   }
@@ -847,6 +871,7 @@ package object geotiff {
     tiffTile
   }
 
+  // This implementation should not be used anymore (deprecated)
   def saveStitched(
                     rdd: SRDD,
                     path: String,
@@ -1015,7 +1040,12 @@ package object geotiff {
     if (fo.overviews.toUpperCase == "ALL" ||
       fo.overviews.toUpperCase == "AUTO" && (gridBounds.width > 1024 || gridBounds.height > 1024)
     ) {
-      geotiff = geotiff.withOverviews(getOverviewResampleMethod(fo), List(4, 8, 16), blockSize = fo.tileSize)
+      val resampleMethod = getOverviewResampleMethod(fo)
+      val baseOverview = geotiff.buildOverview(resampleMethod,2,blockSize = fo.tileSize)
+      val firstOverview = baseOverview.buildOverview(resampleMethod,2,blockSize = fo.tileSize)
+      val secondOverview = firstOverview.buildOverview(resampleMethod,2,blockSize = fo.tileSize)
+      val thirdOverview = secondOverview.buildOverview(resampleMethod,2,blockSize = fo.tileSize)
+      geotiff = MultibandGeoTiff(geotiff.tile,geotiff.extent,geotiff.crs,geotiff.tags,geotiff.options,List(firstOverview,secondOverview,thirdOverview))
     }
     writeGeoTiff(geotiff, filePath, Some(fo))
   }
