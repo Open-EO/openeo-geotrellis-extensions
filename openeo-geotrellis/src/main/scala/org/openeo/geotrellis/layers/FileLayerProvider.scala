@@ -632,7 +632,7 @@ object FileLayerProvider {
                 override def loadData: Option[MultibandTile] = {
                   val maybeTile = rasterRegion.raster.map(_.tile)
                   if (maybeTile.isDefined && maybeTile.get.cellType.isInstanceOf[NoNoData]) {
-                    maybeTile.map(t => t.convert(t.cellType.withDefaultNoData()))
+                    maybeTile.map(t => t.convert(t.cellType.withDefaultNoData())) // necessary: .withNoData(Some(0)); why did this do fix COPERNICUS_30? (https://github.com/Open-EO/openeo-geopyspark-driver/issues/180)
                   } else {
                     maybeTile
                   }
@@ -801,7 +801,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val (arbitraryRasterSource, _) = overlappingRasterSources.head
     try {
       val commonCellType = arbitraryRasterSource.cellType
-      if (commonCellType.isInstanceOf[NoNoData]) commonCellType.withDefaultNoData() else commonCellType
+      if (commonCellType.isInstanceOf[NoNoData]) commonCellType.withDefaultNoData() else commonCellType // unnecessary: .withNoData(Some(0))
     } catch {
       case e: Exception => {
         // Geotrellis GDALException errors are not descriptive enough. Attempt to add some more useful information.
@@ -857,7 +857,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     //Certain STAC items can have large number of links!
     overlappingRasterSources = overlappingRasterSources.map(source_feature => (source_feature._1,source_feature._2.copy(links = Array.empty, generalProperties = null)))
 
-    var commonCellType: CellType = determineCelltype(overlappingRasterSources)
+    var commonCellType: CellType = determineCelltype(overlappingRasterSources) // can introduce a NoData CellType; this is not necessarily the same as that of the underlying overlappingRasterSources?
 
     var metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, dates.minBy(_.toEpochSecond), dates.maxBy(_.toEpochSecond), commonCellType)
     val spatialBounds = metadata.bounds.get.toSpatial
@@ -1110,6 +1110,18 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val metadata = readKeysToRasterSourcesResult._2
     val requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = readKeysToRasterSourcesResult._1.persist()
     requiredSpacetimeKeys.setName(s"FileLayerProvider_keys_${this.openSearchCollectionId}_${from.toString}_${to.toString}")
+
+    val keyFeatures = requiredSpacetimeKeys.keys.collect() map { spaceTimeKey =>
+      val keyPolygon = spaceTimeKey.spatialKey.extent(metadata.layout).reproject(metadata.crs, LatLng).toPolygon()
+      PolygonFeature(keyPolygon, Map("col" -> spaceTimeKey.spatialKey.col, "row" -> spaceTimeKey.spatialKey.row))
+    }
+
+    println(
+      s"""
+         |{
+         |  "type": "FeatureCollection",
+         |  "features": [${keyFeatures.map(_.toGeoJson()) mkString ",\n"}]
+         |}""".stripMargin)
 
     try{
 

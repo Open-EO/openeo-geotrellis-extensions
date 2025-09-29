@@ -34,7 +34,7 @@ class MultibandCompositeRasterSource(val sourcesListWithBandIds: NonEmptyList[(R
       .map { s => BandCompositeRasterSource.readBounds(s._1, bounds, false, s._2) }
       .collect { case Some(raster) => raster }
 
-    if (rasters.size == sources.size) Some(Raster(MultibandTile(rasters.flatMap(_.tile.convert(cellType).bands)), rasters.head.extent))
+    if (rasters.size == sources.size) Some(Raster(MultibandTile(rasters.flatMap(_.tile.convert(cellType).bands)), rasters.head.extent)) // will convert back to original cellType?
     else None
   }
 
