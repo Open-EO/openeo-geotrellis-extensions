@@ -1117,18 +1117,6 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val requiredSpacetimeKeys: RDD[(SpaceTimeKey, vector.Feature[Geometry, (RasterSource, Feature)])] = readKeysToRasterSourcesResult._1.persist()
     requiredSpacetimeKeys.setName(s"FileLayerProvider_keys_${this.openSearchCollectionId}_${from.toString}_${to.toString}")
 
-    val keyFeatures = requiredSpacetimeKeys.keys.collect() map { spaceTimeKey =>
-      val keyPolygon = spaceTimeKey.spatialKey.extent(metadata.layout).reproject(metadata.crs, LatLng).toPolygon()
-      PolygonFeature(keyPolygon, Map("col" -> spaceTimeKey.spatialKey.col, "row" -> spaceTimeKey.spatialKey.row))
-    }
-
-    println(
-      s"""
-         |{
-         |  "type": "FeatureCollection",
-         |  "features": [${keyFeatures.map(_.toGeoJson()) mkString ",\n"}]
-         |}""".stripMargin)
-
     try{
 
       val spatialBounds = metadata.bounds.get.toSpatial
