@@ -802,7 +802,6 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     gtiffOptions.setOverview("ALL")
     gtiffOptions.setTileSize(128)
 
-
     val tiles = saveSamples(tileLayerRDD, outDir + "/", tiltedRectangle, sampleNames,
       DeflateCompression(BEST_COMPRESSION),gtiffOptions)
 

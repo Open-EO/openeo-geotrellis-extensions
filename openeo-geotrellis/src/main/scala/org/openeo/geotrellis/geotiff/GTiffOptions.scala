@@ -1,7 +1,7 @@
 package org.openeo.geotrellis.geotiff
 
 import java.util
-import geotrellis.raster.io.geotiff.{DefaultCompression, Tags}
+import geotrellis.raster.io.geotiff.Tags
 import geotrellis.raster.render.{ColorMap, DoubleColorMap, IndexedColorMap}
 
 import scala.collection.JavaConverters._
@@ -20,6 +20,7 @@ class GTiffOptions extends Serializable {
   var tileSize:Int = 256
   var compressionMethod = "deflate"
   var compressionLevel = 6
+  var compressionPredictor = 1
 
   def setFilenamePrefix(name: String): Unit = {
     assertSafeToUseInFilePath(name)
@@ -63,6 +64,17 @@ class GTiffOptions extends Serializable {
     tileSize = size
   }
 
+  def setCompression(method: String, level:Int, predictor: Int = 1): Unit = {
+    this.compressionMethod = method
+    this.compressionLevel = level
+    this.compressionPredictor = predictor
+    method.toLowerCase match {
+      case "zstd" => if (compressionLevel < -7 || compressionLevel > 22) throw new IllegalArgumentException(f"Level $level is not supported for the zstd compression method, only levels from -7 to 22 are allowed.")
+      case "deflate" => if (compressionLevel < 0 || compressionLevel > 9) throw new IllegalArgumentException(f"Level $level is not supported for the deflate compression method, only levels from 0 to 9 are allowed.")
+      case _ => throw new IllegalArgumentException(f"Compression method ${method} is not supported, supported methods are: (zstd, deflate (default))")
+    }
+  }
+
   def setCompressionMethod(method: String): Unit = {
     compressionMethod = method.toLowerCase match {
       case "zstd" | "zstandard" => "zstd"
@@ -73,6 +85,14 @@ class GTiffOptions extends Serializable {
 
   def setCompressionLevel(level: Int): Unit = {
     compressionLevel = level
+    compressionMethod match {
+      case "zstd" => if (compressionLevel < -7 || compressionLevel > 22) throw new IllegalArgumentException(f"Level $level is not supported for the zstd compression method, only levels from -7 to 22 are allowed.")
+      case "deflate" => if (compressionLevel < 0 || compressionLevel > 9) throw new IllegalArgumentException(f"Level $level is not supported for the deflate compression method, only levels from 0 to 9 are allowed.")
+    }
+  }
+
+  def setCompressionPredictor(predictor: Int): Unit = {
+    compressionPredictor = predictor
   }
 
   /**
