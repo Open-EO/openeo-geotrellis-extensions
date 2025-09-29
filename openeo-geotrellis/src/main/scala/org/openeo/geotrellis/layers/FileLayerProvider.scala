@@ -630,13 +630,16 @@ object FileLayerProvider {
                 }
 
                 override def loadData: Option[MultibandTile] = {
-                  val maybeTile = rasterRegion.raster.map(_.tile)
-                  if (maybeTile.isDefined && maybeTile.get.cellType.isInstanceOf[NoNoData]) {
-                    maybeTile.map(t => t.convert(t.cellType.withDefaultNoData())) // necessary: .withNoData(Some(0)); why did this do fix COPERNICUS_30? (https://github.com/Open-EO/openeo-geopyspark-driver/issues/180)
-                  } else {
-                    maybeTile
-                  }
+                  for {
+                    raster <- rasterRegion.raster if raster.cellType.isInstanceOf[NoNoData]
+                    tile = raster.tile
+                  } yield {
+                    val noDataCellType =
+                      if (tile.cellType.isFloatingPoint) tile.cellType.withDefaultNoData()
+                      else tile.cellType.withNoData(Some(0))
 
+                    tile.convert(noDataCellType)
+                  }
                 }
               }).map((_, sourceName))
           }
