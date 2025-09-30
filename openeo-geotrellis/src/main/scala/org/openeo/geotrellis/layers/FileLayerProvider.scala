@@ -807,7 +807,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     val (arbitraryRasterSource, _) = overlappingRasterSources.head
     try {
       val commonCellType = arbitraryRasterSource.cellType
-      if (commonCellType.isInstanceOf[NoNoData]) commonCellType.withDefaultNoData() else commonCellType // unnecessary: .withNoData(Some(0))
+      if (commonCellType.isInstanceOf[NoNoData]) commonCellType.withDefaultNoData() else commonCellType
     } catch {
       case e: Exception => {
         // Geotrellis GDALException errors are not descriptive enough. Attempt to add some more useful information.
@@ -863,7 +863,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     //Certain STAC items can have large number of links!
     overlappingRasterSources = overlappingRasterSources.map(source_feature => (source_feature._1,source_feature._2.copy(links = Array.empty, generalProperties = null)))
 
-    var commonCellType: CellType = determineCelltype(overlappingRasterSources) // can introduce a NoData CellType; this is not necessarily the same as that of the underlying overlappingRasterSources?
+    var commonCellType: CellType = determineCelltype(overlappingRasterSources)
 
     var metadata: TileLayerMetadata[SpaceTimeKey] = tileLayerMetadata(worldLayout, reprojectedBoundingBox, dates.minBy(_.toEpochSecond), dates.maxBy(_.toEpochSecond), commonCellType)
     val spatialBounds = metadata.bounds.get.toSpatial

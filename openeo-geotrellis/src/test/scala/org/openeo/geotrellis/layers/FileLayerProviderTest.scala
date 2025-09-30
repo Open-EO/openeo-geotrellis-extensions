@@ -1732,27 +1732,10 @@ class FileLayerProviderTest extends RasterMatchers{
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
     dataCubeParameters.globalExtent = Some(projectedPolygons.extent)
 
-    /*val Seq((_, layer)) = pyramidFactory.datacube_seq(
-      projectedPolygons,
-      from_date = "2020-01-01T00:00:00Z",
-      to_date = "2021-01-02T23:59:59Z",
-      metadata_properties = util.Collections.emptyMap(),
-      correlationId = "",
-      dataCubeParameters = dataCubeParameters,
-    )*/
-
-    // layer.toSpatial().writeGeoTiff("/tmp/testMultibandNoNoDataCOGViaSTAC.tif")
-
-    val netCdfOptions = new NetCDFOptions
-    val bandNames = new util.ArrayList(util.Collections.singletonList("L2A-B02-P10"))
-    netCdfOptions.setBandNames(bandNames)
-
-    // NetCDFRDDWriter.saveSingleNetCDFGeneric(layer, "/tmp/testMultibandNoNoDataCOGViaSTAC.nc", netCdfOptions)
-
     writeToNetCDFAndCompare(
       projectedPolygons,
       dataCubeParameters,
-      bands = bandNames,
+      bands = new util.ArrayList(util.Collections.singletonList("L2A-B02-P10")),
       pyramidFactory,
       outLocation = f"$outDir/testMultibandNoNoDataCOGViaSTAC.nc",
       referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/testMultibandNoNoDataCOGViaSTAC.nc",
