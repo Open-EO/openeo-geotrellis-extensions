@@ -10,13 +10,14 @@
         <gt-version>32.0</gt-version>
         <hadoop.version>3.1.1</hadoop.version>
         <avro.version>1.7.7</avro.version>
-        <spark.version>4.0.1</spark.version>
+        <spark.version>3.5.5</spark.version>
         <scala.binary.version>2.13</scala.binary.version>
         <scala.version>2.13.16</scala.version>
         <geotrellis.version>3.8.0+11-ee576022-SNAPSHOT</geotrellis.version>
         <gdal-bindings.version>3.8.0</gdal-bindings.version>
         <commons-compress-version>1.10</commons-compress-version>
         <openeo-opensearch-client.version>1.6.0_2.13-SNAPSHOT</openeo-opensearch-client.version>
+        <catboost-spark.version>1.2.8</catboost-spark.version>
         <awssdk.version>2.23.19</awssdk.version>
         <jaxb.api.version>2.3.0</jaxb.api.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

@@ -577,6 +577,24 @@ for p in l:
     ContextRDD(temporal, temporalMetadata)
   }
 
+  def aSpacetimeTileLayerRddArrayTile(arrayTile: IntArrayTile, layoutCols: Int, layoutRows: Int, nbDates:Int = 2, crs:CRS=LatLng): RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]] = {
+    val filtered: MultibandTileLayerRDD[SpatialKey] = TileLayerRDDBuilders.createMultibandTileLayerRDD(SparkContext.getOrCreate, MultibandTile(arrayTile, arrayTile, arrayTile), TileLayout(layoutCols, layoutRows, arrayTile.cols/layoutCols, arrayTile.rows/layoutRows), crs)
+    val startDate = ZonedDateTime.parse("2017-01-01T00:00:00Z")
+    val temporal = filtered.flatMap(tuple => {
+      (1 to nbDates).map(index => (SpaceTimeKey(tuple._1, TemporalKey( startDate.plusDays(index) )), tuple._2))
+    }).repartition(layoutCols * layoutRows)
+    val spatialM = filtered.metadata
+    val newBounds = KeyBounds[SpaceTimeKey](SpaceTimeKey(spatialM.bounds.get._1,TemporalKey(0L)),SpaceTimeKey(spatialM.bounds.get._2,TemporalKey(0L)))
+    val temporalMetadata = new TileLayerMetadata[SpaceTimeKey](
+      spatialM.cellType,
+      spatialM.layout,
+      spatialM.extent,
+      spatialM.crs,
+      newBounds,
+    )
+    ContextRDD(temporal, temporalMetadata)
+  }
+
   def aSpacetimeTileLayerHoursRdd(layoutCols: Int, layoutRows: Int, nbDates:Int = 2, extent:Extent = defaultExtent): (RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], ByteArrayTile) = {
     val (imageTile: ByteArrayTile, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(
       layoutCols,

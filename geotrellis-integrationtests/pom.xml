@@ -188,13 +188,13 @@
         <dependency>
             <groupId>ai.catboost</groupId>
             <artifactId>catboost-spark_3.5_2.13</artifactId>
-            <version>1.2.7</version>
+            <version>${catboost-spark.version}</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>ai.catboost</groupId>
             <artifactId>catboost-prediction</artifactId>
-            <version>1.2.7</version>
+            <version>${catboost-spark.version}</version>
             <scope>compile</scope>
         </dependency>
     </dependencies>

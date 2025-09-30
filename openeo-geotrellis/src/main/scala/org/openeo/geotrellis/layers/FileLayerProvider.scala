@@ -1604,7 +1604,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
     //  into account; it's more efficient to filter out the redundant ones
 
-    if (overlappingRasterSources.isEmpty) throw new IllegalArgumentException(s"""Could not find data for your load_collection request with catalog ID "$openSearchCollectionId". The catalog query had correlation ID "$correlationId" and returned ${overlappingFeatures.size} results.""")
+    if (overlappingRasterSources.isEmpty) throw new IllegalArgumentException(s"""Could not find data for your ${if (fromLoadStac) "load_stac" else "load_collection"} request with catalog ID "$openSearchCollectionId". The catalog query had correlation ID "$correlationId" and returned ${overlappingFeatures.size} results.""")
 
     overlappingRasterSources
 
