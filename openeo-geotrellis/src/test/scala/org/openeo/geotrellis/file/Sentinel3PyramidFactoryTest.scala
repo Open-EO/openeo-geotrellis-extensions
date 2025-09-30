@@ -1,14 +1,14 @@
 package org.openeo.geotrellis.file
 
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.{CellSize, MultibandTile, Raster, ShortUserDefinedNoDataCellType}
 import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.raster.testkit.RasterMatchers
+import geotrellis.raster.{CellSize, MultibandTile, Raster, ShortUserDefinedNoDataCellType}
 import geotrellis.spark._
 import geotrellis.spark.util.SparkUtils
 import geotrellis.vector.Extent
 import org.apache.spark.SparkContext
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api._
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
@@ -47,6 +47,13 @@ class Sentinel3PyramidFactoryTest extends RasterMatchers {
     MultibandGeoTiff(raster, crs).write(s"/tmp/testTOA_NDVI_${String.join("_", bands)}.tif")
   }
 
+  def extentEquals(e1: Extent, e2: Extent, tolerance: Double = 1e-6): Boolean = {
+    math.abs(e1.xmin - e2.xmin) < tolerance &&
+      math.abs(e1.ymin - e2.ymin) < tolerance &&
+      math.abs(e1.xmax - e2.xmax) < tolerance &&
+      math.abs(e1.ymax - e2.ymax) < tolerance
+  }
+
   @Test
   def compareReferenceImage(): Unit = {
     val referenceGeoTiff = MultibandGeoTiff("/data/projects/OpenEO/automated_test_files/Sentinel3_2020-07-01.tif")
@@ -56,7 +63,8 @@ class Sentinel3PyramidFactoryTest extends RasterMatchers {
     val bandMix = util.Arrays.asList("MIR", "TOA_NDVI", "B2", "tg")
     val (actualRaster, actualCrs) = sentinel3Raster(bandMix)
 
-    assertEqual(referenceRaster, actualRaster)
+    assertEqual(referenceRaster.tile, actualRaster.tile)
+    assertTrue(extentEquals(referenceRaster.extent,actualRaster.extent))
     assertEquals(referenceCrs, actualCrs)
   }
 

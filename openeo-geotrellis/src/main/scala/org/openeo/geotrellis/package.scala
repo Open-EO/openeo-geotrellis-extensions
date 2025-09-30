@@ -12,7 +12,7 @@ import org.locationtech.jts.geom.Geometry
 import org.locationtech.proj4j.{BasicCoordinateTransform, ProjCoordinate}
 import org.openeo.geotrellis.ProjectedPolygons.{reprojectGeometryRefined, reprojectPolygonRefined}
 import org.openeo.opensearch.OpenSearchResponses.{Feature, FeatureCollection}
-import org.slf4j.Logger
+import org.slf4j.{Logger, LoggerFactory}
 import scalaj.http.{HttpResponse, HttpStatusException}
 import software.amazon.awssdk.awscore.retry.conditions.RetryOnErrorCodeCondition
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
@@ -31,10 +31,11 @@ import java.time.temporal.ChronoUnit
 import java.time.{Duration, Instant}
 import java.util.concurrent.ConcurrentHashMap
 import scala.compat.java8.FunctionConverters._
-import scala.reflect.io.Directory
 
 
 package object geotrellis {
+  private implicit val logger: Logger = LoggerFactory.getLogger("org.openeo.geotrellis")
+
   def logTiming[R](context: String)(action: => R)(implicit logger: Logger): R = {
     if (logger.isDebugEnabled()) {
       val start = Instant.now()
@@ -207,8 +208,9 @@ package object geotrellis {
         logger.error(s"Failed after ${execution.getAttemptCount} attempt(s) in context: '$context'" + e.getMessage)
       })
 
+    //https://github.com/Open-EO/openeo-geopyspark-driver/issues/1169: 498 is unexpected code used by CF
     val isRateLimitingResponse: (HttpResponse[R], Throwable) => Boolean =
-      (response, _ /* ignore exceptions, those are handled in shakyConnectionRetryPolicy */) => response.code == 429
+      (response, _ /* ignore exceptions, those are handled in shakyConnectionRetryPolicy */) => (response.code == 429 || response.code == 498)
     val rateLimitingRetryPolicy = new FailsafeRetryPolicy[HttpResponse[R]]()
       .handleIf(isRateLimitingResponse.asJava)
       .withMaxAttempts(5)
@@ -444,7 +446,7 @@ package object geotrellis {
       .forall(identity)
   }
 
-  def safeReproject(inputProjectedExtent: ProjectedExtent, targetCrs: CRS)(implicit logger: Logger): ProjectedExtent = {
+  def safeReproject(inputProjectedExtent: ProjectedExtent, targetCrs: CRS)(implicit logger: Logger = logger): ProjectedExtent = {
     if (inputProjectedExtent.crs == targetCrs) return inputProjectedExtent
     val transform = SafeTransform(inputProjectedExtent.crs, targetCrs)
     val reprojectedPolygon = reprojectExtentAsPolygon(inputProjectedExtent.extent, transform, 0.001) // TODO: Adapt relError to CRS

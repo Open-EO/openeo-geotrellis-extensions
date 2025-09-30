@@ -17,20 +17,20 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.vector._
 import org.apache.commons.compress.archivers.tar.{TarArchiveEntry, TarArchiveInputStream}
 import org.apache.commons.io.FileUtils
-import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.rdd.RDD
+import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotSame, assertSame, assertTrue}
-import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api._
+import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
 import org.openeo.geotrellis.TestImplicits._
+import org.openeo.geotrellis._
 import org.openeo.geotrellis.file.{FixedFeaturesOpenSearchClient, PyramidFactory}
 import org.openeo.geotrellis.geotiff._
 import org.openeo.geotrellis.layers.FileLayerProvider.rasterSourceRDD
 import org.openeo.geotrellis.netcdf.{NetCDFOptions, NetCDFRDDWriter}
-import org.openeo.geotrellis._
 import org.openeo.geotrelliscommon.DatacubeSupport._
 import org.openeo.geotrelliscommon.{ConfigurableSpaceTimePartitioner, DataCubeParameters, DatacubeSupport, NoCloudFilterStrategy, SpaceTimeByMonthPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.opensearch.OpenSearchResponses.{CreoFeatureCollection, FeatureCollection, Link}
@@ -86,6 +86,18 @@ object FileLayerProviderTest {
       _sc.get.stop()
       _sc = None
     }
+  }
+
+  def datacubeParams(polygonsAOI: ProjectedPolygons, resampleMethod: ResampleMethod) = {
+    val dataCubeParameters: DataCubeParameters = new DataCubeParameters
+    dataCubeParameters.partitionerIndexReduction = 6
+    dataCubeParameters.globalExtent = Some(polygonsAOI.extent)
+    if(resampleMethod!=null) {
+      dataCubeParameters.setResampleMethod(resampleMethod)
+    }
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.loadPerProduct = true
+    dataCubeParameters
   }
 }
 
@@ -169,6 +181,27 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @Test
+  def retainNoDataTilesTest(): Unit = {
+    val bbox1 = ProjectedExtent(Extent(xmin = 0.0, ymin = 0.0, xmax = 30.0, ymax = 10.0), LatLng)
+    val bbox2 = ProjectedExtent(Extent(xmin = 50.0, ymin = 20.0, xmax = 60.0, ymax = 40.0), LatLng)
+    val fullBbox = ProjectedExtent(bbox1.extent.combine(bbox2.extent), LatLng)
+    val date = LocalDate.of(2020, 1, 1).atStartOfDay(ZoneId.of("UTC"))
+
+    val params = new DataCubeParameters()
+    params.layoutScheme = "FloatingLayoutScheme"
+    params.globalExtent = Some(fullBbox)
+    params.tileSize = 64
+    params.retainNoDataTiles = true
+
+    val polygons1 = MultiPolygon(fullBbox.extent.toPolygon())
+    val (rasterSources1, metadata1) = _getSentinel5PRasterSources(fullBbox, date, 0)
+    val resultRetainNoDatatiles = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
+      fullBbox.crs, sc, NoCloudFilterStrategy, datacubeParams=Some(params))
+    val resultRetainNoDatatilesColl = resultRetainNoDatatiles.collect()
+    assertEquals(1, resultRetainNoDatatilesColl.count(_._2.isInstanceOf[EmptyMultibandTile]))
+  }
+
+  @Test
   def sparsePartitionerTest(): Unit = {
     val bbox1 = ProjectedExtent(Extent(xmin = 0.0, ymin = 0.0, xmax = 30.0, ymax = 10.0), LatLng)
     val bbox2 = ProjectedExtent(Extent(xmin = 50.0, ymin = 20.0, xmax = 60.0, ymax = 40.0), LatLng)
@@ -245,10 +278,10 @@ class FileLayerProviderTest extends RasterMatchers{
     val polygons1 = MultiPolygon(bbox1.extent.toPolygon())
     val (rasterSources1, metadata1) = _getSentinel5PRasterSources(bbox1, date, zoom)
     val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
-      bbox1.crs, sc, retainNoDataTiles = false,
+      bbox1.crs, sc,
       NoCloudFilterStrategy)
     val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources1, metadata1, Array(polygons1),
-      bbox1.crs, sc, retainNoDataTiles = false,
+      bbox1.crs, sc,
       NoCloudFilterStrategy,
       useSparsePartitioner = false)
 
@@ -257,10 +290,10 @@ class FileLayerProviderTest extends RasterMatchers{
     val polygons2 = MultiPolygon(bbox2.extent.toPolygon())
     val (rasterSources2, metadata2) = _getSentinel5PRasterSources(bbox1, date, zoom)
     val sparseBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources2, metadata2, Array(polygons2),
-      bbox2.crs, sc, retainNoDataTiles = false,
+      bbox2.crs, sc,
       NoCloudFilterStrategy)
     val defaultBaseLayer2 = FileLayerProvider.readMultibandTileLayer(rasterSources2, metadata2, Array(polygons2),
-      bbox2.crs, sc, retainNoDataTiles = false,
+      bbox2.crs, sc,
       NoCloudFilterStrategy,
       useSparsePartitioner = false)
 
@@ -282,10 +315,10 @@ class FileLayerProviderTest extends RasterMatchers{
     val polygons = MultiPolygon(bbox.extent.toPolygon())
     val (rasterSources, metadata) = _getSentinel5PRasterSources(bbox, date, 8)
     val sparseBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(polygons),
-      bbox.crs, sc, retainNoDataTiles = false,
+      bbox.crs, sc,
       NoCloudFilterStrategy)
     val defaultBaseLayer = FileLayerProvider.readMultibandTileLayer(rasterSources, metadata, Array(polygons),
-      bbox.crs, sc, retainNoDataTiles = false,
+      bbox.crs, sc,
       NoCloudFilterStrategy,
       useSparsePartitioner = false)
 
@@ -320,7 +353,8 @@ class FileLayerProviderTest extends RasterMatchers{
     val expected = size match {
       case 69854 => 512 // 1024 if experimental flag set
       case 1589 => 512
-      case _ => 256
+      case 489 => 256
+      case _ => 128
     }
     assertEquals(expected,scheme.asInstanceOf[FloatingLayoutScheme].tileRows)
 
@@ -1547,9 +1581,9 @@ class FileLayerProviderTest extends RasterMatchers{
     assertEquals(229, ids.size)
 
     assertTrue(Seq(1, 2).contains(listener.getJobsCompleted))
-    assertEquals(5,listener.getStagesCompleted)
-    assertTrue(listener.getTasksCompleted >= 1964) // Range to make test less flaky
-    assertTrue(listener.getTasksCompleted <= 2384)
+    assertEquals(4,listener.getStagesCompleted)
+    assertTrue(listener.getTasksCompleted >= 90) // Range to make test less flaky
+    assertTrue(listener.getTasksCompleted <= 200)
     assertTrue(allTiles.length >= 2384 - 0.1)
     assertTrue(allTiles.length <= 4928 + 0.1)
   }
@@ -1577,7 +1611,7 @@ class FileLayerProviderTest extends RasterMatchers{
 
     assertEquals(1, listener.getJobsCompleted)
     assertEquals(3, listener.getStagesCompleted)
-    assertEquals(501, listener.getTasksCompleted)
+    assertEquals(21, listener.getTasksCompleted)
     assertEquals(77314, allTiles.size)
     println(listener.getPeakMemoryMB)
 
@@ -1703,17 +1737,7 @@ class FileLayerProviderTest extends RasterMatchers{
       f"$outDir/testSinglebandCOGViaSTACResampled.nc", referenceFile)
   }
 
-  private def datacubeParams(polygonsAOI: ProjectedPolygons, resampleMethod: ResampleMethod) = {
-    val dataCubeParameters: DataCubeParameters = new DataCubeParameters
-    dataCubeParameters.partitionerIndexReduction = 6
-    dataCubeParameters.globalExtent = Some(polygonsAOI.extent)
-    if(resampleMethod!=null) {
-      dataCubeParameters.setResampleMethod(resampleMethod)
-    }
-    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
-    dataCubeParameters.loadPerProduct = true
-    dataCubeParameters
-  }
+
 
   private def writeToNetCDFAndCompare(polygonAOI: ProjectedPolygons, dataCubeParameters: DataCubeParameters, bands: util.ArrayList[String], factory: PyramidFactory, outLocation: String, referenceFile: String): Unit = {
     val cube: Seq[(Int, MultibandTileLayerRDD[SpaceTimeKey])] = factory.datacube_seq(polygonAOI, "2020-07-01T00:00:00Z", "2020-09-01T00:00:00Z", util.Collections.emptyMap(), "", dataCubeParameters)

@@ -23,9 +23,28 @@ class DataCubeParameters extends Serializable {
   var noResampleOnRead: Boolean = false
   var useNewFeatureExtentIntersection: Boolean = false
   var useNewFeatureExtentIntersection2: Boolean = false
-  var timeDimensionFilter: Option[Object] = Option.empty
+  var timeDimensionFilter: Option[java.io.Serializable] = Option.empty
   var allowEmptyCube: Boolean = false
+  var useRasterSourceProviders: Boolean = false
   var loadPerProduct: Boolean = false
+  var rasterSource: Option[String] = Option.empty
+  /**
+   * A maximum size in megabytes that output partitions should have. Not all code paths support this yet.
+   * If set, automatic tuning of other parameters such as index reduction should be applied.
+   * If not set, we fall back to using fixed index reduction.
+   */
+  var maxPartitionSize: Option[Int] = None
+
+  /**
+   * Whether to filter out MultibandTiles that are empty (i.e. all bands are NODATA),
+   * or to keep them as EmptyMultiBandTiles.
+   */
+  var retainNoDataTiles: Boolean = false
+
+  /**
+   * Configuration to override asset loading with synthetic data
+   */
+  var syntheticDataOverride: Option[SyntheticDataOverride] = None
 
   override def toString = s"DataCubeParameters($tileSize, $maskingStrategyParameters, $layoutScheme, $partitionerTemporalResolution, $partitionerIndexReduction, $maskingCube, $resampleMethod, $pixelBufferX, $pixelBufferY)"
 
@@ -33,6 +52,14 @@ class DataCubeParameters extends Serializable {
   def setPartitionerTemporalResolution(res:String): Unit = partitionerTemporalResolution = res
   def setLayoutScheme(scheme:String): Unit = layoutScheme = scheme
   def setTileSize(size:Int): Unit = tileSize = size
+
+  def setMaxPartitionSize(size: Int): Unit = {
+    if (size > 0) {
+      maxPartitionSize = Some(size)
+    } else {
+      maxPartitionSize = None
+    }
+  }
 
   def setLoadPerProduct(loadPerProduct:Boolean): Unit = this.loadPerProduct = loadPerProduct
 
@@ -65,11 +92,26 @@ class DataCubeParameters extends Serializable {
     useNewFeatureExtentIntersection2 = v
   }
 
-  def setTimeDimensionFilter(conditionProcessScriptBuilder:Object):Unit = {
+  def setTimeDimensionFilter(conditionProcessScriptBuilder:java.io.Serializable):Unit = {
     timeDimensionFilter = Some(conditionProcessScriptBuilder)
   }
 
   def setAllowEmptyCube(allowEmpty:Boolean):Unit = {
     allowEmptyCube = allowEmpty
   }
+
+  def setUseRasterSourceProviders(flag: Boolean): Unit = {
+    useRasterSourceProviders = flag
+  }
+
+  def setRetainNoDataTiles(retain:Boolean):Unit = {
+    retainNoDataTiles = retain
+  }
+
+  def setSyntheticDataOverride(syntheticData: SyntheticDataOverride): Unit = {
+    syntheticDataOverride = Some(syntheticData)
+  }
 }
+
+case class SyntheticDataOverride(cellType: String, udf: Option[String])
+

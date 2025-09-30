@@ -6,6 +6,7 @@ import geotrellis.raster._
 import geotrellis.spark._
 import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark.testkit.TileLayerRDDBuilders
+import geotrellis.util.withGetComponentMethods
 import org.apache.spark.{SparkConf, SparkContext}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotEquals, assertTrue, fail}
 import org.junit.jupiter.api.{AfterAll, BeforeAll, Test}
@@ -13,7 +14,7 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.openeo.geotrellis.LayerFixtures._
 import org.openeo.geotrellis.geotiff.saveRDD
-import org.openeo.geotrelliscommon.{OpenEORasterCube, OpenEORasterCubeMetadata, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{ByTileSpacetimePartitioner, OpenEORasterCube, OpenEORasterCubeMetadata, SparseSpaceTimePartitioner, SpatialKeysProvider}
 
 import java.nio.file.{Files, Paths}
 import java.time.ZonedDateTime
@@ -581,6 +582,30 @@ class MergeCubesSpec {
     assertTrue(merged.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
     assertTrue(merged.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[SparseSpaceTimePartitioner])
     assertEquals((idx1++idx2).toSet,localTiles.map(_._1.spatialKey).toSet)
+  }
+
+  @Test def testMergeSparseRDDByTile(): Unit = {
+    val idx1 = Seq( SpatialKey(3, 1), SpatialKey(7, 2))
+    val sparseLayer1 = LayerFixtures.aSparseSpacetimeTileLayerRdd(idx1)
+    val c1Keys = sparseLayer1.map(_._1.spatialKey).distinct().collect()
+    val idx2 = Seq( SpatialKey(3, 1), SpatialKey(6, 2), SpatialKey(1, 3))
+    val sparseLayer2 = LayerFixtures.aSparseSpacetimeTileLayerRdd(idx2)
+
+    val repart1 = repartitionByTile(sparseLayer1, idx1)
+    assertTrue(repart1.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index.isInstanceOf[ByTileSpacetimePartitioner])
+    val merged = new OpenEOProcesses().mergeCubes(repart1,repartitionByTile(sparseLayer2,idx2),operator=null)
+    val localTiles = merged.collect()
+    assertTrue(merged.partitioner.get.isInstanceOf[SpacePartitioner[SpaceTimeKey]])
+    val index = merged.partitioner.get.asInstanceOf[SpacePartitioner[SpaceTimeKey]].index
+    assertTrue(index.isInstanceOf[ByTileSpacetimePartitioner])
+    assertEquals((idx1++idx2).toSet,localTiles.map(_._1.spatialKey).toSet)
+    assertEquals((idx1++idx2).distinct.sorted.toList,index.asInstanceOf[SpatialKeysProvider].spatialKeys.get.toList)
+  }
+
+  private def repartitionByTile(cube:MultibandTileLayerRDD[SpaceTimeKey], keys: Seq[SpatialKey]): MultibandTileLayerRDD[SpaceTimeKey] = {
+    val kb: Bounds[SpaceTimeKey] = cube.metadata.getComponent[Bounds[SpaceTimeKey]]
+    val p = SpacePartitioner[SpaceTimeKey](kb)(implicitly, implicitly, new ByTileSpacetimePartitioner(Some(keys.toArray)))
+    return ContextRDD(p(cube),cube.metadata)
   }
 
   @Test def testMergeSparseRDDDifferentCrs(): Unit = {

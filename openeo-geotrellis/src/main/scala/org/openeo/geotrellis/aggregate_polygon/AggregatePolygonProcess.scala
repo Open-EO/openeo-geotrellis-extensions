@@ -15,10 +15,12 @@ import org.apache.spark.sql.{Column, Row, SaveMode, SparkSession}
 import org.openeo.geotrellis.{OpenEOProcesses, SpatialToSpacetimeJoinRdd}
 import org.openeo.geotrellis.aggregate_polygon.intern.PixelRateValidator.exceedsTreshold
 import org.openeo.geotrellis.aggregate_polygon.intern._
+import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.layers.LayerProvider
 import org.slf4j.LoggerFactory
 import spire.syntax.cfor.cfor
 
+import java.nio.file.Paths
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit.DAYS
 import scala.collection.mutable.ListBuffer
@@ -372,6 +374,7 @@ class AggregatePolygonProcess() {
         aggregated.coalesce(1).write.option("header", "true").option("emptyValue", "").mode(SaveMode.Overwrite).csv("file://" + outputPath)
       }
 
+    CreoS3Utils.waitTillPathAvailable(Paths.get(outputPath).resolve("_SUCCESS").toString)
   }
 
   /*

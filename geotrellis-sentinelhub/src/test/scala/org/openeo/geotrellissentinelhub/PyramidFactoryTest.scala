@@ -26,7 +26,7 @@ import org.mockito.Mockito._
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
 import org.openeo.geotrelliscommon.BatchJobMetadataTracker.{ProductIdAndUrl, SH_FAILED_TILE_REQUESTS, SH_PU}
-import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, ScopedMetadataTracker, SparseSpaceTimePartitioner}
+import org.openeo.geotrelliscommon.{BatchJobMetadataTracker, DataCubeParameters, ScopedMetadataTracker, SparseSpaceOnlyPartitioner, SparseSpaceTimePartitioner}
 import org.openeo.geotrellissentinelhub.SampleType.{FLOAT32, SampleType}
 
 import java.net.URL
@@ -464,8 +464,8 @@ class PyramidFactoryTest {
     print(s2Part)
     print(s1Part)
     assertEquals(s2Part.bounds,s1Part.bounds)
-    assertTrue(s2Part.index.isInstanceOf[SparseSpaceTimePartitioner])
-    assertTrue(s1Part.index.isInstanceOf[SparseSpaceTimePartitioner])
+    assertTrue(s2Part.index.isInstanceOf[SparseSpaceOnlyPartitioner])
+    assertTrue(s1Part.index.isInstanceOf[SparseSpaceOnlyPartitioner])
     assertEquals(s2Part.index,s1Part.index)
 
     val spatialLayer = layer
@@ -1232,7 +1232,7 @@ class PyramidFactoryTest {
       new DefaultProcessApi(endpoint), authorizer)
 
     val dataCubeParameters = new DataCubeParameters()
-    dataCubeParameters.setTimeDimensionFilter(new Object())
+    dataCubeParameters.setTimeDimensionFilter(new java.lang.String("some time dimension filter"))
 
     val multiPolygons = Array(MultiPolygon(extent.toPolygon()))
 
