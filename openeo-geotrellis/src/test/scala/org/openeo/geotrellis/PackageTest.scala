@@ -1,12 +1,11 @@
 package org.openeo.geotrellis
 
 import geotrellis.proj4.{CRS, LatLng, Sinusoidal, WebMercator}
-import geotrellis.raster.io.geotiff.{GeoTiff, Int16GeoTiffMultibandTile}
+import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.{ByteCellType, ByteUserDefinedNoDataCellType, FloatUserDefinedNoDataCellType, UByteCellType, UByteUserDefinedNoDataCellType}
 import geotrellis.vector._
 import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.{Arguments, MethodSource}
@@ -84,26 +83,6 @@ class PackageTest {
       val refTiff2 = GeoTiff.readMultiband(dst.toString)
       assertEquals(refTiff2.cellSize, refTiff.cellSize)
     }
-  }
-
-  @Test
-  def zstdCompressionWithPredictor(@TempDir tmp: Path): Unit = {
-    val refFile = Thread.currentThread().getContextClassLoader.getResource("org/openeo/geotrellis/Sentinel2FileLayerProvider_multiband_reference_average.tif")
-    val refTiff = GeoTiff.readMultiband(refFile.getPath)
-    val options: GTiffOptions = new GTiffOptions
-    options.compressionMethod = "zstd"
-    options.compressionLevel = 6
-    options.compressionPredictor = 2
-    val path = tmp.resolve("zstd.tif")
-    val zstdPath = path.toString
-    val tiff = refTiff.withCompression(options)
-    writeGeoTiff(tiff, zstdPath, gtiffOptions = None)
-    val checkZstdTiff = GeoTiff.readMultiband(zstdPath)
-    assertEquals(336789, Files.size(path))
-    assertEquals(checkZstdTiff.tile.band(0).get(5,7), refTiff.tile.band(0).get(5,7))
-    assertEquals(50000, checkZstdTiff.tile.asInstanceOf[Int16GeoTiffMultibandTile].decompressor.code)
-    assertEquals(2, checkZstdTiff.tile.asInstanceOf[Int16GeoTiffMultibandTile].decompressor.predictorCode)
-
   }
 
   @ParameterizedTest
