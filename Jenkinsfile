@@ -195,7 +195,7 @@ void build(skipTests = false, skipSentinelHubTests = false){
 
     List jdkEnv = [ "SPARK_LOCAL_IP=127.0.0.1" ]
     def testImage = docker.build("openeo-geotrellis-test-image:20250819_1", "-f ./docker/tests_dockerfile ./docker")
-    testImage.inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/localdata/M2:rw,z -v /home/jenkins/.m2:/root/.m2:rw,z -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -u root' ) {
+    testImage.inside('-v /var/run/docker.sock:/var/run/docker.sock -v /localdata/M2:/localdata/M2:rw,z -v /home/jenkins/.m2:/root/.m2:rw,z -v /etc/hadoop/conf:/etc/hadoop/conf:ro -v /data:/data:ro -v /vitodata:/vitodata:ro -u root' ) {
         withEnv(jdkEnv) {
             sh "docker pull vito-docker.artifactory.vgt.vito.be/geotrellis_process_graph_test_helper"
             def server = Artifactory.server('vitoartifactory')
