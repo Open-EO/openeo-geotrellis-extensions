@@ -710,7 +710,7 @@ for p in l:
         .withNominalDate("2020-01-01T00:00:00Z")
         .withBBox(22.4224844035807, 45.950836422259, 22.557151965576, 46.0446922710336)
         .addLink(
-          href = "/vitodata/vegteam_lcfm_features_2020/LCFM/LSF-ANNUAL/v100/blocks/34/T/FR/2020/L2A-BANDS/LCFM_LSF-ANNUAL_V100_2020_34TFR_001_L2A-BANDS.tif",
+          href = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/LCFM_LSF-ANNUAL_V100_2020_34TFR_001_L2A-BANDS.tif",
           title = "Sentinel-2_AnnualFeatures",
           bandNames,
         )
@@ -726,7 +726,7 @@ for p in l:
         .withNominalDate("2020-01-01T00:00:00Z")
         .withBBox(22.2903879775156, 45.9525572152198, 22.4248477757042, 46.046265455836)
         .addLink(
-          href = "/vitodata/vegteam_lcfm_features_2020/LCFM/LSF-ANNUAL/v100/blocks/34/T/FR/2020/L2A-BANDS/LCFM_LSF-ANNUAL_V100_2020_34TFR_000_L2A-BANDS.tif",
+          href = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/LCFM_LSF-ANNUAL_V100_2020_34TFR_000_L2A-BANDS.tif",
           title = "Sentinel-2_AnnualFeatures",
           bandNames,
         )
