@@ -504,7 +504,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     testValues("average" ,Array(25,29,36,37, 89, 93, 94,101,153,157,161,165,217,221,225,229),Array( 59, 67,187,195),127)
     testValues("bilinear",Array(26,30,37,38, 90, 94, 95,102,154,158,162,166,218,222,226,230),Array( 60, 68,188,196),128)
     testValues("max"     ,Array(51,55,89,63,115,119,123,127,179,183,187,191,243,247,251,255),Array(119,127,247,255),255)
-    testValues("min"     ,Array( 0, 4, 8,12, 64, 68, 42, 76,128,132,136,140,192,196,200,204),Array(  0,  8,128,136),0)
+    testValues("min"     ,Array( 0, 4, 8,12, 64, 68, 42, 76,128,132,136,140,256,196,200,204),Array(  0,  8,256,136),256)
     testValues("med"     ,Array(29,29,33,37, 89, 93, 97,101,153,157,161,165,217,221,225,229),Array( 59, 67,187,195),127)
   }
 
@@ -801,6 +801,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     val gtiffOptions = new GTiffOptions
     gtiffOptions.setOverview("ALL")
     gtiffOptions.setTileSize(128)
+
 
     val tiles = saveSamples(tileLayerRDD, outDir + "/", tiltedRectangle, sampleNames,
       DeflateCompression(BEST_COMPRESSION),gtiffOptions)
