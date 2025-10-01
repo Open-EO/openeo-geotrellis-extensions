@@ -274,7 +274,7 @@ object NetCDFRDDWriter {
         netcdfFile.flush()
       }
     }
-    val assetsMetadata = setupAssetMetadata(rdd.metadata, dates, bandNames, preProcessResult._1, extent, addBandsStatistics, bandHistograms)
+    val assetsMetadata = setupAssetMetadata(rdd.metadata, dates, bandNames, preProcessResult._1, cropBounds.getOrElse(extent), addBandsStatistics, bandHistograms)
     if(dates.nonEmpty) {
       val timeDimName = if(dimensionNames!=null) dimensionNames.getOrDefault(TIME,TIME) else TIME
       writeTime(timeDimName, netcdfFile, dates)
@@ -507,15 +507,15 @@ object NetCDFRDDWriter {
     val groupedBySample = stitchRDDBySample(rdd, featuresBC)
     //doing a count triggers full job execution, and there's already logging in previous block
     //logger.info(s"Writing ${groupedBySample.keys.count()} samples to disk.")
-    groupedBySample.map { case (name, tiles: Iterable[(Long, Raster[MultibandTile])]) =>
+    groupedBySample.map { case (name, tiles: Iterable[(Long, Raster[MultibandTile], Extent)]) =>
         val outputAsPath: Path = getSamplePath(name, path, filenamePrefix)
 
         // Sort by date before writing.
-        val sorted = tiles.toSeq.sortBy { case (instant, _) => instant }
-        val dates = sorted.map { case (instant, _) => ZonedDateTime.ofInstant(instant, ZoneOffset.UTC) }
+        val sorted = tiles.toSeq.sortBy { case (instant, _, _) => instant }
+        val dates = sorted.map { case (instant, _, _) => ZonedDateTime.ofInstant(instant, ZoneOffset.UTC) }
         logger.info(s"Writing $name with dates $dates.")
         val extent = sorted.head._2.extent
-        val assetsMetadata = setupAssetMetadata(rdd.metadata,sorted.map(_._2),dates=dates, bandNames,addBandsStats = addBandsStatistics)
+        val assetsMetadata = setupAssetMetadata(rdd.metadata,sorted.map(_._2), bbox = tiles.head._3, dates=dates, bandNames,addBandsStats = addBandsStatistics)
         val assetPath = try{
           writeToDisk(sorted.map(_._2), dates, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
         }catch {
@@ -561,10 +561,10 @@ object NetCDFRDDWriter {
         val extent = sample._2.map(_._2).head
         val raster = stitchAndCropTiles(tiles,ProjectedExtent(extent,crs),layout)
 
-        (sample._1, raster)
+        (sample._1, raster, extent)
       }
     )
-    val keyedBySample = stitchedByInstant.map { case ((sampleName, instant), raster) => (sampleName, (instant, raster)) }
+    val keyedBySample = stitchedByInstant.map { case ((sampleName, instant), raster, extent) => (sampleName, (instant, raster, extent)) }
     val groupedBySample = keyedBySample.groupByKey(new ByKeyPartitioner(sampleNames.toArray))
     groupedBySample
   }
@@ -614,7 +614,7 @@ object NetCDFRDDWriter {
       .map { case ((name, extent), tiles) =>
         val outputAsPath: Path = getSamplePath(name, path, filenamePrefix)
         val sample: Raster[MultibandTile] = stitchAndCropTiles(tiles, extent, layout)
-        val assetMetadata = setupAssetMetadata(rdd.metadata, Seq(sample), dates=null, bandNames, addBandsStatistics)
+        val assetMetadata = setupAssetMetadata(rdd.metadata, Seq(sample), extent.extent, dates=null, bandNames, addBandsStatistics)
         val assetPath = try {
           writeToDisk(Seq(sample), dates = null, outputAsPath.toString, bandNames, crs, dimensionNames, attributes, bandsMetadata)
         } catch {
@@ -888,7 +888,7 @@ object NetCDFRDDWriter {
     if (bandsMetadata.containsKey("OFFSET")) netcdfFile.addVariableAttribute(variableName,"add_offset",bandsMetadata.get("OFFSET").toFloat)
   }
 
-  private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], dates: List[Int], bandNames: ArrayList[String], gridBounds: GridBounds[Int], extent: Extent, addBandsStats: Boolean, histograms:scala.collection.mutable.Map[String,(StreamingHistogram,Int)]): java.util.Map[String, Any] = {
+  private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], dates: List[Int], bandNames: ArrayList[String], gridBounds: GridBounds[Int], bbox: Extent, addBandsStats: Boolean, histograms:scala.collection.mutable.Map[String,(StreamingHistogram,Int)]): java.util.Map[String, Any] = {
     val assetMetadata = if (dates.nonEmpty) {
       new util.HashMap[String,Any](util.Map.of("time", new util.HashMap[String,Any](util.Map.of("type", "temporal", "extent",Array(dates.head, dates.last), "values", dates.toArray))))
     } else new java.util.HashMap[String,Any]()
@@ -914,13 +914,13 @@ object NetCDFRDDWriter {
       maps
     }
     assetMetadata.put("bands", bands)
-    assetMetadata.put("proj:bbox", Array(extent.xmin, extent.ymin, extent.xmax, extent.ymax))
+    assetMetadata.put("proj:bbox", Array(bbox.xmin, bbox.ymin, bbox.xmax, bbox.ymax))
     if (metadata.crs.epsgCode.nonEmpty) assetMetadata.put("proj:epsg", metadata.crs.epsgCode.get)
     assetMetadata.put("proj:shape", Array(gridBounds.height, gridBounds.width))
     assetMetadata
   }
 
-  private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], rasters: Seq[Raster[MultibandTile]], dates: Seq[ZonedDateTime], bandNames: ArrayList[String], addBandsStats: Boolean): util.Map[String, Any] = {
+  private def setupAssetMetadata[K: SpatialComponent : Boundable : ClassTag](metadata: TileLayerMetadata[K], rasters: Seq[Raster[MultibandTile]], bbox:Extent, dates: Seq[ZonedDateTime], bandNames: ArrayList[String], addBandsStats: Boolean): util.Map[String, Any] = {
     val assetMetadata = new util.HashMap[String,Any]()
     if (dates != null) {
       assetMetadata.put("time", Map("type" -> "temporal", "extent" -> Array(dates.head, dates.last), "values" -> dates.toArray))
@@ -937,7 +937,7 @@ object NetCDFRDDWriter {
       maps
     }
     assetMetadata.put("bands", bands)
-    assetMetadata.put("proj:bbox",Array(rasters.head.extent.xmin, rasters.head.extent.ymin, rasters.head.extent.xmax, rasters.head.extent.ymax))
+    assetMetadata.put("proj:bbox",Array(bbox.xmin, bbox.ymin, bbox.xmax, bbox.ymax))
     if (metadata.crs.epsgCode.nonEmpty) assetMetadata.put("proj:epsg", metadata.crs.epsgCode.get)
     assetMetadata.put("proj:shape", Array(rasters.head.rows, rasters.head.cols))
     assetMetadata

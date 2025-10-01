@@ -180,8 +180,8 @@ class NetCDFRDDWriterTest extends RasterMatchers{
       Assert.assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
       Assert.assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
       val bbox = if (polygon==polygon0) {
-        Array(-180.0, -89.99999, 179.99999000000003, 89.99999)
-      } else {Array(-18.281254492187486, 29.8828091796875, 18.28124449218752, 60.1171808203125)}
+        Array(-180.0, -90.0, 180.0, 90.0)
+      } else {Array(-18.0, 30.0, 18.0, 60.0)}
       Assert.assertTrue(java.util.Arrays.equals(metadata.get("proj:bbox").asInstanceOf[Array[Double]], bbox))
       val bands = metadata.get("bands").asInstanceOf[java.util.ArrayList[java.util.HashMap[String, Any]]]
       Assert.assertEquals(3, bands.size())
@@ -370,8 +370,8 @@ class NetCDFRDDWriterTest extends RasterMatchers{
       Assert.assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
       Assert.assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
       val bbox = if (polygon==polygon0) {
-        Array(-180.0, -89.99999, 179.99999000000003, 89.99999)
-      } else {Array(-18.281254492187486, 29.8828091796875, 18.28124449218752, 60.1171808203125)}
+        Array(-180.0, -90.0, 180.0, 90.0)
+      } else {Array(-18.0, 30.0, 18.0, 60.0)}
       Assert.assertTrue(java.util.Arrays.equals(metadata.get("proj:bbox").asInstanceOf[Array[Double]], bbox))
       Assert.assertTrue(metadata.containsKey("bands"))
       Assert.assertTrue(metadata.get("bands").isInstanceOf[java.util.ArrayList[java.util.HashMap[String, Any]]])
@@ -601,7 +601,7 @@ class NetCDFRDDWriterTest extends RasterMatchers{
       Assert.assertEquals(LatLng.epsgCode.get, metadata.get("proj:epsg"))
       Assert.assertArrayEquals(expectedShape, metadata.get("proj:shape").asInstanceOf[Array[Int]])
       val bbox = if (cropBounds.nonEmpty) {
-        Array(-18.281254492187486, 29.8828091796875, 18.28124449218752, 60.1171808203125)
+        Array(-18.0, 30.0, 18.0, 60.0)
       } else {Array(-180.0, -89.99999, 179.99999000000003, 89.99999)}
       Assert.assertTrue(java.util.Arrays.equals(metadata.get("proj:bbox").asInstanceOf[Array[Double]], bbox))
       val bands = metadata.get("bands").asInstanceOf[java.util.ArrayList[java.util.HashMap[String, Any]]]
