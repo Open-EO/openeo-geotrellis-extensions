@@ -1724,6 +1724,29 @@ class FileLayerProviderTest extends RasterMatchers{
   }
 
   @Test
+  def testMultibandNoNoDataCOGViaSTAC(@TempDir outDir: Path): Unit = {
+    val pyramidFactory = LayerFixtures.stacCogNoNoDataCollection
+
+    val projectedPolygons = ProjectedPolygons.fromExtent(
+      Extent(604523.7292174072, 5090697.329131688, 617624.0262746626, 5095117.978413235),
+      "EPSG:32634",
+    )
+
+    val dataCubeParameters = new DataCubeParameters
+    dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
+    dataCubeParameters.globalExtent = Some(projectedPolygons.extent)
+
+    writeToNetCDFAndCompare(
+      projectedPolygons,
+      dataCubeParameters,
+      bands = new util.ArrayList(util.Collections.singletonList("L2A-B02-P10")),
+      pyramidFactory,
+      outLocation = f"$outDir/testMultibandNoNoDataCOGViaSTAC.nc",
+      referenceFile = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/testMultibandNoNoDataCOGViaSTAC.nc",
+    )
+  }
+
+  @Test
   def testMultibandCOGViaSTACResampleReadOneBand(@TempDir outDir: Path): Unit = {
     val factory = LayerFixtures.STACCOGCollection(resolution = CellSize(10.0,10.0),util.Arrays.asList("precipitation-flux"))
 
@@ -1753,11 +1776,9 @@ class FileLayerProviderTest extends RasterMatchers{
     val refFile = NetcdfFile.open(referenceFile)
 
     val formatter = new Formatter()
-    val comparison = new CompareNetcdf2(formatter, true, true, true).compare(actualFile, refFile)
+    val areEqual = new CompareNetcdf2(formatter, true, true, true).compare(actualFile, refFile)
 
-    val string = formatter.toString
-    println(string)
-    println(comparison)
+    assertTrue(areEqual, s"netCDF files are not equal:\n$formatter")
   }
 
   @Test
