@@ -51,7 +51,7 @@ import java.util.Formatter
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable
 import scala.io.Source
-import scala.jdk.CollectionConverters.mapAsJavaMapConverter
+import scala.jdk.CollectionConverters._
 import scala.reflect.io.Directory
 
 object FileLayerProviderTest {
@@ -1200,8 +1200,12 @@ class FileLayerProviderTest extends RasterMatchers{
     val cubeSpatial = layer.toSpatial()
     cubeSpatial.writeGeoTiff(f"$outDir/testPixelValueOffsetNeededCorner.tiff")
     val arr = cubeSpatial.collect().array
-    assertTrue(isNoData(arr(1)._2.toArrayTile().band(0).get(162, 250)))
-    assertEquals(187, arr(0)._2.toArrayTile().band(0).get(160, 5), 1)
+    val at_138_746 = arr.find(_._1 == SpatialKey(138, 746))
+    val at_137_747 = arr.find(_._1 == SpatialKey(137, 747))
+    assertTrue(at_138_746.isDefined)
+    assertTrue(isNoData(at_138_746.get._2.toArrayTile().band(0).get(162, 250)))
+    assertTrue(at_137_747.isDefined)
+    assertEquals(187, at_137_747.get._2.toArrayTile().band(0).get(160, 5), 1)
   }
 
   @Test

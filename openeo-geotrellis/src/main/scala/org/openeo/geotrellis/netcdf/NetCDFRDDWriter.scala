@@ -1,6 +1,5 @@
 package org.openeo.geotrellis.netcdf
 
-//import ucar.ma2.Array
 import geotrellis.layer.TileLayerMetadata.toLayoutDefinition
 import geotrellis.layer._
 import geotrellis.proj4.CRS
@@ -11,10 +10,10 @@ import geotrellis.spark.store.hadoop.KeyPartitioner
 import geotrellis.store.s3.AmazonS3URI
 import geotrellis.util._
 import geotrellis.vector._
-import org.apache.spark.{SparkContext, TaskContext}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
+import org.apache.spark.{SparkContext, TaskContext}
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.geotiff.preProcess
 import org.openeo.geotrellis.stac.{Asset, Item}
@@ -33,9 +32,10 @@ import java.io.IOException
 import java.nio.file.{Files, Path, Paths}
 import java.time.format.DateTimeFormatter
 import java.time.{Duration, ZoneOffset, ZonedDateTime}
-import java.{io, util}
+import java.util
 import java.util.{ArrayList, Collections, UUID}
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
+import scala.language.postfixOps
 import scala.reflect.ClassTag
 
 
@@ -365,7 +365,7 @@ object NetCDFRDDWriter {
                   filenamePrefix: Option[String],
                  ): java.util.List[Item] = {
     val reprojected = ProjectedPolygons.reproject(polygons,rdd.metadata.crs)
-    val features = sampleNames.asScala.zip(reprojected.polygons)
+    val features = sampleNames.asScala.toSeq.zip(reprojected.polygons)
     logger.info(s"Using metadata: ${rdd.metadata}.")
     logger.info(s"Using features: ${features}.")
     groupByFeatureAndWriteToNetCDF(rdd, features, path, bandNames, dimensionNames, attributes, bandsMetadata, filenamePrefix)
@@ -698,28 +698,28 @@ object NetCDFRDDWriter {
     bandDimension.add(xDimension)
 
     val (netcdfType:DataType,nodata:Option[Number]) = cellType match {
-      case BitCellType => (DataType.UBYTE,None)
-      case ByteCellType => (DataType.BYTE,None)
-      case UByteCellType => (DataType.UBYTE,None)
-      case ShortCellType => (DataType.SHORT,None)
-      case UShortCellType => (DataType.USHORT,None)
-      case IntCellType => (DataType.INT,None)
-      case FloatCellType => (DataType.FLOAT,None)
-      case DoubleCellType => (DataType.DOUBLE,None)
-      case ByteConstantNoDataCellType => (DataType.BYTE,Some(byteNODATA))
-      case UByteConstantNoDataCellType => (DataType.UBYTE,Some(ubyteNODATA))
-      case ShortConstantNoDataCellType => (DataType.SHORT,Some(shortNODATA))
-      case UShortConstantNoDataCellType => (DataType.USHORT,Some(ushortNODATA))
-      case IntConstantNoDataCellType => (DataType.INT,Some(NODATA))
-      case FloatConstantNoDataCellType => (DataType.FLOAT,Some(floatNODATA.toFloat))
-      case DoubleConstantNoDataCellType => (DataType.DOUBLE,Some(doubleNODATA.toDouble))
-      case ct: ByteUserDefinedNoDataCellType => (DataType.BYTE,Some(ct.noDataValue))
-      case ct: UByteUserDefinedNoDataCellType => (DataType.UBYTE,Some(ct.widenedNoData.asInt))
-      case ct: ShortUserDefinedNoDataCellType => (DataType.SHORT,Some(ct.noDataValue))
-      case ct: UShortUserDefinedNoDataCellType => (DataType.USHORT,Some(ct.widenedNoData.asInt.toShort))
-      case ct: IntUserDefinedNoDataCellType => (DataType.INT,Some(ct.widenedNoData.asInt))
-      case ct: FloatUserDefinedNoDataCellType => (DataType.FLOAT,Some(ct.noDataValue))
-      case ct: DoubleUserDefinedNoDataCellType => (DataType.DOUBLE,Some(ct.noDataValue))
+      case BitCellType => (DataType.UBYTE, None)
+      case ByteCellType => (DataType.BYTE, None)
+      case UByteCellType => (DataType.UBYTE, None)
+      case ShortCellType => (DataType.SHORT, None)
+      case UShortCellType => (DataType.USHORT, None)
+      case IntCellType => (DataType.INT, None)
+      case FloatCellType => (DataType.FLOAT, None)
+      case DoubleCellType => (DataType.DOUBLE, None)
+      case ByteConstantNoDataCellType => (DataType.BYTE, Some(Byte.box(byteNODATA)))
+      case UByteConstantNoDataCellType => (DataType.UBYTE, Some(Byte.box(ubyteNODATA)))
+      case ShortConstantNoDataCellType => (DataType.SHORT, Some(Short.box(shortNODATA)))
+      case UShortConstantNoDataCellType => (DataType.USHORT, Some(Short.box(ushortNODATA)))
+      case IntConstantNoDataCellType => (DataType.INT, Some(Int.box(NODATA)))
+      case FloatConstantNoDataCellType => (DataType.FLOAT, Some(Float.box(floatNODATA)))
+      case DoubleConstantNoDataCellType => (DataType.DOUBLE, Some(Double.box(doubleNODATA)))
+      case ct: ByteUserDefinedNoDataCellType => (DataType.BYTE, Some(Byte.box(ct.noDataValue)))
+      case ct: UByteUserDefinedNoDataCellType => (DataType.UBYTE, Some(Int.box(ct.widenedNoData.asInt)))
+      case ct: ShortUserDefinedNoDataCellType => (DataType.SHORT, Some(Short.box(ct.noDataValue)))
+      case ct: UShortUserDefinedNoDataCellType => (DataType.USHORT, Some(Short.box(ct.widenedNoData.asInt.toShort)))
+      case ct: IntUserDefinedNoDataCellType => (DataType.INT, Some(Int.box(ct.widenedNoData.asInt)))
+      case ct: FloatUserDefinedNoDataCellType => (DataType.FLOAT, Some(Float.box(ct.noDataValue)))
+      case ct: DoubleUserDefinedNoDataCellType => (DataType.DOUBLE, Some(Double.box(ct.noDataValue)))
     }
 
 

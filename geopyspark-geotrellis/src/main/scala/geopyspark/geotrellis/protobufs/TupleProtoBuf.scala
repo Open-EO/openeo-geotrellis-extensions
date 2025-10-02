@@ -1,22 +1,17 @@
 package geopyspark.geotrellis.protobufs
 
-import geopyspark.util.ProtoBufCodec
+import com.google.protobuf.ByteString
 import geopyspark.geotrellis.protobufs.Implicits._
-import protos.extentMessages._
-import protos.tileMessages._
-import protos.keyMessages._
-import protos.tupleMessages._
-
+import geopyspark.util.ProtoBufCodec
+import geotrellis.layer._
 import geotrellis.raster._
 import geotrellis.vector._
-import geotrellis.layer._
-
-import com.google.protobuf.ByteString
+import protos.tupleMessages._
 
 
 trait TupleProtoBuf {
 
-  implicit def tupleProjectedExtentProtoBufCodec =
+  implicit def tupleProjectedExtentProtoBufCodec: ProtoBufCodec[(ProjectedExtent, MultibandTile), ProtoTuple] =
     new ProtoBufCodec[(ProjectedExtent, MultibandTile), ProtoTuple] {
     def encode(tuple: (ProjectedExtent, MultibandTile)): ProtoTuple =
       ProtoTuple(

@@ -1,31 +1,25 @@
 package geopyspark.geotrellis
 
+import _root_.io.circe.parser.parse
+import _root_.io.circe.syntax._
+import cats.syntax.either._
+import geopyspark.geotrellis.{GlobalLayout, LayoutType, LocalLayout, RasterSummary}
 import geopyspark.util._
-
-import geotrellis.proj4._
+import geotrellis.layer._
 import geotrellis.raster._
 import geotrellis.raster.io.geotiff.{GeoTiffOptions, MultibandGeoTiff, Tags}
 import geotrellis.raster.resample.ResampleMethod
 import geotrellis.spark._
-import geotrellis.layer._
 import geotrellis.spark.reproject._
-
-import org.apache.spark.api.java.JavaRDD
 import org.apache.spark._
+import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd.RDD
-
-import protos.tupleMessages.ProtoTuple
 import protos.extentMessages.ProtoTemporalProjectedExtent
+import protos.tupleMessages.ProtoTuple
 
-import scala.util.{Either, Left, Right}
-import scala.collection.JavaConverters._
-
+import java.time.ZonedDateTime
 import java.util.ArrayList
-import java.time.{ZonedDateTime, ZoneId}
-
-import _root_.io.circe.syntax._
-import _root_.io.circe.parser.parse
-import cats.syntax.either._
+import scala.jdk.CollectionConverters._
 
 class TemporalRasterLayer(val rdd: RDD[(TemporalProjectedExtent, MultibandTile)]) extends RasterLayer[TemporalProjectedExtent] {
 
@@ -51,10 +45,10 @@ class TemporalRasterLayer(val rdd: RDD[(TemporalProjectedExtent, MultibandTile)]
   }
 
   def tileToLayout(
-    layerMetadata: String,
-    resampleMethod: ResampleMethod,
-    partitionStrategy: PartitionStrategy
-  ): TiledRasterLayer[SpaceTimeKey] = {
+                    layerMetadata: String,
+                    resampleMethod: ResampleMethod,
+                    partitionStrategy: PartitionStrategy
+                  ): TiledRasterLayer[SpaceTimeKey] = {
     val md = parse(layerMetadata).valueOr(throw _).as[TileLayerMetadata[SpaceTimeKey]].valueOr(throw _)
     val options = getTilerOptions(resampleMethod, partitionStrategy)
 
@@ -62,10 +56,10 @@ class TemporalRasterLayer(val rdd: RDD[(TemporalProjectedExtent, MultibandTile)]
   }
 
   def tileToLayout(
-    layoutDefinition: LayoutDefinition,
-    resampleMethod: ResampleMethod,
-    partitionStrategy: PartitionStrategy
-  ): TiledRasterLayer[SpaceTimeKey] = {
+                    layoutDefinition: LayoutDefinition,
+                    resampleMethod: ResampleMethod,
+                    partitionStrategy: PartitionStrategy
+                  ): TiledRasterLayer[SpaceTimeKey] = {
     val sms = RasterSummary.collect[TemporalProjectedExtent, SpaceTimeKey](rdd)
     require(sms.length == 1, s"Multiple raster CRS layers found: ${sms.map(_.crs).toList}")
 
@@ -84,10 +78,10 @@ class TemporalRasterLayer(val rdd: RDD[(TemporalProjectedExtent, MultibandTile)]
   }
 
   def tileToLayout(
-    layoutType: LayoutType,
-    resampleMethod: ResampleMethod,
-    partitionStrategy: PartitionStrategy
-  ): TiledRasterLayer[SpaceTimeKey] ={
+                    layoutType: LayoutType,
+                    resampleMethod: ResampleMethod,
+                    partitionStrategy: PartitionStrategy
+                  ): TiledRasterLayer[SpaceTimeKey] = {
     val sms = RasterSummary.collect[TemporalProjectedExtent, SpaceTimeKey](rdd)
     require(sms.length == 1, s"Multiple raster CRS layers found: ${sms.map(_.crs).toList}")
 
@@ -105,11 +99,11 @@ class TemporalRasterLayer(val rdd: RDD[(TemporalProjectedExtent, MultibandTile)]
   }
 
   def reproject(
-    targetCRS: String,
-    layoutType: LayoutType,
-    resampleMethod: ResampleMethod,
-    partitionStrategy: PartitionStrategy
-  ): TiledRasterLayer[SpaceTimeKey] = {
+                 targetCRS: String,
+                 layoutType: LayoutType,
+                 resampleMethod: ResampleMethod,
+                 partitionStrategy: PartitionStrategy
+               ): TiledRasterLayer[SpaceTimeKey] = {
     val partitioner = TileLayer.getPartitioner(partitionStrategy, rdd.getNumPartitions)
 
     val crs = TileLayer.getCRS(targetCRS).get
@@ -133,11 +127,11 @@ class TemporalRasterLayer(val rdd: RDD[(TemporalProjectedExtent, MultibandTile)]
   }
 
   def reproject(
-    targetCRS: String,
-    layoutDefinition: LayoutDefinition,
-    resampleMethod: ResampleMethod,
-    partitionStrategy: PartitionStrategy
-  ): TiledRasterLayer[SpaceTimeKey] = {
+                 targetCRS: String,
+                 layoutDefinition: LayoutDefinition,
+                 resampleMethod: ResampleMethod,
+                 partitionStrategy: PartitionStrategy
+               ): TiledRasterLayer[SpaceTimeKey] = {
     val partitioner = TileLayer.getPartitioner(partitionStrategy, rdd.getNumPartitions)
     val tiled = tileToLayout(layoutDefinition, resampleMethod, partitionStrategy).rdd
     val (zoom, reprojected) =
@@ -162,11 +156,11 @@ class TemporalRasterLayer(val rdd: RDD[(TemporalProjectedExtent, MultibandTile)]
     PythonTranslator.toPython[(TemporalProjectedExtent, Array[Byte]), ProtoTuple](pngRDD)
 
   def toGeoTiffRDD(
-    tags: Tags,
-    resampleMethod: ResampleMethod,
-    decimations: List[Int],
-    geoTiffOptions: GeoTiffOptions
-  ): JavaRDD[Array[Byte]] = {
+                    tags: Tags,
+                    resampleMethod: ResampleMethod,
+                    decimations: List[Int],
+                    geoTiffOptions: GeoTiffOptions
+                  ): JavaRDD[Array[Byte]] = {
     val geotiffRDD =
       rdd.map { case (k, v) =>
         val geoTiff =
@@ -195,8 +189,8 @@ class TemporalRasterLayer(val rdd: RDD[(TemporalProjectedExtent, MultibandTile)]
     PythonTranslator.toPython[TemporalProjectedExtent, ProtoTemporalProjectedExtent](rdd.keys.collect)
 
   def filterByTimes(
-    times: java.util.ArrayList[String]
-  ): TemporalRasterLayer = {
+                     times: java.util.ArrayList[String]
+                   ): TemporalRasterLayer = {
     val timeBoundaries: Array[(Long, Long)] =
       times
         .asScala
@@ -210,8 +204,8 @@ class TemporalRasterLayer(val rdd: RDD[(TemporalProjectedExtent, MultibandTile)]
           }
         }.toArray
 
-      val inRange = (tpe: TemporalProjectedExtent, range: (Long, Long)) =>
-        range._1 <= tpe.instant && tpe.instant <= range._2
+    val inRange = (tpe: TemporalProjectedExtent, range: (Long, Long)) =>
+      range._1 <= tpe.instant && tpe.instant <= range._2
 
     val filteredRDD =
       rdd.filter { case (key, _) => timeBoundaries.filter(inRange(key, _)).size != 0 }
@@ -232,10 +226,10 @@ object TemporalRasterLayer {
     new TemporalRasterLayer(rdd)
 
   def unionLayers(
-    sc: SparkContext,
-    layers: ArrayList[TemporalRasterLayer]
-  ): TemporalRasterLayer =
-    TemporalRasterLayer(sc.union(layers.asScala.map(_.rdd)))
+                   sc: SparkContext,
+                   layers: ArrayList[TemporalRasterLayer]
+                 ): TemporalRasterLayer =
+    TemporalRasterLayer(sc.union(layers.asScala.map(_.rdd).toSeq))
 
   def combineBands(sc: SparkContext, layers: ArrayList[TemporalRasterLayer]): TemporalRasterLayer =
     TemporalRasterLayer(TileLayer.combineBands[TemporalProjectedExtent, TemporalRasterLayer](sc, layers))

@@ -17,7 +17,7 @@ sealed trait LayoutType {
 
 /** @see [[geotrellis.layer.ZoomedLayoutScheme]] */
 case class GlobalLayout(tileSize: Int, zoom: Integer, threshold: Double)  extends LayoutType {
-  def layoutDefinitionWithZoom(crs: CRS, extent: Extent, cellSize: CellSize) = {
+  def layoutDefinitionWithZoom(crs: CRS, extent: Extent, cellSize: CellSize): (LayoutDefinition, Option[Int]) = {
     val scheme = new ZoomedLayoutScheme(crs, tileSize, threshold)
     Option(zoom) match {
       case Some(zoom) =>
@@ -31,7 +31,7 @@ case class GlobalLayout(tileSize: Int, zoom: Integer, threshold: Double)  extend
 
 /** @see [[geotrellis.layer.FloatingLayoutScheme]] */
 case class LocalLayout(tileCols: Int, tileRows: Int) extends LayoutType {
-  def layoutDefinitionWithZoom(crs: CRS, extent: Extent, cellSize: CellSize) = {
+  def layoutDefinitionWithZoom(crs: CRS, extent: Extent, cellSize: CellSize): (LayoutDefinition, Option[Int]) = {
     val scheme = new FloatingLayoutScheme(tileCols, tileRows)
     scheme.levelFor(extent, cellSize).layout -> None
   }

@@ -25,7 +25,7 @@ import spire.math.UShort
 
 import java.awt.image.DataBufferByte
 import java.io.File
-import java.net.URL
+import java.net.{URI, URL}
 import java.nio.file.Paths
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
@@ -156,7 +156,7 @@ object LayerFixtures {
     implicit val sc = SparkContext.getOrCreate
     val times: Seq[ZonedDateTime] = dates.map(ZonedDateTime.parse(_))
     val layout = new TileLayout(1, 1, tiles.get(0).cols.asInstanceOf[Integer], tiles.get(0).rows.asInstanceOf[Integer])
-    val cubeXYB: TileLayerRDD[SpaceTimeKey] = TileLayerRDDBuilders.createSpaceTimeTileLayerRDD(JavaConverters.collectionAsScalaIterableConverter(tiles).asScala.zip(times),layout)
+    val cubeXYB: TileLayerRDD[SpaceTimeKey] = TileLayerRDDBuilders.createSpaceTimeTileLayerRDD(tiles.asScala.zip(times),layout)
 
     cubeXYB.withContext{_.mapValues(MultibandTile(_)).repartitionAndSortWithinPartitions(new SpacePartitioner(cubeXYB.metadata.bounds))}
   }
@@ -171,7 +171,7 @@ object LayerFixtures {
   }
 
   def catalogDataCube(layer: String, minDateString: String, maxDateString: String, bbox: Extent, resolution:CellSize, bandNames:List[String]) = {
-    new file.PyramidFactory(OpenSearchClient.apply(new URL(opensearchEndpoint), false, "oscars"),layer,bandNames.asJava,null,resolution).pyramid_seq(bbox,"EPSG:4326",minDateString,maxDateString,util.Collections.emptyMap[String,Any](),"").head._2
+    new file.PyramidFactory(OpenSearchClient.apply(new URI(opensearchEndpoint).toURL, false, "oscars"),layer,bandNames.asJava,null,resolution).pyramid_seq(bbox,"EPSG:4326",minDateString,maxDateString,util.Collections.emptyMap[String,Any](),"").head._2
 
   }
 

@@ -17,7 +17,8 @@ import java.time.Instant
 object TemporalProjectedExtentWrapper extends Wrapper2[TemporalProjectedExtent, ProtoTemporalProjectedExtent]{
   def testOut(sc: SparkContext): JavaRDD[Array[Byte]] =
     PythonTranslator.toPython[TemporalProjectedExtent, ProtoTemporalProjectedExtent](testRdd(sc))
-  def testIn(rdd: RDD[Array[Byte]]) =
+
+  def testIn(rdd: RDD[Array[Byte]]): Unit =
     PythonTranslator.fromPython[TemporalProjectedExtent, ProtoTemporalProjectedExtent](rdd, ProtoTemporalProjectedExtent.parseFrom)
 
   def testRdd(sc: SparkContext): RDD[TemporalProjectedExtent] = {

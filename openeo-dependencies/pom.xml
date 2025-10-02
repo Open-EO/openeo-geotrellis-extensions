@@ -36,6 +36,11 @@
             <version>1.1.4</version>
         </dependency>
         <dependency>
+            <groupId>org.typelevel</groupId>
+            <artifactId>spire_2.13</artifactId>
+            <version>0.17.0</version>
+        </dependency>
+        <dependency>
             <groupId>org.openeo</groupId>
             <artifactId>geotrellis-s3-extensions</artifactId>
             <version>${project.version}</version>
@@ -91,6 +96,14 @@
             <scope>provided</scope>
             <exclusions>
                 <exclusion>
+                    <groupId>org.scala-lang.modules</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.scala-lang</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
                     <groupId>net.java.dev.jets3t</groupId>
                     <artifactId>jets3t</artifactId>
                 </exclusion>
@@ -107,6 +120,14 @@
             <scope>provided</scope>
             <exclusions>
                 <exclusion>
+                    <groupId>org.scala-lang.modules</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.scala-lang</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
                     <groupId>net.java.dev.jets3t</groupId>
                     <artifactId>jets3t</artifactId>
                 </exclusion>
@@ -122,6 +143,14 @@
             <version>${spark.version}</version>
             <scope>provided</scope>
             <exclusions>
+                <exclusion>
+                    <groupId>org.scala-lang.modules</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.scala-lang</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
                 <exclusion>
                     <groupId>com.fasterxml.jackson.core</groupId>
                     <artifactId>*</artifactId>

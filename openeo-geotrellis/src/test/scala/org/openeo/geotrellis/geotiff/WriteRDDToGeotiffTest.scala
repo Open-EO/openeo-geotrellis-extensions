@@ -5,8 +5,8 @@ import better.files.File.apply
 import cats.data.NonEmptyList
 import geotrellis.layer.{CRSWorldExtent, FloatingLayoutScheme, SpaceTimeKey, SpatialKey, ZoomedLayoutScheme}
 import geotrellis.proj4.{CRS, LatLng}
-import geotrellis.raster.io.geotiff.{GeoTiff, Tiled}
 import geotrellis.raster.io.geotiff.compression.DeflateCompression
+import geotrellis.raster.io.geotiff.{GeoTiff, Tiled}
 import geotrellis.raster.render.ColorMap.Options
 import geotrellis.raster.render.DoubleColorMap
 import geotrellis.raster.resample.Min
@@ -19,17 +19,14 @@ import geotrellis.vector.io.json.GeoJson
 import org.apache.spark.{SparkConf, SparkContext, SparkEnv}
 import org.junit.Assert._
 import org.junit.jupiter.api.io.TempDir
-import org.junit.jupiter.api.{BeforeAll, Disabled, Test}
+import org.junit.jupiter.api.{BeforeAll, Test}
 import org.junit.rules.TemporaryFolder
 import org.junit.{AfterClass, Rule}
 import org.openeo.geotrellis.LayerFixtures.loadFeaturesWithArtifactoryMock
 import org.openeo.geotrellis.layers.{FileLayerProvider, SplitYearMonthDayPathDateExtractor}
 import org.openeo.geotrellis.{LayerFixtures, OpenEOProcesses, ProjectedPolygons}
-import org.openeo.geotrelliscommon.DataCubeParameters
-import org.openeo.opensearch.OpenSearchClient
 import org.slf4j.{Logger, LoggerFactory}
 
-import java.net.URL
 import java.nio.file.{Files, Path, Paths}
 import java.time.LocalTime.MIDNIGHT
 import java.time.ZoneOffset.UTC
@@ -37,7 +34,7 @@ import java.time.{LocalDate, LocalTime, ZoneOffset, ZonedDateTime}
 import java.util
 import java.util.zip.Deflater._
 import scala.annotation.meta.getter
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.io.Source
 import scala.reflect.io.Directory
 
@@ -113,7 +110,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     // This test is dependent on scala version
     println("Scala versionString: " + scala.util.Properties.versionString)
 
-    val m = Map(0.0 -> 100, 1.0 -> 101, 2.0 -> -10, 3.0 -> 0).mapValues(_ * 3) //.map(identity)
+    val m = Map(0.0 -> 100, 1.0 -> 101, 2.0 -> -10, 3.0 -> 0).mapValues(_ * 3).toMap //.map(identity)
     val colormap = new DoubleColorMap(m, new Options(noDataColor = 42))
 
     val opts = new GTiffOptions()
@@ -943,7 +940,7 @@ class WriteRDDToGeotiffTest extends RasterMatchers {
     val (_, filtered: MultibandTileLayerRDD[SpatialKey]) = LayerFixtures.createLayerWithGaps(layoutCols, layoutRows)
 
     val extent = filtered.metadata.extent
-    val cropBounds = mapAsJavaMap(Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax))
+    val cropBounds = Map("xmin" -> extent.xmin, "xmax" -> extent.xmax, "ymin" -> extent.ymin, "ymax" -> extent.ymax).asJava
 
     val filename = outDir + "/out"
     val options = new GTiffOptions()

@@ -23,7 +23,7 @@ import org.openeo.opensearch.backends.GlobalNetCDFSearchClient
 import java.nio.file.{Files, Paths}
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
 import java.util
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 object GlobalNetCdfFileLayerProviderTest extends LocalSparkContext {
   @AfterClass

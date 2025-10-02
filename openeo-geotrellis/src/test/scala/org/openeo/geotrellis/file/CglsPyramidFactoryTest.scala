@@ -2,9 +2,8 @@ package org.openeo.geotrellis.file
 
 import com.azavea.gdal.GDALWarp
 import geotrellis.proj4.LatLng
-import geotrellis.raster.gdal.{GDALRasterSource, GDALWarpOptions}
-import geotrellis.raster.io.geotiff.{GeoTiff, SinglebandGeoTiff}
-import geotrellis.raster.resample.ResampleMethod
+import geotrellis.raster.gdal.GDALRasterSource
+import geotrellis.raster.io.geotiff.GeoTiff
 import geotrellis.raster.summary.polygonal.Summary
 import geotrellis.raster.summary.polygonal.visitors.MeanVisitor
 import geotrellis.raster.testkit.RasterMatchers
@@ -16,7 +15,7 @@ import org.junit.Assert.assertEquals
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.{AfterClass, Ignore, Test}
 import org.openeo.geotrellis.TestImplicits._
-import org.openeo.geotrellis.geotiff._
+import org.openeo.geotrellis.geotiff.saveRDD
 import org.openeo.geotrellis.{LayerFixtures, LocalSparkContext, ProjectedPolygons}
 import org.openeo.geotrelliscommon.DataCubeParameters
 import org.openeo.opensearch.OpenSearchClient

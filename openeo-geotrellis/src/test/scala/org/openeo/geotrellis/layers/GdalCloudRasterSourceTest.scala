@@ -1,11 +1,10 @@
 package org.openeo.geotrellis.layers
-import geotrellis.proj4.{CRS, LatLng}
 import geotrellis.raster.gdal.GDALPath
 import geotrellis.vector._
-import org.junit.{Ignore, Test}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
+import org.junit.{Ignore, Test}
 
-import java.nio.file.{Files, Paths}
+import scala.collection.parallel.CollectionConverters._
 
 class GdalCloudRasterSourceTest {
 

@@ -14,7 +14,7 @@ object ProjectedExtentWrapper extends Wrapper2[ProjectedExtent, ProtoProjectedEx
   def testOut(sc: SparkContext): JavaRDD[Array[Byte]] =
     PythonTranslator.toPython[ProjectedExtent, ProtoProjectedExtent](testRdd(sc))
 
-  def testIn(rdd: RDD[Array[Byte]]) =
+  def testIn(rdd: RDD[Array[Byte]]): Unit =
     PythonTranslator.fromPython[ProjectedExtent, ProtoProjectedExtent](rdd, ProtoProjectedExtent.parseFrom)
 
   def testRdd(sc: SparkContext): RDD[ProjectedExtent] = {

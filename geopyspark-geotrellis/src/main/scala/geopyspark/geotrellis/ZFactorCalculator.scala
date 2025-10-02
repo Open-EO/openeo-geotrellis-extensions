@@ -1,13 +1,10 @@
 package geopyspark.geotrellis
 
-import geopyspark.geotrellis.Constants.{METERS, FEET, METERSATEQUATOR, FEETATEQUATOR}
-
-import geotrellis.proj4._
-import geotrellis.vector._
-
-import org.apache.commons.math3.analysis.interpolation._
 import _root_.io.circe.parser.parse
 import cats.syntax.either._
+import geopyspark.geotrellis.Constants.{FEET, FEETATEQUATOR, METERS, METERSATEQUATOR}
+import geotrellis.vector._
+import org.apache.commons.math3.analysis.interpolation._
 
 
 class ZFactorCalculator(zFactorProducer: Double => Double) extends Serializable {

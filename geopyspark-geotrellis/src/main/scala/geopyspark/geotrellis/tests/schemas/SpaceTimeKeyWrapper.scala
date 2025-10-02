@@ -15,7 +15,8 @@ import java.time.Instant
 object SpaceTimeKeyWrapper extends Wrapper2[SpaceTimeKey, ProtoSpaceTimeKey] {
   def testOut(sc: SparkContext): JavaRDD[Array[Byte]] =
     PythonTranslator.toPython[SpaceTimeKey, ProtoSpaceTimeKey](testRdd(sc))
-  def testIn(rdd: RDD[Array[Byte]]) =
+
+  def testIn(rdd: RDD[Array[Byte]]): Unit =
     PythonTranslator.fromPython[SpaceTimeKey, ProtoSpaceTimeKey](rdd, ProtoSpaceTimeKey.parseFrom)
 
   def testRdd(sc: SparkContext): RDD[SpaceTimeKey] = {

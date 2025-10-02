@@ -18,7 +18,7 @@ class OpenEORasterCubeMetadata(var bands: Seq[String]) extends Serializable {
 
 
   def setBandNames(names:java.util.List[String]):Unit = {
-    bands = names.asScala
+    bands = names.asScala.toSeq
   }
 
   def bandCount: Int = bands.size

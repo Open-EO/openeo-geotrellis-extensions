@@ -20,9 +20,8 @@ import org.openeo.geotrellis.TimeSeriesServiceResponses._
 import java.nio.file.Files
 import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
 import java.util
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.collection.immutable
-import scala.collection.immutable.Seq
 
 object ComputeStatsGeotrellisAdapterTest {
   type JMap[K, V] = java.util.Map[K, V]
@@ -158,7 +157,7 @@ object ComputeStatsGeotrellisAdapterTest {
     }
   }
 
-  def assertEqualTimeseriesStats(expected: Seq[Seq[Double]], actual: scala.Seq[scala.Seq[Double]]): Unit = {
+  def assertEqualTimeseriesStats(expected: Seq[Seq[Double]], actual: Seq[collection.Seq[Double]]): Unit = {
     assertEquals("should have same polygon count", expected.length, actual.size)
     expected.indices.foreach { i =>
       assertArrayEquals("should have same band stats", expected(i).toArray, actual(i).toArray, 1e-6)
@@ -208,7 +207,7 @@ class ComputeStatsGeotrellisAdapterTest() {
     val outDir = "/tmp/csvoutput"
     computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube("mean", datacube, ProjectedPolygons(Seq(polygon1, polygon2),  "EPSG:4326"), outDir)
 
-    val groupedStats: Map[String, scala.Seq[scala.Seq[Double]]] = parseCSV(outDir).toSeq.sortBy(_._1).map(t=>(t._1.substring(0,10),t._2)).toMap
+    val groupedStats: Map[String, Seq[collection.Seq[Double]]] = parseCSV(outDir).toSeq.sortBy(_._1).map(t =>(t._1.substring(0,10),t._2)).toMap
     groupedStats.foreach(println)
 
     val keys = Seq("2017-01-01", "2017-01-15", "2017-02-01")
@@ -227,7 +226,7 @@ class ComputeStatsGeotrellisAdapterTest() {
     val outDir = "/tmp/csvoutput"
     computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube("mean", buildCubeRdd(ZonedDateTime.parse(from_date), ZonedDateTime.parse(to_date)),ProjectedPolygons.fromVectorFile(getClass.getResource("/org/openeo/geotrellis/GeometryCollection.json").getPath), outDir)
 
-    val groupedStats: Map[String, scala.Seq[scala.Seq[Double]]] = parseCSV(outDir).toSeq.sortBy(_._1).map(t => (t._1.substring(0, 10), t._2)).toMap
+    val groupedStats: Map[String, Seq[collection.Seq[Double]]] = parseCSV(outDir).toSeq.sortBy(_._1).map(t => (t._1.substring(0, 10), t._2)).toMap
 
     groupedStats.foreach(println)
 
@@ -276,7 +275,7 @@ class ComputeStatsGeotrellisAdapterTest() {
     val outDir = "/tmp/csvoutput_validateFAPARAgainstTSService"
     computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube("mean", datacube, ProjectedPolygons(polygons, "EPSG:32631"), outDir)
 
-    val groupedStats: Map[String, scala.Seq[scala.Seq[Double]]] = parseCSV(outDir).toSeq.sortBy(_._1).toMap
+    val groupedStats: Map[String, Seq[collection.Seq[Double]]] = parseCSV(outDir).toSeq.sortBy(_._1).toMap
     groupedStats.foreach(println)
 
 
@@ -337,7 +336,7 @@ class ComputeStatsGeotrellisAdapterTest() {
   private def assertMedianComputedCorrectly(ndviDataCube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], minDateString: String, minDate: ZonedDateTime, maxDate: ZonedDateTime, polygons: Seq[Polygon]) = {
     //alternative way to compute a histogram that works for this simple case
 
-    val stats: _root_.scala.collection.immutable.Map[_root_.java.lang.String, scala.Seq[scala.Seq[Double]]] = computeAggregateSpatial("median",ndviDataCube, polygons)
+    val stats: _root_.scala.collection.immutable.Map[_root_.java.lang.String, Seq[collection.Seq[Double]]] = computeAggregateSpatial("median",ndviDataCube, polygons)
 
     assertFalse(stats.isEmpty)
 
@@ -357,15 +356,15 @@ class ComputeStatsGeotrellisAdapterTest() {
   }
 
 
-  private def computeAggregateSpatial(reducer:String,ndviDataCube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], polygons: Seq[Polygon]): Map[String, scala.Seq[scala.Seq[Double]]] = {
+  private def computeAggregateSpatial(reducer:String,ndviDataCube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], polygons: Seq[Polygon]): Map[String, Seq[collection.Seq[Double]]] = {
     computeAggregateSpatial(reducer,ndviDataCube,ProjectedPolygons(polygons, "EPSG:4326"))
   }
 
-  private def computeAggregateSpatial(reducer: String, ndviDataCube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], polygons: ProjectedPolygons): Map[String, scala.Seq[scala.Seq[Double]]] = {
+  private def computeAggregateSpatial(reducer: String, ndviDataCube: RDD[(SpaceTimeKey, MultibandTile)] with Metadata[TileLayerMetadata[SpaceTimeKey]], polygons: ProjectedPolygons): Map[String, Seq[collection.Seq[Double]]] = {
     val outDir = Files.createTempDirectory("aggregateSpatial").toString
     computeStatsGeotrellisAdapter.compute_generic_timeseries_from_datacube(reducer, ndviDataCube, polygons, outDir)
 
-    val stats: Map[String, scala.Seq[scala.Seq[Double]]] = parseCSV(outDir).toSeq.sortBy(_._1).map(t => (t._1.substring(0, 10), t._2)).toMap
+    val stats: Map[String, Seq[collection.Seq[Double]]] = parseCSV(outDir).toSeq.sortBy(_._1).map(t => (t._1.substring(0, 10), t._2)).toMap
     stats.foreach(println)
     stats
   }
@@ -473,6 +472,4 @@ class ComputeStatsGeotrellisAdapterTest() {
 
     assertTrue(stats.isEmpty)
   }
-
-
 }

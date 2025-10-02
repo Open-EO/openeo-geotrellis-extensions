@@ -4,19 +4,18 @@ import geotrellis.layer.{LayoutDefinition, Metadata, SpaceTimeKey, SpatialKey, T
 import geotrellis.proj4.CRS
 import geotrellis.raster
 import geotrellis.raster._
-import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.spark._
+import geotrellis.spark.partition.SpacePartitioner
 import geotrellis.vector._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd._
-import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Column, Row, SaveMode, SparkSession}
-import org.openeo.geotrellis.{OpenEOProcesses, SpatialToSpacetimeJoinRdd}
 import org.openeo.geotrellis.aggregate_polygon.intern.PixelRateValidator.exceedsTreshold
 import org.openeo.geotrellis.aggregate_polygon.intern._
 import org.openeo.geotrellis.creo.CreoS3Utils
 import org.openeo.geotrellis.layers.LayerProvider
+import org.openeo.geotrellis.{OpenEOProcesses, SpatialToSpacetimeJoinRdd}
 import org.slf4j.LoggerFactory
 import spire.syntax.cfor.cfor
 
@@ -24,6 +23,7 @@ import java.nio.file.Paths
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit.DAYS
 import scala.collection.mutable.ListBuffer
+import scala.collection.parallel.CollectionConverters._
 
 object AggregatePolygonProcess {
 
@@ -41,7 +41,7 @@ object AggregatePolygonProcess {
   }
 }
 
-class AggregatePolygonProcess() {
+class AggregatePolygonProcess {
   import AggregatePolygonProcess._
 
   def computeAverageTimeSeries(datacube: MultibandTileLayerRDD[SpaceTimeKey], polygons: Array[MultiPolygon], crs: CRS, startDate: ZonedDateTime, endDate: ZonedDateTime, statisticsCallback: StatisticsCallback[_ >: Seq[MeanResult]], cancellationContext: CancellationContext, sc: SparkContext): Unit = {
