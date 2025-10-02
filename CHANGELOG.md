@@ -28,3 +28,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix thresholds in `linear_scale_range` to trigger type casting ([openeo-geopyspark-driver#1275](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1275))
 - Major performance improvement for load_collection/load_stac of (very) sparse datacubes   ([#465](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/465))
 - load_collection/load_stac: reduce number of tasks and thus resource use by making partitioner settings adaptive
+- `load_stac`: avoid areas of zeroes for assets with integral values that don't define NODATA ([#446](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/446))

@@ -38,7 +38,7 @@ object BandCompositeRasterSource {
   def readBounds(source: RasterSource, bounds: GridBounds[Long], softErrors: Boolean, bands: Seq[Int] = Seq(0)): Option[Raster[MultibandTile]] = {
     try {
       logger.debug(s"reading $bounds from ${source.name}")
-      val raster = source.read(bounds, bands) map { case Raster(multibandTile, extent) => Raster(multibandTile, extent) }
+      val raster = source.read(bounds, bands)
       logger.debug(s"finished reading $bounds from ${source.name}")
       raster
     } catch {

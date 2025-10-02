@@ -699,4 +699,50 @@ for p in l:
     factory
   }
 
+  def stacCogNoNoDataCollection: PyramidFactory = {
+    val openSearchClient = new FixedFeaturesOpenSearchClient
+
+    val bandNames = singletonList("L2A-B02-P10")
+    val resolution = 10
+
+    openSearchClient.addFeature(
+      OpenSearchResponses.featureBuilder()
+        .withId("2020_34TFR_001")
+        .withNominalDate("2020-01-01T00:00:00Z")
+        .withBBox(22.4224844035807, 45.950836422259, 22.557151965576, 46.0446922710336)
+        .addLink(
+          href = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/LCFM_LSF-ANNUAL_V100_2020_34TFR_001_L2A-BANDS.tif",
+          title = "Sentinel-2_AnnualFeatures",
+          bandNames,
+        )
+        .withCRS("EPSG:32634")
+        .withRasterExtent(610240, 5089760, 620480, 5100000)
+        .withResolution(resolution)
+        .build()
+    )
+
+    openSearchClient.addFeature(
+      OpenSearchResponses.featureBuilder()
+        .withId("2020_34TFR_000")
+        .withNominalDate("2020-01-01T00:00:00Z")
+        .withBBox(22.2903879775156, 45.9525572152198, 22.4248477757042, 46.046265455836)
+        .addLink(
+          href = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/LCFM_LSF-ANNUAL_V100_2020_34TFR_000_L2A-BANDS.tif",
+          title = "Sentinel-2_AnnualFeatures",
+          bandNames,
+        )
+        .withCRS("EPSG:32634")
+        .withRasterExtent(600000, 5089760, 610240, 5100000)
+        .withResolution(resolution)
+        .build()
+    )
+
+    new PyramidFactory(
+      openSearchClient,
+      openSearchCollectionId = "https://stac.openeo.vito.be",
+      openSearchLinkTitles = bandNames,
+      rootPath = null,
+      maxSpatialResolution = CellSize(resolution, resolution),
+    )
+  }
 }

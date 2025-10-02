@@ -630,13 +630,19 @@ object FileLayerProvider {
                 }
 
                 override def loadData: Option[MultibandTile] = {
-                  val maybeTile = rasterRegion.raster.map(_.tile)
-                  if (maybeTile.isDefined && maybeTile.get.cellType.isInstanceOf[NoNoData]) {
-                    maybeTile.map(t => t.convert(t.cellType.withDefaultNoData()))
-                  } else {
-                    maybeTile
-                  }
+                  for {
+                    Raster(tile, _) <- rasterRegion.raster
+                  } yield {
+                    tile.cellType match {
+                      case cellType: NoNoData =>
+                        val noDataCellType =
+                          if (cellType.isFloatingPoint) cellType.withDefaultNoData()
+                          else cellType withNoData Some(0)
 
+                        tile convert noDataCellType
+                      case _ => tile
+                    }
+                  }
                 }
               }).map((_, sourceName))
           }
@@ -1603,7 +1609,7 @@ class FileLayerProvider private(openSearch: OpenSearchClient, openSearchCollecti
     // TODO: these geotiffs overlap a bit so for a bbox near the edge, not one but two or even four geotiffs are taken
     //  into account; it's more efficient to filter out the redundant ones
 
-    if (overlappingRasterSources.isEmpty) throw new IllegalArgumentException(s"""Could not find data for your load_collection request with catalog ID "$openSearchCollectionId". The catalog query had correlation ID "$correlationId" and returned ${overlappingFeatures.size} results.""")
+    if (overlappingRasterSources.isEmpty) throw new IllegalArgumentException(s"""Could not find data for your ${if (fromLoadStac) "load_stac" else "load_collection"} request with catalog ID "$openSearchCollectionId". The catalog query had correlation ID "$correlationId" and returned ${overlappingFeatures.size} results.""")
 
     overlappingRasterSources
 
