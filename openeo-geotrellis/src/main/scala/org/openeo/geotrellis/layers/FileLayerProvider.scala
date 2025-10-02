@@ -634,10 +634,13 @@ object FileLayerProvider {
                     Raster(tile, _) <- rasterRegion.raster
                   } yield {
                     tile.cellType match {
-                      case cellType: NoNoData =>
+                      case originalCellType: NoNoData =>
                         val noDataCellType =
-                          if (cellType.isFloatingPoint) cellType.withDefaultNoData()
-                          else cellType withNoData Some(0)
+                          if (originalCellType.isFloatingPoint) originalCellType.withDefaultNoData()
+                          else originalCellType withNoData Some(0)
+
+                        // TODO: log level DEBUG does not work (https://github.com/eu-cdse/openeo-cdse-infra/issues/276)
+                        logger.warn(s"converting tile cell type from $originalCellType to $noDataCellType with NODATA")
 
                         tile convert noDataCellType
                       case _ => tile
