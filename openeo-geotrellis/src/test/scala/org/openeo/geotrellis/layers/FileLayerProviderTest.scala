@@ -1719,8 +1719,9 @@ class FileLayerProviderTest extends RasterMatchers{
       f"$outDir/testMultibandCOGViaSTACResampledCubic.nc", referenceFile)
   }
 
-  @Test
-  def testMultibandNoNoDataCOGViaSTAC(@TempDir outDir: Path): Unit = {
+  @ParameterizedTest
+  @ValueSource(booleans = Array(false, true))
+  def testMultibandNoNoDataCOGViaSTAC(loadPerProduct: Boolean, @TempDir outDir: Path): Unit = {
     val pyramidFactory = LayerFixtures.stacCogNoNoDataCollection
 
     val projectedPolygons = ProjectedPolygons.fromExtent(
@@ -1731,6 +1732,7 @@ class FileLayerProviderTest extends RasterMatchers{
     val dataCubeParameters = new DataCubeParameters
     dataCubeParameters.layoutScheme = "FloatingLayoutScheme"
     dataCubeParameters.globalExtent = Some(projectedPolygons.extent)
+    dataCubeParameters.loadPerProduct = loadPerProduct
 
     writeToNetCDFAndCompare(
       projectedPolygons,
