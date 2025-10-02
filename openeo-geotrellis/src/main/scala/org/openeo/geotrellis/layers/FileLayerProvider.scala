@@ -522,7 +522,17 @@ object FileLayerProvider {
 
       val allRasters =
         try{
-          source.readBounds(bounds).map(_.mapTile(_.convert(cellType))).toSeq
+          source.readBounds(bounds).map(_.mapTile { tile =>
+            val targetCellType = tile.cellType match {
+              case originalCellType: NoNoData if !originalCellType.isFloatingPoint =>
+                val noDataCellType = cellType.withNoData(Some(0))
+                logger.warn(s"converting tile cell type from ${originalCellType} to $noDataCellType with NODATA")
+                noDataCellType
+              case _ => cellType
+            }
+
+            tile convert targetCellType
+          }).toSeq
         } catch {
           case e: Exception => throw new IOException(s"load_collection/load_stac: error while reading from: ${source.name.toString}. Detailed error: ${e.getMessage}")
         }
