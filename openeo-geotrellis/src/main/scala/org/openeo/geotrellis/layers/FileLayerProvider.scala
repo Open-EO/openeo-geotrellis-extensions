@@ -525,8 +525,8 @@ object FileLayerProvider {
           source.readBounds(bounds).map(_.mapTile { tile =>
             val targetCellType = tile.cellType match {
               case originalCellType: NoNoData if !originalCellType.isFloatingPoint =>
-                val noDataCellType = cellType.withNoData(Some(0))
-                logger.warn(s"converting tile cell type from ${originalCellType} to $noDataCellType with NODATA")
+                val noDataCellType = cellType withNoData Some(0)
+                logger.debug(s"converting tile cell type from ${originalCellType} to $noDataCellType with NODATA")
                 noDataCellType
               case _ => cellType
             }
@@ -649,9 +649,7 @@ object FileLayerProvider {
                           if (originalCellType.isFloatingPoint) originalCellType.withDefaultNoData()
                           else originalCellType withNoData Some(0)
 
-                        // TODO: log level DEBUG does not work (https://github.com/eu-cdse/openeo-cdse-infra/issues/276)
-                        logger.warn(s"converting tile cell type from $originalCellType to $noDataCellType with NODATA")
-
+                        logger.debug(s"converting tile cell type from $originalCellType to $noDataCellType with NODATA")
                         tile convert noDataCellType
                       case _ => tile
                     }
